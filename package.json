@@ -3,8 +3,16 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "bin": {
+    "my-agent-tui": "bin/my-agent-tui"
+  },
+  "scripts": {
+    "tui": "bun run bin/my-agent-tui-dev.ts",
+    "tsc": "tsc"
+  },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/marked-terminal": "^6.1.1",
     "@types/node": "^25.6.0",
     "@types/prismjs": "^1.26.5",
     "@types/react": "^18.3.3"
@@ -16,10 +24,12 @@
     "@anthropic-ai/sdk": "^0.90.0",
     "@anthropic-ai/tokenizer": "^0.0.4",
     "chalk": "^5.3.0",
+    "dotenv": "^16.4.7",
     "gray-matter": "^4.0.3",
     "ink": "^5.0.1",
     "ink-scroll-view": "^0.3.6",
     "marked": "^12.0.2",
+    "marked-terminal": "^7.3.0",
     "openai": "^6.34.0",
     "prismjs": "^1.29.0",
     "react": "^18.3.1",
