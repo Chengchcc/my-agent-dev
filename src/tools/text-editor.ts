@@ -44,7 +44,7 @@ export class TextEditorTool implements ToolImplementation {
           },
           new_string: {
             type: 'string',
-            description: 'The new string to replace with (required for str_replace, create, and write).',
+            description: 'The new string to replace with (required for str_replace).',
           },
           content: {
             type: 'string',
@@ -72,7 +72,10 @@ export class TextEditorTool implements ToolImplementation {
       return true;
     }
     const resolved = path.resolve(filePath);
-    return this.allowedRoots.some(root => resolved.startsWith(path.resolve(root)));
+    return this.allowedRoots.some(root => {
+      const resolvedAllowed = path.resolve(root);
+      return resolved === resolvedAllowed || resolved.startsWith(resolvedAllowed + path.sep);
+    });
   }
 
   /**
