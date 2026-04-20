@@ -129,6 +129,21 @@ export function createTodoMiddleware(): {
       const todos = params.todos as TodoItem[];
       const merge = params.merge as boolean;
 
+      // Validate todos array
+      if (!Array.isArray(todos)) {
+        throw new Error('todos must be an array');
+      }
+
+      // Validate each todo item
+      for (const item of todos) {
+        if (!item.id || !item.content || !item.status) {
+          throw new Error('Each todo item must have id, content, and status properties');
+        }
+        if (!['pending', 'in_progress', 'completed', 'cancelled'].includes(item.status)) {
+          throw new Error(`Invalid status: ${item.status}. Must be one of pending, in_progress, completed, cancelled`);
+        }
+      }
+
       if (merge) {
         for (const item of todos) {
           const idx = store.findIndex((t) => t.id === item.id);
@@ -163,12 +178,6 @@ export function createTodoMiddleware(): {
       } else {
         context.systemPrompt = formatReminder(store).trim();
       }
-    }
-
-    // Check if this invocation is after a tool use of todo_write
-    const lastMessage = context.messages[context.messages.length - 1];
-    if (lastMessage?.role === 'tool' && lastMessage.name === TODO_WRITE_TOOL_NAME) {
-      stepsSinceLastWrite = 0;
     }
 
     return next();
