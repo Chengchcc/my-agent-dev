@@ -1,1 +1,1 @@
-export { runTUIClient, default } from './tui';
+export { runTUIClient } from './tui';

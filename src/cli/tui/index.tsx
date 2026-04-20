@@ -6,5 +6,3 @@ import { App } from './components';
 export function runTUIClient(agent: Agent): void {
   render(<App agent={agent} />);
 }
-
-export default runTUIClient;
