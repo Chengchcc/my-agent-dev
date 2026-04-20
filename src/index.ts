@@ -13,3 +13,6 @@ export { Agent } from './agent';
 // Providers
 export { ClaudeProvider } from './foundation/providers/claude';
 export { OpenAIProvider } from './foundation/providers/openai';
+
+// Skills
+export * from './skills';
