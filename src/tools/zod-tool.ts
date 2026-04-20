@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Tool, ToolImplementation } from '../types';
 
-export abstract class ZodTool<T extends z.ZodObject<any>> implements ToolImplementation {
+export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape>> implements ToolImplementation {
   protected abstract schema: T;
   protected abstract name: string;
   protected abstract description: string;
@@ -16,8 +16,16 @@ export abstract class ZodTool<T extends z.ZodObject<any>> implements ToolImpleme
       const zodSchema = value as z.ZodTypeAny;
       properties[key] = this.zodToJsonSchema(zodSchema);
 
-      // Check if field is required
-      if (!zodSchema.isOptional()) {
+      // Check if field is required - check if it's not optional
+      let current: z.ZodTypeAny = zodSchema;
+      let isOptional = false;
+      while (current instanceof z.ZodOptional || current instanceof z.ZodNullable) {
+        if (current instanceof z.ZodOptional) {
+          isOptional = true;
+        }
+        current = current._def.innerType;
+      }
+      if (!isOptional) {
         required.push(key);
       }
     }
@@ -40,6 +48,18 @@ export abstract class ZodTool<T extends z.ZodObject<any>> implements ToolImpleme
 
   private zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
     const result: Record<string, unknown> = {};
+
+    // Handle optional and nullable types
+    if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable) {
+      const innerSchema = this.zodToJsonSchema(schema._def.innerType);
+      // Copy all properties from inner schema
+      Object.assign(result, innerSchema);
+      if (schema.description) {
+        result.description = schema.description;
+      }
+      // JSON Schema doesn't require explicit marking for optional since it's in the required array
+      return result;
+    }
 
     if (schema instanceof z.ZodString) {
       result.type = 'string';
@@ -83,8 +103,50 @@ export abstract class ZodTool<T extends z.ZodObject<any>> implements ToolImpleme
       return result;
     }
 
+    if (schema instanceof z.ZodLiteral) {
+      result.type = typeof schema.value;
+      result.enum = [schema.value];
+      if (schema.description) {
+        result.description = schema.description;
+      }
+      return result;
+    }
+
+    if (schema instanceof z.ZodObject) {
+      result.type = 'object';
+      const properties: Record<string, unknown> = {};
+      const required: string[] = [];
+
+      for (const [key, value] of Object.entries(schema.shape)) {
+        const zodSchema = value as z.ZodTypeAny;
+        properties[key] = this.zodToJsonSchema(zodSchema);
+
+        // Check if field is required
+        let current: z.ZodTypeAny = zodSchema;
+        let isOptional = false;
+        while (current instanceof z.ZodOptional || current instanceof z.ZodNullable) {
+          if (current instanceof z.ZodOptional) {
+            isOptional = true;
+          }
+          current = current._def.innerType;
+        }
+        if (!isOptional) {
+          required.push(key);
+        }
+      }
+
+      result.properties = properties;
+      if (required.length > 0) {
+        result.required = required;
+      }
+      if (schema.description) {
+        result.description = schema.description;
+      }
+      return result;
+    }
+
     if (schema instanceof z.ZodUnion) {
-      // For unions, we just mark as any with description
+      // For unions, we just add description if present
       if (schema.description) {
         result.description = schema.description;
       }
@@ -98,7 +160,7 @@ export abstract class ZodTool<T extends z.ZodObject<any>> implements ToolImpleme
     return result;
   }
 
-  async execute(params: Record<string, unknown>): Promise<string> {
+  async execute(params: Record<string, unknown>): Promise<unknown> {
     const result = this.schema.safeParse(params);
 
     if (!result.success) {
@@ -111,7 +173,7 @@ export abstract class ZodTool<T extends z.ZodObject<any>> implements ToolImpleme
     return this.handle(result.data);
   }
 
-  protected abstract handle(params: z.infer<T>): Promise<string> | string;
+  protected abstract handle(params: z.infer<T>): Promise<unknown> | unknown;
 }
 
 export default ZodTool;
