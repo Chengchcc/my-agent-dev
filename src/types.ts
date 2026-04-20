@@ -82,3 +82,39 @@ export type Middleware = (
   context: AgentContext,
   next: () => Promise<AgentContext>
 ) => Promise<AgentContext>;
+
+// Fine-grained hooks for agent execution pipeline
+// Each hook uses the existing Middleware type
+export interface AgentHooks {
+  // Called before any processing of the agent run starts
+  beforeAgentRun?: Middleware[];
+  // Called before context compression
+  beforeCompress?: Middleware[];
+  // Called before invoking the LLM model
+  beforeModel?: Middleware[];
+  // Called after LLM model returns response
+  afterModel?: Middleware[];
+  // Called before adding the assistant response to context
+  beforeAddResponse?: Middleware[];
+  // Called after the agent run completes, response added to context
+  afterAgentRun?: Middleware[];
+}
+
+// ContextManager interface (matches the implementation in context.ts)
+export interface ContextManager {
+  addMessage(message: Message): void;
+  getMessages(): Message[];
+  getContext(config: AgentConfig): AgentContext;
+  compressIfNeeded(context: AgentContext): Promise<Message[]>;
+  clear(): void;
+  getTokenLimit(): number;
+}
+
+// Agent constructor options
+export type AgentConstructorOptions = {
+  provider: Provider;
+  contextManager: ContextManager;
+  middleware?: Middleware[];
+  hooks?: AgentHooks;
+  config: AgentConfig;
+};

@@ -13,6 +13,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
     "@anthropic-ai/tokenizer": "^0.0.4",
+    "gray-matter": "^4.0.3",
     "openai": "^6.34.0"
   }
 }
