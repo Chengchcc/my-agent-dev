@@ -1,3 +1,4 @@
+import type { SkillInfo } from './loader';
 import type { Middleware, Provider } from '../types';
 import { SkillLoader } from './loader';
 import path from 'path';
@@ -13,14 +14,17 @@ export type SkillMiddlewareOptions = {
 };
 
 /**
- * SkillMiddleware automatically detects mentions of skills in user messages
- * and injects the skill content into the system prompt when mentioned.
+ * SkillMiddleware provides structured skill injection into the system prompt
+ * following the progressive loading pattern:
+ * - All available skills are listed with their frontmatter metadata
+ * - Full skill content is read on-demand using the text_editor tool when needed
+ * - Structured XML formatting for better model understanding
  */
 export class SkillMiddleware {
   private skillLoader: SkillLoader;
   private autoInject: boolean;
   private injectOnMention: boolean;
-  private loadedSkills: Map<string, string> = new Map(); // skillName -> full content
+  private loadedSkills: Map<string, SkillInfo> = new Map(); // skillName (lowercase) -> SkillInfo
 
   constructor(options: Partial<SkillMiddlewareOptions> = {}) {
     this.skillLoader = options.skillLoader ?? new SkillLoader();
@@ -29,18 +33,19 @@ export class SkillMiddleware {
   }
 
   /**
-   * Preload all skills into memory for faster injection.
+   * Preload all skills into memory.
+   * Stores the full SkillInfo for each skill, not just content.
    */
   async preloadAll(): Promise<void> {
     const skills = await this.skillLoader.loadAllSkills();
     this.loadedSkills.clear();
     for (const skill of skills) {
-      // Store the full skill content with frontmatter content
-      this.loadedSkills.set(skill.name.toLowerCase(), skill.content);
+      // Store by skill name (lowercase)
+      this.loadedSkills.set(skill.name.toLowerCase(), skill);
       // Also store by directory name
       const dirName = path.basename(path.dirname(skill.filePath)).toLowerCase();
       if (dirName !== skill.name.toLowerCase()) {
-        this.loadedSkills.set(dirName, skill.content);
+        this.loadedSkills.set(dirName, skill);
       }
     }
   }
@@ -61,23 +66,63 @@ export class SkillMiddleware {
       }
 
       const userContent = lastMessage.content.toLowerCase();
-      const skillsToInject: string[] = [];
 
-      // Check which skills are mentioned
-      for (const [skillName, content] of this.loadedSkills.entries()) {
-        if (userContent.includes(skillName)) {
-          skillsToInject.push(content);
+      // Collect skills that are mentioned in the user message
+      const mentionedSkills: SkillInfo[] = [];
+      for (const [skillName, skillInfo] of this.loadedSkills.entries()) {
+        if (this.injectOnMention && userContent.includes(skillName)) {
+          mentionedSkills.push(skillInfo);
         }
       }
 
-      // If any skills matched, inject them into system prompt
-      if (skillsToInject.length > 0) {
-        const skillSection = '\n\n---\n# Reference Skills\n\n' + skillsToInject.join('\n\n---\n\n');
-        if (context.systemPrompt) {
-          context.systemPrompt += skillSection;
-        } else {
-          context.systemPrompt = skillSection.trim();
-        }
+      // Build the skill system section
+      let skillSection = `\n\n<skill_system>
+You have access to skills that provide optimized workflows for specific tasks. Each skill contains best practices, frameworks, and references to additional resources.
+
+**Progressive Loading Pattern:**
+1. When a user query matches a skill's use case or a skill is explicitly mentioned, use the text_editor tool to read the skill's full content from its file path
+2. Read and understand the skill's workflow and instructions precisely
+3. Follow the skill's instructions exactly
+4. The skill file may contain references to additional resources in the same folder - load those only when needed
+
+`;
+
+      // Add explicit invocation block if any skills are mentioned
+      if (mentionedSkills.length > 0) {
+        skillSection += `
+<explicit_skill_invocation>
+The user message mentions the following skill${mentionedSkills.length > 1 ? 's' : ''}:
+${mentionedSkills.map(s => `- ${s.name}: ${s.description}\n  Path: ${s.filePath}`).join('\n')}
+
+You must read the matching skill file${mentionedSkills.length > 1 ? 's' : ''} using the text_editor tool before proceeding.
+</explicit_skill_invocation>
+`;
+      }
+
+      // List all available skills with their frontmatter metadata
+      const skillsJson = JSON.stringify(
+        Array.from(this.loadedSkills.values()).map(s => ({
+          name: s.name,
+          description: s.description,
+          path: s.filePath,
+          metadata: s.metadata,
+        })),
+        null,
+        2
+      );
+
+      skillSection += `
+<skills>
+${skillsJson}
+</skills>
+</skill_system>
+`;
+
+      // Inject into system prompt
+      if (context.systemPrompt) {
+        context.systemPrompt += skillSection;
+      } else {
+        context.systemPrompt = skillSection.trim();
       }
 
       return next();
@@ -85,10 +130,18 @@ export class SkillMiddleware {
   }
 
   /**
+   * Get the loaded skill info by name.
+   */
+  getSkill(skillName: string): SkillInfo | null {
+    return this.loadedSkills.get(skillName.toLowerCase()) ?? null;
+  }
+
+  /**
    * Get the loaded skill content by name.
    */
   getSkillContent(skillName: string): string | null {
-    return this.loadedSkills.get(skillName.toLowerCase()) ?? null;
+    const skill = this.loadedSkills.get(skillName.toLowerCase());
+    return skill?.content ?? null;
   }
 
   /**
@@ -103,6 +156,6 @@ export class SkillMiddleware {
    */
   registerAsTools(provider: Provider): void {
     // Future: skills can expose tools
-    // For now, just content injection is sufficient
+    // For now, just structured injection is sufficient
   }
 }
