@@ -125,9 +125,12 @@ export class BashTool implements ToolImplementation {
         });
       });
 
+      let resolved = false;
+
       proc.on('timeout', () => {
         proc.kill();
         output += `\n--- Command timed out after ${this.timeoutMs}ms ---`;
+        resolved = true;
         resolve({
           output,
           exitCode: 124, // standard timeout exit code
@@ -137,13 +140,19 @@ export class BashTool implements ToolImplementation {
       });
 
       proc.on('exit', (code, signal) => {
+        if (resolved) {
+          return; // Already resolved by timeout handler
+        }
         if (signal) {
           output += `\n--- Killed by signal ${signal} ---`;
         }
+        // Check if the process was killed due to timeout (even if we didn't get the timeout event)
+        const timedOut = this.timeoutMs > 0 && signal === 'SIGTERM';
+        const exitCode = timedOut ? 124 : code;
         resolve({
           output,
-          exitCode: code,
-          timedOut: false,
+          exitCode,
+          timedOut,
           truncated,
         });
       });
