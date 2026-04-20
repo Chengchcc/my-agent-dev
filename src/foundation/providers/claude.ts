@@ -1,0 +1,213 @@
+import Anthropic from '@anthropic-ai/sdk';
+import type { Message, Provider, Tool, LLMResponse, LLMResponseChunk, AgentContext } from '../../types';
+
+export class ClaudeProvider implements Provider {
+  private client: Anthropic;
+  private model: string;
+  private maxTokens: number;
+  private temperature: number;
+  private tools: Anthropic.Tool[] = [];
+
+  constructor(config: {
+    apiKey: string;
+    model: string;
+    maxTokens: number;
+    temperature?: number;
+    baseURL?: string;
+  }) {
+    this.client = new Anthropic({
+      apiKey: config.apiKey,
+      baseURL: config.baseURL,
+    });
+    this.model = config.model;
+    this.maxTokens = config.maxTokens;
+    this.temperature = config.temperature ?? 0.7;
+  }
+
+  /**
+   * Register tools for function calling.
+   */
+  registerTools(tools: Tool[]): void {
+    this.tools = tools.map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.parameters as Anthropic.Tool.InputSchema,
+    }));
+  }
+
+  /**
+   * Blocking completion.
+   */
+  async invoke(context: AgentContext): Promise<LLMResponse> {
+    const { messages, systemPrompt } = context;
+
+    // Claude expects system prompt as a separate parameter, not in messages array
+    const claudeMessages = this.convertToClaudeMessages(messages);
+    const system = systemPrompt ?? this.extractSystemPrompt(messages);
+
+    const response = await this.client.messages.create({
+      model: this.model,
+      messages: claudeMessages,
+      system: system,
+      max_tokens: this.maxTokens,
+      temperature: this.temperature,
+      tools: this.tools.length > 0 ? this.tools : undefined,
+    });
+
+    // Extract content
+    const content = response.content
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .join('');
+
+    // Extract tool calls
+    const tool_calls = response.content
+      .filter(block => block.type === 'tool_use')
+      .map(block => ({
+        id: block.id,
+        name: block.name,
+        arguments: block.input as Record<string, unknown>,
+      }));
+
+    return {
+      content,
+      tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+      usage: {
+        prompt_tokens: response.usage.input_tokens,
+        completion_tokens: response.usage.output_tokens,
+        total_tokens: response.usage.input_tokens + response.usage.output_tokens,
+      },
+      model: response.model,
+    };
+  }
+
+  /**
+   * Streaming completion.
+   */
+  async *stream(context: AgentContext): AsyncIterable<LLMResponseChunk> {
+    const { messages, systemPrompt } = context;
+    const claudeMessages = this.convertToClaudeMessages(messages);
+    const system = systemPrompt ?? this.extractSystemPrompt(messages);
+
+    const stream = this.client.messages.stream({
+      model: this.model,
+      messages: claudeMessages,
+      system: system,
+      max_tokens: this.maxTokens,
+      temperature: this.temperature,
+      tools: this.tools.length > 0 ? this.tools : undefined,
+    });
+
+    let currentContent = '';
+    const tool_calls: LLMResponseChunk['tool_calls'] = [];
+    let currentToolCall: {
+      id: string;
+      name: string;
+      input: string;
+    } | null = null;
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_start') {
+        const contentBlock = chunk.content_block;
+        if (contentBlock?.type === 'tool_use') {
+          // Start of a new tool call
+          currentToolCall = {
+            id: contentBlock.id,
+            name: contentBlock.name,
+            input: '',
+          };
+        }
+      } else if (chunk.type === 'content_block_delta') {
+        if (chunk.delta.type === 'text_delta') {
+          currentContent += chunk.delta.text;
+          yield {
+            content: chunk.delta.text,
+            done: false,
+          };
+        } else if (chunk.delta.type === 'input_json_delta') {
+          // Accumulate partial JSON input for tool call
+          if (currentToolCall && chunk.delta.partial_json) {
+            currentToolCall.input += chunk.delta.partial_json;
+          }
+        }
+      } else if (chunk.type === 'content_block_stop') {
+        // End of current content block - if it's a tool call, parse and add it
+        if (currentToolCall) {
+          let fullToolCall: {
+            id: string;
+            name: string;
+            arguments: Record<string, unknown>;
+          };
+          try {
+            const parsedInput = JSON.parse(currentToolCall.input) as Record<string, unknown>;
+            fullToolCall = {
+              id: currentToolCall.id,
+              name: currentToolCall.name,
+              arguments: parsedInput,
+            };
+            tool_calls.push(fullToolCall);
+          } catch (e) {
+            // Parse error - add it anyway
+            fullToolCall = {
+              id: currentToolCall.id,
+              name: currentToolCall.name,
+              arguments: {},
+            };
+            tool_calls.push(fullToolCall);
+          }
+          currentToolCall = null;
+
+          // Yield the completed tool call
+          yield {
+            content: '',
+            done: false,
+            tool_calls: [fullToolCall],
+          };
+        }
+      } else if (chunk.type === 'message_delta') {
+        // Message delta contains stop_reason and usage
+      } else if (chunk.type === 'message_stop') {
+        yield {
+          content: '',
+          done: true,
+          tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+        };
+      }
+    }
+  }
+
+  /**
+   * Convert unified messages to Claude format.
+   * Removes system message from array since Claude expects it separately.
+   */
+  private convertToClaudeMessages(messages: Message[]): Anthropic.MessageParam[] {
+    return messages
+      .filter(m => m.role !== 'system')
+      .map(m => {
+        if (m.role === 'tool') {
+          // Claude expects tool results as user messages with tool_result content blocks
+          return {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result' as const,
+                tool_use_id: m.tool_call_id!,
+                content: m.content,
+              },
+            ],
+          };
+        }
+        return {
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content,
+        };
+      }) as Anthropic.MessageParam[];
+  }
+
+  /**
+   * Extract system prompt from messages.
+   */
+  private extractSystemPrompt(messages: Message[]): string {
+    return messages.filter(m => m.role === 'system').map(m => m.content).join('\n');
+  }
+}
