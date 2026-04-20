@@ -22,3 +22,6 @@ export * from './tools';
 
 // Todos
 export * from './todos/index';
+
+// CLI/TUI
+export { runTUIClient } from './cli';
