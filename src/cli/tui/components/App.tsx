@@ -31,7 +31,7 @@ function AppContent() {
       <Header />
       <ScrollView>
         {messages.map((message, index) => (
-          <ChatMessage key={index} message={message} />
+          <ChatMessage key={message.id ?? index} message={message} />
         ))}
       </ScrollView>
       {todos.length > 0 && <TodoPanel todos={todos} />}

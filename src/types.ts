@@ -1,5 +1,6 @@
 // Core message type - unified format for all providers
 export type Message = {
+  id?: string;
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   name?: string;

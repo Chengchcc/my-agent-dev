@@ -1,8 +1,13 @@
-import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
-import type { Message } from '../../../types';
+import type { Message, LLMResponseChunk } from '../../../types';
 import type { UITodoItem } from '../types';
+
+/**
+ * Interval in milliseconds for batching message updates
+ */
+const MESSAGE_BATCH_INTERVAL_MS = 50;
 
 /**
  * Agent loop state for React context.
@@ -58,7 +63,7 @@ export function AgentLoopProvider({
 
       flushTimerRef.current = setTimeout(() => {
         flushPendingMessages();
-      }, 50);
+      }, MESSAGE_BATCH_INTERVAL_MS);
     },
     [flushPendingMessages],
   );
@@ -84,7 +89,9 @@ export function AgentLoopProvider({
 
       // Handle built-in commands
       if (text.trim() === '/clear' || text.trim() === '/cls') {
-        agent.clear();
+        if (typeof agent.clear === 'function') {
+          agent.clear();
+        }
         flushPendingMessages();
         setMessages([]);
         clearTerminal();
@@ -98,18 +105,30 @@ export function AgentLoopProvider({
 
       setStreaming(true);
 
-      try {
-        const userMessage: Message = {
-          role: 'user',
-          content: text,
-        };
-        enqueueMessage(userMessage);
+      // Track incremental streaming content
+      let streamingContent = '';
+      let streamingMessageIndex: number | null = null;
 
-        // Run streaming
+      try {
+        // Run streaming - agent already adds user message to context
         for await (const chunk of agent.runStream({ role: 'user', content: text })) {
           if (chunk.content) {
-            // The full response gets added after streaming completes
-            // Ink handles incremental display via React state
+            streamingContent += chunk.content;
+
+            // Create or update the streaming assistant message
+            const streamingMessage: Message = {
+              role: 'assistant',
+              content: streamingContent,
+            };
+
+            if (streamingMessageIndex === null) {
+              // First chunk - add new streaming message
+              enqueueMessage(streamingMessage);
+              streamingMessageIndex = pendingMessagesRef.current.length - 1;
+            } else {
+              // Update existing streaming message
+              pendingMessagesRef.current[streamingMessageIndex] = streamingMessage;
+            }
           }
         }
 
@@ -117,10 +136,29 @@ export function AgentLoopProvider({
         const fullContext = agent.getContext();
         const allMessages = fullContext.messages;
         setMessages([...allMessages]);
+        // Clear pending since we're replacing with full context
+        pendingMessagesRef.current = [];
+        if (flushTimerRef.current) {
+          clearTimeout(flushTimerRef.current);
+          flushTimerRef.current = null;
+        }
       } catch (error) {
         console.error('Agent error:', error);
-        throw error;
+        // Add error message to messages so user sees it
+        const errorMessage: Message = {
+          role: 'assistant',
+          content: `Error: ${error instanceof Error ? error.message : String(error)}`,
+        };
+        enqueueMessage(errorMessage);
       } finally {
+        // Update todos from agent if available
+        if (typeof (agent as Agent & { getTodos: () => UITodoItem[] }).getTodos === 'function') {
+          const updatedTodos = (agent as Agent & { getTodos: () => UITodoItem[] }).getTodos();
+          setTodos(updatedTodos);
+        } else if (typeof (agent as Agent & { todos: UITodoItem[] }).todos !== 'undefined') {
+          setTodos((agent as Agent & { todos: UITodoItem[] }).todos);
+        }
+
         flushPendingMessages();
         setStreaming(false);
       }
@@ -141,7 +179,11 @@ export function AgentLoopProvider({
     [abort, agent, messages, onSubmit, streaming, todos, setTodos],
   );
 
-  return createElement(AgentLoopContext.Provider, { value }, children);
+  return (
+    <AgentLoopContext.Provider value={value}>
+      {children}
+    </AgentLoopContext.Provider>
+  );
 }
 
 function useAgentLoopState(): AgentLoopState {
