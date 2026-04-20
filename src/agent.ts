@@ -101,6 +101,8 @@ export class Agent {
 
     // 6. afterAgentRun hooks
     const finalContext = this.contextManager.getContext(this.config);
+    // Merge metadata from previous transformations
+    Object.assign(finalContext.metadata, afterBeforeAddResponse.metadata);
     const composedAfterAgentRun = composeMiddlewares(
       this.hooks.afterAgentRun,
       (ctx) => Promise.resolve(ctx)
@@ -208,6 +210,8 @@ export class Agent {
 
     // afterAgentRun
     const finalContext = this.contextManager.getContext(this.config);
+    // Merge metadata from previous transformations
+    Object.assign(finalContext.metadata, resultContext.metadata);
     const composedAfterAgentRun = composeMiddlewares(
       this.hooks.afterAgentRun,
       (ctx) => Promise.resolve(ctx)
