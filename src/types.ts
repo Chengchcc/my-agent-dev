@@ -14,6 +14,12 @@ export type Tool = {
   parameters: Record<string, unknown>;
 };
 
+// Tool implementation interface
+export interface ToolImplementation {
+  getDefinition(): Tool;
+  execute(params: Record<string, unknown>): Promise<unknown>;
+}
+
 // Tool call in response
 export type ToolCall = {
   id: string;
