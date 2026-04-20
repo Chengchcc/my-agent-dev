@@ -1,4 +1,4 @@
-import type { AgentContext, AgentConfig, LLMResponse, LLMResponseChunk, Middleware, Provider, ToolCall } from './types';
+import type { AgentContext, AgentConfig, LLMResponse, LLMResponseChunk, Middleware, Provider, ToolCall, AgentHooks } from './types';
 import { ContextManager } from './context';
 import { composeMiddlewares } from './middleware';
 
@@ -6,57 +6,108 @@ export class Agent {
   private provider: Provider;
   private contextManager: ContextManager;
   private middleware: Middleware[];
+  private hooks: Required<AgentHooks>;
   private config: AgentConfig;
 
   constructor(options: {
     provider: Provider;
     contextManager: ContextManager;
     middleware?: Middleware[];
+    hooks?: AgentHooks;
     config: AgentConfig;
   }) {
     this.provider = options.provider;
     this.contextManager = options.contextManager;
     this.middleware = options.middleware ?? [];
     this.config = options.config;
+    // Default all hook arrays to empty
+    this.hooks = {
+      beforeAgentRun: options.hooks?.beforeAgentRun ?? [],
+      beforeCompress: options.hooks?.beforeCompress ?? [],
+      beforeModel: options.hooks?.beforeModel ?? [],
+      afterModel: options.hooks?.afterModel ?? [],
+      beforeAddResponse: options.hooks?.beforeAddResponse ?? [],
+      afterAgentRun: options.hooks?.afterAgentRun ?? [],
+    };
   }
 
   /**
    * Run one full turn of the agent loop (blocking).
    */
   async run(userMessage: { role: 'user'; content: string }): Promise<AgentContext> {
-    // Add user message to context
+    // 1. beforeAgentRun hooks
+    const initialContext = this.contextManager.getContext(this.config);
+    const composedBeforeAgentRun = composeMiddlewares(
+      this.hooks.beforeAgentRun,
+      (ctx) => Promise.resolve(ctx)
+    );
+    const afterBeforeAgentRun = await composedBeforeAgentRun(initialContext);
+
+    // Add user message to context after hooks
     this.contextManager.addMessage({
       role: 'user',
       content: userMessage.content,
     });
 
-    // Get current context
+    // Get current context after adding user message
     const context = this.contextManager.getContext(this.config);
 
+    // 2. beforeCompress hooks
+    const composedBeforeCompress = composeMiddlewares(
+      this.hooks.beforeCompress,
+      (ctx) => Promise.resolve(ctx)
+    );
+    const afterBeforeCompress = await composedBeforeCompress(context);
+
     // Compress if needed
-    const compressedMessages = await this.contextManager.compressIfNeeded(context);
-    context.messages = compressedMessages;
+    const compressedMessages = await this.contextManager.compressIfNeeded(afterBeforeCompress);
+    afterBeforeCompress.messages = compressedMessages;
 
-    // Compose middleware with final handler that calls provider
-    const composed = composeMiddlewares(this.middleware, async (ctx) => {
-      const response = await this.provider.invoke(ctx);
-      ctx.response = response;
-      return ctx;
-    });
+    // 3. beforeModel hooks + provider invocation
+    const composedWithHooks = composeMiddlewares(
+      this.hooks.beforeModel,
+      async (ctx) => {
+        const response = await this.provider.invoke(ctx);
+        ctx.response = response;
+        return ctx;
+      }
+    );
 
-    // Run through pipeline
-    const resultContext = await composed(context);
+    // Run through beforeModel hooks then invoke model
+    const afterBeforeModel = await composedWithHooks(afterBeforeCompress);
 
-    // Add response to context history
-    if (resultContext.response) {
+    // 4. afterModel hooks
+    const composedAfterModel = composeMiddlewares(
+      this.hooks.afterModel,
+      (ctx) => Promise.resolve(ctx)
+    );
+    const afterAfterModel = await composedAfterModel(afterBeforeModel);
+
+    // 5. beforeAddResponse hooks
+    const composedBeforeAddResponse = composeMiddlewares(
+      this.hooks.beforeAddResponse,
+      (ctx) => Promise.resolve(ctx)
+    );
+    const afterBeforeAddResponse = await composedBeforeAddResponse(afterAfterModel);
+
+    // Add response to context history after hooks
+    if (afterBeforeAddResponse.response) {
       this.contextManager.addMessage({
         role: 'assistant',
-        content: resultContext.response.content,
-        tool_calls: resultContext.response.tool_calls,
+        content: afterBeforeAddResponse.response.content,
+        tool_calls: afterBeforeAddResponse.response.tool_calls,
       });
     }
 
-    return resultContext;
+    // 6. afterAgentRun hooks
+    const finalContext = this.contextManager.getContext(this.config);
+    const composedAfterAgentRun = composeMiddlewares(
+      this.hooks.afterAgentRun,
+      (ctx) => Promise.resolve(ctx)
+    );
+    const result = await composedAfterAgentRun(finalContext);
+
+    return result;
   }
 
   /**
@@ -65,6 +116,14 @@ export class Agent {
   async *runStream(
     userMessage: { role: 'user'; content: string }
   ): AsyncIterable<LLMResponseChunk> {
+    // beforeAgentRun
+    const initialContext = this.contextManager.getContext(this.config);
+    const composedBeforeAgentRun = composeMiddlewares(
+      this.hooks.beforeAgentRun,
+      (ctx) => Promise.resolve(ctx)
+    );
+    await composedBeforeAgentRun(initialContext);
+
     // Add user message to context
     this.contextManager.addMessage({
       role: 'user',
@@ -74,25 +133,36 @@ export class Agent {
     // Get current context
     const context = this.contextManager.getContext(this.config);
 
-    // Compress if needed
-    const compressedMessages = await this.contextManager.compressIfNeeded(context);
-    context.messages = compressedMessages;
+    // beforeCompress
+    const composedBeforeCompress = composeMiddlewares(
+      this.hooks.beforeCompress,
+      (ctx) => Promise.resolve(ctx)
+    );
+    const afterBeforeCompress = await composedBeforeCompress(context);
 
-    // Compose middleware with a final handler that will receive the processed context
+    // Compress if needed
+    const compressedMessages = await this.contextManager.compressIfNeeded(afterBeforeCompress);
+    afterBeforeCompress.messages = compressedMessages;
+
+    // Compose middleware (outer user middleware) + beforeModel hooks
+    const outerComposed = composeMiddlewares(
+      this.middleware,
+      async (ctx) => {
+        const composedBeforeModel = composeMiddlewares(
+          this.hooks.beforeModel,
+          (innerCtx) => Promise.resolve(innerCtx)
+        );
+        return composedBeforeModel(ctx);
+      }
+    );
+
+    // Run through pipeline
+    let resultContext = await outerComposed(afterBeforeCompress);
+
+    // After middleware and beforeModel hooks, stream from provider
     let fullContent = '';
     let tool_calls: ToolCall[] = [];
-    let resultContext: AgentContext;
 
-    const composed = composeMiddlewares(this.middleware, async (ctx) => {
-      // Middleware has processed the context, store it for streaming
-      resultContext = ctx;
-      return ctx;
-    });
-
-    // Run through the middleware pipeline
-    resultContext = await composed(context);
-
-    // After middleware completes, stream the chunks from the provider
     for await (const chunk of this.provider.stream(resultContext)) {
       fullContent += chunk.content;
       if (chunk.tool_calls) {
@@ -101,7 +171,7 @@ export class Agent {
       yield chunk;
     }
 
-    // Set the full response on the context for consistency with run()
+    // Set full response on context
     resultContext.response = {
       content: fullContent,
       tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
@@ -113,7 +183,21 @@ export class Agent {
       model: '',
     };
 
-    // Accumulate full content and tool calls, add to context after streaming completes
+    // afterModel
+    const composedAfterModel = composeMiddlewares(
+      this.hooks.afterModel,
+      (ctx) => Promise.resolve(ctx)
+    );
+    resultContext = await composedAfterModel(resultContext);
+
+    // beforeAddResponse
+    const composedBeforeAddResponse = composeMiddlewares(
+      this.hooks.beforeAddResponse,
+      (ctx) => Promise.resolve(ctx)
+    );
+    resultContext = await composedBeforeAddResponse(resultContext);
+
+    // Add to context
     if (resultContext.response) {
       this.contextManager.addMessage({
         role: 'assistant',
@@ -121,6 +205,14 @@ export class Agent {
         tool_calls: resultContext.response.tool_calls,
       });
     }
+
+    // afterAgentRun
+    const finalContext = this.contextManager.getContext(this.config);
+    const composedAfterAgentRun = composeMiddlewares(
+      this.hooks.afterAgentRun,
+      (ctx) => Promise.resolve(ctx)
+    );
+    await composedAfterAgentRun(finalContext);
   }
 
 
