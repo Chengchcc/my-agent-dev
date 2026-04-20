@@ -58,7 +58,7 @@ export class SkillLoader {
         description: data.description ?? '',
         content: markdownContent,
         filePath: skillPath,
-        metadata: data.metadata ?? {},
+        metadata: data,
       };
 
       this.cachedSkills.set(skillName, skillInfo);
