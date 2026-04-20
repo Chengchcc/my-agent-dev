@@ -25,11 +25,36 @@ This is a TypeScript-based AI agent framework built with Bun, featuring a modula
   - `loader.ts`: SkillLoader class for loading skills from disk with caching
   - `middleware.ts`: SkillMiddleware for auto-injecting skills into system prompt
 
+### Terminal UI (TUI)
+
+- `/src/cli/tui/`: Interactive terminal UI implementation powered by Ink (React)
+  - `command-registry.ts`: Slash command types, filtering and matching utilities
+  - `components/`: React components
+    - `App.tsx`: Main application container
+    - `InputBox.tsx`: User input with autocomplete
+    - `CommandList.tsx`: Autocomplete dropdown for slash commands
+    - `HighlightedInput.tsx`: Input display with cursor position highlighting
+  - `hooks/`: Custom React hooks
+    - `use-agent-loop.tsx`: Agent loop context provider
+    - `use-command-input.ts`: Main input hook with autocomplete and history
+    - `use-input-editor.ts`: Pure editor state transformation functions
+    - `use-input-history.ts`: Persistent input history browsing
+
 ## Important Files
 
 - `tsconfig.json`: TypeScript configuration
 - `package.json`: Project dependencies
+- `CLAUDE.md`: This file - project guidance for Claude Code
+- `README.md`: Project documentation
 - `skills/`: Directory containing available skills (each in separate folder with SKILL.md)
+- `bin/`: Executable scripts
+  - `my-agent-tui-dev.ts`: Development entry point for TUI
+
+## Development Commands
+
+- **Compile TypeScript**: `bun run tsc`
+- **Run TUI in development**: `bun run tui`
+- **TypeScript version**: ^6.0.3
 
 ## Getting Started
 
