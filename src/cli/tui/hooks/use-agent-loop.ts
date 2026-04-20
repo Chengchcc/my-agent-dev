@@ -2,6 +2,7 @@ import { createContext, createElement, useCallback, useContext, useEffect, useMe
 import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
 import type { Message } from '../../../types';
+import type { UITodoItem } from '../types';
 
 /**
  * Agent loop state for React context.
@@ -10,8 +11,10 @@ type AgentLoopState = {
   agent: Agent;
   streaming: boolean;
   messages: Message[];
+  todos: UITodoItem[];
   onSubmit: (text: string) => Promise<void>;
   abort: () => void;
+  setTodos: (todos: UITodoItem[]) => void;
 };
 
 const AgentLoopContext = createContext<AgentLoopState | null>(null);
@@ -25,6 +28,7 @@ export function AgentLoopProvider({
 }) {
   const [streaming, setStreaming] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [todos, setTodos] = useState<UITodoItem[]>([]);
 
   const streamingRef = useRef(streaming);
   const pendingMessagesRef = useRef<Message[]>([]);
@@ -129,10 +133,12 @@ export function AgentLoopProvider({
       agent,
       streaming,
       messages,
+      todos,
       onSubmit,
       abort,
+      setTodos,
     }),
-    [abort, agent, messages, onSubmit, streaming],
+    [abort, agent, messages, onSubmit, streaming, todos, setTodos],
   );
 
   return createElement(AgentLoopContext.Provider, { value }, children);
