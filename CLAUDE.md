@@ -4,11 +4,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current State
 
-This is currently an empty git repository with no committed code. As code is added to this project, this file should be updated to include:
+This is a TypeScript-based AI agent framework built with Bun, featuring a modular architecture for extending functionality through skills. The project is actively under development.
 
-- Commonly used development commands (build, lint, test)
-- High-level code architecture and structure
-- Important instructions from README or other configuration files
+## Development Commands
+
+- **Compile TypeScript**: `bun run tsc`
+- **TypeScript version**: ^6.0.3
+
+## Architecture
+
+### Core Files
+
+- `/src/index.ts`: Main entry point with public exports
+- `/src/agent.ts`: Agent core functionality
+- `/src/context.ts`: Context management for agent runs
+- `/src/types.ts`: Type definitions for middleware, providers, etc.
+- `/src/middleware.ts`: Base middleware class
+- `/src/foundation/providers/`: Claude and OpenAI provider implementations
+- `/src/skills/`: Skill management and injection system
+  - `loader.ts`: SkillLoader class for loading skills from disk with caching
+  - `middleware.ts`: SkillMiddleware for auto-injecting skills into system prompt
+
+## Important Files
+
+- `tsconfig.json`: TypeScript configuration
+- `package.json`: Project dependencies
+- `skills/`: Directory containing available skills (each in separate folder with SKILL.md)
 
 ## Getting Started
 

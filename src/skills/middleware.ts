@@ -50,6 +50,10 @@ export class SkillMiddleware {
    */
   middleware(): Middleware {
     return async (context, next) => {
+      if (!this.autoInject) {
+        return next();
+      }
+
       // Only run on beforeAgentRun
       const lastMessage = context.messages[context.messages.length - 1];
       if (lastMessage?.role !== 'user') {
@@ -61,7 +65,7 @@ export class SkillMiddleware {
 
       // Check which skills are mentioned
       for (const [skillName, content] of this.loadedSkills.entries()) {
-        if (userContent.includes(skillName.toLowerCase())) {
+        if (userContent.includes(skillName)) {
           skillsToInject.push(content);
         }
       }
@@ -85,6 +89,13 @@ export class SkillMiddleware {
    */
   getSkillContent(skillName: string): string | null {
     return this.loadedSkills.get(skillName.toLowerCase()) ?? null;
+  }
+
+  /**
+   * Clear the preloaded skills cache.
+   */
+  clearCache(): void {
+    this.loadedSkills.clear();
   }
 
   /**
