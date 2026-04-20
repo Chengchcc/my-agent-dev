@@ -2,6 +2,7 @@ import React from 'react';
 import { Box } from 'ink';
 import { ScrollView } from 'ink-scroll-view';
 import { AgentLoopProvider, useAgentLoop } from '../hooks/use-agent-loop';
+import { BUILTIN_COMMANDS } from '../command-registry';
 import { Header } from './Header';
 import { Footer } from './Footer';
 import { ChatMessage } from './ChatMessage';
@@ -24,7 +25,7 @@ export function App({ agent }: AppProps) {
 }
 
 function AppContent() {
-  const { messages, streaming: isStreaming, onSubmit, todos } = useAgentLoop();
+  const { messages, streaming: isStreaming, onSubmitWithSkill, abort, todos } = useAgentLoop();
 
   return (
     <Box flexDirection="column" height="100%">
@@ -36,7 +37,7 @@ function AppContent() {
       </ScrollView>
       {todos.length > 0 && <TodoPanel todos={todos} />}
       {isStreaming && <StreamingIndicator />}
-      <InputBox onSubmit={onSubmit} />
+      <InputBox commands={BUILTIN_COMMANDS} onSubmit={onSubmitWithSkill} onAbort={abort} />
       <Footer />
     </Box>
   );

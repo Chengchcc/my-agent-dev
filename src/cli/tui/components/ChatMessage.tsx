@@ -1,9 +1,20 @@
 import { Box, Text } from 'ink';
-import { marked } from 'marked';
-import React from 'react';
+import { marked, type Token } from 'marked';
+import React, { useMemo } from 'react';
 import type { Message } from '../../../types';
-import type { Token } from 'marked';
 import { CodeBlock } from './CodeBlock';
+
+// Use require to avoid type conflicts between marked-terminal's marked types and our marked types
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const TerminalRenderer = require('marked-terminal').default;
+
+// Configure marked to use TerminalRenderer for non-code content
+// We still handle code blocks separately for proper Ink syntax highlighting
+marked.setOptions({
+  // @ts-ignore: TerminalRenderer type conflict due to nested dependency versions
+  renderer: new TerminalRenderer(),
+  async: false,
+});
 
 export function ChatMessage({ message }: { message: Message }) {
   // Handle different role types with appropriate styling
@@ -39,67 +50,21 @@ export function ChatMessage({ message }: { message: Message }) {
 
   const roleColor = getRoleColor(message.role);
   const rolePrefix = getRolePrefix(message.role);
-  const elements: React.ReactNode[] = [];
 
-  const tokens = marked.lexer(message.content);
+  // Check if the message contains code blocks that need syntax highlighting
+  // If it just has simple markdown content, use marked-terminal for quick rendering
+  // If there are code blocks, we still need to process them manually for proper highlighting
+  const hasCodeBlocks = /```[\s\S]*```/.test(message.content);
 
-  (tokens as Token[]).forEach((token: Token, index: number) => {
-    switch (token.type) {
-      case 'heading': {
-        const headingToken = token as Token & { depth: number; text: string };
-        const level = headingToken.depth;
-        elements.push(
-          <Box key={index} marginTop={level > 1 ? 1 : 0}>
-            <Text bold color="cyan">
-              {`${'#'.repeat(level)} ${headingToken.text}`}
-            </Text>
-          </Box>,
-        );
-        break;
-      }
-      case 'paragraph': {
-        const paragraphToken = token as Token & { tokens: Token[] };
-        elements.push(
-          <Box key={index} marginY={1}>
-            <Text color="white">
-              {renderInlineTokens(paragraphToken.tokens)}
-            </Text>
-          </Box>,
-        );
-        break;
-      }
-      case 'code': {
-        const codeToken = token as Token & { text: string; lang?: string };
-        elements.push(<CodeBlock key={index} code={codeToken.text} language={codeToken.lang} />);
-        break;
-      }
-      case 'list': {
-        const listToken = token as Token & { items: Array<{ tokens?: Token[] }> };
-        // Process each list item with full inline token processing
-        listToken.items.forEach((item: { tokens?: Token[] }, itemIndex: number) => {
-          elements.push(
-            <Box key={`${index}-${itemIndex}`} paddingLeft={2}>
-              <Text color="white">
-                • {renderInlineTokens(item.tokens)}
-              </Text>
-            </Box>,
-          );
-        });
-        break;
-      }
-      case 'text':
-      default: {
-        const textToken = token as Token & { text?: string; tokens?: Token[] };
-        if (textToken.text) {
-          elements.push(
-            <Text key={index} color="white">
-              {textToken.tokens ? renderInlineTokens(textToken.tokens) : textToken.text}
-            </Text>,
-          );
-        }
-      }
+  const rendered = useMemo(() => {
+    if (!hasCodeBlocks) {
+      // No code blocks - use marked-terminal directly
+      // marked can return promise if async is enabled, but we disabled async above
+      const result = marked(message.content) as string;
+      return result.trimEnd();
     }
-  });
+    return null;
+  }, [message.content, hasCodeBlocks]);
 
   return (
     <Box flexDirection="column" marginBottom={1}>
@@ -109,88 +74,51 @@ export function ChatMessage({ message }: { message: Message }) {
         </Text>
       </Box>
       <Box paddingLeft={1}>
-        {elements}
+        {rendered !== null ? (
+          <Text>{rendered}</Text>
+        ) : (
+          // When there are code blocks, we need to process manually to get proper syntax highlighting
+          // This follows the same approach but keeps our custom CodeBlock component
+          <ChatMessageContent content={message.content} />
+        )}
       </Box>
     </Box>
   );
 }
 
 /**
- * Render inline tokens with proper styling for bold, italic, code, etc.
+ * Manual processing when message contains code blocks that need syntax highlighting.
  */
-function renderInlineTokens(tokens?: (Token | string)[]): React.ReactNode[] {
-  if (!tokens || !Array.isArray(tokens)) return [];
+function ChatMessageContent({ content }: { content: string }) {
+  const elements: React.ReactNode[] = [];
+  const tokens = marked.lexer(content);
 
-  return tokens.map((token, index): React.ReactNode => {
-    if (typeof token === 'string') {
-      return <React.Fragment key={index}>{token}</React.Fragment>;
-    }
-
-    // Handle different inline token types with appropriate Ink styles
-    // Narrow the type based on token properties
-    switch (token.type) {
-      case 'strong':
-      case 'bold': {
-        const boldToken = token as Token & { tokens: (Token | string)[] };
-        return (
-          <Text key={index} bold>
-            {renderInlineTokens(boldToken.tokens)}
-          </Text>
+  tokens.forEach((token, index) => {
+    if (token.type === 'code') {
+      const codeToken = token as Token & { text: string; lang?: string };
+      elements.push(<CodeBlock key={index} code={codeToken.text} language={codeToken.lang} />);
+    } else {
+      // Other tokens are already handled by marked-lexer and we can render via marked-terminal
+      // Collect into a single string and let marked-terminal do its thing
+      // This gives us proper ANSI styling that Ink can handle
+      const tokenContent = getTokenContent(token);
+      if (tokenContent.trim()) {
+        const result = marked(tokenContent) as string;
+        elements.push(
+          <Text key={index}>
+            {result.trimEnd()}
+          </Text>,
         );
-      }
-      case 'em':
-      case 'italic': {
-        const italicToken = token as Token & { tokens: (Token | string)[] };
-        return (
-          <Text key={index} italic>
-            {renderInlineTokens(italicToken.tokens)}
-          </Text>
-        );
-      }
-      case 'codespan':
-      case 'code': {
-        const codeToken = token as Token & { text: string };
-        return (
-          <Text key={index} color="cyan">
-            {codeToken.text}
-          </Text>
-        );
-      }
-      case 'link': {
-        const linkToken = token as Token & { text: string };
-        return (
-          <Text key={index} color="blue" underline>
-            {linkToken.text}
-          </Text>
-        );
-      }
-      case 'image': {
-        const imageToken = token as Token & { text: string };
-        return (
-          <Text key={index} color="magenta" italic>
-            ![{imageToken.text}]
-          </Text>
-        );
-      }
-      case 'del':
-      case 'strikethrough': {
-        const delToken = token as Token & { tokens: (Token | string)[] };
-        return (
-          <Text key={index} strikethrough>
-            {renderInlineTokens(delToken.tokens)}
-          </Text>
-        );
-      }
-      case 'text':
-      default: {
-        const textToken = token as Token & { tokens?: (Token | string)[]; text?: string };
-        // If the token has nested tokens, recursively render them
-        if (textToken.tokens) {
-          return <React.Fragment key={index}>{renderInlineTokens(textToken.tokens)}</React.Fragment>;
-        }
-        // Otherwise just render the text
-        return <React.Fragment key={index}>{textToken.text ?? ''}</React.Fragment>;
       }
     }
   });
+
+  return <>{elements}</>;
+}
+
+function getTokenContent(token: Token): string {
+  if ('text' in token) {
+    return token.text || '';
+  }
+  return '';
 }

@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
 import type { Message, LLMResponseChunk } from '../../../types';
+import type { PromptSubmission } from '../command-registry';
 import type { UITodoItem } from '../types';
 
 /**
@@ -18,6 +19,7 @@ type AgentLoopState = {
   messages: Message[];
   todos: UITodoItem[];
   onSubmit: (text: string) => Promise<void>;
+  onSubmitWithSkill: (submission: PromptSubmission) => void;
   abort: () => void;
   setTodos: (todos: UITodoItem[]) => void;
 };
@@ -166,6 +168,15 @@ export function AgentLoopProvider({
     [agent, enqueueMessage, flushPendingMessages],
   );
 
+  const onSubmitWithSkill = useCallback(
+    (submission: PromptSubmission) => {
+      // For now, just submit the text as-is
+      // Skill invocation will be handled by the agent when parsing the prompt
+      onSubmit(submission.text);
+    },
+    [onSubmit],
+  );
+
   const value = useMemo(
     () => ({
       agent,
@@ -173,10 +184,11 @@ export function AgentLoopProvider({
       messages,
       todos,
       onSubmit,
+      onSubmitWithSkill,
       abort,
       setTodos,
     }),
-    [abort, agent, messages, onSubmit, streaming, todos, setTodos],
+    [abort, agent, messages, onSubmit, onSubmitWithSkill, streaming, todos, setTodos],
   );
 
   return (
