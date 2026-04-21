@@ -19,7 +19,6 @@ import { ToolRegistry } from './tool-registry';
 export class Agent {
   private provider: Provider;
   private contextManager: ContextManager;
-  private middleware: Middleware[];
   private hooks: Required<AgentHooks>;
   private config: AgentConfig;
   private toolRegistry: ToolRegistry | null;
@@ -28,21 +27,25 @@ export class Agent {
   constructor(options: {
     provider: Provider;
     contextManager: ContextManager;
-    middleware?: Middleware[];
     hooks?: AgentHooks;
     config: AgentConfig;
     toolRegistry?: ToolRegistry;
+    /** @deprecated Use hooks.beforeModel instead */
+    middleware?: Middleware[];
   }) {
     this.provider = options.provider;
     this.contextManager = options.contextManager;
-    this.middleware = options.middleware ?? [];
     this.config = options.config;
     this.toolRegistry = options.toolRegistry ?? null;
     // Default all hook arrays to empty
     this.hooks = {
       beforeAgentRun: options.hooks?.beforeAgentRun ?? [],
       beforeCompress: options.hooks?.beforeCompress ?? [],
-      beforeModel: options.hooks?.beforeModel ?? [],
+      // For backward compatibility: add deprecated middleware to beforeModel
+      beforeModel: [
+        ...(options.middleware ?? []),
+        ...(options.hooks?.beforeModel ?? []),
+      ],
       afterModel: options.hooks?.afterModel ?? [],
       beforeAddResponse: options.hooks?.beforeAddResponse ?? [],
       afterAgentRun: options.hooks?.afterAgentRun ?? [],
@@ -87,22 +90,17 @@ export class Agent {
     afterBeforeCompress.messages = compressedMessages;
 
     // 3. beforeModel hooks + provider invocation
-    const outerComposed = composeMiddlewares(
-      this.middleware,
-      async (ctx) => {
-        const composedBeforeModel = composeMiddlewares(
-          this.hooks.beforeModel,
-          (innerCtx) => Promise.resolve(innerCtx)
-        );
-        const afterBeforeModel = await composedBeforeModel(ctx);
-        const response = await this.provider.invoke(afterBeforeModel);
-        afterBeforeModel.response = response;
-        return afterBeforeModel;
+    const composedBeforeModel = composeMiddlewares(
+      this.hooks.beforeModel,
+      async (innerCtx) => {
+        const response = await this.provider.invoke(innerCtx);
+        innerCtx.response = response;
+        return innerCtx;
       }
     );
 
-    // Run through middleware, beforeModel hooks, then invoke model
-    const afterBeforeModel = await outerComposed(afterBeforeCompress);
+    // Run through beforeModel hooks, then invoke model
+    const afterBeforeModel = await composedBeforeModel(afterBeforeCompress);
 
     // 4. afterModel hooks
     const composedAfterModel = composeMiddlewares(
@@ -174,20 +172,14 @@ export class Agent {
     const compressedMessages = await this.contextManager.compressIfNeeded(afterBeforeCompress);
     afterBeforeCompress.messages = compressedMessages;
 
-    // Compose middleware (outer user middleware) + beforeModel hooks
-    const outerComposed = composeMiddlewares(
-      this.middleware,
-      async (ctx) => {
-        const composedBeforeModel = composeMiddlewares(
-          this.hooks.beforeModel,
-          (innerCtx) => Promise.resolve(innerCtx)
-        );
-        return composedBeforeModel(ctx);
-      }
+    // Compose beforeModel hooks
+    const composedBeforeModel = composeMiddlewares(
+      this.hooks.beforeModel,
+      (innerCtx) => Promise.resolve(innerCtx)
     );
 
     // Run through pipeline
-    let resultContext = await outerComposed(afterBeforeCompress);
+    let resultContext = await composedBeforeModel(afterBeforeCompress);
 
     // After middleware and beforeModel hooks, stream from provider
     let fullContent = '';
@@ -425,17 +417,11 @@ export class Agent {
         afterBeforeCompress.messages = compressedMessages;
 
         // b. Run beforeModel middleware
-        const outerComposed = composeMiddlewares(
-          this.middleware,
-          async (ctx) => {
-            const composedBeforeModel = composeMiddlewares(
-              this.hooks.beforeModel,
-              (innerCtx) => Promise.resolve(innerCtx),
-            );
-            return composedBeforeModel(ctx);
-          },
+        const composedBeforeModel = composeMiddlewares(
+          this.hooks.beforeModel,
+          (innerCtx) => Promise.resolve(innerCtx),
         );
-        let resultContext = await outerComposed(afterBeforeCompress);
+        let resultContext = await composedBeforeModel(afterBeforeCompress);
 
         // c. Stream from LLM
         let fullContent = '';

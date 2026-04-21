@@ -56,7 +56,9 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
       )}
       {todos.length > 0 && <TodoPanel todos={todos} />}
       {isStreaming && <StreamingIndicator />}
-      <InputBox commands={allCommands} onSubmit={onSubmitWithSkill} onAbort={abort} />
+      {!askUserQuestionRequest && (
+        <InputBox commands={allCommands} onSubmit={onSubmitWithSkill} onAbort={abort} />
+      )}
       <Footer />
     </Box>
   );
