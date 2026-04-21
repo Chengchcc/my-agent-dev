@@ -98,6 +98,10 @@ export function useCommandInput({
       cursorOffset: insertSlashCommand(selectedCommand).length,
     });
     setSelectedIndex(0);
+    // Dismiss the picker after accepting
+    if (slashQuery !== null) {
+      setDismissedQuery(slashQuery);
+    }
   };
 
   useInput(
