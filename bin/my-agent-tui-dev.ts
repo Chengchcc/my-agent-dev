@@ -5,7 +5,7 @@ import { ContextManager } from '../src/agent/context';
 import { ClaudeProvider } from '../src/providers';
 import { OpenAIProvider } from '../src/providers/openai';
 import { SkillLoader } from '../src/skills/loader';
-import { SkillMiddleware } from '../src/skills/middleware';
+import { createSkillMiddleware } from '../src/skills/middleware';
 import { toSkillCommand, loadAvailableCommands } from '../src/cli/tui/command-registry';
 import { runTUIClient } from '../src/cli/index';
 import { BashTool, TextEditorTool, AskUserQuestionTool } from '../src/tools';
@@ -56,11 +56,12 @@ toolRegistry.register(new AskUserQuestionTool(
 ));
 
 // Register todo middleware - provides todo_write tool and periodic reminders
-const { tool: todoTool, middleware: todoMiddleware } = createTodoMiddleware();
+const { tool: todoTool, hooks: todoHooks } = createTodoMiddleware();
 toolRegistry.register(todoTool);
 
-// Skill middleware for automatic skill injection
-const skillMiddleware = new SkillMiddleware({ autoInject: true, injectOnMention: true });
+// Skill middleware for automatic skill injection - factory pattern
+// Skill injection happens in beforeModel hook every turn, guaranteeing it's never lost
+const skillMiddleware = createSkillMiddleware({ autoInject: true, injectOnMention: true });
 
 // Initialize session store and create new session
 const sessionStore = new SessionStore();
@@ -72,8 +73,8 @@ const agent = new Agent({
   config,
   toolRegistry,
   hooks: {
-    beforeAgentRun: [skillMiddleware.middleware()],
-    beforeModel: [todoMiddleware],
+    beforeAgentRun: [skillMiddleware.beforeAgentRun],
+    beforeModel: [skillMiddleware.beforeModel, todoHooks.beforeModel!],
     afterAgentRun: [createAutoSaveHook(sessionStore)],
   },
 });

@@ -52,7 +52,7 @@ toolRegistry.register(new AskUserQuestionTool(
 ));
 
 // Register todo middleware - provides todo_write tool and periodic reminders
-const { tool: todoTool, middleware: todoMiddleware } = createTodoMiddleware();
+const { tool: todoTool, hooks: todoHooks } = createTodoMiddleware();
 toolRegistry.register(todoTool);
 
 // Initialize session store and create new session
@@ -64,8 +64,8 @@ const agent = new Agent({
   contextManager,
   config,
   toolRegistry,
-  middleware: [todoMiddleware],
   hooks: {
+    beforeModel: [todoHooks.beforeModel!],
     afterAgentRun: [createAutoSaveHook(sessionStore)],
   },
 });

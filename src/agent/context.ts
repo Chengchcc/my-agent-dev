@@ -53,6 +53,7 @@ export class ContextManager {
   private tokenLimit: number;
   private compressionStrategy: CompressionStrategy;
   private defaultSystemPrompt?: string;
+  private currentSystemPrompt?: string;
 
   constructor(options: {
     tokenLimit: number;
@@ -63,6 +64,7 @@ export class ContextManager {
     this.compressionStrategy = options.compressionStrategy ?? new TrimOldestStrategy();
     this.messages = [];
     this.defaultSystemPrompt = options.defaultSystemPrompt;
+    this.currentSystemPrompt = options.defaultSystemPrompt;
 
     if (this.defaultSystemPrompt) {
       this.messages.push({
@@ -87,6 +89,20 @@ export class ContextManager {
   }
 
   /**
+   * Update the current system prompt (for dynamic skill injection).
+   */
+  setSystemPrompt(systemPrompt?: string): void {
+    this.currentSystemPrompt = systemPrompt;
+  }
+
+  /**
+   * Get the current system prompt.
+   */
+  getSystemPrompt(): string | undefined {
+    return this.currentSystemPrompt;
+  }
+
+  /**
    * Get AgentContext for passing through pipeline.
    */
   getContext(config: AgentConfig): AgentContext {
@@ -94,7 +110,7 @@ export class ContextManager {
       messages: [...this.messages],
       config,
       metadata: {},
-      systemPrompt: this.defaultSystemPrompt,
+      systemPrompt: this.currentSystemPrompt,
     };
   }
 

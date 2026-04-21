@@ -61,6 +61,13 @@ export class Agent {
    * Run one full turn of the agent loop (blocking).
    */
   async run(userMessage: { role: 'user'; content: string }): Promise<AgentContext> {
+    // Add user message to context before running hooks
+    // This allows SkillMiddleware to check for skill mentions in the user message
+    this.contextManager.addMessage({
+      role: 'user',
+      content: userMessage.content,
+    });
+
     // 1. beforeAgentRun hooks
     const initialContext = this.contextManager.getContext(this.config);
     const composedBeforeAgentRun = composeMiddlewares(
@@ -69,21 +76,15 @@ export class Agent {
     );
     const afterBeforeAgentRun = await composedBeforeAgentRun(initialContext);
 
-    // Add user message to context after hooks
-    this.contextManager.addMessage({
-      role: 'user',
-      content: userMessage.content,
-    });
+    // Save the modified systemPrompt from beforeAgentRun (contains dynamic skill injection)
+    this.contextManager.setSystemPrompt(afterBeforeAgentRun.systemPrompt);
 
-    // Get current context after adding user message
-    const context = this.contextManager.getContext(this.config);
-
-    // 2. beforeCompress hooks
+    // 2. beforeCompress hooks - use the already processed context from beforeAgentRun
     const composedBeforeCompress = composeMiddlewares(
       this.hooks.beforeCompress,
       (ctx) => Promise.resolve(ctx)
     );
-    const afterBeforeCompress = await composedBeforeCompress(context);
+    const afterBeforeCompress = await composedBeforeCompress(afterBeforeAgentRun);
 
     // Compress if needed
     const compressedMessages = await this.contextManager.compressIfNeeded(afterBeforeCompress);
@@ -144,6 +145,13 @@ export class Agent {
   async *runStream(
     userMessage: { role: 'user'; content: string }
   ): AsyncIterable<LLMResponseChunk> {
+    // Add user message to context before running hooks
+    // This allows SkillMiddleware to check for skill mentions in the user message
+    this.contextManager.addMessage({
+      role: 'user',
+      content: userMessage.content,
+    });
+
     // beforeAgentRun
     const initialContext = this.contextManager.getContext(this.config);
     const composedBeforeAgentRun = composeMiddlewares(
@@ -152,21 +160,15 @@ export class Agent {
     );
     const afterBeforeAgentRun = await composedBeforeAgentRun(initialContext);
 
-    // Add user message to context after hooks
-    this.contextManager.addMessage({
-      role: 'user',
-      content: userMessage.content,
-    });
+    // Save the modified systemPrompt from beforeAgentRun (contains dynamic skill injection)
+    this.contextManager.setSystemPrompt(afterBeforeAgentRun.systemPrompt);
 
-    // Get current context
-    const context = this.contextManager.getContext(this.config);
-
-    // beforeCompress
+    // beforeCompress - use the already processed context from beforeAgentRun
     const composedBeforeCompress = composeMiddlewares(
       this.hooks.beforeCompress,
       (ctx) => Promise.resolve(ctx)
     );
-    const afterBeforeCompress = await composedBeforeCompress(context);
+    const afterBeforeCompress = await composedBeforeCompress(afterBeforeAgentRun);
 
     // Compress if needed
     const compressedMessages = await this.contextManager.compressIfNeeded(afterBeforeCompress);
@@ -389,6 +391,13 @@ export class Agent {
     let errorOccurred = false;
 
     try {
+      // Add user message to context before running hooks
+      // This allows SkillMiddleware to check for skill mentions in the user message
+      this.contextManager.addMessage({
+        role: 'user',
+        content: userMessage.content,
+      });
+
       // 1. beforeAgentRun hooks
       const initialContext = this.contextManager.getContext(this.config);
       const composedBeforeAgentRun = composeMiddlewares(
@@ -397,11 +406,8 @@ export class Agent {
       );
       const afterBeforeAgentRun = await composedBeforeAgentRun(initialContext);
 
-      // Add user message to context after hooks
-      this.contextManager.addMessage({
-        role: 'user',
-        content: userMessage.content,
-      });
+      // Save the modified systemPrompt from beforeAgentRun (contains dynamic skill injection)
+      this.contextManager.setSystemPrompt(afterBeforeAgentRun.systemPrompt);
 
       while (turnIndex < config.maxTurns && !done && !signal.aborted) {
         // a. Compress context if needed (every turn)

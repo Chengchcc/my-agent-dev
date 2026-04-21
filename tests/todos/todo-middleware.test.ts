@@ -3,7 +3,8 @@ import type { AgentContext } from '../../src/types';
 
 describe('createTodoMiddleware', () => {
   it('should return a tool and middleware', () => {
-    const { tool, middleware } = createTodoMiddleware();
+    const { tool, hooks } = createTodoMiddleware();
+  const middleware = hooks.beforeModel;
     expect(tool).toBeDefined();
     expect(middleware).toBeDefined();
     expect(tool.getDefinition().name).toBe('todo_write');
@@ -41,7 +42,8 @@ describe('createTodoMiddleware', () => {
   });
 
   it('should inject reminder after configured steps', async () => {
-    const { tool, middleware } = createTodoMiddleware();
+    const { tool, hooks } = createTodoMiddleware();
+  const middleware = hooks.beforeModel;
     await tool.execute({
       todos: [
         { id: '1', content: 'Task 1', status: 'pending' },
@@ -86,7 +88,8 @@ describe('createTodoMiddleware', () => {
   });
 
   it('should reset counter after tool use', async () => {
-    const { tool, middleware } = createTodoMiddleware();
+    const { tool, hooks } = createTodoMiddleware();
+  const middleware = hooks.beforeModel;
     await tool.execute({
       todos: [{ id: '1', content: 'Task 1', status: 'pending' }],
       merge: false,
@@ -117,7 +120,8 @@ describe('createTodoMiddleware', () => {
   });
 
   it('should reset counter when last message is tool use', async () => {
-    const { tool, middleware } = createTodoMiddleware();
+    const { tool, hooks } = createTodoMiddleware();
+  const middleware = hooks.beforeModel;
     await tool.execute({
       todos: [{ id: '1', content: 'Task 1', status: 'pending' }],
       merge: false,

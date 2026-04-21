@@ -1,4 +1,4 @@
-import type { Middleware, ToolImplementation } from '../types';
+import type { Middleware, ToolImplementation, AgentMiddleware } from '../types';
 import type { TodoItem, TodoStatus } from './types';
 
 const TODO_WRITE_TOOL_NAME = 'todo_write';
@@ -44,7 +44,7 @@ const TOOL_DESCRIPTION = `Create and manage a structured task list for the curre
 
 ## Merge Behavior
 
-- merge=true: Merges by id — existing ids are updated, new ids are appended. You can send only the changed items.
+- merge=true: Merges by id — existing ids are updated, new ids appended. You can send only the changed items.
 - merge=false: Replaces the entire list with the provided todos.`;
 
 function formatSummary(todos: TodoItem[]): string {
@@ -73,7 +73,7 @@ ${lines}
  */
 export function createTodoMiddleware(): {
   tool: ToolImplementation;
-  middleware: Middleware;
+  hooks: AgentMiddleware;
 } {
   const store: TodoItem[] = [];
   let stepsSinceLastWrite = Infinity;
@@ -183,5 +183,10 @@ export function createTodoMiddleware(): {
     return next();
   };
 
-  return { tool, middleware };
+  return {
+    tool,
+    hooks: {
+      beforeModel: middleware,
+    }
+  };
 }

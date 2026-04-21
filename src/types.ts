@@ -109,6 +109,18 @@ export interface AgentHooks {
   afterAgentRun?: Middleware[];
 }
 
+// AgentMiddleware interface - single middleware per hook slot
+// Used for middleware components that return a complete hook object
+// matching helixent's architecture pattern
+export interface AgentMiddleware {
+  beforeAgentRun?: Middleware;
+  beforeCompress?: Middleware;
+  beforeModel?: Middleware;
+  afterModel?: Middleware;
+  beforeAddResponse?: Middleware;
+  afterAgentRun?: Middleware;
+}
+
 // Agent constructor options
 export type AgentConstructorOptions = {
   provider: Provider;
