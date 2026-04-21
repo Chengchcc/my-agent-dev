@@ -1,5 +1,5 @@
 import { useInput } from "ink";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   buildPromptSubmission,
   filterCommands,
@@ -46,6 +46,8 @@ export function useCommandInput({
     () => WELCOME_MESSAGES[Math.floor(Math.random() * WELCOME_MESSAGES.length)] ?? "What's on your mind?",
   );
   const { isBrowsing, browseUp, browseDown, exitBrowsing, saveEntry } = useInputHistory();
+  const editorStateRef = useRef(editorState);
+  editorStateRef.current = editorState;
 
   const slashQuery = getSlashQuery(editorState.text);
   const filteredCommands = useMemo(
@@ -66,9 +68,20 @@ export function useCommandInput({
     setSelectedIndex(0);
   }, [slashQuery]);
 
-  const updateEditorState = (nextState: InputEditorState) => {
-    setEditorState(nextState);
-    if (getSlashQuery(nextState.text) !== dismissedQuery) {
+  const updateEditorState = (next: InputEditorState | ((prev: InputEditorState) => InputEditorState)) => {
+    if (typeof next === 'function') {
+      setEditorState((prevState) => {
+        const newState = next(prevState);
+        return newState;
+      });
+    } else {
+      setEditorState(next);
+    }
+    // Calculate new text for slash query check
+    const newText = typeof next === 'function'
+      ? next(editorStateRef.current).text
+      : next.text;
+    if (getSlashQuery(newText) !== dismissedQuery) {
       setDismissedQuery(null);
     }
   };
@@ -117,8 +130,16 @@ export function useCommandInput({
       }
 
       if (key.return) {
-        saveEntry(editorState.text);
-        onSubmit?.(buildPromptSubmission(editorState.text, commands));
+        if (key.shift) {
+          // Insert newline instead of submitting
+          exitBrowsing();
+          updateEditorState(prev => insertTextAtCursor(prev, '\n'));
+          return;
+        }
+
+        // Regular enter - submit
+        saveEntry(editorStateRef.current.text);
+        onSubmit?.(buildPromptSubmission(editorStateRef.current.text, commands));
         setEditorState({ text: "", cursorOffset: 0 });
         setDismissedQuery(null);
         setSelectedIndex(0);
@@ -127,22 +148,22 @@ export function useCommandInput({
       }
 
       if (key.leftArrow) {
-        updateEditorState(moveCursorLeft(editorState));
+        updateEditorState(prev => moveCursorLeft(prev));
         return;
       }
 
       if (key.rightArrow) {
-        updateEditorState(moveCursorRight(editorState));
+        updateEditorState(prev => moveCursorRight(prev));
         return;
       }
 
       if (key.backspace || key.delete) {
         exitBrowsing();
-        updateEditorState(removeCharacterBeforeCursor(editorState));
+        updateEditorState(prev => removeCharacterBeforeCursor(prev));
         return;
       }
 
-      if (!pickerOpen && (editorState.text === "" || isBrowsing) && key.upArrow) {
+      if (!pickerOpen && (editorStateRef.current.text === "" || isBrowsing) && key.upArrow) {
         const entry = browseUp();
         if (entry !== null) {
           setEditorState({ text: entry, cursorOffset: entry.length });
@@ -163,7 +184,7 @@ export function useCommandInput({
       }
 
       exitBrowsing();
-      updateEditorState(insertTextAtCursor(editorState, input));
+      updateEditorState(prev => insertTextAtCursor(prev, input));
     },
     { isActive: true },
   );
