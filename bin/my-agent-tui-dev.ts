@@ -65,14 +65,19 @@ const agent = new Agent({
 
 // Load skills and convert to slash commands
 (async () => {
-  // Ensure session directory is created
-  await sessionStore.ensureSessionDir();
-  // Create new session for this TUI run
-  sessionStore.createNewSession();
+  try {
+    // Ensure session directory is created
+    await sessionStore.ensureSessionDir();
+    // Create new session for this TUI run
+    sessionStore.createNewSession();
 
-  const skillLoader = new SkillLoader();
-  const skills = await skillLoader.loadAllSkills();
-  const skillCommands = skills.map(toSkillCommand);
+    const skillLoader = new SkillLoader();
+    const skills = await skillLoader.loadAllSkills();
+    const skillCommands = skills.map(toSkillCommand);
 
-  runTUIClient(agent, skillCommands, sessionStore);
+    runTUIClient(agent, skillCommands, sessionStore);
+  } catch (error) {
+    console.error('Failed to initialize TUI:', error);
+    process.exit(1);
+  }
 })();

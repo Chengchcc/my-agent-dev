@@ -4,6 +4,10 @@ import { Agent, ToolRegistry, ContextManager } from '../dist/agent';
 import { ClaudeProvider, OpenAIProvider } from '../dist/providers';
 import { BashTool, TextEditorTool } from '../dist/tools';
 import { runTUIClient } from '../dist/cli';
+import { SkillLoader } from '../dist/skills/loader';
+import { toSkillCommand } from '../dist/cli/tui/command-registry';
+import { SessionStore } from '../dist/session/store';
+import { createAutoSaveHook } from '../dist/session/hook';
 import type { AgentConfig } from '../dist/types.js';
 
 // Choose provider based on available API key
@@ -42,12 +46,35 @@ const toolRegistry = new ToolRegistry();
 toolRegistry.register(new BashTool({ allowedWorkingDirs: [__dirname + '/..'] }));
 toolRegistry.register(new TextEditorTool({ allowedRoots: [__dirname + '/..'] }));
 
+// Initialize session store and create new session
+const sessionStore = new SessionStore();
+
 // Create agent with tool registry
 const agent = new Agent({
   provider,
   contextManager,
   config,
   toolRegistry,
+  hooks: {
+    afterAgentRun: [createAutoSaveHook(sessionStore)],
+  },
 });
 
-runTUIClient(agent);
+// Load skills and convert to slash commands
+(async () => {
+  try {
+    // Ensure session directory is created
+    await sessionStore.ensureSessionDir();
+    // Create new session for this TUI run
+    sessionStore.createNewSession();
+
+    const skillLoader = new SkillLoader();
+    const skills = await skillLoader.loadAllSkills();
+    const skillCommands = skills.map(toSkillCommand);
+
+    runTUIClient(agent, skillCommands, sessionStore);
+  } catch (error) {
+    console.error('Failed to initialize TUI:', error);
+    process.exit(1);
+  }
+})();
