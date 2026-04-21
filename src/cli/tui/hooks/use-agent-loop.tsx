@@ -1,14 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
-import type { Message, LLMResponseChunk } from '../../../types';
+import type { Message } from '../../../types';
 import type { PromptSubmission } from '../command-registry';
 import type { UITodoItem } from '../types';
-
-/**
- * Interval in milliseconds for batching message updates
- */
-const MESSAGE_BATCH_INTERVAL_MS = 50;
 
 /**
  * Agent loop state for React context.
@@ -38,78 +33,13 @@ export function AgentLoopProvider({
   const [todos, setTodos] = useState<UITodoItem[]>([]);
 
   const streamingRef = useRef(streaming);
-  const pendingMessagesRef = useRef<Message[]>([]);
-  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const streamingMessageRef = useRef<Message | null>(null);
 
   useEffect(() => {
     streamingRef.current = streaming;
   }, [streaming]);
 
-  // We use a state counter to force re-renders when pending messages change
-  const [flushCounter, setFlushCounter] = useState(0);
-
-  const flushPendingMessages = useCallback(() => {
-    if (flushTimerRef.current) {
-      clearTimeout(flushTimerRef.current);
-      flushTimerRef.current = null;
-    }
-
-    if (pendingMessagesRef.current.length === 0) return;
-
-    // Replace the last message in messages with our pending streaming message
-    // This handles incremental updates to the same message during streaming
-    setMessages((prev) => {
-      if (pendingMessagesRef.current.length === 1 && prev.length > 0) {
-        // Check if the last message is still being streamed (not added to agent context yet)
-        const lastMessage = prev[prev.length - 1];
-        if (lastMessage.role === 'assistant' && lastMessage.content.startsWith(pendingMessagesRef.current[0].content.slice(0, 10))) {
-          // Replace the last message with the updated version
-          return [...prev.slice(0, -1), ...pendingMessagesRef.current];
-        }
-      }
-      // Normal append for new messages
-      return [...prev, ...pendingMessagesRef.current];
-    });
-
-    pendingMessagesRef.current = [];
-    setFlushCounter(c => c + 1);
-  }, []);
-
-  const scheduleFlush = useCallback(() => {
-    if (flushTimerRef.current) return;
-
-    flushTimerRef.current = setTimeout(() => {
-      flushPendingMessages();
-    }, MESSAGE_BATCH_INTERVAL_MS);
-  }, [flushPendingMessages]);
-
-  const enqueueMessage = useCallback(
-    (message: Message) => {
-      if (streamingMessageIndexRef.current !== null && pendingMessagesRef.current.length > 0) {
-        // Update existing streaming message
-        pendingMessagesRef.current[pendingMessagesRef.current.length - 1] = message;
-      } else {
-        // Add new streaming message
-        pendingMessagesRef.current.push(message);
-      }
-      scheduleFlush();
-    },
-    [scheduleFlush],
-  );
-
-  useEffect(() => {
-    return () => {
-      if (flushTimerRef.current) {
-        clearTimeout(flushTimerRef.current);
-      }
-    };
-  }, []);
-
-  // Track streaming message index for incremental updates
-  const streamingMessageIndexRef = useRef<number | null>(null);
-
   const abort = useCallback(() => {
-    // Agent doesn't have abort yet in our implementation - placeholder for future
     if (typeof (agent as any).abort === 'function') {
       (agent as any).abort();
     }
@@ -124,7 +54,6 @@ export function AgentLoopProvider({
         if (typeof agent.clear === 'function') {
           agent.clear();
         }
-        flushPendingMessages();
         setMessages([]);
         clearTerminal();
         return;
@@ -136,7 +65,7 @@ export function AgentLoopProvider({
       }
 
       setStreaming(true);
-      streamingMessageIndexRef.current = null;
+      streamingMessageRef.current = null;
 
       // Track incremental streaming content
       let streamingContent = '';
@@ -147,13 +76,18 @@ export function AgentLoopProvider({
           if (chunk.content) {
             streamingContent += chunk.content;
 
-            // Create or update the streaming assistant message
+            // Update the streaming message directly in messages state
             const streamingMessage: Message = {
               role: 'assistant',
               content: streamingContent,
             };
+            streamingMessageRef.current = streamingMessage;
 
-            enqueueMessage(streamingMessage);
+            setMessages(prev => {
+              // Filter out any previous streaming message
+              const base = prev.filter(m => m !== streamingMessageRef.current);
+              return [...base, streamingMessage];
+            });
           }
         }
 
@@ -161,21 +95,15 @@ export function AgentLoopProvider({
         const fullContext = agent.getContext();
         const allMessages = fullContext.messages;
         setMessages([...allMessages]);
-        // Clear pending since we're replacing with full context
-        pendingMessagesRef.current = [];
-        streamingMessageIndexRef.current = null;
-        if (flushTimerRef.current) {
-          clearTimeout(flushTimerRef.current);
-          flushTimerRef.current = null;
-        }
+        streamingMessageRef.current = null;
       } catch (error) {
         console.error('Agent error:', error);
-        // Add error message to messages so user sees it
+        // Add error message to messages
         const errorMessage: Message = {
           role: 'assistant',
           content: `Error: ${error instanceof Error ? error.message : String(error)}`,
         };
-        enqueueMessage(errorMessage);
+        setMessages(prev => [...prev, errorMessage]);
       } finally {
         // Update todos from agent if available
         if (typeof (agent as Agent & { getTodos: () => UITodoItem[] }).getTodos === 'function') {
@@ -185,18 +113,16 @@ export function AgentLoopProvider({
           setTodos((agent as Agent & { todos: UITodoItem[] }).todos);
         }
 
-        flushPendingMessages();
         setStreaming(false);
-        streamingMessageIndexRef.current = null;
+        streamingMessageRef.current = null;
       }
     },
-    [agent, enqueueMessage, flushPendingMessages],
+    [agent],
   );
 
   const onSubmitWithSkill = useCallback(
     (submission: PromptSubmission) => {
-      // For now, just submit the text as-is
-      // Skill invocation will be handled by the agent when parsing the prompt
+      // The skill name is captured in the submission - the agent will handle it
       onSubmit(submission.text);
     },
     [onSubmit],
