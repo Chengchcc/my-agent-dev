@@ -1,4 +1,4 @@
-import type { AgentContext, AgentConfig, LLMResponse, LLMResponseChunk, Middleware, Provider, ToolCall, AgentHooks } from './types';
+import type { AgentContext, AgentConfig, LLMResponse, LLMResponseChunk, Middleware, Provider, ToolCall, AgentHooks } from '../types';
 import { ContextManager } from './context';
 import { composeMiddlewares } from './middleware';
 

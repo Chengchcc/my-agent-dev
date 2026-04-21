@@ -1,4 +1,4 @@
-import type { AgentContext, Middleware } from './types';
+import type { AgentContext, Middleware } from '../types';
 
 /**
  * Compose multiple middleware into a single middleware function.

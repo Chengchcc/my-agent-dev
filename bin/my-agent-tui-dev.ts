@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 import 'dotenv/config';
 import { Agent } from '../src/agent';
-import { ContextManager } from '../src/context';
-import { ClaudeProvider } from '../src/foundation/providers/claude';
-import { OpenAIProvider } from '../src/foundation/providers/openai';
+import { ContextManager } from '../src/agent/context';
+import { ClaudeProvider } from '../src/providers/claude';
+import { OpenAIProvider } from '../src/providers/openai';
 import { SkillLoader } from '../src/skills/loader';
 import { toSkillCommand, loadAvailableCommands } from '../src/cli/tui/command-registry';
 import { runTUIClient } from '../src/cli/index';

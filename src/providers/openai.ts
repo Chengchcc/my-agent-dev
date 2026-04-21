@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { Message, Provider, Tool, LLMResponse, LLMResponseChunk, AgentContext } from '../../types';
+import type { Message, Provider, Tool, LLMResponse, LLMResponseChunk, AgentContext } from '../types';
 
 export class OpenAIProvider implements Provider {
   private client: OpenAI;

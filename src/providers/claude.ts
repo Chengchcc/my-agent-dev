@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { Message, Provider, Tool, LLMResponse, LLMResponseChunk, AgentContext } from '../../types';
+import type { Message, Provider, Tool, LLMResponse, LLMResponseChunk, AgentContext } from '../types';
 
 export class ClaudeProvider implements Provider {
   private client: Anthropic;

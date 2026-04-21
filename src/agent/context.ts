@@ -1,5 +1,5 @@
 import { countTokens } from '@anthropic-ai/tokenizer';
-import type { AgentContext, AgentConfig, CompressionStrategy, Message } from './types';
+import type { AgentContext, AgentConfig, CompressionStrategy, Message } from '../types';
 
 /**
  * Count total tokens in an array of messages.

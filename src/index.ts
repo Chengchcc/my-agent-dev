@@ -2,17 +2,16 @@
 export * from './types';
 
 // Context
-export { ContextManager, TrimOldestStrategy } from './context';
+export { ContextManager, TrimOldestStrategy } from './agent/context';
 
 // Middleware
-export { composeMiddlewares } from './middleware';
+export { composeMiddlewares } from './agent/middleware';
 
 // Core Agent
 export { Agent } from './agent';
 
 // Providers
-export { ClaudeProvider } from './foundation/providers/claude';
-export { OpenAIProvider } from './foundation/providers/openai';
+export { ClaudeProvider, OpenAIProvider } from './providers';
 
 // Skills
 export * from './skills';
