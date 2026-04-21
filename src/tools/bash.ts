@@ -53,7 +53,10 @@ export class BashTool implements ToolImplementation {
   /**
    * Execute the bash command.
    */
-  async execute(params: { command: string; cwd?: string }): Promise<{
+  async execute(
+    params: { command: string; cwd?: string },
+    options?: { signal?: AbortSignal },
+  ): Promise<{
     output: string;
     exitCode: number | null;
     timedOut: boolean;
@@ -126,6 +129,39 @@ export class BashTool implements ToolImplementation {
       });
 
       let resolved = false;
+
+      // Handle abort signal
+      if (options?.signal) {
+        const handleAbort = () => {
+          if (proc && proc.pid) {
+            // Kill the child process (negative PID kills the process group)
+            process.kill(-proc.pid);
+          }
+          output += `\n--- Command aborted by user ---`;
+          resolved = true;
+          resolve({
+            output,
+            exitCode: 130, // SIGTERM exit code
+            timedOut: false,
+            truncated,
+          });
+        };
+
+        options.signal.addEventListener('abort', handleAbort);
+
+        // Cleanup listener when done
+        const cleanup = () => {
+          options.signal?.removeEventListener('abort', handleAbort);
+        };
+
+        proc.on('exit', cleanup);
+        proc.on('timeout', cleanup);
+
+        // If already aborted, trigger immediately
+        if (options.signal.aborted) {
+          handleAbort();
+        }
+      }
 
       proc.on('timeout', () => {
         proc.kill();
