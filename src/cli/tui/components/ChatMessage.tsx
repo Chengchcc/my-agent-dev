@@ -51,26 +51,75 @@ export function ChatMessage({ message }: { message: Message }) {
   const roleColor = getRoleColor(message.role);
   const rolePrefix = getRolePrefix(message.role);
 
-  // Check if the message contains code blocks that need syntax highlighting
-  // If it just has simple markdown content, use marked-terminal for quick rendering
-  // If there are code blocks, we still need to process them manually for proper highlighting
-  const hasCodeBlocks = /```[\s\S]*```/.test(message.content);
+  const elements = useMemo(() => {
+    const elements: React.ReactNode[] = [];
+    let textBuffer = '';
 
-  const rendered = useMemo(() => {
-    if (!hasCodeBlocks) {
-      // No code blocks - use marked-terminal directly
-      // marked can return promise if async is enabled, but we disabled async above
-      try {
-        const result = marked(message.content) as string;
-        return result.trimEnd();
-      } catch (e) {
-        // If markdown parsing fails, fall back to raw text
-        console.warn('Markdown parsing failed, falling back to raw text:', e);
-        return message.content;
+    try {
+      const tokens = marked.lexer(message.content);
+
+      tokens.forEach((token, index) => {
+        if (token.type === 'code') {
+          // Flush any buffered text before adding the code block
+          if (textBuffer.trim()) {
+            try {
+              const result = marked(textBuffer) as string;
+              elements.push(
+                <Text key={`buffer-${index}`}>
+                  {result.trimEnd()}
+                </Text>,
+              );
+            } catch (e) {
+              console.warn(`Marked parsing failed for buffered text, falling back to raw text:`, e);
+              elements.push(
+                <Text key={`buffer-${index}`}>
+                  {textBuffer}
+                </Text>,
+              );
+            }
+            textBuffer = '';
+          }
+          const codeToken = token as Token & { text: string; lang?: string };
+          elements.push(<CodeBlock key={index} code={codeToken.text} language={codeToken.lang} />);
+        } else {
+          // Use token.raw to include the full original markdown including formatting markers like ## for headings
+          // This preserves context so marked can render it correctly
+          const tokenAny = token as any;
+          if (tokenAny.raw) {
+            textBuffer += tokenAny.raw;
+          } else if (tokenAny.text) {
+            // Fallback to text if raw not available
+            textBuffer += tokenAny.text;
+          }
+        }
+      });
+
+      // Flush any remaining text after processing all tokens
+      if (textBuffer.trim()) {
+        try {
+          const result = marked(textBuffer) as string;
+          elements.push(
+            <Text key="final">
+              {result.trimEnd()}
+            </Text>,
+          );
+        } catch (e) {
+          console.warn(`Marked parsing failed for final buffer, falling back to raw text:`, e);
+          elements.push(
+            <Text key="final">
+              {textBuffer}
+            </Text>,
+          );
+        }
       }
+    } catch (e) {
+      // If overall lexing/parsing fails, fall back to full raw text
+      console.warn('Marked lexing failed, falling back to full raw text:', e);
+      elements.push(<Text>{message.content}</Text>);
     }
-    return null;
-  }, [message.content, hasCodeBlocks]);
+
+    return elements;
+  }, [message.content]);
 
   return (
     <Box flexDirection="column" marginBottom={1}>
@@ -80,68 +129,8 @@ export function ChatMessage({ message }: { message: Message }) {
         </Text>
       </Box>
       <Box paddingLeft={1}>
-        {rendered !== null ? (
-          <Text>{rendered}</Text>
-        ) : (
-          // When there are code blocks, we need to process manually to get proper highlighting
-          // This follows the same approach but keeps our custom CodeBlock component
-          <ChatMessageContent content={message.content} />
-        )}
+        {elements}
       </Box>
     </Box>
   );
-}
-
-/**
- * Manual processing when message contains code blocks that need syntax highlighting.
- */
-function ChatMessageContent({ content }: { content: string }) {
-  const elements: React.ReactNode[] = [];
-
-  try {
-    const tokens = marked.lexer(content);
-
-    tokens.forEach((token, index) => {
-      if (token.type === 'code') {
-        const codeToken = token as Token & { text: string; lang?: string };
-        elements.push(<CodeBlock key={index} code={codeToken.text} language={codeToken.lang} />);
-      } else {
-        // Other tokens are already handled by marked-lexer and we can render via marked-terminal
-        // Collect into a single string and let marked-terminal do its thing
-        // This gives us proper ANSI styling that Ink can handle
-        const tokenContent = getTokenContent(token);
-        if (tokenContent.trim()) {
-          try {
-            const result = marked(tokenContent) as string;
-            elements.push(
-              <Text key={index}>
-                {result.trimEnd()}
-              </Text>,
-            );
-          } catch (e) {
-            // If parsing this token fails, output raw text
-            console.warn(`Marked parsing failed for token at index ${index}, falling back to raw text:`, e);
-            elements.push(
-              <Text key={index}>
-                {tokenContent}
-              </Text>,
-            );
-          }
-        }
-      }
-    });
-  } catch (e) {
-    // If overall lexing/parsing fails, fall back to full raw text
-    console.warn('Marked lexing failed, falling back to full raw text:', e);
-    elements.push(<Text>{content}</Text>);
-  }
-
-  return <>{elements}</>;
-}
-
-function getTokenContent(token: Token): string {
-  if ('text' in token) {
-    return token.text || '';
-  }
-  return '';
 }
