@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 
 const HISTORY_FILENAME = "history.txt";
 const MAX_HISTORY_LINES = 100;
@@ -11,28 +12,46 @@ function getHistoryFilePath(): string {
   return path.join(os.homedir(), ".my-agent", HISTORY_FILENAME);
 }
 
-function loadHistoryFromDisk(): string[] {
+async function loadHistoryFromDisk(): Promise<string[]> {
   const filePath = getHistoryFilePath();
-  if (!existsSync(filePath)) return [];
-  const content = readFileSync(filePath, "utf8").trim();
-  if (!content) return [];
-  return content.split("\n");
+  try {
+    const content = await readFile(filePath, 'utf8');
+    const trimmedContent = content.trim();
+    if (!trimmedContent) return [];
+    return trimmedContent.split('\n');
+  } catch {
+    return [];
+  }
 }
 
-function saveHistoryToDisk(lines: string[]): void {
+async function saveHistoryToDisk(lines: string[]): Promise<void> {
   const trimmed = lines.slice(-MAX_HISTORY_LINES);
   const filePath = getHistoryFilePath();
-  // Ensure directory exists
   const dir = path.dirname(filePath);
-  if (!existsSync(dir)) {
-    require("node:fs").mkdirSync(dir, { recursive: true });
+
+  try {
+    // Ensure directory exists
+    const dirExists = existsSync(dir);
+    if (!dirExists) {
+      await mkdir(dir, { recursive: true });
+    }
+
+    await writeFile(filePath, trimmed.join('\n') + '\n', 'utf8');
+  } catch (err) {
+    console.error('Failed to save history:', err);
   }
-  writeFileSync(filePath, trimmed.join("\n") + "\n", "utf8");
 }
 
 export function useInputHistory() {
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
-  const historyRef = useRef<string[]>(loadHistoryFromDisk());
+  const historyRef = useRef<string[]>([]);
+
+  // Load history on mount
+  useEffect(() => {
+    loadHistoryFromDisk().then(history => {
+      historyRef.current = history;
+    });
+  }, []);
 
   const isBrowsing = historyIndex !== null;
 
@@ -77,7 +96,9 @@ export function useInputHistory() {
     if (history.length > MAX_HISTORY_LINES) {
       historyRef.current = history.slice(-MAX_HISTORY_LINES);
     }
-    saveHistoryToDisk(historyRef.current);
+    saveHistoryToDisk(historyRef.current).catch(err => {
+      console.error('Failed to save history:', err);
+    });
     setHistoryIndex(null);
   }, []);
 
