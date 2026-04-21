@@ -8,3 +8,4 @@ export * from './TodoPanel';
 export * from './HighlightedInput';
 export * from './App';
 export * from './ToolCallMessage';
+export * from './AskUserQuestionPrompt';
