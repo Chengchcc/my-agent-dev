@@ -64,7 +64,7 @@ function dedupeCommands(commands: SlashCommand[]): SlashCommand[] {
   });
 }
 
-function toSkillCommand(skill: SkillFrontmatter): SlashCommand {
+export function toSkillCommand(skill: SkillFrontmatter): SlashCommand {
   return {
     name: skill.name,
     description: skill.description,
