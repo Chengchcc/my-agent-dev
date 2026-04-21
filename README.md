@@ -2,6 +2,8 @@
 
 A TypeScript-based AI agent framework built with Bun, featuring a modular architecture for extending functionality through skills and an interactive terminal UI (TUI) powered by Ink.
 
+![TUI Header with Hamster Logo](docs/tui-header.svg)
+
 ## Features
 
 - **Modular Skill System**: Extend functionality by adding skills in the `skills/` directory
