@@ -8,6 +8,7 @@ export class Agent {
   private middleware: Middleware[];
   private hooks: Required<AgentHooks>;
   private config: AgentConfig;
+  private abortController: AbortController | null = null;
 
   constructor(options: {
     provider: Provider;
@@ -64,17 +65,22 @@ export class Agent {
     afterBeforeCompress.messages = compressedMessages;
 
     // 3. beforeModel hooks + provider invocation
-    const composedWithHooks = composeMiddlewares(
-      this.hooks.beforeModel,
+    const outerComposed = composeMiddlewares(
+      this.middleware,
       async (ctx) => {
-        const response = await this.provider.invoke(ctx);
-        ctx.response = response;
-        return ctx;
+        const composedBeforeModel = composeMiddlewares(
+          this.hooks.beforeModel,
+          (innerCtx) => Promise.resolve(innerCtx)
+        );
+        const afterBeforeModel = await composedBeforeModel(ctx);
+        const response = await this.provider.invoke(afterBeforeModel);
+        afterBeforeModel.response = response;
+        return afterBeforeModel;
       }
     );
 
-    // Run through beforeModel hooks then invoke model
-    const afterBeforeModel = await composedWithHooks(afterBeforeCompress);
+    // Run through middleware, beforeModel hooks, then invoke model
+    const afterBeforeModel = await outerComposed(afterBeforeCompress);
 
     // 4. afterModel hooks
     const composedAfterModel = composeMiddlewares(
@@ -124,9 +130,9 @@ export class Agent {
       this.hooks.beforeAgentRun,
       (ctx) => Promise.resolve(ctx)
     );
-    await composedBeforeAgentRun(initialContext);
+    const afterBeforeAgentRun = await composedBeforeAgentRun(initialContext);
 
-    // Add user message to context
+    // Add user message to context after hooks
     this.contextManager.addMessage({
       role: 'user',
       content: userMessage.content,
@@ -165,12 +171,21 @@ export class Agent {
     let fullContent = '';
     let tool_calls: ToolCall[] = [];
 
-    for await (const chunk of this.provider.stream(resultContext)) {
-      fullContent += chunk.content;
-      if (chunk.tool_calls) {
-        tool_calls.push(...chunk.tool_calls);
+    // Create abort controller for this streaming request
+    this.abortController = new AbortController();
+    const signal = this.abortController.signal;
+
+    try {
+      for await (const chunk of this.provider.stream(resultContext, { signal })) {
+        if (signal.aborted) break;
+        fullContent += chunk.content;
+        if (chunk.tool_calls) {
+          tool_calls.push(...chunk.tool_calls);
+        }
+        yield chunk;
       }
-      yield chunk;
+    } finally {
+      this.abortController = null;
     }
 
     // Set full response on context
@@ -232,6 +247,16 @@ export class Agent {
    */
   clear(): void {
     this.contextManager.clear();
+  }
+
+  /**
+   * Abort the currently running streaming request.
+   */
+  abort(): void {
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+    }
   }
 
   /**

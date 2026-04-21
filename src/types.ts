@@ -81,7 +81,7 @@ export type AgentContext = {
 export interface Provider {
   registerTools(tools: Tool[]): void;
   invoke(context: AgentContext): Promise<LLMResponse>;
-  stream(context: AgentContext): AsyncIterable<LLMResponseChunk>;
+  stream(context: AgentContext, options?: { signal?: AbortSignal }): AsyncIterable<LLMResponseChunk>;
 }
 
 // Onion-style middleware function

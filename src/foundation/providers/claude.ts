@@ -84,7 +84,7 @@ export class ClaudeProvider implements Provider {
   /**
    * Streaming completion.
    */
-  async *stream(context: AgentContext): AsyncIterable<LLMResponseChunk> {
+  async *stream(context: AgentContext, options?: { signal?: AbortSignal }): AsyncIterable<LLMResponseChunk> {
     const { messages, systemPrompt } = context;
     const claudeMessages = this.convertToClaudeMessages(messages);
     const system = systemPrompt ?? this.extractSystemPrompt(messages);
@@ -96,6 +96,8 @@ export class ClaudeProvider implements Provider {
       max_tokens: this.maxTokens,
       temperature: this.temperature,
       tools: this.tools.length > 0 ? this.tools : undefined,
+    }, {
+      signal: options?.signal,
     });
 
     let currentContent = '';

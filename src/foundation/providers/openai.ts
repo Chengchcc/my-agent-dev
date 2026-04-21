@@ -82,17 +82,22 @@ export class OpenAIProvider implements Provider {
   /**
    * Streaming completion.
    */
-  async *stream(context: AgentContext): AsyncIterable<LLMResponseChunk> {
+  async *stream(context: AgentContext, options?: { signal?: AbortSignal }): AsyncIterable<LLMResponseChunk> {
     const messages = this.convertToOpenAIMessages(context.messages);
 
-    const stream = await this.client.chat.completions.create({
-      model: this.model,
-      messages,
-      max_tokens: this.maxTokens,
-      temperature: this.temperature,
-      tools: this.tools.length > 0 ? this.tools : undefined,
-      stream: true,
-    });
+    const stream = await this.client.chat.completions.create(
+      {
+        model: this.model,
+        messages,
+        max_tokens: this.maxTokens,
+        temperature: this.temperature,
+        tools: this.tools.length > 0 ? this.tools : undefined,
+        stream: true,
+      },
+      {
+        signal: options?.signal,
+      }
+    );
 
     // Track tool calls with accumulated arguments JSON
     let tool_calls: LLMResponseChunk['tool_calls'] = [];
