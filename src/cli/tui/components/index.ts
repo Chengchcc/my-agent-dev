@@ -7,3 +7,4 @@ export * from './ChatMessage';
 export * from './TodoPanel';
 export * from './HighlightedInput';
 export * from './App';
+export * from './ToolCallMessage';
