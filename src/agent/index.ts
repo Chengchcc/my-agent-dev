@@ -15,4 +15,4 @@ export type {
   AgentErrorEvent,
 } from './loop-types';
 export { DEFAULT_LOOP_CONFIG } from './loop-types';
-// export { ToolRegistry } from './tool-registry';
+export { ToolRegistry } from './tool-registry';
