@@ -2,7 +2,8 @@
 import 'dotenv/config';
 import { Agent, ToolRegistry, ContextManager } from '../dist/src/agent';
 import { ClaudeProvider, OpenAIProvider } from '../dist/src/providers';
-import { BashTool, TextEditorTool } from '../dist/src/tools';
+import { BashTool, TextEditorTool, AskUserQuestionTool } from '../dist/src/tools';
+import { globalAskUserQuestionManager } from '../dist/src/tools';
 import { runTUIClient } from '../dist/src/cli';
 import { SkillLoader } from '../dist/src/skills/loader';
 import { toSkillCommand } from '../dist/src/cli/tui/command-registry';
@@ -46,6 +47,9 @@ const config: AgentConfig = {
 const toolRegistry = new ToolRegistry();
 toolRegistry.register(new BashTool({ allowedWorkingDirs: [__dirname + '/..'] }));
 toolRegistry.register(new TextEditorTool({ allowedRoots: [__dirname + '/..'] }));
+toolRegistry.register(new AskUserQuestionTool(
+  (params) => globalAskUserQuestionManager.askUserQuestion(params)
+));
 
 // Register todo middleware - provides todo_write tool and periodic reminders
 const { tool: todoTool, middleware: todoMiddleware } = createTodoMiddleware();

@@ -7,7 +7,8 @@ import { OpenAIProvider } from '../src/providers/openai';
 import { SkillLoader } from '../src/skills/loader';
 import { toSkillCommand, loadAvailableCommands } from '../src/cli/tui/command-registry';
 import { runTUIClient } from '../src/cli/index';
-import { BashTool, TextEditorTool } from '../src/tools';
+import { BashTool, TextEditorTool, AskUserQuestionTool } from '../src/tools';
+import { globalAskUserQuestionManager } from '../src/tools';
 import { SessionStore } from '../src/session/store';
 import { createAutoSaveHook } from '../src/session/hook';
 import { createTodoMiddleware } from '../src/todos';
@@ -49,6 +50,9 @@ const config: AgentConfig = {
 const toolRegistry = new ToolRegistry();
 toolRegistry.register(new BashTool({ allowedWorkingDirs: [__dirname + '/..'] }));
 toolRegistry.register(new TextEditorTool({ allowedRoots: [__dirname + '/..'] }));
+toolRegistry.register(new AskUserQuestionTool(
+  (params) => globalAskUserQuestionManager.askUserQuestion(params)
+));
 
 // Register todo middleware - provides todo_write tool and periodic reminders
 const { tool: todoTool, middleware: todoMiddleware } = createTodoMiddleware();
