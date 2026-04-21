@@ -22,7 +22,7 @@ export interface AppProps {
 
 export function App({ agent, skillCommands, sessionStore }: AppProps) {
   return (
-    <AgentLoopProvider agent={agent}>
+    <AgentLoopProvider agent={agent} sessionStore={sessionStore}>
       <AppContent skillCommands={skillCommands} sessionStore={sessionStore} />
     </AgentLoopProvider>
   );

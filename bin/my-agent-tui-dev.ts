@@ -8,6 +8,8 @@ import { SkillLoader } from '../src/skills/loader';
 import { toSkillCommand, loadAvailableCommands } from '../src/cli/tui/command-registry';
 import { runTUIClient } from '../src/cli/index';
 import { BashTool, TextEditorTool } from '../src/tools';
+import { SessionStore } from '../src/session/store';
+import { createAutoSaveHook } from '../src/session/hook';
 import type { AgentConfig } from '../src/types';
 import type { SkillFrontmatter } from '../src/skills/loader';
 
@@ -47,19 +49,30 @@ const toolRegistry = new ToolRegistry();
 toolRegistry.register(new BashTool({ allowedWorkingDirs: [__dirname + '/..'] }));
 toolRegistry.register(new TextEditorTool({ allowedRoots: [__dirname + '/..'] }));
 
+// Initialize session store and create new session
+const sessionStore = new SessionStore();
+
 // Create agent with tool registry
 const agent = new Agent({
   provider,
   contextManager,
   config,
   toolRegistry,
+  hooks: {
+    afterAgentRun: [createAutoSaveHook(sessionStore)],
+  },
 });
 
 // Load skills and convert to slash commands
 (async () => {
+  // Ensure session directory is created
+  await sessionStore.ensureSessionDir();
+  // Create new session for this TUI run
+  sessionStore.createNewSession();
+
   const skillLoader = new SkillLoader();
   const skills = await skillLoader.loadAllSkills();
   const skillCommands = skills.map(toSkillCommand);
 
-  runTUIClient(agent, skillCommands);
+  runTUIClient(agent, skillCommands, sessionStore);
 })();

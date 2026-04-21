@@ -5,7 +5,6 @@ import type { SlashCommand } from './command-registry';
 import { App } from './components';
 import { SessionStore } from '../../session/store';
 
-export function runTUIClient(agent: Agent, skillCommands: SlashCommand[]): void {
-  const sessionStore = new SessionStore();
+export function runTUIClient(agent: Agent, skillCommands: SlashCommand[], sessionStore: SessionStore): void {
   render(<App agent={agent} skillCommands={skillCommands} sessionStore={sessionStore} />);
 }
