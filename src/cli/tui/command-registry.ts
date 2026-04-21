@@ -1,9 +1,12 @@
 import type { SkillFrontmatter } from '../../skills';
+import type { SessionStore } from '../../session/store';
+import type { CommandHandlerContext } from './types';
 
 export interface SlashCommand {
   name: string;
   description: string;
   type: 'builtin' | 'skill';
+  handler?: (ctx: CommandHandlerContext) => Promise<void>;
 }
 
 export interface PromptSubmission {
@@ -11,7 +14,7 @@ export interface PromptSubmission {
   requestedSkillName: string | null;
 }
 
-export const BUILTIN_COMMANDS: SlashCommand[] = [
+const BASE_COMMANDS: Omit<SlashCommand, 'handler'>[] = [
   {
     name: 'clear',
     description: 'Clear the current conversation history',
@@ -72,9 +75,19 @@ export function toSkillCommand(skill: SkillFrontmatter): SlashCommand {
   };
 }
 
-export async function loadAvailableCommands(skillsDirs?: string[]): Promise<SlashCommand[]> {
+export function getBuiltinCommands(sessionStore: SessionStore): SlashCommand[] {
+  // Lazy import to avoid circular dependencies
+  const { getSessionCommands } = require('./commands/session-commands');
+  return [...BASE_COMMANDS, ...getSessionCommands(sessionStore)];
+}
+
+export async function loadAvailableCommands(
+  skillsDirs?: string[],
+  sessionStore?: SessionStore
+): Promise<SlashCommand[]> {
+  const commands: SlashCommand[] = sessionStore ? getBuiltinCommands(sessionStore) : BASE_COMMANDS;
   // TODO: load skills when we implement skill browsing
-  return [...BUILTIN_COMMANDS];
+  return dedupeCommands(commands);
 }
 
 export function filterCommands(commands: SlashCommand[], filter: string): SlashCommand[] {
