@@ -60,8 +60,14 @@ export function ChatMessage({ message }: { message: Message }) {
     if (!hasCodeBlocks) {
       // No code blocks - use marked-terminal directly
       // marked can return promise if async is enabled, but we disabled async above
-      const result = marked(message.content) as string;
-      return result.trimEnd();
+      try {
+        const result = marked(message.content) as string;
+        return result.trimEnd();
+      } catch (e) {
+        // If markdown parsing fails, fall back to raw text
+        console.warn('Markdown parsing failed, falling back to raw text:', e);
+        return message.content;
+      }
     }
     return null;
   }, [message.content, hasCodeBlocks]);
@@ -77,7 +83,7 @@ export function ChatMessage({ message }: { message: Message }) {
         {rendered !== null ? (
           <Text>{rendered}</Text>
         ) : (
-          // When there are code blocks, we need to process manually to get proper syntax highlighting
+          // When there are code blocks, we need to process manually to get proper highlighting
           // This follows the same approach but keeps our custom CodeBlock component
           <ChatMessageContent content={message.content} />
         )}
@@ -91,27 +97,44 @@ export function ChatMessage({ message }: { message: Message }) {
  */
 function ChatMessageContent({ content }: { content: string }) {
   const elements: React.ReactNode[] = [];
-  const tokens = marked.lexer(content);
 
-  tokens.forEach((token, index) => {
-    if (token.type === 'code') {
-      const codeToken = token as Token & { text: string; lang?: string };
-      elements.push(<CodeBlock key={index} code={codeToken.text} language={codeToken.lang} />);
-    } else {
-      // Other tokens are already handled by marked-lexer and we can render via marked-terminal
-      // Collect into a single string and let marked-terminal do its thing
-      // This gives us proper ANSI styling that Ink can handle
-      const tokenContent = getTokenContent(token);
-      if (tokenContent.trim()) {
-        const result = marked(tokenContent) as string;
-        elements.push(
-          <Text key={index}>
-            {result.trimEnd()}
-          </Text>,
-        );
+  try {
+    const tokens = marked.lexer(content);
+
+    tokens.forEach((token, index) => {
+      if (token.type === 'code') {
+        const codeToken = token as Token & { text: string; lang?: string };
+        elements.push(<CodeBlock key={index} code={codeToken.text} language={codeToken.lang} />);
+      } else {
+        // Other tokens are already handled by marked-lexer and we can render via marked-terminal
+        // Collect into a single string and let marked-terminal do its thing
+        // This gives us proper ANSI styling that Ink can handle
+        const tokenContent = getTokenContent(token);
+        if (tokenContent.trim()) {
+          try {
+            const result = marked(tokenContent) as string;
+            elements.push(
+              <Text key={index}>
+                {result.trimEnd()}
+              </Text>,
+            );
+          } catch (e) {
+            // If parsing this token fails, output raw text
+            console.warn(`Marked parsing failed for token at index ${index}, falling back to raw text:`, e);
+            elements.push(
+              <Text key={index}>
+                {tokenContent}
+              </Text>,
+            );
+          }
+        }
       }
-    }
-  });
+    });
+  } catch (e) {
+    // If overall lexing/parsing fails, fall back to full raw text
+    console.warn('Marked lexing failed, falling back to full raw text:', e);
+    elements.push(<Text>{content}</Text>);
+  }
 
   return <>{elements}</>;
 }
