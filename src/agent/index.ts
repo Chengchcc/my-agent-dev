@@ -1,6 +1,6 @@
 // src/agent/index.ts
 export { Agent } from './Agent';
-export { ContextManager } from './context';
+export { ContextManager, TrimOldestStrategy } from './context';
 export { composeMiddlewares } from './middleware';
 // TODO: Add agentic loop types and tool registry in subsequent tasks
 export type {

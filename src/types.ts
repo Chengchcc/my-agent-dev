@@ -1,3 +1,5 @@
+import type { ContextManager } from './agent';
+
 // Core message type - unified format for all providers
 export type Message = {
   id?: string;
@@ -105,16 +107,6 @@ export interface AgentHooks {
   beforeAddResponse?: Middleware[];
   // Called after the agent run completes, response added to context
   afterAgentRun?: Middleware[];
-}
-
-// ContextManager interface (matches the implementation in context.ts)
-export interface ContextManager {
-  addMessage(message: Message): void;
-  getMessages(): Message[];
-  getContext(config: AgentConfig): AgentContext;
-  compressIfNeeded(context: AgentContext): Promise<Message[]>;
-  clear(): void;
-  getTokenLimit(): number;
 }
 
 // Agent constructor options
