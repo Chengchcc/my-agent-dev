@@ -5,6 +5,8 @@ import type { Message } from '../../../types';
 import type { AgentEvent, ToolCallStartEvent } from '../../../agent/loop-types';
 import type { PromptSubmission } from '../command-registry';
 import type { UITodoItem } from '../types';
+import { getBuiltinCommands } from '../command-registry';
+import type { SessionStore } from '../../../session/store';
 
 /**
  * Agent loop state for React context.
@@ -26,9 +28,11 @@ const AgentLoopContext = createContext<AgentLoopState | null>(null);
 export function AgentLoopProvider({
   agent,
   children,
+  sessionStore,
 }: {
   agent: Agent;
   children: ReactNode;
+  sessionStore: SessionStore;
 }) {
   const [streaming, setStreaming] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -48,11 +52,52 @@ export function AgentLoopProvider({
     }
   }, [agent]);
 
+  // Helper to refresh messages from agent context
+  const refreshMessages = useCallback(() => {
+    const fullContext = agent.getContext();
+    setMessages([...fullContext.messages]);
+  }, [agent]);
+
+  // Helper to output system messages
+  const onOutput = useCallback((content: string) => {
+    const systemMessage: Message = {
+      role: 'assistant',
+      content,
+    };
+    setMessages(prev => [...prev, systemMessage]);
+  }, []);
+
   const onSubmit = useCallback(
     async (text: string) => {
       if (streamingRef.current) return;
 
-      // Handle built-in commands
+      // Check if it's a built-in command with handler (like session commands)
+      if (text.startsWith('/')) {
+        const match = text.match(/^\/([^\s]+)(?:\s(.*))?$/);
+        if (match) {
+          const commandName = match[1].toLowerCase();
+          const args = match[2] || '';
+
+          // Get all built-in commands (including session commands)
+          const builtinCommands = getBuiltinCommands(sessionStore);
+          const matchedCommand = builtinCommands.find(
+            cmd => cmd.name.toLowerCase() === commandName && cmd.handler,
+          );
+
+          if (matchedCommand) {
+            await matchedCommand.handler!({
+              agent,
+              sessionStore,
+              onOutput,
+              refreshMessages,
+              args,
+            });
+            return;
+          }
+        }
+      }
+
+      // Handle basic built-in commands
       if (text.trim() === '/clear' || text.trim() === '/cls') {
         if (typeof agent.clear === 'function') {
           agent.clear();
@@ -142,7 +187,7 @@ export function AgentLoopProvider({
         setCurrentTools([]);
       }
     },
-    [agent],
+    [agent, sessionStore, onOutput, refreshMessages],
   );
 
   const onSubmitWithSkill = useCallback(

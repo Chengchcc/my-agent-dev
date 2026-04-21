@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 import 'dotenv/config';
-import { Agent, ToolRegistry, ContextManager } from '../dist/agent';
-import { ClaudeProvider, OpenAIProvider } from '../dist/providers';
-import { BashTool, TextEditorTool } from '../dist/tools';
-import { runTUIClient } from '../dist/cli';
-import type { AgentConfig } from '../dist/types.js';
+import { Agent, ToolRegistry, ContextManager } from '../dist/src/agent';
+import { ClaudeProvider, OpenAIProvider } from '../dist/src/providers';
+import { BashTool, TextEditorTool } from '../dist/src/tools';
+import { runTUIClient } from '../dist/src/cli';
+import { SkillLoader } from '../dist/src/skills/loader';
+import { toSkillCommand } from '../dist/src/cli/tui/command-registry';
+import { SessionStore } from '../dist/src/session/store';
+import { createAutoSaveHook } from '../dist/src/session/hook';
+import type { AgentConfig } from '../dist/src/types.js';
 
 // Choose provider based on available API key
 const defaultModel = process.env.MODEL || 'claude-3-5-sonnet-20241022';
@@ -42,12 +46,35 @@ const toolRegistry = new ToolRegistry();
 toolRegistry.register(new BashTool({ allowedWorkingDirs: [__dirname + '/..'] }));
 toolRegistry.register(new TextEditorTool({ allowedRoots: [__dirname + '/..'] }));
 
+// Initialize session store and create new session
+const sessionStore = new SessionStore();
+
 // Create agent with tool registry
 const agent = new Agent({
   provider,
   contextManager,
   config,
   toolRegistry,
+  hooks: {
+    afterAgentRun: [createAutoSaveHook(sessionStore)],
+  },
 });
 
-runTUIClient(agent);
+// Load skills and convert to slash commands
+(async () => {
+  try {
+    // Ensure session directory is created
+    await sessionStore.ensureSessionDir();
+    // Create new session for this TUI run
+    sessionStore.createNewSession();
+
+    const skillLoader = new SkillLoader();
+    const skills = await skillLoader.loadAllSkills();
+    const skillCommands = skills.map(toSkillCommand);
+
+    runTUIClient(agent, skillCommands, sessionStore);
+  } catch (error) {
+    console.error('Failed to initialize TUI:', error);
+    process.exit(1);
+  }
+})();
