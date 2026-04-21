@@ -94,23 +94,29 @@ export class SessionStore {
       createdAt,
       updatedAt: new Date().toISOString(),
       messageCount: messages.length,
-      lastUserMessage: lastUserMsg?.content.slice(0, 100) || '',
+      lastUserMessage: lastUserMsg?.content?.slice(0, 100) || '',
     };
 
     await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2), 'utf8');
   }
 
   private async readExistingMetadata(sessionId: string): Promise<SessionMetadata> {
+    await this.ensureSessionDir();
     const { metaPath } = this.getPaths(sessionId);
     const content = await fs.readFile(metaPath, 'utf8');
     return JSON.parse(content) as SessionMetadata;
   }
 
   async loadSession(sessionId: string): Promise<Message[]> {
-    const { jsonlPath } = this.getPaths(sessionId);
-    const content = await fs.readFile(jsonlPath, 'utf8');
-    const lines = content.split('\n').filter(line => line.trim() !== '');
-    return lines.map(line => JSON.parse(line) as Message);
+    await this.ensureSessionDir();
+    try {
+      const { jsonlPath } = this.getPaths(sessionId);
+      const content = await fs.readFile(jsonlPath, 'utf8');
+      const lines = content.split('\n').filter(line => line.trim() !== '');
+      return lines.map(line => JSON.parse(line) as Message);
+    } catch {
+      return [];
+    }
   }
 
   async listSessions(): Promise<SessionMetadata[]> {
@@ -141,6 +147,7 @@ export class SessionStore {
   }
 
   async deleteSession(sessionId: string): Promise<void> {
+    await this.ensureSessionDir();
     const { jsonlPath, metaPath } = this.getPaths(sessionId);
     try {
       await fs.unlink(jsonlPath);
