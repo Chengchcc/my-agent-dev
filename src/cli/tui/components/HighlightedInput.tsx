@@ -34,7 +34,7 @@ export function HighlightedInput({
   // All characters must be inside a single Text component for proper word wrapping
   // Each character gets its own inline Text component with the correct inverse styling
   return (
-    <Box width="100%">
+    <Box flexGrow={1} flexShrink={1}>
       <Text>
         {value.split('').map((char, index) => {
           const isCursor = index === cursorOffset;

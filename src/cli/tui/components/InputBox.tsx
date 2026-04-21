@@ -35,7 +35,7 @@ export function InputBox({
         columnGap={1}
         borderStyle="single"
       >
-        <Text color="green">❯</Text>
+        <Text color="green">{'>'}</Text>
         <Box flexGrow={1}>
           <HighlightedInput
             cursorOffset={cursorOffset}

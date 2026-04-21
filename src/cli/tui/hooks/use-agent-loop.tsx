@@ -45,6 +45,9 @@ export function AgentLoopProvider({
     streamingRef.current = streaming;
   }, [streaming]);
 
+  // We use a state counter to force re-renders when pending messages change
+  const [flushCounter, setFlushCounter] = useState(0);
+
   const flushPendingMessages = useCallback(() => {
     if (flushTimerRef.current) {
       clearTimeout(flushTimerRef.current);
@@ -53,21 +56,45 @@ export function AgentLoopProvider({
 
     if (pendingMessagesRef.current.length === 0) return;
 
-    const pending = pendingMessagesRef.current;
+    // Replace the last message in messages with our pending streaming message
+    // This handles incremental updates to the same message during streaming
+    setMessages((prev) => {
+      if (pendingMessagesRef.current.length === 1 && prev.length > 0) {
+        // Check if the last message is still being streamed (not added to agent context yet)
+        const lastMessage = prev[prev.length - 1];
+        if (lastMessage.role === 'assistant' && lastMessage.content.startsWith(pendingMessagesRef.current[0].content.slice(0, 10))) {
+          // Replace the last message with the updated version
+          return [...prev.slice(0, -1), ...pendingMessagesRef.current];
+        }
+      }
+      // Normal append for new messages
+      return [...prev, ...pendingMessagesRef.current];
+    });
+
     pendingMessagesRef.current = [];
-    setMessages((prev) => [...prev, ...pending]);
+    setFlushCounter(c => c + 1);
   }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimerRef.current) return;
+
+    flushTimerRef.current = setTimeout(() => {
+      flushPendingMessages();
+    }, MESSAGE_BATCH_INTERVAL_MS);
+  }, [flushPendingMessages]);
 
   const enqueueMessage = useCallback(
     (message: Message) => {
-      pendingMessagesRef.current.push(message);
-      if (flushTimerRef.current) return;
-
-      flushTimerRef.current = setTimeout(() => {
-        flushPendingMessages();
-      }, MESSAGE_BATCH_INTERVAL_MS);
+      if (streamingMessageIndexRef.current !== null && pendingMessagesRef.current.length > 0) {
+        // Update existing streaming message
+        pendingMessagesRef.current[pendingMessagesRef.current.length - 1] = message;
+      } else {
+        // Add new streaming message
+        pendingMessagesRef.current.push(message);
+      }
+      scheduleFlush();
     },
-    [flushPendingMessages],
+    [scheduleFlush],
   );
 
   useEffect(() => {
@@ -77,6 +104,9 @@ export function AgentLoopProvider({
       }
     };
   }, []);
+
+  // Track streaming message index for incremental updates
+  const streamingMessageIndexRef = useRef<number | null>(null);
 
   const abort = useCallback(() => {
     // Agent doesn't have abort yet in our implementation - placeholder for future
@@ -106,10 +136,10 @@ export function AgentLoopProvider({
       }
 
       setStreaming(true);
+      streamingMessageIndexRef.current = null;
 
       // Track incremental streaming content
       let streamingContent = '';
-      let streamingMessageIndex: number | null = null;
 
       try {
         // Run streaming - agent already adds user message to context
@@ -123,14 +153,7 @@ export function AgentLoopProvider({
               content: streamingContent,
             };
 
-            if (streamingMessageIndex === null) {
-              // First chunk - add new streaming message
-              enqueueMessage(streamingMessage);
-              streamingMessageIndex = pendingMessagesRef.current.length - 1;
-            } else {
-              // Update existing streaming message
-              pendingMessagesRef.current[streamingMessageIndex] = streamingMessage;
-            }
+            enqueueMessage(streamingMessage);
           }
         }
 
@@ -140,6 +163,7 @@ export function AgentLoopProvider({
         setMessages([...allMessages]);
         // Clear pending since we're replacing with full context
         pendingMessagesRef.current = [];
+        streamingMessageIndexRef.current = null;
         if (flushTimerRef.current) {
           clearTimeout(flushTimerRef.current);
           flushTimerRef.current = null;
@@ -163,6 +187,7 @@ export function AgentLoopProvider({
 
         flushPendingMessages();
         setStreaming(false);
+        streamingMessageIndexRef.current = null;
       }
     },
     [agent, enqueueMessage, flushPendingMessages],
