@@ -92,8 +92,10 @@ export function filterCommands(commands: SlashCommand[], filter: string): SlashC
 
 export function getSlashQuery(text: string): string | null {
   if (!text.startsWith('/')) return null;
-  if (/\s/.test(text)) return null;
-  return text.slice(1);
+  // Extract the first token after /
+  const match = text.match(/^\/([^\s]+)/);
+  if (!match) return null;
+  return match[1];
 }
 
 export function insertSlashCommand(command: SlashCommand): string {
@@ -101,7 +103,7 @@ export function insertSlashCommand(command: SlashCommand): string {
 }
 
 export function getHighlightedCommandName(text: string, commands: SlashCommand[]): string | null {
-  const match = text.match(/^\/([^\s]+)\s/);
+  const match = text.match(/^\/([^\s]+)(?:\s|$)/);
   if (!match) return null;
   const commandToken = match[1];
   if (!commandToken) return null;

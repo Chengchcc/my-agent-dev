@@ -72,17 +72,20 @@ export function useCommandInput({
     if (typeof next === 'function') {
       setEditorState((prevState) => {
         const newState = next(prevState);
+        // Calculate new text for slash query check using the actual new state
+        const newText = newState.text;
+        if (getSlashQuery(newText) !== dismissedQuery) {
+          setDismissedQuery(null);
+        }
         return newState;
       });
     } else {
       setEditorState(next);
-    }
-    // Calculate new text for slash query check
-    const newText = typeof next === 'function'
-      ? next(editorStateRef.current).text
-      : next.text;
-    if (getSlashQuery(newText) !== dismissedQuery) {
-      setDismissedQuery(null);
+      // Calculate new text for slash query check
+      const newText = next.text;
+      if (getSlashQuery(newText) !== dismissedQuery) {
+        setDismissedQuery(null);
+      }
     }
   };
 
