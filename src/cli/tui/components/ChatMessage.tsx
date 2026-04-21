@@ -16,6 +16,10 @@ marked.setOptions({
   async: false,
 });
 
+// Tool responses: don't show full content by default, truncate to prevent taking too much screen space
+const MAX_TOOL_LINES = 8;
+const MAX_TOOL_CHARS = 500;
+
 export function ChatMessage({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
   // Handle different role types with appropriate styling
   const getRoleColor = (role: string): string => {
@@ -144,10 +148,41 @@ export function ChatMessage({ message, isStreaming }: { message: Message; isStre
     return elements;
   }
 
+  function truncateToolContent(content: string): { content: string; truncated: boolean } {
+    const lines = content.split('\n');
+    if (lines.length <= MAX_TOOL_LINES && content.length <= MAX_TOOL_CHARS) {
+      return { content, truncated: false };
+    }
+    // Truncate to limits
+    const previewLines = lines.slice(0, MAX_TOOL_LINES);
+    let preview = previewLines.join('\n');
+    let truncated = false;
+
+    if (preview.length > MAX_TOOL_CHARS) {
+      preview = preview.slice(0, MAX_TOOL_CHARS);
+      truncated = true;
+    } else if (lines.length > MAX_TOOL_LINES) {
+      truncated = true;
+    }
+
+    if (truncated) {
+      preview += '\n... (output truncated, full content saved to context)';
+    }
+
+    return { content: preview, truncated };
+  }
+
   const roleColor = getRoleColor(message.role);
   const rolePrefix = getRolePrefix(message.role);
 
-  const { stable, pending } = splitStableContent(message.content);
+  // Handle tool content truncation
+  let contentToRender = message.content;
+  if (message.role === 'tool') {
+    const { content } = truncateToolContent(message.content);
+    contentToRender = content;
+  }
+
+  const { stable, pending } = splitStableContent(contentToRender);
   const stableElements = useMemo(() => renderMarkdownTokens(stable), [stable]);
 
   return (
@@ -155,6 +190,9 @@ export function ChatMessage({ message, isStreaming }: { message: Message; isStre
       <Box>
         <Text color={roleColor}>
           {rolePrefix} {message.role}:
+          {message.role === 'tool' && message.content.length > MAX_TOOL_CHARS && (
+            <Text color="gray" dimColor> [truncated]</Text>
+          )}
         </Text>
       </Box>
       <Box paddingLeft={1} flexDirection="column">

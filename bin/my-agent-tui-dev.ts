@@ -10,6 +10,7 @@ import { runTUIClient } from '../src/cli/index';
 import { BashTool, TextEditorTool } from '../src/tools';
 import { SessionStore } from '../src/session/store';
 import { createAutoSaveHook } from '../src/session/hook';
+import { createTodoMiddleware } from '../src/todos';
 import type { AgentConfig } from '../src/types';
 import type { SkillFrontmatter } from '../src/skills/loader';
 
@@ -49,6 +50,10 @@ const toolRegistry = new ToolRegistry();
 toolRegistry.register(new BashTool({ allowedWorkingDirs: [__dirname + '/..'] }));
 toolRegistry.register(new TextEditorTool({ allowedRoots: [__dirname + '/..'] }));
 
+// Register todo middleware - provides todo_write tool and periodic reminders
+const { tool: todoTool, middleware: todoMiddleware } = createTodoMiddleware();
+toolRegistry.register(todoTool);
+
 // Initialize session store and create new session
 const sessionStore = new SessionStore();
 
@@ -58,6 +63,7 @@ const agent = new Agent({
   contextManager,
   config,
   toolRegistry,
+  middleware: [todoMiddleware],
   hooks: {
     afterAgentRun: [createAutoSaveHook(sessionStore)],
   },

@@ -8,6 +8,7 @@ import { SkillLoader } from '../dist/src/skills/loader';
 import { toSkillCommand } from '../dist/src/cli/tui/command-registry';
 import { SessionStore } from '../dist/src/session/store';
 import { createAutoSaveHook } from '../dist/src/session/hook';
+import { createTodoMiddleware } from '../dist/src/todos';
 import type { AgentConfig } from '../dist/src/types.js';
 
 // Choose provider based on available API key
@@ -46,6 +47,10 @@ const toolRegistry = new ToolRegistry();
 toolRegistry.register(new BashTool({ allowedWorkingDirs: [__dirname + '/..'] }));
 toolRegistry.register(new TextEditorTool({ allowedRoots: [__dirname + '/..'] }));
 
+// Register todo middleware - provides todo_write tool and periodic reminders
+const { tool: todoTool, middleware: todoMiddleware } = createTodoMiddleware();
+toolRegistry.register(todoTool);
+
 // Initialize session store and create new session
 const sessionStore = new SessionStore();
 
@@ -55,6 +60,7 @@ const agent = new Agent({
   contextManager,
   config,
   toolRegistry,
+  middleware: [todoMiddleware],
   hooks: {
     afterAgentRun: [createAutoSaveHook(sessionStore)],
   },

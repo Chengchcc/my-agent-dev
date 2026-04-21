@@ -123,26 +123,37 @@ export function AgentLoopProvider({
         // Run agentic loop - yields events for each step
         for await (const event of agent.runAgentLoop({ role: 'user', content: text })) {
           if (event.type === 'text_delta') {
-            streamingContent += event.delta;
+            // Only accumulate text during the current assistant turn
+            // After tool execution, full messages are already in context
+            if (streamingMessageRef.current !== null || runningTools.size === 0) {
+              streamingContent += event.delta;
 
-            // Update the streaming message
-            const oldStreamingMessage = streamingMessageRef.current;
-            const streamingMessage: Message = {
-              role: 'assistant',
-              content: streamingContent,
-            };
-            streamingMessageRef.current = streamingMessage;
+              // Update the streaming message
+              const oldStreamingMessage = streamingMessageRef.current;
+              const streamingMessage: Message = {
+                role: 'assistant',
+                content: streamingContent,
+              };
+              streamingMessageRef.current = streamingMessage;
 
-            setMessages(prev => {
-              const base = prev.filter(m => m !== oldStreamingMessage);
-              return [...base, streamingMessage];
-            });
+              setMessages(prev => {
+                const base = prev.filter(m => m !== oldStreamingMessage);
+                return [...base, streamingMessage];
+              });
+            }
           } else if (event.type === 'tool_call_start') {
             runningTools.set(event.toolCall.id, event);
             setCurrentTools(Array.from(runningTools.values()));
+            // Refresh to show running tool
+            refreshMessages();
           } else if (event.type === 'tool_call_result') {
             runningTools.delete(event.toolCall.id);
             setCurrentTools(Array.from(runningTools.values()));
+            // After tool result completes, refresh from full context
+            // This ensures tool messages are shown separately immediately
+            streamingContent = '';
+            streamingMessageRef.current = null;
+            refreshMessages();
           } else if (event.type === 'agent_error') {
             // Add error message to messages
             const errorMessage: Message = {
@@ -151,12 +162,11 @@ export function AgentLoopProvider({
             };
             setMessages(prev => [...prev, errorMessage]);
           } else if (event.type === 'turn_complete' || event.type === 'agent_done') {
-            // Handled after loop completes - no action needed during iteration
+            // No action needed during iteration
           } else {
             // Exhaustiveness check - TypeScript will warn if new event types are added
             const _exhaustive: never = event;
           }
-          // agent_done and turn_complete handled after loop
         }
 
         // After loop completes, get full context and update all messages
