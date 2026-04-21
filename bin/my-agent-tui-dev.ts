@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 import 'dotenv/config';
-import { Agent } from '../src/agent';
+import { Agent, ToolRegistry } from './../src/agent';
 import { ContextManager } from '../src/agent/context';
-import { ClaudeProvider } from '../src/providers/claude';
+import { ClaudeProvider } from '../src/providers';
 import { OpenAIProvider } from '../src/providers/openai';
 import { SkillLoader } from '../src/skills/loader';
 import { toSkillCommand, loadAvailableCommands } from '../src/cli/tui/command-registry';
 import { runTUIClient } from '../src/cli/index';
+import { BashTool, TextEditorTool } from '../src/tools';
 import type { AgentConfig } from '../src/types';
 import type { SkillFrontmatter } from '../src/skills/loader';
 
@@ -43,10 +44,17 @@ const config: AgentConfig = {
   model: defaultModel,
 };
 
+// Create tool registry and register built-in tools
+const toolRegistry = new ToolRegistry();
+toolRegistry.register(new BashTool({ allowedWorkingDirs: [__dirname + '/..'] }));
+toolRegistry.register(new TextEditorTool({ allowedRoots: [__dirname + '/..'] }));
+
+// Create agent with tool registry
 const agent = new Agent({
   provider,
   contextManager,
   config,
+  toolRegistry,
 });
 
 // Load skills and convert to slash commands
