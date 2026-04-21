@@ -172,6 +172,10 @@ export class Agent {
     let tool_calls: ToolCall[] = [];
 
     // Create abort controller for this streaming request
+    if (this.abortController) {
+      // Abort any previous ongoing request
+      this.abortController.abort();
+    }
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
 
@@ -251,11 +255,11 @@ export class Agent {
 
   /**
    * Abort the currently running streaming request.
+   * Cleans up the abort controller after aborting the request.
    */
   abort(): void {
     if (this.abortController) {
       this.abortController.abort();
-      this.abortController = null;
     }
   }
 
