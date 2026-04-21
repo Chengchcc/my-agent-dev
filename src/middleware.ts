@@ -7,19 +7,19 @@ import type { AgentContext, Middleware } from './types';
  */
 export function composeMiddlewares(
   middlewares: Middleware[],
-  finalHandler: (context: AgentContext) => Promise<AgentContext>
-): (context: AgentContext) => Promise<AgentContext> {
-  return async (context: AgentContext): Promise<AgentContext> => {
+  finalHandler: (ctx: AgentContext) => Promise<AgentContext>,
+): (ctx: AgentContext) => Promise<AgentContext> {
+  return async (initialContext: AgentContext): Promise<AgentContext> => {
     let index = 0;
 
-    async function runNext(): Promise<AgentContext> {
+    async function runNext(ctx: AgentContext): Promise<AgentContext> {
       if (index >= middlewares.length) {
-        return finalHandler(context);
+        return finalHandler(ctx);
       }
       const middleware = middlewares[index++];
-      return middleware(context, runNext);
+      return middleware(ctx, () => runNext(ctx));
     }
 
-    return runNext();
+    return runNext(initialContext);
   };
 }
