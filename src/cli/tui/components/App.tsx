@@ -11,21 +11,25 @@ import { InputBox } from './InputBox';
 import { StreamingIndicator } from './StreamingIndicator';
 import type { Agent } from '../../../agent';
 import type { Message } from '../../../types';
+import type { SlashCommand } from '../command-registry';
 
 export interface AppProps {
   agent: Agent;
+  skillCommands: SlashCommand[];
 }
 
-export function App({ agent }: AppProps) {
+export function App({ agent, skillCommands }: AppProps) {
   return (
     <AgentLoopProvider agent={agent}>
-      <AppContent />
+      <AppContent skillCommands={skillCommands} />
     </AgentLoopProvider>
   );
 }
 
-function AppContent() {
+function AppContent({ skillCommands }: { skillCommands: SlashCommand[] }) {
   const { messages, streaming: isStreaming, onSubmitWithSkill, abort, todos } = useAgentLoop();
+
+  const allCommands = [...BUILTIN_COMMANDS, ...skillCommands];
 
   return (
     <Box flexDirection="column" height="100%">
@@ -37,7 +41,7 @@ function AppContent() {
       </ScrollView>
       {todos.length > 0 && <TodoPanel todos={todos} />}
       {isStreaming && <StreamingIndicator />}
-      <InputBox commands={BUILTIN_COMMANDS} onSubmit={onSubmitWithSkill} onAbort={abort} />
+      <InputBox commands={allCommands} onSubmit={onSubmitWithSkill} onAbort={abort} />
       <Footer />
     </Box>
   );

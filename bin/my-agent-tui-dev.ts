@@ -4,8 +4,11 @@ import { Agent } from '../src/agent';
 import { ContextManager } from '../src/context';
 import { ClaudeProvider } from '../src/foundation/providers/claude';
 import { OpenAIProvider } from '../src/foundation/providers/openai';
+import { SkillLoader } from '../src/skills/loader';
+import { toSkillCommand, loadAvailableCommands } from '../src/cli/tui/command-registry';
 import { runTUIClient } from '../src/cli/index';
 import type { AgentConfig } from '../src/types';
+import type { SkillFrontmatter } from '../src/skills/loader';
 
 // Choose provider based on available API key
 const defaultModel = process.env.MODEL || 'claude-3-5-sonnet-20241022';
@@ -45,4 +48,12 @@ const agent = new Agent({
   contextManager,
   config,
 });
-runTUIClient(agent);
+
+// Load skills and convert to slash commands
+(async () => {
+  const skillLoader = new SkillLoader();
+  const skills = await skillLoader.loadAllSkills();
+  const skillCommands = skills.map(toSkillCommand);
+
+  runTUIClient(agent, skillCommands);
+})();
