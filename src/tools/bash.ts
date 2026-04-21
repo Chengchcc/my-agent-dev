@@ -133,6 +133,8 @@ export class BashTool implements ToolImplementation {
       // Handle abort signal
       if (options?.signal) {
         const handleAbort = () => {
+          // Clean up the listener immediately since we've been triggered
+          cleanup();
           if (proc && proc.pid) {
             // Kill the child process (negative PID kills the process group)
             process.kill(-proc.pid);
@@ -156,6 +158,7 @@ export class BashTool implements ToolImplementation {
 
         proc.on('exit', cleanup);
         proc.on('timeout', cleanup);
+        proc.on('error', cleanup);
 
         // If already aborted, trigger immediately
         if (options.signal.aborted) {
