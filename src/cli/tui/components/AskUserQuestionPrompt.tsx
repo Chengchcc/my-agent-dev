@@ -36,19 +36,19 @@ export function AskUserQuestionPrompt({ questions, onSubmit }: AskUserQuestionPr
   const [selections, setSelections] = useState<string[][]>(() => buildInitialSelections(questions));
   const [focusIdx, setFocusIdx] = useState<number[]>(() => buildInitialFocus(questions));
 
-  const stateRef = useRef({ tabIndex, selections, focusIdx, questions, qCount, reviewTabIndex });
-  stateRef.current = { tabIndex, selections, focusIdx, questions, qCount, reviewTabIndex };
+  const stateRef = useRef({ tabIndex, selections, focusIdx, questions, qCount, reviewTabIndex, onSubmit });
+  stateRef.current = { tabIndex, selections, focusIdx, questions, qCount, reviewTabIndex, onSubmit };
 
   const trySubmit = useCallback(() => {
-    const { selections: sel, questions: qs } = stateRef.current;
+    const { selections: sel, questions: qs, onSubmit: submit } = stateRef.current;
     if (!canSubmit(qs, sel)) return;
-    onSubmit({
+    submit({
       answers: qs.map((_, i) => ({
         question_index: i,
         selected_labels: [...sel[i]!],
       })),
     });
-  }, [onSubmit]);
+  }, []);
 
   useInput((input, key) => {
     const s = stateRef.current;
@@ -158,7 +158,7 @@ export function AskUserQuestionPrompt({ questions, onSubmit }: AskUserQuestionPr
         </Text>
       </Box>
     );
-  }, [qCount, questions, tabIndex, reviewTabIndex]);
+  }, [qCount, questions, tabIndex, reviewTabIndex, tabLabel]);
 
   const hint =
     qCount >= 2
@@ -224,7 +224,7 @@ function QuestionPanel({
         {question.options.map((opt, i) => {
           const focused = i === focusIdx;
           const selected = question.multi_select ? selections.includes(opt.label) : focused;
-          const prefix = question.multi_select ? (selected ? "[×] " : "[ ] ") : focused ? "❯ " : "  ";
+          const prefix = question.multi_select ? (selected ? "[x] " : "[ ] ") : focused ? "❯ " : "  ";
           return (
             <Box key={i} flexDirection="column">
               <Text color={focused ? "cyan" : undefined}>
