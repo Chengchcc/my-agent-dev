@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 import 'dotenv/config';
-import { Agent } from '../dist/agent.js';
-import { ContextManager } from '../dist/context.js';
-import { ClaudeProvider } from '../dist/foundation/providers/claude.js';
-import { OpenAIProvider } from '../dist/foundation/providers/openai.js';
-import { runTUIClient } from '../dist/cli/index.js';
+import { Agent, ContextManager } from '../dist/agent';
+import { ClaudeProvider, OpenAIProvider } from '../dist/providers';
+import { runTUIClient } from '../dist/cli';
 import type { AgentConfig } from '../dist/types.js';
 
 // Choose provider based on available API key
