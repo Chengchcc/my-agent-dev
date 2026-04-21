@@ -1,5 +1,4 @@
-import type { Middleware } from '../types';
-import type { AgentContext } from '../types';
+import type { Middleware, AgentContext } from '../types';
 import type { SessionStore } from './store';
 
 /**
