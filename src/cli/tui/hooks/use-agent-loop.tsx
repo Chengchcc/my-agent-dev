@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
 import type { Message } from '../../../types';
+import type { AgentEvent, ToolCallStartEvent } from '../../../agent/loop-types';
 import type { PromptSubmission } from '../command-registry';
 import type { UITodoItem } from '../types';
 
@@ -13,6 +14,7 @@ type AgentLoopState = {
   streaming: boolean;
   messages: Message[];
   todos: UITodoItem[];
+  currentTools: ToolCallStartEvent[];
   onSubmit: (text: string) => Promise<void>;
   onSubmitWithSkill: (submission: PromptSubmission) => void;
   abort: () => void;
@@ -31,6 +33,7 @@ export function AgentLoopProvider({
   const [streaming, setStreaming] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [todos, setTodos] = useState<UITodoItem[]>([]);
+  const [currentTools, setCurrentTools] = useState<ToolCallStartEvent[]>([]);
 
   const streamingRef = useRef(streaming);
   const streamingMessageRef = useRef<Message | null>(null);
@@ -69,14 +72,15 @@ export function AgentLoopProvider({
 
       // Track incremental streaming content
       let streamingContent = '';
+      const runningTools = new Map<string, ToolCallStartEvent>();
 
       try {
-        // Run streaming - agent already adds user message to context
-        for await (const chunk of agent.runStream({ role: 'user', content: text })) {
-          if (chunk.content) {
-            streamingContent += chunk.content;
+        // Run agentic loop - yields events for each step
+        for await (const event of agent.runAgentLoop({ role: 'user', content: text })) {
+          if (event.type === 'text_delta') {
+            streamingContent += event.delta;
 
-            // Update the streaming message directly in messages state
+            // Update the streaming message
             const oldStreamingMessage = streamingMessageRef.current;
             const streamingMessage: Message = {
               role: 'assistant',
@@ -85,18 +89,37 @@ export function AgentLoopProvider({
             streamingMessageRef.current = streamingMessage;
 
             setMessages(prev => {
-              // Filter out any previous streaming message
               const base = prev.filter(m => m !== oldStreamingMessage);
               return [...base, streamingMessage];
             });
+          } else if (event.type === 'tool_call_start') {
+            runningTools.set(event.toolCall.id, event);
+            setCurrentTools(Array.from(runningTools.values()));
+          } else if (event.type === 'tool_call_result') {
+            runningTools.delete(event.toolCall.id);
+            setCurrentTools(Array.from(runningTools.values()));
+          } else if (event.type === 'agent_error') {
+            // Add error message to messages
+            const errorMessage: Message = {
+              role: 'assistant',
+              content: `Error: ${event.error.message}`,
+            };
+            setMessages(prev => [...prev, errorMessage]);
+          } else if (event.type === 'turn_complete' || event.type === 'agent_done') {
+            // Handled after loop completes - no action needed during iteration
+          } else {
+            // Exhaustiveness check - TypeScript will warn if new event types are added
+            const _exhaustive: never = event;
           }
+          // agent_done and turn_complete handled after loop
         }
 
-        // After streaming completes, get full context and update messages
+        // After loop completes, get full context and update all messages
         const fullContext = agent.getContext();
         const allMessages = fullContext.messages;
         setMessages([...allMessages]);
         streamingMessageRef.current = null;
+        setCurrentTools([]);
       } catch (error) {
         console.error('Agent error:', error);
         // Add error message to messages
@@ -116,6 +139,7 @@ export function AgentLoopProvider({
 
         setStreaming(false);
         streamingMessageRef.current = null;
+        setCurrentTools([]);
       }
     },
     [agent],
@@ -135,12 +159,13 @@ export function AgentLoopProvider({
       streaming,
       messages,
       todos,
+      currentTools,
       onSubmit,
       onSubmitWithSkill,
       abort,
       setTodos,
     }),
-    [abort, agent, messages, onSubmit, onSubmitWithSkill, streaming, todos, setTodos],
+    [abort, agent, messages, onSubmit, onSubmitWithSkill, streaming, todos, currentTools, setTodos],
   );
 
   return (
