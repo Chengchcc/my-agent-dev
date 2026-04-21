@@ -95,7 +95,6 @@ export class ContextManager {
     const totalTokens = countTotalTokens(context.messages);
     if (totalTokens > tokenLimit) {
       const compressed = await this.compressionStrategy.compress(context, tokenLimit);
-      this.messages = compressed;
       return compressed;
     }
     return context.messages;
