@@ -1,4 +1,4 @@
-import type { Middleware, ToolImplementation, AgentMiddleware } from '../types';
+import type { Middleware, ToolImplementation, AgentMiddleware, AgentContext } from '../types';
 import type { TodoItem, TodoStatus } from './types';
 
 const TODO_WRITE_TOOL_NAME = 'todo_write';
@@ -67,17 +67,33 @@ ${lines}
 </todo_reminder>`;
 }
 
+// Extend the context metadata to store todo tracking data
+export interface TodoMetadata {
+  todoStore: TodoItem[];
+  stepsSinceLastWrite: number;
+  stepsSinceLastReminder: number;
+}
+
 /**
  * Creates the todo middleware system with todo_write tool and reminder injection.
+ * Stores todo state in the agent context, so it gets cleared with agent.clear().
  * Returns the tool implementation and the beforeModel middleware.
  */
 export function createTodoMiddleware(): {
   tool: ToolImplementation;
   hooks: AgentMiddleware;
 } {
-  const store: TodoItem[] = [];
-  let stepsSinceLastWrite = Infinity;
-  let stepsSinceLastReminder = Infinity;
+  // Helper to get or initialize todo metadata in context
+  const getOrInitTodoMetadata = (context: AgentContext): TodoMetadata => {
+    if (!context.metadata.todo) {
+      context.metadata.todo = {
+        todoStore: [],
+        stepsSinceLastWrite: Infinity,
+        stepsSinceLastReminder: Infinity,
+      } satisfies TodoMetadata;
+    }
+    return context.metadata.todo as TodoMetadata;
+  };
 
   const tool: ToolImplementation = {
     getDefinition(): {
@@ -125,9 +141,17 @@ export function createTodoMiddleware(): {
       };
     },
 
-    async execute(params: Record<string, unknown>): Promise<string> {
+    async execute(
+      params: Record<string, unknown>,
+      opts?: { context: AgentContext },
+    ): Promise<string> {
+      if (!opts?.context) {
+        throw new Error('todo_write requires context access');
+      }
+
       const todos = params.todos as TodoItem[];
       const merge = params.merge as boolean;
+      const metadata = getOrInitTodoMetadata(opts.context);
 
       // Validate todos array
       if (!Array.isArray(todos)) {
@@ -146,37 +170,39 @@ export function createTodoMiddleware(): {
 
       if (merge) {
         for (const item of todos) {
-          const idx = store.findIndex((t) => t.id === item.id);
+          const idx = metadata.todoStore.findIndex((t) => t.id === item.id);
           if (idx >= 0) {
-            store[idx] = item;
+            metadata.todoStore[idx] = item;
           } else {
-            store.push(item);
+            metadata.todoStore.push(item);
           }
         }
       } else {
-        store.length = 0;
-        store.push(...todos);
+        metadata.todoStore.length = 0;
+        metadata.todoStore.push(...todos);
       }
 
-      stepsSinceLastWrite = 0;
-      return formatSummary(store);
+      metadata.stepsSinceLastWrite = 0;
+      metadata.stepsSinceLastReminder = 0;
+      return formatSummary(metadata.todoStore);
     },
   };
 
   const middleware: Middleware = async (context, next) => {
-    stepsSinceLastWrite++;
-    stepsSinceLastReminder++;
+    const metadata = getOrInitTodoMetadata(context);
+    metadata.stepsSinceLastWrite++;
+    metadata.stepsSinceLastReminder++;
 
     if (
-      store.length > 0 &&
-      stepsSinceLastWrite >= REMINDER_CONFIG.STEPS_SINCE_WRITE &&
-      stepsSinceLastReminder >= REMINDER_CONFIG.STEPS_BETWEEN_REMINDERS
+      metadata.todoStore.length > 0 &&
+      metadata.stepsSinceLastWrite >= REMINDER_CONFIG.STEPS_SINCE_WRITE &&
+      metadata.stepsSinceLastReminder >= REMINDER_CONFIG.STEPS_BETWEEN_REMINDERS
     ) {
-      stepsSinceLastReminder = 0;
+      metadata.stepsSinceLastReminder = 0;
       if (context.systemPrompt) {
-        context.systemPrompt += formatReminder(store);
+        context.systemPrompt += formatReminder(metadata.todoStore);
       } else {
-        context.systemPrompt = formatReminder(store).trim();
+        context.systemPrompt = formatReminder(metadata.todoStore).trim();
       }
     }
 
@@ -187,6 +213,6 @@ export function createTodoMiddleware(): {
     tool,
     hooks: {
       beforeModel: middleware,
-    }
+    },
   };
 }

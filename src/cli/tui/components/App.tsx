@@ -39,22 +39,24 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
   return (
     <Box flexDirection="column" height="100%">
       <Header />
-      <ScrollView>
-        {messages.map((message, index) => (
-          <ChatMessage
-            key={message.id ?? index}
-            message={message}
-            isStreaming={isStreaming && index === messages.length - 1}
-          />
-        ))}
-      </ScrollView>
+      <Box flexGrow={1} flexDirection="column" overflow="hidden">
+        <ScrollView>
+          {messages.map((message, index) => (
+            <ChatMessage
+              key={message.id ?? index}
+              message={message}
+              isStreaming={isStreaming && index === messages.length - 1}
+            />
+          ))}
+          {todos.length > 0 && <TodoPanel todos={todos} />}
+        </ScrollView>
+      </Box>
       {askUserQuestionRequest && (
         <AskUserQuestionPrompt
           questions={askUserQuestionRequest.params.questions}
           onSubmit={respondWithAnswers}
         />
       )}
-      {todos.length > 0 && <TodoPanel todos={todos} />}
       {isStreaming && <StreamingIndicator />}
       {!askUserQuestionRequest && (
         <InputBox commands={allCommands} onSubmit={onSubmitWithSkill} onAbort={abort} />

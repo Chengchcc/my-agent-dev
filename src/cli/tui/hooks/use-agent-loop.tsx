@@ -58,6 +58,16 @@ export function AgentLoopProvider({
     setMessages([...fullContext.messages]);
   }, [agent]);
 
+  // Helper to refresh todos from agent
+  const refreshTodos = useCallback(() => {
+    // Get todos from context manager where they are stored
+    const agentWithContextManager = agent as Agent & { getContextManager(): { getTodos: () => UITodoItem[] } };
+    if (typeof agentWithContextManager.getContextManager === 'function') {
+      const updatedTodos = agentWithContextManager.getContextManager().getTodos();
+      setTodos(updatedTodos);
+    }
+  }, [agent]);
+
   // Helper to output system messages
   const onOutput = useCallback((content: string) => {
     const systemMessage: Message = {
@@ -146,6 +156,7 @@ export function AgentLoopProvider({
             setCurrentTools(Array.from(runningTools.values()));
             // Refresh to show running tool
             refreshMessages();
+            refreshTodos();
           } else if (event.type === 'tool_call_result') {
             runningTools.delete(event.toolCall.id);
             setCurrentTools(Array.from(runningTools.values()));
@@ -154,6 +165,7 @@ export function AgentLoopProvider({
             streamingContent = '';
             streamingMessageRef.current = null;
             refreshMessages();
+            refreshTodos();
           } else if (event.type === 'agent_error') {
             // Add error message to messages
             const errorMessage: Message = {
@@ -183,21 +195,17 @@ export function AgentLoopProvider({
           content: `Error: ${error instanceof Error ? error.message : String(error)}`,
         };
         setMessages(prev => [...prev, errorMessage]);
+        refreshTodos();
       } finally {
-        // Update todos from agent if available
-        if (typeof (agent as Agent & { getTodos: () => UITodoItem[] }).getTodos === 'function') {
-          const updatedTodos = (agent as Agent & { getTodos: () => UITodoItem[] }).getTodos();
-          setTodos(updatedTodos);
-        } else if (typeof (agent as Agent & { todos: UITodoItem[] }).todos !== 'undefined') {
-          setTodos((agent as Agent & { todos: UITodoItem[] }).todos);
-        }
+        // Update todos from agent one last time
+        refreshTodos();
 
         setStreaming(false);
         streamingMessageRef.current = null;
         setCurrentTools([]);
       }
     },
-    [agent, sessionStore, onOutput, refreshMessages],
+    [agent, sessionStore, onOutput, refreshMessages, refreshTodos],
   );
 
   const onSubmitWithSkill = useCallback(

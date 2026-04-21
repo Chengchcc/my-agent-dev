@@ -1,5 +1,6 @@
 import { countTokens } from '@anthropic-ai/tokenizer';
 import type { AgentContext, AgentConfig, CompressionStrategy, Message } from '../types';
+import type { TodoItem } from '../todos/types';
 
 /**
  * Count total tokens in an array of messages.
@@ -54,6 +55,9 @@ export class ContextManager {
   private compressionStrategy: CompressionStrategy;
   private defaultSystemPrompt?: string;
   private currentSystemPrompt?: string;
+  private todoStore: TodoItem[] = [];
+  private todoStepsSinceLastWrite = Infinity;
+  private todoStepsSinceLastReminder = Infinity;
 
   constructor(options: {
     tokenLimit: number;
@@ -109,9 +113,35 @@ export class ContextManager {
     return {
       messages: [...this.messages],
       config,
-      metadata: {},
+      metadata: {
+        // Embed current todo state into metadata for tools and middleware
+        todo: {
+          todoStore: [...this.todoStore],
+          stepsSinceLastWrite: this.todoStepsSinceLastWrite,
+          stepsSinceLastReminder: this.todoStepsSinceLastReminder,
+        },
+      },
       systemPrompt: this.currentSystemPrompt,
     };
+  }
+
+  /**
+   * Update todo state from metadata after processing.
+   * This needs to be called after the middleware/tool execution to persist changes.
+   */
+  syncTodoFromContext(context: AgentContext): void {
+    if (context.metadata?.todo) {
+      this.todoStore = [...(context.metadata.todo as any).todoStore];
+      this.todoStepsSinceLastWrite = (context.metadata.todo as any).stepsSinceLastWrite;
+      this.todoStepsSinceLastReminder = (context.metadata.todo as any).stepsSinceLastReminder;
+    }
+  }
+
+  /**
+   * Get current todos.
+   */
+  getTodos(): TodoItem[] {
+    return [...this.todoStore];
   }
 
   /**
@@ -132,6 +162,9 @@ export class ContextManager {
    */
   clear(): void {
     this.messages = [];
+    this.todoStore = [];
+    this.todoStepsSinceLastWrite = Infinity;
+    this.todoStepsSinceLastReminder = Infinity;
     if (this.defaultSystemPrompt) {
       this.messages.push({
         role: 'system',
@@ -142,5 +175,25 @@ export class ContextManager {
 
   getTokenLimit(): number {
     return this.tokenLimit;
+  }
+
+  /**
+   * Get the current todo tracking state for TUI display.
+   */
+  getTodoState(): { todos: TodoItem[]; stepsSinceLastWrite: number; stepsSinceLastReminder: number } {
+    return {
+      todos: [...this.todoStore],
+      stepsSinceLastWrite: this.todoStepsSinceLastWrite,
+      stepsSinceLastReminder: this.todoStepsSinceLastReminder,
+    };
+  }
+
+  /**
+   * Update the todo tracking state after tool execution.
+   */
+  setTodoState(state: { todos: TodoItem[]; stepsSinceLastWrite: number; stepsSinceLastReminder: number }): void {
+    this.todoStore = [...state.todos];
+    this.todoStepsSinceLastWrite = state.stepsSinceLastWrite;
+    this.todoStepsSinceLastReminder = state.stepsSinceLastReminder;
   }
 }

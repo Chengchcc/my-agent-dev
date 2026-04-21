@@ -78,6 +78,8 @@ export class Agent {
 
     // Save the modified systemPrompt from beforeAgentRun (contains dynamic skill injection)
     this.contextManager.setSystemPrompt(afterBeforeAgentRun.systemPrompt);
+    // Sync todo state back to contextManager after middleware
+    this.contextManager.syncTodoFromContext(afterBeforeAgentRun);
 
     // 2. beforeCompress hooks - use the already processed context from beforeAgentRun
     const composedBeforeCompress = composeMiddlewares(
@@ -85,6 +87,9 @@ export class Agent {
       (ctx) => Promise.resolve(ctx)
     );
     const afterBeforeCompress = await composedBeforeCompress(afterBeforeAgentRun);
+
+    // Sync todo state back to contextManager after middleware
+    this.contextManager.syncTodoFromContext(afterBeforeCompress);
 
     // Compress if needed
     const compressedMessages = await this.contextManager.compressIfNeeded(afterBeforeCompress);
@@ -103,6 +108,9 @@ export class Agent {
     // Run through beforeModel hooks, then invoke model
     const afterBeforeModel = await composedBeforeModel(afterBeforeCompress);
 
+    // Sync todo state back to contextManager after middleware
+    this.contextManager.syncTodoFromContext(afterBeforeModel);
+
     // 4. afterModel hooks
     const composedAfterModel = composeMiddlewares(
       this.hooks.afterModel,
@@ -110,12 +118,18 @@ export class Agent {
     );
     const afterAfterModel = await composedAfterModel(afterBeforeModel);
 
+    // Sync todo state back to contextManager after middleware
+    this.contextManager.syncTodoFromContext(afterAfterModel);
+
     // 5. beforeAddResponse hooks
     const composedBeforeAddResponse = composeMiddlewares(
       this.hooks.beforeAddResponse,
       (ctx) => Promise.resolve(ctx)
     );
     const afterBeforeAddResponse = await composedBeforeAddResponse(afterAfterModel);
+
+    // Sync todo state back to contextManager after middleware
+    this.contextManager.syncTodoFromContext(afterBeforeAddResponse);
 
     // Add response to context history after hooks
     if (afterBeforeAddResponse.response) {
@@ -162,6 +176,8 @@ export class Agent {
 
     // Save the modified systemPrompt from beforeAgentRun (contains dynamic skill injection)
     this.contextManager.setSystemPrompt(afterBeforeAgentRun.systemPrompt);
+    // Sync todo state back to contextManager after middleware
+    this.contextManager.syncTodoFromContext(afterBeforeAgentRun);
 
     // beforeCompress - use the already processed context from beforeAgentRun
     const composedBeforeCompress = composeMiddlewares(
@@ -169,6 +185,9 @@ export class Agent {
       (ctx) => Promise.resolve(ctx)
     );
     const afterBeforeCompress = await composedBeforeCompress(afterBeforeAgentRun);
+
+    // Sync todo state back to contextManager after middleware
+    this.contextManager.syncTodoFromContext(afterBeforeCompress);
 
     // Compress if needed
     const compressedMessages = await this.contextManager.compressIfNeeded(afterBeforeCompress);
@@ -182,6 +201,9 @@ export class Agent {
 
     // Run through pipeline
     let resultContext = await composedBeforeModel(afterBeforeCompress);
+
+    // Sync todo state back to contextManager after middleware
+    this.contextManager.syncTodoFromContext(resultContext);
 
     // After middleware and beforeModel hooks, stream from provider
     let fullContent = '';
@@ -227,12 +249,18 @@ export class Agent {
     );
     resultContext = await composedAfterModel(resultContext);
 
+    // Sync todo state back to contextManager after middleware
+    this.contextManager.syncTodoFromContext(resultContext);
+
     // beforeAddResponse
     const composedBeforeAddResponse = composeMiddlewares(
       this.hooks.beforeAddResponse,
       (ctx) => Promise.resolve(ctx)
     );
     resultContext = await composedBeforeAddResponse(resultContext);
+
+    // Sync todo state back to contextManager after middleware
+    this.contextManager.syncTodoFromContext(resultContext);
 
     // Add to context
     if (resultContext.response) {
@@ -323,15 +351,20 @@ export class Agent {
       // Execute tool with potential signal
       const executePromise = (async () => {
         // If ToolImplementation.execute doesn't accept signal, we just run it
-        // For tools that do accept signal (like BashTool), pass it through
+        // For tools that do accept signal, pass it through
+        // Tools that need access to context can also receive it as an option
         // TypeScript doesn't know at compile time, so we do runtime checking
         try {
           const toolFn = tool.execute as (
             params: Record<string, unknown>,
-            opts?: { signal?: AbortSignal },
+            opts?: { signal?: AbortSignal; context: AgentContext },
           ) => Promise<unknown>;
           if (toolFn.length > 1) {
-            return await toolFn.call(tool, toolCall.arguments, { signal });
+            const currentContext = this.contextManager.getContext(this.config);
+            const result = await toolFn.call(tool, toolCall.arguments, { signal, context: currentContext });
+            // Sync any changes to todo state back to contextManager
+            this.contextManager.syncTodoFromContext(currentContext);
+            return result;
           }
           return await tool.execute(toolCall.arguments);
         } catch (error) {
@@ -408,6 +441,8 @@ export class Agent {
 
       // Save the modified systemPrompt from beforeAgentRun (contains dynamic skill injection)
       this.contextManager.setSystemPrompt(afterBeforeAgentRun.systemPrompt);
+      // Sync todo state back to contextManager after middleware
+      this.contextManager.syncTodoFromContext(afterBeforeAgentRun);
 
       while (turnIndex < config.maxTurns && !done && !signal.aborted) {
         // a. Compress context if needed (every turn)
@@ -417,6 +452,10 @@ export class Agent {
           (ctx) => Promise.resolve(ctx),
         );
         const afterBeforeCompress = await composedBeforeCompress(currentContext);
+
+        // Sync todo state back to contextManager after middleware
+        this.contextManager.syncTodoFromContext(afterBeforeCompress);
+
         const compressedMessages = await this.contextManager.compressIfNeeded(
           afterBeforeCompress,
         );
@@ -428,6 +467,9 @@ export class Agent {
           (innerCtx) => Promise.resolve(innerCtx),
         );
         let resultContext = await composedBeforeModel(afterBeforeCompress);
+
+        // Sync todo state back to contextManager after middleware
+        this.contextManager.syncTodoFromContext(resultContext);
 
         // c. Stream from LLM
         let fullContent = '';
@@ -465,6 +507,9 @@ export class Agent {
         );
         resultContext = await composedAfterModel(resultContext);
 
+        // Sync todo state back to contextManager after middleware
+        this.contextManager.syncTodoFromContext(resultContext);
+
         // Set full response on context
         resultContext.response = {
           content: fullContent,
@@ -483,6 +528,9 @@ export class Agent {
           (ctx) => Promise.resolve(ctx),
         );
         resultContext = await composedBeforeAddResponse(resultContext);
+
+        // Sync todo state back to contextManager after middleware
+        this.contextManager.syncTodoFromContext(resultContext);
 
         // f. Save assistant message to context
         if (resultContext.response) {
