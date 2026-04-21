@@ -16,11 +16,16 @@ This is a TypeScript-based AI agent framework built with Bun, featuring a modula
 ### Core Files
 
 - `/src/index.ts`: Main entry point with public exports
-- `/src/agent.ts`: Agent core functionality
-- `/src/context.ts`: Context management for agent runs
-- `/src/types.ts`: Type definitions for middleware, providers, etc.
-- `/src/middleware.ts`: Base middleware class
-- `/src/foundation/providers/`: Claude and OpenAI provider implementations
+- `/src/agent/`: Agent core functionality (everything for the agentic loop in one place)
+  - `Agent.ts`: Agent class with `run()`, `runStream()`, `runAgentLoop()`
+  - `loop-types.ts`: AgentEvent, AgentLoopConfig, and other event types
+  - `context.ts`: ContextManager + compression strategies
+  - `middleware.ts`: `composeMiddlewares` utility
+  - `tool-registry.ts`: ToolRegistry - manages tool registration/lookup
+- `/src/providers/`: LLM Provider implementations (flattened from foundation/providers)
+  - `claude.ts`: Anthropic Claude provider
+  - `openai.ts`: OpenAI provider
+- `/src/types.ts`: Global shared type definitions (Message, ToolCall, Provider, Middleware, etc.)
 - `/src/skills/`: Skill management and injection system
   - `loader.ts`: SkillLoader class for loading skills from disk with caching
   - `middleware.ts`: SkillMiddleware for auto-injecting skills into system prompt
@@ -34,8 +39,9 @@ This is a TypeScript-based AI agent framework built with Bun, featuring a modula
     - `InputBox.tsx`: User input with autocomplete
     - `CommandList.tsx`: Autocomplete dropdown for slash commands
     - `HighlightedInput.tsx`: Input display with cursor position highlighting
+    - `ToolCallMessage.tsx`: Displays tool call execution status (running/completed/error)
   - `hooks/`: Custom React hooks
-    - `use-agent-loop.tsx`: Agent loop context provider
+    - `use-agent-loop.tsx`: Agent loop context provider (consumes AgentEvent stream from `runAgentLoop()`)
     - `use-command-input.ts`: Main input hook with autocomplete and history
     - `use-input-editor.ts`: Pure editor state transformation functions
     - `use-input-history.ts`: Persistent input history browsing
@@ -48,7 +54,8 @@ This is a TypeScript-based AI agent framework built with Bun, featuring a modula
 - `README.md`: Project documentation
 - `skills/`: Directory containing available skills (each in separate folder with SKILL.md)
 - `bin/`: Executable scripts
-  - `my-agent-tui-dev.ts`: Development entry point for TUI
+  - `my-agent-tui-dev.ts`: Development entry point for TUI (runs TypeScript directly with bun)
+  - `my-agent-tui`: Production entry point (runs compiled JavaScript from dist/)
 
 ## Development Commands
 
