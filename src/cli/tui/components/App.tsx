@@ -2,6 +2,7 @@ import React from 'react';
 import { Box } from 'ink';
 import { ScrollView } from 'ink-scroll-view';
 import { AgentLoopProvider, useAgentLoop } from '../hooks/use-agent-loop';
+import { useAskUserQuestionManager } from '../hooks';
 import { getBuiltinCommands } from '../command-registry';
 import { Header } from './Header';
 import { Footer } from './Footer';
@@ -9,6 +10,7 @@ import { ChatMessage } from './ChatMessage';
 import { TodoPanel } from './TodoPanel';
 import { InputBox } from './InputBox';
 import { StreamingIndicator } from './StreamingIndicator';
+import { AskUserQuestionPrompt } from './AskUserQuestionPrompt';
 import type { Agent } from '../../../agent';
 import type { Message } from '../../../types';
 import type { SlashCommand } from '../command-registry';
@@ -30,6 +32,7 @@ export function App({ agent, skillCommands, sessionStore }: AppProps) {
 
 function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashCommand[]; sessionStore: SessionStore }) {
   const { messages, streaming: isStreaming, onSubmitWithSkill, abort, todos } = useAgentLoop();
+  const { askUserQuestionRequest, respondWithAnswers } = useAskUserQuestionManager();
 
   const allCommands = [...getBuiltinCommands(sessionStore), ...skillCommands];
 
@@ -45,6 +48,12 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
           />
         ))}
       </ScrollView>
+      {askUserQuestionRequest && (
+        <AskUserQuestionPrompt
+          questions={askUserQuestionRequest.params.questions}
+          onSubmit={respondWithAnswers}
+        />
+      )}
       {todos.length > 0 && <TodoPanel todos={todos} />}
       {isStreaming && <StreamingIndicator />}
       <InputBox commands={allCommands} onSubmit={onSubmitWithSkill} onAbort={abort} />
