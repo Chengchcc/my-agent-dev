@@ -77,6 +77,7 @@ export function AgentLoopProvider({
             streamingContent += chunk.content;
 
             // Update the streaming message directly in messages state
+            const oldStreamingMessage = streamingMessageRef.current;
             const streamingMessage: Message = {
               role: 'assistant',
               content: streamingContent,
@@ -85,7 +86,7 @@ export function AgentLoopProvider({
 
             setMessages(prev => {
               // Filter out any previous streaming message
-              const base = prev.filter(m => m !== streamingMessageRef.current);
+              const base = prev.filter(m => m !== oldStreamingMessage);
               return [...base, streamingMessage];
             });
           }
