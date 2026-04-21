@@ -24,7 +24,18 @@ export class TrimOldestStrategy implements CompressionStrategy {
 
     // Remove oldest messages until we're under the limit or empty
     while (countTotalTokens(messages) > tokenLimit && messages.length > 0) {
-      messages.shift();
+      // Never remove the last two messages - keep the current turn
+      if (messages.length <= 2) break;
+
+      // Check if the first message is an assistant with tool_calls. If so, remove both it and the next message.
+      const first = messages[0];
+      if (first.role === 'assistant' && first.tool_calls && first.tool_calls.length > 0 && messages.length >= 2) {
+        // Remove the pair as a unit
+        messages = messages.slice(2);
+      } else {
+        // Just remove the single message
+        messages = messages.slice(1);
+      }
     }
 
     // Put all system messages back at the beginning
