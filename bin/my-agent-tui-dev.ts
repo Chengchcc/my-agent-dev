@@ -39,9 +39,7 @@ const contextManager = new ContextManager({
   tokenLimit: 100000, // ~100k tokens should be enough for most conversations
 });
 const config: AgentConfig = {
-  maxTokens: defaultMaxTokens,
-  temperature: 0.7,
-  model: defaultModel,
+  tokenLimit: 100000,
 };
 
 // Create tool registry and register built-in tools
