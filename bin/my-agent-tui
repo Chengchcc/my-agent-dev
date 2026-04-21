@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import 'dotenv/config';
-import { Agent, ContextManager } from '../dist/agent';
+import { Agent, ToolRegistry, ContextManager } from '../dist/agent';
 import { ClaudeProvider, OpenAIProvider } from '../dist/providers';
+import { BashTool, TextEditorTool } from '../dist/tools';
 import { runTUIClient } from '../dist/cli';
 import type { AgentConfig } from '../dist/types.js';
 
@@ -33,14 +34,20 @@ const contextManager = new ContextManager({
   tokenLimit: 100000, // ~100k tokens should be enough for most conversations
 });
 const config: AgentConfig = {
-  maxTokens: defaultMaxTokens,
-  temperature: 0.7,
-  model: defaultModel,
+  tokenLimit: 100000,
 };
 
+// Create tool registry and register built-in tools
+const toolRegistry = new ToolRegistry();
+toolRegistry.register(new BashTool({ allowedWorkingDirs: [__dirname + '/..'] }));
+toolRegistry.register(new TextEditorTool({ allowedRoots: [__dirname + '/..'] }));
+
+// Create agent with tool registry
 const agent = new Agent({
   provider,
   contextManager,
   config,
+  toolRegistry,
 });
+
 runTUIClient(agent);
