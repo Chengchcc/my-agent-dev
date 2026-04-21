@@ -16,7 +16,7 @@ marked.setOptions({
   async: false,
 });
 
-export function ChatMessage({ message }: { message: Message }) {
+export function ChatMessage({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
   // Handle different role types with appropriate styling
   const getRoleColor = (role: string): string => {
     switch (role) {
@@ -48,15 +48,38 @@ export function ChatMessage({ message }: { message: Message }) {
     }
   };
 
-  const roleColor = getRoleColor(message.role);
-  const rolePrefix = getRolePrefix(message.role);
+  // Split content into stable part (fully closed markdown structures) and pending part (unclosed)
+  // This prevents layout jumping when streaming incomplete markdown
+  function splitStableContent(content: string): { stable: string; pending: string } {
+    if (!isStreaming) {
+      return { stable: content, pending: '' };
+    }
 
-  const elements = useMemo(() => {
+    // Count open structures that can cause unstable parsing
+    const backtickBlocks = (content.match(/```/g) || []).length;
+    if (backtickBlocks % 2 === 0) {
+      // All code blocks closed, everything is stable
+      return { stable: content, pending: '' };
+    }
+
+    // Find the last opening ``` and split there
+    const lastOpening = content.lastIndexOf('```');
+    if (lastOpening === -1) {
+      return { stable: content, pending: '' };
+    }
+
+    const newlineBefore = content.lastIndexOf('\n', lastOpening);
+    const stable = newlineBefore !== -1 ? content.slice(0, newlineBefore) : content.slice(0, lastOpening);
+    const pending = content.slice(stable.length);
+    return { stable, pending };
+  }
+
+  function renderMarkdownTokens(content: string): React.ReactNode[] {
     const elements: React.ReactNode[] = [];
     let textBuffer = '';
 
     try {
-      const tokens = marked.lexer(message.content);
+      const tokens = marked.lexer(content);
 
       tokens.forEach((token, index) => {
         if (token.type === 'code') {
@@ -115,11 +138,17 @@ export function ChatMessage({ message }: { message: Message }) {
     } catch (e) {
       // If overall lexing/parsing fails, fall back to full raw text
       console.warn('Marked lexing failed, falling back to full raw text:', e);
-      elements.push(<Text>{message.content}</Text>);
+      elements.push(<Text>{content}</Text>);
     }
 
     return elements;
-  }, [message.content]);
+  }
+
+  const roleColor = getRoleColor(message.role);
+  const rolePrefix = getRolePrefix(message.role);
+
+  const { stable, pending } = splitStableContent(message.content);
+  const stableElements = useMemo(() => renderMarkdownTokens(stable), [stable]);
 
   return (
     <Box flexDirection="column" marginBottom={1}>
@@ -128,8 +157,9 @@ export function ChatMessage({ message }: { message: Message }) {
           {rolePrefix} {message.role}:
         </Text>
       </Box>
-      <Box paddingLeft={1}>
-        {elements}
+      <Box paddingLeft={1} flexDirection="column">
+        {stableElements}
+        {pending && <Text>{pending}</Text>}
       </Box>
     </Box>
   );

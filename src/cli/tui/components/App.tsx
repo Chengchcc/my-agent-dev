@@ -36,7 +36,11 @@ function AppContent({ skillCommands }: { skillCommands: SlashCommand[] }) {
       <Header />
       <ScrollView>
         {messages.map((message, index) => (
-          <ChatMessage key={message.id ?? index} message={message} />
+          <ChatMessage
+            key={message.id ?? index}
+            message={message}
+            isStreaming={isStreaming && index === messages.length - 1}
+          />
         ))}
       </ScrollView>
       {todos.length > 0 && <TodoPanel todos={todos} />}
