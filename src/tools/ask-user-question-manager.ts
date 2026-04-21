@@ -4,6 +4,7 @@ import type { AskUserQuestionParameters, AskUserQuestionResult } from './ask-use
 export type AskUserQuestionRequest = {
   params: AskUserQuestionParameters;
   resolve: (result: AskUserQuestionResult) => void;
+  reject: (reason: Error) => void;
 };
 
 const MAX_QUEUE_SIZE = 20;
@@ -20,7 +21,7 @@ export class AskUserQuestionManager {
         reject(new Error('Ask user question queue overflow'));
         return;
       }
-      this._queue.push({ params, resolve });
+      this._queue.push({ params, resolve, reject });
       this._processQueue();
     });
   };
@@ -46,9 +47,24 @@ export class AskUserQuestionManager {
 
   subscribe(callback: (req: AskUserQuestionRequest | null) => void) {
     this._subscriber = callback;
+    // Send current state to new subscriber
+    if (this._currentRequest) {
+      this._subscriber(this._currentRequest);
+    } else if (this._queue.length === 0) {
+      this._subscriber(null);
+    }
     this._processQueue();
     return () => {
       this._subscriber = undefined;
+      // Reject all pending requests when unsubscribing
+      for (const req of this._queue) {
+        req.reject(new Error('AskUserQuestionManager: subscriber unsubscribed'));
+      }
+      this._queue = [];
+      if (this._currentRequest) {
+        this._currentRequest.reject(new Error('AskUserQuestionManager: subscriber unsubscribed'));
+        this._currentRequest = undefined;
+      }
     };
   }
 }
