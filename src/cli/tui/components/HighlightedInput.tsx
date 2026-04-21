@@ -31,11 +31,10 @@ export function HighlightedInput({
 
   const highlightLength = highlightedCommandName ? highlightedCommandName.length + 1 : 0;
 
-  // All characters must be inside a single Text component for proper word wrapping
-  // Each character gets its own inline Text component with the correct inverse styling
+  // All characters are individual inline Text components for correct styling
+  // Outer Box handles layout, no outer Text needed to avoid unexpected wrapping
   return (
     <Box flexGrow={1} flexShrink={1}>
-      <Text>
         {value.split('').map((char, index) => {
           const isCursor = index === cursorOffset;
           const highlighted = index < highlightLength;
@@ -51,7 +50,6 @@ export function HighlightedInput({
           );
         })}
         {cursorOffset === value.length ? <Text inverse>{' '}</Text> : null}
-      </Text>
     </Box>
   );
 }
