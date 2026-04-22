@@ -1,5 +1,6 @@
 import { Box, Text } from 'ink';
 import React from 'react';
+import { BlinkingText } from './';
 import { useAgentLoop } from '../hooks';
 
 export function StreamingIndicator({ nextTodo }: { nextTodo?: string }) {
@@ -10,7 +11,7 @@ export function StreamingIndicator({ nextTodo }: { nextTodo?: string }) {
   return (
     <Box>
       <Text color="gray">
-        <Text dimColor>Thinking...</Text>
+        <BlinkingText dimColor interval={800}>Thinking...</BlinkingText>
         {nextTodo && ` Next: ${nextTodo}`}
       </Text>
     </Box>
