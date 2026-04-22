@@ -9,28 +9,37 @@ import { BlinkingText } from './BlinkingText';
  */
 interface SubAgentMessageProps {
   startEvent: SubAgentStartEvent;
-  completed?: { summary: string; totalTurns: number; durationMs: number };
+  completed?: { summary: string; totalTurns: number; durationMs: number; isError: boolean };
   isRunning: boolean;
+  expanded: boolean;
+  isFocused: boolean;
 }
 
 /**
  * Displays a sub agent execution with collapsible details
  */
-export function SubAgentMessage({ startEvent, completed, isRunning }: SubAgentMessageProps) {
-  const [expanded, setExpanded] = useState(false);
+export function SubAgentMessage({ startEvent, completed, isRunning, expanded, isFocused }: SubAgentMessageProps) {
   const { agentId, task } = startEvent;
 
   // Truncate task for display in header
   const shortTask = task.length > 60 ? task.slice(0, 57) + '...' : task;
 
+  // Add border highlight if focused
+  const borderColor = isFocused ? 'blue' : undefined;
+
   return (
-    <Box flexDirection="column" borderStyle="round" padding={1} marginY={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor={borderColor} padding={1} marginY={1}>
       <Box flexDirection="row" alignItems="center">
         <Text bold>🤖 {agentId}</Text>
         <Text dimColor> - {shortTask}</Text>
         <Spacer />
         {isRunning && <BlinkingText color="yellow">Running...</BlinkingText>}
-        {!isRunning && <Text color="green">✓ Done</Text>}
+        {!isRunning && completed && completed.isError && (
+          <Text color="red">✗ Failed</Text>
+        )}
+        {!isRunning && completed && !completed.isError && (
+          <Text color="green">✓ Done</Text>
+        )}
       </Box>
 
       {expanded && (
@@ -47,7 +56,7 @@ export function SubAgentMessage({ startEvent, completed, isRunning }: SubAgentMe
                 <Text bold>Summary:</Text>
               </Box>
               <Box paddingLeft={1} marginTop={0}>
-                <Text>{completed.summary}</Text>
+                <Text color={completed.isError ? 'red' : undefined}>{completed.summary}</Text>
               </Box>
               <Box marginTop={1}>
                 <Text dimColor>

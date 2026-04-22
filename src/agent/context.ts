@@ -1,3 +1,4 @@
+import { nanoid } from 'nanoid';
 import { countTokens } from '@anthropic-ai/tokenizer';
 import type { AgentContext, AgentConfig, CompressionStrategy, Message } from '../types';
 import type { TodoItem } from '../todos/types';
@@ -80,9 +81,13 @@ export class ContextManager {
 
   /**
    * Add a message to the context.
+   * Automatically assigns a unique id if not provided.
    */
   addMessage(message: Message): void {
-    this.messages.push(message);
+    this.messages.push({
+      ...message,
+      id: message.id ?? nanoid(),
+    });
   }
 
   /**
@@ -195,5 +200,16 @@ export class ContextManager {
     this.todoStore = [...state.todos];
     this.todoStepsSinceLastWrite = state.stepsSinceLastWrite;
     this.todoStepsSinceLastReminder = state.stepsSinceLastReminder;
+  }
+
+  /**
+   * Replace all messages (used after compression).
+   */
+  setMessages(messages: Message[]): void {
+    // Keep system messages separate to maintain the default system prompt
+    const systemMessages = messages.filter(m => m.role === 'system');
+    const nonSystemMessages = messages.filter(m => m.role !== 'system');
+
+    this.messages = [...systemMessages, ...nonSystemMessages];
   }
 }

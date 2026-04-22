@@ -44,9 +44,10 @@ export class ClaudeProvider implements Provider {
     // Claude expects system prompt as a separate parameter, not in messages array
     const claudeMessages = this.convertToClaudeMessages(messages);
     const system = systemPrompt ?? this.extractSystemPrompt(messages);
+    const model = context.config?.model ?? this.model;
 
     const response = await this.client.messages.create({
-      model: this.model,
+      model,
       messages: claudeMessages,
       system: system,
       max_tokens: this.maxTokens,
@@ -88,9 +89,10 @@ export class ClaudeProvider implements Provider {
     const { messages, systemPrompt } = context;
     const claudeMessages = this.convertToClaudeMessages(messages);
     const system = systemPrompt ?? this.extractSystemPrompt(messages);
+    const model = context.config?.model ?? this.model;
 
     const stream = this.client.messages.stream({
-      model: this.model,
+      model,
       messages: claudeMessages,
       system: system,
       max_tokens: this.maxTokens,

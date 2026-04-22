@@ -47,8 +47,8 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
       return;
     }
 
-    // Ctrl+O - toggle expand/collapse
-    if (input === 'o' && key.ctrl) {
+    // Ctrl+O or Space - toggle expand/collapse
+    if (input === 'o' && key.ctrl || input === ' ') {
       toggleFocusedTool();
       return;
     }

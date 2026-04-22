@@ -95,12 +95,18 @@ DO NOT USE when:
 
     try {
       // Build filtered tool registry - exclude sub_agent to prevent recursion
+      // Also exclude Task* tools because they use a global module-level taskStore
+      // Sub agents don't need task tracking anyway for simple subtasks
       const subToolRegistry = new ToolRegistry();
       const mainTools = this.config.mainToolRegistry.getAllDefinitions();
 
       for (const toolDef of mainTools) {
         // Never allow sub_agent recursion
         if (toolDef.name === 'sub_agent') {
+          continue;
+        }
+        // Exclude Task* tools - they use global state
+        if (toolDef.name.startsWith('Task')) {
           continue;
         }
         // If allowedTools specified, filter to only those
@@ -127,12 +133,7 @@ If the task references files in .agent/, read them first before proceeding.`;
 
       subContextManager.setSystemPrompt(systemPrompt);
 
-      // Add the user task
-      const userMessage: Message = {
-        role: 'user',
-        content: task,
-      };
-      subContextManager.addMessage(userMessage);
+      // Add the user task - done automatically by runAgentLoop
 
       // Create sub agent config
       const subAgentConfig: AgentConfig = {
@@ -176,9 +177,13 @@ If the task references files in .agent/, read them first before proceeding.`;
       let finalTotalTurns = 0;
       let finalSummary = '';
 
-      // Run the agent loop and bubble events
-      for await (const event of subAgent.runAgentLoop({ role: 'user', content: task }, loopConfig)) {
-        // Check for abort from main
+      // Run the agent loop and bubble events - propagate abort signal from main
+      for await (const event of subAgent.runAgentLoop(
+        { role: 'user', content: task },
+        loopConfig,
+        { signal: options?.signal }
+      )) {
+        // Check for abort from main (extra safety check)
         if (options?.signal?.aborted) {
           throw new Error('Sub agent aborted by main agent');
         }
@@ -223,6 +228,7 @@ If the task references files in .agent/, read them first before proceeding.`;
           summary: finalSummary,
           totalTurns: finalTotalTurns,
           durationMs,
+          isError: false,
           turnIndex: 0,
         });
       }
@@ -237,6 +243,21 @@ If the task references files in .agent/, read them first before proceeding.`;
     } catch (error) {
       const durationMs = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorObj = error instanceof Error ? error : new Error(errorMessage);
+
+      // Bubble done event with error status
+      if (this.config.onEvent) {
+        this.config.onEvent(agentId, {
+          type: 'sub_agent_done',
+          agentId,
+          summary: errorMessage,
+          totalTurns: 0,
+          durationMs,
+          isError: true,
+          error: errorObj,
+          turnIndex: 0,
+        });
+      }
 
       // Return error as normal tool result (don't throw) so main can handle it
       return `[SubAgent ${agentId} failed after ${durationMs}ms]\n\nError: ${errorMessage}`;

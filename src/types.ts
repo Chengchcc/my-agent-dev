@@ -68,6 +68,8 @@ export type LLMConfig = {
 export type AgentConfig = {
   tokenLimit: number;
   defaultSystemPrompt?: string;
+  /** Override the default model for this invocation (used by memory extraction) */
+  model?: string;
 };
 
 // Agent context - flows through middleware and agent loop

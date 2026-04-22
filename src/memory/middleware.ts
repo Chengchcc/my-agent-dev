@@ -11,6 +11,7 @@ export class MemoryMiddleware implements AgentMiddleware {
   private retriever: MemoryRetriever;
   private extractor: MemoryExtractor;
   private config: Required<MemoryConfig>;
+  private pendingExtractions: Promise<void>[] = [];
 
   constructor(
     stores: {
@@ -28,6 +29,17 @@ export class MemoryMiddleware implements AgentMiddleware {
     this.retriever = retriever;
     this.extractor = extractor;
     this.config = { ...DEFAULT_MEMORY_CONFIG, ...config };
+  }
+
+  /**
+   * Wait for all pending memory extractions to complete.
+   * This ensures all memory is saved before process exit.
+   */
+  async awaitPendingExtractions(): Promise<void> {
+    if (this.pendingExtractions.length === 0) return;
+    await Promise.allSettled(this.pendingExtractions);
+    // Clear completed extractions
+    this.pendingExtractions = [];
   }
 
   beforeModel: Middleware = async (context, next) => {
@@ -75,9 +87,9 @@ export class MemoryMiddleware implements AgentMiddleware {
       return result;
     }
 
-    // Trigger async extraction, don't block
+    // Trigger async extraction, don't block agent but track for graceful shutdown
     const projectPath = process.cwd();
-    this.extractor.extract(context.messages, projectPath)
+    const extractionPromise = this.extractor.extract(context.messages, projectPath)
       .then(async newEntries => {
         for (const entry of newEntries) {
           switch (entry.type) {
@@ -97,8 +109,16 @@ export class MemoryMiddleware implements AgentMiddleware {
       })
       .catch(err => {
         console.error('[memory] Auto-extraction failed:', err);
+      })
+      .finally(() => {
+        // Remove from pending list when done
+        const index = this.pendingExtractions.indexOf(extractionPromise);
+        if (index >= 0) {
+          this.pendingExtractions.splice(index, 1);
+        }
       });
 
+    this.pendingExtractions.push(extractionPromise);
     return result;
   };
 

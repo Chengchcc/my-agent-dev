@@ -57,230 +57,6 @@ export class Agent {
     }
   }
 
-  /**
-   * Run one full turn of the agent loop (blocking).
-   */
-  async run(userMessage: { role: 'user'; content: string }): Promise<AgentContext> {
-    // Add user message to context before running hooks
-    // This allows SkillMiddleware to check for skill mentions in the user message
-    this.contextManager.addMessage({
-      role: 'user',
-      content: userMessage.content,
-    });
-
-    // 1. beforeAgentRun hooks
-    const initialContext = this.contextManager.getContext(this.config);
-    const composedBeforeAgentRun = composeMiddlewares(
-      this.hooks.beforeAgentRun,
-      (ctx) => Promise.resolve(ctx)
-    );
-    const afterBeforeAgentRun = await composedBeforeAgentRun(initialContext);
-
-    // Save the modified systemPrompt from beforeAgentRun (contains dynamic skill injection)
-    this.contextManager.setSystemPrompt(afterBeforeAgentRun.systemPrompt);
-    // Sync todo state back to contextManager after middleware
-    this.contextManager.syncTodoFromContext(afterBeforeAgentRun);
-
-    // 2. beforeCompress hooks - use the already processed context from beforeAgentRun
-    const composedBeforeCompress = composeMiddlewares(
-      this.hooks.beforeCompress,
-      (ctx) => Promise.resolve(ctx)
-    );
-    const afterBeforeCompress = await composedBeforeCompress(afterBeforeAgentRun);
-
-    // Sync todo state back to contextManager after middleware
-    this.contextManager.syncTodoFromContext(afterBeforeCompress);
-
-    // Compress if needed
-    const compressedMessages = await this.contextManager.compressIfNeeded(afterBeforeCompress);
-    afterBeforeCompress.messages = compressedMessages;
-
-    // 3. beforeModel hooks + provider invocation
-    const composedBeforeModel = composeMiddlewares(
-      this.hooks.beforeModel,
-      async (innerCtx) => {
-        const response = await this.provider.invoke(innerCtx);
-        innerCtx.response = response;
-        return innerCtx;
-      }
-    );
-
-    // Run through beforeModel hooks, then invoke model
-    const afterBeforeModel = await composedBeforeModel(afterBeforeCompress);
-
-    // Sync todo state back to contextManager after middleware
-    this.contextManager.syncTodoFromContext(afterBeforeModel);
-
-    // 4. afterModel hooks
-    const composedAfterModel = composeMiddlewares(
-      this.hooks.afterModel,
-      (ctx) => Promise.resolve(ctx)
-    );
-    const afterAfterModel = await composedAfterModel(afterBeforeModel);
-
-    // Sync todo state back to contextManager after middleware
-    this.contextManager.syncTodoFromContext(afterAfterModel);
-
-    // 5. beforeAddResponse hooks
-    const composedBeforeAddResponse = composeMiddlewares(
-      this.hooks.beforeAddResponse,
-      (ctx) => Promise.resolve(ctx)
-    );
-    const afterBeforeAddResponse = await composedBeforeAddResponse(afterAfterModel);
-
-    // Sync todo state back to contextManager after middleware
-    this.contextManager.syncTodoFromContext(afterBeforeAddResponse);
-
-    // Add response to context history after hooks
-    if (afterBeforeAddResponse.response) {
-      this.contextManager.addMessage({
-        role: 'assistant',
-        content: afterBeforeAddResponse.response.content,
-        tool_calls: afterBeforeAddResponse.response.tool_calls,
-      });
-    }
-
-    // 6. afterAgentRun hooks
-    const finalContext = this.contextManager.getContext(this.config);
-    // Merge metadata from previous transformations
-    Object.assign(finalContext.metadata, afterBeforeAddResponse.metadata);
-    const composedAfterAgentRun = composeMiddlewares(
-      this.hooks.afterAgentRun,
-      (ctx) => Promise.resolve(ctx)
-    );
-    const result = await composedAfterAgentRun(finalContext);
-
-    return result;
-  }
-
-  /**
-   * Run one turn with streaming response.
-   */
-  async *runStream(
-    userMessage: { role: 'user'; content: string }
-  ): AsyncIterable<LLMResponseChunk> {
-    // Add user message to context before running hooks
-    // This allows SkillMiddleware to check for skill mentions in the user message
-    this.contextManager.addMessage({
-      role: 'user',
-      content: userMessage.content,
-    });
-
-    // beforeAgentRun
-    const initialContext = this.contextManager.getContext(this.config);
-    const composedBeforeAgentRun = composeMiddlewares(
-      this.hooks.beforeAgentRun,
-      (ctx) => Promise.resolve(ctx)
-    );
-    const afterBeforeAgentRun = await composedBeforeAgentRun(initialContext);
-
-    // Save the modified systemPrompt from beforeAgentRun (contains dynamic skill injection)
-    this.contextManager.setSystemPrompt(afterBeforeAgentRun.systemPrompt);
-    // Sync todo state back to contextManager after middleware
-    this.contextManager.syncTodoFromContext(afterBeforeAgentRun);
-
-    // beforeCompress - use the already processed context from beforeAgentRun
-    const composedBeforeCompress = composeMiddlewares(
-      this.hooks.beforeCompress,
-      (ctx) => Promise.resolve(ctx)
-    );
-    const afterBeforeCompress = await composedBeforeCompress(afterBeforeAgentRun);
-
-    // Sync todo state back to contextManager after middleware
-    this.contextManager.syncTodoFromContext(afterBeforeCompress);
-
-    // Compress if needed
-    const compressedMessages = await this.contextManager.compressIfNeeded(afterBeforeCompress);
-    afterBeforeCompress.messages = compressedMessages;
-
-    // Compose beforeModel hooks
-    const composedBeforeModel = composeMiddlewares(
-      this.hooks.beforeModel,
-      (innerCtx) => Promise.resolve(innerCtx)
-    );
-
-    // Run through pipeline
-    let resultContext = await composedBeforeModel(afterBeforeCompress);
-
-    // Sync todo state back to contextManager after middleware
-    this.contextManager.syncTodoFromContext(resultContext);
-
-    // After middleware and beforeModel hooks, stream from provider
-    let fullContent = '';
-    let tool_calls: ToolCall[] = [];
-
-    // Create abort controller for this streaming request
-    if (this.abortController) {
-      // Abort any previous ongoing request
-      this.abortController.abort();
-    }
-    this.abortController = new AbortController();
-    const signal = this.abortController.signal;
-
-    try {
-      for await (const chunk of this.provider.stream(resultContext, { signal })) {
-        if (signal.aborted) break;
-        fullContent += chunk.content;
-        if (chunk.tool_calls) {
-          tool_calls.push(...chunk.tool_calls);
-        }
-        yield chunk;
-      }
-    } finally {
-      this.abortController = null;
-    }
-
-    // Set full response on context
-    resultContext.response = {
-      content: fullContent,
-      tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
-      usage: {
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        total_tokens: 0,
-      },
-      model: '',
-    };
-
-    // afterModel
-    const composedAfterModel = composeMiddlewares(
-      this.hooks.afterModel,
-      (ctx) => Promise.resolve(ctx)
-    );
-    resultContext = await composedAfterModel(resultContext);
-
-    // Sync todo state back to contextManager after middleware
-    this.contextManager.syncTodoFromContext(resultContext);
-
-    // beforeAddResponse
-    const composedBeforeAddResponse = composeMiddlewares(
-      this.hooks.beforeAddResponse,
-      (ctx) => Promise.resolve(ctx)
-    );
-    resultContext = await composedBeforeAddResponse(resultContext);
-
-    // Sync todo state back to contextManager after middleware
-    this.contextManager.syncTodoFromContext(resultContext);
-
-    // Add to context
-    if (resultContext.response) {
-      this.contextManager.addMessage({
-        role: 'assistant',
-        content: resultContext.response.content,
-        tool_calls: resultContext.response.tool_calls,
-      });
-    }
-
-    // afterAgentRun
-    const finalContext = this.contextManager.getContext(this.config);
-    // Merge metadata from previous transformations
-    Object.assign(finalContext.metadata, resultContext.metadata);
-    const composedAfterAgentRun = composeMiddlewares(
-      this.hooks.afterAgentRun,
-      (ctx) => Promise.resolve(ctx)
-    );
-    await composedAfterAgentRun(finalContext);
-  }
 
 
   /**
@@ -419,10 +195,17 @@ export class Agent {
   async *runAgentLoop(
     userMessage: { role: 'user'; content: string },
     loopConfig?: Partial<AgentLoopConfig>,
+    options?: { signal?: AbortSignal },
   ): AsyncGenerator<AgentEvent> {
     const config: AgentLoopConfig = { ...DEFAULT_LOOP_CONFIG, ...loopConfig };
     const controller = new AbortController();
     const signal = controller.signal;
+
+    // Chain from external signal if provided - propagate abort
+    if (options?.signal) {
+      options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+
     this.abortController = controller;
 
     // Create timeout timer
@@ -471,6 +254,7 @@ export class Agent {
           afterBeforeCompress,
         );
         afterBeforeCompress.messages = compressedMessages;
+        this.contextManager.setMessages(compressedMessages);
 
         // b. Run beforeModel middleware
         const composedBeforeModel = composeMiddlewares(
@@ -582,43 +366,48 @@ export class Agent {
             } satisfies AgentEvent;
           }
 
-          const startTime = Date.now();
-          // Execute all tools in parallel and collect results with promises
-          const results = await Promise.allSettled(
-            tool_calls.map(async (toolCall) => {
-              const result = await this.executeToolCall(
-                toolCall,
-                config.maxToolOutputChars,
-                config.toolTimeoutMs,
-                signal,
-              );
-              return { toolCall, result };
-            })
-          );
+          // Use a result queue to yield results as soon as they complete
+          const pending = new Set(tool_calls.map(tc => tc.id));
+          const resultQueue: AgentEvent[] = [];
+          let resolveNext: (() => void) | null = null;
 
-          // Yield results as they completed - actually Promise.allSettled
-          // already waits for everything, but we can yield each result now
-          // Since everything is already done, this yields immediately
-          // after all tools complete, preserving the "start all first" pattern
-          for (let i = 0; i < results.length; i++) {
-            const item = results[i];
-            const toolCall = tool_calls[i];
-            if (item.status === 'fulfilled') {
-              const { result } = item.value;
-              yield {
-                type: 'tool_call_result',
-                toolCall,
-                result: result.result,
-                error: result.error,
-                durationMs: result.durationMs,
-                isError: !!result.error,
-                turnIndex,
-              } satisfies AgentEvent;
+          const promises = tool_calls.map(async (toolCall) => {
+            const result = await this.executeToolCall(
+              toolCall,
+              config.maxToolOutputChars,
+              config.toolTimeoutMs,
+              signal,
+            );
+
+            // Add the result to the queue and wake up the yield loop
+            resultQueue.push({
+              type: 'tool_call_result',
+              toolCall,
+              result: result.result,
+              error: result.error,
+              durationMs: result.durationMs,
+              isError: !!result.error,
+              turnIndex,
+            } satisfies AgentEvent);
+            pending.delete(toolCall.id);
+            resolveNext?.();
+          });
+
+          // Yield as results arrive - true incremental streaming
+          while (pending.size > 0 || resultQueue.length > 0) {
+            if (resultQueue.length > 0) {
+              const event = resultQueue.shift()!;
+              yield event;
+
+              // Add to context after yielding
+              const toolCall = (event as any).toolCall as ToolCall;
+              const result = (event as any).result as unknown;
+              const error = (event as any).error as Error | undefined;
 
               const content =
-                result.result && typeof result.result === 'string'
-                  ? result.result
-                  : JSON.stringify(result.result, null, 2);
+                result && typeof result === 'string'
+                  ? result
+                  : JSON.stringify(result, null, 2);
 
               this.contextManager.addMessage({
                 role: 'tool',
@@ -627,38 +416,17 @@ export class Agent {
                 name: toolCall.name,
               });
 
-              if (result.error && config.toolErrorStrategy === 'halt') {
-                throw result.error;
-              }
-            } else {
-              // Unhandled rejection case
-              const error = item.reason instanceof Error
-                ? item.reason
-                : new Error(String(item.reason));
-              const durationMs = Date.now() - startTime;
-              yield {
-                type: 'tool_call_result',
-                toolCall,
-                result: `Error: ${error.message}`,
-                error,
-                durationMs,
-                isError: true,
-                turnIndex,
-              } satisfies AgentEvent;
-
-              const content = `Error: ${error.message}`;
-              this.contextManager.addMessage({
-                role: 'tool',
-                content,
-                tool_call_id: toolCall.id,
-                name: toolCall.name,
-              });
-
-              if (config.toolErrorStrategy === 'halt') {
+              if (error && config.toolErrorStrategy === 'halt') {
                 throw error;
               }
+            } else {
+              // Wait for the next result to complete
+              await new Promise<void>(r => { resolveNext = r; });
             }
           }
+
+          // Wait for all promises to settle (cleanup any remaining)
+          await Promise.allSettled(promises);
         } else if (config.parallelToolExecution) {
           const startTime = Date.now();
           // Execute in parallel, yield all after all complete

@@ -92,6 +92,10 @@ export interface SubAgentDoneEvent extends AgentEventBase {
   summary: string;
   totalTurns: number;
   durationMs: number;
+  /** Whether the sub agent completed with an error */
+  isError: boolean;
+  /** Error if sub agent failed */
+  error?: Error;
 }
 
 /**

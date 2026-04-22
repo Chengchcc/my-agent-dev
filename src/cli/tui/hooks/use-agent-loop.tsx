@@ -18,7 +18,7 @@ type AgentLoopState = {
   todos: UITodoItem[];
   currentTools: ToolCallStartEvent[];
   runningSubAgents: Map<string, SubAgentStartEvent>;
-  completedSubAgents: Map<string, { summary: string; totalTurns: number; durationMs: number }>;
+  completedSubAgents: Map<string, { summary: string; totalTurns: number; durationMs: number; isError: boolean }>;
   /** ID of currently focused tool for keyboard interaction */
   focusedToolId: string | null;
   /** Set of tool IDs that are currently expanded */
@@ -53,7 +53,7 @@ export function AgentLoopProvider({
   const [todos, setTodos] = useState<UITodoItem[]>([]);
   const [currentTools, setCurrentTools] = useState<ToolCallStartEvent[]>([]);
   const [runningSubAgents, setRunningSubAgents] = useState<Map<string, SubAgentStartEvent>>(new Map());
-  const [completedSubAgents, setCompletedSubAgents] = useState<Map<string, { summary: string; totalTurns: number; durationMs: number }>>(new Map());
+  const [completedSubAgents, setCompletedSubAgents] = useState<Map<string, { summary: string; totalTurns: number; durationMs: number; isError: boolean }>>(new Map());
   const [focusedToolId, setFocusedToolId] = useState<string | null>(null);
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
   const [toolResults, setToolResults] = useState<Map<string, { isError: boolean; durationMs: number }>>(new Map());
@@ -213,6 +213,8 @@ export function AgentLoopProvider({
       // Track incremental streaming content
       let streamingContent = '';
       const runningTools = new Map<string, ToolCallStartEvent>();
+      // Stable id for streaming message that persists across updates
+      const streamingMessageId = `streaming-${Date.now()}`;
 
       try {
         // Run agentic loop - yields events for each step
@@ -223,16 +225,17 @@ export function AgentLoopProvider({
             if (streamingMessageRef.current !== null || runningTools.size === 0) {
               streamingContent += event.delta;
 
-              // Update the streaming message
+              // Update the streaming message - reuse the same stable id
               const oldStreamingMessage = streamingMessageRef.current;
               const streamingMessage: Message = {
+                id: streamingMessageId,
                 role: 'assistant',
                 content: streamingContent,
               };
               streamingMessageRef.current = streamingMessage;
 
               setMessages(prev => {
-                const base = prev.filter(m => m !== oldStreamingMessage);
+                const base = prev.filter(m => m.id !== streamingMessageId);
                 return [...base, streamingMessage];
               });
             }
@@ -282,6 +285,7 @@ export function AgentLoopProvider({
               summary: event.summary,
               totalTurns: event.totalTurns,
               durationMs: event.durationMs,
+              isError: event.isError,
             });
             setRunningSubAgents(new Map(runningSubAgents));
             setCompletedSubAgents(new Map(completedSubAgents));
