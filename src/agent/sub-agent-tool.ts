@@ -173,7 +173,7 @@ If the task references files in .agent/, read them first before proceeding.`;
         });
       }
 
-      let totalTurns = 0;
+      let finalTotalTurns = 0;
       let finalSummary = '';
 
       // Run the agent loop and bubble events
@@ -182,8 +182,6 @@ If the task references files in .agent/, read them first before proceeding.`;
         if (options?.signal?.aborted) {
           throw new Error('Sub agent aborted by main agent');
         }
-
-        totalTurns++;
 
         // Bubble the event if callback exists
         if (this.config.onEvent) {
@@ -197,11 +195,20 @@ If the task references files in .agent/, read them first before proceeding.`;
 
         // Capture the final summary from agent_done
         if (event.type === 'agent_done') {
-          // Get the final context to get the last assistant message
+          // Get the actual total turns from the event
+          finalTotalTurns = event.totalTurns;
+
+          // Get the final context and find the last assistant message
           const finalContext = subAgent.getContext();
-          const lastMessage = finalContext.messages[finalContext.messages.length - 1];
-          if (lastMessage.role === 'assistant') {
-            finalSummary = lastMessage.content;
+
+          // Search backwards from the end to find the last assistant message
+          // Because the last message might be a tool result, not assistant
+          for (let i = finalContext.messages.length - 1; i >= 0; i--) {
+            const message = finalContext.messages[i];
+            if (message.role === 'assistant' && message.content) {
+              finalSummary = message.content;
+              break;
+            }
           }
         }
       }
@@ -214,7 +221,7 @@ If the task references files in .agent/, read them first before proceeding.`;
           type: 'sub_agent_done',
           agentId,
           summary: finalSummary,
-          totalTurns,
+          totalTurns: finalTotalTurns,
           durationMs,
           turnIndex: 0,
         });
@@ -222,11 +229,11 @@ If the task references files in .agent/, read them first before proceeding.`;
 
       // Ensure we have a summary
       if (!finalSummary) {
-        finalSummary = `Sub agent completed ${totalTurns} turns but produced no final summary.`;
+        finalSummary = `Sub agent completed ${finalTotalTurns} turns but produced no final summary.`;
       }
 
       // Return summary to main agent
-      return `[SubAgent ${agentId} completed in ${durationMs}ms, ${totalTurns} turns]\n\n${finalSummary}`;
+      return `[SubAgent ${agentId} completed in ${durationMs}ms, ${finalTotalTurns} turns]\n\n${finalSummary}`;
     } catch (error) {
       const durationMs = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : String(error);

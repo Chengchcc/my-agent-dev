@@ -58,17 +58,16 @@ export class JsonlMemoryStore implements MemoryStore {
       created: new Date().toISOString(),
     };
 
-    const content = JSON.stringify(fullEntry);
-
     if (this.type === 'project') {
-      // Project memory is single JSON file, not JSONL
-      await fs.writeFile(this.filePath, JSON.stringify(fullEntry, null, 2), 'utf8');
+      // Project memory stores an array of entries
+      const existingEntries = await this.getAll();
+      const updatedEntries = [...existingEntries, fullEntry];
+      await fs.writeFile(this.filePath, JSON.stringify(updatedEntries, null, 2), 'utf8');
     } else {
       // Append to JSONL
+      const content = JSON.stringify(fullEntry);
       await fs.appendFile(this.filePath, content + '\n', 'utf8');
     }
-
-    this.invalidateCache();
 
     // Check if we need to trigger FIFO trimming
     const count = await this.count();
@@ -79,6 +78,8 @@ export class JsonlMemoryStore implements MemoryStore {
     if (count > maxEntries) {
       await this.trimFifo(maxEntries);
     }
+
+    this.invalidateCache();
 
     return fullEntry;
   }
@@ -122,8 +123,8 @@ export class JsonlMemoryStore implements MemoryStore {
 
     if (this.type === 'project') {
       const content = await fs.readFile(this.filePath, 'utf8');
-      const entry = JSON.parse(content) as MemoryEntry;
-      this.cache = [entry];
+      const entries = JSON.parse(content) as MemoryEntry[];
+      this.cache = entries;
       return this.cache;
     }
 
@@ -143,9 +144,7 @@ export class JsonlMemoryStore implements MemoryStore {
     await this.ensureDir();
 
     if (type === 'project') {
-      if (entries.length > 0) {
-        await fs.writeFile(this.filePath, JSON.stringify(entries[0], null, 2), 'utf8');
-      }
+      await fs.writeFile(this.filePath, JSON.stringify(entries, null, 2), 'utf8');
     } else {
       const content = entries.map(e => JSON.stringify(e)).join('\n') + (entries.length > 0 ? '\n' : '');
       await fs.writeFile(this.filePath, content, 'utf8');
