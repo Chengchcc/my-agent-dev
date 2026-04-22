@@ -8,7 +8,9 @@
   },
   "scripts": {
     "tui": "bun run bin/my-agent-tui-dev.ts",
-    "tsc": "tsc"
+    "tsc": "tsc",
+    "build": "tsc",
+    "dev": "bun run bin/my-agent-tui-dev.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

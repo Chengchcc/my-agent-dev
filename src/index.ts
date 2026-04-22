@@ -13,6 +13,9 @@ export * from './skills';
 // Built-in Tools
 export * from './tools';
 
+// Functions
+// export * from './functions';
+
 // Todos
 export * from './todos/index';
 
