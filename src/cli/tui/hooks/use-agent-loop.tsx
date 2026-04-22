@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
 import type { Message } from '../../../types';
-import type { AgentEvent, ToolCallStartEvent } from '../../../agent/loop-types';
+import type { AgentEvent, SubAgentStartEvent, SubAgentNestedEvent, SubAgentDoneEvent, ToolCallStartEvent } from '../../../agent/loop-types';
 import type { PromptSubmission } from '../command-registry';
 import type { UITodoItem } from '../types';
 import { getBuiltinCommands } from '../command-registry';
@@ -17,6 +17,8 @@ type AgentLoopState = {
   messages: Message[];
   todos: UITodoItem[];
   currentTools: ToolCallStartEvent[];
+  runningSubAgents: Map<string, SubAgentStartEvent>;
+  completedSubAgents: Map<string, { summary: string; totalTurns: number; durationMs: number }>;
   onSubmit: (text: string) => Promise<void>;
   onSubmitWithSkill: (submission: PromptSubmission) => void;
   abort: () => void;
@@ -38,6 +40,8 @@ export function AgentLoopProvider({
   const [messages, setMessages] = useState<Message[]>([]);
   const [todos, setTodos] = useState<UITodoItem[]>([]);
   const [currentTools, setCurrentTools] = useState<ToolCallStartEvent[]>([]);
+  const [runningSubAgents, setRunningSubAgents] = useState<Map<string, SubAgentStartEvent>>(new Map());
+  const [completedSubAgents, setCompletedSubAgents] = useState<Map<string, { summary: string; totalTurns: number; durationMs: number }>>(new Map());
 
   const streamingRef = useRef(streaming);
   const streamingMessageRef = useRef<Message | null>(null);
@@ -175,8 +179,21 @@ export function AgentLoopProvider({
             setMessages(prev => [...prev, errorMessage]);
           } else if (event.type === 'turn_complete' || event.type === 'agent_done') {
             // No action needed during iteration
-          } else if (event.type === 'sub_agent_start' || event.type === 'sub_agent_event' || event.type === 'sub_agent_done') {
-            // Sub agent events - currently not displayed in UI
+          } else if (event.type === 'sub_agent_start') {
+            runningSubAgents.set(event.agentId, event);
+            setRunningSubAgents(new Map(runningSubAgents));
+          } else if (event.type === 'sub_agent_event') {
+            // Nested events are handled by the SubAgentMessage component
+            // No action needed here - we just collect the start/done
+          } else if (event.type === 'sub_agent_done') {
+            runningSubAgents.delete(event.agentId);
+            completedSubAgents.set(event.agentId, {
+              summary: event.summary,
+              totalTurns: event.totalTurns,
+              durationMs: event.durationMs,
+            });
+            setRunningSubAgents(new Map(runningSubAgents));
+            setCompletedSubAgents(new Map(completedSubAgents));
           } else {
             // Exhaustiveness check - TypeScript will warn if new event types are added
             const _exhaustive: never = event;
@@ -225,12 +242,14 @@ export function AgentLoopProvider({
       messages,
       todos,
       currentTools,
+      runningSubAgents,
+      completedSubAgents,
       onSubmit,
       onSubmitWithSkill,
       abort,
       setTodos,
     }),
-    [abort, agent, messages, onSubmit, onSubmitWithSkill, streaming, todos, currentTools, setTodos],
+    [abort, agent, messages, onSubmit, onSubmitWithSkill, streaming, todos, currentTools, runningSubAgents, completedSubAgents, setTodos],
   );
 
   return (
