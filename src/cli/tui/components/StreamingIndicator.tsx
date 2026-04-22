@@ -4,15 +4,16 @@ import { BlinkingText } from './';
 import { useAgentLoop } from '../hooks';
 
 export function StreamingIndicator({ nextTodo }: { nextTodo?: string }) {
-  const { streaming, streamingStartTime } = useAgentLoop();
+  const { streaming, streamingStartTime, messages } = useAgentLoop();
   const [, forceUpdate] = useState({});
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (streaming && streamingStartTime) {
+      // Refresh at 500ms interval instead of 100ms - enough for second accuracy
       intervalRef.current = setInterval(() => {
         forceUpdate({});
-      }, 100);
+      }, 500);
     }
     return () => {
       if (intervalRef.current) {
@@ -26,7 +27,7 @@ export function StreamingIndicator({ nextTodo }: { nextTodo?: string }) {
 
   const elapsedMs = streamingStartTime ? Date.now() - streamingStartTime : 0;
   const elapsedSec = (elapsedMs / 1000).toFixed(1);
-  const { messages } = useAgentLoop();
+  // Turn count = number of completed assistant messages + this current turn
   const turnCount = messages.filter(m => m.role === 'assistant').length;
 
   return (
