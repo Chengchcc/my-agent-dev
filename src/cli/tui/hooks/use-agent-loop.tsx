@@ -60,6 +60,8 @@ export function AgentLoopProvider({
 
   const streamingRef = useRef(streaming);
   const streamingMessageRef = useRef<Message | null>(null);
+  const streamingContentRef = useRef('');
+  const batchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     streamingRef.current = streaming;
@@ -209,9 +211,9 @@ export function AgentLoopProvider({
 
       setStreaming(true);
       streamingMessageRef.current = null;
+      streamingContentRef.current = '';
 
       // Track incremental streaming content
-      let streamingContent = '';
       const runningTools = new Map<string, ToolCallStartEvent>();
       // Stable id for streaming message that persists across updates
       const streamingMessageId = `streaming-${Date.now()}`;
@@ -223,21 +225,25 @@ export function AgentLoopProvider({
             // Only accumulate text during the current assistant turn
             // After tool execution, full messages are already in context
             if (streamingMessageRef.current !== null || runningTools.size === 0) {
-              streamingContent += event.delta;
+              streamingContentRef.current += event.delta;
 
-              // Update the streaming message - reuse the same stable id
-              const oldStreamingMessage = streamingMessageRef.current;
-              const streamingMessage: Message = {
-                id: streamingMessageId,
-                role: 'assistant',
-                content: streamingContent,
-              };
-              streamingMessageRef.current = streamingMessage;
+              // Batch updates: max one render per 50ms to reduce flicker
+              if (!batchTimerRef.current) {
+                batchTimerRef.current = setTimeout(() => {
+                  batchTimerRef.current = null;
+                  const streamingMessage: Message = {
+                    id: streamingMessageId,
+                    role: 'assistant',
+                    content: streamingContentRef.current,
+                  };
+                  streamingMessageRef.current = streamingMessage;
 
-              setMessages(prev => {
-                const base = prev.filter(m => m.id !== streamingMessageId);
-                return [...base, streamingMessage];
-              });
+                  setMessages(prev => {
+                    const base = prev.filter(m => m.id !== streamingMessageId);
+                    return [...base, streamingMessage];
+                  });
+                }, 50);
+              }
             }
           } else if (event.type === 'tool_call_start') {
             runningTools.set(event.toolCall.id, event);
@@ -260,7 +266,7 @@ export function AgentLoopProvider({
 
             // After tool result completes, refresh from full context
             // This ensures tool messages are shown separately immediately
-            streamingContent = '';
+            streamingContentRef.current = '';
             streamingMessageRef.current = null;
             refreshMessages();
             refreshTodos();
@@ -311,6 +317,11 @@ export function AgentLoopProvider({
         setMessages(prev => [...prev, errorMessage]);
         refreshTodos();
       } finally {
+        // Clear any pending batch timer
+        if (batchTimerRef.current) {
+          clearTimeout(batchTimerRef.current);
+          batchTimerRef.current = null;
+        }
         // Update todos from agent one last time
         refreshTodos();
 
