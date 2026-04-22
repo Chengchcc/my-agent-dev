@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useReducer } from 'react';
+import { countTokens } from '@anthropic-ai/tokenizer';
 import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
 import type { Message } from '../../../types';
@@ -213,6 +214,8 @@ type AgentLoopState = {
   toolResults: Map<string, { durationMs: number; isError: boolean }>;
   /** Accumulated total token usage across all turns */
   totalUsage: { promptTokens: number; completionTokens: number; totalTokens: number };
+  /** Current approximate context token count */
+  currentContextTokens: number;
   /** Token limit from agent config */
   tokenLimit: number;
   /** Start time of current streaming turn (null if not streaming) */
@@ -510,6 +513,13 @@ export function AgentLoopProvider({
     }
   }, [agent]);
 
+  // Calculate current context token count
+  const currentContextTokens = useMemo(() => {
+    return messages.reduce((sum, msg) => {
+      return sum + countTokens(msg.content || '');
+    }, 0);
+  }, [messages]);
+
   const value = useMemo(
     () => ({
       agent,
@@ -523,6 +533,7 @@ export function AgentLoopProvider({
       expandedTools,
       toolResults,
       totalUsage,
+      currentContextTokens,
       tokenLimit,
       streamingStartTime,
       onSubmit,
@@ -533,7 +544,7 @@ export function AgentLoopProvider({
       toggleFocusedTool,
       moveFocus,
     }),
-    [agent, messages, onSubmit, onSubmitWithSkill, abort, streaming, todos, currentTools, runningSubAgents, completedSubAgents, focusedToolId, expandedTools, toolResults, totalUsage, tokenLimit, streamingStartTime, focusTool, toggleFocusedTool, moveFocus],
+    [agent, messages, onSubmit, onSubmitWithSkill, abort, streaming, todos, currentTools, runningSubAgents, completedSubAgents, focusedToolId, expandedTools, toolResults, totalUsage, currentContextTokens, tokenLimit, streamingStartTime, focusTool, toggleFocusedTool, moveFocus],
   );
 
   return (

@@ -3,11 +3,11 @@ import React from 'react';
 import { useAgentLoop } from '../hooks';
 
 export function Footer() {
-  const { totalUsage, tokenLimit } = useAgentLoop();
+  const { totalUsage, currentContextTokens, tokenLimit } = useAgentLoop();
 
-  const percentage = tokenLimit > 0 ? Math.round((totalUsage.totalTokens / tokenLimit) * 100) : 0;
+  const percentage = tokenLimit > 0 ? Math.round((currentContextTokens / tokenLimit) * 100) : 0;
   const barWidth = 20;
-  const filled = tokenLimit > 0 ? Math.round(barWidth * totalUsage.totalTokens / tokenLimit) : 0;
+  const filled = tokenLimit > 0 ? Math.round(barWidth * currentContextTokens / tokenLimit) : 0;
   const empty = barWidth - filled;
 
   // Color based on percentage
@@ -26,7 +26,7 @@ export function Footer() {
       <Box gap={1}>
         {totalUsage.totalTokens > 0 && (
           <>
-            <Text dimColor>Tokens: {totalUsage.totalTokens.toLocaleString()}</Text>
+            <Text dimColor>Total: {totalUsage.totalTokens.toLocaleString()}</Text>
             <Text dimColor>
               Context: <Text color={color}>{bar}</Text> {percentage}%
             </Text>
