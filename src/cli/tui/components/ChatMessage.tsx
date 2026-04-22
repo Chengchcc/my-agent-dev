@@ -2,7 +2,7 @@ import { Box, Text } from 'ink';
 import { marked, type Token } from 'marked';
 import React, { useMemo } from 'react';
 import { useAgentLoop } from '../hooks';
-import type { Message } from '../../../types';
+import type { Message, ToolCall } from '../../../types';
 import { CodeBlock } from './CodeBlock';
 import { ToolCallMessage } from './';
 
@@ -17,8 +17,7 @@ marked.setOptions({
   async: false,
 });
 
-export function ChatMessage({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
-  const { focusedToolId, expandedTools, toolResults, currentTools, messages: allMessages } = useAgentLoop();
+function _ChatMessage({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
 
   // Handle different role types with appropriate styling
   const getRoleColor = (role: string): string => {
@@ -158,39 +157,9 @@ export function ChatMessage({ message, isStreaming }: { message: Message; isStre
               {pending && <Text>{pending}</Text>}
             </Box>
           )}
-          {message.tool_calls.map(tc => {
-            const expanded = expandedTools.has(tc.id);
-            const focused = focusedToolId === tc.id;
-
-            // Look up from toolResults
-            const resultMeta = toolResults.get(tc.id);
-
-            // Look up the tool content from messages
-            const toolMsg = allMessages.find(m => m.role === 'tool' && m.tool_call_id === tc.id);
-
-            let result: { content: string; isError: boolean; durationMs: number } | undefined;
-            if (toolMsg?.content) {
-              result = {
-                content: toolMsg.content,
-                isError: resultMeta?.isError ?? false,
-                durationMs: resultMeta?.durationMs ?? 0,
-              };
-            }
-
-            const pending = currentTools.some(t => t.toolCall.id === tc.id);
-
-            return (
-              <Box key={`${message.id ?? ''}-${tc.id}`} marginY={1}>
-                <ToolCallMessage
-                  toolCall={tc}
-                  result={result}
-                  pending={pending}
-                  focused={focused}
-                  expanded={expanded}
-                />
-              </Box>
-            );
-          })}
+          {message.tool_calls.map(tc => (
+            <ToolCallWrapper key={`${message.id ?? ''}-${tc.id}`} toolCall={tc} />
+          ))}
         </Box>
       </Box>
     );
@@ -215,3 +184,52 @@ export function ChatMessage({ message, isStreaming }: { message: Message; isStre
     </Box>
   );
 }
+
+function ToolCallWrapper({ toolCall }: { toolCall: ToolCall }) {
+  const { focusedToolId, expandedTools, toolResults, currentTools, messages: allMessages } = useAgentLoop();
+  const expanded = expandedTools.has(toolCall.id);
+  const focused = focusedToolId === toolCall.id;
+
+  // Look up from toolResults
+  const resultMeta = toolResults.get(toolCall.id);
+
+  // Look up the tool content from messages
+  const toolMsg = allMessages.find(m => m.role === 'tool' && m.tool_call_id === toolCall.id);
+
+  let result: { content: string; isError: boolean; durationMs: number } | undefined;
+  if (toolMsg?.content) {
+    result = {
+      content: toolMsg.content,
+      isError: resultMeta?.isError ?? false,
+      durationMs: resultMeta?.durationMs ?? 0,
+    };
+  }
+
+  const pending = currentTools.some(t => t.toolCall.id === toolCall.id);
+
+  return (
+    <Box marginY={1}>
+      <ToolCallMessage
+        toolCall={toolCall}
+        result={result}
+        pending={pending}
+        focused={focused}
+        expanded={expanded}
+      />
+    </Box>
+  );
+}
+
+export const ChatMessage = React.memo(
+  _ChatMessage,
+  (prev, next) => {
+    // Only re-render if what we care about actually changed
+    return (
+      prev.message.id === next.message.id &&
+      prev.message.content === next.message.content &&
+      prev.isStreaming === next.isStreaming &&
+      prev.message.tool_calls === next.message.tool_calls &&
+      prev.message.role === next.message.role
+    );
+  }
+);
