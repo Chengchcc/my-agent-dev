@@ -689,4 +689,11 @@ export class Agent {
   getContextManager(): ContextManager {
     return this.contextManager;
   }
+
+  /**
+   * Get the name of the model from the provider.
+   */
+  getModelName(): string {
+    return this.provider.getModelName();
+  }
 }

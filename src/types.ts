@@ -93,6 +93,8 @@ export interface Provider {
   registerTools(tools: Tool[]): void;
   invoke(context: AgentContext): Promise<LLMResponse>;
   stream(context: AgentContext, options?: { signal?: AbortSignal }): AsyncIterable<LLMResponseChunk>;
+  /** Get the name of the model this provider uses */
+  getModelName(): string;
 }
 
 // Onion-style middleware function

@@ -13,8 +13,8 @@ const HAMSTER_LOGO = `\
 export function Header({ sessionStore }: { sessionStore: SessionStore }) {
   const { agent } = useAgentLoop();
 
-  // Get model from config if available
-  const model = agent.config.model;
+  // Get model from provider
+  const model = agent.getModelName();
   const sessionId = sessionStore.getSessionId();
 
   return (

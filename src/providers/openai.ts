@@ -218,4 +218,8 @@ export class OpenAIProvider implements Provider {
       return base as OpenAI.ChatCompletionMessageParam;
     });
   }
+
+  getModelName(): string {
+    return this.model;
+  }
 }

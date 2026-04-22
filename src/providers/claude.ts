@@ -273,4 +273,8 @@ export class ClaudeProvider implements Provider {
     }
     return Math.ceil(totalChars / 4);
   }
+
+  getModelName(): string {
+    return this.model;
+  }
 }
