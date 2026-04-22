@@ -35,6 +35,8 @@ export interface ToolCallResultEvent extends AgentEventBase {
   toolCall: ToolCall;
   result: unknown;
   error?: Error;
+  durationMs: number;
+  isError: boolean;
 }
 
 /**

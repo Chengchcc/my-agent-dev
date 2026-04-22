@@ -245,17 +245,12 @@ export function AgentLoopProvider({
           } else if (event.type === 'tool_call_result') {
             runningTools.delete(event.toolCall.id);
             setCurrentTools(Array.from(runningTools.values()));
-
-            // Track tool results for display
-            const toolId = event.toolCall.id;
-            const isError = !!event.error;
-            // We don't have actual duration from the event, so just use current time?
-            // Or maybe track start/end times?
+            // Store duration metadata
             setToolResults(prev => {
               const next = new Map(prev);
-              next.set(toolId, {
-                isError,
-                durationMs: 0,
+              next.set(event.toolCall.id, {
+                durationMs: event.durationMs,
+                isError: event.isError,
               });
               return next;
             });

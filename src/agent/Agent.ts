@@ -326,23 +326,28 @@ export class Agent {
     maxOutputChars: number,
     toolTimeoutMs: number,
     signal?: AbortSignal,
-  ): Promise<{ result: unknown; error?: Error }> {
+  ): Promise<{ result: unknown; error?: Error; durationMs: number }> {
+    const startTime = Date.now();
     const tool = this.toolRegistry?.get(toolCall.name);
 
     if (!tool) {
+      const durationMs = Date.now() - startTime;
       return {
         result: `Error: Tool '${toolCall.name}' not found in registry.`,
+        durationMs,
       };
     }
 
     try {
       // Create timeout promise
-      const timeoutPromise = new Promise<{ result: unknown; error?: Error }>(
+      const timeoutPromise = new Promise<{ result: unknown; error?: Error; durationMs: number }>(
         (resolve) => {
           setTimeout(() => {
+            const durationMs = Date.now() - startTime;
             resolve({
               result: `Error: Tool execution timed out after ${toolTimeoutMs}ms.`,
               error: new Error(`Tool timeout after ${toolTimeoutMs}ms`),
+              durationMs,
             });
           }, toolTimeoutMs);
         }
@@ -364,9 +369,10 @@ export class Agent {
             const result = await toolFn.call(tool, toolCall.arguments, { signal, context: currentContext });
             // Sync any changes to todo state back to contextManager
             this.contextManager.syncTodoFromContext(currentContext);
-            return result;
+            return { result, durationMs: Date.now() - startTime };
           }
-          return await tool.execute(toolCall.arguments);
+          const result = await tool.execute(toolCall.arguments);
+          return { result, durationMs: Date.now() - startTime };
         } catch (error) {
           throw error;
         }
@@ -376,26 +382,31 @@ export class Agent {
       const result = await Promise.race([executePromise, timeoutPromise]);
 
       // Truncate if output is a string
-      if (typeof result === 'string') {
-        return { result: this.truncateOutput(result, maxOutputChars) };
+      if (typeof result.result === 'string') {
+        return {
+          ...result,
+          result: this.truncateOutput(result.result, maxOutputChars)
+        };
       }
       if (
-        result &&
-        typeof (result as { output?: string }).output === 'string'
+        result.result &&
+        typeof (result.result as { output?: string }).output === 'string'
       ) {
-        (result as { output: string }).output = this.truncateOutput(
-          (result as { output: string }).output,
+        (result.result as { output: string }).output = this.truncateOutput(
+          (result.result as { output: string }).output,
           maxOutputChars,
         );
       }
 
-      return { result };
+      return result;
     } catch (error) {
+      const durationMs = Date.now() - startTime;
       return {
         result: `Error executing tool '${toolCall.name}': ${
           error instanceof Error ? error.message : String(error)
         }`,
         error: error instanceof Error ? error : new Error(String(error)),
+        durationMs,
       };
     }
   }
@@ -571,6 +582,7 @@ export class Agent {
             } satisfies AgentEvent;
           }
 
+          const startTime = Date.now();
           // Execute all tools in parallel and collect results with promises
           const results = await Promise.allSettled(
             tool_calls.map(async (toolCall) => {
@@ -598,6 +610,8 @@ export class Agent {
                 toolCall,
                 result: result.result,
                 error: result.error,
+                durationMs: result.durationMs,
+                isError: !!result.error,
                 turnIndex,
               } satisfies AgentEvent;
 
@@ -621,11 +635,14 @@ export class Agent {
               const error = item.reason instanceof Error
                 ? item.reason
                 : new Error(String(item.reason));
+              const durationMs = Date.now() - startTime;
               yield {
                 type: 'tool_call_result',
                 toolCall,
                 result: `Error: ${error.message}`,
                 error,
+                durationMs,
+                isError: true,
                 turnIndex,
               } satisfies AgentEvent;
 
@@ -643,6 +660,7 @@ export class Agent {
             }
           }
         } else if (config.parallelToolExecution) {
+          const startTime = Date.now();
           // Execute in parallel, yield all after all complete
           const results = await Promise.allSettled(
             tool_calls.map(async (toolCall) => {
@@ -663,7 +681,7 @@ export class Agent {
               turnIndex,
             } satisfies AgentEvent;
 
-            let result: { result: unknown; error?: Error };
+            let result: { result: unknown; error?: Error; durationMs: number };
             const resultItem = results[i];
             if (resultItem.status === 'fulfilled') {
               result = resultItem.value;
@@ -672,9 +690,11 @@ export class Agent {
               const error = resultItem.reason instanceof Error
                 ? resultItem.reason
                 : new Error(String(resultItem.reason));
+              const durationMs = Date.now() - startTime;
               result = {
                 result: `Error: ${error.message}`,
                 error,
+                durationMs,
               };
             }
 
@@ -683,6 +703,8 @@ export class Agent {
               toolCall,
               result: result.result,
               error: result.error,
+              durationMs: result.durationMs,
+              isError: !!result.error,
               turnIndex,
             } satisfies AgentEvent;
 
@@ -723,6 +745,8 @@ export class Agent {
               toolCall,
               result: result.result,
               error: result.error,
+              durationMs: result.durationMs,
+              isError: !!result.error,
               turnIndex,
             } satisfies AgentEvent;
 
