@@ -175,6 +175,8 @@ export function AgentLoopProvider({
             setMessages(prev => [...prev, errorMessage]);
           } else if (event.type === 'turn_complete' || event.type === 'agent_done') {
             // No action needed during iteration
+          } else if (event.type === 'sub_agent_start' || event.type === 'sub_agent_event' || event.type === 'sub_agent_done') {
+            // Sub agent events - currently not displayed in UI
           } else {
             // Exhaustiveness check - TypeScript will warn if new event types are added
             const _exhaustive: never = event;

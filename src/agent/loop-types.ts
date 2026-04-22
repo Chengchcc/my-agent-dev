@@ -64,6 +64,35 @@ export interface AgentErrorEvent extends AgentEventBase {
 }
 
 /**
+ * Sub Agent started - yielded when a sub agent begins execution
+ */
+export interface SubAgentStartEvent extends AgentEventBase {
+  type: 'sub_agent_start';
+  agentId: string;
+  task: string;
+}
+
+/**
+ * Sub Agent event - a nested event from the sub agent's execution
+ */
+export interface SubAgentNestedEvent extends AgentEventBase {
+  type: 'sub_agent_event';
+  agentId: string;
+  event: AgentEvent;
+}
+
+/**
+ * Sub Agent completed - yielded when sub agent finishes execution
+ */
+export interface SubAgentDoneEvent extends AgentEventBase {
+  type: 'sub_agent_done';
+  agentId: string;
+  summary: string;
+  totalTurns: number;
+  durationMs: number;
+}
+
+/**
  * Union of all possible agent events
  */
 export type AgentEvent =
@@ -72,7 +101,10 @@ export type AgentEvent =
   | ToolCallResultEvent
   | TurnCompleteEvent
   | AgentDoneEvent
-  | AgentErrorEvent;
+  | AgentErrorEvent
+  | SubAgentStartEvent
+  | SubAgentNestedEvent
+  | SubAgentDoneEvent;
 
 /**
  * Strategy for handling tool errors
