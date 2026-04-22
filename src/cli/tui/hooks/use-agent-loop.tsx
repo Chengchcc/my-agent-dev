@@ -23,6 +23,9 @@ type AgentLoopState = {
   onSubmitWithSkill: (submission: PromptSubmission) => void;
   abort: () => void;
   setTodos: (todos: UITodoItem[]) => void;
+  focusedToolId: string | null;
+  expandedTools: Set<string>;
+  toolResults: Map<string, { isError: boolean; durationMs: number }>;
 };
 
 const AgentLoopContext = createContext<AgentLoopState | null>(null);
@@ -42,6 +45,9 @@ export function AgentLoopProvider({
   const [currentTools, setCurrentTools] = useState<ToolCallStartEvent[]>([]);
   const [runningSubAgents, setRunningSubAgents] = useState<Map<string, SubAgentStartEvent>>(new Map());
   const [completedSubAgents, setCompletedSubAgents] = useState<Map<string, { summary: string; totalTurns: number; durationMs: number }>>(new Map());
+  const [focusedToolId, setFocusedToolId] = useState<string | null>(null);
+  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
+  const [toolResults, setToolResults] = useState<Map<string, { isError: boolean; durationMs: number }>>(new Map());
 
   const streamingRef = useRef(streaming);
   const streamingMessageRef = useRef<Message | null>(null);
@@ -164,6 +170,21 @@ export function AgentLoopProvider({
           } else if (event.type === 'tool_call_result') {
             runningTools.delete(event.toolCall.id);
             setCurrentTools(Array.from(runningTools.values()));
+
+            // Track tool results for display
+            const toolId = event.toolCall.id;
+            const isError = !!event.error;
+            // We don't have actual duration from the event, so just use current time?
+            // Or maybe track start/end times?
+            setToolResults(prev => {
+              const next = new Map(prev);
+              next.set(toolId, {
+                isError,
+                durationMs: 0,
+              });
+              return next;
+            });
+
             // After tool result completes, refresh from full context
             // This ensures tool messages are shown separately immediately
             streamingContent = '';
@@ -248,8 +269,11 @@ export function AgentLoopProvider({
       onSubmitWithSkill,
       abort,
       setTodos,
+      focusedToolId,
+      expandedTools,
+      toolResults,
     }),
-    [abort, agent, messages, onSubmit, onSubmitWithSkill, streaming, todos, currentTools, runningSubAgents, completedSubAgents, setTodos],
+    [abort, agent, messages, onSubmit, onSubmitWithSkill, streaming, todos, currentTools, runningSubAgents, completedSubAgents, setTodos, focusedToolId, expandedTools, toolResults],
   );
 
   return (

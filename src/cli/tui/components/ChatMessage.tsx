@@ -1,37 +1,36 @@
 import { Box, Text } from 'ink';
 import { marked, type Token } from 'marked';
 import React, { useMemo } from 'react';
+import { useAgentLoop } from '../hooks';
 import type { Message } from '../../../types';
 import { CodeBlock } from './CodeBlock';
+import { ToolCallMessage } from './';
 
 // Use require to avoid type conflicts between marked-terminal's marked types and our marked types
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const TerminalRenderer = require('marked-terminal').default;
 
-// Configure marked to use TerminalRenderer for non-code content
-// We still handle code blocks separately for proper Ink syntax highlighting
+// Configure marked to use TerminalRenderer
 marked.setOptions({
   // @ts-ignore: TerminalRenderer type conflict due to nested dependency versions
   renderer: new TerminalRenderer(),
   async: false,
 });
 
-// Tool responses: don't show full content by default, truncate to prevent taking too much screen space
-const MAX_TOOL_LINES = 8;
-const MAX_TOOL_CHARS = 500;
-
 export function ChatMessage({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
+  const { focusedToolId, expandedTools, toolResults, currentTools, messages: allMessages } = useAgentLoop();
+
   // Handle different role types with appropriate styling
   const getRoleColor = (role: string): string => {
     switch (role) {
       case 'user':
         return 'cyan';      // Nord cyan for user input
       case 'assistant':
-        return 'white';     // Light gray/white for assistant output (Nord #d8dee9)
+        return 'white';     // Light gray/white for assistant output
       case 'system':
-        return 'yellow';    // Muted yellow for system messages (Nord #ebcb8b)
+        return 'yellow';    // Muted yellow for system messages
       case 'tool':
-        return 'magenta';   // Muted purple for tool output (Nord #b48ead)
+        return 'magenta';   // Muted purple for tool output
       default:
         return 'gray';
     }
@@ -53,20 +52,16 @@ export function ChatMessage({ message, isStreaming }: { message: Message; isStre
   };
 
   // Split content into stable part (fully closed markdown structures) and pending part (unclosed)
-  // This prevents layout jumping when streaming incomplete markdown
   function splitStableContent(content: string): { stable: string; pending: string } {
     if (!isStreaming) {
       return { stable: content, pending: '' };
     }
 
-    // Count open structures that can cause unstable parsing
     const backtickBlocks = (content.match(/```/g) || []).length;
     if (backtickBlocks % 2 === 0) {
-      // All code blocks closed, everything is stable
       return { stable: content, pending: '' };
     }
 
-    // Find the last opening ``` and split there
     const lastOpening = content.lastIndexOf('```');
     if (lastOpening === -1) {
       return { stable: content, pending: '' };
@@ -87,7 +82,6 @@ export function ChatMessage({ message, isStreaming }: { message: Message; isStre
 
       tokens.forEach((token, index) => {
         if (token.type === 'code') {
-          // Flush any buffered text before adding the code block
           if (textBuffer.trim()) {
             try {
               const result = marked(textBuffer) as string;
@@ -109,19 +103,15 @@ export function ChatMessage({ message, isStreaming }: { message: Message; isStre
           const codeToken = token as Token & { text: string; lang?: string };
           elements.push(<CodeBlock key={index} code={codeToken.text} language={codeToken.lang} />);
         } else {
-          // Use token.raw to include the full original markdown including formatting markers like ## for headings
-          // This preserves context so marked can render it correctly
           const tokenAny = token as any;
           if (tokenAny.raw) {
             textBuffer += tokenAny.raw;
           } else if (tokenAny.text) {
-            // Fallback to text if raw not available
             textBuffer += tokenAny.text;
           }
         }
       });
 
-      // Flush any remaining text after processing all tokens
       if (textBuffer.trim()) {
         try {
           const result = marked(textBuffer) as string;
@@ -140,7 +130,6 @@ export function ChatMessage({ message, isStreaming }: { message: Message; isStre
         }
       }
     } catch (e) {
-      // If overall lexing/parsing fails, fall back to full raw text
       console.warn('Marked lexing failed, falling back to full raw text:', e);
       elements.push(<Text>{content}</Text>);
     }
@@ -148,51 +137,75 @@ export function ChatMessage({ message, isStreaming }: { message: Message; isStre
     return elements;
   }
 
-  function truncateToolContent(content: string): { content: string; truncated: boolean } {
-    const lines = content.split('\n');
-    if (lines.length <= MAX_TOOL_LINES && content.length <= MAX_TOOL_CHARS) {
-      return { content, truncated: false };
-    }
-    // Truncate to limits
-    const previewLines = lines.slice(0, MAX_TOOL_LINES);
-    let preview = previewLines.join('\n');
-    let truncated = false;
-
-    if (preview.length > MAX_TOOL_CHARS) {
-      preview = preview.slice(0, MAX_TOOL_CHARS);
-      truncated = true;
-    } else if (lines.length > MAX_TOOL_LINES) {
-      truncated = true;
-    }
-
-    if (truncated) {
-      preview += '\n... (output truncated, full content saved to context)';
-    }
-
-    return { content: preview, truncated };
-  }
-
   const roleColor = getRoleColor(message.role);
   const rolePrefix = getRolePrefix(message.role);
+  const { stable, pending } = splitStableContent(message.content ?? '');
+  const stableElements = useMemo(() => renderMarkdownTokens(stable), [stable]);
 
-  // Handle tool content truncation
-  let contentToRender = message.content;
-  if (message.role === 'tool') {
-    const { content } = truncateToolContent(message.content);
-    contentToRender = content;
+  // Assistant messages with tool calls: render content + inline tool calls
+  if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <Box>
+          <Text color={roleColor}>
+            {rolePrefix} {message.role}:
+          </Text>
+        </Box>
+        <Box paddingLeft={1} flexDirection="column">
+          {message.content && (
+            <Box flexDirection="column">
+              {stableElements}
+              {pending && <Text>{pending}</Text>}
+            </Box>
+          )}
+          {message.tool_calls.map(tc => {
+            const expanded = expandedTools.has(tc.id);
+            const focused = focusedToolId === tc.id;
+
+            // Look up from toolResults
+            const resultMeta = toolResults.get(tc.id);
+
+            // Look up the tool content from messages
+            const toolMsg = allMessages.find(m => m.role === 'tool' && m.tool_call_id === tc.id);
+
+            let result: { content: string; isError: boolean; durationMs: number } | undefined;
+            if (toolMsg?.content) {
+              result = {
+                content: toolMsg.content,
+                isError: resultMeta?.isError ?? false,
+                durationMs: resultMeta?.durationMs ?? 0,
+              };
+            }
+
+            const pending = currentTools.some(t => t.toolCall.id === tc.id);
+
+            return (
+              <Box key={tc.id} marginY={1}>
+                <ToolCallMessage
+                  toolCall={tc}
+                  result={result}
+                  pending={pending}
+                  focused={focused}
+                  expanded={expanded}
+                />
+              </Box>
+            );
+          })}
+        </Box>
+      </Box>
+    );
   }
 
-  const { stable, pending } = splitStableContent(contentToRender);
-  const stableElements = useMemo(() => renderMarkdownTokens(stable), [stable]);
+  // Don't render standalone tool messages - they're rendered inline with the assistant message
+  if (message.role === 'tool') {
+    return null;
+  }
 
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
         <Text color={roleColor}>
           {rolePrefix} {message.role}:
-          {message.role === 'tool' && message.content.length > MAX_TOOL_CHARS && (
-            <Text color="gray" dimColor> [truncated]</Text>
-          )}
         </Text>
       </Box>
       <Box paddingLeft={1} flexDirection="column">
