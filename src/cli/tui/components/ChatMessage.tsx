@@ -187,37 +187,37 @@ function _ChatMessage({ message, isStreaming }: { message: Message; isStreaming?
 
 function ToolCallWrapper({ toolCall }: { toolCall: ToolCall }) {
   const { focusedToolId, expandedTools, toolResults, currentTools, messages: allMessages } = useAgentLoop();
-  const expanded = expandedTools.has(toolCall.id);
-  const focused = focusedToolId === toolCall.id;
 
-  // Look up from toolResults
-  const resultMeta = toolResults.get(toolCall.id);
+  const result = useMemo(() => {
+    const expanded = expandedTools.has(toolCall.id);
+    const focused = focusedToolId === toolCall.id;
+    const resultMeta = toolResults.get(toolCall.id);
+    const toolMsg = allMessages.find(m => m.role === 'tool' && m.tool_call_id === toolCall.id);
+    const pending = currentTools.some(t => t.toolCall.id === toolCall.id);
 
-  // Look up the tool content from messages
-  const toolMsg = allMessages.find(m => m.role === 'tool' && m.tool_call_id === toolCall.id);
+    let output: { content: string; isError: boolean; durationMs: number } | undefined;
+    if (toolMsg?.content) {
+      output = {
+        content: toolMsg.content,
+        isError: resultMeta?.isError ?? false,
+        durationMs: resultMeta?.durationMs ?? 0,
+      };
+    }
 
-  let result: { content: string; isError: boolean; durationMs: number } | undefined;
-  if (toolMsg?.content) {
-    result = {
-      content: toolMsg.content,
-      isError: resultMeta?.isError ?? false,
-      durationMs: resultMeta?.durationMs ?? 0,
-    };
-  }
+    return (
+      <Box marginY={1}>
+        <ToolCallMessage
+          toolCall={toolCall}
+          result={output}
+          pending={pending}
+          focused={focused}
+          expanded={expanded}
+        />
+      </Box>
+    );
+  }, [toolCall.id, focusedToolId, expandedTools, toolResults, currentTools, allMessages]);
 
-  const pending = currentTools.some(t => t.toolCall.id === toolCall.id);
-
-  return (
-    <Box marginY={1}>
-      <ToolCallMessage
-        toolCall={toolCall}
-        result={result}
-        pending={pending}
-        focused={focused}
-        expanded={expanded}
-      />
-    </Box>
-  );
+  return result;
 }
 
 export const ChatMessage = React.memo(
