@@ -1,89 +1,70 @@
-// src/cli/tui/components/ToolCallMessage.tsx
 import React from 'react';
-import { Box, Text, Spacer } from 'ink';
-import { BlinkingText } from './';
+import { Box, Text } from 'ink';
+import { BlinkingText } from './BlinkingText';
 import type { ToolCall } from '../../../types';
-import type { ToolCallResultEvent } from '../../../agent/loop-types';
+import { formatToolCallTitle, smartSummarize, formatToolResult } from '../utils/tool-format';
 
 /**
  * Props for ToolCallMessage component
  */
-interface ToolCallMessageProps {
+export interface ToolCallMessageProps {
   toolCall: ToolCall;
-  status: 'running' | 'completed' | 'error';
-  result?: ToolCallResultEvent['result'];
-  error?: Error;
-}
-
-function renderKeyValue(obj: unknown, indent: number = 0): React.ReactNode {
-  if (typeof obj !== 'object' || obj === null) {
-    return <Text dimColor>{String(obj)}</Text>;
-  }
-
-  if (Array.isArray(obj)) {
-    if (obj.length === 0) {
-      return <Text dimColor>[]</Text>;
-    }
-    return (
-      <Box flexDirection="column" paddingLeft={indent * 2}>
-        {obj.map((item, i) => (
-          <Box key={i} flexDirection="row" gap={1}>
-            <Text bold color="cyan">{i}:</Text>
-            {renderKeyValue(item, indent + 1)}
-          </Box>
-        ))}
-      </Box>
-    );
-  }
-
-  const entries = Object.entries(obj);
-  if (entries.length === 0) {
-    return <Text dimColor>{'{}'}</Text>;
-  }
-
-  return (
-    <Box flexDirection="column" paddingLeft={indent * 2}>
-      {entries.map(([key, value]) => (
-        <Box key={key} flexDirection="row" gap={1}>
-          <Text bold color="cyan">{key}:</Text>
-          {renderKeyValue(value, indent + 1)}
-        </Box>
-      ))}
-    </Box>
-  );
+  result?: {
+    content: string;
+    isError: boolean;
+    durationMs: number;
+  };
+  pending: boolean;
+  focused: boolean;
+  expanded: boolean;
 }
 
 /**
- * Displays a tool call execution status in the chat history
+ * Displays a tool call execution status in Claude Code-style format
  */
-export function ToolCallMessage({ toolCall, status, result, error }: ToolCallMessageProps) {
+export function ToolCallMessage({ toolCall, result, pending, focused, expanded }: ToolCallMessageProps) {
+  const title = formatToolCallTitle(toolCall);
+
+  // Get content to display
+  let content: string;
+  let isCollapsible: boolean;
+
+  if (!result) {
+    content = '';
+    isCollapsible = false;
+  } else {
+    const smartSummary = smartSummarize(toolCall.name, toolCall.arguments, result.content);
+    if (smartSummary !== null) {
+      content = smartSummary;
+      isCollapsible = false;
+    } else {
+      const formatted = formatToolResult(result.content, result.isError, expanded);
+      content = formatted.display;
+      isCollapsible = formatted.isCollapsible;
+    }
+  }
+
+  // Border style based on focus
+  const borderStyle = focused ? 'single' : undefined;
+  const borderColor = focused ? 'blue' : undefined;
+  const prefixColor = pending ? 'yellow' : result?.isError ? 'red' : 'gray';
+  const contentColor = result?.isError ? 'red' : 'gray';
+
   return (
-    <Box flexDirection="column" borderStyle="round" padding={1} marginY={1}>
+    <Box flexDirection="column" borderStyle={borderStyle} borderColor={borderColor} paddingX={focused ? 1 : 0} marginY={0}>
+      {/* Title line */}
       <Box flexDirection="row" alignItems="center">
-        <Text bold>Tool: {toolCall.name}</Text>
-        <Spacer />
-        {status === 'running' && <BlinkingText color="yellow">Running...</BlinkingText>}
-        {status === 'completed' && <Text color="green">✓ Done</Text>}
-        {status === 'error' && <Text color="red">✗ Error</Text>}
+        <Text color={prefixColor}>
+          {pending ? <BlinkingText>⠋</BlinkingText> : '❯'}
+        </Text>
+        <Text color="cyan"> {title}</Text>
+        {result && <Text color="gray"> {result.durationMs}ms</Text>}
       </Box>
-      <Box marginTop={1}>
-        <Text dimColor>Arguments: {JSON.stringify(toolCall.arguments, null, 2)}</Text>
-      </Box>
-      {result !== undefined && status !== 'running' && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text bold>Output:</Text>
-          <Box paddingTop={0} paddingLeft={1}>
-            {typeof result === 'string' ? (
-              <Text dimColor>{result}</Text>
-            ) : (
-              renderKeyValue(result)
-            )}
-          </Box>
-        </Box>
-      )}
-      {error && (
-        <Box marginTop={1}>
-          <Text color="red">Error: {error.message}</Text>
+
+      {/* Result content */}
+      {result && content && (
+        <Box paddingLeft={2}>
+          <Text color={contentColor}>{content}</Text>
         </Box>
       )}
     </Box>
