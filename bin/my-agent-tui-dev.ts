@@ -9,6 +9,7 @@ import { createSkillMiddleware } from '../src/skills/middleware';
 import { toSkillCommand, loadAvailableCommands } from '../src/cli/tui/command-registry';
 import { runTUIClient } from '../src/cli/index';
 import { BashTool, TextEditorTool, AskUserQuestionTool } from '../src/tools';
+import { SubAgentTool } from '../src/agent';
 import { globalAskUserQuestionManager } from '../src/tools';
 import { SessionStore } from '../src/session/store';
 import { createAutoSaveHook } from '../src/session/hook';
@@ -58,6 +59,13 @@ toolRegistry.register(new AskUserQuestionTool(
 // Register todo middleware - provides todo_write tool and periodic reminders
 const { tool: todoTool, hooks: todoHooks } = createTodoMiddleware();
 toolRegistry.register(todoTool);
+
+// SubAgentTool - delegate tasks to independent sub agents
+toolRegistry.register(new SubAgentTool({
+  mainProvider: provider,
+  mainToolRegistry: toolRegistry,
+  mainAgentConfig: config,
+}));
 
 // Skill middleware for automatic skill injection - factory pattern
 // Skill injection happens in beforeModel hook every turn, guaranteeing it's never lost
