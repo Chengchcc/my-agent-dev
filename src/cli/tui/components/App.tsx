@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box } from 'ink';
+import { Box, useInput } from 'ink';
 import { ScrollView } from 'ink-scroll-view';
 import { AgentLoopProvider, useAgentLoop } from '../hooks/use-agent-loop';
 import { useAskUserQuestionManager } from '../hooks';
@@ -31,8 +31,28 @@ export function App({ agent, skillCommands, sessionStore }: AppProps) {
 }
 
 function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashCommand[]; sessionStore: SessionStore }) {
-  const { messages, streaming: isStreaming, onSubmitWithSkill, abort, todos } = useAgentLoop();
+  const { messages, streaming: isStreaming, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool } = useAgentLoop();
   const { askUserQuestionRequest, respondWithAnswers } = useAskUserQuestionManager();
+
+  useInput((input, key) => {
+    // Up arrow - previous tool
+    if (key.upArrow) {
+      moveFocus(-1);
+      return;
+    }
+
+    // Down arrow - next tool
+    if (key.downArrow) {
+      moveFocus(1);
+      return;
+    }
+
+    // Ctrl+O - toggle expand/collapse
+    if (input === 'o' && key.ctrl) {
+      toggleFocusedTool();
+      return;
+    }
+  });
 
   const allCommands = [...getBuiltinCommands(sessionStore), ...skillCommands];
 
