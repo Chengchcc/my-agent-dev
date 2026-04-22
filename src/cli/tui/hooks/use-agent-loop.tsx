@@ -248,9 +248,8 @@ export function AgentLoopProvider({
           } else if (event.type === 'tool_call_start') {
             runningTools.set(event.toolCall.id, event);
             setCurrentTools(Array.from(runningTools.values()));
-            // Refresh to show running tool
-            refreshMessages();
-            refreshTodos();
+            // Don't refresh here - wait for tool_result to refresh once
+            // This eliminates flicker from streaming -> context -> streaming switching
           } else if (event.type === 'tool_call_result') {
             runningTools.delete(event.toolCall.id);
             setCurrentTools(Array.from(runningTools.values()));
