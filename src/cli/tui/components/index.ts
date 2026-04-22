@@ -9,3 +9,4 @@ export * from './HighlightedInput';
 export * from './App';
 export * from './ToolCallMessage';
 export * from './AskUserQuestionPrompt';
+export { BlinkingText } from './BlinkingText';
