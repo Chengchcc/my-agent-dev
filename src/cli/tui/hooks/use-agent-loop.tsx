@@ -19,13 +19,22 @@ type AgentLoopState = {
   currentTools: ToolCallStartEvent[];
   runningSubAgents: Map<string, SubAgentStartEvent>;
   completedSubAgents: Map<string, { summary: string; totalTurns: number; durationMs: number }>;
+  /** ID of currently focused tool for keyboard interaction */
+  focusedToolId: string | null;
+  /** Set of tool IDs that are currently expanded */
+  expandedTools: Set<string>;
   onSubmit: (text: string) => Promise<void>;
   onSubmitWithSkill: (submission: PromptSubmission) => void;
   abort: () => void;
   setTodos: (todos: UITodoItem[]) => void;
-  focusedToolId: string | null;
-  expandedTools: Set<string>;
-  toolResults: Map<string, { isError: boolean; durationMs: number }>;
+  /** Focus a specific tool by ID */
+  focusTool: (id: string) => void;
+  /** Toggle expanded state of currently focused tool */
+  toggleFocusedTool: () => void;
+  /** Move focus to previous/next tool (direction: -1 = previous, 1 = next) */
+  moveFocus: (direction: -1 | 1) => void;
+  /** Cached metadata for completed tool results */
+  toolResults: Map<string, { durationMs: number; isError: boolean }>;
 };
 
 const AgentLoopContext = createContext<AgentLoopState | null>(null);
@@ -77,6 +86,72 @@ export function AgentLoopProvider({
       setTodos(updatedTodos);
     }
   }, [agent]);
+
+  const focusTool = useCallback((id: string) => {
+    setFocusedToolId(id);
+  }, []);
+
+  const toggleFocusedTool = useCallback(() => {
+    if (!focusedToolId) return;
+    setExpandedTools(prev => {
+      const next = new Set(prev);
+      if (next.has(focusedToolId)) {
+        next.delete(focusedToolId);
+      } else {
+        next.add(focusedToolId);
+      }
+      return next;
+    });
+  }, [focusedToolId]);
+
+  const getCollapsibleTools = useCallback((): string[] => {
+    // Get all tool calls from assistant messages that have result and are collapsible
+    const collapsibleTools: string[] = [];
+
+    messages.forEach(msg => {
+      if (msg.role === 'assistant' && msg.tool_calls) {
+        msg.tool_calls.forEach(tc => {
+          // A tool is collapsible if it has a result > 3 lines and not an error
+          // We need to look up the corresponding tool message
+          const toolMessage = messages.find(m => m.role === 'tool' && m.tool_call_id === tc.id);
+          if (!toolMessage?.content) return;
+
+          const lines = toolMessage.content.split('\n');
+          if (lines.length > 3) {
+            collapsibleTools.push(tc.id);
+          }
+        });
+      }
+    });
+
+    return collapsibleTools;
+  }, [messages]);
+
+  const moveFocus = useCallback((direction: -1 | 1) => {
+    const collapsibleTools = getCollapsibleTools();
+    if (collapsibleTools.length === 0) {
+      setFocusedToolId(null);
+      return;
+    }
+
+    if (!focusedToolId) {
+      // If no focus, go to first when moving down, last when moving up
+      const newFocusId = direction === 1 ? collapsibleTools[0] : collapsibleTools[collapsibleTools.length - 1];
+      setFocusedToolId(newFocusId);
+      return;
+    }
+
+    const currentIndex = collapsibleTools.indexOf(focusedToolId);
+    if (currentIndex === -1) {
+      setFocusedToolId(collapsibleTools[0]);
+      return;
+    }
+
+    let nextIndex = currentIndex + direction;
+    if (nextIndex < 0) nextIndex = collapsibleTools.length - 1;
+    if (nextIndex >= collapsibleTools.length) nextIndex = 0;
+    setFocusedToolId(collapsibleTools[nextIndex]);
+  }, [focusedToolId, getCollapsibleTools]);
 
   // Helper to output system messages
   const onOutput = useCallback((content: string) => {
@@ -265,15 +340,18 @@ export function AgentLoopProvider({
       currentTools,
       runningSubAgents,
       completedSubAgents,
+      focusedToolId,
+      expandedTools,
+      toolResults,
       onSubmit,
       onSubmitWithSkill,
       abort,
       setTodos,
-      focusedToolId,
-      expandedTools,
-      toolResults,
+      focusTool,
+      toggleFocusedTool,
+      moveFocus,
     }),
-    [abort, agent, messages, onSubmit, onSubmitWithSkill, streaming, todos, currentTools, runningSubAgents, completedSubAgents, setTodos, focusedToolId, expandedTools, toolResults],
+    [agent, messages, onSubmit, onSubmitWithSkill, abort, streaming, todos, currentTools, runningSubAgents, completedSubAgents, setTodos, focusedToolId, expandedTools, toolResults, focusTool, toggleFocusedTool, moveFocus],
   );
 
   return (
