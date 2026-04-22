@@ -13,7 +13,8 @@ export function Header() {
     <Box flexDirection="row" alignItems="center" gap={1}>
       <Text>{HAMSTER_LOGO}</Text>
       <Text>
-        <Text bold color="blue">my-agent</Text> - interactive AI agent terminal
+        <Text bold color="blue">my-agent</Text>
+        <Text dimColor> - interactive AI agent terminal</Text>
       </Text>
     </Box>
   );
