@@ -166,7 +166,7 @@ export class OpenAIProvider implements Provider {
       yield {
         content,
         done: finishReason != null,
-        tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+        tool_calls: finishReason != null && tool_calls.length > 0 ? tool_calls : undefined,
         usage,
       };
     }

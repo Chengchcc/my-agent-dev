@@ -24,20 +24,27 @@ export class TrimOldestStrategy implements CompressionStrategy {
       messages = messages.filter(m => m.role !== 'system');
     }
 
+    // Count total tokens including system prompt
+    const systemTokenCount = context.systemPrompt ? countTokens(context.systemPrompt) : 0;
+    let currentTotalTokens = systemTokenCount + countTotalTokens(messages);
+
     // Remove oldest messages until we're under the limit or empty
-    while (countTotalTokens(messages) > tokenLimit && messages.length > 0) {
+    while (currentTotalTokens > tokenLimit && messages.length > 0) {
       // Never remove the last two messages - keep the current turn
       if (messages.length <= 2) break;
 
-      // Check if the first message is an assistant with tool_calls. If so, remove both it and the next message.
+      // Check if the first message is an assistant with tool_calls. If so, remove it plus all matching tool results.
       const first = messages[0];
-      if (first.role === 'assistant' && first.tool_calls && first.tool_calls.length > 0 && messages.length >= 2) {
-        // Remove the pair as a unit
-        messages = messages.slice(2);
+      if (first.role === 'assistant' && first.tool_calls && first.tool_calls.length > 0 && messages.length >= 1 + first.tool_calls.length) {
+        // Remove the assistant message + all tool result messages that match its tool calls
+        // Each tool call has exactly one tool result message immediately after
+        messages = messages.slice(1 + first.tool_calls.length);
       } else {
         // Just remove the single message
         messages = messages.slice(1);
       }
+      // Recalculate total tokens after removal
+      currentTotalTokens = systemTokenCount + countTotalTokens(messages);
     }
 
     // Put all system messages back at the beginning
