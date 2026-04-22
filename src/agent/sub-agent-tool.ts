@@ -1,0 +1,238 @@
+// src/agent/sub-agent-tool.ts
+import { nanoid } from 'nanoid';
+import type { Tool, ToolImplementation } from '../types';
+import type { Provider, AgentConfig, Message, AgentContext } from '../types';
+import type { AgentEvent, AgentLoopConfig, AggregatedUsage } from './loop-types';
+import { Agent } from './Agent';
+import { ContextManager } from './context';
+import { ToolRegistry } from './tool-registry';
+import { DEFAULT_LOOP_CONFIG } from './loop-types';
+
+/**
+ * Configuration for SubAgentTool
+ */
+export interface SubAgentToolConfig {
+  /** The main agent's provider - sub agent inherits this if not overridden */
+  mainProvider: Provider;
+  /** The main agent's tool registry - used as base for filtered registry */
+  mainToolRegistry: ToolRegistry;
+  /** Main agent's config - token limit is used as base */
+  mainAgentConfig: AgentConfig;
+  /** List of allowed tools for sub agent - if empty, inherits all except sub_agent */
+  allowedTools?: string[];
+  /** Override the provider for this sub agent */
+  provider?: Provider;
+  /** Override loop configuration */
+  loopConfig?: Partial<AgentLoopConfig>;
+  /** Custom system prompt template */
+  systemPromptTemplate?: string;
+  /** Callback for bubbling events up to UI */
+  onEvent?: (agentId: string, event: AgentEvent) => void;
+  /** Maximum token limit for sub agent context (default: 50000) */
+  tokenLimit?: number;
+  /** AbortSignal from the main agent's execution - propagated to sub agent */
+  signal?: AbortSignal;
+}
+
+/**
+ * SubAgentTool - delegate a self-contained subtask to an independent agent
+ * with its own isolated context.
+ *
+ * Uses the existing Agent architecture - no changes needed to Agent class.
+ */
+export class SubAgentTool implements ToolImplementation {
+  private config: SubAgentToolConfig;
+
+  constructor(config: SubAgentToolConfig) {
+    this.config = config;
+  }
+
+  /**
+   * Get the tool definition for function calling
+   */
+  getDefinition(): Tool {
+    return {
+      name: 'sub_agent',
+      description: `Delegate a self-contained subtask to an independent agent with its own isolated context.
+
+USE when:
+- The subtask needs to read/process many files but the caller only needs a summary
+- The subtask requires different expertise (analysis vs coding vs testing)
+- Running the subtask inline would bloat the current context with intermediate outputs
+
+DO NOT USE when:
+- A single tool call (bash/text_editor) can accomplish the task
+- You need to interactively refine the result with the user
+- The subtask depends on information only available in the current conversation`,
+      parameters: {
+        type: 'object',
+        properties: {
+          task: {
+            type: 'string',
+            description: 'A clear, self-contained task description. Include all necessary context or reference files the sub agent should read — it cannot see the current conversation.',
+          },
+        },
+        required: ['task'],
+      },
+    };
+  }
+
+  /**
+   * Execute the sub agent with the given task
+   */
+  async execute(
+    params: Record<string, unknown>,
+    options?: { signal?: AbortSignal; context: AgentContext },
+  ): Promise<string> {
+    const task = params.task as string;
+
+    if (!task || typeof task !== 'string') {
+      return 'Error: Missing required "task" parameter';
+    }
+
+    const agentId = `sub-${nanoid(6)}`;
+    const startTime = Date.now();
+
+    try {
+      // Build filtered tool registry - exclude sub_agent to prevent recursion
+      const subToolRegistry = new ToolRegistry();
+      const mainTools = this.config.mainToolRegistry.getAllDefinitions();
+
+      for (const toolDef of mainTools) {
+        // Never allow sub_agent recursion
+        if (toolDef.name === 'sub_agent') {
+          continue;
+        }
+        // If allowedTools specified, filter to only those
+        if (this.config.allowedTools && !this.config.allowedTools.includes(toolDef.name)) {
+          continue;
+        }
+        // Get the actual implementation from main registry and re-register
+        const impl = this.config.mainToolRegistry.get(toolDef.name);
+        if (impl) {
+          subToolRegistry.register(impl);
+        }
+      }
+
+      // Create isolated context manager for sub agent
+      const tokenLimit = this.config.tokenLimit ?? 50000;
+      const subContextManager = new ContextManager({ tokenLimit });
+
+      // Set up system prompt
+      const systemPrompt = this.config.systemPromptTemplate ?? `You are a focused sub-agent executing a specific task.
+
+You have your own independent context and full access to tools.
+Your goal is to complete the task and provide a clear concise summary when done.
+If the task references files in .agent/, read them first before proceeding.`;
+
+      subContextManager.setSystemPrompt(systemPrompt);
+
+      // Add the user task
+      const userMessage: Message = {
+        role: 'user',
+        content: task,
+      };
+      subContextManager.addMessage(userMessage);
+
+      // Create sub agent config
+      const subAgentConfig: AgentConfig = {
+        ...this.config.mainAgentConfig,
+        tokenLimit,
+      };
+
+      // Use provided provider or inherit from main
+      const provider = this.config.provider ?? this.config.mainProvider;
+
+      // Create the sub agent
+      const subAgent = new Agent({
+        provider,
+        contextManager: subContextManager,
+        config: subAgentConfig,
+        toolRegistry: subToolRegistry,
+      });
+
+      // Default loop config with tighter constraints
+      const defaultSubLoopConfig: Partial<AgentLoopConfig> = {
+        maxTurns: 15,
+        timeoutMs: 5 * 60 * 1000, // 5 minutes
+      };
+
+      const loopConfig: AgentLoopConfig = {
+        ...DEFAULT_LOOP_CONFIG,
+        ...defaultSubLoopConfig,
+        ...this.config.loopConfig,
+      };
+
+      // Bubble start event
+      if (this.config.onEvent) {
+        this.config.onEvent(agentId, {
+          type: 'sub_agent_start',
+          agentId,
+          task,
+          turnIndex: 0,
+        });
+      }
+
+      let totalTurns = 0;
+      let finalSummary = '';
+
+      // Run the agent loop and bubble events
+      for await (const event of subAgent.runAgentLoop({ role: 'user', content: task }, loopConfig)) {
+        // Check for abort from main
+        if (options?.signal?.aborted) {
+          throw new Error('Sub agent aborted by main agent');
+        }
+
+        totalTurns++;
+
+        // Bubble the event if callback exists
+        if (this.config.onEvent) {
+          this.config.onEvent(agentId, {
+            type: 'sub_agent_event',
+            agentId,
+            event,
+            turnIndex: 0,
+          });
+        }
+
+        // Capture the final summary from agent_done
+        if (event.type === 'agent_done') {
+          // Get the final context to get the last assistant message
+          const finalContext = subAgent.getContext();
+          const lastMessage = finalContext.messages[finalContext.messages.length - 1];
+          if (lastMessage.role === 'assistant') {
+            finalSummary = lastMessage.content;
+          }
+        }
+      }
+
+      const durationMs = Date.now() - startTime;
+
+      // Bubble done event
+      if (this.config.onEvent) {
+        this.config.onEvent(agentId, {
+          type: 'sub_agent_done',
+          agentId,
+          summary: finalSummary,
+          totalTurns,
+          durationMs,
+          turnIndex: 0,
+        });
+      }
+
+      // Ensure we have a summary
+      if (!finalSummary) {
+        finalSummary = `Sub agent completed ${totalTurns} turns but produced no final summary.`;
+      }
+
+      // Return summary to main agent
+      return `[SubAgent ${agentId} completed in ${durationMs}ms, ${totalTurns} turns]\n\n${finalSummary}`;
+    } catch (error) {
+      const durationMs = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Return error as normal tool result (don't throw) so main can handle it
+      return `[SubAgent ${agentId} failed after ${durationMs}ms]\n\nError: ${errorMessage}`;
+    }
+  }
+}

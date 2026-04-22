@@ -19,3 +19,5 @@ export type {
 } from './loop-types';
 export { DEFAULT_LOOP_CONFIG } from './loop-types';
 export { ToolRegistry } from './tool-registry';
+export { SubAgentTool } from './sub-agent-tool';
+export type { SubAgentToolConfig } from './sub-agent-tool';
