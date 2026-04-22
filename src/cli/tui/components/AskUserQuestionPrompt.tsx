@@ -168,7 +168,7 @@ export function AskUserQuestionPrompt({ questions, onSubmit }: AskUserQuestionPr
   const showReview = qCount >= 2 && tabIndex === reviewTabIndex;
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginY={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} marginY={1}>
       {tabRow}
       <Box marginTop={1} flexDirection="column">
         {showReview ? (
