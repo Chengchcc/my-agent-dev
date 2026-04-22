@@ -207,7 +207,6 @@ export class Agent {
     loopConfig?: Partial<AgentLoopConfig>,
     options?: { signal?: AbortSignal },
   ): AsyncGenerator<AgentEvent> {
-    console.log('[runAgentLoop] Starting with user message:', JSON.stringify(userMessage.content));
     const config: AgentLoopConfig = { ...DEFAULT_LOOP_CONFIG, ...loopConfig };
     const controller = new AbortController();
     const signal = controller.signal;
@@ -221,7 +220,6 @@ export class Agent {
 
     // Create timeout timer
     const timeoutId = setTimeout(() => {
-      console.log('[runAgentLoop] Global timeout triggered');
       controller.abort();
     }, config.timeoutMs);
 
@@ -233,33 +231,26 @@ export class Agent {
     try {
       // Add user message to context before running hooks
       // This allows SkillMiddleware to check for skill mentions in the user message
-      console.log('[runAgentLoop] Adding user message to context');
       this.contextManager.addMessage({
         role: 'user',
         content: userMessage.content,
       });
       resultContext = this.contextManager.getContext(this.config);
-      console.log('[runAgentLoop] Got context, messages length:', resultContext.messages.length);
 
       // 1. beforeAgentRun hooks
-      console.log('[runAgentLoop] Running beforeAgentRun hooks');
       const initialContext = this.contextManager.getContext(this.config);
       const composedBeforeAgentRun = composeMiddlewares(
         this.hooks.beforeAgentRun,
         (ctx) => Promise.resolve(ctx),
       );
       const afterBeforeAgentRun = await composedBeforeAgentRun(initialContext);
-      console.log('[runAgentLoop] beforeAgentRun completed');
 
       // Save the modified systemPrompt from beforeAgentRun (contains dynamic skill injection)
       this.contextManager.setSystemPrompt(afterBeforeAgentRun.systemPrompt);
       // Sync todo state back to contextManager after middleware
       this.contextManager.syncTodoFromContext(afterBeforeAgentRun);
-      console.log('[runAgentLoop] Entering main loop, maxTurns:', config.maxTurns);
 
-      console.log('[runAgentLoop] Entering while loop, turnIndex:', turnIndex, 'done:', done, 'signal.aborted:', signal.aborted);
       while (turnIndex < config.maxTurns && !done && !signal.aborted) {
-        console.log('[runAgentLoop] Starting turn', turnIndex);
         // a. Compress context if needed (every turn)
         const currentContext = this.contextManager.getContext(this.config);
         const composedBeforeCompress = composeMiddlewares(
@@ -300,7 +291,6 @@ export class Agent {
 
         // Sync todo state back to contextManager after middleware
         this.contextManager.syncTodoFromContext(resultContext);
-        console.log('[runAgentLoop] beforeModel done, calling provider.stream, messages in context:', resultContext.messages.length);
 
         // c. Stream from LLM
         let fullContent = '';
@@ -311,13 +301,7 @@ export class Agent {
           total_tokens: number;
         } | undefined;
 
-        console.log('[runAgentLoop] Starting provider.stream');
-        let chunkCount = 0;
         for await (const chunk of this.provider.stream(resultContext, { signal })) {
-          chunkCount++;
-          if (chunkCount % 10 === 0) {
-            console.log('[runAgentLoop] Received', chunkCount, 'chunks');
-          }
           if (signal.aborted) break;
           if (chunk.content) {
             fullContent += chunk.content;
@@ -339,8 +323,6 @@ export class Agent {
             usage = chunk.usage;
           }
         }
-
-        console.log('[runAgentLoop] provider.stream completed, total chunks:', chunkCount, 'tool_calls found:', tool_calls.length);
 
         if (signal.aborted) {
           yield {
@@ -670,10 +652,6 @@ export class Agent {
       } satisfies AgentEvent;
     } catch (error) {
       // Handle unexpected errors
-      console.error('[runAgentLoop] Unhandled error:', error);
-      if (error instanceof Error) {
-        console.error('[runAgentLoop] Stack:', error.stack);
-      }
       yield {
         type: 'agent_error',
         error: error instanceof Error ? error : new Error(String(error)),
