@@ -323,9 +323,9 @@ export function AgentLoopProvider({
   );
 
   const onSubmitWithSkill = useCallback(
-    (submission: PromptSubmission) => {
+    async (submission: PromptSubmission) => {
       // The skill name is captured in the submission - the agent will handle it
-      onSubmit(submission.text);
+      await onSubmit(submission.text);
     },
     [onSubmit],
   );

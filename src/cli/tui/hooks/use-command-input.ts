@@ -35,7 +35,7 @@ export function useCommandInput({
   onAbort,
 }: {
   commands: SlashCommand[];
-  onSubmit?: (submission: PromptSubmission) => void;
+  onSubmit?: (submission: PromptSubmission) => void | Promise<void>;
   onAbort?: () => void;
 }) {
   const [firstMessage, setFirstMessage] = useState(true);
