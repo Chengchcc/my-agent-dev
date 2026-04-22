@@ -39,7 +39,13 @@ export function TodoPanel({ todos }: TodoPanelProps) {
 
   if (todos.length === 0) {
     return (
-      <Box flexDirection="column">
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor="gray"
+        paddingX={1}
+        marginY={1}
+      >
         <Text color="gray" dimColor>
           No todos in list
         </Text>
@@ -48,7 +54,13 @@ export function TodoPanel({ todos }: TodoPanelProps) {
   }
 
   return (
-    <Box flexDirection="column">
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="gray"
+      paddingX={1}
+      marginY={1}
+    >
       <Box marginBottom={1}>
         <Text bold color="cyan">
           Todo List
@@ -61,7 +73,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
         return (
           <Box key={todo.id} marginBottom={0.5}>
             <Text>
-              <Text color="gray">{index + 1}.</Text>
+              <Text color="gray" dimColor>{index + 1}.</Text>
               {' '}
               <Text {...style}>
                 {indicator} {todo.content}
