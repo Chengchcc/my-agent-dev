@@ -67,6 +67,47 @@ toolRegistry.register(new SubAgentTool({
   mainAgentConfig: config,
 }));
 
+// Memory System - persistent cross-conversation memory
+import {
+  JsonlMemoryStore,
+  KeywordRetriever,
+  LlmExtractor,
+  MemoryMiddleware,
+  MemoryTool,
+} from './../src/memory';
+
+// Initialize memory stores
+const semanticMemoryStore = new JsonlMemoryStore('semantic');
+const episodicMemoryStore = new JsonlMemoryStore('episodic');
+const projectMemoryStore = new JsonlMemoryStore('project', {}, process.cwd());
+const keywordRetriever = new KeywordRetriever(
+  semanticMemoryStore,
+  episodicMemoryStore,
+  projectMemoryStore,
+);
+const llmExtractor = new LlmExtractor(provider);
+const memoryMiddleware = new MemoryMiddleware(
+  {
+    semantic: semanticMemoryStore,
+    episodic: episodicMemoryStore,
+    project: projectMemoryStore,
+  },
+  keywordRetriever,
+  llmExtractor,
+);
+const memoryTool = new MemoryTool(
+  {
+    semantic: semanticMemoryStore,
+    episodic: episodicMemoryStore,
+    project: projectMemoryStore,
+  },
+  keywordRetriever,
+  llmExtractor,
+);
+
+// Register memory tool
+toolRegistry.register(memoryTool);
+
 // Skill middleware for automatic skill injection - factory pattern
 // Skill injection happens in beforeModel hook every turn, guaranteeing it's never lost
 const skillMiddleware = createSkillMiddleware({ autoInject: true, injectOnMention: true });
@@ -75,16 +116,26 @@ const skillMiddleware = createSkillMiddleware({ autoInject: true, injectOnMentio
 const sessionStore = new SessionStore();
 
 // Create agent with tool registry
+const agentHooks = {
+  beforeAgentRun: [skillMiddleware.beforeAgentRun],
+  beforeModel: [skillMiddleware.beforeModel, todoHooks.beforeModel!],
+  afterAgentRun: [createAutoSaveHook(sessionStore)],
+};
+
+// Add memory middleware hooks
+if (memoryMiddleware.beforeModel) {
+  agentHooks.beforeModel?.push(memoryMiddleware.beforeModel);
+}
+if (memoryMiddleware.afterAgentRun) {
+  agentHooks.afterAgentRun?.push(memoryMiddleware.afterAgentRun);
+}
+
 const agent = new Agent({
   provider,
   contextManager,
   config,
   toolRegistry,
-  hooks: {
-    beforeAgentRun: [skillMiddleware.beforeAgentRun],
-    beforeModel: [skillMiddleware.beforeModel, todoHooks.beforeModel!],
-    afterAgentRun: [createAutoSaveHook(sessionStore)],
-  },
+  hooks: agentHooks,
 });
 
 // Load skills and convert to slash commands
