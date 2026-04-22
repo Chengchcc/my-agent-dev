@@ -21,6 +21,8 @@ export type Tool = {
 export interface ToolImplementation {
   getDefinition(): Tool;
   execute(params: Record<string, unknown>): Promise<unknown>;
+  /** Whether this tool requires access to the full agent context as a second parameter */
+  requiresContext?: boolean;
 }
 
 // Tool call in response
@@ -47,6 +49,11 @@ export type LLMResponseChunk = {
   content: string;
   done: boolean;
   tool_calls?: ToolCall[];
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 };
 
 // Compression strategy interface

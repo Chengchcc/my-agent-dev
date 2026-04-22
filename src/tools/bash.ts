@@ -88,7 +88,7 @@ export class BashTool implements ToolImplementation {
 
       const proc = exec(command, {
         cwd: cwd,
-        maxBuffer: this.maxOutputBytes,
+        maxBuffer: 10 * 1024 * 1024, // 10MB - let manual truncation below handle our limit
         timeout: this.timeoutMs,
       });
 
@@ -133,11 +133,24 @@ export class BashTool implements ToolImplementation {
       // Handle abort signal
       if (options?.signal) {
         const handleAbort = () => {
+          // Already resolved - do nothing
+          if (resolved) return;
+
           // Clean up the listener immediately since we've been triggered
           cleanup();
           if (proc && proc.pid) {
-            // Kill the child process (negative PID kills the process group)
-            process.kill(-proc.pid);
+            // Negative PID kills the entire process group
+            // This fails on non-detached exec for some systems, so fall back to killing just the child
+            try {
+              process.kill(-proc.pid);
+            } catch {
+              // Fall back to killing just the main process if group kill fails
+              try {
+                proc.kill();
+              } catch {
+                // Ignore errors when process already exited
+              }
+            }
           }
           output += `\n--- Command aborted by user ---`;
           resolved = true;

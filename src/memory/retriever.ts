@@ -52,8 +52,20 @@ export class KeywordRetriever implements MemoryRetriever {
   }
 
   private tokenize(text: string): string[] {
-    // Split on non-alphanumeric, remove empty strings, deduplicate
-    const tokens = text.split(/[^a-z0-9]+/).filter(t => t.length > 2);
+    // Split into tokens:
+    // - Keep English words (a-z0-9) as-is
+    // - Split Chinese into individual characters (each char is a "token")
+    // - Remove very short tokens
+    const tokens: string[] = [];
+    const regex = /([a-z0-9]{2,})|([\u4e00-\u9fa5])/g;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+      if (match[1]) {
+        tokens.push(match[1]);
+      } else if (match[2]) {
+        tokens.push(match[2]);
+      }
+    }
     return [...new Set(tokens)];
   }
 

@@ -159,7 +159,9 @@ export class TextEditorTool implements ToolImplementation {
       await fs.access(filePath);
       return { error: `Error: File already exists at ${filePath}. Use str_replace or write to modify it.` };
     } catch {
-      // File doesn't exist, good
+      // File doesn't exist, good - create parent directories if needed
+      const dirPath = path.dirname(filePath);
+      await fs.mkdir(dirPath, { recursive: true });
       await fs.writeFile(filePath, content, 'utf-8');
       return { result: `Created file ${filePath} successfully.` };
     }
@@ -180,8 +182,14 @@ export class TextEditorTool implements ToolImplementation {
       return { error: `Error: old_string not found exactly once in file. Search failed.` };
     }
 
-    // Count occurrences
-    const count = (content.match(new RegExp(oldString.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+    // Count occurrences using string search (more reliable than regex for exact matching)
+    let count = 0;
+    let pos = 0;
+    while ((pos = content.indexOf(oldString, pos)) !== -1) {
+      count++;
+      pos += oldString.length;
+    }
+
     if (count > 1) {
       return { error: `Error: old_string found ${count} times in file. Please be more specific.` };
     }
@@ -195,6 +203,9 @@ export class TextEditorTool implements ToolImplementation {
    * Write entire file, overwrites if exists, creates if doesn't exist.
    */
   private async write(filePath: string, content: string): Promise<{ result: string } | { error: string }> {
+    // Create parent directories if needed
+    const dirPath = path.dirname(filePath);
+    await fs.mkdir(dirPath, { recursive: true });
     await fs.writeFile(filePath, content, 'utf-8');
     return { result: `Wrote ${filePath} successfully.` };
   }

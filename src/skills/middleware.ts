@@ -153,7 +153,12 @@ ${skillsJson}
 </skill_system>
 `;
 
-    // Inject into system prompt - every model call gets fresh injection
+    // Inject into system prompt - skip if already injected to avoid duplication
+    if (context.systemPrompt && context.systemPrompt.includes('<skill_system>')) {
+      // Already has skill section, don't inject again
+      return next();
+    }
+
     if (context.systemPrompt) {
       context.systemPrompt += skillSection;
     } else {

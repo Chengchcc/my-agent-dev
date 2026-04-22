@@ -153,6 +153,15 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape>> implements T
       return result;
     }
 
+    if (schema instanceof z.ZodRecord) {
+      result.type = 'object';
+      result.additionalProperties = this.zodToJsonSchema(schema._def.valueType);
+      if (schema.description) {
+        result.description = schema.description;
+      }
+      return result;
+    }
+
     if (schema.description) {
       result.description = schema.description;
     }

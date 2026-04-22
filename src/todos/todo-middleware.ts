@@ -141,6 +141,8 @@ export function createTodoMiddleware(): {
       };
     },
 
+    requiresContext: true,
+
     async execute(
       params: Record<string, unknown>,
       opts?: { context: AgentContext },

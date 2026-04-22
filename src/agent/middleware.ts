@@ -11,8 +11,15 @@ export function composeMiddlewares(
 ): (ctx: AgentContext) => Promise<AgentContext> {
   return async (initialContext: AgentContext): Promise<AgentContext> => {
     let index = 0;
+    let called = false;
 
     async function runNext(ctx: AgentContext): Promise<AgentContext> {
+      // Guard against multiple calls to next() in the same middleware
+      if (called) {
+        throw new Error('composeMiddlewares: next() called multiple times');
+      }
+      called = true;
+
       if (index >= middlewares.length) {
         return finalHandler(ctx);
       }

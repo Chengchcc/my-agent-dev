@@ -117,10 +117,14 @@ Only store genuinely reusable information that will be useful in future conversa
           throw new Error('id parameter is required for forget command');
         }
         // Try all stores
-        for (const store of [this.stores.semantic, this.stores.episodic, this.stores.project]) {
+        for (const [type, store] of [
+          ['semantic', this.stores.semantic] as const,
+          ['episodic', this.stores.episodic] as const,
+          ['project', this.stores.project] as const,
+        ]) {
           const deleted = await store.remove(id);
           if (deleted) {
-            return { deleted: true, id };
+            return { deleted: true, id, type };
           }
         }
         return { deleted: false, id };

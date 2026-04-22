@@ -153,6 +153,12 @@ const agent = new Agent({
     const skills = await skillLoader.loadAllSkills();
     const skillCommands = skills.map(toSkillCommand);
 
+    // Wait for pending memory extractions to complete before exit
+    process.on('beforeExit', async () => {
+      await memoryMiddleware.awaitPendingExtractions();
+      process.exit(0);
+    });
+
     runTUIClient(agent, skillCommands, sessionStore);
   } catch (error) {
     console.error('Failed to initialize TUI:', error);

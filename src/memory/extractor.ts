@@ -64,9 +64,10 @@ ${conversation}`;
 4. Combine related entries into clearer, more concise statements
 5. Preserve all important user preferences and project facts
 6. DO NOT remove information unless it's definitely a duplicate or outdated
+7. If an entry is not changed/merged, preserve its original \`id\`, \`created\`, \`source\`, \`projectPath\` fields
 
 Return a JSON array of consolidated entries with this shape:
-[{"type": "semantic" | "episodic" | "project", "text": string, "tags": string[] | undefined, "weight": number (0-1)}]
+[{"type": "semantic" | "episodic" | "project", "text": string, "tags": string[] | undefined, "weight": number (0-1), "id": string | undefined, "created": string | undefined, "source": string | undefined, "projectPath": string | undefined}]
 
 Entries:
 ${entries.map((e, i) => `[${i + 1}] ${e.text} (created: ${e.created})`).join('\n')}`;
@@ -130,23 +131,32 @@ ${entries.map((e, i) => `[${i + 1}] ${e.text} (created: ${e.created})`).join('\n
       if (!jsonMatch) return [];
 
       const parsed = JSON.parse(jsonMatch[0]) as Array<{
+        id?: string;
         type?: MemoryEntry['type'];
         text?: string;
         tags?: string[];
         weight?: number;
+        created?: string;
+        source?: MemoryEntry['source'];
+        projectPath?: string;
+        metadata?: Record<string, unknown>;
+        files?: string[];
       }>;
 
       const now = new Date().toISOString();
       return parsed
         .filter(p => p.text && p.type)
         .map(p => ({
-          id: crypto.randomUUID(),
+          id: p.id ?? crypto.randomUUID(),
           type: p.type!,
           text: p.text!,
           tags: p.tags,
-          created: now,
+          created: p.created ?? now,
           weight: p.weight ?? 0.8,
-          source: 'implicit' as const,
+          source: p.source ?? ('implicit' as const),
+          projectPath: p.projectPath,
+          metadata: p.metadata,
+          files: p.files,
         }))
         .filter(p => p.text.trim().length > 0);
     } catch {

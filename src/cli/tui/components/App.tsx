@@ -35,22 +35,27 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
   const { askUserQuestionRequest, respondWithAnswers } = useAskUserQuestionManager();
 
   useInput((input, key) => {
-    // Up arrow - previous tool
-    if (key.upArrow) {
-      moveFocus(-1);
-      return;
-    }
+    // Only handle global keyboard shortcuts when InputBox is not active
+    // InputBox is not active when streaming or askUserQuestionRequest is visible
+    // So when InputBox is active (user typing), global shortcuts don't interfere
+    if (isStreaming || askUserQuestionRequest) {
+      // Up arrow - previous tool
+      if (key.upArrow) {
+        moveFocus(-1);
+        return;
+      }
 
-    // Down arrow - next tool
-    if (key.downArrow) {
-      moveFocus(1);
-      return;
-    }
+      // Down arrow - next tool
+      if (key.downArrow) {
+        moveFocus(1);
+        return;
+      }
 
-    // Ctrl+O or Space - toggle expand/collapse
-    if (input === 'o' && key.ctrl || input === ' ') {
-      toggleFocusedTool();
-      return;
+      // Ctrl+O or Space - toggle expand/collapse
+      if (input === 'o' && key.ctrl || input === ' ') {
+        toggleFocusedTool();
+        return;
+      }
     }
   });
 

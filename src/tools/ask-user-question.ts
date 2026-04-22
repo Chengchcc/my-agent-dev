@@ -119,7 +119,7 @@ export class AskUserQuestionTool extends ZodTool<typeof askUserQuestionParameter
   protected async handle(params: z.infer<typeof askUserQuestionParametersSchema>): Promise<unknown> {
     const result = await this.askCallback(params);
     validateResultAgainstParams(params, result);
-    return JSON.stringify(result);
+    return result;
   }
 }
 

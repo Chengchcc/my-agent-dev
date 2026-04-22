@@ -116,9 +116,10 @@ export class Agent {
 
     try {
       // Create timeout promise
+      let timeoutId: NodeJS.Timeout | undefined;
       const timeoutPromise = new Promise<{ result: unknown; error?: Error; durationMs: number }>(
         (resolve) => {
-          setTimeout(() => {
+          timeoutId = setTimeout(() => {
             const durationMs = Date.now() - startTime;
             resolve({
               result: `Error: Tool execution timed out after ${toolTimeoutMs}ms.`,
@@ -134,14 +135,15 @@ export class Agent {
         // If ToolImplementation.execute doesn't accept signal, we just run it
         // For tools that do accept signal, pass it through
         // Tools that need access to context can also receive it as an option
-        // TypeScript doesn't know at compile time, so we do runtime checking
+        // Check explicitly via the requiresContext flag first (more reliable than function.length)
         try {
-          const toolFn = tool.execute as (
-            params: Record<string, unknown>,
-            opts?: { signal?: AbortSignal; context: AgentContext },
-          ) => Promise<unknown>;
-          if (toolFn.length > 1) {
+          const needsContext = tool.requiresContext ?? (tool.execute.length > 1);
+          if (needsContext) {
             const currentContext = this.contextManager.getContext(this.config);
+            const toolFn = tool.execute as (
+              params: Record<string, unknown>,
+              opts?: { signal?: AbortSignal; context: AgentContext },
+            ) => Promise<unknown>;
             const result = await toolFn.call(tool, toolCall.arguments, { signal, context: currentContext });
             // Sync any changes to todo state back to contextManager
             this.contextManager.syncTodoFromContext(currentContext);
@@ -155,7 +157,15 @@ export class Agent {
       })();
 
       // Race between timeout and execution
-      const result = await Promise.race([executePromise, timeoutPromise]);
+      let result: { result: unknown; error?: Error; durationMs: number };
+      try {
+        result = await Promise.race([executePromise, timeoutPromise]);
+      } finally {
+        // Clear the timeout if we got a result before it fired
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+      }
 
       // Truncate if output is a string
       if (typeof result.result === 'string') {
@@ -216,6 +226,7 @@ export class Agent {
     let turnIndex = 0;
     let done = false;
     let errorOccurred = false;
+    let resultContext: AgentContext;
 
     try {
       // Add user message to context before running hooks
@@ -224,6 +235,7 @@ export class Agent {
         role: 'user',
         content: userMessage.content,
       });
+      resultContext = this.contextManager.getContext(this.config);
 
       // 1. beforeAgentRun hooks
       const initialContext = this.contextManager.getContext(this.config);
@@ -245,7 +257,14 @@ export class Agent {
           this.hooks.beforeCompress,
           (ctx) => Promise.resolve(ctx),
         );
-        const afterBeforeCompress = await composedBeforeCompress(currentContext);
+        let afterBeforeCompress: AgentContext;
+        try {
+          afterBeforeCompress = await composedBeforeCompress(currentContext);
+        } catch (hookError) {
+          // Hook failure shouldn't abort the entire agent loop - log and continue with original context
+          console.warn('[agent] beforeCompress hook failed:', hookError);
+          afterBeforeCompress = currentContext;
+        }
 
         // Sync todo state back to contextManager after middleware
         this.contextManager.syncTodoFromContext(afterBeforeCompress);
@@ -261,7 +280,14 @@ export class Agent {
           this.hooks.beforeModel,
           (innerCtx) => Promise.resolve(innerCtx),
         );
-        let resultContext = await composedBeforeModel(afterBeforeCompress);
+        let resultContext: AgentContext;
+        try {
+          resultContext = await composedBeforeModel(afterBeforeCompress);
+        } catch (hookError) {
+          // Hook failure shouldn't abort the entire agent loop - log and continue with original context
+          console.warn('[agent] beforeModel hook failed:', hookError);
+          resultContext = afterBeforeCompress;
+        }
 
         // Sync todo state back to contextManager after middleware
         this.contextManager.syncTodoFromContext(resultContext);
@@ -269,6 +295,11 @@ export class Agent {
         // c. Stream from LLM
         let fullContent = '';
         const tool_calls: ToolCall[] = [];
+        let usage: {
+          prompt_tokens: number;
+          completion_tokens: number;
+          total_tokens: number;
+        } | undefined;
 
         for await (const chunk of this.provider.stream(resultContext, { signal })) {
           if (signal.aborted) break;
@@ -281,7 +312,15 @@ export class Agent {
             } satisfies AgentEvent;
           }
           if (chunk.tool_calls) {
-            tool_calls.push(...chunk.tool_calls);
+            // Deduplicate by id - providers may send the same tool call multiple times
+            for (const tc of chunk.tool_calls) {
+              if (!tool_calls.some(existing => existing.id === tc.id)) {
+                tool_calls.push(tc);
+              }
+            }
+          }
+          if (chunk.usage) {
+            usage = chunk.usage;
           }
         }
 
@@ -300,7 +339,12 @@ export class Agent {
           this.hooks.afterModel,
           (ctx) => Promise.resolve(ctx),
         );
-        resultContext = await composedAfterModel(resultContext);
+        try {
+          resultContext = await composedAfterModel(resultContext);
+        } catch (hookError) {
+          // Hook failure shouldn't abort the entire agent loop - log and continue with original context
+          console.warn('[agent] afterModel hook failed:', hookError);
+        }
 
         // Sync todo state back to contextManager after middleware
         this.contextManager.syncTodoFromContext(resultContext);
@@ -309,12 +353,12 @@ export class Agent {
         resultContext.response = {
           content: fullContent,
           tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
-          usage: {
+          usage: usage ?? {
             prompt_tokens: 0,
             completion_tokens: 0,
             total_tokens: 0,
           },
-          model: '',
+          model: this.provider.constructor.name,
         };
 
         // e. beforeAddResponse hooks
@@ -395,6 +439,9 @@ export class Agent {
 
           // Yield as results arrive - true incremental streaming
           while (pending.size > 0 || resultQueue.length > 0) {
+            if (signal.aborted) {
+              break;
+            }
             if (resultQueue.length > 0) {
               const event = resultQueue.shift()!;
               yield event;
@@ -421,7 +468,23 @@ export class Agent {
               }
             } else {
               // Wait for the next result to complete
-              await new Promise<void>(r => { resolveNext = r; });
+              await new Promise<void>((resolve) => {
+                resolveNext = resolve;
+                // If we're aborted already, resolve immediately
+                if (signal.aborted) {
+                  resolve();
+                  return;
+                }
+                // Resolve on abort - prevents deadlock if all pending tools are hanging
+                const onAbort = () => resolve();
+                signal.addEventListener('abort', onAbort, { once: true });
+                // Cleanup listener after resolve
+                const originalResolve = resolve;
+                resolve = () => {
+                  signal.removeEventListener('abort', onAbort);
+                  originalResolve();
+                };
+              });
             }
           }
 
@@ -540,12 +603,33 @@ export class Agent {
       }
 
       // 6. afterAgentRun hooks
-      const finalContext = this.contextManager.getContext(this.config);
+      // Start with the last result context that has all metadata modifications from this turn,
+      // then refresh the todo metadata from context manager to keep it in sync
+      const todoState = this.contextManager.getTodoState();
+      const finalContext = {
+        ...resultContext,
+        ...this.contextManager.getContext(this.config),
+        // Keep existing metadata, just refresh the todo section from context manager
+        metadata: {
+          ...resultContext.metadata,
+          todo: {
+            ...(resultContext.metadata.todo || {}),
+            todoStore: todoState.todos,
+            stepsSinceLastWrite: todoState.stepsSinceLastWrite,
+            stepsSinceLastReminder: todoState.stepsSinceLastReminder,
+          },
+        },
+      };
       const composedAfterAgentRun = composeMiddlewares(
         this.hooks.afterAgentRun,
         (ctx) => Promise.resolve(ctx),
       );
-      await composedAfterAgentRun(finalContext);
+      try {
+        await composedAfterAgentRun(finalContext);
+      } catch (hookError) {
+        // Hook failure shouldn't abort the entire agent run - log and continue to completion
+        console.warn('[agent] afterAgentRun hook failed:', hookError);
+      }
 
       // Determine completion reason
       let reason: 'completed' | 'max_turns_reached' | 'error' = 'completed';
@@ -556,9 +640,13 @@ export class Agent {
       }
 
       // 7. yield agent_done
+      // When done: current turn (turnIndex) completed, total = turnIndex + 1 (0-indexed)
+      // When max_turns_reached: turnIndex === config.maxTurns because loop condition turnIndex < maxTurns,
+      // we already executed all maxTurns rounds (0..maxTurns-1 → executed maxTurns times), so total = turnIndex
+      const totalTurns = reason === 'max_turns_reached' ? turnIndex : turnIndex + 1;
       yield {
         type: 'agent_done',
-        totalTurns: turnIndex + 1,
+        totalTurns,
         reason,
         turnIndex,
       } satisfies AgentEvent;

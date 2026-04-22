@@ -104,8 +104,22 @@ export class OpenAIProvider implements Provider {
     // Track tool calls with accumulated arguments JSON
     let tool_calls: LLMResponseChunk['tool_calls'] = [];
     let accumulated_args: string[] = [];
+    let usage: {
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+    } | undefined;
 
     for await (const chunk of stream) {
+      // OpenAI sends usage in the final chunk
+      if (chunk.usage) {
+        usage = {
+          prompt_tokens: chunk.usage.prompt_tokens,
+          completion_tokens: chunk.usage.completion_tokens,
+          total_tokens: chunk.usage.total_tokens,
+        };
+      }
+
       const delta = chunk.choices[0]?.delta;
 
       if (!delta) {
@@ -153,6 +167,7 @@ export class OpenAIProvider implements Provider {
         content,
         done: finishReason != null,
         tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+        usage,
       };
     }
 

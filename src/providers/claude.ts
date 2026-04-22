@@ -109,6 +109,9 @@ export class ClaudeProvider implements Provider {
       name: string;
       input: string;
     } | null = null;
+    let usage: {
+      output_tokens: number;
+    } | null = null;
 
     for await (const chunk of stream) {
       if (chunk.type === 'content_block_start') {
@@ -170,11 +173,24 @@ export class ClaudeProvider implements Provider {
         }
       } else if (chunk.type === 'message_delta') {
         // Message delta contains stop_reason and usage
+        const chunkAny = chunk as any;
+        if (chunkAny.message_delta?.usage?.output_tokens !== undefined) {
+          usage = {
+            output_tokens: chunkAny.message_delta.usage.output_tokens,
+          };
+        }
       } else if (chunk.type === 'message_stop') {
+        // Tool calls have already been yielded incrementally
+        // Add usage if we have it
+        const promptTokens = this.countPromptTokens(claudeMessages);
         yield {
           content: '',
           done: true,
-          tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+          usage: usage ? {
+            prompt_tokens: promptTokens,
+            completion_tokens: usage.output_tokens,
+            total_tokens: promptTokens + usage.output_tokens,
+          } : undefined,
         };
       }
     }
@@ -201,6 +217,25 @@ export class ClaudeProvider implements Provider {
             ],
           };
         }
+        if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+          // Assistant message with tool calls - need to create mixed content blocks
+          const content: Anthropic.ContentBlockParam[] = [];
+          if (m.content) {
+            content.push({ type: 'text', text: m.content });
+          }
+          for (const tc of m.tool_calls) {
+            content.push({
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.name,
+              input: tc.arguments,
+            });
+          }
+          return {
+            role: 'assistant',
+            content,
+          };
+        }
         return {
           role: m.role === 'assistant' ? 'assistant' : 'user',
           content: m.content,
@@ -213,5 +248,29 @@ export class ClaudeProvider implements Provider {
    */
   private extractSystemPrompt(messages: Message[]): string {
     return messages.filter(m => m.role === 'system').map(m => m.content).join('\n');
+  }
+
+  /**
+   * Rough estimate of prompt tokens for Claude streaming.
+   * Claude streaming doesn't provide full usage until the end in the event stream,
+   * so we estimate using 1 token ~= 4 characters.
+   */
+  private countPromptTokens(messages: Anthropic.MessageParam[]): number {
+    let totalChars = 0;
+    for (const msg of messages) {
+      if (typeof msg.content === 'string') {
+        totalChars += msg.content.length;
+      } else {
+        for (const block of msg.content) {
+          if (block.type === 'text') {
+            totalChars += block.text.length;
+          } else if (block.type === 'tool_use') {
+            // tool_use block add some overhead - rough estimate
+            totalChars += (block.name.length + JSON.stringify(block.input).length + 20);
+          }
+        }
+      }
+    }
+    return Math.ceil(totalChars / 4);
   }
 }

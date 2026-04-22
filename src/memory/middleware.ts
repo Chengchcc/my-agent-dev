@@ -61,11 +61,11 @@ export class MemoryMiddleware implements AgentMiddleware {
     // Get project memory (already included in search results if exists)
     if (memories.length > 0) {
       const memoryBlock = this.formatMemories(memories);
-      if (context.systemPrompt) {
-        context.systemPrompt += `\n\n<memory>\n${memoryBlock}\n</memory>`;
-      } else {
-        context.systemPrompt = `<memory>\n${memoryBlock}\n</memory>`;
-      }
+      // Remove any existing memory block before adding new one
+      let cleanedPrompt = context.systemPrompt || '';
+      cleanedPrompt = cleanedPrompt.replace(/\n\n<memory>[\s\S]*?<\/memory>/, '');
+      const newMemorySection = `\n\n<memory>\n${memoryBlock}\n</memory>`;
+      context.systemPrompt = (cleanedPrompt + newMemorySection).trim();
     }
 
     return next();
