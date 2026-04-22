@@ -11,6 +11,7 @@ import { TodoPanel } from './TodoPanel';
 import { InputBox } from './InputBox';
 import { StreamingIndicator } from './StreamingIndicator';
 import { AskUserQuestionPrompt } from './AskUserQuestionPrompt';
+import { BlinkProvider } from './BlinkContext';
 import type { Agent } from '../../../agent';
 import type { Message } from '../../../types';
 import type { SlashCommand } from '../command-registry';
@@ -25,7 +26,9 @@ export interface AppProps {
 export function App({ agent, skillCommands, sessionStore }: AppProps) {
   return (
     <AgentLoopProvider agent={agent} sessionStore={sessionStore}>
-      <AppContent skillCommands={skillCommands} sessionStore={sessionStore} />
+      <BlinkProvider>
+        <AppContent skillCommands={skillCommands} sessionStore={sessionStore} />
+      </BlinkProvider>
     </AgentLoopProvider>
   );
 }
