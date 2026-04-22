@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink';
 import React from 'react';
 import type { UITodoItem } from '../types';
+import { BlinkingText } from './';
 
 interface TodoPanelProps {
   todos: UITodoItem[];
@@ -14,7 +15,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
       case 'in_progress':
         return { color: 'yellow', bold: true, strikethrough: false, dimColor: false };
       case 'completed':
-        return { color: 'green', bold: false, strikethrough: false, dimColor: true };
+        return { color: 'green', bold: false, strikethrough: true, dimColor: true };
       case 'cancelled':
         return { color: 'gray', bold: false, strikethrough: true, dimColor: false };
       default:
@@ -76,7 +77,11 @@ export function TodoPanel({ todos }: TodoPanelProps) {
               <Text color="gray" dimColor>{index + 1}.</Text>
               {' '}
               <Text {...style}>
-                {indicator} {todo.content}
+                {todo.status === 'in_progress' ? (
+                  <BlinkingText color="cyan">{indicator}</BlinkingText>
+                ) : (
+                  indicator
+                )} {todo.content}
               </Text>
             </Text>
           </Box>
