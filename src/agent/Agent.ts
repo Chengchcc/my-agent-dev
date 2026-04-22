@@ -394,6 +394,7 @@ export class Agent {
             type: 'turn_complete',
             turnIndex,
             hasToolCalls: false,
+            usage,
           } satisfies AgentEvent;
           break;
         }
@@ -403,6 +404,7 @@ export class Agent {
           type: 'turn_complete',
           turnIndex,
           hasToolCalls: true,
+          usage,
         } satisfies AgentEvent;
 
         // i. Execute tool calls

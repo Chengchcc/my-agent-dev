@@ -36,7 +36,8 @@ type AgentUIAction =
   | { type: 'FOCUS_TOOL'; id: string }
   | { type: 'TOGGLE_EXPANDED' }
   | { type: 'MOVE_FOCUS'; direction: -1 | 1; collapsibleTools: string[] }
-  | { type: 'SET_TODOS'; todos: UITodoItem[] };
+  | { type: 'SET_TODOS'; todos: UITodoItem[] }
+  | { type: 'TURN_COMPLETE'; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } };
 
 function agentUIReducer(state: AgentUIState, action: AgentUIAction): AgentUIState {
   switch (action.type) {
@@ -72,8 +73,20 @@ function agentUIReducer(state: AgentUIState, action: AgentUIAction): AgentUIStat
         todos: action.todos,
       };
 
+    case 'TURN_COMPLETE':
+      // Accumulate token usage from completed turn
+      if (action.usage) {
+        const newTotalUsage = {
+          promptTokens: state.totalUsage.promptTokens + action.usage.prompt_tokens,
+          completionTokens: state.totalUsage.completionTokens + action.usage.completion_tokens,
+          totalTokens: state.totalUsage.totalTokens + action.usage.total_tokens,
+        };
+        return { ...state, totalUsage: newTotalUsage };
+      }
+      return state;
+
     case 'LOOP_COMPLETE':
-      // Accumulate token usage if provided
+      // Accumulate token usage if provided (fallback for when loop completes after turn_complete isn't handled)
       let newTotalUsage = state.totalUsage;
       if (action.usage) {
         newTotalUsage = {
@@ -428,7 +441,9 @@ export function AgentLoopProvider({
               content: `Error: ${event.error.message}`,
             };
             dispatch({ type: 'AGENT_ERROR', errorMessage });
-          } else if (event.type === 'turn_complete' || event.type === 'agent_done') {
+          } else if (event.type === 'turn_complete') {
+            dispatch({ type: 'TURN_COMPLETE', usage: event.usage });
+          } else if (event.type === 'agent_done') {
             // No action needed during iteration
           } else if (event.type === 'sub_agent_start') {
             dispatch({ type: 'SUB_AGENT_START', event });

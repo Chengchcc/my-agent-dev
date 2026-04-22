@@ -45,6 +45,12 @@ export interface ToolCallResultEvent extends AgentEventBase {
 export interface TurnCompleteEvent extends AgentEventBase {
   type: 'turn_complete';
   hasToolCalls: boolean;
+  /** Token usage from this turn */
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
 
 /**
