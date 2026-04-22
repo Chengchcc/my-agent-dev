@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import { Text } from 'ink';
 import type { TextProps } from 'ink';
+import { useBlink } from './BlinkContext';
 
 export interface BlinkingTextProps extends TextProps {
   /** Blink interval in milliseconds (default: 800 for slow/subtle blinking) */
@@ -12,20 +13,9 @@ export function BlinkingText({
   interval = 800,
   ...props
 }: BlinkingTextProps) {
-  const [visible, setVisible] = useState(true);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      setVisible(v => !v);
-    }, interval);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [interval]);
+  // interval is not used in the component - only for backwards compatibility
+  // actual interval is controlled by BlinkProvider
+  const visible = useBlink();
 
   if (visible) {
     return <Text {...props}>{children}</Text>;
