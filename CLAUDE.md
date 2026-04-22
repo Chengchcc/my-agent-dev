@@ -22,6 +22,7 @@ This is a TypeScript-based AI agent framework built with Bun, featuring a modula
   - `context.ts`: ContextManager + compression strategies
   - `middleware.ts`: `composeMiddlewares` utility
   - `tool-registry.ts`: ToolRegistry - manages tool registration/lookup
+  - `sub-agent-tool.ts`: SubAgentTool - delegates subtasks to independent agents
 - `/src/providers/`: LLM Provider implementations (flattened from foundation/providers)
   - `claude.ts`: Anthropic Claude provider
   - `openai.ts`: OpenAI provider
