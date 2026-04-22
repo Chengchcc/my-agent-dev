@@ -405,7 +405,7 @@ export function AgentLoopProvider({
             }
           } else if (event.type === 'tool_call_start') {
             runningTools.set(event.toolCall.id, event);
-            dispatch({ type: 'TOOL_START', runningTools });
+            dispatch({ type: 'TOOL_START', runningTools: new Map(runningTools) });
           } else if (event.type === 'tool_call_result') {
             runningTools.delete(event.toolCall.id);
             // After tool result completes, refresh from full context
