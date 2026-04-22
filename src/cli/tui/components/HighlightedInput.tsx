@@ -42,7 +42,7 @@ export function HighlightedInput({
             <Text
               key={`${char}-${index}`}
               bold={highlighted}
-              color={highlighted ? 'blue' : undefined}
+              color={highlighted ? 'cyan' : undefined}
               inverse={isCursor}
             >
               {isCursor && char === ' ' ? ' ' : char}

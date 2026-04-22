@@ -27,7 +27,7 @@ export function CommandList({ commands, selectedIndex }: CommandListProps) {
       paddingX={1}
       marginTop={0}
     >
-      <Text bold color="blue">
+      <Text bold color="cyan">
         Commands
       </Text>
       {visibleCommands.map((cmd, visibleIndex) => {
@@ -35,13 +35,13 @@ export function CommandList({ commands, selectedIndex }: CommandListProps) {
         return (
         <Box key={cmd.name} flexDirection="row">
           <Text
-            color={index === selectedIndex ? "blue" : undefined}
+            color={index === selectedIndex ? "cyan" : undefined}
             bold={index === selectedIndex}
           >
             {index === selectedIndex ? "❯ " : "  "}
           </Text>
           <Text
-            color={index === selectedIndex ? "blue" : undefined}
+            color={index === selectedIndex ? "cyan" : undefined}
             bold={index === selectedIndex}
           >
             /{cmd.name}
