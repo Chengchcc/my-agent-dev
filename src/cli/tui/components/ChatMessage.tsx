@@ -180,7 +180,7 @@ export function ChatMessage({ message, isStreaming }: { message: Message; isStre
             const pending = currentTools.some(t => t.toolCall.id === tc.id);
 
             return (
-              <Box key={tc.id} marginY={1}>
+              <Box key={`${message.id ?? ''}-${tc.id}`} marginY={1}>
                 <ToolCallMessage
                   toolCall={tc}
                   result={result}
