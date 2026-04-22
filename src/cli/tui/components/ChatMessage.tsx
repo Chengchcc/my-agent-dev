@@ -25,13 +25,13 @@ export function ChatMessage({ message, isStreaming }: { message: Message; isStre
   const getRoleColor = (role: string): string => {
     switch (role) {
       case 'user':
-        return 'blue';
+        return 'cyan';      // Nord cyan for user input
       case 'assistant':
-        return 'green';
+        return 'white';     // Light gray/white for assistant output (Nord #d8dee9)
       case 'system':
-        return 'yellow';
+        return 'yellow';    // Muted yellow for system messages (Nord #ebcb8b)
       case 'tool':
-        return 'magenta';
+        return 'magenta';   // Muted purple for tool output (Nord #b48ead)
       default:
         return 'gray';
     }
