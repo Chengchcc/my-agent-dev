@@ -1,6 +1,7 @@
 // src/cli/tui/components/ToolCallMessage.tsx
 import React from 'react';
 import { Box, Text, Spacer } from 'ink';
+import { BlinkingText } from './';
 import type { ToolCall } from '../../../types';
 import type { ToolCallResultEvent } from '../../../agent/loop-types';
 
@@ -23,7 +24,7 @@ export function ToolCallMessage({ toolCall, status, result, error }: ToolCallMes
       <Box flexDirection="row" alignItems="center">
         <Text bold>Tool: {toolCall.name}</Text>
         <Spacer />
-        {status === 'running' && <Text color="yellow">Running...</Text>}
+        {status === 'running' && <BlinkingText color="yellow">Running...</BlinkingText>}
         {status === 'completed' && <Text color="green">✓ Done</Text>}
         {status === 'error' && <Text color="red">✗ Error</Text>}
       </Box>
