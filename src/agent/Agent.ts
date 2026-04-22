@@ -250,7 +250,14 @@ export class Agent {
       // Sync todo state back to contextManager after middleware
       this.contextManager.syncTodoFromContext(afterBeforeAgentRun);
 
-      while (turnIndex < config.maxTurns && !done && !signal.aborted) {
+      // Keep looping until we either:
+      // 1. Are done (LLLM returned no tool calls)
+      // 2. Have reached maxTurns total LLM calls
+      // 3. Are aborted
+      // Note: If the maxTurns-th LLM call has tool calls, we still need to execute the tools
+      // and then do one more LLM call for the summary - so we allow entering the loop for
+      // all turn indices from 0 to config.maxTurns inclusive
+      while (turnIndex <= config.maxTurns && !done && !signal.aborted) {
         // a. Compress context if needed (every turn)
         const currentContext = this.contextManager.getContext(this.config);
         const composedBeforeCompress = composeMiddlewares(
@@ -599,6 +606,8 @@ export class Agent {
           }
         }
 
+        // Increment turn index **after** tool execution, before checking loop condition again
+        // This ensures that after we've executed tools on this turn, we get another turn for the summary
         turnIndex++;
       }
 
@@ -641,9 +650,9 @@ export class Agent {
 
       // 7. yield agent_done
       // When done: current turn (turnIndex) completed, total = turnIndex + 1 (0-indexed)
-      // When max_turns_reached: turnIndex === config.maxTurns because loop condition turnIndex < maxTurns,
-      // we already executed all maxTurns rounds (0..maxTurns-1 → executed maxTurns times), so total = turnIndex
-      const totalTurns = reason === 'max_turns_reached' ? turnIndex : turnIndex + 1;
+      // When max_turns_reached: we've executed turnIndex + 1 rounds (0..turnIndex inclusive), so total = turnIndex + 1
+      // (Loop allows up to config.maxTurns inclusive, so when we exit we've done turnIndex + 1 total turns)
+      const totalTurns = done ? turnIndex + 1 : turnIndex;
       yield {
         type: 'agent_done',
         totalTurns,

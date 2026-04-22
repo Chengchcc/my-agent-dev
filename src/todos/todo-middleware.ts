@@ -195,8 +195,21 @@ export function createTodoMiddleware(): {
     metadata.stepsSinceLastWrite++;
     metadata.stepsSinceLastReminder++;
 
-    if (
-      metadata.todoStore.length > 0 &&
+    // Check if all todos are completed/cancelled - add prompt to summarize
+    const allCompleted = metadata.todoStore.length > 0 &&
+      metadata.todoStore.every(t => t.status === 'completed' || t.status === 'cancelled');
+
+    if (allCompleted) {
+      // Add an explicit prompt to summarize completed work
+      const summaryPrompt = `\n<todo_completed>
+All todo items have been completed. Provide a clear summary of what you've accomplished, highlight any important results or changes made, and confirm that the task is complete.
+</todo_completed>`;
+      if (context.systemPrompt) {
+        context.systemPrompt += summaryPrompt;
+      } else {
+        context.systemPrompt = summaryPrompt.trim();
+      }
+    } else if (
       metadata.stepsSinceLastWrite >= REMINDER_CONFIG.STEPS_SINCE_WRITE &&
       metadata.stepsSinceLastReminder >= REMINDER_CONFIG.STEPS_BETWEEN_REMINDERS
     ) {
