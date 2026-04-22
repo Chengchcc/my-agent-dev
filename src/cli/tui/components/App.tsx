@@ -61,7 +61,7 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
 
   return (
     <Box flexDirection="column" height="100%">
-      <Header />
+      <Header sessionStore={sessionStore} />
       <Box flexGrow={1} flexDirection="column" overflow="hidden">
         <ScrollView>
           {messages.map((message, index) => (

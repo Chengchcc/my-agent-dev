@@ -28,6 +28,10 @@ export class SessionStore {
     return this.currentSessionId;
   }
 
+  getSessionId(): string | null {
+    return this.currentSessionId;
+  }
+
   setCurrentSessionId(id: string): void {
     this.currentSessionId = id;
   }

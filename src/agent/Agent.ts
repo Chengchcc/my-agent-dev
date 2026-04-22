@@ -20,7 +20,7 @@ export class Agent {
   private provider: Provider;
   private contextManager: ContextManager;
   private hooks: Required<AgentHooks>;
-  private config: AgentConfig;
+  readonly config: AgentConfig;
   private toolRegistry: ToolRegistry | null;
   private abortController: AbortController | null = null;
 
