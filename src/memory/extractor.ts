@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import type { Message, Provider } from '../types';
 import type { MemoryEntry, MemoryExtractor } from './types';
 
