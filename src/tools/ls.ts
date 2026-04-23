@@ -36,6 +36,8 @@ export class LsTool extends ZodTool {
       children_count?: number;
     }> = [];
 
+    const errors: string[] = [];
+
     const scanDirectory = (currentPath: string, currentDepth: number) => {
       if (currentDepth > args.depth) return;
 
@@ -43,7 +45,7 @@ export class LsTool extends ZodTool {
       try {
         dirEntries = readdirSync(currentPath, { withFileTypes: true });
       } catch (e) {
-        console.warn(`Could not read directory ${currentPath}:`, (e as Error).message);
+        errors.push(`Could not read directory ${currentPath}: ${(e as Error).message}`);
         return;
       }
 
@@ -58,6 +60,7 @@ export class LsTool extends ZodTool {
         try {
           entryStats = statSync(fullPath);
         } catch (e) {
+          errors.push(`Could not stat ${fullPath}: ${(e as Error).message}`);
           continue;
         }
 
@@ -70,8 +73,12 @@ export class LsTool extends ZodTool {
         if (entry.isDirectory()) {
           entryData.type = 'directory';
           if (currentDepth < args.depth) {
-            const children = readdirSync(fullPath);
-            entryData.children_count = children.length;
+            try {
+              const children = readdirSync(fullPath);
+              entryData.children_count = children.length;
+            } catch (e) {
+              errors.push(`Could not read children of ${fullPath}: ${(e as Error).message}`);
+            }
           }
         } else if (entry.isFile()) {
           entryData.type = 'file';
@@ -121,6 +128,7 @@ export class LsTool extends ZodTool {
       entries: sortedEntries,
       path: dirPath,
       total_entries: sortedEntries.length,
+      errors: errors.length > 0 ? errors : undefined,
     };
   }
 }
