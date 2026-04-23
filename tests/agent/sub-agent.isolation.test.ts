@@ -82,18 +82,14 @@ describe('ToolRegistry filtering (recursion prevention)', () => {
     });
     mainRegistry.register(mainTool);
     // Also register some other common tools
-    class DummyRead implements any {
-      getDefinition() {
-        return { name: 'read', description: 'read', parameters: { type: 'object', properties: {}, required: [] } };
-      }
-      async execute() { return ''; }
-    }
-    mainRegistry.register(new DummyRead());
-    class DummyGrep implements any {
-      getDefinition() { return { name: 'grep', description: 'grep', parameters: { type: 'object', properties: {}, required: [] } }; }
-      async execute() { return ''; }
-    }
-    mainRegistry.register(new DummyGrep());
+    mainRegistry.register({
+      getDefinition: () => ({ name: 'read', description: 'read', parameters: { type: 'object', properties: {}, required: [] } }),
+      execute: async () => '',
+    });
+    mainRegistry.register({
+      getDefinition: () => ({ name: 'grep', description: 'grep', parameters: { type: 'object', properties: {}, required: [] } }),
+      execute: async () => '',
+    });
 
     const tool = new SubAgentTool({
       mainProvider: mockProvider,
@@ -102,7 +98,6 @@ describe('ToolRegistry filtering (recursion prevention)', () => {
     });
 
     // Spy on registry to see what gets filtered
-    const getAllSpy = vi.spyOn(ToolRegistry.prototype, 'getAllDefinitions');
     const registerSpy = vi.spyOn(ToolRegistry.prototype, 'register');
 
     tool.execute({ task: 'test' }).catch(() => {});
@@ -122,7 +117,6 @@ describe('ToolRegistry filtering (recursion prevention)', () => {
     expect(registeredNames).toContain('read');
     expect(registeredNames).toContain('grep');
 
-    getAllSpy.mockRestore();
     registerSpy.mockRestore();
   });
 
