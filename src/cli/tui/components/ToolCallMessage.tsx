@@ -62,20 +62,19 @@ export function ToolCallMessage({ toolCall, result, pending, focused, expanded }
             {result && <Text color="gray"> {result.durationMs}ms</Text>}
           </Box>
 
-          {/* Summary when collapsed, full rendered when expanded */}
-          {expanded ? (
-            <ReadFileView
-              filePath={parsed.path}
-              content={parsed.content}
-              startLine={parsed.range.start}
-              totalFileLines={parsed.total_lines}
-              diff={parsed.diff}
-            />
-          ) : smartSummary && (
+          {/* Always show full content with syntax highlighting for read tool */}
+          {smartSummary && (
             <Box paddingLeft={2}>
               <Text color={contentColor}>{smartSummary}</Text>
             </Box>
           )}
+          <ReadFileView
+            filePath={parsed.path}
+            content={parsed.content}
+            startLine={parsed.range.start}
+            totalFileLines={parsed.total_lines}
+            diff={parsed.diff}
+          />
         </Box>
       );
     }
