@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Tool, ToolImplementation } from '../types';
 
-export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape>> implements ToolImplementation {
+export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject<z.ZodRawShape>> implements ToolImplementation {
   protected abstract schema: T;
   protected abstract name: string;
   protected abstract description: string;
