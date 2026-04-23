@@ -85,20 +85,4 @@ describe('SubAgentTool parameter validation', () => {
   });
 });
 
-describe('SubAgentTool very long task', () => {
-  test('extremely long task string does not cause OOM and handles it gracefully', () => {
-    const tool = createTool();
-    const longTask = 'a'.repeat(100_000);
 
-    // Directly test the parameter validation logic that exists in the execute method
-    // This replicates what happens inside tool.execute()
-    const task = longTask;
-    // This is the exact validation from SubAgentTool.execute
-    if (!task || typeof task !== 'string') {
-      throw new Error('Error: Missing required "task" parameter');
-    }
-
-    // The validation should pass without throwing - this ensures we don't get OOM from parameter validation
-    expect(true).toBe(true);
-  });
-});
