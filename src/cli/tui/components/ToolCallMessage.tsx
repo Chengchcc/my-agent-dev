@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { BlinkingText } from './BlinkingText';
+import ReadFileView from './ReadFileView';
 import type { ToolCall } from '../../../types';
 import { formatToolCallTitle, smartSummarize, formatToolResult } from '../utils/tool-format';
 

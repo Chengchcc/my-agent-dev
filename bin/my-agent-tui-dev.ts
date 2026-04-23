@@ -8,7 +8,7 @@ import { SkillLoader } from '../src/skills/loader';
 import { createSkillMiddleware } from '../src/skills/middleware';
 import { toSkillCommand, loadAvailableCommands } from '../src/cli/tui/command-registry';
 import { runTUIClient } from '../src/cli/index';
-import { BashTool, TextEditorTool, AskUserQuestionTool } from '../src/tools';
+import { BashTool, TextEditorTool, AskUserQuestionTool, ReadTool, GrepTool, GlobTool, LsTool } from '../src/tools';
 import { SubAgentTool } from '../src/agent';
 import { globalAskUserQuestionManager } from '../src/tools';
 import { SessionStore } from '../src/session/store';
@@ -55,6 +55,10 @@ toolRegistry.register(new TextEditorTool({ allowedRoots: [__dirname + '/..'] }))
 toolRegistry.register(new AskUserQuestionTool(
   (params) => globalAskUserQuestionManager.askUserQuestion(params)
 ));
+toolRegistry.register(new ReadTool({ allowedRoots: [__dirname + '/..'] }));
+toolRegistry.register(new GrepTool({ allowedRoots: [__dirname + '/..'] }));
+toolRegistry.register(new GlobTool({ allowedRoots: [__dirname + '/..'] }));
+toolRegistry.register(new LsTool({ allowedRoots: [__dirname + '/..'] }));
 
 // Register todo middleware - provides todo_write tool and periodic reminders
 const { tool: todoTool, hooks: todoHooks } = createTodoMiddleware();
