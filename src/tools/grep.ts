@@ -4,6 +4,7 @@ import { resolve, extname, join } from 'path';
 import { allowedRoots } from '../config/allowed-roots';
 import { ZodTool } from './zod-tool';
 import { getLanguageFromFilePath } from '../cli/tui/components/utils/language-map';
+import { debugWarn } from '../utils/debug';
 
 const DEFAULT_EXCLUDE_PATTERNS = ['node_modules', '.git', 'dist', 'build', '.DS_Store'];
 
@@ -123,8 +124,10 @@ export class GrepTool extends ZodTool {
               }
             }
           } catch (e) {
-            // Skip files that can't be read - collect error instead of printing directly
-            errors.push(`Could not read file ${fullPath}: ${(e as Error).message}`);
+            // Skip files that can't be read - collect error
+            const errorMsg = `Could not read file ${fullPath}: ${(e as Error).message}`;
+            errors.push(errorMsg);
+            debugWarn(errorMsg);
           }
         }
       }

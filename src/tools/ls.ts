@@ -3,6 +3,7 @@ import { readdirSync, statSync, lstatSync } from 'fs';
 import { resolve, basename, join } from 'path';
 import { allowedRoots } from '../config/allowed-roots';
 import { ZodTool } from './zod-tool';
+import { debugWarn } from '../utils/debug';
 
 export class LsTool extends ZodTool {
   schema = z.object({
@@ -45,7 +46,9 @@ export class LsTool extends ZodTool {
       try {
         dirEntries = readdirSync(currentPath, { withFileTypes: true });
       } catch (e) {
-        errors.push(`Could not read directory ${currentPath}: ${(e as Error).message}`);
+        const errorMsg = `Could not read directory ${currentPath}: ${(e as Error).message}`;
+        errors.push(errorMsg);
+        debugWarn(errorMsg);
         return;
       }
 
@@ -60,7 +63,9 @@ export class LsTool extends ZodTool {
         try {
           entryStats = statSync(fullPath);
         } catch (e) {
-          errors.push(`Could not stat ${fullPath}: ${(e as Error).message}`);
+          const errorMsg = `Could not stat ${fullPath}: ${(e as Error).message}`;
+          errors.push(errorMsg);
+          debugWarn(errorMsg);
           continue;
         }
 
@@ -77,7 +82,9 @@ export class LsTool extends ZodTool {
               const children = readdirSync(fullPath);
               entryData.children_count = children.length;
             } catch (e) {
-              errors.push(`Could not read children of ${fullPath}: ${(e as Error).message}`);
+              const errorMsg = `Could not read children of ${fullPath}: ${(e as Error).message}`;
+              errors.push(errorMsg);
+              debugWarn(errorMsg);
             }
           }
         } else if (entry.isFile()) {

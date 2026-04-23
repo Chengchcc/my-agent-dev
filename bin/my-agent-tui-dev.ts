@@ -14,8 +14,14 @@ import { globalAskUserQuestionManager } from '../src/tools';
 import { SessionStore } from '../src/session/store';
 import { createAutoSaveHook } from '../src/session/hook';
 import { createTodoMiddleware } from '../src/todos';
+import { setDebugMode } from '../src/utils/debug';
 import type { AgentConfig } from '../src/types';
 import type { SkillFrontmatter } from '../src/skills/loader';
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+const debugEnabled = args.includes('--debug') || args.includes('-d');
+setDebugMode(debugEnabled);
 
 // Choose provider based on available API key
 const defaultModel = process.env.MODEL || 'claude-3-5-sonnet-20241022';

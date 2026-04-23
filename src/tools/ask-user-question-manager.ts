@@ -1,5 +1,6 @@
 // src/tools/ask-user-question-manager.ts
 import type { AskUserQuestionParameters, AskUserQuestionResult } from './ask-user-question';
+import { debugWarn } from '../utils/debug';
 
 export type AskUserQuestionRequest = {
   params: AskUserQuestionParameters;
@@ -17,7 +18,7 @@ export class AskUserQuestionManager {
   askUserQuestion = (params: AskUserQuestionParameters): Promise<AskUserQuestionResult> => {
     return new Promise((resolve, reject) => {
       if (this._queue.length >= MAX_QUEUE_SIZE) {
-        console.warn('[AskUserQuestionManager] Queue overflow; rejecting request.');
+        debugWarn('[AskUserQuestionManager] Queue overflow; rejecting request.');
         reject(new Error('Ask user question queue overflow'));
         return;
       }
