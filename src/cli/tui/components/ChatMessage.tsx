@@ -17,7 +17,7 @@ marked.setOptions({
   async: false,
 });
 
-function _ChatMessage({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
+function _ChatMessage({ message }: { message: Message }) {
 
   // Handle different role types with appropriate styling
   const getRoleColor = (role: string): string => {
@@ -49,28 +49,6 @@ function _ChatMessage({ message, isStreaming }: { message: Message; isStreaming?
         return '?';
     }
   };
-
-  // Split content into stable part (fully closed markdown structures) and pending part (unclosed)
-  function splitStableContent(content: string): { stable: string; pending: string } {
-    if (!isStreaming) {
-      return { stable: content, pending: '' };
-    }
-
-    const backtickBlocks = (content.match(/```/g) || []).length;
-    if (backtickBlocks % 2 === 0) {
-      return { stable: content, pending: '' };
-    }
-
-    const lastOpening = content.lastIndexOf('```');
-    if (lastOpening === -1) {
-      return { stable: content, pending: '' };
-    }
-
-    const newlineBefore = content.lastIndexOf('\n', lastOpening);
-    const stable = newlineBefore !== -1 ? content.slice(0, newlineBefore) : content.slice(0, lastOpening);
-    const pending = content.slice(stable.length);
-    return { stable, pending };
-  }
 
   function renderMarkdownTokens(content: string): React.ReactNode[] {
     const elements: React.ReactNode[] = [];
@@ -138,8 +116,7 @@ function _ChatMessage({ message, isStreaming }: { message: Message; isStreaming?
 
   const roleColor = getRoleColor(message.role);
   const rolePrefix = getRolePrefix(message.role);
-  const { stable, pending } = splitStableContent(message.content ?? '');
-  const stableElements = useMemo(() => renderMarkdownTokens(stable), [stable]);
+  const elements = useMemo(() => renderMarkdownTokens(message.content ?? ''), [message.content]);
 
   // Assistant messages with tool calls: render content + inline tool calls
   if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
@@ -153,8 +130,7 @@ function _ChatMessage({ message, isStreaming }: { message: Message; isStreaming?
         <Box paddingLeft={1} flexDirection="column">
           {message.content && (
             <Box flexDirection="column">
-              {stableElements}
-              {pending && <Text>{pending}</Text>}
+              {elements}
             </Box>
           )}
           {message.tool_calls.map(tc => (
@@ -178,8 +154,7 @@ function _ChatMessage({ message, isStreaming }: { message: Message; isStreaming?
         </Text>
       </Box>
       <Box paddingLeft={1} flexDirection="column">
-        {stableElements}
-        {pending && <Text>{pending}</Text>}
+        {elements}
       </Box>
     </Box>
   );
@@ -227,7 +202,6 @@ export const ChatMessage = React.memo(
     return (
       prev.message.id === next.message.id &&
       prev.message.content === next.message.content &&
-      prev.isStreaming === next.isStreaming &&
       prev.message.tool_calls === next.message.tool_calls &&
       prev.message.role === next.message.role
     );

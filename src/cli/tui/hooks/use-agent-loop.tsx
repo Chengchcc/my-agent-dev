@@ -13,6 +13,10 @@ import type { SessionStore } from '../../../session/store';
 type AgentUIState = {
   streaming: boolean;
   messages: Message[];
+  /** Current streaming content being generated (separate from messages for performance) */
+  streamingContent: string | null;
+  /** ID of the current streaming message */
+  streamingMessageId: string | null;
   todos: UITodoItem[];
   currentTools: ToolCallStartEvent[];
   runningSubAgents: Map<string, SubAgentStartEvent>;
@@ -28,7 +32,7 @@ type AgentUIState = {
 
 type AgentUIAction =
   | { type: 'SUBMIT_START' }
-  | { type: 'TEXT_DELTA_BATCH'; streamingMessageId: string; message: Message }
+  | { type: 'TEXT_DELTA_BATCH'; streamingMessageId: string; content: string }
   | { type: 'TOOL_START'; runningTools: Map<string, ToolCallStartEvent> }
   | { type: 'TOOL_RESULT'; runningTools: Map<string, ToolCallStartEvent>; toolId: string; result: { durationMs: number; isError: boolean }; messages: Message[]; todos: UITodoItem[] }
   | { type: 'LOOP_COMPLETE'; messages: Message[]; todos: UITodoItem[]; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }
@@ -47,6 +51,8 @@ function agentUIReducer(state: AgentUIState, action: AgentUIAction): AgentUIStat
       return {
         ...state,
         streaming: true,
+        streamingContent: '',
+        streamingMessageId: null,
         currentTools: [],
         streamingStartTime: Date.now(),
       };
@@ -54,10 +60,8 @@ function agentUIReducer(state: AgentUIState, action: AgentUIAction): AgentUIStat
     case 'TEXT_DELTA_BATCH':
       return {
         ...state,
-        messages: [
-          ...state.messages.filter((m: Message) => m.id !== action.streamingMessageId),
-          action.message,
-        ],
+        streamingContent: action.content,
+        streamingMessageId: action.streamingMessageId,
       };
 
     case 'TOOL_START':
@@ -100,6 +104,8 @@ function agentUIReducer(state: AgentUIState, action: AgentUIAction): AgentUIStat
       return {
         ...state,
         streaming: false,
+        streamingContent: null,
+        streamingMessageId: null,
         messages: action.messages,
         todos: action.todos,
         currentTools: [],
@@ -193,6 +199,10 @@ type AgentLoopState = {
   agent: Agent;
   streaming: boolean;
   messages: Message[];
+  /** Current streaming content being generated (separate for performance) */
+  streamingContent: string | null;
+  /** ID of the current streaming message */
+  streamingMessageId: string | null;
   todos: UITodoItem[];
   currentTools: ToolCallStartEvent[];
   runningSubAgents: Map<string, SubAgentStartEvent>;
@@ -237,6 +247,8 @@ export function AgentLoopProvider({
   const [state, dispatch] = useReducer<React.Reducer<AgentUIState, AgentUIAction>>(agentUIReducer, {
     streaming: false,
     messages: [],
+    streamingContent: null,
+    streamingMessageId: null,
     todos: [],
     currentTools: [],
     runningSubAgents: new Map(),
@@ -252,6 +264,8 @@ export function AgentLoopProvider({
   const {
     streaming,
     messages,
+    streamingContent,
+    streamingMessageId,
     todos,
     currentTools,
     runningSubAgents,
@@ -264,9 +278,8 @@ export function AgentLoopProvider({
   } = state;
 
   const streamingRef = useRef(streaming);
-  const streamingMessageRef = useRef<Message | null>(null);
   const streamingContentRef = useRef('');
-  const batchTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingFlush = useRef(false);
 
   useEffect(() => {
     streamingRef.current = streaming;
@@ -389,7 +402,6 @@ export function AgentLoopProvider({
       }
 
       dispatch({ type: 'SUBMIT_START' });
-      streamingMessageRef.current = null;
       streamingContentRef.current = '';
 
       // Track incremental streaming content
@@ -404,21 +416,23 @@ export function AgentLoopProvider({
           if (event.type === 'text_delta') {
             // Only accumulate text during the current assistant turn
             // After tool execution, full messages are already in context
-            if (streamingMessageRef.current !== null || runningTools.size === 0) {
+            if (state.streamingContent !== null || runningTools.size === 0) {
               streamingContentRef.current += event.delta;
 
-              // Batch updates: max one render per 50ms to reduce flicker
-              if (!batchTimerRef.current) {
-                batchTimerRef.current = setTimeout(() => {
-                  batchTimerRef.current = null;
-                  const streamingMessage: Message = {
-                    id: streamingMessageId,
-                    role: 'assistant',
+              // Adaptive batching with queueMicrotask:
+              // - Multiple deltas in the same tick are batched into one render
+              // - Renders happen as soon as possible after the current tick completes
+              // - No artificial 50ms delay - smooth streaming when rendering is fast
+              if (!pendingFlush.current) {
+                pendingFlush.current = true;
+                queueMicrotask(() => {
+                  pendingFlush.current = false;
+                  dispatch({
+                    type: 'TEXT_DELTA_BATCH',
+                    streamingMessageId,
                     content: streamingContentRef.current,
-                  };
-                  streamingMessageRef.current = streamingMessage;
-                  dispatch({ type: 'TEXT_DELTA_BATCH', streamingMessageId, message: streamingMessage });
-                }, 50);
+                  });
+                });
               }
             }
           } else if (event.type === 'tool_call_start') {
@@ -429,7 +443,6 @@ export function AgentLoopProvider({
             // After tool result completes, refresh from full context
             // This ensures tool messages are shown separately immediately
             streamingContentRef.current = '';
-            streamingMessageRef.current = null;
             const fullContext = agent.getContext();
             const agentWithContextManager = agent as Agent & { getContextManager(): { getTodos: () => UITodoItem[] } };
             dispatch({
@@ -475,7 +488,6 @@ export function AgentLoopProvider({
           // Usage is already accumulated via TURN_COMPLETE events during iteration
           // Don't pass it again to avoid double-counting the last turn
         });
-        streamingMessageRef.current = null;
       } catch (error) {
         debugLog('[agent-loop] error:', error);
         console.error('Agent error:', error);
@@ -487,11 +499,8 @@ export function AgentLoopProvider({
         dispatch({ type: 'AGENT_ERROR', errorMessage });
         refreshTodos();
       } finally {
-        // Clear any pending batch timer
-        if (batchTimerRef.current) {
-          clearTimeout(batchTimerRef.current);
-          batchTimerRef.current = null;
-        }
+        // pendingFlush will complete on its own - no need to cancel
+        streamingContentRef.current = '';
         // Update todos from agent one last time
         refreshTodos();
       }
@@ -528,6 +537,8 @@ export function AgentLoopProvider({
       agent,
       streaming,
       messages,
+      streamingContent,
+      streamingMessageId,
       todos,
       currentTools,
       runningSubAgents,
@@ -547,7 +558,7 @@ export function AgentLoopProvider({
       toggleFocusedTool,
       moveFocus,
     }),
-    [agent, messages, onSubmit, onSubmitWithSkill, abort, streaming, todos, currentTools, runningSubAgents, completedSubAgents, focusedToolId, expandedTools, toolResults, totalUsage, currentContextTokens, tokenLimit, streamingStartTime, focusTool, toggleFocusedTool, moveFocus],
+    [agent, messages, streamingContent, streamingMessageId, onSubmit, onSubmitWithSkill, abort, streaming, todos, currentTools, runningSubAgents, completedSubAgents, focusedToolId, expandedTools, toolResults, totalUsage, currentContextTokens, tokenLimit, streamingStartTime, focusTool, toggleFocusedTool, moveFocus],
   );
 
   return (

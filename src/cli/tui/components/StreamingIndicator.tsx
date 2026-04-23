@@ -1,27 +1,30 @@
 import { Box, Text } from 'ink';
 import React, { useEffect, useRef, useState } from 'react';
-import { BlinkingText } from './';
 import { useAgentLoop } from '../hooks';
 
+// Spinner frames for smooth animation
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
 export function StreamingIndicator({ nextTodo }: { nextTodo?: string }) {
-  const { streaming, streamingStartTime, messages } = useAgentLoop();
-  const [, forceUpdate] = useState({});
+  const { streaming, streamingStartTime, messages, currentTools } = useAgentLoop();
+  const [frame, setFrame] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (streaming && streamingStartTime) {
-      // Refresh at 500ms interval instead of 100ms - enough for second accuracy
-      intervalRef.current = setInterval(() => {
-        forceUpdate({});
-      }, 500);
-    }
+    if (!streaming) return;
+
+    // Animate spinner at 80ms interval for smooth rotation
+    intervalRef.current = setInterval(() => {
+      setFrame(f => (f + 1) % SPINNER_FRAMES.length);
+    }, 80);
+
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
     };
-  }, [streaming, streamingStartTime]);
+  }, [streaming]);
 
   if (!streaming) return null;
 
@@ -30,9 +33,15 @@ export function StreamingIndicator({ nextTodo }: { nextTodo?: string }) {
   // Turn count = number of completed assistant messages + this current turn
   const turnCount = messages.filter(m => m.role === 'assistant').length;
 
+  const hasRunningTools = currentTools.length > 0;
+  const statusText = hasRunningTools
+    ? `Running ${currentTools.map(t => t.toolCall.name).join(', ')}...`
+    : 'Thinking...';
+
   return (
     <Box gap={2}>
-      <BlinkingText color="gray">⠋ Thinking...</BlinkingText>
+      <Text color="cyan">{SPINNER_FRAMES[frame]}</Text>
+      <Text dimColor>{statusText}</Text>
       <Text dimColor>Turn {turnCount}</Text>
       <Text dimColor>{elapsedSec}s</Text>
       {nextTodo && <Text dimColor>Next: {nextTodo}</Text>}

@@ -56,7 +56,7 @@ export function ToolCallMessage({ toolCall, result, pending, focused, expanded }
           {/* Title line */}
           <Box flexDirection="row" alignItems="center">
             <Text color={prefixColor}>
-              {pending ? <BlinkingText>⠋</BlinkingText> : '❯'}
+              {pending ? <BlinkingText>●</BlinkingText> : '●'}
             </Text>
             <Text color="cyan"> {title}</Text>
             {result && <Text color="gray"> {result.durationMs}ms</Text>}
@@ -68,13 +68,19 @@ export function ToolCallMessage({ toolCall, result, pending, focused, expanded }
               <Text color={contentColor}>{smartSummary}</Text>
             </Box>
           )}
-          <ReadFileView
-            filePath={parsed.path}
-            content={parsed.content}
-            startLine={parsed.range.start}
-            totalFileLines={parsed.total_lines}
-            diff={parsed.diff}
-          />
+          {expanded ? (
+            <ReadFileView
+              filePath={parsed.path}
+              content={parsed.content}
+              startLine={parsed.range.start}
+              totalFileLines={parsed.total_lines}
+              diff={parsed.diff}
+            />
+          ) : (
+            <Box paddingLeft={2}>
+              <Text color="gray">Read 1 file (ctrl+o to expand)</Text>
+            </Box>
+          )}
         </Box>
       );
     }
@@ -105,7 +111,7 @@ export function ToolCallMessage({ toolCall, result, pending, focused, expanded }
       {/* Title line */}
       <Box flexDirection="row" alignItems="center">
         <Text color={prefixColor}>
-          {pending ? <BlinkingText>⠋</BlinkingText> : '❯'}
+          {pending ? <BlinkingText>●</BlinkingText> : '●'}
         </Text>
         <Text color="cyan"> {title}</Text>
         {result && <Text color="gray"> {result.durationMs}ms</Text>}

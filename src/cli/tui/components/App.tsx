@@ -7,6 +7,7 @@ import { getBuiltinCommands } from '../command-registry';
 import { Header } from './Header';
 import { Footer } from './Footer';
 import { ChatMessage } from './ChatMessage';
+import { StreamingMessage } from './StreamingMessage';
 import { TodoPanel } from './TodoPanel';
 import { InputBox } from './InputBox';
 import { StreamingIndicator } from './StreamingIndicator';
@@ -34,7 +35,7 @@ export function App({ agent, skillCommands, sessionStore }: AppProps) {
 }
 
 function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashCommand[]; sessionStore: SessionStore }) {
-  const { messages, streaming: isStreaming, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool } = useAgentLoop();
+  const { messages, streaming: isStreaming, streamingContent, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool } = useAgentLoop();
   const { askUserQuestionRequest, respondWithAnswers } = useAskUserQuestionManager();
 
   useInput((input, key) => {
@@ -68,9 +69,11 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
             <ChatMessage
               key={message.id ?? index}
               message={message}
-              isStreaming={isStreaming && index === messages.length - 1}
             />
           ))}
+          {streamingContent !== null && (
+            <StreamingMessage content={streamingContent} />
+          )}
           {todos.length > 0 && <TodoPanel todos={todos} />}
         </ScrollView>
       </Box>
