@@ -26,6 +26,62 @@ export interface ToolCallMessageProps {
 export function ToolCallMessage({ toolCall, result, pending, focused, expanded }: ToolCallMessageProps) {
   const title = formatToolCallTitle(toolCall);
 
+  // Border style based on focus
+  const borderStyle = focused ? 'single' : undefined;
+  const borderColor = focused ? 'blue' : undefined;
+  const prefixColor = pending ? 'yellow' : result?.isError ? 'red' : 'gray';
+  const contentColor = result?.isError ? 'red' : 'gray';
+
+  // Special handling for read tool - render with syntax highlighting using ReadFileView
+  if (!pending && result && !result.isError && toolCall.name === 'read') {
+    let parsed: {
+      path: string;
+      content: string;
+      total_lines: number;
+      range: { start: number; end: number };
+      diff?: { hunks: any };
+    } | null = null;
+
+    try {
+      parsed = JSON.parse(result.content);
+    } catch {
+      // fall through to default rendering
+    }
+
+    if (parsed && parsed.path && parsed.content) {
+      const smartSummary = smartSummarize(toolCall.name, toolCall.arguments, result.content);
+
+      return (
+        <Box flexDirection="column" borderStyle={borderStyle} borderColor={borderColor} paddingX={focused ? 1 : 0} marginY={0}>
+          {/* Title line */}
+          <Box flexDirection="row" alignItems="center">
+            <Text color={prefixColor}>
+              {pending ? <BlinkingText>⠋</BlinkingText> : '❯'}
+            </Text>
+            <Text color="cyan"> {title}</Text>
+            {result && <Text color="gray"> {result.durationMs}ms</Text>}
+          </Box>
+
+          {/* Summary when collapsed, full rendered when expanded */}
+          {expanded ? (
+            <ReadFileView
+              filePath={parsed.path}
+              content={parsed.content}
+              startLine={parsed.range.start}
+              totalFileLines={parsed.total_lines}
+              diff={parsed.diff}
+            />
+          ) : smartSummary && (
+            <Box paddingLeft={2}>
+              <Text color={contentColor}>{smartSummary}</Text>
+            </Box>
+          )}
+        </Box>
+      );
+    }
+  }
+
+  // Default rendering for other tools
   // Get content to display
   let content: string;
   let isCollapsible: boolean;
@@ -44,12 +100,6 @@ export function ToolCallMessage({ toolCall, result, pending, focused, expanded }
       isCollapsible = formatted.isCollapsible;
     }
   }
-
-  // Border style based on focus
-  const borderStyle = focused ? 'single' : undefined;
-  const borderColor = focused ? 'blue' : undefined;
-  const prefixColor = pending ? 'yellow' : result?.isError ? 'red' : 'gray';
-  const contentColor = result?.isError ? 'red' : 'gray';
 
   return (
     <Box flexDirection="column" borderStyle={borderStyle} borderColor={borderColor} paddingX={focused ? 1 : 0} marginY={0}>

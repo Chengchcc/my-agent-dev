@@ -102,32 +102,20 @@ export function DiffView({ filePath, diff, language, context }: DiffViewProps) {
     }
 
     return hunks.map(hunk => {
-      const contextLines = hunk.lines
-        .filter(line => line.type === 'context')
-        .map(line => line.content);
+      // Tokenize all lines regardless of type for consistent syntax highlighting
+      const allContent = hunk.lines.map(line => line.content).join('\n');
+      const tokens = Prism.tokenize(allContent, Prism.languages[lang]);
 
-      const contextText = contextLines.join('\n');
-      const tokens = Prism.tokenize(contextText, Prism.languages[lang]);
-
-      const lineLengths = contextLines.map(line => line.length);
-      const tokenizedLines = tokenizeByLine(tokens, lineLengths);
+      const tokenizedLines = tokenizeByLine(tokens);
 
       // Map tokenized lines back to hunk
-      const lineMap = new Map<string, any[]>();
-      contextLines.forEach((line, index) => {
-        lineMap.set(line, tokenizedLines[index]);
-      });
-
       return {
         ...hunk,
-        lines: hunk.lines.map(line => {
-          if (line.type === 'context' && lineMap.has(line.content)) {
-            return {
-              ...line,
-              tokens: lineMap.get(line.content),
-            };
-          }
-          return line;
+        lines: hunk.lines.map((line, index) => {
+          return {
+            ...line,
+            tokens: tokenizedLines[index],
+          };
         }),
       };
     });
@@ -171,12 +159,13 @@ export function DiffView({ filePath, diff, language, context }: DiffViewProps) {
                 <Text color="dim"> {newLineNum}</Text>
                 <Text color="dim"> {marker}</Text>
 
-                {line.type === 'context' && line.tokens ? (
+                {line.tokens ? (
                   <Box flexDirection="row">
                     {line.tokens.map((token: { content: string; type?: string }, tokenIndex: number) => (
                       <Text
                         key={tokenIndex}
-                        color={getTokenColor(token.type)}
+                        color={getTokenColor(token.type) || color}
+                        strikethrough={strikethrough}
                       >
                         {token.content}
                       </Text>

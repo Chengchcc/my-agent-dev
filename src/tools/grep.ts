@@ -1,12 +1,30 @@
 import { z } from 'zod';
 import { readdirSync, readFileSync, statSync } from 'fs';
-import { resolve, extname, join } from 'path';
+import { resolve, join } from 'path';
 import { allowedRoots } from '../config/allowed-roots';
 import { ZodTool } from './zod-tool';
 import { getLanguageFromFilePath } from '../cli/tui/components/utils/language-map';
 import { debugWarn } from '../utils/debug';
+import { isTextFile } from '../utils/is-text-file';
 
 const DEFAULT_EXCLUDE_PATTERNS = ['node_modules', '.git', 'dist', 'build', '.DS_Store'];
+
+/**
+ * Simple glob pattern to regex conversion for basic file matching patterns
+ * like *.ts, *.{ts,tsx}, *credential*, etc.
+ */
+function globMatch(fileName: string, pattern: string): boolean {
+  // Convert glob pattern to regex
+  const escaped = pattern
+    // Escape regex special characters except * and ?
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    // Convert glob wildcards to regex
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.');
+
+  const regex = new RegExp(`^${escaped}$`);
+  return regex.test(fileName);
+}
 
 export class GrepTool extends ZodTool {
   schema = z.object({
@@ -73,7 +91,7 @@ export class GrepTool extends ZodTool {
         const fullPath = join(dir, entry.name);
 
         // Check if excluded
-        if (args.exclude.some(pattern => entry.name.match(pattern))) {
+        if (args.exclude.some(pattern => globMatch(entry.name, pattern))) {
           continue;
         }
 
@@ -81,7 +99,7 @@ export class GrepTool extends ZodTool {
           walkDir(fullPath);
         } else if (entry.isFile()) {
           // Check include pattern
-          if (args.include && !entry.name.match(args.include)) {
+          if (args.include && !globMatch(entry.name, args.include)) {
             continue;
           }
 
@@ -142,37 +160,5 @@ export class GrepTool extends ZodTool {
       files_searched: filesSearched,
       errors: errors.length > 0 ? errors : undefined,
     };
-  }
-}
-
-function isTextFile(filePath: string): boolean {
-  try {
-    const stats = statSync(filePath);
-    if (stats.size < 1024) return true;
-
-    const ext = extname(filePath).toLowerCase();
-    const textExtensions = new Set([
-      '.txt', '.md', '.json', '.yaml', '.yml', '.xml', '.html', '.css', '.scss',
-      '.js', '.jsx', '.ts', '.tsx', '.py', '.rb', '.php', '.java', '.c', '.cpp',
-      '.h', '.hpp', '.go', '.rs', '.swift', '.kt', '.scala', '.sh', '.bash', '.zsh',
-      '.sql', '.graphql', '.prisma', '.mdx', '.markdown', '.rst', '.tex', '.bib',
-    ]);
-
-    if (textExtensions.has(ext)) return true;
-
-    // Check for null bytes
-    const buffer = Buffer.alloc(1024);
-    const fd = require('fs').openSync(filePath, 'r');
-    try {
-      const bytesRead = require('fs').readSync(fd, buffer, 0, 1024, 0);
-      for (let i = 0; i < bytesRead; i++) {
-        if (buffer[i] === 0) return false;
-      }
-      return true;
-    } finally {
-      require('fs').closeSync(fd);
-    }
-  } catch {
-    return false;
   }
 }

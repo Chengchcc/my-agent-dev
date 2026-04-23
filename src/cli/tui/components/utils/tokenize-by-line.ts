@@ -6,11 +6,8 @@ export interface LineToken {
   styles?: string[];
 }
 
-export function tokenizeByLine(tokens: Array<Token | string>, lineLengths: number[]): LineToken[][] {
+export function tokenizeByLine(tokens: Array<Token | string>): LineToken[][] {
   const lines: LineToken[][] = [];
-  let currentLine = 0;
-  let currentLineLength = 0;
-
   let currentLineTokens: LineToken[] = [];
 
   for (const token of tokens) {
@@ -24,8 +21,6 @@ export function tokenizeByLine(tokens: Array<Token | string>, lineLengths: numbe
         if (i > 0) {
           // End of previous line
           lines.push(currentLineTokens);
-          currentLine++;
-          currentLineLength = 0;
           currentLineTokens = [];
         }
 
@@ -33,28 +28,56 @@ export function tokenizeByLine(tokens: Array<Token | string>, lineLengths: numbe
           currentLineTokens.push({
             content: linePart,
           });
-          currentLineLength += linePart.length;
         }
       }
     } else {
       // Handle Prism Token objects
       if (token.content && Array.isArray(token.content)) {
         // Recursively process nested tokens
-        const nestedTokens = tokenizeByLine(token.content, lineLengths);
-        for (const nestedLine of nestedTokens) {
-          for (const nestedToken of nestedLine) {
+        const nestedLines = tokenizeByLine(token.content);
+
+        // First nested line continues on the current line
+        if (nestedLines.length > 0) {
+          // Add first line to current line
+          for (const nestedToken of nestedLines[0]) {
             currentLineTokens.push({
               ...nestedToken,
-              type: token.type,
+              // Keep nested token type unless it didn't have one, then use parent's
+              type: nestedToken.type ?? token.type,
             });
+          }
+
+          // Any additional nested lines become new lines in our output
+          for (let i = 1; i < nestedLines.length; i++) {
+            lines.push(currentLineTokens);
+            currentLineTokens = [];
+            // Add the nested line's tokens to the new current line
+            for (const nestedToken of nestedLines[i]) {
+              currentLineTokens.push({
+                ...nestedToken,
+                type: nestedToken.type ?? token.type,
+              });
+            }
           }
         }
       } else {
         const content = typeof token.content === 'string' ? token.content : String(token.content);
-        currentLineTokens.push({
-          content,
-          type: token.type,
-        });
+        // Split string content into lines even when inside a Prism Token
+        const linesInToken = content.split('\n');
+        for (let i = 0; i < linesInToken.length; i++) {
+          const linePart = linesInToken[i];
+          if (i > 0) {
+            // End of previous line
+            lines.push(currentLineTokens);
+            currentLineTokens = [];
+          }
+          if (linePart.length > 0) {
+            currentLineTokens.push({
+              content: linePart,
+              type: token.type,
+            });
+          }
+        }
       }
     }
   }

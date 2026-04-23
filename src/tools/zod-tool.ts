@@ -49,13 +49,17 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
   private zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
     const result: Record<string, unknown> = {};
 
-    // Handle optional and nullable types
-    if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable) {
+    // Handle optional, nullable, and default values
+    if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable || schema instanceof z.ZodDefault) {
       const innerSchema = this.zodToJsonSchema(schema._def.innerType);
       // Copy all properties from inner schema
       Object.assign(result, innerSchema);
       if (schema.description) {
         result.description = schema.description;
+      }
+      // Add default value to JSON schema for ZodDefault
+      if (schema instanceof z.ZodDefault) {
+        result.default = schema._def.defaultValue();
       }
       // JSON Schema doesn't require explicit marking for optional since it's in the required array
       return result;
@@ -124,8 +128,12 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
         // Check if field is required
         let current: z.ZodTypeAny = zodSchema;
         let isOptional = false;
-        while (current instanceof z.ZodOptional || current instanceof z.ZodNullable) {
-          if (current instanceof z.ZodOptional) {
+        while (
+          current instanceof z.ZodOptional ||
+          current instanceof z.ZodNullable ||
+          current instanceof z.ZodDefault
+        ) {
+          if (current instanceof z.ZodOptional || current instanceof z.ZodDefault) {
             isOptional = true;
           }
           current = current._def.innerType;

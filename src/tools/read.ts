@@ -4,6 +4,7 @@ import { resolve, extname } from 'path';
 import { allowedRoots } from '../config/allowed-roots';
 import { ZodTool } from './zod-tool';
 import { getLanguageFromFilePath } from '../cli/tui/components/utils/language-map';
+import { isTextFile } from '../utils/is-text-file';
 
 export class ReadTool extends ZodTool {
   schema = z.object({
@@ -11,7 +12,7 @@ export class ReadTool extends ZodTool {
     start_line: z.number().int().positive().default(1).describe('Starting line number (1-indexed)'),
     end_line: z.number().int().positive().optional().describe('Ending line number (inclusive)'),
     max_lines: z.number().int().positive().default(500).describe('Maximum lines to return'),
-    encoding: z.string().default('utf8').describe('File encoding'),
+    encoding: z.enum(['utf8', 'ascii', 'utf16le', 'ucs2', 'base64', 'latin1', 'binary', 'hex']).default('utf8').describe('File encoding'),
   });
 
   name = 'read';
@@ -25,16 +26,24 @@ export class ReadTool extends ZodTool {
       throw new Error(`File path ${resolvedPath} is not within allowed directories`);
     }
 
-    // Quick check if it's a directory first
+    // Check file exists and get stats
+    let stats;
     try {
-      if (statSync(resolvedPath).isDirectory()) {
-        throw new Error(`Path ${resolvedPath} is a directory, use ls instead`);
-      }
+      stats = statSync(resolvedPath);
     } catch (e) {
       throw new Error(`Could not access file ${resolvedPath}: ${(e as Error).message}`);
     }
 
-    const content = readFileSync(resolvedPath, { encoding: args.encoding as BufferEncoding });
+    if (stats.isDirectory()) {
+      throw new Error(`Path ${resolvedPath} is a directory, use ls instead`);
+    }
+
+    // Check if this is a text file before reading
+    if (!isTextFile(resolvedPath)) {
+      throw new Error(`Path ${resolvedPath} appears to be a binary file, cannot read`);
+    }
+
+    const content = readFileSync(resolvedPath, { encoding: args.encoding });
     const lines = content.split('\n');
     const totalLines = lines.length;
 
@@ -56,9 +65,6 @@ export class ReadTool extends ZodTool {
     const selectedLines = lines.slice(start, end + 1);
     const truncated = end - start + 1 < (args.end_line ? args.end_line - args.start_line + 1 : totalLines - start);
 
-    // Get stats again for size information - this is safe since we already checked the file exists
-    const stats: any = statSync(resolvedPath);
-
     return {
       path: resolvedPath,
       content: selectedLines.join('\n'),
@@ -71,33 +77,5 @@ export class ReadTool extends ZodTool {
       size_bytes: stats.size,
       language: getLanguageFromFilePath(resolvedPath) || extname(resolvedPath).slice(1) || 'text',
     };
-  }
-}
-
-function isTextFile(filePath: string, stats: ReturnType<typeof statSync>): boolean {
-  // Small files are likely text
-  if (stats!.size < 1024) return true;
-
-  const ext = extname(filePath).toLowerCase();
-  const textExtensions = new Set([
-    '.txt', '.md', '.json', '.yaml', '.yml', '.xml', '.html', '.css', '.scss',
-    '.js', '.jsx', '.ts', '.tsx', '.py', '.rb', '.php', '.java', '.c', '.cpp',
-    '.h', '.hpp', '.go', '.rs', '.swift', '.kt', '.scala', '.sh', '.bash', '.zsh',
-    '.sql', '.graphql', '.prisma', '.mdx', '.markdown', '.rst', '.tex', '.bib',
-  ]);
-
-  if (textExtensions.has(ext)) return true;
-
-  // For unknown extensions, check first 1024 bytes for null bytes
-  const buffer = Buffer.alloc(1024);
-  const fd = require('fs').openSync(filePath, 'r');
-  try {
-    const bytesRead = require('fs').readSync(fd, buffer, 0, 1024, 0);
-    for (let i = 0; i < bytesRead; i++) {
-      if (buffer[i] === 0) return false;
-    }
-    return true;
-  } finally {
-    require('fs').closeSync(fd);
   }
 }

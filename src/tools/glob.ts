@@ -12,6 +12,7 @@ export class GlobTool extends ZodTool {
     path: z.string().default(process.cwd()).describe('Base directory to search from'),
     exclude: z.array(z.string()).default(DEFAULT_EXCLUDE_PATTERNS).describe('Patterns to exclude'),
     max_results: z.number().int().positive().default(200).describe('Maximum results to return'),
+    deep: z.number().int().positive().default(30).describe('Maximum directory depth to search'),
     include_hidden: z.boolean().default(false).describe('Include hidden files (starting with .)'),
   });
 
@@ -32,7 +33,7 @@ export class GlobTool extends ZodTool {
       ignore: args.exclude,
       dot: args.include_hidden,
       absolute: true,
-      deep: 10,
+      deep: args.deep,
       suppressErrors: true,
     };
 

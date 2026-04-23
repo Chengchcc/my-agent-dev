@@ -10,7 +10,7 @@ import 'prismjs/components/prism-json';
 import 'prismjs/components/prism-markdown';
 import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-diff';
-import type { DiffHunk } from './DiffView';
+import DiffView, { type DiffHunk } from './DiffView';
 import { tokenizeByLine } from './utils/tokenize-by-line';
 import { getLanguageFromFilePath } from './utils/language-map';
 
@@ -21,7 +21,7 @@ interface ReadFileViewProps {
   totalFileLines?: number;
   language?: string;
   maxHeight?: number;
-  diff?: DiffHunk[];
+  diff?: { hunks: DiffHunk[] };
 }
 
 const theme: Record<string, string> = {
@@ -75,8 +75,13 @@ export function ReadFileView({
     }
 
     const tokens = Prism.tokenize(content, Prism.languages[lang]);
-    return tokenizeByLine(tokens, content.split('\n').map(line => line.length));
+    return tokenizeByLine(tokens);
   }, [content, lang]);
+
+  // If diff is provided, render it with DiffView
+  if (diff) {
+    return <DiffView filePath={filePath} diff={diff} language={lang} />;
+  }
 
   const linesToShow = highlightedLines.slice(0, maxHeight);
   const truncated = highlightedLines.length > maxHeight;

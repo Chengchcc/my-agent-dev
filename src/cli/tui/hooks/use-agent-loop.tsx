@@ -7,6 +7,7 @@ import type { AgentEvent, SubAgentStartEvent, SubAgentNestedEvent, SubAgentDoneE
 import type { PromptSubmission } from '../command-registry';
 import type { UITodoItem } from '../types';
 import { getBuiltinCommands } from '../command-registry';
+import { debugLog } from '../../../utils/debug';
 import type { SessionStore } from '../../../session/store';
 
 type AgentUIState = {
@@ -399,6 +400,7 @@ export function AgentLoopProvider({
       try {
         // Run agentic loop - yields events for each step
         for await (const event of agent.runAgentLoop({ role: 'user', content: text })) {
+          debugLog('[agent-loop] event:', event.type);
           if (event.type === 'text_delta') {
             // Only accumulate text during the current assistant turn
             // After tool execution, full messages are already in context
@@ -432,13 +434,14 @@ export function AgentLoopProvider({
             const agentWithContextManager = agent as Agent & { getContextManager(): { getTodos: () => UITodoItem[] } };
             dispatch({
               type: 'TOOL_RESULT',
-              runningTools,
+              runningTools: new Map(runningTools),
               toolId: event.toolCall.id,
               result: { durationMs: event.durationMs, isError: event.isError },
               messages: fullContext.messages,
               todos: agentWithContextManager.getContextManager().getTodos(),
             });
           } else if (event.type === 'agent_error') {
+            debugLog('[agent-loop] agent_error details:', event.error);
             const errorMessage: Message = {
               role: 'assistant',
               content: `Error: ${event.error.message}`,
@@ -465,16 +468,16 @@ export function AgentLoopProvider({
         const fullContext = agent.getContext();
         const allMessages = fullContext.messages;
         const agentWithContextManager = agent as Agent & { getContextManager(): { getTodos: () => UITodoItem[] } };
-        const lastContext = agent.getContext();
-        const usage = lastContext.response?.usage;
         dispatch({
           type: 'LOOP_COMPLETE',
           messages: allMessages,
           todos: agentWithContextManager.getContextManager().getTodos(),
-          usage,
+          // Usage is already accumulated via TURN_COMPLETE events during iteration
+          // Don't pass it again to avoid double-counting the last turn
         });
         streamingMessageRef.current = null;
       } catch (error) {
+        debugLog('[agent-loop] error:', error);
         console.error('Agent error:', error);
         // Add error message to messages
         const errorMessage: Message = {

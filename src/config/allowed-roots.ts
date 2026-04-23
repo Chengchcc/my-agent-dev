@@ -1,9 +1,9 @@
 import { resolve } from 'path';
 
-// Default allowed roots - current working directory and user home
+// Default allowed roots - only current working directory for security
+// This prevents access to sensitive files outside the project like ~/.ssh, ~/.aws, etc.
 const defaultRoots = [
   process.cwd(),
-  resolve(require('os').homedir()),
 ];
 
 export let allowedRoots = defaultRoots;

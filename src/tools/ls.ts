@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { readdirSync, statSync, lstatSync } from 'fs';
-import { resolve, basename, join } from 'path';
+import { resolve, relative, join } from 'path';
 import { allowedRoots } from '../config/allowed-roots';
 import { ZodTool } from './zod-tool';
 import { debugWarn } from '../utils/debug';
@@ -31,6 +31,7 @@ export class LsTool extends ZodTool {
 
     const entries: Array<{
       name: string;
+      path: string;
       type: 'file' | 'directory' | 'symlink';
       size?: number;
       modified?: string;
@@ -59,6 +60,7 @@ export class LsTool extends ZodTool {
         }
 
         const fullPath = join(currentPath, entry.name);
+        const relativePath = relative(dirPath, fullPath);
         let entryStats;
         try {
           entryStats = statSync(fullPath);
@@ -71,6 +73,7 @@ export class LsTool extends ZodTool {
 
         const entryData: any = {
           name: entry.name,
+          path: relativePath,
           size: entryStats.size,
           modified: entryStats.mtime.toISOString(),
         };

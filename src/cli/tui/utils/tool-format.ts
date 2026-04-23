@@ -13,7 +13,7 @@ function countAdded(diff: any): number {
   if (diff.hunks) {
     for (const hunk of diff.hunks) {
       for (const line of hunk.lines) {
-        if (line.startsWith('+')) count++;
+        if (line.type === 'added') count++;
       }
     }
   }
@@ -25,7 +25,7 @@ function countRemoved(diff: any): number {
   if (diff.hunks) {
     for (const hunk of diff.hunks) {
       for (const line of hunk.lines) {
-        if (line.startsWith('-')) count++;
+        if (line.type === 'removed') count++;
       }
     }
   }
