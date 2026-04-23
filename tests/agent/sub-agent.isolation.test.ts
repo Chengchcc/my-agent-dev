@@ -70,3 +70,136 @@ describe('Context isolation', () => {
     contextSpy.mockRestore();
   });
 });
+
+describe('ToolRegistry filtering (recursion prevention)', () => {
+  test('sub-agent ToolRegistry excludes sub_agent tool to prevent recursion', () => {
+    const mainRegistry = new ToolRegistry();
+    // Register sub_agent in main registry
+    const mainTool = new SubAgentTool({
+      mainProvider: mockProvider,
+      mainToolRegistry: mainRegistry,
+      mainAgentConfig: mockConfig,
+    });
+    mainRegistry.register(mainTool);
+    // Also register some other common tools
+    class DummyRead implements any {
+      getDefinition() {
+        return { name: 'read', description: 'read', parameters: { type: 'object', properties: {}, required: [] } };
+      }
+      async execute() { return ''; }
+    }
+    mainRegistry.register(new DummyRead());
+    class DummyGrep implements any {
+      getDefinition() { return { name: 'grep', description: 'grep', parameters: { type: 'object', properties: {}, required: [] } }; }
+      async execute() { return ''; }
+    }
+    mainRegistry.register(new DummyGrep());
+
+    const tool = new SubAgentTool({
+      mainProvider: mockProvider,
+      mainToolRegistry: mainRegistry,
+      mainAgentConfig: mockConfig,
+    });
+
+    // Spy on registry to see what gets filtered
+    const getAllSpy = vi.spyOn(ToolRegistry.prototype, 'getAllDefinitions');
+    const registerSpy = vi.spyOn(ToolRegistry.prototype, 'register');
+
+    tool.execute({ task: 'test' }).catch(() => {});
+
+    // Check which tools got registered in sub registry
+    const registeredNames: string[] = [];
+    registerSpy.mock.calls.forEach(call => {
+      const impl = call[0];
+      if (impl.getDefinition) {
+        registeredNames.push(impl.getDefinition().name);
+      }
+    });
+
+    // sub_agent should be excluded
+    expect(registeredNames).not.toContain('sub_agent');
+    // Other tools should be included
+    expect(registeredNames).toContain('read');
+    expect(registeredNames).toContain('grep');
+
+    getAllSpy.mockRestore();
+    registerSpy.mockRestore();
+  });
+
+  test('sub-agent excludes Task* tools because they use global state', () => {
+    const mainRegistry = new ToolRegistry();
+    mainRegistry.register({
+      getDefinition: () => ({ name: 'TaskCreate', description: 'task', parameters: { type: 'object', properties: {}, required: [] } }),
+      execute: async () => '',
+    });
+    mainRegistry.register({
+      getDefinition: () => ({ name: 'TaskUpdate', description: 'task', parameters: { type: 'object', properties: {}, required: [] } }),
+      execute: async () => '',
+    });
+    mainRegistry.register({
+      getDefinition: () => ({ name: 'read', description: 'read', parameters: { type: 'object', properties: {}, required: [] } }),
+      execute: async () => '',
+    });
+
+    const tool = new SubAgentTool({
+      mainProvider: mockProvider,
+      mainToolRegistry: mainRegistry,
+      mainAgentConfig: mockConfig,
+    });
+
+    const registerSpy = vi.spyOn(ToolRegistry.prototype, 'register');
+
+    tool.execute({ task: 'test' }).catch(() => {});
+
+    const registeredNames: string[] = [];
+    registerSpy.mock.calls.forEach(call => {
+      const impl = call[0];
+      if (impl.getDefinition) {
+        registeredNames.push(impl.getDefinition().name);
+      }
+    });
+
+    expect(registeredNames).not.toContain('TaskCreate');
+    expect(registeredNames).not.toContain('TaskUpdate');
+    expect(registeredNames).toContain('read');
+
+    registerSpy.mockRestore();
+  });
+
+  test('custom allowedTools filter restricts which tools are available', () => {
+    const mainRegistry = new ToolRegistry();
+    ['read', 'grep', 'glob', 'bash', 'write'].forEach(name => {
+      mainRegistry.register({
+        getDefinition: () => ({ name, description: name, parameters: { type: 'object', properties: {}, required: [] } }),
+        execute: async () => '',
+      });
+    });
+
+    const tool = new SubAgentTool({
+      mainProvider: mockProvider,
+      mainToolRegistry: mainRegistry,
+      mainAgentConfig: mockConfig,
+      allowedTools: ['read', 'grep'], // only allow these two
+    });
+
+    const registerSpy = vi.spyOn(ToolRegistry.prototype, 'register');
+
+    tool.execute({ task: 'test' }).catch(() => {});
+
+    const registeredNames: string[] = [];
+    registerSpy.mock.calls.forEach(call => {
+      const impl = call[0];
+      if (impl.getDefinition) {
+        registeredNames.push(impl.getDefinition().name);
+      }
+    });
+
+    expect(registeredNames).toContain('read');
+    expect(registeredNames).toContain('grep');
+    expect(registeredNames).not.toContain('glob');
+    expect(registeredNames).not.toContain('bash');
+    expect(registeredNames).not.toContain('write');
+
+    registerSpy.mockRestore();
+  });
+});
