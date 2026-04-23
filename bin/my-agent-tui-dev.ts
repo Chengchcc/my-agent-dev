@@ -55,10 +55,10 @@ toolRegistry.register(new TextEditorTool({ allowedRoots: [__dirname + '/..'] }))
 toolRegistry.register(new AskUserQuestionTool(
   (params) => globalAskUserQuestionManager.askUserQuestion(params)
 ));
-toolRegistry.register(new ReadTool({ allowedRoots: [__dirname + '/..'] }));
-toolRegistry.register(new GrepTool({ allowedRoots: [__dirname + '/..'] }));
-toolRegistry.register(new GlobTool({ allowedRoots: [__dirname + '/..'] }));
-toolRegistry.register(new LsTool({ allowedRoots: [__dirname + '/..'] }));
+toolRegistry.register(new ReadTool());
+toolRegistry.register(new GrepTool());
+toolRegistry.register(new GlobTool());
+toolRegistry.register(new LsTool());
 
 // Register todo middleware - provides todo_write tool and periodic reminders
 const { tool: todoTool, hooks: todoHooks } = createTodoMiddleware();
