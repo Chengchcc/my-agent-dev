@@ -57,6 +57,7 @@ export class GrepTool extends ZodTool {
       };
     }> = [];
 
+    const errors: string[] = [];
     let filesSearched = 0;
 
     // Walk directory
@@ -122,8 +123,8 @@ export class GrepTool extends ZodTool {
               }
             }
           } catch (e) {
-            // Skip files that can't be read
-            console.warn(`Could not read file ${fullPath}:`, (e as Error).message);
+            // Skip files that can't be read - collect error instead of printing directly
+            errors.push(`Could not read file ${fullPath}: ${(e as Error).message}`);
           }
         }
       }
@@ -136,6 +137,7 @@ export class GrepTool extends ZodTool {
       truncated: matches.length >= args.max_results,
       total_matches: matches.length,
       files_searched: filesSearched,
+      errors: errors.length > 0 ? errors : undefined,
     };
   }
 }

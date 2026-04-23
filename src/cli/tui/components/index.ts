@@ -10,5 +10,5 @@ export * from './App';
 export * from './ToolCallMessage';
 export * from './AskUserQuestionPrompt';
 export { BlinkingText } from './BlinkingText';
-export * from './ReadFileView';
-export * from './DiffView';
+export { default as ReadFileView } from './ReadFileView';
+export { default as DiffView } from './DiffView';

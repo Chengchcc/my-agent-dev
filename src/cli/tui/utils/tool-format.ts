@@ -141,9 +141,11 @@ export function smartSummarize(
   if (toolName === 'read') {
     try {
       const parsedResult = JSON.parse(result);
-      const lineRange = parsedResult.start === 1 && parsedResult.end === parsedResult.totalLines
-        ? `${parsedResult.totalLines} lines`
-        : `lines ${parsedResult.start}-${parsedResult.end} of ${parsedResult.totalLines}`;
+      const start = parsedResult.range?.start || 1;
+      const end = parsedResult.range?.end || parsedResult.total_lines;
+      const lineRange = start === 1 && end === parsedResult.total_lines
+        ? `${parsedResult.total_lines} lines`
+        : `lines ${start}-${end} of ${parsedResult.total_lines}`;
       const diffTag = parsedResult.diff
         ? ` (${countAdded(parsedResult.diff)} added, ${countRemoved(parsedResult.diff)} removed)`
         : '';
