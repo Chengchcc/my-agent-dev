@@ -2,9 +2,16 @@ import { Box, Text } from 'ink';
 import React from 'react';
 import { useAgentLoop } from '../hooks';
 
-export function Footer() {
-  const { totalUsage, currentContextTokens, tokenLimit } = useAgentLoop();
+export interface PureFooterProps {
+  totalUsage: { totalTokens: number };
+  currentContextTokens: number;
+  tokenLimit: number;
+}
 
+/**
+ * Pure (context-free) Footer component for testing
+ */
+export function PureFooter({ totalUsage, currentContextTokens, tokenLimit }: PureFooterProps) {
   const percentage = tokenLimit > 0 ? Math.round((currentContextTokens / tokenLimit) * 100) : 0;
   const barWidth = 20;
   const filled = tokenLimit > 0 ? Math.round(barWidth * currentContextTokens / tokenLimit) : 0;
@@ -35,4 +42,16 @@ export function Footer() {
       </Box>
     </Box>
   );
+}
+
+/**
+ * Connected Footer that reads state from AgentLoopContext
+ */
+export function Footer() {
+  const { totalUsage, currentContextTokens, tokenLimit } = useAgentLoop();
+  return <PureFooter
+    totalUsage={totalUsage}
+    currentContextTokens={currentContextTokens}
+    tokenLimit={tokenLimit}
+  />;
 }

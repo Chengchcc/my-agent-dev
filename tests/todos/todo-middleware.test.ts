@@ -2,64 +2,73 @@ import { createTodoMiddleware } from '../../src/todos/todo-middleware';
 import type { AgentContext } from '../../src/types';
 
 describe('createTodoMiddleware', () => {
-  it('should return a tool and middleware', () => {
+  test('should return a tool and middleware', () => {
     const { tool, hooks } = createTodoMiddleware();
-  const middleware = hooks.beforeModel;
+    const middleware = hooks.beforeModel;
     expect(tool).toBeDefined();
     expect(middleware).toBeDefined();
     expect(tool.getDefinition().name).toBe('todo_write');
   });
 
-  it('should replace todo list when merge=false', async () => {
+  test('should replace todo list when merge=false', async () => {
     const { tool } = createTodoMiddleware();
+    const context: AgentContext = {
+      messages: [],
+      config: { tokenLimit: 10000 },
+      metadata: {},
+    };
     const result = await tool.execute({
       todos: [
         { id: '1', content: 'Task 1', status: 'pending' },
         { id: '2', content: 'Task 2', status: 'completed' },
       ],
       merge: false,
-    });
+    }, { context });
     expect(result).toBe('Todo list updated. 2 items: 1 pending, 1 completed.');
   });
 
-  it('should merge todos when merge=true', async () => {
+  test('should merge todos when merge=true', async () => {
     const { tool } = createTodoMiddleware();
+    const context: AgentContext = {
+      messages: [],
+      config: { tokenLimit: 10000 },
+      metadata: {},
+    };
     await tool.execute({
       todos: [
         { id: '1', content: 'Task 1', status: 'pending' },
         { id: '2', content: 'Task 2', status: 'pending' },
       ],
       merge: false,
-    });
+    }, { context });
     const result = await tool.execute({
       todos: [
         { id: '1', content: 'Task 1', status: 'completed' },
         { id: '3', content: 'Task 3', status: 'in_progress' },
       ],
       merge: true,
-    });
+    }, { context });
     expect(result).toBe('Todo list updated. 3 items: 1 pending, 1 in_progress, 1 completed.');
   });
 
-  it('should inject reminder after configured steps', async () => {
+  test('should inject reminder after configured steps', async () => {
     const { tool, hooks } = createTodoMiddleware();
-  const middleware = hooks.beforeModel;
-    await tool.execute({
-      todos: [
-        { id: '1', content: 'Task 1', status: 'pending' },
-        { id: '2', content: 'Task 2', status: 'in_progress' },
-      ],
-      merge: false,
-    });
-
-    // Simulate multiple steps without tool use
+    const middleware = hooks.beforeModel;
     const context: AgentContext = {
       messages: [],
       config: { tokenLimit: 10000 },
       metadata: {},
       systemPrompt: '',
     };
+    await tool.execute({
+      todos: [
+        { id: '1', content: 'Task 1', status: 'pending' },
+        { id: '2', content: 'Task 2', status: 'in_progress' },
+      ],
+      merge: false,
+    }, { context });
 
+    // Simulate multiple steps without tool use
     let calledNext = false;
     await middleware(context, async () => {
       calledNext = true;
@@ -70,7 +79,7 @@ describe('createTodoMiddleware', () => {
     expect(calledNext).toBe(true);
     expect(context.systemPrompt).toBe('');
 
-    // Simulate 10 steps
+    // Simulate 9 more steps = 10 total steps since last write
     for (let i = 0; i < 9; i++) {
       calledNext = false;
       await middleware(context, async () => {
@@ -87,22 +96,21 @@ describe('createTodoMiddleware', () => {
     expect(context.systemPrompt).toContain('todo_write tool hasn\'t been used recently');
   });
 
-  it('should reset counter after tool use', async () => {
+  test('should reset counter after tool use', async () => {
     const { tool, hooks } = createTodoMiddleware();
-  const middleware = hooks.beforeModel;
-    await tool.execute({
-      todos: [{ id: '1', content: 'Task 1', status: 'pending' }],
-      merge: false,
-    });
-
-    // 9 steps without reminder
+    const middleware = hooks.beforeModel;
     const context: AgentContext = {
       messages: [],
       config: { tokenLimit: 10000 },
       metadata: {},
       systemPrompt: '',
     };
+    await tool.execute({
+      todos: [{ id: '1', content: 'Task 1', status: 'pending' }],
+      merge: false,
+    }, { context });
 
+    // 9 steps without reminder
     for (let i = 0; i < 9; i++) {
       await middleware(context, async () => context);
     }
@@ -111,22 +119,19 @@ describe('createTodoMiddleware', () => {
     await tool.execute({
       todos: [{ id: '1', content: 'Task 1', status: 'completed' }],
       merge: true,
-    });
+    }, { context });
 
     // Should not have reminder yet after reset
+    // But since all todos are completed, should inject todo_completed prompt
     context.systemPrompt = '';
     await middleware(context, async () => context);
-    expect(context.systemPrompt).toBe('');
+    expect(context.systemPrompt).toContain('<todo_completed>');
+    expect(context.systemPrompt).toContain('All todo items have been completed');
   });
 
-  it('should reset counter when last message is tool use', async () => {
+  test('should reset counter when last message is tool use', async () => {
     const { tool, hooks } = createTodoMiddleware();
-  const middleware = hooks.beforeModel;
-    await tool.execute({
-      todos: [{ id: '1', content: 'Task 1', status: 'pending' }],
-      merge: false,
-    });
-
+    const middleware = hooks.beforeModel;
     const context: AgentContext = {
       messages: [
         {
@@ -140,6 +145,10 @@ describe('createTodoMiddleware', () => {
       metadata: {},
       systemPrompt: '',
     };
+    await tool.execute({
+      todos: [{ id: '1', content: 'Task 1', status: 'pending' }],
+      merge: false,
+    }, { context });
 
     // After tool use in message, counter should be reset
     await middleware(context, async () => context);

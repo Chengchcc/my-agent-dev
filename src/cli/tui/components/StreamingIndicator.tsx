@@ -1,12 +1,30 @@
 import { Box, Text } from 'ink';
 import React, { useEffect, useRef, useState } from 'react';
+import type { Message } from '../../../types';
+import type { ToolCallStartEvent } from '../../../agent/loop-types';
 import { useAgentLoop } from '../hooks';
 
 // Spinner frames for smooth animation
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-export function StreamingIndicator({ nextTodo }: { nextTodo?: string }) {
-  const { streaming, streamingStartTime, messages, currentTools } = useAgentLoop();
+export interface PureStreamingIndicatorProps {
+  streaming: boolean;
+  streamingStartTime: number | null;
+  currentTools: ToolCallStartEvent[];
+  messages: Message[];
+  nextTodo?: string;
+}
+
+/**
+ * Pure (context-free) streaming indicator for testing
+ */
+export function PureStreamingIndicator({
+  streaming,
+  streamingStartTime,
+  currentTools,
+  messages,
+  nextTodo,
+}: PureStreamingIndicatorProps) {
   const [frame, setFrame] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -46,5 +64,21 @@ export function StreamingIndicator({ nextTodo }: { nextTodo?: string }) {
       <Text dimColor>{elapsedSec}s</Text>
       {nextTodo && <Text dimColor>Next: {nextTodo}</Text>}
     </Box>
+  );
+}
+
+/**
+ * Connected streaming indicator that reads state from AgentLoopContext
+ */
+export function StreamingIndicator({ nextTodo }: { nextTodo?: string }) {
+  const { streaming, streamingStartTime, currentTools, messages } = useAgentLoop();
+  return (
+    <PureStreamingIndicator
+      streaming={streaming}
+      streamingStartTime={streamingStartTime}
+      currentTools={currentTools}
+      messages={messages}
+      nextTodo={nextTodo}
+    />
   );
 }

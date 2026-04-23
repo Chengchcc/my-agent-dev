@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { convertToClaudeMessages, extractSystemPrompt } from './claude-utils';
 import type { Message, Provider, Tool, LLMResponse, LLMResponseChunk, AgentContext } from '../types';
 
 export class ClaudeProvider implements Provider {
@@ -42,8 +43,8 @@ export class ClaudeProvider implements Provider {
     const { messages, systemPrompt } = context;
 
     // Claude expects system prompt as a separate parameter, not in messages array
-    const claudeMessages = this.convertToClaudeMessages(messages);
-    const system = systemPrompt ?? this.extractSystemPrompt(messages);
+    const claudeMessages = convertToClaudeMessages(messages);
+    const system = systemPrompt ?? extractSystemPrompt(messages);
     const model = context.config?.model ?? this.model;
 
     const response = await this.client.messages.create({
@@ -87,8 +88,8 @@ export class ClaudeProvider implements Provider {
    */
   async *stream(context: AgentContext, options?: { signal?: AbortSignal }): AsyncIterable<LLMResponseChunk> {
     const { messages, systemPrompt } = context;
-    const claudeMessages = this.convertToClaudeMessages(messages);
-    const system = systemPrompt ?? this.extractSystemPrompt(messages);
+    const claudeMessages = convertToClaudeMessages(messages);
+    const system = systemPrompt ?? extractSystemPrompt(messages);
     const model = context.config?.model ?? this.model;
 
     const stream = this.client.messages.stream({
@@ -182,7 +183,7 @@ export class ClaudeProvider implements Provider {
       } else if (chunk.type === 'message_stop') {
         // Tool calls have already been yielded incrementally
         // Add usage if we have it
-        const promptTokens = this.countPromptTokens(claudeMessages);
+        const promptTokens = countPromptTokens(claudeMessages);
         yield {
           content: '',
           done: true,
@@ -196,85 +197,34 @@ export class ClaudeProvider implements Provider {
     }
   }
 
-  /**
-   * Convert unified messages to Claude format.
-   * Removes system message from array since Claude expects it separately.
-   */
-  private convertToClaudeMessages(messages: Message[]): Anthropic.MessageParam[] {
-    return messages
-      .filter(m => m.role !== 'system')
-      .map(m => {
-        if (m.role === 'tool') {
-          // Claude expects tool results as user messages with tool_result content blocks
-          return {
-            role: 'user',
-            content: [
-              {
-                type: 'tool_result' as const,
-                tool_use_id: m.tool_call_id!,
-                content: m.content,
-              },
-            ],
-          };
-        }
-        if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
-          // Assistant message with tool calls - need to create mixed content blocks
-          const content: Anthropic.ContentBlockParam[] = [];
-          if (m.content) {
-            content.push({ type: 'text', text: m.content });
-          }
-          for (const tc of m.tool_calls) {
-            content.push({
-              type: 'tool_use',
-              id: tc.id,
-              name: tc.name,
-              input: tc.arguments,
-            });
-          }
-          return {
-            role: 'assistant',
-            content,
-          };
-        }
-        return {
-          role: m.role === 'assistant' ? 'assistant' : 'user',
-          content: m.content,
-        };
-      }) as Anthropic.MessageParam[];
-  }
-
-  /**
-   * Extract system prompt from messages.
-   */
-  private extractSystemPrompt(messages: Message[]): string {
-    return messages.filter(m => m.role === 'system').map(m => m.content).join('\n');
-  }
-
-  /**
-   * Rough estimate of prompt tokens for Claude streaming.
-   * Claude streaming doesn't provide full usage until the end in the event stream,
-   * so we estimate using 1 token ~= 4 characters.
-   */
-  private countPromptTokens(messages: Anthropic.MessageParam[]): number {
-    let totalChars = 0;
-    for (const msg of messages) {
-      if (typeof msg.content === 'string') {
-        totalChars += msg.content.length;
-      } else {
-        for (const block of msg.content) {
-          if (block.type === 'text') {
-            totalChars += block.text.length;
-          } else if (block.type === 'tool_use') {
-            // tool_use block add some overhead - rough estimate
-            totalChars += (block.name.length + JSON.stringify(block.input).length + 20);
-          }
-        }
-      }
-    }
-    return Math.ceil(totalChars / 4);
-  }
-
   getModelName(): string {
     return this.model;
   }
 }
+
+/**
+ * Rough estimate of prompt tokens for Claude streaming.
+ * Claude streaming doesn't provide full usage until the end in the event stream,
+ * so we estimate using 1 token ~= 4 characters.
+ */
+function countPromptTokens(messages: Anthropic.MessageParam[]): number {
+  let totalChars = 0;
+  for (const msg of messages) {
+    if (typeof msg.content === 'string') {
+      totalChars += msg.content.length;
+    } else {
+      for (const block of msg.content) {
+        if (block.type === 'text') {
+          totalChars += block.text.length;
+        } else if (block.type === 'tool_use') {
+          // tool_use block add some overhead - rough estimate
+          totalChars += (block.name.length + JSON.stringify(block.input).length + 20);
+        }
+      }
+    }
+  }
+  return Math.ceil(totalChars / 4);
+}
+
+// Re-export for testing
+export { convertToClaudeMessages, extractSystemPrompt };

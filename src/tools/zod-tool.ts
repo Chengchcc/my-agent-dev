@@ -16,11 +16,16 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
       const zodSchema = value as z.ZodTypeAny;
       properties[key] = this.zodToJsonSchema(zodSchema);
 
-      // Check if field is required - check if it's not optional
+      // Check if field is required - check if it's not optional and doesn't have a default
+      // Fields with defaults are not required - API will use default if not provided
       let current: z.ZodTypeAny = zodSchema;
       let isOptional = false;
-      while (current instanceof z.ZodOptional || current instanceof z.ZodNullable) {
-        if (current instanceof z.ZodOptional) {
+      while (
+        current instanceof z.ZodOptional ||
+        current instanceof z.ZodNullable ||
+        current instanceof z.ZodDefault
+      ) {
+        if (current instanceof z.ZodOptional || current instanceof z.ZodDefault) {
           isOptional = true;
         }
         current = current._def.innerType;
@@ -126,6 +131,7 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
         properties[key] = this.zodToJsonSchema(zodSchema);
 
         // Check if field is required
+        // Fields with defaults are not required - API will use default if not provided
         let current: z.ZodTypeAny = zodSchema;
         let isOptional = false;
         while (

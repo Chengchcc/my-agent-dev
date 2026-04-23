@@ -10,13 +10,15 @@ const HAMSTER_LOGO = `\
 ▀███▀
  █ █`;
 
-export function Header({ sessionStore }: { sessionStore: SessionStore }) {
-  const { agent } = useAgentLoop();
+export interface PureHeaderProps {
+  model: string;
+  sessionId: string | null;
+}
 
-  // Get model from provider
-  const model = agent.getModelName();
-  const sessionId = sessionStore.getSessionId();
-
+/**
+ * Pure (context-free) Header component for testing
+ */
+export function PureHeader({ model, sessionId }: PureHeaderProps) {
   return (
     <Box flexDirection="row" alignItems="center" gap={1} width="100%" justifyContent="space-between">
       <Box flexDirection="row" alignItems="center" gap={1}>
@@ -29,4 +31,14 @@ export function Header({ sessionStore }: { sessionStore: SessionStore }) {
       {sessionId && <Text dimColor>Session: {sessionId.slice(0, 8)}</Text>}
     </Box>
   );
+}
+
+/**
+ * Connected Header that reads state from context
+ */
+export function Header({ sessionStore }: { sessionStore: SessionStore }) {
+  const { agent } = useAgentLoop();
+  const model = agent.getModelName();
+  const sessionId = sessionStore.getSessionId();
+  return <PureHeader model={model} sessionId={sessionId} />;
 }

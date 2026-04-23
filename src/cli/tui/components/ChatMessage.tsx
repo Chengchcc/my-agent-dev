@@ -1,8 +1,8 @@
+import type { Message, ToolCall } from '../../../types';
 import { Box, Text } from 'ink';
 import { marked, type Token } from 'marked';
 import React, { useMemo } from 'react';
-import { useAgentLoop } from '../hooks';
-import type { Message, ToolCall } from '../../../types';
+import { useAgentLoop, useAgentLoopSelector } from '../hooks';
 import { CodeBlock } from './CodeBlock';
 import { ToolCallMessage } from './';
 
@@ -17,7 +17,23 @@ marked.setOptions({
   async: false,
 });
 
-function _ChatMessage({ message }: { message: Message }) {
+export interface PureToolCallInfo {
+  focused: boolean;
+  expanded: boolean;
+  pending: boolean;
+  result: { content: string; isError: boolean; durationMs: number } | undefined;
+}
+
+export interface PureChatMessageProps {
+  message: Message;
+  // For tool calls, provide the state from context - allows testing without context
+  toolCallInfo?: Map<string, PureToolCallInfo>;
+}
+
+/**
+ * Pure (context-free) ChatMessage component for testing
+ */
+export function PureChatMessage({ message, toolCallInfo = new Map() }: PureChatMessageProps) {
 
   // Handle different role types with appropriate styling
   const getRoleColor = (role: string): string => {
@@ -98,7 +114,7 @@ function _ChatMessage({ message }: { message: Message }) {
             </Text>,
           );
         } catch (e) {
-          console.warn(`Marked parsing failed for final buffer, falling back to raw text:`, e);
+          console.warn('Marked parsing failed for final buffer, falling back to raw text:', e);
           elements.push(
             <Text key="final">
               {textBuffer}
@@ -133,9 +149,25 @@ function _ChatMessage({ message }: { message: Message }) {
               {elements}
             </Box>
           )}
-          {message.tool_calls.map(tc => (
-            <ToolCallWrapper key={`${message.id ?? ''}-${tc.id}`} toolCall={tc} />
-          ))}
+          {message.tool_calls.map(tc => {
+            const info = toolCallInfo.get(tc.id) || {
+              focused: false,
+              expanded: false,
+              pending: false,
+              result: undefined,
+            };
+            return (
+              <Box key={`${message.id ?? ''}-${tc.id}`} marginY={1}>
+                <ToolCallMessage
+                  toolCall={tc}
+                  result={info.result}
+                  pending={info.pending}
+                  focused={info.focused}
+                  expanded={info.expanded}
+                />
+              </Box>
+            );
+          })}
         </Box>
       </Box>
     );
@@ -160,43 +192,44 @@ function _ChatMessage({ message }: { message: Message }) {
   );
 }
 
-function ToolCallWrapper({ toolCall }: { toolCall: ToolCall }) {
-  const { focusedToolId, expandedTools, toolResults, currentTools, messages: allMessages } = useAgentLoop();
-
-  const result = useMemo(() => {
-    const expanded = expandedTools.has(toolCall.id);
-    const focused = focusedToolId === toolCall.id;
-    const resultMeta = toolResults.get(toolCall.id);
-    const toolMsg = allMessages.find(m => m.role === 'tool' && m.tool_call_id === toolCall.id);
-    const pending = currentTools.some(t => t.toolCall.id === toolCall.id);
-
-    let output: { content: string; isError: boolean; durationMs: number } | undefined;
-    if (toolMsg?.content) {
-      output = {
-        content: toolMsg.content,
-        isError: resultMeta?.isError ?? false,
-        durationMs: resultMeta?.durationMs ?? 0,
-      };
-    }
-
-    return (
-      <Box marginY={1}>
-        <ToolCallMessage
-          toolCall={toolCall}
-          result={output}
-          pending={pending}
-          focused={focused}
-          expanded={expanded}
-        />
-      </Box>
-    );
-  }, [toolCall.id, focusedToolId, expandedTools, toolResults, currentTools, allMessages]);
-
-  return result;
-}
-
 export const ChatMessage = React.memo(
-  _ChatMessage,
+  (props: { message: Message }) => {
+    // Connected version reads tool call state from context
+    const { messages, currentTools, expandedTools, focusedToolId, toolResults } = useAgentLoopSelector(s => ({
+      messages: s.messages,
+      currentTools: s.currentTools,
+      expandedTools: s.expandedTools,
+      focusedToolId: s.focusedToolId,
+      toolResults: s.toolResults,
+    }));
+
+    const toolCallInfo = useMemo(() => {
+      const map = new Map<string, PureToolCallInfo>();
+      if (!props.message.tool_calls) return map;
+
+      for (const tc of props.message.tool_calls) {
+        const pending = currentTools.some(t => t.toolCall.id === tc.id);
+        const focused = focusedToolId === tc.id;
+        const expanded = expandedTools.has(tc.id);
+        const resultMeta = toolResults.get(tc.id);
+        const toolMsg = messages.find(m => m.role === 'tool' && m.tool_call_id === tc.id);
+
+        let result: { content: string; isError: boolean; durationMs: number } | undefined;
+        if (toolMsg?.content) {
+          result = {
+            content: toolMsg.content,
+            isError: resultMeta?.isError ?? false,
+            durationMs: resultMeta?.durationMs ?? 0,
+          };
+        }
+
+        map.set(tc.id, { focused, expanded, pending, result });
+      }
+      return map;
+    }, [props.message.tool_calls, currentTools, focusedToolId, expandedTools, toolResults, messages]);
+
+    return <PureChatMessage message={props.message} toolCallInfo={toolCallInfo} />;
+  },
   (prev, next) => {
     // Only re-render if what we care about actually changed
     return (
@@ -205,5 +238,5 @@ export const ChatMessage = React.memo(
       prev.message.tool_calls === next.message.tool_calls &&
       prev.message.role === next.message.role
     );
-  }
+  },
 );
