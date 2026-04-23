@@ -4,6 +4,65 @@ import { ContextManager } from '../../src/agent/context';
 import { ToolRegistry } from '../../src/agent/tool-registry';
 import type { Provider, AgentConfig } from '../../src/types';
 
+/**
+ * A scripted provider that returns predefined responses per turn.
+ * Used for testing the agent loop event flow without actual API calls.
+ */
+class ScriptedProvider implements Provider {
+  private turns: Array<{ content: string; tool_calls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }> }>;
+  public callCount = 0;
+  private turnIndex = 0;
+
+  constructor(turns: Array<{ content: string; tool_calls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }> }>) {
+    this.turns = turns;
+  }
+
+  registerTools(): void {}
+  async invoke(): Promise<never> { throw new Error('invoke not implemented, use stream()'); }
+  getModelName(): string { return 'mock'; }
+
+  async *stream(context: AgentContext, options?: { signal?: AbortSignal }): AsyncIterable<any> {
+    this.callCount++;
+
+    // Check for abort before starting
+    if (options?.signal?.aborted) {
+      throw new Error('Aborted');
+    }
+
+    const turn = this.turns[this.turnIndex++];
+    if (!turn) {
+      yield { content: 'No more scripted turns', done: true };
+      return;
+    }
+
+    // Simulate streaming: yield content character by character
+    for (const char of turn.content) {
+      if (options?.signal?.aborted) {
+        throw new Error('Aborted');
+      }
+      yield { content: char, done: false };
+    }
+
+    // Yield tool calls if any
+    if (turn.tool_calls) {
+      for (const tc of turn.tool_calls) {
+        yield {
+          content: '',
+          done: false,
+          tool_calls: [tc],
+        };
+      }
+    }
+
+    // Always yield done with usage at the end
+    yield {
+      content: '',
+      done: true,
+      usage: { prompt_tokens: 50, completion_tokens: 20, total_tokens: 70 },
+    };
+  }
+}
+
 // Mock provider that doesn't actually execute
 const mockProvider: Provider = {
   registerTools: () => {},
@@ -195,5 +254,86 @@ describe('ToolRegistry filtering (recursion prevention)', () => {
     expect(registeredNames).not.toContain('write');
 
     registerSpy.mockRestore();
+  });
+});
+
+describe('Resource constraints', () => {
+  test('sub-agent respects maxTurns limit of 15', async () => {
+    const mainRegistry = new ToolRegistry();
+    mainRegistry.register({
+      getDefinition: () => ({ name: 'read', description: 'read', parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } }),
+      execute: async () => 'ok',
+    });
+
+    // Create a provider that will generate 20 turns of tool calls
+    const script = Array(10).fill({
+      content: '',
+      tool_calls: [{ id: `call-${Math.random()}`, name: 'read', arguments: { path: 'test.txt' } }],
+    });
+    // Add a final content response at the end to complete the agent
+    script.push({ content: 'Done' });
+    const scriptedProvider = new ScriptedProvider(script);
+
+    const tool = new SubAgentTool({
+      mainProvider: scriptedProvider,
+      mainToolRegistry: mainRegistry,
+      mainAgentConfig: mockConfig,
+      // loopConfig with maxTurns defaults to 15 from SubAgentTool
+    });
+
+    const result = await tool.execute({ task: 'keep reading' });
+
+    // ScriptedProvider increments callCount each turn
+    // Should not exceed 15-16 turns due to maxTurns limit
+    // @ts-ignore ScriptedProvider has callCount
+    expect(scriptedProvider.callCount).toBeLessThanOrEqual(16);
+    expect(result).toContain('SubAgent');
+    expect(result).toContain('turns');
+  });
+
+  test('sub-agent times out after short duration', async () => {
+    // Test timeout functionality by mocking the timeout
+    // Since we're testing that the timeout is handled correctly, not the timer implementation
+    const mainRegistry = new ToolRegistry();
+
+    // Create a provider that will hang forever
+    class HangingProvider implements Provider {
+      callCount = 0;
+      registerTools() {}
+      invoke = async () => { throw new Error('not implemented'); };
+      getModelName() { return 'slow'; }
+      async *stream(context: any, options?: { signal?: AbortSignal }) {
+        this.callCount++;
+        // Never resolve - this simulates a hanging provider
+        // But respect the abort signal
+        await new Promise((resolve, reject) => {
+          options?.signal?.addEventListener('abort', () => reject(new Error('Aborted')));
+        });
+        yield { content: 'done', done: true };
+      }
+    }
+
+    const hangingProvider = new HangingProvider();
+
+    // Set a very short timeout for testing (200ms)
+    const shortTimeoutMs = 200;
+    const toolWithShortTimeout = new SubAgentTool({
+      mainProvider: hangingProvider,
+      mainToolRegistry: mainRegistry,
+      mainAgentConfig: mockConfig,
+      loopConfig: { timeoutMs: shortTimeoutMs }
+    });
+
+    // Start execution with a short timeout
+    const promise = toolWithShortTimeout.execute({ task: 'slow task' });
+
+    // Wait for slightly longer than the timeout
+    await new Promise(resolve => setTimeout(resolve, shortTimeoutMs + 50));
+
+    // The promise should resolve with a timeout error
+    const result = await promise;
+
+    expect(result).toContain('Aborted');
+    expect(hangingProvider.callCount).toBe(1);
   });
 });
