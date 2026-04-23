@@ -7,8 +7,9 @@ import { collectAgentEvents } from './test-utils';
  * A scripted provider that returns predefined responses per turn.
  * Used for testing the agent loop event flow without actual API calls.
  */
-class ScriptedProvider implements Provider {
+export class ScriptedProvider implements Provider {
   private turns: Array<{ content: string; tool_calls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }> }>;
+  public callCount = 0;
   private turnIndex = 0;
 
   constructor(turns: Array<{ content: string; tool_calls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }> }>) {
@@ -20,6 +21,7 @@ class ScriptedProvider implements Provider {
   getModelName(): string { return 'mock'; }
 
   async *stream(context: AgentContext, options?: { signal?: AbortSignal }): AsyncIterable<LLMResponseChunk> {
+    this.callCount++;
     // Check for abort before starting
     if (options?.signal?.aborted) {
       throw new Error('Aborted');
