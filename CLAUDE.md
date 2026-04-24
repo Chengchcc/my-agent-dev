@@ -35,6 +35,7 @@ This is a TypeScript-based AI agent framework built with Bun, featuring a modula
   - `defaults.ts`: Default configuration values
   - `loader.ts`: Configuration loading, merging, tilde expansion
   - `index.ts`: Exported settings singleton
+  - `allowed-roots.ts`: Runtime accessor for allowed root directories (security boundaries)
 - `/src/providers/`: LLM Provider implementations
   - `claude.ts`: Anthropic Claude provider
   - `claude-utils.ts`: Claude-specific utility functions
@@ -82,8 +83,6 @@ This is a TypeScript-based AI agent framework built with Bun, featuring a modula
 
 ### Configuration and Utilities
 
-- `/src/config/`: Configuration files
-  - `allowed-roots.ts`: Root directory permission configuration
 - `/src/session/`: Session management
   - `hook.ts`: Session hook definitions
   - `store.ts`: Session storage
