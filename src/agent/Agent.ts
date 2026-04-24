@@ -10,11 +10,13 @@ import type {
   Message,
   ToolImplementation,
 } from '../types';
-import type { AgentEvent, AgentLoopConfig } from './loop-types';
+import type { AgentEvent, AgentLoopConfig, ContextCompactedEvent } from './loop-types';
 import { ContextManager } from './context';
 import { composeMiddlewares } from './middleware';
 import { DEFAULT_LOOP_CONFIG } from './loop-types';
 import { ToolRegistry } from './tool-registry';
+import { checkBatchBudget, checkToolBudget, type BudgetCheckResult } from './budget-guard';
+import { nanoid } from 'nanoid';
 
 export class Agent {
   private provider: Provider;
@@ -282,6 +284,17 @@ export class Agent {
         afterBeforeCompress.messages = compactionResult.messages;
         this.contextManager.setMessages(compactionResult.messages);
 
+        // Emit event if compaction occurred
+        if (compactionResult.compacted) {
+          yield {
+            type: 'context_compacted',
+            level: compactionResult.level,
+            beforeTokens: compactionResult.tokensBefore,
+            afterTokens: compactionResult.tokensAfter,
+            turnIndex,
+          } satisfies ContextCompactedEvent;
+        }
+
         // b. Run beforeModel middleware
         const composedBeforeModel = composeMiddlewares(
           this.hooks.beforeModel,
@@ -328,6 +341,10 @@ export class Agent {
           }
           if (chunk.usage) {
             usage = chunk.usage;
+            // Update token tracking with accurate usage from API
+            if (usage && this.contextManager) {
+              this.contextManager.updateTokenUsage(usage);
+            }
           }
         }
 
@@ -355,11 +372,6 @@ export class Agent {
 
         // Sync todo state back to contextManager after middleware
         this.contextManager.syncTodoFromContext(resultContext);
-
-        // Update token usage with actual API data
-        if (usage) {
-          this.contextManager.updateTokenUsage(usage);
-        }
 
         // Set full response on context
         resultContext.response = {
@@ -411,6 +423,81 @@ export class Agent {
           hasToolCalls: true,
           usage,
         } satisfies AgentEvent;
+
+        // ===== Budget Guard: Check if tool calls fit in remaining budget =====
+        const remaining = this.contextManager.getRemainingBudget();
+        const totalLimit = this.config.tokenLimit;
+
+        // First check the entire batch
+        const batchCheck = checkBatchBudget(tool_calls, remaining, totalLimit);
+
+        if (batchCheck.action === 'delegate-to-sub-agent') {
+          // Whole batch gets delegated to sub-agent
+          yield {
+            type: 'budget_delegation',
+            reason: batchCheck.reason!,
+            originalTools: tool_calls.map(tc => tc.name),
+            turnIndex,
+          } satisfies import('./loop-types').BudgetDelegationEvent;
+
+          // Replace all original tool calls with a single sub-agent call
+          const subId = `budget-sub-${nanoid(6)}`;
+          const subAgentCall: ToolCall = {
+            id: subId,
+            name: 'sub_agent',
+            arguments: { task: batchCheck.delegatedTask! },
+          };
+          tool_calls.length = 0;
+          tool_calls.push(subAgentCall);
+
+          // Update the assistant message in context
+          this.contextManager.replaceLastAssistantToolCalls(tool_calls);
+        } else if (batchCheck.action === 'compact-first') {
+          // Compact first, then proceed
+          yield {
+            type: 'budget_compact',
+            reason: batchCheck.reason!,
+            turnIndex,
+          } satisfies import('./loop-types').BudgetCompactEvent;
+
+          const currentContext = this.contextManager.getContext(this.config);
+          const compressed = await this.contextManager.compressIfNeeded(currentContext);
+          this.contextManager.setMessages(compressed.messages);
+        } else {
+          // Batch okay, check individual tools - replace some if needed
+          for (let i = 0; i < tool_calls.length; i++) {
+            const remainingAfterPrevious = this.contextManager.getRemainingBudget();
+            const singleCheck = checkToolBudget(tool_calls[i], remainingAfterPrevious, totalLimit);
+            if (singleCheck.action === 'delegate-to-sub-agent') {
+              yield {
+                type: 'budget_delegation',
+                reason: singleCheck.reason!,
+                originalTools: [tool_calls[i].name],
+                turnIndex,
+              } satisfies import('./loop-types').BudgetDelegationEvent;
+
+              const subId = `budget-sub-${nanoid(6)}`;
+              tool_calls[i] = {
+                id: subId,
+                name: 'sub_agent',
+                arguments: { task: singleCheck.delegatedTask! },
+              };
+              // Update after replacement
+              this.contextManager.replaceLastAssistantToolCalls(tool_calls);
+            } else if (singleCheck.action === 'compact-first') {
+              yield {
+                type: 'budget_compact',
+                reason: singleCheck.reason!,
+                turnIndex,
+              } satisfies import('./loop-types').BudgetCompactEvent;
+
+              const currentContext = this.contextManager.getContext(this.config);
+              const compressed = await this.contextManager.compressIfNeeded(currentContext);
+              this.contextManager.setMessages(compressed.messages);
+            }
+          }
+        }
+        // ===== Budget Guard done =====
 
         // i. Execute tool calls
         if (config.parallelToolExecution && config.yieldEventsAsToolsComplete) {
