@@ -9,8 +9,31 @@ export const llmSettingsSchema = z.object({
   baseURL: z.string().nullable().default(null),
 });
 
+export const compactionSettingsSchema = z.object({
+  enabled: z.boolean().default(true),
+  snipRatio: z.number().min(0).max(1).default(0.60),
+  autoCompactRatio: z.number().min(0).max(1).default(0.75),
+  collapseRatio: z.number().min(0).max(1).default(0.95),
+  toolOutputSnipThreshold: z.number().int().positive().default(8000),
+  preserveRecentTurns: z.number().int().positive().default(4),
+  summaryModel: z.string().default('claude-3-5-haiku-20241022'),
+  maxSummaryTokens: z.number().int().positive().default(1024),
+  enabledTiers: z.object({
+    snip: z.boolean().default(true),
+    autoCompact: z.boolean().default(true),
+    reactiveRecovery: z.boolean().default(true),
+    collapse: z.boolean().default(true),
+  }).default({
+    snip: true,
+    autoCompact: true,
+    reactiveRecovery: true,
+    collapse: true,
+  }),
+});
+
 export const contextSettingsSchema = z.object({
   tokenLimit: z.number().int().positive().default(100000),
+  compaction: compactionSettingsSchema.optional(),
 });
 
 export const memorySettingsSchema = z.object({

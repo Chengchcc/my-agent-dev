@@ -3,7 +3,7 @@ import type { SlashCommand } from '../command-registry';
 import type { CommandHandlerContext } from '../types';
 
 export const compactCommand: SlashCommand = {
-  name: '/compact',
+  name: 'compact',
   description: 'Manually compact conversation context to save tokens',
   type: 'builtin',
   handler: async (ctx: CommandHandlerContext): Promise<void> => {

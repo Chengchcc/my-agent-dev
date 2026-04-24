@@ -37,11 +37,6 @@ const BASE_COMMANDS: Omit<SlashCommand, 'handler'>[] = [
     description: 'List available slash commands',
     type: 'builtin',
   },
-  {
-    name: 'compact',
-    description: 'Manually compact conversation context to save tokens',
-    type: 'builtin',
-  },
 ];
 
 /** Parsed builtin invocation: command name plus any trailing argument string. */

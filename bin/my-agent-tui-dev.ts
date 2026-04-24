@@ -54,8 +54,48 @@ if (settings.llm.provider === 'claude') {
 }
 
 const { ContextManager } = await import('../src/agent/context');
+
+// Default system prompt provides base guidance that's extended by middleware
+const defaultSystemPrompt = `You are Claude Code, an interactive AI coding assistant running on a local agent framework.
+
+You have full access to tools for reading, searching, and modifying code in this repository.
+Follow these core principles:
+
+1. **Use tools systematically**: Explore code before making changes, verify your understanding
+2. **Track progress**: Use the todo_write tool to organize complex tasks and update status
+3. **Be concise**: Answer directly with code and explanations, avoid unnecessary prose
+4. **Prioritize correctness**: Test your changes and verify they work before claiming completion
+5. **Follow project conventions**: Match existing code style and architecture
+
+When in doubt, ask clarifying questions rather than guessing.`;
+
+// Set up tiered compaction
+const { TokenBudgetCalculator } = await import('../src/agent/compaction/budget');
+const { TieredCompactionManager } = await import('../src/agent/compaction/compaction-manager');
+const { DEFAULT_COMPACTION_CONFIG } = await import('../src/agent/compaction/types');
+
+const tokenBudgetCalc = new TokenBudgetCalculator(
+  settings.context.tokenLimit,
+  settings.llm.maxTokens,
+  2048, // compaction buffer
+);
+
+const compactionConfig = {
+  ...DEFAULT_COMPACTION_CONFIG,
+  thresholds: {
+    ...DEFAULT_COMPACTION_CONFIG.thresholds,
+    ...settings.context.compaction,
+  },
+  summaryProvider: provider,
+  summaryModel: settings.context.compaction?.summaryModel || 'claude-3-5-haiku-20241022',
+};
+
+const compressionStrategy = new TieredCompactionManager(tokenBudgetCalc, compactionConfig);
+
 const contextManager = new ContextManager({
   tokenLimit: settings.context.tokenLimit,
+  defaultSystemPrompt,
+  compressionStrategy,
 });
 const config: import('../src/types').AgentConfig = {
   tokenLimit: settings.context.tokenLimit,
