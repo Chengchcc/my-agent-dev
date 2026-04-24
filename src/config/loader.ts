@@ -107,9 +107,14 @@ function applyEnvOverrides(settings: Settings): Settings {
     settings.llm.model = process.env.MODEL;
   }
 
-  // API keys from environment
-  if (settings.llm.provider === 'claude' && process.env.ANTHROPIC_API_KEY) {
-    settings.llm.apiKey = process.env.ANTHROPIC_API_KEY;
+  // API keys / auth tokens from environment
+  // For Volces Ark, ANTHROPIC_AUTH_TOKEN is used instead of ANTHROPIC_API_KEY
+  if (settings.llm.provider === 'claude') {
+    if (process.env.ANTHROPIC_AUTH_TOKEN) {
+      settings.llm.apiKey = process.env.ANTHROPIC_AUTH_TOKEN;
+    } else if (process.env.ANTHROPIC_API_KEY) {
+      settings.llm.apiKey = process.env.ANTHROPIC_API_KEY;
+    }
   }
   if (settings.llm.provider === 'openai' && process.env.OPENAI_API_KEY) {
     settings.llm.apiKey = process.env.OPENAI_API_KEY;

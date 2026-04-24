@@ -16,9 +16,18 @@ const { ClaudeProvider } = await import('../src/providers');
 const { OpenAIProvider } = await import('../src/providers/openai');
 let provider;
 if (settings.llm.provider === 'claude') {
-  if (!settings.llm.apiKey && process.env.ANTHROPIC_API_KEY) {
-    settings.llm.apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!settings.llm.apiKey) {
+    // For Volces Ark, ANTHROPIC_AUTH_TOKEN is used, fall back to ANTHROPIC_API_KEY
+    if (process.env.ANTHROPIC_AUTH_TOKEN) {
+      settings.llm.apiKey = process.env.ANTHROPIC_AUTH_TOKEN;
+    } else if (process.env.ANTHROPIC_API_KEY) {
+      settings.llm.apiKey = process.env.ANTHROPIC_API_KEY;
+    }
   }
+  console.debug('Creating ClaudeProvider with:');
+  console.debug('  apiKey length:', settings.llm.apiKey?.length);
+  console.debug('  baseURL:', settings.llm.baseURL);
+  console.debug('  model:', settings.llm.model);
   provider = new ClaudeProvider({
     apiKey: settings.llm.apiKey!,
     baseURL: settings.llm.baseURL ?? undefined,
