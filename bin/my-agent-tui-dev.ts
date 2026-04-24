@@ -1,33 +1,19 @@
 #!/usr/bin/env bun
 import 'dotenv/config';
-import { Agent, ToolRegistry } from './../src/agent';
-import { ContextManager } from '../src/agent/context';
-import { ClaudeProvider } from '../src/providers';
-import { OpenAIProvider } from '../src/providers/openai';
-import { SkillLoader } from '../src/skills/loader';
-import { createSkillMiddleware } from '../src/skills/middleware';
-import { toSkillCommand, loadAvailableCommands } from '../src/cli/tui/command-registry';
-import { runTUIClient } from '../src/cli/index';
-import { BashTool, TextEditorTool, AskUserQuestionTool, ReadTool, GrepTool, GlobTool, LsTool } from '../src/tools';
-import { SubAgentTool } from '../src/agent';
-import { globalAskUserQuestionManager } from '../src/tools';
-import { SessionStore } from '../src/session/store';
-import { createAutoSaveHook } from '../src/session/hook';
-import { createTodoMiddleware } from '../src/todos';
-import { setDebugMode } from '../src/utils/debug';
 import { getSettings, settings } from '../src/config';
-import type { AgentConfig } from '../src/types';
-import type { SkillFrontmatter } from '../src/skills/loader';
 
 // Parse command line arguments
 const args = process.argv.slice(2);
 const debugEnabled = args.includes('--debug') || args.includes('-d');
+import { setDebugMode } from '../src/utils/debug';
 setDebugMode(debugEnabled);
 
-// Load settings
+// Load settings first before importing anything that might access settings
 await getSettings();
 
 // Choose provider based on configured settings
+const { ClaudeProvider } = await import('../src/providers');
+const { OpenAIProvider } = await import('../src/providers/openai');
 let provider;
 if (settings.llm.provider === 'claude') {
   if (!settings.llm.apiKey && process.env.ANTHROPIC_API_KEY) {
@@ -54,14 +40,17 @@ if (settings.llm.provider === 'claude') {
   process.exit(1);
 }
 
+const { ContextManager } = await import('../src/agent/context');
 const contextManager = new ContextManager({
   tokenLimit: settings.context.tokenLimit,
 });
-const config: AgentConfig = {
+const config: import('../src/types').AgentConfig = {
   tokenLimit: settings.context.tokenLimit,
 };
 
 // Create tool registry and register built-in tools
+const { Agent, ToolRegistry } = await import('../src/agent');
+const { BashTool, TextEditorTool, AskUserQuestionTool, ReadTool, GrepTool, GlobTool, LsTool, globalAskUserQuestionManager } = await import('../src/tools');
 const toolRegistry = new ToolRegistry();
 const allowedRoots = settings.security.allowedRoots;
 toolRegistry.register(new BashTool({ allowedWorkingDirs: allowedRoots }));
@@ -75,10 +64,12 @@ toolRegistry.register(new GlobTool());
 toolRegistry.register(new LsTool());
 
 // Register todo middleware - provides todo_write tool and periodic reminders
+const { createTodoMiddleware } = await import('../src/todos');
 const { tool: todoTool, hooks: todoHooks } = createTodoMiddleware();
 toolRegistry.register(todoTool);
 
 // SubAgentTool - delegate tasks to independent sub agents
+const { SubAgentTool } = await import('../src/agent');
 toolRegistry.register(new SubAgentTool({
   mainProvider: provider,
   mainToolRegistry: toolRegistry,
@@ -86,13 +77,13 @@ toolRegistry.register(new SubAgentTool({
 }));
 
 // Memory System - persistent cross-conversation memory
-import {
+const {
   JsonlMemoryStore,
   KeywordRetriever,
   LlmExtractor,
   MemoryMiddleware,
   MemoryTool,
-} from './../src/memory';
+} = await import('./../src/memory');
 
 // Initialize memory stores
 const semanticMemoryStore = new JsonlMemoryStore('semantic');
@@ -128,9 +119,12 @@ toolRegistry.register(memoryTool);
 
 // Skill middleware for automatic skill injection - factory pattern
 // Skill injection happens in beforeModel hook every turn, guaranteeing it's never lost
+const { createSkillMiddleware } = await import('../src/skills/middleware');
 const skillMiddleware = createSkillMiddleware({ autoInject: true, injectOnMention: true });
 
 // Initialize session store and create new session
+const { SessionStore } = await import('../src/session/store');
+const { createAutoSaveHook } = await import('../src/session/hook');
 const sessionStore = new SessionStore();
 
 // Create agent with tool registry
@@ -159,10 +153,6 @@ const agent = new Agent({
 // Load skills and convert to slash commands
 (async () => {
   try {
-    // Load settings first
-    const { getSettings } = await import('../src/config');
-    await getSettings();
-
     // Ensure session directory is created
     await sessionStore.ensureSessionDir();
     // Create new session for this TUI run
@@ -171,6 +161,8 @@ const agent = new Agent({
     // Preload all skills for skill injection
     await skillMiddleware.preloadAll();
 
+    const { SkillLoader } = await import('../src/skills/loader');
+    const { toSkillCommand } = await import('../src/cli/tui/command-registry');
     const skillLoader = new SkillLoader();
     const skills = await skillLoader.loadAllSkills();
     const skillCommands = skills.map(toSkillCommand);
@@ -181,6 +173,7 @@ const agent = new Agent({
       process.exit(0);
     });
 
+    const { runTUIClient } = await import('../src/cli/index');
     runTUIClient(agent, skillCommands, sessionStore);
   } catch (error) {
     console.error('Failed to initialize TUI:', error);

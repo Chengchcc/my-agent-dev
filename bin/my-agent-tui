@@ -1,64 +1,61 @@
 #!/usr/bin/env node
 import 'dotenv/config';
-import { getSettings } from '../dist/src/config';
-
-// Load settings first before importing anything that might access settings
-await getSettings();
-
-import { Agent, ToolRegistry, ContextManager } from '../dist/src/agent';
-import { ClaudeProvider, OpenAIProvider } from '../dist/src/providers';
-import { BashTool, TextEditorTool, AskUserQuestionTool, ReadTool, GrepTool, GlobTool, LsTool } from '../dist/src/tools';
-import { SubAgentTool } from '../dist/src/agent';
-import { globalAskUserQuestionManager } from '../dist/src/tools';
-import { runTUIClient } from '../dist/src/cli';
-import { SkillLoader } from '../dist/src/skills/loader';
-import { toSkillCommand } from '../dist/src/cli/tui/command-registry';
-import { SessionStore } from '../dist/src/session/store';
-import { createAutoSaveHook } from '../dist/src/session/hook';
-import { createTodoMiddleware } from '../dist/src/todos';
+import { getSettings, settings } from '../dist/src/config';
 import { setDebugMode } from '../dist/src/utils/debug';
-import type { AgentConfig } from '../dist/src/types.js';
 
 // Parse command line arguments
 const args = process.argv.slice(2);
 const debugEnabled = args.includes('--debug') || args.includes('-d');
 setDebugMode(debugEnabled);
 
-// Choose provider based on available API key
-const defaultModel = process.env.MODEL || 'claude-3-5-sonnet-20241022';
-const defaultMaxTokens = 4096;
+// Load settings first before importing anything that might access settings
+await getSettings();
 
+import type { AgentConfig } from '../dist/src/types.js';
+
+// Choose provider based on configured settings
+const { ClaudeProvider, OpenAIProvider } = await import('../dist/src/providers');
 let provider;
-if (process.env.ANTHROPIC_API_KEY) {
+if (settings.llm.provider === 'claude') {
+  if (!settings.llm.apiKey && process.env.ANTHROPIC_API_KEY) {
+    settings.llm.apiKey = process.env.ANTHROPIC_API_KEY;
+  }
   provider = new ClaudeProvider({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-    baseURL: process.env.ANTHROPIC_BASE_URL,
-    model: process.env.MODEL || 'claude-3-5-sonnet-20241022',
-    maxTokens: defaultMaxTokens,
-    temperature: 0.7,
+    apiKey: settings.llm.apiKey!,
+    baseURL: settings.llm.baseURL ?? undefined,
+    model: settings.llm.model,
+    maxTokens: settings.llm.maxTokens,
+    temperature: settings.llm.temperature,
   });
-} else if (process.env.OPENAI_API_KEY) {
+} else if (settings.llm.provider === 'openai') {
+  if (!settings.llm.apiKey && process.env.OPENAI_API_KEY) {
+    settings.llm.apiKey = process.env.OPENAI_API_KEY;
+  }
   provider = new OpenAIProvider({
-    apiKey: process.env.OPENAI_API_KEY,
-    baseURL: process.env.OPENAI_BASE_URL,
-    model: process.env.MODEL || 'gpt-4o',
+    apiKey: settings.llm.apiKey!,
+    baseURL: settings.llm.baseURL ?? undefined,
+    model: settings.llm.model,
   });
 } else {
-  console.error('Error: No API key found. Set either ANTHROPIC_API_KEY or OPENAI_API_KEY in your .env file');
+  console.error('Error: Invalid provider configured');
   process.exit(1);
 }
 
+const { ContextManager } = await import('../dist/src/agent/context');
 const contextManager = new ContextManager({
-  tokenLimit: 100000, // ~100k tokens should be enough for most conversations
+  tokenLimit: settings.context.tokenLimit,
 });
 const config: AgentConfig = {
-  tokenLimit: 100000,
+  tokenLimit: settings.context.tokenLimit,
 };
 
 // Create tool registry and register built-in tools
+const { Agent, ToolRegistry } = await import('../dist/src/agent');
+const { BashTool, TextEditorTool, AskUserQuestionTool, ReadTool, GrepTool, GlobTool, LsTool, globalAskUserQuestionManager } = await import('../dist/src/tools');
 const toolRegistry = new ToolRegistry();
-toolRegistry.register(new BashTool({ allowedWorkingDirs: [__dirname + '/..'] }));
-toolRegistry.register(new TextEditorTool({ allowedRoots: [__dirname + '/..'] }));
+const allowedRoots = settings.security.allowedRoots;
+toolRegistry.register(new BashTool({ allowedWorkingDirs: allowedRoots }));
+toolRegistry.register(new TextEditorTool({ allowedRoots }));
 toolRegistry.register(new AskUserQuestionTool(
   (params) => globalAskUserQuestionManager.askUserQuestion(params)
 ));
