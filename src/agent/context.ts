@@ -3,8 +3,7 @@ import { countTokens } from '@anthropic-ai/tokenizer';
 import type { AgentContext, AgentConfig, CompressionStrategy, Message } from '../types';
 import type { TodoItem } from '../todos/types';
 import { getSettingsSync } from '../config';
-
-const settings = getSettingsSync();
+import { defaultSettings } from '../config/defaults';
 
 export interface ContextManagerConfig {
   tokenLimit?: number;
@@ -77,7 +76,14 @@ export class ContextManager {
   private todoStepsSinceLastReminder = Infinity;
 
   constructor(config: ContextManagerConfig = {}) {
-    this.tokenLimit = config.tokenLimit ?? settings.context.tokenLimit;
+    let tokenLimit;
+    try {
+      const settings = getSettingsSync();
+      tokenLimit = config.tokenLimit ?? settings.context.tokenLimit;
+    } catch {
+      tokenLimit = config.tokenLimit ?? defaultSettings.context.tokenLimit;
+    }
+    this.tokenLimit = tokenLimit;
     this.compressionStrategy = config.compressionStrategy ?? new TrimOldestStrategy();
     this.messages = [];
     this.defaultSystemPrompt = config.defaultSystemPrompt;

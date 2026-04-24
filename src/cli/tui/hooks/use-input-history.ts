@@ -5,13 +5,22 @@ import os from "node:os";
 
 import { useCallback, useRef, useState, useEffect } from "react";
 import { getSettingsSync } from "../../../config";
+import { defaultSettings } from "../../../config/defaults";
 
-const settings = getSettingsSync();
+function getSettings() {
+  try {
+    return getSettingsSync();
+  } catch {
+    return defaultSettings;
+  }
+}
+
+const settings = getSettings();
 
 const MAX_HISTORY_LINES = settings.tui.history.maxLines;
 
 function getHistoryFilePath(): string {
-  return settings.tui.history.filePath;
+  return getSettings().tui.history.filePath;
 }
 
 async function loadHistoryFromDisk(): Promise<string[]> {

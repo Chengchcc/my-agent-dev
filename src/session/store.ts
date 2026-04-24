@@ -2,9 +2,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { getSettingsSync } from '../config';
+import { defaultSettings } from '../config/defaults';
 import type { Message } from '../types';
-
-const settings = getSettingsSync();
 
 export interface SessionMetadata {
   id: string;
@@ -19,7 +18,12 @@ export class SessionStore {
   private currentSessionId: string | null = null;
 
   constructor() {
-    this.sessionDir = settings.tui.sessions.dir;
+    try {
+      const settings = getSettingsSync();
+      this.sessionDir = settings.tui.sessions.dir;
+    } catch {
+      this.sessionDir = defaultSettings.tui.sessions.dir;
+    }
   }
 
   getSessionDir(): string {
