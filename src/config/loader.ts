@@ -121,10 +121,10 @@ function applyEnvOverrides(settings: Settings): Settings {
   }
 
   // Base URLs from environment
-  if (process.env.ANTHROPIC_BASE_URL) {
+  if (settings.llm.provider === 'claude' && process.env.ANTHROPIC_BASE_URL) {
     settings.llm.baseURL = process.env.ANTHROPIC_BASE_URL;
   }
-  if (process.env.OPENAI_BASE_URL) {
+  if (settings.llm.provider === 'openai' && process.env.OPENAI_BASE_URL) {
     settings.llm.baseURL = process.env.OPENAI_BASE_URL;
   }
 
