@@ -126,8 +126,12 @@ export class MemoryMiddleware implements AgentMiddleware {
     const semantic = memories.filter(m => m.type === 'semantic');
     const project = memories.find(m => m.type === 'project');
     const episodic = memories.filter(m => m.type === 'episodic')
-      .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())
-      .slice(0, 5);
+      .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
+
+    // Count how many we've used already
+    let used = semantic.length + (project ? 1 : 0);
+    const maxEpisodic = Math.max(0, this.config.maxInjectedEntries - used);
+    const limitedEpisodic = episodic.slice(0, maxEpisodic);
 
     let blocks: string[] = [];
 
@@ -140,8 +144,8 @@ export class MemoryMiddleware implements AgentMiddleware {
       blocks.push(`## Current Project: ${projectName}\n${project.text}`);
     }
 
-    if (episodic.length > 0) {
-      blocks.push('## Recent Work\n' + episodic.map(m => {
+    if (limitedEpisodic.length > 0) {
+      blocks.push('## Recent Work\n' + limitedEpisodic.map(m => {
         const date = m.created.split('T')[0];
         return `- ${date}: ${m.text}`;
       }).join('\n'));

@@ -48,7 +48,7 @@ Only store genuinely reusable information that will be useful in future conversa
           type: {
             type: 'string',
             enum: ['semantic', 'episodic', 'project'],
-            description: 'Filter by memory type (for list), or type of new memory (for add)',
+            description: 'Filter by memory type (for list), type of new memory (for add), or type to consolidate (for consolidate, defaults to semantic)',
           },
           limit: {
             type: 'number',
@@ -131,16 +131,18 @@ Only store genuinely reusable information that will be useful in future conversa
       }
 
       case 'consolidate': {
-        const semantic = await this.stores.semantic.getAll();
-        if (semantic.length === 0) {
+        const type = (params.type as MemoryEntry['type']) || 'semantic';
+        const store = this.getStoreForType(type);
+        const entries = await store.getAll();
+        if (entries.length === 0) {
           return { before: 0, after: 0, removed: 0 };
         }
-        const consolidated = await this.extractor.consolidate(semantic);
-        await this.stores.semantic.replaceAll(consolidated, 'semantic');
+        const consolidated = await this.extractor.consolidate(entries);
+        await store.replaceAll(consolidated, type);
         return {
-          before: semantic.length,
+          before: entries.length,
           after: consolidated.length,
-          removed: semantic.length - consolidated.length,
+          removed: entries.length - consolidated.length,
         };
       }
 

@@ -25,7 +25,7 @@ export class KeywordRetriever implements MemoryRetriever {
     if (projectPath) {
       const projectEntries = await this.projectStore.getAll();
       projectEntry = projectEntries.find(
-        e => e.projectPath === projectPath || e.projectPath === undefined
+        e => e.projectPath === projectPath
       ) ?? projectEntries[0] ?? null;
     }
 
@@ -86,6 +86,11 @@ export class KeywordRetriever implements MemoryRetriever {
     const tagScore = queryTokens.length > 0
       ? tagMatches / Math.max(queryTokens.length, 1)
       : 0;
+
+    // If no matches at all, score 0 to get filtered out
+    if (keywordMatches === 0 && tagMatches === 0) {
+      return 0;
+    }
 
     // Recency score: 0.2 weight
     const ageMs = Date.now() - new Date(entry.created).getTime();

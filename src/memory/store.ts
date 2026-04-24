@@ -143,7 +143,7 @@ export class JsonlMemoryStore implements MemoryStore {
   async replaceAll(entries: MemoryEntry[], type: MemoryType): Promise<void> {
     await this.ensureDir();
 
-    if (type === 'project') {
+    if (this.type === 'project') {
       await fs.writeFile(this.filePath, JSON.stringify(entries, null, 2), 'utf8');
     } else {
       const content = entries.map(e => JSON.stringify(e)).join('\n') + (entries.length > 0 ? '\n' : '');
@@ -168,7 +168,17 @@ export class JsonlMemoryStore implements MemoryStore {
     }
     // Sort by created date descending
     return all
-      .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())
+      .sort((a, b) => {
+        const aTime = new Date(a.created).getTime();
+        const bTime = new Date(b.created).getTime();
+        if (bTime !== aTime) {
+          return bTime - aTime;
+        }
+        // If timestamps are equal, later entries in original array come first
+        const aIndex = all.indexOf(a);
+        const bIndex = all.indexOf(b);
+        return bIndex - aIndex;
+      })
       .slice(0, limit);
   }
 
@@ -176,7 +186,18 @@ export class JsonlMemoryStore implements MemoryStore {
     const all = await this.getAll();
     // Keep newest entries, remove oldest
     const trimmed = all
-      .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())
+      .sort((a, b) => {
+        const aTime = new Date(a.created).getTime();
+        const bTime = new Date(b.created).getTime();
+        if (bTime !== aTime) {
+          return bTime - aTime;
+        }
+        // If timestamps are equal, later entries in original array come first
+        // Original array is oldest to newest, so later means newer, so b comes before a
+        const aIndex = all.indexOf(a);
+        const bIndex = all.indexOf(b);
+        return bIndex - aIndex;
+      })
       .slice(0, maxEntries);
     await this.replaceAll(trimmed, this.type);
   }
