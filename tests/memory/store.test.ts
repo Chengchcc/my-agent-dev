@@ -128,9 +128,11 @@ describe('FIFO trimming', () => {
       maxSemanticEntries: 5,
     });
 
-    // Add 7 entries
+    // Add 7 entries with small delay to ensure distinct timestamps
     for (let i = 0; i < 7; i++) {
       await store.add({ type: 'semantic', text: `fact ${i}`, weight: 1, source: 'explicit' });
+      // Add 1ms delay to ensure each entry has a distinct created time
+      await new Promise(resolve => setTimeout(resolve, 1));
     }
 
     const all = await store.getAll();
