@@ -1,7 +1,8 @@
 import { nanoid } from 'nanoid';
 import { countTokens } from '@anthropic-ai/tokenizer';
-import type { AgentContext, AgentConfig, CompressionStrategy, Message } from '../types';
+import type { AgentContext, AgentConfig, CompressionStrategy, Message, ToolCall } from '../types';
 import type { TodoItem } from '../todos/types';
+import type { CompactionResult } from './compaction/types';
 import { getSettingsSync } from '../config';
 import { defaultSettings } from '../config/defaults';
 
@@ -14,8 +15,19 @@ export interface ContextManagerConfig {
 /**
  * Count total tokens in an array of messages.
  */
-function countTotalTokens(messages: Message[]): number {
-  return messages.reduce((sum, msg) => sum + countTokens(msg.content), 0);
+function countTotalTokens(messages: Message[], systemPrompt?: string): number {
+  let total = systemPrompt ? countTokens(systemPrompt) : 0;
+  for (const msg of messages) {
+    if (msg.content) {
+      total += countTokens(msg.content);
+    }
+    if (msg.tool_calls) {
+      total += countTokens(JSON.stringify(msg.tool_calls));
+    }
+    // 4 tokens overhead per message for role/metadata
+    total += 4;
+  }
+  return total;
 }
 
 /**
@@ -74,6 +86,8 @@ export class ContextManager {
   private todoStore: TodoItem[] = [];
   private todoStepsSinceLastWrite = Infinity;
   private todoStepsSinceLastReminder = Infinity;
+  private lastKnownPromptTokens: number = 0;
+  private accumulatedOutputTokens: number = 0;
 
   constructor(config: ContextManagerConfig = {}) {
     let tokenLimit;
@@ -170,14 +184,34 @@ export class ContextManager {
   /**
    * Compress messages if over token limit.
    */
-  async compressIfNeeded(context: AgentContext): Promise<Message[]> {
+  async compressIfNeeded(context: AgentContext): Promise<CompactionResult> {
     const tokenLimit = context.config.tokenLimit;
-    const totalTokens = countTotalTokens(context.messages);
-    if (totalTokens > tokenLimit) {
-      const compressed = await this.compressionStrategy.compress(context, tokenLimit);
-      return compressed;
+    // Reserve headroom for output and compaction prompt
+    const effectiveLimit = tokenLimit - 6000;
+    const currentTokens = this.getLastKnownPromptTokens();
+
+    if (currentTokens > effectiveLimit) {
+      // Check if compression strategy supports CompactionResult interface
+      if ('compressWithResult' in this.compressionStrategy && typeof (this.compressionStrategy as any).compressWithResult === 'function') {
+        return (this.compressionStrategy as any).compressWithResult(context, effectiveLimit);
+      }
+      // Fallback for legacy compression strategies
+      const compressed = await this.compressionStrategy.compress(context, effectiveLimit);
+      return {
+        messages: compressed,
+        level: 'none' as const,
+        compacted: compressed.length < context.messages.length,
+        tokensBefore: currentTokens,
+        tokensAfter: countTotalTokens(compressed, context.systemPrompt),
+      };
     }
-    return context.messages;
+    return {
+      messages: context.messages,
+      level: 'none' as const,
+      compacted: false,
+      tokensBefore: currentTokens,
+      tokensAfter: currentTokens,
+    };
   }
 
   /**
@@ -229,5 +263,106 @@ export class ContextManager {
     const nonSystemMessages = messages.filter(m => m.role !== 'system');
 
     this.messages = [...systemMessages, ...nonSystemMessages];
+  }
+
+  /**
+   * Update token counting with accurate usage data from API response.
+   */
+  updateTokenUsage(usage: { prompt_tokens: number; completion_tokens: number }): void {
+    this.lastKnownPromptTokens = usage.prompt_tokens;
+    this.accumulatedOutputTokens += usage.completion_tokens;
+  }
+
+  /**
+   * Get current context usage ratio (0-1).
+   */
+  getUsageRatio(): number {
+    if (this.lastKnownPromptTokens <= 0) {
+      // Fallback to local estimation if no API data yet
+      const messages = this.getMessages();
+      const estimated = countTotalTokens(messages, this.currentSystemPrompt);
+      return estimated / this.tokenLimit;
+    }
+    return this.lastKnownPromptTokens / this.tokenLimit;
+  }
+
+  /**
+   * Get remaining token budget for new content.
+   */
+  getRemainingBudget(): number {
+    if (this.lastKnownPromptTokens <= 0) {
+      const messages = this.getMessages();
+      const estimated = countTotalTokens(messages, this.currentSystemPrompt);
+      return this.tokenLimit - estimated;
+    }
+    return this.tokenLimit - this.lastKnownPromptTokens;
+  }
+
+  /**
+   * Get the last known prompt tokens from API.
+   */
+  getLastKnownPromptTokens(): number {
+    if (this.lastKnownPromptTokens <= 0) {
+      const messages = this.getMessages();
+      return countTotalTokens(messages, this.currentSystemPrompt);
+    }
+    return this.lastKnownPromptTokens;
+  }
+
+  /**
+   * Force compaction with optional focus hint.
+   */
+  async forceCompact(focusHint?: string): Promise<CompactionResult> {
+    const context = this.getContext({
+      tokenLimit: this.tokenLimit,
+      defaultSystemPrompt: this.defaultSystemPrompt,
+    });
+    if (focusHint && context.systemPrompt) {
+      context.systemPrompt = `${context.systemPrompt}\n\nFocus hint: ${focusHint}`;
+    }
+    const totalTokens = this.getLastKnownPromptTokens();
+    const effectiveLimit = this.tokenLimit - 6000; // Reserve for output + compaction prompt
+
+    if (totalTokens > effectiveLimit && this.compressionStrategy) {
+      // Type assertion: if using TieredCompaction, it returns CompactionResult
+      if ('compressWithResult' in this.compressionStrategy && typeof (this.compressionStrategy as any).compressWithResult === 'function') {
+        return (this.compressionStrategy as any).compressWithResult(context, effectiveLimit);
+      }
+      // Fallback for older strategies
+      const messages = await this.compressionStrategy.compress(context, effectiveLimit);
+      return {
+        messages,
+        level: 'unknown' as const,
+        compacted: messages.length < context.messages.length,
+        tokensBefore: totalTokens,
+        tokensAfter: countTotalTokens(messages, context.systemPrompt),
+      };
+    }
+    return {
+      messages: context.messages,
+      level: 'none' as const,
+      compacted: false,
+      tokensBefore: totalTokens,
+      tokensAfter: totalTokens,
+    };
+  }
+
+  /**
+   * Replace tool_calls in the last assistant message.
+   * Used when budget guard replaces tool calls with sub-agent delegation.
+   */
+  replaceLastAssistantToolCalls(toolCalls: ToolCall[]): void {
+    const messages = [...this.messages];
+    // Find the last assistant message
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') {
+        messages[i] = {
+          ...messages[i],
+          tool_calls: toolCalls,
+        };
+        this.messages = messages;
+        return;
+      }
+    }
   }
 }

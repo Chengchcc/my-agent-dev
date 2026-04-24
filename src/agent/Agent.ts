@@ -276,11 +276,11 @@ export class Agent {
         // Sync todo state back to contextManager after middleware
         this.contextManager.syncTodoFromContext(afterBeforeCompress);
 
-        const compressedMessages = await this.contextManager.compressIfNeeded(
+        const compactionResult = await this.contextManager.compressIfNeeded(
           afterBeforeCompress,
         );
-        afterBeforeCompress.messages = compressedMessages;
-        this.contextManager.setMessages(compressedMessages);
+        afterBeforeCompress.messages = compactionResult.messages;
+        this.contextManager.setMessages(compactionResult.messages);
 
         // b. Run beforeModel middleware
         const composedBeforeModel = composeMiddlewares(
@@ -355,6 +355,11 @@ export class Agent {
 
         // Sync todo state back to contextManager after middleware
         this.contextManager.syncTodoFromContext(resultContext);
+
+        // Update token usage with actual API data
+        if (usage) {
+          this.contextManager.updateTokenUsage(usage);
+        }
 
         // Set full response on context
         resultContext.response = {
