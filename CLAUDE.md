@@ -26,6 +26,15 @@ This is a TypeScript-based AI agent framework built with Bun, featuring a modula
   - `tool-registry.ts`: ToolRegistry - manages tool registration/lookup
   - `sub-agent-tool.ts`: SubAgentTool - delegates subtasks to independent agents
   - `index.ts`: Module exports
+
+### Configuration
+
+- `/src/config/`: Centralized YAML configuration system
+  - `types.ts`: TypeScript type definitions for all settings
+  - `schema.ts`: Zod validation schema
+  - `defaults.ts`: Default configuration values
+  - `loader.ts`: Configuration loading, merging, tilde expansion
+  - `index.ts`: Exported settings singleton
 - `/src/providers/`: LLM Provider implementations
   - `claude.ts`: Anthropic Claude provider
   - `claude-utils.ts`: Claude-specific utility functions
