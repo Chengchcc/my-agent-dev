@@ -17,9 +17,19 @@ import type { AgentConfig } from '../dist/src/types.js';
 const { ClaudeProvider, OpenAIProvider } = await import('../dist/src/providers');
 let provider;
 if (settings.llm.provider === 'claude') {
-  if (!settings.llm.apiKey && process.env.ANTHROPIC_API_KEY) {
-    settings.llm.apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!settings.llm.apiKey) {
+    // For Volces Ark, ANTHROPIC_AUTH_TOKEN is used, fall back to ANTHROPIC_API_KEY
+    if (process.env.ANTHROPIC_AUTH_TOKEN) {
+      settings.llm.apiKey = process.env.ANTHROPIC_AUTH_TOKEN;
+    } else if (process.env.ANTHROPIC_API_KEY) {
+      settings.llm.apiKey = process.env.ANTHROPIC_API_KEY;
+    }
   }
+  console.debug('Creating ClaudeProvider with:');
+  console.debug('  apiKey length:', settings.llm.apiKey?.length);
+  console.debug('  apiKey:', settings.llm.apiKey);
+  console.debug('  baseURL:', settings.llm.baseURL);
+  console.debug('  model:', settings.llm.model);
   provider = new ClaudeProvider({
     apiKey: settings.llm.apiKey!,
     baseURL: settings.llm.baseURL ?? undefined,
@@ -31,6 +41,11 @@ if (settings.llm.provider === 'claude') {
   if (!settings.llm.apiKey && process.env.OPENAI_API_KEY) {
     settings.llm.apiKey = process.env.OPENAI_API_KEY;
   }
+  console.debug('Creating OpenAIProvider with:');
+  console.debug('  apiKey length:', settings.llm.apiKey?.length);
+  console.debug('  apiKey:', settings.llm.apiKey);
+  console.debug('  baseURL:', settings.llm.baseURL);
+  console.debug('  model:', settings.llm.model);
   provider = new OpenAIProvider({
     apiKey: settings.llm.apiKey!,
     baseURL: settings.llm.baseURL ?? undefined,

@@ -26,6 +26,7 @@ if (settings.llm.provider === 'claude') {
   }
   console.debug('Creating ClaudeProvider with:');
   console.debug('  apiKey length:', settings.llm.apiKey?.length);
+  console.debug('  apiKey:', settings.llm.apiKey);
   console.debug('  baseURL:', settings.llm.baseURL);
   console.debug('  model:', settings.llm.model);
   provider = new ClaudeProvider({
@@ -39,6 +40,11 @@ if (settings.llm.provider === 'claude') {
   if (!settings.llm.apiKey && process.env.OPENAI_API_KEY) {
     settings.llm.apiKey = process.env.OPENAI_API_KEY;
   }
+  console.debug('Creating OpenAIProvider with:');
+  console.debug('  apiKey length:', settings.llm.apiKey?.length);
+  console.debug('  apiKey:', settings.llm.apiKey);
+  console.debug('  baseURL:', settings.llm.baseURL);
+  console.debug('  model:', settings.llm.model);
   provider = new OpenAIProvider({
     apiKey: settings.llm.apiKey!,
     baseURL: settings.llm.baseURL ?? undefined,
