@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import matter from 'gray-matter';
+import { getSettingsSync } from '../config';
 
 export type SkillFrontmatter = {
   name: string;
@@ -20,7 +21,8 @@ export class SkillLoader {
   private cachedSkills: Map<string, SkillInfo> = new Map();
 
   constructor(basePath?: string) {
-    this.basePath = basePath ?? path.resolve(process.cwd(), 'skills');
+    const settings = getSettingsSync();
+    this.basePath = basePath ?? path.resolve(process.cwd(), settings.skills.baseDir);
   }
 
   /**

@@ -1,7 +1,13 @@
 import { SkillLoader } from '../../src/skills';
 import { describe, expect, test } from 'bun:test';
+import { getSettings } from '../../src/config';
 
 describe('SkillLoader', () => {
+  // Load settings before all tests
+  test('setup settings', async () => {
+    await getSettings();
+  });
+
   test('loads existing skill-creator', async () => {
     const loader = new SkillLoader();
     const skill = await loader.loadSkill('skill-creator');
