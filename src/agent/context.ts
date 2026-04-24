@@ -2,6 +2,15 @@ import { nanoid } from 'nanoid';
 import { countTokens } from '@anthropic-ai/tokenizer';
 import type { AgentContext, AgentConfig, CompressionStrategy, Message } from '../types';
 import type { TodoItem } from '../todos/types';
+import { getSettingsSync } from '../config';
+
+const settings = getSettingsSync();
+
+export interface ContextManagerConfig {
+  tokenLimit?: number;
+  compressionStrategy?: CompressionStrategy;
+  defaultSystemPrompt?: string;
+}
 
 /**
  * Count total tokens in an array of messages.
@@ -67,16 +76,12 @@ export class ContextManager {
   private todoStepsSinceLastWrite = Infinity;
   private todoStepsSinceLastReminder = Infinity;
 
-  constructor(options: {
-    tokenLimit: number;
-    compressionStrategy?: CompressionStrategy;
-    defaultSystemPrompt?: string;
-  }) {
-    this.tokenLimit = options.tokenLimit;
-    this.compressionStrategy = options.compressionStrategy ?? new TrimOldestStrategy();
+  constructor(config: ContextManagerConfig = {}) {
+    this.tokenLimit = config.tokenLimit ?? settings.context.tokenLimit;
+    this.compressionStrategy = config.compressionStrategy ?? new TrimOldestStrategy();
     this.messages = [];
-    this.defaultSystemPrompt = options.defaultSystemPrompt;
-    this.currentSystemPrompt = options.defaultSystemPrompt;
+    this.defaultSystemPrompt = config.defaultSystemPrompt;
+    this.currentSystemPrompt = config.defaultSystemPrompt;
 
     if (this.defaultSystemPrompt) {
       this.messages.push({
