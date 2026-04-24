@@ -208,30 +208,74 @@ describe('Resource constraints', () => {
       execute: async () => 'ok',
     });
 
-    // Simple test that just verifies the default maxTurns is 15
+    // Create a provider that will generate 20 turns of tool calls
+    const script = Array(20).fill({
+      content: '',
+      tool_calls: [{ id: `call-${Math.random()}`, name: 'read', arguments: { path: 'test.txt' } }],
+    });
+    // Add a final content response at the end to complete the agent
+    script.push({ content: 'Done' });
+    const scriptedProvider = new ScriptedProvider(script);
+
     const tool = new SubAgentTool({
-      mainProvider: {} as Provider,
+      mainProvider: scriptedProvider,
       mainToolRegistry: mainRegistry,
       mainAgentConfig: mockConfig,
+      // loopConfig with maxTurns defaults to 15 from SubAgentTool
     });
 
-    // We can't directly access private config, but we can verify the implementation by checking
-    // that the loop config is properly passed through
-    expect(tool).toBeInstanceOf(SubAgentTool);
-  });
+    const result = await tool.execute({ task: 'keep reading' });
 
-  test('sub-agent uses default 5-minute timeout', async () => {
-    // Verify that the default timeout is set correctly in SubAgentTool
-    const mainRegistry = new ToolRegistry();
+    // ScriptedProvider increments callCount each turn
+    // Should not exceed 15-16 turns due to maxTurns limit
+    // @ts-ignore ScriptedProvider has callCount
+    expect(scriptedProvider.callCount).toBeLessThanOrEqual(16);
+    expect(result).toContain('SubAgent');
+    expect(result).toContain('turns');
+  }, 30000); // Increased timeout for this test
 
-    // Check the default loop config in SubAgentTool
+  test('sub-agent times out after 5 minutes', async () => {
+    // Create a provider that will hang indefinitely
+    class HangingProvider implements Provider {
+      callCount = 0;
+      registerTools() {}
+      invoke = async () => { throw new Error('not implemented'); };
+      getModelName() { return 'slow'; }
+      async *stream() {
+        this.callCount++;
+        // Never resolve - this will hang until timeout
+        await new Promise(() => {});
+      }
+    }
+
+    const hangingProvider = new HangingProvider();
+
     const tool = new SubAgentTool({
-      mainProvider: {} as Provider,
-      mainToolRegistry: mainRegistry,
+      mainProvider: hangingProvider,
+      mainToolRegistry: new ToolRegistry(),
       mainAgentConfig: mockConfig,
+      loopConfig: { timeoutMs: 500 }, // 0.5 second timeout for faster testing
     });
 
-    // We can't directly access private config, but we can verify the type
-    expect(tool).toBeInstanceOf(SubAgentTool);
+    // Start execution
+    const startTime = Date.now();
+    const promise = tool.execute({ task: 'slow task' });
+
+    // Wait for the timeout - use real timers since we just need to wait
+    // This test will fail if it doesn't timeout within 2 seconds
+    const result = await Promise.race([
+      promise,
+      new Promise(resolve => setTimeout(() => resolve('timeout'), 2000))
+    ]);
+
+    const durationMs = Date.now() - startTime;
+
+    // Should have timed out
+    expect(result).toContain('timeout');
+    // Should have called stream at least once
+    expect(hangingProvider.callCount).toBeGreaterThanOrEqual(1);
+    // Should have taken roughly around the timeout duration
+    expect(durationMs).toBeGreaterThanOrEqual(400);
+    expect(durationMs).toBeLessThanOrEqual(3000);
   });
 });

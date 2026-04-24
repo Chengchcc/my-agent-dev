@@ -176,6 +176,8 @@ If the task references files in .agent/, read them first before proceeding.`;
 
       let finalTotalTurns = 0;
       let finalSummary = '';
+      let hasTimeoutError = false;
+      let hasMaxTurnsError = false;
 
       // Run the agent loop and bubble events - propagate abort signal from main
       for await (const event of subAgent.runAgentLoop(
@@ -198,10 +200,22 @@ If the task references files in .agent/, read them first before proceeding.`;
           });
         }
 
+        // Track timeout errors
+        if (event.type === 'agent_error' && event.error?.message.includes('aborted')) {
+          hasTimeoutError = true;
+        }
+
         // Capture the final summary from agent_done
         if (event.type === 'agent_done') {
           // Get the actual total turns from the event
           finalTotalTurns = event.totalTurns;
+
+          // Check for max turns or timeout reasons
+          if (event.reason === 'max_turns_reached') {
+            hasMaxTurnsError = true;
+          } else if (event.reason === 'error') {
+            hasTimeoutError = true;
+          }
 
           // Get the final context and find the last assistant message
           const finalContext = subAgent.getContext();
@@ -220,26 +234,38 @@ If the task references files in .agent/, read them first before proceeding.`;
 
       const durationMs = Date.now() - startTime;
 
+      // Determine if the execution was aborted due to timeout or max turns
+      let executionSummary = finalSummary;
+      if (!executionSummary) {
+        if (hasTimeoutError || durationMs >= loopConfig.timeoutMs) {
+          executionSummary = 'SubAgent execution terminated: timeout after 5 minutes.';
+        } else if (hasMaxTurnsError || finalTotalTurns >= loopConfig.maxTurns) {
+          executionSummary = `SubAgent execution terminated: maximum ${loopConfig.maxTurns} turns reached.`;
+        } else {
+          executionSummary = `Sub agent completed ${finalTotalTurns} turns but produced no final summary.`;
+        }
+      }
+
+      // If the execution took longer than the timeout, we should show the timeout summary even if we got a final summary
+      if (durationMs >= loopConfig.timeoutMs) {
+        executionSummary = 'SubAgent execution terminated: timeout after 5 minutes.';
+      }
+
       // Bubble done event
       if (this.config.onEvent) {
         this.config.onEvent(agentId, {
           type: 'sub_agent_done',
           agentId,
-          summary: finalSummary,
+          summary: executionSummary,
           totalTurns: finalTotalTurns,
           durationMs,
-          isError: false,
+          isError: !finalSummary, // If we had to generate an error summary
           turnIndex: 0,
         });
       }
 
-      // Ensure we have a summary
-      if (!finalSummary) {
-        finalSummary = `Sub agent completed ${finalTotalTurns} turns but produced no final summary.`;
-      }
-
       // Return summary to main agent
-      return `[SubAgent ${agentId} completed in ${durationMs}ms, ${finalTotalTurns} turns]\n\n${finalSummary}`;
+      return `[SubAgent ${agentId} completed in ${durationMs}ms, ${finalTotalTurns} turns]\n\n${executionSummary}`;
     } catch (error) {
       const durationMs = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : String(error);
