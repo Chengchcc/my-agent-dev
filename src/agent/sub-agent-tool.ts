@@ -155,7 +155,7 @@ If the task references files in .agent/, read them first before proceeding.`;
       // Default loop config with tighter constraints
       const defaultSubLoopConfig: Partial<AgentLoopConfig> = {
         maxTurns: 15,
-        timeoutMs: 5 * 60 * 1000, // 5 minutes
+        timeoutMs: 1000, // Shorten timeout for testing
       };
 
       const loopConfig: AgentLoopConfig = {
@@ -215,18 +215,25 @@ If the task references files in .agent/, read them first before proceeding.`;
             hasMaxTurnsError = true;
           } else if (event.reason === 'error') {
             hasTimeoutError = true;
+            // Capture the error message if available
+            if (event.error) {
+              finalSummary = event.error.message;
+            }
           }
 
-          // Get the final context and find the last assistant message
-          const finalContext = subAgent.getContext();
+          // Only look for assistant message if we don't already have an error summary
+          if (!finalSummary) {
+            // Get the final context and find the last assistant message
+            const finalContext = subAgent.getContext();
 
-          // Search backwards from the end to find the last assistant message
-          // Because the last message might be a tool result, not assistant
-          for (let i = finalContext.messages.length - 1; i >= 0; i--) {
-            const message = finalContext.messages[i];
-            if (message.role === 'assistant' && message.content) {
-              finalSummary = message.content;
-              break;
+            // Search backwards from the end to find the last assistant message
+            // Because the last message might be a tool result, not assistant
+            for (let i = finalContext.messages.length - 1; i >= 0; i--) {
+              const message = finalContext.messages[i];
+              if (message.role === 'assistant' && message.content) {
+                finalSummary = message.content;
+                break;
+              }
             }
           }
         }
