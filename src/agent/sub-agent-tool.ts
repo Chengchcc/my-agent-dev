@@ -155,7 +155,7 @@ If the task references files in .agent/, read them first before proceeding.`;
       // Default loop config with tighter constraints
       const defaultSubLoopConfig: Partial<AgentLoopConfig> = {
         maxTurns: 15,
-        timeoutMs: 1000, // Shorten timeout for testing
+        timeoutMs: 5 * 60 * 1000, // 5 minutes default timeout
       };
 
       const loopConfig: AgentLoopConfig = {
