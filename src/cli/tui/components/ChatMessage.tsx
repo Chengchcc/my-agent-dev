@@ -174,7 +174,8 @@ export function PureChatMessage({ message, toolCallInfo = new Map() }: PureChatM
   }
 
   // Don't render standalone tool messages - they're rendered inline with the assistant message
-  if (message.role === 'tool') {
+  // Don't render system messages in the chat history (they provide instructions to the model, not visible to the user)
+  if (message.role === 'tool' || message.role === 'system') {
     return null;
   }
 

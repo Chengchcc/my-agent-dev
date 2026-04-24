@@ -7,6 +7,23 @@ export interface LLMSettings {
   baseURL: string | null;
 }
 
+export interface CompactionSettings {
+  enabled?: boolean;
+  snipRatio?: number;
+  autoCompactRatio?: number;
+  collapseRatio?: number;
+  toolOutputSnipThreshold?: number;
+  preserveRecentTurns?: number;
+  summaryModel?: string;
+  maxSummaryTokens?: number;
+  enabledTiers?: {
+    snip?: boolean;
+    autoCompact?: boolean;
+    reactiveRecovery?: boolean;
+    collapse?: boolean;
+  };
+}
+
 export interface ContextSettings {
   tokenLimit: number;
   budgetGuard?: {
@@ -16,6 +33,7 @@ export interface ContextSettings {
     batchOutputRatio?: number;
     minReadCallsForBatch?: number;
   };
+  compaction?: CompactionSettings;
 }
 
 export interface MemorySettings {

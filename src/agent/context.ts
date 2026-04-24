@@ -68,10 +68,18 @@ export class TrimOldestStrategy implements CompressionStrategy {
 
       // Check if the first message is an assistant with tool_calls. If so, remove it plus all matching tool results.
       const first = messages[0];
-      if (first.role === 'assistant' && first.tool_calls && first.tool_calls.length > 0 && messages.length >= 1 + first.tool_calls.length) {
-        // Remove the assistant message + all tool result messages that match its tool calls
-        // Each tool call has exactly one tool result message immediately after
-        messages = messages.slice(1 + first.tool_calls.length);
+      if (first.role === 'assistant' && first.tool_calls && first.tool_calls.length > 0) {
+        let removeCount = 1; // Start with assistant message itself
+        // Remove consecutive tool result messages that match any of the tool_call_ids from this assistant
+        for (let i = 1; i < messages.length && removeCount <= 1 + first.tool_calls.length; i++) {
+          const msg = messages[i];
+          if (msg.role === 'tool' && msg.tool_call_id && first.tool_calls.some(tc => tc.id === msg.tool_call_id)) {
+            removeCount++;
+          } else {
+            break; // Stop at first non-matching message
+          }
+        }
+        messages = messages.slice(removeCount);
       } else {
         // Just remove the single message
         messages = messages.slice(1);

@@ -40,16 +40,14 @@ describe('PureChatMessage', () => {
     expect(lastFrame()).toBe('');
   });
 
-  test('renders system message with yellow color', () => {
+  test('returns null for system messages (not shown in chat UI)', () => {
     const message: Message = {
       role: 'system',
       content: 'System instruction',
     };
 
     const { lastFrame } = render(<PureChatMessage message={message} />);
-    const frame = lastFrame();
-    expect(frame).toContain('* system:');
-    expect(frame).toContain('System instruction');
+    expect(lastFrame()).toBe('');
   });
 
   test('renders assistant message with code block', () => {

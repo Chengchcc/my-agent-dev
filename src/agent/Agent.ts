@@ -300,7 +300,6 @@ export class Agent {
           this.hooks.beforeModel,
           (innerCtx) => Promise.resolve(innerCtx),
         );
-        let resultContext: AgentContext;
         try {
           resultContext = await composedBeforeModel(afterBeforeCompress);
         } catch (hookError) {
