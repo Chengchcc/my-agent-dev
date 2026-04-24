@@ -7,6 +7,7 @@ import { Agent } from './Agent';
 import { ContextManager } from './context';
 import { ToolRegistry } from './tool-registry';
 import { DEFAULT_LOOP_CONFIG } from './loop-types';
+import { getSettingsSync } from '../config';
 
 /**
  * Configuration for SubAgentTool
@@ -32,6 +33,12 @@ export interface SubAgentToolConfig {
   tokenLimit?: number;
   /** AbortSignal from the main agent's execution - propagated to sub agent */
   signal?: AbortSignal;
+  /** Auto trigger threshold for sub agent (default from settings) */
+  autoTriggerThreshold?: number;
+  /** Isolation mode for sub agent (default from settings) */
+  isolation?: boolean;
+  /** Worktree root directory for sub agent (default from settings) */
+  worktreeRootDir?: string;
 }
 
 /**
@@ -44,7 +51,23 @@ export class SubAgentTool implements ToolImplementation {
   private config: SubAgentToolConfig;
 
   constructor(config: SubAgentToolConfig) {
-    this.config = config;
+    try {
+      const settings = getSettingsSync();
+      this.config = {
+        autoTriggerThreshold: settings.subAgent.autoTriggerThreshold,
+        isolation: settings.subAgent.isolation,
+        worktreeRootDir: settings.subAgent.worktreeRootDir,
+        ...config,
+      };
+    } catch {
+      // If settings not loaded (e.g. in test environments), use hardcoded defaults
+      this.config = {
+        autoTriggerThreshold: 5,
+        isolation: true,
+        worktreeRootDir: '~/.my-agent/worktrees',
+        ...config,
+      };
+    }
   }
 
   /**
