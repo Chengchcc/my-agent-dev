@@ -4,7 +4,7 @@ import { countTokens } from '@anthropic-ai/tokenizer';
 import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
 import type { Message } from '../../../types';
-import type { AgentEvent, SubAgentStartEvent, SubAgentNestedEvent, SubAgentDoneEvent, ToolCallStartEvent } from '../../../agent/loop-types';
+import type { AgentEvent, SubAgentStartEvent, SubAgentNestedEvent, SubAgentDoneEvent, ToolCallStartEvent, BudgetDelegationEvent, BudgetCompactEvent, ContextCompactedEvent } from '../../../agent/loop-types';
 import type { PromptSubmission } from '../command-registry';
 import type { UITodoItem } from '../types';
 import { agentUIReducer, initialState, type AgentUIState, type AgentUIAction } from './agent-ui-reducer';
@@ -277,6 +277,15 @@ export function AgentLoopProvider({
             // No action needed here - we just collect the start/done
           } else if (event.type === 'sub_agent_done') {
             dispatch({ type: 'SUB_AGENT_DONE', event });
+          } else if (event.type === 'budget_delegation') {
+            // Budget guard delegated to sub-agent
+            debugLog('[agent-loop] budget delegation:', event.reason, event.originalTools);
+          } else if (event.type === 'budget_compact') {
+            // Budget guard triggered compaction
+            debugLog('[agent-loop] budget compact:', event.reason);
+          } else if (event.type === 'context_compacted') {
+            // Context compaction completed
+            debugLog('[agent-loop] context compacted:', event.level, event.beforeTokens, '→', event.afterTokens, 'tokens');
           } else {
             // Exhaustiveness check - TypeScript will warn if new event types are added
             const _exhaustive: never = event;

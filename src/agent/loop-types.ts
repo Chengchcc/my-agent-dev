@@ -105,6 +105,33 @@ export interface SubAgentDoneEvent extends AgentEventBase {
 }
 
 /**
+ * Budget guard delegated a batch of tool calls to sub-agent.
+ */
+export interface BudgetDelegationEvent extends AgentEventBase {
+  type: 'budget_delegation';
+  reason: string;
+  originalTools: string[];
+}
+
+/**
+ * Budget guard triggered compaction before tool execution.
+ */
+export interface BudgetCompactEvent extends AgentEventBase {
+  type: 'budget_compact';
+  reason: string;
+}
+
+/**
+ * Context compaction completed.
+ */
+export interface ContextCompactedEvent extends AgentEventBase {
+  type: 'context_compacted';
+  level: import('./compaction/types').CompactionLevelType;
+  beforeTokens: number;
+  afterTokens: number;
+}
+
+/**
  * Union of all possible agent events
  */
 export type AgentEvent =
@@ -116,7 +143,10 @@ export type AgentEvent =
   | AgentErrorEvent
   | SubAgentStartEvent
   | SubAgentNestedEvent
-  | SubAgentDoneEvent;
+  | SubAgentDoneEvent
+  | BudgetDelegationEvent
+  | BudgetCompactEvent
+  | ContextCompactedEvent;
 
 /**
  * Strategy for handling tool errors
