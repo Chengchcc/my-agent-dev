@@ -19,37 +19,37 @@ export function expandTilde(filePath: string): string {
 /**
  * Deep merge two configuration objects: user config overrides defaults
  */
-export function mergeConfigs(defaults: Settings, user: Partial<Settings>): Settings {
-  const result: Settings = { ...defaults };
+export function mergeConfigs(defaults: Partial<Settings>, user: Partial<Settings>): Partial<Settings> {
+  const result: Partial<Settings> = { ...defaults };
 
   if (user.llm) {
-    result.llm = { ...defaults.llm, ...user.llm };
+    result.llm = defaults.llm ? { ...defaults.llm, ...user.llm } : { ...user.llm };
   }
   if (user.context) {
-    result.context = { ...defaults.context, ...user.context };
+    result.context = defaults.context ? { ...defaults.context, ...user.context } : { ...user.context };
   }
   if (user.memory) {
-    result.memory = { ...defaults.memory, ...user.memory };
+    result.memory = defaults.memory ? { ...defaults.memory, ...user.memory } : { ...user.memory };
   }
   if (user.skills) {
-    result.skills = { ...defaults.skills, ...user.skills };
+    result.skills = defaults.skills ? { ...defaults.skills, ...user.skills } : { ...user.skills };
   }
   if (user.tui) {
     result.tui = {
-      history: { ...defaults.tui.history, ...user.tui.history },
-      sessions: { ...defaults.tui.sessions, ...user.tui.sessions },
+      history: defaults.tui?.history ? { ...defaults.tui.history, ...user.tui.history } : user.tui.history,
+      sessions: defaults.tui?.sessions ? { ...defaults.tui.sessions, ...user.tui.sessions } : user.tui.sessions,
     };
   }
   if (user.subAgent) {
-    result.subAgent = { ...defaults.subAgent, ...user.subAgent };
+    result.subAgent = defaults.subAgent ? { ...defaults.subAgent, ...user.subAgent } : { ...user.subAgent };
   }
   if (user.security) {
-    result.security = {
-      allowedRoots: user.security.allowedRoots ?? defaults.security.allowedRoots,
-    };
+    result.security = defaults.security
+      ? { allowedRoots: user.security.allowedRoots ?? defaults.security.allowedRoots }
+      : { allowedRoots: user.security.allowedRoots };
   }
   if (user.debug) {
-    result.debug = { ...defaults.debug, ...user.debug };
+    result.debug = defaults.debug ? { ...defaults.debug, ...user.debug } : { ...user.debug };
   }
 
   return result;
@@ -147,7 +147,7 @@ export async function loadSettings(): Promise<Settings> {
   }
 
   // Merge with defaults
-  let settings = mergeConfigs(defaultSettings, current);
+  let settings = mergeConfigs(defaultSettings, current) as Settings;
 
   // Expand ~ in paths
   settings = expandAllPaths(settings);

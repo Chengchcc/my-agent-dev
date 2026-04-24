@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 import 'dotenv/config';
+import { getSettings } from '../dist/src/config';
+
+// Load settings first before importing anything that might access settings
+await getSettings();
+
 import { Agent, ToolRegistry, ContextManager } from '../dist/src/agent';
 import { ClaudeProvider, OpenAIProvider } from '../dist/src/providers';
 import { BashTool, TextEditorTool, AskUserQuestionTool, ReadTool, GrepTool, GlobTool, LsTool } from '../dist/src/tools';

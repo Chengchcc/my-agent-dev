@@ -11,7 +11,7 @@ const settings = getSettingsSync();
 const MAX_HISTORY_LINES = settings.tui.history.maxLines;
 
 function getHistoryFilePath(): string {
-  return settings.tui.history.filePath.replace(/^~/, os.homedir());
+  return settings.tui.history.filePath;
 }
 
 async function loadHistoryFromDisk(): Promise<string[]> {

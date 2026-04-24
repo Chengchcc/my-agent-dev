@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'bun:test';
 import type { AgentContext } from '../../src/types';
 import type { MemoryEntry, MemoryStore, MemoryRetriever, MemoryExtractor, MemoryConfig } from '../../src/memory/types';
 import { MemoryMiddleware } from '../../src/memory/middleware';
-import { DEFAULT_MEMORY_CONFIG } from '../../src/memory/types';
 
 function makeEntry(overrides: Partial<MemoryEntry>): MemoryEntry {
   return {

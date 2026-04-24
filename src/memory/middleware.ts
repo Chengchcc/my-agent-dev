@@ -1,6 +1,6 @@
 import type { AgentContext, Middleware, AgentMiddleware } from '../types';
 import type { Message } from '../types';
-import type { MemoryStore, MemoryRetriever, MemoryExtractor, MemoryConfig } from './types';
+import type { MemoryEntry, MemoryStore, MemoryRetriever, MemoryExtractor, MemoryConfig } from './types';
 import { getSettingsSync } from '../config';
 
 // Fallback defaults if settings aren't loaded yet
