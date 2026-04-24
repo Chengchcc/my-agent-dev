@@ -9,6 +9,13 @@ export interface LLMSettings {
 
 export interface ContextSettings {
   tokenLimit: number;
+  budgetGuard?: {
+    enabled?: boolean;
+    delegateThreshold?: number;
+    compactThreshold?: number;
+    batchOutputRatio?: number;
+    minReadCallsForBatch?: number;
+  };
 }
 
 export interface MemorySettings {
