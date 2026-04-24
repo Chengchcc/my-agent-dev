@@ -196,7 +196,7 @@ If the task references files in .agent/, read them first before proceeding.`;
             type: 'sub_agent_event',
             agentId,
             event,
-            turnIndex: 0,
+            turnIndex: event.turnIndex,
           });
         }
 
@@ -213,11 +213,12 @@ If the task references files in .agent/, read them first before proceeding.`;
           // Check for max turns or timeout reasons
           if (event.reason === 'max_turns_reached') {
             hasMaxTurnsError = true;
-          } else if (event.reason === 'error') {
-            hasTimeoutError = true;
-            // Capture the error message if available
-            if (event.error) {
-              finalSummary = event.error.message;
+          } else if (event.reason === 'error' && event.error) {
+            // Any error from agent_done - capture the error message
+            finalSummary = event.error.message;
+            // Check if it's an abort/timeout
+            if (event.error.message.includes('aborted') || event.error.message.includes('timeout')) {
+              hasTimeoutError = true;
             }
           }
 
