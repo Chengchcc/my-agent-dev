@@ -5,7 +5,7 @@ import { getSettings, settings } from '../src/config';
 // Parse command line arguments
 const args = process.argv.slice(2);
 const debugEnabled = args.includes('--debug') || args.includes('-d');
-import { setDebugMode } from '../src/utils/debug';
+import { setDebugMode, debugLog } from '../src/utils/debug';
 setDebugMode(debugEnabled);
 
 // Load settings first before importing anything that might access settings
@@ -24,10 +24,10 @@ if (settings.llm.provider === 'claude') {
       settings.llm.apiKey = process.env.ANTHROPIC_API_KEY;
     }
   }
-  console.debug('Creating ClaudeProvider with:');
-  console.debug('  apiKey length:', settings.llm.apiKey?.length);
-  console.debug('  baseURL:', settings.llm.baseURL);
-  console.debug('  model:', settings.llm.model);
+  debugLog('Creating ClaudeProvider with:');
+  debugLog('  apiKey length:', settings.llm.apiKey?.length);
+  debugLog('  baseURL:', settings.llm.baseURL);
+  debugLog('  model:', settings.llm.model);
   provider = new ClaudeProvider({
     apiKey: settings.llm.apiKey!,
     baseURL: settings.llm.baseURL ?? undefined,
@@ -39,10 +39,10 @@ if (settings.llm.provider === 'claude') {
   if (!settings.llm.apiKey && process.env.OPENAI_API_KEY) {
     settings.llm.apiKey = process.env.OPENAI_API_KEY;
   }
-  console.debug('Creating OpenAIProvider with:');
-  console.debug('  apiKey length:', settings.llm.apiKey?.length);
-  console.debug('  baseURL:', settings.llm.baseURL);
-  console.debug('  model:', settings.llm.model);
+  debugLog('Creating OpenAIProvider with:');
+  debugLog('  apiKey length:', settings.llm.apiKey?.length);
+  debugLog('  baseURL:', settings.llm.baseURL);
+  debugLog('  model:', settings.llm.model);
   provider = new OpenAIProvider({
     apiKey: settings.llm.apiKey!,
     baseURL: settings.llm.baseURL ?? undefined,
