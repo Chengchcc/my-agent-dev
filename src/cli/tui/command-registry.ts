@@ -1,6 +1,8 @@
 import type { SkillFrontmatter } from '../../skills';
 import type { SessionStore } from '../../session/store';
 import type { CommandHandlerContext } from './types';
+import type { Agent } from '../../agent';
+import { compactCommand } from './commands/compact-command';
 
 export interface SlashCommand {
   name: string;
@@ -33,6 +35,11 @@ const BASE_COMMANDS: Omit<SlashCommand, 'handler'>[] = [
   {
     name: 'help',
     description: 'List available slash commands',
+    type: 'builtin',
+  },
+  {
+    name: 'compact',
+    description: 'Manually compact conversation context to save tokens',
     type: 'builtin',
   },
 ];
@@ -78,7 +85,7 @@ export function toSkillCommand(skill: SkillFrontmatter): SlashCommand {
 export function getBuiltinCommands(sessionStore: SessionStore): SlashCommand[] {
   // Lazy import to avoid circular dependencies
   const { getSessionCommands } = require('./commands/session-commands');
-  return [...BASE_COMMANDS, ...getSessionCommands(sessionStore)];
+  return [...BASE_COMMANDS, compactCommand, ...getSessionCommands(sessionStore)];
 }
 
 export async function loadAvailableCommands(
