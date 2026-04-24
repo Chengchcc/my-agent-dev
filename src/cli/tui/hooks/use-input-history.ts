@@ -4,12 +4,14 @@ import path from "node:path";
 import os from "node:os";
 
 import { useCallback, useRef, useState, useEffect } from "react";
+import { getSettingsSync } from "../../../config";
 
-const HISTORY_FILENAME = "history.txt";
-const MAX_HISTORY_LINES = 100;
+const settings = getSettingsSync();
+
+const MAX_HISTORY_LINES = settings.tui.history.maxLines;
 
 function getHistoryFilePath(): string {
-  return path.join(os.homedir(), ".my-agent", HISTORY_FILENAME);
+  return settings.tui.history.filePath.replace(/^~/, os.homedir());
 }
 
 async function loadHistoryFromDisk(): Promise<string[]> {

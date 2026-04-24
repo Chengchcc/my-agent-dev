@@ -151,6 +151,10 @@ const agent = new Agent({
 // Load skills and convert to slash commands
 (async () => {
   try {
+    // Load settings first
+    const { getSettings } = await import('../src/config');
+    await getSettings();
+
     // Ensure session directory is created
     await sessionStore.ensureSessionDir();
     // Create new session for this TUI run
