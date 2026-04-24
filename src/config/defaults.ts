@@ -11,6 +11,13 @@ export const defaultSettings: Settings = {
   },
   context: {
     tokenLimit: 100000,
+    budgetGuard: {
+      enabled: true,
+      delegateThreshold: 0.30,
+      compactThreshold: 0.15,
+      batchOutputRatio: 0.60,
+      minReadCallsForBatch: 3,
+    },
   },
   memory: {
     enabled: true,
