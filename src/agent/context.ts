@@ -6,6 +6,19 @@ import type { CompactionResult } from './compaction/types';
 import { getSettingsSync } from '../config';
 import { defaultSettings } from '../config/defaults';
 
+// Reserve headroom for model output and compaction prompt
+const TOKEN_HEADROOM = 6000;
+
+// Interface for compression strategies that support detailed compaction results
+interface CompressionStrategyWithResult extends CompressionStrategy {
+  compressWithResult(context: AgentContext, tokenLimit: number): Promise<CompactionResult>;
+}
+
+// Type guard to check if a compression strategy supports compressWithResult
+function isCompressionWithResult(strategy: CompressionStrategy): strategy is CompressionStrategyWithResult {
+  return 'compressWithResult' in strategy && typeof (strategy as any).compressWithResult === 'function';
+}
+
 export interface ContextManagerConfig {
   tokenLimit?: number;
   compressionStrategy?: CompressionStrategy;
@@ -182,20 +195,17 @@ export class ContextManager {
   }
 
   /**
-   * Compress messages if over token limit.
+   * Helper to get compaction result with shared fallback logic.
    */
-  async compressIfNeeded(context: AgentContext): Promise<CompactionResult> {
-    const tokenLimit = context.config.tokenLimit;
-    // Reserve headroom for output and compaction prompt
-    const effectiveLimit = tokenLimit - 6000;
-    const currentTokens = this.getLastKnownPromptTokens();
-
-    if (currentTokens > effectiveLimit) {
-      // Check if compression strategy supports CompactionResult interface
-      if ('compressWithResult' in this.compressionStrategy && typeof (this.compressionStrategy as any).compressWithResult === 'function') {
-        return (this.compressionStrategy as any).compressWithResult(context, effectiveLimit);
+  private async getCompactionResult(
+    context: AgentContext,
+    effectiveLimit: number,
+    currentTokens: number,
+  ): Promise<CompactionResult> {
+    if (currentTokens > effectiveLimit && this.compressionStrategy) {
+      if (isCompressionWithResult(this.compressionStrategy)) {
+        return this.compressionStrategy.compressWithResult(context, effectiveLimit);
       }
-      // Fallback for legacy compression strategies
       const compressed = await this.compressionStrategy.compress(context, effectiveLimit);
       return {
         messages: compressed,
@@ -215,6 +225,17 @@ export class ContextManager {
   }
 
   /**
+   * Compress messages if over token limit.
+   */
+  async compressIfNeeded(context: AgentContext): Promise<CompactionResult> {
+    const tokenLimit = context.config.tokenLimit;
+    const effectiveLimit = tokenLimit - TOKEN_HEADROOM;
+    const currentTokens = this.getLastKnownPromptTokens();
+
+    return this.getCompactionResult(context, effectiveLimit, currentTokens);
+  }
+
+  /**
    * Clear all messages (keeps default system prompt if exists).
    */
   clear(): void {
@@ -230,8 +251,18 @@ export class ContextManager {
     }
   }
 
+  /**
+   * Get the token limit.
+   */
   getTokenLimit(): number {
     return this.tokenLimit;
+  }
+
+  /**
+   * Get accumulated output tokens from all model responses.
+   */
+  getAccumulatedOutputTokens(): number {
+    return this.accumulatedOutputTokens;
   }
 
   /**
@@ -321,30 +352,9 @@ export class ContextManager {
       context.systemPrompt = `${context.systemPrompt}\n\nFocus hint: ${focusHint}`;
     }
     const totalTokens = this.getLastKnownPromptTokens();
-    const effectiveLimit = this.tokenLimit - 6000; // Reserve for output + compaction prompt
+    const effectiveLimit = this.tokenLimit - TOKEN_HEADROOM; // Reserve for output + compaction prompt
 
-    if (totalTokens > effectiveLimit && this.compressionStrategy) {
-      // Type assertion: if using TieredCompaction, it returns CompactionResult
-      if ('compressWithResult' in this.compressionStrategy && typeof (this.compressionStrategy as any).compressWithResult === 'function') {
-        return (this.compressionStrategy as any).compressWithResult(context, effectiveLimit);
-      }
-      // Fallback for older strategies
-      const messages = await this.compressionStrategy.compress(context, effectiveLimit);
-      return {
-        messages,
-        level: 'unknown' as const,
-        compacted: messages.length < context.messages.length,
-        tokensBefore: totalTokens,
-        tokensAfter: countTotalTokens(messages, context.systemPrompt),
-      };
-    }
-    return {
-      messages: context.messages,
-      level: 'none' as const,
-      compacted: false,
-      tokensBefore: totalTokens,
-      tokensAfter: totalTokens,
-    };
+    return this.getCompactionResult(context, effectiveLimit, totalTokens);
   }
 
   /**
