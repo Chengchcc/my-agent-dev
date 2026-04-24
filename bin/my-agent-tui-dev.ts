@@ -15,6 +15,7 @@ import { SessionStore } from '../src/session/store';
 import { createAutoSaveHook } from '../src/session/hook';
 import { createTodoMiddleware } from '../src/todos';
 import { setDebugMode } from '../src/utils/debug';
+import { getSettings, settings } from '../src/config';
 import type { AgentConfig } from '../src/types';
 import type { SkillFrontmatter } from '../src/skills/loader';
 
@@ -23,41 +24,48 @@ const args = process.argv.slice(2);
 const debugEnabled = args.includes('--debug') || args.includes('-d');
 setDebugMode(debugEnabled);
 
-// Choose provider based on available API key
-const defaultModel = process.env.MODEL || 'claude-3-5-sonnet-20241022';
-const defaultMaxTokens = 4096;
+// Load settings
+await getSettings();
 
+// Choose provider based on configured settings
 let provider;
-if (process.env.ANTHROPIC_API_KEY) {
+if (settings.llm.provider === 'claude') {
+  if (!settings.llm.apiKey && process.env.ANTHROPIC_API_KEY) {
+    settings.llm.apiKey = process.env.ANTHROPIC_API_KEY;
+  }
   provider = new ClaudeProvider({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-    baseURL: process.env.ANTHROPIC_BASE_URL,
-    model: process.env.MODEL || 'claude-3-5-sonnet-20241022',
-    maxTokens: defaultMaxTokens,
-    temperature: 0.7,
+    apiKey: settings.llm.apiKey!,
+    baseURL: settings.llm.baseURL ?? undefined,
+    model: settings.llm.model,
+    maxTokens: settings.llm.maxTokens,
+    temperature: settings.llm.temperature,
   });
-} else if (process.env.OPENAI_API_KEY) {
+} else if (settings.llm.provider === 'openai') {
+  if (!settings.llm.apiKey && process.env.OPENAI_API_KEY) {
+    settings.llm.apiKey = process.env.OPENAI_API_KEY;
+  }
   provider = new OpenAIProvider({
-    apiKey: process.env.OPENAI_API_KEY,
-    baseURL: process.env.OPENAI_BASE_URL,
-    model: process.env.MODEL || 'gpt-4o',
+    apiKey: settings.llm.apiKey!,
+    baseURL: settings.llm.baseURL ?? undefined,
+    model: settings.llm.model,
   });
 } else {
-  console.error('Error: No API key found. Set either ANTHROPIC_API_KEY or OPENAI_API_KEY in your .env file');
+  console.error('Error: Invalid provider configured');
   process.exit(1);
 }
 
 const contextManager = new ContextManager({
-  tokenLimit: 100000, // ~100k tokens should be enough for most conversations
+  tokenLimit: settings.context.tokenLimit,
 });
 const config: AgentConfig = {
-  tokenLimit: 100000,
+  tokenLimit: settings.context.tokenLimit,
 };
 
 // Create tool registry and register built-in tools
 const toolRegistry = new ToolRegistry();
-toolRegistry.register(new BashTool({ allowedWorkingDirs: [__dirname + '/..'] }));
-toolRegistry.register(new TextEditorTool({ allowedRoots: [__dirname + '/..'] }));
+const allowedRoots = settings.security.allowedRoots;
+toolRegistry.register(new BashTool({ allowedWorkingDirs: allowedRoots }));
+toolRegistry.register(new TextEditorTool({ allowedRoots }));
 toolRegistry.register(new AskUserQuestionTool(
   (params) => globalAskUserQuestionManager.askUserQuestion(params)
 ));
