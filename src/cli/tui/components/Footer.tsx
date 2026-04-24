@@ -17,14 +17,15 @@ export function PureFooter({ totalUsage, currentContextTokens, tokenLimit }: Pur
   const filled = tokenLimit > 0 ? Math.round(barWidth * currentContextTokens / tokenLimit) : 0;
   const empty = barWidth - filled;
 
-  // Color based on percentage
-  let color: 'gray' | 'yellow' | 'red' = 'gray';
-  if (percentage > 80) {
-    color = 'red';
-  } else if (percentage > 60) {
-    color = 'yellow';
+  // Get budget status label and color
+  function getBudgetStatus(percent: number): { label: string; color: 'gray' | 'cyan' | 'yellow' | 'red' } {
+    if (percent >= 90) return { label: 'CRITICAL', color: 'red' };
+    if (percent >= 85) return { label: 'WARNING', color: 'yellow' };
+    if (percent >= 70) return { label: 'NOTICE', color: 'cyan' };
+    return { label: '', color: 'gray' };
   }
 
+  const status = getBudgetStatus(percentage);
   const bar = '█'.repeat(filled) + '░'.repeat(empty);
 
   return (
@@ -35,7 +36,8 @@ export function PureFooter({ totalUsage, currentContextTokens, tokenLimit }: Pur
           <>
             <Text dimColor>Total: {totalUsage.totalTokens.toLocaleString()}</Text>
             <Text dimColor>
-              Context: <Text color={color}>{bar}</Text> {percentage}%
+              Context: <Text color={status.color}>{bar}</Text> {percentage}%
+              {status.label && <Text color={status.color}> {status.label}</Text>}
             </Text>
           </>
         )}
