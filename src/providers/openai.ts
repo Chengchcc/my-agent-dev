@@ -43,6 +43,9 @@ export class OpenAIProvider implements Provider {
    */
   async invoke(context: AgentContext): Promise<LLMResponse> {
     const messages = this.convertToOpenAIMessages(context.messages);
+    if (context.systemPrompt) {
+      messages.unshift({ role: 'system', content: context.systemPrompt });
+    }
     const model = context.config?.model ?? this.model;
 
     const response = await this.client.chat.completions.create({
@@ -85,6 +88,9 @@ export class OpenAIProvider implements Provider {
    */
   async *stream(context: AgentContext, options?: { signal?: AbortSignal }): AsyncIterable<LLMResponseChunk> {
     const messages = this.convertToOpenAIMessages(context.messages);
+    if (context.systemPrompt) {
+      messages.unshift({ role: 'system', content: context.systemPrompt });
+    }
     const model = context.config?.model ?? this.model;
 
     const stream = await this.client.chat.completions.create(
