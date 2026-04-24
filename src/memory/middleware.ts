@@ -1,8 +1,28 @@
 import type { AgentContext, Middleware, AgentMiddleware } from '../types';
 import type { Message } from '../types';
 import type { MemoryStore, MemoryRetriever, MemoryExtractor, MemoryConfig } from './types';
-import { DEFAULT_MEMORY_CONFIG } from './types';
-import type { MemoryEntry } from './types';
+import { getSettingsSync } from '../config';
+
+// Fallback defaults if settings aren't loaded yet
+const FALLBACK_MEMORY_CONFIG: Required<MemoryConfig> = {
+  globalBaseDir: '~/.my-agent/memory',
+  maxSemanticEntries: 200,
+  maxEpisodicEntries: 500,
+  consolidationThreshold: 50,
+  autoExtractMinToolCalls: 3,
+  maxInjectedEntries: 10,
+  extractionModel: 'claude-3-haiku-20240307',
+};
+
+// Get settings with fallback
+function getMemoryConfig(): Required<MemoryConfig> {
+  try {
+    const settings = getSettingsSync();
+    return settings.memory as unknown as Required<MemoryConfig>;
+  } catch {
+    return FALLBACK_MEMORY_CONFIG;
+  }
+}
 
 export class MemoryMiddleware implements AgentMiddleware {
   private semanticStore: MemoryStore;
@@ -28,7 +48,7 @@ export class MemoryMiddleware implements AgentMiddleware {
     this.projectStore = stores.project;
     this.retriever = retriever;
     this.extractor = extractor;
-    this.config = { ...DEFAULT_MEMORY_CONFIG, ...config };
+    this.config = { ...getMemoryConfig(), ...config };
   }
 
   /**

@@ -47,12 +47,3 @@ export interface MemoryConfig {
   extractionModel?: string;
 }
 
-export const DEFAULT_MEMORY_CONFIG: Required<MemoryConfig> = {
-  globalBaseDir: '~/.my-agent/memory',
-  maxSemanticEntries: 200,
-  maxEpisodicEntries: 500,
-  consolidationThreshold: 50,
-  autoExtractMinToolCalls: 3,
-  maxInjectedEntries: 10,
-  extractionModel: 'claude-3-haiku-20240307',
-};

@@ -3,7 +3,28 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import type { MemoryEntry, MemoryStore, MemoryType, MemoryConfig } from './types';
-import { DEFAULT_MEMORY_CONFIG } from './types';
+import { getSettingsSync } from '../config';
+
+// Fallback defaults if settings aren't loaded yet
+const FALLBACK_MEMORY_CONFIG: Required<MemoryConfig> = {
+  globalBaseDir: '~/.my-agent/memory',
+  maxSemanticEntries: 200,
+  maxEpisodicEntries: 500,
+  consolidationThreshold: 50,
+  autoExtractMinToolCalls: 3,
+  maxInjectedEntries: 10,
+  extractionModel: 'claude-3-haiku-20240307',
+};
+
+// Get settings with fallback
+function getMemoryConfig(): Required<MemoryConfig> {
+  try {
+    const settings = getSettingsSync();
+    return settings.memory as unknown as Required<MemoryConfig>;
+  } catch {
+    return FALLBACK_MEMORY_CONFIG;
+  }
+}
 
 export class JsonlMemoryStore implements MemoryStore {
   private filePath: string;
@@ -17,7 +38,8 @@ export class JsonlMemoryStore implements MemoryStore {
     projectPath?: string,
   ) {
     this.type = type;
-    this.config = { ...DEFAULT_MEMORY_CONFIG, ...config };
+    // Merge any explicit config overrides with centralized settings (or fallback)
+    this.config = { ...getMemoryConfig(), ...config };
 
     if (type === 'project' && projectPath) {
       // Project memory: local to project .claude/ directory
@@ -167,38 +189,35 @@ export class JsonlMemoryStore implements MemoryStore {
       all = all.filter(e => e.type === type);
     }
     // Sort by created date descending
-    return all
-      .sort((a, b) => {
-        const aTime = new Date(a.created).getTime();
-        const bTime = new Date(b.created).getTime();
-        if (bTime !== aTime) {
-          return bTime - aTime;
-        }
-        // If timestamps are equal, later entries in original array come first
-        const aIndex = all.indexOf(a);
-        const bIndex = all.indexOf(b);
-        return bIndex - aIndex;
-      })
-      .slice(0, limit);
+    // Preserve original indices for tiebreaking
+    const entriesWithIndices = all.map((entry, index) => ({ entry, index }));
+    const sorted = entriesWithIndices.sort((a, b) => {
+      const aTime = new Date(a.entry.created).getTime();
+      const bTime = new Date(b.entry.created).getTime();
+      if (bTime !== aTime) {
+        return bTime - aTime;
+      }
+      // If timestamps are equal, later entries (higher index) come first
+      return b.index - a.index;
+    });
+    return sorted.slice(0, limit).map(item => item.entry);
   }
 
   private async trimFifo(maxEntries: number): Promise<void> {
     const all = await this.getAll();
     // Keep newest entries, remove oldest
-    const trimmed = all
-      .sort((a, b) => {
-        const aTime = new Date(a.created).getTime();
-        const bTime = new Date(b.created).getTime();
-        if (bTime !== aTime) {
-          return bTime - aTime;
-        }
-        // If timestamps are equal, later entries in original array come first
-        // Original array is oldest to newest, so later means newer, so b comes before a
-        const aIndex = all.indexOf(a);
-        const bIndex = all.indexOf(b);
-        return bIndex - aIndex;
-      })
-      .slice(0, maxEntries);
+    // Preserve original indices for tiebreaking
+    const entriesWithIndices = all.map((entry, index) => ({ entry, index }));
+    const sorted = entriesWithIndices.sort((a, b) => {
+      const aTime = new Date(a.entry.created).getTime();
+      const bTime = new Date(b.entry.created).getTime();
+      if (bTime !== aTime) {
+        return bTime - aTime;
+      }
+      // If timestamps are equal, later entries (higher index) come first
+      return b.index - a.index;
+    });
+    const trimmed = sorted.slice(0, maxEntries).map(item => item.entry);
     await this.replaceAll(trimmed, this.type);
   }
 }
