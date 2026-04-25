@@ -10,6 +10,7 @@ import {
   MemoryMiddleware, MemoryTool,
 } from './memory';
 import { createSkillMiddleware } from './skills/middleware';
+import { SkillLoader } from './skills/loader';
 import { SessionStore } from './session/store';
 import { createAutoSaveHook } from './session/hook';
 import type { AskUserQuestionParameters, AskUserQuestionResult } from './tools/ask-user-question';
@@ -47,6 +48,7 @@ export interface AgentRuntime {
   contextManager: ContextManager;
   sessionStore: SessionStore;
   memoryMiddleware?: MemoryMiddleware;
+  skillLoader?: SkillLoader;
   shutdown: () => Promise<void>;
 }
 
@@ -168,8 +170,10 @@ export async function createAgentRuntime(
 
   // Skills
   let skillMiddleware: any;
+  let skillLoader: any;
   if (enableSkills) {
-    skillMiddleware = createSkillMiddleware({ autoInject: true, injectOnMention: true });
+    skillLoader = new SkillLoader();
+    skillMiddleware = createSkillMiddleware({ skillLoader, autoInject: true, injectOnMention: true });
     hooks.beforeAgentRun.push(skillMiddleware.beforeAgentRun);
     hooks.beforeModel.push(skillMiddleware.beforeModel);
     await skillMiddleware.preloadAll();
@@ -205,6 +209,7 @@ export async function createAgentRuntime(
     },
   };
   if (memoryMiddleware) runtime.memoryMiddleware = memoryMiddleware;
+  if (skillLoader) runtime.skillLoader = skillLoader;
   return runtime;
 }
 

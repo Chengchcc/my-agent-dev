@@ -14,7 +14,6 @@ await getSettings();
 // Create unified agent runtime (shared with headless mode)
 import { createAgentRuntime } from '../src/runtime';
 import { globalAskUserQuestionManager } from '../src/tools';
-import { SkillLoader } from '../src/skills/loader';
 import { toSkillCommand } from '../src/cli/tui/command-registry';
 import { runTUIClient } from '../src/cli/index';
 
@@ -39,9 +38,8 @@ try {
   await runtime.sessionStore.ensureSessionDir();
   runtime.sessionStore.createNewSession();
 
-  // Load skills for slash command autocomplete
-  const skillLoader = new SkillLoader();
-  const skills = await skillLoader.loadAllSkills();
+  // Load skills for slash command autocomplete (reuse runtime's skillLoader)
+  const skills = runtime.skillLoader ? await runtime.skillLoader.loadAllSkills() : [];
   const skillCommands = skills.map(toSkillCommand);
 
   // Wait for pending memory extractions before exit
