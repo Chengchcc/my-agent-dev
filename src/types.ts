@@ -20,9 +20,11 @@ export type Tool = {
 // Tool implementation interface
 export interface ToolImplementation {
   getDefinition(): Tool;
-  execute(params: Record<string, unknown>): Promise<unknown>;
-  /** Whether this tool requires access to the full agent context as a second parameter */
-  requiresContext?: boolean;
+  /**
+   * Unified signature: all tools receive ToolContext as second parameter.
+   * Tools that don't need context can simply ignore it.
+   */
+  execute(params: Record<string, unknown>, ctx: any): Promise<unknown>;
 }
 
 // Tool call in response

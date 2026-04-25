@@ -214,7 +214,11 @@ describe('Return value integration', () => {
       mainAgentConfig: mockConfig,
     });
 
-    const result = await tool.execute({ task: 'test' });
+    const result = await tool.execute({ task: 'test' }, {
+      signal: new AbortController().signal,
+      environment: { agentType: 'main' },
+      sink: { log: () => {} },
+    });
     expect(typeof result).toBe('string');
     expect(result).toContain('[SubAgent');
     expect(result).toContain('completed');

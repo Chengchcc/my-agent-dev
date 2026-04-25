@@ -1,0 +1,241 @@
+import type { ToolCall, ToolImplementation } from '../../types';
+import type { ToolRegistry } from '../tool-registry';
+import type { ToolMiddleware } from './middleware';
+import type { ToolContext, ToolEvent, ToolExecutionResult, DispatchOptions } from './types';
+import { createToolSink } from './types';
+
+export class ToolDispatcher {
+  constructor(
+    private registry: ToolRegistry,
+    private middlewares: ToolMiddleware[] = [],
+  ) {}
+
+  /**
+   * Dispatch a batch of tool calls, yield events as they execute.
+   * This is the primary entry point for the Agent.
+   */
+  async *dispatch(
+    toolCalls: ToolCall[],
+    baseCtx: ToolContext,
+    options: DispatchOptions,
+  ): AsyncGenerator<ToolEvent> {
+    if (options.parallel && options.yieldAsCompleted) {
+      yield* this.dispatchParallelStreaming(toolCalls, baseCtx, options);
+    } else if (options.parallel) {
+      yield* this.dispatchParallelBatch(toolCalls, baseCtx, options);
+    } else {
+      yield* this.dispatchSequential(toolCalls, baseCtx, options);
+    }
+  }
+
+  /**
+   * 执行单个 tool — 应用 middleware 链 + 超时 + 序列化 + 副作用收集
+   */
+  private async executeSingle(
+    toolCall: ToolCall,
+    baseCtx: ToolContext,
+    options: DispatchOptions,
+  ): Promise<ToolExecutionResult> {
+    const tool = this.registry.get(toolCall.name);
+    if (!tool) {
+      // "Tool not found" is a handled condition, not a runtime error
+      return {
+        content: `Error: Tool '${toolCall.name}' not found.`,
+        durationMs: 0,
+        isError: false,
+      };
+    }
+
+    // 每个 tool 有独立的 metadata Map 副本，隔离并行执行
+    const toolCtx: ToolContext = {
+      ...baseCtx,
+      metadata: new Map(baseCtx.metadata),
+      sink: createToolSink(),
+    };
+
+    // 构建 middleware 洋葱链
+    const chain = this.buildMiddlewareChain(tool, toolCall, toolCtx);
+
+    const startTime = Date.now();
+    try {
+      const rawResult = await this.withTimeout(
+        chain(),
+        options.toolTimeoutMs,
+        toolCall.name,
+      );
+
+      const content = this.serializeAndTruncate(rawResult, options.maxOutputChars);
+      const durationMs = Date.now() - startTime;
+
+      // 从 sink 收集副作用
+      const sink = toolCtx.sink;
+
+      return {
+        content,
+        rawContent: rawResult,
+        durationMs,
+        isError: false,
+        metadata: Object.fromEntries(toolCtx.metadata),
+        todoUpdates: sink._todoUpdates,
+      };
+    } catch (error) {
+      return {
+        content: `Error executing '${toolCall.name}': ${error instanceof Error ? error.message : String(error)}`,
+        durationMs: Date.now() - startTime,
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * 构建 middleware 洋葱链
+   * 注册顺序 = 外层到内层（第一个注册的最先执行）
+   */
+  private buildMiddlewareChain(
+    tool: ToolImplementation,
+    toolCall: ToolCall,
+    ctx: ToolContext,
+  ): () => Promise<unknown> {
+    let current = () => tool.execute(toolCall.arguments, ctx);
+    for (const mw of [...this.middlewares].reverse()) {
+      const next = current;
+      current = () => mw.handle(toolCall, ctx, next);
+    }
+    return current;
+  }
+
+  /**
+   * Promise 超时包装
+   */
+  private async withTimeout<T>(promise: Promise<T>, ms: number, toolName: string): Promise<T> {
+    let timeoutId: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(`Tool '${toolName}' timed out after ${ms}ms`)), ms);
+    });
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  /**
+   * 只对 string 类型截断，其他类型原样返回以避免大对象 JSON.stringify 的阻塞
+   */
+  private serializeAndTruncate(result: unknown, maxChars: number): unknown {
+    if (typeof result === 'string') {
+      if (result.length <= maxChars) return result;
+      return result.slice(0, maxChars) + `\n\n--- Truncated after ${maxChars} characters ---`;
+    }
+    // 非 string 类型原样返回（read/grep/glob/ls 等工具返回的是对象）
+    // TUI 的 smartSummarize 依赖这些对象来智能格式化
+    return result;
+  }
+
+  /**
+   * Sequential execution: execute tools one after another
+   */
+  private async *dispatchSequential(
+    toolCalls: ToolCall[],
+    baseCtx: ToolContext,
+    options: DispatchOptions,
+  ): AsyncGenerator<ToolEvent> {
+    for (let i = 0; i < toolCalls.length; i++) {
+      const toolCall = toolCalls[i];
+      yield { type: 'tool:start', toolCall, index: i };
+      const result = await this.executeSingle(toolCall, baseCtx, options);
+      yield { type: 'tool:result', toolCall, result };
+    }
+  }
+
+  /**
+   * Parallel batch execution: all start at once, all results yielded at the end
+   */
+  private async *dispatchParallelBatch(
+    toolCalls: ToolCall[],
+    baseCtx: ToolContext,
+    options: DispatchOptions,
+  ): AsyncGenerator<ToolEvent> {
+    const results = await Promise.allSettled(
+      toolCalls.map(toolCall => this.executeSingle(toolCall, baseCtx, options)),
+    );
+
+    for (let i = 0; i < toolCalls.length; i++) {
+      const toolCall = toolCalls[i];
+      yield { type: 'tool:start', toolCall, index: i };
+
+      const resultItem = results[i];
+      let result: ToolExecutionResult;
+      if (resultItem.status === 'fulfilled') {
+        result = resultItem.value;
+      } else {
+        const error = resultItem.reason instanceof Error
+          ? resultItem.reason
+          : new Error(String(resultItem.reason));
+        result = {
+          content: `Error: ${error.message}`,
+          durationMs: 0,
+          isError: true,
+        };
+      }
+
+      yield { type: 'tool:result', toolCall, result };
+    }
+  }
+
+  /**
+   * Parallel streaming execution: all start at once, results yielded as they complete
+   */
+  private async *dispatchParallelStreaming(
+    toolCalls: ToolCall[],
+    baseCtx: ToolContext,
+    options: DispatchOptions,
+  ): AsyncGenerator<ToolEvent> {
+    // First, yield all start events immediately
+    for (let i = 0; i < toolCalls.length; i++) {
+      yield { type: 'tool:start', toolCall: toolCalls[i], index: i };
+    }
+
+    // Use a result queue to yield results as soon as they complete
+    const pending = new Set(toolCalls.map(tc => tc.id));
+    const resultQueue: ToolEvent[] = [];
+    let resolveNext: (() => void) | null = null;
+
+    const promises = toolCalls.map(async (toolCall) => {
+      const result = await this.executeSingle(toolCall, baseCtx, options);
+
+      resultQueue.push({
+        type: 'tool:result',
+        toolCall,
+        result,
+      });
+      pending.delete(toolCall.id);
+      resolveNext?.();
+    });
+
+    // Yield as results arrive - true incremental streaming
+    const onAbort = () => resolveNext?.();
+    baseCtx.signal.addEventListener('abort', onAbort, { once: true });
+
+    try {
+      while (pending.size > 0 || resultQueue.length > 0) {
+        if (resultQueue.length > 0) {
+          const event = resultQueue.shift()!;
+          yield event;
+        } else if (pending.size > 0) {
+          // Wait for the next result to complete
+          await new Promise<void>((resolve) => {
+            resolveNext = resolve;
+          });
+        }
+      }
+    } finally {
+      baseCtx.signal.removeEventListener('abort', onAbort);
+    }
+
+    // Wait for all promises to settle (cleanup any remaining)
+    await Promise.allSettled(promises);
+  }
+}

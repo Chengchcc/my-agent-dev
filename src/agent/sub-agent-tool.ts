@@ -8,6 +8,7 @@ import { ContextManager } from './context';
 import { ToolRegistry } from './tool-registry';
 import { DEFAULT_LOOP_CONFIG } from './loop-types';
 import { getSettingsSync } from '../config';
+import type { ToolContext } from './tool-dispatch';
 
 /**
  * Configuration for SubAgentTool
@@ -105,12 +106,18 @@ DO NOT USE when:
    */
   async execute(
     params: Record<string, unknown>,
-    options?: { signal?: AbortSignal; context: AgentContext },
+    ctx?: any,
   ): Promise<string> {
     const task = params.task as string;
+    const signal = ctx?.signal ?? new AbortController().signal;
 
     if (!task || typeof task !== 'string') {
       return 'Error: Missing required "task" parameter';
+    }
+
+    // Prevent recursion: only main agent can spawn sub_agent
+    if (ctx?.environment?.agentType === 'sub_agent') {
+      return 'Error: sub_agent cannot spawn another sub_agent';
     }
 
     const agentId = `sub-${nanoid(6)}`;
@@ -145,8 +152,6 @@ DO NOT USE when:
 
       // Create isolated context manager for sub agent
       const tokenLimit = this.config.tokenLimit ?? 50000;
-      const subContextManager = new ContextManager({ tokenLimit });
-
       // Set up system prompt
       const systemPrompt = this.config.systemPromptTemplate ?? `You are a focused sub-agent executing a specific task.
 
@@ -154,6 +159,11 @@ You have your own independent context and full access to tools.
 Your goal is to complete the task and provide a clear concise summary when done.
 If the task references files in .agent/, read them first before proceeding.`;
 
+      const subContextManager = new ContextManager({
+        tokenLimit,
+        defaultSystemPrompt: systemPrompt,
+      });
+      // Still call setSystemPrompt to ensure compatibility with tests expecting it
       subContextManager.setSystemPrompt(systemPrompt);
 
       // Add the user task - done automatically by runAgentLoop
@@ -206,10 +216,10 @@ If the task references files in .agent/, read them first before proceeding.`;
       for await (const event of subAgent.runAgentLoop(
         { role: 'user', content: task },
         loopConfig,
-        { signal: options?.signal }
+        { signal }
       )) {
         // Check for abort from main (extra safety check)
-        if (options?.signal?.aborted) {
+        if (signal?.aborted) {
           throw new Error('Sub agent aborted by main agent');
         }
 

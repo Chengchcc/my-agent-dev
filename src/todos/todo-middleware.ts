@@ -1,5 +1,6 @@
 import type { Middleware, ToolImplementation, AgentMiddleware, AgentContext } from '../types';
 import type { TodoItem, TodoStatus } from './types';
+import type { ToolContext } from '../agent/tool-dispatch';
 
 const TODO_WRITE_TOOL_NAME = 'todo_write';
 
@@ -85,6 +86,10 @@ export function createTodoMiddleware(): {
 } {
   // Helper to get or initialize todo metadata in context
   const getOrInitTodoMetadata = (context: AgentContext): TodoMetadata => {
+    // Ensure metadata exists
+    if (!context.metadata) {
+      context.metadata = {};
+    }
     if (!context.metadata.todo) {
       context.metadata.todo = {
         todoStore: [],
@@ -141,19 +146,13 @@ export function createTodoMiddleware(): {
       };
     },
 
-    requiresContext: true,
-
     async execute(
       params: Record<string, unknown>,
-      opts?: { context: AgentContext },
+      ctx: ToolContext,
     ): Promise<string> {
-      if (!opts?.context) {
-        throw new Error('todo_write requires context access');
-      }
-
       const todos = params.todos as TodoItem[];
       const merge = params.merge as boolean;
-      const metadata = getOrInitTodoMetadata(opts.context);
+      const metadata = getOrInitTodoMetadata(ctx.agentContext);
 
       // Validate todos array
       if (!Array.isArray(todos)) {
@@ -170,6 +169,7 @@ export function createTodoMiddleware(): {
         }
       }
 
+      // Update todos directly in context (for middleware visibility)
       if (merge) {
         for (const item of todos) {
           const idx = metadata.todoStore.findIndex((t) => t.id === item.id);
@@ -184,8 +184,13 @@ export function createTodoMiddleware(): {
         metadata.todoStore.push(...todos);
       }
 
+      // Update step counters in context
       metadata.stepsSinceLastWrite = 0;
       metadata.stepsSinceLastReminder = 0;
+
+      // Send todo updates via sink - dispatcher will sync to context manager
+      ctx.sink.updateTodos(metadata.todoStore);
+
       return formatSummary(metadata.todoStore);
     },
   };
