@@ -385,7 +385,7 @@ export class Agent {
           const rawContent = event.result.content;
           const content = typeof rawContent === 'string'
             ? rawContent
-            : JSON.stringify(rawContent, null, 2);
+            : JSON.stringify(rawContent);
 
           // CHECK FIRST: throw halt error before side effects (yield + addMessage)
           // This prevents state inconsistency where context has the error message

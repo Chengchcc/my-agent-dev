@@ -19,6 +19,9 @@ import { ClaudeProvider, OpenAIProvider, createProviderFromSettings } from './pr
 import { DEFAULT_SYSTEM_PROMPT } from './config/default-prompts';
 import { TokenBudgetCalculator, TieredCompactionManager, DEFAULT_COMPACTION_CONFIG } from './agent/compaction';
 import { debugLog } from './utils/debug';
+import { PermissionMiddleware } from './agent/tool-dispatch/middlewares/permission';
+import { ReadCacheMiddleware } from './agent/tool-dispatch/middlewares/read-cache';
+import type { ToolMiddleware } from './agent/tool-dispatch/middleware';
 
 export interface RuntimeConfig {
   provider?: 'claude' | 'openai';
@@ -187,6 +190,16 @@ export async function createAgentRuntime(
     hooks.afterAgentRun.push(createAutoSaveHook(sessionStore));
   }
 
+  // Build default tool middleware chain
+  // Order in array = outer to inner (first registered runs first):
+  //   Permission (deny check) → ReadCache (cache check) → tool.execute
+  const toolMiddlewares: ToolMiddleware[] = [
+    new PermissionMiddleware({
+      denyInSubAgent: ['sub_agent', 'ask_user_question'],
+    }),
+    new ReadCacheMiddleware(),
+  ];
+
   // Agent
   const agent = new Agent({
     provider,
@@ -194,6 +207,7 @@ export async function createAgentRuntime(
     config: agentConfig,
     toolRegistry,
     hooks,
+    toolMiddlewares,
   });
 
   const runtime: any = {
