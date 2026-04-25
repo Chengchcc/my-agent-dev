@@ -6,55 +6,62 @@ import type { Tool, ToolImplementation } from '../types';
  * Central registry that maps tool names to their implementations
  */
 export class ToolRegistry {
-  private tools: Map<string, ToolImplementation> = new Map();
+  private _tools: Map<string, ToolImplementation> = new Map();
 
   /**
    * Register a tool implementation with the registry
    */
   register(tool: ToolImplementation): void {
     const definition = tool.getDefinition();
-    this.tools.set(definition.name, tool);
+    this._tools.set(definition.name, tool);
   }
 
   /**
    * Unregister a tool from the registry
    */
   unregister(name: string): boolean {
-    return this.tools.delete(name);
+    return this._tools.delete(name);
   }
 
   /**
    * Get a tool implementation by name
    */
   get(name: string): ToolImplementation | undefined {
-    return this.tools.get(name);
+    return this._tools.get(name);
   }
 
   /**
    * Check if a tool is registered
    */
   has(name: string): boolean {
-    return this.tools.has(name);
+    return this._tools.has(name);
   }
 
   /**
    * Get all tool definitions for registration with provider
    */
   getAllDefinitions(): Tool[] {
-    return Array.from(this.tools.values()).map(tool => tool.getDefinition());
+    return Array.from(this._tools.values()).map(tool => tool.getDefinition());
   }
 
   /**
    * Clear all registered tools
    */
   clear(): void {
-    this.tools.clear();
+    this._tools.clear();
   }
 
   /**
    * Get number of registered tools
    */
   size(): number {
-    return this.tools.size;
+    return this._tools.size;
+  }
+
+  /**
+   * Get the underlying tools map (for inspection)
+   */
+  get tools(): ReadonlyMap<string, ToolImplementation> {
+    return this._tools;
   }
 }
