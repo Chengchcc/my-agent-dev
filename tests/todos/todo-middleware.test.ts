@@ -1,5 +1,6 @@
 import { createTodoMiddleware } from '../../src/todos/todo-middleware';
 import type { AgentContext } from '../../src/types';
+import { createTestCtx } from '../agent/tool-dispatch/test-helpers';
 
 describe('createTodoMiddleware', () => {
   test('should return a tool and middleware', () => {
@@ -23,7 +24,7 @@ describe('createTodoMiddleware', () => {
         { id: '2', content: 'Task 2', status: 'completed' },
       ],
       merge: false,
-    }, { agentContext: context, sink: { updateTodos: () => {}, log: () => {} } });
+    }, createTestCtx({ agentContext: context }));
     expect(result).toBe('Todo list updated. 2 items: 1 pending, 1 completed.');
   });
 
@@ -40,14 +41,14 @@ describe('createTodoMiddleware', () => {
         { id: '2', content: 'Task 2', status: 'pending' },
       ],
       merge: false,
-    }, { agentContext: context, sink: { updateTodos: () => {}, log: () => {} } });
+    }, createTestCtx({ agentContext: context }));
     const result = await tool.execute({
       todos: [
         { id: '1', content: 'Task 1', status: 'completed' },
         { id: '3', content: 'Task 3', status: 'in_progress' },
       ],
       merge: true,
-    }, { agentContext: context, sink: { updateTodos: () => {}, log: () => {} } });
+    }, createTestCtx({ agentContext: context }));
     expect(result).toBe('Todo list updated. 3 items: 1 pending, 1 in_progress, 1 completed.');
   });
 
@@ -66,7 +67,7 @@ describe('createTodoMiddleware', () => {
         { id: '2', content: 'Task 2', status: 'in_progress' },
       ],
       merge: false,
-    }, { agentContext: context, sink: { updateTodos: () => {}, log: () => {} } });
+    }, createTestCtx({ agentContext: context }));
 
     // Simulate multiple steps without tool use
     let calledNext = false;
@@ -108,7 +109,7 @@ describe('createTodoMiddleware', () => {
     await tool.execute({
       todos: [{ id: '1', content: 'Task 1', status: 'pending' }],
       merge: false,
-    }, { agentContext: context, sink: { updateTodos: () => {}, log: () => {} } });
+    }, createTestCtx({ agentContext: context }));
 
     // 9 steps without reminder
     for (let i = 0; i < 9; i++) {
@@ -119,7 +120,7 @@ describe('createTodoMiddleware', () => {
     await tool.execute({
       todos: [{ id: '1', content: 'Task 1', status: 'completed' }],
       merge: true,
-    }, { agentContext: context, sink: { updateTodos: () => {}, log: () => {} } });
+    }, createTestCtx({ agentContext: context }));
 
     // Should not have reminder yet after reset
     // But since all todos are completed, should inject todo_completed prompt
@@ -148,7 +149,7 @@ describe('createTodoMiddleware', () => {
     await tool.execute({
       todos: [{ id: '1', content: 'Task 1', status: 'pending' }],
       merge: false,
-    }, { agentContext: context, sink: { updateTodos: () => {}, log: () => {} } });
+    }, createTestCtx({ agentContext: context }));
 
     // After tool use in message, counter should be reset
     await middleware(context, async () => context);

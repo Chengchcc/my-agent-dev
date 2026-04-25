@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Tool, ToolImplementation } from '../types';
+import type { ToolContext } from '../agent/tool-dispatch/types';
 
 export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject<z.ZodRawShape>> implements ToolImplementation {
   protected abstract schema: T;
@@ -183,7 +184,7 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
     return result;
   }
 
-  async execute(params: Record<string, unknown>): Promise<unknown> {
+  async execute(params: Record<string, unknown>, ctx: ToolContext): Promise<unknown> {
     const result = this.schema.safeParse(params);
 
     if (!result.success) {
@@ -193,9 +194,9 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
       return `Parameter validation failed:\n${errors}`;
     }
 
-    return this.handle(result.data);
+    return this.handle(result.data, ctx);
   }
 
-  protected abstract handle(params: z.infer<T>): Promise<unknown> | unknown;
+  protected abstract handle(params: z.infer<T>, ctx: ToolContext): Promise<unknown> | unknown;
 }
 

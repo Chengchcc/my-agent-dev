@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'bun:test';
 import { ToolDispatcher } from '../../../src/agent/tool-dispatch/dispatcher';
 import { ToolRegistry } from '../../../src/agent/tool-registry';
-import { createToolSink } from '../../../src/agent/tool-dispatch/types';
+import { createToolSink, type ToolContext, type ToolEvent } from '../../../src/agent/tool-dispatch/types';
 import type { ToolImplementation, ToolCall } from '../../../src/types';
-import type { ToolContext, ToolEvent } from '../../../src/agent/tool-dispatch/types';
 
 describe('ToolDispatcher dispatchParallelStreaming', () => {
   it('should yield all results even when tools complete synchronously (race regression)', async () => {
@@ -14,7 +13,7 @@ describe('ToolDispatcher dispatchParallelStreaming', () => {
     let callCount = 0;
     class SyncTool implements ToolImplementation {
       getDefinition() { return { name: 'sync', description: '', parameters: {} }; }
-      async execute() { callCount++; return 'done'; }
+      async execute(_params: Record<string, unknown>, _ctx: ToolContext) { callCount++; return 'done'; }
     }
     registry.register(new SyncTool());
 
@@ -82,7 +81,7 @@ describe('ToolDispatcher dispatchParallelStreaming', () => {
   it('should handle abort signal during parallel execution', async () => {
     class SlowTool implements ToolImplementation {
       getDefinition() { return { name: 'slow', description: '', parameters: {} }; }
-      async execute() {
+      async execute(_params: Record<string, unknown>, _ctx: ToolContext) {
         await new Promise(resolve => setTimeout(resolve, 500));
         return 'too late';
       }

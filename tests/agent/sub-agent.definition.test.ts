@@ -3,6 +3,7 @@ import { SubAgentTool } from '../../src/agent/sub-agent-tool';
 import { ContextManager } from '../../src/agent/context';
 import { ToolRegistry } from '../../src/agent/tool-registry';
 import type { Provider, AgentConfig } from '../../src/types';
+import { createTestCtx } from '../agent/tool-dispatch/test-helpers';
 
 // Create minimal dependencies for testing
 const mockProvider: Provider = {
@@ -46,7 +47,7 @@ describe('SubAgentTool.getDefinition()', () => {
 describe('SubAgentTool parameter validation', () => {
   test('empty string task -> rejects execution', async () => {
     const tool = createTool();
-    const result = await tool.execute({ task: '' });
+    const result = await tool.execute({ task: '' }, createTestCtx());
     expect(result).toContain('Error');
     expect(result).toContain('Missing required');
   });
@@ -54,7 +55,7 @@ describe('SubAgentTool parameter validation', () => {
   test('non-string task -> returns error', async () => {
     const tool = createTool();
     // @ts-expect-error testing invalid input
-    const result = await tool.execute({ task: 123 });
+    const result = await tool.execute({ task: 123 }, createTestCtx());
     expect(result).toContain('Error');
     expect(result).toContain('Missing required');
   });
@@ -66,7 +67,7 @@ describe('SubAgentTool parameter validation', () => {
     // We need to mock the agent execution to avoid timeout
     // Patch the execute method to skip the actual agent run for this test
     const originalExecute = tool.execute;
-    tool.execute = async (params) => {
+    tool.execute = async (params, _ctx) => {
       // First perform the parameter validation
       const task = params.task as string;
       if (!task || typeof task !== 'string') {
@@ -76,7 +77,7 @@ describe('SubAgentTool parameter validation', () => {
       return 'Mocked execution successful';
     };
 
-    const result = await tool.execute({ task: longTask });
+    const result = await tool.execute({ task: longTask }, createTestCtx());
     expect(result).toBeDefined();
     expect(result).not.toContain('Error');
 

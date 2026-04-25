@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'fs';
 import { resolve, join } from 'path';
 import { minimatch } from 'minimatch';
 import { allowedRoots } from '../config/allowed-roots';
+import type { ToolContext } from '../agent/tool-dispatch/types';
 import { ZodTool } from './zod-tool';
 import { debugWarn } from '../utils/debug';
 import { isTextFile } from '../utils/is-text-file';
@@ -31,7 +32,7 @@ export class GrepTool extends ZodTool {
   name = 'grep';
   description = 'Search file content for text/regex patterns';
 
-  protected handle(args: z.infer<typeof this.schema>) {
+  protected handle(args: z.infer<typeof this.schema>, _ctx: ToolContext) {
     const searchPath = resolve(args.path);
 
     // Validate path is within allowed roots

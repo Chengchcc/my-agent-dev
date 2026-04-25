@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import { Agent, ContextManager, ToolRegistry } from '../../src/agent';
-import type { AgentContext, LLMResponseChunk, Provider, Tool, AgentEvent } from '../../src/types';
+import type { AgentContext, LLMResponseChunk, Provider, Tool, AgentEvent, ToolContext } from '../../src/types';
 import { collectAgentEvents } from './test-utils';
 
 /**
@@ -79,8 +79,8 @@ class EchoTool extends ToolRegistry {
     };
   }
 
-  async execute(params: { text: string }): Promise<string> {
-    return `Echo: ${params.text}`;
+  async execute(params: Record<string, unknown>, _ctx: ToolContext): Promise<string> {
+    return `Echo: ${(params as any).text}`;
   }
 }
 

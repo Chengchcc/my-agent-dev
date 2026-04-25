@@ -1,6 +1,7 @@
 import { exec } from 'child_process';
 import path from 'path';
 import type { Tool, ToolImplementation } from '../types';
+import type { ToolContext } from '../agent/tool-dispatch/types';
 
 /**
  * Options for BashTool.
@@ -55,7 +56,7 @@ export class BashTool implements ToolImplementation {
    */
   async execute(
     params: { command: string; cwd?: string },
-    options?: { signal?: AbortSignal },
+    ctx: ToolContext,
   ): Promise<{
     output: string;
     exitCode: number | null;
@@ -131,7 +132,7 @@ export class BashTool implements ToolImplementation {
       let resolved = false;
 
       // Handle abort signal
-      if (options?.signal) {
+      if (ctx.signal) {
         const handleAbort = () => {
           // Already resolved - do nothing
           if (resolved) return;
@@ -162,11 +163,11 @@ export class BashTool implements ToolImplementation {
           });
         };
 
-        options.signal.addEventListener('abort', handleAbort);
+        ctx.signal.addEventListener('abort', handleAbort);
 
         // Cleanup listener when done
         const cleanup = () => {
-          options.signal?.removeEventListener('abort', handleAbort);
+          ctx.signal.removeEventListener('abort', handleAbort);
         };
 
         proc.on('exit', cleanup);
@@ -174,7 +175,7 @@ export class BashTool implements ToolImplementation {
         proc.on('error', cleanup);
 
         // If already aborted, trigger immediately
-        if (options.signal.aborted) {
+        if (ctx.signal.aborted) {
           handleAbort();
         }
       }

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'bun:test';
 import type { MemoryEntry, MemoryStore, MemoryRetriever, MemoryExtractor } from '../../src/memory/types';
 import { MemoryTool } from '../../src/memory/tool';
+import { createTestCtx } from '../agent/tool-dispatch/test-helpers';
 
 function makeEntry(overrides: Partial<MemoryEntry>): MemoryEntry {
   return {
@@ -63,20 +64,20 @@ describe('MemoryTool', () => {
   describe('search', () => {
     it('calls retriever.search and returns results', async () => {
       mockRetriever.results = [makeEntry({ text: 'found' })];
-      const result = await tool.execute({ command: 'search', query: 'test' });
+      const result = await tool.execute({ command: 'search', query: 'test' }, createTestCtx());
       expect(mockRetriever.search).toHaveBeenCalled();
       expect(result).toEqual({ results: expect.arrayContaining([expect.objectContaining({ text: 'found' })]) });
     });
 
     it('throws when query is missing', async () => {
-      await expect(tool.execute({ command: 'search' })).rejects.toThrow('query parameter is required');
+      await expect(tool.execute({ command: 'search' }, createTestCtx())).rejects.toThrow('query parameter is required');
     });
   });
 
   describe('add', () => {
     it('adds to semantic store by default', async () => {
       const addSpy = vi.spyOn(stores.semantic, 'add');
-      await tool.execute({ command: 'add', text: 'new fact' });
+      await tool.execute({ command: 'add', text: 'new fact' }, createTestCtx());
       expect(addSpy).toHaveBeenCalledWith(expect.objectContaining({
         type: 'semantic',
         text: 'new fact',
@@ -87,7 +88,7 @@ describe('MemoryTool', () => {
 
     it('adds to project store when type=project specified, includes projectPath', async () => {
       const addSpy = vi.spyOn(stores.project, 'add');
-      await tool.execute({ command: 'add', text: 'uses bun', type: 'project' });
+      await tool.execute({ command: 'add', text: 'uses bun', type: 'project' }, createTestCtx());
       expect(addSpy).toHaveBeenCalledWith(expect.objectContaining({
         type: 'project',
         projectPath: expect.any(String),
@@ -95,7 +96,7 @@ describe('MemoryTool', () => {
     });
 
     it('throws when text is missing', async () => {
-      await expect(tool.execute({ command: 'add' })).rejects.toThrow('text parameter is required');
+      await expect(tool.execute({ command: 'add' }, createTestCtx())).rejects.toThrow('text parameter is required');
     });
   });
 
@@ -105,7 +106,7 @@ describe('MemoryTool', () => {
       stores.episodic.entries = [makeEntry({ type: 'episodic', text: 'epi' })];
       stores.project.entries = [makeEntry({ type: 'project', text: 'proj' })];
 
-      const result = await tool.execute({ command: 'list', limit: 10 }) as any;
+      const result = await tool.execute({ command: 'list', limit: 10 }, createTestCtx()) as any;
       expect(result.entries).toHaveLength(3);
     });
 
@@ -113,7 +114,7 @@ describe('MemoryTool', () => {
       stores.semantic.entries = [makeEntry({ type: 'semantic', text: 'sem' })];
       stores.episodic.entries = [makeEntry({ type: 'episodic', text: 'epi' })];
 
-      const result = await tool.execute({ command: 'list', type: 'semantic' }) as any;
+      const result = await tool.execute({ command: 'list', type: 'semantic' }, createTestCtx()) as any;
       expect(result.entries.every((e: any) => e.type === 'semantic')).toBe(true);
     });
   });
@@ -124,18 +125,18 @@ describe('MemoryTool', () => {
       stores.episodic.entries = [entry];
       vi.spyOn(stores.episodic, 'remove').mockResolvedValue(true);
 
-      const result = await tool.execute({ command: 'forget', id: entry.id }) as any;
+      const result = await tool.execute({ command: 'forget', id: entry.id }, createTestCtx()) as any;
       expect(result.deleted).toBe(true);
       expect(result.type).toBe('episodic');
     });
 
     it('returns deleted: false when not found in any store', async () => {
-      const result = await tool.execute({ command: 'forget', id: 'nonexistent' }) as any;
+      const result = await tool.execute({ command: 'forget', id: 'nonexistent' }, createTestCtx()) as any;
       expect(result.deleted).toBe(false);
     });
 
     it('throws when id is missing', async () => {
-      await expect(tool.execute({ command: 'forget' })).rejects.toThrow('id parameter is required');
+      await expect(tool.execute({ command: 'forget' }, createTestCtx())).rejects.toThrow('id parameter is required');
     });
   });
 
@@ -147,7 +148,7 @@ describe('MemoryTool', () => {
       ];
       mockExtractor.consolidateResult = [makeEntry({ text: 'merged' })];
 
-      const result = await tool.execute({ command: 'consolidate' }) as any;
+      const result = await tool.execute({ command: 'consolidate' }, createTestCtx()) as any;
       expect(result.before).toBe(2);
       expect(result.after).toBe(1);
       expect(result.removed).toBe(1);
@@ -155,12 +156,12 @@ describe('MemoryTool', () => {
     });
 
     it('returns 0/0/0 when semantic store is empty', async () => {
-      const result = await tool.execute({ command: 'consolidate' }) as any;
+      const result = await tool.execute({ command: 'consolidate' }, createTestCtx()) as any;
       expect(result).toEqual({ before: 0, after: 0, removed: 0 });
     });
   });
 
   it('throws on unknown command', async () => {
-    await expect(tool.execute({ command: 'invalid' })).rejects.toThrow('Unknown memory command');
+    await expect(tool.execute({ command: 'invalid' }, createTestCtx())).rejects.toThrow('Unknown memory command');
   });
 });

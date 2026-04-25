@@ -2,6 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import { SubAgentTool } from '../../src/agent/sub-agent-tool';
 import { ToolRegistry } from '../../src/agent/tool-registry';
 import type { Provider, AgentConfig } from '../../src/types';
+import { createTestCtx } from '../agent/tool-dispatch/test-helpers';
 
 const mockConfig: AgentConfig = { tokenLimit: 50000, timeoutMs: 1000 };
 
@@ -23,7 +24,7 @@ describe('Error handling - sub-agent failures', () => {
       mainAgentConfig: mockConfig,
     });
 
-    const result = await tool.execute({ task: 'test' });
+    const result = await tool.execute({ task: 'test' }, createTestCtx());
     expect(result).toContain('API rate limit exceeded');
     // Doesn't throw, returns error as string so main can continue
   });
@@ -77,7 +78,7 @@ describe('Error handling - sub-agent failures', () => {
       loopConfig: { maxTurns: 2, timeoutMs: 5000 },
     });
 
-    const result = await tool.execute({ task: 'read /nonexistent' });
+    const result = await tool.execute({ task: 'read /nonexistent' }, createTestCtx());
     expect(result).toBeDefined();
     expect(result).toContain('File not found');
     expect(result).toContain('no files found');
@@ -113,7 +114,7 @@ describe('Abort signal propagation', () => {
     const controller = new AbortController();
     const promise = tool.execute(
       { task: 'long task' },
-      { signal: controller.signal }
+      createTestCtx({ signal: controller.signal })
     );
 
     // Wait for streaming to start
@@ -151,7 +152,7 @@ describe('Abort signal propagation', () => {
 
     await tool.execute(
       { task: 'test' },
-      { signal: mainController.signal }
+      createTestCtx({ signal: mainController.signal })
     );
 
     // Main controller signal should still be active (not aborted)

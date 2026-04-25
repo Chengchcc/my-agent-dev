@@ -4,6 +4,7 @@ import { ContextManager } from '../../src/agent/context';
 import { ToolRegistry } from '../../src/agent/tool-registry';
 import type { Provider, AgentConfig } from '../../src/types';
 import { ScriptedProvider } from '../integration/agent-loop-events.test.ts';
+import { createTestCtx } from '../agent/tool-dispatch/test-helpers';
 
 
 // Mock provider that doesn't actually execute
@@ -35,7 +36,7 @@ describe('Context isolation', () => {
 
     // Execute will fail because mock provider doesn't stream properly, but it should
     // have created the sub context before that
-    tool.execute({ task: 'do something' }).catch(() => {});
+    tool.execute({ task: 'do something' }, createTestCtx()).catch(() => {});
 
     expect(contextSpy).toHaveBeenCalled();
     const subCtx = contextSpy.mock.results[0].value;
@@ -61,7 +62,7 @@ describe('Context isolation', () => {
 
     const contextSpy = vi.spyOn(ContextManager.prototype, 'setSystemPrompt');
 
-    tool.execute({ task: 'test' }).catch(() => {});
+    tool.execute({ task: 'test' }, createTestCtx()).catch(() => {});
 
     expect(contextSpy).toHaveBeenCalled();
     const systemPrompt = contextSpy.mock.calls[0][0];
@@ -102,7 +103,7 @@ describe('ToolRegistry filtering (recursion prevention)', () => {
     // Spy on registry to see what gets filtered
     const registerSpy = vi.spyOn(ToolRegistry.prototype, 'register');
 
-    tool.execute({ task: 'test' }).catch(() => {});
+    tool.execute({ task: 'test' }, createTestCtx()).catch(() => {});
 
     // Check which tools got registered in sub registry
     const registeredNames: string[] = [];
@@ -145,7 +146,7 @@ describe('ToolRegistry filtering (recursion prevention)', () => {
 
     const registerSpy = vi.spyOn(ToolRegistry.prototype, 'register');
 
-    tool.execute({ task: 'test' }).catch(() => {});
+    tool.execute({ task: 'test' }, createTestCtx()).catch(() => {});
 
     const registeredNames: string[] = [];
     registerSpy.mock.calls.forEach(call => {
@@ -180,7 +181,7 @@ describe('ToolRegistry filtering (recursion prevention)', () => {
 
     const registerSpy = vi.spyOn(ToolRegistry.prototype, 'register');
 
-    tool.execute({ task: 'test' }).catch(() => {});
+    tool.execute({ task: 'test' }, createTestCtx()).catch(() => {});
 
     const registeredNames: string[] = [];
     registerSpy.mock.calls.forEach(call => {
@@ -224,7 +225,7 @@ describe('Resource constraints', () => {
       // loopConfig with maxTurns defaults to 15 from SubAgentTool
     });
 
-    const result = await tool.execute({ task: 'keep reading' });
+    const result = await tool.execute({ task: 'keep reading' }, createTestCtx());
 
     // ScriptedProvider increments callCount each turn
     // Should not exceed 15-16 turns due to maxTurns limit
@@ -259,7 +260,7 @@ describe('Resource constraints', () => {
 
     // Start execution
     const startTime = Date.now();
-    const promise = tool.execute({ task: 'slow task' });
+    const promise = tool.execute({ task: 'slow task' }, createTestCtx());
 
     // Wait for the timeout - use real timers since we just need to wait
     // This test will fail if it doesn't timeout within 2 seconds

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { readdirSync, statSync } from 'fs';
 import { resolve, relative, join } from 'path';
 import { allowedRoots } from '../config/allowed-roots';
+import type { ToolContext } from '../agent/tool-dispatch/types';
 import { ZodTool } from './zod-tool';
 import { debugWarn } from '../utils/debug';
 
@@ -16,7 +17,7 @@ export class LsTool extends ZodTool {
   name = 'ls';
   description = 'List directory contents with file metadata';
 
-  protected handle(args: z.infer<typeof this.schema>) {
+  protected handle(args: z.infer<typeof this.schema>, _ctx: ToolContext) {
     const dirPath = resolve(args.path);
 
     // Validate path is within allowed roots

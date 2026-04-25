@@ -2,6 +2,7 @@
 import { nanoid } from 'nanoid';
 import type { Tool, ToolImplementation } from '../types';
 import type { Provider, AgentConfig } from '../types';
+import type { ToolContext } from './tool-dispatch/types';
 import type { AgentEvent, AgentLoopConfig } from './loop-types';
 import { Agent } from './Agent';
 import { ContextManager } from './context';
@@ -105,17 +106,17 @@ DO NOT USE when:
    */
   async execute(
     params: Record<string, unknown>,
-    ctx?: any,
+    ctx: ToolContext,
   ): Promise<string> {
     const task = params.task as string;
-    const signal = ctx?.signal ?? new AbortController().signal;
+    const signal = ctx.signal;
 
     if (!task || typeof task !== 'string') {
       return 'Error: Missing required "task" parameter';
     }
 
     // Prevent recursion: only main agent can spawn sub_agent
-    if (ctx?.environment?.agentType === 'sub_agent') {
+    if (ctx.environment.agentType === 'sub_agent') {
       return 'Error: sub_agent cannot spawn another sub_agent';
     }
 
@@ -218,7 +219,7 @@ If the task references files in .agent/, read them first before proceeding.`;
         { signal }
       )) {
         // Check for abort from main (extra safety check)
-        if (signal?.aborted) {
+        if (signal.aborted) {
           throw new Error('Sub agent aborted by main agent');
         }
 

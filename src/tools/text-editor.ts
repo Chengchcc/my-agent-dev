@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { Tool } from '../types';
 import type { ToolImplementation } from '../types';
+import type { ToolContext } from '../agent/tool-dispatch/types';
 
 /**
  * Supported commands for text editor.
@@ -89,7 +90,7 @@ export class TextEditorTool implements ToolImplementation {
     content?: string;
     start_line?: number;
     end_line?: number;
-  }): Promise<{ result: string } | { error: string }> {
+  }, _ctx: ToolContext): Promise<{ result: string } | { error: string }> {
     const { command, path: filePath } = params;
 
     if (!this.validatePath(filePath)) {

@@ -1,4 +1,5 @@
 import type { ContextManager } from './agent';
+import type { ToolContext } from './agent/tool-dispatch/types';
 
 // Core message type - unified format for all providers
 export type Message = {
@@ -24,7 +25,7 @@ export interface ToolImplementation {
    * Unified signature: all tools receive ToolContext as second parameter.
    * Tools that don't need context can simply ignore it.
    */
-  execute(params: Record<string, unknown>, ctx: any): Promise<unknown>;
+  execute(params: Record<string, unknown>, ctx: ToolContext): Promise<unknown>;
 }
 
 // Tool call in response

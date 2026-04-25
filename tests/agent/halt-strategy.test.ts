@@ -1,6 +1,6 @@
 import { describe, test, expect, spyOn } from 'bun:test';
 import { Agent, ContextManager, ToolRegistry } from '../../src/agent';
-import type { Tool } from '../../src/types';
+import type { Tool, ToolContext } from '../../src/types';
 import { ScriptedProvider } from '../integration/agent-loop-events.test';
 import { collectAgentEvents } from '../integration/test-utils';
 
@@ -17,7 +17,7 @@ class ErrorTool extends ToolRegistry {
     };
   }
 
-  async execute(): Promise<string> {
+  async execute(_params: Record<string, unknown>, _ctx: ToolContext): Promise<string> {
     throw new Error('Intentional test error');
   }
 }
@@ -104,8 +104,8 @@ describe('toolErrorStrategy = "halt"', () => {
           },
         };
       }
-      async execute(params: { text: string }) {
-        return params.text;
+      async execute(params: Record<string, unknown>, _ctx: ToolContext) {
+        return (params as any).text as string;
       }
     }
 

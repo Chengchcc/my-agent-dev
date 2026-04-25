@@ -1,5 +1,6 @@
 import { TextEditorTool } from '../../src/tools';
 import { describe, expect, test } from 'bun:test';
+import { createTestCtx } from '../agent/tool-dispatch/test-helpers';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -16,7 +17,7 @@ describe('TextEditorTool', () => {
     const content = 'line 1\nline 2\nline 3';
     const filePath = await createTempFile(content);
     const tool = new TextEditorTool();
-    const result = await tool.execute({ command: 'view', path: filePath });
+    const result = await tool.execute({ command: 'view', path: filePath }, createTestCtx());
     expect('result' in result).toBe(true);
     expect((result as any).result).toBe(content);
     await fs.unlink(filePath);
@@ -25,7 +26,7 @@ describe('TextEditorTool', () => {
   test('create new file fails if exists', async () => {
     const filePath = await createTempFile('existing');
     const tool = new TextEditorTool();
-    const result = await tool.execute({ command: 'create', path: filePath, content: 'new' });
+    const result = await tool.execute({ command: 'create', path: filePath, content: 'new' }, createTestCtx());
     expect('error' in result).toBe(true);
     expect((result as any).error).toContain('already exists');
     await fs.unlink(filePath);
@@ -41,7 +42,7 @@ describe('TextEditorTool', () => {
       path: filePath,
       old_string: 'hello test',
       new_string: 'hello replaced',
-    });
+    }, createTestCtx());
     expect('result' in result).toBe(true);
     const newContent = await fs.readFile(filePath, 'utf-8');
     expect(newContent).toContain('hello replaced');
@@ -57,7 +58,7 @@ describe('TextEditorTool', () => {
       path: filePath,
       old_string: 'hello',
       new_string: 'bye',
-    });
+    }, createTestCtx());
     expect('error' in result).toBe(true);
     expect((result as any).error).toContain('found 3 times');
     await fs.unlink(filePath);
@@ -70,7 +71,7 @@ describe('TextEditorTool', () => {
       command: 'write',
       path: filePath,
       content: 'new content',
-    });
+    }, createTestCtx());
     expect('result' in result).toBe(true);
     const newContent = await fs.readFile(filePath, 'utf-8');
     expect(newContent).toBe('new content');

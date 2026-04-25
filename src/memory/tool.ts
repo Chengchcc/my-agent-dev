@@ -1,4 +1,5 @@
 import type { Tool, ToolImplementation } from '../types';
+import type { ToolContext } from '../agent/tool-dispatch/types';
 import type { MemoryEntry, MemoryStore, MemoryRetriever, MemoryExtractor } from './types';
 
 export class MemoryTool implements ToolImplementation {
@@ -60,7 +61,7 @@ Only store genuinely reusable information that will be useful in future conversa
     };
   }
 
-  async execute(params: Record<string, unknown>): Promise<unknown> {
+  async execute(params: Record<string, unknown>, _ctx: ToolContext): Promise<unknown> {
     const command = params.command as string;
     const projectPath = process.cwd();
 

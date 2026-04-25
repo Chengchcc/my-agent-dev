@@ -1,5 +1,6 @@
 // src/tools/ask-user-question.ts
 import { z } from 'zod';
+import type { ToolContext } from '../agent/tool-dispatch/types';
 import { ZodTool } from './zod-tool';
 
 /**
@@ -104,7 +105,7 @@ export class AskUserQuestionTool extends ZodTool<typeof askUserQuestionParameter
     super();
   }
 
-  protected async handle(params: z.infer<typeof askUserQuestionParametersSchema>): Promise<unknown> {
+  protected async handle(params: z.infer<typeof askUserQuestionParametersSchema>, _ctx: ToolContext): Promise<unknown> {
     const result = await this.askCallback(params);
     validateResultAgainstParams(params, result);
     return result;

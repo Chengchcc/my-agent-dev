@@ -1,6 +1,7 @@
 import { ReadTool } from '../../src/tools/read';
 import { describe, expect, test, beforeAll } from 'bun:test';
 import { allowedRoots } from '../../src/config/allowed-roots';
+import { createTestCtx } from '../agent/tool-dispatch/test-helpers';
 
 // Add test directory to allowed roots
 beforeAll(() => {
@@ -10,7 +11,7 @@ beforeAll(() => {
 describe('ReadTool', () => {
   test('reads entire text file', async () => {
     const tool = new ReadTool();
-    const result = await tool.execute({ path: __filename });
+    const result = await tool.execute({ path: __filename }, createTestCtx());
     expect(result).toEqual(expect.objectContaining({
       path: expect.stringContaining('read.test.ts'),
       content: expect.any(String),
@@ -30,7 +31,7 @@ describe('ReadTool', () => {
       path: __filename,
       start_line: 1,
       end_line: 5,
-    });
+    }, createTestCtx());
     expect((result as any).total_lines).toBeGreaterThan(5);
     expect((result as any).range.start).toBe(1);
     expect((result as any).range.end).toBe(5);
@@ -44,7 +45,7 @@ describe('ReadTool', () => {
     const result = await tool.execute({
       path: __filename,
       max_lines: 10,
-    });
+    }, createTestCtx());
     const lines = (result as any).content.split('\n');
     expect(lines.length).toBeLessThanOrEqual(10);
     expect((result as any).truncated).toBe(true);
@@ -52,17 +53,17 @@ describe('ReadTool', () => {
 
   test('rejects directories', async () => {
     const tool = new ReadTool();
-    expect(async () => await tool.execute({ path: __dirname })).toThrow('is a directory');
+    expect(async () => await tool.execute({ path: __dirname }, createTestCtx())).toThrow('is a directory');
   });
 
   test('rejects files outside allowed roots', async () => {
     const tool = new ReadTool();
     // Try to read /etc/passwd which is outside allowed roots
-    expect(async () => await tool.execute({ path: '/etc/passwd' })).toThrow('not within allowed directories');
+    expect(async () => await tool.execute({ path: '/etc/passwd' }, createTestCtx())).toThrow('not within allowed directories');
   });
 
   test('returns error for non-existent file', async () => {
     const tool = new ReadTool();
-    expect(async () => await tool.execute({ path: './non-existent-file.test.ts' })).toThrow('Could not access file');
+    expect(async () => await tool.execute({ path: './non-existent-file.test.ts' }, createTestCtx())).toThrow('Could not access file');
   });
 });

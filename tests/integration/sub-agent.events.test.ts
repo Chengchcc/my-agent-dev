@@ -4,6 +4,7 @@ import { SubAgentTool } from '../../src/agent/sub-agent-tool';
 import type { Provider, AgentConfig, AgentEvent } from '../../src/types';
 import { collectAgentEvents } from './test-utils';
 import { ScriptedProvider } from './agent-loop-events.test';
+import { createTestCtx } from '../agent/tool-dispatch/test-helpers';
 
 const mockConfig: AgentConfig = { tokenLimit: 50000 };
 
@@ -214,11 +215,9 @@ describe('Return value integration', () => {
       mainAgentConfig: mockConfig,
     });
 
-    const result = await tool.execute({ task: 'test' }, {
-      signal: new AbortController().signal,
-      environment: { agentType: 'main' },
-      sink: { log: () => {} },
-    });
+    const result = await tool.execute({ task: 'test' }, createTestCtx({
+      environment: { agentType: 'main', cwd: process.cwd() },
+    }));
     expect(typeof result).toBe('string');
     expect(result).toContain('[SubAgent');
     expect(result).toContain('completed');

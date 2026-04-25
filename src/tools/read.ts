@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { readFileSync, statSync } from 'fs';
 import { resolve, extname } from 'path';
 import { allowedRoots } from '../config/allowed-roots';
+import type { ToolContext } from '../agent/tool-dispatch/types';
 import { ZodTool } from './zod-tool';
 import { getLanguageFromFilePath } from '../cli/tui/components/utils/language-map';
 import { isTextFile } from '../utils/is-text-file';
@@ -18,7 +19,7 @@ export class ReadTool extends ZodTool {
   name = 'read';
   description = 'Read file content with optional line range support';
 
-  protected handle(args: z.infer<typeof this.schema>) {
+  protected handle(args: z.infer<typeof this.schema>, _ctx: ToolContext) {
     const resolvedPath = resolve(args.path);
 
     // Validate path is within allowed roots

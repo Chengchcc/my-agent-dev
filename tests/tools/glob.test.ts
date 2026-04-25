@@ -1,6 +1,7 @@
 import { GlobTool } from '../../src/tools/glob';
 import { describe, expect, test, beforeAll } from 'bun:test';
 import { allowedRoots } from '../../src/config/allowed-roots';
+import { createTestCtx } from '../agent/tool-dispatch/test-helpers';
 
 // Add test directory to allowed roots
 beforeAll(() => {
@@ -13,7 +14,7 @@ describe('GlobTool', () => {
     const result = await tool.execute({
       pattern: '*.test.ts',
       path: __dirname,
-    });
+    }, createTestCtx());
     expect(result).toEqual(expect.objectContaining({
       files: expect.any(Array),
       truncated: expect.any(Boolean),
@@ -31,7 +32,7 @@ describe('GlobTool', () => {
       pattern: '**/*.ts',
       path: process.cwd() + '/src',
       max_results: 5,
-    });
+    }, createTestCtx());
     const files = (result as any).files;
     expect(files.length).toBeLessThanOrEqual(5);
     expect((result as any).truncated).toBe(files.length === 5);
@@ -44,7 +45,7 @@ describe('GlobTool', () => {
       pattern: '.*',
       path: process.cwd(),
       include_hidden: true,
-    });
+    }, createTestCtx());
     const files = (result as any).files;
     // Should find at least .git or something
     expect(files.length).toBeGreaterThan(0);
@@ -55,7 +56,7 @@ describe('GlobTool', () => {
     const result = await tool.execute({
       pattern: '*.xyzabc',
       path: __dirname,
-    });
+    }, createTestCtx());
     expect((result as any).files).toEqual([]);
     expect((result as any).truncated).toBe(false);
   });

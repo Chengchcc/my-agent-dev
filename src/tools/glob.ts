@@ -2,6 +2,7 @@ import { z } from 'zod';
 import fastGlob from 'fast-glob';
 import { resolve } from 'path';
 import { allowedRoots } from '../config/allowed-roots';
+import type { ToolContext } from '../agent/tool-dispatch/types';
 import { ZodTool } from './zod-tool';
 
 const DEFAULT_EXCLUDE_PATTERNS = ['node_modules', '.git', 'dist', 'build', '.DS_Store', '*.env', '*.key', '*credential*'];
@@ -19,7 +20,7 @@ export class GlobTool extends ZodTool {
   name = 'glob';
   description = 'Find files by glob pattern';
 
-  protected handle(args: z.infer<typeof this.schema>) {
+  protected handle(args: z.infer<typeof this.schema>, _ctx: ToolContext) {
     const searchPath = resolve(args.path);
 
     // Validate path is within allowed roots
