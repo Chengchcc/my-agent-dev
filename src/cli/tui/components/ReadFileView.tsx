@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink';
 import Prism from 'prismjs';
 import React, { useMemo } from 'react';
+import chalk from 'chalk';
 import 'prismjs/components/prism-typescript';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-jsx';
@@ -104,22 +105,25 @@ export function ReadFileView({
       <Text color="cyan">{header}</Text>
       {linesToShow.map((lineTokens, index) => {
         const currentLineNumber = startLine + index;
+        const gutter = `${String(currentLineNumber).padStart(gutterWidth, ' ')} │ `;
+
+        // Build ANSI-colored string for the entire line in JS
+        // This reduces Yoga node count from ~10,000 to ~500 for large files
+        let lineContent = '';
+        for (const token of lineTokens) {
+          const colorName = token.type ? (theme[token.type] ?? 'white') : 'white';
+          const colorFn = (chalk as unknown as Record<string, ((s: string) => string) | undefined>)[colorName];
+          if (colorFn) {
+            lineContent += colorFn(token.content);
+          } else {
+            lineContent += token.content;
+          }
+        }
+
         return (
           <Box key={index} flexDirection="row">
-            <Text color="dim">
-              {String(currentLineNumber).padStart(gutterWidth, ' ')}
-            </Text>
-            <Text color="dim"> │ </Text>
-            <Box flexDirection="row">
-              {lineTokens.map((token, tokenIndex) => {
-                const color = token.type ? (theme[token.type] ?? 'white') : 'white';
-                return (
-                  <Text key={tokenIndex} color={color}>
-                    {token.content}
-                  </Text>
-                );
-              })}
-            </Box>
+            <Text color="dim">{gutter}</Text>
+            <Text>{lineContent}</Text>
           </Box>
         );
       })}
