@@ -64,8 +64,8 @@ export class BashTool implements ToolImplementation {
   }> {
     const { command, cwd } = params;
 
-    // Validate working directory if restricted
-    if (this.allowedWorkingDirs) {
+    // Validate working directory if restricted (empty array = no restrictions)
+    if (this.allowedWorkingDirs && this.allowedWorkingDirs.length > 0) {
       const targetCwd = path.resolve(cwd ?? process.cwd());
       const isAllowed = this.allowedWorkingDirs.some(allowed => {
         const resolvedAllowed = path.resolve(allowed);
