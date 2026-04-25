@@ -343,7 +343,12 @@ export function AgentLoopProvider({
   // Calculate current context token count
   const currentContextTokens = useMemo(() => {
     return messages.reduce((sum: number, msg: Message) => {
-      return sum + countTokens(msg.content || '');
+      try {
+        return sum + countTokens(msg.content || '');
+      } catch (e) {
+        // Fallback: estimate tokens when countTokens fails (e.g. special Unicode chars)
+        return sum + Math.ceil((msg.content || '').length / 4);
+      }
     }, 0);
   }, [messages]);
 
