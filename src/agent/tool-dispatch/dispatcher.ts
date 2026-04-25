@@ -193,7 +193,10 @@ export class ToolDispatcher {
   }
 
   /**
-   * Parallel streaming execution: all start at once, results yielded as they complete
+   * Parallel streaming execution: all start at once, results yielded as they complete.
+   * Uses ReadableStream to eliminate the race condition inherent in hand-rolled
+   * resolveNext patterns — the stream's internal queuing handles the case where
+   * a producer completes before the consumer calls read().
    */
   private async *dispatchParallelStreaming(
     toolCalls: ToolCall[],
@@ -205,44 +208,48 @@ export class ToolDispatcher {
       yield { type: 'tool:start', toolCall, index };
     }
 
-    // Use a result queue to yield results as soon as they complete
-    const pending = new Set(toolCalls.map(tc => tc.id));
-    const resultQueue: ToolEvent[] = [];
-    let resolveNext: (() => void) | null = null;
-
-    const promises = toolCalls.map(async (toolCall) => {
-      const result = await this.executeSingle(toolCall, baseCtx, options);
-
-      resultQueue.push({
-        type: 'tool:result',
-        toolCall,
-        result,
-      });
-      pending.delete(toolCall.id);
-      resolveNext?.();
+    let controller!: ReadableStreamDefaultController<ToolEvent>;
+    const stream = new ReadableStream<ToolEvent>({
+      start(c) { controller = c; },
     });
 
-    // Yield as results arrive - true incremental streaming
-    const onAbort = () => resolveNext?.();
-    baseCtx.signal.addEventListener('abort', onAbort, { once: true });
-
-    try {
-      while (pending.size > 0 || resultQueue.length > 0) {
-        if (resultQueue.length > 0) {
-          const event = resultQueue.shift()!;
-          yield event;
-        } else if (pending.size > 0) {
-          // Wait for the next result to complete
-          await new Promise<void>((resolve) => {
-            resolveNext = resolve;
-          });
+    const promises = toolCalls.map(async (toolCall) => {
+      try {
+        const result = await this.executeSingle(toolCall, baseCtx, options);
+        controller.enqueue({
+          type: 'tool:result',
+          toolCall,
+          result,
+        });
+      } catch (error) {
+        try {
+          controller.error(error);
+        } catch {
+          // Controller might already be closed — ignore
         }
       }
-    } finally {
-      baseCtx.signal.removeEventListener('abort', onAbort);
-    }
+    });
 
-    // Wait for all promises to settle (cleanup any remaining)
-    await Promise.allSettled(promises);
+    const onAbort = () => {
+      try { controller.close(); } catch {}
+    };
+    baseCtx.signal.addEventListener('abort', onAbort, { once: true });
+
+    Promise.allSettled(promises).finally(() => {
+      try { controller.close(); } catch {}
+      baseCtx.signal.removeEventListener('abort', onAbort);
+    });
+
+    const reader = stream.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        yield value;
+      }
+    } finally {
+      reader.releaseLock();
+      await Promise.allSettled(promises);
+    }
   }
 }
