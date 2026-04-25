@@ -87,13 +87,12 @@ export function createSkillMiddleware(
       return next();
     }
 
-    // Find the last user message to check for skill mentions
-    // This works across multiple turns - any turn can mention a new skill
+    // Check early - don't do work if already injected AND no new skills mentioned
+    // BUT: we need to check mentions FIRST because a new skill might be mentioned
     const lastUserMessage = [...context.messages]
       .reverse()
       .find(m => m.role === 'user');
 
-    // Only inject when there's a user message (should always be true before model)
     if (!lastUserMessage) {
       return next();
     }
@@ -102,10 +101,19 @@ export function createSkillMiddleware(
 
     // Collect skills that are mentioned in the user message
     const mentionedSkills: SkillInfo[] = [];
-    for (const [skillName, skillInfo] of loadedSkills.entries()) {
+    // Use Set to avoid duplicates from double-key storage
+    const uniqueSkills = new Set(loadedSkills.values());
+    for (const skillInfo of uniqueSkills) {
+      const skillName = skillInfo.name.toLowerCase();
       if (injectOnMention && userContent.includes(skillName)) {
         mentionedSkills.push(skillInfo);
       }
+    }
+
+    // Check if already has skill system AND no new mentions
+    const hasSkillSystem = context.systemPrompt?.includes('<skill_system>');
+    if (hasSkillSystem && mentionedSkills.length === 0) {
+      return next();
     }
 
     // Build the skill system section
@@ -133,9 +141,9 @@ You must read the matching skill file${mentionedSkills.length > 1 ? 's' : ''} us
 `;
     }
 
-    // List all available skills with their frontmatter metadata
+    // List all available skills - use Set to avoid duplicates from double-key storage
     const skillsJson = JSON.stringify(
-      Array.from(loadedSkills.values()).map(s => ({
+      Array.from(uniqueSkills).map(s => ({
         name: s.name,
         description: s.description,
         path: s.filePath,
@@ -153,14 +161,19 @@ ${skillsJson}
 </skill_system>
 `;
 
-    // Inject into system prompt - skip if already injected to avoid duplication
-    if (context.systemPrompt && context.systemPrompt.includes('<skill_system>')) {
-      // Already has skill section, don't inject again
-      return next();
-    }
-
     if (context.systemPrompt) {
-      context.systemPrompt += skillSection;
+      // If already has skill system, we'd have returned early. So this means:
+      // Case 1: No skill system yet - inject it
+      // Case 2: Had skill system but NEW skill was mentioned - we need to REPLACE the section
+      if (hasSkillSystem) {
+        // Remove old skill section and add updated one with new mention info
+        context.systemPrompt = context.systemPrompt.replace(
+          /\n\n<skill_system>[\s\S]*?<\/skill_system>/,
+          skillSection
+        );
+      } else {
+        context.systemPrompt += skillSection;
+      }
     } else {
       context.systemPrompt = skillSection.trim();
     }
