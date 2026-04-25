@@ -14,6 +14,7 @@ import { InputBox } from './InputBox';
 import { StreamingIndicator } from './StreamingIndicator';
 import { AskUserQuestionPrompt } from './AskUserQuestionPrompt';
 import { BlinkProvider } from './BlinkContext';
+import { ErrorBoundary } from './ErrorBoundary';
 import type { Agent } from '../../../agent';
 import type { SlashCommand } from '../command-registry';
 import type { SessionStore } from '../../../session/store';
@@ -64,20 +65,22 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
   return (
     <Box flexDirection="column" height="100%">
       <Header sessionStore={sessionStore} />
-      <Box flexGrow={1} flexDirection="column" overflow="hidden">
-        <ScrollView>
-          {messages.map((message, index) => (
-            <ChatMessage
-              key={message.id ?? index}
-              message={message}
-            />
-          ))}
-          {streamingContent !== null && (
-            <StreamingMessage content={streamingContent} />
-          )}
-          {todos.length > 0 && <TodoPanel todos={todos} />}
-        </ScrollView>
-      </Box>
+      <ErrorBoundary name="ScrollView">
+        <Box flexGrow={1} flexDirection="column" overflow="hidden">
+          <ScrollView>
+            {messages.map((message, index) => (
+              <ChatMessage
+                key={message.id ?? index}
+                message={message}
+              />
+            ))}
+            {streamingContent !== null && (
+              <StreamingMessage content={streamingContent} />
+            )}
+            {todos.length > 0 && <TodoPanel todos={todos} />}
+          </ScrollView>
+        </Box>
+      </ErrorBoundary>
       {askUserQuestionRequest && (
         <AskUserQuestionPrompt
           questions={askUserQuestionRequest.params.questions}
@@ -88,7 +91,9 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
       {!askUserQuestionRequest && (
         <InputBox commands={allCommands} onSubmit={onSubmitWithSkill} onAbort={abort} />
       )}
-      <Footer />
+      <ErrorBoundary name="Footer">
+        <Footer />
+      </ErrorBoundary>
     </Box>
   );
 }

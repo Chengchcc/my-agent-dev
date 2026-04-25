@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink';
 import React from 'react';
 import { useAgentLoop } from '../hooks';
+import { clampPct } from '../utils/clamp';
 
 interface PureFooterProps {
   totalUsage: { totalTokens: number };
@@ -12,9 +13,10 @@ interface PureFooterProps {
  * Pure (context-free) Footer component for testing
  */
 export function PureFooter({ totalUsage, currentContextTokens, tokenLimit }: PureFooterProps) {
-  const percentage = tokenLimit > 0 ? Math.round((currentContextTokens / tokenLimit) * 100) : 0;
+  const clampedRatio = clampPct(currentContextTokens, tokenLimit);
+  const percentage = Math.round(clampedRatio * 100);
   const barWidth = 20;
-  const filled = tokenLimit > 0 ? Math.round(barWidth * currentContextTokens / tokenLimit) : 0;
+  const filled = Math.round(barWidth * clampedRatio);
   const empty = barWidth - filled;
 
   // Get budget status label and color
