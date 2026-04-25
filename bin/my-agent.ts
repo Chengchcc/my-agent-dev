@@ -108,6 +108,48 @@ function writeTextEvent(event: AgentEvent) {
   }
 }
 
+function writeStreamJsonEvent(event: AgentEvent) {
+  const serializable: Record<string, unknown> = { type: event.type, turnIndex: event.turnIndex };
+
+  switch (event.type) {
+    case 'text_delta':
+      serializable.delta = event.delta;
+      break;
+    case 'tool_call_start':
+      serializable.tool = { name: event.toolCall.name, id: event.toolCall.id, arguments: event.toolCall.arguments };
+      break;
+    case 'tool_call_result':
+      serializable.tool = { name: event.toolCall.name, id: event.toolCall.id };
+      serializable.result = typeof event.result === 'string' ? event.result : JSON.stringify(event.result);
+      serializable.durationMs = event.durationMs;
+      serializable.isError = event.isError;
+      break;
+    case 'turn_complete':
+      serializable.hasToolCalls = event.hasToolCalls;
+      serializable.usage = event.usage;
+      break;
+    case 'agent_done':
+      serializable.totalTurns = event.totalTurns;
+      serializable.reason = event.reason;
+      break;
+    case 'agent_error':
+      serializable.error = event.error.message;
+      break;
+    case 'sub_agent_start':
+      serializable.agentId = event.agentId;
+      serializable.task = event.task;
+      break;
+    case 'sub_agent_done':
+      serializable.agentId = event.agentId;
+      serializable.summary = event.summary;
+      serializable.totalTurns = event.totalTurns;
+      serializable.durationMs = event.durationMs;
+      break;
+  }
+
+  process.stdout.write(JSON.stringify(serializable) + '\n');
+}
+
 async function main() {
   const prompt = await getPrompt();
   const outputFormat = (values['output-format'] as OutputFormat ?? 'text');
@@ -121,6 +163,8 @@ async function main() {
     systemPrompt: values['system-prompt'] as string | undefined,
   });
 
+  let fullContent = '';
+  let finalEvent: AgentEvent | null = null;
   let exitCode = 0;
 
   try {
@@ -130,17 +174,38 @@ async function main() {
     )) {
       if (outputFormat === 'text') {
         writeTextEvent(event);
+      } else if (outputFormat === 'stream-json') {
+        writeStreamJsonEvent(event);
       }
-      if (event.type === 'agent_done' && event.reason === 'error') {
-        exitCode = 1;
+
+      if (event.type === 'text_delta') {
+        fullContent += event.delta;
+      }
+      if (event.type === 'agent_done') {
+        finalEvent = event;
+        if (event.reason === 'error') exitCode = 1;
       }
       if (event.type === 'agent_error') {
         exitCode = 1;
       }
     }
+
+    if (outputFormat === 'json') {
+      const output = {
+        content: fullContent,
+        totalTurns: (finalEvent as any)?.totalTurns ?? 0,
+        reason: (finalEvent as any)?.reason ?? 'unknown',
+        messages: runtime.contextManager.getContext(runtime.agent.config).messages,
+      };
+      process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+    }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`Error: ${msg}\n`);
+    if (outputFormat === 'json') {
+      process.stdout.write(JSON.stringify({ error: msg }) + '\n');
+    } else {
+      process.stderr.write(`Error: ${msg}\n`);
+    }
     exitCode = 1;
   } finally {
     await runtime.shutdown();
