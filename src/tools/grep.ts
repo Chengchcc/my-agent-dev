@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { resolve, join } from 'path';
+import { minimatch } from 'minimatch';
 import { allowedRoots } from '../config/allowed-roots';
 import { ZodTool } from './zod-tool';
 import { getLanguageFromFilePath } from '../cli/tui/components/utils/language-map';
@@ -10,20 +11,10 @@ import { isTextFile } from '../utils/is-text-file';
 const DEFAULT_EXCLUDE_PATTERNS = ['node_modules', '.git', 'dist', 'build', '.DS_Store'];
 
 /**
- * Simple glob pattern to regex conversion for basic file matching patterns
- * like *.ts, *.{ts,tsx}, *credential*, etc.
+ * Check if a file name matches a glob pattern using minimatch
  */
 function globMatch(fileName: string, pattern: string): boolean {
-  // Convert glob pattern to regex
-  const escaped = pattern
-    // Escape regex special characters except * and ?
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    // Convert glob wildcards to regex
-    .replace(/\*/g, '.*')
-    .replace(/\?/g, '.');
-
-  const regex = new RegExp(`^${escaped}$`);
-  return regex.test(fileName);
+  return minimatch(fileName, pattern);
 }
 
 export class GrepTool extends ZodTool {

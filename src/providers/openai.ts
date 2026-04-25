@@ -187,6 +187,17 @@ export class OpenAIProvider implements Provider {
         }
       }
     }
+
+    // Yield one final time with the completely parsed tool_calls
+    // This ensures the consumer gets the fully parsed arguments after completion
+    if (tool_calls.length > 0) {
+      yield {
+        content: '',
+        done: true,
+        tool_calls,
+        usage,
+      };
+    }
   }
 
   /**

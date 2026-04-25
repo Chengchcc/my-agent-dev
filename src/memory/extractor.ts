@@ -5,7 +5,7 @@ import type { MemoryEntry, MemoryExtractor } from './types';
 export class LlmExtractor implements MemoryExtractor {
   constructor(
     private provider: Provider,
-    private extractionModel: string = 'claude-3-haiku-20240307',
+    private extractionModel: string = 'claude-3-5-haiku-20241022',
   ) {}
 
   async extract(messages: Message[], projectPath?: string): Promise<MemoryEntry[]> {

@@ -436,11 +436,17 @@ export class Agent {
               break;
 
             case 'tool:result':
+              // Message.content must be string for TUI markdown rendering
+              const rawContent = event.result.content;
+              const content = typeof rawContent === 'string'
+                ? rawContent
+                : JSON.stringify(rawContent, null, 2);
+
               yield {
                 type: 'tool_call_result',
                 toolCall: event.toolCall,
-                result: event.result.content,
-                error: event.result.isError ? new Error(event.result.content) : undefined,
+                result: content,
+                error: event.result.isError ? new Error(content) : undefined,
                 durationMs: event.result.durationMs,
                 isError: event.result.isError,
                 turnIndex,
@@ -449,7 +455,7 @@ export class Agent {
               // Add tool result to context
               this.contextManager.addMessage({
                 role: 'tool',
-                content: event.result.content,
+                content,
                 tool_call_id: event.toolCall.id,
                 name: event.toolCall.name,
               });
@@ -465,7 +471,7 @@ export class Agent {
 
               // Error strategy: halt on error
               if (event.result.isError && config.toolErrorStrategy === 'halt') {
-                throw new Error(event.result.content);
+                throw new Error(content);
               }
               break;
           }
