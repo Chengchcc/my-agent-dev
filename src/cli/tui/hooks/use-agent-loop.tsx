@@ -338,8 +338,12 @@ export function AgentLoopProvider({
 
   const onSubmitWithSkill = useCallback(
     async (submission: PromptSubmission) => {
-      // The skill name is captured in the submission - the agent will handle it
-      await onSubmit(submission.text);
+      let messageText = submission.text;
+      // If a skill was requested via slash command, prepend an explicit instruction
+      if (submission.requestedSkillName) {
+        messageText = `Please use the "${submission.requestedSkillName}" skill for this request. ${messageText}`;
+      }
+      await onSubmit(messageText);
     },
     [onSubmit],
   );
