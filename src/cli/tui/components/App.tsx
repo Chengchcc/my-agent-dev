@@ -3,6 +3,7 @@ import { Box, useInput } from 'ink';
 import { ScrollView } from 'ink-scroll-view';
 import { AgentLoopProvider, useAgentLoop } from '../hooks/use-agent-loop';
 import { useAskUserQuestionManager } from '../hooks';
+import { useEventLoopStall } from '../hooks/use-event-loop-stall';
 import { getBuiltinCommands } from '../command-registry';
 import { Header } from './Header';
 import { Footer } from './Footer';
@@ -34,6 +35,7 @@ export function App({ agent, skillCommands, sessionStore }: AppProps) {
 }
 
 function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashCommand[]; sessionStore: SessionStore }) {
+  useEventLoopStall(process.env.DEBUG_STALL === '1');
   const { messages, streaming: isStreaming, streamingContent, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool } = useAgentLoop();
   const { askUserQuestionRequest, respondWithAnswers } = useAskUserQuestionManager();
 
