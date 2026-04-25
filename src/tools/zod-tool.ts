@@ -161,10 +161,15 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
     }
 
     if (schema instanceof z.ZodUnion) {
-      // For unions, we just add description if present
-      if (schema.description) {
-        result.description = schema.description;
-      }
+      result.oneOf = schema.options.map((opt: z.ZodTypeAny) => this.zodToJsonSchema(opt));
+      if (schema.description) result.description = schema.description;
+      return result;
+    }
+
+    if (schema instanceof z.ZodDiscriminatedUnion) {
+      result.oneOf = schema.options.map((opt: z.ZodTypeAny) => this.zodToJsonSchema(opt));
+      result.discriminator = { propertyName: schema.discriminator };
+      if (schema.description) result.description = schema.description;
       return result;
     }
 
@@ -174,6 +179,20 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
       if (schema.description) {
         result.description = schema.description;
       }
+      return result;
+    }
+
+    if (schema instanceof z.ZodDate) {
+      result.type = 'string';
+      result.format = 'date-time';
+      if (schema.description) result.description = schema.description;
+      return result;
+    }
+
+    if (schema instanceof z.ZodEffects) {
+      const inner = this.zodToJsonSchema(schema._def.schema);
+      Object.assign(result, inner);
+      if (schema.description) result.description = schema.description;
       return result;
     }
 
@@ -191,7 +210,7 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
       const errors = result.error.issues
         .map(issue => `- ${issue.path.join('.')}: ${issue.message}`)
         .join('\n');
-      return `Parameter validation failed:\n${errors}`;
+      throw new Error(`Parameter validation failed:\n${errors}`);
     }
 
     return this.handle(result.data, ctx);
