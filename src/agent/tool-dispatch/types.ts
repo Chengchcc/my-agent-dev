@@ -15,7 +15,7 @@ export interface ToolSink {
   /** 提交 tool 执行过程中的结构化日志 */
   log(level: 'debug' | 'info' | 'warn', message: string): void;
 
-  readonly _todoUpdates?: TodoItem[];
+  readonly _todoUpdates: TodoItem[] | undefined;
   readonly _memoryHints: string[];
   readonly _logs: Array<{ level: string; message: string; timestamp: number }>;
 }
@@ -119,7 +119,7 @@ export function createToolSink(): ToolSink {
       state._logs.push({ level, message, timestamp: Date.now() });
     },
     get _todoUpdates() {
-      return state._todoUpdates ?? [];
+      return state._todoUpdates;
     },
     get _memoryHints() {
       return state._memoryHints;
