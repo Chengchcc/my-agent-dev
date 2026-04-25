@@ -31,6 +31,10 @@ export type SkillMiddlewareResult = AgentMiddleware & {
   clearCache: () => void;
   /** Register the skill loader with a provider to expose skills as tools */
   registerAsTools: (provider: Provider) => void;
+  /** Exposed for testing - loaded skills map */
+  loadedSkills: Map<string, SkillInfo>;
+  /** Exposed for testing - skill aliases map */
+  skillAliases: Map<string, string>;
 };
 
 /**
@@ -157,9 +161,8 @@ You must read the matching skill file${mentionedSkills.length > 1 ? 's' : ''} us
         description: s.description,
         path: s.filePath,
         metadata: s.metadata,
-      })),
-      null,
-      2
+      }))
+      // No indentation - saves ~15% on tokens
     );
 
     skillSection += `
@@ -231,5 +234,8 @@ ${skillsJson}
     getSkillContent,
     clearCache,
     registerAsTools,
+    // Exposed for testing
+    loadedSkills,
+    skillAliases,
   };
 }
