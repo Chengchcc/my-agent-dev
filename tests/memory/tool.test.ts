@@ -161,9 +161,9 @@ describe('MemoryTool', () => {
     });
   });
 
-  it('returns validation error on unknown command', async () => {
-    const result = await tool.execute({ command: 'invalid' }, createTestCtx());
-    expect(typeof result).toBe('string');
-    expect(result as string).toContain('Parameter validation failed');
+  it('throws validation error on unknown command', async () => {
+    await expect(
+      tool.execute({ command: 'invalid' }, createTestCtx()),
+    ).rejects.toThrow('Parameter validation failed');
   });
 });
