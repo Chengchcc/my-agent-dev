@@ -19,6 +19,10 @@ These are non-negotiable, CI-enforced rules. Violations will block your PR. Read
 
 ---
 
+## Design Overview
+
+For a comprehensive walkthrough of the project's architecture — the agent loop, tool dispatch pipeline, memory system, skills, compaction, TUI, and how everything fits together — read the **[Design Document](./DESIGN.md)**.
+
 ## Current State
 
 This is a TypeScript-based AI agent framework built with Bun, featuring a modular architecture for extending functionality through skills, and an interactive terminal UI (TUI) powered by Ink/React. The project is actively under development with many core features complete.
