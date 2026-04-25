@@ -1,6 +1,7 @@
 import { exec } from 'child_process';
 import path from 'path';
-import type { Tool, ToolImplementation } from '../types';
+import { z } from 'zod';
+import { ZodTool } from './zod-tool';
 import type { ToolContext } from '../agent/tool-dispatch/types';
 
 /**
@@ -12,50 +13,34 @@ export type BashToolOptions = {
   allowedWorkingDirs?: string[];
 };
 
+const BashSchema = z.object({
+  command: z.string().describe('The shell command to execute.'),
+  cwd: z.string().optional().describe('Working directory for the command (optional).'),
+});
+
 /**
  * Built-in tool for executing shell commands.
  * Similar to Anthropic Claude Platform's Bash tool.
  */
-export class BashTool implements ToolImplementation {
+export class BashTool extends ZodTool<typeof BashSchema> {
+  protected schema = BashSchema;
+  protected name = 'bash';
+  protected description =
+    'Execute a shell command on the local system. Use this for file operations, running scripts, installing dependencies, checking system status, git operations, and other command-line tasks.';
+
   private timeoutMs: number;
   private maxOutputBytes: number;
-  private allowedWorkingDirs?: string[];
+  private allowedWorkingDirs: string[];
 
   constructor(options: BashToolOptions = {}) {
-    this.timeoutMs = options.timeoutMs ?? 120000; // 2 minutes default
-    this.maxOutputBytes = options.maxOutputBytes ?? 1024 * 1024; // 1MB default
+    super();
+    this.timeoutMs = options.timeoutMs ?? 120_000;
+    this.maxOutputBytes = options.maxOutputBytes ?? 1024 * 1024;
     this.allowedWorkingDirs = options.allowedWorkingDirs ?? [];
   }
 
-  /**
-   * Get the tool definition for function calling.
-   */
-  getDefinition(): Tool {
-    return {
-      name: 'bash',
-      description: 'Execute a shell command on the local system. Use this for file operations, running scripts, installing dependencies, checking system status, git operations, and other command-line tasks.',
-      parameters: {
-        type: 'object',
-        properties: {
-          command: {
-            type: 'string',
-            description: 'The shell command to execute.',
-          },
-          cwd: {
-            type: 'string',
-            description: 'Working directory for the command (optional, defaults to current working directory).',
-          },
-        },
-        required: ['command'],
-      },
-    };
-  }
-
-  /**
-   * Execute the bash command.
-   */
-  async execute(
-    params: { command: string; cwd?: string },
+  protected async handle(
+    args: z.infer<typeof BashSchema>,
     ctx: ToolContext,
   ): Promise<{
     output: string;
@@ -63,18 +48,16 @@ export class BashTool implements ToolImplementation {
     timedOut: boolean;
     truncated: boolean;
   }> {
-    const { command, cwd } = params;
-
     // Validate working directory if restricted (empty array = no restrictions)
-    if (this.allowedWorkingDirs && this.allowedWorkingDirs.length > 0) {
-      const targetCwd = path.resolve(cwd ?? process.cwd());
-      const isAllowed = this.allowedWorkingDirs.some(allowed => {
+    const cwd = path.resolve(args.cwd ?? ctx.environment.cwd);
+    if (this.allowedWorkingDirs.length > 0) {
+      const isAllowed = this.allowedWorkingDirs.some((allowed) => {
         const resolvedAllowed = path.resolve(allowed);
-        return targetCwd === resolvedAllowed || targetCwd.startsWith(resolvedAllowed + path.sep);
+        return cwd === resolvedAllowed || cwd.startsWith(resolvedAllowed + path.sep);
       });
       if (!isAllowed) {
         return {
-          output: `Error: Working directory "${targetCwd}" is not allowed.`,
+          output: `Error: Working directory "${cwd}" is not allowed.`,
           exitCode: 1,
           timedOut: false,
           truncated: false,
@@ -87,8 +70,8 @@ export class BashTool implements ToolImplementation {
       let outputBytes = 0;
       let truncated = false;
 
-      const proc = exec(command, {
-        cwd: cwd,
+      const proc = exec(args.command, {
+        cwd,
         maxBuffer: 10 * 1024 * 1024, // 10MB - let manual truncation below handle our limit
         timeout: this.timeoutMs,
       });
