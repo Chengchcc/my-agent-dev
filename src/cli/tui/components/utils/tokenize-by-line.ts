@@ -1,9 +1,8 @@
 import type { Token } from 'prismjs';
 
-interface LineToken {
+export interface LineToken {
   content: string;
-  type?: string;
-  styles?: string[];
+  type: string | null;
 }
 
 export function tokenizeByLine(tokens: Array<Token | string>): LineToken[][] {
@@ -27,6 +26,7 @@ export function tokenizeByLine(tokens: Array<Token | string>): LineToken[][] {
         if (linePart.length > 0) {
           currentLineTokens.push({
             content: linePart,
+            type: null,
           });
         }
       }

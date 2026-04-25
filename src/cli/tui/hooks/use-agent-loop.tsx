@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useReducer, useDeferredValue } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useReducer, useDeferredValue, startTransition } from 'react';
 import { createContext as createSelectorContext, useContextSelector } from 'use-context-selector';
 import { countMessageTokens } from '../../../utils/token-cache';
 import type { ReactNode } from 'react';
@@ -246,17 +246,30 @@ export function AgentLoopProvider({
             dispatch({ type: 'TOOL_START', runningTools: new Map(runningTools) });
           } else if (event.type === 'tool_call_result') {
             runningTools.delete(event.toolCall.id);
-            // After tool result completes, refresh from full context
-            // This ensures tool messages are shown separately immediately
             streamingContentRef.current = '';
-            const fullContext = agent.getContext();
+
+            // Light update: stop spinner, set duration/error status
+            // This runs immediately at high priority so UI feels responsive
             dispatch({
-              type: 'TOOL_RESULT',
+              type: 'TOOL_RESULT_META',
               runningTools: new Map(runningTools),
               toolId: event.toolCall.id,
-              result: { durationMs: event.durationMs, isError: event.isError },
-              messages: fullContext.messages,
-              todos: agent.getContextManager().getTodos(),
+              result: {
+                durationMs: event.durationMs,
+                isError: event.isError,
+              },
+            });
+
+            // Heavy update: refresh full messages (may be large)
+            // Wrapped in startTransition to allow concurrent rendering
+            const fullContext = agent.getContext();
+
+            startTransition(() => {
+              dispatch({
+                type: 'TOOL_RESULT_MESSAGES',
+                messages: fullContext.messages,
+                todos: agent.getContextManager().getTodos(),
+              });
             });
           } else if (event.type === 'agent_error') {
             debugLog('[agent-loop] agent_error details:', event.error);
