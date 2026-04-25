@@ -27,6 +27,17 @@ export type AgentUIAction =
   | { type: 'TEXT_DELTA_BATCH'; streamingMessageId: string; content: string }
   | { type: 'TOOL_START'; runningTools: Map<string, ToolCallStartEvent> }
   | { type: 'TOOL_RESULT'; runningTools: Map<string, ToolCallStartEvent>; toolId: string; result: { durationMs: number; isError: boolean }; messages: Message[]; todos: UITodoItem[] }
+  | {
+      type: 'TOOL_RESULT_META';
+      runningTools: Map<string, ToolCallStartEvent>;
+      toolId: string;
+      result: { durationMs: number; isError: boolean };
+    }
+  | {
+      type: 'TOOL_RESULT_MESSAGES';
+      messages: Message[];
+      todos: UITodoItem[];
+    }
   | { type: 'LOOP_COMPLETE'; messages: Message[]; todos: UITodoItem[]; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }
   | { type: 'AGENT_ERROR'; errorMessage: Message }
   | { type: 'SUB_AGENT_START'; event: SubAgentStartEvent }
@@ -86,6 +97,30 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
         messages: action.messages,
         todos: action.todos,
       };
+
+    case 'TOOL_RESULT_META': {
+      const toolResults = new Map(state.toolResults);
+      const existing = toolResults.get(action.toolId);
+      if (existing) {
+        toolResults.set(action.toolId, {
+          durationMs: action.result.durationMs,
+          isError: action.result.isError,
+        });
+      }
+      return {
+        ...state,
+        currentTools: Array.from(action.runningTools.values()),
+        toolResults,
+      };
+    }
+
+    case 'TOOL_RESULT_MESSAGES': {
+      return {
+        ...state,
+        messages: action.messages,
+        todos: action.todos,
+      };
+    }
 
     case 'TURN_COMPLETE':
       // Accumulate token usage from completed turn
