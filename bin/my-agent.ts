@@ -4,6 +4,7 @@ import 'dotenv/config';
 import { parseArgs } from 'util';
 import { createAgentRuntime } from '../src/runtime';
 import { setDebugMode } from '../src/utils/debug';
+import type { AgentEvent } from '../src/agent/loop-types';
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
@@ -83,8 +84,68 @@ async function getPrompt(): Promise<string> {
   process.exit(2);
 }
 
-// Temporary main to make tests pass
-async function main() {
-  await getPrompt();
+type OutputFormat = 'text' | 'json' | 'stream-json';
+
+function writeTextEvent(event: AgentEvent) {
+  switch (event.type) {
+    case 'text_delta':
+      process.stdout.write(event.delta);
+      break;
+    case 'tool_call_start':
+      if (values.debug) {
+        process.stderr.write(`\n[tool:${event.toolCall.name}] starting...\n`);
+      }
+      break;
+    case 'tool_call_result':
+      if (values.debug) {
+        const status = event.isError ? 'ERROR' : 'OK';
+        process.stderr.write(`[tool:${event.toolCall.name}] ${status} (${event.durationMs}ms)\n`);
+      }
+      break;
+    case 'agent_done':
+      process.stdout.write('\n');
+      break;
+  }
 }
+
+async function main() {
+  const prompt = await getPrompt();
+  const outputFormat = (values['output-format'] as OutputFormat ?? 'text');
+  const maxTurns = parseInt(values['max-turns'] as string ?? '25', 10);
+
+  const runtime = await createAgentRuntime({
+    model: values.model as string | undefined,
+    enableMemory: !values['no-memory'],
+    enableSkills: !values['no-skills'],
+    enableTodo: !values['no-todo'],
+    systemPrompt: values['system-prompt'] as string | undefined,
+  });
+
+  let exitCode = 0;
+
+  try {
+    for await (const event of runtime.agent.runAgentLoop(
+      { role: 'user', content: prompt },
+      { maxTurns },
+    )) {
+      if (outputFormat === 'text') {
+        writeTextEvent(event);
+      }
+      if (event.type === 'agent_done' && event.reason === 'error') {
+        exitCode = 1;
+      }
+      if (event.type === 'agent_error') {
+        exitCode = 1;
+      }
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`Error: ${msg}\n`);
+    exitCode = 1;
+  } finally {
+    await runtime.shutdown();
+    process.exit(exitCode);
+  }
+}
+
 main();
