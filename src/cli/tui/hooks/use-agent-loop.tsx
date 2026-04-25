@@ -1,6 +1,6 @@
-import React, { createContext, useCallback, useEffect, useMemo, useRef, useState, useReducer } from 'react';
+import React, { createContext, useCallback, useEffect, useMemo, useRef, useState, useReducer, useDeferredValue } from 'react';
 import { createContext as createSelectorContext, useContextSelector } from 'use-context-selector';
-import { countTokens } from '@anthropic-ai/tokenizer';
+import { countMessageTokens } from '../../../utils/token-cache';
 import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
 import type { Message } from '../../../types';
@@ -100,19 +100,17 @@ export function AgentLoopProvider({
   // Helper to refresh messages from agent context
   const refreshMessages = useCallback(() => {
     const fullContext = agent.getContext();
-    const agentWithContextManager = agent as Agent & { getContextManager(): { getTodos: () => UITodoItem[] } };
     dispatch({
       type: 'LOOP_COMPLETE',
       messages: fullContext.messages,
-      todos: agentWithContextManager.getContextManager().getTodos(),
+      todos: agent.getContextManager().getTodos(),
     });
   }, [agent]);
 
   // Helper to refresh todos from agent
   const refreshTodos = useCallback(() => {
-    const agentWithContextManager = agent as Agent & { getContextManager(): { getTodos: () => UITodoItem[] } };
-    if (typeof agentWithContextManager.getContextManager === 'function') {
-      const updatedTodos = agentWithContextManager.getContextManager().getTodos();
+    if (typeof agent.getContextManager === 'function') {
+      const updatedTodos = agent.getContextManager().getTodos();
       dispatch({ type: 'SET_TODOS', todos: updatedTodos });
     }
   }, [agent]);
@@ -126,24 +124,26 @@ export function AgentLoopProvider({
   }, []);
 
   const getCollapsibleTools = useCallback((): string[] => {
-    // Get all tool calls from assistant messages that have result and are collapsible
+    // O(N) single pass: first build map of tool results, then check tool calls
+    const toolResultsMap = new Map<string, string>();
+
+    for (const msg of messages) {
+      if (msg.role === 'tool' && msg.content) {
+        toolResultsMap.set(msg.tool_call_id!, msg.content);
+      }
+    }
+
     const collapsibleTools: string[] = [];
-
-    messages.forEach((msg: Message) => {
+    for (const msg of messages) {
       if (msg.role === 'assistant' && msg.tool_calls) {
-        msg.tool_calls.forEach((tc: any) => {
-          // A tool is collapsible if it has a result > 3 lines and not an error
-          // We need to look up the corresponding tool message
-          const toolMessage = messages.find((m: Message) => m.role === 'tool' && m.tool_call_id === tc.id);
-          if (!toolMessage?.content) return;
-
-          const lines = toolMessage.content.split('\n');
-          if (lines.length > 3) {
+        for (const tc of msg.tool_calls) {
+          const content = toolResultsMap.get(tc.id);
+          if (content && content.split('\n').length > 3) {
             collapsibleTools.push(tc.id);
           }
-        });
+        }
       }
-    });
+    }
 
     return collapsibleTools;
   }, [messages]);
@@ -250,14 +250,13 @@ export function AgentLoopProvider({
             // This ensures tool messages are shown separately immediately
             streamingContentRef.current = '';
             const fullContext = agent.getContext();
-            const agentWithContextManager = agent as Agent & { getContextManager(): { getTodos: () => UITodoItem[] } };
             dispatch({
               type: 'TOOL_RESULT',
               runningTools: new Map(runningTools),
               toolId: event.toolCall.id,
               result: { durationMs: event.durationMs, isError: event.isError },
               messages: fullContext.messages,
-              todos: agentWithContextManager.getContextManager().getTodos(),
+              todos: agent.getContextManager().getTodos(),
             });
           } else if (event.type === 'agent_error') {
             debugLog('[agent-loop] agent_error details:', event.error);
@@ -295,11 +294,10 @@ export function AgentLoopProvider({
         // After loop completes, get full context and update all messages
         const fullContext = agent.getContext();
         const allMessages = fullContext.messages;
-        const agentWithContextManager = agent as Agent & { getContextManager(): { getTodos: () => UITodoItem[] } };
         dispatch({
           type: 'LOOP_COMPLETE',
           messages: allMessages,
-          todos: agentWithContextManager.getContextManager().getTodos(),
+          todos: agent.getContextManager().getTodos(),
           // Usage is already accumulated via TURN_COMPLETE events during iteration
           // Don't pass it again to avoid double-counting the last turn
         });
@@ -340,17 +338,16 @@ export function AgentLoopProvider({
     }
   }, [agent]);
 
-  // Calculate current context token count
+  // Defer token calculation to idle frames - UI updates immediately, tokens catch up later
+  const deferredMessages = useDeferredValue(messages);
+
+  // Calculate current context token count with WeakMap caching
+  // Cached messages take 0ms vs 10-100ms per large message
   const currentContextTokens = useMemo(() => {
-    return messages.reduce((sum: number, msg: Message) => {
-      try {
-        return sum + countTokens(msg.content || '');
-      } catch (e) {
-        // Fallback: estimate tokens when countTokens fails (e.g. special Unicode chars)
-        return sum + Math.ceil((msg.content || '').length / 4);
-      }
+    return deferredMessages.reduce((sum: number, msg: Message) => {
+      return sum + countMessageTokens(msg);
     }, 0);
-  }, [messages]);
+  }, [deferredMessages]);
 
   const value = useMemo(
     () => ({

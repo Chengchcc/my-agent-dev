@@ -1,4 +1,5 @@
 import type { AgentConfig, Provider } from './types';
+import type { LLMSettings, ContextSettings, CompactionSettings } from './config/types';
 import { Agent } from './agent/Agent';
 import { ToolRegistry } from './agent/tool-registry';
 import { ContextManager } from './agent/context';
@@ -13,8 +14,10 @@ import { SessionStore } from './session/store';
 import { createAutoSaveHook } from './session/hook';
 import type { AskUserQuestionParameters, AskUserQuestionResult } from './tools/ask-user-question';
 import { BashTool, TextEditorTool, AskUserQuestionTool, ReadTool, GrepTool, GlobTool, LsTool } from './tools';
-import { ClaudeProvider } from './providers/claude';
-import { OpenAIProvider } from './providers/openai';
+import { ClaudeProvider, OpenAIProvider, createProviderFromSettings } from './providers';
+import { DEFAULT_SYSTEM_PROMPT } from './config/default-prompts';
+import { TokenBudgetCalculator, TieredCompactionManager, DEFAULT_COMPACTION_CONFIG } from './agent/compaction';
+import { debugLog } from './utils/debug';
 
 export interface RuntimeConfig {
   provider?: 'claude' | 'openai';
@@ -26,8 +29,15 @@ export interface RuntimeConfig {
   enableSkills?: boolean;
   enableTodo?: boolean;
   enableSession?: boolean;
+  enableCompaction?: boolean;
   systemPrompt?: string;
+  allowedRoots?: string[];
   askUserQuestionHandler?: (params: AskUserQuestionParameters) => Promise<AskUserQuestionResult>;
+  /** For TUI mode: full settings object overrides individual options */
+  settings?: {
+    llm: LLMSettings;
+    context: ContextSettings;
+  };
 }
 
 export interface AgentRuntime {
@@ -44,73 +54,65 @@ export async function createAgentRuntime(
   config: RuntimeConfig = {},
 ): Promise<AgentRuntime> {
   const {
-    provider: providerName,
-    model,
-    maxTokens = 4096,
-    tokenLimit = 100_000,
     cwd = process.cwd(),
     enableMemory = true,
     enableSkills = true,
     enableTodo = true,
     enableSession = true,
-    systemPrompt,
+    enableCompaction = true,
+    systemPrompt = DEFAULT_SYSTEM_PROMPT,
+    allowedRoots = [cwd],
     askUserQuestionHandler,
+    settings,
   } = config;
 
+  // Create provider - from settings or auto-detect from env
   let provider: Provider;
-  const hasClaudeKey = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
-  const hasOpenaiKey = process.env.OPENAI_API_KEY;
-
-  if (providerName === 'openai' && hasOpenaiKey) {
-    provider = new OpenAIProvider({
-      apiKey: process.env.OPENAI_API_KEY!,
-      baseURL: process.env.OPENAI_BASE_URL,
-      model: model || process.env.MODEL || 'gpt-4o',
-      maxTokens,
-      temperature: 0.7,
-    });
-  } else if (providerName === 'claude' && hasClaudeKey) {
-    provider = new ClaudeProvider({
-      apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN!,
-      baseURL: process.env.ANTHROPIC_BASE_URL,
-      model: model || process.env.MODEL || 'claude-3-5-sonnet-20241022',
-      maxTokens,
-      temperature: 0.7,
-    });
-  } else if (!providerName) {
-    // Auto-detect
-    if (hasClaudeKey) {
-      provider = new ClaudeProvider({
-        apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN!,
-        baseURL: process.env.ANTHROPIC_BASE_URL,
-        model: model || process.env.MODEL || 'claude-3-5-sonnet-20241022',
-        maxTokens,
-        temperature: 0.7,
-      });
-    } else if (hasOpenaiKey) {
-      provider = new OpenAIProvider({
-        apiKey: process.env.OPENAI_API_KEY!,
-        baseURL: process.env.OPENAI_BASE_URL,
-        model: model || process.env.MODEL || 'gpt-4o',
-        maxTokens,
-        temperature: 0.7,
-      });
-    } else {
-      throw new Error('No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.');
-    }
+  if (settings) {
+    provider = createProviderFromSettings(settings.llm);
   } else {
-    throw new Error(`Provider '${providerName}' not available or no API key found.`);
+    provider = createProviderFromEnv(config);
   }
 
-  const contextManager = new ContextManager({ tokenLimit });
-  if (systemPrompt) {
-    contextManager.setSystemPrompt(systemPrompt);
+  // Token limit - from settings or default
+  const tokenLimit = settings?.context.tokenLimit || 100_000;
+  const maxTokens = settings?.llm.maxTokens || 4096;
+
+  // Context manager with optional tiered compaction
+  let compressionStrategy: TieredCompactionManager | undefined;
+  if (enableCompaction && settings?.context.compaction) {
+    const tokenBudgetCalc = new TokenBudgetCalculator(
+      tokenLimit,
+      maxTokens,
+      2048, // compaction buffer
+    );
+
+    const compactionConfig = {
+      ...DEFAULT_COMPACTION_CONFIG,
+      thresholds: {
+        ...DEFAULT_COMPACTION_CONFIG.thresholds,
+        ...settings.context.compaction,
+      },
+      summaryProvider: provider,
+      summaryModel: settings.context.compaction.summaryModel || 'claude-3-5-haiku-20241022',
+    };
+
+    compressionStrategy = new TieredCompactionManager(tokenBudgetCalc, compactionConfig);
+    debugLog('Tiered compaction enabled');
   }
+
+  const contextManager = new ContextManager({
+    tokenLimit,
+    defaultSystemPrompt: systemPrompt,
+    compressionStrategy,
+  });
+
   const agentConfig: AgentConfig = { tokenLimit };
 
+  // Tool registry with security boundaries
   const toolRegistry = new ToolRegistry();
-  toolRegistry.register(new BashTool({ allowedWorkingDirs: [cwd] }));
-  toolRegistry.register(new TextEditorTool({ allowedRoots: [cwd] }));
+  toolRegistry.register(new BashTool({ allowedWorkingDirs: allowedRoots }));
+  toolRegistry.register(new TextEditorTool({ allowedRoots }));
   toolRegistry.register(new ReadTool());
   toolRegistry.register(new GrepTool());
   toolRegistry.register(new GlobTool());
@@ -202,4 +204,56 @@ export async function createAgentRuntime(
       }
     },
   };
+}
+
+/**
+ * Create provider from environment variables (headless mode fallback).
+ */
+function createProviderFromEnv(config: RuntimeConfig): Provider {
+  const {
+    provider: providerName,
+    model,
+    maxTokens = 4096,
+  } = config;
+
+  const hasClaudeKey = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
+  const hasOpenaiKey = process.env.OPENAI_API_KEY;
+
+  if (providerName === 'openai' && hasOpenaiKey) {
+    return new OpenAIProvider({
+      apiKey: process.env.OPENAI_API_KEY!,
+      baseURL: process.env.OPENAI_BASE_URL,
+      model: model || process.env.MODEL || 'gpt-4o',
+      maxTokens,
+      temperature: 0.7,
+    });
+  } else if (providerName === 'claude' && hasClaudeKey) {
+    return new ClaudeProvider({
+      apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN!,
+      baseURL: process.env.ANTHROPIC_BASE_URL,
+      model: model || process.env.MODEL || 'claude-3-5-sonnet-20241022',
+      maxTokens,
+      temperature: 0.7,
+    });
+  } else if (!providerName) {
+    if (hasClaudeKey) {
+      return new ClaudeProvider({
+        apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN!,
+        baseURL: process.env.ANTHROPIC_BASE_URL,
+        model: model || process.env.MODEL || 'claude-3-5-sonnet-20241022',
+        maxTokens,
+        temperature: 0.7,
+      });
+    } else if (hasOpenaiKey) {
+      return new OpenAIProvider({
+        apiKey: process.env.OPENAI_API_KEY!,
+        baseURL: process.env.OPENAI_BASE_URL,
+        model: model || process.env.MODEL || 'gpt-4o',
+        maxTokens,
+        temperature: 0.7,
+      });
+    }
+    throw new Error('No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.');
+  }
+  throw new Error(`Provider '${providerName}' not available or no API key found.`);
 }

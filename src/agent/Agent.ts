@@ -8,9 +8,9 @@ import type {
   ToolCall,
   AgentHooks,
   Message,
-  ToolImplementation,
 } from '../types';
 import type { AgentEvent, AgentLoopConfig, ContextCompactedEvent } from './loop-types';
+import type { ToolContext } from './tool-dispatch/types';
 import { ContextManager } from './context';
 import { composeMiddlewares } from './middleware';
 import { DEFAULT_LOOP_CONFIG } from './loop-types';
@@ -99,7 +99,7 @@ export class Agent {
   /**
    * Build ToolContext from current agent state
    */
-  private buildToolContext(agentCtx: AgentContext, signal: AbortSignal): any {
+  private buildToolContext(agentCtx: AgentContext, signal: AbortSignal): ToolContext {
     return {
       signal,
       agentContext: Object.freeze({ ...agentCtx }),
@@ -114,6 +114,355 @@ export class Agent {
       metadata: new Map(),
       sink: createToolSink(),
     };
+  }
+
+  // ===== Internal loop helpers: 4-phase architecture =====
+
+  /**
+   * Phase 1: Setup - initialize state, add user message, run beforeAgentRun hooks
+   */
+  private async runSetup(
+    userMessage: { role: 'user'; content: string },
+    _config: AgentLoopConfig,
+  ): Promise<void> {
+    this.contextManager.addMessage({
+      role: 'user',
+      content: userMessage.content,
+    });
+
+    const initialContext = this.contextManager.getContext(this.config);
+    const composedBeforeAgentRun = composeMiddlewares(
+      this.hooks.beforeAgentRun,
+      (ctx) => Promise.resolve(ctx),
+    );
+    const afterBeforeAgentRun = await composedBeforeAgentRun(initialContext);
+
+    this.contextManager.setSystemPrompt(afterBeforeAgentRun.systemPrompt);
+    this.contextManager.syncTodoFromContext(afterBeforeAgentRun);
+  }
+
+  /**
+   * Phase 2: Single turn execution - compaction → beforeModel → LLM stream → afterModel → beforeAddResponse
+   */
+  private async *runSingleTurn(
+    turnIndex: number,
+    config: AgentLoopConfig,
+    signal: AbortSignal,
+  ): AsyncGenerator<AgentEvent, {
+    toolCalls: ToolCall[];
+    resultContext: AgentContext;
+    done: boolean;
+  }> {
+    const currentContext = this.contextManager.getContext(this.config);
+    const composedBeforeCompress = composeMiddlewares(
+      this.hooks.beforeCompress,
+      (ctx) => Promise.resolve(ctx),
+    );
+
+    let afterBeforeCompress: AgentContext;
+    try {
+      afterBeforeCompress = await composedBeforeCompress(currentContext);
+    } catch (hookError) {
+      console.warn('[agent] beforeCompress hook failed:', hookError);
+      afterBeforeCompress = currentContext;
+    }
+    this.contextManager.syncTodoFromContext(afterBeforeCompress);
+
+    const compactionResult = await this.contextManager.compressIfNeeded(afterBeforeCompress);
+    afterBeforeCompress.messages = compactionResult.messages;
+    this.contextManager.setMessages(compactionResult.messages);
+
+    if (compactionResult.compacted) {
+      yield {
+        type: 'context_compacted',
+        level: compactionResult.level,
+        beforeTokens: compactionResult.tokensBefore,
+        afterTokens: compactionResult.tokensAfter,
+        turnIndex,
+      } satisfies ContextCompactedEvent;
+    }
+
+    const composedBeforeModel = composeMiddlewares(
+      this.hooks.beforeModel,
+      (innerCtx) => Promise.resolve(innerCtx),
+    );
+    let resultContext: AgentContext;
+    try {
+      resultContext = await composedBeforeModel(afterBeforeCompress);
+    } catch (hookError) {
+      console.warn('[agent] beforeModel hook failed:', hookError);
+      resultContext = afterBeforeCompress;
+    }
+    this.contextManager.syncTodoFromContext(resultContext);
+
+    // Stream from LLM
+    let fullContent = '';
+    const toolCalls: ToolCall[] = [];
+    let usage: {
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+    } | undefined;
+
+    for await (const chunk of this.provider.stream(resultContext, { signal })) {
+      if (signal.aborted) break;
+      if (chunk.content) {
+        fullContent += chunk.content;
+        yield {
+          type: 'text_delta',
+          delta: chunk.content,
+          turnIndex,
+        } satisfies AgentEvent;
+      }
+      if (chunk.tool_calls) {
+        for (const tc of chunk.tool_calls) {
+          if (!toolCalls.some(existing => existing.id === tc.id)) {
+            toolCalls.push(tc);
+          }
+        }
+      }
+      if (chunk.usage) {
+        usage = chunk.usage;
+        if (usage && this.contextManager) {
+          this.contextManager.updateTokenUsage(usage);
+        }
+      }
+    }
+
+    if (signal.aborted) {
+      yield {
+        type: 'agent_error',
+        error: new Error('Agent execution aborted'),
+        turnIndex,
+      } satisfies AgentEvent;
+      return { toolCalls: [], resultContext, done: true };
+    }
+
+    const composedAfterModel = composeMiddlewares(
+      this.hooks.afterModel,
+      (ctx) => Promise.resolve(ctx),
+    );
+    try {
+      resultContext = await composedAfterModel(resultContext);
+    } catch (hookError) {
+      console.warn('[agent] afterModel hook failed:', hookError);
+    }
+    this.contextManager.syncTodoFromContext(resultContext);
+
+    resultContext.response = {
+      content: fullContent,
+      tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+      usage: usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+      model: this.provider.constructor.name,
+    };
+
+    const composedBeforeAddResponse = composeMiddlewares(
+      this.hooks.beforeAddResponse,
+      (ctx) => Promise.resolve(ctx),
+    );
+    resultContext = await composedBeforeAddResponse(resultContext);
+    this.contextManager.syncTodoFromContext(resultContext);
+
+    if (resultContext.response) {
+      this.contextManager.addMessage({
+        role: 'assistant',
+        content: resultContext.response.content,
+        tool_calls: resultContext.response.tool_calls,
+      });
+    }
+
+    const done = !toolCalls || toolCalls.length === 0;
+    yield {
+      type: 'turn_complete',
+      turnIndex,
+      hasToolCalls: !done,
+      usage,
+    } satisfies AgentEvent;
+
+    return { toolCalls, resultContext, done };
+  }
+
+  /**
+   * Phase 3: Tool execution - with budget guard
+   */
+  private async *runTools(
+    toolCalls: ToolCall[],
+    resultContext: AgentContext,
+    config: AgentLoopConfig,
+    signal: AbortSignal,
+    turnIndex: number,
+  ): AsyncGenerator<AgentEvent> {
+    const remaining = this.contextManager.getRemainingBudget();
+    const totalLimit = this.config.tokenLimit;
+
+    const batchCheck = checkBatchBudget(toolCalls, remaining, totalLimit);
+    if (batchCheck.action === 'delegate-to-sub-agent') {
+      yield {
+        type: 'budget_delegation',
+        reason: batchCheck.reason!,
+        originalTools: toolCalls.map(tc => tc.name),
+        turnIndex,
+      } satisfies import('./loop-types').BudgetDelegationEvent;
+
+      const subId = `budget-sub-${nanoid(6)}`;
+      const subAgentCall: ToolCall = {
+        id: subId,
+        name: 'sub_agent',
+        arguments: { task: batchCheck.delegatedTask! },
+      };
+      toolCalls.length = 0;
+      toolCalls.push(subAgentCall);
+      this.contextManager.replaceLastAssistantToolCalls(toolCalls);
+    } else if (batchCheck.action === 'compact-first') {
+      yield {
+        type: 'budget_compact',
+        reason: batchCheck.reason!,
+        turnIndex,
+      } satisfies import('./loop-types').BudgetCompactEvent;
+
+      const currentContext = this.contextManager.getContext(this.config);
+      const compressed = await this.contextManager.compressIfNeeded(currentContext);
+      this.contextManager.setMessages(compressed.messages);
+    } else {
+      for (let i = 0; i < toolCalls.length; i++) {
+        const remainingAfterPrevious = this.contextManager.getRemainingBudget();
+        const singleCheck = checkToolBudget(toolCalls[i], remainingAfterPrevious, totalLimit);
+        if (singleCheck.action === 'delegate-to-sub-agent') {
+          yield {
+            type: 'budget_delegation',
+            reason: singleCheck.reason!,
+            originalTools: [toolCalls[i].name],
+            turnIndex,
+          } satisfies import('./loop-types').BudgetDelegationEvent;
+
+          const subId = `budget-sub-${nanoid(6)}`;
+          toolCalls[i] = {
+            id: subId,
+            name: 'sub_agent',
+            arguments: { task: singleCheck.delegatedTask! },
+          };
+          this.contextManager.replaceLastAssistantToolCalls(toolCalls);
+        } else if (singleCheck.action === 'compact-first') {
+          yield {
+            type: 'budget_compact',
+            reason: singleCheck.reason!,
+            turnIndex,
+          } satisfies import('./loop-types').BudgetCompactEvent;
+
+          const currentContext = this.contextManager.getContext(this.config);
+          const compressed = await this.contextManager.compressIfNeeded(currentContext);
+          this.contextManager.setMessages(compressed.messages);
+        }
+      }
+    }
+
+    const toolCtx = this.buildToolContext(resultContext, signal);
+    const dispatchOptions = {
+      parallel: config.parallelToolExecution,
+      yieldAsCompleted: config.yieldEventsAsToolsComplete,
+      toolTimeoutMs: config.toolTimeoutMs,
+      maxOutputChars: config.maxToolOutputChars,
+    };
+
+    for await (const event of this.dispatcher.dispatch(toolCalls, toolCtx, dispatchOptions)) {
+      switch (event.type) {
+        case 'tool:start':
+          yield {
+            type: 'tool_call_start',
+            toolCall: event.toolCall,
+            turnIndex,
+          } satisfies AgentEvent;
+          break;
+
+        case 'tool:result':
+          const rawContent = event.result.content;
+          const content = typeof rawContent === 'string'
+            ? rawContent
+            : JSON.stringify(rawContent, null, 2);
+
+          yield {
+            type: 'tool_call_result',
+            toolCall: event.toolCall,
+            result: content,
+            error: event.result.isError ? new Error(content) : undefined,
+            durationMs: event.result.durationMs,
+            isError: event.result.isError,
+            turnIndex,
+          } satisfies AgentEvent;
+
+          this.contextManager.addMessage({
+            role: 'tool',
+            content,
+            tool_call_id: event.toolCall.id,
+            name: event.toolCall.name,
+          });
+
+          if (event.result.todoUpdates) {
+            const currentTodoState = this.contextManager.getTodoState();
+            this.contextManager.setTodoState({
+              ...currentTodoState,
+              todos: event.result.todoUpdates,
+            });
+          }
+
+          if (event.result.isError && config.toolErrorStrategy === 'halt') {
+            throw new Error(content);
+          }
+          break;
+      }
+    }
+  }
+
+  /**
+   * Phase 4: Teardown - run afterAgentRun hooks and completion logic
+   */
+  private async *runTeardown(
+    lastResultContext: AgentContext | undefined,
+    config: AgentLoopConfig,
+    turnIndex: number,
+    done: boolean,
+    errorOccurred: boolean,
+  ): AsyncGenerator<AgentEvent> {
+    if (lastResultContext) {
+      const todoState = this.contextManager.getTodoState();
+      const finalContext = {
+        ...lastResultContext,
+        ...this.contextManager.getContext(this.config),
+        metadata: {
+          ...lastResultContext.metadata,
+          todo: {
+            ...(lastResultContext.metadata.todo || {}),
+            todoStore: todoState.todos,
+            stepsSinceLastWrite: todoState.stepsSinceLastWrite,
+            stepsSinceLastReminder: todoState.stepsSinceLastReminder,
+          },
+        },
+      };
+      const composedAfterAgentRun = composeMiddlewares(
+        this.hooks.afterAgentRun,
+        (ctx) => Promise.resolve(ctx),
+      );
+      try {
+        await composedAfterAgentRun(finalContext);
+      } catch (hookError) {
+        console.warn('[agent] afterAgentRun hook failed:', hookError);
+      }
+    }
+
+    let reason: 'completed' | 'max_turns_reached' | 'error' = 'completed';
+    if (errorOccurred) {
+      reason = 'error';
+    } else if (turnIndex >= config.maxTurns && !done) {
+      reason = 'max_turns_reached';
+    }
+
+    const totalTurns = done ? turnIndex + 1 : turnIndex;
+    yield {
+      type: 'agent_done',
+      totalTurns,
+      reason,
+      turnIndex,
+    } satisfies AgentEvent;
   }
 
   /**
@@ -145,404 +494,51 @@ export class Agent {
     let turnIndex = 0;
     let done = false;
     let errorOccurred = false;
-    let resultContext: AgentContext;
+    let lastResultContext: AgentContext | undefined;
 
     try {
-      // Add user message to context before running hooks
-      // This allows SkillMiddleware to check for skill mentions in the user message
-      this.contextManager.addMessage({
-        role: 'user',
-        content: userMessage.content,
-      });
-      resultContext = this.contextManager.getContext(this.config);
+      // Phase 1: Setup
+      await this.runSetup(userMessage, config);
 
-      // 1. beforeAgentRun hooks
-      const initialContext = this.contextManager.getContext(this.config);
-      const composedBeforeAgentRun = composeMiddlewares(
-        this.hooks.beforeAgentRun,
-        (ctx) => Promise.resolve(ctx),
-      );
-      const afterBeforeAgentRun = await composedBeforeAgentRun(initialContext);
-
-      // Save the modified systemPrompt from beforeAgentRun (contains dynamic skill injection)
-      this.contextManager.setSystemPrompt(afterBeforeAgentRun.systemPrompt);
-      // Sync todo state back to contextManager after middleware
-      this.contextManager.syncTodoFromContext(afterBeforeAgentRun);
-
-      // Keep looping until we either:
-      // 1. Are done (LLLM returned no tool calls)
-      // 2. Have reached maxTurns total LLM calls
-      // 3. Are aborted
-      // Note: If the maxTurns-th LLM call has tool calls, we still need to execute the tools
-      // and then do one more LLM call for the summary - so we allow entering the loop for
-      // all turn indices from 0 to config.maxTurns inclusive
+      // Main loop: Phase 2 (LLM turn) -> Phase 3 (Tools)
       while (turnIndex <= config.maxTurns && !done && !signal.aborted) {
-        // a. Compress context if needed (every turn)
-        const currentContext = this.contextManager.getContext(this.config);
-        const composedBeforeCompress = composeMiddlewares(
-          this.hooks.beforeCompress,
-          (ctx) => Promise.resolve(ctx),
-        );
-        let afterBeforeCompress: AgentContext;
-        try {
-          afterBeforeCompress = await composedBeforeCompress(currentContext);
-        } catch (hookError) {
-          // Hook failure shouldn't abort the entire agent loop - log and continue with original context
-          console.warn('[agent] beforeCompress hook failed:', hookError);
-          afterBeforeCompress = currentContext;
-        }
-
-        // Sync todo state back to contextManager after middleware
-        this.contextManager.syncTodoFromContext(afterBeforeCompress);
-
-        const compactionResult = await this.contextManager.compressIfNeeded(
-          afterBeforeCompress,
-        );
-        afterBeforeCompress.messages = compactionResult.messages;
-        this.contextManager.setMessages(compactionResult.messages);
-
-        // Emit event if compaction occurred
-        if (compactionResult.compacted) {
-          yield {
-            type: 'context_compacted',
-            level: compactionResult.level,
-            beforeTokens: compactionResult.tokensBefore,
-            afterTokens: compactionResult.tokensAfter,
-            turnIndex,
-          } satisfies ContextCompactedEvent;
-        }
-
-        // b. Run beforeModel middleware
-        const composedBeforeModel = composeMiddlewares(
-          this.hooks.beforeModel,
-          (innerCtx) => Promise.resolve(innerCtx),
-        );
-        try {
-          resultContext = await composedBeforeModel(afterBeforeCompress);
-        } catch (hookError) {
-          // Hook failure shouldn't abort the entire agent loop - log and continue with original context
-          console.warn('[agent] beforeModel hook failed:', hookError);
-          resultContext = afterBeforeCompress;
-        }
-
-        // Sync todo state back to contextManager after middleware
-        this.contextManager.syncTodoFromContext(resultContext);
-
-        // c. Stream from LLM
-        let fullContent = '';
-        const tool_calls: ToolCall[] = [];
-        let usage: {
-          prompt_tokens: number;
-          completion_tokens: number;
-          total_tokens: number;
-        } | undefined;
-
-        for await (const chunk of this.provider.stream(resultContext, { signal })) {
-          if (signal.aborted) break;
-          if (chunk.content) {
-            fullContent += chunk.content;
-            yield {
-              type: 'text_delta',
-              delta: chunk.content,
-              turnIndex,
-            } satisfies AgentEvent;
-          }
-          if (chunk.tool_calls) {
-            // Deduplicate by id - providers may send the same tool call multiple times
-            for (const tc of chunk.tool_calls) {
-              if (!tool_calls.some(existing => existing.id === tc.id)) {
-                tool_calls.push(tc);
-              }
-            }
-          }
-          if (chunk.usage) {
-            usage = chunk.usage;
-            // Update token tracking with accurate usage from API
-            if (usage && this.contextManager) {
-              this.contextManager.updateTokenUsage(usage);
-            }
-          }
-        }
+        // Phase 2: Single LLM turn
+        const turnResult = yield* this.runSingleTurn(turnIndex, config, signal);
+        done = turnResult.done;
+        lastResultContext = turnResult.resultContext;
 
         if (signal.aborted) {
-          yield {
-            type: 'agent_error',
-            error: new Error('Agent execution aborted'),
-            turnIndex,
-          } satisfies AgentEvent;
           errorOccurred = true;
           break;
         }
 
-        // d. afterModel hooks
-        const composedAfterModel = composeMiddlewares(
-          this.hooks.afterModel,
-          (ctx) => Promise.resolve(ctx),
-        );
-        try {
-          resultContext = await composedAfterModel(resultContext);
-        } catch (hookError) {
-          // Hook failure shouldn't abort the entire agent loop - log and continue with original context
-          console.warn('[agent] afterModel hook failed:', hookError);
-        }
-
-        // Sync todo state back to contextManager after middleware
-        this.contextManager.syncTodoFromContext(resultContext);
-
-        // Set full response on context
-        resultContext.response = {
-          content: fullContent,
-          tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
-          usage: usage ?? {
-            prompt_tokens: 0,
-            completion_tokens: 0,
-            total_tokens: 0,
-          },
-          model: this.provider.constructor.name,
-        };
-
-        // e. beforeAddResponse hooks
-        const composedBeforeAddResponse = composeMiddlewares(
-          this.hooks.beforeAddResponse,
-          (ctx) => Promise.resolve(ctx),
-        );
-        resultContext = await composedBeforeAddResponse(resultContext);
-
-        // Sync todo state back to contextManager after middleware
-        this.contextManager.syncTodoFromContext(resultContext);
-
-        // f. Save assistant message to context
-        if (resultContext.response) {
-          this.contextManager.addMessage({
-            role: 'assistant',
-            content: resultContext.response.content,
-            tool_calls: resultContext.response.tool_calls,
-          });
-        }
-
-        // g. If no tool calls, we're done
-        if (!tool_calls || tool_calls.length === 0) {
-          done = true;
-          yield {
-            type: 'turn_complete',
+        if (!done && turnResult.toolCalls.length > 0) {
+          // Phase 3: Execute tools
+          yield* this.runTools(
+            turnResult.toolCalls,
+            turnResult.resultContext,
+            config,
+            signal,
             turnIndex,
-            hasToolCalls: false,
-            usage,
-          } satisfies AgentEvent;
-          break;
+          );
+          turnIndex++;
         }
-
-        // h. We have tool calls - yield turn complete
-        yield {
-          type: 'turn_complete',
-          turnIndex,
-          hasToolCalls: true,
-          usage,
-        } satisfies AgentEvent;
-
-        // ===== Budget Guard: Check if tool calls fit in remaining budget =====
-        const remaining = this.contextManager.getRemainingBudget();
-        const totalLimit = this.config.tokenLimit;
-
-        // First check the entire batch
-        const batchCheck = checkBatchBudget(tool_calls, remaining, totalLimit);
-
-        if (batchCheck.action === 'delegate-to-sub-agent') {
-          // Whole batch gets delegated to sub-agent
-          yield {
-            type: 'budget_delegation',
-            reason: batchCheck.reason!,
-            originalTools: tool_calls.map(tc => tc.name),
-            turnIndex,
-          } satisfies import('./loop-types').BudgetDelegationEvent;
-
-          // Replace all original tool calls with a single sub-agent call
-          const subId = `budget-sub-${nanoid(6)}`;
-          const subAgentCall: ToolCall = {
-            id: subId,
-            name: 'sub_agent',
-            arguments: { task: batchCheck.delegatedTask! },
-          };
-          tool_calls.length = 0;
-          tool_calls.push(subAgentCall);
-
-          // Update the assistant message in context
-          this.contextManager.replaceLastAssistantToolCalls(tool_calls);
-        } else if (batchCheck.action === 'compact-first') {
-          // Compact first, then proceed
-          yield {
-            type: 'budget_compact',
-            reason: batchCheck.reason!,
-            turnIndex,
-          } satisfies import('./loop-types').BudgetCompactEvent;
-
-          const currentContext = this.contextManager.getContext(this.config);
-          const compressed = await this.contextManager.compressIfNeeded(currentContext);
-          this.contextManager.setMessages(compressed.messages);
-        } else {
-          // Batch okay, check individual tools - replace some if needed
-          for (let i = 0; i < tool_calls.length; i++) {
-            const remainingAfterPrevious = this.contextManager.getRemainingBudget();
-            const singleCheck = checkToolBudget(tool_calls[i], remainingAfterPrevious, totalLimit);
-            if (singleCheck.action === 'delegate-to-sub-agent') {
-              yield {
-                type: 'budget_delegation',
-                reason: singleCheck.reason!,
-                originalTools: [tool_calls[i].name],
-                turnIndex,
-              } satisfies import('./loop-types').BudgetDelegationEvent;
-
-              const subId = `budget-sub-${nanoid(6)}`;
-              tool_calls[i] = {
-                id: subId,
-                name: 'sub_agent',
-                arguments: { task: singleCheck.delegatedTask! },
-              };
-              // Update after replacement
-              this.contextManager.replaceLastAssistantToolCalls(tool_calls);
-            } else if (singleCheck.action === 'compact-first') {
-              yield {
-                type: 'budget_compact',
-                reason: singleCheck.reason!,
-                turnIndex,
-              } satisfies import('./loop-types').BudgetCompactEvent;
-
-              const currentContext = this.contextManager.getContext(this.config);
-              const compressed = await this.contextManager.compressIfNeeded(currentContext);
-              this.contextManager.setMessages(compressed.messages);
-            }
-          }
-        }
-        // ===== Budget Guard done =====
-
-        // i. Execute tool calls via ToolDispatcher
-        const toolCtx = this.buildToolContext(resultContext, signal);
-        const dispatchOptions = {
-          parallel: config.parallelToolExecution,
-          yieldAsCompleted: config.yieldEventsAsToolsComplete,
-          toolTimeoutMs: config.toolTimeoutMs,
-          maxOutputChars: config.maxToolOutputChars,
-          errorStrategy: config.toolErrorStrategy,
-        };
-
-        for await (const event of this.dispatcher.dispatch(tool_calls, toolCtx, dispatchOptions)) {
-          switch (event.type) {
-            case 'tool:start':
-              yield {
-                type: 'tool_call_start',
-                toolCall: event.toolCall,
-                turnIndex,
-              } satisfies AgentEvent;
-              break;
-
-            case 'tool:result':
-              // Message.content must be string for TUI markdown rendering
-              const rawContent = event.result.content;
-              const content = typeof rawContent === 'string'
-                ? rawContent
-                : JSON.stringify(rawContent, null, 2);
-
-              yield {
-                type: 'tool_call_result',
-                toolCall: event.toolCall,
-                result: content,
-                error: event.result.isError ? new Error(content) : undefined,
-                durationMs: event.result.durationMs,
-                isError: event.result.isError,
-                turnIndex,
-              } satisfies AgentEvent;
-
-              // Add tool result to context
-              this.contextManager.addMessage({
-                role: 'tool',
-                content,
-                tool_call_id: event.toolCall.id,
-                name: event.toolCall.name,
-              });
-
-              // Handle todo updates from sink
-              if (event.result.todoUpdates) {
-                const currentTodoState = this.contextManager.getTodoState();
-                this.contextManager.setTodoState({
-                  ...currentTodoState,
-                  todos: event.result.todoUpdates,
-                });
-              }
-
-              // Error strategy: halt on error
-              if (event.result.isError && config.toolErrorStrategy === 'halt') {
-                throw new Error(content);
-              }
-              break;
-          }
-        }
-
-        // Increment turn index **after** tool execution, before checking loop condition again
-        // This ensures that after we've executed tools on this turn, we get another turn for the summary
-        turnIndex++;
       }
 
-      // 6. afterAgentRun hooks
-      // Start with the last result context that has all metadata modifications from this turn,
-      // then refresh the todo metadata from context manager to keep it in sync
-      const todoState = this.contextManager.getTodoState();
-      const finalContext = {
-        ...resultContext,
-        ...this.contextManager.getContext(this.config),
-        // Keep existing metadata, just refresh the todo section from context manager
-        metadata: {
-          ...resultContext.metadata,
-          todo: {
-            ...(resultContext.metadata.todo || {}),
-            todoStore: todoState.todos,
-            stepsSinceLastWrite: todoState.stepsSinceLastWrite,
-            stepsSinceLastReminder: todoState.stepsSinceLastReminder,
-          },
-        },
-      };
-      const composedAfterAgentRun = composeMiddlewares(
-        this.hooks.afterAgentRun,
-        (ctx) => Promise.resolve(ctx),
-      );
-      try {
-        await composedAfterAgentRun(finalContext);
-      } catch (hookError) {
-        // Hook failure shouldn't abort the entire agent run - log and continue to completion
-        console.warn('[agent] afterAgentRun hook failed:', hookError);
-      }
-
-      // Determine completion reason
-      let reason: 'completed' | 'max_turns_reached' | 'error' = 'completed';
-      if (errorOccurred) {
-        reason = 'error';
-      } else if (turnIndex >= config.maxTurns && !done) {
-        reason = 'max_turns_reached';
-      }
-
-      // 7. yield agent_done
-      // When done: current turn (turnIndex) completed, total = turnIndex + 1 (0-indexed)
-      // When max_turns_reached: we've executed turnIndex + 1 rounds (0..turnIndex inclusive), so total = turnIndex + 1
-      // (Loop allows up to config.maxTurns inclusive, so when we exit we've done turnIndex + 1 total turns)
-      const totalTurns = done ? turnIndex + 1 : turnIndex;
-      yield {
-        type: 'agent_done',
-        totalTurns,
-        reason,
-        turnIndex,
-      } satisfies AgentEvent;
+      // Phase 4: Teardown
+      yield* this.runTeardown(lastResultContext, config, turnIndex, done, errorOccurred);
     } catch (error) {
-      // Handle unexpected errors
       yield {
         type: 'agent_error',
         error: error instanceof Error ? error : new Error(String(error)),
-        turnIndex: turnIndex,
+        turnIndex,
       } satisfies AgentEvent;
       yield {
         type: 'agent_done',
         totalTurns: turnIndex + 1,
         reason: 'error',
         error: error instanceof Error ? error : new Error(String(error)),
-        turnIndex: turnIndex,
+        turnIndex,
       } satisfies AgentEvent;
     } finally {
       clearTimeout(timeoutId);

@@ -92,8 +92,6 @@ export interface DispatchOptions {
   toolTimeoutMs: number;
   /** 输出截断阈值 */
   maxOutputChars: number;
-  /** 错误策略 */
-  errorStrategy: 'continue' | 'halt';
 }
 
 /**
