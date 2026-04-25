@@ -9,15 +9,7 @@ export interface ToolSink {
   /** 报告 todo 状态变更 */
   updateTodos(todos: TodoItem[]): void;
 
-  /** 提交需要被记忆系统提取的关键事件 */
-  emitMemoryHint(hint: string): void;
-
-  /** 提交 tool 执行过程中的结构化日志 */
-  log(level: 'debug' | 'info' | 'warn', message: string): void;
-
   readonly _todoUpdates: TodoItem[] | undefined;
-  readonly _memoryHints: string[];
-  readonly _logs: Array<{ level: string; message: string; timestamp: number }>;
 }
 
 /**
@@ -76,9 +68,7 @@ export interface ToolExecutionResult {
  */
 export type ToolEvent =
   | { type: 'tool:start'; toolCall: ToolCall; index: number }
-  | { type: 'tool:progress'; toolCall: ToolCall; message: string }
-  | { type: 'tool:result'; toolCall: ToolCall; result: ToolExecutionResult }
-  | { type: 'tool:error'; toolCall: ToolCall; error: Error; recoverable: boolean };
+  | { type: 'tool:result'; toolCall: ToolCall; result: ToolExecutionResult };
 
 /**
  * DispatchOptions — 调度选项
@@ -100,32 +90,16 @@ export interface DispatchOptions {
 export function createToolSink(): ToolSink {
   const state: {
     _todoUpdates: TodoItem[] | undefined;
-    _memoryHints: string[];
-    _logs: Array<{ level: string; message: string; timestamp: number }>;
   } = {
     _todoUpdates: undefined,
-    _memoryHints: [],
-    _logs: [],
   };
 
   return {
     updateTodos(todos: TodoItem[]) {
       state._todoUpdates = todos;
     },
-    emitMemoryHint(hint: string) {
-      state._memoryHints.push(hint);
-    },
-    log(level: 'debug' | 'info' | 'warn', message: string) {
-      state._logs.push({ level, message, timestamp: Date.now() });
-    },
     get _todoUpdates() {
       return state._todoUpdates;
-    },
-    get _memoryHints() {
-      return state._memoryHints;
-    },
-    get _logs() {
-      return state._logs;
     },
   };
 }
