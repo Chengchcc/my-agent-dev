@@ -8,10 +8,22 @@ A TypeScript-based AI agent framework built with Bun, featuring a modular archit
 
 - **Modular Skill System**: Extend functionality by adding skills in the `skills/` directory
 - **Interactive Terminal UI**: Built with [Ink](https://github.com/vadimdemedes/ink), React-based terminal UI
-- **Slash Command Autocomplete**: Fuzzy filtering and keyboard navigation for commands
+- **Headless CLI Mode**: Run the agent without the TUI for scripting/automation
+- **Slash Command Autocomplete**: Fuzzy filtering and keyboard navigation for commands (tasks, memory, compact)
 - **Input History**: Persistent command history browsing
 - **Multiple AI Providers**: Supports Claude and OpenAI out of the box
 - **Markdown Rendering**: Syntax-highlighted code blocks in the terminal
+- **Automatic Context Compression**: Multi-tiered context management with multiple strategies
+  - Token budget-based automatic compression
+  - Summarization of old messages
+  - Tool output compaction
+  - Reactive strategy selection
+- **Token Budget Management**: Guardrails to prevent context overflow
+- **Tool Execution Middleware**: Permission checking, logging, caching, and budget guards
+- **Persistent Memory System**: Store user preferences and project context
+- **Task Management System**: Built-in todo tracking via middleware
+
+![TUI Demo](docs/screenshots/tui-demo.jpg)
 
 ## Installation
 
@@ -48,6 +60,19 @@ bun install -g .
 my-agent-tui
 ```
 
+### Run Headless CLI (Script Mode)
+
+```bash
+bun run agent "your prompt here"
+```
+
+Or install globally:
+
+```bash
+bun install -g .
+my-agent "your prompt here"
+```
+
 ### Build
 
 ```bash
@@ -59,19 +84,37 @@ bun run tsc
 ```
 my-agent/
 ├── src/
-│   ├── cli/tui/          # Terminal UI implementation
-│   │   ├── components/  # React components (InputBox, CommandList, etc.)
-│   │   ├── hooks/       # Custom React hooks (use-command-input, use-input-history)
+│   ├── agent/                    # Core agent functionality
+│   │   ├── compaction/          # Context compression system (multi-tier)
+│   │   │   ├── tiers/           # Compaction strategy implementations
+│   │   │   └── strategies/      # Individual compression strategies
+│   │   ├── tool-dispatch/       # Tool execution middleware pipeline
+│   │   │   └── middlewares/     # Budget, permission, logging, cache
+│   │   ├── Agent.ts             # Main agent loop implementation
+│   │   ├── context.ts           # Context management with compression
+│   │   └── sub-agent-tool.ts    # Sub-agent delegation tool
+│   ├── cli/tui/                 # Terminal UI implementation (Ink/React)
+│   │   ├── components/          # React components (InputBox, CommandList, etc.)
+│   │   ├── hooks/               # Custom React hooks (use-command-input, use-agent-loop)
+│   │   ├── commands/            # Slash command implementations
 │   │   └── command-registry.ts  # Slash command filtering and matching
-│   ├── foundation/
-│   │   └── providers/   # AI provider implementations (Claude, OpenAI)
-│   ├── skills/          # Skill management system
-│   ├── agent.ts         # Core agent functionality
-│   ├── context.ts       # Context management
-│   └── types.ts         # Type definitions
-├── skills/              # Place your skills here (each in own directory)
-└── bin/
-    └── my-agent-tui     # Entry point
+│   ├── config/                  # YAML-based configuration system
+│   ├── memory/                  # Persistent memory system (store, extract, retrieve)
+│   ├── providers/               # AI provider implementations (Claude, OpenAI)
+│   ├── session/                 # Session management and hooks
+│   ├── skills/                  # Skill management system (loader, middleware)
+│   ├── todos/                   # Task management system
+│   ├── tools/                   # Built-in tools (bash, read, edit, grep, etc.)
+│   ├── utils/                   # Utility functions (debug, file detection)
+│   ├── runtime.ts               # Unified runtime configuration entry
+│   ├── types.ts                 # Global type definitions
+│   └── index.ts                 # Public API exports
+├── skills/                       # Place your skills here (each in own directory)
+├── bin/
+│   ├── my-agent.ts              # Headless CLI entry point
+│   ├── my-agent-tui-dev.ts      # Development TUI entry
+│   └── my-agent-tui             # Production TUI entry
+└── tests/                        # Test suite
 ```
 
 ## Adding Skills
@@ -93,6 +136,9 @@ The framework automatically discovers and loads skills at startup.
 
 - **Pure Functional State**: Editor transformations are pure functions for predictability
 - **React Hooks**: Custom hooks separate state management from UI rendering
+- **Middleware Composition**: Agent middleware pipeline for memory, skills, and todos
+- **Tool Dispatch Pipeline**: Extensible tool execution with permissions and logging
+- **Multi-Tier Compaction**: Progressive context compression based on token budget
 - **TypeScript**: Fully typed codebase
 - **Ink TUI**: React components for interactive terminal interface
 

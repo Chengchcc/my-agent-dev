@@ -10,6 +10,7 @@ This is a TypeScript-based AI agent framework built with Bun, featuring a modula
 
 - **Compile TypeScript**: `bun run tsc` (alias: `bun run build`)
 - **Run TUI in development**: `bun run tui` (alias: `bun run dev`)
+- **Run headless agent**: `bun run agent` (alias: `bun run headless`)
 - **Run tests**: `bun test`
 - **TypeScript version**: ^6.0.3
 
@@ -25,7 +26,42 @@ This is a TypeScript-based AI agent framework built with Bun, featuring a modula
   - `middleware.ts`: `composeMiddlewares` utility
   - `tool-registry.ts`: ToolRegistry - manages tool registration/lookup
   - `sub-agent-tool.ts`: SubAgentTool - delegates subtasks to independent agents
+  - `budget-guard.ts`: Token budget management for conversation control
+  - `compaction/`: Advanced context compression system
+    - `compaction-manager.ts`: Orchestrates compression strategies
+    - `types.ts`: Compaction type definitions
+    - `budget.ts`: Token budget tracking
+    - `continuation.ts`: Handle partial messages during streaming
+    - `reactive-strategy.ts`: Dynamic strategy selection
+    - `rehydrator.ts`: Restore compacted context
+    - `snip-strategy.ts`: Truncate old messages
+    - `summarize-strategy.ts`: Summarize old messages
+    - `tiered-compaction.ts`: Multi-tier compression logic
+    - `tool-output-strategy.ts`: Compact tool output
+    - `tiers/`: Compaction tier implementations
+      - `auto-compact.ts`: Automatic compression triggers
+      - `collapse.ts`: Collapse sequential messages
+      - `reactive.ts`: React to token budget pressure
+      - `snip.ts`: Message truncation implementation
+  - `tool-dispatch/`: Tool execution middleware pipeline
+    - `dispatcher.ts`: Main tool execution dispatcher
+    - `types.ts`: Tool dispatch type definitions
+    - `middleware.ts`: Tool middleware composition
+    - `middlewares/`: Individual middleware implementations
+      - `budget-guard.ts`: Check token budget before tool execution
+      - `logging.ts`: Tool execution logging
+      - `permission.ts`: Tool permission checks
+      - `read-cache.ts`: Cache read operations
   - `index.ts`: Module exports
+
+### Runtime Module
+
+- `/src/runtime.ts`: Unified runtime configuration and entry point
+  - `RuntimeConfig`: Configuration interface for agent initialization
+  - Factory exports: Agent, ToolRegistry, ContextManager, SubAgentTool
+  - Middleware exports: Todo, Memory, Skill, Session hooks
+  - Tool exports: Bash, TextEditor, AskUserQuestion, Read, Grep, Glob, Ls
+  - Provider exports: ClaudeProvider, OpenAIProvider
 
 ### Configuration
 
@@ -96,6 +132,7 @@ This is a TypeScript-based AI agent framework built with Bun, featuring a modula
   - `command-registry.ts`: Slash command types, filtering and matching utilities
   - `commands/`: Slash command implementations
     - `session-commands.ts`: Session-related commands (tasks, memory, etc.)
+    - `compact-command.ts`: Manual context compression trigger
   - `types.ts`: TUI type definitions
   - `components/`: React components
     - `App.tsx`: Main application container
@@ -139,6 +176,7 @@ This is a TypeScript-based AI agent framework built with Bun, featuring a modula
 - `skills/`: Directory containing available skills (each in separate folder with SKILL.md)
 - `tests/`: Test suite (unit and integration tests for all modules)
 - `bin/`: Executable scripts
+  - `my-agent.ts`: Headless CLI entry point (runs agent loop without UI)
   - `my-agent-tui-dev.ts`: Development entry point for TUI (runs TypeScript directly with bun)
   - `my-agent-tui`: Production entry point (runs compiled JavaScript from dist/)
 
