@@ -387,6 +387,13 @@ export class Agent {
             ? rawContent
             : JSON.stringify(rawContent, null, 2);
 
+          // CHECK FIRST: throw halt error before side effects (yield + addMessage)
+          // This prevents state inconsistency where context has the error message
+          // but the agent crashed without the TUI being able to handle it cleanly
+          if (event.result.isError && config.toolErrorStrategy === 'halt') {
+            throw new Error(content);
+          }
+
           const toolResultEvent: any = {
             type: 'tool_call_result',
             toolCall: event.toolCall,
@@ -413,10 +420,6 @@ export class Agent {
               ...currentTodoState,
               todos: event.result.todoUpdates,
             });
-          }
-
-          if (event.result.isError && config.toolErrorStrategy === 'halt') {
-            throw new Error(content);
           }
           break;
       }
