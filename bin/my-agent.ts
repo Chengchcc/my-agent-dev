@@ -58,3 +58,33 @@ if (values.version) {
 }
 
 setDebugMode(!!values.debug);
+
+async function getPrompt(): Promise<string> {
+  let stdinContent = '';
+
+  if (!process.stdin.isTTY) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) {
+      chunks.push(chunk);
+    }
+    stdinContent = Buffer.concat(chunks).toString('utf8').trim();
+  }
+
+  const promptArg = (typeof values.prompt === 'string' ? values.prompt : '') || positionals.join(' ') || '';
+
+  if (promptArg && stdinContent) {
+    return `${promptArg}\n\n<context>\n${stdinContent}\n</context>`;
+  }
+  if (promptArg) return promptArg;
+  if (stdinContent) return stdinContent;
+
+  console.error('Error: No prompt provided. Use -p, positional argument, or pipe via stdin.');
+  console.error('Run `my-agent --help` for usage.');
+  process.exit(2);
+}
+
+// Temporary main to make tests pass
+async function main() {
+  await getPrompt();
+}
+main();
