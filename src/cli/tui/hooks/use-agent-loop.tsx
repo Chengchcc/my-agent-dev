@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useReducer, useDeferredValue, startTransition } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useReducer, useDeferredValue } from 'react';
 import { createContext as createSelectorContext, useContextSelector } from 'use-context-selector';
 import { countMessageTokens } from '../../../utils/token-cache';
 import type { ReactNode } from 'react';
@@ -218,7 +218,7 @@ export function AgentLoopProvider({
       try {
         // Run agentic loop - yields events for each step
         for await (const event of agent.runAgentLoop({ role: 'user', content: text })) {
-          debugLog('[agent-loop] event:', event.type);
+          debugLog(`[agent-loop] event: ${event.type} t=${performance.now().toFixed(0)}`);
           if (event.type === 'text_delta') {
             // Only accumulate text during the current assistant turn
             // After tool execution, full messages are already in context
@@ -248,28 +248,19 @@ export function AgentLoopProvider({
             runningTools.delete(event.toolCall.id);
             streamingContentRef.current = '';
 
-            // Light update: stop spinner, set duration/error status
-            // This runs immediately at high priority so UI feels responsive
+            // Single atomic dispatch: meta + messages in one render cycle
+            // Fix 1 ensures addMessage() runs before yield, so getContext() returns consistent state
+            const fullContext = agent.getContext();
             dispatch({
-              type: 'TOOL_RESULT_META',
+              type: 'TOOL_RESULT',
               runningTools: new Map(runningTools),
               toolId: event.toolCall.id,
               result: {
                 durationMs: event.durationMs,
                 isError: event.isError,
               },
-            });
-
-            // Heavy update: refresh full messages (may be large)
-            // Wrapped in startTransition to allow concurrent rendering
-            const fullContext = agent.getContext();
-
-            startTransition(() => {
-              dispatch({
-                type: 'TOOL_RESULT_MESSAGES',
-                messages: fullContext.messages,
-                todos: agent.getContextManager().getTodos(),
-              });
+              messages: fullContext.messages,
+              todos: agent.getContextManager().getTodos(),
             });
           } else if (event.type === 'agent_error') {
             debugLog('[agent-loop] agent_error details:', event.error);
@@ -282,6 +273,7 @@ export function AgentLoopProvider({
             const action: any = { type: 'TURN_COMPLETE' };
             if (event.usage) action.usage = event.usage;
             dispatch(action);
+            debugLog(`[agent-loop] turn_complete dispatched, for-await body ends: t=${performance.now().toFixed(0)}`);
           } else if (event.type === 'agent_done') {
             // No action needed during iteration
           } else if (event.type === 'sub_agent_start') {

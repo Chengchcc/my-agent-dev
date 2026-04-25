@@ -3,6 +3,7 @@ import type { ToolRegistry } from '../tool-registry';
 import type { ToolMiddleware } from './middleware';
 import type { ToolContext, ToolEvent, ToolExecutionResult, DispatchOptions } from './types';
 import { createToolSink } from './types';
+import { debugLog } from '../../utils/debug';
 
 export class ToolDispatcher {
   constructor(
@@ -19,6 +20,14 @@ export class ToolDispatcher {
     baseCtx: ToolContext,
     options: DispatchOptions,
   ): AsyncGenerator<ToolEvent> {
+    const t0 = performance.now();
+    const method = options.parallel
+      ? (options.yieldAsCompleted ? 'parallel-streaming' : 'parallel-batch')
+      : 'sequential';
+    debugLog(
+      `[dispatcher] dispatch: ${toolCalls.length} tools, ${method}, ` +
+      `timeout=${options.toolTimeoutMs}ms, maxChars=${options.maxOutputChars}`,
+    );
     if (options.parallel && options.yieldAsCompleted) {
       yield* this.dispatchParallelStreaming(toolCalls, baseCtx, options);
     } else if (options.parallel) {
@@ -26,6 +35,7 @@ export class ToolDispatcher {
     } else {
       yield* this.dispatchSequential(toolCalls, baseCtx, options);
     }
+    debugLog(`[dispatcher] dispatch done: elapsed=${(performance.now() - t0).toFixed(0)}ms`);
   }
 
   /**
@@ -63,6 +73,7 @@ export class ToolDispatcher {
     // 构建 middleware 洋葱链
     const chain = this.buildMiddlewareChain(tool, toolCall, toolCtx);
 
+    debugLog(`[dispatcher] executeSingle START: ${toolCall.name}#${toolCall.id} t=${performance.now().toFixed(0)}`);
     const startTime = Date.now();
     try {
       const rawResult = await this.withTimeout(
@@ -74,6 +85,7 @@ export class ToolDispatcher {
 
       const content = this.serializeAndTruncate(rawResult, options.maxOutputChars);
       const durationMs = Date.now() - startTime;
+      debugLog(`[dispatcher] executeSingle DONE: ${toolCall.name}#${toolCall.id} duration=${durationMs}ms isError=false`);
 
       // 从 sink 收集副作用
       const sink = toolCtx.sink;
@@ -90,9 +102,11 @@ export class ToolDispatcher {
       }
       return result;
     } catch (error) {
+      const durationMs = Date.now() - startTime;
+      debugLog(`[dispatcher] executeSingle ERROR: ${toolCall.name}#${toolCall.id} duration=${durationMs}ms error=${error instanceof Error ? error.message : String(error)}`);
       return {
         content: `Error executing '${toolCall.name}': ${error instanceof Error ? error.message : String(error)}`,
-        durationMs: Date.now() - startTime,
+        durationMs,
         isError: true,
       };
     } finally {
@@ -129,6 +143,7 @@ export class ToolDispatcher {
     let timeoutId: NodeJS.Timeout | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
+        debugLog(`[dispatcher] TIMEOUT: ${toolName} after ${ms}ms`);
         controller?.abort();
         reject(new Error(`Tool '${toolName}' timed out after ${ms}ms`));
       }, ms);
@@ -164,8 +179,10 @@ export class ToolDispatcher {
     options: DispatchOptions,
   ): AsyncGenerator<ToolEvent> {
     for (const [index, toolCall] of toolCalls.entries()) {
+      debugLog(`[dispatcher] sequential YIELD start: ${toolCall.name}#${toolCall.id} index=${index} t=${performance.now().toFixed(0)}`);
       yield { type: 'tool:start', toolCall, index };
       const result = await this.executeSingle(toolCall, baseCtx, options);
+      debugLog(`[dispatcher] sequential YIELD result: ${toolCall.name}#${toolCall.id} index=${index} t=${performance.now().toFixed(0)}`);
       yield { type: 'tool:result', toolCall, result };
     }
   }
@@ -178,11 +195,15 @@ export class ToolDispatcher {
     baseCtx: ToolContext,
     options: DispatchOptions,
   ): AsyncGenerator<ToolEvent> {
+    const batchStart = performance.now();
+    debugLog(`[dispatcher] parallel-batch EXECUTE all: ${toolCalls.map(tc => `${tc.name}#${tc.id}`).join(', ')} t=${batchStart.toFixed(0)}`);
     const results = await Promise.allSettled(
       toolCalls.map(toolCall => this.executeSingle(toolCall, baseCtx, options)),
     );
+    debugLog(`[dispatcher] parallel-batch ALL done: elapsed=${(performance.now() - batchStart).toFixed(0)}ms`);
 
     for (const [index, toolCall] of toolCalls.entries()) {
+      debugLog(`[dispatcher] parallel-batch YIELD start+result: ${toolCall.name}#${toolCall.id} index=${index}`);
       yield { type: 'tool:start', toolCall, index };
 
       const resultItem = results[index];
@@ -221,10 +242,13 @@ export class ToolDispatcher {
     baseCtx: ToolContext,
     options: DispatchOptions,
   ): AsyncGenerator<ToolEvent> {
+    const streamingStart = performance.now();
     // First, yield all start events immediately
     for (const [index, toolCall] of toolCalls.entries()) {
+      debugLog(`[dispatcher] streaming YIELD start: ${toolCall.name}#${toolCall.id} index=${index} t=${performance.now().toFixed(0)}`);
       yield { type: 'tool:start', toolCall, index };
     }
+    debugLog(`[dispatcher] streaming all starts yielded: count=${toolCalls.length} elapsed=${(performance.now() - streamingStart).toFixed(0)}ms`);
 
     let controller!: ReadableStreamDefaultController<ToolEvent>;
     const stream = new ReadableStream<ToolEvent>({
@@ -234,6 +258,7 @@ export class ToolDispatcher {
     const promises = toolCalls.map(async (toolCall) => {
       try {
         const result = await this.executeSingle(toolCall, baseCtx, options);
+        debugLog(`[dispatcher] streaming ENQUEUE result: ${toolCall.name}#${toolCall.id} t=${performance.now().toFixed(0)}`);
         controller.enqueue({
           type: 'tool:result',
           toolCall,
@@ -249,11 +274,13 @@ export class ToolDispatcher {
     });
 
     const onAbort = () => {
+      debugLog(`[dispatcher] streaming ABORT: closing controller t=${performance.now().toFixed(0)}`);
       try { controller.close(); } catch {}
     };
     baseCtx.signal.addEventListener('abort', onAbort, { once: true });
 
     Promise.allSettled(promises).finally(() => {
+      debugLog(`[dispatcher] streaming all promises settled: closing controller t=${performance.now().toFixed(0)}`);
       try { controller.close(); } catch {}
       baseCtx.signal.removeEventListener('abort', onAbort);
     });
@@ -261,11 +288,17 @@ export class ToolDispatcher {
     const reader = stream.getReader();
     try {
       while (true) {
+        debugLog(`[dispatcher] streaming READER waiting for next... t=${performance.now().toFixed(0)}`);
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          debugLog(`[dispatcher] streaming READER done: t=${performance.now().toFixed(0)}`);
+          break;
+        }
+        debugLog(`[dispatcher] streaming YIELD from reader: ${value.toolCall.name}#${value.toolCall.id} type=${value.type} t=${performance.now().toFixed(0)}`);
         yield value;
       }
     } finally {
+      debugLog(`[dispatcher] streaming READER releasing lock: elapsed=${(performance.now() - streamingStart).toFixed(0)}ms`);
       reader.releaseLock();
       await Promise.allSettled(promises);
     }

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useDeferredValue } from 'react';
 import { Box, useInput } from 'ink';
 import { ScrollView } from 'ink-scroll-view';
 import { AgentLoopProvider, useAgentLoop } from '../hooks/use-agent-loop';
@@ -37,7 +37,8 @@ export function App({ agent, skillCommands, sessionStore }: AppProps) {
 
 function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashCommand[]; sessionStore: SessionStore }) {
   useEventLoopStall(process.env.DEBUG_STALL === '1');
-  const { messages, streaming: isStreaming, streamingContent, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool } = useAgentLoop();
+  const { messages: rawMessages, streaming: isStreaming, streamingContent, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool } = useAgentLoop();
+  const messages = useDeferredValue(rawMessages);
   const { askUserQuestionRequest, respondWithAnswers } = useAskUserQuestionManager();
 
   useInput((input, key) => {

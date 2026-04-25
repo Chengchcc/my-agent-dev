@@ -2,9 +2,8 @@ import type { Message } from '../../../types';
 import { Box, Text } from 'ink';
 import { marked, type Token } from 'marked';
 import React, { useMemo } from 'react';
-import { useAgentLoopSelector } from '../hooks';
 import { CodeBlock } from './CodeBlock';
-import { ToolCallMessage } from './';
+import { ToolCallMessage, ConnectedToolCallMessage } from './ToolCallMessage';
 
 // Use require to avoid type conflicts between marked-terminal's marked types and our marked types
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -17,23 +16,17 @@ marked.setOptions({
   async: false,
 });
 
-interface PureToolCallInfo {
-  focused: boolean;
-  expanded: boolean;
-  pending: boolean;
-  result: { content: string; isError: boolean; durationMs: number } | undefined;
-}
-
 interface PureChatMessageProps {
   message: Message;
-  // For tool calls, provide the state from context - allows testing without context
-  toolCallInfo?: Map<string, PureToolCallInfo>;
+  /** Override the tool call renderer — defaults to pure ToolCallMessage (no context required, for testing) */
+  ToolCallComponent?: React.ComponentType<{ toolCall: import('../../../types').ToolCall }>;
 }
 
 /**
- * Pure (context-free) ChatMessage component for testing
+ * Pure (context-free) ChatMessage component for testing.
+ * Defaults to pure ToolCallMessage. ChatMessage overrides with ConnectedToolCallMessage.
  */
-export function PureChatMessage({ message, toolCallInfo = new Map() }: PureChatMessageProps) {
+export function PureChatMessage({ message, ToolCallComponent = ToolCallMessage }: PureChatMessageProps) {
 
   // Handle different role types with appropriate styling
   const getRoleColor = (role: string): string => {
@@ -151,25 +144,11 @@ export function PureChatMessage({ message, toolCallInfo = new Map() }: PureChatM
               {elements}
             </Box>
           )}
-          {message.tool_calls.map(tc => {
-            const info = toolCallInfo.get(tc.id) || {
-              focused: false,
-              expanded: false,
-              pending: false,
-              result: undefined,
-            };
-            return (
-              <Box key={`${message.id ?? ''}-${tc.id}`} marginY={1}>
-                <ToolCallMessage
-                  toolCall={tc}
-                  result={info.result ?? { content: '', isError: false, durationMs: 0 }}
-                  pending={info.pending}
-                  focused={info.focused}
-                  expanded={info.expanded}
-                />
-              </Box>
-            );
-          })}
+          {message.tool_calls.map(tc => (
+            <Box key={`${message.id ?? ''}-${tc.id}`} marginY={1}>
+              <ToolCallComponent toolCall={tc} />
+            </Box>
+          ))}
         </Box>
       </Box>
     );
@@ -197,44 +176,9 @@ export function PureChatMessage({ message, toolCallInfo = new Map() }: PureChatM
 
 export const ChatMessage = React.memo(
   (props: { message: Message }) => {
-    // Connected version reads tool call state from context
-    const { messages, currentTools, expandedTools, focusedToolId, toolResults } = useAgentLoopSelector(s => ({
-      messages: s.messages,
-      currentTools: s.currentTools,
-      expandedTools: s.expandedTools,
-      focusedToolId: s.focusedToolId,
-      toolResults: s.toolResults,
-    }));
-
-    const toolCallInfo = useMemo(() => {
-      const map = new Map<string, PureToolCallInfo>();
-      if (!props.message.tool_calls) return map;
-
-      for (const tc of props.message.tool_calls) {
-        const pending = currentTools.some(t => t.toolCall.id === tc.id);
-        const focused = focusedToolId === tc.id;
-        const expanded = expandedTools.has(tc.id);
-        const resultMeta = toolResults.get(tc.id);
-        const toolMsg = messages.find(m => m.role === 'tool' && m.tool_call_id === tc.id);
-
-        let result: { content: string; isError: boolean; durationMs: number } | undefined;
-        if (toolMsg?.content) {
-          result = {
-            content: toolMsg.content,
-            isError: resultMeta?.isError ?? false,
-            durationMs: resultMeta?.durationMs ?? 0,
-          };
-        }
-
-        map.set(tc.id, { focused, expanded, pending, result });
-      }
-      return map;
-    }, [props.message.tool_calls, currentTools, focusedToolId, expandedTools, toolResults, messages]);
-
-    return <PureChatMessage message={props.message} toolCallInfo={toolCallInfo} />;
+    return <PureChatMessage message={props.message} ToolCallComponent={ConnectedToolCallMessage} />;
   },
   (prev, next) => {
-    // Only re-render if what we care about actually changed
     return (
       prev.message.id === next.message.id &&
       prev.message.content === next.message.content &&

@@ -31,16 +31,24 @@ export interface ContextManagerConfig {
 function countTotalTokens(messages: Message[], systemPrompt?: string): number {
   let total = systemPrompt ? countTokens(systemPrompt) : 0;
   for (const msg of messages) {
-    if (msg.content) {
-      total += countTokens(msg.content);
-    }
-    if (msg.tool_calls) {
-      total += countTokens(JSON.stringify(msg.tool_calls));
-    }
-    // 4 tokens overhead per message for role/metadata
-    total += 4;
+    total += countSingleMessageTokens(msg);
   }
   return total;
+}
+
+/**
+ * Count tokens for a single message (content + tool_calls + overhead).
+ * Extracted for incremental cache updates so addMessage is O(1).
+ */
+function countSingleMessageTokens(msg: Message): number {
+  let tokens = 4; // overhead per message for role/metadata
+  if (msg.content) {
+    tokens += countTokens(msg.content);
+  }
+  if (msg.tool_calls) {
+    tokens += countTokens(JSON.stringify(msg.tool_calls));
+  }
+  return tokens;
 }
 
 /**
@@ -111,6 +119,7 @@ export class ContextManager {
   private todoStepsSinceLastReminder = Infinity;
   private lastKnownPromptTokens: number = 0;
   private accumulatedOutputTokens: number = 0;
+  private _cachedEstimatedTokens: number = -1;
 
   constructor(config: ContextManagerConfig = {}) {
     let tokenLimit;
@@ -139,12 +148,17 @@ export class ContextManager {
   /**
    * Add a message to the context.
    * Automatically assigns a unique id if not provided.
+   * Incrementally updates the token cache instead of invalidating.
    */
   addMessage(message: Message): void {
-    this.messages.push({
+    const msg = {
       ...message,
       id: message.id ?? nanoid(),
-    });
+    };
+    this.messages.push(msg);
+    if (this._cachedEstimatedTokens >= 0) {
+      this._cachedEstimatedTokens += countSingleMessageTokens(msg);
+    }
   }
 
   /**
@@ -158,6 +172,7 @@ export class ContextManager {
    * Update the current system prompt (for dynamic skill injection).
    */
   setSystemPrompt(systemPrompt: string): void {
+    this._cachedEstimatedTokens = -1;
     this.currentSystemPrompt = systemPrompt;
   }
 
@@ -254,6 +269,7 @@ export class ContextManager {
    * Clear all messages (keeps default system prompt if exists).
    */
   clear(): void {
+    this._cachedEstimatedTokens = -1;
     this.messages = [];
     this.todoStore = [];
     this.todoStepsSinceLastWrite = Infinity;
@@ -304,6 +320,7 @@ export class ContextManager {
    * Replace all messages (used after compression).
    */
   setMessages(messages: Message[]): void {
+    this._cachedEstimatedTokens = -1;
     // Keep system messages separate to maintain the default system prompt
     const systemMessages = messages.filter(m => m.role === 'system');
     const nonSystemMessages = messages.filter(m => m.role !== 'system');
@@ -322,12 +339,17 @@ export class ContextManager {
   /**
    * Get current context usage ratio (0-1).
    */
+  private getEstimatedTokens(): number {
+    if (this._cachedEstimatedTokens < 0) {
+      const messages = this.getMessages();
+      this._cachedEstimatedTokens = countTotalTokens(messages, this.currentSystemPrompt);
+    }
+    return this._cachedEstimatedTokens;
+  }
+
   getUsageRatio(): number {
     if (this.lastKnownPromptTokens <= 0) {
-      // Fallback to local estimation if no API data yet
-      const messages = this.getMessages();
-      const estimated = countTotalTokens(messages, this.currentSystemPrompt);
-      return estimated / this.tokenLimit;
+      return this.getEstimatedTokens() / this.tokenLimit;
     }
     return this.lastKnownPromptTokens / this.tokenLimit;
   }
@@ -337,12 +359,13 @@ export class ContextManager {
    */
   getRemainingBudget(): number {
     if (this.lastKnownPromptTokens <= 0) {
-      const messages = this.getMessages();
-      const estimated = countTotalTokens(messages, this.currentSystemPrompt);
-      return this.tokenLimit - estimated;
+      return this.tokenLimit - this.getEstimatedTokens();
     }
     return this.tokenLimit - this.lastKnownPromptTokens;
   }
+
+  // Exposed for diagnostics
+  get _lastKnownPromptTokens() { return this.lastKnownPromptTokens; }
 
   /**
    * Get the last known prompt tokens from API.
@@ -380,6 +403,7 @@ export class ContextManager {
    * Used when budget guard replaces tool calls with sub-agent delegation.
    */
   replaceLastAssistantToolCalls(toolCalls: ToolCall[]): void {
+    this._cachedEstimatedTokens = -1;
     const messages = [...this.messages];
     // Find the last assistant message
     for (let i = messages.length - 1; i >= 0; i--) {

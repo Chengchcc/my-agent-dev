@@ -16,6 +16,7 @@ import { ToolDispatcher } from './tool-dispatch/dispatcher';
 import { createToolSink } from './tool-dispatch/types';
 import type { ToolMiddleware } from './tool-dispatch/middleware';
 import { checkBatchBudget, checkToolBudget } from './budget-guard';
+import { debugLog } from '../utils/debug';
 import { nanoid } from 'nanoid';
 
 export class Agent {
@@ -284,7 +285,9 @@ export class Agent {
     if (usage) {
       turnCompleteEvent.usage = usage;
     }
+    debugLog(`[agent] runSingleTurn yielding turn_complete: t=${performance.now().toFixed(0)}`);
     yield turnCompleteEvent as AgentEvent;
+    debugLog(`[agent] runSingleTurn resumed after turn_complete yield: t=${performance.now().toFixed(0)}`);
 
     return { toolCalls, resultContext, done };
   }
@@ -299,10 +302,13 @@ export class Agent {
     signal: AbortSignal,
     turnIndex: number,
   ): AsyncGenerator<AgentEvent> {
+    debugLog(`[agent] runTools ENTRY: ${toolCalls.length} tools, turn=${turnIndex} t=${performance.now().toFixed(0)}`);
     const remaining = this.contextManager.getRemainingBudget();
     const totalLimit = this.config.tokenLimit;
 
+    debugLog(`[agent] runTools budget-check START: t=${performance.now().toFixed(0)}`);
     const batchCheck = checkBatchBudget(toolCalls, remaining, totalLimit);
+    debugLog(`[agent] runTools batch-check DONE: action=${batchCheck.action} t=${performance.now().toFixed(0)}`);
     if (batchCheck.action === 'delegate-to-sub-agent') {
       yield {
         type: 'budget_delegation',
@@ -332,8 +338,10 @@ export class Agent {
       this.contextManager.setMessages(compressed.messages);
     } else {
       for (const [index, toolCall] of toolCalls.entries()) {
+        debugLog(`[agent] runTools single-check START: ${toolCall.name} t=${performance.now().toFixed(0)}`);
         const remainingAfterPrevious = this.contextManager.getRemainingBudget();
         const singleCheck = checkToolBudget(toolCall, remainingAfterPrevious, totalLimit);
+        debugLog(`[agent] runTools single-check DONE: ${toolCall.name} action=${singleCheck.action} t=${performance.now().toFixed(0)}`);
         if (singleCheck.action === 'delegate-to-sub-agent') {
           yield {
             type: 'budget_delegation',
@@ -371,7 +379,11 @@ export class Agent {
       maxOutputChars: config.maxToolOutputChars,
     };
 
+    debugLog(`[agent] runTools: dispatching ${toolCalls.length} tools, parallel=${dispatchOptions.parallel}, yieldAsCompleted=${dispatchOptions.yieldAsCompleted}, turn=${turnIndex}`);
+    let eventCount = 0;
     for await (const event of this.dispatcher.dispatch(toolCalls, toolCtx, dispatchOptions)) {
+      eventCount++;
+      debugLog(`[agent] runTools RECEIVED event #${eventCount}: ${event.type} ${('toolCall' in event) ? (event as any).toolCall?.name + '#' + (event as any).toolCall?.id : ''} t=${performance.now().toFixed(0)}`);
       switch (event.type) {
         case 'tool:start':
           yield {
@@ -394,19 +406,7 @@ export class Agent {
             throw new Error(content);
           }
 
-          const toolResultEvent: any = {
-            type: 'tool_call_result',
-            toolCall: event.toolCall,
-            result: content,
-            durationMs: event.result.durationMs,
-            isError: event.result.isError,
-            turnIndex,
-          };
-          if (event.result.isError) {
-            toolResultEvent.error = new Error(content);
-          }
-          yield toolResultEvent as AgentEvent;
-
+          // Side effects FIRST, before yield, so TUI reads consistent state from getContext()
           this.contextManager.addMessage({
             role: 'tool',
             content,
@@ -421,9 +421,19 @@ export class Agent {
               todos: event.result.todoUpdates,
             });
           }
-          break;
+
+          yield {
+            type: 'tool_call_result',
+            toolCall: event.toolCall,
+            result: content,
+            durationMs: event.result.durationMs,
+            isError: event.result.isError,
+            ...(event.result.isError ? { error: new Error(content) } : {}),
+            turnIndex,
+          } satisfies AgentEvent;
       }
     }
+    debugLog(`[agent] runTools dispatch loop done: ${eventCount} events received`);
   }
 
   /**
@@ -526,6 +536,7 @@ export class Agent {
         }
 
         if (!done && turnResult.toolCalls.length > 0) {
+          debugLog(`[agent] main-loop calling runTools: ${turnResult.toolCalls.length} tools t=${performance.now().toFixed(0)}`);
           // Phase 3: Execute tools
           yield* this.runTools(
             turnResult.toolCalls,

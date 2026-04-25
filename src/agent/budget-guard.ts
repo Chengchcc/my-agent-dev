@@ -1,4 +1,3 @@
-import fsSync from 'fs';
 import type { ToolCall } from '../types';
 
 export interface BudgetGuardConfig {
@@ -37,23 +36,12 @@ export function estimateToolOutput(toolCall: ToolCall): number {
 
   switch (name) {
     case 'read': {
-      const path = toolCall.arguments.path as string;
-      const start = toolCall.arguments.offset as number ?? 0;
       const limit = toolCall.arguments.limit as number ?? 0;
-
-      try {
-        const stats = fsSync.statSync(path);
-        if (start || limit) {
-          // If we have a line range, estimate by lines
-          const lineCount = limit || 100;
-          return Math.ceil((lineCount * 80) / 4) + 100; // 80 chars per line estimate
-        }
-        // Full file: bytes / 4 ≈ tokens
-        return Math.ceil(stats.size / 4) + 100;
-      } catch {
-        // File doesn't exist or can't be stat'd - default estimate
-        return 2000;
+      if (limit) {
+        return Math.ceil((limit * 80) / 4) + 100;
       }
+      // Unknown file size — use conservative estimate (no statSync to avoid blocking)
+      return 3000;
     }
 
     case 'grep':

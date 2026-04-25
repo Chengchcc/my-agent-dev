@@ -9,14 +9,14 @@ import {
 import type { ToolCall } from '../../src/types';
 
 describe('estimateToolOutput', () => {
-  test('gives default estimate for read when file not found', () => {
+  test('gives conservative estimate for read without limit', () => {
     const toolCall: ToolCall = {
       id: 'test',
       name: 'read',
-      arguments: { path: 'nonexistent-file.txt' },
+      arguments: { path: 'any-file.txt' },
     };
     const estimate = estimateToolOutput(toolCall);
-    expect(estimate).toBe(2000);
+    expect(estimate).toBe(3000);
   });
 
   test('returns 3000 for grep', () => {
