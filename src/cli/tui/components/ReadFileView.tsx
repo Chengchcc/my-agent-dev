@@ -13,6 +13,7 @@ import 'prismjs/components/prism-diff';
 import { DiffView, type DiffHunk } from './DiffView';
 import { tokenizeByLine } from './utils/tokenize-by-line';
 import { getLanguageFromFilePath } from './utils/language-map';
+import { getCachedTokens, setCachedTokens } from '../utils/syntax-cache';
 
 interface ReadFileViewProps {
   filePath: string;
@@ -70,12 +71,16 @@ export function ReadFileView({
   const lang = language || getLanguageFromFilePath(filePath) || 'text';
 
   const highlightedLines = useMemo(() => {
-    if (lang === 'text' || !Prism.languages[lang]) {
-      return content.split('\n').map(line => [{ content: line }]);
-    }
+    const cached = getCachedTokens(content, lang);
+    if (cached) return cached;
 
-    const tokens = Prism.tokenize(content, Prism.languages[lang]);
-    return tokenizeByLine(tokens);
+    const lines =
+      lang === 'text' || !Prism.languages[lang]
+        ? content.split('\n').map(line => [{ content: line, type: null }])
+        : tokenizeByLine(Prism.tokenize(content, Prism.languages[lang]));
+
+    setCachedTokens(content, lang, lines);
+    return lines;
   }, [content, lang]);
 
   // If diff is provided, render it with DiffView
@@ -106,7 +111,7 @@ export function ReadFileView({
             </Text>
             <Text color="dim"> │ </Text>
             <Box flexDirection="row">
-              {lineTokens.map((token: { content: string; type?: string }, tokenIndex: number) => {
+              {lineTokens.map((token, tokenIndex) => {
                 const color = token.type ? (theme[token.type] ?? 'white') : 'white';
                 return (
                   <Text key={tokenIndex} color={color}>

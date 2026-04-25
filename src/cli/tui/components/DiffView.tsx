@@ -9,7 +9,7 @@ import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-json';
 import 'prismjs/components/prism-markdown';
 import 'prismjs/components/prism-css';
-import { tokenizeByLine } from './utils/tokenize-by-line';
+import { tokenizeByLine, type LineToken } from './utils/tokenize-by-line';
 import { getLanguageFromFilePath } from './utils/language-map';
 
 type DiffLineType = 'added' | 'removed' | 'context';
@@ -19,7 +19,7 @@ interface DiffLine {
   oldLineNumber?: number;
   newLineNumber?: number;
   content: string;
-  tokens?: Array<{ content: string; type?: string }>;
+  tokens?: LineToken[];
 }
 
 export interface DiffHunk {
@@ -71,7 +71,7 @@ const theme: Record<string, string> = {
   'tag': 'blue',
 };
 
-function getTokenColor(type?: string): string {
+function getTokenColor(type: string | null): string {
   return type ? (theme[type] ?? 'white') : 'white';
 }
 
@@ -161,7 +161,7 @@ export function DiffView({ filePath, diff, language }: DiffViewProps) {
 
                 {line.tokens ? (
                   <Box flexDirection="row">
-                    {line.tokens.map((token: { content: string; type?: string }, tokenIndex: number) => (
+                    {line.tokens.map((token, tokenIndex) => (
                       <Text
                         key={tokenIndex}
                         color={getTokenColor(token.type) || color}
