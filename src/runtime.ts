@@ -3,6 +3,7 @@ import { Agent, ContextManager } from './agent';
 import { ClaudeProvider } from './providers';
 import { OpenAIProvider } from './providers/openai';
 import { ToolRegistry } from './agent/tool-registry';
+import { getSettings } from './config';
 import {
   BashTool, TextEditorTool, AskUserQuestionTool, ReadTool, GrepTool, GlobTool, LsTool,
 } from './tools';
@@ -44,6 +45,9 @@ export interface AgentRuntime {
 export async function createAgentRuntime(
   config: RuntimeConfig = {},
 ): Promise<AgentRuntime> {
+  // Load settings first - many modules depend on getSettingsSync()
+  await getSettings();
+
   const {
     model,
     maxTokens = 4096,
