@@ -4,10 +4,12 @@
   "type": "module",
   "private": true,
   "bin": {
+    "my-agent": "bin/my-agent.ts",
     "my-agent-tui": "bin/my-agent-tui"
   },
   "scripts": {
     "tui": "bun run bin/my-agent-tui-dev.ts",
+    "agent": "bun run bin/my-agent.ts",
     "tsc": "tsc",
     "build": "tsc",
     "dev": "bun run bin/my-agent-tui-dev.ts"
@@ -20,7 +22,8 @@
     "@types/node": "^25.6.0",
     "@types/prismjs": "^1.26.5",
     "@types/react": "^18.3.3",
-    "ink-testing-library": "^4.0.0"
+    "ink-testing-library": "^4.0.0",
+    "minimatch": "^10.2.5"
   },
   "peerDependencies": {
     "typescript": "^6.0.3"
