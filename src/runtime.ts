@@ -1,10 +1,11 @@
 import type { AgentConfig, Provider } from './types';
 import { Agent } from './agent/Agent';
-import type { ToolRegistry } from './agent/tool-registry';
+import { ToolRegistry } from './agent/tool-registry';
 import { ContextManager } from './agent/context';
 import type { SessionStore } from './session/store';
 import type { MemoryMiddleware } from './memory/middleware';
 import type { AskUserQuestionParameters, AskUserQuestionResult } from './tools/ask-user-question';
+import { BashTool, TextEditorTool, AskUserQuestionTool, ReadTool, GrepTool, GlobTool, LsTool } from './tools';
 import { ClaudeProvider } from './providers/claude';
 import { OpenAIProvider } from './providers/openai';
 
@@ -74,11 +75,26 @@ export async function createAgentRuntime(
   }
   const agentConfig: AgentConfig = { tokenLimit };
 
-  // Create dummy tool registry for now (will be implemented in later tasks)
-  const toolRegistry = {
-    getAllDefinitions: () => [],
-    get: () => undefined,
-  } as unknown as ToolRegistry;
+  const toolRegistry = new ToolRegistry();
+  toolRegistry.register(new BashTool({ allowedWorkingDirs: [cwd] }));
+  toolRegistry.register(new TextEditorTool({ allowedRoots: [cwd] }));
+  toolRegistry.register(new ReadTool());
+  toolRegistry.register(new GrepTool());
+  toolRegistry.register(new GlobTool());
+  toolRegistry.register(new LsTool());
+
+  const defaultHeadlessHandler = async () => ({
+    answers: [],
+  });
+  toolRegistry.register(new AskUserQuestionTool(
+    askUserQuestionHandler ?? defaultHeadlessHandler,
+  ));
+
+  const hooks: any = {
+    beforeAgentRun: [],
+    beforeModel: [],
+    afterAgentRun: [],
+  };
 
   // Create dummy session store for now
   const sessionStore = {} as SessionStore;

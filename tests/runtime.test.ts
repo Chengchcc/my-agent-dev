@@ -29,4 +29,16 @@ describe('createAgentRuntime', () => {
     expect(runtime.provider).toBeDefined();
     expect(runtime.agent).toBeDefined();
   });
+
+  it('should register core tools', async () => {
+    const runtime = await createAgentRuntime({ enableMemory: false, enableSkills: false, enableTodo: false, enableSession: false });
+    const toolNames = Array.from(runtime.toolRegistry.tools.keys());
+    expect(toolNames).toContain('bash');
+    expect(toolNames).toContain('text_editor');
+    expect(toolNames).toContain('read');
+    expect(toolNames).toContain('grep');
+    expect(toolNames).toContain('glob');
+    expect(toolNames).toContain('ls');
+    expect(toolNames).toContain('ask_user_question');
+  });
 });
