@@ -53,6 +53,13 @@ export class ToolDispatcher {
       sink: createToolSink(),
     };
 
+    // 创建超时 AbortController，合并外部信号
+    const originalSignal = toolCtx.signal;
+    const timeoutController = new AbortController();
+    const onExternalAbort = () => timeoutController.abort();
+    originalSignal.addEventListener('abort', onExternalAbort, { once: true });
+    toolCtx.signal = timeoutController.signal;
+
     // 构建 middleware 洋葱链
     const chain = this.buildMiddlewareChain(tool, toolCall, toolCtx);
 
@@ -62,6 +69,7 @@ export class ToolDispatcher {
         chain(),
         options.toolTimeoutMs,
         toolCall.name,
+        timeoutController,
       );
 
       const content = this.serializeAndTruncate(rawResult, options.maxOutputChars);
@@ -87,6 +95,8 @@ export class ToolDispatcher {
         durationMs: Date.now() - startTime,
         isError: true,
       };
+    } finally {
+      originalSignal.removeEventListener('abort', onExternalAbort);
     }
   }
 
@@ -110,10 +120,18 @@ export class ToolDispatcher {
   /**
    * Promise 超时包装
    */
-  private async withTimeout<T>(promise: Promise<T>, ms: number, toolName: string): Promise<T> {
+  private async withTimeout<T>(
+    promise: Promise<T>,
+    ms: number,
+    toolName: string,
+    controller?: AbortController,
+  ): Promise<T> {
     let timeoutId: NodeJS.Timeout | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => reject(new Error(`Tool '${toolName}' timed out after ${ms}ms`)), ms);
+      timeoutId = setTimeout(() => {
+        controller?.abort();
+        reject(new Error(`Tool '${toolName}' timed out after ${ms}ms`));
+      }, ms);
     });
     try {
       return await Promise.race([promise, timeoutPromise]);

@@ -78,6 +78,158 @@ describe('ToolDispatcher dispatchParallelStreaming', () => {
     expect(results.length).toBe(0);
   });
 
+  it('should abort tool via AbortController on timeout, setting signal.aborted', async () => {
+    let signalAborted = false;
+    class TimeoutTool implements ToolImplementation {
+      getDefinition() { return { name: 'timeoutTool', description: '', parameters: {} }; }
+      async execute(_params: Record<string, unknown>, ctx: ToolContext) {
+        return new Promise((resolve) => {
+          ctx.signal.addEventListener('abort', () => {
+            signalAborted = true;
+            resolve('aborted');
+          }, { once: true });
+          // Keep the promise pending until abort fires
+        });
+      }
+    }
+
+    const registry = new ToolRegistry();
+    registry.register(new TimeoutTool());
+    const dispatcher = new ToolDispatcher(registry);
+
+    const ctrl = new AbortController();
+    const ctx: ToolContext = {
+      signal: ctrl.signal,
+      agentContext: { messages: [] } as any,
+      budget: { remaining: 1000, usageRatio: 0 },
+      environment: { agentType: 'main', cwd: process.cwd() },
+      metadata: new Map(),
+      sink: createToolSink(),
+    };
+
+    const toolCalls: ToolCall[] = [
+      { id: '1', name: 'timeoutTool', arguments: {} },
+    ];
+
+    const results: ToolEvent[] = [];
+    for await (const event of dispatcher.dispatch(toolCalls, ctx, {
+      parallel: false,
+      yieldAsCompleted: false,
+      toolTimeoutMs: 10,
+      maxOutputChars: 1000,
+    })) {
+      results.push(event);
+    }
+
+    expect(signalAborted).toBe(true);
+    // The result should be the timeout error
+    const resultEvent = results.find(r => r.type === 'tool:result') as any;
+    expect(resultEvent).toBeDefined();
+    expect(resultEvent.result.isError).toBe(true);
+    expect(resultEvent.result.content).toContain('timed out');
+  });
+
+  it('should propagate external abort to tool signal', async () => {
+    let toolSignalAborted = false;
+    class AbortAwareTool implements ToolImplementation {
+      getDefinition() { return { name: 'abortAware', description: '', parameters: {} }; }
+      async execute(_params: Record<string, unknown>, ctx: ToolContext) {
+        return new Promise((resolve, reject) => {
+          ctx.signal.addEventListener('abort', () => {
+            toolSignalAborted = true;
+            reject(new Error('aborted'));
+          }, { once: true });
+          // Keep pending until external abort fires
+        });
+      }
+    }
+
+    const registry = new ToolRegistry();
+    registry.register(new AbortAwareTool());
+    const dispatcher = new ToolDispatcher(registry);
+
+    const ctrl = new AbortController();
+    const ctx: ToolContext = {
+      signal: ctrl.signal,
+      agentContext: { messages: [] } as any,
+      budget: { remaining: 1000, usageRatio: 0 },
+      environment: { agentType: 'main', cwd: process.cwd() },
+      metadata: new Map(),
+      sink: createToolSink(),
+    };
+
+    const toolCalls: ToolCall[] = [
+      { id: '1', name: 'abortAware', arguments: {} },
+    ];
+
+    const results: ToolEvent[] = [];
+    const dispatchPromise = (async () => {
+      for await (const event of dispatcher.dispatch(toolCalls, ctx, {
+        parallel: false,
+        yieldAsCompleted: false,
+        toolTimeoutMs: 10000,
+        maxOutputChars: 1000,
+      })) {
+        results.push(event);
+      }
+    })();
+
+    // Abort externally while tool is waiting
+    await new Promise(resolve => setTimeout(resolve, 10));
+    ctrl.abort();
+
+    await dispatchPromise;
+
+    expect(toolSignalAborted).toBe(true);
+    // The result should indicate error (tool rejected with 'aborted')
+    const resultEvent = results.find(r => r.type === 'tool:result') as any;
+    expect(resultEvent).toBeDefined();
+    expect(resultEvent.result.isError).toBe(true);
+  });
+
+  it('should not affect non-timeout normal tools', async () => {
+    class FastTool implements ToolImplementation {
+      getDefinition() { return { name: 'fast', description: '', parameters: {} }; }
+      async execute(_params: Record<string, unknown>, ctx: ToolContext) {
+        return 'fast result';
+      }
+    }
+
+    const registry = new ToolRegistry();
+    registry.register(new FastTool());
+    const dispatcher = new ToolDispatcher(registry);
+
+    const ctrl = new AbortController();
+    const ctx: ToolContext = {
+      signal: ctrl.signal,
+      agentContext: { messages: [] } as any,
+      budget: { remaining: 1000, usageRatio: 0 },
+      environment: { agentType: 'main', cwd: process.cwd() },
+      metadata: new Map(),
+      sink: createToolSink(),
+    };
+
+    const toolCalls: ToolCall[] = [
+      { id: '1', name: 'fast', arguments: {} },
+    ];
+
+    const results: ToolEvent[] = [];
+    for await (const event of dispatcher.dispatch(toolCalls, ctx, {
+      parallel: false,
+      yieldAsCompleted: false,
+      toolTimeoutMs: 10000,
+      maxOutputChars: 1000,
+    })) {
+      results.push(event);
+    }
+
+    expect(results.length).toBe(2); // start + result
+    const resultEvent = results.find(r => r.type === 'tool:result') as any;
+    expect(resultEvent).toBeDefined();
+    expect(resultEvent.result.isError).toBe(false);
+    expect(resultEvent.result.content).toBe('fast result');
+  });
+
   it('should handle abort signal during parallel execution', async () => {
     class SlowTool implements ToolImplementation {
       getDefinition() { return { name: 'slow', description: '', parameters: {} }; }
