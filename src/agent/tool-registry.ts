@@ -1,5 +1,6 @@
 // src/agent/tool-registry.ts
 import type { Tool, ToolImplementation } from '../types';
+import { debugWarn } from '../utils/debug';
 
 /**
  * ToolRegistry - manages registration and lookup of tool implementations
@@ -7,19 +8,28 @@ import type { Tool, ToolImplementation } from '../types';
  */
 export class ToolRegistry {
   private _tools: Map<string, ToolImplementation> = new Map();
+  private _definitionsCache: Tool[] | null = null;
 
   /**
    * Register a tool implementation with the registry
    */
   register(tool: ToolImplementation): void {
     const definition = tool.getDefinition();
+
+    // Detect and warn on duplicate registration
+    if (this._tools.has(definition.name)) {
+      debugWarn(`[ToolRegistry] Duplicate tool registration: '${definition.name}' — overwriting`);
+    }
+
     this._tools.set(definition.name, tool);
+    this._definitionsCache = null; // invalidate cache
   }
 
   /**
    * Unregister a tool from the registry
    */
   unregister(name: string): boolean {
+    this._definitionsCache = null;
     return this._tools.delete(name);
   }
 
@@ -38,16 +48,21 @@ export class ToolRegistry {
   }
 
   /**
-   * Get all tool definitions for registration with provider
+   * Get all tool definitions for registration with provider.
+   * Result is cached until the registry is mutated.
    */
   getAllDefinitions(): Tool[] {
-    return Array.from(this._tools.values()).map(tool => tool.getDefinition());
+    if (!this._definitionsCache) {
+      this._definitionsCache = Array.from(this._tools.values()).map(tool => tool.getDefinition());
+    }
+    return this._definitionsCache;
   }
 
   /**
    * Clear all registered tools
    */
   clear(): void {
+    this._definitionsCache = null;
     this._tools.clear();
   }
 
