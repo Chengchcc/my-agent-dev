@@ -51,6 +51,7 @@ export function createSkillMiddleware(
   const autoInject = options.autoInject ?? true;
   const injectOnMention = options.injectOnMention ?? true;
   const loadedSkills: Map<string, SkillInfo> = new Map(); // skillName (lowercase) -> SkillInfo
+  const skillAliases: Map<string, string> = new Map(); // alias (dirname, etc) -> canonical skillName (lowercase)
 
   /**
    * Preload all skills into memory.
@@ -59,13 +60,14 @@ export function createSkillMiddleware(
   async function preloadAll(): Promise<void> {
     const skills = await skillLoader.loadAllSkills();
     loadedSkills.clear();
+    skillAliases.clear();
     for (const skill of skills) {
-      // Store by skill name (lowercase)
-      loadedSkills.set(skill.name.toLowerCase(), skill);
-      // Also store by directory name
+      const canonicalName = skill.name.toLowerCase();
+      loadedSkills.set(canonicalName, skill);
+      // Also store directory name as alias
       const dirName = path.basename(path.dirname(skill.filePath)).toLowerCase();
-      if (dirName !== skill.name.toLowerCase()) {
-        loadedSkills.set(dirName, skill);
+      if (dirName !== canonicalName) {
+        skillAliases.set(dirName, canonicalName);
       }
     }
   }
@@ -101,12 +103,19 @@ export function createSkillMiddleware(
 
     // Collect skills that are mentioned in the user message
     const mentionedSkills: SkillInfo[] = [];
-    // Use Set to avoid duplicates from double-key storage
-    const uniqueSkills = new Set(loadedSkills.values());
-    for (const skillInfo of uniqueSkills) {
-      const skillName = skillInfo.name.toLowerCase();
+    // No more Set needed - loadedSkills now has unique entries only
+    for (const [skillName, skillInfo] of loadedSkills.entries()) {
       if (injectOnMention && userContent.includes(skillName)) {
         mentionedSkills.push(skillInfo);
+      }
+    }
+    // Also check aliases (directory names)
+    for (const [alias, canonicalName] of skillAliases.entries()) {
+      if (injectOnMention && userContent.includes(alias)) {
+        const skillInfo = loadedSkills.get(canonicalName)!;
+        if (!mentionedSkills.includes(skillInfo)) {
+          mentionedSkills.push(skillInfo);
+        }
       }
     }
 
@@ -141,9 +150,9 @@ You must read the matching skill file${mentionedSkills.length > 1 ? 's' : ''} us
 `;
     }
 
-    // List all available skills - use Set to avoid duplicates from double-key storage
+    // List all available skills - no more Set needed, loadedSkills has unique entries
     const skillsJson = JSON.stringify(
-      Array.from(uniqueSkills).map(s => ({
+      Array.from(loadedSkills.values()).map(s => ({
         name: s.name,
         description: s.description,
         path: s.filePath,
@@ -185,14 +194,16 @@ ${skillsJson}
    * Get the loaded skill info by name.
    */
   function getSkill(skillName: string): SkillInfo | null {
-    return loadedSkills.get(skillName.toLowerCase()) ?? null;
+    const key = skillName.toLowerCase();
+    const canonicalName = skillAliases.get(key) ?? key;
+    return loadedSkills.get(canonicalName) ?? null;
   }
 
   /**
    * Get the loaded skill content by name.
    */
   function getSkillContent(skillName: string): string | null {
-    const skill = loadedSkills.get(skillName.toLowerCase());
+    const skill = getSkill(skillName);
     return skill?.content ?? null;
   }
 
@@ -201,6 +212,7 @@ ${skillsJson}
    */
   function clearCache(): void {
     loadedSkills.clear();
+    skillAliases.clear();
   }
 
   /**
