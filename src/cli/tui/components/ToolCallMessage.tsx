@@ -74,7 +74,7 @@ export function ToolCallMessage({ toolCall, result, pending, focused, expanded }
               content={parsed.content}
               startLine={parsed.range.start}
               totalFileLines={parsed.total_lines}
-              diff={parsed.diff}
+              {...(parsed.diff ? { diff: { hunks: parsed.diff.hunks } } : {})}
             />
           ) : (
             <Box paddingLeft={2}>
@@ -89,20 +89,16 @@ export function ToolCallMessage({ toolCall, result, pending, focused, expanded }
   // Default rendering for other tools
   // Get content to display
   let content: string;
-  let isCollapsible: boolean;
 
   if (!result) {
     content = '';
-    isCollapsible = false;
   } else {
     const smartSummary = smartSummarize(toolCall.name, toolCall.arguments, result.content);
     if (smartSummary !== null) {
       content = smartSummary;
-      isCollapsible = false;
     } else {
       const formatted = formatToolResult(result.content, result.isError, expanded);
       content = formatted.display;
-      isCollapsible = formatted.isCollapsible;
     }
   }
 

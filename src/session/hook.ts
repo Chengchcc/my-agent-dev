@@ -6,7 +6,7 @@ import type { SessionStore } from './store';
  * after every completed agent run.
  */
 export function createAutoSaveHook(sessionStore: SessionStore): Middleware {
-  return async (context: AgentContext, next: () => Promise<AgentContext>) => {
+  return async (_context: AgentContext, next: () => Promise<AgentContext>) => {
     // Just call next - we run after the agent completes
     const result = await next();
 

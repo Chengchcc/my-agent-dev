@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import type { Message, Provider } from '../types';
+import type { Message, Provider, AgentContext } from '../types';
 import type { MemoryEntry, MemoryExtractor } from './types';
 
 export class LlmExtractor implements MemoryExtractor {
@@ -75,10 +75,9 @@ ${entries.map((e, i) => `[${i + 1}] ${e.text} (created: ${e.created})`).join('\n
 
   private async invokeLlm(prompt: string): Promise<string> {
     // Create a minimal context for the provider invoke
-    const context = {
+    const context: AgentContext = {
       messages: [{ role: 'user' as const, content: prompt }],
-      systemPrompt: undefined,
-      config: { tokenLimit: 100000, defaultSystemPrompt: undefined, model: this.extractionModel },
+      config: { tokenLimit: 100000, model: this.extractionModel },
       metadata: {},
     };
 
@@ -99,25 +98,36 @@ ${entries.map((e, i) => `[${i + 1}] ${e.text} (created: ${e.created})`).join('\n
       if (!jsonMatch) return [];
 
       const parsed = JSON.parse(jsonMatch[0]) as Array<{
+        id?: string;
         type?: MemoryEntry['type'];
         text?: string;
         tags?: string[];
+        created?: string;
         weight?: number;
+        source?: MemoryEntry['source'];
+        projectPath?: string;
+        metadata?: Record<string, unknown>;
+        files?: string[];
       }>;
 
       const now = new Date().toISOString();
       return parsed
         .filter(p => p.text && p.type)
-        .map(p => ({
-          id: crypto.randomUUID(),
-          type: p.type!,
-          text: p.text!,
-          tags: p.tags,
-          created: now,
-          weight: p.weight ?? 0.8,
-          source: 'implicit' as const,
-          projectPath: p.type === 'project' ? projectPath : undefined,
-        }))
+        .map(p => {
+          const entry: MemoryEntry = {
+            id: p.id ?? crypto.randomUUID(),
+            type: p.type!,
+            text: p.text!,
+            created: p.created ?? now,
+            weight: p.weight ?? 0.8,
+            source: p.source ?? ('implicit' as const),
+          };
+          if (p.tags?.length) entry.tags = p.tags;
+          if (p.type === 'project' && projectPath) entry.projectPath = projectPath;
+          if (p.metadata) entry.metadata = p.metadata;
+          if (p.files?.length) entry.files = p.files;
+          return entry;
+        })
         .filter(p => p.text.trim().length > 0);
     } catch {
       // If parsing fails, return empty - no extraction
@@ -146,18 +156,21 @@ ${entries.map((e, i) => `[${i + 1}] ${e.text} (created: ${e.created})`).join('\n
       const now = new Date().toISOString();
       return parsed
         .filter(p => p.text && p.type)
-        .map(p => ({
-          id: p.id ?? crypto.randomUUID(),
-          type: p.type!,
-          text: p.text!,
-          tags: p.tags,
-          created: p.created ?? now,
-          weight: p.weight ?? 0.8,
-          source: p.source ?? ('implicit' as const),
-          projectPath: p.projectPath,
-          metadata: p.metadata,
-          files: p.files,
-        }))
+        .map(p => {
+          const entry: MemoryEntry = {
+            id: p.id ?? crypto.randomUUID(),
+            type: p.type!,
+            text: p.text!,
+            created: p.created ?? now,
+            weight: p.weight ?? 0.8,
+            source: p.source ?? ('implicit' as const),
+          };
+          if (p.tags?.length) entry.tags = p.tags;
+          if (p.projectPath) entry.projectPath = p.projectPath;
+          if (p.metadata) entry.metadata = p.metadata;
+          if (p.files?.length) entry.files = p.files;
+          return entry;
+        })
         .filter(p => p.text.trim().length > 0);
     } catch {
       return [];

@@ -23,7 +23,7 @@ export class BashTool implements ToolImplementation {
   constructor(options: BashToolOptions = {}) {
     this.timeoutMs = options.timeoutMs ?? 120000; // 2 minutes default
     this.maxOutputBytes = options.maxOutputBytes ?? 1024 * 1024; // 1MB default
-    this.allowedWorkingDirs = options.allowedWorkingDirs;
+    this.allowedWorkingDirs = options.allowedWorkingDirs ?? [];
   }
 
   /**

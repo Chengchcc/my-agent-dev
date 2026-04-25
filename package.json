@@ -12,7 +12,12 @@
     "agent": "bun run bin/my-agent.ts",
     "tsc": "tsc",
     "build": "tsc",
-    "dev": "bun run bin/my-agent-tui-dev.ts"
+    "dev": "bun run bin/my-agent-tui-dev.ts",
+    "check:guard": "tsc --noEmit",
+    "check:arch": "bun run scripts/check-architecture.ts",
+    "check:deadcode": "bun x knip --no-progress --reporter compact",
+    "check:all": "tsc --noEmit && bun test && bun run check:arch",
+    "baseline:any": "bun run scripts/update-any-baseline.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -22,8 +27,13 @@
     "@types/node": "^25.6.0",
     "@types/prismjs": "^1.26.5",
     "@types/react": "^18.3.3",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
     "ink-testing-library": "^4.0.0",
-    "minimatch": "^10.2.5"
+    "knip": "^5.0.0",
+    "minimatch": "^10.2.5",
+    "ts-morph": "^23.0.0"
   },
   "peerDependencies": {
     "typescript": "^6.0.3"

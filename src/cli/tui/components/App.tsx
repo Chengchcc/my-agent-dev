@@ -14,7 +14,6 @@ import { StreamingIndicator } from './StreamingIndicator';
 import { AskUserQuestionPrompt } from './AskUserQuestionPrompt';
 import { BlinkProvider } from './BlinkContext';
 import type { Agent } from '../../../agent';
-import type { Message } from '../../../types';
 import type { SlashCommand } from '../command-registry';
 import type { SessionStore } from '../../../session/store';
 

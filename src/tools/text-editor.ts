@@ -13,10 +13,10 @@ type TextEditorCommand = 'view' | 'create' | 'str_replace' | 'write';
  * Supports: view, create, str_replace, write operations.
  */
 export class TextEditorTool implements ToolImplementation {
-  private allowedRoots?: string[];
+  private allowedRoots: string[] = [];
 
   constructor(options: { allowedRoots?: string[] } = {}) {
-    this.allowedRoots = options.allowedRoots;
+    this.allowedRoots = options.allowedRoots ?? [];
   }
 
   /**

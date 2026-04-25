@@ -166,5 +166,5 @@ export async function loadSettings(): Promise<Settings> {
     throw new Error(`Configuration validation failed: ${result.error.message}`);
   }
 
-  return result.data;
+  return result.data as Settings;
 }

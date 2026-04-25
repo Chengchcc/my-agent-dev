@@ -70,14 +70,17 @@ export class ToolDispatcher {
       // 从 sink 收集副作用
       const sink = toolCtx.sink;
 
-      return {
+      const result: any = {
         content,
         rawContent: rawResult,
         durationMs,
         isError: false,
         metadata: Object.fromEntries(toolCtx.metadata),
-        todoUpdates: sink._todoUpdates,
       };
+      if (sink._todoUpdates) {
+        result.todoUpdates = sink._todoUpdates;
+      }
+      return result;
     } catch (error) {
       return {
         content: `Error executing '${toolCall.name}': ${error instanceof Error ? error.message : String(error)}`,
@@ -142,9 +145,8 @@ export class ToolDispatcher {
     baseCtx: ToolContext,
     options: DispatchOptions,
   ): AsyncGenerator<ToolEvent> {
-    for (let i = 0; i < toolCalls.length; i++) {
-      const toolCall = toolCalls[i];
-      yield { type: 'tool:start', toolCall, index: i };
+    for (const [index, toolCall] of toolCalls.entries()) {
+      yield { type: 'tool:start', toolCall, index };
       const result = await this.executeSingle(toolCall, baseCtx, options);
       yield { type: 'tool:result', toolCall, result };
     }
@@ -162,13 +164,18 @@ export class ToolDispatcher {
       toolCalls.map(toolCall => this.executeSingle(toolCall, baseCtx, options)),
     );
 
-    for (let i = 0; i < toolCalls.length; i++) {
-      const toolCall = toolCalls[i];
-      yield { type: 'tool:start', toolCall, index: i };
+    for (const [index, toolCall] of toolCalls.entries()) {
+      yield { type: 'tool:start', toolCall, index };
 
-      const resultItem = results[i];
+      const resultItem = results[index];
       let result: ToolExecutionResult;
-      if (resultItem.status === 'fulfilled') {
+      if (!resultItem) {
+        result = {
+          content: 'Error: Tool execution result not found',
+          durationMs: 0,
+          isError: true,
+        };
+      } else if (resultItem.status === 'fulfilled') {
         result = resultItem.value;
       } else {
         const error = resultItem.reason instanceof Error
@@ -194,8 +201,8 @@ export class ToolDispatcher {
     options: DispatchOptions,
   ): AsyncGenerator<ToolEvent> {
     // First, yield all start events immediately
-    for (let i = 0; i < toolCalls.length; i++) {
-      yield { type: 'tool:start', toolCall: toolCalls[i], index: i };
+    for (const [index, toolCall] of toolCalls.entries()) {
+      yield { type: 'tool:start', toolCall, index };
     }
 
     // Use a result queue to yield results as soon as they complete

@@ -1,4 +1,3 @@
-import type { Agent } from '../../../agent';
 import type { SlashCommand } from '../command-registry';
 import type { CommandHandlerContext } from '../types';
 

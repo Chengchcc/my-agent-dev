@@ -1,4 +1,4 @@
-import type { AgentContext, Message, Provider } from '../../../types';
+import type { AgentConfig, AgentContext, Message, Provider } from '../../../types';
 import type { CompactionResult, CompactionConfig } from '../types';
 
 const SUMMARY_SYSTEM_PROMPT = `You are a context compaction assistant. Your job is to produce a structured, ` +
@@ -97,12 +97,15 @@ export class AutoCompactStrategy {
   private async generateSummary(messages: Message[]): Promise<string> {
     const prompt = this.buildSummaryPrompt(messages);
 
+    const config: AgentConfig = {
+      tokenLimit: 200_000,
+    };
+    if (this.config.summaryModel) {
+      config.model = this.config.summaryModel;
+    }
     const summaryContext: AgentContext = {
       messages: [{ role: 'user', content: prompt }],
-      config: {
-        tokenLimit: 200_000,
-        model: this.config.summaryModel,
-      },
+      config,
       metadata: {},
       systemPrompt: SUMMARY_SYSTEM_PROMPT,
     };

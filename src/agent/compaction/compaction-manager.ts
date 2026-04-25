@@ -52,7 +52,7 @@ export class TieredCompactionManager implements CompressionStrategy {
   /**
    * Compress and return full result with metadata.
    */
-  async compressWithResult(context: AgentContext, tokenLimit: number): Promise<CompactionResult> {
+  async compressWithResult(context: AgentContext, _tokenLimit: number): Promise<CompactionResult> {
     const budget = this.budgetCalc.calculate(context);
     const preserveCount = this.config.thresholds.preserveRecentTurns;
     const thresholds = this.config.thresholds;

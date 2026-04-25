@@ -1,10 +1,10 @@
-import React, { createContext, useCallback, useEffect, useMemo, useRef, useState, useReducer, useDeferredValue } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useReducer, useDeferredValue } from 'react';
 import { createContext as createSelectorContext, useContextSelector } from 'use-context-selector';
 import { countMessageTokens } from '../../../utils/token-cache';
 import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
 import type { Message } from '../../../types';
-import type { AgentEvent, SubAgentStartEvent, SubAgentNestedEvent, SubAgentDoneEvent, ToolCallStartEvent, BudgetDelegationEvent, BudgetCompactEvent, ContextCompactedEvent } from '../../../agent/loop-types';
+import type { SubAgentStartEvent, ToolCallStartEvent } from '../../../agent/loop-types';
 import type { PromptSubmission } from '../command-registry';
 import type { UITodoItem } from '../types';
 import { agentUIReducer, initialState, type AgentUIState, type AgentUIAction } from './agent-ui-reducer';
@@ -170,7 +170,7 @@ export function AgentLoopProvider({
       if (text.startsWith('/')) {
         const match = text.match(/^\/([^\s]+)(?:\s(.*))?$/);
         if (match) {
-          const commandName = match[1].toLowerCase();
+          const commandName = match[1]!.toLowerCase();
           const args = match[2] || '';
 
           // Get all built-in commands (including session commands)
@@ -266,7 +266,9 @@ export function AgentLoopProvider({
             };
             dispatch({ type: 'AGENT_ERROR', errorMessage });
           } else if (event.type === 'turn_complete') {
-            dispatch({ type: 'TURN_COMPLETE', usage: event.usage });
+            const action: any = { type: 'TURN_COMPLETE' };
+            if (event.usage) action.usage = event.usage;
+            dispatch(action);
           } else if (event.type === 'agent_done') {
             // No action needed during iteration
           } else if (event.type === 'sub_agent_start') {
@@ -287,7 +289,7 @@ export function AgentLoopProvider({
             debugLog('[agent-loop] context compacted:', event.level, event.beforeTokens, '→', event.afterTokens, 'tokens');
           } else {
             // Exhaustiveness check - TypeScript will warn if new event types are added
-            const _exhaustive: never = event;
+            void (event as never);
           }
         }
 

@@ -39,7 +39,7 @@ export class SummarizeStrategy implements CompressionStrategy {
     this.provider = provider;
   }
 
-  async compress(context: AgentContext, tokenLimit: number): Promise<Message[]> {
+  async compress(context: AgentContext, _tokenLimit: number): Promise<Message[]> {
     // Create a context for the summarization request
     const summaryRequest: Message = {
       role: 'user',

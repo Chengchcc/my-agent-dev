@@ -13,7 +13,7 @@ export class SnipStrategy implements CompressionStrategy {
     this.keepTail = options?.keepTail ?? 6;
   }
 
-  async compress(context: AgentContext, tokenLimit: number): Promise<Message[]> {
+  async compress(context: AgentContext, _tokenLimit: number): Promise<Message[]> {
     let messages = [...context.messages];
 
     // Keep all system messages separate

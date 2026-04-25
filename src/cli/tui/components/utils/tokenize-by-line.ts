@@ -16,7 +16,7 @@ export function tokenizeByLine(tokens: Array<Token | string>): LineToken[][] {
       const linesInToken = token.split('\n');
 
       for (let i = 0; i < linesInToken.length; i++) {
-        const linePart = linesInToken[i];
+        const linePart = linesInToken[i] ?? '';
 
         if (i > 0) {
           // End of previous line
@@ -39,12 +39,15 @@ export function tokenizeByLine(tokens: Array<Token | string>): LineToken[][] {
         // First nested line continues on the current line
         if (nestedLines.length > 0) {
           // Add first line to current line
-          for (const nestedToken of nestedLines[0]) {
-            currentLineTokens.push({
-              ...nestedToken,
-              // Keep nested token type unless it didn't have one, then use parent's
-              type: nestedToken.type ?? token.type,
-            });
+          const firstLine = nestedLines[0];
+          if (firstLine) {
+            for (const nestedToken of firstLine) {
+              currentLineTokens.push({
+                ...nestedToken,
+                // Keep nested token type unless it didn't have one, then use parent's
+                type: nestedToken.type ?? token.type,
+              });
+            }
           }
 
           // Any additional nested lines become new lines in our output
@@ -52,11 +55,14 @@ export function tokenizeByLine(tokens: Array<Token | string>): LineToken[][] {
             lines.push(currentLineTokens);
             currentLineTokens = [];
             // Add the nested line's tokens to the new current line
-            for (const nestedToken of nestedLines[i]) {
-              currentLineTokens.push({
-                ...nestedToken,
-                type: nestedToken.type ?? token.type,
-              });
+            const line = nestedLines[i];
+            if (line) {
+              for (const nestedToken of line) {
+                currentLineTokens.push({
+                  ...nestedToken,
+                  type: nestedToken.type ?? token.type,
+                });
+              }
             }
           }
         }
@@ -65,7 +71,7 @@ export function tokenizeByLine(tokens: Array<Token | string>): LineToken[][] {
         // Split string content into lines even when inside a Prism Token
         const linesInToken = content.split('\n');
         for (let i = 0; i < linesInToken.length; i++) {
-          const linePart = linesInToken[i];
+          const linePart = linesInToken[i] ?? '';
           if (i > 0) {
             // End of previous line
             lines.push(currentLineTokens);

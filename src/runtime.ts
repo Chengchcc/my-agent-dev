@@ -1,5 +1,5 @@
 import type { AgentConfig, Provider } from './types';
-import type { LLMSettings, ContextSettings, CompactionSettings } from './config/types';
+import type { LLMSettings, ContextSettings } from './config/types';
 import { Agent } from './agent/Agent';
 import { ToolRegistry } from './agent/tool-registry';
 import { ContextManager } from './agent/context';
@@ -101,11 +101,12 @@ export async function createAgentRuntime(
     debugLog('Tiered compaction enabled');
   }
 
-  const contextManager = new ContextManager({
+  const contextManagerConfig: any = {
     tokenLimit,
     defaultSystemPrompt: systemPrompt,
-    compressionStrategy,
-  });
+  };
+  if (compressionStrategy) contextManagerConfig.compressionStrategy = compressionStrategy;
+  const contextManager = new ContextManager(contextManagerConfig);
 
   const agentConfig: AgentConfig = { tokenLimit };
 
@@ -191,19 +192,20 @@ export async function createAgentRuntime(
     hooks,
   });
 
-  return {
+  const runtime: any = {
     agent,
     provider,
     toolRegistry,
     contextManager,
     sessionStore,
-    memoryMiddleware,
     shutdown: async () => {
       if (memoryMiddleware) {
         await memoryMiddleware.awaitPendingExtractions();
       }
     },
   };
+  if (memoryMiddleware) runtime.memoryMiddleware = memoryMiddleware;
+  return runtime;
 }
 
 /**
@@ -220,38 +222,42 @@ function createProviderFromEnv(config: RuntimeConfig): Provider {
   const hasOpenaiKey = process.env.OPENAI_API_KEY;
 
   if (providerName === 'openai' && hasOpenaiKey) {
-    return new OpenAIProvider({
+    const openaiConfig: any = {
       apiKey: process.env.OPENAI_API_KEY!,
-      baseURL: process.env.OPENAI_BASE_URL,
       model: model || process.env.MODEL || 'gpt-4o',
       maxTokens,
       temperature: 0.7,
-    });
+    };
+    if (process.env.OPENAI_BASE_URL) openaiConfig.baseURL = process.env.OPENAI_BASE_URL;
+    return new OpenAIProvider(openaiConfig);
   } else if (providerName === 'claude' && hasClaudeKey) {
-    return new ClaudeProvider({
+    const claudeConfig: any = {
       apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN!,
-      baseURL: process.env.ANTHROPIC_BASE_URL,
       model: model || process.env.MODEL || 'claude-3-5-sonnet-20241022',
       maxTokens,
       temperature: 0.7,
-    });
+    };
+    if (process.env.ANTHROPIC_BASE_URL) claudeConfig.baseURL = process.env.ANTHROPIC_BASE_URL;
+    return new ClaudeProvider(claudeConfig);
   } else if (!providerName) {
     if (hasClaudeKey) {
-      return new ClaudeProvider({
+      const claudeConfig: any = {
         apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN!,
-        baseURL: process.env.ANTHROPIC_BASE_URL,
         model: model || process.env.MODEL || 'claude-3-5-sonnet-20241022',
         maxTokens,
         temperature: 0.7,
-      });
+      };
+      if (process.env.ANTHROPIC_BASE_URL) claudeConfig.baseURL = process.env.ANTHROPIC_BASE_URL;
+      return new ClaudeProvider(claudeConfig);
     } else if (hasOpenaiKey) {
-      return new OpenAIProvider({
+      const openaiConfig: any = {
         apiKey: process.env.OPENAI_API_KEY!,
-        baseURL: process.env.OPENAI_BASE_URL,
         model: model || process.env.MODEL || 'gpt-4o',
         maxTokens,
         temperature: 0.7,
-      });
+      };
+      if (process.env.OPENAI_BASE_URL) openaiConfig.baseURL = process.env.OPENAI_BASE_URL;
+      return new OpenAIProvider(openaiConfig);
     }
     throw new Error('No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.');
   }

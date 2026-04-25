@@ -17,6 +17,9 @@ export function composeMiddlewares(
         return finalHandler(ctx);
       }
       const middleware = middlewares[index++];
+      if (!middleware) {
+        return finalHandler(ctx);
+      }
 
       // Guard against multiple calls to next() in the same middleware
       let called = false;

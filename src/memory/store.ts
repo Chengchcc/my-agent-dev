@@ -116,7 +116,7 @@ export class JsonlMemoryStore implements MemoryStore {
     const index = all.findIndex(e => e.id === id);
     if (index === -1) return null;
 
-    all[index] = { ...all[index], ...patch, updated: new Date().toISOString() };
+    all[index] = { ...all[index], ...patch, updated: new Date().toISOString() } as MemoryEntry;
     await this.replaceAll(all, this.type);
     return all[index];
   }
@@ -162,7 +162,7 @@ export class JsonlMemoryStore implements MemoryStore {
     return all.filter(e => e.type === type);
   }
 
-  async replaceAll(entries: MemoryEntry[], type: MemoryType): Promise<void> {
+  async replaceAll(entries: MemoryEntry[], _type: MemoryType): Promise<void> {
     await this.ensureDir();
 
     if (this.type === 'project') {

@@ -73,7 +73,7 @@ export function createSkillMiddleware(
   /**
    * beforeAgentRun hook: no-op, preloading already done at startup.
    */
-  const beforeAgentRun: Middleware = async (context, next) => {
+  const beforeAgentRun: Middleware = async (_context, next) => {
     // Preloading done at startup, nothing to do here
     return next();
   };
@@ -193,7 +193,7 @@ ${skillsJson}
   /**
    * Register the skill loader with a provider to expose skills as tools.
    */
-  function registerAsTools(provider: Provider): void {
+  function registerAsTools(_provider: Provider): void {
     // Future: skills can expose tools
     // For now, just structured injection is sufficient
   }

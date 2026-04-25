@@ -1,4 +1,4 @@
-import type { AgentContext, Middleware, AgentMiddleware } from '../types';
+import type { Middleware, AgentMiddleware } from '../types';
 import type { Message } from '../types';
 import type { MemoryEntry, MemoryStore, MemoryRetriever, MemoryExtractor, MemoryConfig } from './types';
 import { getSettingsSync } from '../config';

@@ -1,6 +1,5 @@
 import type { SlashCommand } from '../command-registry';
 import type { SessionStore } from '../../../session/store';
-import type { Agent } from '../../../agent';
 import type { CommandHandlerContext } from '../types';
 import chalk from 'chalk';
 
@@ -137,7 +136,7 @@ export async function handleForget(
 /**
  * Get all built-in session commands
  */
-export function getSessionCommands(sessionStore: SessionStore): SlashCommand[] {
+export function getSessionCommands(_sessionStore: SessionStore): SlashCommand[] {
   return [
     {
       name: 'resume',

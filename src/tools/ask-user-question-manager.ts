@@ -12,8 +12,8 @@ const MAX_QUEUE_SIZE = 20;
 
 export class AskUserQuestionManager {
   private _queue: AskUserQuestionRequest[] = [];
-  private _currentRequest?: AskUserQuestionRequest;
-  private _subscriber?: (req: AskUserQuestionRequest | null) => void;
+  private _currentRequest: AskUserQuestionRequest | null = null;
+  private _subscriber: ((req: AskUserQuestionRequest | null) => void) | null = null;
 
   askUserQuestion = (params: AskUserQuestionParameters): Promise<AskUserQuestionResult> => {
     return new Promise((resolve, reject) => {
@@ -42,21 +42,23 @@ export class AskUserQuestionManager {
   respondWithAnswers = (result: AskUserQuestionResult) => {
     if (!this._currentRequest) return;
     this._currentRequest.resolve(result);
-    this._currentRequest = undefined;
+    this._currentRequest = null;
     this._processQueue();
   };
 
   subscribe(callback: (req: AskUserQuestionRequest | null) => void) {
     this._subscriber = callback;
     // Send current state to new subscriber
-    if (this._currentRequest) {
-      this._subscriber(this._currentRequest);
-    } else if (this._queue.length === 0) {
-      this._subscriber(null);
+    if (this._subscriber) {
+      if (this._currentRequest) {
+        this._subscriber(this._currentRequest);
+      } else if (this._queue.length === 0) {
+        this._subscriber(null);
+      }
     }
     this._processQueue();
     return () => {
-      this._subscriber = undefined;
+      this._subscriber = null;
       // Reject all pending requests when unsubscribing
       for (const req of this._queue) {
         req.reject(new Error('AskUserQuestionManager: subscriber unsubscribed'));
@@ -64,7 +66,7 @@ export class AskUserQuestionManager {
       this._queue = [];
       if (this._currentRequest) {
         this._currentRequest.reject(new Error('AskUserQuestionManager: subscriber unsubscribed'));
-        this._currentRequest = undefined;
+        this._currentRequest = null;
       }
     };
   }

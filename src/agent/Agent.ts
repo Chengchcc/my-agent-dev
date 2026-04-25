@@ -1,13 +1,10 @@
 import type {
   AgentContext,
   AgentConfig,
-  LLMResponse,
-  LLMResponseChunk,
   Middleware,
   Provider,
   ToolCall,
   AgentHooks,
-  Message,
 } from '../types';
 import type { AgentEvent, AgentLoopConfig, ContextCompactedEvent } from './loop-types';
 import type { ToolContext } from './tool-dispatch/types';
@@ -18,7 +15,7 @@ import { ToolRegistry } from './tool-registry';
 import { ToolDispatcher } from './tool-dispatch/dispatcher';
 import { createToolSink } from './tool-dispatch/types';
 import type { ToolMiddleware } from './tool-dispatch/middleware';
-import { checkBatchBudget, checkToolBudget, type BudgetCheckResult } from './budget-guard';
+import { checkBatchBudget, checkToolBudget } from './budget-guard';
 import { nanoid } from 'nanoid';
 
 export class Agent {
@@ -137,7 +134,9 @@ export class Agent {
     );
     const afterBeforeAgentRun = await composedBeforeAgentRun(initialContext);
 
-    this.contextManager.setSystemPrompt(afterBeforeAgentRun.systemPrompt);
+    if (afterBeforeAgentRun.systemPrompt) {
+      this.contextManager.setSystemPrompt(afterBeforeAgentRun.systemPrompt);
+    }
     this.contextManager.syncTodoFromContext(afterBeforeAgentRun);
   }
 
@@ -146,7 +145,7 @@ export class Agent {
    */
   private async *runSingleTurn(
     turnIndex: number,
-    config: AgentLoopConfig,
+    _config: AgentLoopConfig,
     signal: AbortSignal,
   ): AsyncGenerator<AgentEvent, {
     toolCalls: ToolCall[];
@@ -251,10 +250,12 @@ export class Agent {
 
     resultContext.response = {
       content: fullContent,
-      tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
       usage: usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
       model: this.provider.constructor.name,
     };
+    if (toolCalls.length > 0) {
+      resultContext.response.tool_calls = toolCalls;
+    }
 
     const composedBeforeAddResponse = composeMiddlewares(
       this.hooks.beforeAddResponse,
@@ -264,20 +265,26 @@ export class Agent {
     this.contextManager.syncTodoFromContext(resultContext);
 
     if (resultContext.response) {
-      this.contextManager.addMessage({
+      const msg: { role: 'assistant'; content: string; tool_calls?: ToolCall[] } = {
         role: 'assistant',
         content: resultContext.response.content,
-        tool_calls: resultContext.response.tool_calls,
-      });
+      };
+      if (resultContext.response.tool_calls && resultContext.response.tool_calls.length > 0) {
+        msg.tool_calls = resultContext.response.tool_calls;
+      }
+      this.contextManager.addMessage(msg);
     }
 
     const done = !toolCalls || toolCalls.length === 0;
-    yield {
+    const turnCompleteEvent: { type: 'turn_complete'; turnIndex: number; hasToolCalls: boolean; usage?: typeof usage } = {
       type: 'turn_complete',
       turnIndex,
       hasToolCalls: !done,
-      usage,
-    } satisfies AgentEvent;
+    };
+    if (usage) {
+      turnCompleteEvent.usage = usage;
+    }
+    yield turnCompleteEvent as AgentEvent;
 
     return { toolCalls, resultContext, done };
   }
@@ -324,19 +331,19 @@ export class Agent {
       const compressed = await this.contextManager.compressIfNeeded(currentContext);
       this.contextManager.setMessages(compressed.messages);
     } else {
-      for (let i = 0; i < toolCalls.length; i++) {
+      for (const [index, toolCall] of toolCalls.entries()) {
         const remainingAfterPrevious = this.contextManager.getRemainingBudget();
-        const singleCheck = checkToolBudget(toolCalls[i], remainingAfterPrevious, totalLimit);
+        const singleCheck = checkToolBudget(toolCall, remainingAfterPrevious, totalLimit);
         if (singleCheck.action === 'delegate-to-sub-agent') {
           yield {
             type: 'budget_delegation',
             reason: singleCheck.reason!,
-            originalTools: [toolCalls[i].name],
+            originalTools: [toolCall.name],
             turnIndex,
           } satisfies import('./loop-types').BudgetDelegationEvent;
 
           const subId = `budget-sub-${nanoid(6)}`;
-          toolCalls[i] = {
+          toolCalls[index] = {
             id: subId,
             name: 'sub_agent',
             arguments: { task: singleCheck.delegatedTask! },
@@ -380,15 +387,18 @@ export class Agent {
             ? rawContent
             : JSON.stringify(rawContent, null, 2);
 
-          yield {
+          const toolResultEvent: any = {
             type: 'tool_call_result',
             toolCall: event.toolCall,
             result: content,
-            error: event.result.isError ? new Error(content) : undefined,
             durationMs: event.result.durationMs,
             isError: event.result.isError,
             turnIndex,
-          } satisfies AgentEvent;
+          };
+          if (event.result.isError) {
+            toolResultEvent.error = new Error(content);
+          }
+          yield toolResultEvent as AgentEvent;
 
           this.contextManager.addMessage({
             role: 'tool',

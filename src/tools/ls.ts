@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { readdirSync, statSync, lstatSync } from 'fs';
+import { readdirSync, statSync } from 'fs';
 import { resolve, relative, join } from 'path';
 import { allowedRoots } from '../config/allowed-roots';
 import { ZodTool } from './zod-tool';

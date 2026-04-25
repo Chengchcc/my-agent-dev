@@ -23,13 +23,14 @@ export function createProviderFromSettings(settings: LLMSettings): Provider {
     debugLog('  apiKey length:', settings.apiKey?.length);
     debugLog('  baseURL:', settings.baseURL);
     debugLog('  model:', settings.model);
-    return new ClaudeProvider({
+    const claudeConfig: any = {
       apiKey: settings.apiKey!,
-      baseURL: settings.baseURL ?? undefined,
       model: settings.model,
       maxTokens: settings.maxTokens,
       temperature: settings.temperature,
-    });
+    };
+    if (settings.baseURL) claudeConfig.baseURL = settings.baseURL;
+    return new ClaudeProvider(claudeConfig);
   } else if (settings.provider === 'openai') {
     if (!settings.apiKey && process.env.OPENAI_API_KEY) {
       settings.apiKey = process.env.OPENAI_API_KEY;
@@ -38,13 +39,14 @@ export function createProviderFromSettings(settings: LLMSettings): Provider {
     debugLog('  apiKey length:', settings.apiKey?.length);
     debugLog('  baseURL:', settings.baseURL);
     debugLog('  model:', settings.model);
-    return new OpenAIProvider({
+    const openaiConfig: any = {
       apiKey: settings.apiKey!,
-      baseURL: settings.baseURL ?? undefined,
       model: settings.model,
       maxTokens: settings.maxTokens,
       temperature: settings.temperature,
-    });
+    };
+    if (settings.baseURL) openaiConfig.baseURL = settings.baseURL;
+    return new OpenAIProvider(openaiConfig);
   }
   throw new Error(`Invalid provider: ${(settings as any).provider}`);
 }

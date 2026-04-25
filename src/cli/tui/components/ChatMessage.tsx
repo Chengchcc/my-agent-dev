@@ -1,8 +1,8 @@
-import type { Message, ToolCall } from '../../../types';
+import type { Message } from '../../../types';
 import { Box, Text } from 'ink';
 import { marked, type Token } from 'marked';
 import React, { useMemo } from 'react';
-import { useAgentLoop, useAgentLoopSelector } from '../hooks';
+import { useAgentLoopSelector } from '../hooks';
 import { CodeBlock } from './CodeBlock';
 import { ToolCallMessage } from './';
 
@@ -94,7 +94,9 @@ export function PureChatMessage({ message, toolCallInfo = new Map() }: PureChatM
             textBuffer = '';
           }
           const codeToken = token as Token & { text: string; lang?: string };
-          elements.push(<CodeBlock key={index} code={codeToken.text} language={codeToken.lang} />);
+          const codeBlockProps: any = { key: index, code: codeToken.text };
+          if (codeToken.lang) codeBlockProps.language = codeToken.lang;
+          elements.push(<CodeBlock {...codeBlockProps} />);
         } else {
           const tokenAny = token as any;
           if (tokenAny.raw) {
@@ -160,7 +162,7 @@ export function PureChatMessage({ message, toolCallInfo = new Map() }: PureChatM
               <Box key={`${message.id ?? ''}-${tc.id}`} marginY={1}>
                 <ToolCallMessage
                   toolCall={tc}
-                  result={info.result}
+                  result={info.result ?? { content: '', isError: false, durationMs: 0 }}
                   pending={info.pending}
                   focused={info.focused}
                   expanded={info.expanded}

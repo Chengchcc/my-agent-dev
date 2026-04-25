@@ -1,4 +1,3 @@
-import fs from 'fs/promises';
 import type { Message } from '../../types';
 import type { ContextManager } from '../context';
 import type { CompactionResult } from './types';
@@ -9,8 +8,6 @@ import type { CompactionResult } from './types';
  * - Auto-re-reads 5 most recent files to restore context
  */
 export class Rehydrator {
-  private readonly maxReReadFiles = 5;
-  private readonly maxReReadChars = 2000;
 
   async rehydrate(
     compactedResult: CompactionResult,
@@ -42,11 +39,5 @@ export class Rehydrator {
     // Currently just returns the messages as-is
 
     return messages;
-  }
-
-  private extractRecentFiles(metadata: Record<string, unknown>): string[] {
-    // Future: extract from conversation history / memory system
-    // For now, return empty - full file tracking is out of scope for initial implementation
-    return [];
   }
 }

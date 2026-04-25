@@ -5,29 +5,17 @@ import ZodTool from './zod-tool';
 /**
  * A single selectable choice inside a question.
  */
-export interface AskUserQuestionOption {
-  label: string;
-  description: string;
-  preview?: string;
-}
+export type AskUserQuestionOption = z.infer<typeof askUserQuestionOptionSchema>;
 
 /**
  * A single question presented to the user.
  */
-export interface AskUserQuestionItem {
-  question: string;
-  header: string;
-  /** 2–4 choices; mutually exclusive unless {@link multi_select} is true. */
-  options: AskUserQuestionOption[];
-  multi_select: boolean;
-}
+export type AskUserQuestionItem = z.infer<typeof askUserQuestionItemSchema>;
 
 /**
  * Input parameters for the `ask_user_question` tool.
  */
-export interface AskUserQuestionParameters {
-  questions: AskUserQuestionItem[];
-}
+export type AskUserQuestionParameters = z.infer<typeof askUserQuestionParametersSchema>;
 
 export interface AskUserQuestionAnswer {
   question_index: number;

@@ -72,13 +72,7 @@ export function PureStreamingIndicator({
  */
 export function StreamingIndicator({ nextTodo }: { nextTodo?: string }) {
   const { streaming, streamingStartTime, currentTools, messages } = useAgentLoop();
-  return (
-    <PureStreamingIndicator
-      streaming={streaming}
-      streamingStartTime={streamingStartTime}
-      currentTools={currentTools}
-      messages={messages}
-      nextTodo={nextTodo}
-    />
-  );
+  const props: any = { streaming, streamingStartTime, currentTools, messages };
+  if (nextTodo) props.nextTodo = nextTodo;
+  return <PureStreamingIndicator {...props} />;
 }

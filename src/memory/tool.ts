@@ -82,13 +82,9 @@ Only store genuinely reusable information that will be useful in future conversa
           throw new Error('text parameter is required for add command');
         }
         const store = this.getStoreForType(type);
-        const added = await store.add({
-          type,
-          text,
-          weight: 1.0,
-          source: 'explicit',
-          projectPath: type === 'project' ? projectPath : undefined,
-        });
+        const entry: any = { type, text, weight: 1.0, source: 'explicit' };
+        if (type === 'project') entry.projectPath = projectPath;
+        const added = await store.add(entry);
         return { added };
       }
 

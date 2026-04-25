@@ -1,7 +1,6 @@
 import type { SkillFrontmatter } from '../../skills';
 import type { SessionStore } from '../../session/store';
 import type { CommandHandlerContext } from './types';
-import type { Agent } from '../../agent';
 import { compactCommand } from './commands/compact-command';
 
 export interface SlashCommand {
@@ -84,7 +83,7 @@ export function getBuiltinCommands(sessionStore: SessionStore): SlashCommand[] {
 }
 
 export async function loadAvailableCommands(
-  skillsDirs?: string[],
+  _skillsDirs?: string[],
   sessionStore?: SessionStore
 ): Promise<SlashCommand[]> {
   const commands: SlashCommand[] = sessionStore ? getBuiltinCommands(sessionStore) : BASE_COMMANDS;
@@ -110,7 +109,7 @@ export function getSlashQuery(text: string): string | null {
   // Extract the first token after /
   const match = text.match(/^\/([^\s]+)/);
   if (!match) return null;
-  return match[1];
+  return match[1] ?? null;
 }
 
 export function insertSlashCommand(command: SlashCommand): string {

@@ -4,7 +4,7 @@ import type { Message, Provider, Tool, LLMResponse, LLMResponseChunk, AgentConte
 export class OpenAIProvider implements Provider {
   private client: OpenAI;
   private model: string;
-  private maxTokens?: number;
+  private maxTokens: number;
   private temperature: number;
   private tools: OpenAI.ChatCompletionTool[] = [];
 
@@ -20,7 +20,7 @@ export class OpenAIProvider implements Provider {
       baseURL: config.baseURL,
     });
     this.model = config.model;
-    this.maxTokens = config.maxTokens;
+    this.maxTokens = config.maxTokens ?? 4096;
     this.temperature = config.temperature ?? 0.7;
   }
 
@@ -48,13 +48,14 @@ export class OpenAIProvider implements Provider {
     }
     const model = context.config?.model ?? this.model;
 
-    const response = await this.client.chat.completions.create({
+    const requestOptions: any = {
       model,
       messages,
       max_tokens: this.maxTokens,
       temperature: this.temperature,
-      tools: this.tools.length > 0 ? this.tools : undefined,
-    });
+    };
+    if (this.tools.length > 0) requestOptions.tools = this.tools;
+    const response = await this.client.chat.completions.create(requestOptions);
 
     const choice = response.choices[0];
     if (!choice) {
@@ -71,9 +72,8 @@ export class OpenAIProvider implements Provider {
         arguments: JSON.parse(tc.function.arguments),
       }));
 
-    return {
+    const result: any = {
       content,
-      tool_calls,
       usage: {
         prompt_tokens: response.usage?.prompt_tokens ?? 0,
         completion_tokens: response.usage?.completion_tokens ?? 0,
@@ -81,6 +81,8 @@ export class OpenAIProvider implements Provider {
       },
       model: response.model,
     };
+    if (tool_calls?.length) result.tool_calls = tool_calls;
+    return result;
   }
 
   /**
@@ -93,23 +95,21 @@ export class OpenAIProvider implements Provider {
     }
     const model = context.config?.model ?? this.model;
 
-    const stream = await this.client.chat.completions.create(
-      {
-        model,
-        messages,
-        max_tokens: this.maxTokens,
-        temperature: this.temperature,
-        tools: this.tools.length > 0 ? this.tools : undefined,
-        stream: true,
-      },
-      {
-        signal: options?.signal,
-      }
-    );
+    const streamOptions: any = {
+      model,
+      messages,
+      max_tokens: this.maxTokens,
+      temperature: this.temperature,
+      stream: true,
+    };
+    if (this.tools.length > 0) streamOptions.tools = this.tools;
+    const stream = await this.client.chat.completions.create(streamOptions, {
+      signal: options?.signal,
+    }) as any;
 
     // Track tool calls with accumulated arguments JSON
     let tool_calls: LLMResponseChunk['tool_calls'] = [];
-    let accumulated_args: string[] = [];
+    let accumulated_args: (string | undefined)[] = [];
     let usage: {
       prompt_tokens: number;
       completion_tokens: number;
@@ -169,19 +169,21 @@ export class OpenAIProvider implements Provider {
       }
 
       const finishReason = chunk.choices[0]?.finish_reason;
-      yield {
+      const chunkResult: any = {
         content,
         done: finishReason != null,
-        tool_calls: finishReason != null && tool_calls.length > 0 ? tool_calls : undefined,
-        usage,
       };
+      if (finishReason != null && tool_calls.length > 0) chunkResult.tool_calls = tool_calls;
+      if (usage) chunkResult.usage = usage;
+      yield chunkResult;
     }
 
     // Final parse of all accumulated arguments after stream is complete
     for (let i = 0; i < tool_calls.length; i++) {
-      if (accumulated_args[i] && accumulated_args[i].length > 0) {
+      const args = accumulated_args[i];
+      if (tool_calls[i] && args && args.length > 0) {
         try {
-          tool_calls[i].arguments = JSON.parse(accumulated_args[i]);
+          tool_calls[i]!.arguments = JSON.parse(args);
         } catch (e) {
           // If parsing fails at the end, leave whatever we have
         }
@@ -191,12 +193,9 @@ export class OpenAIProvider implements Provider {
     // Yield one final time with the completely parsed tool_calls
     // This ensures the consumer gets the fully parsed arguments after completion
     if (tool_calls.length > 0) {
-      yield {
-        content: '',
-        done: true,
-        tool_calls,
-        usage,
-      };
+      const finalChunk: any = { content: '', done: true, tool_calls };
+      if (usage) finalChunk.usage = usage;
+      yield finalChunk;
     }
   }
 

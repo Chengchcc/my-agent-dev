@@ -75,7 +75,7 @@ function getTokenColor(type?: string): string {
   return type ? (theme[type] ?? 'white') : 'white';
 }
 
-export function DiffView({ filePath, diff, language, context }: DiffViewProps) {
+export function DiffView({ filePath, diff, language }: DiffViewProps) {
   const hunks = diff.hunks || [];
 
   const stats = useMemo(() => {
@@ -104,7 +104,7 @@ export function DiffView({ filePath, diff, language, context }: DiffViewProps) {
     return hunks.map(hunk => {
       // Tokenize all lines regardless of type for consistent syntax highlighting
       const allContent = hunk.lines.map(line => line.content).join('\n');
-      const tokens = Prism.tokenize(allContent, Prism.languages[lang]);
+      const tokens = Prism.tokenize(allContent, Prism.languages[lang]!);
 
       const tokenizedLines = tokenizeByLine(tokens);
 

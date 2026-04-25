@@ -1,6 +1,23 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with this repository.
+---
+
+## ⚠️ ARCHITECTURE CONSTITUTION — MANDATORY READ FIRST
+
+**All code generated in this repository must comply with the [Architecture Constitution](./ARCHITECTURE-CONSTITUTION.md).**
+
+These are non-negotiable, CI-enforced rules. Violations will block your PR. Read the full constitution **before writing any code**.
+
+**Summary of violations that will block your code:**
+- Instantiating `Agent`, `ToolRegistry`, `ContextManager`, or providers directly in `bin/*`
+- Adding new `any` types or unsafe casts
+- Adding new `syncTodoFromContext` calls
+- Using `console.log` instead of `debugLog`
+- Unannotated `@ts-ignore` / `@ts-expect-error`
+- Files > 400 lines or functions > 80 lines without justification
+- New public APIs without unit tests
+
+---
 
 ## Current State
 
@@ -184,4 +201,5 @@ This is a TypeScript-based AI agent framework built with Bun, featuring a modula
 
 When adding code to this repository:
 1. Understand the project requirements and architecture
-2. Update this file with relevant commands and architecture documentation as the project takes shape
+2. Read and comply with the [Architecture Constitution](./ARCHITECTURE-CONSTITUTION.md)
+3. Update this file with relevant commands and architecture documentation as the project takes shape

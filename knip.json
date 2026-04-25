@@ -1,0 +1,23 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "bin/my-agent.ts",
+    "bin/my-agent-tui-dev.ts",
+    "bin/my-agent-tui",
+    "examples/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.test.{ts,tsx}",
+    "tests/**/*.spec.{ts,tsx}"
+  ],
+  "project": ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}", "scripts/**/*.ts"],
+  "ignore": [
+    "dist/**",
+    "plugins/**",
+    "skills/**"
+  ],
+  "ignoreDependencies": [
+    "chalk"
+  ],
+  "ignoreBinaries": ["tsc"],
+  "bun": true
+}

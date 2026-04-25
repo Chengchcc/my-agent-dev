@@ -1,6 +1,5 @@
 import type { CompressionStrategy, AgentContext, Message } from '../../types';
 import type { CompactionResult, CompactionLevel, TieredCompactionConfig } from './types';
-import { DEFAULT_TIERED_LEVELS } from './types';
 import { SnipStrategy } from './snip-strategy';
 import { ToolOutputStrategy } from './tool-output-strategy';
 import { SummarizeStrategy } from './summarize-strategy';
@@ -11,12 +10,12 @@ import { Provider } from '../../types';
  * 1 token ≈ 4 characters.
  */
 function countTokensForEstimate(messages: AgentContext['messages']): number {
-  return messages.reduce((sum, msg) => {
-    let total = msg.content ? msg.content.length / 4 : 0;
+  return messages.reduce((total, msg) => {
+    let msgTokens = msg.content ? msg.content.length / 4 : 0;
     if (msg.tool_calls) {
-      total += JSON.stringify(msg.tool_calls).length / 4;
+      msgTokens += JSON.stringify(msg.tool_calls).length / 4;
     }
-    return total + 4; // 4 tokens overhead per message
+    return total + msgTokens + 4; // 4 tokens overhead per message
   }, 0);
 }
 

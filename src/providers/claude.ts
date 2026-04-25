@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { convertToClaudeMessages, extractSystemPrompt } from './claude-utils';
-import type { Message, Provider, Tool, LLMResponse, LLMResponseChunk, AgentContext } from '../types';
+import type { Provider, Tool, LLMResponse, LLMResponseChunk, AgentContext } from '../types';
 
 export class ClaudeProvider implements Provider {
   private client: Anthropic;
@@ -47,14 +47,15 @@ export class ClaudeProvider implements Provider {
     const system = systemPrompt ?? extractSystemPrompt(messages);
     const model = context.config?.model ?? this.model;
 
-    const response = await this.client.messages.create({
+    const requestOptions: any = {
       model,
       messages: claudeMessages,
       system: system,
       max_tokens: this.maxTokens,
       temperature: this.temperature,
-      tools: this.tools.length > 0 ? this.tools : undefined,
-    });
+    };
+    if (this.tools.length > 0) requestOptions.tools = this.tools;
+    const response = await this.client.messages.create(requestOptions);
 
     // Extract content
     const content = response.content
@@ -71,9 +72,8 @@ export class ClaudeProvider implements Provider {
         arguments: block.input as Record<string, unknown>,
       }));
 
-    return {
+    const result: any = {
       content,
-      tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
       usage: {
         prompt_tokens: response.usage.input_tokens,
         completion_tokens: response.usage.output_tokens,
@@ -81,6 +81,8 @@ export class ClaudeProvider implements Provider {
       },
       model: response.model,
     };
+    if (tool_calls.length > 0) result.tool_calls = tool_calls;
+    return result;
   }
 
   /**
@@ -92,14 +94,15 @@ export class ClaudeProvider implements Provider {
     const system = systemPrompt ?? extractSystemPrompt(messages);
     const model = context.config?.model ?? this.model;
 
-    const stream = this.client.messages.stream({
+    const streamOptions: any = {
       model,
       messages: claudeMessages,
       system: system,
       max_tokens: this.maxTokens,
       temperature: this.temperature,
-      tools: this.tools.length > 0 ? this.tools : undefined,
-    }, {
+    };
+    if (this.tools.length > 0) streamOptions.tools = this.tools;
+    const stream = this.client.messages.stream(streamOptions, {
       signal: options?.signal,
     });
 
@@ -184,15 +187,15 @@ export class ClaudeProvider implements Provider {
         // Tool calls have already been yielded incrementally
         // Add usage if we have it
         const promptTokens = countPromptTokens(claudeMessages);
-        yield {
-          content: '',
-          done: true,
-          usage: usage ? {
+        const finalChunk: any = { content: '', done: true };
+        if (usage) {
+          finalChunk.usage = {
             prompt_tokens: promptTokens,
             completion_tokens: usage.output_tokens,
             total_tokens: promptTokens + usage.output_tokens,
-          } : undefined,
-        };
+          };
+        }
+        yield finalChunk;
       }
     }
   }

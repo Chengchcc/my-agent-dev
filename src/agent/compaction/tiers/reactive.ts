@@ -114,10 +114,10 @@ export class ReactiveRecoveryStrategy {
         const toolSummary = msg.tool_calls.map(tc =>
           `[Previously called: ${tc.name}(${Object.keys(tc.arguments).join(', ')})]`
         ).join('\n');
+        const { tool_calls: _ignored, ...msgWithoutToolCalls } = msg;
         return {
-          ...msg,
+          ...msgWithoutToolCalls,
           content: (msg.content || '') + '\n' + toolSummary,
-          tool_calls: undefined,
         };
       }
 

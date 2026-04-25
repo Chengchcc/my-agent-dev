@@ -176,7 +176,7 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
 
       return {
         ...state,
-        focusedToolId: newFocusId,
+        focusedToolId: newFocusId ?? null,
       };
     }
 
@@ -187,7 +187,7 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
       };
 
     default:
-      const _exhaustive: never = action;
+      void (0 as never);
       return state;
   }
 }

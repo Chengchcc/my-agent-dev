@@ -4,7 +4,6 @@ import { resolve, join } from 'path';
 import { minimatch } from 'minimatch';
 import { allowedRoots } from '../config/allowed-roots';
 import { ZodTool } from './zod-tool';
-import { getLanguageFromFilePath } from '../cli/tui/components/utils/language-map';
 import { debugWarn } from '../utils/debug';
 import { isTextFile } from '../utils/is-text-file';
 
@@ -108,7 +107,7 @@ export class GrepTool extends ZodTool {
               if (matches.length >= args.max_results) break;
 
               const line = lines[lineIndex];
-              if (regex.test(line)) {
+              if (line && regex.test(line)) {
                 const match: any = {
                   file: fullPath,
                   line: lineIndex + 1,

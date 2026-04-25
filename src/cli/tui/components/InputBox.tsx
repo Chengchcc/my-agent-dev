@@ -12,16 +12,15 @@ export function InputBox({
   onAbort,
 }: {
   commands: SlashCommand[];
-  onSubmit?: (submission: PromptSubmission) => void;
+  onSubmit?: (submission: PromptSubmission) => void | Promise<void>;
   onAbort?: () => void;
 }) {
   const { streaming } = useAgentLoop();
+  const inputProps: any = { commands };
+  if (onSubmit) inputProps.onSubmit = onSubmit;
+  if (onAbort) inputProps.onAbort = onAbort;
   const { filteredCommands, highlightedCommandName, pickerOpen, placeholder, selectedIndex, text, cursorOffset } =
-    useCommandInput({
-      commands,
-      onSubmit,
-      onAbort,
-    });
+    useCommandInput(inputProps);
 
   if (streaming) {
     return null;

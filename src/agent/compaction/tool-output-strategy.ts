@@ -30,7 +30,7 @@ export class ToolOutputStrategy implements CompressionStrategy {
     this.storageDir = options?.storageDir ?? path.join(os.homedir(), '.my-agent', 'tool-outputs');
   }
 
-  async compress(context: AgentContext, tokenLimit: number): Promise<Message[]> {
+  async compress(context: AgentContext, _tokenLimit: number): Promise<Message[]> {
     const messages = [...context.messages];
 
     // Find all tool messages

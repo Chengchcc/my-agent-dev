@@ -68,7 +68,7 @@ export interface ToolExecutionResult {
   /** 从 ToolContext.metadata 序列化的元数据 */
   metadata?: Record<string, unknown>;
   /** 从 ToolSink._todoUpdates 收集的 todo 更新 */
-  todoUpdates?: any[];
+  todoUpdates?: TodoItem[];
 }
 
 /**
@@ -99,10 +99,11 @@ export interface DispatchOptions {
  */
 export function createToolSink(): ToolSink {
   const state: {
-    _todoUpdates?: TodoItem[];
+    _todoUpdates: TodoItem[] | undefined;
     _memoryHints: string[];
     _logs: Array<{ level: string; message: string; timestamp: number }>;
   } = {
+    _todoUpdates: undefined,
     _memoryHints: [],
     _logs: [],
   };
@@ -118,7 +119,7 @@ export function createToolSink(): ToolSink {
       state._logs.push({ level, message, timestamp: Date.now() });
     },
     get _todoUpdates() {
-      return state._todoUpdates;
+      return state._todoUpdates ?? [];
     },
     get _memoryHints() {
       return state._memoryHints;

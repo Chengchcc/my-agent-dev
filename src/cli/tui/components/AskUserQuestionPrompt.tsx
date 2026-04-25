@@ -227,7 +227,7 @@ function QuestionPanel({
           const prefix = question.multi_select ? (selected ? "[x] " : "[ ] ") : focused ? "❯ " : "  ";
           return (
             <Box key={i} flexDirection="column">
-              <Text color={focused ? "cyan" : undefined}>
+              <Text color={focused ? "cyan" : undefined as any}>
                 {prefix}
                 {opt.label}
               </Text>

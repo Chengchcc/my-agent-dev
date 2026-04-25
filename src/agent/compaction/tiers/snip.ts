@@ -54,15 +54,18 @@ export class ToolOutputSnipStrategy {
 
     const resultMessages = [...processed, ...preserved];
 
-    return {
+    const result: CompactionResult = {
       messages: resultMessages,
       tier: 1 as const,
       tokensBefore, // Caller fills these
       tokensAfter,
-      summary: snipCount > 0 ? `Sniped ${snipCount} large tool outputs` : undefined,
       needsContinuation: snipCount > 0,
       level: snipCount > 0 ? 'snip' : 'none',
       compacted: snipCount > 0,
     };
+    if (snipCount > 0) {
+      result.summary = `Sniped ${snipCount} large tool outputs`;
+    }
+    return result;
   }
 }

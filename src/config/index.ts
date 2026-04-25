@@ -35,7 +35,7 @@ export function clearSettingsCache(): void {
 // Lazy initialization - most code can import this directly
 // But need to ensure it's loaded before use
 export const settings = new Proxy({} as Settings, {
-  get(target, prop) {
+  get(_target, prop) {
     if (!cachedSettings) {
       throw new Error(
         'Settings not loaded yet. Await getSettings() at application startup before accessing settings.'
@@ -43,25 +43,25 @@ export const settings = new Proxy({} as Settings, {
     }
     return Reflect.get(cachedSettings, prop);
   },
-  has(target, prop) {
+  has(_target, prop) {
     if (!cachedSettings) {
       return false;
     }
     return Reflect.has(cachedSettings, prop);
   },
-  ownKeys(target) {
+  ownKeys(_target) {
     if (!cachedSettings) {
       return [];
     }
     return Reflect.ownKeys(cachedSettings);
   },
-  getOwnPropertyDescriptor(target, prop) {
+  getOwnPropertyDescriptor(_target, prop) {
     if (!cachedSettings) {
       return undefined;
     }
     return Reflect.getOwnPropertyDescriptor(cachedSettings, prop);
   },
-  set(target, prop, value) {
+  set(_target, prop, value) {
     if (!cachedSettings) {
       throw new Error(
         'Settings not loaded yet. Await getSettings() at application startup before accessing settings.'

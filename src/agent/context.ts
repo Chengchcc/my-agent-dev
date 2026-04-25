@@ -68,11 +68,13 @@ export class TrimOldestStrategy implements CompressionStrategy {
 
       // Check if the first message is an assistant with tool_calls. If so, remove it plus all matching tool results.
       const first = messages[0];
+      if (!first) break;
       if (first.role === 'assistant' && first.tool_calls && first.tool_calls.length > 0) {
         let removeCount = 1; // Start with assistant message itself
         // Remove consecutive tool result messages that match any of the tool_call_ids from this assistant
         for (let i = 1; i < messages.length && removeCount <= 1 + first.tool_calls.length; i++) {
           const msg = messages[i];
+          if (!msg) break;
           if (msg.role === 'tool' && msg.tool_call_id && first.tool_calls.some(tc => tc.id === msg.tool_call_id)) {
             removeCount++;
           } else {
@@ -121,8 +123,10 @@ export class ContextManager {
     this.tokenLimit = tokenLimit;
     this.compressionStrategy = config.compressionStrategy ?? new TrimOldestStrategy();
     this.messages = [];
-    this.defaultSystemPrompt = config.defaultSystemPrompt;
-    this.currentSystemPrompt = config.defaultSystemPrompt;
+    if (config.defaultSystemPrompt) {
+      this.defaultSystemPrompt = config.defaultSystemPrompt;
+      this.currentSystemPrompt = config.defaultSystemPrompt;
+    }
 
     if (this.defaultSystemPrompt) {
       this.messages.push({
@@ -153,7 +157,7 @@ export class ContextManager {
   /**
    * Update the current system prompt (for dynamic skill injection).
    */
-  setSystemPrompt(systemPrompt?: string): void {
+  setSystemPrompt(systemPrompt: string): void {
     this.currentSystemPrompt = systemPrompt;
   }
 
@@ -168,7 +172,7 @@ export class ContextManager {
    * Get AgentContext for passing through pipeline.
    */
   getContext(config: AgentConfig): AgentContext {
-    return {
+    const result: AgentContext = {
       messages: [...this.messages],
       config,
       metadata: {
@@ -179,8 +183,11 @@ export class ContextManager {
           stepsSinceLastReminder: this.todoStepsSinceLastReminder,
         },
       },
-      systemPrompt: this.currentSystemPrompt,
     };
+    if (this.currentSystemPrompt) {
+      result.systemPrompt = this.currentSystemPrompt;
+    }
+    return result;
   }
 
   /**
@@ -352,10 +359,13 @@ export class ContextManager {
    * Force compaction with optional focus hint.
    */
   async forceCompact(focusHint?: string): Promise<CompactionResult> {
-    const context = this.getContext({
+    const agentConfig: AgentConfig = {
       tokenLimit: this.tokenLimit,
-      defaultSystemPrompt: this.defaultSystemPrompt,
-    });
+    };
+    if (this.defaultSystemPrompt) {
+      agentConfig.defaultSystemPrompt = this.defaultSystemPrompt;
+    }
+    const context = this.getContext(agentConfig);
     if (focusHint && context.systemPrompt) {
       context.systemPrompt = `${context.systemPrompt}\n\nFocus hint: ${focusHint}`;
     }
@@ -373,9 +383,10 @@ export class ContextManager {
     const messages = [...this.messages];
     // Find the last assistant message
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'assistant') {
+      const msg = messages[i];
+      if (msg && msg.role === 'assistant') {
         messages[i] = {
-          ...messages[i],
+          ...msg,
           tool_calls: toolCalls,
         };
         this.messages = messages;

@@ -5,7 +5,7 @@ export class ReadCacheMiddleware implements ToolMiddleware {
   private cache = new Map<string, { result: unknown; timestamp: number }>();
   private ttlMs = 30_000;
 
-  async handle(toolCall: any, ctx: any, next: () => Promise<unknown>): Promise<unknown> {
+  async handle(toolCall: any, _ctx: any, next: () => Promise<unknown>): Promise<unknown> {
     if (toolCall.name !== 'read') return next();
 
     const path = toolCall.arguments.path;

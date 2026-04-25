@@ -35,13 +35,13 @@ export function CommandList({ commands, selectedIndex }: CommandListProps) {
         return (
         <Box key={cmd.name} flexDirection="row">
           <Text
-            color={index === selectedIndex ? "cyan" : undefined}
+            color={(index === selectedIndex ? "cyan" : undefined) as any}
             bold={index === selectedIndex}
           >
             {index === selectedIndex ? "❯ " : "  "}
           </Text>
           <Text
-            color={index === selectedIndex ? "cyan" : undefined}
+            color={(index === selectedIndex ? "cyan" : undefined) as any}
             bold={index === selectedIndex}
           >
             /{cmd.name}

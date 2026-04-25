@@ -1,4 +1,3 @@
-import type { Message } from '../../types';
 import type { Agent } from '../../agent';
 import type { SessionStore } from '../../session/store';
 

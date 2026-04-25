@@ -1,14 +1,13 @@
 // src/agent/sub-agent-tool.ts
 import { nanoid } from 'nanoid';
 import type { Tool, ToolImplementation } from '../types';
-import type { Provider, AgentConfig, Message, AgentContext } from '../types';
-import type { AgentEvent, AgentLoopConfig, AggregatedUsage } from './loop-types';
+import type { Provider, AgentConfig } from '../types';
+import type { AgentEvent, AgentLoopConfig } from './loop-types';
 import { Agent } from './Agent';
 import { ContextManager } from './context';
 import { ToolRegistry } from './tool-registry';
 import { DEFAULT_LOOP_CONFIG } from './loop-types';
 import { getSettingsSync } from '../config';
-import type { ToolContext } from './tool-dispatch';
 
 /**
  * Configuration for SubAgentTool
@@ -264,7 +263,7 @@ If the task references files in .agent/, read them first before proceeding.`;
             // Because the last message might be a tool result, not assistant
             for (let i = finalContext.messages.length - 1; i >= 0; i--) {
               const message = finalContext.messages[i];
-              if (message.role === 'assistant' && message.content) {
+              if (message && message.role === 'assistant' && message.content) {
                 finalSummary = message.content;
                 break;
               }

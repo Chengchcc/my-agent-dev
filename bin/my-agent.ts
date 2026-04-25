@@ -2,6 +2,7 @@
 
 import 'dotenv/config';
 import { parseArgs } from 'util';
+import type { RuntimeConfig } from '../src/runtime';
 import { setDebugMode } from '../src/utils/debug';
 
 const { values, positionals } = parseArgs({
@@ -161,14 +162,16 @@ async function main() {
   const outputFormat = (String(values['output-format'] ?? 'text')) as OutputFormat;
   const maxTurns = parseInt(String(values['max-turns'] ?? '25'), 10);
 
-  const runtime = await createAgentRuntime({
-    provider: values.provider as 'claude' | 'openai' | undefined,
-    model: typeof values.model === 'string' ? values.model : undefined,
+  const runtimeConfig: RuntimeConfig = {
     enableMemory: !values['no-memory'],
     enableSkills: !values['no-skills'],
     enableTodo: !values['no-todo'],
-    systemPrompt: typeof values['system-prompt'] === 'string' ? values['system-prompt'] : undefined,
-  });
+  };
+  if (values.provider) runtimeConfig.provider = values.provider as 'claude' | 'openai';
+  if (typeof values.model === 'string') runtimeConfig.model = values.model;
+  if (typeof values['system-prompt'] === 'string') runtimeConfig.systemPrompt = values['system-prompt'];
+
+  const runtime = await createAgentRuntime(runtimeConfig);
 
   let fullContent = '';
   let finalEvent: AgentEvent | null = null;
