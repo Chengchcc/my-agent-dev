@@ -115,7 +115,7 @@ export async function createAgentRuntime(
   // Tool registry with security boundaries
   const toolRegistry = new ToolRegistry();
   toolRegistry.register(new BashTool({ allowedWorkingDirs: allowedRoots }));
-  toolRegistry.register(new TextEditorTool({ allowedRoots }));
+  toolRegistry.register(new TextEditorTool(allowedRoots));
   toolRegistry.register(new ReadTool());
   toolRegistry.register(new GrepTool());
   toolRegistry.register(new GlobTool());

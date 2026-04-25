@@ -1,22 +1,18 @@
-import type { Tool, ToolImplementation } from '../types';
+import { ZodTool } from '../tools/zod-tool';
 import type { ToolContext } from '../agent/tool-dispatch/types';
+import { z } from 'zod';
 import type { MemoryEntry, MemoryStore, MemoryRetriever, MemoryExtractor } from './types';
 
-export class MemoryTool implements ToolImplementation {
-  constructor(
-    private stores: {
-      semantic: MemoryStore;
-      episodic: MemoryStore;
-      project: MemoryStore;
-    },
-    private retriever: MemoryRetriever,
-    private extractor: MemoryExtractor,
-  ) {}
-
-  getDefinition(): Tool {
-    return {
-      name: 'memory',
-      description: `Read, write, or search persistent memory across conversations. Use to remember user preferences, project facts, and important decisions.
+export class MemoryTool extends ZodTool<z.ZodObject<{
+  command: z.ZodEnum<['search', 'add', 'list', 'forget', 'consolidate']>;
+  query: z.ZodOptional<z.ZodString>;
+  text: z.ZodOptional<z.ZodString>;
+  id: z.ZodOptional<z.ZodString>;
+  type: z.ZodOptional<z.ZodEnum<['semantic', 'episodic', 'project']>>;
+  limit: z.ZodOptional<z.ZodNumber>;
+}>> {
+  protected readonly name = 'memory';
+  protected readonly description = `Read, write, or search persistent memory across conversations. Use to remember user preferences, project facts, and important decisions.
 
 Commands:
 - search: Find relevant memories for a query
@@ -25,50 +21,37 @@ Commands:
 - forget: Remove a specific memory by ID
 - consolidate: Trigger deduplication/consolidation of semantic memory
 
-Only store genuinely reusable information that will be useful in future conversations. Do not store transient conversation details.`,
-      parameters: {
-        type: 'object',
-        properties: {
-          command: {
-            type: 'string',
-            enum: ['search', 'add', 'list', 'forget', 'consolidate'],
-            description: 'Operation to perform',
-          },
-          query: {
-            type: 'string',
-            description: 'Search query (for search command)',
-          },
-          text: {
-            type: 'string',
-            description: 'Memory content to store (for add command)',
-          },
-          id: {
-            type: 'string',
-            description: 'Memory ID (for forget command)',
-          },
-          type: {
-            type: 'string',
-            enum: ['semantic', 'episodic', 'project'],
-            description: 'Filter by memory type (for list), type of new memory (for add), or type to consolidate (for consolidate, defaults to semantic)',
-          },
-          limit: {
-            type: 'number',
-            description: 'Maximum results to return (default: 10)',
-          },
-        },
-        required: ['command'],
-      },
-    };
+Only store genuinely reusable information that will be useful in future conversations. Do not store transient conversation details.`;
+
+  protected schema = z.object({
+    command: z.enum(['search', 'add', 'list', 'forget', 'consolidate']),
+    query: z.string().optional(),
+    text: z.string().optional(),
+    id: z.string().optional(),
+    type: z.enum(['semantic', 'episodic', 'project']).optional(),
+    limit: z.number().optional(),
+  });
+
+  constructor(
+    private stores: {
+      semantic: MemoryStore;
+      episodic: MemoryStore;
+      project: MemoryStore;
+    },
+    private retriever: MemoryRetriever,
+    private extractor: MemoryExtractor,
+  ) {
+    super();
   }
 
-  async execute(params: Record<string, unknown>, _ctx: ToolContext): Promise<unknown> {
-    const command = params.command as string;
+  protected async handle(params: z.infer<typeof this.schema>, _ctx: ToolContext): Promise<unknown> {
+    const command = params.command;
     const projectPath = process.cwd();
 
     switch (command) {
       case 'search': {
-        const query = params.query as string;
-        const limit = (params.limit as number) || 10;
+        const query = params.query;
+        const limit = params.limit || 10;
         if (!query) {
           throw new Error('query parameter is required for search command');
         }
@@ -77,7 +60,7 @@ Only store genuinely reusable information that will be useful in future conversa
       }
 
       case 'add': {
-        const text = params.text as string;
+        const text = params.text;
         const type = (params.type as MemoryEntry['type']) || 'semantic';
         if (!text) {
           throw new Error('text parameter is required for add command');
@@ -91,7 +74,7 @@ Only store genuinely reusable information that will be useful in future conversa
 
       case 'list': {
         const type = params.type as MemoryEntry['type'] | undefined;
-        const limit = (params.limit as number) || 10;
+        const limit = params.limit || 10;
         if (type) {
           const store = this.getStoreForType(type);
           const entries = await store.getRecent(limit, type);
@@ -109,7 +92,7 @@ Only store genuinely reusable information that will be useful in future conversa
       }
 
       case 'forget': {
-        const id = params.id as string;
+        const id = params.id;
         if (!id) {
           throw new Error('id parameter is required for forget command');
         }

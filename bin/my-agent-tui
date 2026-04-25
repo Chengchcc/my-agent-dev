@@ -107,7 +107,7 @@ const { BashTool, TextEditorTool, AskUserQuestionTool, ReadTool, GrepTool, GlobT
 const toolRegistry = new ToolRegistry();
 const allowedRoots = settings.security.allowedRoots;
 toolRegistry.register(new BashTool({ allowedWorkingDirs: allowedRoots }));
-toolRegistry.register(new TextEditorTool({ allowedRoots }));
+toolRegistry.register(new TextEditorTool(allowedRoots));
 toolRegistry.register(new AskUserQuestionTool(
   (params) => globalAskUserQuestionManager.askUserQuestion(params)
 ));

@@ -1,68 +1,40 @@
 import fs from 'fs/promises';
 import path from 'path';
-import type { Tool } from '../types';
-import type { ToolImplementation } from '../types';
+import { ZodTool } from './zod-tool';
 import type { ToolContext } from '../agent/tool-dispatch/types';
-
-/**
- * Supported commands for text editor.
- */
-type TextEditorCommand = 'view' | 'create' | 'str_replace' | 'write';
+import { z } from 'zod';
 
 /**
  * Built-in text editor tool similar to Anthropic Claude Platform.
  * Supports: view, create, str_replace, write operations.
  */
-export class TextEditorTool implements ToolImplementation {
-  private allowedRoots: string[] = [];
+export class TextEditorTool extends ZodTool<z.ZodObject<{
+  command: z.ZodEnum<['view', 'create', 'str_replace', 'write']>;
+  path: z.ZodString;
+  old_string: z.ZodOptional<z.ZodString>;
+  new_string: z.ZodOptional<z.ZodString>;
+  content: z.ZodOptional<z.ZodString>;
+  start_line: z.ZodOptional<z.ZodNumber>;
+  end_line: z.ZodOptional<z.ZodNumber>;
+}>> {
+  protected readonly name = 'text_editor';
+  protected readonly description = 'Read, create, edit, and write text files. Supports: view (display file content), create (create new file), str_replace (replace specific string), write (write entire file).';
 
-  constructor(options: { allowedRoots?: string[] } = {}) {
-    this.allowedRoots = options.allowedRoots ?? [];
-  }
+  protected schema = z.object({
+    command: z.enum(['view', 'create', 'str_replace', 'write']),
+    path: z.string(),
+    old_string: z.string().optional(),
+    new_string: z.string().optional(),
+    content: z.string().optional(),
+    start_line: z.number().optional(),
+    end_line: z.number().optional(),
+  });
 
-  /**
-   * Get the tool definition for function calling.
-   */
-  getDefinition(): Tool {
-    return {
-      name: 'text_editor',
-      description: 'Read, create, edit, and write text files. Supports: view (display file content), create (create new file), str_replace (replace specific string), write (write entire file).',
-      parameters: {
-        type: 'object',
-        properties: {
-          command: {
-            type: 'string',
-            enum: ['view', 'create', 'str_replace', 'write'],
-            description: 'The command to execute.',
-          },
-          path: {
-            type: 'string',
-            description: 'The absolute path to the file.',
-          },
-          old_string: {
-            type: 'string',
-            description: 'The string to replace (required for str_replace).',
-          },
-          new_string: {
-            type: 'string',
-            description: 'The new string to replace with (required for str_replace).',
-          },
-          content: {
-            type: 'string',
-            description: 'Content for create or write command.',
-          },
-          start_line: {
-            type: 'number',
-            description: 'Starting line number for view (optional, 1-indexed).',
-          },
-          end_line: {
-            type: 'number',
-            description: 'Ending line number for view (optional, 1-indexed, inclusive).',
-          },
-        },
-        required: ['command', 'path'],
-      },
-    };
+  private allowedRoots: string[];
+
+  constructor(allowedRoots: string[] = []) {
+    super();
+    this.allowedRoots = allowedRoots;
   }
 
   /**
@@ -82,15 +54,7 @@ export class TextEditorTool implements ToolImplementation {
   /**
    * Execute the text editor command.
    */
-  async execute(params: {
-    command: TextEditorCommand;
-    path: string;
-    old_string?: string;
-    new_string?: string;
-    content?: string;
-    start_line?: number;
-    end_line?: number;
-  }, _ctx: ToolContext): Promise<{ result: string } | { error: string }> {
+  protected async handle(params: z.infer<typeof this.schema>, _ctx: ToolContext): Promise<{ result: string } | { error: string }> {
     const { command, path: filePath } = params;
 
     if (!this.validatePath(filePath)) {
