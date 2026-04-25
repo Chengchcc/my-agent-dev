@@ -3,7 +3,7 @@ import { Text } from 'ink';
 import type { TextProps } from 'ink';
 import { useBlink } from './BlinkContext';
 
-export interface BlinkingTextProps extends TextProps {
+interface BlinkingTextProps extends TextProps {
 }
 
 export function BlinkingText({

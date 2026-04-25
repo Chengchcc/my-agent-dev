@@ -10,7 +10,7 @@ const HAMSTER_LOGO = `\
 ▀███▀
  █ █`;
 
-export interface PureHeaderProps {
+interface PureHeaderProps {
   model: string;
   sessionId: string | null;
 }

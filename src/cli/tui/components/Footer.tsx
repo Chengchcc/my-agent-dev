@@ -2,7 +2,7 @@ import { Box, Text } from 'ink';
 import React from 'react';
 import { useAgentLoop } from '../hooks';
 
-export interface PureFooterProps {
+interface PureFooterProps {
   totalUsage: { totalTokens: number };
   currentContextTokens: number;
   tokenLimit: number;

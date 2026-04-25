@@ -38,12 +38,6 @@ const BASE_COMMANDS: Omit<SlashCommand, 'handler'>[] = [
   },
 ];
 
-/** Parsed builtin invocation: command name plus any trailing argument string. */
-export interface BuiltinInvocation {
-  name: SlashCommand['name'];
-  args: string;
-}
-
 function normalizeCommandName(name: string): string {
   return name.toLowerCase().trim();
 }
@@ -59,14 +53,6 @@ function scoreCommandMatch(command: SlashCommand, filter: string): number {
   return 2; // description contains is lower priority
 }
 
-function dedupeCommands(commands: SlashCommand[]): SlashCommand[] {
-  const seen = new Set<string>();
-  return commands.filter(cmd => {
-    if (seen.has(cmd.name)) return false;
-    seen.add(cmd.name);
-    return true;
-  });
-}
 
 export function toSkillCommand(skill: SkillFrontmatter): SlashCommand {
   return {
@@ -80,15 +66,6 @@ export function getBuiltinCommands(sessionStore: SessionStore): SlashCommand[] {
   // Lazy import to avoid circular dependencies
   const { getSessionCommands } = require('./commands/session-commands');
   return [...BASE_COMMANDS, compactCommand, ...getSessionCommands(sessionStore)];
-}
-
-export async function loadAvailableCommands(
-  _skillsDirs?: string[],
-  sessionStore?: SessionStore
-): Promise<SlashCommand[]> {
-  const commands: SlashCommand[] = sessionStore ? getBuiltinCommands(sessionStore) : BASE_COMMANDS;
-  // TODO: load skills when we implement skill browsing
-  return dedupeCommands(commands);
 }
 
 export function filterCommands(commands: SlashCommand[], filter: string): SlashCommand[] {

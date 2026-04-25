@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const llmSettingsSchema = z.object({
+const llmSettingsSchema = z.object({
   provider: z.enum(['claude', 'openai']).default('claude'),
   model: z.string().default('claude-3-5-sonnet-20241022'),
   maxTokens: z.number().int().positive().default(4096),
@@ -9,7 +9,7 @@ export const llmSettingsSchema = z.object({
   baseURL: z.string().nullable().default(null),
 });
 
-export const compactionSettingsSchema = z.object({
+const compactionSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   snipRatio: z.number().min(0).max(1).default(0.60),
   autoCompactRatio: z.number().min(0).max(1).default(0.75),
@@ -31,12 +31,12 @@ export const compactionSettingsSchema = z.object({
   }),
 });
 
-export const contextSettingsSchema = z.object({
+const contextSettingsSchema = z.object({
   tokenLimit: z.number().int().positive().default(100000),
   compaction: compactionSettingsSchema.optional(),
 });
 
-export const memorySettingsSchema = z.object({
+const memorySettingsSchema = z.object({
   enabled: z.boolean().default(true),
   globalBaseDir: z.string().default('~/.my-agent/memory'),
   maxSemanticEntries: z.number().int().positive().default(200),
@@ -47,39 +47,39 @@ export const memorySettingsSchema = z.object({
   extractionModel: z.string().default('claude-3-haiku-20240307'),
 });
 
-export const skillsSettingsSchema = z.object({
+const skillsSettingsSchema = z.object({
   baseDir: z.string().default('./skills'),
   autoInject: z.boolean().default(true),
   injectOnMention: z.boolean().default(true),
 });
 
-export const historySettingsSchema = z.object({
+const historySettingsSchema = z.object({
   enabled: z.boolean().default(true),
   maxLines: z.number().int().positive().default(100),
   filePath: z.string().default('~/.my-agent/history.txt'),
 });
 
-export const sessionSettingsSchema = z.object({
+const sessionSettingsSchema = z.object({
   dir: z.string().default('~/.my-agent/sessions'),
 });
 
-export const tuiSettingsSchema = z.object({
+const tuiSettingsSchema = z.object({
   history: historySettingsSchema,
   sessions: sessionSettingsSchema,
 });
 
-export const subAgentSettingsSchema = z.object({
+const subAgentSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   autoTriggerThreshold: z.number().int().positive().default(5),
   isolation: z.boolean().default(true),
   worktreeRootDir: z.string().default('~/.my-agent/worktrees'),
 });
 
-export const securitySettingsSchema = z.object({
+const securitySettingsSchema = z.object({
   allowedRoots: z.array(z.string()).default(['.']),
 });
 
-export const debugSettingsSchema = z.object({
+const debugSettingsSchema = z.object({
   enabled: z.boolean().default(false),
 });
 
@@ -94,4 +94,3 @@ export const settingsSchema = z.object({
   debug: debugSettingsSchema,
 });
 
-export type SettingsSchema = z.infer<typeof settingsSchema>;

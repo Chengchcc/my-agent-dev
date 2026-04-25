@@ -17,7 +17,7 @@ import type { Agent } from '../../../agent';
 import type { SlashCommand } from '../command-registry';
 import type { SessionStore } from '../../../session/store';
 
-export interface AppProps {
+interface AppProps {
   agent: Agent;
   skillCommands: SlashCommand[];
   sessionStore: SessionStore;

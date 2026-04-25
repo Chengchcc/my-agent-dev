@@ -1,5 +1,3 @@
-import { useState } from 'react';
-
 export interface InputEditorState {
   text: string;
   cursorOffset: number;
@@ -37,23 +35,3 @@ export function moveCursorRight(state: InputEditorState): InputEditorState {
   };
 }
 
-export function useInputEditor() {
-  const [editorState, setEditorState] = useState<InputEditorState>({
-    text: '',
-    cursorOffset: 0,
-  });
-
-  const updateEditor = (next: InputEditorState) => {
-    setEditorState(next);
-  };
-
-  return {
-    editorState,
-    updateEditor,
-    insertText: (input: string) => updateEditor(insertTextAtCursor(editorState, input)),
-    removeCharacter: () => updateEditor(removeCharacterBeforeCursor(editorState)),
-    moveLeft: () => updateEditor(moveCursorLeft(editorState)),
-    moveRight: () => updateEditor(moveCursorRight(editorState)),
-    clear: () => updateEditor({ text: '', cursorOffset: 0 }),
-  };
-}

@@ -10,7 +10,7 @@ import 'prismjs/components/prism-json';
 import 'prismjs/components/prism-markdown';
 import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-diff';
-import DiffView, { type DiffHunk } from './DiffView';
+import { DiffView, type DiffHunk } from './DiffView';
 import { tokenizeByLine } from './utils/tokenize-by-line';
 import { getLanguageFromFilePath } from './utils/language-map';
 
@@ -125,4 +125,3 @@ export function ReadFileView({
   );
 }
 
-export default ReadFileView;

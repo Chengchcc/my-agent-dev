@@ -17,14 +17,14 @@ marked.setOptions({
   async: false,
 });
 
-export interface PureToolCallInfo {
+interface PureToolCallInfo {
   focused: boolean;
   expanded: boolean;
   pending: boolean;
   result: { content: string; isError: boolean; durationMs: number } | undefined;
 }
 
-export interface PureChatMessageProps {
+interface PureChatMessageProps {
   message: Message;
   // For tool calls, provide the state from context - allows testing without context
   toolCallInfo?: Map<string, PureToolCallInfo>;

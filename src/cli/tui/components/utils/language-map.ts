@@ -1,4 +1,4 @@
-export const extensionToLanguage: Record<string, string> = {
+const extensionToLanguage: Record<string, string> = {
   '.js': 'javascript',
   '.jsx': 'jsx',
   '.ts': 'typescript',
@@ -35,5 +35,3 @@ export function getLanguageFromFilePath(filePath: string): string | undefined {
   const ext = filePath.slice(filePath.lastIndexOf('.'));
   return extensionToLanguage[ext.toLowerCase()];
 }
-
-export const inferLanguage = getLanguageFromFilePath;

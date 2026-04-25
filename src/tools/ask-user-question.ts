@@ -1,6 +1,6 @@
 // src/tools/ask-user-question.ts
 import { z } from 'zod';
-import ZodTool from './zod-tool';
+import { ZodTool } from './zod-tool';
 
 /**
  * A single selectable choice inside a question.
@@ -111,4 +111,3 @@ export class AskUserQuestionTool extends ZodTool<typeof askUserQuestionParameter
   }
 }
 
-export default AskUserQuestionTool;

@@ -9,7 +9,6 @@ export * from './tiered-compaction';
 
 // New tiered compaction - redesigned architecture
 export * from './budget';
-export * from './continuation';
 export * from './compaction-manager';
 export * from './tiers/snip';
 export * from './tiers/auto-compact';

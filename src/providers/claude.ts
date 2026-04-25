@@ -229,5 +229,3 @@ function countPromptTokens(messages: Anthropic.MessageParam[]): number {
   return Math.ceil(totalChars / 4);
 }
 
-// Re-export for testing
-export { convertToClaudeMessages, extractSystemPrompt };

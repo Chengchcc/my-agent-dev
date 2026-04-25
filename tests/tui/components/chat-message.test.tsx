@@ -2,7 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import React from 'react';
 import { render } from 'ink-testing-library';
 import { PureChatMessage } from '../../../src/cli/tui/components/ChatMessage';
-import type { Message } from '../../../../src/types';
+import type { Message } from '../../../src/types';
 
 describe('PureChatMessage', () => {
   test('renders user message with cyan color and > prefix', () => {

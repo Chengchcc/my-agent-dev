@@ -2,18 +2,6 @@ import type { Agent } from '../../agent';
 import type { SessionStore } from '../../session/store';
 
 /**
- * Message in the chat history for UI rendering.
- */
-export interface UIMessage {
-  role: 'user' | 'assistant';
-  content: string;
-  tool_calls?: {
-    name: string;
-    arguments: Record<string, unknown>;
-  }[];
-}
-
-/**
  * Todo item for display in UI.
  */
 export interface UITodoItem {

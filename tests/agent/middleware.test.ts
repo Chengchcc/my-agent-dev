@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import { composeMiddlewares } from '../../src/agent/middleware';
-import type { AgentContext, Middleware } from '../../types';
+import type { AgentContext, Middleware } from '../../src/types';
 
 const makeContext = (): AgentContext => ({
   messages: [],

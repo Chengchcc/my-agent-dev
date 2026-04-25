@@ -23,7 +23,7 @@ function tabLabel(header: string): string {
   return header.length > 12 ? `${header.slice(0, 11)}…` : header;
 }
 
-export interface AskUserQuestionPromptProps {
+interface AskUserQuestionPromptProps {
   questions: AskUserQuestionItem[];
   onSubmit: (answer: AskUserQuestionResult) => void;
 }

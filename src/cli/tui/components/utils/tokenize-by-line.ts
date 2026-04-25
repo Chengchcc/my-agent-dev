@@ -1,6 +1,6 @@
 import type { Token } from 'prismjs';
 
-export interface LineToken {
+interface LineToken {
   content: string;
   type?: string;
   styles?: string[];

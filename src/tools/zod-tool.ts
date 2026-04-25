@@ -199,4 +199,3 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
   protected abstract handle(params: z.infer<T>): Promise<unknown> | unknown;
 }
 
-export default ZodTool;

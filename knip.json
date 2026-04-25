@@ -1,6 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
+    "src/index.ts",
+    "src/agent/index.ts",
+    "src/agent/compaction/index.ts",
+    "src/cli/tui/components/index.ts",
     "bin/my-agent.ts",
     "bin/my-agent-tui-dev.ts",
     "bin/my-agent-tui",

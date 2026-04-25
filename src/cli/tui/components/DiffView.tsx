@@ -10,11 +10,11 @@ import 'prismjs/components/prism-json';
 import 'prismjs/components/prism-markdown';
 import 'prismjs/components/prism-css';
 import { tokenizeByLine } from './utils/tokenize-by-line';
-import { inferLanguage } from './utils/language-map';
+import { getLanguageFromFilePath } from './utils/language-map';
 
-export type DiffLineType = 'added' | 'removed' | 'context';
+type DiffLineType = 'added' | 'removed' | 'context';
 
-export interface DiffLine {
+interface DiffLine {
   type: DiffLineType;
   oldLineNumber?: number;
   newLineNumber?: number;
@@ -30,7 +30,7 @@ export interface DiffHunk {
   lines: DiffLine[];
 }
 
-export interface DiffViewProps {
+interface DiffViewProps {
   filePath: string;
   diff: { hunks: DiffHunk[] };
   language?: string;
@@ -92,7 +92,7 @@ export function DiffView({ filePath, diff, language }: DiffViewProps) {
     return { added, removed };
   }, [hunks]);
 
-  const lang = language || inferLanguage(filePath) || 'text';
+  const lang = language || getLanguageFromFilePath(filePath) || 'text';
   const hasSyntaxHighlighting = lang !== 'text' && !!Prism.languages[lang];
 
   // Pre-tokenize all context lines for syntax highlighting
@@ -185,4 +185,3 @@ export function DiffView({ filePath, diff, language }: DiffViewProps) {
   );
 }
 
-export default DiffView;
