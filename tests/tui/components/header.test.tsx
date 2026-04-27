@@ -9,7 +9,7 @@ describe('PureHeader', () => {
     const frame = lastFrame();
     expect(frame).toContain('my-agent');
     expect(frame).toContain('claude-sonnet-4-6');
-    expect(frame).toContain('(OwO)'); // hamster logo
+    expect(frame).toContain('▄█▄█▄'); // hamster logo
   });
 
   test('renders without model', () => {

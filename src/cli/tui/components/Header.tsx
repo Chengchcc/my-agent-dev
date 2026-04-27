@@ -3,11 +3,12 @@ import React from 'react';
 import { useAgentLoop } from '../hooks/use-agent-loop';
 import type { SessionStore } from '../../../session/store';
 
-// ASCII hamster logo for the TUI header
+// Block-style hamster logo for the TUI header
 const HAMSTER_LOGO = `\
-(OwO)
-/|||\\\
- |||`;
+▄█▄█▄
+█●█●█
+▀███▀
+ █ █`;
 
 interface PureHeaderProps {
   model: string;
