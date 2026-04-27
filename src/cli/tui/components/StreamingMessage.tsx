@@ -13,7 +13,7 @@ interface StreamingMessageProps {
  * while still providing syntax-highlighted output during streaming.
  */
 export function StreamingMessage({ content }: StreamingMessageProps) {
-  debugLog('[render] StreamingMessage', { len: content.length });
+  debugLog('[render] StreamingMessage', { len: content.length, preview: content.slice(0, 200) });
   const latestRef = useRef(content);
   const [renderedContent, setRenderedContent] = useState(content);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

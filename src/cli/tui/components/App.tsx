@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { debugLog } from '../../../utils/debug';
 import { Box, useInput } from 'ink';
 import { ScrollView, type ScrollViewRef } from 'ink-scroll-view';
 import { AgentLoopProvider, useAgentLoop } from '../hooks/use-agent-loop';
@@ -107,6 +108,13 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
 
   const allCommands = [...getBuiltinCommands(sessionStore), ...skillCommands];
   const groupedMessages = useMemo(() => groupToolCalls(messages), [messages]);
+
+  debugLog('[render] AppContent', {
+    msgCount: groupedMessages.length,
+    hasThinking: thinkingContent !== null,
+    hasStreaming: streamingContent !== null,
+    todoCount: todos.length,
+  });
 
   return (
     <Box flexDirection="column" height="100%">
