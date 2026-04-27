@@ -22,7 +22,7 @@ describe('PureHeader', () => {
   test('shows truncated session ID when provided', () => {
     const { lastFrame } = render(<PureHeader model="claude-opus-4-7" sessionId="abc123-def456-ghi789" />);
     const frame = lastFrame();
-    expect(frame).toContain('Session: abc123-d');
+    expect(frame).toContain('session:abc123-d');
     expect(frame).not.toContain('def456'); // full ID not shown
   });
 });

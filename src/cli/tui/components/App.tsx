@@ -3,6 +3,7 @@ import { Box, useInput } from 'ink';
 import { ScrollView } from 'ink-scroll-view';
 import { AgentLoopProvider, useAgentLoop } from '../hooks/use-agent-loop';
 import { useAskUserQuestionManager, usePermissionManager } from '../hooks';
+import { useTerminalWidth } from '../hooks/use-terminal-width';
 import { useEventLoopStall } from '../hooks/use-event-loop-stall';
 import { getBuiltinCommands } from '../command-registry';
 import { Header } from './Header';
@@ -15,6 +16,7 @@ import { InputBox } from './InputBox';
 import { StreamingIndicator } from './StreamingIndicator';
 import { AskUserQuestionPrompt } from './AskUserQuestionPrompt';
 import { PermissionPrompt } from './PermissionPrompt';
+import { DebugOverlay } from './DebugOverlay';
 import { BlinkProvider } from './BlinkContext';
 import { ErrorBoundary } from './ErrorBoundary';
 import type { Agent } from '../../../agent';
@@ -44,6 +46,7 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
   const { askUserQuestionRequest, respondWithAnswers } = useAskUserQuestionManager();
   const { permissionRequest, respondToPermission } = usePermissionManager();
   const [thinkingCollapsed, setThinkingCollapsed] = useState(true);
+  const [debugShow, setDebugShow] = useState(false);
 
   const focusedErrorTool = focusedToolId ? toolResults.get(focusedToolId) : null;
   const hasFocusedError = focusedErrorTool?.isError === true && !ignoredErrors.has(focusedToolId ?? '');
@@ -52,6 +55,12 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
     // Ctrl+T — toggle thinking collapse
     if (input === 't' && key.ctrl) {
       setThinkingCollapsed(prev => !prev);
+      return;
+    }
+
+    // Ctrl+D — toggle debug overlay
+    if (input === 'd' && key.ctrl) {
+      setDebugShow(prev => !prev);
       return;
     }
 
@@ -87,12 +96,15 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
     }
   }, { isActive: isStreaming || !!askUserQuestionRequest || !!permissionRequest || hasFocusedError });
 
+  const terminalWidth = useTerminalWidth();
+  const isCompact = terminalWidth < 80;
+
   const allCommands = [...getBuiltinCommands(sessionStore), ...skillCommands];
   const groupedMessages = useMemo(() => groupToolCalls(messages), [messages]);
 
   return (
     <Box flexDirection="column" height="100%">
-      <Header sessionStore={sessionStore} />
+      <Header sessionStore={sessionStore} compact={isCompact} />
       <ErrorBoundary name="ScrollView">
         <Box flexGrow={1} flexDirection="column" overflow="hidden">
           <ScrollView>
@@ -133,8 +145,9 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
       {!askUserQuestionRequest && !permissionRequest && (
         <InputBox commands={allCommands} onSubmit={onSubmitWithSkill} onAbort={abort} />
       )}
+      <DebugOverlay enabled={debugShow} />
       <ErrorBoundary name="Footer">
-        <Footer />
+        <Footer compact={isCompact} />
       </ErrorBoundary>
     </Box>
   );
