@@ -1,4 +1,4 @@
-import React, { useDeferredValue } from 'react';
+import React, { useDeferredValue, useMemo, useState } from 'react';
 import { Box, useInput } from 'ink';
 import { ScrollView } from 'ink-scroll-view';
 import { AgentLoopProvider, useAgentLoop } from '../hooks/use-agent-loop';
@@ -7,7 +7,7 @@ import { useEventLoopStall } from '../hooks/use-event-loop-stall';
 import { getBuiltinCommands } from '../command-registry';
 import { Header } from './Header';
 import { Footer } from './Footer';
-import { ChatMessage } from './ChatMessage';
+import { ChatMessage, ToolGroupMessage, groupToolCalls } from './ChatMessage';
 import { StreamingMessage } from './StreamingMessage';
 import { ThinkingMessage } from './ThinkingMessage';
 import { TodoPanel } from './TodoPanel';
@@ -39,12 +39,22 @@ export function App({ agent, skillCommands, sessionStore }: AppProps) {
 
 function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashCommand[]; sessionStore: SessionStore }) {
   useEventLoopStall(process.env.DEBUG_STALL === '1');
-  const { messages: rawMessages, streaming: isStreaming, streamingContent, thinkingContent, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool } = useAgentLoop();
+  const { messages: rawMessages, streaming: isStreaming, streamingContent, thinkingContent, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool, ignoreError, focusedToolId, toolResults, ignoredErrors } = useAgentLoop();
   const messages = useDeferredValue(rawMessages);
   const { askUserQuestionRequest, respondWithAnswers } = useAskUserQuestionManager();
   const { permissionRequest, respondToPermission } = usePermissionManager();
+  const [thinkingCollapsed, setThinkingCollapsed] = useState(true);
+
+  const focusedErrorTool = focusedToolId ? toolResults.get(focusedToolId) : null;
+  const hasFocusedError = focusedErrorTool?.isError === true && !ignoredErrors.has(focusedToolId ?? '');
 
   useInput((input, key) => {
+    // Ctrl+T — toggle thinking collapse
+    if (input === 't' && key.ctrl) {
+      setThinkingCollapsed(prev => !prev);
+      return;
+    }
+
     // Esc during streaming — interrupt the agent
     if (key.escape && isStreaming) {
       abort();
@@ -68,9 +78,17 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
       toggleFocusedTool();
       return;
     }
-  }, { isActive: isStreaming || !!askUserQuestionRequest || !!permissionRequest });
+
+    // Tool error action bar: r=retry, e=edit, i=ignore
+    if (hasFocusedError && !isStreaming) {
+      if (input === 'i') { ignoreError(focusedToolId!); return; }
+      if (input === 'r') { return; /* retry not yet implemented */ }
+      if (input === 'e') { return; /* edit not yet implemented */ }
+    }
+  }, { isActive: isStreaming || !!askUserQuestionRequest || !!permissionRequest || hasFocusedError });
 
   const allCommands = [...getBuiltinCommands(sessionStore), ...skillCommands];
+  const groupedMessages = useMemo(() => groupToolCalls(messages), [messages]);
 
   return (
     <Box flexDirection="column" height="100%">
@@ -78,14 +96,19 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
       <ErrorBoundary name="ScrollView">
         <Box flexGrow={1} flexDirection="column" overflow="hidden">
           <ScrollView>
-            {messages.map((message, index) => (
-              <ChatMessage
-                key={message.id ?? index}
-                message={message}
-              />
-            ))}
+            {groupedMessages.map((item, index) => {
+              if (item.type === 'group') {
+                return <ToolGroupMessage key={`group-${index}`} group={item} />;
+              }
+              return (
+                <ChatMessage
+                  key={item.message.id ?? index}
+                  message={item.message}
+                />
+              );
+            })}
             {thinkingContent !== null && (
-              <ThinkingMessage content={thinkingContent} streaming={isStreaming} />
+              <ThinkingMessage content={thinkingContent} streaming={isStreaming} collapsed={thinkingCollapsed} />
             )}
             {streamingContent !== null && (
               <StreamingMessage content={streamingContent} />

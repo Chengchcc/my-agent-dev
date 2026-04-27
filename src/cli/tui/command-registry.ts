@@ -2,6 +2,7 @@ import type { SkillFrontmatter } from '../../skills';
 import type { SessionStore } from '../../session/store';
 import type { CommandHandlerContext } from './types';
 import { compactCommand } from './commands/compact-command';
+import { costCommand, toolsCommand } from './commands/diagnostic-commands';
 
 export interface SlashCommand {
   name: string;
@@ -80,7 +81,7 @@ export function toSkillCommand(skill: SkillFrontmatter): SlashCommand {
 export function getBuiltinCommands(sessionStore: SessionStore): SlashCommand[] {
   // Lazy import to avoid circular dependencies
   const { getSessionCommands } = require('./commands/session-commands');
-  return [...BASE_COMMANDS, compactCommand, ...getSessionCommands(sessionStore)];
+  return [...BASE_COMMANDS, compactCommand, costCommand, toolsCommand, ...getSessionCommands(sessionStore)];
 }
 
 export function filterCommands(commands: SlashCommand[], filter: string): SlashCommand[] {

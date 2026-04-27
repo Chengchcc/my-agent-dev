@@ -12,13 +12,14 @@ export interface ToolCallMessageProps {
   pending?: boolean;
   focused?: boolean;
   expanded?: boolean;
+  ignored?: boolean;
 }
 
 /**
  * Pure ToolCallMessage — renders tool call status from props.
  * Use directly in tests. In the app, use ConnectedToolCallMessage which reads from context.
  */
-export function ToolCallMessage({ toolCall, result, pending = false, focused = false, expanded = false }: ToolCallMessageProps) {
+export function ToolCallMessage({ toolCall, result, pending = false, focused = false, expanded = false, ignored = false }: ToolCallMessageProps) {
   const title = useMemo(() => formatToolCallTitle(toolCall), [toolCall.name, toolCall.arguments]);
 
   const smartSummary = useMemo(
@@ -106,6 +107,11 @@ export function ToolCallMessage({ toolCall, result, pending = false, focused = f
           <Text color={contentColor}>{content}</Text>
         </Box>
       )}
+      {result?.isError && focused && !ignored && (
+        <Box paddingLeft={2}>
+          <Text color="yellow">[r] retry  [e] edit args  [i] ignore</Text>
+        </Box>
+      )}
     </Box>
   );
 }
@@ -120,6 +126,7 @@ export function ConnectedToolCallMessage({ toolCall }: { toolCall: ToolCall }) {
   );
   const focused = useAgentLoopSelector(s => s.focusedToolId === toolCall.id);
   const expanded = useAgentLoopSelector(s => s.expandedTools.has(toolCall.id));
+  const ignored = useAgentLoopSelector(s => s.ignoredErrors.has(toolCall.id));
   const resultMeta = useAgentLoopSelector(s => s.toolResults.get(toolCall.id));
   const toolMsg = useAgentLoopSelector(s =>
     s.messages.find(m => m.role === 'tool' && m.tool_call_id === toolCall.id),
@@ -141,6 +148,7 @@ export function ConnectedToolCallMessage({ toolCall }: { toolCall: ToolCall }) {
       pending={pending}
       focused={focused}
       expanded={expanded}
+      ignored={ignored}
     />
   );
 }

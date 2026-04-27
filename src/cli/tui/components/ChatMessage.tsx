@@ -5,6 +5,43 @@ import React, { useMemo } from 'react';
 import { CodeBlock } from './CodeBlock';
 import { ToolCallMessage, ConnectedToolCallMessage } from './ToolCallMessage';
 
+export interface ToolGroup {
+  type: 'group';
+  toolName: string;
+  count: number;
+  messages: Message[];
+}
+
+export type GroupedItem = { type: 'single'; message: Message } | ToolGroup;
+
+export function groupToolCalls(messages: Message[]): GroupedItem[] {
+  const result: GroupedItem[] = [];
+  let i = 0;
+  while (i < messages.length) {
+    const msg = messages[i]!;
+    if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length === 1) {
+      const toolName = msg.tool_calls[0]!.name;
+      let j = i + 1;
+      while (j < messages.length) {
+        const next = messages[j]!;
+        if (next.role === 'assistant' && next.tool_calls && next.tool_calls.length === 1 && next.tool_calls[0]!.name === toolName) {
+          j++;
+        } else {
+          break;
+        }
+      }
+      if (j - i >= 3) {
+        result.push({ type: 'group', toolName, count: j - i, messages: messages.slice(i, j) });
+        i = j;
+        continue;
+      }
+    }
+    result.push({ type: 'single', message: msg });
+    i++;
+  }
+  return result;
+}
+
 // Use require to avoid type conflicts between marked-terminal's marked types and our marked types
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const TerminalRenderer = require('marked-terminal').default;
@@ -187,3 +224,17 @@ export const ChatMessage = React.memo(
     );
   },
 );
+
+interface ToolGroupMessageProps {
+  group: ToolGroup;
+}
+
+export function ToolGroupMessage({ group }: ToolGroupMessageProps) {
+  return (
+    <Box marginBottom={1} marginLeft={1}>
+      <Text dimColor>
+        {'\u25B6'} {group.toolName} {group.count} files
+      </Text>
+    </Box>
+  );
+}

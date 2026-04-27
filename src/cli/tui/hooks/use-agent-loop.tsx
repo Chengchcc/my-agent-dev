@@ -52,6 +52,12 @@ type AgentLoopState = {
   tokenLimit: number;
   /** Start time of current streaming turn (null if not streaming) */
   streamingStartTime: number | null;
+  /** Whether the current agent turn was interrupted by user */
+  interrupted: boolean;
+  /** Tool IDs whose error action bars have been dismissed */
+  ignoredErrors: Set<string>;
+  /** Dismiss the error action bar for a tool */
+  ignoreError: (toolId: string) => void;
 };
 
 const AgentLoopContext = createSelectorContext<AgentLoopState | null>(null);
@@ -84,6 +90,8 @@ export function AgentLoopProvider({
     totalUsage,
     contextTokens,
     streamingStartTime,
+    interrupted,
+    ignoredErrors,
   } = state;
 
   const streamingRef = useRef(streaming);
@@ -98,7 +106,12 @@ export function AgentLoopProvider({
     if (typeof (agent as any).abort === 'function') {
       (agent as any).abort();
     }
+    dispatch({ type: 'SET_INTERRUPTED', interrupted: true });
   }, [agent]);
+
+  const ignoreError = useCallback((toolId: string) => {
+    dispatch({ type: 'IGNORE_ERROR', toolId });
+  }, []);
 
   // Helper to refresh messages from agent context
   const refreshMessages = useCallback(() => {
@@ -386,15 +399,18 @@ export function AgentLoopProvider({
       currentContextTokens,
       tokenLimit,
       streamingStartTime,
+      interrupted,
       onSubmit,
       onSubmitWithSkill,
       abort,
+      ignoreError,
       setTodos: (todos: UITodoItem[]) => dispatch({ type: 'SET_TODOS', todos }),
       focusTool,
       toggleFocusedTool,
       moveFocus,
+      ignoredErrors,
     }),
-    [agent, messages, streamingContent, streamingMessageId, onSubmit, onSubmitWithSkill, abort, streaming, todos, currentTools, runningSubAgents, completedSubAgents, focusedToolId, expandedTools, toolResults, totalUsage, contextTokens, tokenLimit, streamingStartTime, focusTool, toggleFocusedTool, moveFocus],
+    [agent, messages, streamingContent, streamingMessageId, onSubmit, onSubmitWithSkill, abort, ignoreError, streaming, todos, currentTools, runningSubAgents, completedSubAgents, focusedToolId, expandedTools, toolResults, totalUsage, contextTokens, tokenLimit, streamingStartTime, interrupted, focusTool, toggleFocusedTool, moveFocus, ignoredErrors],
   );
 
   return (

@@ -1,5 +1,6 @@
 import { useInput } from "ink";
 import { useEffect, useMemo, useState, useRef } from "react";
+import fastGlob from "fast-glob";
 import {
   buildPromptSubmission,
   filterCommands,
@@ -18,6 +19,15 @@ import {
   type InputEditorState,
 } from "./use-input-editor";
 import { useInputHistory } from "./use-input-history";
+
+function getAtQuery(text: string): { query: string; start: number } | null {
+  const lastAt = text.lastIndexOf('@');
+  if (lastAt === -1) return null;
+  if (lastAt > 0 && !/\s/.test(text[lastAt - 1]!)) return null;
+  const query = text.slice(lastAt + 1);
+  if (query.includes(' ')) return null;
+  return { query, start: lastAt };
+}
 
 const WELCOME_MESSAGES = [
   "To the moon!",
@@ -42,7 +52,9 @@ export function useCommandInput({
   const [firstMessage, setFirstMessage] = useState(true);
   const [editorState, setEditorState] = useState<InputEditorState>({ text: "", cursorOffset: 0 });
   const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
+  const [dismissedAtQuery, setDismissedAtQuery] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [atSelectedIndex, setAtSelectedIndex] = useState(0);
   const [pasteFolded, setPasteFolded] = useState(false);
   const [pasteLineCount, setPasteLineCount] = useState(0);
   const [welcomeMessage] = useState(
@@ -60,6 +72,16 @@ export function useCommandInput({
   const pickerOpen = slashQuery !== null && dismissedQuery !== slashQuery;
   const highlightedCommandName = getHighlightedCommandName(editorState.text, commands);
 
+  const atQuery = useMemo(() => getAtQuery(editorState.text), [editorState.text]);
+  const atFiles = useMemo(() => {
+    if (!atQuery || atQuery.query.length === 0) return [];
+    try {
+      const pattern = `**/*${atQuery.query}*`;
+      return fastGlob.sync(pattern, { cwd: process.cwd(), dot: true, deep: 10, suppressErrors: true, onlyFiles: true }).slice(0, 15);
+    } catch { return []; }
+  }, [atQuery?.query]);
+  const atFilePickerOpen = atQuery !== null && dismissedAtQuery !== atQuery.query && atFiles.length > 0;
+
   useEffect(() => {
     setSelectedIndex((currentIndex) => {
       if (filteredCommands.length === 0) return 0;
@@ -71,23 +93,39 @@ export function useCommandInput({
     setSelectedIndex(0);
   }, [slashQuery]);
 
+  useEffect(() => {
+    setAtSelectedIndex(0);
+  }, [atQuery?.query]);
+
+  useEffect(() => {
+    setAtSelectedIndex((index) => Math.min(index, Math.max(0, atFiles.length - 1)));
+  }, [atFiles.length]);
+
   const updateEditorState = (next: InputEditorState | ((prev: InputEditorState) => InputEditorState)) => {
     if (typeof next === 'function') {
       setEditorState((prevState) => {
         const newState = next(prevState);
-        // Calculate new text for slash query check using the actual new state
         const newText = newState.text;
         if (getSlashQuery(newText) !== dismissedQuery) {
           setDismissedQuery(null);
+        }
+        const newAtQ = getAtQuery(newText);
+        if (newAtQ?.query !== dismissedAtQuery) {
+          setDismissedAtQuery(null);
+          setAtSelectedIndex(0);
         }
         return newState;
       });
     } else {
       setEditorState(next);
-      // Calculate new text for slash query check
       const newText = next.text;
       if (getSlashQuery(newText) !== dismissedQuery) {
         setDismissedQuery(null);
+      }
+      const newAtQ = getAtQuery(newText);
+      if (newAtQ?.query !== dismissedAtQuery) {
+        setDismissedAtQuery(null);
+        setAtSelectedIndex(0);
       }
     }
   };
@@ -119,6 +157,11 @@ export function useCommandInput({
         return;
       }
 
+      if (atFilePickerOpen && key.escape) {
+        setDismissedAtQuery(atQuery!.query);
+        return;
+      }
+
       if (key.escape) {
         if (editorStateRef.current.text.length > 0) {
           exitBrowsing();
@@ -140,6 +183,16 @@ export function useCommandInput({
         return;
       }
 
+      if (atFilePickerOpen && key.upArrow) {
+        setAtSelectedIndex((index) => (index > 0 ? index - 1 : atFiles.length - 1));
+        return;
+      }
+
+      if (atFilePickerOpen && key.downArrow) {
+        setAtSelectedIndex((index) => (index < atFiles.length - 1 ? index + 1 : 0));
+        return;
+      }
+
       if (pickerOpen && filteredCommands.length > 0 && (key.return || key.tab)) {
         acceptSelectedCommand();
         return;
@@ -156,11 +209,24 @@ export function useCommandInput({
             });
             setDismissedQuery(slashQuery);
           } else {
-            // Reopen picker so user sees all options
             setDismissedQuery(null);
           }
         }
         return;
+      }
+
+      // Tab / Enter completion for @ file references
+      if ((key.tab || key.return) && atQuery && atFiles.length > 0) {
+        if (!atFilePickerOpen && key.return) {
+          // Enter without open picker — don't intercept, let it submit
+        } else {
+          const file = atFiles[atSelectedIndex]!;
+          const before = editorStateRef.current.text.slice(0, atQuery.start);
+          const text = before + file + ' ';
+          updateEditorState({ text, cursorOffset: text.length });
+          setDismissedAtQuery(atQuery.query);
+          return;
+        }
       }
 
       if (key.return) {
@@ -247,5 +313,8 @@ export function useCommandInput({
     cursorOffset: editorState.cursorOffset,
     pasteFolded,
     pasteLineCount,
+    atFiles,
+    atSelectedIndex,
+    atFilePickerOpen,
   };
 }

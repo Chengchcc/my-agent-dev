@@ -4,6 +4,7 @@ import { useAgentLoop } from '../hooks';
 import type { PromptSubmission, SlashCommand } from '../command-registry';
 import { useCommandInput } from '../hooks/use-command-input';
 import { CommandList } from './CommandList';
+import { FilePicker } from './FilePicker';
 import { HighlightedInput } from './HighlightedInput';
 
 export function InputBox({
@@ -19,7 +20,7 @@ export function InputBox({
   const inputProps: any = { commands };
   if (onSubmit) inputProps.onSubmit = onSubmit;
   if (onAbort) inputProps.onAbort = onAbort;
-  const { filteredCommands, highlightedCommandName, pickerOpen, placeholder, selectedIndex, text, cursorOffset, pasteFolded, pasteLineCount } =
+  const { filteredCommands, highlightedCommandName, pickerOpen, placeholder, selectedIndex, text, cursorOffset, pasteFolded, pasteLineCount, atFiles, atSelectedIndex, atFilePickerOpen } =
     useCommandInput(inputProps);
 
   if (streaming) {
@@ -31,6 +32,7 @@ export function InputBox({
   return (
     <Box flexDirection="column" rowGap={1}>
       {pickerOpen ? <CommandList commands={filteredCommands} selectedIndex={selectedIndex} /> : null}
+      {atFilePickerOpen ? <FilePicker files={atFiles} selectedIndex={atSelectedIndex} /> : null}
       <Box
         flexDirection="row"
         columnGap={1}

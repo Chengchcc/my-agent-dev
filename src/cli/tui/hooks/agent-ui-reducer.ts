@@ -24,6 +24,10 @@ export type AgentUIState = {
   contextTokens: number;
   /** Start time of current streaming turn for elapsed display */
   streamingStartTime: number | null;
+  /** Whether the current agent turn was interrupted by user */
+  interrupted: boolean;
+  /** Tool IDs whose error action bars have been dismissed */
+  ignoredErrors: Set<string>;
 };
 
 export type AgentUIAction =
@@ -52,7 +56,9 @@ export type AgentUIAction =
   | { type: 'MOVE_FOCUS'; direction: -1 | 1; collapsibleTools: string[] }
   | { type: 'SET_TODOS'; todos: UITodoItem[] }
   | { type: 'TURN_COMPLETE'; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }; contextTokens?: number }
-  | { type: 'SET_CONTEXT_TOKENS'; tokens: number };
+  | { type: 'SET_CONTEXT_TOKENS'; tokens: number }
+  | { type: 'SET_INTERRUPTED'; interrupted: boolean }
+  | { type: 'IGNORE_ERROR'; toolId: string };
 
 export const initialState: AgentUIState = {
   streaming: false,
@@ -70,6 +76,8 @@ export const initialState: AgentUIState = {
   totalUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
   contextTokens: 0,
   streamingStartTime: null,
+  interrupted: false,
+  ignoredErrors: new Set<string>(),
 };
 
 export function agentUIReducer(state: AgentUIState, action: AgentUIAction): AgentUIState {
@@ -83,6 +91,7 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
         streamingMessageId: null,
         currentTools: [],
         streamingStartTime: Date.now(),
+        interrupted: false,
       };
 
     case 'THINKING_DELTA':
@@ -247,6 +256,15 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
         ...state,
         todos: action.todos,
       };
+
+    case 'SET_INTERRUPTED':
+      return { ...state, interrupted: action.interrupted };
+
+    case 'IGNORE_ERROR': {
+      const nextIgnored = new Set(state.ignoredErrors);
+      nextIgnored.add(action.toolId);
+      return { ...state, ignoredErrors: nextIgnored };
+    }
 
     default:
       void (0 as never);
