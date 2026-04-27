@@ -1,9 +1,8 @@
 import type { Message } from '../../../types';
 import { Box, Text } from 'ink';
-import { marked, type Token } from 'marked';
 import React, { useMemo } from 'react';
-import { CodeBlock } from './CodeBlock';
 import { ToolCallMessage, ConnectedToolCallMessage } from './ToolCallMessage';
+import { renderMarkdownTokens } from './utils/render-markdown';
 
 export interface ToolGroup {
   type: 'group';
@@ -41,17 +40,6 @@ export function groupToolCalls(messages: Message[]): GroupedItem[] {
   }
   return result;
 }
-
-// Use require to avoid type conflicts between marked-terminal's marked types and our marked types
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const TerminalRenderer = require('marked-terminal').default;
-
-// Configure marked to use TerminalRenderer
-marked.setOptions({
-  // @ts-ignore: TerminalRenderer type conflict due to nested dependency versions
-  renderer: new TerminalRenderer(),
-  async: false,
-});
 
 interface PureChatMessageProps {
   message: Message;
@@ -95,72 +83,6 @@ export function PureChatMessage({ message, ToolCallComponent = ToolCallMessage }
         return '?';
     }
   };
-
-  function renderMarkdownTokens(content: string): React.ReactNode[] {
-    const elements: React.ReactNode[] = [];
-    let textBuffer = '';
-
-    try {
-      const tokens = marked.lexer(content);
-
-      tokens.forEach((token, index) => {
-        if (token.type === 'code') {
-          if (textBuffer.trim()) {
-            try {
-              const result = marked(textBuffer) as string;
-              elements.push(
-                <Text key={`buffer-${index}`}>
-                  {result.trimEnd()}
-                </Text>,
-              );
-            } catch (e) {
-              console.warn(`Marked parsing failed for buffered text, falling back to raw text:`, e);
-              elements.push(
-                <Text key={`buffer-${index}`}>
-                  {textBuffer}
-                </Text>,
-              );
-            }
-            textBuffer = '';
-          }
-          const codeToken = token as Token & { text: string; lang?: string };
-          const codeBlockProps: any = { key: index, code: codeToken.text };
-          if (codeToken.lang) codeBlockProps.language = codeToken.lang;
-          elements.push(<CodeBlock {...codeBlockProps} />);
-        } else {
-          const tokenAny = token as any;
-          if (tokenAny.raw) {
-            textBuffer += tokenAny.raw;
-          } else if (tokenAny.text) {
-            textBuffer += tokenAny.text;
-          }
-        }
-      });
-
-      if (textBuffer.trim()) {
-        try {
-          const result = marked(textBuffer) as string;
-          elements.push(
-            <Text key="final">
-              {result.trimEnd()}
-            </Text>,
-          );
-        } catch (e) {
-          console.warn('Marked parsing failed for final buffer, falling back to raw text:', e);
-          elements.push(
-            <Text key="final">
-              {textBuffer}
-            </Text>,
-          );
-        }
-      }
-    } catch (e) {
-      console.warn('Marked lexing failed, falling back to full raw text:', e);
-      elements.push(<Text>{content}</Text>);
-    }
-
-    return elements;
-  }
 
   const roleColor = getRoleColor(message.role);
   const rolePrefix = getRolePrefix(message.role);
