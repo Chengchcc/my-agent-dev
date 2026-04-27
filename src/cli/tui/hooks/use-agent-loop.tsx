@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useReducer, useDeferredValue } from 'react';
 import { createContext as createSelectorContext, useContextSelector } from 'use-context-selector';
-import { countMessageTokens } from '../../../utils/token-cache';
 import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
 import type { Message } from '../../../types';
@@ -357,16 +356,12 @@ export function AgentLoopProvider({
     }
   }, [agent]);
 
-  // Defer token calculation to idle frames - UI updates immediately, tokens catch up later
+  // O(1) read from accumulator — ContextManager maintains incremental token count.
+  // No more O(N) reduce over all messages every turn.
   const deferredMessages = useDeferredValue(messages);
-
-  // Calculate current context token count with WeakMap caching
-  // Cached messages take 0ms vs 10-100ms per large message
   const currentContextTokens = useMemo(() => {
-    return deferredMessages.reduce((sum: number, msg: Message) => {
-      return sum + countMessageTokens(msg);
-    }, 0);
-  }, [deferredMessages]);
+    return agent.getContextManager().getCurrentTokens();
+  }, [deferredMessages, agent]);
 
   const value = useMemo(
     () => ({

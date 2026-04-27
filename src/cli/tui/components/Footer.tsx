@@ -1,25 +1,24 @@
 import { Box, Text } from 'ink';
 import React from 'react';
-import { useAgentLoop } from '../hooks';
+import { useAgentLoopSelector } from '../hooks';
 import { clampPct } from '../utils/clamp';
 
 interface PureFooterProps {
-  totalUsage: { totalTokens: number };
-  currentContextTokens: number;
-  tokenLimit: number;
+  totalTokens: number;
+  /** tokensBucket = floor(ratio * 100). Only changes when ratio crosses 1% boundary. */
+  tokensBucket: number;
 }
 
 /**
- * Pure (context-free) Footer component for testing
+ * Pure (context-free) Footer. Exported unmemo'd for tests.
  */
-export function PureFooter({ totalUsage, currentContextTokens, tokenLimit }: PureFooterProps) {
-  const clampedRatio = clampPct(currentContextTokens, tokenLimit);
-  const percentage = Math.round(clampedRatio * 100);
+export function PureFooter({ totalTokens, tokensBucket }: PureFooterProps) {
+  const percentage = tokensBucket;
+  const clampedRatio = clampPct(percentage / 100, 1);
   const barWidth = 20;
   const filled = Math.round(barWidth * clampedRatio);
   const empty = Math.max(0, barWidth - filled);
 
-  // Get budget status label and color
   function getBudgetStatus(percent: number): { label: string; color: 'gray' | 'cyan' | 'yellow' | 'red' } {
     if (percent >= 90) return { label: 'CRITICAL', color: 'red' };
     if (percent >= 85) return { label: 'WARNING', color: 'yellow' };
@@ -34,9 +33,9 @@ export function PureFooter({ totalUsage, currentContextTokens, tokenLimit }: Pur
     <Box marginTop={1} width="100%" justifyContent="space-between">
       <Text dimColor>Type /exit to quit, /clear to clear conversation</Text>
       <Box gap={1}>
-        {totalUsage.totalTokens > 0 && (
+        {totalTokens > 0 && (
           <>
-            <Text dimColor>Total: {totalUsage.totalTokens.toLocaleString()}</Text>
+            <Text dimColor>Total: {totalTokens.toLocaleString()}</Text>
             <Text dimColor>
               Context: <Text color={status.color}>{bar}</Text> {percentage}%
               {status.label && <Text color={status.color}> {status.label}</Text>}
@@ -48,14 +47,19 @@ export function PureFooter({ totalUsage, currentContextTokens, tokenLimit }: Pur
   );
 }
 
+export const PureFooterMemo = React.memo(PureFooter);
+
 /**
- * Connected Footer that reads state from AgentLoopContext
+ * Connected Footer with targeted subscriptions.
+ * Uses tokensBucket (0-100 integer) so Footer only re-renders when the
+ * percentage crosses a 1% boundary, not on every token delta.
  */
 export function Footer() {
-  const { totalUsage, currentContextTokens, tokenLimit } = useAgentLoop();
-  return <PureFooter
-    totalUsage={totalUsage}
-    currentContextTokens={currentContextTokens}
-    tokenLimit={tokenLimit}
-  />;
+  const totalTokens = useAgentLoopSelector(s => s.totalUsage.totalTokens);
+  const tokensBucket = useAgentLoopSelector(s => {
+    const ratio = s.tokenLimit > 0 ? s.currentContextTokens / s.tokenLimit : 0;
+    return Math.floor(clampPct(ratio, s.tokenLimit) * 100);
+  });
+
+  return <PureFooterMemo totalTokens={totalTokens} tokensBucket={tokensBucket} />;
 }

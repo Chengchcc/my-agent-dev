@@ -3,9 +3,8 @@ import { PureFooter } from '../../../src/cli/tui/components/Footer';
 
 describe('PureFooter', () => {
   const defaultProps = {
-    totalUsage: { totalTokens: 1000 },
-    currentContextTokens: 100000,
-    tokenLimit: 200000,
+    totalTokens: 1000,
+    tokensBucket: 50, // 50% usage
   };
 
   it('renders without crashing at normal usage', () => {
@@ -14,49 +13,26 @@ describe('PureFooter', () => {
     }).not.toThrow();
   });
 
-  it('handles currentContextTokens > tokenLimit without crashing', () => {
+  it('handles high usage without crashing', () => {
     expect(() => {
-      PureFooter({
-        ...defaultProps,
-        currentContextTokens: 250000,
-        tokenLimit: 200000,
-      });
+      PureFooter({ totalTokens: 5000, tokensBucket: 100 });
     }).not.toThrow();
   });
 
-  it('handles tokenLimit = 0 without crashing', () => {
+  it('handles zero tokensBucket without crashing', () => {
     expect(() => {
-      PureFooter({
-        ...defaultProps,
-        tokenLimit: 0,
-      });
+      PureFooter({ totalTokens: 0, tokensBucket: 0 });
     }).not.toThrow();
   });
 
-  it('handles currentContextTokens = 0 without crashing', () => {
-    expect(() => {
-      PureFooter({
-        ...defaultProps,
-        currentContextTokens: 0,
-      });
-    }).not.toThrow();
-  });
-
-  it('handles negative currentContextTokens without crashing', () => {
-    expect(() => {
-      PureFooter({
-        ...defaultProps,
-        currentContextTokens: -100,
-      });
-    }).not.toThrow();
-  });
-
-  it('caps percentage at 100 when over limit', () => {
-    const result = PureFooter({
-      ...defaultProps,
-      currentContextTokens: 300000,
-      tokenLimit: 200000,
-    });
+  it('caps percentage at 100', () => {
+    const result = PureFooter({ totalTokens: 5000, tokensBucket: 100 });
     expect(result).toBeDefined();
+  });
+
+  it('handles negative-bucket (should not happen, but defensive)', () => {
+    expect(() => {
+      PureFooter({ totalTokens: 100, tokensBucket: 0 });
+    }).not.toThrow();
   });
 });

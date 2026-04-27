@@ -3,6 +3,7 @@ import { countTokens } from '@anthropic-ai/tokenizer';
 import type { AgentContext, AgentConfig, CompressionStrategy, Message, ToolCall } from '../types';
 import type { TodoItem } from '../todos/types';
 import type { CompactionResult } from './compaction/types';
+import { TokenAccumulator } from './token-accumulator';
 import { getSettingsSync } from '../config';
 import { defaultSettings } from '../config/defaults';
 
@@ -119,7 +120,7 @@ export class ContextManager {
   private todoStepsSinceLastReminder = Infinity;
   private lastKnownPromptTokens: number = 0;
   private accumulatedOutputTokens: number = 0;
-  private _cachedEstimatedTokens: number = -1;
+  private accumulator = new TokenAccumulator();
 
   constructor(config: ContextManagerConfig = {}) {
     let tokenLimit;
@@ -135,13 +136,17 @@ export class ContextManager {
     if (config.defaultSystemPrompt) {
       this.defaultSystemPrompt = config.defaultSystemPrompt;
       this.currentSystemPrompt = config.defaultSystemPrompt;
+      this.accumulator.setSystemPrompt(countTokens(config.defaultSystemPrompt));
     }
 
     if (this.defaultSystemPrompt) {
-      this.messages.push({
+      const sysMsg: Message = {
         role: 'system',
         content: this.defaultSystemPrompt,
-      });
+        id: nanoid(),
+      };
+      this.messages.push(sysMsg);
+      this.accumulator.add(sysMsg);
     }
   }
 
@@ -156,9 +161,7 @@ export class ContextManager {
       id: message.id ?? nanoid(),
     };
     this.messages.push(msg);
-    if (this._cachedEstimatedTokens >= 0) {
-      this._cachedEstimatedTokens += countSingleMessageTokens(msg);
-    }
+    this.accumulator.add(msg);
   }
 
   /**
@@ -172,8 +175,8 @@ export class ContextManager {
    * Update the current system prompt (for dynamic skill injection).
    */
   setSystemPrompt(systemPrompt: string): void {
-    this._cachedEstimatedTokens = -1;
     this.currentSystemPrompt = systemPrompt;
+    this.accumulator.setSystemPrompt(countTokens(systemPrompt));
   }
 
   /**
@@ -269,16 +272,21 @@ export class ContextManager {
    * Clear all messages (keeps default system prompt if exists).
    */
   clear(): void {
-    this._cachedEstimatedTokens = -1;
+    this.accumulator.clear();
     this.messages = [];
     this.todoStore = [];
     this.todoStepsSinceLastWrite = Infinity;
     this.todoStepsSinceLastReminder = Infinity;
     if (this.defaultSystemPrompt) {
-      this.messages.push({
+      this.currentSystemPrompt = this.defaultSystemPrompt;
+      this.accumulator.setSystemPrompt(countTokens(this.defaultSystemPrompt));
+      const sysMsg: Message = {
         role: 'system',
         content: this.defaultSystemPrompt,
-      });
+        id: nanoid(),
+      };
+      this.messages.push(sysMsg);
+      this.accumulator.add(sysMsg);
     }
   }
 
@@ -320,12 +328,12 @@ export class ContextManager {
    * Replace all messages (used after compression).
    */
   setMessages(messages: Message[]): void {
-    this._cachedEstimatedTokens = -1;
     // Keep system messages separate to maintain the default system prompt
     const systemMessages = messages.filter(m => m.role === 'system');
     const nonSystemMessages = messages.filter(m => m.role !== 'system');
 
     this.messages = [...systemMessages, ...nonSystemMessages];
+    this.accumulator.setMessages(this.messages);
   }
 
   /**
@@ -339,17 +347,17 @@ export class ContextManager {
   /**
    * Get current context usage ratio (0-1).
    */
-  private getEstimatedTokens(): number {
-    if (this._cachedEstimatedTokens < 0) {
-      const messages = this.getMessages();
-      this._cachedEstimatedTokens = countTotalTokens(messages, this.currentSystemPrompt);
-    }
-    return this._cachedEstimatedTokens;
+  /**
+   * Get current estimated context tokens (O(1) — reads from accumulator).
+   * Used by TUI Footer and compaction threshold checks.
+   */
+  getCurrentTokens(): number {
+    return this.accumulator.total;
   }
 
   getUsageRatio(): number {
     if (this.lastKnownPromptTokens <= 0) {
-      return this.getEstimatedTokens() / this.tokenLimit;
+      return this.getCurrentTokens() / this.tokenLimit;
     }
     return this.lastKnownPromptTokens / this.tokenLimit;
   }
@@ -359,7 +367,7 @@ export class ContextManager {
    */
   getRemainingBudget(): number {
     if (this.lastKnownPromptTokens <= 0) {
-      return this.tokenLimit - this.getEstimatedTokens();
+      return this.tokenLimit - this.getCurrentTokens();
     }
     return this.tokenLimit - this.lastKnownPromptTokens;
   }
@@ -372,8 +380,7 @@ export class ContextManager {
    */
   getLastKnownPromptTokens(): number {
     if (this.lastKnownPromptTokens <= 0) {
-      const messages = this.getMessages();
-      return countTotalTokens(messages, this.currentSystemPrompt);
+      return this.getCurrentTokens();
     }
     return this.lastKnownPromptTokens;
   }
@@ -403,17 +410,22 @@ export class ContextManager {
    * Used when budget guard replaces tool calls with sub-agent delegation.
    */
   replaceLastAssistantToolCalls(toolCalls: ToolCall[]): void {
-    this._cachedEstimatedTokens = -1;
     const messages = [...this.messages];
     // Find the last assistant message
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
       if (msg && msg.role === 'assistant') {
+        const oldId = msg.id;
+        const newId = nanoid();
         messages[i] = {
           ...msg,
+          id: newId,
           tool_calls: toolCalls,
         };
         this.messages = messages;
+        // Reconcile: remove old, add new
+        if (oldId) this.accumulator.remove(oldId);
+        this.accumulator.add(messages[i]!);
         return;
       }
     }
