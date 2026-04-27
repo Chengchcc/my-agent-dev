@@ -62,7 +62,9 @@ export function useCommandInput({
   );
   const { isBrowsing, browseUp, browseDown, exitBrowsing, saveEntry } = useInputHistory();
   const editorStateRef = useRef(editorState);
-  editorStateRef.current = editorState;
+  useEffect(() => {
+    editorStateRef.current = editorState;
+  }, [editorState]);
 
   const slashQuery = getSlashQuery(editorState.text);
   const filteredCommands = useMemo(
@@ -77,7 +79,14 @@ export function useCommandInput({
     if (!atQuery || atQuery.query.length === 0) return [];
     try {
       const pattern = `**/*${atQuery.query}*`;
-      return fastGlob.sync(pattern, { cwd: process.cwd(), dot: true, deep: 10, suppressErrors: true, onlyFiles: true }).slice(0, 15);
+      return fastGlob.sync(pattern, {
+        cwd: process.cwd(),
+        dot: true,
+        deep: 10,
+        suppressErrors: true,
+        onlyFiles: true,
+        ignore: ['**/node_modules/**', '**/.git/**'],
+      }).slice(0, 15);
     } catch { return []; }
   }, [atQuery?.query]);
   const atFilePickerOpen = atQuery !== null && dismissedAtQuery !== atQuery.query && atFiles.length > 0;

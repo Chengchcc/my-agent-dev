@@ -109,7 +109,7 @@ export function ToolCallMessage({ toolCall, result, pending = false, focused = f
       )}
       {result?.isError && focused && !ignored && (
         <Box paddingLeft={2}>
-          <Text color="yellow">[r] retry  [e] edit args  [i] ignore</Text>
+          <Text color="yellow">[i] ignore</Text>
         </Box>
       )}
     </Box>

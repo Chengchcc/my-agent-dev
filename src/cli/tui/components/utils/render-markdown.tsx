@@ -6,11 +6,15 @@ import { CodeBlock } from '../CodeBlock';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const TerminalRenderer = require('marked-terminal').default;
 
-marked.setOptions({
-  // @ts-ignore: TerminalRenderer type conflict due to nested dependency versions
-  renderer: new TerminalRenderer(),
-  async: false,
-});
+let markedConfigured = false;
+if (!markedConfigured) {
+  markedConfigured = true;
+  marked.setOptions({
+    // @ts-ignore: TerminalRenderer type conflict due to nested dependency versions
+    renderer: new TerminalRenderer(),
+    async: false,
+  });
+}
 
 export function renderMarkdownTokens(content: string): React.ReactNode[] {
   const elements: React.ReactNode[] = [];

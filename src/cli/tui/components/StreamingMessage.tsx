@@ -15,17 +15,9 @@ export function StreamingMessage({ content }: StreamingMessageProps) {
   const latestRef = useRef(content);
   const [renderedContent, setRenderedContent] = useState(content);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isFirst = useRef(true);
 
   useEffect(() => {
     latestRef.current = content;
-
-    // On first render, bypass throttle to show content immediately
-    if (isFirst.current) {
-      isFirst.current = false;
-      setRenderedContent(content);
-      return;
-    }
 
     if (timerRef.current) return; // throttle already pending
 

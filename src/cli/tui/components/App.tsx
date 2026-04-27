@@ -88,11 +88,9 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
       return;
     }
 
-    // Tool error action bar: r=retry, e=edit, i=ignore
+    // Tool error action bar: i=ignore
     if (hasFocusedError && !isStreaming) {
       if (input === 'i') { ignoreError(focusedToolId!); return; }
-      if (input === 'r') { return; /* retry not yet implemented */ }
-      if (input === 'e') { return; /* edit not yet implemented */ }
     }
   }, { isActive: isStreaming || !!askUserQuestionRequest || !!permissionRequest || hasFocusedError });
 

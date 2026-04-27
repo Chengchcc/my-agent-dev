@@ -9,14 +9,13 @@ interface DebugOverlayProps {
 const MAX_EVENTS = 5;
 
 export function DebugOverlay({ enabled }: DebugOverlayProps) {
-  if (!enabled) return null;
-
   const { messages, currentTools, streaming, todos } = useAgentLoop();
   const [stallMs, setStallMs] = useState(0);
   const [lastEvents, setLastEvents] = useState<string[]>([]);
 
   // Lightweight event loop stall monitoring for debug overlay
   useEffect(() => {
+    if (!enabled) return;
     const id = setInterval(() => {
       const start = performance.now();
       setImmediate(() => {
@@ -24,13 +23,16 @@ export function DebugOverlay({ enabled }: DebugOverlayProps) {
       });
     }, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [enabled]);
 
   // Track recent events
   useEffect(() => {
+    if (!enabled) return;
     const event = `turn:${messages.filter(m => m.role === 'assistant').length} stream:${streaming} tools:${currentTools.length} todos:${todos.length}`;
     setLastEvents(prev => [...prev.slice(-(MAX_EVENTS - 1)), event]);
-  }, [messages.length, streaming, currentTools.length, todos.length]);
+  }, [enabled, messages.length, streaming, currentTools.length, todos.length]);
+
+  if (!enabled) return null;
 
   const turnCount = messages.filter(m => m.role === 'assistant').length;
 
