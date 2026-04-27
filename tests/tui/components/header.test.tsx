@@ -9,14 +9,14 @@ describe('PureHeader', () => {
     const frame = lastFrame();
     expect(frame).toContain('my-agent');
     expect(frame).toContain('claude-sonnet-4-6');
-    expect(frame).toContain('▄█▄█▄'); // hamster logo
+    expect(frame).toContain('(OwO)'); // hamster logo
   });
 
   test('renders without model', () => {
     const { lastFrame } = render(<PureHeader model="" sessionId={null} />);
     const frame = lastFrame();
     expect(frame).toContain('my-agent');
-    expect(frame).not.toContain('('); // no model parentheses
+    expect(frame).not.toContain(' - ('); // no model after separator
   });
 
   test('shows truncated session ID when provided', () => {

@@ -5,10 +5,9 @@ import type { SessionStore } from '../../../session/store';
 
 // ASCII hamster logo for the TUI header
 const HAMSTER_LOGO = `\
-▄█▄█▄
-█●█●█
-▀███▀
- █ █`;
+(OwO)
+/|||\\\
+ |||`;
 
 interface PureHeaderProps {
   model: string;
@@ -18,9 +17,9 @@ interface PureHeaderProps {
 }
 
 const STATUS_DOTS: Record<string, { char: string; color: string; label: string }> = {
-  connected:    { char: '\u25CF', color: 'green',  label: 'connected' },
-  interrupted:  { char: '\u25CB', color: 'red',    label: 'interrupted' },
-  reconnecting: { char: '\u25D0', color: 'yellow', label: 'reconnecting' },
+  connected:    { char: '*', color: 'green',  label: 'connected' },
+  interrupted:  { char: 'x', color: 'red',    label: 'interrupted' },
+  reconnecting: { char: '~', color: 'yellow', label: 'reconnecting' },
 };
 
 /**
@@ -35,8 +34,8 @@ export function PureHeader({ model, sessionId, status = 'connected', compact = f
         {!compact && <Text>{HAMSTER_LOGO}</Text>}
         <Text>
           <Text bold color="cyan">my-agent</Text>
-          {model && !compact && <Text dimColor> \u00B7 {model}</Text>}
-          <Text dimColor> \u00B7 </Text>
+          {model && !compact && <Text dimColor> - {model}</Text>}
+          <Text dimColor> - </Text>
           <Text color={st.color}>{st.char}</Text>
           {!compact && <Text dimColor> {st.label}</Text>}
         </Text>
