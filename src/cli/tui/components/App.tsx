@@ -1,6 +1,6 @@
-import React, { useDeferredValue, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, useInput } from 'ink';
-import { ScrollView } from 'ink-scroll-view';
+import { ScrollView, type ScrollViewRef } from 'ink-scroll-view';
 import { AgentLoopProvider, useAgentLoop } from '../hooks/use-agent-loop';
 import { useAskUserQuestionManager, usePermissionManager } from '../hooks';
 import { useTerminalWidth } from '../hooks/use-terminal-width';
@@ -41,8 +41,8 @@ export function App({ agent, skillCommands, sessionStore }: AppProps) {
 
 function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashCommand[]; sessionStore: SessionStore }) {
   useEventLoopStall(process.env.DEBUG_STALL === '1');
-  const { messages: rawMessages, streaming: isStreaming, streamingContent, thinkingContent, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool, ignoreError, focusedToolId, toolResults, ignoredErrors } = useAgentLoop();
-  const messages = useDeferredValue(rawMessages);
+  const { messages, streaming: isStreaming, streamingContent, thinkingContent, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool, ignoreError, focusedToolId, toolResults, ignoredErrors } = useAgentLoop();
+  const scrollRef = useRef<ScrollViewRef>(null);
   const { askUserQuestionRequest, respondWithAnswers } = useAskUserQuestionManager();
   const { permissionRequest, respondToPermission } = usePermissionManager();
   const [thinkingCollapsed, setThinkingCollapsed] = useState(true);
@@ -94,6 +94,14 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
     }
   }, { isActive: isStreaming || !!askUserQuestionRequest || !!permissionRequest || hasFocusedError });
 
+  // Auto-scroll to bottom during streaming to prevent layout jitter
+  useEffect(() => {
+    if (isStreaming) {
+      // queueMicrotask lets ScrollView finish its useLayoutEffect measurements first
+      queueMicrotask(() => scrollRef.current?.scrollToBottom());
+    }
+  }, [isStreaming, messages.length, streamingContent]);
+
   const terminalWidth = useTerminalWidth();
   const isCompact = terminalWidth < 80;
 
@@ -105,14 +113,14 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
       <Header sessionStore={sessionStore} compact={isCompact} />
       <ErrorBoundary name="ScrollView">
         <Box flexGrow={1} flexDirection="column" overflow="hidden">
-          <ScrollView>
+          <ScrollView ref={scrollRef}>
             {groupedMessages.map((item, index) => {
               if (item.type === 'group') {
-                return <ToolGroupMessage key={`group-${index}`} group={item} />;
+                return <ToolGroupMessage key={item.messages[0]?.id ?? `group-${index}`} group={item} />;
               }
               return (
                 <ChatMessage
-                  key={item.message.id ?? index}
+                  key={item.message.id ?? `msg-${index}`}
                   message={item.message}
                 />
               );
