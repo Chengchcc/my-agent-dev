@@ -11,11 +11,12 @@ interface ThinkingMessageProps {
 }
 
 export function ThinkingMessage({ content, streaming, collapsed = false }: ThinkingMessageProps) {
-  if (!content) return null;
-
   const tokenCount = useMemo(() => {
+    if (!content) return 0;
     try { return countTokens(content); } catch { return Math.ceil(content.length / 4); }
   }, [content]);
+
+  if (!content) return null;
 
   if (collapsed) {
     return (
