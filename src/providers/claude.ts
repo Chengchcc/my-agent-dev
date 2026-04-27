@@ -153,11 +153,21 @@ export class ClaudeProvider implements Provider {
     } | null = null;
     let thinkingState: 'idle' | 'thinking' | 'redacted' = 'idle';
     let usage: {
+      input_tokens: number;
       output_tokens: number;
     } | null = null;
 
     for await (const chunk of stream) {
-      if (chunk.type === 'content_block_start') {
+      const rawEvent = chunk as any;
+      if (rawEvent.type === 'message_start') {
+        // Capture real input_tokens from the API
+        if (rawEvent.message?.usage?.input_tokens !== undefined) {
+          usage = {
+            input_tokens: rawEvent.message.usage.input_tokens,
+            output_tokens: 0,
+          };
+        }
+      } else if (chunk.type === 'content_block_start') {
         const contentBlock = chunk.content_block;
         if (contentBlock?.type === 'thinking') {
           thinkingState = 'thinking';
@@ -238,23 +248,27 @@ export class ClaudeProvider implements Provider {
         // Message delta contains stop_reason and usage
         const chunkAny = chunk as any;
         if (chunkAny.message_delta?.usage?.output_tokens !== undefined) {
+          const prevInput: number = (usage as any)?.input_tokens ?? 0;
           usage = {
+            input_tokens: prevInput,
             output_tokens: chunkAny.message_delta.usage.output_tokens,
           };
         }
       } else if (chunk.type === 'message_stop') {
         // Tool calls have already been yielded incrementally
         // Add usage if we have it
-        const promptTokens = countPromptTokens(claudeMessages);
-        const finalChunk: any = { content: '', done: true };
-        if (usage) {
-          finalChunk.usage = {
+        // Prefer real input_tokens from message_start; fall back to estimation
+        const promptTokens = usage?.input_tokens ?? countPromptTokens(claudeMessages);
+        const outputTokens = usage?.output_tokens ?? 0;
+        yield {
+          content: '',
+          done: true,
+          usage: {
             prompt_tokens: promptTokens,
-            completion_tokens: usage.output_tokens,
-            total_tokens: promptTokens + usage.output_tokens,
-          };
-        }
-        yield finalChunk;
+            completion_tokens: outputTokens,
+            total_tokens: promptTokens + outputTokens,
+          },
+        };
       }
     }
   }
@@ -265,26 +279,38 @@ export class ClaudeProvider implements Provider {
 }
 
 /**
- * Rough estimate of prompt tokens for Claude streaming.
- * Claude streaming doesn't provide full usage until the end in the event stream,
- * so we estimate using 1 token ~= 4 characters.
+ * Rough estimate of prompt tokens. Used as fallback when the API doesn't provide
+ * input_tokens via message_start events (e.g., older API versions).
+ *
+ * Uses 1 token ~= 3.5 chars for text and 1 ~= 2.5 for JSON (tool input/output)
+ * to reduce underestimation bias on structured content.
  */
 function countPromptTokens(messages: Anthropic.MessageParam[]): number {
-  let totalChars = 0;
+  let estimate = 0;
   for (const msg of messages) {
     if (typeof msg.content === 'string') {
-      totalChars += msg.content.length;
+      estimate += msg.content.length / 3.5;
     } else {
       for (const block of msg.content) {
         if (block.type === 'text') {
-          totalChars += block.text.length;
+          estimate += block.text.length / 3.5;
         } else if (block.type === 'tool_use') {
-          // tool_use block add some overhead - rough estimate
-          totalChars += (block.name.length + JSON.stringify(block.input).length + 20);
+          const json = JSON.stringify(block.input);
+          estimate += (block.name.length + json.length) / 2.5 + 6;
+        } else if (block.type === 'tool_result') {
+          const content = typeof block.content === 'string'
+            ? block.content
+            : JSON.stringify(block.content);
+          estimate += content.length / 2.5 + 4;
+        } else if (block.type === 'image') {
+          estimate += 80; // ~1 token per 4-5 chars of base64 with overhead
+        } else {
+          // thinking, redacted_thinking, or unknown block types
+          estimate += JSON.stringify(block).length / 3;
         }
       }
     }
   }
-  return Math.ceil(totalChars / 4);
+  return Math.ceil(estimate);
 }
 
