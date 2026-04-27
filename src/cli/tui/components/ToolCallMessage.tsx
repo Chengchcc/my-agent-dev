@@ -20,6 +20,10 @@ export interface ToolCallMessageProps {
  * Use directly in tests. In the app, use ConnectedToolCallMessage which reads from context.
  */
 export function ToolCallMessage({ toolCall, result, pending = false, focused = false, expanded = false, ignored = false }: ToolCallMessageProps) {
+  // All hooks must be called unconditionally before any early return.
+  // Otherwise when a read tool's result arrives (pending -> resolved),
+  // the early return path changes hook count and React throws
+  // "Rendered fewer hooks than expected".
   const title = useMemo(() => formatToolCallTitle(toolCall), [toolCall.name, toolCall.arguments]);
 
   const smartSummary = useMemo(
@@ -27,58 +31,14 @@ export function ToolCallMessage({ toolCall, result, pending = false, focused = f
     [toolCall.name, toolCall.arguments, result?.content],
   );
 
-  const borderStyle = focused ? 'single' : undefined;
-  const borderColor = focused ? 'blue' : undefined;
-  const prefixColor = pending ? 'yellow' : result?.isError ? 'red' : 'gray';
-  const contentColor = result?.isError ? 'red' : 'gray';
-
-  if (!pending && result && !result.isError && toolCall.name === 'read') {
-    let parsed: {
-      path: string;
-      content: string;
-      total_lines: number;
-      range: { start: number; end: number };
-      diff?: { hunks: any };
-    } | null = null;
-
+  const readParsed = useMemo(() => {
+    if (pending || !result || result.isError || toolCall.name !== 'read') return null;
     try {
-      parsed = JSON.parse(result.content);
-    } catch {
-      // fall through to default rendering
-    }
-
-    if (parsed && parsed.path && parsed.content) {
-      return (
-        <Box flexDirection="column" borderStyle={borderStyle} borderColor={borderColor} paddingX={focused ? 1 : 0} marginY={0}>
-          <Box flexDirection="row" alignItems="center">
-            <Text color={prefixColor}>
-              {pending ? <BlinkingText>●</BlinkingText> : '●'}
-            </Text>
-            <Text color="cyan"> {title}</Text>
-            {result && <Text color="gray"> {result.durationMs}ms</Text>}
-          </Box>
-          {smartSummary && (
-            <Box paddingLeft={2}>
-              <Text color={contentColor}>{smartSummary}</Text>
-            </Box>
-          )}
-          {expanded ? (
-            <ReadFileView
-              filePath={parsed.path}
-              content={parsed.content}
-              startLine={parsed.range.start}
-              totalFileLines={parsed.total_lines}
-              {...(parsed.diff ? { diff: { hunks: parsed.diff.hunks } } : {})}
-            />
-          ) : (
-            <Box paddingLeft={2}>
-              <Text color="gray">Read 1 file (ctrl+o to expand)</Text>
-            </Box>
-          )}
-        </Box>
-      );
-    }
-  }
+      const parsed = JSON.parse(result.content);
+      if (parsed && parsed.path && parsed.content) return parsed;
+    } catch { /* fall through */ }
+    return null;
+  }, [pending, result?.content, result?.isError, toolCall.name]);
 
   const formattedResult = useMemo(() => {
     if (!result) return { display: '', isCollapsible: false };
@@ -90,6 +50,45 @@ export function ToolCallMessage({ toolCall, result, pending = false, focused = f
     }
     return formatToolResult(result.content, result.isError, expanded);
   }, [result?.content, result?.isError, expanded]);
+
+  // === hooks end — early returns below are safe ===
+
+  const borderStyle = focused ? 'single' : undefined;
+  const borderColor = focused ? 'blue' : undefined;
+  const prefixColor = pending ? 'yellow' : result?.isError ? 'red' : 'gray';
+  const contentColor = result?.isError ? 'red' : 'gray';
+
+  if (readParsed) {
+    return (
+      <Box flexDirection="column" borderStyle={borderStyle} borderColor={borderColor} paddingX={focused ? 1 : 0} marginY={0}>
+        <Box flexDirection="row" alignItems="center">
+          <Text color={prefixColor}>
+            {pending ? <BlinkingText>●</BlinkingText> : '●'}
+          </Text>
+          <Text color="cyan"> {title}</Text>
+          {result && <Text color="gray"> {result.durationMs}ms</Text>}
+        </Box>
+        {smartSummary && (
+          <Box paddingLeft={2}>
+            <Text color={contentColor}>{smartSummary}</Text>
+          </Box>
+        )}
+        {expanded ? (
+          <ReadFileView
+            filePath={readParsed.path}
+            content={readParsed.content}
+            startLine={readParsed.range.start}
+            totalFileLines={readParsed.total_lines}
+            {...(readParsed.diff ? { diff: { hunks: readParsed.diff.hunks } } : {})}
+          />
+        ) : (
+          <Box paddingLeft={2}>
+            <Text color="gray">Read 1 file (ctrl+o to expand)</Text>
+          </Box>
+        )}
+      </Box>
+    );
+  }
 
   const content = smartSummary ?? formattedResult.display;
 
