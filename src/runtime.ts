@@ -243,48 +243,41 @@ function createProviderFromEnv(config: RuntimeConfig): Provider {
     maxTokens = 4096,
   } = config;
 
-  const hasClaudeKey = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
-  const hasOpenaiKey = process.env.OPENAI_API_KEY;
+  const hasClaudeKey = !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+  const hasOpenaiKey = !!process.env.OPENAI_API_KEY;
 
-  if (providerName === 'openai' && hasOpenaiKey) {
-    const openaiConfig: any = {
-      apiKey: process.env.OPENAI_API_KEY!,
-      model: model || process.env.MODEL || 'gpt-4o',
-      maxTokens,
-      temperature: 0.7,
-    };
-    if (process.env.OPENAI_BASE_URL) openaiConfig.baseURL = process.env.OPENAI_BASE_URL;
-    return new OpenAIProvider(openaiConfig);
-  } else if (providerName === 'claude' && hasClaudeKey) {
-    const claudeConfig: any = {
-      apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN!,
-      model: model || process.env.MODEL || 'claude-3-5-sonnet-20241022',
-      maxTokens,
-      temperature: 0.7,
-    };
-    if (process.env.ANTHROPIC_BASE_URL) claudeConfig.baseURL = process.env.ANTHROPIC_BASE_URL;
-    return new ClaudeProvider(claudeConfig);
-  } else if (!providerName) {
-    if (hasClaudeKey) {
-      const claudeConfig: any = {
-        apiKey: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN!,
-        model: model || process.env.MODEL || 'claude-3-5-sonnet-20241022',
-        maxTokens,
-        temperature: 0.7,
-      };
-      if (process.env.ANTHROPIC_BASE_URL) claudeConfig.baseURL = process.env.ANTHROPIC_BASE_URL;
-      return new ClaudeProvider(claudeConfig);
-    } else if (hasOpenaiKey) {
-      const openaiConfig: any = {
-        apiKey: process.env.OPENAI_API_KEY!,
-        model: model || process.env.MODEL || 'gpt-4o',
-        maxTokens,
-        temperature: 0.7,
-      };
-      if (process.env.OPENAI_BASE_URL) openaiConfig.baseURL = process.env.OPENAI_BASE_URL;
-      return new OpenAIProvider(openaiConfig);
-    }
-    throw new Error('No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.');
+  // Resolve provider: explicit > auto-detect from available keys
+  const resolved = providerName ?? (hasClaudeKey ? 'claude' : hasOpenaiKey ? 'openai' : null);
+
+  if (resolved === 'claude' && hasClaudeKey) {
+    return buildClaudeFromEnv(model, maxTokens);
   }
-  throw new Error(`Provider '${providerName}' not available or no API key found.`);
+  if (resolved === 'openai' && hasOpenaiKey) {
+    return buildOpenaiFromEnv(model, maxTokens);
+  }
+
+  if (providerName) {
+    throw new Error(`Provider '${providerName}' not available or no API key found.`);
+  }
+  throw new Error('No API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.');
+}
+
+function buildClaudeFromEnv(model: string | undefined, maxTokens: number): ClaudeProvider {
+  return new ClaudeProvider({
+    apiKey: (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)!,
+    model: model || process.env.MODEL || 'claude-3-5-sonnet-20241022',
+    maxTokens,
+    temperature: 0.7,
+    ...(process.env.ANTHROPIC_BASE_URL ? { baseURL: process.env.ANTHROPIC_BASE_URL } : {}),
+  });
+}
+
+function buildOpenaiFromEnv(model: string | undefined, maxTokens: number): OpenAIProvider {
+  return new OpenAIProvider({
+    apiKey: process.env.OPENAI_API_KEY!,
+    model: model || process.env.MODEL || 'gpt-4o',
+    maxTokens,
+    temperature: 0.7,
+    ...(process.env.OPENAI_BASE_URL ? { baseURL: process.env.OPENAI_BASE_URL } : {}),
+  });
 }
