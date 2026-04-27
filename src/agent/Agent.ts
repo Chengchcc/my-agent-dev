@@ -197,6 +197,8 @@ export class Agent {
 
     // Stream from LLM
     let fullContent = '';
+    let thinkingBuffer = '';
+    let thinkingSignature: string | undefined;
     const toolCalls: ToolCall[] = [];
     let usage: {
       prompt_tokens: number;
@@ -206,6 +208,22 @@ export class Agent {
 
     for await (const chunk of this.provider.stream(resultContext, { signal })) {
       if (signal.aborted) break;
+      if (chunk.thinking) {
+        thinkingBuffer += chunk.thinking;
+        yield {
+          type: 'thinking_delta',
+          delta: chunk.thinking,
+          turnIndex,
+        } satisfies AgentEvent;
+      }
+      if (chunk.thinkingSignature) {
+        thinkingSignature = chunk.thinkingSignature;
+        yield {
+          type: 'thinking_done',
+          signature: chunk.thinkingSignature,
+          turnIndex,
+        } satisfies AgentEvent;
+      }
       if (chunk.content) {
         fullContent += chunk.content;
         yield {
@@ -266,9 +284,32 @@ export class Agent {
     this.contextManager.syncTodoFromContext(resultContext);
 
     if (resultContext.response) {
-      const msg: { role: 'assistant'; content: string; tool_calls?: ToolCall[] } = {
+      const blocks: import('../types').ContentBlock[] = [];
+      if (thinkingBuffer) {
+        blocks.push({
+          type: 'thinking',
+          thinking: thinkingBuffer,
+          ...(thinkingSignature ? { signature: thinkingSignature } : {}),
+        });
+      }
+      if (fullContent) {
+        blocks.push({ type: 'text', text: fullContent });
+      }
+      for (const tc of toolCalls) {
+        blocks.push({
+          type: 'tool_use',
+          id: tc.id,
+          name: tc.name,
+          input: tc.arguments,
+        });
+      }
+
+      if (blocks.length > 0) resultContext.response.blocks = blocks;
+
+      const msg: { role: 'assistant'; content: string; blocks?: typeof blocks; tool_calls?: ToolCall[] } = {
         role: 'assistant',
         content: resultContext.response.content,
+        ...(blocks.length > 0 ? { blocks } : {}),
       };
       if (resultContext.response.tool_calls && resultContext.response.tool_calls.length > 0) {
         msg.tool_calls = resultContext.response.tool_calls;

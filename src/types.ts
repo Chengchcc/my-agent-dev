@@ -1,11 +1,21 @@
 import type { ContextManager } from './agent';
 import type { ToolContext } from './agent/tool-dispatch/types';
 
+// Structured content block — supports thinking / text / tool_use / tool_result
+export type ContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'thinking'; thinking: string; signature?: string }
+  | { type: 'redacted_thinking'; data: string }
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean };
+
 // Core message type - unified format for all providers
 export type Message = {
   id?: string;
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /** Structured content blocks for thinking/text/tool_use — preferred over content string for preservation */
+  blocks?: ContentBlock[];
   name?: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
@@ -38,6 +48,8 @@ export type ToolCall = {
 // LLM completion response
 export type LLMResponse = {
   content: string;
+  /** Structured blocks including thinking — preferred when provider supports reasoning */
+  blocks?: ContentBlock[];
   tool_calls?: ToolCall[];
   usage: {
     prompt_tokens: number;
@@ -50,6 +62,12 @@ export type LLMResponse = {
 // Streaming chunk response
 export type LLMResponseChunk = {
   content: string;
+  /** Thinking / reasoning delta (split from content for structured preservation) */
+  thinking?: string;
+  /** Signature for thinking block (Anthropic extended thinking) */
+  thinkingSignature?: string;
+  /** Opaque redacted thinking data (Anthropic) */
+  redactedThinking?: string;
   done: boolean;
   tool_calls?: ToolCall[];
   usage?: {
@@ -143,3 +161,38 @@ export type AgentConstructorOptions = {
   hooks?: AgentHooks;
   config: AgentConfig;
 };
+
+/** Extract plain text from structured content blocks, ignoring thinking. */
+export function flattenBlocks(blocks: ContentBlock[]): string {
+  return blocks
+    .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+    .map(b => b.text)
+    .join('');
+}
+
+/** Synthesize ContentBlock[] from a legacy Message that may lack blocks. */
+export function synthesizeBlocksFromLegacy(msg: Message): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
+  if (msg.content) {
+    blocks.push({ type: 'text', text: msg.content });
+  }
+  if (msg.tool_calls) {
+    for (const tc of msg.tool_calls) {
+      blocks.push({
+        type: 'tool_use',
+        id: tc.id,
+        name: tc.name,
+        input: tc.arguments,
+      });
+    }
+  }
+  // Preserve existing blocks if present
+  if (msg.blocks) {
+    for (const b of msg.blocks) {
+      if (b.type !== 'text' && b.type !== 'tool_use') {
+        blocks.push(b);
+      }
+    }
+  }
+  return blocks;
+}

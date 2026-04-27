@@ -18,6 +18,24 @@ export interface TextDeltaEvent extends AgentEventBase {
 }
 
 /**
+ * Thinking delta event - streamed reasoning/thinking content from the model.
+ * Split from text_delta so the UI can render it differently (collapsible).
+ */
+export interface ThinkingDeltaEvent extends AgentEventBase {
+  type: 'thinking_delta';
+  delta: string;
+}
+
+/**
+ * Thinking block completed — signals end of a reasoning block.
+ * Carries an optional signature (Anthropic extended thinking) for preservation.
+ */
+export interface ThinkingDoneEvent extends AgentEventBase {
+  type: 'thinking_done';
+  signature?: string;
+}
+
+/**
  * Tool call started - yielded before execution starts
  * Allows UI to show a loading spinner immediately
  */
@@ -136,6 +154,8 @@ export interface ContextCompactedEvent extends AgentEventBase {
  */
 export type AgentEvent =
   | TextDeltaEvent
+  | ThinkingDeltaEvent
+  | ThinkingDoneEvent
   | ToolCallStartEvent
   | ToolCallResultEvent
   | TurnCompleteEvent

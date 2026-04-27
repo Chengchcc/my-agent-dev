@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import { convertToClaudeMessages, extractSystemPrompt } from '../../src/providers/claude-utils';
-import type { Message } from '../../src/types';
+import type { Message, ContentBlock } from '../../src/types';
 
 describe('convertToClaudeMessages', () => {
   test('assistant with tool_calls produces content array with tool_use blocks', () => {
@@ -111,6 +111,132 @@ describe('convertToClaudeMessages', () => {
     expect(content[2].id).toBe('tc-2');
   });
 });
+
+  test('assistant with blocks containing thinking produces thinking block first', () => {
+    const blocks: ContentBlock[] = [
+      { type: 'thinking', thinking: 'chain of thought', signature: 'sig1' },
+      { type: 'text', text: 'The answer is 42.' },
+    ];
+    const messages: Message[] = [{
+      role: 'assistant',
+      content: 'The answer is 42.',
+      blocks,
+    }];
+
+    const result = convertToClaudeMessages(messages);
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe('assistant');
+
+    const content = result[0].content as Record<string, unknown>[];
+    expect(Array.isArray(content)).toBe(true);
+    expect(content).toHaveLength(2);
+    // thinking must be first
+    expect(content[0].type).toBe('thinking');
+    expect((content[0] as Record<string, unknown>).thinking).toBe('chain of thought');
+    expect((content[0] as Record<string, unknown>).signature).toBe('sig1');
+    // text second
+    expect(content[1].type).toBe('text');
+    expect((content[1] as Record<string, unknown>).text).toBe('The answer is 42.');
+  });
+
+  test('assistant with thinking + text + tool_use blocks preserves order', () => {
+    const blocks: ContentBlock[] = [
+      { type: 'text', text: 'Using bash.' },
+      { type: 'thinking', thinking: 'reasoning...' },
+      { type: 'tool_use', id: 'tc1', name: 'bash', input: { command: 'ls' } },
+    ];
+    const messages: Message[] = [{
+      role: 'assistant',
+      content: 'Using bash.',
+      blocks,
+      tool_calls: [{ id: 'tc1', name: 'bash', arguments: { command: 'ls' } }],
+    }];
+
+    const result = convertToClaudeMessages(messages);
+    const content = result[0].content as Record<string, unknown>[];
+    expect(content).toHaveLength(3);
+    // Order must be: thinking → text → tool_use (Anthropic requirement)
+    expect(content[0].type).toBe('thinking');
+    expect(content[1].type).toBe('text');
+    expect(content[2].type).toBe('tool_use');
+  });
+
+  test('assistant with redacted_thinking block preserves it', () => {
+    const blocks: ContentBlock[] = [
+      { type: 'redacted_thinking', data: 'encrypted_blob' },
+      { type: 'text', text: 'Response.' },
+    ];
+    const messages: Message[] = [{
+      role: 'assistant',
+      content: 'Response.',
+      blocks,
+    }];
+
+    const result = convertToClaudeMessages(messages);
+    const content = result[0].content as Record<string, unknown>[];
+    expect(content[0].type).toBe('redacted_thinking');
+    expect((content[0] as Record<string, unknown>).data).toBe('encrypted_blob');
+  });
+
+  test('legacy assistant without blocks still works (backward compat)', () => {
+    const messages: Message[] = [{
+      role: 'assistant',
+      content: 'Plain response.',
+    }];
+
+    const result = convertToClaudeMessages(messages);
+    expect(result[0].role).toBe('assistant');
+    expect((result[0] as Record<string, unknown>).content).toBe('Plain response.');
+  });
+
+  test('legacy assistant with tool_calls still works (backward compat)', () => {
+    const messages: Message[] = [{
+      role: 'assistant',
+      content: 'Check this.',
+      tool_calls: [{ id: 'tc1', name: 'read', arguments: { path: '/f' } }],
+    }];
+
+    const result = convertToClaudeMessages(messages);
+    const content = result[0].content as Record<string, unknown>[];
+    expect(Array.isArray(content)).toBe(true);
+    expect(content[0].type).toBe('text');
+    expect(content[1].type).toBe('tool_use');
+  });
+
+  test('multi-turn: thinking preserved on first assistant, second turn works', () => {
+    const blocks1: ContentBlock[] = [
+      { type: 'thinking', thinking: 'Need to read the file.', signature: 's1' },
+      { type: 'text', text: 'Reading file.' },
+      { type: 'tool_use', id: 'tc1', name: 'read', input: { path: '/f' } },
+    ];
+    const messages: Message[] = [
+      { role: 'user', content: 'Read the file.' },
+      {
+        role: 'assistant',
+        content: 'Reading file.',
+        blocks: blocks1,
+        tool_calls: [{ id: 'tc1', name: 'read', arguments: { path: '/f' } }],
+      },
+      { role: 'tool', content: 'file contents', tool_call_id: 'tc1' },
+    ];
+
+    const result = convertToClaudeMessages(messages);
+    expect(result).toHaveLength(3); // user, assistant, tool->user
+
+    // First assistant message: thinking → text → tool_use
+    const assistantMsg = result[1];
+    expect(assistantMsg.role).toBe('assistant');
+    const content = assistantMsg.content as Record<string, unknown>[];
+    expect(content[0].type).toBe('thinking');
+    expect(content[1].type).toBe('text');
+    expect(content[2].type).toBe('tool_use');
+
+    // Tool result is preserved
+    const toolMsg = result[2];
+    expect(toolMsg.role).toBe('user');
+    const toolContent = toolMsg.content as Record<string, unknown>[];
+    expect(toolContent[0].type).toBe('tool_result');
+  });
 
 describe('extractSystemPrompt', () => {
   test('extracts system messages joined with newlines', () => {

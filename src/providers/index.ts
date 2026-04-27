@@ -1,10 +1,25 @@
 import { debugLog } from '../utils/debug';
 import type { LLMSettings } from '../config/types';
 import type { Provider } from '../types';
+import type { ThinkingDecoder } from './thinking/types';
 import { ClaudeProvider } from './claude';
 import { OpenAIProvider } from './openai';
+import { AnthropicNativeDecoder } from './thinking/anthropic-native';
+import { ReasoningContentDecoder } from './thinking/reasoning-content';
 
 export { ClaudeProvider, OpenAIProvider };
+
+function createThinkingDecoder(settings: LLMSettings): ThinkingDecoder | undefined {
+  if (!settings.thinking?.enabled) return undefined;
+  const decoderType = settings.thinking.decoder ?? 'anthropic';
+  switch (decoderType) {
+    case 'reasoning-content':
+      return new ReasoningContentDecoder();
+    case 'anthropic':
+    default:
+      return new AnthropicNativeDecoder();
+  }
+}
 
 /**
  * Create LLM provider from settings.
@@ -23,14 +38,19 @@ export function createProviderFromSettings(settings: LLMSettings): Provider {
     debugLog('  apiKey length:', settings.apiKey?.length);
     debugLog('  baseURL:', settings.baseURL);
     debugLog('  model:', settings.model);
-    const claudeConfig: any = {
+    const thinkingDecoder = createThinkingDecoder(settings);
+    if (thinkingDecoder) {
+      debugLog('  thinking: enabled, decoder:', settings.thinking?.decoder ?? 'anthropic');
+    }
+    const budgetTokens = settings.thinking?.budgetTokens ?? 8000;
+    return new ClaudeProvider({
       apiKey: settings.apiKey!,
       model: settings.model,
       maxTokens: settings.maxTokens,
       temperature: settings.temperature,
-    };
-    if (settings.baseURL) claudeConfig.baseURL = settings.baseURL;
-    return new ClaudeProvider(claudeConfig);
+      ...(settings.baseURL ? { baseURL: settings.baseURL } : {}),
+      ...(thinkingDecoder ? { thinkingDecoder, thinkingBudgetTokens: budgetTokens } : {}),
+    });
   } else if (settings.provider === 'openai') {
     if (!settings.apiKey && process.env.OPENAI_API_KEY) {
       settings.apiKey = process.env.OPENAI_API_KEY;

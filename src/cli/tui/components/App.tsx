@@ -9,6 +9,7 @@ import { Header } from './Header';
 import { Footer } from './Footer';
 import { ChatMessage } from './ChatMessage';
 import { StreamingMessage } from './StreamingMessage';
+import { ThinkingMessage } from './ThinkingMessage';
 import { TodoPanel } from './TodoPanel';
 import { InputBox } from './InputBox';
 import { StreamingIndicator } from './StreamingIndicator';
@@ -37,7 +38,7 @@ export function App({ agent, skillCommands, sessionStore }: AppProps) {
 
 function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashCommand[]; sessionStore: SessionStore }) {
   useEventLoopStall(process.env.DEBUG_STALL === '1');
-  const { messages: rawMessages, streaming: isStreaming, streamingContent, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool } = useAgentLoop();
+  const { messages: rawMessages, streaming: isStreaming, streamingContent, thinkingContent, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool } = useAgentLoop();
   const messages = useDeferredValue(rawMessages);
   const { askUserQuestionRequest, respondWithAnswers } = useAskUserQuestionManager();
 
@@ -75,6 +76,9 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
                 message={message}
               />
             ))}
+            {thinkingContent !== null && (
+              <ThinkingMessage content={thinkingContent} streaming={isStreaming} />
+            )}
             {streamingContent !== null && (
               <StreamingMessage content={streamingContent} />
             )}

@@ -7,6 +7,8 @@ export type AgentUIState = {
   messages: Message[];
   /** Current streaming content being generated (separate from messages for performance) */
   streamingContent: string | null;
+  /** Current streaming thinking/reasoning content */
+  thinkingContent: string | null;
   /** ID of the current streaming message */
   streamingMessageId: string | null;
   todos: UITodoItem[];
@@ -38,6 +40,7 @@ export type AgentUIAction =
       messages: Message[];
       todos: UITodoItem[];
     }
+  | { type: 'THINKING_DELTA'; delta: string }
   | { type: 'LOOP_COMPLETE'; messages: Message[]; todos: UITodoItem[]; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }
   | { type: 'AGENT_ERROR'; errorMessage: Message }
   | { type: 'SUB_AGENT_START'; event: SubAgentStartEvent }
@@ -52,6 +55,7 @@ export const initialState: AgentUIState = {
   streaming: false,
   messages: [],
   streamingContent: null,
+  thinkingContent: null,
   streamingMessageId: null,
   todos: [],
   currentTools: [],
@@ -71,9 +75,16 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
         ...state,
         streaming: true,
         streamingContent: '',
+        thinkingContent: null,
         streamingMessageId: null,
         currentTools: [],
         streamingStartTime: Date.now(),
+      };
+
+    case 'THINKING_DELTA':
+      return {
+        ...state,
+        thinkingContent: (state.thinkingContent ?? '') + action.delta,
       };
 
     case 'TEXT_DELTA_BATCH':
@@ -141,6 +152,7 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
         ...state,
         streaming: false,
         streamingContent: null,
+        thinkingContent: null,
         streamingMessageId: null,
         messages: action.messages,
         todos: action.todos,

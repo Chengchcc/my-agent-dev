@@ -21,6 +21,8 @@ type AgentLoopState = {
   messages: Message[];
   /** Current streaming content being generated (separate for performance) */
   streamingContent: string | null;
+  /** Current streaming thinking/reasoning content */
+  thinkingContent: string | null;
   /** ID of the current streaming message */
   streamingMessageId: string | null;
   todos: UITodoItem[];
@@ -71,6 +73,7 @@ export function AgentLoopProvider({
     streaming,
     messages,
     streamingContent,
+    thinkingContent,
     streamingMessageId,
     todos,
     currentTools,
@@ -219,7 +222,12 @@ export function AgentLoopProvider({
         // Run agentic loop - yields events for each step
         for await (const event of agent.runAgentLoop({ role: 'user', content: text })) {
           debugLog(`[agent-loop] event: ${event.type} t=${performance.now().toFixed(0)}`);
-          if (event.type === 'text_delta') {
+          if (event.type === 'thinking_delta') {
+            dispatch({ type: 'THINKING_DELTA', delta: event.delta });
+          } else if (event.type === 'thinking_done') {
+            // thinking block completed — signature stored in agent's message blocks
+            debugLog('[agent-loop] thinking_done', event.signature ? 'with signature' : '');
+          } else if (event.type === 'text_delta') {
             // Only accumulate text during the current assistant turn
             // After tool execution, full messages are already in context
             if (state.streamingContent !== null || runningTools.size === 0) {
@@ -366,6 +374,7 @@ export function AgentLoopProvider({
       streaming,
       messages,
       streamingContent,
+      thinkingContent,
       streamingMessageId,
       todos,
       currentTools,

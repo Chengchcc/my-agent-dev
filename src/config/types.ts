@@ -1,3 +1,12 @@
+export interface ThinkingSettings {
+  /** Enable extended thinking / reasoning. */
+  enabled: boolean;
+  /** Budget for thinking tokens (Anthropic native: budget_tokens). */
+  budgetTokens: number;
+  /** Decoder type for handling different thinking protocols. */
+  decoder?: 'anthropic' | 'reasoning-content';
+}
+
 export interface LLMSettings {
   provider: 'claude' | 'openai';
   model: string;
@@ -5,6 +14,8 @@ export interface LLMSettings {
   temperature: number;
   apiKey: string | null;
   baseURL: string | null;
+  /** Extended thinking / reasoning configuration. */
+  thinking?: ThinkingSettings;
 }
 
 export interface CompactionSettings {

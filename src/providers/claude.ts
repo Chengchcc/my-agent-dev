@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { convertToClaudeMessages, extractSystemPrompt } from './claude-utils';
-import type { Provider, Tool, LLMResponse, LLMResponseChunk, AgentContext } from '../types';
+import type { Provider, Tool, LLMResponse, LLMResponseChunk, AgentContext, ContentBlock } from '../types';
+import type { ThinkingDecoder } from './thinking/types';
 
 export class ClaudeProvider implements Provider {
   private client: Anthropic;
@@ -8,6 +9,8 @@ export class ClaudeProvider implements Provider {
   private maxTokens: number;
   private temperature: number;
   private tools: Anthropic.Tool[] = [];
+  private thinkingDecoder: ThinkingDecoder | null;
+  private thinkingBudgetTokens: number;
 
   constructor(config: {
     apiKey: string;
@@ -15,6 +18,8 @@ export class ClaudeProvider implements Provider {
     maxTokens: number;
     temperature?: number;
     baseURL?: string;
+    thinkingDecoder?: ThinkingDecoder;
+    thinkingBudgetTokens?: number;
   }) {
     this.client = new Anthropic({
       apiKey: config.apiKey,
@@ -23,6 +28,8 @@ export class ClaudeProvider implements Provider {
     this.model = config.model;
     this.maxTokens = config.maxTokens;
     this.temperature = config.temperature ?? 0.7;
+    this.thinkingDecoder = config.thinkingDecoder ?? null;
+    this.thinkingBudgetTokens = config.thinkingBudgetTokens ?? 8000;
   }
 
   /**
@@ -47,33 +54,57 @@ export class ClaudeProvider implements Provider {
     const system = systemPrompt ?? extractSystemPrompt(messages);
     const model = context.config?.model ?? this.model;
 
-    const requestOptions: any = {
+    const requestOptions: Record<string, unknown> = {
       model,
       messages: claudeMessages,
       system: system,
       max_tokens: this.maxTokens,
-      temperature: this.temperature,
+      temperature: this.thinkingDecoder ? 1 : this.temperature,
     };
+    if (this.thinkingDecoder) {
+      requestOptions.thinking = {
+        type: 'enabled',
+        budget_tokens: this.thinkingBudgetTokens,
+      };
+    }
     if (this.tools.length > 0) requestOptions.tools = this.tools;
-    const response = await this.client.messages.create(requestOptions);
+    const response = await this.client.messages.create(
+      requestOptions as unknown as Anthropic.MessageCreateParams,
+    ) as unknown as Anthropic.Message;
 
-    // Extract content
-    const content = response.content
-      .filter(block => block.type === 'text')
+    // Extract text content
+    const responseContent = response.content as Anthropic.ContentBlock[];
+    const content = responseContent
+      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
       .map(block => block.text)
       .join('');
 
+    // Extract thinking blocks via decoder
+    const blocks: ContentBlock[] = [];
+    if (this.thinkingDecoder) {
+      for (const block of responseContent) {
+        const cb = this.thinkingDecoder.decodeResponseBlock(block);
+        if (cb) blocks.push(cb);
+      }
+    }
+
     // Extract tool calls
-    const tool_calls = response.content
-      .filter(block => block.type === 'tool_use')
+    const tool_calls = responseContent
+      .filter((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use')
       .map(block => ({
         id: block.id,
         name: block.name,
         arguments: block.input as Record<string, unknown>,
       }));
 
-    const result: any = {
+    // Build text blocks from content
+    if (content) {
+      blocks.unshift({ type: 'text', text: content });
+    }
+
+    const result: LLMResponse = {
       content,
+      ...(blocks.length > 0 ? { blocks } : {}),
       usage: {
         prompt_tokens: response.usage.input_tokens,
         completion_tokens: response.usage.output_tokens,
@@ -94,17 +125,24 @@ export class ClaudeProvider implements Provider {
     const system = systemPrompt ?? extractSystemPrompt(messages);
     const model = context.config?.model ?? this.model;
 
-    const streamOptions: any = {
+    const streamOptions: Record<string, unknown> = {
       model,
       messages: claudeMessages,
       system: system,
       max_tokens: this.maxTokens,
-      temperature: this.temperature,
+      temperature: this.thinkingDecoder ? 1 : this.temperature,
     };
+    if (this.thinkingDecoder) {
+      streamOptions.thinking = {
+        type: 'enabled',
+        budget_tokens: this.thinkingBudgetTokens,
+      };
+    }
     if (this.tools.length > 0) streamOptions.tools = this.tools;
-    const stream = this.client.messages.stream(streamOptions, {
-      signal: options?.signal,
-    });
+    const stream = this.client.messages.stream(
+      streamOptions as unknown as Anthropic.MessageCreateParams,
+      { signal: options?.signal },
+    );
 
     let currentContent = '';
     const tool_calls: LLMResponseChunk['tool_calls'] = [];
@@ -113,6 +151,7 @@ export class ClaudeProvider implements Provider {
       name: string;
       input: string;
     } | null = null;
+    let thinkingState: 'idle' | 'thinking' | 'redacted' = 'idle';
     let usage: {
       output_tokens: number;
     } | null = null;
@@ -120,7 +159,11 @@ export class ClaudeProvider implements Provider {
     for await (const chunk of stream) {
       if (chunk.type === 'content_block_start') {
         const contentBlock = chunk.content_block;
-        if (contentBlock?.type === 'tool_use') {
+        if (contentBlock?.type === 'thinking') {
+          thinkingState = 'thinking';
+        } else if (contentBlock?.type === 'redacted_thinking') {
+          thinkingState = 'redacted';
+        } else if (contentBlock?.type === 'tool_use') {
           // Start of a new tool call
           currentToolCall = {
             id: contentBlock.id,
@@ -129,7 +172,19 @@ export class ClaudeProvider implements Provider {
           };
         }
       } else if (chunk.type === 'content_block_delta') {
-        if (chunk.delta.type === 'text_delta') {
+        if (thinkingState === 'thinking' && chunk.delta.type === 'thinking_delta') {
+          yield {
+            content: '',
+            thinking: chunk.delta.thinking,
+            done: false,
+          };
+        } else if (thinkingState === 'thinking' && chunk.delta.type === 'signature_delta') {
+          yield {
+            content: '',
+            thinkingSignature: chunk.delta.signature,
+            done: false,
+          };
+        } else if (chunk.delta.type === 'text_delta') {
           currentContent += chunk.delta.text;
           yield {
             content: chunk.delta.text,
@@ -142,6 +197,10 @@ export class ClaudeProvider implements Provider {
           }
         }
       } else if (chunk.type === 'content_block_stop') {
+        // End of a thinking block
+        if (thinkingState !== 'idle') {
+          thinkingState = 'idle';
+        }
         // End of current content block - if it's a tool call, parse and add it
         if (currentToolCall) {
           let fullToolCall: {
