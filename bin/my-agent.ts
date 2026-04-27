@@ -194,6 +194,7 @@ async function main() {
       if (event.type === 'agent_done') {
         finalEvent = event;
         if (event.reason === 'error') exitCode = 1;
+        else if (event.reason === 'max_turns_reached') exitCode = 2;
       }
       if (event.type === 'agent_error') {
         exitCode = 1;

@@ -1,4 +1,4 @@
-import type { AgentConfig, Provider } from './types';
+import type { AgentConfig, Provider, AgentHooks } from './types';
 import type { LLMSettings, ContextSettings } from './config/types';
 import { Agent } from './agent/Agent';
 import { ToolRegistry } from './agent/tool-registry';
@@ -41,6 +41,7 @@ export interface RuntimeConfig {
   settings?: {
     llm: LLMSettings;
     context: ContextSettings;
+    security?: { allowedRoots?: string[] };
   };
 }
 
@@ -66,10 +67,15 @@ export async function createAgentRuntime(
     enableSession = true,
     enableCompaction = true,
     systemPrompt = DEFAULT_SYSTEM_PROMPT,
-    allowedRoots = [cwd],
+    allowedRoots: allowedRootsOverride,
     askUserQuestionHandler,
     settings,
   } = config;
+
+  // Resolve allowedRoots: settings.security.allowedRoots → explicit override → cwd
+  const allowedRoots = allowedRootsOverride
+    ?? settings?.security?.allowedRoots
+    ?? [cwd];
 
   // Create provider - from settings or auto-detect from env
   let provider: Provider;
@@ -124,14 +130,14 @@ export async function createAgentRuntime(
   toolRegistry.register(new GlobTool());
   toolRegistry.register(new LsTool());
 
-  const defaultHeadlessHandler = async () => ({
-    answers: [],
-  });
+  const defaultHeadlessHandler = async () => {
+    throw new Error('ask_user_question tool is not available in headless mode');
+  };
   toolRegistry.register(new AskUserQuestionTool(
     askUserQuestionHandler ?? defaultHeadlessHandler,
   ));
 
-  const hooks: any = {
+  const hooks: Required<Pick<AgentHooks, 'beforeAgentRun' | 'beforeModel' | 'afterAgentRun'>> = {
     beforeAgentRun: [],
     beforeModel: [],
     afterAgentRun: [],
@@ -172,8 +178,8 @@ export async function createAgentRuntime(
   }
 
   // Skills
-  let skillMiddleware: any;
-  let skillLoader: any;
+  let skillMiddleware: ReturnType<typeof createSkillMiddleware> | undefined;
+  let skillLoader: SkillLoader | undefined;
   if (enableSkills) {
     skillLoader = new SkillLoader();
     skillMiddleware = createSkillMiddleware({ skillLoader, autoInject: true, injectOnMention: true });

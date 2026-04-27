@@ -17,7 +17,7 @@ export function PureFooter({ totalUsage, currentContextTokens, tokenLimit }: Pur
   const percentage = Math.round(clampedRatio * 100);
   const barWidth = 20;
   const filled = Math.round(barWidth * clampedRatio);
-  const empty = barWidth - filled;
+  const empty = Math.max(0, barWidth - filled);
 
   // Get budget status label and color
   function getBudgetStatus(percent: number): { label: string; color: 'gray' | 'cyan' | 'yellow' | 'red' } {
