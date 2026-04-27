@@ -2,7 +2,7 @@ import { Box, Text } from "ink";
 import React from 'react';
 import type { SlashCommand } from "../command-registry";
 
-const MAX_VISIBLE_COMMANDS = 5;
+const MAX_VISIBLE_COMMANDS = 8;
 
 interface CommandListProps {
   commands: SlashCommand[];

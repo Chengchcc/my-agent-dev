@@ -2,7 +2,7 @@ import React, { useDeferredValue } from 'react';
 import { Box, useInput } from 'ink';
 import { ScrollView } from 'ink-scroll-view';
 import { AgentLoopProvider, useAgentLoop } from '../hooks/use-agent-loop';
-import { useAskUserQuestionManager } from '../hooks';
+import { useAskUserQuestionManager, usePermissionManager } from '../hooks';
 import { useEventLoopStall } from '../hooks/use-event-loop-stall';
 import { getBuiltinCommands } from '../command-registry';
 import { Header } from './Header';
@@ -14,6 +14,7 @@ import { TodoPanel } from './TodoPanel';
 import { InputBox } from './InputBox';
 import { StreamingIndicator } from './StreamingIndicator';
 import { AskUserQuestionPrompt } from './AskUserQuestionPrompt';
+import { PermissionPrompt } from './PermissionPrompt';
 import { BlinkProvider } from './BlinkContext';
 import { ErrorBoundary } from './ErrorBoundary';
 import type { Agent } from '../../../agent';
@@ -41,26 +42,33 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
   const { messages: rawMessages, streaming: isStreaming, streamingContent, thinkingContent, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool } = useAgentLoop();
   const messages = useDeferredValue(rawMessages);
   const { askUserQuestionRequest, respondWithAnswers } = useAskUserQuestionManager();
+  const { permissionRequest, respondToPermission } = usePermissionManager();
 
   useInput((input, key) => {
-    // Up arrow - previous tool
-    if (key.upArrow) {
+    // Esc during streaming — interrupt the agent
+    if (key.escape && isStreaming) {
+      abort();
+      return;
+    }
+
+    // Ctrl+Up — previous tool
+    if (key.upArrow && key.ctrl) {
       moveFocus(-1);
       return;
     }
 
-    // Down arrow - next tool
-    if (key.downArrow) {
+    // Ctrl+Down — next tool
+    if (key.downArrow && key.ctrl) {
       moveFocus(1);
       return;
     }
 
-    // Ctrl+O or Space - toggle expand/collapse
-    if (input === 'o' && key.ctrl || input === ' ') {
+    // Ctrl+O or Space — toggle expand/collapse
+    if ((input === 'o' && key.ctrl) || input === ' ') {
       toggleFocusedTool();
       return;
     }
-  }, { isActive: isStreaming || !!askUserQuestionRequest });
+  }, { isActive: isStreaming || !!askUserQuestionRequest || !!permissionRequest });
 
   const allCommands = [...getBuiltinCommands(sessionStore), ...skillCommands];
 
@@ -92,8 +100,14 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
           onSubmit={respondWithAnswers}
         />
       )}
+      {permissionRequest && (
+        <PermissionPrompt
+          request={permissionRequest}
+          onSubmit={respondToPermission}
+        />
+      )}
       {isStreaming && <StreamingIndicator />}
-      {!askUserQuestionRequest && (
+      {!askUserQuestionRequest && !permissionRequest && (
         <InputBox commands={allCommands} onSubmit={onSubmitWithSkill} onAbort={abort} />
       )}
       <ErrorBoundary name="Footer">

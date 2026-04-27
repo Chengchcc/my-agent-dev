@@ -11,3 +11,6 @@ export * from './read';
 export * from './grep';
 export * from './glob';
 export * from './ls';
+
+// Permission management
+export * from './permission-manager';

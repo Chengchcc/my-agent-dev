@@ -31,7 +31,7 @@ export function PureFooter({ totalTokens, tokensBucket }: PureFooterProps) {
 
   return (
     <Box marginTop={1} width="100%" justifyContent="space-between">
-      <Text dimColor>Type /exit to quit, /clear to clear conversation</Text>
+      <Text dimColor>↑↓ history · esc clear · ctrl+↑↓ focus · tab complete · /exit to quit</Text>
       <Box gap={1}>
         {totalTokens > 0 && (
           <>

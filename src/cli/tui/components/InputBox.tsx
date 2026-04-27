@@ -19,12 +19,14 @@ export function InputBox({
   const inputProps: any = { commands };
   if (onSubmit) inputProps.onSubmit = onSubmit;
   if (onAbort) inputProps.onAbort = onAbort;
-  const { filteredCommands, highlightedCommandName, pickerOpen, placeholder, selectedIndex, text, cursorOffset } =
+  const { filteredCommands, highlightedCommandName, pickerOpen, placeholder, selectedIndex, text, cursorOffset, pasteFolded, pasteLineCount } =
     useCommandInput(inputProps);
 
   if (streaming) {
     return null;
   }
+
+  const displayText = pasteFolded ? `[Pasted ${pasteLineCount} lines — Space to expand]` : text;
 
   return (
     <Box flexDirection="column" rowGap={1}>
@@ -36,12 +38,16 @@ export function InputBox({
       >
         <Text color="green">{'>'}</Text>
         <Box flexGrow={1}>
-          <HighlightedInput
-            cursorOffset={cursorOffset}
-            highlightedCommandName={highlightedCommandName}
-            placeholder={placeholder}
-            value={text}
-          />
+          {pasteFolded ? (
+            <Text dimColor>{displayText}</Text>
+          ) : (
+            <HighlightedInput
+              cursorOffset={cursorOffset}
+              highlightedCommandName={highlightedCommandName}
+              placeholder={placeholder}
+              value={text}
+            />
+          )}
         </Box>
       </Box>
     </Box>

@@ -63,6 +63,7 @@ export function PureStreamingIndicator({
       <Text dimColor>Turn {turnCount}</Text>
       <Text dimColor>{elapsedSec}s</Text>
       {nextTodo && <Text dimColor>Next: {nextTodo}</Text>}
+      <Text dimColor>[esc to interrupt]</Text>
     </Box>
   );
 }

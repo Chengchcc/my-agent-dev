@@ -47,10 +47,25 @@ function scoreCommandMatch(command: SlashCommand, filter: string): number {
   if (name.startsWith(filter)) {
     return 0; // prefix match gets highest score (comes first)
   }
-  if (name.includes(filter)) {
-    return 1; // contains match is next
+  if (isSubsequenceMatch(name, filter)) {
+    return 1; // subsequence match (e.g. "cl" matches "clear")
   }
-  return 2; // description contains is lower priority
+  if (name.includes(filter)) {
+    return 2; // contains match is next
+  }
+  return 3; // description contains is lower priority
+}
+
+function isSubsequenceMatch(text: string, filter: string): boolean {
+  let ti = 0;
+  let fi = 0;
+  while (ti < text.length && fi < filter.length) {
+    if (text[ti] === filter[fi]) {
+      fi++;
+    }
+    ti++;
+  }
+  return fi === filter.length;
 }
 
 
@@ -101,6 +116,23 @@ export function getHighlightedCommandName(text: string, commands: SlashCommand[]
 
   const commandName = normalizeCommandName(commandToken);
   return commands.some(command => command.name.toLowerCase() === commandName) ? commandToken : null;
+}
+
+export function getBestCompletion(query: string, commands: SlashCommand[]): string | null {
+  const matches = filterCommands(commands, query);
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0]!.name;
+
+  // Find longest common prefix among all match names
+  const names = matches.map(c => c.name);
+  let prefix = names[0]!;
+  for (let i = 1; i < names.length; i++) {
+    while (!names[i]!.startsWith(prefix)) {
+      prefix = prefix.slice(0, -1);
+      if (prefix === '') return null;
+    }
+  }
+  return prefix.length > query.length ? prefix : null;
 }
 
 export function buildPromptSubmission(text: string, commands: SlashCommand[]): PromptSubmission {

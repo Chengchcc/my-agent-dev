@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import {
   buildPromptSubmission,
   filterCommands,
+  getBestCompletion,
   getHighlightedCommandName,
   getSlashQuery,
   insertSlashCommand,
@@ -42,6 +43,8 @@ export function useCommandInput({
   const [editorState, setEditorState] = useState<InputEditorState>({ text: "", cursorOffset: 0 });
   const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [pasteFolded, setPasteFolded] = useState(false);
+  const [pasteLineCount, setPasteLineCount] = useState(0);
   const [welcomeMessage] = useState(
     () => WELCOME_MESSAGES[Math.floor(Math.random() * WELCOME_MESSAGES.length)] ?? "What's on your mind?",
   );
@@ -117,7 +120,13 @@ export function useCommandInput({
       }
 
       if (key.escape) {
-        onAbort?.();
+        if (editorStateRef.current.text.length > 0) {
+          exitBrowsing();
+          setEditorState({ text: '', cursorOffset: 0 });
+          setDismissedQuery(null);
+        } else {
+          onAbort?.();
+        }
         return;
       }
 
@@ -133,6 +142,24 @@ export function useCommandInput({
 
       if (pickerOpen && filteredCommands.length > 0 && (key.return || key.tab)) {
         acceptSelectedCommand();
+        return;
+      }
+
+      // Tab completion for slash commands
+      if (key.tab && editorStateRef.current.text.startsWith('/')) {
+        if (!pickerOpen) {
+          const completion = getBestCompletion(slashQuery ?? '', commands);
+          if (completion) {
+            updateEditorState({
+              text: `/${completion} `,
+              cursorOffset: completion.length + 2,
+            });
+            setDismissedQuery(slashQuery);
+          } else {
+            // Reopen picker so user sees all options
+            setDismissedQuery(null);
+          }
+        }
         return;
       }
 
@@ -186,12 +213,26 @@ export function useCommandInput({
         return;
       }
 
-      if (key.upArrow || key.downArrow || key.tab) {
+      if (key.upArrow || key.downArrow) {
+        return;
+      }
+
+      // Paste folding: Space toggles expand when folded
+      if (pasteFolded && input === ' ') {
+        setPasteFolded(false);
         return;
       }
 
       exitBrowsing();
-      updateEditorState(prev => insertTextAtCursor(prev, input));
+      updateEditorState(prev => {
+        const next = insertTextAtCursor(prev, input);
+        const lines = next.text.split('\n').length;
+        if (lines >= 3 && !pasteFolded) {
+          setPasteFolded(true);
+          setPasteLineCount(lines);
+        }
+        return next;
+      });
     },
     { isActive: true },
   );
@@ -204,5 +245,7 @@ export function useCommandInput({
     selectedIndex,
     text: editorState.text,
     cursorOffset: editorState.cursorOffset,
+    pasteFolded,
+    pasteLineCount,
   };
 }
