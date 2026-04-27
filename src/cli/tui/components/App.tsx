@@ -116,11 +116,11 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
           <ScrollView ref={scrollRef}>
             {groupedMessages.map((item, index) => {
               if (item.type === 'group') {
-                return <ToolGroupMessage key={item.messages[0]?.id ?? `group-${index}`} group={item} />;
+                return <ToolGroupMessage key={`group-${item.messages[0]?.id ?? index}`} group={item} />;
               }
               return (
                 <ChatMessage
-                  key={item.message.id ?? `msg-${index}`}
+                  key={`msg-${item.message.id ?? index}`}
                   message={item.message}
                 />
               );
