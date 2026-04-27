@@ -20,6 +20,8 @@ export type AgentUIState = {
   toolResults: Map<string, { durationMs: number; isError: boolean }>;
   /** Total accumulated token usage */
   totalUsage: { promptTokens: number; completionTokens: number; totalTokens: number };
+  /** Current context token count from ContextManager accumulator (O(1)) */
+  contextTokens: number;
   /** Start time of current streaming turn for elapsed display */
   streamingStartTime: number | null;
 };
@@ -28,7 +30,7 @@ export type AgentUIAction =
   | { type: 'SUBMIT_START' }
   | { type: 'TEXT_DELTA_BATCH'; streamingMessageId: string; content: string }
   | { type: 'TOOL_START'; runningTools: Map<string, ToolCallStartEvent> }
-  | { type: 'TOOL_RESULT'; runningTools: Map<string, ToolCallStartEvent>; toolId: string; result: { durationMs: number; isError: boolean }; messages: Message[]; todos: UITodoItem[] }
+  | { type: 'TOOL_RESULT'; runningTools: Map<string, ToolCallStartEvent>; toolId: string; result: { durationMs: number; isError: boolean }; messages: Message[]; todos: UITodoItem[]; contextTokens: number }
   | {
       type: 'TOOL_RESULT_META';
       runningTools: Map<string, ToolCallStartEvent>;
@@ -41,7 +43,7 @@ export type AgentUIAction =
       todos: UITodoItem[];
     }
   | { type: 'THINKING_DELTA'; delta: string }
-  | { type: 'LOOP_COMPLETE'; messages: Message[]; todos: UITodoItem[]; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }
+  | { type: 'LOOP_COMPLETE'; messages: Message[]; todos: UITodoItem[]; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }; contextTokens?: number }
   | { type: 'AGENT_ERROR'; errorMessage: Message }
   | { type: 'SUB_AGENT_START'; event: SubAgentStartEvent }
   | { type: 'SUB_AGENT_DONE'; event: SubAgentDoneEvent }
@@ -49,7 +51,8 @@ export type AgentUIAction =
   | { type: 'TOGGLE_EXPANDED' }
   | { type: 'MOVE_FOCUS'; direction: -1 | 1; collapsibleTools: string[] }
   | { type: 'SET_TODOS'; todos: UITodoItem[] }
-  | { type: 'TURN_COMPLETE'; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } };
+  | { type: 'TURN_COMPLETE'; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }; contextTokens?: number }
+  | { type: 'SET_CONTEXT_TOKENS'; tokens: number };
 
 export const initialState: AgentUIState = {
   streaming: false,
@@ -65,6 +68,7 @@ export const initialState: AgentUIState = {
   expandedTools: new Set<string>(),
   toolResults: new Map(),
   totalUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+  contextTokens: 0,
   streamingStartTime: null,
 };
 
@@ -107,6 +111,7 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
         toolResults: new Map(state.toolResults).set(action.toolId, action.result),
         messages: action.messages,
         todos: action.todos,
+        contextTokens: action.contextTokens,
       };
 
     case 'TOOL_RESULT_META': {
@@ -141,9 +146,18 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
           completionTokens: state.totalUsage.completionTokens + action.usage.completion_tokens,
           totalTokens: state.totalUsage.totalTokens + action.usage.total_tokens,
         };
-        return { ...state, totalUsage: newTotalUsage };
+        return {
+          ...state,
+          totalUsage: newTotalUsage,
+          ...(action.contextTokens !== undefined ? { contextTokens: action.contextTokens } : {}),
+        };
       }
-      return state;
+      return action.contextTokens !== undefined
+        ? { ...state, contextTokens: action.contextTokens }
+        : state;
+
+    case 'SET_CONTEXT_TOKENS':
+      return { ...state, contextTokens: action.tokens };
 
     case 'LOOP_COMPLETE':
       // Usage should already be accumulated via TURN_COMPLETE events during iteration
@@ -157,6 +171,7 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
         messages: action.messages,
         todos: action.todos,
         currentTools: [],
+        contextTokens: action.contextTokens ?? state.contextTokens,
         streamingStartTime: null,
       };
 

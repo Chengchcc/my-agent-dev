@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useReducer, useDeferredValue } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useReducer } from 'react';
 import { createContext as createSelectorContext, useContextSelector } from 'use-context-selector';
 import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
@@ -82,6 +82,7 @@ export function AgentLoopProvider({
     expandedTools,
     toolResults,
     totalUsage,
+    contextTokens,
     streamingStartTime,
   } = state;
 
@@ -106,6 +107,7 @@ export function AgentLoopProvider({
       type: 'LOOP_COMPLETE',
       messages: fullContext.messages,
       todos: agent.getContextManager().getTodos(),
+      contextTokens: agent.getContextManager().getCurrentTokens(),
     });
   }, [agent]);
 
@@ -199,7 +201,7 @@ export function AgentLoopProvider({
         if (typeof agent.clear === 'function') {
           agent.clear();
         }
-        dispatch({ type: 'LOOP_COMPLETE', messages: [], todos: [] });
+        dispatch({ type: 'LOOP_COMPLETE', messages: [], todos: [], contextTokens: 0 });
         clearTerminal();
         return;
       }
@@ -268,6 +270,7 @@ export function AgentLoopProvider({
               },
               messages: fullContext.messages,
               todos: agent.getContextManager().getTodos(),
+              contextTokens: agent.getContextManager().getCurrentTokens(),
             });
           } else if (event.type === 'agent_error') {
             debugLog('[agent-loop] agent_error details:', event.error);
@@ -279,6 +282,7 @@ export function AgentLoopProvider({
           } else if (event.type === 'turn_complete') {
             const action: any = { type: 'TURN_COMPLETE' };
             if (event.usage) action.usage = event.usage;
+            action.contextTokens = agent.getContextManager().getCurrentTokens();
             dispatch(action);
             debugLog(`[agent-loop] turn_complete dispatched, for-await body ends: t=${performance.now().toFixed(0)}`);
           } else if (event.type === 'agent_done') {
@@ -297,7 +301,8 @@ export function AgentLoopProvider({
             // Budget guard triggered compaction
             debugLog('[agent-loop] budget compact:', event.reason);
           } else if (event.type === 'context_compacted') {
-            // Context compaction completed
+            // Context compaction completed — update token count since it dropped significantly
+            dispatch({ type: 'SET_CONTEXT_TOKENS', tokens: agent.getContextManager().getCurrentTokens() });
             debugLog('[agent-loop] context compacted:', event.level, event.beforeTokens, '→', event.afterTokens, 'tokens');
           } else {
             // Exhaustiveness check - TypeScript will warn if new event types are added
@@ -312,6 +317,7 @@ export function AgentLoopProvider({
           type: 'LOOP_COMPLETE',
           messages: allMessages,
           todos: agent.getContextManager().getTodos(),
+          contextTokens: agent.getContextManager().getCurrentTokens(),
           // Usage is already accumulated via TURN_COMPLETE events during iteration
           // Don't pass it again to avoid double-counting the last turn
         });
@@ -356,12 +362,10 @@ export function AgentLoopProvider({
     }
   }, [agent]);
 
-  // O(1) read from accumulator — ContextManager maintains incremental token count.
-  // No more O(N) reduce over all messages every turn.
-  const deferredMessages = useDeferredValue(messages);
-  const currentContextTokens = useMemo(() => {
-    return agent.getContextManager().getCurrentTokens();
-  }, [deferredMessages, agent]);
+  // O(1) read from accumulator — tracked as first-class state field.
+  // Updated on TOOL_RESULT, LOOP_COMPLETE, TURN_COMPLETE via reducer.
+  // No dependency on messages — token count changes independently.
+  const currentContextTokens = contextTokens;
 
   const value = useMemo(
     () => ({
@@ -390,7 +394,7 @@ export function AgentLoopProvider({
       toggleFocusedTool,
       moveFocus,
     }),
-    [agent, messages, streamingContent, streamingMessageId, onSubmit, onSubmitWithSkill, abort, streaming, todos, currentTools, runningSubAgents, completedSubAgents, focusedToolId, expandedTools, toolResults, totalUsage, currentContextTokens, tokenLimit, streamingStartTime, focusTool, toggleFocusedTool, moveFocus],
+    [agent, messages, streamingContent, streamingMessageId, onSubmit, onSubmitWithSkill, abort, streaming, todos, currentTools, runningSubAgents, completedSubAgents, focusedToolId, expandedTools, toolResults, totalUsage, contextTokens, tokenLimit, streamingStartTime, focusTool, toggleFocusedTool, moveFocus],
   );
 
   return (
