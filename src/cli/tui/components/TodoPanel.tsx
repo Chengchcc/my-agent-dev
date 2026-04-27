@@ -2,12 +2,14 @@ import { Box, Text } from 'ink';
 import React from 'react';
 import type { UITodoItem } from '../types';
 import { BlinkingText } from './';
+import { debugLog } from '../../../utils/debug';
 
 interface TodoPanelProps {
   todos: UITodoItem[];
 }
 
 export function TodoPanel({ todos }: TodoPanelProps) {
+  debugLog('[render] TodoPanel', { count: todos.length });
   const getStatusStyle = (status: UITodoItem['status']) => {
     switch (status) {
       case 'pending':

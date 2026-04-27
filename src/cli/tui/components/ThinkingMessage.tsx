@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Box, Text } from 'ink';
 import { countTokens } from '@anthropic-ai/tokenizer';
+import { debugLog } from '../../../utils/debug';
 
 interface ThinkingMessageProps {
   content: string;
@@ -11,6 +12,7 @@ interface ThinkingMessageProps {
 }
 
 export function ThinkingMessage({ content, streaming, collapsed = false }: ThinkingMessageProps) {
+  debugLog('[render] ThinkingMessage', { hasContent: !!content, streaming, collapsed });
   const tokenCount = useMemo(() => {
     if (!content) return 0;
     try { return countTokens(content); } catch { return Math.ceil(content.length / 4); }

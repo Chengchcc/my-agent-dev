@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text } from 'ink';
 import { renderMarkdownTokens } from './utils/render-markdown';
+import { debugLog } from '../../../utils/debug';
 
 interface StreamingMessageProps {
   content: string;
@@ -12,6 +13,7 @@ interface StreamingMessageProps {
  * while still providing syntax-highlighted output during streaming.
  */
 export function StreamingMessage({ content }: StreamingMessageProps) {
+  debugLog('[render] StreamingMessage', { len: content.length });
   const latestRef = useRef(content);
   const [renderedContent, setRenderedContent] = useState(content);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

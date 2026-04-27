@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import React, { useMemo } from 'react';
 import { ToolCallMessage, ConnectedToolCallMessage } from './ToolCallMessage';
 import { renderMarkdownTokens } from './utils/render-markdown';
+import { debugLog } from '../../../utils/debug';
 
 export interface ToolGroup {
   type: 'group';
@@ -52,6 +53,7 @@ interface PureChatMessageProps {
  * Defaults to pure ToolCallMessage. ChatMessage overrides with ConnectedToolCallMessage.
  */
 export function PureChatMessage({ message, ToolCallComponent = ToolCallMessage }: PureChatMessageProps) {
+  debugLog('[render] PureChatMessage', { id: message.id, role: message.role, hasContent: !!message.content, toolCount: message.tool_calls?.length ?? 0 });
 
   // Handle different role types with appropriate styling
   const getRoleColor = (role: string): string => {
@@ -152,6 +154,7 @@ interface ToolGroupMessageProps {
 }
 
 export function ToolGroupMessage({ group }: ToolGroupMessageProps) {
+  debugLog('[render] ToolGroupMessage', { toolName: group.toolName, count: group.count });
   return (
     <Box marginBottom={1} marginLeft={1}>
       <Text dimColor>
