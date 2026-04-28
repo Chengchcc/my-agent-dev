@@ -236,7 +236,9 @@ export class ContextManager {
     effectiveLimit: number,
     currentTokens: number,
   ): Promise<CompactionResult> {
-    if (currentTokens > effectiveLimit && this.compressionStrategy) {
+    // Always let the compression strategy decide - it has its own internal thresholds
+    // This avoids duplicate checks that prevent tiered compaction from triggering at the right time
+    if (this.compressionStrategy) {
       if (isCompressionWithResult(this.compressionStrategy)) {
         return this.compressionStrategy.compressWithResult(context, effectiveLimit);
       }

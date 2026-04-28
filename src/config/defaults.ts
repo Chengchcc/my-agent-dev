@@ -22,7 +22,7 @@ export const defaultSettings: Settings = {
       enabled: true,
       snipRatio: 0.60,
       autoCompactRatio: 0.75,
-      collapseRatio: 0.95,
+      collapseRatio: 0.90,
       toolOutputSnipThreshold: 8000,
       preserveRecentTurns: 4,
       summaryModel: 'claude-3-5-haiku-20241022',
