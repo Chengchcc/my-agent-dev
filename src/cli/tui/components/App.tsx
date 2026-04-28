@@ -9,7 +9,8 @@ import { useEventLoopStall } from '../hooks/use-event-loop-stall';
 import { getBuiltinCommands } from '../command-registry';
 import { Header } from './Header';
 import { Footer } from './Footer';
-import { ChatMessage, ToolGroupMessage, groupToolCalls } from './ChatMessage';
+import { ChatMessage, PureChatMessage, ToolGroupMessage, groupToolCalls } from './ChatMessage';
+import { ToolCallMessage } from './ToolCallMessage';
 import { StreamingMessage } from './StreamingMessage';
 import { ThinkingMessage } from './ThinkingMessage';
 import { TodoPanel } from './TodoPanel';
@@ -21,6 +22,7 @@ import { DebugOverlay } from './DebugOverlay';
 import { BlinkProvider } from './BlinkContext';
 import { ErrorBoundary } from './ErrorBoundary';
 import type { Agent } from '../../../agent';
+import type { Message } from '../../../types';
 import type { SlashCommand } from '../command-registry';
 import type { SessionStore } from '../../../session/store';
 
@@ -118,13 +120,40 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
   const isCompact = terminalWidth < 80;
 
   const allCommands = [...getBuiltinCommands(sessionStore), ...skillCommands];
-  const groupedMessages = useMemo(() => groupToolCalls(messages), [messages]);
+
+  // Ref-cached groupToolCalls: avoids creating new wrapper objects on every render
+  // when messages reference hasn't changed (common during streaming-only updates).
+  const groupedCache = useRef<{ input: Message[]; output: ReturnType<typeof groupToolCalls> }>({ input: [], output: [] });
+  const groupedMessages = useMemo(() => {
+    if (groupedCache.current.input === messages) return groupedCache.current.output;
+    const result = groupToolCalls(messages);
+    groupedCache.current = { input: messages, output: result };
+    return result;
+  }, [messages]);
 
   // Split messages: old completed messages go to <Static> (rendered once, never
   // re-measured), recent messages stay in ScrollView for tool-call interactivity.
-  const staticItems = groupedMessages.slice(0, -DYNAMIC_WINDOW);
   const dynamicItems = groupedMessages.slice(-DYNAMIC_WINDOW);
 
+  // Stable static items — only grow (monotonic append), never create new references
+  // for already-rendered items. This prevents <Static> from re-flushing all history.
+  const staticRef = useRef<typeof groupedMessages>([]);
+  const nextStatic = groupedMessages.slice(0, -DYNAMIC_WINDOW);
+  if (nextStatic.length >= staticRef.current.length) {
+    // Monotonic append: reuse old references for the common prefix
+    const samePrefix = nextStatic.slice(0, staticRef.current.length).every((item, i) => item === staticRef.current[i]);
+    if (samePrefix) {
+      staticRef.current = nextStatic;
+    } else if (nextStatic.length !== staticRef.current.length) {
+      // Prefix mismatch (compaction) — full replace
+      staticRef.current = nextStatic;
+    }
+  } else if (nextStatic.length !== staticRef.current.length) {
+    staticRef.current = nextStatic;
+  }
+  const staticItems = staticRef.current;
+
+  // Dynamic items use context-connected ChatMessage for tool-call interactivity
   const renderItem = useCallback(
     (item: (typeof groupedMessages)[number], index: number) => {
       if (item.type === 'group') {
@@ -140,6 +169,23 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
     [],
   );
 
+  // Static items use PureChatMessage — no context hooks needed (render once, never update)
+  const renderStaticItem = useCallback(
+    (item: (typeof groupedMessages)[number], index: number) => {
+      if (item.type === 'group') {
+        return <ToolGroupMessage key={`group-${item.messages[0]?.id ?? index}`} group={item} />;
+      }
+      return (
+        <PureChatMessage
+          key={`msg-${item.message.id ?? index}`}
+          message={item.message}
+          ToolCallComponent={ToolCallMessage}
+        />
+      );
+    },
+    [],
+  );
+
   debugLog('[render] AppContent', {
     msgCount: groupedMessages.length,
     hasThinking: thinkingContent !== null,
@@ -148,41 +194,43 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
   });
 
   return (
-    <Box flexDirection="column" height="100%">
-      <Header sessionStore={sessionStore} compact={isCompact} />
-      <ErrorBoundary name="ScrollView">
-        <Box flexGrow={1} flexDirection="column" overflow="hidden">
-          <Static items={staticItems}>
-            {(item, index) => renderItem(item, index)}
-          </Static>
-          <ScrollView ref={scrollRef}>
-            {dynamicItems.map((item, index) => renderItem(item, staticItems.length + index))}
-            {thinkingContent !== null && (
-              <ThinkingMessage content={thinkingContent} streaming={isStreaming} collapsed={thinkingCollapsed} />
-            )}
-            {streamingContent !== null && (
-              <StreamingMessage content={streamingContent} />
-            )}
-            {todos.length > 0 && <TodoPanel todos={todos} />}
-          </ScrollView>
-        </Box>
-      </ErrorBoundary>
-      {askUserQuestionRequest ? <AskUserQuestionPrompt
-          questions={askUserQuestionRequest.params.questions}
-          onSubmit={respondWithAnswers}
-        /> : null}
-      {permissionRequest ? <PermissionPrompt
-          request={permissionRequest}
-          onSubmit={respondToPermission}
-        /> : null}
-      <StreamingIndicator />
-      {!askUserQuestionRequest && !permissionRequest && (
-        <InputBox commands={allCommands} onSubmit={onSubmitWithSkill} onAbort={abort} />
-      )}
-      <DebugOverlay enabled={debugShow} />
-      <ErrorBoundary name="Footer">
-        <Footer compact={isCompact} />
-      </ErrorBoundary>
-    </Box>
+    <>
+      <Static items={staticItems}>
+        {(item, index) => renderStaticItem(item, index)}
+      </Static>
+      <Box flexDirection="column" height="100%">
+        <Header sessionStore={sessionStore} compact={isCompact} />
+        <ErrorBoundary name="ScrollView">
+          <Box flexGrow={1} flexDirection="column" overflow="hidden">
+            <ScrollView ref={scrollRef}>
+              {dynamicItems.map((item, index) => renderItem(item, staticItems.length + index))}
+              {thinkingContent !== null && (
+                <ThinkingMessage content={thinkingContent} streaming={isStreaming} collapsed={thinkingCollapsed} />
+              )}
+              {streamingContent !== null && (
+                <StreamingMessage content={streamingContent} />
+              )}
+              {todos.length > 0 && <TodoPanel todos={todos} />}
+            </ScrollView>
+          </Box>
+        </ErrorBoundary>
+        {askUserQuestionRequest ? <AskUserQuestionPrompt
+            questions={askUserQuestionRequest.params.questions}
+            onSubmit={respondWithAnswers}
+          /> : null}
+        {permissionRequest ? <PermissionPrompt
+            request={permissionRequest}
+            onSubmit={respondToPermission}
+          /> : null}
+        <StreamingIndicator />
+        {!askUserQuestionRequest && !permissionRequest && (
+          <InputBox commands={allCommands} onSubmit={onSubmitWithSkill} onAbort={abort} />
+        )}
+        <DebugOverlay enabled={debugShow} />
+        <ErrorBoundary name="Footer">
+          <Footer compact={isCompact} />
+        </ErrorBoundary>
+      </Box>
+    </>
   );
 }

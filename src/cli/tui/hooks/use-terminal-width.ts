@@ -7,7 +7,10 @@ export function useTerminalWidth(debounceMs = 50): number {
     let timer: ReturnType<typeof setTimeout>;
     const onResize = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => setWidth(process.stdout.columns || 80), debounceMs);
+      timer = setTimeout(() => {
+        const next = process.stdout.columns || 80;
+        setWidth(prev => (prev === next ? prev : next));
+      }, debounceMs);
     };
     process.stdout.on('resize', onResize);
     return () => {

@@ -25,11 +25,14 @@ export function DebugOverlay({ enabled }: DebugOverlayProps) {
     return () => clearInterval(id);
   }, [enabled]);
 
-  // Track recent events
+  // Track recent events — bail out if event signature hasn't changed
   useEffect(() => {
     if (!enabled) return;
     const event = `turn:${messages.filter(m => m.role === 'assistant').length} stream:${streaming} tools:${currentTools.length} todos:${todos.length}`;
-    setLastEvents(prev => [...prev.slice(-(MAX_EVENTS - 1)), event]);
+    setLastEvents(prev => {
+      if (prev[prev.length - 1] === event) return prev;
+      return [...prev.slice(-(MAX_EVENTS - 1)), event];
+    });
   }, [enabled, messages.length, streaming, currentTools.length, todos.length]);
 
   if (!enabled) return null;
