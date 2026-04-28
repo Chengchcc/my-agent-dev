@@ -44,10 +44,12 @@ const WELCOME_MESSAGES = [
 // eslint-disable-next-line max-lines-per-function
 export function useCommandInput({
   commands,
+  streaming,
   onSubmit,
   onAbort,
 }: {
   commands: SlashCommand[];
+  streaming: boolean;
   onSubmit?: (submission: PromptSubmission) => void | Promise<void>;
   onAbort?: () => void;
 }) {
@@ -161,6 +163,11 @@ export function useCommandInput({
     (input, key) => {
       if (key.ctrl && input === "c") {
         onAbort?.();
+        return;
+      }
+
+      // During streaming, let Escape bubble to AppContent for abort
+      if (key.escape && streaming) {
         return;
       }
 

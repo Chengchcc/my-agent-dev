@@ -58,6 +58,8 @@ type AgentLoopState = {
   ignoredErrors: Set<string>;
   /** Dismiss the error action bar for a tool */
   ignoreError: (toolId: string) => void;
+  /** User input submitted during streaming, waiting to be processed */
+  pendingInput: string | null;
 };
 
 const AgentLoopContext = createSelectorContext<AgentLoopState | null>(null);
@@ -94,11 +96,13 @@ export function AgentLoopProvider({
     streamingStartTime,
     interrupted,
     ignoredErrors,
+    pendingInput,
   } = state;
 
   const streamingRef = useRef(streaming);
   const streamingContentRef = useRef('');
   const pendingFlush = useRef(false);
+  const pendingInputRef = useRef<string | null>(null);
 
   useEffect(() => {
     streamingRef.current = streaming;
@@ -186,7 +190,14 @@ export function AgentLoopProvider({
   const onSubmit = useCallback(
     // eslint-disable-next-line complexity
     async (text: string) => {
-      if (streamingRef.current) return;
+      // During streaming, interrupt current generation and queue input for re-submission
+      if (streamingRef.current) {
+        pendingInputRef.current = text;
+        dispatch({ type: 'SET_PENDING_INPUT', text });
+        agent.abort();
+        dispatch({ type: 'SET_INTERRUPTED', interrupted: true });
+        return;
+      }
 
       // Check if it's a built-in command with handler (like session commands)
       if (text.startsWith('/')) {
@@ -292,11 +303,14 @@ export function AgentLoopProvider({
             });
           } else if (event.type === 'agent_error') {
             debugLog('[agent-loop] agent_error details:', event.error);
-            const errorMessage: Message = {
-              role: 'assistant',
-              content: `Error: ${event.error.message}`,
-            };
-            dispatch({ type: 'AGENT_ERROR', errorMessage });
+            // Suppress error message for intentional user interrupts (pending input will restart the loop)
+            if (!pendingInputRef.current) {
+              const errorMessage: Message = {
+                role: 'assistant',
+                content: `Error: ${event.error.message}`,
+              };
+              dispatch({ type: 'AGENT_ERROR', errorMessage });
+            }
           } else if (event.type === 'turn_complete') {
             const action: AgentUIAction = {
               type: 'TURN_COMPLETE',
@@ -357,6 +371,16 @@ export function AgentLoopProvider({
         // Update todos from agent one last time
         refreshTodos();
       }
+
+      // Eagerly sync streamingRef since the loop has ended
+      streamingRef.current = false;
+
+      // Process pending input from an interrupt during streaming
+      if (pendingInputRef.current) {
+        const pendingText = pendingInputRef.current;
+        pendingInputRef.current = null;
+        await onSubmit(pendingText);
+      }
     },
     [agent, sessionStore, onOutput, refreshMessages, refreshTodos],
   );
@@ -416,8 +440,9 @@ export function AgentLoopProvider({
       toggleFocusedTool,
       moveFocus,
       ignoredErrors,
+      pendingInput,
     }),
-    [agent, messages, streamingContent, streamingMessageId, onSubmit, onSubmitWithSkill, abort, ignoreError, streaming, todos, currentTools, runningSubAgents, completedSubAgents, focusedToolId, expandedTools, toolResults, totalUsage, contextTokens, tokenLimit, streamingStartTime, interrupted, focusTool, toggleFocusedTool, moveFocus, ignoredErrors],
+    [agent, messages, streamingContent, streamingMessageId, onSubmit, onSubmitWithSkill, abort, ignoreError, streaming, todos, currentTools, runningSubAgents, completedSubAgents, focusedToolId, expandedTools, toolResults, totalUsage, contextTokens, tokenLimit, streamingStartTime, interrupted, focusTool, toggleFocusedTool, moveFocus, ignoredErrors, pendingInput],
   );
 
   return (

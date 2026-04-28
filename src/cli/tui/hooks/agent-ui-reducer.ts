@@ -28,6 +28,8 @@ export type AgentUIState = {
   interrupted: boolean;
   /** Tool IDs whose error action bars have been dismissed */
   ignoredErrors: Set<string>;
+  /** User input submitted during streaming, waiting to be sent after current turn */
+  pendingInput: string | null;
 };
 
 export type AgentUIAction =
@@ -58,7 +60,8 @@ export type AgentUIAction =
   | { type: 'TURN_COMPLETE'; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }; contextTokens?: number }
   | { type: 'SET_CONTEXT_TOKENS'; tokens: number }
   | { type: 'SET_INTERRUPTED'; interrupted: boolean }
-  | { type: 'IGNORE_ERROR'; toolId: string };
+  | { type: 'IGNORE_ERROR'; toolId: string }
+  | { type: 'SET_PENDING_INPUT'; text: string | null };
 
 export const initialState: AgentUIState = {
   streaming: false,
@@ -78,6 +81,7 @@ export const initialState: AgentUIState = {
   streamingStartTime: null,
   interrupted: false,
   ignoredErrors: new Set<string>(),
+  pendingInput: null,
 };
 
  
@@ -94,6 +98,7 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
         currentTools: [],
         streamingStartTime: Date.now(),
         interrupted: false,
+        pendingInput: null,
       };
 
     case 'THINKING_DELTA':
@@ -267,6 +272,9 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
       nextIgnored.add(action.toolId);
       return { ...state, ignoredErrors: nextIgnored };
     }
+
+    case 'SET_PENDING_INPUT':
+      return { ...state, pendingInput: action.text };
 
     default:
       void (0 as never);

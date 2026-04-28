@@ -16,16 +16,12 @@ export function InputBox({
   onSubmit?: (submission: PromptSubmission) => void | Promise<void>;
   onAbort?: () => void;
 }) {
-  const { streaming } = useAgentLoop();
-  const inputProps: { commands: SlashCommand[]; onSubmit?: (submission: PromptSubmission) => void | Promise<void>; onAbort?: () => void } = { commands };
+  const { streaming, pendingInput } = useAgentLoop();
+  const inputProps: { commands: SlashCommand[]; streaming: boolean; onSubmit?: (submission: PromptSubmission) => void | Promise<void>; onAbort?: () => void } = { commands, streaming };
   if (onSubmit) inputProps.onSubmit = onSubmit;
   if (onAbort) inputProps.onAbort = onAbort;
   const { filteredCommands, highlightedCommandName, pickerOpen, placeholder, selectedIndex, text, cursorOffset, pasteFolded, pasteLineCount, atFiles, atSelectedIndex, atFilePickerOpen } =
     useCommandInput(inputProps);
-
-  if (streaming) {
-    return null;
-  }
 
   const displayText = pasteFolded ? `[Pasted ${pasteLineCount} lines — Space to expand]` : text;
 
@@ -33,6 +29,12 @@ export function InputBox({
     <Box flexDirection="column" rowGap={1}>
       {pickerOpen ? <CommandList commands={filteredCommands} selectedIndex={selectedIndex} /> : null}
       {atFilePickerOpen ? <FilePicker files={atFiles} selectedIndex={atSelectedIndex} /> : null}
+      {pendingInput ? (
+        <Box flexDirection="row" columnGap={1} borderStyle="single">
+          <Text dimColor>⏸</Text>
+          <Text dimColor>{pendingInput}</Text>
+        </Box>
+      ) : null}
       <Box
         flexDirection="row"
         columnGap={1}
