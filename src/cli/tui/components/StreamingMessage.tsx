@@ -1,4 +1,4 @@
-import React, { useDeferredValue, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { Box, Text } from 'ink';
 import { renderMarkdownTokens } from './utils/render-markdown';
 import { debugLog } from '../../../utils/debug';
@@ -7,16 +7,25 @@ interface StreamingMessageProps {
   content: string;
 }
 
+const BUCKET_SIZE = 32;
+
 /**
- * Streaming message with deferred markdown rendering.
- * useDeferredValue keeps the previous content during rapid text deltas
- * so markdown is only re-parsed when React has idle time between updates.
+ * Streaming message with character-bucket rendering.
+ * Only re-parses markdown every BUCKET_SIZE characters to avoid
+ * overwhelming the React render cycle during rapid text streaming.
  */
 export function StreamingMessage({ content }: StreamingMessageProps) {
   debugLog('[render] StreamingMessage', { len: content.length, preview: content.slice(0, 200) });
 
-  const deferredContent = useDeferredValue(content);
-  const elements = useMemo(() => renderMarkdownTokens(deferredContent), [deferredContent]);
+  // Bucket by character count: only update rendered content every N chars.
+  // No timers, no useDeferredValue (Ink renderer doesn't support concurrent mode).
+  const bucketBoundary = Math.floor(content.length / BUCKET_SIZE) * BUCKET_SIZE;
+  const renderedContent = content.slice(0, bucketBoundary);
+
+  const elements = useMemo(
+    () => renderMarkdownTokens(renderedContent),
+    [renderedContent],
+  );
 
   return (
     <Box flexDirection="column" marginBottom={1}>

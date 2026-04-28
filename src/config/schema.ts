@@ -32,7 +32,7 @@ const compactionSettingsSchema = z.object({
 });
 
 const contextSettingsSchema = z.object({
-  tokenLimit: z.number().int().positive().default(100000),
+  tokenLimit: z.number().int().positive().default(180000),
   compaction: compactionSettingsSchema.optional(),
 });
 

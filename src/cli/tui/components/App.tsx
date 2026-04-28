@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { debugLog } from '../../../utils/debug';
 import { Box, Static, useInput } from 'ink';
 import { ScrollView, type ScrollViewRef } from 'ink-scroll-view';
@@ -39,6 +39,9 @@ export function App({ agent, skillCommands, sessionStore }: AppProps) {
     </AgentLoopProvider>
   );
 }
+
+/** Number of most recent message groups kept in ScrollView for tool-call interactivity. */
+const DYNAMIC_WINDOW = 5;
 
 function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashCommand[]; sessionStore: SessionStore }) {
   useEventLoopStall(process.env.DEBUG_STALL === '1');
@@ -119,21 +122,23 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
 
   // Split messages: old completed messages go to <Static> (rendered once, never
   // re-measured), recent messages stay in ScrollView for tool-call interactivity.
-  const DYNAMIC_WINDOW = 5;
   const staticItems = groupedMessages.slice(0, -DYNAMIC_WINDOW);
   const dynamicItems = groupedMessages.slice(-DYNAMIC_WINDOW);
 
-  function renderItem(item: (typeof groupedMessages)[number], index: number) {
-    if (item.type === 'group') {
-      return <ToolGroupMessage key={`group-${item.messages[0]?.id ?? index}`} group={item} />;
-    }
-    return (
-      <ChatMessage
-        key={`msg-${item.message.id ?? index}`}
-        message={item.message}
-      />
-    );
-  }
+  const renderItem = useCallback(
+    (item: (typeof groupedMessages)[number], index: number) => {
+      if (item.type === 'group') {
+        return <ToolGroupMessage key={`group-${item.messages[0]?.id ?? index}`} group={item} />;
+      }
+      return (
+        <ChatMessage
+          key={`msg-${item.message.id ?? index}`}
+          message={item.message}
+        />
+      );
+    },
+    [],
+  );
 
   debugLog('[render] AppContent', {
     msgCount: groupedMessages.length,

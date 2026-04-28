@@ -10,7 +10,7 @@ export const defaultSettings: Settings = {
     baseURL: null,
   },
   context: {
-    tokenLimit: 100000,
+    tokenLimit: 180000,
     budgetGuard: {
       enabled: true,
       delegateThreshold: 0.30,
