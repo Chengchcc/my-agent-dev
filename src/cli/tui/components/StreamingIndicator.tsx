@@ -44,8 +44,6 @@ export function PureStreamingIndicator({
     };
   }, [streaming]);
 
-  if (!streaming) return null;
-
   const elapsedMs = streamingStartTime ? Date.now() - streamingStartTime : 0;
   const elapsedSec = (elapsedMs / 1000).toFixed(1);
   // Turn count = number of completed assistant messages + this current turn
@@ -57,13 +55,19 @@ export function PureStreamingIndicator({
     : 'Thinking...';
 
   return (
-    <Box gap={2}>
-      <Text color="cyan">{SPINNER_FRAMES[frame]}</Text>
-      <Text dimColor>{statusText}</Text>
-      <Text dimColor>Turn {turnCount}</Text>
-      <Text dimColor>{elapsedSec}s</Text>
-      {nextTodo ? <Text dimColor>Next: {nextTodo}</Text> : null}
-      <Text dimColor>[esc to interrupt]</Text>
+    <Box height={1} gap={2}>
+      {streaming ? (
+        <>
+          <Text color="cyan">{SPINNER_FRAMES[frame]}</Text>
+          <Text dimColor>{statusText}</Text>
+          <Text dimColor>Turn {turnCount}</Text>
+          <Text dimColor>{elapsedSec}s</Text>
+          {nextTodo ? <Text dimColor>Next: {nextTodo}</Text> : null}
+          <Text dimColor>[esc to interrupt]</Text>
+        </>
+      ) : (
+        <Text>{' '}</Text>
+      )}
     </Box>
   );
 }

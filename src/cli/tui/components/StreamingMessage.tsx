@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useDeferredValue, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import { renderMarkdownTokens } from './utils/render-markdown';
 import { debugLog } from '../../../utils/debug';
@@ -8,35 +8,15 @@ interface StreamingMessageProps {
 }
 
 /**
- * Streaming message component with throttled incremental markdown rendering.
- * Uses a ~50ms throttle to avoid re-parsing markdown on every text delta,
- * while still providing syntax-highlighted output during streaming.
+ * Streaming message with deferred markdown rendering.
+ * useDeferredValue keeps the previous content during rapid text deltas
+ * so markdown is only re-parsed when React has idle time between updates.
  */
 export function StreamingMessage({ content }: StreamingMessageProps) {
   debugLog('[render] StreamingMessage', { len: content.length, preview: content.slice(0, 200) });
-  const latestRef = useRef(content);
-  const [renderedContent, setRenderedContent] = useState(content);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    latestRef.current = content;
-
-    if (timerRef.current) return; // throttle already pending
-
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      setRenderedContent(latestRef.current);
-    }, 50);
-
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [content]);
-
-  const elements = useMemo(() => renderMarkdownTokens(renderedContent), [renderedContent]);
+  const deferredContent = useDeferredValue(content);
+  const elements = useMemo(() => renderMarkdownTokens(deferredContent), [deferredContent]);
 
   return (
     <Box flexDirection="column" marginBottom={1}>

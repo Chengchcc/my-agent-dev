@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { debugLog } from '../../../utils/debug';
-import { Box, useInput } from 'ink';
+import { Box, Static, useInput } from 'ink';
 import { ScrollView, type ScrollViewRef } from 'ink-scroll-view';
 import { AgentLoopProvider, useAgentLoop } from '../hooks/use-agent-loop';
 import { useAskUserQuestionManager, usePermissionManager } from '../hooks';
@@ -95,19 +95,45 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
     }
   }, { isActive: isStreaming || !!askUserQuestionRequest || !!permissionRequest || hasFocusedError });
 
-  // Auto-scroll to bottom during streaming to prevent layout jitter
+  // Auto-scroll to bottom on discrete events only — NOT on every streamingContent
+  // character delta (streaming content naturally stays at the viewport bottom).
+  const prevStreamingRef = useRef(isStreaming);
+  const prevMsgLenRef = useRef(messages.length);
   useEffect(() => {
-    if (isStreaming) {
-      // queueMicrotask lets ScrollView finish its useLayoutEffect measurements first
+    // Scroll when streaming starts or a new message/tool-result lands.
+    // Streaming content deltas don't need scrolling since text appends at bottom.
+    const streamingStarted = isStreaming && !prevStreamingRef.current;
+    const newMessageArrived = messages.length !== prevMsgLenRef.current;
+    if (streamingStarted || newMessageArrived) {
       queueMicrotask(() => scrollRef.current?.scrollToBottom());
     }
-  }, [isStreaming, messages.length, streamingContent]);
+    prevStreamingRef.current = isStreaming;
+    prevMsgLenRef.current = messages.length;
+  }, [isStreaming, messages.length]);
 
   const terminalWidth = useTerminalWidth();
   const isCompact = terminalWidth < 80;
 
   const allCommands = [...getBuiltinCommands(sessionStore), ...skillCommands];
   const groupedMessages = useMemo(() => groupToolCalls(messages), [messages]);
+
+  // Split messages: old completed messages go to <Static> (rendered once, never
+  // re-measured), recent messages stay in ScrollView for tool-call interactivity.
+  const DYNAMIC_WINDOW = 5;
+  const staticItems = groupedMessages.slice(0, -DYNAMIC_WINDOW);
+  const dynamicItems = groupedMessages.slice(-DYNAMIC_WINDOW);
+
+  function renderItem(item: (typeof groupedMessages)[number], index: number) {
+    if (item.type === 'group') {
+      return <ToolGroupMessage key={`group-${item.messages[0]?.id ?? index}`} group={item} />;
+    }
+    return (
+      <ChatMessage
+        key={`msg-${item.message.id ?? index}`}
+        message={item.message}
+      />
+    );
+  }
 
   debugLog('[render] AppContent', {
     msgCount: groupedMessages.length,
@@ -121,18 +147,11 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
       <Header sessionStore={sessionStore} compact={isCompact} />
       <ErrorBoundary name="ScrollView">
         <Box flexGrow={1} flexDirection="column" overflow="hidden">
+          <Static items={staticItems}>
+            {(item, index) => renderItem(item, index)}
+          </Static>
           <ScrollView ref={scrollRef}>
-            {groupedMessages.map((item, index) => {
-              if (item.type === 'group') {
-                return <ToolGroupMessage key={`group-${item.messages[0]?.id ?? index}`} group={item} />;
-              }
-              return (
-                <ChatMessage
-                  key={`msg-${item.message.id ?? index}`}
-                  message={item.message}
-                />
-              );
-            })}
+            {dynamicItems.map((item, index) => renderItem(item, staticItems.length + index))}
             {thinkingContent !== null && (
               <ThinkingMessage content={thinkingContent} streaming={isStreaming} collapsed={thinkingCollapsed} />
             )}
@@ -151,7 +170,7 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
           request={permissionRequest}
           onSubmit={respondToPermission}
         /> : null}
-      {isStreaming ? <StreamingIndicator /> : null}
+      <StreamingIndicator />
       {!askUserQuestionRequest && !permissionRequest && (
         <InputBox commands={allCommands} onSubmit={onSubmitWithSkill} onAbort={abort} />
       )}

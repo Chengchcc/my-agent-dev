@@ -23,7 +23,7 @@ export function ThinkingMessage({ content, streaming, collapsed = false }: Think
   if (collapsed) {
     return (
       <Box marginLeft={1}>
-        <Text dimColor>{'\u25B6'} Thinking ({tokenCount.toLocaleString()} tokens) — Ctrl+T to expand</Text>
+        <Text dimColor>{'\u25B6'} Thinking ({tokenCount.toLocaleString().padStart(6)} tokens) — Ctrl+T to expand</Text>
       </Box>
     );
   }
