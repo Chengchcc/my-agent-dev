@@ -9,7 +9,7 @@ import { useEventLoopStall } from '../hooks/use-event-loop-stall';
 import { getBuiltinCommands } from '../command-registry';
 import { Header } from './Header';
 import { Footer } from './Footer';
-import { ChatMessage, PureChatMessage, ToolGroupMessage, groupToolCalls } from './ChatMessage';
+import { ChatMessage, PureChatMessage, ToolGroupMessage, groupToolCalls, type GroupedItem } from './ChatMessage';
 import { ToolCallMessage } from './ToolCallMessage';
 import { StreamingMessage } from './StreamingMessage';
 import { ThinkingMessage } from './ThinkingMessage';
@@ -44,6 +44,8 @@ export function App({ agent, skillCommands, sessionStore }: AppProps) {
 
 /** Number of most recent message groups kept in ScrollView for tool-call interactivity. */
 const DYNAMIC_WINDOW = 5;
+
+type StaticItem = GroupedItem | { type: 'banner' };
 
 function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashCommand[]; sessionStore: SessionStore }) {
   useEventLoopStall(process.env.DEBUG_STALL === '1');
@@ -153,6 +155,14 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
   }
   const staticItems = staticRef.current;
 
+  // Header rendered once as the first Static item — prevents it from being
+  // "photocopied" into scrollback on every Static flush.
+  const bannerItem = useMemo(() => ({ type: 'banner' as const }), []);
+  const staticItemsWithBanner: StaticItem[] = useMemo(
+    () => [bannerItem, ...staticItems],
+    [bannerItem, staticItems],
+  );
+
   // Dynamic items use context-connected ChatMessage for tool-call interactivity
   const renderItem = useCallback(
     (item: (typeof groupedMessages)[number], index: number) => {
@@ -171,7 +181,10 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
 
   // Static items use PureChatMessage — no context hooks needed (render once, never update)
   const renderStaticItem = useCallback(
-    (item: (typeof groupedMessages)[number], index: number) => {
+    (item: StaticItem, index: number) => {
+      if (item.type === 'banner') {
+        return <Header key="banner" sessionStore={sessionStore} compact={isCompact} />;
+      }
       if (item.type === 'group') {
         return <ToolGroupMessage key={`group-${item.messages[0]?.id ?? index}`} group={item} />;
       }
@@ -183,7 +196,7 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
         />
       );
     },
-    [],
+    [sessionStore, isCompact],
   );
 
   debugLog('[render] AppContent', {
@@ -195,11 +208,10 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
 
   return (
     <>
-      <Static items={staticItems}>
+      <Static items={staticItemsWithBanner}>
         {(item, index) => renderStaticItem(item, index)}
       </Static>
       <Box flexDirection="column" height="100%">
-        <Header sessionStore={sessionStore} compact={isCompact} />
         <ErrorBoundary name="ScrollView">
           <Box flexGrow={1} flexDirection="column" overflow="hidden">
             <ScrollView ref={scrollRef}>

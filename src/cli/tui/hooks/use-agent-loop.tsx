@@ -141,17 +141,21 @@ export function AgentLoopProvider({
   }, []);
 
   const getCollapsibleTools = useCallback((): string[] => {
-    // O(N) single pass: first build map of tool results, then check tool calls
+    // Only consider tool calls from recent (dynamic) messages.
+    // Static items use PureChatMessage which doesn't respond to expand/collapse,
+    // so focusing tools in Static would appear broken.
+    const DYNAMIC_RAW_WINDOW = 10;
+    const dynamicMessages = messages.slice(-DYNAMIC_RAW_WINDOW);
     const toolResultsMap = new Map<string, string>();
 
-    for (const msg of messages) {
+    for (const msg of dynamicMessages) {
       if (msg.role === 'tool' && msg.content) {
         toolResultsMap.set(msg.tool_call_id!, msg.content);
       }
     }
 
     const collapsibleTools: string[] = [];
-    for (const msg of messages) {
+    for (const msg of dynamicMessages) {
       if (msg.role === 'assistant' && msg.tool_calls) {
         for (const tc of msg.tool_calls) {
           const content = toolResultsMap.get(tc.id);
