@@ -15,6 +15,7 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
     const shape = this.schema.shape;
     for (const [key, value] of Object.entries(shape)) {
       const zodSchema = value as z.ZodTypeAny;
+   
       properties[key] = this.zodToJsonSchema(zodSchema);
 
       // Check if field is required - check if it's not optional and doesn't have a default
@@ -52,11 +53,14 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
     };
   }
 
+   
+  // eslint-disable-next-line complexity
   private zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
     const result: Record<string, unknown> = {};
 
     // Handle optional, nullable, and default values
     if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable || schema instanceof z.ZodDefault) {
+   
       const innerSchema = this.zodToJsonSchema(schema._def.innerType);
       // Copy all properties from inner schema
       Object.assign(result, innerSchema);
@@ -97,6 +101,7 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
 
     if (schema instanceof z.ZodArray) {
       result.type = 'array';
+   
       result.items = this.zodToJsonSchema(schema.element);
       if (schema.description) {
         result.description = schema.description;
@@ -129,6 +134,7 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
 
       for (const [key, value] of Object.entries(schema.shape)) {
         const zodSchema = value as z.ZodTypeAny;
+   
         properties[key] = this.zodToJsonSchema(zodSchema);
 
         // Check if field is required
@@ -161,12 +167,14 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
     }
 
     if (schema instanceof z.ZodUnion) {
+   
       result.oneOf = schema.options.map((opt: z.ZodTypeAny) => this.zodToJsonSchema(opt));
       if (schema.description) result.description = schema.description;
       return result;
     }
 
     if (schema instanceof z.ZodDiscriminatedUnion) {
+   
       result.oneOf = schema.options.map((opt: z.ZodTypeAny) => this.zodToJsonSchema(opt));
       result.discriminator = { propertyName: schema.discriminator };
       if (schema.description) result.description = schema.description;
@@ -175,6 +183,7 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
 
     if (schema instanceof z.ZodRecord) {
       result.type = 'object';
+   
       result.additionalProperties = this.zodToJsonSchema(schema._def.valueType);
       if (schema.description) {
         result.description = schema.description;
@@ -190,6 +199,7 @@ export abstract class ZodTool<T extends z.ZodObject<z.ZodRawShape> = z.ZodObject
     }
 
     if (schema instanceof z.ZodEffects) {
+   
       const inner = this.zodToJsonSchema(schema._def.schema);
       Object.assign(result, inner);
       if (schema.description) result.description = schema.description;

@@ -3,7 +3,7 @@ import type { CompactionResult, CompactionLevel, TieredCompactionConfig } from '
 import { SnipStrategy } from './snip-strategy';
 import { ToolOutputStrategy } from './tool-output-strategy';
 import { SummarizeStrategy } from './summarize-strategy';
-import { Provider } from '../../types';
+import type { Provider } from '../../types';
 
 /**
  * Count tokens for estimation when we don't have accurate API usage data.

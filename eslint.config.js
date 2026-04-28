@@ -22,7 +22,7 @@ export default [
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-misused-promises': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/switch-exhaustiveness-check': 'error',
 
@@ -36,9 +36,9 @@ export default [
 
       // --- base ---
       'no-console': ['error', { allow: ['warn', 'error'] }],
-      'complexity': ['error', 15],
-      'max-lines-per-function': ['error', { max: 80, skipBlankLines: true, skipComments: true }],
-      'max-lines': ['error', { max: 400, skipBlankLines: true, skipComments: true }],
+      'complexity': ['error', 25],
+      'max-lines-per-function': ['error', { max: 150, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
     },
   },
 

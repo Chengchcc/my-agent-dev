@@ -143,19 +143,15 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
           </ScrollView>
         </Box>
       </ErrorBoundary>
-      {askUserQuestionRequest && (
-        <AskUserQuestionPrompt
+      {askUserQuestionRequest ? <AskUserQuestionPrompt
           questions={askUserQuestionRequest.params.questions}
           onSubmit={respondWithAnswers}
-        />
-      )}
-      {permissionRequest && (
-        <PermissionPrompt
+        /> : null}
+      {permissionRequest ? <PermissionPrompt
           request={permissionRequest}
           onSubmit={respondToPermission}
-        />
-      )}
-      {isStreaming && <StreamingIndicator />}
+        /> : null}
+      {isStreaming ? <StreamingIndicator /> : null}
       {!askUserQuestionRequest && !permissionRequest && (
         <InputBox commands={allCommands} onSubmit={onSubmitWithSkill} onAbort={abort} />
       )}

@@ -127,9 +127,7 @@ export function ReadFileView({
           </Box>
         );
       })}
-      {truncated && (
-        <Text color="dim">... │ ...</Text>
-      )}
+      {truncated ? <Text color="dim">... │ ...</Text> : null}
     </Box>
   );
 }

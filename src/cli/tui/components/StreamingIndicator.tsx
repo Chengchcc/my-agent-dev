@@ -62,7 +62,7 @@ export function PureStreamingIndicator({
       <Text dimColor>{statusText}</Text>
       <Text dimColor>Turn {turnCount}</Text>
       <Text dimColor>{elapsedSec}s</Text>
-      {nextTodo && <Text dimColor>Next: {nextTodo}</Text>}
+      {nextTodo ? <Text dimColor>Next: {nextTodo}</Text> : null}
       <Text dimColor>[esc to interrupt]</Text>
     </Box>
   );
@@ -73,7 +73,7 @@ export function PureStreamingIndicator({
  */
 export function StreamingIndicator({ nextTodo }: { nextTodo?: string }) {
   const { streaming, streamingStartTime, currentTools, messages } = useAgentLoop();
-  const props: any = { streaming, streamingStartTime, currentTools, messages };
+  const props: PureStreamingIndicatorProps = { streaming, streamingStartTime, currentTools, messages };
   if (nextTodo) props.nextTodo = nextTodo;
   return <PureStreamingIndicator {...props} />;
 }

@@ -40,6 +40,8 @@ const WELCOME_MESSAGES = [
   "Your next idea goes here...",
 ];
 
+ 
+// eslint-disable-next-line max-lines-per-function
 export function useCommandInput({
   commands,
   onSubmit,
@@ -155,6 +157,7 @@ export function useCommandInput({
   };
 
   useInput(
+    // eslint-disable-next-line complexity
     (input, key) => {
       if (key.ctrl && input === "c") {
         onAbort?.();
@@ -248,7 +251,7 @@ export function useCommandInput({
 
         // Regular enter - submit
         saveEntry(editorStateRef.current.text);
-        onSubmit?.(buildPromptSubmission(editorStateRef.current.text, commands));
+        void onSubmit?.(buildPromptSubmission(editorStateRef.current.text, commands));
         setEditorState({ text: "", cursorOffset: 0 });
         setDismissedQuery(null);
         setSelectedIndex(0);

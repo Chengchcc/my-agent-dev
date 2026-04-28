@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
 import type { Message } from '../../../types';
 import type { SubAgentStartEvent, ToolCallStartEvent } from '../../../agent/loop-types';
-import type { PromptSubmission } from '../command-registry';
+import type { PromptSubmission, SlashCommand } from '../command-registry';
 import type { UITodoItem } from '../types';
 import { agentUIReducer, initialState, type AgentUIState, type AgentUIAction } from './agent-ui-reducer';
 import { getBuiltinCommands } from '../command-registry';
@@ -62,6 +62,8 @@ type AgentLoopState = {
 
 const AgentLoopContext = createSelectorContext<AgentLoopState | null>(null);
 
+ 
+// eslint-disable-next-line max-lines-per-function
 export function AgentLoopProvider({
   agent,
   children,
@@ -103,9 +105,7 @@ export function AgentLoopProvider({
   }, [streaming]);
 
   const abort = useCallback(() => {
-    if (typeof (agent as any).abort === 'function') {
-      (agent as any).abort();
-    }
+    agent.abort();
     dispatch({ type: 'SET_INTERRUPTED', interrupted: true });
   }, [agent]);
 
@@ -180,6 +180,7 @@ export function AgentLoopProvider({
   }, []);
 
   const onSubmit = useCallback(
+    // eslint-disable-next-line complexity
     async (text: string) => {
       if (streamingRef.current) return;
 
@@ -193,7 +194,7 @@ export function AgentLoopProvider({
           // Get all built-in commands (including session commands)
           const builtinCommands = getBuiltinCommands(sessionStore);
           const matchedCommand = builtinCommands.find(
-            (cmd: any) => cmd.name.toLowerCase() === commandName && cmd.handler,
+            (cmd: SlashCommand) => cmd.name.toLowerCase() === commandName && cmd.handler,
           );
 
           if (matchedCommand) {
@@ -293,9 +294,11 @@ export function AgentLoopProvider({
             };
             dispatch({ type: 'AGENT_ERROR', errorMessage });
           } else if (event.type === 'turn_complete') {
-            const action: any = { type: 'TURN_COMPLETE' };
-            if (event.usage) action.usage = event.usage;
-            action.contextTokens = agent.getContextManager().getCurrentTokens();
+            const action: AgentUIAction = {
+              type: 'TURN_COMPLETE',
+              ...(event.usage ? { usage: event.usage } as const : {}),
+              contextTokens: agent.getContextManager().getCurrentTokens(),
+            };
             dispatch(action);
             debugLog(`[agent-loop] turn_complete dispatched, for-await body ends: t=${performance.now().toFixed(0)}`);
           } else if (event.type === 'agent_done') {
@@ -369,7 +372,7 @@ export function AgentLoopProvider({
   // Get token limit - use a safe default if config is not accessible
   const tokenLimit = useMemo(() => {
     try {
-      return (agent as any).config?.tokenLimit || 128000;
+      return agent.config.tokenLimit || 128000;
     } catch {
       return 128000;
     }

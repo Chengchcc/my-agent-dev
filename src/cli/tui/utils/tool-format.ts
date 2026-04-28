@@ -1,5 +1,15 @@
 import type { ToolCall } from '../../../types';
 
+interface DiffData {
+  hunks?: Array<{
+    oldStart?: number;
+    oldLines?: number;
+    newStart?: number;
+    newLines?: number;
+    lines?: Array<{ type: string; content: string }>;
+  }>;
+}
+
 /**
  * Truncate string to max length
  */
@@ -8,24 +18,28 @@ function truncate(str: string, maxLen: number): string {
   return str.slice(0, maxLen - 3) + '...';
 }
 
-function countAdded(diff: any): number {
+function countAdded(diff: DiffData): number {
   let count = 0;
   if (diff.hunks) {
     for (const hunk of diff.hunks) {
-      for (const line of hunk.lines) {
-        if (line.type === 'added') count++;
+      if (hunk.lines) {
+        for (const line of hunk.lines) {
+          if (line.type === 'added') count++;
+        }
       }
     }
   }
   return count;
 }
 
-function countRemoved(diff: any): number {
+function countRemoved(diff: DiffData): number {
   let count = 0;
   if (diff.hunks) {
     for (const hunk of diff.hunks) {
-      for (const line of hunk.lines) {
-        if (line.type === 'removed') count++;
+      if (hunk.lines) {
+        for (const line of hunk.lines) {
+          if (line.type === 'removed') count++;
+        }
       }
     }
   }
@@ -89,6 +103,8 @@ export function formatToolCallTitle(toolCall: ToolCall): string {
  * Smart summarization for specific tool types
  * Returns null if no special summary applies
  */
+ 
+// eslint-disable-next-line complexity
 export function smartSummarize(
   toolName: string,
   args: Record<string, unknown>,
@@ -150,7 +166,7 @@ export function smartSummarize(
         ? ` (${countAdded(parsedResult.diff)} added, ${countRemoved(parsedResult.diff)} removed)`
         : '';
       return `${parsedResult.path} — ${lineRange}${diffTag}`;
-    } catch (e) {
+    } catch (_e) {
       // If parsing fails, return default summary
       return `Read file operation completed`;
     }
@@ -161,7 +177,7 @@ export function smartSummarize(
     try {
       const parsedResult = JSON.parse(result);
       return `${parsedResult.matches.length} matches in ${parsedResult.files_searched} files`;
-    } catch (e) {
+    } catch (_e) {
       return `Grep search completed`;
     }
   }
@@ -171,7 +187,7 @@ export function smartSummarize(
     try {
       const parsedResult = JSON.parse(result);
       return `${parsedResult.files.length} files${parsedResult.truncated ? ' (truncated)' : ''}`;
-    } catch (e) {
+    } catch (_e) {
       return `Glob search completed`;
     }
   }
@@ -181,7 +197,7 @@ export function smartSummarize(
     try {
       const parsedResult = JSON.parse(result);
       return `${parsedResult.entries.length} entries`;
-    } catch (e) {
+    } catch (_e) {
       return `List directory completed`;
     }
   }

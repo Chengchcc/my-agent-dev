@@ -43,7 +43,7 @@ export function PureFooter({ totalTokens, tokensBucket, compact = false }: PureF
             {!compact && <Text dimColor>Total: {totalTokens.toLocaleString()}</Text>}
             <Text dimColor>
               <Text color={status.color}>{bar}</Text> {percentage}%
-              {status.label && <Text color={status.color}> {status.label}</Text>}
+              {status.label ? <Text color={status.color}> {status.label}</Text> : null}
             </Text>
           </>
         )}

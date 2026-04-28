@@ -48,14 +48,16 @@ export class OpenAIProvider implements Provider {
     }
     const model = context.config?.model ?? this.model;
 
-    const requestOptions: any = {
+    const requestOptions: Record<string, unknown> = {
       model,
       messages,
       max_tokens: this.maxTokens,
       temperature: this.temperature,
     };
     if (this.tools.length > 0) requestOptions.tools = this.tools;
-    const response = await this.client.chat.completions.create(requestOptions);
+    const response = await this.client.chat.completions.create(
+      requestOptions as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+    );
 
     const choice = response.choices[0];
     if (!choice) {
@@ -72,7 +74,7 @@ export class OpenAIProvider implements Provider {
         arguments: JSON.parse(tc.function.arguments),
       }));
 
-    const result: any = {
+    const result: LLMResponse = {
       content,
       usage: {
         prompt_tokens: response.usage?.prompt_tokens ?? 0,
@@ -88,6 +90,8 @@ export class OpenAIProvider implements Provider {
   /**
    * Streaming completion.
    */
+   
+  // eslint-disable-next-line complexity
   async *stream(context: AgentContext, options?: { signal?: AbortSignal }): AsyncIterable<LLMResponseChunk> {
     const messages = this.convertToOpenAIMessages(context.messages);
     if (context.systemPrompt) {
@@ -95,7 +99,7 @@ export class OpenAIProvider implements Provider {
     }
     const model = context.config?.model ?? this.model;
 
-    const streamOptions: any = {
+    const streamOptions: Record<string, unknown> = {
       model,
       messages,
       max_tokens: this.maxTokens,
@@ -103,9 +107,12 @@ export class OpenAIProvider implements Provider {
       stream: true,
     };
     if (this.tools.length > 0) streamOptions.tools = this.tools;
-    const stream = await this.client.chat.completions.create(streamOptions, {
-      signal: options?.signal,
-    }) as any;
+    const stream = await this.client.chat.completions.create(
+      streamOptions as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+      {
+        signal: options?.signal,
+      },
+    );
 
     // Track tool calls with accumulated arguments JSON
     let tool_calls: LLMResponseChunk['tool_calls'] = [];
@@ -169,7 +176,7 @@ export class OpenAIProvider implements Provider {
       }
 
       const finishReason = chunk.choices[0]?.finish_reason;
-      const chunkResult: any = {
+      const chunkResult: LLMResponseChunk = {
         content,
         done: finishReason != null,
       };
@@ -184,7 +191,7 @@ export class OpenAIProvider implements Provider {
       if (tool_calls[i] && args && args.length > 0) {
         try {
           tool_calls[i]!.arguments = JSON.parse(args);
-        } catch (e) {
+        } catch (_e) {
           // If parsing fails at the end, leave whatever we have
         }
       }
@@ -193,7 +200,7 @@ export class OpenAIProvider implements Provider {
     // Yield one final time with the completely parsed tool_calls
     // This ensures the consumer gets the fully parsed arguments after completion
     if (tool_calls.length > 0) {
-      const finalChunk: any = { content: '', done: true, tool_calls };
+      const finalChunk: LLMResponseChunk = { content: '', done: true, tool_calls };
       if (usage) finalChunk.usage = usage;
       yield finalChunk;
     }

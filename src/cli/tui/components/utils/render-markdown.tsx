@@ -3,7 +3,7 @@ import { marked, type Token } from 'marked';
 import React from 'react';
 import { CodeBlock } from '../CodeBlock';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+ 
 const TerminalRenderer = require('marked-terminal').default;
 
 let markedConfigured = false;
@@ -43,11 +43,11 @@ export function renderMarkdownTokens(content: string): React.ReactNode[] {
           textBuffer = '';
         }
         const codeToken = token as Token & { text: string; lang?: string };
-        const codeBlockProps: any = { key: index, code: codeToken.text };
+        const codeBlockProps: { key: number; code: string; language?: string } = { key: index, code: codeToken.text };
         if (codeToken.lang) codeBlockProps.language = codeToken.lang;
         elements.push(<CodeBlock {...codeBlockProps} />);
       } else {
-        const tokenAny = token as any;
+        const tokenAny = token as Token & { raw?: string; text?: string };
         if (tokenAny.raw) {
           textBuffer += tokenAny.raw;
         } else if (tokenAny.text) {

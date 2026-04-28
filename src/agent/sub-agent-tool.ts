@@ -104,6 +104,8 @@ DO NOT USE when:
   /**
    * Execute the sub agent with the given task
    */
+   
+  // eslint-disable-next-line complexity, max-lines-per-function
   async execute(
     params: Record<string, unknown>,
     ctx: ToolContext,

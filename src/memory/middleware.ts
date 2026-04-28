@@ -134,7 +134,7 @@ export class MemoryMiddleware implements AgentMiddleware {
         // Remove from pending list when done
         const index = this.pendingExtractions.indexOf(extractionPromise);
         if (index >= 0) {
-          this.pendingExtractions.splice(index, 1);
+          void this.pendingExtractions.splice(index, 1);
         }
       });
 

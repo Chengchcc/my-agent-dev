@@ -1,5 +1,6 @@
 import { Box, Text } from 'ink';
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
+import React, { Component } from 'react';
 import { debugError, isDebugEnabled } from '../../../utils/debug';
 
 interface Props {

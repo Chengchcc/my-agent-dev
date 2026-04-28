@@ -17,7 +17,7 @@ interface CompressionStrategyWithResult extends CompressionStrategy {
 
 // Type guard to check if a compression strategy supports compressWithResult
 function isCompressionWithResult(strategy: CompressionStrategy): strategy is CompressionStrategyWithResult {
-  return 'compressWithResult' in strategy && typeof (strategy as any).compressWithResult === 'function';
+  return 'compressWithResult' in strategy && typeof (strategy as CompressionStrategyWithResult).compressWithResult === 'function';
 }
 
 export interface ContextManagerConfig {
@@ -213,10 +213,11 @@ export class ContextManager {
    * This needs to be called after the middleware/tool execution to persist changes.
    */
   syncTodoFromContext(context: AgentContext): void {
-    if (context.metadata?.todo) {
-      this.todoStore = [...(context.metadata.todo as any).todoStore];
-      this.todoStepsSinceLastWrite = (context.metadata.todo as any).stepsSinceLastWrite;
-      this.todoStepsSinceLastReminder = (context.metadata.todo as any).stepsSinceLastReminder;
+    const todo = context.metadata?.todo as { todoStore: TodoItem[]; stepsSinceLastWrite: number; stepsSinceLastReminder: number } | undefined;
+    if (todo) {
+      this.todoStore = [...todo.todoStore];
+      this.todoStepsSinceLastWrite = todo.stepsSinceLastWrite;
+      this.todoStepsSinceLastReminder = todo.stepsSinceLastReminder;
     }
   }
 

@@ -144,7 +144,7 @@ export interface BudgetCompactEvent extends AgentEventBase {
  */
 export interface ContextCompactedEvent extends AgentEventBase {
   type: 'context_compacted';
-  level: import('./compaction/types').CompactionLevelType;
+  level: import('./compaction/types').CompactionLevelType // eslint-disable-line @typescript-eslint/consistent-type-imports
   beforeTokens: number;
   afterTokens: number;
 }

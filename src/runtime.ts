@@ -3,6 +3,7 @@ import type { LLMSettings, ContextSettings } from './config/types';
 import { Agent } from './agent/Agent';
 import { ToolRegistry } from './agent/tool-registry';
 import { ContextManager } from './agent/context';
+import type { ContextManagerConfig } from './agent/context';
 import { SubAgentTool } from './agent/sub-agent-tool';
 import { createTodoMiddleware } from './todos';
 import {
@@ -56,6 +57,8 @@ export interface AgentRuntime {
   shutdown: () => Promise<void>;
 }
 
+ 
+// eslint-disable-next-line complexity
 export async function createAgentRuntime(
   config: RuntimeConfig = {},
 ): Promise<AgentRuntime> {
@@ -112,7 +115,7 @@ export async function createAgentRuntime(
     debugLog('Tiered compaction enabled');
   }
 
-  const contextManagerConfig: any = {
+  const contextManagerConfig: ContextManagerConfig = {
     tokenLimit,
     defaultSystemPrompt: systemPrompt,
   };
@@ -216,7 +219,7 @@ export async function createAgentRuntime(
     toolMiddlewares,
   });
 
-  const runtime: any = {
+  const runtime: AgentRuntime = {
     agent,
     provider,
     toolRegistry,

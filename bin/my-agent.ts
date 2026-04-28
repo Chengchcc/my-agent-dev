@@ -62,7 +62,7 @@ if (values.version) {
 setDebugMode(!!values.debug);
 
 import { createAgentRuntime } from '../src/runtime';
-import type { AgentEvent } from '../src/agent/loop-types';
+import type { AgentEvent, AgentDoneEvent } from '../src/agent/loop-types';
 
 type OutputFormat = 'text' | 'json' | 'stream-json';
 
@@ -87,6 +87,16 @@ function writeTextEvent(event: AgentEvent) {
       break;
     case 'agent_done':
       process.stdout.write('\n');
+      break;
+    case 'thinking_delta':
+    case 'thinking_done':
+    case 'turn_complete':
+    case 'sub_agent_start':
+    case 'sub_agent_event':
+    case 'sub_agent_done':
+    case 'budget_delegation':
+    case 'budget_compact':
+    case 'context_compacted':
       break;
   }
 }
@@ -127,6 +137,13 @@ function writeStreamJsonEvent(event: AgentEvent) {
       serializable.summary = event.summary;
       serializable.totalTurns = event.totalTurns;
       serializable.durationMs = event.durationMs;
+      break;
+    case 'thinking_delta':
+    case 'thinking_done':
+    case 'sub_agent_event':
+    case 'budget_delegation':
+    case 'budget_compact':
+    case 'context_compacted':
       break;
   }
 
@@ -174,7 +191,7 @@ async function main() {
   const runtime = await createAgentRuntime(runtimeConfig);
 
   let fullContent = '';
-  let finalEvent: AgentEvent | null = null;
+  let finalEvent: AgentDoneEvent | null = null;
   let exitCode = 0;
 
   try {
@@ -204,8 +221,8 @@ async function main() {
     if (outputFormat === 'json') {
       const output = {
         content: fullContent,
-        totalTurns: (finalEvent as any)?.totalTurns ?? 0,
-        reason: (finalEvent as any)?.reason ?? 'unknown',
+        totalTurns: finalEvent?.totalTurns ?? 0,
+        reason: finalEvent?.reason ?? 'unknown',
         messages: runtime.contextManager.getContext(runtime.agent.config).messages,
       };
       process.stdout.write(JSON.stringify(output, null, 2) + '\n');
@@ -224,4 +241,4 @@ async function main() {
   }
 }
 
-main();
+void main();

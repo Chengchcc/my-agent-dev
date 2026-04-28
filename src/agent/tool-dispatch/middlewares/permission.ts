@@ -1,4 +1,5 @@
 import type { ToolMiddleware } from '../middleware';
+import type { ToolContext } from '../types';
 import type { ToolCall } from '../../../types';
 import { globalPermissionManager } from '../../../tools/permission-manager';
 
@@ -41,7 +42,7 @@ export class PermissionMiddleware implements ToolMiddleware {
 
   constructor(private rules: { denyInSubAgent: string[] }) {}
 
-  async handle(toolCall: ToolCall, ctx: any, next: () => Promise<unknown>): Promise<unknown> {
+  async handle(toolCall: ToolCall, ctx: ToolContext, next: () => Promise<unknown>): Promise<unknown> {
     // Check sub-agent restrictions
     if (ctx.environment?.agentType === 'sub_agent'
         && this.rules.denyInSubAgent.includes(toolCall.name)) {

@@ -1,6 +1,6 @@
 import type { CompressionStrategy, AgentContext, Message } from '../../types';
 import type { CompactionConfig, CompactionResult, TokenBudget } from './types';
-import { TokenBudgetCalculator } from './budget';
+import type { TokenBudgetCalculator } from './budget';
 import { ToolOutputSnipStrategy } from './tiers/snip';
 import { AutoCompactStrategy } from './tiers/auto-compact';
 import { ReactiveRecoveryStrategy } from './tiers/reactive';

@@ -20,7 +20,7 @@ export function countMessageTokens(msg: Message): number {
   let tokens: number;
   try {
     tokens = countTokens(msg.content || '');
-  } catch (e) {
+  } catch (_e) {
     // Fallback for special Unicode chars that break countTokens
     tokens = Math.ceil((msg.content || '').length / 4);
   }

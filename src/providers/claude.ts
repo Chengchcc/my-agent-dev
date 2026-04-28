@@ -119,6 +119,8 @@ export class ClaudeProvider implements Provider {
   /**
    * Streaming completion.
    */
+   
+  // eslint-disable-next-line complexity
   async *stream(context: AgentContext, options?: { signal?: AbortSignal }): AsyncIterable<LLMResponseChunk> {
     const { messages, systemPrompt } = context;
     const claudeMessages = convertToClaudeMessages(messages);
@@ -144,7 +146,7 @@ export class ClaudeProvider implements Provider {
       { signal: options?.signal },
     );
 
-    let currentContent = '';
+    let _currentContent = '';
     const tool_calls: LLMResponseChunk['tool_calls'] = [];
     let currentToolCall: {
       id: string;
@@ -158,12 +160,11 @@ export class ClaudeProvider implements Provider {
     } | null = null;
 
     for await (const chunk of stream) {
-      const rawEvent = chunk as any;
-      if (rawEvent.type === 'message_start') {
+      if (chunk.type === 'message_start') {
         // Capture real input_tokens from the API
-        if (rawEvent.message?.usage?.input_tokens !== undefined) {
+        if (chunk.message?.usage?.input_tokens !== undefined) {
           usage = {
-            input_tokens: rawEvent.message.usage.input_tokens,
+            input_tokens: chunk.message.usage.input_tokens,
             output_tokens: 0,
           };
         }
@@ -195,7 +196,7 @@ export class ClaudeProvider implements Provider {
             done: false,
           };
         } else if (chunk.delta.type === 'text_delta') {
-          currentContent += chunk.delta.text;
+          _currentContent += chunk.delta.text;
           yield {
             content: chunk.delta.text,
             done: false,
@@ -226,7 +227,7 @@ export class ClaudeProvider implements Provider {
               arguments: parsedInput,
             };
             tool_calls.push(fullToolCall);
-          } catch (e) {
+          } catch (_e) {
             // Parse error - add it anyway
             fullToolCall = {
               id: currentToolCall.id,
@@ -246,12 +247,11 @@ export class ClaudeProvider implements Provider {
         }
       } else if (chunk.type === 'message_delta') {
         // Message delta contains stop_reason and usage
-        const chunkAny = chunk as any;
-        if (chunkAny.message_delta?.usage?.output_tokens !== undefined) {
-          const prevInput: number = (usage as any)?.input_tokens ?? 0;
+        if (chunk.usage?.output_tokens !== undefined) {
+          const prevInput: number = usage?.input_tokens ?? 0;
           usage = {
             input_tokens: prevInput,
-            output_tokens: chunkAny.message_delta.usage.output_tokens,
+            output_tokens: chunk.usage.output_tokens,
           };
         }
       } else if (chunk.type === 'message_stop') {

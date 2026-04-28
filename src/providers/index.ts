@@ -59,7 +59,13 @@ export function createProviderFromSettings(settings: LLMSettings): Provider {
     debugLog('  apiKey length:', settings.apiKey?.length);
     debugLog('  baseURL:', settings.baseURL);
     debugLog('  model:', settings.model);
-    const openaiConfig: any = {
+    const openaiConfig: {
+      apiKey: string;
+      model: string;
+      maxTokens: number;
+      temperature: number;
+      baseURL?: string;
+    } = {
       apiKey: settings.apiKey!,
       model: settings.model,
       maxTokens: settings.maxTokens,
@@ -68,5 +74,5 @@ export function createProviderFromSettings(settings: LLMSettings): Provider {
     if (settings.baseURL) openaiConfig.baseURL = settings.baseURL;
     return new OpenAIProvider(openaiConfig);
   }
-  throw new Error(`Invalid provider: ${(settings as any).provider}`);
+  throw new Error(`Invalid provider: ${settings.provider}`);
 }

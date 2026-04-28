@@ -109,7 +109,12 @@ export class GrepTool extends ZodTool {
 
               const line = lines[lineIndex];
               if (line && regex.test(line)) {
-                const match: any = {
+                const match: {
+                  file: string;
+                  line: number;
+                  content: string;
+                  context?: { before: string[]; after: string[] };
+                } = {
                   file: fullPath,
                   line: lineIndex + 1,
                   content: line.trim(),

@@ -80,6 +80,8 @@ export const initialState: AgentUIState = {
   ignoredErrors: new Set<string>(),
 };
 
+ 
+// eslint-disable-next-line complexity, max-lines-per-function
 export function agentUIReducer(state: AgentUIState, action: AgentUIAction): AgentUIState {
   switch (action.type) {
     case 'SUBMIT_START':

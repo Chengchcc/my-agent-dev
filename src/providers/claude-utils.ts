@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
 import type { Message } from '../types';
 
 /**
@@ -59,6 +59,13 @@ export function convertToClaudeMessages(messages: Message[]): Anthropic.MessageP
                   id: block.id,
                   name: block.name,
                   input: block.input,
+                });
+                break;
+              case 'tool_result':
+                content.push({
+                  type: 'tool_result',
+                  tool_use_id: block.tool_use_id,
+                  content: block.content,
                 });
                 break;
             }

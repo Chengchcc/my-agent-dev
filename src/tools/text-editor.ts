@@ -139,7 +139,7 @@ export class TextEditorTool extends ZodTool<z.ZodObject<{
     let content: string;
     try {
       content = await fs.readFile(filePath, 'utf-8');
-    } catch (e) {
+    } catch (_e) {
       return { error: `Error: File ${filePath} does not exist.` };
     }
 

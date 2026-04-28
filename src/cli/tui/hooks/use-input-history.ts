@@ -58,7 +58,7 @@ export function useInputHistory() {
 
   // Load history on mount
   useEffect(() => {
-    loadHistoryFromDisk().then(history => {
+    void loadHistoryFromDisk().then(history => {
       historyRef.current = history;
     });
   }, []);

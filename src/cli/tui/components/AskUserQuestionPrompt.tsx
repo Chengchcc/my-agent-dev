@@ -227,22 +227,19 @@ function QuestionPanel({
           const prefix = question.multi_select ? (selected ? "[x] " : "[ ] ") : focused ? "❯ " : "  ";
           return (
             <Box key={i} flexDirection="column">
-              <Text color={focused ? "cyan" : undefined as any}>
+              <Text {...(focused ? { color: 'cyan' } : {})}>
                 {prefix}
                 {opt.label}
               </Text>
-              {focused && (
-                <Text dimColor>
+              {focused ? <Text dimColor>
                   {"   "}
                   {opt.description}
-                </Text>
-              )}
+                </Text> : null}
             </Box>
           );
         })}
       </Box>
-      {showPreview && focusedOption?.preview && (
-        <Box
+      {showPreview && focusedOption?.preview ? <Box
           marginTop={1}
           flexDirection="column"
           borderStyle="single"
@@ -250,8 +247,7 @@ function QuestionPanel({
           paddingX={1}
         >
           <Text>{focusedOption.preview}</Text>
-        </Box>
-      )}
+        </Box> : null}
     </Box>
   );
 }

@@ -17,7 +17,7 @@ export function InputBox({
   onAbort?: () => void;
 }) {
   const { streaming } = useAgentLoop();
-  const inputProps: any = { commands };
+  const inputProps: { commands: SlashCommand[]; onSubmit?: (submission: PromptSubmission) => void | Promise<void>; onAbort?: () => void } = { commands };
   if (onSubmit) inputProps.onSubmit = onSubmit;
   if (onAbort) inputProps.onAbort = onAbort;
   const { filteredCommands, highlightedCommandName, pickerOpen, placeholder, selectedIndex, text, cursorOffset, pasteFolded, pasteLineCount, atFiles, atSelectedIndex, atFilePickerOpen } =

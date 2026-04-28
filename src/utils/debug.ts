@@ -16,16 +16,16 @@ export function setDebugMode(enabled: boolean): void {
 /**
  * Log a debug message if debug mode is enabled
  */
-export function debugLog(...args: any[]): void {
+export function debugLog(...args: unknown[]): void {
   if (debugMode) {
-    console.log(...args);
+    console.warn(...args);
   }
 }
 
 /**
  * Log a warning if debug mode is enabled
  */
-export function debugWarn(...args: any[]): void {
+export function debugWarn(...args: unknown[]): void {
   if (debugMode) {
     console.warn(...args);
   }
@@ -34,7 +34,7 @@ export function debugWarn(...args: any[]): void {
 /**
  * Log an error if debug mode is enabled
  */
-export function debugError(...args: any[]): void {
+export function debugError(...args: unknown[]): void {
   if (debugMode) {
     console.error(...args);
   }

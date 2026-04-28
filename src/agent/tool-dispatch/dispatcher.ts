@@ -90,7 +90,7 @@ export class ToolDispatcher {
       // 从 sink 收集副作用
       const sink = toolCtx.sink;
 
-      const result: any = {
+      const result: ToolExecutionResult = {
         content,
         rawContent: rawResult,
         durationMs,
@@ -279,7 +279,7 @@ export class ToolDispatcher {
     };
     baseCtx.signal.addEventListener('abort', onAbort, { once: true });
 
-    Promise.allSettled(promises).finally(() => {
+    void Promise.allSettled(promises).finally(() => {
       debugLog(`[dispatcher] streaming all promises settled: closing controller t=${performance.now().toFixed(0)}`);
       try { controller.close(); } catch {}
       baseCtx.signal.removeEventListener('abort', onAbort);

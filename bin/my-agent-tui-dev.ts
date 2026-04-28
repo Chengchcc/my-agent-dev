@@ -43,9 +43,8 @@ try {
   const skillCommands = skills.map(toSkillCommand);
 
   // Wait for pending memory extractions before exit
-  process.on('beforeExit', async () => {
-    await runtime.shutdown();
-    process.exit(0);
+  process.on('beforeExit', () => {
+    void runtime.shutdown().then(() => process.exit(0));
   });
 
   runTUIClient(runtime.agent, skillCommands, runtime.sessionStore);

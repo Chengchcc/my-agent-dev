@@ -35,13 +35,13 @@ export function PureHeader({ model, sessionId, status = 'connected', compact = f
         {!compact && <Text>{HAMSTER_LOGO}</Text>}
         <Text>
           <Text bold color="cyan">my-agent</Text>
-          {model && !compact && <Text dimColor> - {model}</Text>}
+          {model && !compact ? <Text dimColor> - {model}</Text> : null}
           <Text dimColor> - </Text>
           <Text color={st.color}>{st.char}</Text>
           {!compact && <Text dimColor> {st.label}</Text>}
         </Text>
       </Box>
-      {sessionId && !compact && <Text dimColor>session:{sessionId.slice(0, 8)}</Text>}
+      {sessionId && !compact ? <Text dimColor>session:{sessionId.slice(0, 8)}</Text> : null}
     </Box>
   );
 }

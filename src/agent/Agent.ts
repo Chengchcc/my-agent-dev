@@ -6,7 +6,7 @@ import type {
   AgentHooks,
 } from '../types';
 import type { AgentEvent, AgentLoopConfig } from './loop-types';
-import { ContextManager } from './context';
+import type { ContextManager } from './context';
 import { ToolRegistry } from './tool-registry';
 import { ToolDispatcher } from './tool-dispatch/dispatcher';
 import type { ToolMiddleware } from './tool-dispatch/middleware';

@@ -19,6 +19,8 @@ export interface ToolCallMessageProps {
  * Pure ToolCallMessage — renders tool call status from props.
  * Use directly in tests. In the app, use ConnectedToolCallMessage which reads from context.
  */
+ 
+// eslint-disable-next-line complexity
 export function ToolCallMessage({ toolCall, result, pending = false, focused = false, expanded = false, ignored = false }: ToolCallMessageProps) {
   // All hooks must be called unconditionally before any early return.
   // Otherwise when a read tool's result arrives (pending -> resolved),
@@ -66,13 +68,11 @@ export function ToolCallMessage({ toolCall, result, pending = false, focused = f
             {pending ? <BlinkingText>●</BlinkingText> : '●'}
           </Text>
           <Text color="cyan"> {title}</Text>
-          {result && <Text color="gray"> {result.durationMs}ms</Text>}
+          {result ? <Text color="gray"> {result.durationMs}ms</Text> : null}
         </Box>
-        {smartSummary && (
-          <Box paddingLeft={2}>
+        {smartSummary ? <Box paddingLeft={2}>
             <Text color={contentColor}>{smartSummary}</Text>
-          </Box>
-        )}
+          </Box> : null}
         {expanded ? (
           <ReadFileView
             filePath={readParsed.path}
@@ -99,18 +99,14 @@ export function ToolCallMessage({ toolCall, result, pending = false, focused = f
           {pending ? <BlinkingText>●</BlinkingText> : '●'}
         </Text>
         <Text color="cyan"> {title}</Text>
-        {result && <Text color="gray"> {result.durationMs}ms</Text>}
+        {result ? <Text color="gray"> {result.durationMs}ms</Text> : null}
       </Box>
-      {result && content && (
-        <Box paddingLeft={2}>
+      {result && content ? <Box paddingLeft={2}>
           <Text color={contentColor}>{content}</Text>
-        </Box>
-      )}
-      {result?.isError && focused && !ignored && (
-        <Box paddingLeft={2}>
+        </Box> : null}
+      {result?.isError && focused && !ignored ? <Box paddingLeft={2}>
           <Text color="yellow">[i] ignore</Text>
-        </Box>
-      )}
+        </Box> : null}
     </Box>
   );
 }

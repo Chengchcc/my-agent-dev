@@ -1,6 +1,15 @@
 import type { SlashCommand } from '../command-registry';
 import type { CommandHandlerContext } from '../types';
 
+interface AgentToolAccess {
+  getToolRegistry?: () => {
+    getAllDefinitions(): Array<{ name: string; description: string; parameters?: unknown }>;
+  } | null;
+  toolRegistry?: {
+    getAllDefinitions(): Array<{ name: string; description: string; parameters?: unknown }>;
+  } | null;
+}
+
 async function handleCost(ctx: CommandHandlerContext): Promise<void> {
   const { agent, onOutput } = ctx;
   const cm = agent.getContextManager();
@@ -21,13 +30,14 @@ async function handleCost(ctx: CommandHandlerContext): Promise<void> {
 
 async function handleTools(ctx: CommandHandlerContext): Promise<void> {
   const { agent, onOutput } = ctx;
-  const registry = (agent as any).getToolRegistry?.() || (agent as any).toolRegistry;
+  const registry = (agent as unknown as AgentToolAccess).getToolRegistry?.()
+    || (agent as unknown as AgentToolAccess).toolRegistry;
   if (!registry || typeof registry.getAllDefinitions !== 'function') {
     onOutput('Tool registry not available.');
     return;
   }
 
-  const tools = registry.getAllDefinitions() as Array<{ name: string; description: string; parameters?: any }>;
+  const tools = registry.getAllDefinitions() as Array<{ name: string; description: string; parameters?: unknown }>;
   if (tools.length === 0) {
     onOutput('No tools registered.');
     return;

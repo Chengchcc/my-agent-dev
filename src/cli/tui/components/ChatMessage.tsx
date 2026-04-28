@@ -45,7 +45,7 @@ export function groupToolCalls(messages: Message[]): GroupedItem[] {
 interface PureChatMessageProps {
   message: Message;
   /** Override the tool call renderer — defaults to pure ToolCallMessage (no context required, for testing) */
-  ToolCallComponent?: React.ComponentType<{ toolCall: import('../../../types').ToolCall }>;
+  ToolCallComponent?: React.ComponentType<{ toolCall: import('../../../types').ToolCall }> // eslint-disable-line @typescript-eslint/consistent-type-imports
 }
 
 /**
@@ -100,11 +100,9 @@ export function PureChatMessage({ message, ToolCallComponent = ToolCallMessage }
           </Text>
         </Box>
         <Box paddingLeft={1} flexDirection="column">
-          {message.content && (
-            <Box flexDirection="column">
+          {message.content ? <Box flexDirection="column">
               {elements}
-            </Box>
-          )}
+            </Box> : null}
           {message.tool_calls.map(tc => (
             <Box key={`${message.id ?? ''}-${tc.id}`} marginY={1}>
               <ToolCallComponent toolCall={tc} />

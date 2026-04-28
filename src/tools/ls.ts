@@ -72,19 +72,14 @@ export class LsTool extends ZodTool {
           continue;
         }
 
-        const entryData: any = {
-          name: entry.name,
-          path: relativePath,
-          size: entryStats.size,
-          modified: entryStats.mtime.toISOString(),
-        };
-
+        let entryType: 'file' | 'directory' | 'symlink';
+        let childrenCount: number | undefined;
         if (entry.isDirectory()) {
-          entryData.type = 'directory';
+          entryType = 'directory';
           if (currentDepth < args.depth) {
             try {
               const children = readdirSync(fullPath);
-              entryData.children_count = children.length;
+              childrenCount = children.length;
             } catch (e) {
               const errorMsg = `Could not read children of ${fullPath}: ${(e as Error).message}`;
               errors.push(errorMsg);
@@ -92,12 +87,28 @@ export class LsTool extends ZodTool {
             }
           }
         } else if (entry.isFile()) {
-          entryData.type = 'file';
+          entryType = 'file';
         } else if (entry.isSymbolicLink()) {
-          entryData.type = 'symlink';
+          entryType = 'symlink';
         } else {
           continue;
         }
+
+        const entryData: {
+          name: string;
+          path: string;
+          type: 'file' | 'directory' | 'symlink';
+          size?: number;
+          modified?: string;
+          children_count?: number;
+        } = {
+          name: entry.name,
+          path: relativePath,
+          type: entryType!,
+          size: entryStats.size,
+          modified: entryStats.mtime.toISOString(),
+          ...(childrenCount !== undefined ? { children_count: childrenCount } : {}),
+        };
 
         entries.push(entryData);
 

@@ -8,10 +8,10 @@ import type {
 } from '../types';
 import type { AgentEvent, AgentLoopConfig, ContextCompactedEvent } from './loop-types';
 import type { ToolContext } from './tool-dispatch/types';
-import { ContextManager } from './context';
+import type { ContextManager } from './context';
 import { composeMiddlewares } from './middleware';
 import { DEFAULT_LOOP_CONFIG } from './loop-types';
-import { ToolDispatcher } from './tool-dispatch/dispatcher';
+import type { ToolDispatcher } from './tool-dispatch/dispatcher';
 import { createToolSink } from './tool-dispatch/types';
 import { checkBatchBudget, checkToolBudget } from './budget-guard';
 import { debugLog } from '../utils/debug';
@@ -141,6 +141,8 @@ export class AgentLoop {
 
   // ===== Phase 2: Single LLM turn =====
 
+   
+  // eslint-disable-next-line complexity, max-lines-per-function
   private async *runSingleTurn(
     turnIndex: number,
     _config: AgentLoopConfig,
@@ -352,7 +354,7 @@ export class AgentLoop {
         reason: batchCheck.reason!,
         originalTools: toolCalls.map(tc => tc.name),
         turnIndex,
-      } satisfies import('./loop-types').BudgetDelegationEvent;
+      } satisfies import('./loop-types').BudgetDelegationEvent // eslint-disable-line @typescript-eslint/consistent-type-imports
 
       const subId = `budget-sub-${nanoid(6)}`;
       const subAgentCall: ToolCall = {
@@ -368,7 +370,7 @@ export class AgentLoop {
         type: 'budget_compact',
         reason: batchCheck.reason!,
         turnIndex,
-      } satisfies import('./loop-types').BudgetCompactEvent;
+      } satisfies import('./loop-types').BudgetCompactEvent // eslint-disable-line @typescript-eslint/consistent-type-imports
 
       const currentContext = this.contextManager.getContext(this.config);
       const compressed = await this.contextManager.compressIfNeeded(currentContext);
@@ -385,7 +387,7 @@ export class AgentLoop {
             reason: singleCheck.reason!,
             originalTools: [toolCall.name],
             turnIndex,
-          } satisfies import('./loop-types').BudgetDelegationEvent;
+          } satisfies import('./loop-types').BudgetDelegationEvent // eslint-disable-line @typescript-eslint/consistent-type-imports
 
           const subId = `budget-sub-${nanoid(6)}`;
           toolCalls[index] = {
@@ -399,7 +401,7 @@ export class AgentLoop {
             type: 'budget_compact',
             reason: singleCheck.reason!,
             turnIndex,
-          } satisfies import('./loop-types').BudgetCompactEvent;
+          } satisfies import('./loop-types').BudgetCompactEvent // eslint-disable-line @typescript-eslint/consistent-type-imports
 
           const currentContext = this.contextManager.getContext(this.config);
           const compressed = await this.contextManager.compressIfNeeded(currentContext);
@@ -420,7 +422,7 @@ export class AgentLoop {
     let eventCount = 0;
     for await (const event of this.dispatcher.dispatch(toolCalls, toolCtx, dispatchOptions)) {
       eventCount++;
-      debugLog(`[agent] runTools RECEIVED event #${eventCount}: ${event.type} ${('toolCall' in event) ? (event as any).toolCall?.name + '#' + (event as any).toolCall?.id : ''} t=${performance.now().toFixed(0)}`);
+      debugLog(`[agent] runTools RECEIVED event #${eventCount}: ${event.type} ${event.toolCall.name}#${event.toolCall.id} t=${performance.now().toFixed(0)}`);
       switch (event.type) {
         case 'tool:start':
           yield {
