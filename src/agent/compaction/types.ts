@@ -54,7 +54,7 @@ export interface CompactionThresholds {
   snipRatio: number;
   /** Tier 2: LLM summarization (default: 0.75) */
   autoCompactRatio: number;
-  /** Tier 4: context collapse (default: 0.95) */
+  /** Tier 4: context collapse (default: 0.90) */
   collapseRatio: number;
   /** Max chars for a single tool output before snip considers it (default: 8000) */
   toolOutputSnipThreshold: number;

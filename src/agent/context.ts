@@ -6,10 +6,6 @@ import type { CompactionResult } from './compaction/types';
 import { TokenAccumulator } from './token-accumulator';
 import { getSettingsSync } from '../config';
 import { defaultSettings } from '../config/defaults';
-
-// Reserve headroom for model output and compaction prompt
-const TOKEN_HEADROOM = 6000;
-
 // Interface for compression strategies that support detailed compaction results
 interface CompressionStrategyWithResult extends CompressionStrategy {
   compressWithResult(context: AgentContext, tokenLimit: number): Promise<CompactionResult>;
@@ -233,16 +229,16 @@ export class ContextManager {
    */
   private async getCompactionResult(
     context: AgentContext,
-    effectiveLimit: number,
+    tokenLimit: number,
     currentTokens: number,
   ): Promise<CompactionResult> {
     // Always let the compression strategy decide - it has its own internal thresholds
     // This avoids duplicate checks that prevent tiered compaction from triggering at the right time
     if (this.compressionStrategy) {
       if (isCompressionWithResult(this.compressionStrategy)) {
-        return this.compressionStrategy.compressWithResult(context, effectiveLimit);
+        return this.compressionStrategy.compressWithResult(context, tokenLimit);
       }
-      const compressed = await this.compressionStrategy.compress(context, effectiveLimit);
+      const compressed = await this.compressionStrategy.compress(context, tokenLimit);
       return {
         messages: compressed,
         level: 'none' as const,
@@ -265,10 +261,9 @@ export class ContextManager {
    */
   async compressIfNeeded(context: AgentContext): Promise<CompactionResult> {
     const tokenLimit = context.config.tokenLimit;
-    const effectiveLimit = tokenLimit - TOKEN_HEADROOM;
     const currentTokens = this.getLastKnownPromptTokens();
 
-    return this.getCompactionResult(context, effectiveLimit, currentTokens);
+    return this.getCompactionResult(context, tokenLimit, currentTokens);
   }
 
   /**
@@ -403,9 +398,8 @@ export class ContextManager {
       context.systemPrompt = `${context.systemPrompt}\n\nFocus hint: ${focusHint}`;
     }
     const totalTokens = this.getLastKnownPromptTokens();
-    const effectiveLimit = this.tokenLimit - TOKEN_HEADROOM; // Reserve for output + compaction prompt
 
-    return this.getCompactionResult(context, effectiveLimit, totalTokens);
+    return this.getCompactionResult(context, this.tokenLimit, totalTokens);
   }
 
   /**

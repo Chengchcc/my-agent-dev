@@ -5,6 +5,7 @@ import { ToolOutputSnipStrategy } from './tiers/snip';
 import { AutoCompactStrategy } from './tiers/auto-compact';
 import { ReactiveRecoveryStrategy } from './tiers/reactive';
 import { ContextCollapseStrategy } from './tiers/collapse';
+import { debugLog } from '../../utils/debug';
 
 /**
  * Tiered Compaction Manager - main orchestrator that implements the CompressionStrategy interface.
@@ -82,9 +83,30 @@ export class TieredCompactionManager implements CompressionStrategy {
       // Check if snip was sufficient
       const newRatio = result.tokensAfter / budget.effectiveLimit;
       if (newRatio < thresholds.autoCompactRatio) {
+        debugLog({
+          event: 'compaction.triggered',
+          tier: 'snip',
+          tierNumber: 1,
+          tokensBefore: result.tokensBefore,
+          tokensAfter: result.tokensAfter,
+          reduction: result.tokensBefore - result.tokensAfter,
+          messageCountBefore: context.messages.length,
+          messageCountAfter: result.messages.length,
+          budget: { effectiveLimit: budget.effectiveLimit, usageRatio: budget.usageRatio, newRatio },
+        });
         return result;
       }
-      // Fall through to higher tier if snip wasn't enough
+      // Snip wasn't enough - log and fall through
+      debugLog({
+        event: 'compaction.triggered',
+        tier: 'snip',
+        tierNumber: 1,
+        tokensBefore: result.tokensBefore,
+        tokensAfter: result.tokensAfter,
+        reduction: result.tokensBefore - result.tokensAfter,
+        escalated: true,
+        reason: `snip insufficient (ratio ${newRatio.toFixed(3)} >= ${thresholds.autoCompactRatio})`,
+      });
       context.messages = result.messages;
     }
 
@@ -104,6 +126,17 @@ export class TieredCompactionManager implements CompressionStrategy {
       result.tokensBefore = budget.currentUsage;
       result.tokensAfter = this.budgetCalc.countMessages(result.messages, context.systemPrompt);
       this.lastResult = result;
+      debugLog({
+        event: 'compaction.triggered',
+        tier: 'auto-compact',
+        tierNumber: 2,
+        tokensBefore: result.tokensBefore,
+        tokensAfter: result.tokensAfter,
+        reduction: result.tokensBefore - result.tokensAfter,
+        messageCountBefore: context.messages.length,
+        messageCountAfter: result.messages.length,
+        budget: { effectiveLimit: budget.effectiveLimit, usageRatio: budget.usageRatio },
+      });
       return result;
     }
 
@@ -113,6 +146,17 @@ export class TieredCompactionManager implements CompressionStrategy {
       result.tokensBefore = budget.currentUsage;
       result.tokensAfter = this.budgetCalc.countMessages(result.messages, context.systemPrompt);
       this.lastResult = result;
+      debugLog({
+        event: 'compaction.triggered',
+        tier: 'collapse',
+        tierNumber: 4,
+        tokensBefore: result.tokensBefore,
+        tokensAfter: result.tokensAfter,
+        reduction: result.tokensBefore - result.tokensAfter,
+        messageCountBefore: context.messages.length,
+        messageCountAfter: result.messages.length,
+        budget: { effectiveLimit: budget.effectiveLimit, usageRatio: budget.usageRatio },
+      });
       return result;
     }
 
@@ -146,12 +190,47 @@ export class TieredCompactionManager implements CompressionStrategy {
 
     if (result.needsContinuation && this.config.enabledTiers.collapse) {
       // Reactive wasn't enough - escalate to Tier 4
-      return this.collapse.apply(result.messages);
+      debugLog({
+        event: 'compaction.triggered',
+        tier: 'reactive',
+        tierNumber: 3,
+        tokensBefore: budget.currentUsage,
+        escalated: true,
+        reason: 'reactive insufficient, escalating to collapse',
+      });
+      const collapseResult = this.collapse.apply(result.messages);
+      collapseResult.tokensBefore = budget.currentUsage;
+      collapseResult.tokensAfter = this.budgetCalc.countMessages(collapseResult.messages, context.systemPrompt);
+      this.lastResult = collapseResult;
+      debugLog({
+        event: 'compaction.triggered',
+        tier: 'collapse',
+        tierNumber: 4,
+        tokensBefore: collapseResult.tokensBefore,
+        tokensAfter: collapseResult.tokensAfter,
+        reduction: collapseResult.tokensBefore - collapseResult.tokensAfter,
+        messageCountBefore: context.messages.length,
+        messageCountAfter: collapseResult.messages.length,
+        budget: { effectiveLimit: budget.effectiveLimit, usageRatio: budget.usageRatio },
+        trigger: 'reactive-escalation',
+      });
+      return collapseResult;
     }
 
     result.tokensBefore = budget.currentUsage;
     result.tokensAfter = this.budgetCalc.countMessages(result.messages, context.systemPrompt);
     this.lastResult = result;
+    debugLog({
+      event: 'compaction.triggered',
+      tier: 'reactive',
+      tierNumber: 3,
+      tokensBefore: result.tokensBefore,
+      tokensAfter: result.tokensAfter,
+      reduction: result.tokensBefore - result.tokensAfter,
+      messageCountBefore: context.messages.length,
+      messageCountAfter: result.messages.length,
+      budget: { effectiveLimit: budget.effectiveLimit, usageRatio: budget.usageRatio },
+    });
     return result;
   }
 
