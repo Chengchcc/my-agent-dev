@@ -1,33 +1,27 @@
-import fs from 'fs/promises';
-import path from 'path';
-import os from 'os';
-import { nanoid } from 'nanoid';
 import type { CompressionStrategy, AgentContext, Message } from '../../types';
 
 const HOT_TAIL_SIZE = 3; // Keep last N tool outputs inline
-const MAX_INLINE_CHARS = 2000; // Max chars before offline
+const MAX_INLINE_CHARS = 2000; // Max chars before truncation
 const PREVIEW_CHARS = 200; // Preview chars to keep inline
 
 /**
- * L2 Compression: Offline large tool outputs to disk, keep references.
- * Only keeps the most recent (hot tail) tool outputs inline.
+ * L2 Compression: Truncate large tool outputs inline, keeping head+tail previews.
+ * Only keeps the most recent (hot tail) tool outputs fully inline.
+ * Does NOT persist to disk — avoids leaking sensitive data.
  */
 export class ToolOutputStrategy implements CompressionStrategy {
   private readonly hotTailSize: number;
   private readonly maxInlineChars: number;
   private readonly previewChars: number;
-  private readonly storageDir: string;
 
   constructor(options?: {
     hotTailSize?: number;
     maxInlineChars?: number;
     previewChars?: number;
-    storageDir?: string;
   }) {
     this.hotTailSize = options?.hotTailSize ?? HOT_TAIL_SIZE;
     this.maxInlineChars = options?.maxInlineChars ?? MAX_INLINE_CHARS;
     this.previewChars = options?.previewChars ?? PREVIEW_CHARS;
-    this.storageDir = options?.storageDir ?? path.join(os.homedir(), '.my-agent', 'tool-outputs');
   }
 
   async compress(context: AgentContext, _tokenLimit: number): Promise<Message[]> {
@@ -41,33 +35,23 @@ export class ToolOutputStrategy implements CompressionStrategy {
       }
     });
 
-    // Keep last N tool messages inline, offline the rest
+    // Keep last N tool messages inline, truncate the rest
     const coldTools = toolMessages.slice(0, -this.hotTailSize);
 
     if (coldTools.length === 0) {
       return messages;
     }
 
-    // Ensure storage directory exists
-    await fs.mkdir(this.storageDir, { recursive: true });
-
-    // Offline each cold tool output
+    // Truncate each cold tool output inline (no disk persistence)
     for (const { msg, index } of coldTools) {
-      const refPath = await this.saveToDisk(msg.content);
       const preview = msg.content.slice(0, this.previewChars);
+      const tail = msg.content.slice(-this.previewChars);
       messages[index] = {
         ...msg,
-        content: `[Tool output saved to ${refPath}. ${msg.content.length} characters total.\n\nPreview: ${preview}${msg.content.length > this.previewChars ? '\n...' : ''}]`,
+        content: `[Truncated: ${msg.content.length} chars → head+tail previews only]\n\n${preview}\n...\n${tail}`,
       };
     }
 
     return messages;
-  }
-
-  private async saveToDisk(content: string): Promise<string> {
-    const filename = `${nanoid()}.txt`;
-    const filepath = path.join(this.storageDir, filename);
-    await fs.writeFile(filepath, content, 'utf8');
-    return filepath;
   }
 }

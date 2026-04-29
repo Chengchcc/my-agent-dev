@@ -16,7 +16,8 @@ const DANGEROUS_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /\bwget\b.+\|\s*(?:ba)?sh\b/, reason: 'piping downloaded content to shell' },
   { pattern: /:\(\)\s*\{/, reason: 'fork bomb pattern' },
   { pattern: /\/etc\/(?:passwd|shadow)/, reason: 'modifying system auth files' },
-  { pattern: /\bgit\s+push\s+(?:--force|-f)\b.*(?:main|master)/, reason: 'force-pushing to protected branch' },
+  { pattern: /\bg(?:it\s+)?push\b.*\b(?:--force|-f)\b.*\b(?:main|master)\b/, reason: 'force-pushing to protected branch' },
+  { pattern: /\bg(?:it\s+)?push\b.*\b(?:main|master)\b.*\b(?:--force|-f)\b/, reason: 'force-pushing to protected branch' },
 ];
 
 function detectDangerousCommand(command: string): string | null {

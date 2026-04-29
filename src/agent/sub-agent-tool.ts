@@ -293,9 +293,10 @@ If the task references files in .agent/, read them first before proceeding.`;
         }
       }
 
-      // If the execution took longer than the timeout, we should show the timeout summary even if we got a final summary
-      if (durationMs >= loopConfig.timeoutMs) {
-        executionSummary = 'SubAgent execution terminated: timeout after 5 minutes.';
+      // Only report timeout if the agent didn't produce a natural summary.
+      // A valid summary from a slightly-over-timeout completion is more useful than a generic timeout message.
+      if (durationMs >= loopConfig.timeoutMs && !finalSummary) {
+        executionSummary = `SubAgent execution terminated: timeout after ${loopConfig.timeoutMs / 1000 / 60} minutes.`;
       }
 
       // Bubble done event

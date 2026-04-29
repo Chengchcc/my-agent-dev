@@ -107,7 +107,12 @@ describe('TieredCompactionManager - tier selection', () => {
     spyOn(budgetCalc, 'calculate').mockReturnValue(mockBudget({ usageRatio: 0.92 }));
     spyOn(budgetCalc, 'countMessages').mockReturnValue(50000);
 
-    const manager = new TieredCompactionManager(budgetCalc, config);
+    const collapseConfig: CompactionConfig = {
+      ...config,
+      thresholds,
+      enabledTiers: { snip: false, autoCompact: false, reactiveRecovery: false, collapse: true },
+    };
+    const manager = new TieredCompactionManager(budgetCalc, collapseConfig);
 
     const ctx = makeContext([
       makeUserMessage('current turn'),
@@ -207,7 +212,7 @@ describe('TieredCompactionManager - collapse resume behavior', () => {
       ...DEFAULT_COMPACTION_CONFIG,
       thresholds,
       summaryProvider: undefined,
-      enabledTiers: { snip: false, autoCompact: false, reactiveRecovery: true, collapse: true },
+      enabledTiers: { snip: false, autoCompact: false, reactiveRecovery: false, collapse: true },
     };
     const manager = new TieredCompactionManager(budgetCalc, collapseOnlyConfig);
 
@@ -240,7 +245,7 @@ describe('TieredCompactionManager - collapse resume behavior', () => {
       ...DEFAULT_COMPACTION_CONFIG,
       thresholds,
       summaryProvider: undefined,
-      enabledTiers: { snip: false, autoCompact: false, reactiveRecovery: true, collapse: true },
+      enabledTiers: { snip: false, autoCompact: false, reactiveRecovery: false, collapse: true },
     };
     const manager = new TieredCompactionManager(budgetCalc, collapseOnlyConfig);
 

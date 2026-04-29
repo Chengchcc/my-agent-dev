@@ -112,9 +112,10 @@ export class TieredCompactionManager implements CompressionStrategy {
 
     // Tier 2: Auto Compact (LLM summarization of older messages)
     if (budget.usageRatio < thresholds.collapseRatio && this.config.enabledTiers.autoCompact) {
-      // Apply Tier 1 first if it's enabled, then Tier 2 on the snipped messages
+      // Apply snip if Tier 1 didn't already do it (we entered Tier 2 directly,
+      // meaning usageRatio was already >= autoCompactRatio so Tier 1 was skipped).
       let workingMessages = context.messages;
-      if (this.config.enabledTiers.snip) {
+      if (this.config.enabledTiers.snip && budget.usageRatio >= thresholds.autoCompactRatio) {
         const snippedResult = this.snip.apply(workingMessages, preserveCount);
         workingMessages = snippedResult.messages;
       }
@@ -140,7 +141,34 @@ export class TieredCompactionManager implements CompressionStrategy {
       return result;
     }
 
-    // Tier 4: Context Collapse
+    // Tier 3: Reactive Recovery (rule-based aggressive snipping, no LLM call)
+    // Reached when Tier 2 was skipped (usageRatio >= collapseRatio) or Tier 2 wasn't enough.
+    // More aggressive than Tier 2 but cheaper — no LLM summarization.
+    if (budget.usageRatio >= thresholds.collapseRatio && this.config.enabledTiers.reactiveRecovery) {
+      const ctx = { ...context, messages: context.messages };
+      const result = this.reactive.apply(
+        ctx.messages,
+        budget.effectiveLimit,
+        (msgs) => this.budgetCalc.countMessages(msgs, ctx.systemPrompt),
+      );
+      result.tokensBefore = budget.currentUsage;
+      result.tokensAfter = this.budgetCalc.countMessages(result.messages, context.systemPrompt);
+      this.lastResult = result;
+      debugLog({
+        event: 'compaction.triggered',
+        tier: 'reactive',
+        tierNumber: 3,
+        tokensBefore: result.tokensBefore,
+        tokensAfter: result.tokensAfter,
+        reduction: result.tokensBefore - result.tokensAfter,
+        messageCountBefore: context.messages.length,
+        messageCountAfter: result.messages.length,
+        budget: { effectiveLimit: budget.effectiveLimit, usageRatio: budget.usageRatio },
+      });
+      return result;
+    }
+
+    // Tier 4: Context Collapse (nuclear option)
     if (this.config.enabledTiers.collapse) {
       const result = this.collapse.apply(context.messages);
       result.tokensBefore = budget.currentUsage;

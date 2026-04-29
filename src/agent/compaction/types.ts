@@ -1,7 +1,7 @@
 import type { Message, CompressionStrategy, Provider } from '../../types';
 
 // --- Backward compatibility: Old type definitions for existing code ---
-export type CompactionLevelType = 'none' | 'snip' | 'tool-shrink' | 'summarize' | 'reactive';
+export type CompactionLevelType = 'none' | 'snip' | 'tool-shrink' | 'summarize' | 'reactive' | 'collapse';
 
 export interface CompactionResult {
   messages: Message[];

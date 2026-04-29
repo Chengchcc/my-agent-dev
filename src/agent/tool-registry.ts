@@ -55,7 +55,7 @@ export class ToolRegistry {
     if (!this._definitionsCache) {
       this._definitionsCache = Array.from(this._tools.values()).map(tool => tool.getDefinition());
     }
-    return this._definitionsCache;
+    return [...this._definitionsCache];
   }
 
   /**

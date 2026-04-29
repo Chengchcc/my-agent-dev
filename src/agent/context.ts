@@ -95,6 +95,18 @@ export class TrimOldestStrategy implements CompressionStrategy {
       currentTotalTokens = systemTokenCount + countTotalTokens(messages);
     }
 
+    // Remove orphaned tool results — tool messages whose tool_call_id doesn't match
+    // any remaining assistant message's tool_calls. The Anthropic API rejects these.
+    const activeToolIds = new Set<string>();
+    for (const msg of messages) {
+      if (msg.role === 'assistant' && msg.tool_calls) {
+        for (const tc of msg.tool_calls) activeToolIds.add(tc.id);
+      }
+    }
+    messages = messages.filter(msg =>
+      msg.role !== 'tool' || !msg.tool_call_id || activeToolIds.has(msg.tool_call_id),
+    );
+
     // Put all system messages back at the beginning
     messages.unshift(...systemMessages);
 
@@ -275,6 +287,7 @@ export class ContextManager {
     this.todoStore = [];
     this.todoStepsSinceLastWrite = Infinity;
     this.todoStepsSinceLastReminder = Infinity;
+    this.lastKnownPromptTokens = 0;
     if (this.defaultSystemPrompt) {
       this.currentSystemPrompt = this.defaultSystemPrompt;
       this.accumulator.setSystemPrompt(countTokens(this.defaultSystemPrompt));

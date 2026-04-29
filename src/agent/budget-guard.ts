@@ -36,8 +36,8 @@ export function estimateToolOutput(toolCall: ToolCall): number {
 
   switch (name) {
     case 'read': {
-      const limit = toolCall.arguments.limit as number ?? 0;
-      if (limit) {
+      const limit = typeof toolCall.arguments.limit === 'number' ? toolCall.arguments.limit : 0;
+      if (limit > 0) {
         return Math.ceil((limit * 80) / 4) + 100;
       }
       // Unknown file size — use conservative estimate (no statSync to avoid blocking)

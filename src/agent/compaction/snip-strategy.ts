@@ -1,4 +1,5 @@
 import type { CompressionStrategy, AgentContext, Message } from '../../types';
+import { nanoid } from 'nanoid';
 
 /**
  * L1 Compression: Snip out middle messages to free up space.
@@ -31,6 +32,7 @@ export class SnipStrategy implements CompressionStrategy {
 
     // Add a marker that content was snipped
     const snipMarker: Message = {
+      id: `snip-${nanoid(6)}`,
       role: 'system',
       content: '[Earlier conversation history was snipped to save context space]',
     };

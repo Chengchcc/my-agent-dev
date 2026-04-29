@@ -167,9 +167,27 @@ export class ToolDispatcher {
       if (result.length <= maxChars) return result;
       return result.slice(0, maxChars) + `\n\n--- Truncated after ${maxChars} characters ---`;
     }
-    // 非 string 类型原样返回（read/grep/glob/ls 等工具返回的是对象）
-    // TUI 的 smartSummarize 依赖这些对象来智能格式化
-    return result;
+    // Non-string results (e.g. objects from read/grep/glob) — check serialized size
+    try {
+      const json = JSON.stringify(result);
+      if (json.length <= maxChars) return result;
+      // Truncate to a plain object with a truncated JSON preview — can't JSON.parse
+      // truncated JSON, so wrap the original fields up to the char limit.
+      if (result && typeof result === 'object' && !Array.isArray(result)) {
+        const out: Record<string, unknown> = {};
+        let used = 0;
+        for (const [key, value] of Object.entries(result as Record<string, unknown>)) {
+          const entry = JSON.stringify({ [key]: value });
+          if (used + entry.length > maxChars) break;
+          out[key] = value;
+          used += entry.length;
+        }
+        return out;
+      }
+      return { _truncated: true, preview: json.slice(0, maxChars), originalLength: json.length };
+    } catch {
+      return result;
+    }
   }
 
   /**
@@ -261,24 +279,30 @@ export class ToolDispatcher {
       try {
         const result = await this.executeSingle(toolCall, baseCtx, options);
         debugLog(`[dispatcher] streaming ENQUEUE result: ${toolCall.name}#${toolCall.id} t=${performance.now().toFixed(0)}`);
-        controller.enqueue({
-          type: 'tool:result',
-          toolCall,
-          result,
-        });
+        try { controller.enqueue({ type: 'tool:result', toolCall, result }); } catch {}
       } catch (error) {
+        // Enqueue error as a tool:result instead of calling controller.error().
+        // controller.error() would kill the entire stream for all tools, losing
+        // results from sibling tools that completed or are still running.
+        debugLog(`[dispatcher] streaming ENQUEUE error: ${toolCall.name}#${toolCall.id} t=${performance.now().toFixed(0)}`);
         try {
-          controller.error(error);
-        } catch {
-          // Controller might already be closed — ignore
-        }
+          controller.enqueue({
+            type: 'tool:result',
+            toolCall,
+            result: {
+              content: `Error executing '${toolCall.name}': ${error instanceof Error ? error.message : String(error)}`,
+              durationMs: 0,
+              isError: true,
+            },
+          });
+        } catch {}
       }
     });
 
-    const onAbort = () => {
-      debugLog(`[dispatcher] streaming ABORT: closing controller t=${performance.now().toFixed(0)}`);
-      try { controller.close(); } catch {}
-    };
+    // The abort listener is a no-op for streaming — it does NOT close the controller.
+    // Closing before all promises settle would cause pending enqueue() calls to throw,
+    // silently losing tool results. aborted results are handled by executeSingle's timeout.
+    const onAbort = () => {};
     baseCtx.signal.addEventListener('abort', onAbort, { once: true });
 
     void Promise.allSettled(promises).finally(() => {

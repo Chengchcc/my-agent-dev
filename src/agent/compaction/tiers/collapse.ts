@@ -93,7 +93,7 @@ export class ContextCollapseStrategy {
       tokensAfter: -1,
       summary: 'Emergency context collapse — only system prompt and last exchange preserved.',
       needsContinuation: true,
-      level: 'summarize',
+      level: 'collapse',
       compacted: true,
     };
   }

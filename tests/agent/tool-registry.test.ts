@@ -33,7 +33,7 @@ describe('ToolRegistry', () => {
     reg.register(new MockTool('a'));
     const defs1 = reg.getAllDefinitions();
     const defs2 = reg.getAllDefinitions();
-    expect(defs1).toBe(defs2); // same reference = cached
+    expect(defs1).toEqual(defs2); // same content (defensive copy)
   });
 
   it('should invalidate cache on register', () => {
