@@ -1,6 +1,18 @@
 import { Box, Text } from 'ink';
 import React from 'react';
 
+function findCursorLine(cursorOffset: number, lines: string[]): { line: number; col: number } {
+  let pos = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const lineEnd = pos + lines[i]!.length;
+    if (cursorOffset <= lineEnd) {
+      return { line: i, col: cursorOffset - pos };
+    }
+    pos = lineEnd + 1; // +1 for the \n
+  }
+  return { line: lines.length - 1, col: lines[lines.length - 1]!.length };
+}
+
 export function HighlightedInput({
   value,
   cursorOffset,
@@ -30,26 +42,41 @@ export function HighlightedInput({
   }
 
   const highlightLength = highlightedCommandName ? highlightedCommandName.length + 1 : 0;
+  const lines = value.split('\n');
+  const { line: cursorLine, col: cursorCol } = findCursorLine(cursorOffset, lines);
 
-  // All characters are individual inline Text components for correct styling
-  // Outer Box handles layout, no outer Text needed to avoid unexpected wrapping
   return (
-    <Box flexGrow={1} flexShrink={1}>
-        {value.split('').map((char, index) => {
-          const isCursor = index === cursorOffset;
-          const highlighted = index < highlightLength;
-          return (
-            <Text
-              key={`${char}-${index}`}
-              bold={highlighted}
-              {...(highlighted ? { color: 'cyan' } : {})}
-              inverse={isCursor}
-            >
-              {isCursor && char === ' ' ? ' ' : char}
-            </Text>
-          );
-        })}
-        {cursorOffset === value.length ? <Text inverse>{' '}</Text> : null}
+    <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+      {lines.map((line, lineIdx) => {
+        let lineStart = 0;
+        for (let j = 0; j < lineIdx; j++) lineStart += lines[j]!.length + 1;
+
+        return (
+          <Box key={lineIdx} flexDirection="row">
+            {line.length === 0 && cursorLine === lineIdx && cursorCol === 0 ? (
+              <Text inverse> </Text>
+            ) : null}
+            {line.split('').map((char, charIdx) => {
+              const globalIdx = lineStart + charIdx;
+              const isCursor = lineIdx === cursorLine && charIdx === cursorCol;
+              const highlighted = globalIdx < highlightLength;
+              return (
+                <Text
+                  key={`${char}-${lineIdx}-${charIdx}`}
+                  bold={highlighted}
+                  {...(highlighted ? { color: 'cyan' } : {})}
+                  inverse={isCursor}
+                >
+                  {isCursor && char === ' ' ? ' ' : char}
+                </Text>
+              );
+            })}
+            {cursorLine === lineIdx && cursorCol === line.length ? (
+              <Text inverse> </Text>
+            ) : null}
+          </Box>
+        );
+      })}
     </Box>
   );
 }

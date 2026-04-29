@@ -19,6 +19,7 @@ import {
   type InputEditorState,
 } from "./use-input-editor";
 import { useInputHistory } from "./use-input-history";
+import { attachmentMap, createPasteMarker, getFoldedDisplay, resolvePastePlaceholders } from "../paste-attachments";
 
 function getAtQuery(text: string): { query: string; start: number } | null {
   const lastAt = text.lastIndexOf('@');
@@ -40,7 +41,7 @@ const WELCOME_MESSAGES = [
   "Your next idea goes here...",
 ];
 
- 
+
 // eslint-disable-next-line max-lines-per-function
 export function useCommandInput({
   commands,
@@ -60,7 +61,8 @@ export function useCommandInput({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [atSelectedIndex, setAtSelectedIndex] = useState(0);
   const [pasteFolded, setPasteFolded] = useState(false);
-  const [pasteLineCount, setPasteLineCount] = useState(0);
+  const pasteFoldedRef = useRef(pasteFolded);
+  useEffect(() => { pasteFoldedRef.current = pasteFolded; }, [pasteFolded]);
   const [welcomeMessage] = useState(
     () => WELCOME_MESSAGES[Math.floor(Math.random() * WELCOME_MESSAGES.length)] ?? "What's on your mind?",
   );
@@ -95,6 +97,15 @@ export function useCommandInput({
   }, [atQuery?.query]);
   const atFilePickerOpen = atQuery !== null && dismissedAtQuery !== atQuery.query && atFiles.length > 0;
 
+  const hasMarkers = /\u27EA/.test(editorState.text);
+  const { displayText, displayCursorOffset, pasteLineCount } = useMemo(() => {
+    if (!pasteFolded || !hasMarkers) {
+      return { displayText: editorState.text, displayCursorOffset: editorState.cursorOffset, pasteLineCount: 0 };
+    }
+    const folded = getFoldedDisplay(editorState.text, editorState.cursorOffset);
+    return { displayText: folded.displayText, displayCursorOffset: folded.displayCursorOffset, pasteLineCount: folded.totalPasteLines };
+  }, [pasteFolded, editorState.text, editorState.cursorOffset, hasMarkers]);
+
   useEffect(() => {
     setSelectedIndex((currentIndex) => {
       if (filteredCommands.length === 0) return 0;
@@ -114,32 +125,22 @@ export function useCommandInput({
     setAtSelectedIndex((index) => Math.min(index, Math.max(0, atFiles.length - 1)));
   }, [atFiles.length]);
 
+  const dismissIfChanged = (newText: string) => {
+    if (getSlashQuery(newText) !== dismissedQuery) setDismissedQuery(null);
+    const q = getAtQuery(newText);
+    if (q?.query !== dismissedAtQuery) { setDismissedAtQuery(null); setAtSelectedIndex(0); }
+  };
+
   const updateEditorState = (next: InputEditorState | ((prev: InputEditorState) => InputEditorState)) => {
     if (typeof next === 'function') {
       setEditorState((prevState) => {
         const newState = next(prevState);
-        const newText = newState.text;
-        if (getSlashQuery(newText) !== dismissedQuery) {
-          setDismissedQuery(null);
-        }
-        const newAtQ = getAtQuery(newText);
-        if (newAtQ?.query !== dismissedAtQuery) {
-          setDismissedAtQuery(null);
-          setAtSelectedIndex(0);
-        }
+        dismissIfChanged(newState.text);
         return newState;
       });
     } else {
       setEditorState(next);
-      const newText = next.text;
-      if (getSlashQuery(newText) !== dismissedQuery) {
-        setDismissedQuery(null);
-      }
-      const newAtQ = getAtQuery(newText);
-      if (newAtQ?.query !== dismissedAtQuery) {
-        setDismissedAtQuery(null);
-        setAtSelectedIndex(0);
-      }
+      dismissIfChanged(next.text);
     }
   };
 
@@ -184,8 +185,14 @@ export function useCommandInput({
       if (key.escape) {
         if (editorStateRef.current.text.length > 0) {
           exitBrowsing();
+          const markerRe = new RegExp(`\u27EAPaste:(\\w+)\u27EB`, 'g');
+          let m: RegExpExecArray | null;
+          while ((m = markerRe.exec(editorStateRef.current.text)) !== null) {
+            attachmentMap.delete(m[1]!);
+          }
           setEditorState({ text: '', cursorOffset: 0 });
           setDismissedQuery(null);
+          setPasteFolded(false);
         } else {
           onAbort?.();
         }
@@ -257,13 +264,57 @@ export function useCommandInput({
         }
 
         // Regular enter - submit
-        saveEntry(editorStateRef.current.text);
-        void onSubmit?.(buildPromptSubmission(editorStateRef.current.text, commands));
+        const resolvedText = resolvePastePlaceholders(editorStateRef.current.text);
+        const markerRe = new RegExp(`\u27EAPaste:(\\w+)\u27EB`, 'g');
+        let m: RegExpExecArray | null;
+        while ((m = markerRe.exec(editorStateRef.current.text)) !== null) {
+          attachmentMap.delete(m[1]!);
+        }
+        saveEntry(resolvedText);
+        void onSubmit?.(buildPromptSubmission(resolvedText, commands));
         setEditorState({ text: "", cursorOffset: 0 });
         setDismissedQuery(null);
         setSelectedIndex(0);
         setFirstMessage(false);
+        setPasteFolded(false);
         return;
+      }
+
+      // Paste fold guard: restrict editing while paste placeholders exist
+      if (pasteFoldedRef.current) {
+        if (input === ' ') {
+          const resolved = resolvePastePlaceholders(editorStateRef.current.text);
+          updateEditorState({ text: resolved, cursorOffset: resolved.length });
+          setPasteFolded(false);
+          return;
+        }
+        if (key.backspace || key.delete) {
+          const markerRe = new RegExp(`\u27EAPaste:(\\w+)\u27EB`, 'g');
+          let match: RegExpExecArray | null;
+          let markerToRemove: { id: string; start: number; end: number } | null = null;
+          while ((match = markerRe.exec(editorStateRef.current.text)) !== null) {
+            const mStart = match.index;
+            const mEnd = mStart + match[0].length;
+            const cursor = editorStateRef.current.cursorOffset;
+            const inside = key.backspace
+              ? cursor > mStart && cursor <= mEnd
+              : cursor >= mStart && cursor < mEnd;
+            if (inside) { markerToRemove = { id: match[1]!, start: mStart, end: mEnd }; break; }
+          }
+          if (markerToRemove) {
+            const before = editorStateRef.current.text.slice(0, markerToRemove.start);
+            const after = editorStateRef.current.text.slice(markerToRemove.end);
+            attachmentMap.delete(markerToRemove.id);
+            updateEditorState({ text: before + after, cursorOffset: markerToRemove.start });
+            if (!/\u27EAPaste:\w+\u27EB/.test(before + after)) {
+              setPasteFolded(false);
+            }
+          } else {
+            updateEditorState(prev => removeCharacterBeforeCursor(prev));
+          }
+          return;
+        }
+        if (!key.leftArrow && !key.rightArrow && !key.upArrow && !key.downArrow) return;
       }
 
       if (key.leftArrow) {
@@ -302,22 +353,28 @@ export function useCommandInput({
         return;
       }
 
-      // Paste folding: Space toggles expand when folded
-      if (pasteFolded && input === ' ') {
-        setPasteFolded(false);
+      // Detect tagged paste chunk from PasteBufferingStdin
+      const pasteMatch = /^\x01PASTE\x01(\w+)\x01([\s\S]*?)\x01$/.exec(input);
+      if (pasteMatch) {
+        const id = pasteMatch[1]!;
+        const content = pasteMatch[2]!;
+        const lineCount = content.split('\n').length;
+        // Only fold substantial pastes; small snippets are inserted directly
+        if (lineCount > 3 || content.length > 200) {
+          attachmentMap.set(id, content);
+          exitBrowsing();
+          const marker = createPasteMarker(id);
+          updateEditorState(prev => insertTextAtCursor(prev, marker));
+          setPasteFolded(true);
+        } else {
+          exitBrowsing();
+          updateEditorState(prev => insertTextAtCursor(prev, content));
+        }
         return;
       }
 
       exitBrowsing();
-      updateEditorState(prev => {
-        const next = insertTextAtCursor(prev, input);
-        const lines = next.text.split('\n').length;
-        if (lines >= 3 && !pasteFolded) {
-          setPasteFolded(true);
-          setPasteLineCount(lines);
-        }
-        return next;
-      });
+      updateEditorState(prev => insertTextAtCursor(prev, input));
     },
     { isActive: true },
   );
@@ -330,6 +387,8 @@ export function useCommandInput({
     selectedIndex,
     text: editorState.text,
     cursorOffset: editorState.cursorOffset,
+    displayText,
+    displayCursorOffset,
     pasteFolded,
     pasteLineCount,
     atFiles,

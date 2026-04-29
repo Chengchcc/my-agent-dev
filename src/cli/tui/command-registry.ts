@@ -1,6 +1,7 @@
 import type { SkillFrontmatter } from '../../skills';
 import type { SessionStore } from '../../session/store';
 import type { CommandHandlerContext } from './types';
+import { resolvePastePlaceholders } from './paste-attachments';
 import { compactCommand } from './commands/compact-command';
 import { costCommand, toolsCommand } from './commands/diagnostic-commands';
 
@@ -137,17 +138,20 @@ export function getBestCompletion(query: string, commands: SlashCommand[]): stri
 }
 
 export function buildPromptSubmission(text: string, commands: SlashCommand[]): PromptSubmission {
+  // Resolve any paste placeholders as a safety net (primary resolution happens in useCommandInput)
+  const resolvedText = resolvePastePlaceholders(text);
+
   // Check if it's a complete slash command invocation
-  const slashQuery = getSlashQuery(text.trim());
+  const slashQuery = getSlashQuery(resolvedText.trim());
   if (slashQuery === null) {
-    return { text, requestedSkillName: null };
+    return { text: resolvedText, requestedSkillName: null };
   }
 
   // Check if it's a skill command
   const matched = commands.find(c => c.name.toLowerCase() === slashQuery.toLowerCase() && c.type === 'skill');
   if (matched) {
-    return { text, requestedSkillName: matched.name };
+    return { text: resolvedText, requestedSkillName: matched.name };
   }
 
-  return { text, requestedSkillName: null };
+  return { text: resolvedText, requestedSkillName: null };
 }
