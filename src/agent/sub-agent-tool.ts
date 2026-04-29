@@ -145,10 +145,14 @@ DO NOT USE when:
         if (this.config.allowedTools && !this.config.allowedTools.includes(toolDef.name)) {
           continue;
         }
-        // Get the actual implementation from main registry and re-register
+        // Get the actual implementation from main registry and register via adapter.
+        // Wrapping prevents shared mutable state between main and sub-agent tool instances.
         const impl = this.config.mainToolRegistry.get(toolDef.name);
         if (impl) {
-          subToolRegistry.register(impl);
+          subToolRegistry.register({
+            getDefinition: () => toolDef,
+            execute: (params, ctx) => impl.execute(params, ctx),
+          });
         }
       }
 

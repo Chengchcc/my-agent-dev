@@ -154,6 +154,8 @@ export class ToolDispatcher {
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId);
       }
+      // Suppress unhandled rejection from the original promise after timeout wins the race
+      promise.catch(() => {});
     }
   }
 
@@ -285,8 +287,9 @@ export class ToolDispatcher {
       baseCtx.signal.removeEventListener('abort', onAbort);
     });
 
-    const reader = stream.getReader();
+    let reader: ReadableStreamDefaultReader<ToolEvent> | undefined;
     try {
+      reader = stream.getReader();
       while (true) {
         debugLog(`[dispatcher] streaming READER waiting for next... t=${performance.now().toFixed(0)}`);
         const { done, value } = await reader.read();
@@ -299,7 +302,7 @@ export class ToolDispatcher {
       }
     } finally {
       debugLog(`[dispatcher] streaming READER releasing lock: elapsed=${(performance.now() - streamingStart).toFixed(0)}ms`);
-      reader.releaseLock();
+      if (reader) reader.releaseLock();
       await Promise.allSettled(promises);
     }
   }

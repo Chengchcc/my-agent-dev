@@ -332,6 +332,9 @@ export class ContextManager {
 
     this.messages = [...systemMessages, ...nonSystemMessages];
     this.accumulator.setMessages(this.messages);
+    // Invalidate API-reported token count so getRemainingBudget / getUsageRatio
+    // re-compute from the accumulator until the next API response updates it.
+    this.lastKnownPromptTokens = 0;
   }
 
   /**
@@ -419,10 +422,11 @@ export class ContextManager {
           id: newId,
           tool_calls: toolCalls,
         };
-        this.messages = messages;
-        // Reconcile: remove old, add new
+        // Reconcile accumulator BEFORE assigning to this.messages.
+        // If accumulator operations throw, this.messages stays consistent.
         if (oldId) this.accumulator.remove(oldId);
         this.accumulator.add(messages[i]!);
+        this.messages = messages;
         return;
       }
     }

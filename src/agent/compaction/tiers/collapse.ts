@@ -64,7 +64,7 @@ export class ContextCollapseStrategy {
 
     const recentMessages = keepCount > 0
       ? nonSystemMessages.slice(-keepCount)
-      : [];
+      : nonSystemMessages.slice(0, 0);
 
     // Add continuation message
     const continuationMsg: Message = {
