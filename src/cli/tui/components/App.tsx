@@ -90,7 +90,7 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
       return;
     }
 
-    // Ctrl+O or Space — toggle expand/collapse
+    // Ctrl+O or Space — toggle focused tool expand/collapse
     if ((input === 'o' && key.ctrl) || input === ' ') {
       toggleFocusedTool();
       return;
@@ -146,8 +146,8 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
     const samePrefix = nextStatic.slice(0, staticRef.current.length).every((item, i) => item === staticRef.current[i]);
     if (samePrefix) {
       staticRef.current = nextStatic;
-    } else if (nextStatic.length !== staticRef.current.length) {
-      // Prefix mismatch (compaction) — full replace
+    } else {
+      // Prefix mismatch (compaction changed message content) — full replace
       staticRef.current = nextStatic;
     }
   } else if (nextStatic.length !== staticRef.current.length) {

@@ -17,14 +17,16 @@ const BUCKET_SIZE = 32;
 export function StreamingMessage({ content }: StreamingMessageProps) {
   debugLog('[render] StreamingMessage', { len: content.length, preview: content.slice(0, 200) });
 
-  // Bucket by character count: only update rendered content every N chars.
+  // Bucket by character count: only re-parse markdown every BUCKET_SIZE chars.
   // No timers, no useDeferredValue (Ink renderer doesn't support concurrent mode).
+  // The bucketBoundary is used as a memo dependency key only — we always render
+  // the full content so the first <32 chars are visible.
   const bucketBoundary = Math.floor(content.length / BUCKET_SIZE) * BUCKET_SIZE;
-  const renderedContent = content.slice(0, bucketBoundary);
 
   const elements = useMemo(
-    () => renderMarkdownTokens(renderedContent),
-    [renderedContent],
+    () => renderMarkdownTokens(content),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bucketBoundary],
   );
 
   return (

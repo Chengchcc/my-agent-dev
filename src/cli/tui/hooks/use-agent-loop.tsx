@@ -362,12 +362,13 @@ export function AgentLoopProvider({
       } catch (error) {
         debugLog('[agent-loop] error:', error);
         console.error('Agent error:', error);
-        // Add error message to messages
+        // Add error message to messages and clear streaming state
         const errorMessage: Message = {
           role: 'assistant',
           content: `Error: ${error instanceof Error ? error.message : String(error)}`,
         };
         dispatch({ type: 'AGENT_ERROR', errorMessage });
+        dispatch({ type: 'LOOP_COMPLETE', messages: agent.getContext().messages, todos: agent.getContextManager().getTodos() });
         refreshTodos();
       } finally {
         streamingActiveRef.current = false;

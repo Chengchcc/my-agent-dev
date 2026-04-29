@@ -55,20 +55,37 @@ async function saveHistoryToDisk(lines: string[]): Promise<void> {
 export function useInputHistory() {
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const historyRef = useRef<string[]>([]);
+  const loadedRef = useRef(false);
+  const pendingSavesRef = useRef<string[]>([]);
 
   // Load history on mount
   useEffect(() => {
     void loadHistoryFromDisk().then(history => {
       historyRef.current = history;
+      loadedRef.current = true;
+      // Flush any saves that queued during the loading window
+      for (const text of pendingSavesRef.current) {
+        doSave(text);
+      }
+      pendingSavesRef.current = [];
     });
   }, []);
 
   const isBrowsing = historyIndex !== null;
 
+  const preBrowseTextRef = useRef<string>('');
+
+  const beginBrowsing = useCallback((currentText: string) => {
+    preBrowseTextRef.current = currentText;
+  }, []);
+
   const browseUp = useCallback((): string | null => {
     const history = historyRef.current;
     if (history.length === 0) return null;
 
+    if (historyIndex === null) {
+      preBrowseTextRef.current = ''; // caller should use beginBrowsing first
+    }
     const nextIndex = historyIndex === null ? history.length - 1 : Math.max(0, historyIndex - 1);
     setHistoryIndex(nextIndex);
     return history[nextIndex] ?? null;
@@ -82,20 +99,22 @@ export function useInputHistory() {
 
     if (nextIndex >= history.length) {
       setHistoryIndex(null);
-      return "";
+      return preBrowseTextRef.current;
     }
 
     setHistoryIndex(nextIndex);
     return history[nextIndex] ?? null;
   }, [historyIndex]);
 
-  const exitBrowsing = useCallback(() => {
+  const exitBrowsing = useCallback((): string | null => {
     if (historyIndex !== null) {
       setHistoryIndex(null);
+      return preBrowseTextRef.current;
     }
+    return null;
   }, [historyIndex]);
 
-  const saveEntry = useCallback((text: string) => {
+  const doSave = useCallback((text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
 
@@ -109,8 +128,17 @@ export function useInputHistory() {
     saveHistoryToDisk(historyRef.current).catch(err => {
       console.error('Failed to save history:', err);
     });
-    setHistoryIndex(null);
   }, []);
 
-  return { isBrowsing, browseUp, browseDown, exitBrowsing, saveEntry };
+  const saveEntry = useCallback((text: string) => {
+    if (!loadedRef.current) {
+      // Queue saves until initial load completes to avoid race with loadHistoryFromDisk
+      pendingSavesRef.current.push(text);
+      return;
+    }
+    doSave(text);
+    setHistoryIndex(null);
+  }, [doSave]);
+
+  return { isBrowsing, beginBrowsing, browseUp, browseDown, exitBrowsing, saveEntry };
 }

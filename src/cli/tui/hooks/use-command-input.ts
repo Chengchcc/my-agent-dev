@@ -16,7 +16,6 @@ import {
   moveCursorLeft,
   moveCursorRight,
   removeCharacterBeforeCursor,
-  removeCharacterAfterCursor,
   type InputEditorState,
 } from "./use-input-editor";
 import { useInputHistory } from "./use-input-history";
@@ -67,7 +66,7 @@ export function useCommandInput({
   const [welcomeMessage] = useState(
     () => WELCOME_MESSAGES[Math.floor(Math.random() * WELCOME_MESSAGES.length)] ?? "What's on your mind?",
   );
-  const { isBrowsing, browseUp, browseDown, exitBrowsing, saveEntry } = useInputHistory();
+  const { isBrowsing, beginBrowsing, browseUp, browseDown, exitBrowsing, saveEntry } = useInputHistory();
   const editorStateRef = useRef(editorState);
   useEffect(() => {
     editorStateRef.current = editorState;
@@ -184,6 +183,18 @@ export function useCommandInput({
       }
 
       if (key.escape) {
+        if (isBrowsing) {
+          const fallback = exitBrowsing();
+          const markerRe = createPasteMarkerRe();
+          let m: RegExpExecArray | null;
+          while ((m = markerRe.exec(editorStateRef.current.text)) !== null) {
+            attachmentMap.delete(m[1]!);
+          }
+          setEditorState({ text: fallback ?? '', cursorOffset: fallback?.length ?? 0 });
+          setDismissedQuery(null);
+          setPasteFolded(false);
+          return;
+        }
         if (editorStateRef.current.text.length > 0) {
           exitBrowsing();
           const markerRe = createPasteMarkerRe();
@@ -328,19 +339,17 @@ export function useCommandInput({
         return;
       }
 
-      if (key.backspace) {
+      // Ink v5 maps both \x7f (backspace) and \x1b[3~ (delete) to key.delete.
+      // \b maps to key.backspace but is rarely sent by modern terminals.
+      // Since backspace is far more common than delete, use removeBefore for key.delete.
+      if (key.backspace || key.delete) {
         exitBrowsing();
         updateEditorState(prev => removeCharacterBeforeCursor(prev));
         return;
       }
 
-      if (key.delete) {
-        exitBrowsing();
-        updateEditorState(prev => removeCharacterAfterCursor(prev));
-        return;
-      }
-
       if (!pickerOpen && (editorStateRef.current.text === "" || isBrowsing) && key.upArrow) {
+        if (!isBrowsing) beginBrowsing(editorStateRef.current.text);
         const entry = browseUp();
         if (entry !== null) {
           setEditorState({ text: entry, cursorOffset: entry.length });
@@ -361,7 +370,8 @@ export function useCommandInput({
       }
 
       // Detect tagged paste chunk from PasteBufferingStdin
-      const pasteMatch = /^\x01PASTE\x01(\w+)\x01([\s\S]*?)\x01$/.exec(input);
+      // Use [\w-]+ instead of \w+ because nanoid may generate IDs with hyphens
+      const pasteMatch = /^\x01PASTE\x01([\w-]+)\x01([\s\S]*?)\x01$/.exec(input);
       if (pasteMatch) {
         const id = pasteMatch[1]!;
         const content = pasteMatch[2]!;
