@@ -10,8 +10,11 @@ interface PermissionPromptProps {
 export function PermissionPrompt({ request, onSubmit }: PermissionPromptProps) {
   const submitRef = useRef(onSubmit);
   submitRef.current = onSubmit;
+  const submittedRef = useRef(false);
 
   const handleSubmit = useCallback((response: PermissionResponse) => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
     submitRef.current(response);
   }, []);
 
@@ -24,9 +27,9 @@ export function PermissionPrompt({ request, onSubmit }: PermissionPromptProps) {
 
   useEffect(() => {
     return () => {
-      handleSubmit('deny');
+      if (!submittedRef.current) handleSubmit('deny');
     };
-  }, []);
+  }, [handleSubmit]);
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} marginY={1}>

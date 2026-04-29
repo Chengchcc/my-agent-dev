@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 const BPM_START = '\x1b[200~';
 const BPM_END = '\x1b[201~';
 const PASTE_SENTINEL = '\x01';
+const MAX_PASTE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 type BpmState = 'normal' | 'in_paste';
 
@@ -118,6 +119,12 @@ export class PasteBufferingStdin extends EventEmitter {
   }
 
   private processPaste(): void {
+    if (this.pasteBuffer.length > MAX_PASTE_SIZE) {
+      this.incoming = '';
+      this.state = 'normal';
+      this.pasteBuffer = '';
+      return;
+    }
     const idx = this.incoming.indexOf(BPM_END);
     if (idx < 0) {
       const keep = partialMarkerLen(this.incoming);

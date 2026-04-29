@@ -2,19 +2,11 @@ import { Box, Text } from 'ink';
 import Prism from 'prismjs';
 import React, { useMemo } from 'react';
 import chalk from 'chalk';
-import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-jsx';
-import 'prismjs/components/prism-tsx';
-import 'prismjs/components/prism-bash';
-import 'prismjs/components/prism-json';
-import 'prismjs/components/prism-markdown';
-import 'prismjs/components/prism-css';
-import 'prismjs/components/prism-diff';
 import { DiffView, type DiffHunk } from './DiffView';
 import { tokenizeByLine } from './utils/tokenize-by-line';
 import { getLanguageFromFilePath } from './utils/language-map';
 import { getCachedTokens, setCachedTokens } from '../utils/syntax-cache';
+import { prismTheme } from './utils/prism-theme';
 
 interface ReadFileViewProps {
   filePath: string;
@@ -25,40 +17,6 @@ interface ReadFileViewProps {
   maxHeight?: number;
   diff?: { hunks: DiffHunk[] };
 }
-
-const theme: Record<string, string> = {
-  comment: 'gray',
-  prolog: 'gray',
-  doctype: 'gray',
-  cdata: 'gray',
-  punctuation: 'gray',
-  property: 'cyan',
-  keyword: 'blue',
-  boolean: 'yellow',
-  number: 'yellow',
-  constant: 'cyan',
-  symbol: 'green',
-  selector: 'green',
-  'attr-name': 'green',
-  string: 'green',
-  builtin: 'cyan',
-  inserted: 'green',
-  operator: 'gray',
-  entity: 'white',
-  url: 'cyan',
-  variable: 'white',
-  atrule: 'yellow',
-  'attr-value': 'yellow',
-  placeholder: 'yellow',
-  deleted: 'red',
-  italic: 'italic',
-  important: 'bold',
-  bold: 'bold',
-  heading: 'blue',
-  function: 'blue',
-  'class-name': 'yellow',
-  'tag': 'blue',
-};
 
 export function ReadFileView({
   filePath,
@@ -111,7 +69,7 @@ export function ReadFileView({
         // This reduces Yoga node count from ~10,000 to ~500 for large files
         let lineContent = '';
         for (const token of lineTokens) {
-          const colorName = token.type ? (theme[token.type] ?? 'white') : 'white';
+          const colorName = token.type ? (prismTheme[token.type] ?? 'white') : 'white';
           const colorFn = (chalk as unknown as Record<string, ((s: string) => string) | undefined>)[colorName];
           if (colorFn) {
             lineContent += colorFn(token.content);

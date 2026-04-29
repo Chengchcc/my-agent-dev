@@ -1,16 +1,9 @@
 import { Box, Text } from 'ink';
 import Prism from 'prismjs';
 import React, { useMemo } from 'react';
-import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-jsx';
-import 'prismjs/components/prism-tsx';
-import 'prismjs/components/prism-bash';
-import 'prismjs/components/prism-json';
-import 'prismjs/components/prism-markdown';
-import 'prismjs/components/prism-css';
 import { tokenizeByLine, type LineToken } from './utils/tokenize-by-line';
 import { getLanguageFromFilePath } from './utils/language-map';
+import { getPrismTokenColor } from './utils/prism-theme';
 
 type DiffLineType = 'added' | 'removed' | 'context';
 
@@ -35,44 +28,6 @@ interface DiffViewProps {
   diff: { hunks: DiffHunk[] };
   language?: string;
   context?: number;
-}
-
-const theme: Record<string, string> = {
-  comment: 'gray',
-  prolog: 'gray',
-  doctype: 'gray',
-  cdata: 'gray',
-  punctuation: 'gray',
-  property: 'cyan',
-  keyword: 'blue',
-  boolean: 'yellow',
-  number: 'yellow',
-  constant: 'cyan',
-  symbol: 'green',
-  selector: 'green',
-  'attr-name': 'green',
-  string: 'green',
-  builtin: 'cyan',
-  inserted: 'green',
-  operator: 'gray',
-  entity: 'white',
-  url: 'cyan',
-  variable: 'white',
-  atrule: 'yellow',
-  'attr-value': 'yellow',
-  placeholder: 'yellow',
-  deleted: 'red',
-  italic: 'italic',
-  important: 'bold',
-  bold: 'bold',
-  heading: 'blue',
-  function: 'blue',
-  'class-name': 'yellow',
-  'tag': 'blue',
-};
-
-function getTokenColor(type: string | null): string {
-  return type ? (theme[type] ?? 'white') : 'white';
 }
 
 export function DiffView({ filePath, diff, language }: DiffViewProps) {
@@ -164,7 +119,7 @@ export function DiffView({ filePath, diff, language }: DiffViewProps) {
                     {line.tokens.map((token, tokenIndex) => (
                       <Text
                         key={tokenIndex}
-                        color={getTokenColor(token.type) || color}
+                        color={getPrismTokenColor(token.type) || color}
                         strikethrough={strikethrough}
                       >
                         {token.content}

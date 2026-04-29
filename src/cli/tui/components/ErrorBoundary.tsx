@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink';
 import type { ErrorInfo, ReactNode } from 'react';
 import React, { Component } from 'react';
-import { debugError, isDebugEnabled } from '../../../utils/debug';
+import { debugError } from '../../../utils/debug';
 
 interface Props {
   children: ReactNode;
@@ -30,12 +30,6 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   override render(): ReactNode {
-    // In debug mode, let errors propagate so React's own error output
-    // (with component names for hooks violations) reaches the terminal
-    if (isDebugEnabled() && this.state.hasError) {
-      throw this.state.error;
-    }
-
     if (this.state.hasError) {
       return (
         <Box flexDirection="column" padding={1}>

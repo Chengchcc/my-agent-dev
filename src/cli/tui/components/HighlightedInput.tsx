@@ -56,13 +56,13 @@ export function HighlightedInput({
             {line.length === 0 && cursorLine === lineIdx && cursorCol === 0 ? (
               <Text inverse> </Text>
             ) : null}
-            {line.split('').map((char, charIdx) => {
+            {Array.from(line).map((char, charIdx) => {
               const globalIdx = lineStart + charIdx;
               const isCursor = lineIdx === cursorLine && charIdx === cursorCol;
               const highlighted = globalIdx < highlightLength;
               return (
                 <Text
-                  key={`${char}-${lineIdx}-${charIdx}`}
+                  key={`${lineIdx}-${charIdx}`}
                   bold={highlighted}
                   {...(highlighted ? { color: 'cyan' } : {})}
                   inverse={isCursor}

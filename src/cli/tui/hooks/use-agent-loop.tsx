@@ -103,6 +103,8 @@ export function AgentLoopProvider({
   const streamingContentRef = useRef('');
   const pendingFlush = useRef(false);
   const pendingInputRef = useRef<string | null>(null);
+  const streamGenRef = useRef(0);
+  const streamingActiveRef = useRef(false);
 
   useEffect(() => {
     streamingRef.current = streaming;
@@ -242,6 +244,8 @@ export function AgentLoopProvider({
 
       dispatch({ type: 'SUBMIT_START' });
       streamingContentRef.current = '';
+      streamingActiveRef.current = true;
+      streamGenRef.current++;
 
       // Track incremental streaming content
       const runningTools = new Map<string, ToolCallStartEvent>();
@@ -260,16 +264,14 @@ export function AgentLoopProvider({
           } else if (event.type === 'text_delta') {
             // Only accumulate text during the current assistant turn
             // After tool execution, full messages are already in context
-            if (state.streamingContent !== null || runningTools.size === 0) {
+            if (streamingActiveRef.current) {
               streamingContentRef.current += event.delta;
 
-              // Adaptive batching with queueMicrotask:
-              // - Multiple deltas in the same tick are batched into one render
-              // - Renders happen as soon as possible after the current tick completes
-              // - No artificial 50ms delay - smooth streaming when rendering is fast
               if (!pendingFlush.current) {
                 pendingFlush.current = true;
+                const gen = streamGenRef.current;
                 queueMicrotask(() => {
+                  if (streamGenRef.current !== gen) return;
                   pendingFlush.current = false;
                   dispatch({
                     type: 'TEXT_DELTA_BATCH',
@@ -280,11 +282,13 @@ export function AgentLoopProvider({
               }
             }
           } else if (event.type === 'tool_call_start') {
+            streamingActiveRef.current = false;
             runningTools.set(event.toolCall.id, event);
             dispatch({ type: 'TOOL_START', runningTools: new Map(runningTools) });
           } else if (event.type === 'tool_call_result') {
             runningTools.delete(event.toolCall.id);
             streamingContentRef.current = '';
+            if (runningTools.size === 0) streamingActiveRef.current = true;
 
             // Single atomic dispatch: meta + messages in one render cycle
             // Fix 1 ensures addMessage() runs before yield, so getContext() returns consistent state
@@ -366,9 +370,9 @@ export function AgentLoopProvider({
         dispatch({ type: 'AGENT_ERROR', errorMessage });
         refreshTodos();
       } finally {
-        // pendingFlush will complete on its own - no need to cancel
+        streamingActiveRef.current = false;
+        streamGenRef.current++;
         streamingContentRef.current = '';
-        // Update todos from agent one last time
         refreshTodos();
       }
 

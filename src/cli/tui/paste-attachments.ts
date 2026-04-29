@@ -3,6 +3,20 @@ const MARKER_SUFFIX = '\u27EB'; // ⟫ (mathematical right angle bracket)
 
 export const attachmentMap = new Map<string, string>();
 
+/** Returns a fresh RegExp for matching paste markers. Always use 'g' flag — never reuse across iterations. */
+export function createPasteMarkerRe(): RegExp {
+  return new RegExp(`${MARKER_PREFIX}Paste:(\\w+)${MARKER_SUFFIX}`, 'g');
+}
+
+/** Returns true if text contains any paste marker. */
+export function hasPasteMarkers(text: string): boolean {
+  return text.indexOf(MARKER_PREFIX) !== -1;
+}
+
+export function clearAttachments(): void {
+  attachmentMap.clear();
+}
+
 export function createPasteMarker(id: string): string {
   return `${MARKER_PREFIX}Paste:${id}${MARKER_SUFFIX}`;
 }

@@ -66,8 +66,8 @@ export const PureFooterMemo = React.memo(PureFooter, (prev, next) =>
 export function Footer({ compact = false }: { compact?: boolean }) {
   const totalTokens = useAgentLoopSelector(s => s.totalUsage.totalTokens);
   const tokensBucket = useAgentLoopSelector(s => {
-    const ratio = s.tokenLimit > 0 ? s.currentContextTokens / s.tokenLimit : 0;
-    return Math.floor(clampPct(ratio, s.tokenLimit) * 100);
+    if (s.tokenLimit <= 0) return 0;
+    return Math.floor(clampPct(s.currentContextTokens, s.tokenLimit) * 100);
   });
 
   return <PureFooterMemo totalTokens={totalTokens} tokensBucket={tokensBucket} compact={compact} />;

@@ -21,6 +21,15 @@ export function removeCharacterBeforeCursor(state: InputEditorState): InputEdito
   };
 }
 
+export function removeCharacterAfterCursor(state: InputEditorState): InputEditorState {
+  if (state.cursorOffset >= state.text.length) return state;
+
+  return {
+    text: state.text.slice(0, state.cursorOffset) + state.text.slice(state.cursorOffset + 1),
+    cursorOffset: state.cursorOffset,
+  };
+}
+
 export function moveCursorLeft(state: InputEditorState): InputEditorState {
   return {
     ...state,

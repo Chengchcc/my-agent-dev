@@ -16,10 +16,11 @@ import {
   moveCursorLeft,
   moveCursorRight,
   removeCharacterBeforeCursor,
+  removeCharacterAfterCursor,
   type InputEditorState,
 } from "./use-input-editor";
 import { useInputHistory } from "./use-input-history";
-import { attachmentMap, createPasteMarker, getFoldedDisplay, resolvePastePlaceholders } from "../paste-attachments";
+import { attachmentMap, createPasteMarker, createPasteMarkerRe, getFoldedDisplay, hasPasteMarkers, resolvePastePlaceholders } from "../paste-attachments";
 
 function getAtQuery(text: string): { query: string; start: number } | null {
   const lastAt = text.lastIndexOf('@');
@@ -82,7 +83,7 @@ export function useCommandInput({
 
   const atQuery = useMemo(() => getAtQuery(editorState.text), [editorState.text]);
   const atFiles = useMemo(() => {
-    if (!atQuery || atQuery.query.length === 0) return [];
+    if (!atQuery || atQuery.query.length < 2) return [];
     try {
       const pattern = `**/*${atQuery.query}*`;
       return fastGlob.sync(pattern, {
@@ -97,7 +98,7 @@ export function useCommandInput({
   }, [atQuery?.query]);
   const atFilePickerOpen = atQuery !== null && dismissedAtQuery !== atQuery.query && atFiles.length > 0;
 
-  const hasMarkers = /\u27EA/.test(editorState.text);
+  const hasMarkers = hasPasteMarkers(editorState.text);
   const { displayText, displayCursorOffset, pasteLineCount } = useMemo(() => {
     if (!pasteFolded || !hasMarkers) {
       return { displayText: editorState.text, displayCursorOffset: editorState.cursorOffset, pasteLineCount: 0 };
@@ -185,7 +186,7 @@ export function useCommandInput({
       if (key.escape) {
         if (editorStateRef.current.text.length > 0) {
           exitBrowsing();
-          const markerRe = new RegExp(`\u27EAPaste:(\\w+)\u27EB`, 'g');
+          const markerRe = createPasteMarkerRe();
           let m: RegExpExecArray | null;
           while ((m = markerRe.exec(editorStateRef.current.text)) !== null) {
             attachmentMap.delete(m[1]!);
@@ -265,7 +266,7 @@ export function useCommandInput({
 
         // Regular enter - submit
         const resolvedText = resolvePastePlaceholders(editorStateRef.current.text);
-        const markerRe = new RegExp(`\u27EAPaste:(\\w+)\u27EB`, 'g');
+        const markerRe = createPasteMarkerRe();
         let m: RegExpExecArray | null;
         while ((m = markerRe.exec(editorStateRef.current.text)) !== null) {
           attachmentMap.delete(m[1]!);
@@ -289,7 +290,7 @@ export function useCommandInput({
           return;
         }
         if (key.backspace || key.delete) {
-          const markerRe = new RegExp(`\u27EAPaste:(\\w+)\u27EB`, 'g');
+          const markerRe = createPasteMarkerRe();
           let match: RegExpExecArray | null;
           let markerToRemove: { id: string; start: number; end: number } | null = null;
           while ((match = markerRe.exec(editorStateRef.current.text)) !== null) {
@@ -306,7 +307,7 @@ export function useCommandInput({
             const after = editorStateRef.current.text.slice(markerToRemove.end);
             attachmentMap.delete(markerToRemove.id);
             updateEditorState({ text: before + after, cursorOffset: markerToRemove.start });
-            if (!/\u27EAPaste:\w+\u27EB/.test(before + after)) {
+            if (!hasPasteMarkers(before + after)) {
               setPasteFolded(false);
             }
           } else {
@@ -327,9 +328,15 @@ export function useCommandInput({
         return;
       }
 
-      if (key.backspace || key.delete) {
+      if (key.backspace) {
         exitBrowsing();
         updateEditorState(prev => removeCharacterBeforeCursor(prev));
+        return;
+      }
+
+      if (key.delete) {
+        exitBrowsing();
+        updateEditorState(prev => removeCharacterAfterCursor(prev));
         return;
       }
 

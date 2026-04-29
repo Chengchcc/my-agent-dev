@@ -1,49 +1,7 @@
 import { Box, Text } from 'ink';
 import Prism from 'prismjs';
 import React, { useMemo } from 'react';
-import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-jsx';
-import 'prismjs/components/prism-tsx';
-import 'prismjs/components/prism-bash';
-import 'prismjs/components/prism-json';
-import 'prismjs/components/prism-markdown';
-import 'prismjs/components/prism-css';
-import 'prismjs/components/prism-diff';
-
-const theme: Record<string, string> = {
-  comment: 'gray',
-  prolog: 'gray',
-  doctype: 'gray',
-  cdata: 'gray',
-  punctuation: 'gray',
-  property: 'cyan',
-  keyword: 'blue',
-  boolean: 'yellow',
-  number: 'yellow',
-  constant: 'cyan',
-  symbol: 'green',
-  selector: 'green',
-  'attr-name': 'green',
-  string: 'green',
-  builtin: 'cyan',
-  inserted: 'green',
-  operator: 'gray',
-  entity: 'white',
-  url: 'cyan',
-  variable: 'white',
-  atrule: 'yellow',
-  'attr-value': 'yellow',
-  placeholder: 'yellow',
-  deleted: 'red',
-  italic: 'italic',
-  important: 'bold',
-  bold: 'bold',
-  heading: 'blue',
-  function: 'blue',
-  'class-name': 'yellow',
-  'tag': 'blue',
-};
+import { prismTheme } from './utils/prism-theme';
 
 const languageNames: Record<string, string> = {
   js: 'javascript',
@@ -66,7 +24,7 @@ export function CodeBlock({ code, language }: { code: string; language?: string 
     <Box marginY={1} paddingLeft={1}>
       <Text>
         {tokens.map((token, index) => {
-          const color = token.type ? (theme[token.type] ?? 'white') : 'white';
+          const color = token.type ? (prismTheme[token.type] ?? 'white') : 'white';
           // Handle italic/bold styles
           if (color === 'italic') {
             return (
