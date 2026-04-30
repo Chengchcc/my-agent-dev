@@ -12,7 +12,8 @@ export interface BudgetGuardConfig {
   enabled: boolean;
 }
 
-export type BudgetAction = 'proceed' | 'delegate-to-sub-agent' | 'compact-first';
+export const BUDGET_ACTIONS = ['proceed', 'delegate-to-sub-agent', 'compact-first'] as const;
+export type BudgetAction = (typeof BUDGET_ACTIONS)[number];
 
 export interface BudgetCheckResult {
   action: BudgetAction;

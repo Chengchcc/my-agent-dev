@@ -125,7 +125,8 @@ export interface SubAgentDoneEvent extends AgentEventBase {
 }
 
 /** Exit status for sub-agent completion. */
-export type SubAgentExitStatus = 'success' | 'timeout' | 'max_turns' | 'error' | 'aborted';
+export const SUB_AGENT_EXIT_STATUSES = ['success', 'timeout', 'max_turns', 'error', 'aborted'] as const;
+export type SubAgentExitStatus = (typeof SUB_AGENT_EXIT_STATUSES)[number];
 
 /**
  * Budget guard delegated a batch of tool calls to sub-agent.
@@ -178,7 +179,8 @@ export type AgentEvent =
  * - 'continue': Add the error as a tool message to context and continue the loop
  * - 'halt': Stop execution immediately with an error
  */
-export type ToolErrorStrategy = 'continue' | 'halt';
+export const TOOL_ERROR_STRATEGIES = ['continue', 'halt'] as const;
+export type ToolErrorStrategy = (typeof TOOL_ERROR_STRATEGIES)[number];
 
 /**
  * Agent loop configuration - limits and behavior options

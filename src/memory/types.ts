@@ -1,6 +1,7 @@
 import type { Message } from '../types';
 
-export type MemoryType = 'semantic' | 'episodic' | 'project';
+export const MEMORY_TYPES = ['semantic', 'episodic', 'project'] as const;
+export type MemoryType = (typeof MEMORY_TYPES)[number];
 
 export interface MemoryEntry {
   id: string;

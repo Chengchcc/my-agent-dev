@@ -12,10 +12,12 @@ import { getSettingsSync } from '../config';
 import { RateLimitedProvider } from './rate-limiter';
 
 /** Sub-agent execution profile controlling tool access and parallelism. */
-export type SubAgentProfile = 'read_only' | 'code_editor' | 'general';
+export const SUB_AGENT_PROFILES = ['read_only', 'code_editor', 'general'] as const;
+export type SubAgentProfile = (typeof SUB_AGENT_PROFILES)[number];
 
 /** Deliverable format for sub-agent output. */
-export type SubAgentDeliverable = 'summary' | 'file_list' | 'code_patch' | 'structured_json';
+export const SUB_AGENT_DELIVERABLES = ['summary', 'file_list', 'code_patch', 'structured_json'] as const;
+export type SubAgentDeliverable = (typeof SUB_AGENT_DELIVERABLES)[number];
 
 
 /** Tool allowlists per profile. */

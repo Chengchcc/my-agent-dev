@@ -1,6 +1,7 @@
 import { debugWarn } from '../utils/debug';
 
-export type PermissionResponse = 'allow' | 'deny' | 'always';
+export const PERMISSION_RESPONSES = ['allow', 'deny', 'always'] as const;
+export type PermissionResponse = (typeof PERMISSION_RESPONSES)[number];
 
 export type PermissionRequest = {
   toolName: string;
