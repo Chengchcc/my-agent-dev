@@ -14,6 +14,8 @@ export type Message = {
   id?: string;
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /** Internal marker: this message is an ephemeral injection and must never be persisted. */
+  _ephemeral?: boolean;
   /** Structured content blocks for thinking/text/tool_use — preferred over content string for preservation */
   blocks?: ContentBlock[];
   name?: string;

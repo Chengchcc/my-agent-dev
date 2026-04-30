@@ -100,20 +100,28 @@ export class MemoryMiddleware implements AgentMiddleware {
 
     // Layer 3: Episodic + project recall by query → ephemeral reminder (does NOT touch system prompt)
     const lastUserMessage = findLastUserMessage(context.messages);
+    const isPostCollapse = !!context.metadata.justCollapsed;
     if (lastUserMessage) {
+      const retrievalThreshold = isPostCollapse ? 0 : this.config.retrievalThreshold;
+      const retrievalLimit = isPostCollapse ? this.config.retrievalTopK * 2 : this.config.retrievalTopK;
+
       const hits = await this.retriever.search(lastUserMessage.content, {
-        limit: this.config.retrievalTopK,
+        limit: retrievalLimit,
         projectPath: process.cwd(),
         type: 'episodic',
-        threshold: this.config.retrievalThreshold,
+        threshold: retrievalThreshold,
       });
       // Also search project entries separately
       const projectHits = await this.retriever.search(lastUserMessage.content, {
-        limit: 1,
+        limit: isPostCollapse ? 2 : 1,
         projectPath: process.cwd(),
         type: 'project',
-        threshold: this.config.retrievalThreshold,
+        threshold: retrievalThreshold,
       });
+
+      if (isPostCollapse) {
+        context.metadata.justCollapsed = false;
+      }
       const allHits = [...projectHits, ...hits].slice(0, this.config.maxInjectedEntries);
 
       if (allHits.length > 0) {

@@ -78,8 +78,9 @@ export class SessionStore {
     await this.ensureSessionDir();
     const { jsonlPath, metaPath } = this.getPaths(sessionId);
 
-    // Write JSONL - one message per line
+    // Write JSONL - one message per line, filter out ephemeral injections
     const jsonlContent = messages
+      .filter(msg => !msg._ephemeral)
       .map(msg => JSON.stringify(msg))
       .join('\n');
     await fs.writeFile(jsonlPath, jsonlContent, 'utf8');

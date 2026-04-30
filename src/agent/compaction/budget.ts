@@ -12,19 +12,22 @@ import type { TokenBudget } from './types';
  * - Includes system prompt in token count
  * - Adds overhead for message metadata (~20 tokens per message)
  * - Reserves headroom for model output and compaction itself
+ * - Reserves headroom for ephemeral reminders injected after compaction
  */
 export class TokenBudgetCalculator {
   constructor(
     private modelLimit: number,
     private maxOutputTokens: number,
     private compactionBuffer: number = 2048,
+    private ephemeralReserve: number = 1024,
   ) {}
 
   /**
    * Calculate current token budget with headroom reservation.
+   * effectiveLimit accounts for: model output, compaction overhead, and ephemeral reminders.
    */
   calculate(context: AgentContext): TokenBudget {
-    const effectiveLimit = this.modelLimit - this.maxOutputTokens - this.compactionBuffer;
+    const effectiveLimit = this.modelLimit - this.maxOutputTokens - this.compactionBuffer - this.ephemeralReserve;
     const currentUsage = this.countContextTokens(context);
 
     return {

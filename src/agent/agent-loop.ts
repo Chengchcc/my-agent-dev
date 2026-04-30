@@ -18,6 +18,39 @@ import { planExecution } from './dispatch';
 import { debugLog } from '../utils/debug';
 import { nanoid } from 'nanoid';
 
+const MAX_EPHEMERAL_BYTES = 4096;
+
+/**
+ * Truncate ephemeral reminders to fit within MAX_EPHEMERAL_BYTES.
+ * Priority (highest first): skill_hint > todo_status > retrieved_memory.
+ * Within same priority, earlier reminders are kept first.
+ */
+function truncateEphemeralReminders(reminders: string[]): string[] {
+  const totalBytes = reminders.reduce((sum, r) => sum + Buffer.byteLength(r, 'utf8'), 0);
+  if (totalBytes <= MAX_EPHEMERAL_BYTES) return reminders;
+
+  const priority = (r: string): number => {
+    if (r.includes('<skill_hint')) return 1;
+    if (r.includes('<todo_status')) return 2;
+    if (r.includes('<retrieved_memory')) return 3;
+    return 4; // unknown — lowest priority
+  };
+
+  const indexed = reminders.map((text, idx) => ({ text, priority: priority(text), idx }));
+  indexed.sort((a, b) => a.priority - b.priority || a.idx - b.idx);
+
+  let used = 0;
+  const keep: string[] = [];
+  for (const item of indexed) {
+    const size = Buffer.byteLength(item.text, 'utf8');
+    if (used + size <= MAX_EPHEMERAL_BYTES) {
+      keep.push(item.text);
+      used += size;
+    }
+  }
+  return keep;
+}
+
 export class AgentLoop {
   private controller: AbortController | null = null;
 
@@ -173,6 +206,11 @@ export class AgentLoop {
     afterBeforeCompress.messages = compactionResult.messages;
     this.contextManager.setMessages(compactionResult.messages);
 
+    // Post-collapse resync: notify middleware that the model needs key context restored
+    if (compactionResult.tier === 4) {
+      afterBeforeCompress.metadata.justCollapsed = true;
+    }
+
     if (compactionResult.compacted) {
       yield {
         type: 'context_compacted',
@@ -196,10 +234,11 @@ export class AgentLoop {
     }
     this.contextManager.syncTodoFromContext(resultContext);
 
-    // Inject ephemeral reminders (from todo middleware) as synthetic user-turn messages
-    // before the last user message, so they don't break tool_use/tool_result pairing.
+    // Inject ephemeral reminders (from todo/memory/skills middleware) as synthetic
+    // user-turn messages before the last user message, avoiding tool_use/tool_result splits.
     if (resultContext.ephemeralReminders?.length) {
-      const reminderBlock = resultContext.ephemeralReminders.join('\n\n');
+      const reminders = truncateEphemeralReminders(resultContext.ephemeralReminders);
+      const reminderBlock = reminders.join('\n\n');
       const messages = resultContext.messages;
       let lastUserIdx = -1;
       for (let i = messages.length - 1; i >= 0; i--) {
@@ -212,11 +251,13 @@ export class AgentLoop {
         messages.splice(lastUserIdx, 0, {
           role: 'user',
           content: reminderBlock,
+          _ephemeral: true,
         });
       } else {
         messages.push({
           role: 'user',
           content: reminderBlock,
+          _ephemeral: true,
         });
       }
       resultContext.ephemeralReminders = [];

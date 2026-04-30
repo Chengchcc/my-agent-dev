@@ -208,7 +208,14 @@ export function createTodoMiddleware(): {
 
     let reminder: string | null = null;
 
-    if (allCompleted) {
+    // Post-collapse resync: model has amnesia, force task context restoration
+    if (context.metadata.justCollapsed && todos.length > 0) {
+      reminder = formatReminder(
+        'post_collapse_resync',
+        `Context was collapsed to free space. Here is your current task state to restore continuity:\n\n${formatTodoList(todos)}`,
+      );
+      context.metadata.justCollapsed = false;
+    } else if (allCompleted) {
       reminder = formatReminder(
         'all_completed',
         'All todo items are marked completed or cancelled. Produce a concise summary of what was accomplished and confirm the task is done. Do NOT start new work unless the user asks.',
