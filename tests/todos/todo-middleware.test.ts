@@ -59,7 +59,6 @@ describe('createTodoMiddleware', () => {
       messages: [],
       config: { tokenLimit: 10000 },
       metadata: {},
-      systemPrompt: '',
     };
     await tool.execute({
       todos: [
@@ -78,7 +77,7 @@ describe('createTodoMiddleware', () => {
 
     // First step - shouldn't remind yet
     expect(calledNext).toBe(true);
-    expect(context.systemPrompt).toBe('');
+    expect(context.ephemeralReminders).toBeUndefined();
 
     // Simulate 9 more steps = 10 total steps since last write
     for (let i = 0; i < 9; i++) {
@@ -90,11 +89,61 @@ describe('createTodoMiddleware', () => {
       expect(calledNext).toBe(true);
     }
 
-    // After 10 steps total, should have reminder
-    expect(context.systemPrompt).toContain('<todo_reminder>');
-    expect(context.systemPrompt).toContain('[pending] Task 1');
-    expect(context.systemPrompt).toContain('[in_progress] Task 2');
-    expect(context.systemPrompt).toContain('todo_write tool hasn\'t been used recently');
+    // After 10 steps total, should have reminder in ephemeralReminders
+    expect(context.ephemeralReminders).toBeDefined();
+    expect(context.ephemeralReminders!.length).toBeGreaterThan(0);
+    const reminder = context.ephemeralReminders![0]!;
+    expect(reminder).toContain('<system-reminder>');
+    expect(reminder).toContain('<todo_status reason="stale"');
+    expect(reminder).toContain('[pending] Task 1');
+    expect(reminder).toContain('[in_progress] Task 2');
+  });
+
+  test('should inject all_completed reminder when all done', async () => {
+    const { tool, hooks } = createTodoMiddleware();
+    const middleware = hooks.beforeModel;
+    const context: AgentContext = {
+      messages: [],
+      config: { tokenLimit: 10000 },
+      metadata: {},
+    };
+    await tool.execute({
+      todos: [{ id: '1', content: 'Task 1', status: 'completed' }],
+      merge: false,
+    }, createTestCtx({ agentContext: context }));
+
+    // All completed — should inject all_completed reminder immediately
+    await middleware(context, async () => context);
+    expect(context.ephemeralReminders).toBeDefined();
+    const reminder = context.ephemeralReminders![0]!;
+    expect(reminder).toContain('<todo_status reason="all_completed"');
+    expect(reminder).toContain('All todo items are marked completed');
+  });
+
+  test('should inject no_in_progress reminder when pending tasks lack in_progress', async () => {
+    const { tool, hooks } = createTodoMiddleware();
+    const middleware = hooks.beforeModel;
+    const context: AgentContext = {
+      messages: [],
+      config: { tokenLimit: 10000 },
+      metadata: {},
+    };
+    await tool.execute({
+      todos: [
+        { id: '1', content: 'Task 1', status: 'pending' },
+        { id: '2', content: 'Task 2', status: 'pending' },
+      ],
+      merge: false,
+    }, createTestCtx({ agentContext: context }));
+
+    // 3 steps without any task marked in_progress — should trigger no_in_progress
+    for (let i = 0; i < 3; i++) {
+      await middleware(context, async () => context);
+    }
+    expect(context.ephemeralReminders).toBeDefined();
+    const reminder = context.ephemeralReminders![0]!;
+    expect(reminder).toContain('<todo_status reason="no_in_progress"');
+    expect(reminder).toContain('No task is marked in_progress');
   });
 
   test('should reset counter after tool use', async () => {
@@ -104,7 +153,6 @@ describe('createTodoMiddleware', () => {
       messages: [],
       config: { tokenLimit: 10000 },
       metadata: {},
-      systemPrompt: '',
     };
     await tool.execute({
       todos: [{ id: '1', content: 'Task 1', status: 'pending' }],
@@ -122,39 +170,11 @@ describe('createTodoMiddleware', () => {
       merge: true,
     }, createTestCtx({ agentContext: context }));
 
-    // Should not have reminder yet after reset
-    // But since all todos are completed, should inject todo_completed prompt
-    context.systemPrompt = '';
+    // After reset, the all_completed reminder fires (not stale)
+    delete context.ephemeralReminders;
     await middleware(context, async () => context);
-    expect(context.systemPrompt).toContain('<todo_completed>');
-    expect(context.systemPrompt).toContain('All todo items have been completed');
-  });
-
-  test('should reset counter when last message is tool use', async () => {
-    const { tool, hooks } = createTodoMiddleware();
-    const middleware = hooks.beforeModel;
-    const context: AgentContext = {
-      messages: [
-        {
-          role: 'tool',
-          content: 'Todo list updated...',
-          name: 'todo_write',
-          tool_call_id: 'test',
-        },
-      ],
-      config: { tokenLimit: 10000 },
-      metadata: {},
-      systemPrompt: '',
-    };
-    await tool.execute({
-      todos: [{ id: '1', content: 'Task 1', status: 'pending' }],
-      merge: false,
-    }, createTestCtx({ agentContext: context }));
-
-    // After tool use in message, counter should be reset
-    await middleware(context, async () => context);
-
-    // So we shouldn't get a reminder even after 1 step from previous
-    expect(context.systemPrompt).toBe('');
+    expect(context.ephemeralReminders).toBeDefined();
+    const reminder = context.ephemeralReminders![0]!;
+    expect(reminder).toContain('<todo_status reason="all_completed"');
   });
 });

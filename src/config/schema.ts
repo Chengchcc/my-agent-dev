@@ -45,6 +45,10 @@ const memorySettingsSchema = z.object({
   autoExtractMinToolCalls: z.number().int().positive().default(3),
   maxInjectedEntries: z.number().int().positive().default(10),
   extractionModel: z.string().default('claude-3-haiku-20240307'),
+  retrievalThreshold: z.number().min(0).max(1).default(0.75),
+  retrievalTopK: z.number().int().positive().default(5),
+  extractTriggerMode: z.enum(['explicit', 'auto', 'off']).default('explicit'),
+  maxUserPreferences: z.number().int().positive().default(20),
 });
 
 const skillsSettingsSchema = z.object({

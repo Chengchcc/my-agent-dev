@@ -196,6 +196,32 @@ export class AgentLoop {
     }
     this.contextManager.syncTodoFromContext(resultContext);
 
+    // Inject ephemeral reminders (from todo middleware) as synthetic user-turn messages
+    // before the last user message, so they don't break tool_use/tool_result pairing.
+    if (resultContext.ephemeralReminders?.length) {
+      const reminderBlock = resultContext.ephemeralReminders.join('\n\n');
+      const messages = resultContext.messages;
+      let lastUserIdx = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i]?.role === 'user') {
+          lastUserIdx = i;
+          break;
+        }
+      }
+      if (lastUserIdx >= 0) {
+        messages.splice(lastUserIdx, 0, {
+          role: 'user',
+          content: reminderBlock,
+        });
+      } else {
+        messages.push({
+          role: 'user',
+          content: reminderBlock,
+        });
+      }
+      resultContext.ephemeralReminders = [];
+    }
+
     // Stream from LLM
     let fullContent = '';
     let thinkingBuffer = '';

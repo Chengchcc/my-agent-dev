@@ -9,14 +9,14 @@ export class KeywordRetriever implements MemoryRetriever {
 
   async search(
     query: string,
-    options: { limit?: number; projectPath?: string } = {},
+    options: { limit?: number; projectPath?: string; type?: 'semantic' | 'episodic' | 'project'; threshold?: number } = {},
   ): Promise<MemoryEntry[]> {
-    const { limit = 10, projectPath } = options;
+    const { limit = 10, projectPath, type, threshold = 0.1 } = options;
     const queryTokens = this.tokenize(query.toLowerCase());
 
-    // Get all candidate entries from all stores
-    const semanticEntries = await this.semanticStore.getAll();
-    const episodicEntries = await this.episodicStore.getAll();
+    // Get candidates — filter by type if specified
+    const semanticEntries = (!type || type === 'semantic') ? await this.semanticStore.getAll() : [];
+    const episodicEntries = (!type || type === 'episodic') ? await this.episodicStore.getAll() : [];
 
     let candidates = [...semanticEntries, ...episodicEntries];
 
@@ -35,7 +35,7 @@ export class KeywordRetriever implements MemoryRetriever {
         entry,
         score: this.scoreEntry(entry, queryTokens),
       }))
-      .filter(s => s.score > 0.1);
+      .filter(s => s.score >= threshold);
 
     // Sort by score descending
     const sorted = scored.sort((a, b) => b.score - a.score);

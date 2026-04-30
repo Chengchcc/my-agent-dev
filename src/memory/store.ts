@@ -14,6 +14,10 @@ const FALLBACK_MEMORY_CONFIG: Required<MemoryConfig> = {
   autoExtractMinToolCalls: 3,
   maxInjectedEntries: 10,
   extractionModel: 'claude-3-haiku-20240307',
+  retrievalThreshold: 0.75,
+  retrievalTopK: 5,
+  extractTriggerMode: 'explicit',
+  maxUserPreferences: 20,
 };
 
 // Get settings with fallback
@@ -219,5 +223,47 @@ export class JsonlMemoryStore implements MemoryStore {
     });
     const trimmed = sorted.slice(0, maxEntries).map(item => item.entry);
     await this.replaceAll(trimmed, this.type);
+  }
+
+  /**
+   * Evict entries exceeding capacity, preferring to keep recently-hit entries.
+   * Uses lastHitAt as primary sort, falling back to created date.
+   */
+  async enforceLimit(): Promise<void> {
+    const all = await this.getAll();
+    const maxEntries = this.type === 'semantic'
+      ? this.config.maxSemanticEntries
+      : this.config.maxEpisodicEntries;
+
+    if (all.length <= maxEntries) return;
+
+    const sorted = all.sort((a, b) => {
+      const aTime = a.lastHitAt ?? new Date(a.created).getTime();
+      const bTime = b.lastHitAt ?? new Date(b.created).getTime();
+      return bTime - aTime; // descending: most recent first
+    });
+    const kept = sorted.slice(0, maxEntries);
+    await this.replaceAll(kept, this.type);
+  }
+
+  /**
+   * Mark entries as retrieved by updating lastHitAt and usageCount.
+   * Called after episodic recall to feed LRU eviction.
+   */
+  async markHit(ids: string[]): Promise<void> {
+    const idSet = new Set(ids);
+    const all = await this.getAll();
+    let changed = false;
+    const now = Date.now();
+    for (const entry of all) {
+      if (idSet.has(entry.id)) {
+        entry.lastHitAt = now;
+        entry.usageCount = (entry.usageCount ?? 0) + 1;
+        changed = true;
+      }
+    }
+    if (changed) {
+      await this.replaceAll(all, this.type);
+    }
   }
 }

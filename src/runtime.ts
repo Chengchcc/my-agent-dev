@@ -9,6 +9,7 @@ import { createTodoMiddleware } from './todos';
 import {
   JsonlMemoryStore, KeywordRetriever, LlmExtractor,
   MemoryMiddleware, MemoryTool,
+  invalidateAgentMdCache,
 } from './memory';
 import { createSkillMiddleware } from './skills/middleware';
 import { SkillLoader } from './skills/loader';
@@ -178,6 +179,13 @@ export async function createAgentRuntime(
     ));
     if (memoryMiddleware.beforeModel) hooks.beforeModel.push(memoryMiddleware.beforeModel);
     if (memoryMiddleware.afterAgentRun) hooks.afterAgentRun.push(memoryMiddleware.afterAgentRun);
+
+    // Enforce capacity limits at startup (catch any drift from manual edits or migration)
+    semanticStore.enforceLimit?.();
+    episodicStore.enforceLimit?.();
+
+    // Invalidate stale AGENT.md cache so first turn picks up any file changes
+    invalidateAgentMdCache();
   }
 
   // Skills

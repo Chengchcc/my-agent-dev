@@ -1,7 +1,8 @@
 import type { Middleware, AgentMiddleware } from '../types';
 import type { Message } from '../types';
-import type { MemoryEntry, MemoryStore, MemoryRetriever, MemoryExtractor, MemoryConfig } from './types';
+import type { MemoryStore, MemoryRetriever, MemoryExtractor, MemoryConfig } from './types';
 import { getSettingsSync } from '../config';
+import { loadAgentMdCached } from './agent-md';
 
 // Fallback defaults if settings aren't loaded yet
 const FALLBACK_MEMORY_CONFIG: Required<MemoryConfig> = {
@@ -12,6 +13,10 @@ const FALLBACK_MEMORY_CONFIG: Required<MemoryConfig> = {
   autoExtractMinToolCalls: 3,
   maxInjectedEntries: 10,
   extractionModel: 'claude-3-haiku-20240307',
+  retrievalThreshold: 0.75,
+  retrievalTopK: 5,
+  extractTriggerMode: 'explicit',
+  maxUserPreferences: 20,
 };
 
 // Get settings with fallback
@@ -63,29 +68,67 @@ export class MemoryMiddleware implements AgentMiddleware {
   }
 
   beforeModel: Middleware = async (context, next) => {
-    // Find last user message for query
-    const lastUserMessage = findLastUserMessage(context.messages);
-    if (!lastUserMessage) {
-      return next();
+    // Strip previous memory-managed sections from system prompt (they'll be re-added below).
+    const stripMemorySections = (prompt: string): string =>
+      prompt.replace(
+        /\n\n<(?:project_rules|user_preferences)[^>]*>[\s\S]*?<\/(?:project_rules|user_preferences)>/g,
+        '',
+      ).trim();
+
+    const base = stripMemorySections(context.systemPrompt || '');
+
+    // Layer 1: AGENT.md — stable project rules with mtime-based version for cache-busting
+    const { merged: agentMd, version: rulesVersion } = await loadAgentMdCached();
+
+    // Layer 2: User preferences from semantic store — stable section with content-hash version
+    const allPrefs = await this.semanticStore.getAll();
+    const topPrefs = allPrefs.slice(0, this.config.maxUserPreferences);
+    const prefsText = topPrefs.map(p => `- ${p.text}`).join('\n');
+    const prefsVersion = hashText(prefsText);
+
+    // Build stable system-extra sections
+    const sections: string[] = [];
+    if (agentMd) {
+      sections.push(`<project_rules version="${rulesVersion}">\n${agentMd}\n</project_rules>`);
+    }
+    if (prefsText) {
+      sections.push(`<user_preferences version="${prefsVersion}">\n${prefsText}\n</user_preferences>`);
+    }
+    if (sections.length > 0) {
+      context.systemPrompt = [base, ...sections].filter(Boolean).join('\n\n');
     }
 
-    const query = lastUserMessage.content;
-    const projectPath = process.cwd();
+    // Layer 3: Episodic + project recall by query → ephemeral reminder (does NOT touch system prompt)
+    const lastUserMessage = findLastUserMessage(context.messages);
+    if (lastUserMessage) {
+      const hits = await this.retriever.search(lastUserMessage.content, {
+        limit: this.config.retrievalTopK,
+        projectPath: process.cwd(),
+        type: 'episodic',
+        threshold: this.config.retrievalThreshold,
+      });
+      // Also search project entries separately
+      const projectHits = await this.retriever.search(lastUserMessage.content, {
+        limit: 1,
+        projectPath: process.cwd(),
+        type: 'project',
+        threshold: this.config.retrievalThreshold,
+      });
+      const allHits = [...projectHits, ...hits].slice(0, this.config.maxInjectedEntries);
 
-    // Retrieve relevant memories
-    const memories = await this.retriever.search(query, {
-      limit: this.config.maxInjectedEntries,
-      projectPath,
-    });
-
-    // Get project memory (already included in search results if exists)
-    if (memories.length > 0) {
-      const memoryBlock = this.formatMemories(memories);
-      // Remove any existing memory block before adding new one
-      let cleanedPrompt = context.systemPrompt || '';
-      cleanedPrompt = cleanedPrompt.replace(/\n\n<memory>[\s\S]*?<\/memory>/, '');
-      const newMemorySection = `\n\n<memory>\n${memoryBlock}\n</memory>`;
-      context.systemPrompt = (cleanedPrompt + newMemorySection).trim();
+      if (allHits.length > 0) {
+        const body = allHits.map(h => {
+          const date = h.created.split('T')[0];
+          return `- (${date}) ${h.text}`;
+        }).join('\n');
+        context.ephemeralReminders ??= [];
+        context.ephemeralReminders.push(
+          `<system-reminder>\n<retrieved_memory>\n${body}\n</retrieved_memory>\n</system-reminder>`,
+        );
+        // Update lastHitAt for LRU eviction tracking
+        this.episodicStore.markHit?.(allHits.map(h => h.id));
+        this.projectStore.markHit?.(projectHits.map(h => h.id));
+      }
     }
 
     return next();
@@ -107,6 +150,14 @@ export class MemoryMiddleware implements AgentMiddleware {
       return result;
     }
 
+    // Trigger-word gate: in 'explicit' mode, only extract when user said trigger words
+    if (this.config.extractTriggerMode === 'off') {
+      return result;
+    }
+    if (this.config.extractTriggerMode === 'explicit' && !shouldExtractFromMessages(context.messages)) {
+      return result;
+    }
+
     // Trigger async extraction, don't block agent but track for graceful shutdown
     const projectPath = process.cwd();
     const extractionPromise = this.extractor.extract(context.messages, projectPath)
@@ -121,11 +172,13 @@ export class MemoryMiddleware implements AgentMiddleware {
               break;
             case 'episodic':
             default:
-              // Episodic goes to episodic store
               await this.episodicStore.add(entry);
               break;
           }
         }
+        // Enforce capacity limits after adding new entries
+        await this.semanticStore.enforceLimit?.();
+        await this.episodicStore.enforceLimit?.();
       })
       .catch(err => {
         console.error('[memory] Auto-extraction failed:', err);
@@ -142,37 +195,6 @@ export class MemoryMiddleware implements AgentMiddleware {
     return result;
   };
 
-  private formatMemories(memories: MemoryEntry[]): string {
-    const semantic = memories.filter(m => m.type === 'semantic');
-    const project = memories.find(m => m.type === 'project');
-    const episodic = memories.filter(m => m.type === 'episodic')
-      .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
-
-    // Count how many we've used already
-    let used = semantic.length + (project ? 1 : 0);
-    const maxEpisodic = Math.max(0, this.config.maxInjectedEntries - used);
-    const limitedEpisodic = episodic.slice(0, maxEpisodic);
-
-    let blocks: string[] = [];
-
-    if (semantic.length > 0) {
-      blocks.push('## User Preferences (Relevant)\n' + semantic.map(m => `- ${m.text}`).join('\n'));
-    }
-
-    if (project) {
-      const projectName = project.projectPath ? project.projectPath.split('/').pop() : 'Project';
-      blocks.push(`## Current Project: ${projectName}\n${project.text}`);
-    }
-
-    if (limitedEpisodic.length > 0) {
-      blocks.push('## Recent Work\n' + limitedEpisodic.map(m => {
-        const date = m.created.split('T')[0];
-        return `- ${date}: ${m.text}`;
-      }).join('\n'));
-    }
-
-    return blocks.join('\n\n');
-  }
 }
 
 // Helper functions
@@ -186,4 +208,27 @@ function findLastResponse(messages: Message[]): Message | undefined {
 
 function countToolCalls(messages: Message[]): number {
   return messages.filter(m => m.role === 'tool').length;
+}
+
+/** Simple DJB2 hash for content-based versioning of preference lists. */
+function hashText(text: string): string {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(16);
+}
+
+// Trigger words for explicit extraction mode — only extract when user uses these
+const WRITE_TRIGGERS = [
+  /记住/, /remember/i, /from now on/i, /always/i, /never/i,
+  /我喜欢/, /我习惯/, /I prefer/i, /I like/i,
+  /别再/, /don't/i, /stop doing/i,
+  /保存这个/, /save this/i, /记录下来/, /note this/i,
+];
+
+function shouldExtractFromMessages(messages: Message[]): boolean {
+  const userTurns = messages.filter(m => m.role === 'user');
+  const recent = userTurns.slice(-3).map(m => m.content).join('\n');
+  return WRITE_TRIGGERS.some(re => re.test(recent));
 }

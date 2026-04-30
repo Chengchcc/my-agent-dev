@@ -56,6 +56,10 @@ export interface MemorySettings {
   autoExtractMinToolCalls: number;
   maxInjectedEntries: number;
   extractionModel: string;
+  retrievalThreshold: number;
+  retrievalTopK: number;
+  extractTriggerMode: 'explicit' | 'auto' | 'off';
+  maxUserPreferences: number;
 }
 
 export interface SkillsSettings {

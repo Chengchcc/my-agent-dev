@@ -7,46 +7,44 @@ const TODO_WRITE_TOOL_NAME = 'todo_write';
 const REMINDER_CONFIG = {
   STEPS_SINCE_WRITE: 10,
   STEPS_BETWEEN_REMINDERS: 10,
+  STEPS_NO_IN_PROGRESS: 3,
 } as const;
 
 const TOOL_DESCRIPTION = `Create and manage a structured task list for the current session. This helps track progress, organize complex tasks, and demonstrate thoroughness.
 
-## When to Use
+<use_when>
+- Complex multi-step tasks (3+ distinct steps)
+- Non-trivial tasks requiring careful planning
+- User explicitly requests a todo list
+- User provides multiple tasks (numbered or comma-separated)
+- After receiving new instructions — capture as todos (merge=false)
+- When starting a task — mark as in_progress
+- After completing a task — mark as completed IMMEDIATELY (merge=true)
+</use_when>
 
-1. Complex multi-step tasks requiring 3 or more distinct steps
-2. Non-trivial tasks requiring careful planning or multiple operations
-3. User explicitly requests a todo list
-4. User provides multiple tasks (numbered or comma-separated)
-5. After receiving new instructions — capture requirements as todos (use merge=false to add new ones)
-6. After completing tasks — mark complete with merge=true and add follow-ups
-7. When starting new tasks — mark as in_progress (ideally only one at a time)
+<do_not_use>
+- Single, straightforward tasks
+- Trivial tasks with no organizational benefit
+- Tasks completable in fewer than 3 trivial steps
+- Purely conversational or informational requests
+</do_not_use>
 
-## When NOT to Use
+<status_values>
+- pending | in_progress | completed | cancelled
+</status_values>
 
-1. Single, straightforward tasks
-2. Trivial tasks with no organizational benefit
-3. Tasks completable in fewer than 3 trivial steps
-4. Purely conversational or informational requests
-
-## Task States
-
-- pending: Not yet started
-- in_progress: Currently working on (limit to ONE at a time)
-- completed: Finished successfully
-- cancelled: No longer needed
-
-## Task Management Rules
-
-- Update status in real-time as you work
-- Mark tasks complete IMMEDIATELY after finishing (don't batch completions)
-- Only ONE task should be in_progress at any time
+<rules>
+- Only ONE task in_progress at a time
+- Mark complete IMMEDIATELY after finishing (don't batch)
+- Update in real-time as you work
 - Complete current tasks before starting new ones
-- If blocked, keep the task as in_progress and create a new task for the blocker
+- If blocked, keep as in_progress and create a new task for the blocker
+</rules>
 
-## Merge Behavior
-
-- merge=true: Merges by id — existing ids are updated, new ids appended. You can send only the changed items.
-- merge=false: Replaces the entire list with the provided todos.`;
+<merge_behavior>
+- merge=true: Updates existing by id, appends new ids. Send only changed items.
+- merge=false: Replaces the entire list.
+</merge_behavior>`;
 
 function formatSummary(todos: TodoItem[]): string {
   const counts: Record<TodoStatus, number> = { pending: 0, in_progress: 0, completed: 0, cancelled: 0 };
@@ -59,13 +57,16 @@ function formatSummary(todos: TodoItem[]): string {
   return `Todo list updated. ${todos.length} items: ${parts.join(", ")}.`;
 }
 
-function formatReminder(todos: TodoItem[]): string {
-  const lines = todos.map((t, i) => `${i + 1}. [${t.status}] ${t.content}`).join("\n");
-  return `\n<todo_reminder>
-The todo_write tool hasn't been used recently. If you're working on tasks that benefit from tracking, consider updating your todo list. Only use it if relevant to the current work. Here are the current items:
+function formatReminder(reason: string, body: string): string {
+  return `<system-reminder>
+<todo_status reason="${reason}">
+${body}
+</todo_status>
+</system-reminder>`;
+}
 
-${lines}
-</todo_reminder>`;
+function formatTodoList(todos: TodoItem[]): string {
+  return todos.map((t, i) => `${i + 1}. [${t.status}] ${t.content}`).join("\n");
 }
 
 // Extend the context metadata to store todo tracking data
@@ -86,7 +87,6 @@ export function createTodoMiddleware(): {
 } {
   // Helper to get or initialize todo metadata in context
   const getOrInitTodoMetadata = (context: AgentContext): TodoMetadata => {
-    // Ensure metadata exists
     if (!context.metadata) {
       context.metadata = {};
     }
@@ -200,30 +200,38 @@ export function createTodoMiddleware(): {
     metadata.stepsSinceLastWrite++;
     metadata.stepsSinceLastReminder++;
 
-    // Check if all todos are completed/cancelled - add prompt to summarize
-    const allCompleted = metadata.todoStore.length > 0 &&
-      metadata.todoStore.every(t => t.status === 'completed' || t.status === 'cancelled');
+    const todos = metadata.todoStore;
+    const allCompleted = todos.length > 0 &&
+      todos.every(t => t.status === 'completed' || t.status === 'cancelled');
+    const hasPending = todos.some(t => t.status === 'pending');
+    const hasInProgress = todos.some(t => t.status === 'in_progress');
+
+    let reminder: string | null = null;
 
     if (allCompleted) {
-      // Add an explicit prompt to summarize completed work
-      const summaryPrompt = `\n<todo_completed>
-All todo items have been completed. Provide a clear summary of what you've accomplished, highlight any important results or changes made, and confirm that the task is complete.
-</todo_completed>`;
-      if (context.systemPrompt) {
-        context.systemPrompt += summaryPrompt;
-      } else {
-        context.systemPrompt = summaryPrompt.trim();
-      }
+      reminder = formatReminder(
+        'all_completed',
+        'All todo items are marked completed or cancelled. Produce a concise summary of what was accomplished and confirm the task is done. Do NOT start new work unless the user asks.',
+      );
+    } else if (hasPending && !hasInProgress && metadata.stepsSinceLastWrite >= REMINDER_CONFIG.STEPS_NO_IN_PROGRESS) {
+      reminder = formatReminder(
+        'no_in_progress',
+        `No task is marked in_progress, but the following items are pending. Mark the task you're currently working on as in_progress:\n\n${formatTodoList(todos)}`,
+      );
     } else if (
       metadata.stepsSinceLastWrite >= REMINDER_CONFIG.STEPS_SINCE_WRITE &&
       metadata.stepsSinceLastReminder >= REMINDER_CONFIG.STEPS_BETWEEN_REMINDERS
     ) {
+      reminder = formatReminder(
+        'stale',
+        `The todo_write tool hasn't been called for ${metadata.stepsSinceLastWrite} steps. Review the current list and update it if your work has progressed. Skip if not relevant.\n\nCurrent todos:\n${formatTodoList(todos)}`,
+      );
+    }
+
+    if (reminder) {
+      context.ephemeralReminders ??= [];
+      context.ephemeralReminders.push(reminder);
       metadata.stepsSinceLastReminder = 0;
-      if (context.systemPrompt) {
-        context.systemPrompt += formatReminder(metadata.todoStore);
-      } else {
-        context.systemPrompt = formatReminder(metadata.todoStore).trim();
-      }
     }
 
     return next();

@@ -45,7 +45,7 @@ describe('Memory E2E flow', () => {
   });
 
   it('Session 1: executes task → auto-extracts memory → persists to disk', async () => {
-    const config: MemoryConfig = { globalBaseDir: tmpDir, autoExtractMinToolCalls: 3 };
+    const config: MemoryConfig = { globalBaseDir: tmpDir, autoExtractMinToolCalls: 3, extractTriggerMode: 'auto' };
     const semanticStore = new JsonlMemoryStore('semantic', config);
     const episodicStore = new JsonlMemoryStore('episodic', config);
     const projectStore = new JsonlMemoryStore('project', config, tmpDir);
@@ -122,6 +122,6 @@ describe('Memory E2E flow', () => {
 
     await middleware.beforeModel(context, async () => context);
     expect(context.systemPrompt).toContain('vitest');
-    expect(context.systemPrompt).toContain('<memory>');
+    expect(context.systemPrompt).toContain('<user_preferences');
   });
 });

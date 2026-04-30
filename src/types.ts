@@ -116,6 +116,8 @@ export type AgentContext = {
   metadata: Record<string, unknown>;
   response?: LLMResponse;
   systemPrompt?: string;
+  /** Ephemeral reminders injected by middleware, consumed by agent-loop before LLM call. Cleared after injection. */
+  ephemeralReminders?: string[];
 };
 
 // Provider interface - all LLM providers must implement this

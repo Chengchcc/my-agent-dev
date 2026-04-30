@@ -44,6 +44,10 @@ export const defaultSettings: Settings = {
     autoExtractMinToolCalls: 3,
     maxInjectedEntries: 10,
     extractionModel: 'claude-3-haiku-20240307',
+    retrievalThreshold: 0.75,
+    retrievalTopK: 5,
+    extractTriggerMode: 'explicit',
+    maxUserPreferences: 20,
   },
   skills: {
     baseDir: './skills',
