@@ -24,7 +24,7 @@ import { debugLog } from './utils/debug';
 import { PermissionMiddleware } from './agent/tool-dispatch/middlewares/permission';
 import { ReadCacheMiddleware } from './agent/tool-dispatch/middlewares/read-cache';
 import type { ToolMiddleware } from './agent/tool-dispatch/middleware';
-import { DEFAULT_MAX_TOKENS, DEFAULT_COMPACTION_BUFFER, DEFAULT_MODEL, DEFAULT_SUMMARY_MODEL } from './config/constants';
+import { DEFAULT_MAX_TOKENS, DEFAULT_COMPACTION_BUFFER, DEFAULT_MODEL, DEFAULT_SUMMARY_MODEL, DEFAULT_TEMPERATURE } from './config/constants';
 
 export interface RuntimeConfig {
   provider?: 'claude' | 'openai';
@@ -280,7 +280,7 @@ function buildClaudeFromEnv(model: string | undefined, maxTokens: number): Claud
     apiKey: (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)!,
     model: model || process.env.MODEL || DEFAULT_MODEL,
     maxTokens,
-    temperature: 0.7,
+    temperature: DEFAULT_TEMPERATURE,
     ...(process.env.ANTHROPIC_BASE_URL ? { baseURL: process.env.ANTHROPIC_BASE_URL } : {}),
   });
 }
@@ -290,7 +290,7 @@ function buildOpenaiFromEnv(model: string | undefined, maxTokens: number): OpenA
     apiKey: process.env.OPENAI_API_KEY!,
     model: model || process.env.MODEL || 'gpt-4o',
     maxTokens,
-    temperature: 0.7,
+    temperature: DEFAULT_TEMPERATURE,
     ...(process.env.OPENAI_BASE_URL ? { baseURL: process.env.OPENAI_BASE_URL } : {}),
   });
 }
