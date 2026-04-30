@@ -1,12 +1,17 @@
 import { describe, test, expect } from 'bun:test';
 import { agentUIReducer, initialState } from '../../src/cli/tui/hooks/agent-ui-reducer';
+import type { Message } from '../../src/types';
+
+const userMsg = (): Message => ({ role: 'user', content: 'test', id: 'user-test-1' });
 
 describe('agentUIReducer', () => {
-  test('SUBMIT_START sets streaming=true and records startTime', () => {
-    const state = agentUIReducer(initialState, { type: 'SUBMIT_START' });
+  test('SUBMIT_START sets streaming=true, appends user message, records startTime', () => {
+    const state = agentUIReducer(initialState, { type: 'SUBMIT_START', userMessage: userMsg() });
     expect(state.streaming).toBe(true);
     expect(state.streamingStartTime).toBeGreaterThan(0);
     expect(state.currentTools).toEqual([]);
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]).toEqual(userMsg());
   });
 
   test('TEXT_DELTA_BATCH updates streaming content and message id', () => {
@@ -59,6 +64,12 @@ describe('agentUIReducer', () => {
     expect(state2.streaming).toBe(false);
   });
 
+  test('SUBMIT_START appends user message to messages array', () => {
+    const state = agentUIReducer(initialState, { type: 'SUBMIT_START', userMessage: userMsg() });
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]).toEqual(userMsg());
+  });
+
   test('LOOP_COMPLETE with usage does NOT double-count (fixed)', () => {
     // After fix: LOOP_COMPLETE never accumulates usage
     // Usage is already handled by TURN_COMPLETE events during iteration
@@ -75,7 +86,7 @@ describe('agentUIReducer', () => {
   });
 
   test('LOOP_COMPLETE always sets streaming=false', () => {
-    const state = agentUIReducer(initialState, { type: 'SUBMIT_START' });
+    const state = agentUIReducer(initialState, { type: 'SUBMIT_START', userMessage: userMsg() });
     expect(state.streaming).toBe(true);
 
     const state2 = agentUIReducer(state, {

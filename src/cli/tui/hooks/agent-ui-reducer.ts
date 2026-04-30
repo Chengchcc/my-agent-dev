@@ -33,7 +33,7 @@ export type AgentUIState = {
 };
 
 export type AgentUIAction =
-  | { type: 'SUBMIT_START' }
+  | { type: 'SUBMIT_START'; userMessage: Message }
   | { type: 'TEXT_DELTA_BATCH'; streamingMessageId: string; content: string }
   | { type: 'TOOL_START'; runningTools: Map<string, ToolCallStartEvent> }
   | { type: 'TOOL_RESULT'; runningTools: Map<string, ToolCallStartEvent>; toolId: string; result: { durationMs: number; isError: boolean }; messages: Message[]; todos: UITodoItem[]; contextTokens: number }
@@ -81,6 +81,7 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
       return {
         ...state,
         streaming: true,
+        messages: [...state.messages, action.userMessage],
         streamingContent: '',
         thinkingContent: null,
         streamingMessageId: null,

@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useAgentLoop } from '../hooks';
 import { useBracketedPaste } from '../hooks/use-bracketed-paste';
 import type { PromptSubmission, SlashCommand } from '../command-registry';
@@ -19,9 +19,15 @@ export function InputBox({
 }) {
   useBracketedPaste();
   const { streaming, pendingInput } = useAgentLoop();
-  const inputProps: { commands: SlashCommand[]; streaming: boolean; onSubmit?: (submission: PromptSubmission) => void | Promise<void>; onAbort?: () => void } = { commands, streaming };
-  if (onSubmit) inputProps.onSubmit = onSubmit;
-  if (onAbort) inputProps.onAbort = onAbort;
+  const inputProps = useMemo(
+    () => {
+      const props: { commands: SlashCommand[]; streaming: boolean; onSubmit?: (submission: PromptSubmission) => void | Promise<void>; onAbort?: () => void } = { commands, streaming };
+      if (onSubmit) props.onSubmit = onSubmit;
+      if (onAbort) props.onAbort = onAbort;
+      return props;
+    },
+    [commands, streaming, onSubmit, onAbort],
+  );
   const { filteredCommands, highlightedCommandName, pickerOpen, placeholder, selectedIndex, displayText, displayCursorOffset, atFiles, atSelectedIndex, atFilePickerOpen } =
     useCommandInput(inputProps);
 

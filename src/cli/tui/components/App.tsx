@@ -43,7 +43,7 @@ export function App({ agent, skillCommands, sessionStore }: AppProps) {
 }
 
 /** Number of most recent message groups kept in ScrollView for tool-call interactivity. */
-const DYNAMIC_WINDOW = 5;
+const DYNAMIC_WINDOW = 1;
 
 type StaticItem = GroupedItem | { type: 'banner' };
 
@@ -183,7 +183,7 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
   const renderStaticItem = useCallback(
     (item: StaticItem, index: number) => {
       if (item.type === 'banner') {
-        return <Header key="banner" sessionStore={sessionStore} compact={isCompact} />;
+        return <Header key="banner" sessionStore={sessionStore} />;
       }
       if (item.type === 'group') {
         return <ToolGroupMessage key={`group-${item.messages[0]?.id ?? index}`} group={item} />;
@@ -196,7 +196,7 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
         />
       );
     },
-    [sessionStore, isCompact],
+    [sessionStore],
   );
 
   debugLog('[render] AppContent', {
@@ -219,10 +219,9 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
               {thinkingContent !== null && (
                 <ThinkingMessage content={thinkingContent} streaming={isStreaming} collapsed={thinkingCollapsed} />
               )}
-              {streamingContent !== null && (
-                <StreamingMessage content={streamingContent} />
+              {isStreaming && (
+                <StreamingMessage content={streamingContent ?? ''} />
               )}
-              {todos.length > 0 && <TodoPanel todos={todos} />}
             </ScrollView>
           </Box>
         </ErrorBoundary>
@@ -235,6 +234,7 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
             onSubmit={respondToPermission}
           /> : null}
         <StreamingIndicator />
+        <TodoPanel todos={todos} />
         {!askUserQuestionRequest && !permissionRequest && (
           <InputBox commands={allCommands} onSubmit={onSubmitWithSkill} onAbort={abort} />
         )}

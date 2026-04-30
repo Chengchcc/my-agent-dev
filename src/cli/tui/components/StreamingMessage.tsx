@@ -17,6 +17,17 @@ const BUCKET_SIZE = 32;
 export function StreamingMessage({ content }: StreamingMessageProps) {
   debugLog('[render] StreamingMessage', { len: content.length, preview: content.slice(0, 200) });
 
+  // Keep the component mounted with a stable 1-line placeholder when content is
+  // empty (e.g. between tool calls), so the layout doesn't jump when streaming
+  // resumes. Without this, mount/unmount causes visible vertical jitter.
+  if (!content) {
+    return (
+      <Box height={1}>
+        <Text>{' '}</Text>
+      </Box>
+    );
+  }
+
   // Bucket by character count: only re-parse markdown every BUCKET_SIZE chars.
   // No timers, no useDeferredValue (Ink renderer doesn't support concurrent mode).
   // The bucketBoundary is used as a memo dependency key only — we always render

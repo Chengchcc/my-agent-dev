@@ -1,3 +1,4 @@
+import { nanoid } from 'nanoid';
 import React, { useCallback, useEffect, useMemo, useRef, useReducer } from 'react';
 import { createContext as createSelectorContext, useContextSelector } from 'use-context-selector';
 import type { ReactNode } from 'react';
@@ -242,7 +243,9 @@ export function AgentLoopProvider({
         return;
       }
 
-      dispatch({ type: 'SUBMIT_START' });
+      const userId = `user-${nanoid()}`;
+      const userMessage: Message = { role: 'user', content: text, id: userId };
+      dispatch({ type: 'SUBMIT_START', userMessage });
       streamingContentRef.current = '';
       streamingActiveRef.current = true;
       streamGenRef.current++;
@@ -254,7 +257,7 @@ export function AgentLoopProvider({
 
       try {
         // Run agentic loop - yields events for each step
-        for await (const event of agent.runAgentLoop({ role: 'user', content: text })) {
+        for await (const event of agent.runAgentLoop({ role: 'user', content: text, id: userId })) {
           debugLog(`[agent-loop] event: ${event.type} t=${performance.now().toFixed(0)}`);
           if (event.type === 'thinking_delta') {
             dispatch({ type: 'THINKING_DELTA', delta: event.delta });
@@ -481,5 +484,6 @@ export function useAgentLoop() {
 
 function clearTerminal() {
   if (!process.stdout.isTTY) return;
-  process.stdout.write('\u001B[2J\u001B[3J\u001B[H');
+  // Clear current frame only — preserve scrollback so Static history isn't erased
+  process.stdout.write('\u001B[H\u001B[J');
 }

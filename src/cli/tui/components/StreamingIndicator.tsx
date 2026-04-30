@@ -45,9 +45,10 @@ export function PureStreamingIndicator({
   }, [streaming]);
 
   const elapsedMs = streamingStartTime ? Date.now() - streamingStartTime : 0;
-  const elapsedSec = (elapsedMs / 1000).toFixed(1);
+  const elapsedSec = ((elapsedMs / 1000).toFixed(1)).padStart(6);
   // Turn count = number of completed assistant messages + this current turn
   const turnCount = messages.filter(m => m.role === 'assistant').length;
+  const turnStr = String(turnCount).padStart(3);
 
   const hasRunningTools = currentTools.length > 0;
   const statusText = hasRunningTools
@@ -60,7 +61,7 @@ export function PureStreamingIndicator({
         <>
           <Text color="cyan">{SPINNER_FRAMES[frame]}</Text>
           <Text dimColor>{statusText}</Text>
-          <Text dimColor>Turn {turnCount}</Text>
+          <Text dimColor>Turn {turnStr}</Text>
           <Text dimColor>{elapsedSec}s</Text>
           {nextTodo ? <Text dimColor>Next: {nextTodo}</Text> : null}
           <Text dimColor>[esc to interrupt]</Text>

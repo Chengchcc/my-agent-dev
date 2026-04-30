@@ -41,7 +41,7 @@ export class AgentLoop {
    * Yields events for each step for observable execution.
    */
   async *run(
-    userMessage: { role: 'user'; content: string },
+    userMessage: { role: 'user'; content: string; id?: string },
     loopConfig?: Partial<AgentLoopConfig>,
     options?: { signal?: AbortSignal },
   ): AsyncGenerator<AgentEvent> {
@@ -119,11 +119,12 @@ export class AgentLoop {
   // ===== Phase 1: Setup =====
 
   private async runSetup(
-    userMessage: { role: 'user'; content: string },
+    userMessage: { role: 'user'; content: string; id?: string },
   ): Promise<void> {
     this.contextManager.addMessage({
       role: 'user',
       content: userMessage.content,
+      ...(userMessage.id ? { id: userMessage.id } : {}),
     });
 
     const initialContext = this.contextManager.getContext(this.config);

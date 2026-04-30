@@ -5,13 +5,13 @@ import { TodoPanel } from '../../../src/cli/tui/components/TodoPanel';
 import { BlinkProvider } from '../../../src/cli/tui/components/BlinkContext';
 
 describe('TodoPanel', () => {
-  test('shows "No todos" when empty', () => {
+  test('renders nothing when empty', () => {
     const { lastFrame } = render(
       <BlinkProvider>
         <TodoPanel todos={[]} />
       </BlinkProvider>
     );
-    expect(lastFrame()).toContain('No todos');
+    expect(lastFrame()).toBe('');
   });
 
   test('renders todos with correct status indicators', () => {

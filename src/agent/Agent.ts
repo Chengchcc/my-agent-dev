@@ -70,7 +70,7 @@ export class Agent {
   }
 
   async *runAgentLoop(
-    userMessage: { role: 'user'; content: string },
+    userMessage: { role: 'user'; content: string; id?: string },
     loopConfig?: Partial<AgentLoopConfig>,
     options?: { signal?: AbortSignal },
   ): AsyncGenerator<AgentEvent> {

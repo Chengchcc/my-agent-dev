@@ -41,19 +41,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
   };
 
   if (todos.length === 0) {
-    return (
-      <Box
-        flexDirection="column"
-        borderStyle="round"
-        borderColor="gray"
-        paddingX={1}
-        marginY={1}
-      >
-        <Text color="gray" dimColor>
-          No todos in list
-        </Text>
-      </Box>
-    );
+    return null;
   }
 
   return (

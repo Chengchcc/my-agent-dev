@@ -53,7 +53,7 @@ describe('PureStreamingIndicator', () => {
         { role: 'assistant', content: 'two' },
       ],
     });
-    expect(lastFrame()).toContain('Turn 2');
+    expect(lastFrame()).toContain('Turn   2');
   });
 
   test('shows nextTodo when provided', () => {
