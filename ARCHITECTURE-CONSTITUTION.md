@@ -55,6 +55,7 @@ The following code patterns appearing in diffs will be directly blocked by `chec
 - New calls to `syncTodoFromContext`
 - `console.log` (use `debugLog` or structured logger)
 - `// @ts-ignore` / `// @ts-expect-error` without justification comment
+- `@typescript-eslint/no-magic-numbers` violations — numeric literals (beyond -1/0/1/2 used as loop/index/offset constants) must be named constants. String literals that form a closed set must use `as const` arrays with derived types. Duplicate literal occurrences across files must be consolidated.
 
 ## J. Requirements for AI Coding Assistants
 - Before any refactoring, run `git grep` to find similar implementations, prioritize reuse.
