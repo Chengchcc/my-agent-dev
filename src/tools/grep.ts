@@ -10,6 +10,8 @@ import { isTextFile } from '../utils/is-text-file';
 
 const DEFAULT_EXCLUDE_PATTERNS = ['node_modules', '.git', 'dist', 'build', '.DS_Store'];
 
+const DEFAULT_GREP_MAX_RESULTS = 100;
+
 /**
  * Check if a file name matches a glob pattern using minimatch
  */
@@ -23,7 +25,7 @@ export class GrepTool extends ZodTool {
     path: z.string().default(process.cwd()).describe('Base directory to search from'),
     include: z.string().optional().describe('Glob filter for file names (e.g., *.ts, *.{ts,tsx})'),
     exclude: z.array(z.string()).default(DEFAULT_EXCLUDE_PATTERNS).describe('Patterns to exclude'),
-    max_results: z.number().int().positive().default(100).describe('Maximum matching lines to return'),
+    max_results: z.number().int().positive().default(DEFAULT_GREP_MAX_RESULTS).describe('Maximum matching lines to return'),
     case_sensitive: z.boolean().default(false).describe('Case sensitive search'),
     is_regex: z.boolean().default(false).describe('Is pattern a regular expression'),
     context_lines: z.number().int().nonnegative().default(0).describe('Context lines before/after each match'),

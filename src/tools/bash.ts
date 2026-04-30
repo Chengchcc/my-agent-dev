@@ -4,6 +4,12 @@ import { z } from 'zod';
 import { ZodTool } from './zod-tool';
 import type { ToolContext } from '../agent/tool-dispatch/types';
 
+const DEFAULT_BASH_TIMEOUT_MS = 120_000;
+const DEFAULT_MAX_OUTPUT_BYTES = 1024 * 1024;
+const CHILD_PROCESS_MAX_BUFFER = 10 * 1024 * 1024;
+const SIGTERM_EXIT_CODE = 130;
+const TIMEOUT_EXIT_CODE = 124;
+
 /**
  * Options for BashTool.
  */
@@ -36,8 +42,8 @@ export class BashTool extends ZodTool<typeof BashSchema> {
 
   constructor(options: BashToolOptions = {}) {
     super();
-    this.timeoutMs = options.timeoutMs ?? 120_000;
-    this.maxOutputBytes = options.maxOutputBytes ?? 1024 * 1024;
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_BASH_TIMEOUT_MS;
+    this.maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
     this.allowedWorkingDirs = options.allowedWorkingDirs ?? [];
   }
 
@@ -74,7 +80,7 @@ export class BashTool extends ZodTool<typeof BashSchema> {
 
       const proc = exec(args.command, {
         cwd,
-        maxBuffer: 10 * 1024 * 1024, // 10MB - let manual truncation below handle our limit
+        maxBuffer: CHILD_PROCESS_MAX_BUFFER, // 10MB - let manual truncation below handle our limit
         timeout: this.timeoutMs,
       });
 
@@ -142,7 +148,7 @@ export class BashTool extends ZodTool<typeof BashSchema> {
           resolved = true;
           resolve({
             output,
-            exitCode: 130, // SIGTERM exit code
+            exitCode: SIGTERM_EXIT_CODE, // SIGTERM exit code
             timedOut: false,
             truncated,
           });
@@ -171,7 +177,7 @@ export class BashTool extends ZodTool<typeof BashSchema> {
         resolved = true;
         resolve({
           output,
-          exitCode: 124, // standard timeout exit code
+          exitCode: TIMEOUT_EXIT_CODE, // standard timeout exit code
           timedOut: true,
           truncated,
         });
@@ -186,7 +192,7 @@ export class BashTool extends ZodTool<typeof BashSchema> {
         }
         // Check if the process was killed due to timeout (even if we didn't get the timeout event)
         const timedOut = this.timeoutMs > 0 && signal === 'SIGTERM';
-        const exitCode = timedOut ? 124 : code;
+        const exitCode = timedOut ? TIMEOUT_EXIT_CODE : code;
         resolve({
           output,
           exitCode,

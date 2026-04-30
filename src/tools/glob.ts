@@ -7,13 +7,16 @@ import { ZodTool } from './zod-tool';
 
 const DEFAULT_EXCLUDE_PATTERNS = ['node_modules', '.git', 'dist', 'build', '.DS_Store', '*.env', '*.key', '*credential*'];
 
+const DEFAULT_GLOB_MAX_RESULTS = 200;
+const DEFAULT_GLOB_MAX_DEPTH = 30;
+
 export class GlobTool extends ZodTool {
   schema = z.object({
     pattern: z.string().describe('Glob pattern (e.g., src/**/*.ts, **/package.json)'),
     path: z.string().default(process.cwd()).describe('Base directory to search from'),
     exclude: z.array(z.string()).default(DEFAULT_EXCLUDE_PATTERNS).describe('Patterns to exclude'),
-    max_results: z.number().int().positive().default(200).describe('Maximum results to return'),
-    deep: z.number().int().positive().default(30).describe('Maximum directory depth to search'),
+    max_results: z.number().int().positive().default(DEFAULT_GLOB_MAX_RESULTS).describe('Maximum results to return'),
+    deep: z.number().int().positive().default(DEFAULT_GLOB_MAX_DEPTH).describe('Maximum directory depth to search'),
     include_hidden: z.boolean().default(false).describe('Include hidden files (starting with .)'),
   });
 

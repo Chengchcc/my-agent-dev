@@ -6,10 +6,13 @@ import type { ToolContext } from '../agent/tool-dispatch/types';
 import { ZodTool } from './zod-tool';
 import { debugWarn } from '../utils/debug';
 
+const DEFAULT_LS_DEPTH = 1;
+const MAX_LS_DEPTH = 5;
+
 export class LsTool extends ZodTool {
   schema = z.object({
     path: z.string().default(process.cwd()).describe('Directory path to list'),
-    depth: z.number().int().min(1).max(5).default(1).describe('Recursion depth'),
+    depth: z.number().int().min(1).max(MAX_LS_DEPTH).default(DEFAULT_LS_DEPTH).describe('Recursion depth'),
     include_hidden: z.boolean().default(false).describe('Include hidden files'),
     sort_by: z.enum(['name', 'size', 'modified']).default('name').describe('Sort order'),
   });

@@ -3,6 +3,8 @@ import { z } from 'zod';
 import type { ToolContext } from '../agent/tool-dispatch/types';
 import { ZodTool } from './zod-tool';
 
+const MAX_TAB_LABEL_LENGTH = 12;
+
 /**
  * A single selectable choice inside a question.
  */
@@ -40,8 +42,8 @@ const askUserQuestionItemSchema = z.object({
   question: z.string().describe('Full question text; be specific and end with a question mark where appropriate.'),
   header: z
     .string()
-    .max(12)
-    .describe('Very short tab/tag label (max 12 characters), e.g. Auth, Library.'),
+    .max(MAX_TAB_LABEL_LENGTH)
+    .describe(`Very short tab/tag label (max ${MAX_TAB_LABEL_LENGTH} characters), e.g. Auth, Library.`),
   options: z
     .array(askUserQuestionOptionSchema)
     .min(2)
