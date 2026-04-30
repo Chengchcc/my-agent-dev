@@ -28,8 +28,8 @@ export type AgentUIState = {
   interrupted: boolean;
   /** Tool IDs whose error action bars have been dismissed */
   ignoredErrors: Set<string>;
-  /** User input submitted during streaming, waiting to be sent after current turn */
-  pendingInput: string | null;
+  /** Queue of user inputs submitted during streaming, waiting to be sent after current turn */
+  pendingInputs: string[];
 };
 
 export type AgentUIAction =
@@ -50,7 +50,10 @@ export type AgentUIAction =
   | { type: 'SET_CONTEXT_TOKENS'; tokens: number }
   | { type: 'SET_INTERRUPTED'; interrupted: boolean }
   | { type: 'IGNORE_ERROR'; toolId: string }
-  | { type: 'SET_PENDING_INPUT'; text: string | null };
+  | { type: 'ENQUEUE_PENDING_INPUT'; text: string }
+  | { type: 'DEQUEUE_PENDING_INPUT' }
+  | { type: 'REMOVE_PENDING_INPUT'; index: number }
+  | { type: 'CLEAR_PENDING_INPUTS' };
 
 export const initialState: AgentUIState = {
   streaming: false,
@@ -70,7 +73,7 @@ export const initialState: AgentUIState = {
   streamingStartTime: null,
   interrupted: false,
   ignoredErrors: new Set<string>(),
-  pendingInput: null,
+  pendingInputs: [],
 };
 
  
@@ -88,7 +91,7 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
         currentTools: [],
         streamingStartTime: Date.now(),
         interrupted: false,
-        pendingInput: null,
+        // pendingInputs preserved - consumed via DEQUEUE during flush
       };
 
     case 'THINKING_DELTA':
@@ -239,8 +242,17 @@ export function agentUIReducer(state: AgentUIState, action: AgentUIAction): Agen
       return { ...state, ignoredErrors: nextIgnored };
     }
 
-    case 'SET_PENDING_INPUT':
-      return { ...state, pendingInput: action.text };
+    case 'ENQUEUE_PENDING_INPUT':
+      return { ...state, pendingInputs: [...state.pendingInputs, action.text] };
+    case 'DEQUEUE_PENDING_INPUT':
+      return { ...state, pendingInputs: state.pendingInputs.slice(1) };
+    case 'REMOVE_PENDING_INPUT':
+      return {
+        ...state,
+        pendingInputs: state.pendingInputs.filter((_, i) => i !== action.index),
+      };
+    case 'CLEAR_PENDING_INPUTS':
+      return { ...state, pendingInputs: [] };
 
     default:
       void (0 as never);

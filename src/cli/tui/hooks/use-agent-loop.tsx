@@ -59,8 +59,12 @@ type AgentLoopState = {
   ignoredErrors: Set<string>;
   /** Dismiss the error action bar for a tool */
   ignoreError: (toolId: string) => void;
-  /** User input submitted during streaming, waiting to be processed */
-  pendingInput: string | null;
+  /** Queue of user inputs submitted during streaming, waiting to be processed */
+  pendingInputs: string[];
+  /** Cancel a specific pending input by index */
+  cancelPendingInput: (index: number) => void;
+  /** Clear all pending inputs */
+  clearPendingInputs: () => void;
 };
 
 const AgentLoopContext = createSelectorContext<AgentLoopState | null>(null);
@@ -97,13 +101,13 @@ export function AgentLoopProvider({
     streamingStartTime,
     interrupted,
     ignoredErrors,
-    pendingInput,
+    pendingInputs,
   } = state;
 
   const streamingRef = useRef(streaming);
   const streamingContentRef = useRef('');
   const pendingFlush = useRef(false);
-  const pendingInputRef = useRef<string | null>(null);
+  const pendingInputQueueRef = useRef<string[]>([]);
   const streamGenRef = useRef(0);
   const streamingActiveRef = useRef(false);
 
@@ -118,6 +122,16 @@ export function AgentLoopProvider({
 
   const ignoreError = useCallback((toolId: string) => {
     dispatch({ type: 'IGNORE_ERROR', toolId });
+  }, []);
+
+  const cancelPendingInput = useCallback((index: number) => {
+    pendingInputQueueRef.current = pendingInputQueueRef.current.filter((_, i) => i !== index);
+    dispatch({ type: 'REMOVE_PENDING_INPUT', index });
+  }, []);
+
+  const clearPendingInputs = useCallback(() => {
+    pendingInputQueueRef.current = [];
+    dispatch({ type: 'CLEAR_PENDING_INPUTS' });
   }, []);
 
   // Helper to refresh messages from agent context
@@ -193,12 +207,11 @@ export function AgentLoopProvider({
   const onSubmit = useCallback(
     // eslint-disable-next-line complexity
     async (text: string) => {
-      // During streaming, interrupt current generation and queue input for re-submission
+      // During streaming, enqueue input as pending — do NOT abort.
+      // User can press Esc to abort if they want immediate control.
       if (streamingRef.current) {
-        pendingInputRef.current = text;
-        dispatch({ type: 'SET_PENDING_INPUT', text });
-        agent.abort();
-        dispatch({ type: 'SET_INTERRUPTED', interrupted: true });
+        pendingInputQueueRef.current.push(text);
+        dispatch({ type: 'ENQUEUE_PENDING_INPUT', text });
         return;
       }
 
@@ -311,7 +324,7 @@ export function AgentLoopProvider({
           } else if (event.type === 'agent_error') {
             debugLog('[agent-loop] agent_error details:', event.error);
             // Suppress error message for intentional user interrupts (pending input will restart the loop)
-            if (!pendingInputRef.current) {
+            if (pendingInputQueueRef.current.length === 0) {
               const errorMessage: Message = {
                 role: 'assistant',
                 content: `Error: ${event.error.message}`,
@@ -383,11 +396,11 @@ export function AgentLoopProvider({
       // Eagerly sync streamingRef since the loop has ended
       streamingRef.current = false;
 
-      // Process pending input from an interrupt during streaming
-      if (pendingInputRef.current) {
-        const pendingText = pendingInputRef.current;
-        pendingInputRef.current = null;
-        await onSubmit(pendingText);
+      // Process pending inputs queued during streaming
+      while (pendingInputQueueRef.current.length > 0) {
+        const next = pendingInputQueueRef.current.shift()!;
+        dispatch({ type: 'DEQUEUE_PENDING_INPUT' });
+        await onSubmit(next);
       }
     },
     [agent, sessionStore, onOutput, refreshMessages, refreshTodos],
@@ -448,9 +461,11 @@ export function AgentLoopProvider({
       toggleFocusedTool,
       moveFocus,
       ignoredErrors,
-      pendingInput,
+      pendingInputs,
+      cancelPendingInput,
+      clearPendingInputs,
     }),
-    [agent, messages, streamingContent, streamingMessageId, onSubmit, onSubmitWithSkill, abort, ignoreError, streaming, todos, currentTools, runningSubAgents, completedSubAgents, focusedToolId, expandedTools, toolResults, totalUsage, contextTokens, tokenLimit, streamingStartTime, interrupted, focusTool, toggleFocusedTool, moveFocus, ignoredErrors, pendingInput],
+    [agent, messages, streamingContent, streamingMessageId, onSubmit, onSubmitWithSkill, abort, ignoreError, streaming, todos, currentTools, runningSubAgents, completedSubAgents, focusedToolId, expandedTools, toolResults, totalUsage, contextTokens, tokenLimit, streamingStartTime, interrupted, focusTool, toggleFocusedTool, moveFocus, ignoredErrors, pendingInputs, cancelPendingInput, clearPendingInputs],
   );
 
   return (
