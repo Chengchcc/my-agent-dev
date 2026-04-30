@@ -1,16 +1,24 @@
 import type { Settings } from './types';
+import {
+  DEFAULT_MODEL,
+  DEFAULT_MAX_TOKENS,
+  DEFAULT_TEMPERATURE,
+  DEFAULT_SUMMARY_MODEL,
+  DEFAULT_MAX_SUMMARY_TOKENS,
+  DEFAULT_TOKEN_LIMIT,
+} from './constants';
 
 export const defaultSettings: Settings = {
   llm: {
     provider: 'claude',
-    model: 'claude-3-5-sonnet-20241022',
-    maxTokens: 4096,
-    temperature: 0.7,
+    model: DEFAULT_MODEL,
+    maxTokens: DEFAULT_MAX_TOKENS,
+    temperature: DEFAULT_TEMPERATURE,
     apiKey: null,
     baseURL: null,
   },
   context: {
-    tokenLimit: 180000,
+    tokenLimit: DEFAULT_TOKEN_LIMIT,
     budgetGuard: {
       enabled: true,
       delegateThreshold: 0.30,
@@ -25,8 +33,8 @@ export const defaultSettings: Settings = {
       collapseRatio: 0.90,
       toolOutputSnipThreshold: 8000,
       preserveRecentTurns: 4,
-      summaryModel: 'claude-3-5-haiku-20241022',
-      maxSummaryTokens: 1024,
+      summaryModel: DEFAULT_SUMMARY_MODEL,
+      maxSummaryTokens: DEFAULT_MAX_SUMMARY_TOKENS,
       enabledTiers: {
         snip: true,
         autoCompact: true,

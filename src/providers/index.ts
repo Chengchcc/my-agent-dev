@@ -2,6 +2,7 @@ import { debugLog } from '../utils/debug';
 import type { LLMSettings } from '../config/types';
 import type { Provider } from '../types';
 import type { ThinkingDecoder } from './thinking/types';
+import { DEFAULT_THINKING_BUDGET } from '../config/constants';
 import { ClaudeProvider } from './claude';
 import { OpenAIProvider } from './openai';
 import { AnthropicNativeDecoder } from './thinking/anthropic-native';
@@ -42,7 +43,7 @@ export function createProviderFromSettings(settings: LLMSettings): Provider {
     if (thinkingDecoder) {
       debugLog('  thinking: enabled, decoder:', settings.thinking?.decoder ?? 'anthropic');
     }
-    const budgetTokens = settings.thinking?.budgetTokens ?? 8000;
+    const budgetTokens = settings.thinking?.budgetTokens ?? DEFAULT_THINKING_BUDGET;
     return new ClaudeProvider({
       apiKey: settings.apiKey!,
       model: settings.model,

@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { convertToClaudeMessages, extractSystemPrompt } from './claude-utils';
 import type { Provider, Tool, LLMResponse, LLMResponseChunk, AgentContext, ContentBlock } from '../types';
 import type { ThinkingDecoder } from './thinking/types';
+import { DEFAULT_TEMPERATURE, DEFAULT_THINKING_BUDGET } from '../config/constants';
 
 export class ClaudeProvider implements Provider {
   private client: Anthropic;
@@ -27,9 +28,9 @@ export class ClaudeProvider implements Provider {
     });
     this.model = config.model;
     this.maxTokens = config.maxTokens;
-    this.temperature = config.temperature ?? 0.7;
+    this.temperature = config.temperature ?? DEFAULT_TEMPERATURE;
     this.thinkingDecoder = config.thinkingDecoder ?? null;
-    this.thinkingBudgetTokens = config.thinkingBudgetTokens ?? 8000;
+    this.thinkingBudgetTokens = config.thinkingBudgetTokens ?? DEFAULT_THINKING_BUDGET;
   }
 
   /**

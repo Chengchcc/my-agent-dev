@@ -1,11 +1,12 @@
 import crypto from 'crypto';
 import type { Message, Provider, AgentContext } from '../types';
 import type { MemoryEntry, MemoryExtractor } from './types';
+import { DEFAULT_SUMMARY_MODEL } from '../config/constants';
 
 export class LlmExtractor implements MemoryExtractor {
   constructor(
     private provider: Provider,
-    private extractionModel: string = 'claude-3-5-haiku-20241022',
+    private extractionModel: string = DEFAULT_SUMMARY_MODEL,
   ) {}
 
   async extract(messages: Message[], projectPath?: string): Promise<MemoryEntry[]> {

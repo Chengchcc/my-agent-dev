@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import type { Message, Provider, Tool, LLMResponse, LLMResponseChunk, AgentContext } from '../types';
+import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from '../config/constants';
 
 export class OpenAIProvider implements Provider {
   private client: OpenAI;
@@ -20,8 +21,8 @@ export class OpenAIProvider implements Provider {
       baseURL: config.baseURL,
     });
     this.model = config.model;
-    this.maxTokens = config.maxTokens ?? 4096;
-    this.temperature = config.temperature ?? 0.7;
+    this.maxTokens = config.maxTokens ?? DEFAULT_MAX_TOKENS;
+    this.temperature = config.temperature ?? DEFAULT_TEMPERATURE;
   }
 
   /**

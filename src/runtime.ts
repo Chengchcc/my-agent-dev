@@ -24,6 +24,7 @@ import { debugLog } from './utils/debug';
 import { PermissionMiddleware } from './agent/tool-dispatch/middlewares/permission';
 import { ReadCacheMiddleware } from './agent/tool-dispatch/middlewares/read-cache';
 import type { ToolMiddleware } from './agent/tool-dispatch/middleware';
+import { DEFAULT_MAX_TOKENS, DEFAULT_COMPACTION_BUFFER, DEFAULT_MODEL, DEFAULT_SUMMARY_MODEL } from './config/constants';
 
 export interface RuntimeConfig {
   provider?: 'claude' | 'openai';
@@ -91,7 +92,7 @@ export async function createAgentRuntime(
 
   // Token limit - from settings or default
   const tokenLimit = settings?.context.tokenLimit || 100_000;
-  const maxTokens = settings?.llm.maxTokens || 4096;
+  const maxTokens = settings?.llm.maxTokens || DEFAULT_MAX_TOKENS;
 
   // Context manager with optional tiered compaction
   let compressionStrategy: TieredCompactionManager | undefined;
@@ -99,7 +100,7 @@ export async function createAgentRuntime(
     const tokenBudgetCalc = new TokenBudgetCalculator(
       tokenLimit,
       maxTokens,
-      2048, // compaction buffer
+      DEFAULT_COMPACTION_BUFFER, // compaction buffer
     );
 
     const compactionConfig = {
@@ -109,7 +110,7 @@ export async function createAgentRuntime(
         ...settings.context.compaction,
       },
       summaryProvider: provider,
-      summaryModel: settings.context.compaction.summaryModel || 'claude-3-5-haiku-20241022',
+      summaryModel: settings.context.compaction.summaryModel || DEFAULT_SUMMARY_MODEL,
     };
 
     compressionStrategy = new TieredCompactionManager(tokenBudgetCalc, compactionConfig);
@@ -252,7 +253,7 @@ function createProviderFromEnv(config: RuntimeConfig): Provider {
   const {
     provider: providerName,
     model,
-    maxTokens = 4096,
+    maxTokens = DEFAULT_MAX_TOKENS,
   } = config;
 
   const hasClaudeKey = !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
@@ -277,7 +278,7 @@ function createProviderFromEnv(config: RuntimeConfig): Provider {
 function buildClaudeFromEnv(model: string | undefined, maxTokens: number): ClaudeProvider {
   return new ClaudeProvider({
     apiKey: (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)!,
-    model: model || process.env.MODEL || 'claude-3-5-sonnet-20241022',
+    model: model || process.env.MODEL || DEFAULT_MODEL,
     maxTokens,
     temperature: 0.7,
     ...(process.env.ANTHROPIC_BASE_URL ? { baseURL: process.env.ANTHROPIC_BASE_URL } : {}),
