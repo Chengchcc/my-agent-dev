@@ -1,10 +1,11 @@
 import type { LineToken } from '../components/utils/tokenize-by-line';
 
 const CACHE_MAX_SIZE = 50;
+const SYNTAX_CACHE_KEY_PREVIEW_LENGTH = 64;
 const cache = new Map<string, LineToken[][]>();
 
 function makeCacheKey(content: string, lang: string): string {
-  const preview = content.slice(0, 64).replace(/\n/g, '\\n');
+  const preview = content.slice(0, SYNTAX_CACHE_KEY_PREVIEW_LENGTH).replace(/\n/g, '\\n');
   return `${lang}:${content.length}:${preview}`;
 }
 

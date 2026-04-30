@@ -1,6 +1,10 @@
 import type { SlashCommand } from '../command-registry';
 import type { CommandHandlerContext } from '../types';
 
+const TOKEN_LIMIT_FALLBACK = 128_000;
+const TOOL_DESC_DISPLAY_WIDTH = 80;
+const TOOL_DESC_MIN_WIDTH = 77;
+
 interface AgentToolAccess {
   getToolRegistry?: () => {
     getAllDefinitions(): Array<{ name: string; description: string; parameters?: unknown }>;
@@ -14,7 +18,7 @@ async function handleCost(ctx: CommandHandlerContext): Promise<void> {
   const { agent, onOutput } = ctx;
   const cm = agent.getContextManager();
   const currentTokens = cm.getCurrentTokens();
-  const tokenLimit = agent.config.tokenLimit || 128000;
+  const tokenLimit = agent.config.tokenLimit || TOKEN_LIMIT_FALLBACK;
   const ratio = tokenLimit > 0 ? (currentTokens / tokenLimit * 100).toFixed(1) : '0';
   const remaining = tokenLimit - currentTokens;
   const accumulated = cm.getAccumulatedOutputTokens();
@@ -46,7 +50,7 @@ async function handleTools(ctx: CommandHandlerContext): Promise<void> {
   const lines = [`Registered tools (${tools.length}):`, ''];
   const maxLen = Math.max(...tools.map(t => t.name.length));
   for (const tool of tools) {
-    const desc = tool.description.length > 80 ? tool.description.slice(0, 77) + '...' : tool.description;
+    const desc = tool.description.length > TOOL_DESC_DISPLAY_WIDTH ? tool.description.slice(0, TOOL_DESC_MIN_WIDTH) + '...' : tool.description;
     lines.push(`  ${tool.name.padEnd(maxLen + 2)} ${desc}`);
   }
   onOutput(lines.join('\n'));

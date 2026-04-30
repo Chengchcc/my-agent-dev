@@ -21,6 +21,12 @@ import {
 import { useInputHistory } from "./use-input-history";
 import { attachmentMap, createPasteMarker, createPasteMarkerRe, getFoldedDisplay, hasPasteMarkers, resolvePastePlaceholders } from "../paste-attachments";
 
+const AT_FILE_GLOB_DEPTH = 10;
+const MAX_AT_FILE_RESULTS = 15;
+const AT_FILE_DEBOUNCE_MS = 120;
+const PASTE_FOLD_LINE_THRESHOLD = 3;
+const PASTE_FOLD_CHAR_THRESHOLD = 200;
+
 function getAtQuery(text: string): { query: string; start: number } | null {
   const lastAt = text.lastIndexOf('@');
   if (lastAt === -1) return null;
@@ -92,16 +98,16 @@ export function useCommandInput({
       fastGlob(`**/*${atQuery.query}*`, {
         cwd: process.cwd(),
         dot: true,
-        deep: 10,
+        deep: AT_FILE_GLOB_DEPTH,
         suppressErrors: true,
         onlyFiles: true,
         ignore: ['**/node_modules/**', '**/.git/**'],
       }).then(files => {
-        if (!cancelled) setAtFiles(files.slice(0, 15));
+        if (!cancelled) setAtFiles(files.slice(0, MAX_AT_FILE_RESULTS));
       }).catch(() => {
         if (!cancelled) setAtFiles([]);
       });
-    }, 120);
+    }, AT_FILE_DEBOUNCE_MS);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [atQuery?.query]);
   const atFilePickerOpen = atQuery !== null && dismissedAtQuery !== atQuery.query && atFiles.length > 0;
@@ -386,7 +392,7 @@ export function useCommandInput({
         const content = pasteMatch[2]!;
         const lineCount = content.split('\n').length;
         // Only fold substantial pastes; small snippets are inserted directly
-        if (lineCount > 3 || content.length > 200) {
+        if (lineCount > PASTE_FOLD_LINE_THRESHOLD || content.length > PASTE_FOLD_CHAR_THRESHOLD) {
           attachmentMap.set(id, content);
           exitBrowsing();
           const marker = createPasteMarker(id);

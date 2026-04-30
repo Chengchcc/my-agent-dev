@@ -3,6 +3,9 @@ import type { SessionStore } from '../../../session/store';
 import type { CommandHandlerContext } from '../types';
 import chalk from 'chalk';
 
+const SESSION_ID_PREFIX_LENGTH = 8;
+const SESSION_PREVIEW_MAX_LENGTH = 60;
+
 /**
  * Format session list for display
  */
@@ -14,10 +17,10 @@ function formatSessionList(sessions: Awaited<ReturnType<SessionStore['listSessio
   const lines = ['Saved sessions (newest first):', ''];
 
   sessions.forEach((session, index) => {
-    const shortId = session.id.slice(0, 8);
+    const shortId = session.id.slice(0, SESSION_ID_PREFIX_LENGTH);
     const date = new Date(session.updatedAt).toLocaleString();
     const preview = session.lastUserMessage
-      ? session.lastUserMessage.slice(0, 60) + (session.lastUserMessage.length > 60 ? '...' : '')
+      ? session.lastUserMessage.slice(0, SESSION_PREVIEW_MAX_LENGTH) + (session.lastUserMessage.length > SESSION_PREVIEW_MAX_LENGTH ? '...' : '')
       : '(empty)';
 
     lines.push(`${chalk.bold(String(index + 1))}. ${chalk.cyan(shortId)} - ${date}`);
@@ -25,7 +28,7 @@ function formatSessionList(sessions: Awaited<ReturnType<SessionStore['listSessio
     lines.push('');
   });
 
-  lines.push(`Use ${chalk.bold('/resume <id>')} to resume a session (prefix matching works, e.g. ${chalk.bold('/resume ' + sessions[0]?.id.slice(0, 8))})`);
+  lines.push(`Use ${chalk.bold('/resume <id>')} to resume a session (prefix matching works, e.g. ${chalk.bold('/resume ' + sessions[0]?.id.slice(0, SESSION_ID_PREFIX_LENGTH))})`);
   return lines.join('\n');
 }
 

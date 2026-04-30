@@ -10,6 +10,19 @@ interface DiffData {
   }>;
 }
 
+// Truncation lengths for tool call titles
+const BASH_CMD_TRUNCATION = 80;
+const SUB_AGENT_TASK_TRUNCATION = 60;
+const GREP_PATTERN_TRUNCATION = 40;
+const DEFAULT_ARG_TRUNCATION = 30;
+
+// Result folding thresholds
+const RESULT_COLLAPSIBLE_MIN_LINES = 3;
+const ERROR_DISPLAY_LINES = 10;
+const MEDIUM_RESULT_MAX_LINES = 20;
+const LONG_RESULT_HEAD_LINES = 5;
+const LONG_RESULT_TAIL_LINES = 3;
+
 /**
  * Truncate string to max length
  */
@@ -54,7 +67,7 @@ export function formatToolCallTitle(toolCall: ToolCall): string {
 
   switch (name) {
     case 'bash': {
-      const cmd = truncate(String(args.command ?? ''), 80);
+      const cmd = truncate(String(args.command ?? ''), BASH_CMD_TRUNCATION);
       return `bash(${JSON.stringify(cmd)})`;
     }
 
@@ -65,7 +78,7 @@ export function formatToolCallTitle(toolCall: ToolCall): string {
     }
 
     case 'sub_agent': {
-      const task = truncate(String(args.task ?? ''), 60);
+      const task = truncate(String(args.task ?? ''), SUB_AGENT_TASK_TRUNCATION);
       return `sub_agent(${JSON.stringify(task)})`;
     }
 
@@ -77,7 +90,7 @@ export function formatToolCallTitle(toolCall: ToolCall): string {
     }
 
     case 'grep': {
-      const pattern = truncate(String(args.pattern ?? ''), 40);
+      const pattern = truncate(String(args.pattern ?? ''), GREP_PATTERN_TRUNCATION);
       return `grep(${JSON.stringify(pattern)})`;
     }
 
@@ -92,7 +105,7 @@ export function formatToolCallTitle(toolCall: ToolCall): string {
     default: {
       const entries = Object.entries(args).slice(0, 2);
       const summary = entries
-        .map(([k, v]) => `${k}=${JSON.stringify(truncate(String(v), 30))}`)
+        .map(([k, v]) => `${k}=${JSON.stringify(truncate(String(v), DEFAULT_ARG_TRUNCATION))}`)
         .join(', ');
       return `${name}(${summary})`;
     }
@@ -217,33 +230,33 @@ export function formatToolResult(
 
   // Expanded: show everything
   if (expanded) {
-    return { display: result, isCollapsible: lines.length > 3 };
+    return { display: result, isCollapsible: lines.length > RESULT_COLLAPSIBLE_MIN_LINES };
   }
 
-  // Errors: always show first 10 lines
+  // Errors: always show first ERROR_DISPLAY_LINES lines
   if (isError) {
     const display =
-      lines.slice(0, 10).join('\n') +
-      (lines.length > 10 ? `\n... (${lines.length} lines total)` : '');
-    return { display, isCollapsible: lines.length > 10 };
+      lines.slice(0, ERROR_DISPLAY_LINES).join('\n') +
+      (lines.length > ERROR_DISPLAY_LINES ? `\n... (${lines.length} lines total)` : '');
+    return { display, isCollapsible: lines.length > ERROR_DISPLAY_LINES };
   }
 
   // Short result: full display
-  if (lines.length <= 3) {
+  if (lines.length <= RESULT_COLLAPSIBLE_MIN_LINES) {
     return { display: result, isCollapsible: false };
   }
 
-  // Medium result: first 10 lines + summary
-  if (lines.length <= 20) {
-    const display = lines.slice(0, 10).join('\n') + `\n... (${lines.length} lines)`;
+  // Medium result: first ERROR_DISPLAY_LINES lines + summary
+  if (lines.length <= MEDIUM_RESULT_MAX_LINES) {
+    const display = lines.slice(0, ERROR_DISPLAY_LINES).join('\n') + `\n... (${lines.length} lines)`;
     return { display, isCollapsible: true };
   }
 
-  // Long result: first 5 + ... + last 3
+  // Long result: first LONG_RESULT_HEAD_LINES + ... + last LONG_RESULT_TAIL_LINES
   const display = [
-    ...lines.slice(0, 5),
-    `... (${lines.length - 8} more lines)`,
-    ...lines.slice(-3),
+    ...lines.slice(0, LONG_RESULT_HEAD_LINES),
+    `... (${lines.length - LONG_RESULT_HEAD_LINES - LONG_RESULT_TAIL_LINES} more lines)`,
+    ...lines.slice(-LONG_RESULT_TAIL_LINES),
   ].join('\n');
   return { display, isCollapsible: true };
 }

@@ -5,6 +5,8 @@ const BPM_START = '\x1b[200~';
 const BPM_END = '\x1b[201~';
 const PASTE_SENTINEL = '\x01';
 const MAX_PASTE_SIZE = 5 * 1024 * 1024; // 5 MB
+const PASTE_MARKER_ID_LENGTH = 6;
+const DRAIN_TIMER_DELAY_MS = 50;
 
 type BpmState = 'normal' | 'in_paste';
 
@@ -140,7 +142,7 @@ export class PasteBufferingStdin extends EventEmitter {
     this.state = 'normal';
 
     if (this.pasteBuffer.length > 0) {
-      const id = nanoid(6);
+      const id = nanoid(PASTE_MARKER_ID_LENGTH);
       this.push(`${PASTE_SENTINEL}PASTE${PASTE_SENTINEL}${id}${PASTE_SENTINEL}${this.pasteBuffer}${PASTE_SENTINEL}`);
     }
   }
@@ -157,7 +159,7 @@ export class PasteBufferingStdin extends EventEmitter {
           this.incoming = '';
           this.tryEmit();
         }
-      }, 50);
+      }, DRAIN_TIMER_DELAY_MS);
     } else {
       this.push(this.incoming);
       this.incoming = '';
