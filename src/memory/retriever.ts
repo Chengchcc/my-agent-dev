@@ -1,5 +1,16 @@
 import type { MemoryEntry, MemoryRetriever, MemoryStore } from './types';
 
+const KEYWORD_WEIGHT = 0.4;
+const TAG_WEIGHT = 0.3;
+const RECENCY_WEIGHT = 0.2;
+const INTRINSIC_WEIGHT = 0.1;
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+const RECENCY_HALF_LIFE_DAYS = 30;
+
+const DEFAULT_SEARCH_LIMIT = 10;
+const DEFAULT_SEARCH_THRESHOLD = 0.1;
+
 export class KeywordRetriever implements MemoryRetriever {
   constructor(
     private semanticStore: MemoryStore,
@@ -11,7 +22,7 @@ export class KeywordRetriever implements MemoryRetriever {
     query: string,
     options: { limit?: number; projectPath?: string; type?: 'semantic' | 'episodic' | 'project'; threshold?: number } = {},
   ): Promise<MemoryEntry[]> {
-    const { limit = 10, projectPath, type, threshold = 0.1 } = options;
+    const { limit = DEFAULT_SEARCH_LIMIT, projectPath, type, threshold = DEFAULT_SEARCH_THRESHOLD } = options;
     const queryTokens = this.tokenize(query.toLowerCase());
 
     // Get candidates — filter by type if specified
@@ -73,13 +84,13 @@ export class KeywordRetriever implements MemoryRetriever {
     const entryTextTokens = this.tokenize(entry.text.toLowerCase());
     const entryTags = entry.tags?.map(t => t.toLowerCase()) ?? [];
 
-    // Keyword match score: 0.4 weight
+    // Keyword match score: KEYWORD_WEIGHT weight
     const keywordMatches = queryTokens.filter(t =>
       entryTextTokens.some(et => et.includes(t) || t.includes(et))
     ).length;
     const keywordScore = keywordMatches / Math.max(queryTokens.length, 1);
 
-    // Tag match score: 0.3 weight
+    // Tag match score: TAG_WEIGHT weight
     const tagMatches = queryTokens.filter(t =>
       entryTags.some(et => et.includes(t) || t.includes(et))
     ).length;
@@ -92,20 +103,20 @@ export class KeywordRetriever implements MemoryRetriever {
       return 0;
     }
 
-    // Recency score: 0.2 weight
+    // Recency score: RECENCY_WEIGHT weight
     const ageMs = Date.now() - new Date(entry.created).getTime();
-    const ageDays = ageMs / (1000 * 60 * 60 * 24);
-    // Exponential decay: 1.0 for today, 0.5 after 30 days, ~0 after a year
-    const recencyScore = Math.exp(-ageDays / 30);
+    const ageDays = ageMs / MS_PER_DAY;
+    // Exponential decay: 1.0 for today, 0.5 after RECENCY_HALF_LIFE_DAYS days, ~0 after a year
+    const recencyScore = Math.exp(-ageDays / RECENCY_HALF_LIFE_DAYS);
 
-    // Weight score: 0.1 weight
+    // Intrinsic score: INTRINSIC_WEIGHT weight
     const weightScore = entry.weight;
 
     return (
-      keywordScore * 0.4 +
-      tagScore * 0.3 +
-      recencyScore * 0.2 +
-      weightScore * 0.1
+      keywordScore * KEYWORD_WEIGHT +
+      tagScore * TAG_WEIGHT +
+      recencyScore * RECENCY_WEIGHT +
+      weightScore * INTRINSIC_WEIGHT
     );
   }
 }

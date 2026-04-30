@@ -6,18 +6,27 @@ import type { MemoryEntry, MemoryStore, MemoryType, MemoryConfig } from './types
 import { getSettingsSync } from '../config';
 
 // Fallback defaults if settings aren't loaded yet
+const FALLBACK_MAX_SEMANTIC_ENTRIES = 200;
+const FALLBACK_MAX_EPISODIC_ENTRIES = 500;
+const FALLBACK_CONSOLIDATION_THRESHOLD = 50;
+const FALLBACK_AUTO_EXTRACT_MIN_TOOL_CALLS = 3;
+const FALLBACK_MAX_INJECTED_ENTRIES = 10;
+const FALLBACK_RETRIEVAL_THRESHOLD = 0.75;
+const FALLBACK_RETRIEVAL_TOP_K = 5;
+const FALLBACK_MAX_USER_PREFERENCES = 20;
+
 const FALLBACK_MEMORY_CONFIG: Required<MemoryConfig> = {
   globalBaseDir: '~/.my-agent/memory',
-  maxSemanticEntries: 200,
-  maxEpisodicEntries: 500,
-  consolidationThreshold: 50,
-  autoExtractMinToolCalls: 3,
-  maxInjectedEntries: 10,
+  maxSemanticEntries: FALLBACK_MAX_SEMANTIC_ENTRIES,
+  maxEpisodicEntries: FALLBACK_MAX_EPISODIC_ENTRIES,
+  consolidationThreshold: FALLBACK_CONSOLIDATION_THRESHOLD,
+  autoExtractMinToolCalls: FALLBACK_AUTO_EXTRACT_MIN_TOOL_CALLS,
+  maxInjectedEntries: FALLBACK_MAX_INJECTED_ENTRIES,
   extractionModel: 'claude-3-haiku-20240307',
-  retrievalThreshold: 0.75,
-  retrievalTopK: 5,
+  retrievalThreshold: FALLBACK_RETRIEVAL_THRESHOLD,
+  retrievalTopK: FALLBACK_RETRIEVAL_TOP_K,
   extractTriggerMode: 'explicit',
-  maxUserPreferences: 20,
+  maxUserPreferences: FALLBACK_MAX_USER_PREFERENCES,
 };
 
 // Get settings with fallback

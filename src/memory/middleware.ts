@@ -6,18 +6,31 @@ import { loadAgentMdCached } from './agent-md';
 import { djb2Hash } from '../utils/hash';
 
 // Fallback defaults if settings aren't loaded yet
+const FALLBACK_MAX_SEMANTIC_ENTRIES = 200;
+const FALLBACK_MAX_EPISODIC_ENTRIES = 500;
+const FALLBACK_CONSOLIDATION_THRESHOLD = 50;
+const FALLBACK_AUTO_EXTRACT_MIN_TOOL_CALLS = 3;
+const FALLBACK_MAX_INJECTED_ENTRIES = 10;
+const FALLBACK_RETRIEVAL_THRESHOLD = 0.75;
+const FALLBACK_RETRIEVAL_TOP_K = 5;
+const FALLBACK_MAX_USER_PREFERENCES = 20;
+
+const POST_COLLAPSE_RETRIEVAL_MULTIPLIER = 2;
+const POST_COLLAPSE_PROJECT_MULTIPLIER = 2;
+const RECENT_USER_TURN_COUNT = 3;
+
 const FALLBACK_MEMORY_CONFIG: Required<MemoryConfig> = {
   globalBaseDir: '~/.my-agent/memory',
-  maxSemanticEntries: 200,
-  maxEpisodicEntries: 500,
-  consolidationThreshold: 50,
-  autoExtractMinToolCalls: 3,
-  maxInjectedEntries: 10,
+  maxSemanticEntries: FALLBACK_MAX_SEMANTIC_ENTRIES,
+  maxEpisodicEntries: FALLBACK_MAX_EPISODIC_ENTRIES,
+  consolidationThreshold: FALLBACK_CONSOLIDATION_THRESHOLD,
+  autoExtractMinToolCalls: FALLBACK_AUTO_EXTRACT_MIN_TOOL_CALLS,
+  maxInjectedEntries: FALLBACK_MAX_INJECTED_ENTRIES,
   extractionModel: 'claude-3-haiku-20240307',
-  retrievalThreshold: 0.75,
-  retrievalTopK: 5,
+  retrievalThreshold: FALLBACK_RETRIEVAL_THRESHOLD,
+  retrievalTopK: FALLBACK_RETRIEVAL_TOP_K,
   extractTriggerMode: 'explicit',
-  maxUserPreferences: 20,
+  maxUserPreferences: FALLBACK_MAX_USER_PREFERENCES,
 };
 
 // Get settings with fallback
@@ -104,7 +117,7 @@ export class MemoryMiddleware implements AgentMiddleware {
     const isPostCollapse = !!context.metadata.justCollapsed;
     if (lastUserMessage) {
       const retrievalThreshold = isPostCollapse ? 0 : this.config.retrievalThreshold;
-      const retrievalLimit = isPostCollapse ? this.config.retrievalTopK * 2 : this.config.retrievalTopK;
+      const retrievalLimit = isPostCollapse ? this.config.retrievalTopK * POST_COLLAPSE_RETRIEVAL_MULTIPLIER : this.config.retrievalTopK;
 
       const hits = await this.retriever.search(lastUserMessage.content, {
         limit: retrievalLimit,
@@ -114,7 +127,7 @@ export class MemoryMiddleware implements AgentMiddleware {
       });
       // Also search project entries separately
       const projectHits = await this.retriever.search(lastUserMessage.content, {
-        limit: isPostCollapse ? 2 : 1,
+        limit: isPostCollapse ? POST_COLLAPSE_PROJECT_MULTIPLIER : 1,
         projectPath: process.cwd(),
         type: 'project',
         threshold: retrievalThreshold,
@@ -230,6 +243,6 @@ const WRITE_TRIGGERS = [
 
 function shouldExtractFromMessages(messages: Message[]): boolean {
   const userTurns = messages.filter(m => m.role === 'user');
-  const recent = userTurns.slice(-3).map(m => m.content).join('\n');
+  const recent = userTurns.slice(-RECENT_USER_TURN_COUNT).map(m => m.content).join('\n');
   return WRITE_TRIGGERS.some(re => re.test(recent));
 }
