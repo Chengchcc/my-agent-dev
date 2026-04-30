@@ -1,6 +1,10 @@
 import type { AgentConfig, AgentContext, Message, Provider } from '../../../types';
 import type { CompactionResult, CompactionConfig } from '../types';
 
+const SUMMARY_MAX_CHARS = 3000;
+const SUMMARY_TRIM_CHARS = 2000;
+const SUMMARY_HEAD_CHARS = 500;
+
 const SUMMARY_SYSTEM_PROMPT = `You are a context compaction assistant. Your job is to produce a structured, ` +
   `information-dense summary of a conversation segment. This summary will replace the original messages ` +
   `in the conversation context, so it MUST preserve all actionable details:\n` +
@@ -122,8 +126,8 @@ export class AutoCompactStrategy {
       const prefix = m.role === 'tool' ? `[tool:${m.name}]` : `[${m.role}]`;
       const content = m.content ?? '(tool_calls only)';
       // Truncate very long tool outputs for the summary prompt too
-      const truncated = content.length > 3000
-        ? content.slice(0, 2000) + '\n...[truncated]...\n' + content.slice(-500)
+      const truncated = content.length > SUMMARY_MAX_CHARS
+        ? content.slice(0, SUMMARY_TRIM_CHARS) + '\n...[truncated]...\n' + content.slice(-SUMMARY_HEAD_CHARS)
         : content;
       return `${prefix}\n${truncated}`;
     }).join('\n\n---\n\n');

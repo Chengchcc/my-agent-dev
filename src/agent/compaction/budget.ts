@@ -2,6 +2,10 @@ import { countTokens } from '@anthropic-ai/tokenizer';
 import type { AgentContext, Message } from '../../types';
 import type { TokenBudget } from './types';
 
+const DEFAULT_COMPACTION_BUFFER_TOKENS = 2048;
+const DEFAULT_EPHEMERAL_RESERVE_TOKENS = 1024;
+const PER_MESSAGE_METADATA_OVERHEAD = 20;
+
 /**
  * Calculate accurate token budget with headroom reservation.
  * Tier 0: Provides the foundation for all compression decisions.
@@ -18,8 +22,8 @@ export class TokenBudgetCalculator {
   constructor(
     private modelLimit: number,
     private maxOutputTokens: number,
-    private compactionBuffer: number = 2048,
-    private ephemeralReserve: number = 1024,
+    private compactionBuffer: number = DEFAULT_COMPACTION_BUFFER_TOKENS,
+    private ephemeralReserve: number = DEFAULT_EPHEMERAL_RESERVE_TOKENS,
   ) {}
 
   /**
@@ -62,7 +66,7 @@ export class TokenBudgetCalculator {
         total += countTokens(JSON.stringify(msg.tool_calls));
       }
       // Overhead for metadata: role, id, tool_call_id, name, etc.
-      total += 20;
+      total += PER_MESSAGE_METADATA_OVERHEAD;
     }
 
     return total;
@@ -82,7 +86,7 @@ export class TokenBudgetCalculator {
       if (msg.tool_calls && msg.tool_calls.length > 0) {
         total += countTokens(JSON.stringify(msg.tool_calls));
       }
-      total += 20;
+      total += PER_MESSAGE_METADATA_OVERHEAD;
     }
 
     return total;

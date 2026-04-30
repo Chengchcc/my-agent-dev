@@ -1,6 +1,9 @@
 import type { Message } from '../../../types';
 import type { CompactionResult } from '../types';
 
+const AGGRESSIVE_SNIP_THRESHOLD = 2000;
+const RECENT_MESSAGE_BOUNDARY = 4;
+
 /**
  * Tier 3 Compression: Reactive Recovery
  *
@@ -26,7 +29,7 @@ export class ReactiveRecoveryStrategy {
     let current = [...messages];
 
     // Phase 1: Aggressive tool output snipping - all messages, including recent
-    current = this.snipAllToolOutputs(current, 2000);
+    current = this.snipAllToolOutputs(current, AGGRESSIVE_SNIP_THRESHOLD);
     const afterSnip = countFn(current);
     if (afterSnip <= targetTokens) {
       return {
@@ -42,7 +45,7 @@ export class ReactiveRecoveryStrategy {
 
     // Phase 2: Remove old tool results entirely, keep assistant messages
     // Keep last 4 messages always (current turn in progress)
-    const recentBoundary = current.length - 4;
+    const recentBoundary = current.length - RECENT_MESSAGE_BOUNDARY;
     current = current.filter((msg, idx) => {
       if (idx >= recentBoundary) return true; // Always keep recent
       if (msg.role === 'tool') return false;   // Remove old tool results
