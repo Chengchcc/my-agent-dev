@@ -26,7 +26,9 @@ export class BashTool extends ZodTool<typeof BashSchema> {
   protected schema = BashSchema;
   protected name = 'bash';
   protected description =
-    'Execute a shell command on the local system. Use this for file operations, running scripts, installing dependencies, checking system status, git operations, and other command-line tasks.';
+    'Execute a shell command on the local system. Use this for file operations, running scripts, installing dependencies, checking system status, git operations, and other command-line tasks. Emit one bash call per response unless commands are clearly independent.';
+  readonly = false;
+  conflictKey = () => 'bash:global';
 
   private timeoutMs: number;
   private maxOutputBytes: number;

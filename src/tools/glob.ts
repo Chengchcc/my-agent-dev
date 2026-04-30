@@ -17,8 +17,9 @@ export class GlobTool extends ZodTool {
     include_hidden: z.boolean().default(false).describe('Include hidden files (starting with .)'),
   });
 
+  readonly = true;
   name = 'glob';
-  description = 'Find files by glob pattern';
+  description = 'Find files by glob pattern. SAFE TO CALL IN PARALLEL with other read-only tools in the same response.';
 
   protected handle(args: z.infer<typeof this.schema>, _ctx: ToolContext) {
     const searchPath = resolve(args.path);

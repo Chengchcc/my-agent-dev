@@ -16,8 +16,9 @@ export class ReadTool extends ZodTool {
     encoding: z.enum(['utf8', 'ascii', 'utf16le', 'ucs2', 'base64', 'latin1', 'binary', 'hex']).default('utf8').describe('File encoding'),
   });
 
+  readonly = true;
   name = 'read';
-  description = 'Read file content with optional line range support';
+  description = 'Read file content with optional line range support. SAFE TO CALL IN PARALLEL with other read-only tools in the same response.';
 
   protected handle(args: z.infer<typeof this.schema>, _ctx: ToolContext) {
     const resolvedPath = resolve(args.path);

@@ -29,8 +29,9 @@ export class GrepTool extends ZodTool {
     context_lines: z.number().int().nonnegative().default(0).describe('Context lines before/after each match'),
   });
 
+  readonly = true;
   name = 'grep';
-  description = 'Search file content for text/regex patterns';
+  description = 'Search file content for text/regex patterns. SAFE TO CALL IN PARALLEL with other read-only tools in the same response.';
 
   protected handle(args: z.infer<typeof this.schema>, _ctx: ToolContext) {
     const searchPath = resolve(args.path);

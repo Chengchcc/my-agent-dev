@@ -36,6 +36,15 @@ export interface ToolImplementation {
    * Tools that don't need context can simply ignore it.
    */
   execute(params: Record<string, unknown>, ctx: ToolContext): Promise<unknown>;
+  /** true = pure read, no side effects, can run in parallel with other readonly tools */
+  readonly?: boolean;
+  /**
+   * Conflict key: calls with same key must run sequentially.
+   * e.g. edit_file uses `file:${path}`, bash uses `bash:global`.
+   * Returns null to allow full parallelism (only makes sense for readonly tools).
+   * Default (undefined) = global serialization.
+   */
+  conflictKey?: (input: unknown) => string | null;
 }
 
 // Tool call in response

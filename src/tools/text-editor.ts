@@ -18,7 +18,9 @@ export class TextEditorTool extends ZodTool<z.ZodObject<{
   end_line: z.ZodOptional<z.ZodNumber>;
 }>> {
   protected readonly name = 'text_editor';
-  protected readonly description = 'Read, create, edit, and write text files. Supports: view (display file content), create (create new file), str_replace (replace specific string), write (write entire file).';
+  protected readonly description = 'Read, create, edit, and write text files. Supports: view (display file content), create (create new file), str_replace (replace specific string), write (write entire file). DO NOT batch with other text_editor calls on the same file; emit sequentially.';
+  readonly = false;
+  conflictKey = (input: unknown) => `file:${(input as Record<string, unknown>).path ?? 'unknown'}`;
 
   protected schema = z.object({
     command: z.enum(['view', 'create', 'str_replace', 'write']),

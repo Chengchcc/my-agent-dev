@@ -14,8 +14,9 @@ export class LsTool extends ZodTool {
     sort_by: z.enum(['name', 'size', 'modified']).default('name').describe('Sort order'),
   });
 
+  readonly = true;
   name = 'ls';
-  description = 'List directory contents with file metadata';
+  description = 'List directory contents with file metadata. SAFE TO CALL IN PARALLEL with other read-only tools in the same response.';
 
   protected handle(args: z.infer<typeof this.schema>, _ctx: ToolContext) {
     const dirPath = resolve(args.path);

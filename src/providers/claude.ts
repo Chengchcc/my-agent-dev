@@ -67,7 +67,10 @@ export class ClaudeProvider implements Provider {
         budget_tokens: this.thinkingBudgetTokens,
       };
     }
-    if (this.tools.length > 0) requestOptions.tools = this.tools;
+    if (this.tools.length > 0) {
+      requestOptions.tools = this.tools;
+      requestOptions.tool_choice = { type: 'auto', disable_parallel_tool_use: false };
+    }
     const response = await this.client.messages.create(
       requestOptions as unknown as Anthropic.MessageCreateParams,
     ) as unknown as Anthropic.Message;
@@ -140,7 +143,10 @@ export class ClaudeProvider implements Provider {
         budget_tokens: this.thinkingBudgetTokens,
       };
     }
-    if (this.tools.length > 0) streamOptions.tools = this.tools;
+    if (this.tools.length > 0) {
+      streamOptions.tools = this.tools;
+      streamOptions.tool_choice = { type: 'auto', disable_parallel_tool_use: false };
+    }
     const stream = this.client.messages.stream(
       streamOptions as unknown as Anthropic.MessageCreateParams,
       { signal: options?.signal },

@@ -14,6 +14,7 @@ import { DEFAULT_LOOP_CONFIG } from './loop-types';
 import type { ToolDispatcher } from './tool-dispatch/dispatcher';
 import { createToolSink } from './tool-dispatch/types';
 import { checkBatchBudget, checkToolBudget } from './budget-guard';
+import { planExecution } from './dispatch';
 import { debugLog } from '../utils/debug';
 import { nanoid } from 'nanoid';
 
@@ -419,57 +420,103 @@ export class AgentLoop {
       maxOutputChars: config.maxToolOutputChars,
     };
 
-    debugLog(`[agent] runTools: dispatching ${toolCalls.length} tools, parallel=${dispatchOptions.parallel}, yieldAsCompleted=${dispatchOptions.yieldAsCompleted}, turn=${turnIndex}`);
+    // Wave-based execution: readonly tools run in parallel within a wave,
+    // non-readonly tools get their own wave (conservative: one at a time).
+    const plan = planExecution(
+      toolCalls,
+      (name) => this.dispatcher.toolRegistry.get(name),
+    );
+    const executed = new Set<string>();
     let eventCount = 0;
-    for await (const event of this.dispatcher.dispatch(toolCalls, toolCtx, dispatchOptions)) {
-      eventCount++;
-      debugLog(`[agent] runTools RECEIVED event #${eventCount}: ${event.type} ${event.toolCall.name}#${event.toolCall.id} t=${performance.now().toFixed(0)}`);
-      switch (event.type) {
-        case 'tool:start':
-          yield {
-            type: 'tool_call_start',
-            toolCall: event.toolCall,
-            turnIndex,
-          } satisfies AgentEvent;
-          break;
 
-        case 'tool:result':
-          const rawContent = event.result.content;
-          const content = typeof rawContent === 'string'
-            ? rawContent
-            : JSON.stringify(rawContent);
+    debugLog(`[agent] runTools: plan has ${plan.waves.length} waves, turn=${turnIndex}`);
 
-          if (event.result.isError && config.toolErrorStrategy === 'halt') {
-            throw new Error(content);
+    for (const wave of plan.waves) {
+      if (signal.aborted) break;
+
+      const isParallelWave = config.parallelToolExecution && wave.length > 1;
+      const waveOptions = {
+        ...dispatchOptions,
+        parallel: isParallelWave,
+        yieldAsCompleted: isParallelWave || dispatchOptions.yieldAsCompleted,
+      };
+
+      for await (const event of this.dispatcher.dispatch(wave, toolCtx, waveOptions)) {
+        eventCount++;
+        switch (event.type) {
+          case 'tool:start':
+            yield {
+              type: 'tool_call_start',
+              toolCall: event.toolCall,
+              turnIndex,
+            } satisfies AgentEvent;
+            break;
+
+          case 'tool:result': {
+            executed.add(event.toolCall.id);
+            const rawContent = event.result.content;
+            const content = typeof rawContent === 'string'
+              ? rawContent
+              : JSON.stringify(rawContent);
+
+            if (event.result.isError && config.toolErrorStrategy === 'halt') {
+              throw new Error(content);
+            }
+
+            this.contextManager.addMessage({
+              role: 'tool',
+              content,
+              tool_call_id: event.toolCall.id,
+              name: event.toolCall.name,
+            });
+
+            if (event.result.todoUpdates) {
+              const currentTodoState = this.contextManager.getTodoState();
+              this.contextManager.setTodoState({
+                ...currentTodoState,
+                todos: event.result.todoUpdates,
+              });
+            }
+
+            yield {
+              type: 'tool_call_result',
+              toolCall: event.toolCall,
+              result: content,
+              durationMs: event.result.durationMs,
+              isError: event.result.isError,
+              ...(event.result.isError ? { error: new Error(content) } : {}),
+              turnIndex,
+            } satisfies AgentEvent;
           }
+        }
+      }
+    }
 
+    // Abort: fill in error placeholders for unexecuted tools so tool_use↔tool_result pairing is preserved
+    if (signal.aborted) {
+      for (const tc of toolCalls) {
+        if (!executed.has(tc.id)) {
+          const content = 'Tool execution aborted';
           this.contextManager.addMessage({
             role: 'tool',
             content,
-            tool_call_id: event.toolCall.id,
-            name: event.toolCall.name,
+            tool_call_id: tc.id,
+            name: tc.name,
           });
-
-          if (event.result.todoUpdates) {
-            const currentTodoState = this.contextManager.getTodoState();
-            this.contextManager.setTodoState({
-              ...currentTodoState,
-              todos: event.result.todoUpdates,
-            });
-          }
-
           yield {
             type: 'tool_call_result',
-            toolCall: event.toolCall,
+            toolCall: tc,
             result: content,
-            durationMs: event.result.durationMs,
-            isError: event.result.isError,
-            ...(event.result.isError ? { error: new Error(content) } : {}),
+            durationMs: 0,
+            isError: true,
+            error: new Error(content),
             turnIndex,
           } satisfies AgentEvent;
+        }
       }
     }
-    debugLog(`[agent] runTools dispatch loop done: ${eventCount} events received`);
+
+    debugLog(`[agent] runTools dispatch loop done: ${eventCount} events, ${plan.waves.length} waves`);
   }
 
   // ===== Phase 4: Teardown =====

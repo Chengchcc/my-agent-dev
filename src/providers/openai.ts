@@ -54,7 +54,10 @@ export class OpenAIProvider implements Provider {
       max_tokens: this.maxTokens,
       temperature: this.temperature,
     };
-    if (this.tools.length > 0) requestOptions.tools = this.tools;
+    if (this.tools.length > 0) {
+      requestOptions.tools = this.tools;
+      requestOptions.parallel_tool_calls = true;
+    }
     const response = await this.client.chat.completions.create(
       requestOptions as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
     );
@@ -106,7 +109,10 @@ export class OpenAIProvider implements Provider {
       temperature: this.temperature,
       stream: true,
     };
-    if (this.tools.length > 0) streamOptions.tools = this.tools;
+    if (this.tools.length > 0) {
+      streamOptions.tools = this.tools;
+      streamOptions.parallel_tool_calls = true;
+    }
     const stream = await this.client.chat.completions.create(
       streamOptions as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
       {

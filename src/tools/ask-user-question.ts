@@ -97,7 +97,10 @@ export class AskUserQuestionTool extends ZodTool<typeof askUserQuestionParameter
   protected description =
     'Ask the user one or more independent questions with fixed choices. Prefer this over free-form questions when options are clear. ' +
     'Questions are parallel (no dependency between them). You may send 1–4 questions in one call. ' +
-    'For each question set multi_select true only when multiple answers make sense.';
+    'For each question set multi_select true only when multiple answers make sense. ' +
+    'Emit this tool alone in its own response; do not batch with other tools.';
+  readonly = false;
+  conflictKey = () => 'ask_user_question:global';
 
   constructor(
     private readonly askCallback: (params: AskUserQuestionParameters) => Promise<AskUserQuestionResult>,

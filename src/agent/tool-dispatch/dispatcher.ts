@@ -11,6 +11,11 @@ export class ToolDispatcher {
     private middlewares: ToolMiddleware[] = [],
   ) {}
 
+  /** Expose tool registry for wave-planning metadata lookups. */
+  get toolRegistry(): ToolRegistry {
+    return this.registry;
+  }
+
   /**
    * Dispatch a batch of tool calls, yield events as they execute.
    * This is the primary entry point for the Agent.

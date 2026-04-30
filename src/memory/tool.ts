@@ -21,7 +21,9 @@ Commands:
 - forget: Remove a specific memory by ID
 - consolidate: Trigger deduplication/consolidation of semantic memory
 
-Only store genuinely reusable information that will be useful in future conversations. Do not store transient conversation details.`;
+Only store genuinely reusable information that will be useful in future conversations. Do not store transient conversation details. Emit this tool alone in its own response; do not batch with other tools.`;
+  readonly = false;
+  conflictKey = () => 'memory:global';
 
   protected schema = z.object({
     command: z.enum(['search', 'add', 'list', 'forget', 'consolidate']),
