@@ -7,6 +7,8 @@ import { ReactiveRecoveryStrategy } from './tiers/reactive';
 import { ContextCollapseStrategy } from './tiers/collapse';
 import { debugLog } from '../../utils/debug';
 
+const TO_FIXED_PRECISION = 3;
+
 /**
  * Tiered Compaction Manager - main orchestrator that implements the CompressionStrategy interface.
  *
@@ -105,7 +107,7 @@ export class TieredCompactionManager implements CompressionStrategy {
         tokensAfter: result.tokensAfter,
         reduction: result.tokensBefore - result.tokensAfter,
         escalated: true,
-        reason: `snip insufficient (ratio ${newRatio.toFixed(3)} >= ${thresholds.autoCompactRatio})`,
+        reason: `snip insufficient (ratio ${newRatio.toFixed(TO_FIXED_PRECISION)} >= ${thresholds.autoCompactRatio})`,
       });
       context.messages = result.messages;
     }

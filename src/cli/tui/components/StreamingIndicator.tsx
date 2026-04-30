@@ -6,6 +6,10 @@ import { useAgentLoop } from '../hooks';
 
 // Spinner frames for smooth animation
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const SPINNER_FRAME_INTERVAL_MS = 80;
+const MS_PER_SECOND = 1000;
+const ELAPSED_SEC_PAD_WIDTH = 6;
+const TURN_STR_PAD_WIDTH = 3;
 
 export interface PureStreamingIndicatorProps {
   streaming: boolean;
@@ -34,7 +38,7 @@ export function PureStreamingIndicator({
     // Animate spinner at 80ms interval for smooth rotation
     intervalRef.current = setInterval(() => {
       setFrame(f => (f + 1) % SPINNER_FRAMES.length);
-    }, 80);
+    }, SPINNER_FRAME_INTERVAL_MS);
 
     return () => {
       if (intervalRef.current) {
@@ -45,10 +49,10 @@ export function PureStreamingIndicator({
   }, [streaming]);
 
   const elapsedMs = streamingStartTime ? Date.now() - streamingStartTime : 0;
-  const elapsedSec = ((elapsedMs / 1000).toFixed(1)).padStart(6);
+  const elapsedSec = ((elapsedMs / MS_PER_SECOND).toFixed(1)).padStart(ELAPSED_SEC_PAD_WIDTH);
   // Turn count = number of completed assistant messages + this current turn
   const turnCount = messages.filter(m => m.role === 'assistant').length;
-  const turnStr = String(turnCount).padStart(3);
+  const turnStr = String(turnCount).padStart(TURN_STR_PAD_WIDTH);
 
   const hasRunningTools = currentTools.length > 0;
   const statusText = hasRunningTools

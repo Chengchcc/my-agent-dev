@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
+const DEFAULT_BLINK_INTERVAL_MS = 800;
+
 const BlinkContext = createContext(true);
 
 export function BlinkProvider({
   children,
-  interval = 800,
+  interval = DEFAULT_BLINK_INTERVAL_MS,
 }: {
   children: ReactNode;
   interval?: number;

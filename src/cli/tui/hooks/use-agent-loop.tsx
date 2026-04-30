@@ -1,5 +1,8 @@
 import { nanoid } from 'nanoid';
 import React, { useCallback, useEffect, useMemo, useRef, useReducer } from 'react';
+
+const DEFAULT_TOKEN_LIMIT = 128_000;
+const COLLAPSIBLE_TOOL_MIN_LINES = 3;
 import { createContext as createSelectorContext, useContextSelector } from 'use-context-selector';
 import type { ReactNode } from 'react';
 import type { Agent } from '../../../agent';
@@ -180,7 +183,7 @@ export function AgentLoopProvider({
       if (msg.role === 'assistant' && msg.tool_calls) {
         for (const tc of msg.tool_calls) {
           const content = toolResultsMap.get(tc.id);
-          if (content && content.split('\n').length > 3) {
+          if (content && content.split('\n').length > COLLAPSIBLE_TOOL_MIN_LINES) {
             collapsibleTools.push(tc.id);
           }
         }
@@ -205,7 +208,7 @@ export function AgentLoopProvider({
   }, []);
 
   const onSubmit = useCallback(
-    // eslint-disable-next-line complexity
+    // eslint-disable-next-line complexity, max-lines-per-function -- comprehensive agent loop handler
     async (text: string) => {
       // During streaming, enqueue input as pending — do NOT abort.
       // User can press Esc to abort if they want immediate control.
@@ -421,9 +424,9 @@ export function AgentLoopProvider({
   // Get token limit - use a safe default if config is not accessible
   const tokenLimit = useMemo(() => {
     try {
-      return agent.config.tokenLimit || 128000;
+      return agent.config.tokenLimit || DEFAULT_TOKEN_LIMIT;
     } catch {
-      return 128000;
+      return DEFAULT_TOKEN_LIMIT;
     }
   }, [agent]);
 

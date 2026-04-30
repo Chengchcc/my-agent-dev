@@ -1,6 +1,11 @@
 import type { Message } from '../../../types';
 import type { CompactionResult, CompactionThresholds } from '../types';
 
+const MIN_LINES_FOR_SNIP = 50;
+const SNIP_HEAD_LINES = 40;
+const SNIP_TAIL_LINES = 10;
+const CHARS_PER_TOKEN_ESTIMATE = 4;
+
 /**
  * Tier 1 Compression: Tool Output Snip
  *
@@ -31,13 +36,13 @@ export class ToolOutputSnipStrategy {
       }
 
       const lines = msg.content.split('\n');
-      if (lines.length <= 50) return msg; // Not worth snipping
+      if (lines.length <= MIN_LINES_FOR_SNIP) return msg; // Not worth snipping
 
-      // Keep first 40 lines and last 10 lines
-      const headLines = lines.slice(0, 40);
-      const tailLines = lines.slice(-10);
-      const snippedCount = lines.length - 50;
-      const estimatedTokens = Math.ceil(msg.content.length / 4);
+      // Keep first N lines and last N lines
+      const headLines = lines.slice(0, SNIP_HEAD_LINES);
+      const tailLines = lines.slice(-SNIP_TAIL_LINES);
+      const snippedCount = lines.length - MIN_LINES_FOR_SNIP;
+      const estimatedTokens = Math.ceil(msg.content.length / CHARS_PER_TOKEN_ESTIMATE);
 
       const snipped = [
         ...headLines,

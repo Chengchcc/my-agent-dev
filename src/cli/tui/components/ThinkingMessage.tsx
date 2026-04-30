@@ -3,6 +3,9 @@ import { Box, Text } from 'ink';
 import { countTokens } from '@anthropic-ai/tokenizer';
 import { debugLog } from '../../../utils/debug';
 
+const TOKEN_ESTIMATE_DIVISOR = 4;
+const TOKEN_DISPLAY_PAD_WIDTH = 6;
+
 interface ThinkingMessageProps {
   content: string;
   /** Whether the thinking is being streamed (animate) */
@@ -15,7 +18,7 @@ export function ThinkingMessage({ content, streaming, collapsed = false }: Think
   debugLog('[render] ThinkingMessage', { hasContent: !!content, streaming, collapsed });
   const tokenCount = useMemo(() => {
     if (!content) return 0;
-    try { return countTokens(content); } catch { return Math.ceil(content.length / 4); }
+    try { return countTokens(content); } catch { return Math.ceil(content.length / TOKEN_ESTIMATE_DIVISOR); }
   }, [content]);
 
   if (!content) return null;
@@ -23,7 +26,7 @@ export function ThinkingMessage({ content, streaming, collapsed = false }: Think
   if (collapsed) {
     return (
       <Box marginLeft={1}>
-        <Text dimColor>{'\u25B6'} Thinking ({tokenCount.toLocaleString().padStart(6)} tokens) — Ctrl+T to expand</Text>
+        <Text dimColor>{'\u25B6'} Thinking ({tokenCount.toLocaleString().padStart(TOKEN_DISPLAY_PAD_WIDTH)} tokens) — Ctrl+T to expand</Text>
       </Box>
     );
   }

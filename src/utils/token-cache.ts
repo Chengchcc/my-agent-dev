@@ -1,6 +1,8 @@
 import { countTokens } from '@anthropic-ai/tokenizer';
 import type { Message } from '../types';
 
+const CHARS_PER_TOKEN_FALLBACK = 4;
+
 /**
  * WeakMap cache for message token counts.
  * Keyed by Message object reference, so garbage collection works automatically.
@@ -22,7 +24,7 @@ export function countMessageTokens(msg: Message): number {
     tokens = countTokens(msg.content || '');
   } catch (_e) {
     // Fallback for special Unicode chars that break countTokens
-    tokens = Math.ceil((msg.content || '').length / 4);
+    tokens = Math.ceil((msg.content || '').length / CHARS_PER_TOKEN_FALLBACK);
   }
 
   messageTokenCache.set(msg, tokens);

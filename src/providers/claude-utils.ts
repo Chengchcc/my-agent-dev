@@ -31,9 +31,10 @@ export function convertToClaudeMessages(messages: Message[]): Anthropic.MessageP
         if (m.blocks && m.blocks.length > 0) {
           const content: Anthropic.ContentBlockParam[] = [];
           // Enforce Anthropic-required ordering: thinking → redacted_thinking → text → tool_use
+          const BLOCK_ORDER_FALLBACK = 5;
           const ordered = [...m.blocks].sort((a, b) => {
             const order: Record<string, number> = { thinking: 0, redacted_thinking: 1, text: 2, tool_use: 3, tool_result: 4 };
-            return (order[a.type] ?? 5) - (order[b.type] ?? 5);
+            return (order[a.type] ?? BLOCK_ORDER_FALLBACK) - (order[b.type] ?? BLOCK_ORDER_FALLBACK);
           });
           for (const block of ordered) {
             switch (block.type) {

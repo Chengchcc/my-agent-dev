@@ -3,6 +3,8 @@ import React from 'react';
 import type { SlashCommand } from "../command-registry";
 
 const MAX_VISIBLE_COMMANDS = 8;
+const DESCRIPTION_MAX_LENGTH = 72;
+const ELLIPSIS_LENGTH = 3;
 
 interface CommandListProps {
   commands: SlashCommand[];
@@ -57,10 +59,10 @@ export function CommandList({ commands, selectedIndex }: CommandListProps) {
   );
 }
 
-function summarizeDescription(description: string, maxLength = 72): string {
+function summarizeDescription(description: string, maxLength = DESCRIPTION_MAX_LENGTH): string {
   const normalized = description.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength - 3)}...`;
+  return `${normalized.slice(0, maxLength - ELLIPSIS_LENGTH)}...`;
 }
 
 function getVisibleWindow(total: number, selectedIndex: number, maxVisible: number) {

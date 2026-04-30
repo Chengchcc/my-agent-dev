@@ -1,6 +1,9 @@
 import type { CompressionStrategy, AgentContext, Message } from '../../types';
 import { nanoid } from 'nanoid';
 
+const DEFAULT_SNIP_KEEP_TAIL = 6;
+const NANOID_LENGTH = 6;
+
 /**
  * L1 Compression: Snip out middle messages to free up space.
  * Keeps system messages, the starting conversation, and the recent working context.
@@ -11,7 +14,7 @@ export class SnipStrategy implements CompressionStrategy {
 
   constructor(options?: { keepHead?: number; keepTail?: number }) {
     this.keepHead = options?.keepHead ?? 2;
-    this.keepTail = options?.keepTail ?? 6;
+    this.keepTail = options?.keepTail ?? DEFAULT_SNIP_KEEP_TAIL;
   }
 
   async compress(context: AgentContext, _tokenLimit: number): Promise<Message[]> {
@@ -21,8 +24,9 @@ export class SnipStrategy implements CompressionStrategy {
     const systemMessages = messages.filter(m => m.role === 'system');
     const nonSystemMessages = messages.filter(m => m.role !== 'system');
 
+    const EXTRA_MARGIN = 2;
     // If we don't have many messages, nothing to do
-    if (nonSystemMessages.length <= this.keepHead + this.keepTail + 2) {
+    if (nonSystemMessages.length <= this.keepHead + this.keepTail + EXTRA_MARGIN) {
       return [...systemMessages, ...nonSystemMessages];
     }
 
@@ -32,7 +36,7 @@ export class SnipStrategy implements CompressionStrategy {
 
     // Add a marker that content was snipped
     const snipMarker: Message = {
-      id: `snip-${nanoid(6)}`,
+      id: `snip-${nanoid(NANOID_LENGTH)}`,
       role: 'system',
       content: '[Earlier conversation history was snipped to save context space]',
     };

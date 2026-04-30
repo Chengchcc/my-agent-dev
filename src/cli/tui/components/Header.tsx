@@ -3,6 +3,8 @@ import React from 'react';
 import { useAgentLoop } from '../hooks/use-agent-loop';
 import type { SessionStore } from '../../../session/store';
 
+const SESSION_ID_DISPLAY_LENGTH = 8;
+
 // Block-style hamster logo for the TUI header
 const HAMSTER_LOGO = `\
 ▄█▄█▄
@@ -41,7 +43,7 @@ export function PureHeader({ model, sessionId, status = 'connected', compact = f
           {!compact && <Text dimColor> {st.label}</Text>}
         </Text>
       </Box>
-      {sessionId && !compact ? <Text dimColor>session:{sessionId.slice(0, 8)}</Text> : null}
+      {sessionId && !compact ? <Text dimColor>session:{sessionId.slice(0, SESSION_ID_DISPLAY_LENGTH)}</Text> : null}
     </Box>
   );
 }

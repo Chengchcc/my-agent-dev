@@ -3,6 +3,13 @@ import React from 'react';
 import { useAgentLoopSelector } from '../hooks';
 import { clampPct } from '../utils/clamp';
 
+const PERCENT_MULTIPLIER = 100;
+const COMPACT_BAR_WIDTH = 10;
+const NORMAL_BAR_WIDTH = 20;
+const BUDGET_CRITICAL_THRESHOLD = 90;
+const BUDGET_WARNING_THRESHOLD = 85;
+const BUDGET_NOTICE_THRESHOLD = 70;
+
 interface PureFooterProps {
   totalTokens: number;
   /** tokensBucket = floor(ratio * 100). Only changes when ratio crosses 1% boundary. */
@@ -15,15 +22,15 @@ interface PureFooterProps {
  */
 export function PureFooter({ totalTokens, tokensBucket, compact = false }: PureFooterProps) {
   const percentage = tokensBucket;
-  const clampedRatio = clampPct(percentage / 100, 1);
-  const barWidth = compact ? 10 : 20;
+  const clampedRatio = clampPct(percentage / PERCENT_MULTIPLIER, 1);
+  const barWidth = compact ? COMPACT_BAR_WIDTH : NORMAL_BAR_WIDTH;
   const filled = Math.round(barWidth * clampedRatio);
   const empty = Math.max(0, barWidth - filled);
 
   function getBudgetStatus(percent: number): { label: string; color: 'gray' | 'cyan' | 'yellow' | 'red' } {
-    if (percent >= 90) return { label: 'CRITICAL', color: 'red' };
-    if (percent >= 85) return { label: 'WARNING', color: 'yellow' };
-    if (percent >= 70) return { label: 'NOTICE', color: 'cyan' };
+    if (percent >= BUDGET_CRITICAL_THRESHOLD) return { label: 'CRITICAL', color: 'red' };
+    if (percent >= BUDGET_WARNING_THRESHOLD) return { label: 'WARNING', color: 'yellow' };
+    if (percent >= BUDGET_NOTICE_THRESHOLD) return { label: 'NOTICE', color: 'cyan' };
     return { label: '', color: 'gray' };
   }
 
@@ -67,7 +74,7 @@ export function Footer({ compact = false }: { compact?: boolean }) {
   const totalTokens = useAgentLoopSelector(s => s.totalUsage.totalTokens);
   const tokensBucket = useAgentLoopSelector(s => {
     if (s.tokenLimit <= 0) return 0;
-    return Math.floor(clampPct(s.currentContextTokens, s.tokenLimit) * 100);
+    return Math.floor(clampPct(s.currentContextTokens, s.tokenLimit) * PERCENT_MULTIPLIER);
   });
 
   return <PureFooterMemo totalTokens={totalTokens} tokensBucket={tokensBucket} compact={compact} />;

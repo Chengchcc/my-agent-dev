@@ -1,6 +1,7 @@
 import type { SlashCommand } from '../command-registry';
 import type { CommandHandlerContext } from '../types';
 
+const PERCENT_MULTIPLIER = 100;
 const TOKEN_LIMIT_FALLBACK = 128_000;
 const TOOL_DESC_DISPLAY_WIDTH = 80;
 const TOOL_DESC_MIN_WIDTH = 77;
@@ -19,7 +20,7 @@ async function handleCost(ctx: CommandHandlerContext): Promise<void> {
   const cm = agent.getContextManager();
   const currentTokens = cm.getCurrentTokens();
   const tokenLimit = agent.config.tokenLimit || TOKEN_LIMIT_FALLBACK;
-  const ratio = tokenLimit > 0 ? (currentTokens / tokenLimit * 100).toFixed(1) : '0';
+  const ratio = tokenLimit > 0 ? (currentTokens / tokenLimit * PERCENT_MULTIPLIER).toFixed(1) : '0';
   const remaining = tokenLimit - currentTokens;
   const accumulated = cm.getAccumulatedOutputTokens();
 

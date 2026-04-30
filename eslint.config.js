@@ -39,6 +39,15 @@ export default [
       'complexity': ['error', 25],
       'max-lines-per-function': ['error', { max: 150, skipBlankLines: true, skipComments: true }],
       'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
+
+      // --- magic numbers ---
+      '@typescript-eslint/no-magic-numbers': ['error', {
+        ignore: [-1, 0, 1, 2],
+        ignoreEnums: true,
+        ignoreNumericLiteralTypes: true,
+        ignoreReadonlyClassProperties: true,
+        ignoreTypeIndexes: true,
+      }],
     },
   },
 
@@ -52,6 +61,15 @@ export default [
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-return': 'off',
       '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-magic-numbers': 'off',
+    },
+  },
+
+  // ===== Config defaults — values are self-documenting via key names =====
+  {
+    files: ['src/config/defaults.ts', 'src/config/schema.ts'],
+    rules: {
+      '@typescript-eslint/no-magic-numbers': 'off',
     },
   },
 

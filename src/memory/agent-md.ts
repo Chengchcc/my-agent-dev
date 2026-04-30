@@ -11,9 +11,12 @@ export interface AgentMdSource {
 }
 
 const CANDIDATE_NAMES = ['AGENT.md', 'CLAUDE.md', '.agentrules'];
-const MAX_FILE_SIZE = 100 * 1024;          // 100KB hard limit per file
+const KB = 1024;
+// eslint-disable-next-line @typescript-eslint/no-magic-numbers -- defined here, used in size limit
+const MAX_FILE_SIZE = 100 * KB;          // 100KB hard limit per file
 const MAX_IMPORT_DEPTH = 3;                 // prevent infinite @import recursion
-const MAX_TOTAL_SIZE = 256 * 1024;          // 256KB total merged limit
+// eslint-disable-next-line @typescript-eslint/no-magic-numbers -- defined here, used in size limit
+const MAX_TOTAL_SIZE = 256 * KB;          // 256KB total merged limit
 
 async function findProjectRoot(cwd: string): Promise<string | null> {
   try {

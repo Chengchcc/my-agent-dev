@@ -3,6 +3,8 @@ import type { ToolContext } from '../agent/tool-dispatch/types';
 import { z } from 'zod';
 import type { MemoryEntry, MemoryStore, MemoryRetriever, MemoryExtractor } from './types';
 
+const DEFAULT_LIST_LIMIT = 10;
+
 export class MemoryTool extends ZodTool<z.ZodObject<{
   command: z.ZodEnum<['search', 'add', 'list', 'forget', 'consolidate']>;
   query: z.ZodOptional<z.ZodString>;
@@ -53,7 +55,7 @@ Only store genuinely reusable information that will be useful in future conversa
     switch (command) {
       case 'search': {
         const query = params.query;
-        const limit = params.limit || 10;
+        const limit = params.limit || DEFAULT_LIST_LIMIT;
         if (!query) {
           throw new Error('query parameter is required for search command');
         }
@@ -76,16 +78,17 @@ Only store genuinely reusable information that will be useful in future conversa
 
       case 'list': {
         const type = params.type as MemoryEntry['type'] | undefined;
-        const limit = params.limit || 10;
+        const limit = params.limit || DEFAULT_LIST_LIMIT;
         if (type) {
           const store = this.getStoreForType(type);
           const entries = await store.getRecent(limit, type);
           return { entries };
         }
         // Get from all stores, merge and sort by recency
-        const semantic = await this.stores.semantic.getRecent(Math.ceil(limit / 3));
-        const episodic = await this.stores.episodic.getRecent(Math.ceil(limit / 3));
-        const project = await this.stores.project.getRecent(Math.ceil(limit / 3));
+        const STORE_COUNT = 3;
+        const semantic = await this.stores.semantic.getRecent(Math.ceil(limit / STORE_COUNT));
+        const episodic = await this.stores.episodic.getRecent(Math.ceil(limit / STORE_COUNT));
+        const project = await this.stores.project.getRecent(Math.ceil(limit / STORE_COUNT));
         const all = [...semantic, ...episodic, ...project];
         const entries = all
           .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())

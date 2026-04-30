@@ -92,8 +92,9 @@ export function DiffView({ filePath, diff, language }: DiffViewProps) {
           </Text>
 
           {hunk.lines.map((line, lineIndex) => {
-            const oldLineNum = line.oldLineNumber?.toString().padStart(4, ' ') ?? '    ';
-            const newLineNum = line.newLineNumber?.toString().padStart(4, ' ') ?? '    ';
+            const LINE_NUMBER_PAD_WIDTH = 4;
+            const oldLineNum = line.oldLineNumber?.toString().padStart(LINE_NUMBER_PAD_WIDTH, ' ') ?? ' '.repeat(LINE_NUMBER_PAD_WIDTH);
+            const newLineNum = line.newLineNumber?.toString().padStart(LINE_NUMBER_PAD_WIDTH, ' ') ?? ' '.repeat(LINE_NUMBER_PAD_WIDTH);
 
             let marker = ' ';
             let color = 'white';

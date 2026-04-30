@@ -2,6 +2,8 @@ import { Box, Text } from 'ink';
 import React, { useEffect, useState } from 'react';
 import { useAgentLoop } from '../hooks';
 
+const STALL_MONITOR_INTERVAL_MS = 1000;
+
 interface DebugOverlayProps {
   enabled: boolean;
 }
@@ -21,7 +23,7 @@ export function DebugOverlay({ enabled }: DebugOverlayProps) {
       setImmediate(() => {
         setStallMs(Math.round(performance.now() - start));
       });
-    }, 1000);
+    }, STALL_MONITOR_INTERVAL_MS);
     return () => clearInterval(id);
   }, [enabled]);
 

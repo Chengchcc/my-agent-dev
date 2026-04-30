@@ -5,17 +5,20 @@ import { ToolOutputStrategy } from './tool-output-strategy';
 import { SummarizeStrategy } from './summarize-strategy';
 import type { Provider } from '../../types';
 
+const CHARS_PER_TOKEN_ESTIMATE = 4;
+const TOKENS_PER_MSG_OVERHEAD = 4;
+
 /**
  * Count tokens for estimation when we don't have accurate API usage data.
  * 1 token ≈ 4 characters.
  */
 function countTokensForEstimate(messages: AgentContext['messages']): number {
   return messages.reduce((total, msg) => {
-    let msgTokens = msg.content ? msg.content.length / 4 : 0;
+    let msgTokens = msg.content ? msg.content.length / CHARS_PER_TOKEN_ESTIMATE : 0;
     if (msg.tool_calls) {
-      msgTokens += JSON.stringify(msg.tool_calls).length / 4;
+      msgTokens += JSON.stringify(msg.tool_calls).length / CHARS_PER_TOKEN_ESTIMATE;
     }
-    return total + msgTokens + 4; // 4 tokens overhead per message
+    return total + msgTokens + TOKENS_PER_MSG_OVERHEAD; // token overhead per message
   }, 0);
 }
 
@@ -51,7 +54,7 @@ export class TieredCompaction implements CompressionStrategy {
    */
   async compressWithResult(context: AgentContext, tokenLimit: number): Promise<CompactionResult> {
     const totalTokens = countTokensForEstimate(context.messages) +
-      (context.systemPrompt ? context.systemPrompt.length / 4 : 0);
+      (context.systemPrompt ? context.systemPrompt.length / CHARS_PER_TOKEN_ESTIMATE : 0);
     const ratio = totalTokens / tokenLimit;
 
     // Find the highest applicable level
@@ -71,7 +74,7 @@ export class TieredCompaction implements CompressionStrategy {
 
     const resultMessages = await applicableLevel.strategy.compress(context, tokenLimit);
     const afterTokens = countTokensForEstimate(resultMessages) +
-      (context.systemPrompt ? context.systemPrompt.length / 4 : 0);
+      (context.systemPrompt ? context.systemPrompt.length / CHARS_PER_TOKEN_ESTIMATE : 0);
 
     return {
       messages: resultMessages,

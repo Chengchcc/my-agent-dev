@@ -1,10 +1,14 @@
 import { EventEmitter } from 'node:events';
 import { nanoid } from 'nanoid';
 
+const BYTES_PER_KB = 1024;
+const BYTES_PER_MB = BYTES_PER_KB * BYTES_PER_KB;
+
 const BPM_START = '\x1b[200~';
 const BPM_END = '\x1b[201~';
 const PASTE_SENTINEL = '\x01';
-const MAX_PASTE_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_PASTE_SIZE_MB = 5;
+const MAX_PASTE_SIZE = MAX_PASTE_SIZE_MB * BYTES_PER_MB; // 5 MB
 const PASTE_MARKER_ID_LENGTH = 6;
 const DRAIN_TIMER_DELAY_MS = 50;
 
@@ -39,7 +43,6 @@ export class PasteBufferingStdin extends EventEmitter {
   // TTY delegation
   get isTTY(): boolean { return this.stdin.isTTY; }
   setRawMode(mode: boolean): void { this.stdin.setRawMode(mode); }
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
   setEncoding(encoding: string): void { this.stdin.setEncoding(encoding as BufferEncoding); }
   ref(): void { this.stdin.ref(); }
   unref(): void { this.stdin.unref(); }

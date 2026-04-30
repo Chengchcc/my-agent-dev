@@ -203,9 +203,9 @@ export interface AgentLoopConfig {
 }
 
 export const DEFAULT_MAX_TURNS = 25;
-const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
-const DEFAULT_TOOL_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
-const DEFAULT_MAX_TOOL_OUTPUT_CHARS = 100 * 1024; // 100KB
+const DEFAULT_TIMEOUT_MS = 600_000; // 10 min in ms
+const DEFAULT_TOOL_TIMEOUT_MS = 120_000; // 2 min in ms
+const DEFAULT_MAX_TOOL_OUTPUT_CHARS = 102_400; // 100 KB
 
 /**
  * Default agent loop configuration - reasonable safe defaults

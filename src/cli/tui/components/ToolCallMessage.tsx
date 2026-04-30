@@ -6,6 +6,8 @@ import type { ToolCall } from '../../../types';
 import { formatToolCallTitle, smartSummarize, formatToolResult } from '../utils/tool-format';
 import { useAgentLoopSelector } from '../hooks';
 
+const ERROR_HEAD_LINES = 10;
+
 export interface ToolCallMessageProps {
   toolCall: ToolCall;
   result?: { content: string; isError: boolean; durationMs: number };
@@ -46,9 +48,9 @@ export function ToolCallMessage({ toolCall, result, pending = false, focused = f
     if (!result) return { display: '', isCollapsible: false };
     if (result.isError) {
       const lines = result.content.split('\n');
-      const display = lines.slice(0, 10).join('\n') +
-        (lines.length > 10 ? `\n... (${lines.length} lines total)` : '');
-      return { display, isCollapsible: lines.length > 10 };
+      const display = lines.slice(0, ERROR_HEAD_LINES).join('\n') +
+        (lines.length > ERROR_HEAD_LINES ? `\n... (${lines.length} lines total)` : '');
+      return { display, isCollapsible: lines.length > ERROR_HEAD_LINES };
     }
     return formatToolResult(result.content, result.isError, expanded);
   }, [result?.content, result?.isError, expanded]);

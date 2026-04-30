@@ -4,6 +4,8 @@ import type { ToolContext } from '../agent/tool-dispatch/types';
 import { ZodTool } from './zod-tool';
 
 const MAX_TAB_LABEL_LENGTH = 12;
+const MAX_OPTIONS_COUNT = 4;
+const MAX_OPTIONS_PER_QUESTION = 4;
 
 /**
  * A single selectable choice inside a question.
@@ -47,7 +49,7 @@ const askUserQuestionItemSchema = z.object({
   options: z
     .array(askUserQuestionOptionSchema)
     .min(2)
-    .max(4)
+    .max(MAX_OPTIONS_PER_QUESTION)
     .describe('2–4 distinct choices; mutually exclusive unless multi_select is true.'),
   multi_select: z
     .boolean()
@@ -58,7 +60,7 @@ export const askUserQuestionParametersSchema = z.object({
   questions: z
     .array(askUserQuestionItemSchema)
     .min(1)
-    .max(4)
+    .max(MAX_OPTIONS_COUNT)
     .describe('1–4 parallel, independent questions (no dependency between them).'),
 });
 

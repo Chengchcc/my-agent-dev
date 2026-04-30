@@ -8,6 +8,9 @@ import { CommandList } from './CommandList';
 import { FilePicker } from './FilePicker';
 import { HighlightedInput } from './HighlightedInput';
 
+const PENDING_PREVIEW_MAX_LENGTH = 120;
+const PENDING_PREVIEW_TRUNCATED_LENGTH = 117;
+
 export function InputBox({
   commands,
   onSubmit,
@@ -60,8 +63,8 @@ export function InputBox({
             </Text>
           </Box>
           {pendingInputs.map((text, idx) => {
-            const preview = text.length > 120
-              ? text.slice(0, 117).replace(/\n/g, '↵') + '...'
+            const preview = text.length > PENDING_PREVIEW_MAX_LENGTH
+              ? text.slice(0, PENDING_PREVIEW_TRUNCATED_LENGTH).replace(/\n/g, '↵') + '...'
               : text.replace(/\n/g, '↵');
             return (
               <Box key={idx} flexDirection="row" columnGap={1}>

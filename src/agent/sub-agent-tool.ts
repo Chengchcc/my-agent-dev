@@ -35,7 +35,9 @@ const GLOBAL_STATE_TOOLS_PREFIX = 'Task';
 
 /** Maximum concurrent sub-agents (sempahore-based). */
 const MAX_CONCURRENT_SUB_AGENTS = 3;
-const SUB_AGENT_TIMEOUT_MS = 5 * 60 * 1000;
+const NANOID_LENGTH = 6;
+const MS_PER_MINUTE = 60_000;
+const SUB_AGENT_TIMEOUT_MS = 300_000; // 5 min in ms
 const DEFAULT_SUB_AGENT_TOKEN_LIMIT = 50_000;
 const DEFAULT_AUTO_TRIGGER_THRESHOLD = 5;
 
@@ -231,7 +233,7 @@ PROFILES:
       return '<sub_agent_result status="error">Error: sub_agent cannot spawn another sub_agent</sub_agent_result>';
     }
 
-    const agentId = `sub-${nanoid(6)}`;
+    const agentId = `sub-${nanoid(NANOID_LENGTH)}`;
     const startTime = Date.now();
 
     // ── All synchronous setup (no I/O) before semaphore ──
@@ -403,7 +405,7 @@ PROFILES:
           finalSummary = 'Sub-agent aborted by main agent.';
         } else if (durationMs >= loopConfig.timeoutMs) {
           exitStatus = 'timeout';
-          finalSummary = `Sub-agent timed out after ${loopConfig.timeoutMs / 1000 / 60} minutes.`;
+          finalSummary = `Sub-agent timed out after ${loopConfig.timeoutMs / MS_PER_MINUTE} minutes.`;
         } else if (exitStatus === 'max_turns') {
           finalSummary = `Sub-agent reached maximum ${loopConfig.maxTurns} turns.`;
         } else {

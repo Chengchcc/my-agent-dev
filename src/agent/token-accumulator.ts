@@ -1,6 +1,9 @@
 import { countTokens } from '@anthropic-ai/tokenizer';
 import type { Message } from '../types';
 
+const TOKEN_ESTIMATE_DIVISOR = 4;
+const TOOL_CALL_ID_OVERHEAD = 2;
+
 /**
  * Incremental token tracker with per-message caching.
  *
@@ -133,7 +136,7 @@ export class TokenAccumulator {
  * Falls back to chars/4 on error.
  */
 function estimateMessage(msg: Message): number {
-  let tokens = 4; // overhead per message for role/metadata
+  let tokens = TOKEN_ESTIMATE_DIVISOR; // overhead per message for role/metadata
   try {
     if (msg.content) {
       tokens += countTokens(msg.content);
@@ -142,12 +145,12 @@ function estimateMessage(msg: Message): number {
       tokens += countTokens(JSON.stringify(msg.tool_calls));
     }
     if (msg.tool_call_id) {
-      tokens += countTokens(msg.tool_call_id) + 2; // tool_call_id + overhead
+      tokens += countTokens(msg.tool_call_id) + TOOL_CALL_ID_OVERHEAD; // tool_call_id + overhead
     }
   } catch {
     // Fallback for strings with special Unicode that break the tokenizer
-    if (msg.content) tokens += Math.ceil(msg.content.length / 4);
-    if (msg.tool_calls) tokens += Math.ceil(JSON.stringify(msg.tool_calls).length / 4);
+    if (msg.content) tokens += Math.ceil(msg.content.length / TOKEN_ESTIMATE_DIVISOR);
+    if (msg.tool_calls) tokens += Math.ceil(JSON.stringify(msg.tool_calls).length / TOKEN_ESTIMATE_DIVISOR);
   }
   return tokens;
 }

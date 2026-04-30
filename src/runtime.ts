@@ -91,7 +91,8 @@ export async function createAgentRuntime(
   }
 
   // Token limit - from settings or default
-  const tokenLimit = settings?.context.tokenLimit || 100_000;
+  const DEFAULT_TOKEN_LIMIT = 100_000;
+  const tokenLimit = settings?.context.tokenLimit || DEFAULT_TOKEN_LIMIT;
   const maxTokens = settings?.llm.maxTokens || DEFAULT_MAX_TOKENS;
 
   // Context manager with optional tiered compaction
@@ -183,8 +184,8 @@ export async function createAgentRuntime(
     if (memoryMiddleware.afterAgentRun) hooks.afterAgentRun.push(memoryMiddleware.afterAgentRun);
 
     // Enforce capacity limits at startup (catch any drift from manual edits or migration)
-    semanticStore.enforceLimit?.();
-    episodicStore.enforceLimit?.();
+    void semanticStore.enforceLimit?.();
+    void episodicStore.enforceLimit?.();
 
     // Invalidate stale AGENT.md cache so first turn picks up any file changes
     invalidateAgentMdCache();

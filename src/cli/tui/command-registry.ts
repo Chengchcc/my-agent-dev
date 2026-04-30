@@ -17,6 +17,8 @@ export interface PromptSubmission {
   requestedSkillName: string | null;
 }
 
+const DESCRIPTION_CONTAINS_SCORE = 3;
+
 const BASE_COMMANDS: Omit<SlashCommand, 'handler'>[] = [
   {
     name: 'clear',
@@ -55,7 +57,7 @@ function scoreCommandMatch(command: SlashCommand, filter: string): number {
   if (name.includes(filter)) {
     return 2; // contains match is next
   }
-  return 3; // description contains is lower priority
+  return DESCRIPTION_CONTAINS_SCORE; // description contains is lower priority
 }
 
 function isSubsequenceMatch(text: string, filter: string): boolean {

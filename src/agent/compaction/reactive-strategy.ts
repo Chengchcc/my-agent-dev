@@ -7,6 +7,10 @@ import { TrimOldestStrategy } from '../context';
  * L4 Compression: Emergency reactive compression triggered when API returns prompt_too_long.
  * Incrementally applies stronger compression until we're under the limit.
  */
+const CHARS_PER_TOKEN_ESTIMATE = 4;
+const TOKENS_PER_MSG_OVERHEAD = 4;
+const COMPRESSION_RATIO_THRESHOLD = 0.9;
+
 export class ReactiveStrategy implements CompressionStrategy {
   private readonly aggressiveToolOutputStrategy: ToolOutputStrategy;
   private readonly summarizeStrategy: SummarizeStrategy;
@@ -25,30 +29,30 @@ export class ReactiveStrategy implements CompressionStrategy {
 
     // Check if we're still over - estimate tokens
     let estimated = result.reduce((sum, msg) => {
-      let msgSum = msg.content ? msg.content.length / 4 : 0;
-      if (msg.tool_calls) msgSum += JSON.stringify(msg.tool_calls).length / 4;
-      return sum + msgSum + 4; // 4 tokens overhead per message
+      let msgSum = msg.content ? msg.content.length / CHARS_PER_TOKEN_ESTIMATE : 0;
+      if (msg.tool_calls) msgSum += JSON.stringify(msg.tool_calls).length / CHARS_PER_TOKEN_ESTIMATE;
+      return sum + msgSum + TOKENS_PER_MSG_OVERHEAD; // token overhead per message
     }, 0);
     // Add system prompt if present
     if (context.systemPrompt) {
-      estimated += context.systemPrompt.length / 4;
+      estimated += context.systemPrompt.length / CHARS_PER_TOKEN_ESTIMATE;
     }
 
-    if (estimated > tokenLimit * 0.9) {
+    if (estimated > tokenLimit * COMPRESSION_RATIO_THRESHOLD) {
       // Still over - full summarization
       result = await this.summarizeStrategy.compress(
         { ...context, messages: result },
         tokenLimit
       );
       estimated = result.reduce((sum, msg) => {
-        let msgSum = msg.content ? msg.content.length / 4 : 0;
-        if (msg.tool_calls) msgSum += JSON.stringify(msg.tool_calls).length / 4;
-        return sum + msgSum + 4;
+        let msgSum = msg.content ? msg.content.length / CHARS_PER_TOKEN_ESTIMATE : 0;
+        if (msg.tool_calls) msgSum += JSON.stringify(msg.tool_calls).length / CHARS_PER_TOKEN_ESTIMATE;
+        return sum + msgSum + TOKENS_PER_MSG_OVERHEAD;
       }, 0);
     }
 
     // If summarization still isn't enough - trim as last resort
-    if (estimated > tokenLimit * 0.9) {
+    if (estimated > tokenLimit * COMPRESSION_RATIO_THRESHOLD) {
       result = await this.trimOldestStrategy.compress(
         { ...context, messages: result },
         tokenLimit

@@ -5,6 +5,8 @@ import { ToolCallMessage, ConnectedToolCallMessage } from './ToolCallMessage';
 import { renderMarkdownTokens } from './utils/render-markdown';
 import { debugLog } from '../../../utils/debug';
 
+const MIN_TOOL_GROUP_SIZE = 3;
+
 export interface ToolGroup {
   type: 'group';
   toolName: string;
@@ -30,7 +32,7 @@ export function groupToolCalls(messages: Message[]): GroupedItem[] {
           break;
         }
       }
-      if (j - i >= 3) {
+      if (j - i >= MIN_TOOL_GROUP_SIZE) {
         result.push({ type: 'group', toolName, count: j - i, messages: messages.slice(i, j) });
         i = j;
         continue;

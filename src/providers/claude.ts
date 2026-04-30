@@ -285,6 +285,14 @@ export class ClaudeProvider implements Provider {
   }
 }
 
+/** Token estimation constants for fallback prompt token counting. */
+const TEXT_CHARS_PER_TOKEN = 3.5;
+const JSON_CHARS_PER_TOKEN = 2.5;
+const TOOL_USE_OVERHEAD_TOKENS = 6;
+const TOOL_RESULT_OVERHEAD_TOKENS = 4;
+const IMAGE_ESTIMATE_TOKENS = 80;
+const UNKNOWN_BLOCK_CHARS_PER_TOKEN = 3;
+
 /**
  * Rough estimate of prompt tokens. Used as fallback when the API doesn't provide
  * input_tokens via message_start events (e.g., older API versions).
@@ -296,24 +304,24 @@ function countPromptTokens(messages: Anthropic.MessageParam[]): number {
   let estimate = 0;
   for (const msg of messages) {
     if (typeof msg.content === 'string') {
-      estimate += msg.content.length / 3.5;
+      estimate += msg.content.length / TEXT_CHARS_PER_TOKEN;
     } else {
       for (const block of msg.content) {
         if (block.type === 'text') {
-          estimate += block.text.length / 3.5;
+          estimate += block.text.length / TEXT_CHARS_PER_TOKEN;
         } else if (block.type === 'tool_use') {
           const json = JSON.stringify(block.input);
-          estimate += (block.name.length + json.length) / 2.5 + 6;
+          estimate += (block.name.length + json.length) / JSON_CHARS_PER_TOKEN + TOOL_USE_OVERHEAD_TOKENS;
         } else if (block.type === 'tool_result') {
           const content = typeof block.content === 'string'
             ? block.content
             : JSON.stringify(block.content);
-          estimate += content.length / 2.5 + 4;
+          estimate += content.length / JSON_CHARS_PER_TOKEN + TOOL_RESULT_OVERHEAD_TOKENS;
         } else if (block.type === 'image') {
-          estimate += 80; // ~1 token per 4-5 chars of base64 with overhead
+          estimate += IMAGE_ESTIMATE_TOKENS; // ~1 token per 4-5 chars of base64 with overhead
         } else {
           // thinking, redacted_thinking, or unknown block types
-          estimate += JSON.stringify(block).length / 3;
+          estimate += JSON.stringify(block).length / UNKNOWN_BLOCK_CHARS_PER_TOKEN;
         }
       }
     }

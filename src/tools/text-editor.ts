@@ -111,7 +111,8 @@ export class TextEditorTool extends ZodTool<z.ZodObject<{
       const selected = lines.slice(start, end);
       content = selected.join('\n');
       // Add line numbers
-      const numbered = selected.map((line, i) => `${String(start + i + 1).padStart(6, ' ')} ${line}`);
+      const LINE_NUMBER_PAD_WIDTH = 6;
+      const numbered = selected.map((line, i) => `${String(start + i + 1).padStart(LINE_NUMBER_PAD_WIDTH, ' ')} ${line}`);
       return { result: numbered.join('\n') };
     }
 

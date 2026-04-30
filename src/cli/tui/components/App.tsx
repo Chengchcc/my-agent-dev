@@ -26,6 +26,8 @@ import type { Message } from '../../../types';
 import type { SlashCommand } from '../command-registry';
 import type { SessionStore } from '../../../session/store';
 
+const COMPACT_TERMINAL_WIDTH = 80;
+
 interface AppProps {
   agent: Agent;
   skillCommands: SlashCommand[];
@@ -47,6 +49,7 @@ const DYNAMIC_WINDOW = 1;
 
 type StaticItem = GroupedItem | { type: 'banner' };
 
+// eslint-disable-next-line max-lines-per-function -- comprehensive TUI layout
 function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashCommand[]; sessionStore: SessionStore }) {
   useEventLoopStall(process.env.DEBUG_STALL === '1');
   const { messages, streaming: isStreaming, streamingContent, thinkingContent, onSubmitWithSkill, abort, todos, moveFocus, toggleFocusedTool, ignoreError, focusedToolId, toolResults, ignoredErrors } = useAgentLoop();
@@ -119,7 +122,7 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
   }, [isStreaming, messages.length]);
 
   const terminalWidth = useTerminalWidth();
-  const isCompact = terminalWidth < 80;
+  const isCompact = terminalWidth < COMPACT_TERMINAL_WIDTH;
 
   const allCommands = [...getBuiltinCommands(sessionStore), ...skillCommands];
 
@@ -219,7 +222,7 @@ function AppContent({ skillCommands, sessionStore }: { skillCommands: SlashComma
               {thinkingContent !== null && (
                 <ThinkingMessage content={thinkingContent} streaming={isStreaming} collapsed={thinkingCollapsed} />
               )}
-              {isStreaming && (
+              {!!isStreaming && (
                 <StreamingMessage content={streamingContent ?? ''} />
               )}
             </ScrollView>

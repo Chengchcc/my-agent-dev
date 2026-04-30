@@ -52,6 +52,8 @@ const TOOL_OUTPUT_ESTIMATES = {
   default: 1000,
 } as const;
 
+const PCT = 100; // percentage display factor
+
 /**
  * Estimate the number of tokens a tool output will produce.
  */
@@ -123,20 +125,22 @@ export function checkToolBudget(
   const estimated = estimateToolOutput(toolCall);
   const remainingRatio = remainingTokens / totalLimit;
 
+  const DELEGATE_RATIO_THRESHOLD = 0.5;
+
   // Rule 1: Below compact threshold - always compact first
   if (remainingRatio < fullConfig.compactThreshold) {
     return {
       action: 'compact-first',
-      reason: `Context is at ${((1 - remainingRatio) * 100).toFixed(0)}% capacity (${remainingTokens} tokens remaining). Compacting before tool execution.`,
+      reason: `Context is at ${((1 - remainingRatio) * PCT).toFixed(0)}% capacity (${remainingTokens} tokens remaining). Compacting before tool execution.`,
     };
   }
 
   // Rule 2: Below delegate threshold AND tool is big - delegate
-  if (remainingRatio < fullConfig.delegateThreshold && estimated > remainingTokens * 0.5) {
+  if (remainingRatio < fullConfig.delegateThreshold && estimated > remainingTokens * DELEGATE_RATIO_THRESHOLD) {
     const task = buildDelegatedTask(toolCall);
     return {
       action: 'delegate-to-sub-agent',
-      reason: `Remaining budget ${remainingTokens} tokens (${(remainingRatio * 100).toFixed(0)}%), but '${toolCall.name}' estimated ~${estimated} tokens output. Delegating to sub-agent to preserve main context.`,
+      reason: `Remaining budget ${remainingTokens} tokens (${(remainingRatio * PCT).toFixed(0)}%), but '${toolCall.name}' estimated ~${estimated} tokens output. Delegating to sub-agent to preserve main context.`,
       delegatedTask: task,
     };
   }
@@ -174,7 +178,7 @@ export function checkBatchBudget(
   if (remainingRatio < fullConfig.compactThreshold) {
     return {
       action: 'compact-first',
-      reason: `Context is at ${((1 - remainingRatio) * 100).toFixed(0)}% capacity. Compacting before batch execution.`,
+      reason: `Context is at ${((1 - remainingRatio) * PCT).toFixed(0)}% capacity. Compacting before batch execution.`,
     };
   }
 
@@ -183,7 +187,7 @@ export function checkBatchBudget(
     const task = buildBatchDelegatedTask(toolCalls);
     return {
       action: 'delegate-to-sub-agent',
-      reason: `Batch of ${readCalls.length} file reads estimated ~${totalEstimated} tokens, exceeding ${(fullConfig.batchOutputRatio * 100).toFixed(0)}% of remaining ${remainingTokens} tokens. Delegating to sub-agent.`,
+      reason: `Batch of ${readCalls.length} file reads estimated ~${totalEstimated} tokens, exceeding ${(fullConfig.batchOutputRatio * PCT).toFixed(0)}% of remaining ${remainingTokens} tokens. Delegating to sub-agent.`,
       delegatedTask: task,
     };
   }
@@ -193,7 +197,7 @@ export function checkBatchBudget(
     const task = buildBatchDelegatedTask(toolCalls);
     return {
       action: 'delegate-to-sub-agent',
-      reason: `Search operations with only ${(remainingRatio * 100).toFixed(0)}% budget remaining. Delegating to sub-agent.`,
+      reason: `Search operations with only ${(remainingRatio * PCT).toFixed(0)}% budget remaining. Delegating to sub-agent.`,
       delegatedTask: task,
     };
   }

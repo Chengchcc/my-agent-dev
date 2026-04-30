@@ -22,13 +22,14 @@ const ERROR_DISPLAY_LINES = 10;
 const MEDIUM_RESULT_MAX_LINES = 20;
 const LONG_RESULT_HEAD_LINES = 5;
 const LONG_RESULT_TAIL_LINES = 3;
+const ELLIPSIS_LENGTH = 3;
 
 /**
  * Truncate string to max length
  */
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
-  return str.slice(0, maxLen - 3) + '...';
+  return str.slice(0, maxLen - ELLIPSIS_LENGTH) + '...';
 }
 
 function countAdded(diff: DiffData): number {

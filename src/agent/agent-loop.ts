@@ -1,3 +1,5 @@
+/* eslint-disable max-lines -- complex agent loop with many phases */
+
 import type {
   AgentContext,
   AgentConfig,
@@ -19,6 +21,13 @@ import { debugLog } from '../utils/debug';
 import { nanoid } from 'nanoid';
 
 const MAX_EPHEMERAL_BYTES = 4096;
+const PRIORITY_SKILL_HINT = 1;
+const PRIORITY_TODO_STATUS = 2;
+const PRIORITY_RETRIEVED_MEMORY = 3;
+const PRIORITY_UNKNOWN = 4;
+const NANOID_LENGTH = 6;
+
+const COMPACTION_TIER_FULL = 4;
 
 /**
  * Truncate ephemeral reminders to fit within MAX_EPHEMERAL_BYTES.
@@ -30,10 +39,10 @@ function truncateEphemeralReminders(reminders: string[]): string[] {
   if (totalBytes <= MAX_EPHEMERAL_BYTES) return reminders;
 
   const priority = (r: string): number => {
-    if (r.includes('<skill_hint')) return 1;
-    if (r.includes('<todo_status')) return 2;
-    if (r.includes('<retrieved_memory')) return 3;
-    return 4; // unknown — lowest priority
+    if (r.includes('<skill_hint')) return PRIORITY_SKILL_HINT;
+    if (r.includes('<todo_status')) return PRIORITY_TODO_STATUS;
+    if (r.includes('<retrieved_memory')) return PRIORITY_RETRIEVED_MEMORY;
+    return PRIORITY_UNKNOWN; // unknown — lowest priority
   };
 
   const indexed = reminders.map((text, idx) => ({ text, priority: priority(text), idx }));
@@ -207,7 +216,7 @@ export class AgentLoop {
     this.contextManager.setMessages(compactionResult.messages);
 
     // Post-collapse resync: notify middleware that the model needs key context restored
-    if (compactionResult.tier === 4) {
+    if (compactionResult.tier === COMPACTION_TIER_FULL) {
       afterBeforeCompress.metadata.justCollapsed = true;
     }
 
@@ -403,6 +412,7 @@ export class AgentLoop {
 
   // ===== Phase 3: Tool execution =====
 
+  // eslint-disable-next-line max-lines-per-function -- complex tool execution with multiple phases
   private async *runTools(
     toolCalls: ToolCall[],
     resultContext: AgentContext,
@@ -425,7 +435,7 @@ export class AgentLoop {
         turnIndex,
       } satisfies import('./loop-types').BudgetDelegationEvent // eslint-disable-line @typescript-eslint/consistent-type-imports
 
-      const subId = `budget-sub-${nanoid(6)}`;
+      const subId = `budget-sub-${nanoid(NANOID_LENGTH)}`;
       const subAgentCall: ToolCall = {
         id: subId,
         name: 'sub_agent',
@@ -458,7 +468,7 @@ export class AgentLoop {
             turnIndex,
           } satisfies import('./loop-types').BudgetDelegationEvent // eslint-disable-line @typescript-eslint/consistent-type-imports
 
-          const subId = `budget-sub-${nanoid(6)}`;
+          const subId = `budget-sub-${nanoid(NANOID_LENGTH)}`;
           toolCalls[index] = {
             id: subId,
             name: 'sub_agent',

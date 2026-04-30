@@ -4,9 +4,12 @@ import { z } from 'zod';
 import { ZodTool } from './zod-tool';
 import type { ToolContext } from '../agent/tool-dispatch/types';
 
+const BYTES_PER_KB = 1024;
+const MB = BYTES_PER_KB * BYTES_PER_KB;
 const DEFAULT_BASH_TIMEOUT_MS = 120_000;
-const DEFAULT_MAX_OUTPUT_BYTES = 1024 * 1024;
-const CHILD_PROCESS_MAX_BUFFER = 10 * 1024 * 1024;
+const MAX_BUFFER_MULTIPLIER = 10;
+const DEFAULT_MAX_OUTPUT_BYTES = MB;
+const CHILD_PROCESS_MAX_BUFFER = MAX_BUFFER_MULTIPLIER * MB;
 const SIGTERM_EXIT_CODE = 130;
 const TIMEOUT_EXIT_CODE = 124;
 

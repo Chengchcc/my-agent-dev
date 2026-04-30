@@ -1,6 +1,8 @@
 import type { SlashCommand } from '../command-registry';
 import type { CommandHandlerContext } from '../types';
 
+const PERCENT_MULTIPLIER = 100;
+
 export const compactCommand: SlashCommand = {
   name: 'compact',
   description: 'Manually compact conversation context to save tokens',
@@ -15,10 +17,10 @@ export const compactCommand: SlashCommand = {
     ctx.refreshMessages();
 
     if (!result.compacted) {
-      onOutput(`Context compaction not needed - usage is ${contextManager.getUsageRatio() * 100 | 0}%, compaction would not free significant space.`);
+      onOutput(`Context compaction not needed - usage is ${contextManager.getUsageRatio() * PERCENT_MULTIPLIER | 0}%, compaction would not free significant space.`);
       return;
     }
 
-    onOutput(`Context compacted (level: ${result.level}): ${result.tokensBefore} → ${result.tokensAfter} tokens (${Math.round((1 - result.tokensAfter / result.tokensBefore) * 100)}% reduction).`);
+    onOutput(`Context compacted (level: ${result.level}): ${result.tokensBefore} → ${result.tokensAfter} tokens (${Math.round((1 - result.tokensAfter / result.tokensBefore) * PERCENT_MULTIPLIER)}% reduction).`);
   },
 };

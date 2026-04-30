@@ -175,7 +175,7 @@ export function useCommandInput({
   };
 
   useInput(
-    // eslint-disable-next-line complexity
+    // eslint-disable-next-line complexity, max-lines-per-function -- comprehensive input handler
     (input, key) => {
       if (key.ctrl && input === "c") {
         onAbort?.();

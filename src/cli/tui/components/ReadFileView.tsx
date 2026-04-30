@@ -8,6 +8,8 @@ import { getLanguageFromFilePath } from './utils/language-map';
 import { getCachedTokens, setCachedTokens } from '../utils/syntax-cache';
 import { prismTheme } from './utils/prism-theme';
 
+const DEFAULT_MAX_HEIGHT = 50;
+
 interface ReadFileViewProps {
   filePath: string;
   content: string;
@@ -24,7 +26,7 @@ export function ReadFileView({
   startLine,
   totalFileLines,
   language,
-  maxHeight = 50,
+  maxHeight = DEFAULT_MAX_HEIGHT,
   diff,
 }: ReadFileViewProps) {
   const lang = language || getLanguageFromFilePath(filePath) || 'text';

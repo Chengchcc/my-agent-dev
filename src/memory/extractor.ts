@@ -3,6 +3,8 @@ import type { Message, Provider, AgentContext } from '../types';
 import type { MemoryEntry, MemoryExtractor } from './types';
 import { DEFAULT_SUMMARY_MODEL } from '../config/constants';
 
+const DEFAULT_WEIGHT = 0.8;
+
 export class LlmExtractor implements MemoryExtractor {
   constructor(
     private provider: Provider,
@@ -120,7 +122,7 @@ ${entries.map((e, i) => `[${i + 1}] ${e.text} (created: ${e.created})`).join('\n
             type: p.type!,
             text: p.text!,
             created: p.created ?? now,
-            weight: p.weight ?? 0.8,
+            weight: p.weight ?? DEFAULT_WEIGHT,
             source: p.source ?? ('implicit' as const),
           };
           if (p.tags?.length) entry.tags = p.tags;
@@ -163,7 +165,7 @@ ${entries.map((e, i) => `[${i + 1}] ${e.text} (created: ${e.created})`).join('\n
             type: p.type!,
             text: p.text!,
             created: p.created ?? now,
-            weight: p.weight ?? 0.8,
+            weight: p.weight ?? DEFAULT_WEIGHT,
             source: p.source ?? ('implicit' as const),
           };
           if (p.tags?.length) entry.tags = p.tags;

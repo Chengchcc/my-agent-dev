@@ -5,6 +5,8 @@ import path from 'path';
 import { debugLog } from '../utils/debug';
 import { djb2Hash } from '../utils/hash';
 
+const KEYWORD_MIN_WORD_LENGTH = 2;
+
 /**
  * Options for SkillMiddleware.
  */
@@ -21,6 +23,7 @@ export type SkillMiddlewareOptions = {
 
 const DEFAULT_MAX_INJECTED_SKILLS = 3;
 const DEFAULT_MAX_DESCRIPTION_LENGTH = 500;
+const ELLIPSIS_LENGTH = 3;
 
 /** Strip injection-looking XML tags from untrusted skill metadata. */
 function sanitizeSkillDescription(desc: string): string {
@@ -42,7 +45,7 @@ function sanitizeSkillDescription(desc: string): string {
 function capDescription(desc: string, maxLen: number): string {
   const clean = sanitizeSkillDescription(desc);
   if (clean.length <= maxLen) return clean;
-  return clean.slice(0, maxLen - 3) + '...';
+  return clean.slice(0, maxLen - ELLIPSIS_LENGTH) + '...';
 }
 
 /** Keyword overlap score between user query and skill description (0–1). */
@@ -56,7 +59,7 @@ function keywordScore(query: string, description: string): number {
     'very', 'just', 'that', 'this', 'these', 'those', 'it', 'its', 'they', 'them', 'their',
   ]);
   const queryWords = new Set(
-    query.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w)),
+    query.toLowerCase().split(/\s+/).filter(w => w.length > KEYWORD_MIN_WORD_LENGTH && !stopWords.has(w)),
   );
   if (queryWords.size === 0) return 0;
   const descLower = description.toLowerCase();
@@ -100,6 +103,7 @@ export type SkillMiddlewareResult = AgentMiddleware & {
  *   Layer 1: <skill_catalog> in system prompt — stable, version-hashed, cache-friendly
  *   Layer 2: <skill_hint> in ephemeralReminders — per-turn, mentions only, auto-cleaned
  */
+// eslint-disable-next-line max-lines-per-function -- comprehensive skill middleware with multiple phases
 export function createSkillMiddleware(
   options: Partial<SkillMiddlewareOptions> = {}
 ): SkillMiddlewareResult {

@@ -10,6 +10,7 @@ export interface CompactionResult {
   tokensBefore: number;
   tokensAfter: number;
   // New fields added for compatibility with redesigned system
+  // eslint-disable-next-line @typescript-eslint/no-magic-numbers -- literal union type
   tier?: 0 | 1 | 2 | 3 | 4;
   summary?: string;
   needsContinuation?: boolean;
@@ -67,6 +68,7 @@ export interface NewCompactionResult {
   /** New message array after compaction */
   messages: Message[];
   /** Which tier was applied */
+  // eslint-disable-next-line @typescript-eslint/no-magic-numbers -- literal union type
   tier: 0 | 1 | 2 | 3 | 4;
   /** Token count before compaction */
   tokensBefore: number;

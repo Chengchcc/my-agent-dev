@@ -19,8 +19,11 @@ function canSubmit(questions: AskUserQuestionItem[], selections: string[][]): bo
   });
 }
 
+const MAX_TAB_LABEL_LENGTH = 12;
+const TAB_LABEL_TRUNCATION_LENGTH = 11;
+
 function tabLabel(header: string): string {
-  return header.length > 12 ? `${header.slice(0, 11)}…` : header;
+  return header.length > MAX_TAB_LABEL_LENGTH ? `${header.slice(0, TAB_LABEL_TRUNCATION_LENGTH)}…` : header;
 }
 
 interface AskUserQuestionPromptProps {

@@ -148,8 +148,8 @@ export class MemoryMiddleware implements AgentMiddleware {
           `<system-reminder>\n<retrieved_memory>\n${body}\n</retrieved_memory>\n</system-reminder>`,
         );
         // Update lastHitAt for LRU eviction tracking
-        this.episodicStore.markHit?.(allHits.map(h => h.id));
-        this.projectStore.markHit?.(projectHits.map(h => h.id));
+        void this.episodicStore.markHit?.(allHits.map(h => h.id));
+        void this.projectStore.markHit?.(projectHits.map(h => h.id));
       }
     }
 
