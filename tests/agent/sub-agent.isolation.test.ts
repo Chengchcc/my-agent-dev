@@ -18,7 +18,7 @@ const mockProvider: Provider = {
 const mockConfig: AgentConfig = { tokenLimit: 50000 };
 
 describe('Context isolation', () => {
-  test('sub-agent has independent ContextManager', () => {
+  test('sub-agent has independent ContextManager', async () => {
     const mainRegistry = new ToolRegistry();
     const mainContextManager = new ContextManager({ tokenLimit: 50000 });
     const mainCtx = mainContextManager.getContext(mockConfig);
@@ -34,9 +34,11 @@ describe('Context isolation', () => {
     // Spy on ContextManager constructor/getContext
     const contextSpy = vi.spyOn(ContextManager.prototype, 'getContext');
 
-    // Execute will fail because mock provider doesn't stream properly, but it should
-    // have created the sub context before that
-    tool.execute({ task: 'do something' }, createTestCtx()).catch(() => {});
+    // Execute will fail because mock provider doesn't stream properly, but getContext
+    // should have been called before that during agent loop initialization.
+    try {
+      await tool.execute({ goal: 'do something', deliverable: 'summary' }, createTestCtx());
+    } catch {}
 
     expect(contextSpy).toHaveBeenCalled();
     const subCtx = contextSpy.mock.results[0].value;
@@ -62,12 +64,12 @@ describe('Context isolation', () => {
 
     const contextSpy = vi.spyOn(ContextManager.prototype, 'setSystemPrompt');
 
-    tool.execute({ task: 'test' }, createTestCtx()).catch(() => {});
+    tool.execute({ goal: 'test', deliverable: 'summary' }, createTestCtx()).catch(() => {});
 
     expect(contextSpy).toHaveBeenCalled();
     const systemPrompt = contextSpy.mock.calls[0][0];
     expect(systemPrompt).toContain('focused sub-agent executing a specific task');
-    expect(systemPrompt).toContain('independent context and full access to tools');
+    expect(systemPrompt).toContain('own independent context');
     expect(systemPrompt).not.toBe(mainCtx.systemPrompt);
 
     contextSpy.mockRestore();
@@ -103,7 +105,7 @@ describe('ToolRegistry filtering (recursion prevention)', () => {
     // Spy on registry to see what gets filtered
     const registerSpy = vi.spyOn(ToolRegistry.prototype, 'register');
 
-    tool.execute({ task: 'test' }, createTestCtx()).catch(() => {});
+    tool.execute({ goal: 'test', deliverable: 'summary' }, createTestCtx()).catch(() => {});
 
     // Check which tools got registered in sub registry
     const registeredNames: string[] = [];
@@ -146,7 +148,7 @@ describe('ToolRegistry filtering (recursion prevention)', () => {
 
     const registerSpy = vi.spyOn(ToolRegistry.prototype, 'register');
 
-    tool.execute({ task: 'test' }, createTestCtx()).catch(() => {});
+    tool.execute({ goal: 'test', deliverable: 'summary' }, createTestCtx()).catch(() => {});
 
     const registeredNames: string[] = [];
     registerSpy.mock.calls.forEach(call => {
@@ -181,7 +183,7 @@ describe('ToolRegistry filtering (recursion prevention)', () => {
 
     const registerSpy = vi.spyOn(ToolRegistry.prototype, 'register');
 
-    tool.execute({ task: 'test' }, createTestCtx()).catch(() => {});
+    tool.execute({ goal: 'test', deliverable: 'summary' }, createTestCtx()).catch(() => {});
 
     const registeredNames: string[] = [];
     registerSpy.mock.calls.forEach(call => {
@@ -225,13 +227,13 @@ describe('Resource constraints', () => {
       // loopConfig with maxTurns defaults to 15 from SubAgentTool
     });
 
-    const result = await tool.execute({ task: 'keep reading' }, createTestCtx());
+    const result = await tool.execute({ goal: 'keep reading', deliverable: 'summary' }, createTestCtx());
 
     // ScriptedProvider increments callCount each turn
     // Should not exceed 15-16 turns due to maxTurns limit
     // @ts-ignore ScriptedProvider has callCount
     expect(scriptedProvider.callCount).toBeLessThanOrEqual(16);
-    expect(result).toContain('SubAgent');
+    expect(result).toContain('<sub_agent_result');
     expect(result).toContain('turns');
   }, 60000); // Increased timeout for this test
 
@@ -260,7 +262,7 @@ describe('Resource constraints', () => {
 
     // Start execution
     const startTime = Date.now();
-    const promise = tool.execute({ task: 'slow task' }, createTestCtx());
+    const promise = tool.execute({ goal: 'slow task', deliverable: 'summary' }, createTestCtx());
 
     // Wait for the timeout - use real timers since we just need to wait
     // This test will fail if it doesn't timeout within 2 seconds

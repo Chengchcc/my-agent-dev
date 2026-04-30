@@ -1,14 +1,71 @@
 // src/agent/sub-agent-tool.ts
 import { nanoid } from 'nanoid';
 import type { Tool, ToolImplementation } from '../types';
-import type { Provider, AgentConfig } from '../types';
+import type { Provider, AgentConfig, AgentHooks } from '../types';
 import type { ToolContext } from './tool-dispatch/types';
-import type { AgentEvent, AgentLoopConfig } from './loop-types';
+import type { AgentEvent, AgentLoopConfig, SubAgentExitStatus } from './loop-types';
 import { Agent } from './Agent';
 import { ContextManager } from './context';
 import { ToolRegistry } from './tool-registry';
 import { DEFAULT_LOOP_CONFIG } from './loop-types';
 import { getSettingsSync } from '../config';
+import { RateLimitedProvider } from './rate-limiter';
+
+/** Sub-agent execution profile controlling tool access and parallelism. */
+export type SubAgentProfile = 'read_only' | 'code_editor' | 'general';
+
+/** Deliverable format for sub-agent output. */
+export type SubAgentDeliverable = 'summary' | 'file_list' | 'code_patch' | 'structured_json';
+
+
+/** Tool allowlists per profile. */
+const PROFILE_TOOLS: Record<SubAgentProfile, string[]> = {
+  read_only: ['read', 'grep', 'glob', 'ls'],
+  code_editor: ['read', 'grep', 'glob', 'ls', 'text_editor', 'bash'],
+  general: [], // empty = all non-excluded (no profile filter applied)
+};
+
+/** Tools always excluded from sub-agents regardless of profile. */
+const ALWAYS_EXCLUDE = new Set(['sub_agent', 'ask_user_question']);
+
+/** Tools excluded because they use global module-level state. */
+const GLOBAL_STATE_TOOLS_PREFIX = 'Task';
+
+/** Maximum concurrent sub-agents (sempahore-based). */
+const MAX_CONCURRENT_SUB_AGENTS = 3;
+
+/**
+ * Simple promise-based semaphore for limiting concurrent sub-agent execution.
+ */
+class Semaphore {
+  private count: number;
+  private queue: Array<() => void> = [];
+
+  constructor(max: number) {
+    this.count = max;
+  }
+
+  async acquire(): Promise<void> {
+    if (this.count > 0) {
+      this.count--;
+      return;
+    }
+    return new Promise<void>(resolve => {
+      this.queue.push(resolve);
+    });
+  }
+
+  release(): void {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift()!;
+      next();
+    } else {
+      this.count++;
+    }
+  }
+}
+
+const subAgentSemaphore = new Semaphore(MAX_CONCURRENT_SUB_AGENTS);
 
 /**
  * Configuration for SubAgentTool
@@ -40,6 +97,8 @@ export interface SubAgentToolConfig {
   isolation?: boolean;
   /** Worktree root directory for sub agent (default from settings) */
   worktreeRootDir?: string;
+  /** Inherited hooks from main agent (e.g. beforeModel for memory/skills/todo) */
+  hooks?: Partial<Pick<AgentHooks, 'beforeModel'>>;
 }
 
 /**
@@ -87,18 +146,58 @@ USE when:
 DO NOT USE when:
 - A single tool call (bash/text_editor) can accomplish the task
 - You need to interactively refine the result with the user
-- The subtask depends on information only available in the current conversation`,
+- The subtask depends on information only available in the current conversation
+
+PROFILES:
+- read_only: Only read/analysis tools. Safe to run in parallel with other sub-agents.
+- code_editor: Read + write tools. Filesystem writes are serialized.
+- general: All non-dangerous tools. Default if not specified.`,
       parameters: {
         type: 'object',
         properties: {
-          task: {
+          goal: {
             type: 'string',
-            description: 'A clear, self-contained task description. Include all necessary context or reference files the sub agent should read — it cannot see the current conversation.',
+            description: 'The precise objective in one sentence.',
+          },
+          context: {
+            type: 'string',
+            description: 'Relevant findings, files already inspected, or information the sub-agent needs.',
+          },
+          constraints: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Specific constraints the sub-agent must follow (e.g. "do not edit files", "use only grep").',
+          },
+          deliverable: {
+            type: 'string',
+            enum: ['summary', 'file_list', 'code_patch', 'structured_json'],
+            description: 'Expected output format. summary=free text, file_list=list of file paths, code_patch=diff/patch, structured_json=JSON matching output_schema.',
+          },
+          output_schema: {
+            type: 'string',
+            description: 'JSON schema for the output when deliverable=structured_json.',
+          },
+          profile: {
+            type: 'string',
+            enum: ['read_only', 'code_editor', 'general'],
+            description: 'Execution profile controlling tool access. Default: read_only (safest, can parallelize).',
           },
         },
-        required: ['task'],
+        required: ['goal', 'deliverable'],
       },
     };
+  }
+
+  get readonly(): boolean {
+    return false; // conflictKey drives parallelism; sub-agent may write files
+  }
+
+  conflictKey(input: unknown): string | null {
+    const params = input as Record<string, unknown>;
+    const profile = (params.profile as SubAgentProfile) ?? 'read_only';
+    if (profile === 'read_only') return null; // Safe to parallelize
+    if (profile === 'code_editor') return 'fs:global'; // All writes serialized
+    return 'agent:global'; // General profile: full serialization
   }
 
   /**
@@ -110,193 +209,201 @@ DO NOT USE when:
     params: Record<string, unknown>,
     ctx: ToolContext,
   ): Promise<string> {
-    const task = params.task as string;
+    const goal = params.goal as string;
+    const contextInfo = (params.context as string) ?? '';
+    const constraints = (params.constraints as string[]) ?? [];
+    const deliverable = (params.deliverable as SubAgentDeliverable) ?? 'summary';
+    const outputSchema = (params.output_schema as string) ?? '';
+    const profile = (params.profile as SubAgentProfile) ?? 'read_only';
     const signal = ctx.signal;
 
-    if (!task || typeof task !== 'string') {
-      return 'Error: Missing required "task" parameter';
+    if (!goal || typeof goal !== 'string') {
+      return '<sub_agent_result status="error">Error: Missing required "goal" parameter</sub_agent_result>';
     }
 
     // Prevent recursion: only main agent can spawn sub_agent
     if (ctx.environment.agentType === 'sub_agent') {
-      return 'Error: sub_agent cannot spawn another sub_agent';
+      return '<sub_agent_result status="error">Error: sub_agent cannot spawn another sub_agent</sub_agent_result>';
     }
 
     const agentId = `sub-${nanoid(6)}`;
     const startTime = Date.now();
 
-    try {
-      // Build filtered tool registry - exclude sub_agent to prevent recursion
-      // Also exclude Task* tools because they use a global module-level taskStore
-      // Sub agents don't need task tracking anyway for simple subtasks
-      const subToolRegistry = new ToolRegistry();
-      const mainTools = this.config.mainToolRegistry.getAllDefinitions();
+    // ── All synchronous setup (no I/O) before semaphore ──
 
-      for (const toolDef of mainTools) {
-        // Never allow sub_agent recursion
-        if (toolDef.name === 'sub_agent') {
-          continue;
-        }
-        // Exclude Task* tools - they use global state
-        if (toolDef.name.startsWith('Task')) {
-          continue;
-        }
-        // If allowedTools specified, filter to only those
-        if (this.config.allowedTools && !this.config.allowedTools.includes(toolDef.name)) {
-          continue;
-        }
-        // Get the actual implementation from main registry and register via adapter.
-        // Wrapping prevents shared mutable state between main and sub-agent tool instances.
-        const impl = this.config.mainToolRegistry.get(toolDef.name);
-        if (impl) {
-          subToolRegistry.register({
-            getDefinition: () => toolDef,
-            execute: (params, ctx) => impl.execute(params, ctx),
-          });
-        }
+    // Build filtered tool registry using profile-based allowlist
+    const subToolRegistry = new ToolRegistry();
+    const mainTools = this.config.mainToolRegistry.getAllDefinitions();
+    const allowedSet = this.config.allowedTools
+      ? new Set(this.config.allowedTools)
+      : null;
+    const profileSet = PROFILE_TOOLS[profile];
+    // empty profileSet (general) means "allow all non-excluded"
+    const useProfileFilter = profileSet.length > 0;
+
+    for (const toolDef of mainTools) {
+      // Always exclude recursion and dangerous tools
+      if (ALWAYS_EXCLUDE.has(toolDef.name)) continue;
+      // Exclude global-state tools
+      if (toolDef.name.startsWith(GLOBAL_STATE_TOOLS_PREFIX)) continue;
+      // If explicit allowedTools, filter to only those
+      if (allowedSet && !allowedSet.has(toolDef.name)) continue;
+      // Profile-based filtering
+      if (useProfileFilter && !profileSet.includes(toolDef.name)) continue;
+
+      const impl = this.config.mainToolRegistry.get(toolDef.name);
+      if (impl) {
+        subToolRegistry.register({
+          getDefinition: () => toolDef,
+          execute: (p, c) => impl.execute(p, c),
+        });
       }
+    }
 
-      // Create isolated context manager for sub agent
-      const tokenLimit = this.config.tokenLimit ?? 50000;
-      // Set up system prompt
-      const systemPrompt = this.config.systemPromptTemplate ?? `You are a focused sub-agent executing a specific task.
+    // Build system prompt (middleware handles project_rules/user_preferences/skill_catalog injection)
+    const tokenLimit = this.config.tokenLimit ?? 50000;
 
-You have your own independent context and full access to tools.
-Your goal is to complete the task and provide a clear concise summary when done.
-If the task references files in .agent/, read them first before proceeding.`;
+    const systemPromptSections = [
+      'You are a focused sub-agent executing a specific task with your own independent context.',
+      'Complete the task and return a clear, structured result. Do NOT ask the user questions.',
+      `<environment>\n  cwd: ${ctx.environment.cwd}\n</environment>`,
+    ];
+    const systemPrompt = systemPromptSections.filter(Boolean).join('\n\n');
 
-      const subContextManager = new ContextManager({
-        tokenLimit,
-        defaultSystemPrompt: systemPrompt,
-      });
-      // Still call setSystemPrompt to ensure compatibility with tests expecting it
-      subContextManager.setSystemPrompt(systemPrompt);
+    const subContextManager = new ContextManager({
+      tokenLimit,
+      defaultSystemPrompt: systemPrompt,
+    });
+    subContextManager.setSystemPrompt(systemPrompt);
 
-      // Add the user task - done automatically by runAgentLoop
+    // Build structured task message
+    const constraintsXml = constraints.length > 0
+      ? `\n<constraints>\n${constraints.map(c => `- ${c}`).join('\n')}\n</constraints>`
+      : '';
+    const schemaXml = outputSchema
+      ? `\n<output_schema>\n${outputSchema}\n</output_schema>`
+      : '';
+    const userMessage = `<task>
+<goal>${goal}</goal>
+<context>${contextInfo || 'none'}</context>${constraintsXml}
+<deliverable type="${deliverable}">${schemaXml}
+</deliverable>
+</task>`;
 
-      // Create sub agent config
-      const subAgentConfig: AgentConfig = {
-        ...this.config.mainAgentConfig,
-        tokenLimit,
-      };
+    // Create sub agent config
+    const subAgentConfig: AgentConfig = {
+      ...this.config.mainAgentConfig,
+      tokenLimit,
+    };
 
-      // Use provided provider or inherit from main
-      const provider = this.config.provider ?? this.config.mainProvider;
+    // Use provided provider or inherit from main, wrapped with rate limiting + log prefix
+    const rawProvider = this.config.provider ?? this.config.mainProvider;
+    const provider = new RateLimitedProvider(rawProvider, { prefix: agentId });
 
-      // Create the sub agent
-      const subAgent = new Agent({
-        provider,
-        contextManager: subContextManager,
-        config: subAgentConfig,
-        toolRegistry: subToolRegistry,
-      });
+    // Create the sub agent with inherited hooks (memory, skills, todo)
+    const subAgent = new Agent({
+      provider,
+      contextManager: subContextManager,
+      config: subAgentConfig,
+      toolRegistry: subToolRegistry,
+      ...(this.config.hooks ? { hooks: this.config.hooks } : {}),
+    });
 
-      // Default loop config with tighter constraints
-      const defaultSubLoopConfig: Partial<AgentLoopConfig> = {
-        maxTurns: 15,
-        timeoutMs: 5 * 60 * 1000, // 5 minutes default timeout
-      };
+    // Default loop config with tighter constraints
+    const defaultSubLoopConfig: Partial<AgentLoopConfig> = {
+      maxTurns: 15,
+      timeoutMs: 5 * 60 * 1000, // 5 minutes default timeout
+    };
 
-      const loopConfig: AgentLoopConfig = {
-        ...DEFAULT_LOOP_CONFIG,
-        ...defaultSubLoopConfig,
-        ...this.config.loopConfig,
-      };
+    const loopConfig: AgentLoopConfig = {
+      ...DEFAULT_LOOP_CONFIG,
+      ...defaultSubLoopConfig,
+      ...this.config.loopConfig,
+    };
+
+    // ── Semaphore guards only the agent loop execution ──
+
+    try {
+      await subAgentSemaphore.acquire();
+
+      // Per-sub-agent abort controller (propagates from parent signal)
+      const childAC = new AbortController();
+      const onParentAbort = () => childAC.abort();
+      signal.addEventListener('abort', onParentAbort, { once: true });
 
       // Bubble start event
       if (this.config.onEvent) {
         this.config.onEvent(agentId, {
           type: 'sub_agent_start',
           agentId,
-          task,
+          task: goal,
           turnIndex: 0,
         });
       }
 
       let finalTotalTurns = 0;
       let finalSummary = '';
-      let hasTimeoutError = false;
-      let hasMaxTurnsError = false;
+      let exitStatus: SubAgentExitStatus = 'success';
 
-      // Run the agent loop and bubble events - propagate abort signal from main
-      for await (const event of subAgent.runAgentLoop(
-        { role: 'user', content: task },
-        loopConfig,
-        { signal }
-      )) {
-        // Check for abort from main (extra safety check)
-        if (signal.aborted) {
-          throw new Error('Sub agent aborted by main agent');
-        }
-
-        // Bubble the event if callback exists
-        if (this.config.onEvent) {
-          this.config.onEvent(agentId, {
-            type: 'sub_agent_event',
-            agentId,
-            event,
-            turnIndex: event.turnIndex,
-          });
-        }
-
-        // Track timeout errors
-        if (event.type === 'agent_error' && event.error?.message.includes('aborted')) {
-          hasTimeoutError = true;
-        }
-
-        // Capture the final summary from agent_done
-        if (event.type === 'agent_done') {
-          // Get the actual total turns from the event
-          finalTotalTurns = event.totalTurns;
-
-          // Check for max turns or timeout reasons
-          if (event.reason === 'max_turns_reached') {
-            hasMaxTurnsError = true;
-          } else if (event.reason === 'error' && event.error) {
-            // Any error from agent_done - capture the error message
-            finalSummary = event.error.message;
-            // Check if it's an abort/timeout
-            if (event.error.message.includes('aborted') || event.error.message.includes('timeout')) {
-              hasTimeoutError = true;
-            }
+      // Run agent loop with child abort signal
+      try {
+        for await (const event of subAgent.runAgentLoop(
+          { role: 'user', content: userMessage },
+          loopConfig,
+          { signal: childAC.signal },
+        )) {
+          // Bubble the event if callback exists
+          if (this.config.onEvent) {
+            this.config.onEvent(agentId, {
+              type: 'sub_agent_event',
+              agentId,
+              event,
+              turnIndex: event.turnIndex,
+            });
           }
 
-          // Only look for assistant message if we don't already have an error summary
-          if (!finalSummary) {
-            // Get the final context and find the last assistant message
-            const finalContext = subAgent.getContext();
+          // Track the completion reason from agent_done
+          if (event.type === 'agent_done') {
+            finalTotalTurns = event.totalTurns;
 
-            // Search backwards from the end to find the last assistant message
-            // Because the last message might be a tool result, not assistant
-            for (let i = finalContext.messages.length - 1; i >= 0; i--) {
-              const message = finalContext.messages[i];
-              if (message && message.role === 'assistant' && message.content) {
-                finalSummary = message.content;
-                break;
+            if (event.reason === 'max_turns_reached') {
+              exitStatus = 'max_turns';
+            } else if (event.reason === 'error' && event.error) {
+              finalSummary = event.error.message;
+              exitStatus = signal.aborted ? 'aborted' : 'error';
+            }
+
+            if (!finalSummary) {
+              const finalCtx = subAgent.getContext();
+              for (let i = finalCtx.messages.length - 1; i >= 0; i--) {
+                const msg = finalCtx.messages[i];
+                if (msg && msg.role === 'assistant' && msg.content) {
+                  finalSummary = msg.content;
+                  break;
+                }
               }
             }
           }
         }
+      } finally {
+        signal.removeEventListener('abort', onParentAbort);
       }
 
       const durationMs = Date.now() - startTime;
 
-      // Determine if the execution was aborted due to timeout or max turns
-      let executionSummary = finalSummary;
-      if (!executionSummary) {
-        if (hasTimeoutError || durationMs >= loopConfig.timeoutMs) {
-          executionSummary = 'SubAgent execution terminated: timeout after 5 minutes.';
-        } else if (hasMaxTurnsError || finalTotalTurns >= loopConfig.maxTurns) {
-          executionSummary = `SubAgent execution terminated: maximum ${loopConfig.maxTurns} turns reached.`;
+      // Determine exit status and summary
+      if (!finalSummary) {
+        if (signal.aborted) {
+          exitStatus = 'aborted';
+          finalSummary = 'Sub-agent aborted by main agent.';
+        } else if (durationMs >= loopConfig.timeoutMs) {
+          exitStatus = 'timeout';
+          finalSummary = `Sub-agent timed out after ${loopConfig.timeoutMs / 1000 / 60} minutes.`;
+        } else if (exitStatus === 'max_turns') {
+          finalSummary = `Sub-agent reached maximum ${loopConfig.maxTurns} turns.`;
         } else {
-          executionSummary = `Sub agent completed ${finalTotalTurns} turns but produced no final summary.`;
+          finalSummary = `Sub-agent completed ${finalTotalTurns} turns but produced no summary.`;
         }
-      }
-
-      // Only report timeout if the agent didn't produce a natural summary.
-      // A valid summary from a slightly-over-timeout completion is more useful than a generic timeout message.
-      if (durationMs >= loopConfig.timeoutMs && !finalSummary) {
-        executionSummary = `SubAgent execution terminated: timeout after ${loopConfig.timeoutMs / 1000 / 60} minutes.`;
       }
 
       // Bubble done event
@@ -304,22 +411,24 @@ If the task references files in .agent/, read them first before proceeding.`;
         this.config.onEvent(agentId, {
           type: 'sub_agent_done',
           agentId,
-          summary: executionSummary,
+          summary: finalSummary,
           totalTurns: finalTotalTurns,
           durationMs,
-          isError: !finalSummary, // If we had to generate an error summary
+          isError: exitStatus !== 'success',
+          exitStatus,
           turnIndex: 0,
         });
       }
 
-      // Return summary to main agent
-      return `[SubAgent ${agentId} completed in ${durationMs}ms, ${finalTotalTurns} turns]\n\n${executionSummary}`;
+      // Return machine-readable wrapped result
+      return `<sub_agent_result agent_id="${agentId}" turns="${finalTotalTurns}" duration_ms="${durationMs}" status="${exitStatus}">
+${finalSummary}
+</sub_agent_result>`;
     } catch (error) {
       const durationMs = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorObj = error instanceof Error ? error : new Error(errorMessage);
 
-      // Bubble done event with error status
       if (this.config.onEvent) {
         this.config.onEvent(agentId, {
           type: 'sub_agent_done',
@@ -329,12 +438,16 @@ If the task references files in .agent/, read them first before proceeding.`;
           durationMs,
           isError: true,
           error: errorObj,
+          exitStatus: 'error',
           turnIndex: 0,
         });
       }
 
-      // Return error as normal tool result (don't throw) so main can handle it
-      return `[SubAgent ${agentId} failed after ${durationMs}ms]\n\nError: ${errorMessage}`;
+      return `<sub_agent_result agent_id="${agentId}" turns="0" duration_ms="${durationMs}" status="error">
+Error: ${errorMessage}
+</sub_agent_result>`;
+    } finally {
+      subAgentSemaphore.release();
     }
   }
 }

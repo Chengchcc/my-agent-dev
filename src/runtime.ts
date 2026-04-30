@@ -154,11 +154,12 @@ export async function createAgentRuntime(
     if (todoHooks.beforeModel) hooks.beforeModel.push(todoHooks.beforeModel);
   }
 
-  // Sub Agent
+  // Sub Agent (hooks.beforeModel passed by reference — populated by middleware below)
   toolRegistry.register(new SubAgentTool({
     mainProvider: provider,
     mainToolRegistry: toolRegistry,
     mainAgentConfig: agentConfig,
+    hooks: { beforeModel: hooks.beforeModel },
   }));
 
   // Memory

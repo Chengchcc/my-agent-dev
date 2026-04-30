@@ -24,7 +24,7 @@ describe('Error handling - sub-agent failures', () => {
       mainAgentConfig: mockConfig,
     });
 
-    const result = await tool.execute({ task: 'test' }, createTestCtx());
+    const result = await tool.execute({ goal: 'test', deliverable: 'summary' }, createTestCtx());
     expect(result).toContain('API rate limit exceeded');
     // Doesn't throw, returns error as string so main can continue
   });
@@ -78,7 +78,7 @@ describe('Error handling - sub-agent failures', () => {
       loopConfig: { maxTurns: 2, timeoutMs: 5000 },
     });
 
-    const result = await tool.execute({ task: 'read /nonexistent' }, createTestCtx());
+    const result = await tool.execute({ goal: 'read /nonexistent', deliverable: 'summary' }, createTestCtx());
     expect(result).toBeDefined();
     expect(result).toContain('File not found');
     expect(result).toContain('no files found');
@@ -113,7 +113,7 @@ describe('Abort signal propagation', () => {
 
     const controller = new AbortController();
     const promise = tool.execute(
-      { task: 'long task' },
+      { goal: 'long task', deliverable: 'summary' },
       createTestCtx({ signal: controller.signal })
     );
 
@@ -124,7 +124,7 @@ describe('Abort signal propagation', () => {
     controller.abort();
     const result = await promise;
 
-    expect(result).toContain('failed');
+    expect(result).toContain('status="aborted"');
     expect(result).toContain('Sub agent aborted by main agent');
   });
 
@@ -151,7 +151,7 @@ describe('Abort signal propagation', () => {
     const mainController = new AbortController();
 
     await tool.execute(
-      { task: 'test' },
+      { goal: 'test', deliverable: 'summary' },
       createTestCtx({ signal: mainController.signal })
     );
 

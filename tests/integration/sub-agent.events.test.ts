@@ -53,7 +53,7 @@ describe('Event bubbling sequence (integration)', () => {
           tool_calls: [{
             id: 'call_1',
             name: 'sub_agent',
-            arguments: { task: 'summarize src/' },
+            arguments: { goal: 'summarize src/', deliverable: 'summary' },
           }],
         },
         { content: 'Here is the summary from the sub-agent.' },
@@ -106,7 +106,7 @@ describe('Event bubbling sequence (integration)', () => {
           tool_calls: [{
             id: 'call_1',
             name: 'sub_agent',
-            arguments: { task: 'say hello' },
+            arguments: { goal: 'say hello', deliverable: 'summary' },
           }],
         },
       ],
@@ -142,7 +142,7 @@ describe('Event bubbling sequence (integration)', () => {
           tool_calls: [{
             id: 'call_1',
             name: 'sub_agent',
-            arguments: { task: 'read a file' },
+            arguments: { goal: 'read a file', deliverable: 'summary' },
           }],
         },
         { content: 'Done reading' },
@@ -182,7 +182,7 @@ describe('Return value integration', () => {
           tool_calls: [{
             id: 'call_1',
             name: 'sub_agent',
-            arguments: { task: 'summarize' },
+            arguments: { goal: 'summarize', deliverable: 'summary' },
           }],
         },
       ],
@@ -215,12 +215,12 @@ describe('Return value integration', () => {
       mainAgentConfig: mockConfig,
     });
 
-    const result = await tool.execute({ task: 'test' }, createTestCtx({
+    const result = await tool.execute({ goal: 'test', deliverable: 'summary' }, createTestCtx({
       environment: { agentType: 'main', cwd: process.cwd() },
     }));
     expect(typeof result).toBe('string');
-    expect(result).toContain('[SubAgent');
-    expect(result).toContain('completed');
+    expect(result).toContain('<sub_agent_result');
+    expect(result).toContain('status="success"');
     expect(result).toContain('Final summary');
     // Should not be a JSON array of messages
     expect(result).not.toMatch(/^\[\s*\{/);

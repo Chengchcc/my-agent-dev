@@ -120,7 +120,12 @@ export interface SubAgentDoneEvent extends AgentEventBase {
   isError: boolean;
   /** Error if sub agent failed */
   error?: Error;
+  /** Machine-readable exit status */
+  exitStatus: SubAgentExitStatus;
 }
+
+/** Exit status for sub-agent completion. */
+export type SubAgentExitStatus = 'success' | 'timeout' | 'max_turns' | 'error' | 'aborted';
 
 /**
  * Budget guard delegated a batch of tool calls to sub-agent.

@@ -28,12 +28,14 @@ describe('SubAgentTool.getDefinition()', () => {
     expect(tool.getDefinition().name).toBe('sub_agent');
   });
 
-  test('parameters contains required task field', () => {
+  test('parameters contains required goal and deliverable fields', () => {
     const tool = createTool();
     const def = tool.getDefinition();
-    expect(def.parameters.properties.task).toBeDefined();
-    expect(def.parameters.properties.task.type).toBe('string');
-    expect(def.parameters.required).toContain('task');
+    expect(def.parameters.properties.goal).toBeDefined();
+    expect(def.parameters.properties.goal.type).toBe('string');
+    expect(def.parameters.properties.deliverable).toBeDefined();
+    expect(def.parameters.required).toContain('goal');
+    expect(def.parameters.required).toContain('deliverable');
   });
 
   test('description contains USE when and DO NOT USE when guidance', () => {
@@ -45,39 +47,36 @@ describe('SubAgentTool.getDefinition()', () => {
 });
 
 describe('SubAgentTool parameter validation', () => {
-  test('empty string task -> rejects execution', async () => {
+  test('empty string goal -> rejects execution', async () => {
     const tool = createTool();
-    const result = await tool.execute({ task: '' }, createTestCtx());
+    const result = await tool.execute({ goal: '', deliverable: 'summary' }, createTestCtx());
     expect(result).toContain('Error');
     expect(result).toContain('Missing required');
   });
 
-  test('non-string task -> returns error', async () => {
+  test('non-string goal -> returns error', async () => {
     const tool = createTool();
     // @ts-expect-error testing invalid input
-    const result = await tool.execute({ task: 123 }, createTestCtx());
+    const result = await tool.execute({ goal: 123, deliverable: 'summary' }, createTestCtx());
     expect(result).toContain('Error');
     expect(result).toContain('Missing required');
   });
 
-  test('long string task -> passes parameter validation', async () => {
+  test('long string goal -> passes parameter validation', async () => {
     const tool = createTool();
-    const longTask = 'a'.repeat(100_000);
+    const longGoal = 'a'.repeat(100_000);
 
-    // We need to mock the agent execution to avoid timeout
     // Patch the execute method to skip the actual agent run for this test
     const originalExecute = tool.execute;
     tool.execute = async (params, _ctx) => {
-      // First perform the parameter validation
-      const task = params.task as string;
-      if (!task || typeof task !== 'string') {
-        return 'Error: Missing required "task" parameter';
+      const goal = params.goal as string;
+      if (!goal || typeof goal !== 'string') {
+        return '<sub_agent_result status="error">Error: Missing required "goal" parameter</sub_agent_result>';
       }
-      // Skip the actual agent execution for this test
-      return 'Mocked execution successful';
+      return '<sub_agent_result status="success">Mocked execution successful</sub_agent_result>';
     };
 
-    const result = await tool.execute({ task: longTask }, createTestCtx());
+    const result = await tool.execute({ goal: longGoal, deliverable: 'summary' }, createTestCtx());
     expect(result).toBeDefined();
     expect(result).not.toContain('Error');
 

@@ -9,38 +9,58 @@ export interface ExecutionPlan {
 /**
  * Group tool calls into execution waves based on readonly/conflictKey metadata.
  *
- * Conservative strategy:
- * - Consecutive readonly tools are batched into a single parallel wave.
- * - Each non-readonly tool gets its own wave (one at a time).
+ * Strategy (first applicable wins):
+ * 1. If conflictKey returns null → tool has no conflicts, can batch with others.
+ * 2. If conflictKey returns a string → tool must run in its own wave.
+ * 3. If no conflictKey defined: readonly tools batch, non-readonly get own wave.
  *
- * This covers the 90% win (multiple read_file/grep/glob/ls in parallel)
- * without risking write-write or read-write races.
+ * This enables sub_agent(read_only) to run in parallel with read_file/grep/glob.
  */
 export function planExecution(
   calls: ToolCall[],
   lookup: (name: string) => ToolImplementation | undefined,
 ): ExecutionPlan {
   const waves: ToolCall[][] = [];
-  let readonlyWave: ToolCall[] = [];
+  let currentWave: ToolCall[] = [];
 
-  const flushReadonly = () => {
-    if (readonlyWave.length) {
-      waves.push(readonlyWave);
-      readonlyWave = [];
+  const flush = () => {
+    if (currentWave.length) {
+      waves.push(currentWave);
+      currentWave = [];
     }
   };
 
   for (const call of calls) {
     const tool = lookup(call.name);
-    if (tool?.readonly) {
-      readonlyWave.push(call);
-      continue;
+    const conflict = resolveConflict(call, tool);
+
+    if (conflict === null) {
+      // No conflict — safe to batch with current wave
+      currentWave.push(call);
+    } else {
+      // Has conflict — flush any accumulated wave, then this call alone
+      flush();
+      waves.push([call]);
     }
-    // Non-readonly: flush accumulated readonly wave, then single-tool wave
-    flushReadonly();
-    waves.push([call]);
   }
-  flushReadonly();
+  flush();
 
   return { waves };
+}
+
+/**
+ * Resolve conflict for a single tool call.
+ * Returns null (no conflict, safe to batch) or a string key (needs own wave).
+ */
+function resolveConflict(call: ToolCall, tool?: ToolImplementation): string | null {
+  // If tool defines conflictKey, it takes precedence
+  if (tool?.conflictKey) {
+    try {
+      return tool.conflictKey(call.arguments);
+    } catch {
+      return call.name; // Parse error → play it safe
+    }
+  }
+  // Default: readonly tools are conflict-free, others get own wave
+  return tool?.readonly ? null : call.name;
 }
