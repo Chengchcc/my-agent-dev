@@ -1,5 +1,6 @@
 import type { Message } from '../../../types';
 import type { CompactionResult, CompactionThresholds } from '../types';
+import { CompactionTier } from '../types';
 
 const MIN_LINES_FOR_SNIP = 50;
 const SNIP_HEAD_LINES = 40;
@@ -61,7 +62,7 @@ export class ToolOutputSnipStrategy {
 
     const result: CompactionResult = {
       messages: resultMessages,
-      tier: 1 as const,
+      tier: CompactionTier.Snip,
       tokensBefore, // Caller fills these
       tokensAfter,
       needsContinuation: snipCount > 0,

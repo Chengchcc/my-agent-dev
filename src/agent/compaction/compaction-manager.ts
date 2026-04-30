@@ -1,5 +1,6 @@
 import type { CompressionStrategy, AgentContext, Message } from '../../types';
 import type { CompactionConfig, CompactionResult, TokenBudget } from './types';
+import { CompactionTier } from './types';
 import type { TokenBudgetCalculator } from './budget';
 import { ToolOutputSnipStrategy } from './tiers/snip';
 import { AutoCompactStrategy } from './tiers/auto-compact';
@@ -64,7 +65,7 @@ export class TieredCompactionManager implements CompressionStrategy {
     if (budget.usageRatio < thresholds.snipRatio) {
       const result: CompactionResult = {
         messages: context.messages,
-        tier: 0,
+        tier: CompactionTier.None,
         tokensBefore: budget.currentUsage,
         tokensAfter: budget.currentUsage,
         needsContinuation: false,
@@ -88,7 +89,7 @@ export class TieredCompactionManager implements CompressionStrategy {
         debugLog({
           event: 'compaction.triggered',
           tier: 'snip',
-          tierNumber: 1,
+          tierNumber: CompactionTier.Snip,
           tokensBefore: result.tokensBefore,
           tokensAfter: result.tokensAfter,
           reduction: result.tokensBefore - result.tokensAfter,
@@ -102,7 +103,7 @@ export class TieredCompactionManager implements CompressionStrategy {
       debugLog({
         event: 'compaction.triggered',
         tier: 'snip',
-        tierNumber: 1,
+        tierNumber: CompactionTier.Snip,
         tokensBefore: result.tokensBefore,
         tokensAfter: result.tokensAfter,
         reduction: result.tokensBefore - result.tokensAfter,
@@ -132,7 +133,7 @@ export class TieredCompactionManager implements CompressionStrategy {
       debugLog({
         event: 'compaction.triggered',
         tier: 'auto-compact',
-        tierNumber: 2,
+        tierNumber: CompactionTier.AutoCompact,
         tokensBefore: result.tokensBefore,
         tokensAfter: result.tokensAfter,
         reduction: result.tokensBefore - result.tokensAfter,
@@ -159,7 +160,7 @@ export class TieredCompactionManager implements CompressionStrategy {
       debugLog({
         event: 'compaction.triggered',
         tier: 'reactive',
-        tierNumber: 3,
+        tierNumber: CompactionTier.Reactive,
         tokensBefore: result.tokensBefore,
         tokensAfter: result.tokensAfter,
         reduction: result.tokensBefore - result.tokensAfter,
@@ -179,7 +180,7 @@ export class TieredCompactionManager implements CompressionStrategy {
       debugLog({
         event: 'compaction.triggered',
         tier: 'collapse',
-        tierNumber: 4,
+        tierNumber: CompactionTier.Collapse,
         tokensBefore: result.tokensBefore,
         tokensAfter: result.tokensAfter,
         reduction: result.tokensBefore - result.tokensAfter,
@@ -193,7 +194,7 @@ export class TieredCompactionManager implements CompressionStrategy {
     // All tiers disabled - return identity
     const result: CompactionResult = {
       messages: context.messages,
-      tier: 0,
+      tier: CompactionTier.None,
       tokensBefore: budget.currentUsage,
       tokensAfter: budget.currentUsage,
       needsContinuation: false,
@@ -223,7 +224,7 @@ export class TieredCompactionManager implements CompressionStrategy {
       debugLog({
         event: 'compaction.triggered',
         tier: 'reactive',
-        tierNumber: 3,
+        tierNumber: CompactionTier.Reactive,
         tokensBefore: budget.currentUsage,
         escalated: true,
         reason: 'reactive insufficient, escalating to collapse',
@@ -235,7 +236,7 @@ export class TieredCompactionManager implements CompressionStrategy {
       debugLog({
         event: 'compaction.triggered',
         tier: 'collapse',
-        tierNumber: 4,
+        tierNumber: CompactionTier.Collapse,
         tokensBefore: collapseResult.tokensBefore,
         tokensAfter: collapseResult.tokensAfter,
         reduction: collapseResult.tokensBefore - collapseResult.tokensAfter,
@@ -253,7 +254,7 @@ export class TieredCompactionManager implements CompressionStrategy {
     debugLog({
       event: 'compaction.triggered',
       tier: 'reactive',
-      tierNumber: 3,
+      tierNumber: CompactionTier.Reactive,
       tokensBefore: result.tokensBefore,
       tokensAfter: result.tokensAfter,
       reduction: result.tokensBefore - result.tokensAfter,

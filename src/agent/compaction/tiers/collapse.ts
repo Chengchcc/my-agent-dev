@@ -1,5 +1,6 @@
 import type { Message } from '../../../types';
 import type { CompactionResult } from '../types';
+import { CompactionTier } from '../types';
 
 /**
  * Tier 4 Compression: Context Collapse
@@ -88,7 +89,7 @@ export class ContextCollapseStrategy {
 
     return {
       messages: newMessages,
-      tier: 4,
+      tier: CompactionTier.Collapse,
       tokensBefore: -1,
       tokensAfter: -1,
       summary: 'Emergency context collapse — only system prompt and last exchange preserved.',

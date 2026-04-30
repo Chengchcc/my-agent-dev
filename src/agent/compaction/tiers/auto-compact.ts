@@ -1,5 +1,6 @@
 import type { AgentConfig, AgentContext, Message, Provider } from '../../../types';
 import type { CompactionResult, CompactionConfig } from '../types';
+import { CompactionTier } from '../types';
 
 const SUMMARY_MAX_CHARS = 3000;
 const SUMMARY_TRIM_CHARS = 2000;
@@ -53,7 +54,7 @@ export class AutoCompactStrategy {
       // Nothing to compact
       return {
         messages: context.messages,
-        tier: 2,
+        tier: CompactionTier.AutoCompact,
         tokensBefore: -1,
         tokensAfter: -1,
         needsContinuation: false,
@@ -85,7 +86,7 @@ export class AutoCompactStrategy {
 
     return {
       messages: newMessages,
-      tier: 2,
+      tier: CompactionTier.AutoCompact,
       tokensBefore: -1,
       tokensAfter: -1,
       summary,

@@ -1,5 +1,6 @@
 import type { Message } from '../../../types';
 import type { CompactionResult } from '../types';
+import { CompactionTier } from '../types';
 
 const AGGRESSIVE_SNIP_THRESHOLD = 2000;
 const RECENT_MESSAGE_BOUNDARY = 4;
@@ -34,7 +35,7 @@ export class ReactiveRecoveryStrategy {
     if (afterSnip <= targetTokens) {
       return {
         messages: current,
-        tier: 3,
+        tier: CompactionTier.Reactive,
         tokensBefore: -1,
         tokensAfter: afterSnip,
         needsContinuation: false,
@@ -58,7 +59,7 @@ export class ReactiveRecoveryStrategy {
     if (afterRemove <= targetTokens) {
       return {
         messages: current,
-        tier: 3,
+        tier: CompactionTier.Reactive,
         tokensBefore: -1,
         tokensAfter: afterRemove,
         needsContinuation: false,
@@ -70,7 +71,7 @@ export class ReactiveRecoveryStrategy {
     // Phase 3: Still over - need Tier 4 collapse
     return {
       messages: current,
-      tier: 3,
+      tier: CompactionTier.Reactive,
       tokensBefore: -1,
       tokensAfter: afterRemove,
       summary: 'Reactive compression applied but still over limit',

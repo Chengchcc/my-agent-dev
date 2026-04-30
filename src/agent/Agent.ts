@@ -1,7 +1,6 @@
 import type {
   AgentContext,
   AgentConfig,
-  Middleware,
   Provider,
   AgentHooks,
 } from '../types';
@@ -27,8 +26,6 @@ export class Agent {
     hooks?: AgentHooks;
     config: AgentConfig;
     toolRegistry?: ToolRegistry;
-    /** @deprecated Use hooks.beforeModel instead */
-    middleware?: Middleware[];
     toolMiddlewares?: ToolMiddleware[];
   }) {
     this.provider = options.provider;
@@ -38,10 +35,7 @@ export class Agent {
     this.hooks = {
       beforeAgentRun: options.hooks?.beforeAgentRun ?? [],
       beforeCompress: options.hooks?.beforeCompress ?? [],
-      beforeModel: [
-        ...(options.middleware ?? []),
-        ...(options.hooks?.beforeModel ?? []),
-      ],
+      beforeModel: options.hooks?.beforeModel ?? [],
       afterModel: options.hooks?.afterModel ?? [],
       beforeAddResponse: options.hooks?.beforeAddResponse ?? [],
       afterAgentRun: options.hooks?.afterAgentRun ?? [],

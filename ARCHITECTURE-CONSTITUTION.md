@@ -21,7 +21,7 @@ This project is in an anti-fragmentation governance period. The following constr
 ## C. Hook / Middleware Freeze
 - The current 6 Agent hook points (`beforeAgentRun` / `beforeCompress` / `beforeModel` / `afterModel` / `beforeAddResponse` / `afterAgentRun`) are **frozen**. New hook points require an RFC (proposed in `docs/rfc/`).
 - `beforeCompress` is being merged into `beforeModel` — do not add new calls.
-- The `middleware` field in the Agent constructor is deprecated, do not use it; always use `hooks.beforeModel`.
+- The `middleware` field in the Agent constructor is removed; always use `hooks.beforeModel`.
 - Tool middleware registration order determines semantics (`permission` must be outermost). New middleware must declare its required order in the PR description.
 
 ## D. ToolDispatcher Freeze

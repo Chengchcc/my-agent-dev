@@ -1,4 +1,3 @@
-import type { ContextManager } from './agent';
 import type { ToolContext } from './agent/tool-dispatch/types';
 
 // Structured content block — supports thinking / text / tool_use / tool_result
@@ -165,15 +164,6 @@ export interface AgentMiddleware {
   beforeAddResponse?: Middleware;
   afterAgentRun?: Middleware;
 }
-
-// Agent constructor options
-export type AgentConstructorOptions = {
-  provider: Provider;
-  contextManager: ContextManager;
-  middleware?: Middleware[];
-  hooks?: AgentHooks;
-  config: AgentConfig;
-};
 
 /** Extract plain text from structured content blocks, ignoring thinking. */
 export function flattenBlocks(blocks: ContentBlock[]): string {

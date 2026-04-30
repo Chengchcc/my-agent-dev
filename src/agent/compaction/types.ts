@@ -1,7 +1,16 @@
-import type { Message, CompressionStrategy, Provider } from '../../types';
+import type { Message, Provider } from '../../types';
 
-// --- Backward compatibility: Old type definitions for existing code ---
 export type CompactionLevelType = 'none' | 'snip' | 'tool-shrink' | 'summarize' | 'reactive' | 'collapse';
+
+export const CompactionTier = {
+  None: 0,
+  Snip: 1,
+  AutoCompact: 2,
+  Reactive: 3,
+  Collapse: 4,
+} as const;
+
+export type CompactionTierNumber = (typeof CompactionTier)[keyof typeof CompactionTier];
 
 export interface CompactionResult {
   messages: Message[];
@@ -9,30 +18,10 @@ export interface CompactionResult {
   compacted: boolean;
   tokensBefore: number;
   tokensAfter: number;
-  // New fields added for compatibility with redesigned system
-  // eslint-disable-next-line @typescript-eslint/no-magic-numbers -- literal union type
-  tier?: 0 | 1 | 2 | 3 | 4;
+  tier?: CompactionTierNumber;
   summary?: string;
   needsContinuation?: boolean;
 }
-
-export interface CompactionLevel {
-  name: CompactionLevelType;
-  triggerAt: number; // usage ratio threshold to trigger
-  strategy?: CompressionStrategy;
-}
-
-export interface TieredCompactionConfig {
-  levels: CompactionLevel[];
-}
-
-export const DEFAULT_TIERED_LEVELS: CompactionLevel[] = [
-  { name: 'snip', triggerAt: 0.60 },
-  { name: 'tool-shrink', triggerAt: 0.75 },
-  { name: 'summarize', triggerAt: 0.85 },
-];
-
-// --- New type definitions for redesigned tiered system ---
 /** Token budget calculation result */
 export interface TokenBudget {
   /** Model's absolute max context window */
@@ -63,22 +52,6 @@ export interface CompactionThresholds {
   preserveRecentTurns: number;
 }
 
-/** Result of a compaction operation */
-export interface NewCompactionResult {
-  /** New message array after compaction */
-  messages: Message[];
-  /** Which tier was applied */
-  // eslint-disable-next-line @typescript-eslint/no-magic-numbers -- literal union type
-  tier: 0 | 1 | 2 | 3 | 4;
-  /** Token count before compaction */
-  tokensBefore: number;
-  /** Token count after compaction */
-  tokensAfter: number;
-  /** Human-readable summary of what was compacted (for continuation message) */
-  summary?: string;
-  /** Whether a continuation message should be injected */
-  needsContinuation: boolean;
-}
 
 /** Configuration for the compaction system */
 export interface CompactionConfig {
