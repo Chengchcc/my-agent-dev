@@ -77,6 +77,7 @@ export function InputBox({
         flexDirection="row"
         columnGap={1}
         borderStyle="single"
+        minHeight={1}
       >
         <Text color={streaming ? 'yellow' : 'green'}>{streaming ? '⧗' : '>'}</Text>
         <Box flexGrow={1}>

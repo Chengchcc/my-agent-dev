@@ -81,19 +81,28 @@ export function useCommandInput({
   const highlightedCommandName = getHighlightedCommandName(editorState.text, commands);
 
   const atQuery = useMemo(() => getAtQuery(editorState.text), [editorState.text]);
-  const atFiles = useMemo(() => {
-    if (!atQuery || atQuery.query.length < 2) return [];
-    try {
-      const pattern = `**/*${atQuery.query}*`;
-      return fastGlob.sync(pattern, {
+  const [atFiles, setAtFiles] = useState<string[]>([]);
+  useEffect(() => {
+    if (!atQuery || atQuery.query.length < 2) {
+      setAtFiles([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      fastGlob(`**/*${atQuery.query}*`, {
         cwd: process.cwd(),
         dot: true,
         deep: 10,
         suppressErrors: true,
         onlyFiles: true,
         ignore: ['**/node_modules/**', '**/.git/**'],
-      }).slice(0, 15);
-    } catch { return []; }
+      }).then(files => {
+        if (!cancelled) setAtFiles(files.slice(0, 15));
+      }).catch(() => {
+        if (!cancelled) setAtFiles([]);
+      });
+    }, 120);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [atQuery?.query]);
   const atFilePickerOpen = atQuery !== null && dismissedAtQuery !== atQuery.query && atFiles.length > 0;
 
