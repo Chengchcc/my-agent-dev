@@ -53,6 +53,8 @@ export const defaultSettings: Settings = {
     baseDir: './skills',
     autoInject: true,
     injectOnMention: true,
+    maxInjectedSkills: 3,
+    maxDescriptionLength: 500,
   },
   tui: {
     history: {

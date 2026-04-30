@@ -55,6 +55,8 @@ const skillsSettingsSchema = z.object({
   baseDir: z.string().default('./skills'),
   autoInject: z.boolean().default(true),
   injectOnMention: z.boolean().default(true),
+  maxInjectedSkills: z.number().int().positive().default(3),
+  maxDescriptionLength: z.number().int().positive().default(500),
 });
 
 const historySettingsSchema = z.object({

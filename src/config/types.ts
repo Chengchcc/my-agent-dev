@@ -66,6 +66,10 @@ export interface SkillsSettings {
   baseDir: string;
   autoInject: boolean;
   injectOnMention: boolean;
+  /** Maximum number of mentioned skills to inject per turn (tag matches always included). */
+  maxInjectedSkills: number;
+  /** Maximum length for skill descriptions before truncation (security / prompt bloat). */
+  maxDescriptionLength: number;
 }
 
 export interface HistorySettings {
