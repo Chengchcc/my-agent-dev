@@ -3,6 +3,7 @@ import type { Message } from '../types';
 import type { MemoryStore, MemoryRetriever, MemoryExtractor, MemoryConfig } from './types';
 import { getSettingsSync } from '../config';
 import { loadAgentMdCached } from './agent-md';
+import { djb2Hash } from '../utils/hash';
 
 // Fallback defaults if settings aren't loaded yet
 const FALLBACK_MEMORY_CONFIG: Required<MemoryConfig> = {
@@ -84,7 +85,7 @@ export class MemoryMiddleware implements AgentMiddleware {
     const allPrefs = await this.semanticStore.getAll();
     const topPrefs = allPrefs.slice(0, this.config.maxUserPreferences);
     const prefsText = topPrefs.map(p => `- ${p.text}`).join('\n');
-    const prefsVersion = hashText(prefsText);
+    const prefsVersion = djb2Hash(prefsText);
 
     // Build stable system-extra sections
     const sections: string[] = [];
@@ -218,14 +219,6 @@ function countToolCalls(messages: Message[]): number {
   return messages.filter(m => m.role === 'tool').length;
 }
 
-/** Simple DJB2 hash for content-based versioning of preference lists. */
-function hashText(text: string): string {
-  let hash = 5381;
-  for (let i = 0; i < text.length; i++) {
-    hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
-  }
-  return (hash >>> 0).toString(16);
-}
 
 // Trigger words for explicit extraction mode — only extract when user uses these
 const WRITE_TRIGGERS = [

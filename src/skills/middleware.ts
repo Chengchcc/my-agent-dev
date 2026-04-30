@@ -3,6 +3,7 @@ import type { Middleware, AgentMiddleware } from '../types';
 import { SkillLoader } from './loader';
 import path from 'path';
 import { debugLog } from '../utils/debug';
+import { djb2Hash } from '../utils/hash';
 
 /**
  * Options for SkillMiddleware.
@@ -213,14 +214,9 @@ Read the matching skill file${skills.length > 1 ? 's' : ''} using the text_edito
 </system-reminder>`;
   }
 
-  /** Simple DJB2 hash for content-based versioning of skill catalog. */
   function hashCatalog(entries: Array<{ name: string; description: string; path: string }>): string {
     const text = JSON.stringify(entries);
-    let hash = 5381;
-    for (let i = 0; i < text.length; i++) {
-      hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
-    }
-    return (hash >>> 0).toString(16);
+    return djb2Hash(text);
   }
 
   /**
