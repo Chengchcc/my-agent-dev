@@ -11,7 +11,7 @@ const { values, positionals } = parseArgs({
     prompt:       { type: 'string',  short: 'p' },
     model:        { type: 'string',  short: 'm' },
     provider:     { type: 'string' },
-    'max-turns':  { type: 'string',  default: '25' },
+    'max-turns':  { type: 'string',  default: String(DEFAULT_MAX_TURNS) },
     'output-format': { type: 'string', short: 'o', default: 'text' },
     'system-prompt': { type: 'string', short: 's' },
     'no-memory':  { type: 'boolean', default: false },
@@ -62,6 +62,7 @@ if (values.version) {
 setDebugMode(!!values.debug);
 
 import { createAgentRuntime } from '../src/runtime';
+import { DEFAULT_MAX_TURNS } from '../src/agent/loop-types';
 import type { AgentEvent, AgentDoneEvent } from '../src/agent/loop-types';
 
 type OutputFormat = 'text' | 'json' | 'stream-json';
@@ -177,7 +178,7 @@ async function getPrompt(): Promise<string> {
 async function main() {
   const prompt = await getPrompt();
   const outputFormat = (String(values['output-format'] ?? 'text')) as OutputFormat;
-  const maxTurns = parseInt(String(values['max-turns'] ?? '25'), 10);
+  const maxTurns = parseInt(String(values['max-turns'] ?? String(DEFAULT_MAX_TURNS)), 10);
 
   const runtimeConfig: RuntimeConfig = {
     enableMemory: !values['no-memory'],
@@ -225,7 +226,8 @@ async function main() {
         reason: finalEvent?.reason ?? 'unknown',
         messages: runtime.contextManager.getContext(runtime.agent.config).messages,
       };
-      process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+      const JSON_INDENT = 2;
+      process.stdout.write(JSON.stringify(output, null, JSON_INDENT) + '\n');
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

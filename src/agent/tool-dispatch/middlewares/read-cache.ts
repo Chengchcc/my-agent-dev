@@ -3,10 +3,12 @@ import type { ToolCall } from '../../../types';
 import type { ToolContext } from '../types';
 import { stat } from 'fs/promises';
 
+const READ_CACHE_MAX_ENTRIES = 100;
+
 export class ReadCacheMiddleware implements ToolMiddleware {
   name = 'read-cache';
   private cache = new Map<string, { result: unknown; mtimeMs: number }>();
-  private maxEntries = 100;
+  private maxEntries = READ_CACHE_MAX_ENTRIES;
 
   async handle(toolCall: ToolCall, _ctx: ToolContext, next: () => Promise<unknown>): Promise<unknown> {
     if (toolCall.name !== 'read') return next();

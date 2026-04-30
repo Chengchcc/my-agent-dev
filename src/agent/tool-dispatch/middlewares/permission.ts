@@ -37,6 +37,7 @@ function extractCommand(toolCall: ToolCall): string | null {
 }
 
 const PERMISSION_TIMEOUT_MS = 10_000;
+const DANGEROUS_CMD_TRUNCATION_LENGTH = 80;
 
 export class PermissionMiddleware implements ToolMiddleware {
   name = 'permission';
@@ -55,7 +56,7 @@ export class PermissionMiddleware implements ToolMiddleware {
     if (command) {
       const danger = detectDangerousCommand(command);
       if (danger) {
-        const reason = `Command: "${command.slice(0, 80)}${command.length > 80 ? '...' : ''}" — ${danger}`;
+        const reason = `Command: "${command.slice(0, DANGEROUS_CMD_TRUNCATION_LENGTH)}${command.length > DANGEROUS_CMD_TRUNCATION_LENGTH ? '...' : ''}" — ${danger}`;
 
         let response: 'allow' | 'deny' | 'always';
         try {

@@ -200,14 +200,19 @@ export interface AgentLoopConfig {
   toolErrorStrategy: ToolErrorStrategy;
 }
 
+export const DEFAULT_MAX_TURNS = 25;
+const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const DEFAULT_TOOL_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+const DEFAULT_MAX_TOOL_OUTPUT_CHARS = 100 * 1024; // 100KB
+
 /**
  * Default agent loop configuration - reasonable safe defaults
  */
 export const DEFAULT_LOOP_CONFIG: AgentLoopConfig = {
-  maxTurns: 25,
-  timeoutMs: 10 * 60 * 1000, // 10 minutes
-  toolTimeoutMs: 2 * 60 * 1000, // 2 minutes
-  maxToolOutputChars: 100 * 1024, // 100KB
+  maxTurns: DEFAULT_MAX_TURNS,
+  timeoutMs: DEFAULT_TIMEOUT_MS,
+  toolTimeoutMs: DEFAULT_TOOL_TIMEOUT_MS,
+  maxToolOutputChars: DEFAULT_MAX_TOOL_OUTPUT_CHARS,
   parallelToolExecution: true,
   yieldEventsAsToolsComplete: true,
   toolErrorStrategy: 'continue',

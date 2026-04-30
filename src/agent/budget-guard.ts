@@ -28,6 +28,29 @@ export const DEFAULT_BUDGET_GUARD_CONFIG: BudgetGuardConfig = {
   enabled: true,
 };
 
+/** Estimated token output for each tool type. */
+const TOOL_OUTPUT_ESTIMATES = {
+  read: {
+    baseOverhead: 100,
+    defaultUnknown: 3000,
+    charsPerToken: 4,
+    tokensPerLine: 80,
+  },
+  grep: 3000,
+  glob: 1000,
+  ls: 500,
+  bash: {
+    cat: 5000,
+    find: 3000,
+    trivial: 100,
+    general: 2000,
+  },
+  textEditor: 1500,
+  memoryTool: 1000,
+  subAgent: 1500,
+  default: 1000,
+} as const;
+
 /**
  * Estimate the number of tokens a tool output will produce.
  */
@@ -38,46 +61,46 @@ export function estimateToolOutput(toolCall: ToolCall): number {
     case 'read': {
       const limit = typeof toolCall.arguments.limit === 'number' ? toolCall.arguments.limit : 0;
       if (limit > 0) {
-        return Math.ceil((limit * 80) / 4) + 100;
+        return Math.ceil((limit * TOOL_OUTPUT_ESTIMATES.read.tokensPerLine) / TOOL_OUTPUT_ESTIMATES.read.charsPerToken) + TOOL_OUTPUT_ESTIMATES.read.baseOverhead;
       }
       // Unknown file size — use conservative estimate (no statSync to avoid blocking)
-      return 3000;
+      return TOOL_OUTPUT_ESTIMATES.read.defaultUnknown;
     }
 
     case 'grep':
-      return 3000;
+      return TOOL_OUTPUT_ESTIMATES.grep;
 
     case 'glob':
-      return 1000;
+      return TOOL_OUTPUT_ESTIMATES.glob;
 
     case 'ls':
-      return 500;
+      return TOOL_OUTPUT_ESTIMATES.ls;
 
     case 'bash': {
       const command = (toolCall.arguments.command as string || '').toLowerCase();
       if (command.includes('cat ') || command.includes('less ') || command.includes('head ') || command.includes('tail ')) {
-        return 5000;
+        return TOOL_OUTPUT_ESTIMATES.bash.cat;
       }
       if (command.includes('find ') || command.includes('grep ')) {
-        return 3000;
+        return TOOL_OUTPUT_ESTIMATES.bash.find;
       }
       if (command.includes('wc ') || command.includes('echo ') || command.includes('pwd ')) {
-        return 100;
+        return TOOL_OUTPUT_ESTIMATES.bash.trivial;
       }
-      return 2000;
+      return TOOL_OUTPUT_ESTIMATES.bash.general;
     }
 
     case 'text-editor':
-      return 1500;
+      return TOOL_OUTPUT_ESTIMATES.textEditor;
 
     case 'memory':
-      return 1000;
+      return TOOL_OUTPUT_ESTIMATES.memoryTool;
 
     case 'sub_agent':
-      return 1500;
+      return TOOL_OUTPUT_ESTIMATES.subAgent;
 
     default:
-      return 1000;
+      return TOOL_OUTPUT_ESTIMATES.default;
   }
 }
 

@@ -1,6 +1,10 @@
 import type { Provider, AgentContext, LLMResponse, LLMResponseChunk } from '../types';
 import { debugLog } from '../utils/debug';
 
+const MS_PER_SECOND = 1000;
+const DEFAULT_RPS = 5;
+const MIN_BURST_SIZE = 3;
+
 /**
  * Token-bucket rate limiter for API calls.
  * Used to prevent rate-limit errors when multiple sub-agents run concurrently.
@@ -20,7 +24,7 @@ export class TokenBucket {
 
   private refill(): void {
     const now = Date.now();
-    const elapsed = (now - this.lastRefill) / 1000;
+    const elapsed = (now - this.lastRefill) / MS_PER_SECOND;
     this.tokens = Math.min(this.maxTokens, this.tokens + elapsed * this.refillRate);
     this.lastRefill = now;
   }
@@ -33,7 +37,7 @@ export class TokenBucket {
         this.tokens -= 1;
         return;
       }
-      const waitMs = Math.ceil(((1 - this.tokens) / this.refillRate) * 1000);
+      const waitMs = Math.ceil(((1 - this.tokens) / this.refillRate) * MS_PER_SECOND);
       debugLog(`[rate-limiter] Throttling for ${waitMs}ms (tokens: ${this.tokens.toFixed(2)})`);
       await new Promise(resolve => setTimeout(resolve, waitMs));
     }
@@ -52,8 +56,8 @@ export class RateLimitedProvider implements Provider {
     private inner: Provider,
     options: { maxConcurrent?: number; requestsPerSecond?: number; prefix?: string },
   ) {
-    const rps = options.requestsPerSecond ?? 5;
-    const burst = options.maxConcurrent ?? Math.max(3, Math.ceil(rps / 2));
+    const rps = options.requestsPerSecond ?? DEFAULT_RPS;
+    const burst = options.maxConcurrent ?? Math.max(MIN_BURST_SIZE, Math.ceil(rps / 2));
     this.bucket = new TokenBucket(burst, rps);
     this.prefix = options.prefix ? `[sub-${options.prefix}] ` : '';
   }

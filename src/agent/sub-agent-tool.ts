@@ -33,6 +33,9 @@ const GLOBAL_STATE_TOOLS_PREFIX = 'Task';
 
 /** Maximum concurrent sub-agents (sempahore-based). */
 const MAX_CONCURRENT_SUB_AGENTS = 3;
+const SUB_AGENT_TIMEOUT_MS = 5 * 60 * 1000;
+const DEFAULT_SUB_AGENT_TOKEN_LIMIT = 50_000;
+const DEFAULT_AUTO_TRIGGER_THRESHOLD = 5;
 
 /**
  * Simple promise-based semaphore for limiting concurrent sub-agent execution.
@@ -122,7 +125,7 @@ export class SubAgentTool implements ToolImplementation {
     } catch {
       // If settings not loaded (e.g. in test environments), use hardcoded defaults
       this.config = {
-        autoTriggerThreshold: 5,
+        autoTriggerThreshold: DEFAULT_AUTO_TRIGGER_THRESHOLD,
         isolation: true,
         worktreeRootDir: '~/.my-agent/worktrees',
         ...config,
@@ -261,7 +264,7 @@ PROFILES:
     }
 
     // Build system prompt (middleware handles project_rules/user_preferences/skill_catalog injection)
-    const tokenLimit = this.config.tokenLimit ?? 50000;
+    const tokenLimit = this.config.tokenLimit ?? DEFAULT_SUB_AGENT_TOKEN_LIMIT;
 
     const systemPromptSections = [
       'You are a focused sub-agent executing a specific task with your own independent context.',
@@ -312,7 +315,7 @@ PROFILES:
     // Default loop config with tighter constraints
     const defaultSubLoopConfig: Partial<AgentLoopConfig> = {
       maxTurns: 15,
-      timeoutMs: 5 * 60 * 1000, // 5 minutes default timeout
+      timeoutMs: SUB_AGENT_TIMEOUT_MS, // 5 minutes default timeout
     };
 
     const loopConfig: AgentLoopConfig = {
