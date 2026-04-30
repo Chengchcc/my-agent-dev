@@ -1,6 +1,8 @@
 import { statSync, openSync, readSync, closeSync } from 'fs';
 import { extname } from 'path';
 
+const BINARY_CHECK_BUFFER_SIZE = 1024;
+
 const textExtensions = new Set([
   '.txt', '.md', '.json', '.yaml', '.yml', '.xml', '.html', '.css', '.scss',
   '.js', '.jsx', '.ts', '.tsx', '.py', '.rb', '.php', '.java', '.c', '.cpp',
@@ -18,16 +20,16 @@ export function isTextFile(filePath: string): boolean {
     const stats = statSync(filePath);
 
     // Small files are likely text
-    if (stats.size < 1024) return true;
+    if (stats.size < BINARY_CHECK_BUFFER_SIZE) return true;
 
     const ext = extname(filePath).toLowerCase();
     if (textExtensions.has(ext)) return true;
 
-    // For unknown extensions, check first 1024 bytes for null bytes
-    const buffer = Buffer.alloc(1024);
+    // For unknown extensions, check first BINARY_CHECK_BUFFER_SIZE bytes for null bytes
+    const buffer = Buffer.alloc(BINARY_CHECK_BUFFER_SIZE);
     const fd = openSync(filePath, 'r');
     try {
-      const bytesRead = readSync(fd, buffer, 0, 1024, 0);
+      const bytesRead = readSync(fd, buffer, 0, BINARY_CHECK_BUFFER_SIZE, 0);
       for (let i = 0; i < bytesRead; i++) {
         if (buffer[i] === 0) return false;
       }

@@ -5,6 +5,8 @@ import { getSettingsSync } from '../config';
 import { defaultSettings } from '../config/defaults';
 import type { Message } from '../types';
 
+const SESSION_PREVIEW_MAX_LENGTH = 100;
+
 export interface SessionMetadata {
   id: string;
   createdAt: string;
@@ -105,7 +107,7 @@ export class SessionStore {
       createdAt,
       updatedAt: new Date().toISOString(),
       messageCount: messages.length,
-      lastUserMessage: lastUserMsg?.content.slice(0, 100) || '',
+      lastUserMessage: lastUserMsg?.content.slice(0, SESSION_PREVIEW_MAX_LENGTH) || '',
     };
 
     await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2), 'utf8');

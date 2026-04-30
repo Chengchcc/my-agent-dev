@@ -68,6 +68,8 @@ Follow these core principles:
 
 When in doubt, ask clarifying questions rather than guessing.`;
 
+// NOTE: Inline values below (2048, 'claude-3-5-haiku-20241022') are shell-script constants
+// that cannot be extracted to TypeScript since this is a compiled-JS entry point.
 // Set up tiered compaction
 const { TokenBudgetCalculator } = await import('../dist/src/agent/compaction/budget');
 const { TieredCompactionManager } = await import('../dist/src/agent/compaction/compaction-manager');
