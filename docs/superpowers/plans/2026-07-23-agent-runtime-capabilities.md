@@ -1,111 +1,48 @@
-# Agent Runtime Capability Migration Implementation Plan
+# Agent Runtime Plugin-First Migration Plan
 
-> **For agentic workers:** 本计划在 Runtime Foundation、Backend Adoption 和 Agent SDK P6-C 完成后执行。P6-A/P6-B 已定义 extension composition 和 service ownership；本计划只迁移产品 Capability，不在 backend 重复实现通用 composer。
+> **For agentic workers:** 当前不把普通 Plugin 包装成 Capability。P6 已完成 Agent SDK、ModelRuntime 和 Plugin assembly；本计划把现有静态 Plugin 迁移到 `createAgentSession({ plugins })`。
 
-> **Goal:** 把 backend 的 Agent 功能装配从手工 plugin 数组迁移为 product Capability factory，并通过 `packages/agent` 的 `createAgentSession()` 组装 Agent，同时保持 plugin 行为、模型配置、settings key、事件 payload 和 Conversation projection 兼容。
+**Goal:** 统一所有 Agent 创建入口，复用现有 Plugin 行为，不引入第二套 Capability/AgentExtension runtime。
 
-> **Architecture:** Capability 是 backend/application 层的产品功能单元；它拥有产品 service，输出 `AgentExtensionFactory` 和 server contributions。`packages/agent` SDK 负责 await、hook/tool/prompt composition、collision validation 和 Agent session creation。
+**Architecture:**
 
-> **Contract:** [`2026-07-23-agent-runtime-contract.md`](../specs/2026-07-23-agent-runtime-contract.md)
+```text
+backend 构造 Plugin options
+  → createAgentSession({ model, modelRuntime, plugins, tools, sessionManager })
+  → Agent
+```
+
+`CapabilityRegistry` 不参与普通 Plugin 的当前生产路径。只有未来跨 Agent runtime、backend service、route/command 或 surface 的产品功能才重新评估 Capability。
+
+**Contract:** [`2026-07-23-agent-runtime-contract.md`](../specs/2026-07-23-agent-runtime-contract.md)
 
 ## Prerequisites
 
-- Runtime Foundation complete.
-- Foundation P4R Agent runtime completion complete.
-- Backend Adoption complete.
-- P6-A extension composition complete.
-- P6-B service ownership complete.
-- P6-C `createAgentSession()` SDK host complete.
-- AgentHooks tests pass.
-- Existing plugin tests pass.
-- The current backend registry prototype must be migrated or reduced to capability catalog behavior before P7 production wiring.
+- P4R complete.
+- P5A-E Backend Adoption complete.
+- P6-A Plugin assembly complete.
+- P6-B service ownership boundaries documented; no ordinary Plugin depends on it.
+- P6-C `createAgentSession()` integration test passes.
+- `bun run build` and affected package typechecks pass.
 
----
+## 1. SDK Plugin input gate
 
-## 0. Capability boundary
-
-### Types
-
-Implement backend-local types:
+Verify `createAgentSession()` supports:
 
 ```ts
-interface Capability {
-  readonly id: string;
-  extendAgent?(scope: AgentScope): AgentExtension | Promise<AgentExtension>;
-  installServer?(ctx: CapabilityServerContext): void | Promise<void>;
-  readonly manifest?: CapabilityManifest;
-}
-
-interface AgentExtension {
-  hooks?: AgentHooks;
-  tools?: readonly Tool[];
-  systemPrompt?: string;
-}
-
-interface CapabilityManifest {
-  id: string;
-  slots?: readonly string[];
-}
+createAgentSession({
+  model,
+  modelRuntime,
+  plugins,
+  tools,
+  sessionManager,
+  sessionId,
+});
 ```
 
-Services remain backend-owned:
+It must resolve the model, preserve Plugin order, merge Plugin tools, reject tool collisions, inject persistence, and return Agent.
 
-```ts
-interface Services {
-  modelRegistry: ModelRegistry;
-  settings: SettingsService;
-  sse: SseBus;
-  fs: AgentFs;
-  conversation?: ConversationPort;
-}
-```
-
-`AgentScope`, `CapabilityServerContext`, `SseBus`, and `AgentFs` are boundary names, not permission to invent broad infrastructure abstractions. Before implementation, map them to existing backend ports/services; introduce a new narrow port only when an existing service cannot express the required dependency. The capability task must record that mapping in its completion report.
-
-### Forbidden dependencies
-
-Capability/runtime code must not import:
-
-```text
-React / react-dom
-apps/web
-Elysia route internals from packages/agent
-Conversation ledger adapter directly from capability implementation
-```
-## P6-C boundary handoff: Agent SDK assembly host
-
-P7 cannot start until `packages/agent` owns generic extension composition. This task belongs to the Foundation/SDK workstream, but its acceptance is recorded here because P7 depends on it.
-
-### SDK responsibilities
-
-`packages/agent` must provide a public `createAgentSession()` entry point that:
-
-- receives runtime-neutral `AgentExtensionFactory` values;
-- awaits factories with the real Agent scope;
-- composes hooks, tools and system prompts in registration order;
-- rejects base/capability tool collisions;
-- injects SessionManager/persistence and runtime options;
-- returns a working `Agent`.
-
-### Backend responsibilities
-
-Backend Capability code may:
-
-- own product service factories;
-- create `AgentExtensionFactory` closures;
-- register routes/commands through `CapabilityServerContext`;
-- expose manifests.
-
-Backend Capability code must not reimplement:
-
-```text
-hook composition
-tool merge/collision validation
-system prompt merge
-generic Agent creation
-```
-
-### P6-C acceptance
+### Acceptance
 
 ```bash
 bun run build
@@ -114,209 +51,37 @@ bun test packages/agent
 bun run --cwd apps/backend typecheck
 ```
 
-Structural check:
-
-```bash
-! git grep -n 'composeBeforeModel\|composeBeforeTool\|mergeTools\|mergeSystemPrompts' -- apps/backend/src
-```
-
-
-Capability wrappers may receive ConversationPort through Services, but must not write ledger directly. They emit Agent events or return Agent hooks; projection remains Conversation-owned.
-
-## 1. Capability registry
-
-### Files
-
-- Create: `apps/backend/src/capabilities/types.ts`
-- Create: `apps/backend/src/capabilities/services.ts`
-- Create: `apps/backend/src/capabilities/registry.ts`
-- Create: `apps/backend/src/capabilities/agent-factory.ts`
-- Create: `apps/backend/src/capabilities/index.ts`
-- Test: `apps/backend/src/capabilities/*.test.ts`
-
-### Required behavior
-
-- Empty registry is valid.
-- Duplicate capability IDs are rejected.
-- Install order is deterministic.
-- Tool name collisions are rejected.
-- Hook contributions are aggregated in install order.
-- Agent scope is isolated per Agent instance.
-- Manifest slots are strings only; no React component type.
-- Static import only.
-
-### Non-goals
-
-- No jiti/dynamic loader.
-- No frontend dynamic slot rendering.
-- No weak `Record<string, Handler>` route registry.
-- No automatic discovery.
-- No deletion of old plugin assembly.
-
-### Acceptance
-
-```bash
-bun test apps/backend/src/capabilities
-bun run --cwd apps/backend typecheck
-```
-
-Structural check:
-
-```bash
-! grep -R 'react\|React' apps/backend/src/capabilities
-```
-
-## 2. Context capabilities: identity / skill / conversation-context
-
-### Files
-
-- Create: `apps/backend/src/capabilities/identity.ts`
-- Create: `apps/backend/src/capabilities/progressive-skill.ts`
-- Create: `apps/backend/src/capabilities/conversation-context.ts`
-- Modify only their implementation requires: corresponding `packages/plugin-*`
-- Tests beside each capability and existing plugin tests
-
-### Required behavior
-
-#### Identity
-
-- Preserve identity/bootstrap prompt.
-- Preserve system prompt order.
-- Preserve agent/workspace scope.
-
-#### Progressive skill
-
-- Preserve skill root resolution.
-- Preserve skill index context key.
-- Preserve skill tool behavior and cache.
-- Do not persist temporary skill index as ordinary conversation history.
-
-#### Conversation context
-
-- Context is per-run, not per-session.
-- Second message must not see first message input.
-- Cron/Loop without conversation context must pass through normally.
-- Preserve conversation tools and escaping rules.
-
-### Acceptance
-
-```bash
-bun test packages/plugin-identity
-bun test packages/plugin-progressive-skill
-bun test packages/plugin-conversation-context
-bun test apps/backend/src/features/conversation
-bun run --cwd apps/backend typecheck
-```
-
-## 3. Control-flow capabilities: todo / goal
-
-### Files
-
-- Create: `apps/backend/src/capabilities/todo.ts`
-- Create: `apps/backend/src/capabilities/goal.ts`
-- Existing: `packages/plugin-todo/**`
-- Existing: `packages/plugin-goal/**`
-- Tests beside capabilities and plugins
-
-### Required behavior
-
-- `beforeStop` semantics unchanged.
-- `maxForceContinues` remains authoritative.
-- todo_update event contains correct run association.
-- Goal evaluation count/history remains unchanged.
-- Paused goal state remains unchanged.
-- Tool error and unresolved work checks remain unchanged.
-
-### Acceptance
-
-```bash
-bun test packages/plugin-todo
-bun test packages/plugin-goal
-bun test apps/backend/src/features/conversation
-bun run --cwd apps/backend typecheck
-```
-
-## 4. Side-effect capabilities: pet / recap
-
-### Files
-
-- Create: `apps/backend/src/capabilities/pet.ts`
-- Create: `apps/backend/src/capabilities/recap.ts`
-- Existing: `packages/plugin-pet/**`
-- Existing: `packages/plugin-recap/**`
-- Tests beside capabilities and plugins
-
-### Required behavior
-
-- Model provider/name settings remain unchanged.
-- Pet settings namespace remains unchanged.
-- Pet and recap events retain payload shape.
-- Event projection remains Conversation-owned.
-- Capability does not append ledger entries directly.
-- Best-effort behavior and error logging remain compatible.
-
-### Acceptance
-
-```bash
-bun test packages/plugin-pet
-bun test packages/plugin-recap
-bun test apps/backend/src/features/conversation
-bun run --cwd apps/backend typecheck
-```
-
-## 5. Memory capability
-
-### Files
-
-- Create: `apps/backend/src/capabilities/memory.ts`
-- Existing: `packages/plugin-memory/**`
-- Tests beside capability and plugin
-
-### Required behavior
-
-- `autoExtract` setting remains compatible.
-- extract and consolidate model selection remains compatible.
-- thresholds remain compatible.
-- memory file layout remains unchanged.
-- cache behavior remains unchanged.
-- Memory context is per-run injection, not a new Message domain type.
-- Memory failures do not corrupt Conversation ledger.
-
-### Acceptance
-
-```bash
-bun test packages/plugin-memory
-bun test apps/backend/src/features/conversation
-bun run --cwd apps/backend typecheck
-```
-
-## 6. Replace conversation plugin assembly
+## 2. P7-1 Conversation Plugin-first migration
 
 ### Files
 
 - Modify: `apps/backend/src/features/conversation/conversation-compose.ts`
-- Modify only as needed: `apps/backend/src/features/span/agent-helpers.ts`
-- Test: `apps/backend/src/features/conversation/*.test.ts`
+- Modify: `apps/backend/src/features/span/agent-helpers.ts` only for shared Plugin factory/model runtime wiring
+- Test: affected conversation tests
 
 ### Required change
 
-Replace direct assembly such as:
+Replace direct `sessionManager.open/create(agentConfig)` with `createAgentSession()` while preserving the existing Plugin list:
 
 ```text
-petPlugin(...)
-recapPlugin(...)
-memoryPlugin(...)
-goalPlugin(...)
+defaultPlugins
+conversationContextPlugin
+goalPlugin
+petPlugin
+recapPlugin
+memoryPlugin
 ```
 
-with Capability-derived AgentExtensions. Keep the resulting hook/tool ordering explicit and tested.
+The first migration may keep these as static Plugins. Do not wrap them as Capability or AgentExtensionFactory.
 
-### Non-goals
+### Preserve
 
-- Do not split `conversation-compose.ts` yet; that belongs to Cleanup.
-- Do not change ledger schema.
-- Do not change public HTTP/SSE contract.
-- Do not remove old plugin package until cleanup.
+- `member.sessionId` binding.
+- Conversation tools and MCP tools.
+- Model provider/model selection.
+- Context pipeline and metaContext.
+- Steering/follow-up.
+- Message projection and ConversationLock.
 
 ### Acceptance
 
@@ -328,37 +93,82 @@ bun run --cwd apps/backend typecheck
 Structural check:
 
 ```bash
-! grep -n 'petPlugin\|recapPlugin\|memoryPlugin\|goalPlugin' \
+! grep -n 'new Agent\|sessionManager\.\(open\|create\)(agentConfig' \
   apps/backend/src/features/conversation/conversation-compose.ts
 ```
 
-## 7. Capability workstream gate
+## 3. P7-2 Cron / Loop / Skill Pack migration
 
-```bash
-bun run --cwd apps/backend typecheck
-bun test apps/backend/src/capabilities
-bun test apps/backend/src/features/conversation
-bun test packages/plugin-identity
-bun test packages/plugin-progressive-skill
-bun test packages/plugin-conversation-context
-bun test packages/plugin-todo
-bun test packages/plugin-goal
-bun test packages/plugin-pet
-bun test packages/plugin-recap
-bun test packages/plugin-memory
-```
-
-Required smoke checks:
+Migrate each caller independently:
 
 ```text
-identity prompt unchanged
-skill injection unchanged
-conversation context does not leak across turns
-todo/goal stop behavior unchanged
-pet/recap events project once
-memory extraction/consolidation still run
+cron scheduler
+loop generator/evaluator
+skill-pack install/sync
 ```
 
-## 8. Rollback
+Each uses `createAgentSession({ plugins })`. Do not change plugin behavior or database schema.
 
-Rollback one capability group at a time by restoring the old plugin assembly. Do not run old and new capability implementations together for the same Agent; that would duplicate model calls and side effects.
+### Acceptance
+
+```bash
+bun test apps/backend/src/features/cron
+bun test apps/backend/src/features/loop
+bun test apps/backend/src/features/skill-pack
+bun run --cwd apps/backend typecheck
+```
+
+## 4. Plugin package migration rules
+
+Keep these packages as static Plugin implementations during P7:
+
+```text
+plugin-identity
+plugin-progressive-skill
+plugin-conversation-context
+plugin-todo
+plugin-goal
+plugin-pet
+plugin-recap
+plugin-memory
+```
+
+Do not duplicate their algorithms into `apps/backend/src/capabilities`.
+
+If a future feature needs routes, commands, UI slots or a product service, create a separate Capability wrapper that produces or configures Plugin; do not make Capability the ordinary Agent extension path.
+
+## 5. P7 workstream gate
+
+```bash
+bun run build
+bun run --cwd packages/agent typecheck
+bun test packages/agent
+bun run --cwd apps/backend typecheck
+bun test apps/backend/src/features/conversation
+bun test apps/backend/src/features/cron
+bun test apps/backend/src/features/loop
+bun test apps/backend/src/features/skill-pack
+```
+
+Structural checks:
+
+```bash
+! git grep -n 'Capability.*AgentExtensionFactory' -- apps/backend/src/capabilities
+! git grep -n 'composeBeforeModel\|composeBeforeTool\|mergeTools\|mergeSystemPrompts' -- apps/backend/src
+```
+
+P7 gate meaning: the production callers use `createAgentSession({ plugins })`; capability catalog code is not part of the ordinary Agent path. A future Capability wrapper may exist only for a feature that also owns backend services/routes/surface metadata.
+
+## 6. Rollback
+
+Rollback is per caller:
+
+```text
+createAgentSession() → restore existing SessionManager + AgentConfig path
+```
+
+Do not run old and new Agent paths for the same input. Do not modify database schema.
+
+## 7. Deferred Pi-style Extension
+
+Dynamic `jiti` extensions are a separate future plan. They are not required for P7 and must not be introduced as a workaround for static Plugin migration.

@@ -26,6 +26,7 @@ export interface AgentConfig {
   tools?: Tool[];
   plugins?: Plugin[];
   contextManager?: ContextManager;
+  metaContext?: ((ctx: { context: import("@my-agent-team/framework").ContextStore; sessionId: string; threadMessages: readonly import("@my-agent-team/message").Message[] }) => string | void);
   systemPrompt?: string;
   sessionId?: string;
   checkpointer?: Checkpointer;

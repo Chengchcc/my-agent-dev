@@ -23,7 +23,7 @@
 | 本文 | 全局依赖 DAG、workstream 顺序、phase gate、风险和回滚 |
 | `2026-07-23-agent-runtime-foundation.md` | `packages/agent` 生命周期基础设施 |
 | `2026-07-23-agent-runtime-backend-adoption.md` | Conversation/Resume/Cron/Loop/Skill Pack caller 迁移 |
-| `2026-07-23-agent-runtime-capabilities.md` | Capability registry 和 plugin → Capability 迁移 |
+| `2026-07-23-agent-runtime-capabilities.md` | Plugin-first production migration；Capability catalog 仅为未来跨边界功能预留 |
 | `2026-07-23-agent-runtime-cleanup.md` | conversation composition、backend bootstrap、命名清理、删除旧包 |
 
 单个 agent 的 handoff 是临时执行包，不作为主路线图的替代品。每个 handoff 必须只针对一个 task。
@@ -48,15 +48,15 @@ P4R Agent runtime completion / framework absorption
 │ conversation / resume / cron / loop / skill │
 └────────────────────────────────────────────┘
   ↓
-P6-A Agent extension composition primitives
+P6-A Agent SDK core: Plugin assembly + ModelRuntime
   ↓
-P6-B Backend service ownership
+P6-B Backend service ownership (future cross-boundary use only)
   ↓
-P6-C Agent SDK assembly host (`createAgentSession`)
+P6-C SDK integration gate
   ↓
-P7 Capability migration through Agent SDK
+P7 Plugin-first production migration
   ↓
-P8 Conversation composition split
+P8 Backend assembly cleanup
   ↓
 P9 Backend bootstrap cleanup
   ↓
@@ -96,26 +96,26 @@ Conversation、Resume、Cron、Loop、Skill Pack 都使用 @my-agent-team/agent
 
 五个 caller task 可以在 P4R Agent runtime completion 完成后并行，但每个 task 必须有独立文件 owner，不能同时修改 shared `package.json` / `bun.lock`。
 
-### Workstream C：Capabilities
+### Workstream C：Plugin-first production migration
 
 文件：`2026-07-23-agent-runtime-capabilities.md`
 
-前置条件：Foundation、P4R Agent runtime completion、Backend Adoption 全部通过。当前分支已有 Capability registry prototype；它处于暂停状态，不计入 workstream 完成，也不得继续接入生产 Agent。
+前置条件：Foundation、P4R Agent runtime completion、Backend Adoption、P6-A/P6-B/P6-C 全部通过。当前 Capability registry 仅作为未来跨边界产品功能的实验性 catalog，不接入普通 Plugin 生产路径。
 
 完成后必须得到：
 
 ```text
-Capability registry 可安装 AgentExtension
-Services 只停留在 backend
-conversation-compose 不再直接组装所有 plugin
-plugin 行为保持兼容
+Conversation/Cron/Loop/Skill Pack 使用 createAgentSession({ plugins })
+Plugin 行为保持兼容
+backend 不重复实现通用 composer
+Capability 不作为普通 Plugin 的必经包装层
 ```
 
 ### Workstream D：Cleanup
 
 文件：`2026-07-23-agent-runtime-cleanup.md`
 
-只能在 Foundation、Backend Adoption、Capability Migration 全部完成，并且 P4R Agent runtime completion 已通过后开始。P4R 的 runtime completion 不属于此 structural cleanup plan。
+只能在 Foundation、Backend Adoption、Plugin-first production migration 全部完成，并且 P4R Agent runtime completion 已通过后开始。当前 Capability catalog 不参与普通 Plugin migration。
 
 完成后必须得到：
 
@@ -128,8 +128,6 @@ framework/harness 无业务引用并可删除
 
 ## 4. Phase gate 总表
 
-| Phase | 入口 | 退出条件 |
-|---|---|---|
 | P0 | 当前工作树 | baseline build/typecheck/test 已记录；已有失败清单明确 |
 | P1 | 无新包 | `packages/agent` 独立 build/typecheck/test；无 backend/React 依赖 |
 | P2 | P1 | Agent 行为测试覆盖 prompt/retry/compact/interrupt/steer/follow-up/dispose；不得吞掉目标行为失败 |
@@ -137,10 +135,12 @@ framework/harness 无业务引用并可删除
 | P4 | P3 | framework adapter 和 AgentHooks tests pass；backend 不需要 framework 才能创建 Agent |
 | P4R | P4 | Agent runtime completion：`AgentEvent` typed；resume 真正消费 command；compact 真实持久化；usage 非固定 0；RunState per-run 透传；before:run/after:turn 完整；无 migration suppression；生产 SessionManager 边界明确 |
 | P5A-E | P4R | 对应 caller scoped tests/typecheck/build pass；行为不变；不得从 harness/framework 混合导入同一配置边界 |
-| P6 | P5A-E | Capability registry tests pass；无 React 依赖；异步 extension 不静默丢弃；hook chain 按顺序合并；真实 scope 由调用方传入 |
-| P7 | P6 | context/control-flow/side-effect/memory capability tests and backend integration tests pass |
-| P8 | P7 | conversation projection and Agent factory are separated；行为测试通过 |
-| P9 | P8 | main/bootstrap smoke test passes；main no longer assembles plugins directly |
+| P6-A | P5A-E | `packages/agent` Plugin/tool/model assembly tests pass；backend 不重复 composer |
+| P6-B | P6-A | backend shared infrastructure 与 future Capability deps 边界明确；不接入普通 Plugin path |
+| P6-C | P6-B | `createAgentSession()` integration test pass；ModelRuntime、Plugin、SessionManager、Agent 链路通过 |
+| P7 | P6-C | Conversation/Cron/Loop/Skill Pack 使用 `createAgentSession({ plugins })`；Plugin 行为和 backend flows 不变 |
+| P8 | P7 | backend Agent assembly 重复逻辑收敛；conversation projection 与 Agent factory 分离 |
+| P9 | P8 | main/bootstrap smoke test passes；main no longer owns feature assembly |
 | P10 | P9 | each old name is cleaned independently；scoped gate passes |
 | P11 | P10 | framework/harness have no business references；full CI and smoke tests pass |
 
@@ -178,8 +178,8 @@ Bun test 不能替代 TypeScript typecheck。
 - 不用 `any`、`@ts-ignore`、宽泛 `as` 压过新边界。
 - 不把全量 rename 和行为迁移放在一个 task。
 - 不同时迁移数据库 schema 和 runtime。
-- 不让旧 Agent 和新 Agent 同时处理同一个用户输入。
-- 不把 Capability registry 做成动态 extension runtime。
+- 不把 Plugin 强制包装成 Capability。
+- 不把 Capability catalog 做成普通 Plugin 的必经运行时。
 - 不把 React slot component 类型带入 backend/runtime。
 
 ## 6. 回滚策略
@@ -192,9 +192,7 @@ Bun test 不能替代 TypeScript typecheck。
 
 每个 caller 独立迁移。单个 caller 回滚到 `@my-agent-team/harness`，不触碰数据库。
 
-### Capabilities
-
-Capability 迁移按组进行。不能双跑新旧 plugin；只允许配置或代码路径二选一。失败时恢复旧 plugin assembly。
+Plugin-first migration 按 caller 独立进行。不能双跑旧新 Agent path；失败时恢复原有 Plugin assembly。Capability catalog 不参与普通 Plugin path。
 
 ### Cleanup
 

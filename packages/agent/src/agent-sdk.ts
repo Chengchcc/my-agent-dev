@@ -1,79 +1,84 @@
 import { Agent } from "./agent.js";
-import type { AgentHooks } from "./agent-hooks.js";
 import type { AgentConfig } from "./agent-options.js";
-import type { AgentExtension, AgentExtensionFactory, AgentScope } from "./extension-host.js";
-import { composeExtensions, ExtensionHost } from "./extension-host.js";
-import type { ChatModel, Tool } from "./framework-adapter.js";
+import type { Tool } from "./framework-adapter.js";
 import { resolveModel } from "./model-runtime.js";
 import type { ModelRef, ModelRuntime } from "./model-runtime.js";
 import type { SessionManager } from "./session-manager.js";
 
 export interface CreateAgentSessionInput {
-  scope: AgentScope;
+  /** ModelRef string (requires modelRuntime) or already-resolved ChatModel. */
   model: ChatModel | ModelRef;
+
+  /** Required when model is a ModelRef string. */
   modelRuntime?: ModelRuntime;
-  extensions?: readonly AgentExtensionFactory[];
+
+  /** Pre-built plugins — the canonical extension mechanism. */
+  plugins?: AgentConfig["plugins"];
+
+  /** Base tools (conversation, MCP, built-in). */
   tools?: readonly Tool[];
-  systemPrompt?: string;
+
+  /** For SessionManager.open — reuses existing session. */
+  sessionId?: string;
+
+  /** Session persistence. When provided, open/create is delegated. */
   sessionManager?: SessionManager;
-  hooks?: AgentHooks;
+
+  /** Forwarded directly to AgentConfig. */
   contextManager?: AgentConfig["contextManager"];
+
+  /** Forwarded directly to AgentConfig. */
+  metaContext?: AgentConfig["metaContext"];
+
+  /** Forwarded directly to AgentConfig. */
+  systemPrompt?: string;
+
+  /** Forwarded directly to AgentConfig. */
   logger?: AgentConfig["logger"];
+
+  /** Forwarded directly to AgentConfig. */
   retry?: AgentConfig["retry"];
+
+  /** Forwarded directly to AgentConfig. */
   compaction?: AgentConfig["compaction"];
 }
 
+// Re-import ChatModel for type use
+import type { ChatModel } from "./framework-adapter.js";
+
 /**
- * Create an Agent session.
+ * Create an Agent session — thin facade over AgentConfig + SessionManager.
  *
- * - ChatModel: direct (test, custom providers)
+ * Two model modes:
+ * - ChatModel: direct (tests, custom providers)
  * - ModelRef string: requires modelRuntime (production)
  *
- * Extensions are resolved per scope and composed in registration order.
- * input.hooks are folded into the composition chain, not an override.
+ * Plugins are the canonical extension mechanism. Hooks/tools/systemPrompt
+ * inside plugins are composed by the framework's existing plugin system.
  */
 export async function createAgentSession(input: CreateAgentSessionInput): Promise<Agent> {
   const resolvedModel = await resolveModel(input.model, input.modelRuntime);
 
-  // Resolve extension factories
-  const host = new ExtensionHost(input.extensions ?? []);
-  const resolved = await host.resolve(input.scope);
-
-  // Convert resolved extensions to AgentExtension list
-  const extensions: AgentExtension[] = resolved.map((r) => r.extension);
-
-  // Fold input.hooks into the chain as a bootstrap extension
-  if (input.hooks) {
-    extensions.push({ id: "bootstrap", hooks: input.hooks });
-  }
-
-  // Compose everything once
-  const composed = composeExtensions({
-    resolved: extensions.map((ext, _i) => ({ id: ext.id, extension: ext })),
-    baseTools: input.tools ?? [],
-    baseSystemPrompt: input.systemPrompt,
-  });
-
-  const agentConfig: AgentConfig = {
+  const config: AgentConfig = {
     model: resolvedModel.chatModel,
-    tools: composed.tools ? [...composed.tools] : input.tools ? [...input.tools] : undefined,
-    hooks: composed.hooks,
-    systemPrompt: composed.systemPrompt || undefined,
+    plugins: input.plugins,
+    tools: input.tools ? [...input.tools] : undefined,
     contextManager: input.contextManager,
+    metaContext: input.metaContext,
+    systemPrompt: input.systemPrompt,
     logger: input.logger,
     retry: input.retry,
     compaction: input.compaction,
   };
 
   if (input.sessionManager) {
-    const sid = input.scope.sessionId;
-    return sid
-      ? input.sessionManager.open(sid, agentConfig)
-      : input.sessionManager.create(agentConfig);
+    return input.sessionId
+      ? input.sessionManager.open(input.sessionId, config)
+      : input.sessionManager.create(config);
   }
 
   return new Agent({
-    ...agentConfig,
-    sessionId: input.scope.sessionId,
+    ...config,
+    sessionId: input.sessionId,
   });
 }

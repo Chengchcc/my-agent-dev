@@ -302,26 +302,17 @@ Caller 不负责：
 
 ## 8. Agent SDK assembly host
 
-`packages/agent` owns the generic Agent assembly capability. The public entry point is `createAgentSession()`; an `AgentSdk` object is not required in the first version. `ExtensionHost` and the composers are internal or advanced implementation surfaces.
+`packages/agent` owns the generic Agent assembly capability. The public entry point is `createAgentSession()`. Current extensions are existing static `Plugin` instances; do not introduce a second `AgentExtensionFactory` layer for ordinary plugins.
 
 ```ts
-export interface AgentExtension {
-  id: string;
-  hooks?: AgentHooks;
-  tools?: readonly Tool[];
-  systemPrompt?: string;
-  resources?: ResourceProvider;
-}
-
-export type AgentExtensionFactory = (
-  scope: AgentScope,
-) => AgentExtension | Promise<AgentExtension>;
-
 export interface CreateAgentSessionInput {
-  scope: AgentScope;
-  model: Model;
-  extensions?: readonly AgentExtensionFactory[];
+  model: ChatModel | ModelRef;
+  modelRuntime?: ModelRuntime;
+  plugins?: readonly Plugin[];
   tools?: readonly Tool[];
+  sessionManager?: SessionManager;
+  sessionId?: string;
+  contextManager?: ContextPipeline;
   systemPrompt?: string;
 }
 
@@ -332,59 +323,36 @@ export async function createAgentSession(
 
 The SDK must:
 
-- await extension factories;
-- preserve extension registration order;
-- compose hooks, tools and system prompts;
+- resolve a `ModelRef` through `ModelRuntime`;
+- combine base tools with plugin tools;
+- preserve Plugin hook execution order;
 - reject tool collisions;
 - inject SessionManager/persistence and runtime options;
 - create the final Agent.
 
 The SDK must not depend on backend `Services`, `SettingsService`, `ConversationPort`, Elysia, React or backend database types.
 
-Backend Capability factories must:
+Backend callers provide concrete Plugin instances and their options. Backend must not build a second generic hook/tool/prompt composer.
 
-- own product services and capability-specific dependencies;
-- create `AgentExtensionFactory` values;
-- install backend routes/commands;
-- expose surface manifest metadata.
+## 9. Backend product extension (deferred)
 
-The backend Capability registry may resolve product capabilities, but generic extension composition has one source of truth in `packages/agent`.
+The previous `Capability → AgentExtension → Registry` path is not part of the current Agent runtime path. Ordinary Agent features remain static Plugins.
 
+Only a future cross-boundary product feature may introduce a higher-level `Capability` that combines a Plugin with backend services, routes/commands or surface metadata. Such a Capability must eventually produce a Plugin or runtime registration through the SDK; it must not duplicate the SDK composer.
 
-## 9. Backend Capability
+## 10. Future Pi-style Extension
 
-Capability 只存在于 backend/application composition 层，不放入 `packages/agent`。
+If dynamic extensions are needed later, define a separate `ExtensionRuntime`:
 
 ```ts
-export interface Capability {
-  readonly id: string;
-
-  extendAgent?: (
-    scope: AgentScope,
-  ) => AgentExtension | Promise<AgentExtension>;
-
-  installServer?: (
-    ctx: CapabilityServerContext,
-  ) => void | Promise<void>;
-
-  readonly manifest?: CapabilityManifest;
-}
-
-export interface AgentExtension {
-  hooks?: AgentHooks;
-  tools?: readonly Tool[];
-  systemPrompt?: string;
-}
-
-export interface CapabilityManifest {
-  id: string;
-  slots?: readonly string[];
-}
+export type Extension = (
+  runtime: ExtensionRuntime,
+) => void | Promise<void>;
 ```
 
-`AgentScope` and `CapabilityServerContext` are backend-local composition types. Their concrete fields must be defined by the Capability workstream from existing backend services; they are not dependencies of `packages/agent`. At minimum, `AgentScope` identifies the Agent/member/session scope and exposes only the extension inputs needed by a capability. `CapabilityServerContext` exposes typed route/command registration and the backend `Services` object. Do not add placeholder `any` fields merely to satisfy these sketches.
+The future loader may use `jiti` and expose `runtime.registerTool()`, `runtime.on()`, `runtime.registerCommand()` and resource APIs. This is explicitly deferred; no jiti, discovery or reload is part of the current migration.
 
-### 9.1 Backend infrastructure and Capability ownership
+### Backend infrastructure
 
 Backend creates and owns process-level infrastructure:
 
@@ -396,33 +364,22 @@ SseBus
 database ports
 ```
 
-Each Capability owns its product service and receives only capability-specific dependencies. Do not pass a broad `Services` object to every Capability when a narrower dependency type is sufficient.
+Plugins receive only their options. A future Capability owns product services and receives narrow dependencies; do not introduce a broad Service Locator for ordinary Plugin installation.
 
 ```text
 backend infrastructure
-  → Capability factory/deps
-  → AgentExtensionFactory
+  → Plugin options
   → createAgentSession()
   → Agent
 ```
 
-Capability-to-capability dependencies must use narrow ports such as `MemoryReader`; a Capability must not reach into another Capability's internal service.
+### Current limitations
 
-### 9.2 Capability limitations
-
-- Capability must not write Conversation ledger directly.
-- Capability must not control Agent terminal state.
-- Capability must not depend on React; slots are manifest identifiers only.
-- First version uses static imports; no jiti/dynamic loader.
+- Plugins must not write Conversation ledger directly.
+- Plugins must not control Agent terminal state.
+- Plugins must not depend on React; UI slots are deferred.
 - Generic hook/tool/prompt composition has one source of truth in `packages/agent`.
 - Backend must not create a second Agent composer.
-
-- Capability 不直接写 ledger。
-- Capability 不直接控制 Agent terminal state。
-- Capability 不依赖 React；slot 只声明字符串 manifest。
-- 第一版静态 import，不做 jiti/dynamic loader。
-- 第一版不做前端动态 slot rendering。
-- route/command 必须通过类型化注册接口接入，不使用 `Record<string, Handler>` 抹平类型。
 
 ## 9. Phase handoff 规则
 

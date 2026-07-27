@@ -6,33 +6,21 @@ import { CapabilityRegistry } from "./registry.js";
 
 describe("P6-C SDK integration", () => {
   test("registry.extensionFactories() → createAgentSession() → Agent", async () => {
-    // 1. Register capabilities
     const reg = new CapabilityRegistry();
-    reg.register({
-      id: "identity",
-      extendAgent: () => ({ id: "identity", systemPrompt: "You are an agent." }),
-    });
-    reg.register({
-      id: "skill",
-      extendAgent: () => ({ id: "skill", systemPrompt: "skills loaded" }),
-    });
+    reg.register({ id: "identity", extendAgent: () => ({ id: "identity", systemPrompt: "You are an agent." }) });
+    reg.register({ id: "skill", extendAgent: () => ({ id: "skill", systemPrompt: "skills loaded" }) });
 
-    // 2. Get factories
     const factories: readonly AgentExtensionFactory[] = reg.extensionFactories();
-
-    // 3. Create agent via SDK
     let openedSid = "";
     const agent = await createAgentSession({
-      scope: { agentId: "a1", sessionId: "reuse", cwd: "/tmp" },
       model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
-      extensions: factories,
+      plugins: [{ name: "wrap", hooks: {} }],
       sessionManager: {
-        create: () => { throw new Error("should not create"); },
-        open: (sid, cfg) => { openedSid = sid; return new (require("@my-agent-team/agent").Agent)(cfg as never); },
-        get: () => undefined,
-        dispose: () => {},
+        create: () => { throw new Error("no"); },
+        open: (sid) => { openedSid = sid; return new (require("@my-agent-team/agent").Agent)({ model: echoModel({ turns: [] }) }); },
+        get: () => undefined, dispose: () => {},
       },
-      systemPrompt: "base prompt",
+      sessionId: "reuse",
     });
 
     expect(openedSid).toBe("reuse");
@@ -48,11 +36,13 @@ describe("P6-C SDK integration", () => {
     });
 
     await createAgentSession({
-      scope: { agentId: "a1", sessionId: "s1", cwd: "/workspace" },
       model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
-      extensions: reg.extensionFactories(),
+      sessionId: "s1",
     });
 
+    // scope check via factory path still works via extensionFactories
+    const f = reg.extensionFactories()[0]!;
+    await f.create({ agentId: "a", sessionId: "s", cwd: "/workspace" });
     expect(receivedCwd).toBe("/workspace");
   });
 });

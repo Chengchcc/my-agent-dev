@@ -39,46 +39,70 @@ L1 core       run()            ← 正常运行
 - `PluginHooks` → 升级为 typed `AgentHooks`（event + handler + return value）
 - `Harness` 包 → 撤销，剩余非 Agent 职能（span 管理）留在 backend
 
-### 2. Extension 与 SDK 系统
+### 2. Agent SDK 与 Plugin 系统
 
-`packages/agent` 不只是 Agent 生命周期类，还提供通用 Agent SDK。公共入口使用 `createAgentSession()`；`ExtensionHost`、resource loading 和组合器是 SDK 内部/高级实现，不额外暴露一个必须持有的 `AgentSdk` 对象。SDK 负责：
+`packages/agent` 不只是 Agent 生命周期类，还提供通用 Agent SDK。公共入口是 `createAgentSession()`，负责：
 
-- `createAgentSession()` / Agent factory；
-- ExtensionHost；
-- hooks、tools、system prompt 的有序组合；
-- resource loading boundary；
+- ModelRuntime / ModelRef 解析边界；
+- Plugin、tools、system prompt 的组装；
+- hook 执行顺序与 tool collision 校验；
 - SessionManager / persistence 注入；
-- AgentConfig 的最终构造。
+- AgentConfig 构造和 Agent 创建。
 
 ```text
-backend Capability factory
-  → AgentExtension
-  → packages/agent Agent SDK
+backend 提供 model/tools/plugins
+  → packages/agent.createAgentSession()
   → Agent
 ```
 
-Capability 是 backend/application 层的产品功能单元，可以贡献 AgentExtension、server routes、commands 和 manifest；通用的 AgentExtension 组合逻辑属于 `packages/agent`，不得在 backend 重复实现。
+当前采用 **Plugin-first**：现有功能直接以 `Plugin` 形式接入 Agent SDK。普通 Agent 扩展不再额外包装成 Capability。
 
 ```typescript
-// packages/agent：runtime-neutral extension
-interface AgentExtension {
-  id: string;
-  hooks?: AgentHooks;
+// packages/agent
+interface CreateAgentSessionInput {
+  model: ChatModel | ModelRef;
+  modelRuntime?: ModelRuntime;
+  plugins?: readonly Plugin[];
   tools?: readonly Tool[];
-  systemPrompt?: string;
-  resources?: ResourceProvider;
-}
-
-// apps/backend：product capability
-interface Capability {
-  id: string;
-  createExtension?: (scope: CapabilityScope) => AgentExtension | Promise<AgentExtension>;
-  installServer?: (ctx: CapabilityServerContext) => void | Promise<void>;
-  manifest?: CapabilityManifest;
+  sessionManager?: SessionManager;
+  sessionId?: string;
 }
 ```
 
-`packages/agent` 不依赖 `SettingsService`、`ConversationPort`、Elysia、React 或 backend 数据库。Backend 负责创建共享基础设施；Capability factory 负责创建和拥有产品 service；Agent SDK 负责通用 Agent 组装。
+`identityPlugin`、`progressiveSkillPlugin`、`conversationContextPlugin`、`todoPlugin`、`goalPlugin`、`petPlugin`、`recapPlugin` 和 `memoryPlugin` 当前都保持 Plugin 形态。Backend 负责提供它们所需的业务参数，但不实现第二套通用 Agent composer。
+
+### 3. Capability：暂不作为当前 Agent 扩展层
+
+此前设计的 backend `Capability → AgentExtension → Registry` 链路不作为当前主路径。它会把普通 Plugin 的安装增加为多层包装，重复 Agent SDK 的组装职责。
+
+Capability 只有在未来一个功能同时需要以下多个边界时才引入：
+
+- Agent runtime Plugin；
+- backend service；
+- HTTP route / command；
+- surface manifest 或 UI slot。
+
+当前仅保留 Capability 的实验性设计和 registry 代码，不接入生产 Agent 创建。P7 先迁移现有 Plugin 到 `createAgentSession({ plugins })`。
+
+### 4. Future Pi-style Extension
+
+如果未来需要类似 Pi 的动态扩展，再单独设计 `ExtensionRuntime`：
+
+```typescript
+type Extension = (runtime: ExtensionRuntime) => void | Promise<void>;
+```
+
+未来 Extension 可以通过 `jiti` 静态/动态加载，并使用 runtime 注册：
+
+```text
+jiti loader
+  → extension(runtime)
+  → runtime.registerTool()
+  → runtime.on()
+  → runtime.registerCommand()
+```
+
+这不是当前 P7 的范围。当前不引入 jiti、动态发现、reload 或 extension package loader。
 
 ### 实施契约说明
 
@@ -86,10 +110,14 @@ interface Capability {
 
 具体约束：
 
-- Capability 的 Agent 扩展通过 `AgentExtension` 声明式聚合；不要求 Capability 在构造后任意修改 Agent。
+- Plugin 是当前 Agent runtime 的唯一扩展机制。
+- `createAgentSession()` 是 Agent 组装的唯一公共入口。
+- Backend 不重复实现 hook/tool/prompt composer。
+- Capability 不作为当前普通 Plugin 的必经包装层；已有 Capability registry 只保留为实验性 backend catalog，不接入当前生产 Agent path。
+- 未来若需要跨 runtime/backend/surface 的产品功能，再单独定义 Capability；当前 P7 直接迁移现有 Plugin。
 - `agent.emit()` 不作为外部任意事件写入口；外部只订阅 Agent 事件，业务事件通过受控 hook/context/projection 边界产生。
 - `steering` 和 `followUp` 在迁移期保持现有独立语义，不能直接合并成一个未定义的 `interrupt(input)` API。
-- `slots` 第一阶段只保存 slot 标识，不携带 React 组件类型。
+- slots 和 jiti Extension 属于未来设计，不进入当前 runtime migration。
 
 **约定位置（Slot）：**
 
@@ -102,17 +130,9 @@ interface Capability {
 
 ### 3. Services 接口
 
-Agent 不直接依赖外部系统。Capability 通过 `Services` 注入外部能力：
+Agent 不直接依赖外部系统。Backend 负责创建共享基础设施；Plugin 的 options 由 backend 组装并传入 `createAgentSession()`。
 
-```typescript
-interface Services {
-  modelRegistry: ModelRegistry;
-  settings: SettingsService;
-  sse: SseBus;
-  fs: AgentFs;
-  ledgerPort?: ConversationPort;
-}
-```
+通用 Agent SDK 不依赖 `SettingsService`、`ConversationPort`、Elysia、React 或 backend 数据库。
 
 ### 4. 命名对齐
 
@@ -131,7 +151,7 @@ interface Services {
 
 ### 5. 包结构
 
-```
+```text
 旧:
 @my-agent-team/ai
 @my-agent-team/core
@@ -139,9 +159,9 @@ interface Services {
 @my-agent-team/harness
 
 新:
-@my-agent-team/ai               ← 不变
-@my-agent-team/core             ← 不变
-@my-agent-team/agent            ← framework + harness 合并
+@my-agent-team/ai               ← provider/model runtime
+@my-agent-team/core             ← protocol + run
+@my-agent-team/agent            ← Agent + SDK + Plugin assembly
 ```
 
 ### 6. Agent Hooks 设计
@@ -158,33 +178,35 @@ interface AgentHooks {
 }
 ```
 
-Agent 暴露 `agent.on(event, handler)` / `agent.emit(event, payload)`。
+Agent 暴露 `agent.on(event, handler)`；不把任意 `agent.emit(event, payload)` 作为外部写入口。
 
 ### 改动范围
 
 | 当前 | 目标 |
 |------|------|
-| `packages/framework` | → `packages/agent` |
-| `packages/harness` | → 核心并入 `agent`，其余留在 backend |
-| `apps/backend/main.ts` | → 薄启动层，调用 `backend.install(...)` |
-| `conversation-compose.ts` | → Agent 生命周期壳，capability 注入 |
-| `plugin-pet/recap/memory` | → Capability 函数，挂 `agent.on(...)` |
+| `packages/framework` | → `packages/agent` 内部实现，最终删除 |
+| `packages/harness` | → 核心并入 `agent`，最终删除 |
+| `apps/backend/main.ts` | → 薄启动层，调用 SDK/feature installers |
+| `conversation-compose.ts` | → Agent 生命周期壳，调用 `createAgentSession()` |
+| `packages/plugin-*` | → 继续作为静态 Plugin，逐个迁移到 SDK入口 |
+| `apps/backend/src/capabilities` | → 暂不作为普通 Plugin 的必经层；未来跨层功能再启用 |
 
 ### 不做
 
-- Pi 的 30+ 细粒度事件 — 只实现我们需要的 7 个
-- `before_provider_request` — 先不加，有 demand 再加
-- Extension runtime / jiti loader — 先静态 import，后续按需动态加载
-- 前端 slot 动态渲染 — Capability 的 slots 字段先定义，前端静态渲染
+- Pi 的 30+ 细粒度事件 — 只实现我们需要的事件。
+- `before_provider_request` — 先不加，有 demand 再加。
+- jiti/dynamic extension loader — 延后到未来独立 phase。
+- 前端 slot 动态渲染 — 当前不做。
 
 ## 实现顺序
 
-1. Agent 类 (`packages/agent`) — 合并 framework + harness
-2. AgentHooks 升级 — typed events + return values
-3. Services 接口 — modelRegistry / settings / sse / fs
-4. Backend 精简 — 薄启动层 + backend.install()
-5. pet/recap/memory 迁移到 Capability 模式
-6. 命名对齐全量更新
+1. Agent 类 (`packages/agent`) — 合并 framework + harness runtime 能力。
+2. AgentHooks 与 `createAgentSession()` — typed hooks、ModelRuntime、Plugin assembly。
+3. Backend caller adoption — Conversation/Cron/Loop/Skill Pack 使用 SDK入口。
+4. Plugin-first production migration — 继续接入现有静态 Plugin，不引入 Capability wrapper。
+5. Backend assembly cleanup — 去除重复 plugin/model/context 组装。
+6. Naming migration — Checkpointer/ContextStore/ContextManager 等逐项重命名。
+7. 删除 framework/harness。
 
 ---
 
@@ -235,9 +257,8 @@ Tracing · Debugging · Evals · Metrics
 | `ExtensionHost` / compositors | `packages/agent/src/extension-host.ts` | ✅ P6-C |
 | `ModelRuntime` port | `packages/agent/src/model-runtime.ts` | ✅ P6-C |
 | `SessionManager` / `SqliteSessionManager` | `packages/agent/src/session-manager.ts` | ✅ P3 |
-| `CapabilityRegistry` (thin catalog) | `apps/backend/src/capabilities/registry.ts` | ✅ P6 |
-| `BackendInfrastructure` / deps | `apps/backend/src/capabilities/types.ts` | ✅ P6-B |
-| Capability wrappers (identity, skill, ...) | `apps/backend/src/capabilities/` | ⏳ P7 |
-| Conversation production wiring | `apps/backend/src/features/conversation/` | ⏳ P7 |
-| Naming migration (Checkpointer→SessionStore, ...) | — | ⏳ P10 |
+| Static Plugin-first production migration | `apps/backend/src/features/` | ⏳ P7 |
+| Capability registry | `apps/backend/src/capabilities/registry.ts` | ⏸ deferred; future cross-boundary use only |
+| Backend infrastructure / deps | `apps/backend/src/capabilities/types.ts` | ✅ P6-B; reserved for future Capability |
+| Naming migration (`Checkpointer` → `SessionStore`, ...) | — | ⏳ P10 |
 | Framework / harness deletion | — | ⏳ P11 |

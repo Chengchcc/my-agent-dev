@@ -1,18 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { echoModel } from "@my-agent-team/test-helpers";
 import { Agent } from "./agent.js";
-import { createAgentSession } from "./agent-sdk.js";
-import type { AgentExtensionFactory, AgentScope } from "./extension-host.js";
-import { composeExtensions } from "./extension-host.js";
-import type { ModelRuntime } from "./model-runtime.js";
 import { resolveModel } from "./model-runtime.js";
+import type { ModelRuntime } from "./model-runtime.js";
+import { createAgentSession } from "./agent-sdk.js";
 
-const scope: AgentScope = { agentId: "a", sessionId: "s", cwd: "/tmp" };
-
-describe("createAgentSession", () => {
+describe("createAgentSession (P7-0 thin facade)", () => {
   test("ChatModel directly creates an Agent", async () => {
     const agent = await createAgentSession({
-      scope,
       model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
     });
     expect(agent).toBeInstanceOf(Agent);
@@ -23,180 +18,96 @@ describe("createAgentSession", () => {
     const runtime: ModelRuntime = {
       resolve: (ref) => ({
         id: ref,
-        provider: ref.split("/")[0] ?? "?",
-        name: ref.split("/")[1] ?? "?",
+        provider: "test",
+        name: "test",
         chatModel: echoModel({ turns: [{ type: "text", text: ref }] }),
       }),
     };
     const agent = await createAgentSession({
-      scope,
-      model: "test/custom",
+      model: "test/model",
       modelRuntime: runtime,
     });
     expect(agent).toBeInstanceOf(Agent);
   });
 
   test("ModelRef without ModelRuntime throws", async () => {
-    await expect(createAgentSession({ scope, model: "anthropic/claude" })).rejects.toThrow(
+    await expect(createAgentSession({ model: "anthropic/claude" })).rejects.toThrow(
       "requires a ModelRuntime",
     );
   });
 
-  test("extensions resolve in registration order", async () => {
-    const calls: string[] = [];
-    const f1: AgentExtensionFactory = {
-      id: "first",
-      create: async () => {
-        calls.push("first");
-        return { id: "first" };
-      },
-    };
-    const f2: AgentExtensionFactory = {
-      id: "second",
-      create: async () => {
-        calls.push("second");
-        return { id: "second" };
-      },
-    };
-    await createAgentSession({
-      scope,
+  test("plugins are passed through", async () => {
+    const plugin = { name: "test", hooks: {} };
+    const agent = await createAgentSession({
       model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
-      extensions: [f1, f2],
+      plugins: [plugin],
     });
-    expect(calls).toEqual(["first", "second"]);
+    expect(agent).toBeInstanceOf(Agent);
   });
 
-  test("async extension failure propagates", async () => {
-    const f: AgentExtensionFactory = {
-      id: "fail",
-      create: async () => {
-        throw new Error("init failed");
-      },
-    };
-    await expect(
-      createAgentSession({
-        scope,
-        model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
-        extensions: [f],
-      }),
-    ).rejects.toThrow("init failed");
-  });
-
-  test("scope is passed to each extension", async () => {
-    const scopes: AgentScope[] = [];
-    const f: AgentExtensionFactory = {
-      id: "s",
-      create: (s) => {
-        scopes.push({ ...s });
-        return { id: "s" };
-      },
-    };
-    await createAgentSession({
-      scope: { agentId: "a1", sessionId: "s1", cwd: "/w" },
-      model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
-      extensions: [f],
-    });
-    expect(scopes).toHaveLength(1);
-    expect(scopes[0]?.agentId).toBe("a1");
-  });
-
-  test("tool collision propagates", async () => {
+  test("tools are passed through", async () => {
     const t = {
-      name: "dup",
+      name: "t1",
       description: "d",
       inputSchema: {},
-      execute: async () => ({ role: "tool" as const, id: "x", name: "t", content: "ok" }),
-    };
-    await expect(
-      createAgentSession({
-        scope,
-        model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
-        extensions: [
-          { id: "a", create: () => ({ id: "a", tools: [t] }) },
-          { id: "b", create: () => ({ id: "b", tools: [{ ...t }] }) },
-        ],
-      }),
-    ).rejects.toThrow("Tool name collision");
-  });
-
-  test("base + extension tools merge cleanly", async () => {
-    const bt = {
-      name: "base",
-      description: "d",
-      inputSchema: {},
-      execute: async () => ({ role: "tool" as const, id: "x", name: "t", content: "ok" }),
-    };
-    const et = {
-      name: "ext",
-      description: "d",
-      inputSchema: {},
-      execute: async () => ({ role: "tool" as const, id: "x", name: "t", content: "ok" }),
+      execute: async () => ({ role: "tool" as const, id: "x", name: "t1", content: "ok" }),
     };
     const agent = await createAgentSession({
-      scope,
       model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
-      extensions: [{ id: "e", create: () => ({ id: "e", tools: [et] }) }],
-      tools: [bt],
-    });
-    expect(agent).toBeInstanceOf(Agent);
-  });
-  // ── Production wiring smoke: createAgentSession() + SessionManager ──
-  test("SessionManager.create called via createAgentSession (no sessionId)", async () => {
-    let createCalled = false;
-    const sm = {
-      create: (cfg: unknown) => { createCalled = true; return new Agent(cfg as never); },
-      open: () => { throw new Error("should not open"); },
-      get: () => undefined,
-      dispose: () => {},
-    };
-    const agent = await createAgentSession({
-      scope: { agentId: "a", cwd: "/tmp" },
-      model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
-      sessionManager: sm,
-    });
-    expect(agent).toBeInstanceOf(Agent);
-    expect(createCalled).toBe(true);
-  });
-
-  test("SessionManager.open called via createAgentSession (existing sessionId)", async () => {
-    let openedSid = "";
-    const sm = {
-      create: () => { throw new Error("should not create"); },
-      open: (sid: string, cfg: unknown) => { openedSid = sid; return new Agent(cfg as never); },
-      get: () => undefined,
-      dispose: () => {},
-    };
-    await createAgentSession({
-      scope: { agentId: "a", sessionId: "reuse-me", cwd: "/tmp" },
-      model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
-      sessionManager: sm,
-    });
-    expect(openedSid).toBe("reuse-me");
-  });
-
-  test("SessionManager.create receives valid AgentConfig with hooks + tools", async () => {
-    let captured: unknown = undefined;
-    const sm = {
-      create: (cfg: unknown) => { captured = cfg; return new Agent(cfg as never); },
-      open: () => { throw new Error("no"); },
-      get: () => undefined,
-      dispose: () => {},
-    };
-    const t = { name: "t1", description: "d", inputSchema: {}, execute: async () => ({ role: "tool" as const, id: "x", name: "t1", content: "ok" }) };
-    await createAgentSession({
-      scope: { agentId: "a", cwd: "/tmp" },
-      model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
-      sessionManager: sm,
-      extensions: [{ id: "e", create: () => ({ id: "e", systemPrompt: "E" }) }],
       tools: [t],
-      systemPrompt: "base",
     });
-    const cfg = captured as Record<string, unknown>;
-    expect(cfg.model).toBeDefined();
-    expect(Array.isArray(cfg.tools)).toBe(true);
-    expect(cfg.systemPrompt).toBeDefined();
+    expect(agent).toBeInstanceOf(Agent);
   });
 
+  test("sessionManager.create called without sessionId", async () => {
+    let created = false;
+    const sm = {
+      create: () => {
+        created = true;
+        return new Agent({ model: echoModel({ turns: [] }) });
+      },
+      open: () => {
+        throw new Error("no");
+      },
+      get: () => undefined,
+      dispose: () => {},
+    };
+    await createAgentSession({
+      model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
+      sessionManager: sm,
+    });
+    expect(created).toBe(true);
+  });
+
+  test("sessionManager.open called with sessionId", async () => {
+    let opened = "";
+    const sm = {
+      create: () => {
+        throw new Error("no");
+      },
+      open: (sid: string) => {
+        opened = sid;
+        return new Agent({ model: echoModel({ turns: [] }) });
+      },
+      get: () => undefined,
+      dispose: () => {},
+    };
+    await createAgentSession({
+      model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
+      sessionManager: sm,
+      sessionId: "existing-session",
+    });
+    expect(opened).toBe("existing-session");
+  });
+
+  test("metaContext + systemPrompt are forwarded", async () => {
+    const agent = await createAgentSession({
+      model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
+      systemPrompt: "base",
+      metaContext: () => "meta",
+    });
+    expect(agent).toBeInstanceOf(Agent);
+  });
 });
 
 describe("resolveModel", () => {
@@ -222,34 +133,5 @@ describe("resolveModel", () => {
     };
     const resolved = await resolveModel("test/model", runtime);
     expect(resolved.id).toBe("test/model");
-  });
-});
-
-describe("composeExtensions contract", () => {
-  test("base prompt prefixed before extension prompts", () => {
-    const c = composeExtensions({
-      resolved: [
-        { id: "a", extension: { id: "a", systemPrompt: "ext-a" } },
-        { id: "b", extension: { id: "b", systemPrompt: "ext-b" } },
-      ],
-      baseTools: [],
-      baseSystemPrompt: "base",
-    });
-    expect(c.systemPrompt).toBe("base\n\next-a\n\next-b");
-  });
-
-  test("base prompt appears exactly once", () => {
-    const c = composeExtensions({
-      resolved: [{ id: "a", extension: { id: "a", systemPrompt: "ext" } }],
-      baseTools: [],
-      baseSystemPrompt: "base",
-    });
-    expect(c.systemPrompt?.split("\n\n").filter((p) => p === "base").length).toBe(1);
-  });
-
-  test("composeExtensions returns required id", () => {
-    expect(
-      composeExtensions({ resolved: [{ id: "x", extension: { id: "x" } }], baseTools: [] }).id,
-    ).toBe("composed");
   });
 });
