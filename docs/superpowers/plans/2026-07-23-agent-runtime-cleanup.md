@@ -35,7 +35,6 @@ Record the clean baseline for this workstream. No cleanup starts against an unve
 ### Files
 
 - Create: `apps/backend/src/features/conversation/agent-factory.ts`
-- Create: `apps/backend/src/features/conversation/agent-registry.ts`
 - Create: `apps/backend/src/features/conversation/agent-projection.ts`
 - Modify: `apps/backend/src/features/conversation/conversation-compose.ts`
 - Tests: `apps/backend/src/features/conversation/*.test.ts`
@@ -51,7 +50,6 @@ Record the clean baseline for this workstream. No cleanup starts against an unve
 
 Must not write ledger or release ConversationLock.
 
-#### `agent-registry.ts`
 
 - create/open/get/dispose live Agent.
 - Manage active Agent lookup for resume.
@@ -103,7 +101,6 @@ queue_update remains transient
 
 - Create: `apps/backend/src/bootstrap/services.ts`
 - Create: `apps/backend/src/bootstrap/features.ts`
-- Create: `apps/backend/src/bootstrap/capabilities.ts`
 - Modify: `apps/backend/src/main.ts`
 - Modify: `apps/backend/src/app.ts`
 - Tests/smoke: `apps/backend/src/**/*.test.ts`
@@ -312,7 +309,7 @@ Go only if:
 [ ] Agent behavior tests pass
 [ ] persistence recovery passes
 [ ] projection invariants pass
-[ ] Capability boundaries pass
+[ ] Plugin assembly boundaries pass
 [ ] full CI passes
 [ ] smoke paths pass
 ```

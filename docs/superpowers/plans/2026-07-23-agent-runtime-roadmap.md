@@ -6,9 +6,9 @@
 >
 > **ADR:** [`0016-agent-runtime.md`](../../adr/0016-agent-runtime.md)
 
-**Goal:** 在不破坏 Agent 生命周期、Session 持久化、Interrupt/Resume、Conversation projection、Cron 和 Loop 行为的前提下，将 `framework + harness` 收敛为 `@my-agent-team/agent`，并把 backend 功能装配收敛为 Capability。
+**Goal:** 在不破坏 Agent 生命周期、Session 持久化、Interrupt/Resume、Conversation projection、Cron 和 Loop 行为的前提下，将 `framework + harness` 收敛为 `@my-agent-team/agent`，并把 backed 功能装配统一为 Plugin + createAgentSession()。
 
-**Architecture:** 采用 Strangler migration。先建立 `packages/agent` 生命周期边界，内部暂时复用 `framework`；再迁移 backend caller；然后引入 backend Capability；最后拆分 composition、清理命名并删除旧包。全程不与 runtime migration 同批修改数据库 schema。
+**Architecture:** 采用 Strangler migration。先建立 `packages/agent` 生命周期边界，内部暂时复用 `framework`；再迁移 backend caller；然后引入 backend Capability（已在 P8 删除）；最后拆分 composition、清理命名并删除旧包。全程不与 runtime migration 同批修改数据库 schema。
 
 **Tech Stack:** Bun 1.3.14、TypeScript NodeNext、Turborepo、bun:test、Elysia backend、Drizzle/SQLite、现有 `@my-agent-team/core` / `@my-agent-team/framework` / `@my-agent-team/harness`。
 

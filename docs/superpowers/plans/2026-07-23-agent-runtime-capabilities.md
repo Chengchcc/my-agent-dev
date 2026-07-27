@@ -1,4 +1,5 @@
 # Agent Runtime Plugin-First Migration Plan
+> **状态: P7 已完成，作为历史记录保留。Capability/AgentExtension 已在 P8 删除。**
 
 > **For agentic workers:** 当前不把普通 Plugin 包装成 Capability。P6 已完成 Agent SDK、ModelRuntime 和 Plugin assembly；本计划把现有静态 Plugin 迁移到 `createAgentSession({ plugins })`。
 

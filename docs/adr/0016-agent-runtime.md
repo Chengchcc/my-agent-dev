@@ -71,18 +71,11 @@ interface CreateAgentSessionInput {
 
 `identityPlugin`、`progressiveSkillPlugin`、`conversationContextPlugin`、`todoPlugin`、`goalPlugin`、`petPlugin`、`recapPlugin` 和 `memoryPlugin` 当前都保持 Plugin 形态。Backend 负责提供它们所需的业务参数，但不实现第二套通用 Agent composer。
 
-### 3. Capability：暂不作为当前 Agent 扩展层
+### 3. Capability：已删除
 
-此前设计的 backend `Capability → AgentExtension → Registry` 链路不作为当前主路径。它会把普通 Plugin 的安装增加为多层包装，重复 Agent SDK 的组装职责。
+此前设计的 backend `Capability → AgentExtension → Registry` 链路已在 P8 删除。它会把普通 Plugin 的安装增加多层包装，重复 Agent SDK 的组装职责。
 
-Capability 只有在未来一个功能同时需要以下多个边界时才引入：
-
-- Agent runtime Plugin；
-- backend service；
-- HTTP route / command；
-- surface manifest 或 UI slot。
-
-当前仅保留 Capability 的实验性设计和 registry 代码，不接入生产 Agent 创建。P7 先迁移现有 Plugin 到 `createAgentSession({ plugins })`。
+当前不保留 Capability wrapper。未来如需跨 runtime/backend/surface 的产品功能，再重新设计。
 
 ### 4. Future Pi-style Extension
 
@@ -113,20 +106,12 @@ jiti loader
 - Plugin 是当前 Agent runtime 的唯一扩展机制。
 - `createAgentSession()` 是 Agent 组装的唯一公共入口。
 - Backend 不重复实现 hook/tool/prompt composer。
-- Capability 不作为当前普通 Plugin 的必经包装层；已有 Capability registry 只保留为实验性 backend catalog，不接入当前生产 Agent path。
+- Capability registry 和 AgentExtension runtime 已在 P8 删除；当前代码不保留。
 - 未来若需要跨 runtime/backend/surface 的产品功能，再单独定义 Capability；当前 P7 直接迁移现有 Plugin。
 - `agent.emit()` 不作为外部任意事件写入口；外部只订阅 Agent 事件，业务事件通过受控 hook/context/projection 边界产生。
 - `steering` 和 `followUp` 在迁移期保持现有独立语义，不能直接合并成一个未定义的 `interrupt(input)` API。
 - slots 和 jiti Extension 属于未来设计，不进入当前 runtime migration。
 
-**约定位置（Slot）：**
-
-| Slot | 位置 |
-|------|------|
-| `conversation:sidebar` | 对话区域右侧 |
-| `conversation:composer-before` | 输入框左侧 |
-| `agent-detail:tab` | Agent 详情页标签 |
-| `settings:section` | Settings 页面卡片 |
 
 ### 3. Services 接口
 
@@ -189,7 +174,7 @@ Agent 暴露 `agent.on(event, handler)`；不把任意 `agent.emit(event, payloa
 | `apps/backend/main.ts` | → 薄启动层，调用 SDK/feature installers |
 | `conversation-compose.ts` | → Agent 生命周期壳，调用 `createAgentSession()` |
 | `packages/plugin-*` | → 继续作为静态 Plugin，逐个迁移到 SDK入口 |
-| `apps/backend/src/capabilities` | → 暂不作为普通 Plugin 的必经层；未来跨层功能再启用 |
+| `apps/backend/src/capabilities` | → 已删除 (P8) |
 
 ### 不做
 
@@ -226,7 +211,7 @@ Agent 暴露 `agent.on(event, handler)`；不把任意 `agent.emit(event, payloa
                        │ createAgentSession()
 ┌──────────────────────▼───────────────────────────────┐
 │ Agent SDK / Runtime                                    │
-│ Agent · ExtensionHost · ResourceLoader                 │
+│ Agent · SessionManager · createAgentSession()          │
 │ Hook composer · Tool composer · SessionManager          │
 │ packages/agent                                         │
 └──────────────┬──────────────┬──────────────┬───────────┘
