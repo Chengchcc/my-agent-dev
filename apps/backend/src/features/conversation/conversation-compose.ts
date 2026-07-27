@@ -101,9 +101,7 @@ export function createConversationFeature(
         agentMemberId,
         spanId,
         convPort,
-        (params) => {
-          void convSvc.appendAssistantMessage(params);
-        },
+        (params) => convSvc.appendAssistantMessage(params),
       );
 
       // Set conversation context

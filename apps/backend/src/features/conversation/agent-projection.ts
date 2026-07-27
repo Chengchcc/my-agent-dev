@@ -65,7 +65,7 @@ export function createAgentProjection(deps: ProjectionDeps) {
       senderMemberId: string;
       spanId: string;
       revision: MessageRevision;
-    }) => void,
+    }) => Promise<number>,
   ) => {
     await appendFn({
       conversationId,
@@ -113,7 +113,7 @@ export function createAgentProjection(deps: ProjectionDeps) {
       senderMemberId: string;
       spanId: string;
       revision: MessageRevision;
-    }) => void,
+    }) => Promise<number>,
   ) {
     session.subscribe((event) => {
       if (event.type === "message_update" || event.type === "message") {
