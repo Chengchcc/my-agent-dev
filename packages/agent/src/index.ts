@@ -5,23 +5,6 @@ export type { AgentEvent, AgentEventListener } from "./agent-events.js";
 export type { AgentContext, AgentHooks, BeforeToolResult, StopDecision } from "./agent-hooks.js";
 export type { AgentConfig, AgentState } from "./agent-options.js";
 export type { CompactionResult } from "./compaction.js";
-export {
-  composeBeforeModel,
-  composeBeforeRun,
-  composeBeforeStop,
-  composeBeforeTool,
-  composeExtensions,
-  composeObserver,
-  ExtensionHost,
-  mergeSystemPrompts,
-  mergeTools,
-} from "./extension-host.js";
-export type {
-  AgentExtension,
-  AgentExtensionFactory,
-  AgentScope,
-  ResolvedExtension,
-} from "./extension-host.js";
 export type { ModelRef, ModelRuntime, ResolvedModel } from "./model-runtime.js";
 export { resolveModel } from "./model-runtime.js";
 export type {

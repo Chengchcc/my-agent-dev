@@ -138,7 +138,6 @@ const skillPackSvc = createSkillPackServiceFn({
         ),
         dataDir: config.dataDir,
         port: skillPackPort,
-        checkpointer: sqliteCheckpointer({ db: join(config.dataDir, "checkpointer.db") }),
         contextManager: pipeContextManagers(
           toolResultTruncator({ maxCharsPerResult: 50_000 }),
           autoSummarize({ triggerAt: 100_000, keepRecent: 10 }),
@@ -161,7 +160,6 @@ const skillPackSvc = createSkillPackServiceFn({
         ),
         dataDir: config.dataDir,
         port: skillPackPort,
-        checkpointer: sqliteCheckpointer({ db: join(config.dataDir, "checkpointer.db") }),
         contextManager: pipeContextManagers(
           toolResultTruncator({ maxCharsPerResult: 50_000 }),
           autoSummarize({ triggerAt: 100_000, keepRecent: 10 }),
