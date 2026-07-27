@@ -19,6 +19,7 @@ export interface CreateAgentSessionInput {
   tools?: readonly Tool[];
 
   /** For SessionManager.open — reuses existing session. */
+  // Transient sessions only (Skill Pack). Managed sessions use sessionManager.
   checkpointer?: AgentConfig["checkpointer"];
   sessionId?: string;
 

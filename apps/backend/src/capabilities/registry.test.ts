@@ -1,3 +1,6 @@
+// ── P8: Experimental. Capability catalog is for future cross-boundary features.
+// Not used in production Agent path. Plugin-first migration (P7) is the canonical path.
+//
 import { describe, expect, test } from "bun:test";
 import { CapabilityRegistry } from "./registry.js";
 import type {
