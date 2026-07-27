@@ -5,6 +5,7 @@ import type { AgentExtension, AgentExtensionFactory, AgentScope } from "./extens
 import { composeExtensions, ExtensionHost } from "./extension-host.js";
 import type { ChatModel, Tool } from "./framework-adapter.js";
 import { resolveModel } from "./model-runtime.js";
+import type { ModelRef, ModelRuntime } from "./model-runtime.js";
 import type { SessionManager } from "./session-manager.js";
 
 export interface CreateAgentSessionInput {

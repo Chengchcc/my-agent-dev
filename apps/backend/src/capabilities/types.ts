@@ -1,4 +1,6 @@
 
+import type { AgentExtension } from "@my-agent-team/agent";
+import type { ChatModel } from "@my-agent-team/core";
 // Re-export for backend consumers
 export type { AgentExtension };
 
