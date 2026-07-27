@@ -156,7 +156,7 @@ Structural checks:
 ! git grep -n 'CapabilityRegistry\|AgentExtensionFactory\|ExtensionHost' -- apps/backend/src packages/agent/src
 ```
 
-P7 gate meaning: the production callers use `createAgentSession({ plugins })`; capability catalog code is not part of the ordinary Agent path. A future Capability wrapper may exist only for a feature that also owns backend services/routes/surface metadata.
+P7 gate meaning: production callers use `createAgentSession({ plugins })`. CapabilityRegistry, AgentExtensionFactory and ExtensionHost must not exist in the codebase.
 
 ## 6. Rollback
 

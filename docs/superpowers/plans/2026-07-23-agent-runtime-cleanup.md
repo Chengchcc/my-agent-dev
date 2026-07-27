@@ -4,7 +4,7 @@
 
 > **Goal:** 将已经验证过的 Agent/Plugin 行为整理为最终边界，删除旧业务引用和临时适配层。
 
-> **Architecture:** Cleanup 是最后阶段，不与行为迁移并行。先拆职责，再做单项 rename，最后删除 framework/harness。普通 Agent 功能保持 Plugin-first；未来跨边界 Capability 和动态 Extension 另开计划。
+> **Architecture:** Cleanup 是最后阶段，不与行为迁移并行。先拆职责，再做单项 rename，最后删除 framework/harness。普通 Agent 功能保持 Plugin-first。动态 Extension 属于未来独立设计。跨边界产品功能按实际需求重新设计，不预留 Capability。
 
 > **Contract:** [`2026-07-23-agent-runtime-contract.md`](../specs/2026-07-23-agent-runtime-contract.md)
 
@@ -14,7 +14,7 @@
 > - Backend Adoption complete.
 > - P6-A/P6-B/P6-C complete.
 > - P7 Plugin-first migration complete.
-> - Affected backend/agent tests must pass before cleanup starts. Known Darwin setsid test failures are not P8 regressions — record separately..
+> - Affected backend/agent tests must pass before cleanup starts. Known Darwin setsid test failures are not P8 regressions — record separately.
 
 ---
 

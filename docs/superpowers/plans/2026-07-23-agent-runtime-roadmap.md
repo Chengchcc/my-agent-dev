@@ -50,8 +50,6 @@ P4R Agent runtime completion / framework absorption
   ↓
 P6-A Agent SDK core: Plugin assembly + ModelRuntime
   ↓
-P6-B Backend service ownership (historical — deleted in P8)
-  ↓
 P6-C SDK integration gate
   ↓
 P7 Plugin-first production migration
@@ -134,7 +132,7 @@ framework/harness 无业务引用并可删除
 | P4R | P4 | Agent runtime completion：`AgentEvent` typed；resume 真正消费 command；compact 真实持久化；usage 非固定 0；RunState per-run 透传；before:run/after:turn 完整；无 migration suppression；生产 SessionManager 边界明确 |
 | P5A-E | P4R | 对应 caller scoped tests/typecheck/build pass；行为不变；不得从 harness/framework 混合导入同一配置边界 |
 | P6-A | P5A-E | `packages/agent` Plugin/tool/model assembly tests pass；backend 不重复 composer |
-| P6-C | P6-B | `createAgentSession()` integration test pass；ModelRuntime、Plugin、SessionManager、Agent 链路通过 |
+| P6-C | P6-A | `createAgentSession()` integration test pass；ModelRuntime、Plugin、SessionManager、Agent 链路通过 |
 | P7 | P6-C | Conversation/Cron/Loop/Skill Pack 使用 `createAgentSession({ plugins })`；Plugin 行为和 backend flows 不变 |
 | P8 | P7 | Capability/AgentExtension deleted；backend Agent assembly 重复逻辑收敛；conversation projection 与 Agent factory 分离 |
 | P9 | P8 | main/bootstrap smoke test passes；main no longer owns feature assembly |
@@ -176,7 +174,7 @@ Bun test 不能替代 TypeScript typecheck。
 - 不把全量 rename 和行为迁移放在一个 task。
 - 不同时迁移数据库 schema 和 runtime。
 - 不把 Plugin 强制包装成 Capability。
-- 不把 Capability catalog 做成普通 Plugin 的必经运行时。
+- 不重新引入 Capability/AgentExtension 第二套 runtime。
 - 不把 React slot component 类型带入 backend/runtime。
 
 ## 6. 回滚策略
@@ -207,7 +205,7 @@ Cleanup 只能在旧引用清零后执行。删除旧包前保留可回滚提交
 ### P1：高风险
 
 - `framework.Agent` 与 `agent.Agent` 同名导致边界混乱。
-- Capability 直接依赖 backend Services 或写 ledger。
+- Plugin 不直接依赖 backend Services 或写 ledger。
 - conversation context 从 per-run 变成 per-session。
 - loop usage 在 dispose 后不可读。
 - spanId/origin 关联丢失。

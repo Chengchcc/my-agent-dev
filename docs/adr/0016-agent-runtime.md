@@ -95,7 +95,7 @@ jiti loader
   → runtime.registerCommand()
 ```
 
-这不是当前 P7 的范围。当前不引入 jiti、动态发现、reload 或 extension package loader。
+这不属于当前 runtime migration。不引入 jiti、动态发现、reload 或 extension package loader。
 
 ### 实施契约说明
 
@@ -245,4 +245,5 @@ Tracing · Debugging · Evals · Metrics
 | Capability/AgentExtension runtime | — | ❌ 已删除 (P8) |
 | Backend assembly cleanup | `apps/backend/src/` | ⏳ P8 |
 | Backend bootstrap cleanup | `apps/backend/src/` | ⏳ P9 |
+| Naming migration (`Checkpointer` → `SessionStore`, ...) | — | ⏳ P10 |
 | Framework / harness deletion | — | ⏳ P11 |

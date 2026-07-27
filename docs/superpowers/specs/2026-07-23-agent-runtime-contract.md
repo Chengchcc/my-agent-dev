@@ -186,7 +186,7 @@ tool_call
 
 ## 5. AgentHooks
 
-AgentHooks 是 Agent runtime 的扩展协议，不等同于 backend Plugin。
+AgentHooks 是 Plugin 可提供的生命周期 hook 集合。Plugin 是当前 Agent runtime 的唯一扩展单元。
 
 ```ts
 export interface AgentHooks {
@@ -312,7 +312,7 @@ export interface CreateAgentSessionInput {
   tools?: readonly Tool[];
   sessionManager?: SessionManager;
   sessionId?: string;
-  contextManager?: ContextPipeline;
+  contextManager?: ContextManager;
   systemPrompt?: string;
 }
 
@@ -366,7 +366,7 @@ backend infrastructure
 - Plugins must not write Conversation ledger directly.
 - Plugins must not control Agent terminal state.
 - Plugins must not depend on React; UI slots are deferred.
-- Generic hook/tool/prompt composition has one source of truth in `packages/agent`.
+- Generic composition has one runtime implementation. It is currently internal to framework and exposed only through `packages/agent`; backend must not implement another composer.
 - Backend must not create a second Agent composer.
 
 ## 10. Phase handoff 规则
