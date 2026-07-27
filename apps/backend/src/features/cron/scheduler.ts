@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type { SessionManager } from "@my-agent-team/agent";
+import { createAgentSession } from "@my-agent-team/agent";
 import type { ModelRegistry, ProviderAuth } from "@my-agent-team/ai";
 import type { BackendConfig } from "../../config.js";
 import type { AgentService } from "../agent/index.js";
@@ -73,7 +74,7 @@ export function createCronScheduler(deps: {
     try {
       const { modelProvider, modelName } = await deps.agentSvc.getById(job.agentId);
       const cwd = join(deps.config.dataDir, "agents", job.agentId);
-      const session = deps.sessionManager.create({
+      const session = await createAgentSession({
         model: createModel(
           resolveModel(`${modelProvider}/${modelName}`, deps.modelRegistry),
           deps.modelRegistry,
@@ -85,6 +86,7 @@ export function createCronScheduler(deps: {
         tools: defaultTools(cwd),
         plugins: defaultPlugins(cwd, deps.config),
         contextManager: defaultContextManager(),
+        sessionManager: deps.sessionManager,
       });
       void session
         .prompt(job.prompt ?? "", {

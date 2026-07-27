@@ -1,5 +1,5 @@
 import { mkdir, rm } from "node:fs/promises";
-import type { AgentConfig as SessionConfig, SessionManager } from "@my-agent-team/agent";
+import { createAgentSession, type AgentConfig as SessionConfig, type SessionManager } from "@my-agent-team/agent";
 import type { ItemState, LoopState, Verdict } from "@my-agent-team/loop";
 import type { AppendLedgerInput } from "../conversation/ports.js";
 import type { CronJobPort } from "../cron/ports.js";
@@ -496,7 +496,7 @@ Steps:
 2. Use the write tool to copy skill templates from ${dataDir}/skill-packs/loop-engine/ to ${dir}/skills/
 3. If the loop has a schedule, use the update_loop_config tool to set the cron expression`;
 
-  const session = sessionManager.create(config);
+  const session = await createAgentSession({ ...config, sessionManager });
   await session.prompt(prompt);
   sessionManager.dispose(session.sessionId ?? "");
 }

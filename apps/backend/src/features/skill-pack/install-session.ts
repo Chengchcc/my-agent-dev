@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Checkpointer, ContextManager, Plugin } from "@my-agent-team/agent";
 import { createAgentSession } from "@my-agent-team/agent";
-import { Agent } from "@my-agent-team/agent";
+import type { Agent } from "@my-agent-team/agent";
 import type { ChatModel } from "@my-agent-team/core";
 import { progressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
 import type { SkillPackSource } from "./entities.js";
