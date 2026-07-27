@@ -1,10 +1,8 @@
-import { composeExtensions } from "@my-agent-team/agent";
-import type { AgentExtension, AgentExtensionFactory, ResolvedExtension } from "@my-agent-team/agent";
-import type { Tool } from "@my-agent-team/core";
-import type { AgentScope, Capability, CapabilityManifest, CapabilityServerContext } from "./types.js";
+import type { AgentExtensionFactory } from "@my-agent-team/agent";
+import type { Capability, CapabilityManifest, CapabilityServerContext } from "./types.js";
 
-function withId(id: string, ext: AgentExtension): AgentExtension {
-  const { id: _, ...rest } = ext as AgentExtension & { id?: string };
+function withId(id: string, ext: { id?: string }): { id: string } {
+  const { id: _, ...rest } = ext;
   return { id, ...rest };
 }
 
@@ -18,28 +16,25 @@ export class CapabilityRegistry {
     this.#order.push(cap.id);
   }
 
-  list(): readonly Capability[] { return this.#order.map((id) => this.#caps.get(id)!); }
+  list(): readonly Capability[] {
+    return this.#order.map((id) => this.#caps.get(id)!);
+  }
 
   extensionFactories(): readonly AgentExtensionFactory[] {
     return this.#order.map((id) => {
       const cap = this.#caps.get(id)!;
-      return { id, create: async (scope) => withId(id, await cap.extendAgent?.(scope) ?? { id }) };
+      return {
+        id,
+        create: async (scope) => withId(id, (await cap.extendAgent?.(scope)) ?? { id }),
+      };
     });
-  }
-
-  async collectExtensions(scope: AgentScope, baseTools: readonly Tool[] = [], baseSystemPrompt?: string): Promise<AgentExtension> {
-    const resolved: ResolvedExtension[] = [];
-    for (const capId of this.#order) {
-      const cap = this.#caps.get(capId)!;
-      if (!cap.extendAgent) continue;
-      resolved.push({ id: capId, extension: withId(capId, await cap.extendAgent(scope)) });
-    }
-    return composeExtensions({ resolved, baseTools, baseSystemPrompt });
   }
 
   async installServer(ctx: CapabilityServerContext): Promise<void> {
     for (const id of this.#order) await this.#caps.get(id)!.installServer?.(ctx);
   }
 
-  getManifests(): CapabilityManifest[] { return this.#order.map((id) => this.#caps.get(id)!.manifest ?? { id }); }
+  getManifests(): CapabilityManifest[] {
+    return this.#order.map((id) => this.#caps.get(id)!.manifest ?? { id });
+  }
 }

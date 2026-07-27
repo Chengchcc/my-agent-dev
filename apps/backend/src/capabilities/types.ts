@@ -1,14 +1,6 @@
-import type { AgentHooks } from "@my-agent-team/agent";
-import type { ChatModel, Tool } from "@my-agent-team/core";
 
-// ── Capability (backend product unit) ──
-
-export interface AgentExtension {
-  id?: string;
-  hooks?: AgentHooks;
-  tools?: readonly Tool[];
-  systemPrompt?: string;
-}
+// Re-export for backend consumers
+export type { AgentExtension };
 
 export interface CapabilityManifest {
   id: string;

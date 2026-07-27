@@ -1,18 +1,11 @@
-import type { ChatModel } from "./framework-adapter.js";
+import { Agent } from "./agent.js";
 import type { AgentHooks } from "./agent-hooks.js";
 import type { AgentConfig } from "./agent-options.js";
-import { Agent } from "./agent.js";
-import { ExtensionHost, composeExtensions } from "./extension-host.js";
-import type {
-  AgentExtension,
-  AgentExtensionFactory,
-  AgentScope,
-  ResolvedExtension,
-} from "./extension-host.js";
+import type { AgentExtension, AgentExtensionFactory, AgentScope } from "./extension-host.js";
+import { composeExtensions, ExtensionHost } from "./extension-host.js";
+import type { ChatModel, Tool } from "./framework-adapter.js";
 import { resolveModel } from "./model-runtime.js";
-import type { ModelRef, ModelRuntime, ResolvedModel } from "./model-runtime.js";
 import type { SessionManager } from "./session-manager.js";
-import type { Tool } from "./framework-adapter.js";
 
 export interface CreateAgentSessionInput {
   scope: AgentScope;
@@ -55,7 +48,7 @@ export async function createAgentSession(input: CreateAgentSessionInput): Promis
 
   // Compose everything once
   const composed = composeExtensions({
-    resolved: extensions.map((ext, i) => ({ id: ext.id, extension: ext })),
+    resolved: extensions.map((ext, _i) => ({ id: ext.id, extension: ext })),
     baseTools: input.tools ?? [],
     baseSystemPrompt: input.systemPrompt,
   });

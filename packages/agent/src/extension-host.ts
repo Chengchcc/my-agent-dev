@@ -37,12 +37,17 @@ export function composeBeforeRun(handlers: readonly BeforeRunHandler[]): AgentHo
   if (handlers.length === 0) return undefined;
   return async (ctx, input) => {
     let cur = input;
-    for (const h of handlers) { const next = await h(ctx, cur); if (next) cur = next; }
+    for (const h of handlers) {
+      const next = await h(ctx, cur);
+      if (next) cur = next;
+    }
     return cur;
   };
 }
 
-export function composeBeforeModel(handlers: readonly BeforeModelHandler[]): AgentHooks["before:model"] {
+export function composeBeforeModel(
+  handlers: readonly BeforeModelHandler[],
+): AgentHooks["before:model"] {
   if (handlers.length === 0) return undefined;
   return async (ctx, messages) => {
     let cur = [...messages];
@@ -54,10 +59,14 @@ export function composeBeforeModel(handlers: readonly BeforeModelHandler[]): Age
 export function composeObserver<T extends unknown[]>(
   handlers: readonly ((...args: T) => void | Promise<void>)[],
 ): (...args: T) => Promise<void> {
-  return async (...args) => { for (const h of handlers) await h(...args); };
+  return async (...args) => {
+    for (const h of handlers) await h(...args);
+  };
 }
 
-export function composeBeforeTool(handlers: readonly BeforeToolHandler[]): AgentHooks["before:tool"] {
+export function composeBeforeTool(
+  handlers: readonly BeforeToolHandler[],
+): AgentHooks["before:tool"] {
   if (handlers.length === 0) return undefined;
   return async (ctx, call) => {
     let cur = call;
@@ -71,11 +80,16 @@ export function composeBeforeTool(handlers: readonly BeforeToolHandler[]): Agent
   };
 }
 
-export function composeBeforeStop(handlers: readonly BeforeStopHandler[]): AgentHooks["before:stop"] {
+export function composeBeforeStop(
+  handlers: readonly BeforeStopHandler[],
+): AgentHooks["before:stop"] {
   if (handlers.length === 0) return undefined;
   return async (ctx, messages) => {
     const reasons: string[] = [];
-    for (const h of handlers) { const d = await h(ctx, messages); if (d?.continue) reasons.push(d.reason); }
+    for (const h of handlers) {
+      const d = await h(ctx, messages);
+      if (d?.continue) reasons.push(d.reason);
+    }
     return reasons.length > 0 ? { continue: true, reason: reasons.join("\n\n") } : undefined;
   };
 }
@@ -102,7 +116,10 @@ export function mergeTools(
 
 // ── System prompt merge ──
 
-export function mergeSystemPrompts(base: string | undefined, parts: readonly (string | undefined)[]): string | undefined {
+export function mergeSystemPrompts(
+  base: string | undefined,
+  parts: readonly (string | undefined)[],
+): string | undefined {
   const all = [base, ...parts].filter((x): x is string => Boolean(x));
   return all.length > 0 ? all.join("\n\n") : undefined;
 }
@@ -139,7 +156,10 @@ export function composeExtensions(input: ComposeInput): AgentExtension {
     id: "composed",
     hooks: Object.values(hooks).some((v) => v != null) ? hooks : undefined,
     tools: tools.length > 0 ? tools : undefined,
-    systemPrompt: mergeSystemPrompts(input.baseSystemPrompt, exts.map((e) => e.systemPrompt)),
+    systemPrompt: mergeSystemPrompts(
+      input.baseSystemPrompt,
+      exts.map((e) => e.systemPrompt),
+    ),
   };
 }
 
@@ -156,7 +176,15 @@ interface HookContributions {
 }
 
 function collectContributions(exts: readonly AgentExtension[]): HookContributions {
-  const r: HookContributions = { beforeRun: [], beforeModel: [], afterModel: [], beforeTool: [], afterTool: [], afterTurn: [], beforeStop: [] };
+  const r: HookContributions = {
+    beforeRun: [],
+    beforeModel: [],
+    afterModel: [],
+    beforeTool: [],
+    afterTool: [],
+    afterTurn: [],
+    beforeStop: [],
+  };
   for (const ext of exts) {
     const h = ext.hooks;
     if (!h) continue;

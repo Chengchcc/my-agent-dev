@@ -1,4 +1,4 @@
-import type { ModelRuntime, ModelRef, ResolvedModel } from "@my-agent-team/agent";
+import type { ModelRef, ModelRuntime, ResolvedModel } from "@my-agent-team/agent";
 
 /**
  * Adapt @my-agent-team/ai's ModelRegistry + ProviderAuth into a ModelRuntime.

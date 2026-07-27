@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { echoModel } from "@my-agent-team/test-helpers";
 import { Agent } from "./agent.js";
-import { composeExtensions } from "./extension-host.js";
-import type { AgentExtensionFactory, AgentScope } from "./extension-host.js";
-import { resolveModel } from "./model-runtime.js";
-import type { ModelRuntime } from "./model-runtime.js";
 import { createAgentSession } from "./agent-sdk.js";
+import type { AgentExtensionFactory, AgentScope } from "./extension-host.js";
+import { composeExtensions } from "./extension-host.js";
+import type { ModelRuntime } from "./model-runtime.js";
+import { resolveModel } from "./model-runtime.js";
 
 const scope: AgentScope = { agentId: "a", sessionId: "s", cwd: "/tmp" };
 
