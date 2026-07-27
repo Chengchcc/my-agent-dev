@@ -30,7 +30,7 @@ const session = new AgentSession({
   threadId: "session-001",
   plugins: [/* identityPlugin, fsMemoryPlugin, etc. */],
   checkpointer: sqliteCheckpointer({ db: "checkpointer.db" }),
-  contextManager: pipeContextManagers(/* ... */),
+  contextManager: composeContextPipeline(/* ... */),
 });
 
 session.subscribe((event) => {

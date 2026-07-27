@@ -10,7 +10,7 @@ export type {
   CheckpointEventRow,
   Checkpointer,
   ContextKey,
-  ContextManager,
+  ContextManager as ContextPipeline,
   ContextStore,
   Logger,
   Plugin,

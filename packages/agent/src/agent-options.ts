@@ -5,7 +5,7 @@ import type {
   AgentHooks,
   ChatModel,
   Checkpointer,
-  ContextManager,
+  ContextPipeline,
   ContextStore,
   Logger,
   Plugin,
@@ -26,7 +26,7 @@ export interface AgentConfig {
   model: ChatModel;
   tools?: Tool[];
   plugins?: Plugin[];
-  contextManager?: ContextManager;
+  contextManager?: ContextPipeline;
   metaContext?: (ctx: {
     context: ContextStore;
     sessionId: string;
