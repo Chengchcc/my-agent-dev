@@ -10,7 +10,6 @@ export type {
   CheckpointEventRow,
   Checkpointer,
   ContextManager,
-  ContextStore,
   Plugin,
   RunSpan,
 } from "./framework-adapter.js";

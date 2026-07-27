@@ -13,7 +13,6 @@ import type {
   Session,
   Tool,
 } from "./framework-adapter.js";
-
 export type AgentState =
   | "idle"
   | "running"

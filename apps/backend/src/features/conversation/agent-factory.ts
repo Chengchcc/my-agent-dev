@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { McpClientManager } from "@my-agent-team/adapter-mcp";
-import type { Agent, ContextStore, SessionManager } from "@my-agent-team/agent";
+import type { Agent, SessionManager } from "@my-agent-team/agent";
 import { createAgentSession } from "@my-agent-team/agent";
 import type { ModelRegistry, ProviderAuth } from "@my-agent-team/ai";
 import {
@@ -161,7 +161,7 @@ export function createConversationAgentFactory(deps: AgentFactoryDeps) {
       tools: [...defaultTools(cwd), ...cTools, ...mcpTools],
       sessionManager,
       sessionId: existingSid ?? undefined,
-      metaContext: ({ context }: { context: ContextStore }) => {
+      metaContext: ({ context }: { context: import("@my-agent-team/framework").ContextStore }) => {
         const parts: string[] = [
           "<system-reminder>",
           `<current-date>${new Date().toISOString().slice(0, 10)}</current-date>`,
