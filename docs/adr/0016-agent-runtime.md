@@ -253,12 +253,11 @@ Tracing · Debugging · Evals · Metrics
 |------|------|------|
 | `Agent` 生命周期类 | `packages/agent/src/agent.ts` | ✅ P0-P4R |
 | `AgentHooks` (typed) | `packages/agent/src/agent-hooks.ts` | ✅ |
-| `createAgentSession()` | `packages/agent/src/agent-sdk.ts` | ✅ P6-C |
-| `ExtensionHost` / compositors | `packages/agent/src/extension-host.ts` | ✅ P6-C |
+| `createAgentSession()` | `packages/agent/src/agent-sdk.ts` | ✅ P7 |
 | `ModelRuntime` port | `packages/agent/src/model-runtime.ts` | ✅ P6-C |
 | `SessionManager` / `SqliteSessionManager` | `packages/agent/src/session-manager.ts` | ✅ P3 |
-| Static Plugin-first production migration | `apps/backend/src/features/` | ⏳ P7 |
-| Capability registry | `apps/backend/src/capabilities/registry.ts` | ⏸ deferred; future cross-boundary use only |
-| Backend infrastructure / deps | `apps/backend/src/capabilities/types.ts` | ✅ P6-B; reserved for future Capability |
+| Plugin-first production migration | `apps/backend/src/features/` | ✅ P7 |
+| Capability/AgentExtension runtime | — | ❌ 已删除 (P8) |
+| Backend assembly cleanup | `apps/backend/src/` | ⏳ P9 |
 | Naming migration (`Checkpointer` → `SessionStore`, ...) | — | ⏳ P10 |
 | Framework / harness deletion | — | ⏳ P11 |
