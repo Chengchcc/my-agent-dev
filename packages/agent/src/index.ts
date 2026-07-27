@@ -8,7 +8,6 @@ export type { CompactionResult } from "./compaction.js";
 export type {
   CheckpointEvent,
   CheckpointEventRow,
-  Checkpointer,
   ContextPipeline,
   Plugin,
   RunSpan,
