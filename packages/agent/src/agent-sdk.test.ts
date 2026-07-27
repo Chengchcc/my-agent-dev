@@ -140,6 +140,63 @@ describe("createAgentSession", () => {
     });
     expect(agent).toBeInstanceOf(Agent);
   });
+  // ── Production wiring smoke: createAgentSession() + SessionManager ──
+  test("SessionManager.create called via createAgentSession (no sessionId)", async () => {
+    let createCalled = false;
+    const sm = {
+      create: (cfg: unknown) => { createCalled = true; return new Agent(cfg as never); },
+      open: () => { throw new Error("should not open"); },
+      get: () => undefined,
+      dispose: () => {},
+    };
+    const agent = await createAgentSession({
+      scope: { agentId: "a", cwd: "/tmp" },
+      model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
+      sessionManager: sm,
+    });
+    expect(agent).toBeInstanceOf(Agent);
+    expect(createCalled).toBe(true);
+  });
+
+  test("SessionManager.open called via createAgentSession (existing sessionId)", async () => {
+    let openedSid = "";
+    const sm = {
+      create: () => { throw new Error("should not create"); },
+      open: (sid: string, cfg: unknown) => { openedSid = sid; return new Agent(cfg as never); },
+      get: () => undefined,
+      dispose: () => {},
+    };
+    await createAgentSession({
+      scope: { agentId: "a", sessionId: "reuse-me", cwd: "/tmp" },
+      model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
+      sessionManager: sm,
+    });
+    expect(openedSid).toBe("reuse-me");
+  });
+
+  test("SessionManager.create receives valid AgentConfig with hooks + tools", async () => {
+    let captured: unknown = undefined;
+    const sm = {
+      create: (cfg: unknown) => { captured = cfg; return new Agent(cfg as never); },
+      open: () => { throw new Error("no"); },
+      get: () => undefined,
+      dispose: () => {},
+    };
+    const t = { name: "t1", description: "d", inputSchema: {}, execute: async () => ({ role: "tool" as const, id: "x", name: "t1", content: "ok" }) };
+    await createAgentSession({
+      scope: { agentId: "a", cwd: "/tmp" },
+      model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
+      sessionManager: sm,
+      extensions: [{ id: "e", create: () => ({ id: "e", systemPrompt: "E" }) }],
+      tools: [t],
+      systemPrompt: "base",
+    });
+    const cfg = captured as Record<string, unknown>;
+    expect(cfg.model).toBeDefined();
+    expect(Array.isArray(cfg.tools)).toBe(true);
+    expect(cfg.systemPrompt).toBeDefined();
+  });
+
 });
 
 describe("resolveModel", () => {

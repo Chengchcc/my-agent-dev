@@ -174,7 +174,7 @@ describe("P6-B dependency ownership", () => {
         id: "fake-memory",
         extendAgent(scope: AgentScope) {
           extendCalls++;
-          calls.push(scope.sessionId);
+          calls.push(scope.sessionId ?? "");
           return { id: "fake", systemPrompt: `agent=${scope.agentId} fs=${deps.fs.cwd}` };
         },
       };

@@ -5,7 +5,7 @@ import type { Tool } from "./framework-adapter.js";
 
 export interface AgentScope {
   agentId: string;
-  sessionId: string;
+  sessionId?: string;
   cwd: string;
 }
 

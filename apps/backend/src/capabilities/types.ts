@@ -11,7 +11,7 @@ export interface CapabilityManifest {
 
 export interface AgentScope {
   agentId: string;
-  sessionId: string;
+  sessionId?: string;
   conversationId?: string;
   memberId?: string;
   cwd: string;
