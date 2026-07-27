@@ -185,3 +185,59 @@ Agent 暴露 `agent.on(event, handler)` / `agent.emit(event, payload)`。
 4. Backend 精简 — 薄启动层 + backend.install()
 5. pet/recap/memory 迁移到 Capability 模式
 6. 命名对齐全量更新
+
+---
+
+## 目标架构
+
+```
+┌──────────────────────────────────────────────────────┐
+│ Application / Surfaces                                │
+│ Backend HTTP · Web · Lark · CLI                       │
+└──────────────────────┬───────────────────────────────┘
+                       │
+┌──────────────────────▼───────────────────────────────┐
+│ Orchestration                                          │
+│ Workflow · Agent Team · Sub-agent · Feedback Loop      │
+│ apps/backend + packages/loop                           │
+└──────────────────────┬───────────────────────────────┘
+                       │ createAgentSession()
+┌──────────────────────▼───────────────────────────────┐
+│ Agent SDK / Runtime                                    │
+│ Agent · ExtensionHost · ResourceLoader                 │
+│ Hook composer · Tool composer · SessionManager          │
+│ packages/agent                                         │
+└──────────────┬──────────────┬──────────────┬───────────┘
+               │              │              │
+        ┌──────▼─────┐ ┌──────▼─────┐ ┌──────▼────────┐
+        │ Model       │ │ Tools      │ │ Context        │
+        │ Provider    │ │ Built-in   │ │ Prompt         │
+        │ packages/ai │ │ MCP        │ │ Compressor     │
+        │             │ │ Conversation│ │ RunState       │
+        └─────────────┘ └────────────┘ └───────────────┘
+                       │
+┌──────────────────────▼────────────────────────────────┐
+│ Persistence / Events                                   │
+│ SessionStore · RunEventLog · Message · Conversation     │
+└────────────────────────────────────────────────────────┘
+
+Cross-cutting:
+Tracing · Debugging · Evals · Metrics
+```
+
+### 当前实现状态 (2026-07-24)
+
+| 组件 | 位置 | 状态 |
+|------|------|------|
+| `Agent` 生命周期类 | `packages/agent/src/agent.ts` | ✅ P0-P4R |
+| `AgentHooks` (typed) | `packages/agent/src/agent-hooks.ts` | ✅ |
+| `createAgentSession()` | `packages/agent/src/agent-sdk.ts` | ✅ P6-C |
+| `ExtensionHost` / compositors | `packages/agent/src/extension-host.ts` | ✅ P6-C |
+| `ModelRuntime` port | `packages/agent/src/model-runtime.ts` | ✅ P6-C |
+| `SessionManager` / `SqliteSessionManager` | `packages/agent/src/session-manager.ts` | ✅ P3 |
+| `CapabilityRegistry` (thin catalog) | `apps/backend/src/capabilities/registry.ts` | ✅ P6 |
+| `BackendInfrastructure` / deps | `apps/backend/src/capabilities/types.ts` | ✅ P6-B |
+| Capability wrappers (identity, skill, ...) | `apps/backend/src/capabilities/` | ⏳ P7 |
+| Conversation production wiring | `apps/backend/src/features/conversation/` | ⏳ P7 |
+| Naming migration (Checkpointer→SessionStore, ...) | — | ⏳ P10 |
+| Framework / harness deletion | — | ⏳ P11 |
