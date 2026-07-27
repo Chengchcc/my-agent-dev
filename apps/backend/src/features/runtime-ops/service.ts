@@ -1,6 +1,6 @@
 // Execution facts sourced from checkpointer.db
-// RunnerRegistry removed — AgentSession runs in-process
-// heartbeat/transport removed — AgentSession runs in-process, no runner daemon
+// RunnerRegistry removed — Agent runs in-process
+// heartbeat/transport removed — Agent runs in-process, no runner daemon
 
 import type { SpanSupervisor } from "../span/supervisor.js";
 import type { CheckpointEventsStore } from "./checkpoint-events-store.js";

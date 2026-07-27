@@ -2,7 +2,7 @@ import type { SessionManager } from "@my-agent-team/agent";
 import { Elysia, t } from "elysia";
 
 /**
- * Resume an interrupted run via AgentSession.resume().
+ * Resume an interrupted run via Agent.resume().
  *
  * Looks up the session by spanId (params.id) → sessionId (via injected getSessionIdByRunId),
  * then retrieves the live session from SessionManager.get (never creates).

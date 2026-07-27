@@ -1,9 +1,5 @@
 import { mkdir, rm } from "node:fs/promises";
-import {
-  createAgentSession,
-  type AgentConfig as SessionConfig,
-  type SessionManager,
-} from "@my-agent-team/agent";
+import { createAgentSession, type AgentConfig, type SessionManager } from "@my-agent-team/agent";
 import type { ItemState, LoopState, Verdict } from "@my-agent-team/loop";
 import type { AppendLedgerInput } from "../conversation/ports.js";
 import type { CronJobPort } from "../cron/ports.js";
@@ -41,7 +37,7 @@ export type BuildConfigFn = (params: {
   modelName: string;
   cwd: string;
   skillRoots?: SkillRoots;
-}) => SessionConfig;
+}) => AgentConfig;
 
 // ── Result types ───────────────────────────────────────────────────────────
 
@@ -260,7 +256,7 @@ export async function createLoop(
     }
   }
 
-  // 5. If intent provided, run AgentSession to generate LOOP.md
+  // 5. If intent provided, run Agent to generate LOOP.md
   if (input.intent) {
     await runLoopConfigGeneration({
       dir,

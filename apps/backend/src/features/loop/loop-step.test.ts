@@ -187,7 +187,7 @@ function mockSessionManager(verdictMd: string, workDir: string = TMP): SessionMa
   return manager;
 }
 
-describe("loopStep M3 — AgentSession wiring", () => {
+describe("loopStep M3 — Agent wiring", () => {
   test("TICK → generator + evaluator called", async () => {
     const { dataDir, projectPort, cleanup } = await setupGitDataDir();
     const dir = await initLoopDir("test-project");

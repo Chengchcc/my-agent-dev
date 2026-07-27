@@ -90,7 +90,7 @@ export class SpanSupervisor {
   }
 
   async #reapStaleRuns(): Promise<boolean> {
-    // AgentSession runs in-process — a run is "stale" only if it has
+    // Agent runs in-process — a run is "stale" only if it has
     // DB state = running but NO active session in memory (process restart).
     // Long-running agent sessions are NOT stale — only orphaned DB rows.
     const orphans = this.#d
@@ -114,7 +114,7 @@ export class SpanSupervisor {
       if (!finalized) continue;
       reaped = true;
 
-      // Dispose AgentSession via callback (prevents zombie writes to ledger)
+      // Dispose Agent via callback (prevents zombie writes to ledger)
       this.#opts.onReap?.(row.spanId, row.sessionId);
 
       // Fire completion listeners
@@ -335,7 +335,7 @@ export class SpanSupervisor {
     this.#onRunMessage.push(fn);
   }
 
-  /** Fire a message event directly (called by AgentSession subscriber).
+  /** Fire a message event directly (called by Agent subscriber).
    *  Replaces the old transport → supervisor message routing. */
   notifyRunMessage(
     sessionId: string,
@@ -350,7 +350,7 @@ export class SpanSupervisor {
     }
   }
 
-  /** Fire a run completion event directly (called by AgentSession subscriber).
+  /** Fire a run completion event directly (called by Agent subscriber).
    *  Finalizes the run row and triggers onRunComplete listeners. */
   async notifyRunComplete(
     sessionId: string,

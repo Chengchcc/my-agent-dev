@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import type { AgentConfig as SessionConfig, SessionManager } from "@my-agent-team/agent";
+import type { AgentConfig, SessionManager } from "@my-agent-team/agent";
 import { createAgentSession } from "@my-agent-team/agent";
 import type { LoopConfig, LoopState } from "@my-agent-team/loop";
 import { loopReducer, parseLoopConfig, parseVerdictMd } from "@my-agent-team/loop";
@@ -28,11 +28,7 @@ export interface GitRunner {
 export interface LoopStepParams {
   loopConfigPath: string;
   sessionManager: SessionManager;
-  buildConfig: (params: {
-    modelName: string;
-    cwd: string;
-    skillRoots?: SkillRoots;
-  }) => SessionConfig;
+  buildConfig: (params: { modelName: string; cwd: string; skillRoots?: SkillRoots }) => AgentConfig;
   action?: ReviewAction;
   projectPort?: ProjectPort;
   dataDir?: string;

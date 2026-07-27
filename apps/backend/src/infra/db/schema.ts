@@ -56,7 +56,7 @@ export const member = sqliteTable(
     agentId: text(),
     userRef: text(),
     displayName: text(),
-    /** Session binding: the AgentSession sessionId for this (conversation, member).
+    /** Session binding: the Agent sessionId for this (conversation, member).
      *  Null until first agent run; set by conversation feature via createAgentSession(). */
     sessionId: text(),
     joinedAt: integer({ mode: "number" }).notNull(),

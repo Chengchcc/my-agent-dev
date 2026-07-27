@@ -56,7 +56,7 @@ export interface ConversationServiceDeps {
       agentMemberId: string;
       agentId: string;
       ledgerSeq: number;
-      /** The user's input text - passed through to AgentSession.prompt() so the agent receives the actual message. */
+      /** The user's input text - passed through to Agent.prompt() so the agent receives the actual message. */
       input?: string;
     },
   ) => Promise<{ spanId: string; attemptSeq: number }>;
