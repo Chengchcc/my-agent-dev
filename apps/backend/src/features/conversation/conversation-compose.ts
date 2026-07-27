@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 import type { McpClientManager } from "@my-agent-team/adapter-mcp";
 import type { ContextStore, SessionManager } from "@my-agent-team/agent";
+import { createAgentSession } from "@my-agent-team/agent";
 import type { ModelRegistry, ProviderAuth } from "@my-agent-team/ai";
 import type { Message, MessageRevision } from "@my-agent-team/message";
 import {
@@ -173,94 +174,100 @@ export function createConversationFeature(
       const cwd = join(config.dataDir, "agents", agentId);
       const cTools = convTools(convPort, conversationId);
       const mcpTools = mcpClientManager.getTools(agentId);
-      const agentConfig = {
+      // Build plugins (unchanged from before)
+      const plugins = [
+        ...defaultPlugins(cwd, config, undefined, agentName).filter((p) => p.name !== "memory"),
+        conversationContextPlugin({ tools: cTools }),
+        goalPlugin({
+          goalCondition: () => goalStore.get(conversationId).condition,
+          evaluatorModel: createModel(
+            resolveModel("anthropic/claude-sonnet-4", modelRegistry),
+            modelRegistry,
+            auth,
+          ),
+          onEvaluation: ({ summary, evaluation }) => {
+            const gs = goalStore.get(conversationId);
+            if (gs.paused) return;
+            gs.turns++;
+            gs.history.push({
+              turn: gs.turns,
+              summary,
+              met: evaluation.met,
+              reason: evaluation.reason,
+              ts: Date.now(),
+            });
+          },
+        }),
+        petPlugin({
+          petModel: createModel(
+            modelRegistry.getModel(
+              settingsSvc.get<string>("pet.provider") ?? "anthropic",
+              settingsSvc.get<string>("pet.model") ?? "claude-haiku-3-5",
+            ) ?? modelRegistry.getModel("anthropic", "claude-haiku-3-5")!,
+            modelRegistry,
+            auth,
+          ),
+          cwd,
+          enabled: settingsSvc.get<boolean>("pet.enabled") ?? false,
+          settings: {
+            get(key: string) {
+              return settingsSvc.get<string>(`pet.${agentId}.${key}`);
+            },
+            getNumber(key: string) {
+              return settingsSvc.get<number>(`pet.${agentId}.${key}`);
+            },
+            set(key: string, value: string) {
+              settingsSvc.set(`pet.${agentId}.${key}`, value);
+            },
+          },
+        }),
+        recapPlugin({
+          recapModel: createModel(
+            modelRegistry.getModel(
+              settingsSvc.get<string>("recap.provider") ?? "anthropic",
+              settingsSvc.get<string>("recap.model") ?? "claude-haiku-3-5",
+            ) ?? modelRegistry.getModel("anthropic", "claude-haiku-3-5")!,
+            modelRegistry,
+            auth,
+          ),
+          enabled: settingsSvc.get<boolean>("recap.enabled") ?? true,
+        }),
+        memoryPlugin({
+          cwd,
+          root: "./memory/",
+          autoExtract: settingsSvc.get<boolean>("memory.autoExtract") ?? false,
+          extractModel: createModel(
+            modelRegistry.getModel(
+              settingsSvc.get<string>("memory.extractProvider") ?? "anthropic",
+              settingsSvc.get<string>("memory.extractModel") ?? "claude-haiku-3-5",
+            ) ?? modelRegistry.getModel("anthropic", "claude-haiku-3-5")!,
+            modelRegistry,
+            auth,
+          ),
+          consolidateModel: createModel(
+            modelRegistry.getModel(
+              settingsSvc.get<string>("memory.consolidateProvider") ?? "anthropic",
+              settingsSvc.get<string>("memory.consolidateModel") ?? "claude-sonnet-4-6",
+            ) ?? modelRegistry.getModel("anthropic", "claude-sonnet-4-6")!,
+            modelRegistry,
+            auth,
+          ),
+          minMessagesForExtraction: settingsSvc.get<number>("memory.minMessagesForExtraction"),
+          consolidateThreshold: settingsSvc.get<number>("memory.consolidateThreshold"),
+        }),
+      ];
+      const existingSid = convPort.getMemberSessionId(conversationId, agentMemberId);
+
+      const session = await createAgentSession({
         model: createModel(
           resolveModel(`${modelProvider}/${modelName}`, modelRegistry),
           modelRegistry,
           auth,
         ),
+        plugins,
         tools: [...defaultTools(cwd), ...cTools, ...mcpTools],
-        plugins: [
-          ...defaultPlugins(cwd, config, undefined, agentName).filter((p) => p.name !== "memory"),
-          conversationContextPlugin({ tools: cTools }),
-          goalPlugin({
-            goalCondition: () => goalStore.get(conversationId).condition,
-            evaluatorModel: createModel(
-              resolveModel("anthropic/claude-sonnet-4", modelRegistry),
-              modelRegistry,
-              auth,
-            ),
-            onEvaluation: ({ summary, evaluation }) => {
-              const gs = goalStore.get(conversationId);
-              if (gs.paused) return;
-              gs.turns++;
-              gs.history.push({
-                turn: gs.turns,
-                summary,
-                met: evaluation.met,
-                reason: evaluation.reason,
-                ts: Date.now(),
-              });
-            },
-          }),
-          petPlugin({
-            petModel: createModel(
-              modelRegistry.getModel(
-                settingsSvc.get<string>("pet.provider") ?? "anthropic",
-                settingsSvc.get<string>("pet.model") ?? "claude-haiku-3-5",
-              ) ?? modelRegistry.getModel("anthropic", "claude-haiku-3-5")!,
-              modelRegistry,
-              auth,
-            ),
-            cwd,
-            enabled: settingsSvc.get<boolean>("pet.enabled") ?? false,
-            settings: {
-              get(key: string) {
-                return settingsSvc.get<string>(`pet.${agentId}.${key}`);
-              },
-              getNumber(key: string) {
-                return settingsSvc.get<number>(`pet.${agentId}.${key}`);
-              },
-              set(key: string, value: string) {
-                settingsSvc.set(`pet.${agentId}.${key}`, value);
-              },
-            },
-          }),
-          recapPlugin({
-            recapModel: createModel(
-              modelRegistry.getModel(
-                settingsSvc.get<string>("recap.provider") ?? "anthropic",
-                settingsSvc.get<string>("recap.model") ?? "claude-haiku-3-5",
-              ) ?? modelRegistry.getModel("anthropic", "claude-haiku-3-5")!,
-              modelRegistry,
-              auth,
-            ),
-            enabled: settingsSvc.get<boolean>("recap.enabled") ?? true,
-          }),
-          memoryPlugin({
-            cwd,
-            root: "./memory/",
-            autoExtract: settingsSvc.get<boolean>("memory.autoExtract") ?? false,
-            extractModel: createModel(
-              modelRegistry.getModel(
-                settingsSvc.get<string>("memory.extractProvider") ?? "anthropic",
-                settingsSvc.get<string>("memory.extractModel") ?? "claude-haiku-3-5",
-              ) ?? modelRegistry.getModel("anthropic", "claude-haiku-3-5")!,
-              modelRegistry,
-              auth,
-            ),
-            consolidateModel: createModel(
-              modelRegistry.getModel(
-                settingsSvc.get<string>("memory.consolidateProvider") ?? "anthropic",
-                settingsSvc.get<string>("memory.consolidateModel") ?? "claude-sonnet-4-6",
-              ) ?? modelRegistry.getModel("anthropic", "claude-sonnet-4-6")!,
-              modelRegistry,
-              auth,
-            ),
-            minMessagesForExtraction: settingsSvc.get<number>("memory.minMessagesForExtraction"),
-            consolidateThreshold: settingsSvc.get<number>("memory.consolidateThreshold"),
-          }),
-        ],
+        sessionManager,
+        sessionId: existingSid ?? undefined,
         metaContext: ({
           context,
         }: {
@@ -299,15 +306,10 @@ export function createConversationFeature(
           }
           parts.push(`</system-reminder>`);
         },
-      };
-      const existingSid = convPort.getMemberSessionId(conversationId, agentMemberId);
-      const session = existingSid
-        ? sessionManager.open(existingSid, agentConfig)
-        : sessionManager.create(agentConfig);
+      });
       if (!existingSid) {
         convPort.updateMemberSessionId(conversationId, agentMemberId, session.sessionId ?? "");
       }
-
       // Business event subscription
       session.subscribe((event) => {
         if (event.type === "message_update" || event.type === "message") {
