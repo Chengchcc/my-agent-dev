@@ -41,13 +41,17 @@ export const bashTool: Tool = {
     };
     const clamped = Math.min(Math.max(timeout, 1), 600_000);
 
-    // setsid → new session + process group, so timeout can kill all descendants
-    const proc = Bun.spawn(["setsid", "bash", "-c", command], {
-      stdout: "pipe",
-      stderr: "pipe",
-      cwd,
-    });
-
+    // setsid → new session + process group, so timeout can kill all descendants.
+    // Fall back to plain bash when setsid is not available (it's not POSIX).
+    const hasSetsid = Bun.which("setsid") !== null;
+    const proc = Bun.spawn(
+      hasSetsid ? ["setsid", "bash", "-c", command] : ["bash", "-c", command],
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+        cwd,
+      },
+    );
     const timer = setTimeout(() => {
       proc.kill();
       // Kill the entire process group to catch orphaned children
