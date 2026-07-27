@@ -2,6 +2,7 @@ import { unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Checkpointer, ContextManager, Plugin } from "@my-agent-team/agent";
+import { createAgentSession } from "@my-agent-team/agent";
 import { Agent } from "@my-agent-team/agent";
 import type { ChatModel } from "@my-agent-team/core";
 import { progressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
@@ -67,7 +68,7 @@ function buildPrompt(source: InstallSource, action: "install" | "sync"): string 
 
 async function createInstallSession(deps: InstallSessionDeps): Promise<Agent> {
   const sessionId = `install-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  return new Agent({
+  return createAgentSession({
     sessionId,
     model: deps.model,
     plugins: buildInstallPlugins(deps.dataDir),

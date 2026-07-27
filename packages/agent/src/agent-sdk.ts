@@ -19,6 +19,7 @@ export interface CreateAgentSessionInput {
   tools?: readonly Tool[];
 
   /** For SessionManager.open — reuses existing session. */
+  checkpointer?: AgentConfig["checkpointer"];
   sessionId?: string;
 
   /** Session persistence. When provided, open/create is delegated. */
@@ -69,6 +70,7 @@ export async function createAgentSession(input: CreateAgentSessionInput): Promis
     logger: input.logger,
     retry: input.retry,
     compaction: input.compaction,
+    checkpointer: input.checkpointer,
   };
 
   if (input.sessionManager) {
