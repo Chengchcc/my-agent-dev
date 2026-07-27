@@ -1,109 +1,70 @@
-import { Agent } from "./agent.js";
+import type { ChatModel } from "./framework-adapter.js";
 import type { AgentHooks } from "./agent-hooks.js";
 import type { AgentConfig } from "./agent-options.js";
+import { Agent } from "./agent.js";
+import { ExtensionHost, composeExtensions } from "./extension-host.js";
 import type {
   AgentExtension,
   AgentExtensionFactory,
   AgentScope,
   ResolvedExtension,
 } from "./extension-host.js";
-import { composeExtensions, ExtensionHost } from "./extension-host.js";
-import type { ChatModel, Tool } from "./framework-adapter.js";
-import type { ModelRef, ModelRuntime, ResolvedModel } from "./model-runtime.js";
 import { resolveModel } from "./model-runtime.js";
+import type { ModelRef, ModelRuntime, ResolvedModel } from "./model-runtime.js";
 import type { SessionManager } from "./session-manager.js";
-
-// ── Public input type ──
+import type { Tool } from "./framework-adapter.js";
 
 export interface CreateAgentSessionInput {
   scope: AgentScope;
-
-  /** Already-resolved ChatModel, or a ModelRef string requiring a ModelRuntime. */
   model: ChatModel | ModelRef;
-
-  /** Required when model is a ModelRef string. */
   modelRuntime?: ModelRuntime;
-
-  /** Capability-backed extension factories — resolved per Agent scope. */
   extensions?: readonly AgentExtensionFactory[];
-
-  /** Base tools available to all extensions (e.g. conversation tools). */
   tools?: readonly Tool[];
-
-  /** Base system prompt injected before capability prompts. */
   systemPrompt?: string;
-
-  /** Session persistence — when provided, sessions are reused via open/create. */
   sessionManager?: SessionManager;
-
-  /** Optional: Agent lifecycle hooks applied after composed hooks. */
   hooks?: AgentHooks;
-
-  /** Context manager pipeline. */
   contextManager?: AgentConfig["contextManager"];
-
-  /** Logger. */
   logger?: AgentConfig["logger"];
-
-  /** Retry settings. */
   retry?: AgentConfig["retry"];
-
-  /** Compaction settings. */
   compaction?: AgentConfig["compaction"];
-}
-
-// ── Implementation ──
-
-async function resolveInputModel(
-  input: CreateAgentSessionInput["model"],
-  runtime?: ModelRuntime,
-): Promise<ResolvedModel> {
-  return resolveModel(input, runtime);
-}
-
-async function resolveExtensions(
-  factories: readonly AgentExtensionFactory[],
-  scope: AgentScope,
-): Promise<readonly ResolvedExtension[]> {
-  const host = new ExtensionHost(factories);
-  return host.resolve(scope);
 }
 
 /**
  * Create an Agent session.
  *
- * Two model input modes:
- * - ChatModel: direct (test, custom)
+ * - ChatModel: direct (test, custom providers)
  * - ModelRef string: requires modelRuntime (production)
  *
- * Extensions are resolved per Agent scope and composed in registration order.
+ * Extensions are resolved per scope and composed in registration order.
+ * input.hooks are folded into the composition chain, not an override.
  */
 export async function createAgentSession(input: CreateAgentSessionInput): Promise<Agent> {
-  const resolvedModel = await resolveInputModel(input.model, input.modelRuntime);
+  const resolvedModel = await resolveModel(input.model, input.modelRuntime);
 
-  const resolvedExtensions = input.extensions
-    ? await resolveExtensions(input.extensions, input.scope)
-    : [];
+  // Resolve extension factories
+  const host = new ExtensionHost(input.extensions ?? []);
+  const resolved = await host.resolve(input.scope);
 
-  const composed: AgentExtension = composeExtensions({
-    resolved: resolvedExtensions,
+  // Convert resolved extensions to AgentExtension list
+  const extensions: AgentExtension[] = resolved.map((r) => r.extension);
+
+  // Fold input.hooks into the chain as a bootstrap extension
+  if (input.hooks) {
+    extensions.push({ id: "bootstrap", hooks: input.hooks });
+  }
+
+  // Compose everything once
+  const composed = composeExtensions({
+    resolved: extensions.map((ext, i) => ({ id: ext.id, extension: ext })),
     baseTools: input.tools ?? [],
     baseSystemPrompt: input.systemPrompt,
   });
 
-  const hooks: AgentHooks = {
-    ...composed.hooks,
-    ...input.hooks,
-  };
-
-  const systemPrompt =
-    [input.systemPrompt, composed.systemPrompt].filter(Boolean).join("\n\n") || undefined;
-
   const agentConfig: AgentConfig = {
     model: resolvedModel.chatModel,
     tools: composed.tools ? [...composed.tools] : input.tools ? [...input.tools] : undefined,
-    hooks: Object.keys(hooks).length > 0 ? hooks : undefined,
-    systemPrompt,
+    hooks: composed.hooks,
+    systemPrompt: composed.systemPrompt || undefined,
     contextManager: input.contextManager,
     logger: input.logger,
     retry: input.retry,

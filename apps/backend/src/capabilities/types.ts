@@ -4,6 +4,7 @@ import type { ChatModel, Tool } from "@my-agent-team/core";
 // ── Capability (backend product unit) ──
 
 export interface AgentExtension {
+  id?: string;
   hooks?: AgentHooks;
   tools?: readonly Tool[];
   systemPrompt?: string;
