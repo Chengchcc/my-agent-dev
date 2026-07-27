@@ -81,13 +81,7 @@ describe("CapabilityRegistry", () => {
       },
     });
     await r.extensionFactories()[0]!.create({ agentId: "a1", sessionId: "s1", cwd: "/w" });
-    expect(received).toEqual({
-      agentId: "a1",
-      sessionId: "s1",
-      conversationId: "c1",
-      memberId: "m1",
-      cwd: "/w",
-    });
+    expect(received).toEqual({ agentId: "a1", sessionId: "s1", cwd: "/w" });
   });
 
   test("scope is not leaked between calls", async () => {
