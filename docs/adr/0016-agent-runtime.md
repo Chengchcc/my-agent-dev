@@ -243,7 +243,7 @@ Tracing · Debugging · Evals · Metrics
 | `SessionManager` / `SqliteSessionManager` | `packages/agent/src/session-manager.ts` | ✅ P3 |
 | Plugin-first production migration | `apps/backend/src/features/` | ✅ P7 |
 | Capability/AgentExtension runtime | — | ❌ 已删除 (P8) |
-| Backend assembly cleanup | `apps/backend/src/` | ⏳ P8 |
-| Backend bootstrap cleanup | `apps/backend/src/` | ⏳ P9 |
+| Backend assembly cleanup | `apps/backend/src/` | ✅ P8 |
+| Backend bootstrap cleanup | `apps/backend/src/` | ✅ P9 |
 | Naming migration (`Checkpointer` → `SessionStore`, ...) | — | ⏳ P10 |
 | Framework / harness deletion | — | ⏳ P11 |
