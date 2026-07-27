@@ -1,7 +1,7 @@
 import { unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Agent, ContextManager, Plugin } from "@my-agent-team/agent";
+import type { Agent, ContextPipeline, Plugin } from "@my-agent-team/agent";
 import { createAgentSession } from "@my-agent-team/agent";
 import type { ChatModel } from "@my-agent-team/core";
 import { progressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
@@ -15,7 +15,7 @@ export interface InstallSessionDeps {
   dataDir: string;
   port: SkillPackPort;
 
-  contextManager?: ContextManager;
+  contextManager?: ContextPipeline;
   /** Buffer for zip uploads — written to temp file and injected via tool closure. */
   zipBuffer?: Buffer;
   /** Temp file path for zip buffer. Set internally by runInstall. */

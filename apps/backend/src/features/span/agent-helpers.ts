@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import type { ContextManager, Plugin } from "@my-agent-team/agent";
+import type { ContextPipeline, Plugin } from "@my-agent-team/agent";
 import { type Model, type ModelRegistry, type ProviderAuth, resolveModel } from "@my-agent-team/ai";
 import type { ChatModel, Tool } from "@my-agent-team/core";
 import { autoSummarize, pipeContextManagers, toolResultTruncator } from "@my-agent-team/framework";
@@ -97,7 +97,7 @@ export function defaultPlugins(
 
 // ─── ContextManager ───────────────────────────────────────
 
-export function defaultContextManager(settings?: SettingsService): ContextManager {
+export function defaultContextManager(settings?: SettingsService): ContextPipeline {
   return pipeContextManagers(
     toolResultTruncator({
       maxCharsPerResult: settings?.get<number>("context.toolResultMaxChars") ?? 50_000,

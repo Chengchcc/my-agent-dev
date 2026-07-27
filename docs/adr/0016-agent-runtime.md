@@ -129,7 +129,7 @@ Agent 不直接依赖外部系统。Backend 负责创建共享基础设施；Plu
 | `AgentSession` | 并入 `Agent` | 一个 Agent 一个实体 |
 | `SessionConfig` | `AgentConfig` | ✅ P10-1 |
 | `ChatModel` | 保留 | `Model` 是 provider metadata，已存在不同概念 |
-| `Checkpointer` | `MessageStore` + `EventLog` + `InterruptStore` | ✅ P10-4 公共 API 已移除；内部吸附待 P11 |
+| `Checkpointer` | `MessageStore` + `EventLog` + `InterruptStore` | ⏳ P11 — framework 吸收时拆为 MessageStore+EventLog+InterruptStore |
 | `ContextManager` | `ContextPipeline` | ✅ P10-3 agent 公共 API |
 | `ContextStore` | `RunState` | ✅ P10-2 唯一公共类型 |
 | `steering / followUp` | 保留独立语义 | 不是同一 interrupt(input) |

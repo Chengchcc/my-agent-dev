@@ -13,6 +13,7 @@ import type {
   Session,
   Tool,
 } from "./framework-adapter.js";
+import type { RunState } from "./run-state.js";
 export type AgentState =
   | "idle"
   | "running"
@@ -28,7 +29,7 @@ export interface AgentConfig {
   plugins?: Plugin[];
   contextManager?: ContextPipeline;
   metaContext?: (ctx: {
-    context: ContextStore;
+    context: RunState;
     sessionId: string;
     threadMessages: readonly Message[];
   }) => string | undefined;
