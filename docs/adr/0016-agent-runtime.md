@@ -127,12 +127,12 @@ Agent 不直接依赖外部系统。Backend 负责创建共享基础设施；Plu
 | `PluginHooks` | `AgentHooks` | 明确归属 |
 | `HookContext` | `AgentContext` | 上下文是谁的 |
 | `AgentSession` | 并入 `Agent` | 一个 Agent 一个实体 |
-| `SessionConfig` | `AgentConfig` | session 概念太重 |
-| `ChatModel` | `Model`（ai 包已有） | chat 是用法 |
-| `Checkpointer` | `SessionStore` | 不暴露实现 |
-| `ContextManager` | `ContextPipeline` | 管道，非管理者 |
-| `context store` | `RunState` | key-value 的具体用途 |
-| `steering / followUp` | `agent.interrupt(input)` | 单一语义 |
+| `SessionConfig` | `AgentConfig` | ✅ P10-1 |
+| `ChatModel` | 保留 | `Model` 是 provider metadata，已存在不同概念 |
+| `Checkpointer` | `MessageStore` + `EventLog` + `InterruptStore` | ✅ P10-4 公共 API 已移除；内部吸附待 P11 |
+| `ContextManager` | `ContextPipeline` | ✅ P10-3 agent 公共 API |
+| `ContextStore` | `RunState` | ✅ P10-2 唯一公共类型 |
+| `steering / followUp` | 保留独立语义 | 不是同一 interrupt(input) |
 
 ### 5. 包结构
 
