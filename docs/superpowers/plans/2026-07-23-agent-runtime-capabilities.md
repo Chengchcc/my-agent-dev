@@ -13,7 +13,7 @@ backend 构造 Plugin options
   → Agent
 ```
 
-`CapabilityRegistry` 不参与普通 Plugin 的当前生产路径。只有未来跨 Agent runtime、backend service、route/command 或 surface 的产品功能才重新评估 Capability。
+`CapabilityRegistry` 已在 P8 删除。以下内容记录当时 P7 执行步骤。所有关于未来 Capability wrapper/catalog 的内容已作废；当前架构以 ADR 0016 和 runtime contract 为准。
 
 **Contract:** [`2026-07-23-agent-runtime-contract.md`](../specs/2026-07-23-agent-runtime-contract.md)
 
@@ -134,9 +134,8 @@ plugin-recap
 plugin-memory
 ```
 
-Do not duplicate their algorithms into `apps/backend/src/capabilities`.
+Do not create a new `apps/backend/src/capabilities` directory.
 
-If a future feature needs routes, commands, UI slots or a product service, create a separate Capability wrapper that produces or configures Plugin; do not make Capability the ordinary Agent extension path.
 
 ## 5. P7 workstream gate
 
@@ -154,8 +153,7 @@ bun test apps/backend/src/features/skill-pack
 Structural checks:
 
 ```bash
-! git grep -n 'Capability.*AgentExtensionFactory' -- apps/backend/src/capabilities
-! git grep -n 'composeBeforeModel\|composeBeforeTool\|mergeTools\|mergeSystemPrompts' -- apps/backend/src
+! git grep -n 'CapabilityRegistry\|AgentExtensionFactory\|ExtensionHost' -- apps/backend/src packages/agent/src
 ```
 
 P7 gate meaning: the production callers use `createAgentSession({ plugins })`; capability catalog code is not part of the ordinary Agent path. A future Capability wrapper may exist only for a feature that also owns backend services/routes/surface metadata.

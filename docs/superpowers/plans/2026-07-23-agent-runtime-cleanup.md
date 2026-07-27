@@ -14,7 +14,7 @@
 > - Backend Adoption complete.
 > - P6-A/P6-B/P6-C complete.
 > - P7 Plugin-first migration complete.
-> - Full backend tests pass before cleanup starts.
+> - Affected backend/agent tests must pass before cleanup starts. Known Darwin setsid test failures are not P8 regressions — record separately..
 
 ---
 
@@ -50,12 +50,6 @@ Record the clean baseline for this workstream. No cleanup starts against an unve
 
 Must not write ledger or release ConversationLock.
 
-
-- create/open/get/dispose live Agent.
-- Manage active Agent lookup for resume.
-- Coordinate reaper disposal.
-
-Must not decide Conversation projection semantics.
 
 #### `agent-projection.ts`
 
@@ -114,7 +108,7 @@ config loading
 database opening
 core infrastructure creation
 Services creation
-feature/capability installation
+feature installation
 app creation
 server/scheduler start
 shutdown handlers
@@ -125,7 +119,7 @@ shutdown handlers
 ```text
 pet/recap/memory/goal plugin assembly
 conversation Agent config construction
-per-capability model wiring
+per-feature Agent model/plugin wiring
 ```
 
 Do not hide DB/server/scheduler initialization behind an opaque `backend.install()` that merely moves the monolith.
@@ -255,7 +249,6 @@ Add if needed:
 
 ```text
 docs/architecture/runtime/agent.md
-docs/architecture/backend/capabilities.md
 ```
 
 Documentation main line:

@@ -75,7 +75,7 @@ interface CreateAgentSessionInput {
 
 此前设计的 backend `Capability → AgentExtension → Registry` 链路已在 P8 删除。它会把普通 Plugin 的安装增加多层包装，重复 Agent SDK 的组装职责。
 
-当前不保留 Capability wrapper。未来如需跨 runtime/backend/surface 的产品功能，再重新设计。
+当前不保留 Capability wrapper。未来若有跨 runtime/backend/surface 的产品功能，基于当时需求重新设计；不预留 Capability 类型或 wrapper。
 
 ### 4. Future Pi-style Extension
 
@@ -107,7 +107,7 @@ jiti loader
 - `createAgentSession()` 是 Agent 组装的唯一公共入口。
 - Backend 不重复实现 hook/tool/prompt composer。
 - Capability registry 和 AgentExtension runtime 已在 P8 删除；当前代码不保留。
-- 未来若需要跨 runtime/backend/surface 的产品功能，再单独定义 Capability；当前 P7 直接迁移现有 Plugin。
+- 不预留 Capability 类型或 registry；当前所有功能通过 Plugin 接入。
 - `agent.emit()` 不作为外部任意事件写入口；外部只订阅 Agent 事件，业务事件通过受控 hook/context/projection 边界产生。
 - `steering` 和 `followUp` 在迁移期保持现有独立语义，不能直接合并成一个未定义的 `interrupt(input)` API。
 - slots 和 jiti Extension 属于未来设计，不进入当前 runtime migration。
@@ -211,8 +211,8 @@ Agent 暴露 `agent.on(event, handler)`；不把任意 `agent.emit(event, payloa
                        │ createAgentSession()
 ┌──────────────────────▼───────────────────────────────┐
 │ Agent SDK / Runtime                                    │
-│ Agent · SessionManager · createAgentSession()          │
-│ Hook composer · Tool composer · SessionManager          │
+│ Agent · createAgentSession() · SessionManager          │
+│ Plugin dispatch · ModelRuntime · persistence boundary    │
 │ packages/agent                                         │
 └──────────────┬──────────────┬──────────────┬───────────┘
                │              │              │
@@ -243,6 +243,6 @@ Tracing · Debugging · Evals · Metrics
 | `SessionManager` / `SqliteSessionManager` | `packages/agent/src/session-manager.ts` | ✅ P3 |
 | Plugin-first production migration | `apps/backend/src/features/` | ✅ P7 |
 | Capability/AgentExtension runtime | — | ❌ 已删除 (P8) |
-| Backend assembly cleanup | `apps/backend/src/` | ⏳ P9 |
-| Naming migration (`Checkpointer` → `SessionStore`, ...) | — | ⏳ P10 |
+| Backend assembly cleanup | `apps/backend/src/` | ⏳ P8 |
+| Backend bootstrap cleanup | `apps/backend/src/` | ⏳ P9 |
 | Framework / harness deletion | — | ⏳ P11 |

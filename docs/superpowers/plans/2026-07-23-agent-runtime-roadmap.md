@@ -6,9 +6,9 @@
 >
 > **ADR:** [`0016-agent-runtime.md`](../../adr/0016-agent-runtime.md)
 
-**Goal:** 在不破坏 Agent 生命周期、Session 持久化、Interrupt/Resume、Conversation projection、Cron 和 Loop 行为的前提下，将 `framework + harness` 收敛为 `@my-agent-team/agent`，并把 backed 功能装配统一为 Plugin + createAgentSession()。
+**Goal:** 在不破坏 Agent 生命周期、Session 持久化、Interrupt/Resume、Conversation projection、Cron 和 Loop 行为的前提下，将 `framework + harness` 收敛为 `@my-agent-team/agent`，并把 backend 功能装配统一为 Plugin + createAgentSession()。
 
-**Architecture:** 采用 Strangler migration。先建立 `packages/agent` 生命周期边界，内部暂时复用 `framework`；再迁移 backend caller；然后引入 backend Capability（已在 P8 删除）；最后拆分 composition、清理命名并删除旧包。全程不与 runtime migration 同批修改数据库 schema。
+**Architecture:** 采用 Strangler migration。先建立 `packages/agent` 生命周期边界，内部暂时复用 `framework`；再迁移 backend caller；再统一 backend caller 到 Plugin + createAgentSession；最后拆分 composition、清理命名并删除旧包。Capability/AgentExtension 试验代码已在 P8 删除。
 
 **Tech Stack:** Bun 1.3.14、TypeScript NodeNext、Turborepo、bun:test、Elysia backend、Drizzle/SQLite、现有 `@my-agent-team/core` / `@my-agent-team/framework` / `@my-agent-team/harness`。
 
@@ -23,7 +23,7 @@
 | 本文 | 全局依赖 DAG、workstream 顺序、phase gate、风险和回滚 |
 | `2026-07-23-agent-runtime-foundation.md` | `packages/agent` 生命周期基础设施 |
 | `2026-07-23-agent-runtime-backend-adoption.md` | Conversation/Resume/Cron/Loop/Skill Pack caller 迁移 |
-| `2026-07-23-agent-runtime-capabilities.md` | Plugin-first production migration；Capability catalog 仅为未来跨边界功能预留 |
+| `2026-07-23-agent-runtime-capabilities.md` | Plugin-first production migration；已删除的 Capability 试验代码（P8 完整记录） |
 | `2026-07-23-agent-runtime-cleanup.md` | conversation composition、backend bootstrap、命名清理、删除旧包 |
 
 单个 agent 的 handoff 是临时执行包，不作为主路线图的替代品。每个 handoff 必须只针对一个 task。
@@ -50,13 +50,13 @@ P4R Agent runtime completion / framework absorption
   ↓
 P6-A Agent SDK core: Plugin assembly + ModelRuntime
   ↓
-P6-B Backend service ownership (future cross-boundary use only)
+P6-B Backend service ownership (historical — deleted in P8)
   ↓
 P6-C SDK integration gate
   ↓
 P7 Plugin-first production migration
   ↓
-P8 Backend assembly cleanup
+P8 Remove Capability/AgentExtension + backend assembly cleanup
   ↓
 P9 Backend bootstrap cleanup
   ↓
@@ -100,7 +100,7 @@ Conversation、Resume、Cron、Loop、Skill Pack 都使用 @my-agent-team/agent
 
 文件：`2026-07-23-agent-runtime-capabilities.md`
 
-前置条件：Foundation、P4R Agent runtime completion、Backend Adoption、P6-A/P6-B/P6-C 全部通过。当前 Capability registry 仅作为未来跨边界产品功能的实验性 catalog，不接入普通 Plugin 生产路径。
+前置条件：Foundation、P4R Agent runtime completion、Backend Adoption、P6-A/P6-B/P6-C 全部通过。Plugin-first：所有功能通过 createAgentSession({ plugins }) 接入。
 
 完成后必须得到：
 
@@ -108,14 +108,12 @@ Conversation、Resume、Cron、Loop、Skill Pack 都使用 @my-agent-team/agent
 Conversation/Cron/Loop/Skill Pack 使用 createAgentSession({ plugins })
 Plugin 行为保持兼容
 backend 不重复实现通用 composer
-Capability 不作为普通 Plugin 的必经包装层
 ```
 
 ### Workstream D：Cleanup
 
 文件：`2026-07-23-agent-runtime-cleanup.md`
 
-只能在 Foundation、Backend Adoption、Plugin-first production migration 全部完成，并且 P4R Agent runtime completion 已通过后开始。当前 Capability catalog 不参与普通 Plugin migration。
 
 完成后必须得到：
 
@@ -136,10 +134,9 @@ framework/harness 无业务引用并可删除
 | P4R | P4 | Agent runtime completion：`AgentEvent` typed；resume 真正消费 command；compact 真实持久化；usage 非固定 0；RunState per-run 透传；before:run/after:turn 完整；无 migration suppression；生产 SessionManager 边界明确 |
 | P5A-E | P4R | 对应 caller scoped tests/typecheck/build pass；行为不变；不得从 harness/framework 混合导入同一配置边界 |
 | P6-A | P5A-E | `packages/agent` Plugin/tool/model assembly tests pass；backend 不重复 composer |
-| P6-B | P6-A | backend shared infrastructure 与 future Capability deps 边界明确；不接入普通 Plugin path |
 | P6-C | P6-B | `createAgentSession()` integration test pass；ModelRuntime、Plugin、SessionManager、Agent 链路通过 |
 | P7 | P6-C | Conversation/Cron/Loop/Skill Pack 使用 `createAgentSession({ plugins })`；Plugin 行为和 backend flows 不变 |
-| P8 | P7 | backend Agent assembly 重复逻辑收敛；conversation projection 与 Agent factory 分离 |
+| P8 | P7 | Capability/AgentExtension deleted；backend Agent assembly 重复逻辑收敛；conversation projection 与 Agent factory 分离 |
 | P9 | P8 | main/bootstrap smoke test passes；main no longer owns feature assembly |
 | P10 | P9 | each old name is cleaned independently；scoped gate passes |
 | P11 | P10 | framework/harness have no business references；full CI and smoke tests pass |
@@ -192,7 +189,6 @@ Bun test 不能替代 TypeScript typecheck。
 
 每个 caller 独立迁移。单个 caller 回滚到 `@my-agent-team/harness`，不触碰数据库。
 
-Plugin-first migration 按 caller 独立进行。不能双跑旧新 Agent path；失败时恢复原有 Plugin assembly。Capability catalog 不参与普通 Plugin path。
 
 ### Cleanup
 
@@ -234,8 +230,6 @@ Cleanup 只能在旧引用清零后执行。删除旧包前保留可回滚提交
 [ ] Agent 行为测试覆盖旧 AgentSession
 [ ] session recovery 通过
 [ ] Conversation/Resume/Cron/Loop/Skill Pack 分开迁移
-[ ] Capability registry 有独立测试
-[ ] Capability 不依赖 React、不直接写 ledger
 [ ] 无数据库 schema 未审查变化
 [ ] 旧包引用清零
 [ ] full build/typecheck/lint/test 通过

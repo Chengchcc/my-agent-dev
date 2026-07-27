@@ -29,7 +29,7 @@ backend → @my-agent-team/agent → core
 3. `Agent` 决定 run 的 terminal state；Conversation 不决定 Agent 是否完成。
 4. `Message` 是唯一消息本体；streaming revision、ledger record、surface delivery 不是新的消息领域模型。
 5. `Conversation` 只负责 Conversation 业务和 Message projection，不负责 Agent 内部状态机。
-6. Capability 不直接写 Conversation ledger。
+6. Plugin 不直接写 Conversation ledger。
 7. Agent runtime 不依赖 backend Services、SQLite、Elysia、React 或具体 surface。
 8. `sessionId` 由 SessionManager 生成，不编码 `conversationId`、`memberId`、`cronJobId` 或 `loopId`。
 9. Conversation 的持久 session 绑定由 Conversation 自己保存；Cron、Loop 等一次性运行不复用 Conversation 绑定。
@@ -51,7 +51,7 @@ export type AgentState =
   | 'error';
 
 export interface Agent {
-  readonly sessionId: string;
+  readonly sessionId?: string;
   readonly state: AgentState;
 
   prompt(input: string, opts?: PromptOptions): Promise<void>;
@@ -181,12 +181,12 @@ tool_call
 - `message` 和 `message_update` 通过同一 `messageId` 表示 revision，不得重复创建逻辑消息。
 - `todo_update` 必须携带能关联当前 run 的 `spanId`，或有等价稳定关联方式。
 - `agent_end` 的 status 只能是 `succeeded`、`error`、`interrupted`。
-- Agent 内部不得让 Capability 任意伪造 `agent_end`、`interrupted` 等生命周期事件。
+- Agent 内部不得让 Plugin 任意伪造 `agent_end`、`interrupted` 等生命周期事件。
 - 对外公开 `subscribe` / `on`；不公开任意 payload 的 `emit` 作为外部写入口。
 
 ## 5. AgentHooks
 
-AgentHooks 是 Agent runtime 的扩展协议，不等同于 backend Capability。
+AgentHooks 是 Agent runtime 的扩展协议，不等同于 backend Plugin。
 
 ```ts
 export interface AgentHooks {
@@ -324,9 +324,7 @@ export async function createAgentSession(
 The SDK must:
 
 - resolve a `ModelRef` through `ModelRuntime`;
-- combine base tools with plugin tools;
-- preserve Plugin hook execution order;
-- reject tool collisions;
+- forward `plugins` and `tools` to the Plugin runtime for composition, collision checks, and ordering;
 - inject SessionManager/persistence and runtime options;
 - create the final Agent.
 
@@ -334,23 +332,13 @@ The SDK must not depend on backend `Services`, `SettingsService`, `ConversationP
 
 Backend callers provide concrete Plugin instances and their options. Backend must not build a second generic hook/tool/prompt composer.
 
-## 9. Backend product extension (deferred)
+## 9. Plugin-first extension
 
-The previous `Capability → AgentExtension → Registry` path is not part of the current Agent runtime path. Ordinary Agent features remain static Plugins.
+Current Agent features are static Plugins. Backend callers provide concrete Plugin instances; `createAgentSession()` forwards them to the Plugin runtime for composition.
 
-Only a future cross-boundary product feature may introduce a higher-level `Capability` that combines a Plugin with backend services, routes/commands or surface metadata. Such a Capability must eventually produce a Plugin or runtime registration through the SDK; it must not duplicate the SDK composer.
+The Capability/AgentExtension/Registry path was deleted in P8. Do not reintroduce a Capability wrapper or registry.
 
-## 10. Future Pi-style Extension
-
-If dynamic extensions are needed later, define a separate `ExtensionRuntime`:
-
-```ts
-export type Extension = (
-  runtime: ExtensionRuntime,
-) => void | Promise<void>;
-```
-
-The future loader may use `jiti` and expose `runtime.registerTool()`, `runtime.on()`, `runtime.registerCommand()` and resource APIs. This is explicitly deferred; no jiti, discovery or reload is part of the current migration.
+If a future cross-boundary feature needs routes, commands, UI slots and a backend service simultaneously, design it from scratch at that time based on current runtime constraints. Do not reserve a Capability type, registry, or wrapper for it now.
 
 ### Backend infrastructure
 
@@ -364,7 +352,7 @@ SseBus
 database ports
 ```
 
-Plugins receive only their options. A future Capability owns product services and receives narrow dependencies; do not introduce a broad Service Locator for ordinary Plugin installation.
+Plugins receive only their options. Do not introduce a broad Service Locator for ordinary Plugin installation.
 
 ```text
 backend infrastructure
@@ -381,7 +369,8 @@ backend infrastructure
 - Generic hook/tool/prompt composition has one source of truth in `packages/agent`.
 - Backend must not create a second Agent composer.
 
-## 9. Phase handoff 规则
+## 10. Phase handoff 规则
+
 
 每个执行任务必须声明：
 
