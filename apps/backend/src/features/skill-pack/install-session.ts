@@ -1,10 +1,9 @@
 import { unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Agent, ContextManager, Plugin } from "@my-agent-team/agent";
 import { createAgentSession } from "@my-agent-team/agent";
-import type { Agent } from "@my-agent-team/agent";
 import type { ChatModel } from "@my-agent-team/core";
-import type { ContextManager, Plugin } from "@my-agent-team/agent";
 import { progressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
 import type { SkillPackSource } from "./entities.js";
 import { posixSkillRoot } from "./entities.js";
@@ -15,7 +14,7 @@ export interface InstallSessionDeps {
   model: ChatModel;
   dataDir: string;
   port: SkillPackPort;
-  
+
   contextManager?: ContextManager;
   /** Buffer for zip uploads — written to temp file and injected via tool closure. */
   zipBuffer?: Buffer;
@@ -68,7 +67,6 @@ function buildPrompt(source: InstallSource, action: "install" | "sync"): string 
 
 async function createInstallSession(deps: InstallSessionDeps): Promise<Agent> {
   return createAgentSession({
-
     model: deps.model,
     plugins: buildInstallPlugins(deps.dataDir),
 

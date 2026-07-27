@@ -1,3 +1,4 @@
+import type { Message } from "@my-agent-team/message";
 import type {
   AgentEvent,
   AgentEventListener,
@@ -5,6 +6,7 @@ import type {
   ChatModel,
   Checkpointer,
   ContextManager,
+  ContextStore,
   Logger,
   Plugin,
   RunSpan,
@@ -26,7 +28,11 @@ export interface AgentConfig {
   tools?: Tool[];
   plugins?: Plugin[];
   contextManager?: ContextManager;
-  metaContext?: ((ctx: { context: import("@my-agent-team/framework").ContextStore; sessionId: string; threadMessages: readonly import("@my-agent-team/message").Message[] }) => string | void);
+  metaContext?: (ctx: {
+    context: ContextStore;
+    sessionId: string;
+    threadMessages: readonly Message[];
+  }) => string | undefined;
   systemPrompt?: string;
   sessionId?: string;
   checkpointer?: Checkpointer;

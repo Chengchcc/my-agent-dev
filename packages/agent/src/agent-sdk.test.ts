@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { echoModel } from "@my-agent-team/test-helpers";
 import { Agent } from "./agent.js";
-import { resolveModel } from "./model-runtime.js";
-import type { ModelRuntime } from "./model-runtime.js";
 import { createAgentSession } from "./agent-sdk.js";
+import type { ModelRuntime } from "./model-runtime.js";
+import { resolveModel } from "./model-runtime.js";
 
 describe("createAgentSession (P7-0 thin facade)", () => {
   test("ChatModel directly creates an Agent", async () => {

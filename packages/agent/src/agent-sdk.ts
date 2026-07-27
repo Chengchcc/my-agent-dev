@@ -1,8 +1,8 @@
 import { Agent } from "./agent.js";
 import type { AgentConfig } from "./agent-options.js";
 import type { Tool } from "./framework-adapter.js";
-import { resolveModel } from "./model-runtime.js";
 import type { ModelRef, ModelRuntime } from "./model-runtime.js";
+import { resolveModel } from "./model-runtime.js";
 import type { SessionManager } from "./session-manager.js";
 
 export interface CreateAgentSessionInput {

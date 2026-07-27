@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { createAgentSession } from "@my-agent-team/agent";
 import type { AgentConfig as SessionConfig, SessionManager } from "@my-agent-team/agent";
+import { createAgentSession } from "@my-agent-team/agent";
 import type { LoopConfig, LoopState } from "@my-agent-team/loop";
 import { loopReducer, parseLoopConfig, parseVerdictMd } from "@my-agent-team/loop";
 import type { AppendLedgerInput } from "../conversation/ports.js";
@@ -297,7 +297,10 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       skillRoots: skillRootsByRole("loop-generator"),
     });
 
-    const genSession = await createAgentSession({ ...genConfig, sessionManager: params.sessionManager });
+    const genSession = await createAgentSession({
+      ...genConfig,
+      sessionManager: params.sessionManager,
+    });
     let genSpanId: string | undefined;
     const unsubGen = genSession.subscribe((e) => {
       if (e.type === "agent_start") genSpanId = e.spanId;
@@ -360,7 +363,10 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       // ignore
     }
 
-    const evalSession = await createAgentSession({ ...evalConfig, sessionManager: params.sessionManager });
+    const evalSession = await createAgentSession({
+      ...evalConfig,
+      sessionManager: params.sessionManager,
+    });
     const EVALUATOR_TIMEOUT_MS = 60_000;
     await Promise.race([
       evalSession.prompt(evaluatorPrompt),
