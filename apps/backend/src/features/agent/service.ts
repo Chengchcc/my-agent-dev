@@ -106,7 +106,7 @@ export function createAgentService(opts: {
       // 3. backend.db: single transaction — agent + threads + checkpoint + member
       await port.hardDelete(id);
 
-      // 4. checkpointer: purge execution data for this agent's sessions
+      // 4. persistence: purge execution data for this agent's sessions
       await opts.purgeEventsForSessions(sessionIds);
 
       // 5. workspace: physical rm -rf (idempotent)
