@@ -18,3 +18,5 @@ export { resolveModel } from "./model-runtime.js";
 export type { ContextKey, RunState } from "./run-state.js";
 export type { SessionManager, SessionManagerConfig } from "./session-manager.js";
 export { InMemorySessionManager, SqliteSessionManager } from "./session-manager.js";
+export { definePlugin, validatePlugins } from "@my-agent-team/framework";
+export { defineContext, createContextStore, createAgent } from "@my-agent-team/framework";
