@@ -629,7 +629,7 @@ describe("createAgent", () => {
   });
 
   test("resume with no pending interrupt throws", async () => {
-    // Default inMemoryPersistence has no pending interrupt
+    // Default inMemoryCheckpointer has no pending interrupt
     const agent = await createAgent({
       model: scriptedModel([{ type: "text", text: "ok" }]),
     });

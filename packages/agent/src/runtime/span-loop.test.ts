@@ -9,7 +9,7 @@ import type {
 import type { Message } from "@my-agent-team/message";
 import { createContextStore } from "../context/context.js";
 import { passthroughContextManager } from "../context/passthrough.js";
-import { inMemoryPersistence } from "../persistence/in-memory.js";
+import { inMemoryCheckpointer } from "../persistence/in-memory.js";
 import { memorySessionStorage } from "../persistence/memory-session-storage.js";
 import { Session } from "../persistence/session.js";
 import type { AgentRuntime, FollowUpQueue, SteeringQueue } from "./agent-options.js";
@@ -33,7 +33,7 @@ function isToolResult(b: ContentBlock): b is ToolResultBlock {
 function makeRt(opts: { tools?: Tool[]; messages?: Message[] } = {}): AgentRuntime {
   const tools = opts.tools ?? [];
   const toolMap = new Map(tools.map((t) => [t.name, t]));
-  const checkpointer = inMemoryPersistence();
+  const checkpointer = inMemoryCheckpointer();
   const logger = consoleLogger({ level: "silent" });
   return {
     thread: createThread(opts.messages ?? [], "t1"),

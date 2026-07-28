@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { Message } from "@my-agent-team/message";
 import type { InterruptState } from "./checkpointer.js";
-import { inMemoryPersistence } from "./in-memory.js";
+import { inMemoryCheckpointer } from "./in-memory.js";
 
-describe("inMemoryPersistence", () => {
+describe("inMemoryCheckpointer", () => {
   test("save/load roundtrip", async () => {
-    const cp = inMemoryPersistence();
+    const cp = inMemoryCheckpointer();
     const msgs: Message[] = [{ role: "user", text: "hi" }];
 
     await cp.save("t1", msgs);
@@ -16,13 +16,13 @@ describe("inMemoryPersistence", () => {
   });
 
   test("load non-existent thread → null", async () => {
-    const cp = inMemoryPersistence();
+    const cp = inMemoryCheckpointer();
     const loaded = await cp.load("no-such");
     expect(loaded).toBeNull();
   });
 
   test("saveInterrupt/consumeInterrupt roundtrip", async () => {
-    const cp = inMemoryPersistence();
+    const cp = inMemoryCheckpointer();
     const state: InterruptState = {
       pendingTool: {
         call: { type: "tool_use", id: "t1", name: "ask", input: {} },
@@ -41,7 +41,7 @@ describe("inMemoryPersistence", () => {
   });
 
   test("appendEvent/readEvents roundtrip", async () => {
-    const cp = inMemoryPersistence();
+    const cp = inMemoryCheckpointer();
 
     await cp.appendEvent?.("t1", "sp1", { type: "user_input", content: "hi", ts: 1 });
     await cp.appendEvent?.("t1", "sp1", { type: "model_start", messageCount: 2, ts: 2 });
@@ -60,7 +60,7 @@ describe("inMemoryPersistence", () => {
   });
 
   test("readEvents with spanId filter", async () => {
-    const cp = inMemoryPersistence();
+    const cp = inMemoryCheckpointer();
 
     await cp.appendEvent?.("s1", "span-a", { type: "user_input", content: "a", ts: 1 });
     await cp.appendEvent?.("s1", "span-b", { type: "user_input", content: "b", ts: 2 });
@@ -80,7 +80,7 @@ describe("inMemoryPersistence", () => {
   });
 
   test("thread isolation", async () => {
-    const cp = inMemoryPersistence();
+    const cp = inMemoryCheckpointer();
 
     await cp.save("a", [{ role: "user", text: "a-msg" }]);
     await cp.save("b", [{ role: "user", text: "b-msg" }]);
