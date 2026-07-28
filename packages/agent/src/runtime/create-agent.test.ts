@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { AIMessageChunk, ChatModel, ChatModelOptions, Tool } from "@my-agent-team/core";
 import type { Message, MessageRevision } from "@my-agent-team/message";
-import type { InterruptState } from "./checkpointer.js";
-import type { AgentEvent } from "./create-agent.js";
-import { createAgent, InterruptSignal } from "./create-agent.js";
+import type { InterruptState } from "../persistence/checkpointer.js";
+import { InterruptSignal } from "../persistence/interrupt-store.js";
+import type { AgentEvent } from "./agent-event.js";
+import { createAgent } from "./create-agent.js";
 import { definePlugin } from "./plugin.js";
 
 async function collect<T>(stream: AsyncIterable<T>): Promise<T[]> {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Message } from "@my-agent-team/message";
-import type { InterruptState } from "../checkpointer.js";
+import type { InterruptState } from "./checkpointer.js";
 import { inMemoryCheckpointer } from "./in-memory.js";
 
 describe("inMemoryCheckpointer", () => {

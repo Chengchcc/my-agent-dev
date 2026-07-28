@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Message } from "@my-agent-team/message";
-import { type ContextManagerContext, pipeContextManagers } from "./context-manager.js";
 import { consoleLogger } from "../runtime/logger.js";
+import { type ContextManagerContext, pipeContextManagers } from "./context-manager.js";
 
 const ctx: ContextManagerContext = {
   sessionId: "t1",

@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import type { Message } from "@my-agent-team/message";
-import { Session } from "./session.js";
 import { memorySessionStorage } from "./memory-session-storage.js";
+import { Session } from "./session.js";
 import { sqliteSessionStorage } from "./sqlite-session-storage.js";
 
 const u = (text: string): Message => ({ role: "user", text });

@@ -7,18 +7,16 @@ import type {
   ToolResultBlock,
 } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
+import { createContextStore } from "../context/context.js";
+import { passthroughContextManager } from "../context/passthrough.js";
+import { inMemoryCheckpointer } from "../persistence/in-memory.js";
+import { memorySessionStorage } from "../persistence/memory-session-storage.js";
+import { Session } from "../persistence/session.js";
 import type { AgentRuntime, FollowUpQueue, SteeringQueue } from "./agent-options.js";
-import {
-  consoleLogger,
-  createContextStore,
-  createThread,
-  inMemoryCheckpointer,
-  memorySessionStorage,
-  passthroughContextManager,
-  Session,
-} from "./create-agent.js";
+import { consoleLogger } from "./logger.js";
 import { createPluginRunner } from "./plugin-dispatcher.js";
 import { spanLoop } from "./span-loop.js";
+import { createThread } from "./thread.js";
 
 /** Consume an async iterable to completion (side-effect-only tests). */
 async function drain(iter: AsyncIterable<unknown>): Promise<void> {

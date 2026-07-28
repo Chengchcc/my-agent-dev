@@ -1,17 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { Tool, ToolUseBlock } from "@my-agent-team/core";
+import { createContextStore } from "../context/context.js";
+import { passthroughContextManager } from "../context/passthrough.js";
+import { inMemoryCheckpointer } from "../persistence/in-memory.js";
+import { memorySessionStorage } from "../persistence/memory-session-storage.js";
+import { Session } from "../persistence/session.js";
 import type { AgentRuntime } from "./agent-options.js";
 import { runOneCollect } from "./execute-one.js";
-import {
-  consoleLogger,
-  createContextStore,
-  createThread,
-  inMemoryCheckpointer,
-  memorySessionStorage,
-  passthroughContextManager,
-  Session,
-} from "./create-agent.js";
+import { consoleLogger } from "./logger.js";
 import { createPluginRunner } from "./plugin-dispatcher.js";
+import { createThread } from "./thread.js";
 
 function makeRuntime(tools: Tool[] = []): AgentRuntime {
   const toolMap = new Map(tools.map((t) => [t.name, t]));
