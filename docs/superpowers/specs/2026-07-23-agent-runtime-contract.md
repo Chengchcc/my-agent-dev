@@ -312,7 +312,7 @@ export interface CreateAgentSessionInput {
   tools?: readonly Tool[];
   sessionManager?: SessionManager;
   sessionId?: string;
-  contextManager?: ContextManager;
+  contextManager?: ContextPipeline;
   systemPrompt?: string;
 }
 

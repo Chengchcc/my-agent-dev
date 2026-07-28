@@ -6,7 +6,6 @@ import type {
   ChatModel,
   Checkpointer,
   ContextPipeline,
-  ContextStore,
   Logger,
   Plugin,
   RunSpan,

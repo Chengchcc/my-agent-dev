@@ -1,4 +1,9 @@
-import type { AgentEvent, Agent as FrameworkAgent, Plugin } from "@my-agent-team/framework";
+import type {
+  AgentEvent,
+  ContextKey,
+  Agent as FrameworkAgent,
+  Plugin,
+} from "@my-agent-team/framework";
 import { createAgent, createContextStore } from "@my-agent-team/framework";
 import type { AgentConfig, AgentState } from "./agent-options.js";
 import type { CompactionResult } from "./compaction.js";
@@ -129,9 +134,8 @@ export class Agent {
     this.#emitQueueUpdate();
   }
 
-  setContext(key: string | { readonly name: string }, value: unknown): void {
-    const name = typeof key === "string" ? key : key.name;
-    this.#pendingContext.set({ name } as never, value);
+  setContext<T>(key: ContextKey<T>, value: T): void {
+    this.#pendingContext.set(key, value);
   }
 
   // ── Maintenance ───────────────────────────────────
