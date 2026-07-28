@@ -134,7 +134,6 @@
       "version": "0.0.0",
       "dependencies": {
         "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/framework": "workspace:*",
         "@my-agent-team/message": "workspace:*",
         "drizzle-orm": "^0.44.0",
         "zod": "^3.23.0",
@@ -184,16 +183,6 @@
       "version": "0.1.0",
       "dependencies": {
         "@my-agent-team/message": "workspace:*",
-      },
-    },
-    "packages/framework": {
-      "name": "@my-agent-team/framework",
-      "version": "0.1.0",
-      "dependencies": {
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
-        "drizzle-orm": "^0.44.0",
-        "zod": "^3.23.0",
       },
     },
     "packages/loop": {
@@ -668,8 +657,6 @@
     "@my-agent-team/conversation": ["@my-agent-team/conversation@workspace:packages/conversation"],
 
     "@my-agent-team/core": ["@my-agent-team/core@workspace:packages/core"],
-
-    "@my-agent-team/framework": ["@my-agent-team/framework@workspace:packages/framework"],
 
     "@my-agent-team/lark-bot": ["@my-agent-team/lark-bot@workspace:apps/lark-bot"],
 

@@ -1,13 +1,12 @@
-import type {
-  AgentEvent,
-  ContextKey,
-  Agent as FrameworkAgent,
-  Plugin,
-} from "@my-agent-team/framework";
-import { createAgent, createContextStore } from "@my-agent-team/framework";
+import type { AgentEvent } from "./runtime/agent-event.js";
+import type { ContextKey } from "./context/context.js";
+import type { Agent as FrameworkAgent } from "./runtime/agent-options.js";
+import type { Plugin } from "./runtime/plugin.js";
+import { createAgent } from "./runtime/create-agent.js";
+import { createContextStore } from "./context/context.js";
 import type { AgentConfig, AgentState } from "./agent-options.js";
 import type { CompactionResult } from "./compaction.js";
-import type { AgentEventListener } from "./framework-adapter.js";
+import type { AgentEventListener } from "./runtime/agent-options.js";
 import { createHookPlugin } from "./hook-dispatcher.js";
 
 export class Agent {

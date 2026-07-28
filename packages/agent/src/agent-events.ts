@@ -1,2 +1,2 @@
-// Re-export from framework during migration. After Cleanup, this becomes the canonical AgentEvent definition.
-export type { AgentEvent, AgentEventListener } from "@my-agent-team/framework";
+export type { AgentEvent } from "./runtime/agent-event.js";
+export type { AgentEventListener } from "./runtime/agent-options.js";

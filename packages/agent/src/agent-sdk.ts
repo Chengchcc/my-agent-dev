@@ -1,6 +1,6 @@
 import { Agent } from "./agent.js";
 import type { AgentConfig } from "./agent-options.js";
-import type { Tool } from "./framework-adapter.js";
+import type { ChatModel, Tool } from "@my-agent-team/core";
 import type { ModelRef, ModelRuntime } from "./model-runtime.js";
 import { resolveModel } from "./model-runtime.js";
 import type { SessionManager } from "./session-manager.js";
@@ -44,7 +44,6 @@ export interface CreateAgentSessionInput {
 }
 
 // Re-import ChatModel for type use
-import type { ChatModel } from "./framework-adapter.js";
 
 /**
  * Create an Agent session — thin facade over AgentConfig + SessionManager.

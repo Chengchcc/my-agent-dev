@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Session, sqliteCheckpointer, sqliteSessionStorage } from "@my-agent-team/framework";
+import { Session } from "./persistence/session.js";
+import { sqliteCheckpointer } from "./persistence/sqlite-checkpointer.js";
+import { sqliteSessionStorage } from "./persistence/sqlite-session-storage.js";
 import { echoModel } from "@my-agent-team/test-helpers";
 import { Agent } from "./agent.js";
 import type { AgentConfig } from "./agent-options.js";

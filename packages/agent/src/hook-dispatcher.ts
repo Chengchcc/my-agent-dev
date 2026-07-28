@@ -1,6 +1,6 @@
 import type { ToolResultBlock, ToolUseBlock } from "@my-agent-team/core";
-import type { HookContext, Plugin } from "@my-agent-team/framework";
-import { definePlugin } from "@my-agent-team/framework";
+import type { HookContext, Plugin } from "./runtime/plugin.js";
+import { definePlugin } from "./runtime/plugin.js";
 import type { Message } from "@my-agent-team/message";
 import type { AgentContext, AgentHooks } from "./agent-hooks.js";
 

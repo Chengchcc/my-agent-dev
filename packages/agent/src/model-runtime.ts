@@ -1,4 +1,4 @@
-import type { ChatModel } from "./framework-adapter.js";
+import type { ChatModel } from "@my-agent-team/core";
 
 /** Stable model reference string, e.g. "anthropic/claude-sonnet-4-6". */
 export type ModelRef = string;
