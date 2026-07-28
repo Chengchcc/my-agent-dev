@@ -3,7 +3,7 @@ import type { Tool, ToolUseBlock } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 import { createContextStore } from "../context/context.js";
 import { passthroughContextManager } from "../context/passthrough.js";
-import { inMemoryCheckpointer } from "../persistence/in-memory.js";
+import { inMemoryPersistence } from "../persistence/in-memory.js";
 import { consoleLogger } from "./logger.js";
 import { definePlugin, type HookContext, validatePlugins } from "./plugin.js";
 
@@ -20,7 +20,7 @@ function testCtx(overrides?: Partial<HookContext>): HookContext {
   return {
     sessionId: "t1",
     logger: consoleLogger({ level: "silent" }),
-    messageStore: inMemoryCheckpointer(),
+    messageStore: inMemoryPersistence(),
     contextManager: passthroughContextManager(),
     context: createContextStore(),
     ...overrides,

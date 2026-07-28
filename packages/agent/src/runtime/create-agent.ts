@@ -1,9 +1,8 @@
 import type { Message } from "@my-agent-team/message";
 import { createContextStore } from "../context/context.js";
 import { passthroughContextManager } from "../context/passthrough.js";
-import { type Checkpointer, validateCheckpointer } from "../persistence/checkpointer.js";
 import type { EventLog } from "../persistence/event-log.js";
-import { inMemoryCheckpointer } from "../persistence/in-memory.js";
+import { inMemoryPersistence } from "../persistence/in-memory.js";
 import type { InterruptStore } from "../persistence/interrupt-store.js";
 import { memorySessionStorage } from "../persistence/memory-session-storage.js";
 import type { MessageStore } from "../persistence/message-store.js";
@@ -38,27 +37,10 @@ export type {
 
 export async function createAgent(config: AgentConfig): Promise<Agent> {
   const sessionId = config.sessionId ?? crypto.randomUUID();
-  // Accept either a composite Checkpointer (legacy shortcut) or explicit
-  // split interfaces. Ponytail: derive the three from whichever is provided.
-  const checkpointer: Checkpointer | undefined = config.checkpointer;
-  const messageStore: MessageStore = config.messageStore ?? checkpointer ?? inMemoryCheckpointer();
-  const eventLog: EventLog | undefined =
-    config.eventLog ??
-    (checkpointer?.appendEvent && checkpointer?.readEvents
-      ? (checkpointer as EventLog)
-      : undefined);
-  const interruptStore: InterruptStore | undefined =
-    config.interruptStore ??
-    (checkpointer?.saveInterrupt && checkpointer?.consumeInterrupt
-      ? (checkpointer as InterruptStore)
-      : undefined);
-  // Validate pairing on a composite checkpointer if one was given.
-  if (checkpointer) validateCheckpointer(checkpointer);
-
-  // Session: use provided session, or construct one over a memory storage.
-  // ponytail: Session is the tree-structured persistence layer; messageStore
-  // remains the flat persistence for backward compat. When a session is
-  // provided, the caller owns its storage (e.g. SqliteSessionStorage).
+  const defaults = inMemoryPersistence();
+  const messageStore = config.messageStore ?? defaults.messageStore;
+  const eventLog = config.eventLog ?? defaults.eventLog;
+  const interruptStore = config.interruptStore ?? defaults.interruptStore;
   const session: Session = config.session ?? new Session(memorySessionStorage());
 
   let messages: Message[];

@@ -8,7 +8,6 @@ import type {
 import type { Message, MessageToolState } from "@my-agent-team/message";
 import type { ContextStore } from "../context/context.js";
 import type { ContextManager } from "../context/context-manager.js";
-import type { Checkpointer } from "../persistence/checkpointer.js";
 import type { EventLog } from "../persistence/event-log.js";
 import type { InterruptStore } from "../persistence/interrupt-store.js";
 import type { MessageStore } from "../persistence/message-store.js";
@@ -61,7 +60,6 @@ export interface AgentConfig {
   tools?: readonly Tool[];
   systemPrompt?: string;
   plugins?: readonly Plugin[];
-  checkpointer?: Checkpointer;
   messageStore?: MessageStore;
   eventLog?: EventLog;
   interruptStore?: InterruptStore;

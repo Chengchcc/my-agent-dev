@@ -1,5 +1,4 @@
 import type { Message } from "@my-agent-team/message";
-import type { Checkpointer } from "./checkpointer.js";
 import type { CheckpointEventRow, EventLog } from "./event-log.js";
 import type { InterruptState, InterruptStore } from "./interrupt-store.js";
 import type { MessageStore } from "./message-store.js";
@@ -55,20 +54,6 @@ export function inMemoryInterruptStore(): InterruptStore {
 }
 
 /** 组合 checkpointer -- 三个拆分实现组装为 Checkpointer 复合接口。 */
-export function inMemoryCheckpointer(): Checkpointer {
-  const messageStore = inMemoryMessageStore();
-  const eventLog = inMemoryEventLog();
-  const interruptStore = inMemoryInterruptStore();
-  return {
-    load: messageStore.load.bind(messageStore),
-    save: messageStore.save.bind(messageStore),
-    deleteThread: messageStore.deleteThread?.bind(messageStore),
-    appendEvent: eventLog.appendEvent.bind(eventLog),
-    readEvents: eventLog.readEvents.bind(eventLog),
-    saveInterrupt: interruptStore.saveInterrupt.bind(interruptStore),
-    consumeInterrupt: interruptStore.consumeInterrupt.bind(interruptStore),
-  };
-}
 
 /** Convenience: all three in-memory stores for testing. */
 export function inMemoryPersistence() {

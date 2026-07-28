@@ -140,7 +140,7 @@ export class Agent {
 
   async compact(instructions?: string): Promise<CompactionResult> {
     if (!this.#core) throw new Error("Agent not initialized");
-    const store = this.#config.messageStore ?? this.#config.checkpointer;
+    const store = this.#config.messageStore;
     if (!store) throw new Error("MessageStore required for compaction");
     this.#state = "compacting";
     const reason = instructions ? "manual" : "threshold";
@@ -183,7 +183,7 @@ export class Agent {
   }
 
   async getUsage(): Promise<number> {
-    const el = this.#config.eventLog ?? this.#config.checkpointer;
+    const el = this.#config.eventLog;
     if (!el || !this.sessionId) return 0;
     const readEvents = el.readEvents;
     if (typeof readEvents !== "function") return 0;
@@ -229,6 +229,9 @@ export class Agent {
       sessionId: this.#config.sessionId,
       tools: this.#config.tools,
       plugins: [...(this.#config.plugins ?? []), ...plugins],
+      messageStore: this.#config.messageStore,
+      eventLog: this.#config.eventLog,
+      interruptStore: this.#config.interruptStore,
       session: this.#config.session,
       contextManager: this.#config.contextManager,
       logger: this.#config.logger,
