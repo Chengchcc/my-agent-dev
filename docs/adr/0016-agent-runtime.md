@@ -245,5 +245,5 @@ Tracing · Debugging · Evals · Metrics
 | Capability/AgentExtension runtime | — | ❌ 已删除 (P8) |
 | Backend assembly cleanup | `apps/backend/src/` | ✅ P8 |
 | Backend bootstrap cleanup | `apps/backend/src/` | ✅ P9 |
-| Naming migration (`Checkpointer` → `SessionStore`, ...) | — | ⏳ P10 |
+| Naming migration | — | ✅ P10 (public API only; full rename + Checkpointer split deferred to P11) |
 | Framework / harness deletion | — | ⏳ P11 |

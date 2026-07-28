@@ -1,3 +1,7 @@
+// P10: public type names. Implementation is framework's until P11.
+// AgentConfig.metaContext uses RunState; plugin ContextKeys are branded.
+// The metaContext callback at the backend layer uses framework.ContextStore
+// directly because branded ContextKey<T> inference requires same-module types.
 export interface ContextKey<_T> {
   readonly name: string;
 }
