@@ -40,7 +40,6 @@
         "@my-agent-team/config": "workspace:*",
         "@my-agent-team/conversation": "workspace:*",
         "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/framework": "workspace:*",
         "@my-agent-team/loop": "workspace:*",
         "@my-agent-team/message": "workspace:*",
         "@my-agent-team/plugin-conversation-context": "workspace:*",
