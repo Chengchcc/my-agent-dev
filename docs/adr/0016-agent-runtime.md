@@ -190,7 +190,6 @@ Agent 暴露 `agent.on(event, handler)`；不把任意 `agent.emit(event, payloa
 3. Backend caller adoption — Conversation/Cron/Loop/Skill Pack 使用 SDK入口。
 4. Plugin-first production migration — 继续接入现有静态 Plugin，不引入 Capability wrapper。
 5. Backend assembly cleanup — 去除重复 plugin/model/context 组装。
-6. Naming migration — Checkpointer/ContextStore/ContextManager 等逐项重命名。
 7. 删除 framework/harness。
 
 ---
@@ -245,4 +244,3 @@ Tracing · Debugging · Evals · Metrics
 | Capability/AgentExtension runtime | — | ❌ 已删除 (P8) |
 | Backend assembly cleanup | `apps/backend/src/` | ✅ P8 |
 | Backend bootstrap cleanup | `apps/backend/src/` | ✅ P9 |
-| Naming migration | — | ✅ P10 (public API only; full rename + Checkpointer split deferred to P11) |
