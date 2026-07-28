@@ -41,7 +41,6 @@
         "@my-agent-team/conversation": "workspace:*",
         "@my-agent-team/core": "workspace:*",
         "@my-agent-team/framework": "workspace:*",
-        "@my-agent-team/harness": "workspace:*",
         "@my-agent-team/loop": "workspace:*",
         "@my-agent-team/message": "workspace:*",
         "@my-agent-team/plugin-conversation-context": "workspace:*",
@@ -194,15 +193,6 @@
         "@my-agent-team/message": "workspace:*",
         "drizzle-orm": "^0.44.0",
         "zod": "^3.23.0",
-      },
-    },
-    "packages/harness": {
-      "name": "@my-agent-team/harness",
-      "version": "0.1.0",
-      "dependencies": {
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/framework": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
       },
     },
     "packages/loop": {
@@ -679,8 +669,6 @@
     "@my-agent-team/core": ["@my-agent-team/core@workspace:packages/core"],
 
     "@my-agent-team/framework": ["@my-agent-team/framework@workspace:packages/framework"],
-
-    "@my-agent-team/harness": ["@my-agent-team/harness@workspace:packages/harness"],
 
     "@my-agent-team/lark-bot": ["@my-agent-team/lark-bot@workspace:apps/lark-bot"],
 
