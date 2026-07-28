@@ -19,7 +19,7 @@ used_by:
 
 执行事实流（一次运行内的模型/工具调用明细）本就是 **checkpointer** 该持有的东西——它是 session 运行档案的一部分。runner daemon 时代，runner 在独立进程里执行 Agent，需要把这些事件跨进程上报给 backend，于是把这份职责从 checkpointer 剥离出来，落进 backend 自己的一张独立表 `event_log`，按 `runId` 切。
 
-runner daemon 删除后，AgentSession 改为在 backend 进程内直接执行。跨进程上报的前提消失，`event_log` 表也随之**失去了任何生产写入方**（仅测试代码仍写），成为死表。`supervisor` 上注册的 `onRunEvent` 钩子从不触发，是这段剥离留下的残骸。
+runner daemon 删除后，Agent 改为在 backend 进程内直接执行。跨进程上报的前提消失，`event_log` 表也随之**失去了任何生产写入方**（仅测试代码仍写），成为死表。`supervisor` 上注册的 `onRunEvent` 钩子从不触发，是这段剥离留下的残骸。
 
 ## 现在去哪了
 

@@ -3,7 +3,7 @@ id: architecture.index
 title: 架构 Wiki 首页
 status: current
 owners: architecture
-last_verified_against_code: 2026-06-22
+last_verified_against_code: 2026-07-28
 summary: "这是给人看的架构 Wiki 入口。它不是按里程碑流水账排的，而是按「你想干什么」组织阅读路线。先在这里选好路线，再去读具体实现页。"
 depends_on:
 used_by:
@@ -13,7 +13,7 @@ used_by:
 
 这是给人看的架构 Wiki 入口，按「你想干什么」组织阅读路线。先选路线，再读具体实现。
 
-读完相关页面，你应该不用翻源码就能讲清楚系统怎么运转——消息怎么从输入框到 ledger、一次运行怎么被监督和恢复、一份产出怎么在 Lark 端做到不重不丢。每页正文是中文叙述加配图和伪代码；页首 frontmatter（YAML 元数据：`summary` / `depends_on` / `used_by`）和独立的 `index.llm.md`、`concepts.json` 供 LLM 消费。
+读完相关页面，你应该不用翻源码就能讲清楚系统怎么运转--消息怎么从输入框到 ledger、一次运行怎么被监督和恢复、一份产出怎么在 Lark 端做到不重不丢。每页正文是中文叙述加配图和伪代码；页首 frontmatter（YAML 元数据：`summary` / `depends_on` / `used_by`）和独立的 `index.llm.md`、`concepts.json` 供 LLM 消费。
 
 ## 推荐阅读路线
 
@@ -28,21 +28,20 @@ used_by:
 ### 在后端运行时上干活
 
 1. [后端总览](./backend/overview.md)
-2. [AgentSession](./harness/harness.md)
+2. [Agent](./harness/harness.md)
 3. [EventLog（已废止）](./backend/event-log.md)
 4. [会话投影](./backend/conversation-projection.md)
 5. [数据模型](./backend/data-model.md)
 
 ### 在 Agent 运行时上干活
 
-1. [AgentSession](./harness/harness.md)
-2. [Framework 运行循环](./runtime/framework.md)
+1. [Agent](./harness/harness.md)
+2. [Agent 运行循环](./runtime/framework.md)
 3. [上下文管理器](./runtime/context-manager.md)
 4. [Compaction](./runtime/compaction.md)
-5. [Memory](./runtime/compaction.md)
-6. [Memory](./runtime/memory.md)
-7. [运行时插件机制](./runtime/plugin.md)
-8. [标识符体系](./foundations/identifiers.md)
+5. [Memory](./runtime/memory.md)
+6. [运行时插件机制](./runtime/plugin.md)
+7. [标识符体系](./foundations/identifiers.md)
 
 ### 在 Web 或飞书端干活
 
@@ -56,9 +55,9 @@ used_by:
 
 > `foundations/loop.md`、`backend/loop-runner.md`、`foundations/loop-pattern.md` 均为 `status: design`（已锁定设计，尚未进代码）。
 
-1. [Loop](./foundations/loop.md) — 按调度自动发现工作、用 Generator/Evaluator 分离的流水线推进
-2. [LoopRunner](./backend/loop-runner.md) — Loop 的编排引擎：discovery → generator → evaluator → human gate
-3. [Loop Pattern](./foundations/loop-pattern.md) — 7 种预制配置模板 + L1/L2/L3 信任层级 + Loop Ready Score
+1. [Loop](./foundations/loop.md) - 按调度自动发现工作、用 Generator/Evaluator 分离的流水线推进
+2. [LoopRunner](./backend/loop-runner.md) - Loop 的编排引擎：discovery -> generator -> evaluator -> human gate
+3. [Loop Pattern](./foundations/loop-pattern.md) - 7 种预制配置模板 + L1/L2/L3 信任层级 + Loop Ready Score
 4. [Loop Engineering](./foundations/loop-engineering.md)（`status: design`）
 5. [Loop 验证端到端](./flows/e2e-loop-verification.md)（`status: design`）
 
@@ -86,4 +85,4 @@ used_by:
 
 ## 一条规则：先写现状
 
-正文描述的是「当前代码就是这么跑的」。还没落地的设想统一放进 [未来工作](./roadmap/future-work.md) 或某页的「当前缺口」小节，不要混进现状描述里——否则读者会把愿景当成已实现。
+正文描述的是「当前代码就是这么跑的」。还没落地的设想统一放进 [未来工作](./roadmap/future-work.md) 或某页的「当前缺口」小节，不要混进现状描述里--否则读者会把愿景当成已实现。

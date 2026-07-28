@@ -1,6 +1,6 @@
 # backend
 
-基于 Bun 的有状态后端服务。暴露 HTTP/SSE API，管理 agent 生命周期、承载多方 conversation、编排 agent 执行（run）。Agent 通过 `AgentSession` 在进程内直接执行，不再需要独立 runner 进程。Web 控制台和 Lark bot 通过它读写状态、发起运行、订阅事件。
+基于 Bun 的有状态后端服务。暴露 HTTP/SSE API，管理 agent 生命周期、承载多方 conversation、编排 agent 执行（run）。Agent 在进程内直接执行，不再需要独立 runner 进程。Web 控制台和 Lark bot 通过它读写状态、发起运行、订阅事件。
 
 ## 它做什么
 
@@ -17,4 +17,4 @@
 
 组合根 `src/main.ts` 加载配置、打开 DB、构造各域 adapter 和 service，用闭包把跨域协作接在一起，组装 HTTP 路由。各域之间只通过 interface 和注入的 callback 交互。
 
-Run 执行：`run-executor.ts` 统一驱动 Conversation / Issue / Cron 三条路径。每条路径调用 `supervisor.startMainRun` 建行后，`executeAgentRun` 创建 AgentSession 并 fire-and-forget 执行。完成信号经 `notifyRunComplete` 统一触发投影与锁释放。
+Run 执行：`run-executor.ts` 统一驱动 Conversation / Issue / Cron 三条路径。每条路径调用 `supervisor.startMainRun` 建行后，`executeAgentRun` 创建 Agent 并 fire-and-forget 执行。完成信号经 `notifyRunComplete` 统一触发投影与锁释放。

@@ -3,8 +3,8 @@ id: backend.conversation-projection
 title: 会话消息流
 status: current
 owners: backend-runtime
-last_verified_against_code: 2026-06-25
-summary: "会话消息流描述 assistant 消息如何从 AgentSession 的 onEvent 回调写入 conversation ledger，并 fan-out 到 Web 和 Lark Bot。消息不经过独立进程——AgentSession 在 Backend 进程内产生事件，回调直接写 ledger。"
+last_verified_against_code: 2026-07-28
+summary: "会话消息流描述 assistant 消息如何从 Agent 的 onEvent 回调写入 conversation ledger，并 fan-out 到 Web 和 Lark Bot。消息不经过独立进程--Agent 在 Backend 进程内产生事件，回调直接写 ledger。"
 depends_on:
   - conversation.ledger
 used_by:
@@ -17,18 +17,18 @@ used_by:
 
 # 会话消息流
 
-会话消息流把 AgentSession 产生的 assistant 消息写入 conversation ledger，然后 fan-out 到各端。消息不经过 transport 或独立进程——AgentSession 在 Backend 进程内运行，通过 `onEvent` 回调直接写入。
+会话消息流把 Agent 产生的 assistant 消息写入 conversation ledger，然后 fan-out 到各端。消息不经过 transport 或独立进程--Agent 在 Backend 进程内运行，通过 `onEvent` 回调直接写入。
 
-核心概念：[conversation ledger](../conversation/ledger.md) 是对话的 canonical store；[AgentSession](../harness/harness.md) 管理 Agent 运行；执行事实流（tool_start/tool_end/llm_call）由 framework run-loop 写入 checkpointer 的 `checkpoint_events`（按 spanId 切），不进 ledger。
+核心概念：[conversation ledger](../conversation/ledger.md) 是对话的 canonical store；[Agent](../runtime/plugin.md) 管理 Agent 运行；执行事实流（tool_start/tool_end/llm_call）由 agent runtime (span-loop) 经 eventLog.appendEvent 写入 checkpoint_events（按 spanId 切），不进 ledger。
 
-## startAgentRun：创建并监听 AgentSession
+## startAgentRun：创建并监听 Agent
 
-Backend 的 `startAgentRun` 创建 AgentSession 并注册内部回调：
+Backend 的 `startAgentRun` 创建 Agent 并注册内部回调：
 
 ```typescript
-const session = new AgentSession({ threadId, plugins, checkpointer, ... });
+const agent = new Agent({ sessionId, plugins, messageStore, eventLog, interruptStore, ... });
 
-session.subscribe((event) => {
+agent.subscribe((event) => {
   if (event.type === "message") {
     // 直写 conversation ledger（critical）
     const seq = await convSvc.appendAssistantMessage({
@@ -47,11 +47,11 @@ session.subscribe((event) => {
   }
 });
 
-await session.prompt(input);
-session.dispose();
+await agent.prompt(input);
+agent.dispose();
 ```
 
-消息直接写入 ledger——不经过独立的 projection 步骤。非消息执行事件（tool_start、tool_end、llm_call 等）由 framework run-loop 写入 checkpointer 的 `checkpoint_events`（按 spanId 切），与对话消息分属两条流。
+消息直接写入 ledger--不经过独立的 projection 步骤。非消息执行事件（tool_start、tool_end、llm_call 等）由 agent runtime (span-loop) 经 eventLog.appendEvent 写入 checkpoint_events（按 spanId 切），与对话消息分属两条流。
 
 ## 消息 revision upsert 模型
 
@@ -64,8 +64,8 @@ assistant 消息从 streaming → done/error 是同一个 `messageId` 的多次 
 ## 不变量
 
 1. assistant 消息和人类消息经同一 `appendLedgerEntry` 底层入口写入 ledger。
-2. ledger 是对话 canonical store；执行事实流（tool calls 等）在 checkpointer 的 `checkpoint_events`，按 spanId 切，不进 ledger。
-3. 消息从 AgentSession 的 `onEvent` 回调直接写入——不经过 transport。
+2. ledger 是对话 canonical store；执行事实流（tool calls 等）在 EventLog 的 `checkpoint_events`，按 spanId 切，不进 ledger。
+3. 消息从 Agent 的 `onEvent` 回调直接写入--不经过 transport。
 4. reflect 使用独立的 `threadId`（`reflect:{original}`），消息不进主流 conversation ledger。
 5. terminal 写入后释放 `ConversationLock`，不阻塞后续消息。
 
@@ -77,7 +77,7 @@ assistant 消息从 streaming → done/error 是同一个 `messageId` 的多次 
 ## 关联页面
 
 - [Conversation Ledger](../conversation/ledger.md)
-- [AgentSession](../harness/harness.md)
+- [Agent](../runtime/plugin.md)
 - [EventLog（已废止）](./event-log.md)
 - [Web 消息端到端](../flows/e2e-web-message.md)
 - [Lark 适配器](../surfaces/lark-adapter.md)

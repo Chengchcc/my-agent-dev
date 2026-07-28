@@ -16,7 +16,7 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/system-overview.md",
-      "summary": "整个系统是一个「团队 Agent」运行时：端负责输入与渲染，后端持有事实并直接在进程内通过 AgentSession 驱动 Agent。assistant 消息经 onEvent 回调直写 conversation ledger，非消息执行事件经 run-loop 写 checkpointer 的执行事实流（按 spanId）。conversation ledger SSE 是用户可见输出的唯一通道。",
+      "summary": "整个系统是一个「团队 Agent」运行时：端负责输入与渲染，后端持有事实并直接在进程内通过 Agent 驱动执行。assistant 消息经 onEvent 回调直写 conversation ledger，非消息执行事件经 run-loop 写 persistence ports 的执行事实流（按 spanId）。conversation ledger SSE 是用户可见输出的唯一通道。",
       "depends_on": ["foundations.facts-and-projections"],
       "used_by": ["flows.e2e-web-message", "flows.e2e-lark-message"]
     },
@@ -26,7 +26,7 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/foundations/facts-and-projections.md",
-      "summary": "系统里有好几个结构都叫「messages」，但它们回答的是不同的问题。conversation ledger 和 checkpointer 的执行事实流（checkpoint_events，按 spanId）是持久的「事实」；SSE 流是从事实推导出来的「投影」；checkpointer 同时还持有执行恢复用的状态。把它们混为一谈，正是重复消息、检查点污染、UI 丢事件这类 bug 的根源。",
+      "summary": "系统里有好几个结构都叫「messages」，但它们回答的是不同的问题。conversation ledger 和 EventLog 的执行事实流（checkpoint_events，按 spanId）是持久的「事实」；SSE 流是从事实推导出来的「投影」；persistence ports 同时还持有执行恢复用的状态。把它们混为一谈，正是重复消息、检查点污染、UI 丢事件这类 bug 的根源。",
       "depends_on": [],
       "used_by": [
         "backend.conversation-projection",
@@ -40,7 +40,7 @@
       "status": "current",
       "owners": "backend-runtime",
       "path": "docs/architecture/backend/conversation-projection.md",
-      "summary": "会话消息流把 AgentSession 产生的 assistant 消息写入 conversation ledger，然后 fan-out 到 Web 和 Lark Bot。消息不经过 transport——AgentSession 在 Backend 进程内运行，通过 onEvent 回调直接写 ledger。",
+      "summary": "会话消息流把 Agent 产生的 assistant 消息写入 conversation ledger，然后 fan-out 到 Web 和 Lark Bot。消息不经过 transport--Agent 在 Backend 进程内运行，通过 onEvent 回调直接写 ledger。",
       "depends_on": ["conversation.ledger"],
       "used_by": [
         "surfaces.web",
@@ -72,12 +72,12 @@
     },
     {
       "id": "backend.loop-runner",
-      "title": "LoopRunner — Loop 编排引擎",
+      "title": "LoopRunner - Loop 编排引擎",
       "status": "design",
       "owners": "backend-runtime",
       "path": "docs/architecture/backend/loop-runner.md",
-      "summary": "LoopRunner 是 Loop 的编排引擎——按调度唤醒、运行 discovery agent、对每个 finding 启动 generator（写）→ evaluator（审）两棒流水线、写入 STATE.md 持久状态、最终等人审批。Generator 和 Evaluator 是不同 AgentSession 实例，必须用不同 model。",
-      "depends_on": ["foundations.loop", "harness.harness", "runtime.framework"],
+      "summary": "LoopRunner 是 Loop 的编排引擎--按调度唤醒、运行 discovery agent、对每个 finding 启动 generator（写）-> evaluator（审）两棒流水线、写入 STATE.md 持久状态、最终等人审批。Generator 和 Evaluator 是不同 Agent 实例，必须用不同 model。",
+      "depends_on": ["foundations.loop", "runtime.framework"],
       "used_by": []
     },
     {
@@ -86,7 +86,7 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/backend/data-model.md",
-      "summary": "持久状态分布在三处：backend.db 拥有 agents、对话、成员和账本；events.db 拥有运行、尝试和各类 ops 表；checkpointer.db 拥有 session 的完整运行档案——恢复用的 messages/interrupts，以及执行事实流 checkpoint_events（按 spanId 切）。",
+      "summary": "持久状态分布在三处：backend.db 拥有 agents、对话、成员和账本；events.db 拥有运行、尝试和各类 ops 表；checkpointer.db 拥有 session 的完整运行档案--恢复用的 messages/interrupts（经 MessageStore + InterruptStore），以及执行事实流 checkpoint_events（按 spanId 切，经 EventLog）。",
       "depends_on": ["foundations.facts-and-projections"],
       "used_by": ["backend.conversation-projection", "operations.troubleshooting"]
     },
@@ -146,7 +146,7 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/flows/e2e-web-message.md",
-      "summary": "这条流追踪一条 Web 用户消息：从乐观 UI，经 conversation ledger、AgentSession 直接执行，到 conversation SSE 按 messageId upsert 对账。AgentSession 在 Backend 进程内驱动 Agent。",
+      "summary": "这条流追踪一条 Web 用户消息：从乐观 UI，经 conversation ledger、Agent 直接执行，到 conversation SSE 按 messageId upsert 对账。Agent 在 Backend 进程内驱动执行。",
       "depends_on": ["surfaces.web", "backend.conversation-projection"],
       "used_by": []
     },
@@ -156,7 +156,7 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/flows/e2e-lark-message.md",
-      "summary": "这条流追踪一条飞书消息：从会话绑定、成员映射、conversation ledger 追加、AgentSession 执行，到 sse-watcher 解析 revision 去重推送。",
+      "summary": "这条流追踪一条飞书消息：从会话绑定、成员映射、conversation ledger 追加、Agent 执行，到 sse-watcher 解析 revision 去重推送。",
       "depends_on": ["surfaces.lark-adapter", "backend.conversation-projection"],
       "used_by": []
     },
@@ -176,13 +176,12 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/runtime/framework.md",
-      "summary": "Framework 是 Agent 真正「思考—行动」的运行时核心。它的心脏是 runLoop：受 maxSteps 约束的循环，每一步可能调模型、可能调工具，并把过程拆成一串结构化 AgentEvent 往外吐。",
+      "summary": "Agent 运行循环是 Agent 真正「思考-行动」的运行时核心（packages/agent）。它的心脏是 runLoop：受 maxSteps 约束的循环，每一步可能调模型、可能调工具，并把过程拆成一串结构化 AgentEvent 往外吐。",
       "depends_on": [],
       "used_by": [
         "runtime.context-manager",
         "runtime.plugin",
-        "plugins.task-guard",
-        "harness.harness"
+        "plugins.task-guard"
       ]
     },
     {
@@ -191,9 +190,9 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/runtime/context-manager.md",
-      "summary": "上下文管理器（ContextManager）是 runLoop 在每次调模型「之前」对消息历史做整形的那一道关口。框架自带 5 种实现，可用 pipeContextManagers 串联。",
+      "summary": "上下文管理器（ContextPipeline）是 runLoop 在每次调模型「之前」对消息历史做整形的那一道关口。框架自带 5 种实现，可用 pipeContextManagers 串联。",
       "depends_on": ["runtime.framework"],
-      "used_by": ["runtime.plugin", "harness.harness"]
+      "used_by": ["runtime.plugin"]
     },
     {
       "id": "runtime.plugin",
@@ -201,11 +200,10 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/runtime/plugin.md",
-      "summary": "插件是往 Framework 运行循环里挂行为的标准方式。一个插件就是一个带名字、带钩子、可选带工具的对象；createAgent 收下所有插件，在循环的各个节点按顺序触发它们的钩子。",
+      "summary": "插件是往 Agent 运行循环里挂行为的标准方式。一个插件就是一个带名字、带钩子、可选带工具的对象；Agent 收下所有插件，在循环的各个节点按顺序触发它们的钩子。",
       "depends_on": ["runtime.framework"],
       "used_by": [
         "runtime.context-manager",
-        "harness.harness",
         "plugins.fs-memory",
         "plugins.progressive-skill",
         "plugins.task-guard"
@@ -213,13 +211,13 @@
     },
     {
       "id": "harness.harness",
-      "title": "AgentSession — Agent 编排层",
-      "status": "current",
+      "title": "AgentSession - Agent 编排层（已删除）",
+      "status": "deleted",
       "owners": "architecture",
       "path": "docs/architecture/harness/harness.md",
-      "summary": "AgentSession 把 Framework 的 Agent + Checkpointer + PluginRunner + ContextManager 组成为一个有生命周期管理（prompt/continue/resume/abort）和自动化维护（retry/compaction）的运行时单元。Backend 直接跟 AgentSession 对话。",
-      "depends_on": ["runtime.framework", "runtime.plugin", "runtime.context-manager"],
-      "used_by": ["flows.e2e-web-message", "flows.e2e-lark-message", "backend.overview"]
+      "summary": "AgentSession 编排层已在 P11 删除，合并进 packages/agent 的 Agent 类。原 harness 包 + framework 包均已删除，所有 runtime 代码现在 packages/agent。",
+      "depends_on": [],
+      "used_by": []
     },
     {
       "id": "plugins.fs-memory",
@@ -261,8 +259,7 @@
       "depends_on": [
         "foundations.facts-and-projections",
         "backend.conversation-projection",
-        "runtime.framework",
-        "harness.harness"
+        "runtime.framework"
       ],
       "used_by": []
     },
@@ -276,7 +273,6 @@
       "depends_on": [
         "foundations.loop-engineering",
         "foundations.cron-job",
-        "harness.harness",
         "runtime.framework"
       ],
       "used_by": ["backend.loop-runner", "foundations.loop-pattern"]
@@ -297,13 +293,12 @@
       "status": "design",
       "owners": "architecture",
       "path": "docs/architecture/foundations/loop-engineering.md",
-      "summary": "harness 之上的第四层：不再一遍遍手写 prompt，而是设计出替你 prompt agent 的 loop。内层 loop（一次 run）与外层 loop（跨轮工作）的区别、五个动作、maker-checker 独立 AgentSession。本体不落数据库。",
+      "summary": "Agent 之上的第四层：不再一遍遍手写 prompt，而是设计出替你 prompt agent 的 loop。内层 loop（一次 run）与外层 loop（跨轮工作）的区别、五个动作、maker-checker 独立 Agent。本体不落数据库。",
       "depends_on": [
         "foundations.loop",
         "foundations.loop-pattern",
         "backend.loop-runner",
         "foundations.cron-job",
-        "harness.harness",
         "design-philosophy"
       ],
       "used_by": ["flows.e2e-loop-verification", "roadmap.future-work"]
@@ -315,7 +310,7 @@
       "owners": "architecture",
       "path": "docs/architecture/security/overview.md",
       "summary": "这个系统的安全性靠几条彼此正交的隔离边界叠加：后端入口的鉴权中间件、对话层的线程隔离、以及 Agent 的工作目录隔离。",
-      "depends_on": ["conversation.members", "harness.harness"],
+      "depends_on": ["conversation.members"],
       "used_by": []
     },
     {
@@ -324,7 +319,7 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/operations/troubleshooting.md",
-      "summary": "把常见故障按「症状 → 该去哪条事实线查 → 根因方向」组织。核心心法：先判断问题落在哪一层——是账本错了，还是 SSE 错了，还是执行错了。",
+      "summary": "把常见故障按「症状 -> 该去哪条事实线查 -> 根因方向」组织。核心心法：先判断问题落在哪一层--是账本错了，还是 SSE 错了，还是执行错了。",
       "depends_on": ["foundations.facts-and-projections", "backend.conversation-projection"],
       "used_by": []
     },
@@ -335,7 +330,7 @@
       "owners": "architecture",
       "path": "docs/architecture/foundations/cron-job.md",
       "summary": "CronJob 是「一条按时间表反复触发 Agent 运行的定时规则」，是 Issue 之外第二个触发型领域本体。到点经 startAgentRun 起一次 run。",
-      "depends_on": ["harness.harness"],
+      "depends_on": [],
       "used_by": []
     },
     {
@@ -344,7 +339,7 @@
       "status": "future",
       "owners": "architecture",
       "path": "docs/architecture/roadmap/future-work.md",
-      "summary": "这一页是唯一谈「还没做 / 想做」的地方——刻意和描述当前状态的所有页面隔离开。",
+      "summary": "这一页是唯一谈「还没做 / 想做」的地方--刻意和描述当前状态的所有页面隔离开。",
       "depends_on": [
         "backend.conversation-projection",
         "surfaces.lark-adapter",
@@ -359,7 +354,7 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/adr/0001-loop-prune-is-post-processing.md",
-      "summary": "已终结 item 的清理不是 reducer action——它是 loopStep() 写 STATE.md 前固定后处理。reducer 只管 step 转移。",
+      "summary": "已终结 item 的清理不是 reducer action--它是 loopStep() 写 STATE.md 前固定后处理。reducer 只管 step 转移。",
       "depends_on": ["foundations.loop-engineering"],
       "used_by": ["backend.loop-runner"]
     },
@@ -369,7 +364,7 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/adr/0002-config-generation-is-builtin-skill.md",
-      "summary": "自然语言→config.yml 翻译做成内置 Skill `loop-config-generator`，只在创建 Loop 时跑一次。",
+      "summary": "自然语言->config.yml 翻译做成内置 Skill `loop-config-generator`，只在创建 Loop 时跑一次。",
       "depends_on": ["foundations.loop-pattern", "plugins.progressive-skill"],
       "used_by": []
     },
@@ -379,17 +374,17 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/adr/0003-state-md-single-writer.md",
-      "summary": "Discovery/Generator/Evaluator 三个 AgentSession 都不写 STATE.md——只汇报，loopStep() 更新。",
+      "summary": "Discovery/Generator/Evaluator 三个 Agent 都不写 STATE.md--只汇报，loopStep() 更新。",
       "depends_on": ["foundations.loop-engineering", "backend.loop-runner"],
       "used_by": ["flows.e2e-loop-verification"]
     },
     {
       "id": "adr.0004-discovery-session",
-      "title": "ADR 0004: Discovery 是独立 AgentSession",
+      "title": "ADR 0004: Discovery 是独立 Agent",
       "status": "current",
       "owners": "architecture",
       "path": "docs/adr/0004-discovery-is-agent-session.md",
-      "summary": "Discovery 是 loopStep() TICK 路径第一步，以独立 AgentSession（装 loop-triage skill）执行，产出 findings 经 ADD_ITEM 写入。",
+      "summary": "Discovery 是 loopStep() TICK 路径第一步，以独立 Agent（装 loop-triage skill）执行，产出 findings 经 ADD_ITEM 写入。",
       "depends_on": ["foundations.loop-engineering", "backend.loop-runner"],
       "used_by": []
     }

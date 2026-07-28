@@ -1,8 +1,8 @@
 # ADR: Agent Runtime 重构
 
 **日期**: 2026-07-22
-**状态**: design
-**范围**: `packages/agent`（新建）、`packages/framework (agent internal dep)`（重构）、`packages/harness`（吸收）、`apps/backend`（精简为薄壳）
+**状态**: implemented
+**范围**: `packages/agent`（新建，合并原 `packages/framework` + `packages/harness`）、`packages/framework`（已删除）、`packages/harness`（已删除）、`apps/backend`（精简为薄壳）
 
 ---
 
@@ -31,9 +31,8 @@ L1 core       run()            ← 正常运行
 ### 1. 两层架构
 
 ```
-旧: harness (AgentSession) → framework (createAgent + PluginHooks) → core (run)
-新: agent-runtime (Agent) → core (run)
-```
+旧: harness (AgentSession) -> framework (createAgent + PluginHooks) -> core (run)
+新: agent (Agent) -> core (run)
 
 - `AgentSession` 的职责（状态机、steering、retry、compaction）→ `Agent` 类
 - `PluginHooks` → 升级为 typed `AgentHooks`（event + handler + return value）
@@ -99,7 +98,7 @@ jiti loader
 
 ### 实施契约说明
 
-本 ADR 的 TypeScript 片段表达目标方向，不是迁移期间可直接执行的完整接口。跨 phase 的具体公共边界、不变量、兼容策略和 handoff 规则以 [`2026-07-23-agent-runtime-contract.md`](../superpowers/specs/2026-07-23-agent-runtime-contract.md) 为准。
+本 ADR 的 TypeScript 片段表达设计方向。迁移已完成（P11），以下约束均已落地。跨 phase 的具体公共边界、不变量和 handoff 规则以 [`2026-07-23-agent-runtime-contract.md`](../superpowers/specs/2026-07-23-agent-runtime-contract.md) 为准。
 
 具体约束：
 
@@ -126,10 +125,10 @@ Agent 不直接依赖外部系统。Backend 负责创建共享基础设施；Plu
 | `createAgent()` | `Agent` 类 | 工厂函数 → 一等对象 |
 | `PluginHooks` | `AgentHooks` | 明确归属 |
 | `HookContext` | `AgentContext` | 上下文是谁的 |
-| `AgentSession` | 并入 `Agent` | 一个 Agent 一个实体 |
+| `AgentSession` | 并入 `Agent` | ✅ 一个 Agent 一个实体 |
 | `SessionConfig` | `AgentConfig` | ✅ P10-1 |
 | `ChatModel` | 保留 | `Model` 是 provider metadata，已存在不同概念 |
-| `Checkpointer` | `MessageStore` + `EventLog` + `InterruptStore` | ⏳ P11 — framework 吸收时拆为 MessageStore+EventLog+InterruptStore |
+| `Checkpointer` | `MessageStore` + `EventLog` + `InterruptStore` | ✅ P11 - 拆为 MessageStore + EventLog + InterruptStore |
 | `ContextManager` | `ContextPipeline` | ✅ P10-3 agent 公共 API |
 | `ContextStore` | `RunState` | ✅ P10-2 唯一公共类型 |
 | `steering / followUp` | 保留独立语义 | 不是同一 interrupt(input) |
@@ -143,7 +142,7 @@ Agent 不直接依赖外部系统。Backend 负责创建共享基础设施；Plu
 @my-agent-team/framework
 @my-agent-team/harness
 
-新:
+新（已落地）:
 @my-agent-team/ai               ← provider/model runtime
 @my-agent-team/core             ← protocol + run
 @my-agent-team/agent            ← Agent + SDK + Plugin assembly
@@ -167,14 +166,14 @@ Agent 暴露 `agent.on(event, handler)`；不把任意 `agent.emit(event, payloa
 
 ### 改动范围
 
-| 当前 | 目标 |
-|------|------|
-| `packages/framework (agent internal dep)` | → `packages/agent` 内部实现，最终删除 |
-| `packages/harness` | → 核心并入 `agent`，最终删除 |
-| `apps/backend/main.ts` | → 薄启动层，调用 SDK/feature installers |
-| `conversation-compose.ts` | → Agent 生命周期壳，调用 `createAgentSession()` |
-| `packages/plugin-*` | → 继续作为静态 Plugin，逐个迁移到 SDK入口 |
-| `apps/backend/src/capabilities` | → 已删除 (P8) |
+| 当前 | 目标 | 状态 |
+|------|------|------|
+| `packages/framework (agent internal dep)` | -> `packages/agent` 内部实现 | ✅ 已删除 |
+| `packages/harness` | -> 核心并入 `agent` | ✅ 已删除 |
+| `apps/backend/main.ts` | -> 薄启动层，调用 SDK/feature installers | ✅ |
+| `conversation-compose.ts` | -> Agent 生命周期壳，调用 `createAgentSession()` | ✅ |
+| `packages/plugin-*` | -> 继续作为静态 Plugin，逐个迁移到 SDK入口 | ✅ |
+| `apps/backend/src/capabilities` | -> 已删除 (P8) | ✅ |
 
 ### 不做
 
@@ -185,12 +184,12 @@ Agent 暴露 `agent.on(event, handler)`；不把任意 `agent.emit(event, payloa
 
 ## 实现顺序
 
-1. Agent 类 (`packages/agent`) — 合并 framework + harness runtime 能力。
-2. AgentHooks 与 `createAgentSession()` — typed hooks、ModelRuntime、Plugin assembly。
-3. Backend caller adoption — Conversation/Cron/Loop/Skill Pack 使用 SDK入口。
-4. Plugin-first production migration — 继续接入现有静态 Plugin，不引入 Capability wrapper。
-5. Backend assembly cleanup — 去除重复 plugin/model/context 组装。
-7. 删除 framework/harness。
+1. Agent 类 (`packages/agent`) - 合并 framework + harness runtime 能力。✅
+2. AgentHooks 与 `createAgentSession()` - typed hooks、ModelRuntime、Plugin assembly。✅
+3. Backend caller adoption - Conversation/Cron/Loop/Skill Pack 使用 SDK入口。✅
+4. Plugin-first production migration - 继续接入现有静态 Plugin，不引入 Capability wrapper。✅
+5. Backend assembly cleanup - 去除重复 plugin/model/context 组装。✅
+6. 删除 framework/harness。✅
 
 ---
 
@@ -231,7 +230,7 @@ Cross-cutting:
 Tracing · Debugging · Evals · Metrics
 ```
 
-### 当前实现状态 (2026-07-24)
+### 当前实现状态 (2026-07-28)
 
 | 组件 | 位置 | 状态 |
 |------|------|------|
@@ -241,6 +240,9 @@ Tracing · Debugging · Evals · Metrics
 | `ModelRuntime` port | `packages/agent/src/model-runtime.ts` | ✅ P6-C |
 | `SessionManager` / `SqliteSessionManager` | `packages/agent/src/session-manager.ts` | ✅ P3 |
 | Plugin-first production migration | `apps/backend/src/features/` | ✅ P7 |
-| Capability/AgentExtension runtime | — | ❌ 已删除 (P8) |
+| Capability/AgentExtension runtime | - | ❌ 已删除 (P8) |
 | Backend assembly cleanup | `apps/backend/src/` | ✅ P8 |
 | Backend bootstrap cleanup | `apps/backend/src/` | ✅ P9 |
+| `Checkpointer` -> split ports | `packages/agent/src/persistence/` | ✅ P11 - MessageStore + EventLog + InterruptStore |
+| `packages/framework` | - | ✅ DELETED (P11) |
+| `packages/harness` | - | ✅ DELETED (P11) |

@@ -3,7 +3,7 @@ id: foundations.facts-and-projections
 title: 事实与投影
 status: current
 owners: architecture
-last_verified_against_code: 2026-06-22
+last_verified_against_code: 2026-07-28
 depends_on:
 used_by:
   - backend.conversation-projection
@@ -28,7 +28,7 @@ used_by:
 |---|---:|---|---|---|---|
 | **事实** | | | | | |
 | conversation_ledger | 是 | 对话可见内容 | appendLedgerEntry | 所有端 | 否 |
-| checkpoint_events | 是 | 执行事实流（按 spanId） | run-loop（appendEvent） | Ops、排障 | 否 |
+| checkpoint_events | 是 | 执行事实流（按 spanId） | EventLog（eventLog.appendEvent） | Ops、排障 | 否 |
 | **infrastructure** | | | | | |
 | ledger（broadcast cache） | 是 | broadcast cache | broadcastMessage（best-effort） | SSE subscriber 轮询 | 是 |
 | SSE 流 | 否 | transport | RunSupervisor / ConvService | Web / Lark 实时 UI | 否 |
@@ -36,7 +36,7 @@ used_by:
 ### 为什么这些不能合并
 
 - **conversation_ledger vs checkpoint_events**：ledger 存对话可见内容，checkpoint_events 存 execution detail（tool_start/tool_end/llm_call 等）。tool call 细节排障需要，但进了 ledger 会让 Lark 消息卡片渲染出 `[Unsupported content]`。反过来，成员加入通知属于 ledger，跟哪个 span 都没关系。两者都是 session 的事实，但一类对话可见、一类执行内部，渲染面不同，所以不混。
-- **checkpoint_events 归 checkpointer，不另立 EventLog**：执行事实流是 session 运行档案的一部分，和恢复状态同库同源（见[标识符体系](identifiers.md)）。曾被剥离出去的 `event_log` 表已废止（见 [EventLog tombstone](../backend/event-log.md)）。
+- **checkpoint_events 归 persistence ports (EventLog)**：执行事实流是 session 运行档案的一部分，和恢复状态同库同源（见[标识符体系](identifiers.md)）。曾被剥离出去的 `event_log` 表已废止（见 [EventLog tombstone](../backend/event-log.md)）。
 
 ## 数据流
 
@@ -45,7 +45,7 @@ graph LR
   Human[人的消息] --> Ledger[(conversation_ledger)]
   Sup[RunSupervisor] -->|"onRunMessage"| Ledger
   BPM -->|"Message[]"| Spec[preloadedMessages]
-  RL[run-loop] -->|"appendEvent(sessionId, spanId, …)"| CE[(checkpoint_events)]
+  EL[EventLog] -->|"eventLog.appendEvent(sessionId, spanId, …)"| CE[(checkpoint_events)]
   CE --> OpsUI[Ops / 排障]
   Ledger -->|"broadcast"| TP[(ledger)]
   TP --> SSE[SSE subscriber]
@@ -82,9 +82,9 @@ graph LR
 
 1. Message 领域类型只有 `@my-agent-team/message` 一处定义。
 2. conversation_ledger 是对话消息的 canonical fact store。
-3. checkpoint_events 只含 execution detail（tool_start/tool_end/llm_call/text_delta），不含对话内容；按 sessionId + spanId 切，归 checkpointer。
+3. checkpoint_events 只含 execution detail（tool_start/tool_end/llm_call/text_delta），不含对话内容；按 sessionId + spanId 切，归 persistence ports (EventLog)。
 5. ledger（broadcast cache）可随时从 conversation_ledger 重建。
-6. Checkpointer 同时持有 session 的恢复状态与执行事实流，但不是对话历史库——对话历史的 canonical 在 conversation_ledger。
+6. persistence ports: MessageStore 持恢复状态, EventLog 持执行事实流, InterruptStore 持中断状态, 但不是对话历史库--对话历史的 canonical 在 conversation_ledger。
 7. SSE 流不定义事实。
 
 ## 关联页面

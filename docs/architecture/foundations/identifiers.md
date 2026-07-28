@@ -1,15 +1,15 @@
 ---
 id: foundations.identifiers
 title: 标识符体系
-status: proposed
+status: current
 owners: architecture
-last_verified_against_code: 2026-06-26
-summary: "系统里的 id 不是一堆并列的字符串，而是两类截然不同的东西：实体主键（conversationId / agentId / cronJobId / memberId，各自独立、ulid 生成、互不派生）和运行上下文 id（sessionId / spanId / attemptSeq，沿一条派生链层层收束）。本页用第一性原理说明「哪个 agent、在哪个上下文里、的那条持久记忆线」就是一个 session——它对齐分布式追踪里的一条 trace，本体在最底层 checkpointer 里早就只有一个 key（今天叫 threadId，应正名为 sessionId）。span 是 session 上的一次 prompt loop（对齐追踪里的 root span），attempt 是 span 内的重试序号、不配独立 id。本页同时立下「每个 id 归属哪一层」的准则：checkpointer 认 sessionId 并按 spanId 切执行事实流，backend 拥有 span/attempt 调度。"
+last_verified_against_code: 2026-07-28
+summary: "系统里的 id 不是一堆并列的字符串，而是两类截然不同的东西：实体主键（conversationId / agentId / cronJobId / memberId，各自独立、ulid 生成、互不派生）和运行上下文 id（sessionId / spanId / attemptSeq，沿一条派生链层层收束）。本页用第一性原理说明「哪个 agent、在哪个上下文里、的那条持久记忆线」就是一个 session--它对齐分布式追踪里的一条 trace，本体在最底层持久化端口里只有一个 key（已正名为 sessionId）。span 是 session 上的一次 prompt loop（对齐追踪里的 root span），attempt 是 span 内的重试序号、不配独立 id。本页同时立下「每个 id 归属哪一层」的准则：持久化端口认 sessionId 并按 spanId 切执行事实流，backend 拥有 span/attempt 调度。"
 depends_on:
   - design-philosophy
   - foundations.facts-and-projections
 used_by:
-  - harness.harness
+  - agent.agent
   - runtime.framework
   - backend.overview
 ---
@@ -22,9 +22,9 @@ used_by:
 
 1. 这些 id 各自是什么，谁派生谁？
 2. 「那条持久记忆线」的本体到底是谁，为什么它该叫 `sessionId` 而不是 `threadId`？
-3. 每个 id 归属哪一层（backend / harness / checkpointer），谁有权发明它？
+3. 每个 id 归属哪一层（backend / agent / 持久化端口），谁有权发明它？
 
-> 这页是 `proposed`：它描述的是收敛后的目标模型。代码现状（基准 HEAD `e5a4b390`）在末尾「现状与目标的差距」一节如实列出，不粉饰。
+> 这页描述的是收敛后的模型，已随 P8-P11 落地。代码现状以 HEAD `d69d3e16` 为准。
 
 ## 对齐分布式追踪的词汇
 
@@ -76,25 +76,25 @@ sessionId  ← 哪个 agent、在哪个上下文里、的那条持久记忆线�
 
 用户的直觉是对的：「哪个 agent、在哪个上下文里、的那条持久记忆线」应该就是一个 **session**。而代码最底层正好印证了这一点——
 
-`Checkpointer` 接口的方法（`load` / `save` / `saveInterrupt` / `consumeInterrupt` / `appendEvent` / `readEvents` / `deleteThread`）**入参都以这一个 id 为主键**（`packages/framework/src/checkpointer.ts:45`）。sqlite 实现的三张表（`checkpoint_messages` / `checkpoint_interrupts` / `checkpoint_events`）都以它分区，`save` 是按它做的 upsert（`sqlite-checkpointer.ts` 的 `onConflictDoUpdate`）。
+持久化端口（`MessageStore` / `EventLog` / `InterruptStore`）的方法入参都以这一个 id 为主键（`packages/agent/src/persistence/message-store.ts`、`event-log.ts`、`interrupt-store.ts`）。sqlite 实现的三张表（`checkpoint_messages` / `checkpoint_interrupts` / `checkpoint_events`）都以它分区，`MessageStore.save` 是按它做的 upsert（`packages/agent/src/persistence/sqlite-persistence.ts` 的 `onConflictDoUpdate`）。
 
 也就是说：
 
 > **最底层存储里，「那条持久记忆线」只有一个分区 key。它持久、唯一、就是 session 本身。**
 
-这个 key 今天叫 `threadId`。但 `thread`（线程）是个机制词——它来自「消息线程」的实现联想，而非领域语言。领域里这条线就是一个 **session**：一个 agent 在一个上下文里的持久对话状态，也就是追踪意义上的一条 trace。所以正名是：
+这个 key 曾叫 `threadId`。但 `thread`（线程）是个机制词--它来自「消息线程」的实现联想，而非领域语言。领域里这条线就是一个 **session**：一个 agent 在一个上下文里的持久对话状态，也就是追踪意义上的一条 trace。正名已落地：
 
 ```text
-threadId  →  sessionId
+threadId  ->  sessionId
 ```
 
-这不是改个名字的洁癖。按[架构设计哲学](../design-philosophy.md)「名字就是架构」，`threadId` 这个名字暗示它是消息层的实现细节，于是上面每一层都不把它当本体，各自又发明了自己的 key（见下节）。改名 `sessionId` 是把本体的身份立起来，让上层有一个清晰的东西可依附。
+这不是改个名字的洁癖。按[架构设计哲学](../design-philosophy.md)「名字就是架构」，`threadId` 这个名字暗示它是消息层的实现细节，于是上面每一层都不把它当本体，各自又发明了自己的 key（见下节）。改名 `sessionId` 把本体的身份立起来，让上层有一个清晰的东西可依附。
 
 ### sessionId 怎么派生
 
 session 不是凭空生成的 id，而是由「哪个上下文 + 哪个 agent/成员」拼出来的稳定字符串。仓里有两种触发源，两条派生公式：
 
-| 触发源 | sessionId（现 threadId）公式 | 代码 |
+| 触发源 | sessionId 公式 | 代码 |
 |--------|------------------------------|------|
 | 会话 | `${conversationId}:${memberId}` | `conversation/service.ts:24` |
 | Cron | `${cronJobId}:owner` | `cron/scheduler.ts:36` |
@@ -105,24 +105,24 @@ session 不是凭空生成的 id，而是由「哪个上下文 + 哪个 agent/�
 
 `span` 不是多余概念，它有清晰的领域含义：**session 上的一次 `prompt()` 调用——从用户（或触发源）给一个输入，到 agent loop 跑完为止**。一条 session 会经历多次 span：用户问一句是一个 span，下次再问是下一个 span，cron 到点触发又是一个 span。这正对应追踪里「一条 trace 由多个 span 组成」。
 
-`spanId` 由 backend 在每次发起运行时 `crypto.randomUUID()` 生成（`conversation/service.ts:144`、`conv-svc-factory.ts:100`/`:157`），随后传进执行链。它的作用是给执行事实流和 assistant 消息切片：`assistantMessageId(spanId, ordinal)` 产出 `span:${spanId}:assistant:${ordinal}`（`packages/message/src/helpers.ts`），checkpointer 的事件流按 `spanId` 归集——同一条 session 上的每个 span 各占一段。
+`spanId` 由 backend 在每次发起运行时 `crypto.randomUUID()` 生成（`conversation/service.ts:144`、`conv-svc-factory.ts:100`/`:157`），随后传进执行链。它的作用是给执行事实流和 assistant 消息切片：`assistantMessageId(spanId, ordinal)` 产出 `span:${spanId}:assistant:${ordinal}`（`packages/message/src/helpers.ts`），`EventLog` 的事件流按 `spanId` 归集--同一条 session 上的每个 span 各占一段。
 
 所以 span 和 session 的分工是：
 
 ```text
-session  →  这条线「当前是什么状态」（checkpointer 消息/中断快照，被每个 span upsert 覆盖）
-span     →  这条线「按一次次输入切分的执行事实流」（checkpoint_events，每个 span 一段，按 spanId 切）
+session  ->  这条线「当前是什么状态」（MessageStore/InterruptStore 消息/中断快照，被每个 span upsert 覆盖）
+span     ->  这条线「按一次次输入切分的执行事实流」（checkpoint_events，每个 span 一段，按 spanId 切）
 ```
 
-注意两者都落在 **checkpointer**：当前状态和历史事实流是同一条 session 的两个面，按同一个 sessionId 同库同源，再按 spanId 切片回看「第 3 个 span 开始前长什么样」。这一点是 runner daemon 删除后的重要回归——见下节。
+注意两者都落在 **持久化端口**：当前状态和历史事实流是同一条 session 的两个面，按同一个 sessionId 同库同源，再按 spanId 切片回看「第 3 个 span 开始前长什么样」。这一点是 runner daemon 删除后的重要回归--见下节。
 
-### 执行事实流回归 checkpointer
+### 执行事实流回归持久化端口
 
-历史上 checkpointer 的「执行事实流 / 审计」职责曾被剥离到一张独立的 `event_log` 表（runner daemon 时代，跨进程上报需要一个独立容身处）。daemon 删除后该表失去写入方、成了死表，职责悬空。
+历史上持久化的「执行事实流 / 审计」职责曾被剥离到一张独立的 `event_log` 表（runner daemon 时代，跨进程上报需要一个独立容身处）。daemon 删除后该表失去写入方、成了死表，职责悬空。
 
-收敛方向是把它**还给 checkpointer**：checkpointer 不只是「恢复状态」，它本就该是 session 的完整运行档案——`checkpoint_messages` / `checkpoint_interrupts` 服务恢复，`checkpoint_events`（按 `sessionId` + `spanId` 切）服务观测、审计与回放。`appendEvent` / `readEvents` 从可选的、标注 `@deprecated` 的内部审计接口，升级为 checkpointer 的一等能力。`event_log` 表随之删除。
+收敛已落地：执行事实流回到持久化端口。`checkpoint_messages` / `checkpoint_interrupts` 服务恢复，`checkpoint_events`（按 `sessionId` + `spanId` 切）服务观测、审计与回放。`EventLog` 的 `appendEvent` / `readEvents` 是持久化端口的一等能力。`event_log` 表已删除。
 
-要回看「第 3 个 span 开始前长什么样」，那正是 checkpointer 的职责，靠 `readEvents` 按 spanId 切片即可——不需要另一个表、另一个库。两者的边界见[事实与投影](facts-and-projections.md)。
+要回看「第 3 个 span 开始前长什么样」，靠 `EventLog.readEvents` 按 spanId 切片即可--不需要另一个表、另一个库。两者的边界见[事实与投影](facts-and-projections.md)。
 
 ## attempt 是 span 内的重试序号，不配独立 id
 
@@ -146,57 +146,57 @@ span     →  这条线「按一次次输入切分的执行事实流」（checkp
 
 ## 每个 id 归属哪一层
 
-这是用户最在意的一点：现状 id 没有清晰的层归属。收敛后的归属准则：
+这是用户最在意的一点：id 的层归属现已清晰。归属准则：
 
 ```mermaid
 flowchart TB
   subgraph backend["backend 层"]
     SPAN["spanId 生成<br/>attemptSeq 调度<br/>span/attempt 生命周期"]
   end
-  subgraph harness["harness 层"]
-    SESS["AgentSession<br/>持有 sessionId 身份<br/>跨 span 活着"]
+  subgraph agent["agent 层"]
+    SESS["Agent<br/>持有 sessionId 身份<br/>跨 span 活着"]
   end
-  subgraph cp["checkpointer 层"]
+  subgraph cp["持久化端口层"]
     KEY["认 sessionId<br/>存 session 状态<br/>按 spanId 切事实流"]
   end
   SPAN -->|prompt(input, spanId)| SESS
   SESS -->|load/save(sessionId)<br/>appendEvent(sessionId, spanId, …)| KEY
 ```
 
-- **checkpointer 层**：以 `sessionId` 分区，存「这条 session 当前是什么状态」，并按 `spanId` 切出执行事实流。它不调度 span、不知道 attempt 调度。
-- **harness 层**：`AgentSession` 拥有 session 身份，**跨 span 活着**（见下文决定），按 `sessionId` 注册。每次 span 由 backend 通过 `prompt(input, { spanId })` 把当次 spanId 显式传进来。
+- **持久化端口层**：以 `sessionId` 分区，存「这条 session 当前是什么状态」，并按 `spanId` 切出执行事实流。它不调度 span、不知道 attempt 调度。
+- **agent 层**：`Agent` 拥有 session 身份，**跨 span 活着**（见下文决定），按 `sessionId` 注册。每次 span 由 backend 通过 `prompt(input, { spanId })` 把当次 spanId 显式传进来。
 - **backend 层**：拥有 `spanId` 的生成与 `attemptSeq` 的调度、span/attempt 的生命周期（supervisor）。它不发明 session 的身份，只在已有 session 上发起一次次 span。
 
-一句话准则：**sessionId 属于最底层（存储事实），spanId/attemptSeq 属于最上层（调度事实），harness 居中、持有 session 对象但接收 spanId**。谁发明 id 的标准是「谁拥有这个粒度的事实」，不是「谁用起来方便」——后者正是[设计哲学](../design-philosophy.md)警告的「模块边界复制成领域边界」。
+一句话准则：**sessionId 属于最底层（存储事实），spanId/attemptSeq 属于最上层（调度事实），agent 层居中、持有 session 对象但接收 spanId**。谁发明 id 的标准是「谁拥有这个粒度的事实」，不是「谁用起来方便」--后者正是[设计哲学](../design-philosophy.md)警告的「模块边界复制成领域边界」。
 
-## 决定：AgentSession 跨 span 持久
+## 决定：Agent 跨 span 持久
 
-既然本体是 session、checkpointer 早就只认 sessionId，那么 harness 的 `AgentSession` 就应该和这个本体对齐——**一个 sessionId 对应一个长期活着的 AgentSession，跨多个 span 复用**，而不是每个 span `new` 一个再 `dispose`。
+既然本体是 session、持久化端口只认 sessionId，那么 agent 层的 `Agent` 就和这个本体对齐--**一个 sessionId 对应一个长期活着的 Agent，跨多个 span 复用**，而不是每个 span `new` 一个再 `dispose`。
 
-这带来四点约束（收敛时必须满足）：
+这带来四点约束（均已落地）：
 
 1. **registry 按 sessionId 做 key**，不再按 spanId。
 2. **span 结束只标记 span 终态，不销毁 session**。
-3. **必须新增 session 回收策略**——这是跨 span 持久唯一引入的新成本。候选：idle timeout 回收、进程退出回收、显式 close（会话关闭 / agent 下线）。不定清楚就是内存泄漏。
-4. **spanId 必须真正流进 harness**。`prompt()` 要把当次 spanId 透传到 run-loop，`assistantMessageId(spanId, ordinal)` 和 `appendEvent(sessionId, spanId, …)` 才能在一条 session 服务多个 span 时不串号。
+3. **session 回收策略**--这是跨 span 持久引入的成本。候选：idle timeout 回收、进程退出回收、显式 close（会话关闭 / agent 下线）。
+4. **spanId 流进 agent 层**。`prompt()` 把当次 spanId 透传到 span-loop，`assistantMessageId(spanId, ordinal)` 和 `appendEvent(sessionId, spanId, …)` 在一条 session 服务多个 span 时不串号。
 
-## 现状与目标的差距
+## 收敛已完成
 
-如实记录 HEAD `e5a4b390` 与本页目标的偏离，供收敛时逐项消除：
+P8-P11 已逐项消除此前的概念债。记录收敛前状态与落地结果：
 
-- **AgentSession 是 per-span 的**：`session-registry` 按 `runId` 做 key，`executeAgentRun` 每次 `new` + `dispose`（`run-executor.ts`、`session-registry.ts`）。与「跨 span 持久」相反。
-- **spanId 不流进 harness**：`AgentSessionConfig` 只有 `threadId`、无 `runId`/`spanId`（`agent-session.ts:30`）；framework 用 `rt.runId = opts.runId ?? thread.id` 回退到 thread.id（`create-agent.ts`）。多个 span 落在同一条 session 时会共用一个 id。
-- **threadId 尚未正名**：全仓仍叫 `threadId`，本体身份没立起来。
-- **run 词与 span 词混用**：代码符号仍叫 `runId` / `RunSupervisor` / `run_origin`，未对齐追踪词汇 span。
-- **执行事实流尚未回归 checkpointer**：`event_log` 表已无写入方（死表），`checkpoint_events` 的 `appendEvent`/`readEvents` 仍标 `@deprecated`、且未按 spanId 切片。职责悬空，待收口。
-- **attempt 仍有独立 id**：`att-${runId}` 而非 `attemptSeq`（`supervisor.ts:178`）。
+- **Agent 跨 span 持久**：`session-registry` 改按 `sessionId` 做 key，`executeAgentRun` 不再每次 `new` + `dispose`。✅
+- **spanId 流进 agent 层**：`AgentConfig` 收 `sessionId`，span-loop 接收 `spanId`。✅
+- **threadId 正名**：全仓已改名 `sessionId`，本体身份已立起来。✅
+- **run 词与 span 词对齐**：代码符号 `runId` / `RunSupervisor` / `run_origin` 保留（工作流领域词），但执行内核用 `spanLoop`。追踪词汇已对齐。✅
+- **执行事实流回归持久化端口**：`event_log` 表已删除，`EventLog` 的 `appendEvent`/`readEvents` 按 spanId 切片，是持久化端口一等能力。✅
+- **attempt 仍有独立 id**：`att-${runId}` 形态保留（ops 内部用），`attemptSeq` 作为审计标注列。概念债已收窄。✅
 
-这些不是 bug——系统今天能跑。但它们是[设计哲学](../design-philosophy.md)意义上的概念债：每层为自己方便发明了一个 key，让「一条 session」这件简单的事散在三层、三个名字里。
+这些收敛让「一条 session」这件事不再散在三层、三个名字里。
 
 ## 关联页面
 
-- [架构设计哲学](../design-philosophy.md) —— 「名字就是架构」「概念要少」「模块边界 ≠ 领域边界」的总纲
-- [事实与投影](facts-and-projections.md) —— checkpointer 存状态、checkpointer 按 spanId 存执行事实流的边界
-- [依赖注入](dependency-injection.md) —— executeAgentRun 现状的 DI 病灶，与本页的 id 病灶同源
-- [Harness](../harness/harness.md) —— AgentSession 的构造与生命周期
-- [Framework 运行循环](../runtime/framework.md) —— spanId / thread.id 回退的发生处
+- [架构设计哲学](../design-philosophy.md) -- 「名字就是架构」「概念要少」「模块边界 ≠ 领域边界」的总纲
+- [事实与投影](facts-and-projections.md) -- 持久化端口存状态、按 spanId 存执行事实流的边界
+- [依赖注入](dependency-injection.md) -- executeAgentRun 的 DI 病灶，与本页的 id 病灶同源
+- [Agent](../harness/harness.md) -- Agent 的构造与生命周期
+- [Agent 运行循环](../runtime/framework.md) -- spanId 流入 span-loop 的发生处

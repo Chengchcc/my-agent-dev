@@ -4,7 +4,7 @@ title: Loop 验证端到端
 status: design
 owners: architecture
 last_verified_against_code: 2026-07-01
-summary: "一次触发里 loopStep() 读 STATE.md 判断当前 step、对 fixing item 起 Generator AgentSession 干活、再起独立 Evaluator AgentSession 动手验证「产出是否满足 config 的 acceptance」、evaluator 的结构化 verdict 经 loopReducer 转移 item.step 的完整时序。核心：loopStep() 在 evaluator 跑完后不看 run 成功与否，而读 verdict 内容转移 step——PASS 进 awaiting_review 等人拍板，REJECT 回 fixing 带反馈返工或耗尽 attempt 进 inbox。附并发写 STATE.md、非代码类无靶子等失败模式。"
+summary: "一次触发里 loopStep() 读 STATE.md 判断当前 step、对 fixing item 起 Generator Agent 干活、再起独立 Evaluator Agent 动手验证「产出是否满足 config 的 acceptance」、evaluator 的结构化 verdict 经 loopReducer 转移 item.step 的完整时序。核心：loopStep() 在 evaluator 跑完后不看 run 成功与否，而读 verdict 内容转移 step——PASS 进 awaiting_review 等人拍板，REJECT 回 fixing 带反馈返工或耗尽 attempt 进 inbox。附并发写 STATE.md、非代码类无靶子等失败模式。"
 depends_on:
   - foundations.loop-engineering
   - foundations.loop
@@ -26,8 +26,8 @@ sequenceDiagram
   participant LS as loopStep()（无状态）
   participant ST as STATE.md（唯一状态源）
   participant RED as loopReducer（纯函数）
-  participant G as Generator AgentSession
-  participant EV as Evaluator AgentSession（独立线，≠ generator model）
+  participant G as Generator Agent
+  participant EV as Evaluator Agent（独立线，≠ generator model）
   participant H as 人（review queue）
 
   T->>LS: loopStep({loopConfigPath, action?})
@@ -67,8 +67,8 @@ sequenceDiagram
 ## 一步的流程
 
 1. **拿锁 + 读状态**：`loopStep()` 先拿 loop 粒度写锁（三条入口共用），读 STATE.md + config.yml + constraints.md。
-2. **cron TICK → 起 Generator**：`loopReducer` 把 `triaged` 推到 `fixing`；对每个 `fixing` item，先过预算闸门（查 per-loop 原子计数），再起 Generator AgentSession 干活。generator 完成 → `item.step = verifying`。
-3. **独立 Evaluator**：在**另一条 AgentSession**（≠ generator model、不 fork 生成者上下文）上起怀疑姿态 Agent，装配 `verificationGuidance()` + config 的 `acceptance`，靠动手（跑测试、点按钮）验证。
+2. **cron TICK → 起 Generator**：`loopReducer` 把 `triaged` 推到 `fixing`；对每个 `fixing` item，先过预算闸门（查 per-loop 原子计数），再起 Generator Agent 干活。generator 完成 → `item.step = verifying`。
+3. **独立 Evaluator**：在**另一条 Agent**（≠ generator model、不 fork 生成者上下文）上起怀疑姿态 Agent，装配 `verificationGuidance()` + config 的 `acceptance`，靠动手（跑测试、点按钮）验证。
 4. **verdict 转移 step**：Evaluator 产出结构化 verdict。loopStep **不看 run 成功与否**，读 verdict 内容喂 `loopReducer`：
    - `PASS` → `item.step = awaiting_review`，等人拍板。
    - `REJECT` 且 `attempt < maxRetries` → 回 `fixing`（reason 作返工反馈）；attempt 耗尽 → `inbox`。
@@ -83,10 +83,10 @@ sequenceDiagram
 
 这一判断有内层视角的独立佐证：Claude Code 的一次 agent run 结束时，`ResultMessage.subtype` / `stop_reason` 只描述**内层循环为何停**（自认干完 / 撞 maxSteps / 被中断），并不承诺**任务达标**——正对应本设计「run succeeded ≠ item 达标」。内层的「停」和外层的「达标」是两码事，把它们混成一个信号就是点头回路的技术根因。
 
-### Evaluator 为什么是独立 AgentSession，而不是 Stop 钩子或 subagent
+### Evaluator 为什么是独立 Agent，而不是 Stop 钩子或 subagent
 
 - **不能放进 Stop 钩子**：Stop 钩子与生成者同进程、同上下文，等于让写代码的人自己判自己的活——违反 maker-checker。验证必须换一条独立线。
-- **比 subagent 更隔离**：Claude Code 的 subagent 仍活在父 run 的生命周期里、结果以 `tool_result` 回灌父上下文；本设计的 Evaluator 是一条**平级的独立 AgentSession**（不同 sessionId `loop:<loopId>:eval:<itemId>:<attempt>`、可绑不同更小模型），不 fork 生成者上下文，结果落成结构化 verdict 供 loopReducer 转移 step。两者都避免自评，但本设计隔离更彻底——评审者看不到生成者的思维链，只对照产出与 `acceptance`。
+- **比 subagent 更隔离**：Claude Code 的 subagent 仍活在父 run 的生命周期里、结果以 `tool_result` 回灌父上下文；本设计的 Evaluator 是一条**平级的独立 Agent**（不同 sessionId `loop:<loopId>:eval:<itemId>:<attempt>`、可绑不同更小模型），不 fork 生成者上下文，结果落成结构化 verdict 供 loopReducer 转移 step。两者都避免自评，但本设计隔离更彻底——评审者看不到生成者的思维链，只对照产出与 `acceptance`。
 
 ## 返工回路怎么闭合
 

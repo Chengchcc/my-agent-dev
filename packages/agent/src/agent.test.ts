@@ -123,11 +123,8 @@ describe("Agent", () => {
     const agent = new Agent(
       makeConfig({
         sessionId: "t",
-        checkpointer: {
-          save() {},
-          load() {
-            return [];
-          },
+        eventLog: {
+          appendEvent() {},
           readEvents() {
             throw new Error("boom");
           },

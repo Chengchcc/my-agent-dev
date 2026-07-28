@@ -3,7 +3,7 @@ id: plugins.progressive-skill
 title: 渐进式技能插件
 status: current
 owners: architecture
-last_verified_against_code: 2026-06-16
+last_verified_against_code: 2026-07-28
 summary: "渐进式技能插件（progressiveSkillPlugin）解决「技能很多但上下文有限」的矛盾。它不把所有技能正文一股脑塞进提示，而是先通过 beforeModel 只注入一份技能索引（元数据），等 Agent 判断需要某个技能时，再用 skill_load 工具按需把那一个技能的正文加载进来。M22 起支持双域发现（global + project 双 roots）、/skill:name 显式调用、以及 disableModelInvocation 关闭模型自动触发。"
 depends_on:
   - runtime.plugin
@@ -57,4 +57,4 @@ M22 新增 `findSkillByName` 能力，允许用户通过 `/skill:name` 语法显
 ## 关联页面
 
 - [运行时插件机制](../runtime/plugin.md)
-- [Harness 默认装配](../harness/harness.md)
+- [Agent 默认装配](../runtime/framework.md)

@@ -3,7 +3,7 @@ id: backend.data-model
 title: 数据模型
 status: current
 owners: architecture
-last_verified_against_code: 2026-06-17
+last_verified_against_code: 2026-07-28
 depends_on:
   - foundations.facts-and-projections
 used_by:
@@ -67,7 +67,7 @@ assistant 消息现在经 `appendAssistantMessage` 直写账本（不再通过�
 | `issue_event` | `seq PK, issue_id, kind, payload DEFAULT '{}', ts` |
 
 > `parent_span_id` 在 reflect span 缺父时存 NULL。
-> 执行事实流在 checkpointer 的 `checkpoint_events`（见下「Checkpointer」与 [EventLog tombstone](./event-log.md)）。
+> 执行事实流在 EventLog 的 `checkpoint_events`（见下「持久化」与 [EventLog tombstone](./event-log.md)）。
 > 已删除表：`projection_messages`（S2）、`runner_health`（S3）、`event_log`。
 
 
@@ -76,9 +76,9 @@ assistant 消息现在经 `appendAssistantMessage` 直写账本（不再通过�
 
 `issue(issue_id, project_id, title, status, thread_id, created_at, updated_at)`。DDL 在 `migrations.ts` 的 `backend_v23_issue`(id:5009)。status 只能经 `applyTransition` 写入（CAS 单写者），CRUD 仅有建/读/列。
 
-## Checkpointer（checkpointer.db）
+## 持久化（checkpointer.db）
 
-进程内全局 `checkpointer.db`（`config.dataDir/checkpointer.db`），按 sessionId（现 threadId）分区，**不属于 backend.db**。它持有 session 的完整运行档案：
+进程内全局 `checkpointer.db`（`config.dataDir/checkpointer.db`），按 sessionId 分区，**不属于 backend.db**。它持有 session 的完整运行档案：
 
 | 表 | 角色 |
 |---|---|
@@ -86,7 +86,7 @@ assistant 消息现在经 `appendAssistantMessage` 直写账本（不再通过�
 | `checkpoint_interrupts` | 恢复：中断 / resume |
 | `checkpoint_events` | 执行事实流 / 观测 / 审计（按 sessionId + spanId 切） |
 
-`checkpoint_events` 承接了原 `event_log` 表的职责——执行事实流本就是 session 运行档案的一部分，runner daemon 时代才被临时剥离出去（见 [EventLog tombstone](./event-log.md)）。它由 framework run-loop 经 `appendEvent(sessionId, spanId, event)` 写入，Ops/排障经 `readEvents` 读。
+`checkpoint_events` 承接了原 `event_log` 表的职责--执行事实流本就是 session 运行档案的一部分，runner daemon 时代才被临时剥离出去（见 [EventLog tombstone](./event-log.md)）。它由 agent runtime (span-loop) 经 `eventLog.appendEvent(sessionId, spanId, event)` 写入，Ops/排障经 `readEvents` 读。
 
 ## 实体关系
 

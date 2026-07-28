@@ -3,7 +3,7 @@ id: backend.overview
 title: 后端总览
 status: current
 owners: backend-runtime
-last_verified_against_code: 2026-06-25
+last_verified_against_code: 2026-07-28
 summary: "后端（apps/backend）是整个系统的事实持有者：它拥有 agents、对话、成员、运行、事件、conversation ledger。它对外是一组 HTTP/SSE 接口，对内由几个相互独立的 feature 模块组成，存储分成 backend.db 和 checkpointer.db（S1 合库后 events.db 已并入 backend.db）。"
 depends_on:
 used_by:
@@ -58,16 +58,16 @@ flowchart TB
 
 1. `conversation/http.ts` 收到 `POST /api/conversations/:id/messages`，把人类消息 `appendLedgerEntry` 写入账本。
 2. Conversation Service 按触发模式（`mention`/`all`）、`addressedTo`、锁与跳数，决定要触发哪些 Agent。
-3. 对每个目标 Agent，`startAgentRun` 创建 AgentSession，注入 ConversationContextPlugin（含触发上下文和渐进加载工具）。
-4. AgentSession 的 `onEvent("message")` 回调将 assistant 消息经 `appendAssistantMessage` 直写账本。非消息执行事件（tool_call 等）经 framework run-loop 写入 checkpointer 的执行事实流（`checkpoint_events`，按 spanId 切）。
+3. 对每个目标 Agent，`startAgentRun` 创建 Agent，注入 ConversationContextPlugin（含触发上下文和渐进加载工具）。
+4. Agent 的 `subscribe("message")` 回调将 assistant 消息经 `appendAssistantMessage` 直写账本。非消息执行事件（tool_call 等）经 agent runtime（span-loop）写入 eventLog 的执行事实流（`checkpoint_events`，按 spanId 切）。
 5. `agent_end` 时回调写入 terminal revision、释放 ConversationLock。成功则 fire-and-forget 启动 reflection run。
 
 ## 关联页面
 
-- [AgentSession](../harness/harness.md)
+- [Agent](../harness/harness.md)
 - [EventLog（已废止）](./event-log.md)
 - [会话消息流](./conversation-projection.md)
 - [数据模型](./data-model.md)
 - [对话与成员](../conversation/conversation-and-members.md)
-- [依赖注入](../foundations/dependency-injection.md) —— 组合根与 executeAgentRun 的诊断
-- [标识符体系](../foundations/identifiers.md) —— sessionId/runId 的归属与 AgentSession 生命周期
+- [依赖注入](../foundations/dependency-injection.md) -- 组合根与 executeAgentRun 的诊断
+- [标识符体系](../foundations/identifiers.md) -- sessionId/runId 的归属与 Agent 生命周期

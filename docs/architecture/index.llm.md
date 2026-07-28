@@ -52,14 +52,14 @@
 1. `runtime/framework.md`
 2. `runtime/plugin.md`
 3. `runtime/context-manager.md`
-4. `harness/harness.md`
+4. `harness/harness.md`（Agent 的构造与生命周期）
 5. `plugins/fs-memory.md`、`plugins/progressive-skill.md`、`plugins/task-guard.md`、`plugins/skill-pack.md`
 
 ## 如果问的是上下文窗口 / 历史压缩 / 摘要 / 裁剪
 
 1. `runtime/context-manager.md`
 2. `runtime/framework.md`
-3. `harness/harness.md`
+3. `harness/harness.md`（Agent 的构造与生命周期）
 
 ## 如果问的是安全 / 隔离
 

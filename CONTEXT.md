@@ -17,17 +17,17 @@
 | **Run** | Web UI 用户可见术语：一次 agent 执行。后端等价于 1 Span，但用户不需要知道 span 这个词 | 不是 Span（同义词，层不同，ADR 0007） |
 | **attemptSeq** | span 内的重试序号，span 内单调递增 | 不是独立 id |
 | **Plugin** | 贡献 tools + hooks 的可组合单元，hook 在注册序执行 | 不是 middleware |
-| **ContextManager** | 管道式消息裁剪/摘要/预算，`pipeContextManagers(...)` 链式组合 | 不是 Plugin |
-| **Checkpointer** | session 持久化：消息快照（恢复）+ 中断状态 + 执行事实流 | 不是对话历史库 |
+| **ContextPipeline** | 管道式消息裁剪/摘要/预算，`pipeContextManagers(...)` 链式组合（运行时内部名 ContextManager） | 不是 Plugin |
+| **persistence ports** | session 持久化拆分三端口：MessageStore（消息快照）+ InterruptStore（中断状态）+ EventLog（执行事实流） | 不是对话历史库 |
 | **InterruptSignal** | 工具抛出的暂停信号，需 `resume({ approved })` 继续 | 不是错误 |
 | **Compaction** | 旧消息摘要压缩，保留最近 N 条 + 摘要前缀 | 不是普通 summarize |
-| **AgentSession** | harness 层 Agent 生命周期编排（per-span 创建，目标收敛为 per-session） | 不是 backend service |
+| **Agent** | Agent 生命周期编排（packages/agent） | 不是 backend service |
 | **ConversationLock** | 会话级并发闸门，统一 HTTP 直发和 @ 触发两条路径 | 不是 thread busy |
 | **Skill** | 一个命名的指令集（一个 `SKILL.md`），模型通过 `skill_load` 按需加载 | 不是 Plugin（后者是代码；Skill 是 markdown 内容） |
 | **Skill Pack** | 一个技能集合的分发单元：有来源（git/zip/builtin）、版本、安装生命周期，物化为一个目录 | 不是 Skill Root（root 是它的运行时物化产物） |
 | **Skill Root** | progressive-skill 扫描的目录路径；一个 Pack 贡献一个 Root | 不是 Pack 本体（Pack 是管理实体，Root 是它的磁盘投影） |
 | **CronJob** | 一条按时间表反复触发的定时规则；通过 `loop_config_path` 引用 Loop 配置目录，到点调 `loopStep()` | 不是 Loop 本身（调度者 ≠ 被调度者） |
-| **spanLoop** | 框架 `span-loop.ts` 导出函数：单个 Span 内的 step 迭代（调模型→工具执行→循环直到 terminal）。纯实现机制 | 不是 Loop（多 Span 编排系统）；旧名 `runLoop`（已按 ADR 0007 改名） |
+| **spanLoop** | agent runtime `span-loop.ts` 导出函数：单个 Span 内的 step 迭代（调模型->工具执行->循环直到 terminal）。纯实现机制 | 不是 Loop（多 Span 编排系统）；旧名 `runLoop`（已按 ADR 0007 改名） |
 | **MCP Server（配置实体）** | 一个外部工具源的配置记录：transport（stdio/SSE）、command+args+env 或 url、enabled 状态。per-agent 绑定 | 不是 MCP Client（client 是运行时连接管理器） |
 | **MCP Client** | 进程内常驻的 MCP 连接管理器：按 agentId 缓存连接 + discovery 结果，session 创建时同步读缓存拼 Tool[] | 不是 MCP Server（server 是配置实体；client 是运行时） |
 | **MCP Tool** | 从外部 MCP server 发现的工具，适配为 `Tool` 接口后注入 agent。名字格式 `mcp__{serverName}__{toolName}` | 不是内置 Tool（后者是进程内函数；MCP Tool 的 execute 是一次 RPC） |
@@ -87,7 +87,7 @@ L1 Contracts    packages/message — ContentBlock, Tool contract
 
 ```
 人发消息 → POST → appendLedgerEntry (conversation_ledger) → broadcastMessage
-         → 触发判定 (mention/all) → startAgentRun → AgentSession.prompt(input)
+         -> 触发判定 (mention/all) -> startAgentRun -> Agent.prompt(input)
          → runLoop: 模型流 → tool 执行 → 循环
          → onEvent("message") → appendAssistantMessage 直写 ledger (streaming)
          → 同 messageId 多次写入 → terminal revision (agent_end, state=done)
@@ -104,7 +104,7 @@ L1 Contracts    packages/message — ContentBlock, Tool contract
 5. 端（Web/飞书）可展示，不可成为事实来源
 6. streaming revision 和 terminal revision 共享同一 messageId，端按 messageId collapse
 7. ChatModel 是唯一外部集成点，core 无 LLM 依赖
-8. 依赖只能向下：`core` → `framework` → `harness` → `backend`，不可反向
+8. 依赖只能向下：`core` -> `agent` -> `backend`，不可反向
 
 ## 当前技术债务（已知概念债）
 
@@ -112,10 +112,10 @@ L1 Contracts    packages/message — ContentBlock, Tool contract
 |------|------|------|
 | threadId 未正名 | ✅ `threadId`→`sessionId` 全仓重命名（~50 处，26 文件） | 已完成 |
 | run/span 混用 | ✅ ADR 0007 已定。代码 `runLoop`→`spanLoop`，DB 表 `run`→`span` | 已完成 |
-| AgentSession per-span | ✅ `session-registry.ts` 已删除，`SessionFactory` 按 `sessionId` 索引，跨 span 持久 | 已完成 |
-| spanId 不流进 harness | ✅ `prompt/continue/resume` 已透传 `opts.spanId` 到 `agent.run()` | 已完成 |
+| Agent per-span 创建 | ✅ `session-registry.ts` 已删除，`SessionFactory` 按 `sessionId` 索引，跨 span 持久 | 已完成 |
+| spanId 不透传到 agent | ✅ `prompt/continue/resume` 已透传 `opts.spanId` 到 `agent.run()` | 已完成 |
 | attempt 独立 id | ✅ `att-${runId}` 已删除，改为 `attemptSeq`（span 内整数序号） | 已完成 |
-| 执行事实流未完全回归 ckp | ✅ `event_log` 表已删除，`appendEvent/readEvents` 是 Checkpointer 一等接口 | 已完成 |
+| 执行事实流未完全回归 ckp | ✅ `event_log` 表已删除，`appendEvent/readEvents` 是 EventLog 一等接口 | 已完成 |
 ## 常用命令
 
 ```bash
@@ -149,7 +149,7 @@ bun run dev          # 启动 backend + web
 | 规则 | 值 |
 |------|-----|
 | 可用 type | `feat` `fix` `refactor` `perf` `style` `test` `docs` `chore` `ci` `revert` |
-| 可用 scope（包） | `core` `message` `api-contract` `config` `conversation` `framework` `ai` `harness` `agent-fs` `tools-common` `runner-protocol` `runner-daemon` `runtime-observability` `test-helpers` |
+| 可用 scope（包） | `core` `message` `api-contract` `config` `conversation` `agent` `ai` `loop` `adapter-mcp` `agent-fs` `tools-common` `runner-protocol` `runner-daemon` `runtime-observability` `test-helpers` |
 | 可用 scope（插件） | `plugin-fs-memory` `plugin-identity` `plugin-progressive-skill` `plugin-task-guard` `plugin-conversation-context` |
 | 可用 scope（应用） | `backend` `web` `lark-bot` |
 | 可用 scope（功能） | `cron` |

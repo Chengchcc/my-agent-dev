@@ -4,12 +4,12 @@ Compaction 是长对话保持上下文可用性的核心机制。当对话 token
 
 ## 关键实现文件
 
-- `packages/framework/src/context-managers/summarizing.ts` — 摘要生成 + 自动压缩 ContextManager
-- `packages/framework/src/compaction/shake.ts` — 机械缩减大工具结果（无 LLM 调用）
-- `packages/framework/src/compaction/cut-point.ts` — Token 感知的合法切点查找
-- `packages/framework/src/compaction/prompts.ts` — 摘要 prompt 模板（8 段 markdown）
-- `packages/framework/src/session.ts` — `CompactionEntry` 持久化 + `buildContext()` 重建
-- `apps/backend/src/features/span/agent-helpers.ts` — `defaultContextManager()` 生产管线
+- `packages/agent/src/context/summarizing.ts` - 摘要生成 + 自动压缩 ContextPipeline
+- `packages/agent/src/context/compaction/shake.ts` - 机械缩减大工具结果（无 LLM 调用）
+- `packages/agent/src/context/compaction/cut-point.ts` - Token 感知的合法切点查找
+- `packages/agent/src/context/compaction/prompts.ts` - 摘要 prompt 模板（8 段 markdown）
+- `packages/agent/src/persistence/session.ts` - `CompactionEntry` 持久化 + `buildContext()` 重建
+- `apps/backend/src/features/span/agent-helpers.ts` - `defaultContextManager()` 生产管线
 
 ## Session 条目模型
 
@@ -39,7 +39,7 @@ interface CompactionEntry {
 
 ### 触发
 
-唯一触发方式：`autoSummarize` ContextManager 在每轮 `shape()` 时检测 token 数是否超出 `triggerAt`。
+唯一触发方式：`autoSummarize` ContextPipeline 在每轮 `shape()` 时检测 token 数是否超出 `triggerAt`。
 
 ```
 shape(ctx, messages)
@@ -118,7 +118,7 @@ Session Tree 支持可逆压缩：
 
 ```typescript
 // apps/backend/src/features/span/agent-helpers.ts
-export function defaultContextManager(settings?: SettingsService): ContextManager {
+export function defaultContextManager(settings?: SettingsService): ContextPipeline {
   return pipeContextManagers(
     toolResultTruncator({ maxCharsPerResult: 50_000 }),  // 单条结果截断
     autoSummarize({                                       // 整体压缩

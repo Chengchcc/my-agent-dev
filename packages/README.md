@@ -14,8 +14,7 @@
 
 **框架与插件**
 
-- [`framework`](./framework/):`createAgent()`——把模型、工具、插件、上下文管理、检查点、中断/审批组合成一个可运行 agent 的核心。
-- [`harness`](./harness/):`AgentSession`——编排 Agent + Checkpointer + PluginRunner + ContextManager，提供 compaction 与事件订阅。
+- [`agent`](./agent/):`Agent` lifecycle + Plugin system + split persistence (MessageStore/EventLog/InterruptStore) + context pipeline + SessionManager. The unified L4 runtime.
 - [`plugin-fs-memory`](./plugin-fs-memory/):基于文件系统的长期记忆插件。支持 ws 和 cwd 两种模式。
 - [`plugin-progressive-skill`](./plugin-progressive-skill/):SKILL.md 渐进式加载插件,按需分页把技能正文喂给模型。
 - [`plugin-task-guard`](./plugin-task-guard/):规划 + 进度跟踪 + 停止前确定性把关插件。
@@ -24,7 +23,6 @@
 
 **支撑设施**
 
-- [`event-log`](./event-log/):持久化的只追加事件存储,支持订阅与尾随(SQLite 实现)。
 - [`runtime-observability`](./runtime-observability/):OpenTelemetry 链路追踪、指标与敏感信息脱敏。
 
 **工具与适配器**
@@ -38,7 +36,7 @@
 
 ## 从哪读起
 
-- **想理解整体**:`core` → `framework` → `harness`,顺着这条线就能看懂类型契约、插件组合、以及一切如何拼起来。
-- **想加插件**:先看 `framework` 的插件契约,再照着任一现有 `plugin-*` 抄结构。
+- **想理解整体**:`core` -> `agent`,顺着这条线就能看懂类型契约、插件组合、以及一切如何拼起来。
+- **想加插件**:先看 `agent` 的插件契约,再照着任一现有 `plugin-*` 抄结构。
 - **想接新模型厂商**:看 `core` 的 `ChatModel` 接口,照着 `adapter-anthropic` 写适配器。
-- **在做后端**:`framework`(Agent 生命周期) → `harness`(AgentSession 编排) → backend 的 `run-executor` 与 `conv-svc-factory`。
+- **在做后端**:`agent`(Agent 生命周期 + 编排) -> backend 的 `run-executor` 与 `conv-svc-factory`。

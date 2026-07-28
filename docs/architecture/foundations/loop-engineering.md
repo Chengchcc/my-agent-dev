@@ -3,14 +3,14 @@ id: foundations.loop-engineering
 title: Loop Engineering
 status: design
 owners: architecture
-last_verified_against_code: 2026-07-01
-summary: "harness 之上的第四层：不再一遍遍手写 prompt，而是设计出「替你 prompt agent 的 loop」。本页从第一性原理讲这层——内层 loop（一次 run）与外层 loop（跨轮工作）的区别、发现/交接/验证/持久化/调度五个动作、以及 maker-checker 为什么要拆成两条独立 AgentSession。本体不落数据库：配置在 .loop/ 文件、item 状态在 STATE.md、CronJob 只当调度者、loopStep() 无状态。Goal 是创建对话框里的过渡态，落地后消失，验收标准降为 config.yml 的 acceptance 字段。末尾「迁移说明」讲 MVP 如何把 Issue/Kanban 吸收成 Loop 的入口（入口统一、数据未统一）。"
+last_verified_against_code: 2026-07-28
+summary: "agent 之上的第四层：不再一遍遍手写 prompt，而是设计出「替你 prompt agent 的 loop」。本页从第一性原理讲这层--内层 loop（一次 run）与外层 loop（跨轮工作）的区别、发现/交接/验证/持久化/调度五个动作、以及 maker-checker 为什么要拆成两条独立 Agent。本体不落数据库：配置在 .loop/ 文件、item 状态在 STATE.md、CronJob 只当调度者、loopStep() 无状态。Goal 是创建对话框里的过渡态，落地后消失，验收标准降为 config.yml 的 acceptance 字段。末尾「迁移说明」讲 MVP 如何把 Issue/Kanban 吸收成 Loop 的入口（入口统一、数据未统一）。"
 depends_on:
   - foundations.loop
   - foundations.loop-pattern
   - backend.loop-runner
   - foundations.cron-job
-  - harness.harness
+  - agent.agent
   - design-philosophy
 used_by:
   - flows.e2e-loop-verification
@@ -21,13 +21,13 @@ used_by:
 
 > 本页 `status: design`：描述一版**grilling 后锁定、尚未进代码**的设计。它是 Loop 这套设计的**第一性原理入口**——讲「为什么要有这层、它靠什么自转」；具体的实体、编排函数、模板分别在 [Loop](./loop.md)、[LoopRunner](../backend/loop-runner.md)、[Loop Pattern](./loop-pattern.md) 三页展开。本页不重复它们的字段定义，只把它们串成一个可解释的整体。若你要看现状代码怎么跑，见 `status: current` 的 [Issue](./issue.md)、[Orchestrator](../backend/orchestrator.md)。
 
-Loop Engineering 是 harness 之上的第四层。前三层是 **Prompt（怎么说一句话）→ Context（怎么组织一次对话的上下文）→ Harness（怎么跑一次 run）**；这一层再往上退一步：**不再由人一遍遍给 agent 写 prompt，而是把「谁来提示 agent」这件事本身自动化掉**。一个 loop 从发现工作、交接上下文、验证产出、持久化状态、按时调度五个动作里自转，人只在明确的检查点介入。业界把这层的判断说得很直白——「你不该再手写 prompt 了，你该设计出替你 prompt agent 的 loop」[[Loop Engineering]](https://github.com/cobusgreyling/loop-engineering)。
+Loop Engineering 是 agent 之上的第四层。前三层是 **Prompt（怎么说一句话）-> Context（怎么组织一次对话的上下文）-> Agent（怎么跑一次 run）**；这一层再往上退一步：**不再由人一遍遍给 agent 写 prompt，而是把「谁来提示 agent」这件事本身自动化掉**。一个 loop 从发现工作、交接上下文、验证产出、持久化状态、按时调度五个动作里自转，人只在明确的检查点介入。业界把这层的判断说得很直白--「你不该再手写 prompt 了，你该设计出替你 prompt agent 的 loop」[[Loop Engineering]](https://github.com/cobusgreyling/loop-engineering)。
 
 ## 内层 loop 与外层 loop
 
 「loop」这个词在两个尺度上都成立，别混：
 
-- **内层 loop = 一次 run**：模型「思考 → 调工具 → 读结果 → 再思考」直到自认干完，由 harness 的运行循环驱动，用 `maxSteps` 兜底防单轮空转（框架层默认 32，AgentSession 覆盖为 50）。这是 [Framework 运行循环](../runtime/framework.md) 讲的层，也是 Claude Code agent-loop 描述的那一层。
+- **内层 loop = 一次 run**：模型「思考 -> 调工具 -> 读结果 -> 再思考」直到自认干完，由 agent 的运行循环驱动，用 `maxSteps` 兜底防单轮空转（框架层默认 32，Agent 覆盖为 50）。这是 [Agent 运行循环](../runtime/framework.md) 讲的层，也是 Claude Code agent-loop 描述的那一层。
 - **外层 loop = 一件 item 跨多个 step**：本页讲的这层。它把一段段内层 run 用 item 的 step 状态机串起来——generator 修一次是**一次内层 loop**，evaluator 审一次又是**另一次内层 loop**，[loopStep()](../backend/loop-runner.md) 在它们之间按结果推进 item 的 step。
 
 两层各有各的「停」：内层靠「模型自认干完 / 撞 `maxSteps`」，外层靠「evaluator 判定产出满足验收标准、且人拍板通过」。**关键区别**：内层 run 结束（哪怕 succeeded）只说明「这段循环跑完了」，不等于「这件 item 达标了」——后者由外层的 evaluator 对照验收标准判、再由人 review。这条区别贯穿全页，也是 evaluator「读裁决不读 run 终态」的根据（见 [Loop 验证端到端](../flows/e2e-loop-verification.md)）。
@@ -76,7 +76,7 @@ flowchart TB
     LS --> RED
   end
 
-  subgraph Sessions[两条独立 AgentSession]
+  subgraph Sessions[两条独立 Agent]
     GEN["Generator\nconfig.generator.model"]
     EVAL["Evaluator\nconfig.evaluator.model（≠ generator）\n怀疑姿态，动手验证"]
     LS -->|fixing item| GEN
@@ -97,7 +97,7 @@ flowchart TB
   end
 ```
 
-一句话读图：**触发层**（cron 或人）调 [loopStep()](../backend/loop-runner.md) → 它读 [STATE.md](./loop.md) 判当前该跑哪步 → 起 **Generator/Evaluator 两条独立 AgentSession** 干活与验证 → evaluator 的结构化 verdict 经 **loopReducer** 转移 item 的 step → 写回 STATE.md → **投影层**（看板 / review queue）只读 STATE.md，不参与控制。
+一句话读图：**触发层**（cron 或人）调 [loopStep()](../backend/loop-runner.md) -> 它读 [STATE.md](./loop.md) 判当前该跑哪步 -> 起 **Generator/Evaluator 两条独立 Agent** 干活与验证 -> evaluator 的结构化 verdict 经 **loopReducer** 转移 item 的 step -> 写回 STATE.md -> **投影层**（看板 / review queue）只读 STATE.md，不参与控制。
 
 ## 五个动作怎么落
 
@@ -105,13 +105,13 @@ flowchart TB
 |---|---|---|
 | **发现 Discovery** | `.loop/skills/` 里的 discovery SKILL.md，cron 触发时扫信号（挂测试 / TODO / 告警）→ 往 STATE.md 追加 `triaged` item | 🔴 新增 |
 | **交接 Handoff** | 顺序 step 默认共享工作区；结构化交接走 config + STATE.md 的 result 字段；单 step 扇出才用 `git worktree` 隔离（bash + git，非新组件） | 🟡 顺序共享已有；扇出隔离按需补 |
-| **验证 Verification** | `kind:"check"` 语义落成**独立 Evaluator AgentSession**（≠ generator model），对照 config.yml 的 `acceptance` 判定，产出结构化 verdict | 🔴 本设计核心 |
+| **验证 Verification** | `kind:"check"` 语义落成**独立 Evaluator Agent**（≠ generator model），对照 config.yml 的 `acceptance` 判定，产出结构化 verdict | 🔴 本设计核心 |
 | **持久化 Persistence** | item 状态全在 STATE.md（跨进程重启不丢）；[fs-memory](../plugins/fs-memory.md) 提供文件读写但**无锁、单前缀**，并发一致性由 Loop 层自兜 | 🟡 STATE.md 是文件，并发写须加 loop 粒度锁（见下） |
 | **调度 Scheduling** | [CronJob](./cron-job.md) 当调度者（`loop_config_path` 指向 `.loop/`），到点调 `loopStep()`；**两层预算**：内层 `maxSteps` 防单 run 空转、外层 budget cap 防 loop 空转 | 🟡 CronJob 已有，补 loop 触发与外层预算 |
 
-## 验证：拆成两条独立 AgentSession 的 maker-checker
+## 验证：拆成两条独立 Agent 的 maker-checker
 
-验证是五动作里最难的一个——生成者会夸自己的活。修法是**独立的怀疑者**：不同（通常更小）模型、默认「坏的直到证明能跑」、靠**动手**（跑测试、点按钮）而非读代码验证。这就是 maker-checker，在本设计里落成 **Generator 与 Evaluator 是两条独立的 AgentSession**：
+验证是五动作里最难的一个--生成者会夸自己的活。修法是**独立的怀疑者**：不同（通常更小）模型、默认「坏的直到证明能跑」、靠**动手**（跑测试、点按钮）而非读代码验证。这就是 maker-checker，在本设计里落成 **Generator 与 Evaluator 是两条独立的 Agent**：
 
 ```
 generator session:  sessionId "loop:<loopId>:gen:<itemId>:<attempt>"   model = config.generator.model
@@ -151,7 +151,7 @@ STATE.md 是 item 状态的**唯一源**，但同时有三条都会写它的入�
 
 1. **Loop 不新增数据库表**：配置在 `.loop/` 文件，item 状态在 STATE.md，唯一 DB 改动是 `cron_job.loop_config_path`。
 2. **CronJob 是调度者，Loop 是被调度者**：Loop 不持有 schedule 字段。
-3. **Generator 与 Evaluator 是两条独立 AgentSession，不同 model**：验证换一条独立线，不让写代码的人自己判自己的活。
+3. **Generator 与 Evaluator 是两条独立 Agent，不同 model**：验证换一条独立线，不让写代码的人自己判自己的活。
 4. **evaluator 读 verdict 内容转移 step，不看 run 终态**：终态落在「是否满足 acceptance」这个业务谓词上。
 5. **item 状态在 STATE.md，跨进程重启不丢**：human gate 不依赖进程存活。
 6. **loopStep() 无状态、loopReducer 纯函数**：状态全在文件，转移可单测可重放。
@@ -181,10 +181,10 @@ STATE.md 是 item 状态的**唯一源**，但同时有三条都会写它的入�
 - [Loop Pattern](./loop-pattern.md) — 7 种内部模板、意图→配置翻译、L1/L2/L3 信任层级
 - [Loop 验证端到端](../flows/e2e-loop-verification.md) — 一次触发里 generator/evaluator 怎么串起来
 - [定时任务](./cron-job.md) — Loop 的调度者
-- [AgentSession](../harness/harness.md) — generator/evaluator 的运行时
+- [Agent](../harness/harness.md) - generator/evaluator 的运行时
 - [架构设计哲学](../design-philosophy.md)
 - [未来工作](../roadmap/future-work.md)
 - [文件型记忆插件](../plugins/fs-memory.md)
-- [Framework 运行循环](../runtime/framework.md)
+- [Agent 运行循环](../runtime/framework.md)
 - 现状对照：[Issue](./issue.md)、[Orchestrator](../backend/orchestrator.md)
 - 外部参考：[Loop Engineering 参考库（cobusgreyling）](https://github.com/cobusgreyling/loop-engineering)、[Claude Code agent-loop](https://code.claude.com/docs/en/agent-sdk/agent-loop.md)

@@ -1,6 +1,6 @@
 # @my-agent-team/plugin-progressive-skill
 
-一个 framework 插件，实现 Claude Code 风格的渐进式技能加载。它先把所有可用技能的名字和简介塞进系统提示，让模型知道有哪些能力；只有模型真正要用某个技能时，才通过工具把完整说明按需读进来。
+一个 agent 插件，实现 Claude Code 风格的渐进式技能加载。它先把所有可用技能的名字和简介塞进系统提示，让模型知道有哪些能力；只有模型真正要用某个技能时，才通过工具把完整说明按需读进来。
 
 ## 为什么需要它 / 解决什么问题
 
@@ -12,7 +12,7 @@
 
 ## 核心概念
 
-插件接收一个 `AgentFsLike` 工作区和技能根目录（`root`，默认 `/skills/`），通过 framework 的 `beforeModel` 钩子工作：每一轮模型调用前，它扫描根目录下的技能、构造一个 `<available-skills>` 块（每行 `- **名字**: 简介`，并附一句「调用 `skill_load(name)` 加载完整说明」），追加到系统提示后面。索引带 mtime 缓存，文件没变就不重复读盘；读取失败会记日志并跳过注入（fail-open）。
+插件接收一个 `AgentFsLike` 工作区和技能根目录（`root`，默认 `/skills/`），通过 Agent 的 `beforeModel` 钩子工作：每一轮模型调用前，它扫描根目录下的技能、构造一个 `<available-skills>` 块（每行 `- **名字**: 简介`，并附一句「调用 `skill_load(name)` 加载完整说明」），追加到系统提示后面。索引带 mtime 缓存，文件没变就不重复读盘；读取失败会记日志并跳过注入（fail-open）。
 
 插件贡献的工具是 `skill_load`。它的入参是 `{ name, offset? }`，分页契约如下：
 
@@ -39,7 +39,7 @@ const plugin = progressiveSkillPlugin({
   // posixSkillRoot: "/var/agents/abc/private/skills",  // 让 ${SKILL_DIR} 解析为真实路径
 });
 
-// 把 plugin 注册进 framework 的 agent 配置即可
+// 把 plugin 注册进 Agent 配置即可
 ```
 
-依赖关系：依赖 `@my-agent-team/core`、`@my-agent-team/framework`、`@my-agent-team/tools-common`（`AgentFsLike`），以及 `gray-matter`（解析 SKILL.md frontmatter）。包内被 `harness` 使用。
+依赖关系：依赖 `@my-agent-team/core`、`@my-agent-team/agent`、`@my-agent-team/tools-common`（`AgentFsLike`），以及 `gray-matter`（解析 SKILL.md frontmatter）。

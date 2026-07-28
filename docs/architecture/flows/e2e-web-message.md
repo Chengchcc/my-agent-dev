@@ -3,8 +3,8 @@ id: flows.e2e-web-message
 title: Web 消息端到端
 status: current
 owners: architecture
-last_verified_against_code: 2026-06-30
-summary: "Web 消息的完整生命周期：用户发送消息 → 账本记录 → AgentSession 执行 → onEvent 回调写入 MessageRevision → 账本 SSE 推送到前端。AgentSession 在 Backend 进程内直接驱动 Agent 运行。"
+last_verified_against_code: 2026-07-28
+summary: "Web 消息的完整生命周期：用户发送消息 -> 账本记录 -> Agent 执行 -> onEvent 回调写入 MessageRevision -> 账本 SSE 推送到前端。Agent 在 Backend 进程内直接执行。"
 depends_on:
   - surfaces.web
   - backend.conversation-projection
@@ -13,7 +13,7 @@ used_by:
 
 # Web 消息端到端
 
-Web 用户在对话中发消息后，经过以下几个阶段完成往返：消息写入 conversation ledger，AgentSession 在 Backend 进程内执行 Agent，assistant 消息通过账本 SSE 推送到前端，前端按 messageId upsert 渲染。
+Web 用户在对话中发消息后，经过以下几个阶段完成往返：消息写入 conversation ledger，Agent 在 Backend 进程内执行，assistant 消息通过账本 SSE 推送到前端，前端按 messageId upsert 渲染。
 
 ## 时序图
 
@@ -22,25 +22,25 @@ sequenceDiagram
   participant U as 用户
   participant W as Web
   participant B as Backend
-  participant AS as AgentSession
-  participant CK as Checkpointer
+  participant AG as Agent
+  participant EL as EventLog
   participant L as Conversation Ledger
 
   U->>W: 发消息 / @agent
   W->>W: 加乐观消息（opt-）
   W->>B: POST /api/conversations/:id/messages
   B->>L: 写入人类 MessageRevision
-  L-->>W: 账本 SSE 回声 → upsert 乐观消息（按 messageId）
-  AS->>AS: sessionFactory.enqueuePrompt(sessionId, input, {spanId})
-  AS->>AS: runLoop（自动多轮）
-  AS-->>B: onAssistantMessage("message_update") → appendAssistantMessage
-  B->>L: appendAssistantMessage → 写入 MessageRevision（同 messageId）
-  L-->>W: 账本 SSE（push buffer + 100ms poll）→ upsert → UI 显示 streaming
-  CK-->>AS: tool_call → execute → tool_result → 继续产出
-  CK-->>AS: agent_end
-  AS-->>B: onEvent("agent_end", willRetry: false)
+  L-->>W: 账本 SSE 回声 -> upsert 乐观消息（按 messageId）
+  AG: createAgentSession + prompt
+  AG->>AG: span-loop（自动多轮）
+  AG-->>B: onAssistantMessage("message_update") -> appendAssistantMessage
+  B->>L: appendAssistantMessage -> 写入 MessageRevision（同 messageId）
+  L-->>W: 账本 SSE（push buffer + 100ms poll）-> upsert -> UI 显示 streaming
+  AG-->>AG: tool_call -> execute -> tool_result -> 继续产出
+  AG emits agent_end
+  AG-->>B: onEvent("agent_end", willRetry: false)
   B->>L: terminal revision（state: done）
-  L-->>W: 账本 SSE → 同 messageId upsert → UI 显示终态
+  L-->>W: 账本 SSE -> 同 messageId upsert -> UI 显示终态
 ```
 
 ## BFF 路由
@@ -56,6 +56,6 @@ Web 端 API 调用直接挂载在 `/api` 前缀下（无 `/bff` 中间层）。c
 ## 关联页面
 
 - [Web 端](../surfaces/web.md)
-- [AgentSession](../harness/harness.md)
+- [Agent](../runtime/plugin.md)
 - [会话消息流](../backend/conversation-projection.md)
 - [Framework 运行循环](../runtime/framework.md)
