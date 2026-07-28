@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@my-agent-team/core": "workspace:*",
-    "@my-agent-team/framework": "workspace:*",
+    "@my-agent-team/agent": "workspace:*",
     "@my-agent-team/message": "workspace:*",
     "@my-agent-team/tools-common": "workspace:*",
     "gray-matter": "^4.0.3"

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { HookContext } from "@my-agent-team/framework";
+import type { HookContext } from "@my-agent-team/agent";
 import type { Message } from "@my-agent-team/message";
 import { echoModel } from "@my-agent-team/test-helpers";
 import {

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ChatModel } from "@my-agent-team/core";
-import { defineContext, type Plugin } from "@my-agent-team/framework";
+import { defineContext, type Plugin } from "@my-agent-team/agent";
 import type { Message } from "@my-agent-team/message";
 import type { AgentFsLike } from "@my-agent-team/tools-common";
 import { pjoin } from "@my-agent-team/tools-common";

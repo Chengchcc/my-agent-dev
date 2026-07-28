@@ -1,5 +1,5 @@
 import type { ChatModel } from "@my-agent-team/core";
-import { defineContext } from "@my-agent-team/framework";
+import { defineContext } from "@my-agent-team/agent";
 import { extractText, type Message } from "@my-agent-team/message";
 import type { PetMood, PetState } from "./types.js";
 

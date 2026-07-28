@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Plugin } from "@my-agent-team/framework";
+import type { Plugin } from "@my-agent-team/agent";
 import type { Message } from "@my-agent-team/message";
 import { todayAndYesterday } from "./daily-log.js";
 import { composeSystemPrompt } from "./system-prompt.js";

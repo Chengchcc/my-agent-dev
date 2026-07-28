@@ -1,5 +1,5 @@
 import type { Tool } from "@my-agent-team/core";
-import { defineContext, definePlugin, type Plugin } from "@my-agent-team/framework";
+import { defineContext, definePlugin, type Plugin } from "@my-agent-team/agent";
 
 /** Context key for todo progress. Plugin writes, metaContext reads. */
 export const TodoKey = defineContext<string>("todo-progress");

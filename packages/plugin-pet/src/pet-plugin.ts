@@ -1,5 +1,5 @@
 import type { ChatModel } from "@my-agent-team/core";
-import { definePlugin, type Plugin } from "@my-agent-team/framework";
+import { definePlugin, type Plugin } from "@my-agent-team/agent";
 import type { Message } from "@my-agent-team/message";
 import { generateBark, PetBarkKey, shouldBark } from "./bark.js";
 import { awardXP, updateMood } from "./state.js";

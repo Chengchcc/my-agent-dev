@@ -5,7 +5,7 @@ import {
   type HookContext,
   type Plugin,
   type StopDecision,
-} from "@my-agent-team/framework";
+} from "@my-agent-team/agent";
 import { extractText, type Message } from "@my-agent-team/message";
 
 // ─── Types ───

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { HookContext } from "@my-agent-team/framework";
+import type { HookContext } from "@my-agent-team/agent";
 import type { Message } from "@my-agent-team/message";
 import { type Todo, TodoKey, todoPlugin } from "./todo.js";
 
