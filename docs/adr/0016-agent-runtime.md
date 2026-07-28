@@ -246,4 +246,3 @@ Tracing · Debugging · Evals · Metrics
 | Backend assembly cleanup | `apps/backend/src/` | ✅ P8 |
 | Backend bootstrap cleanup | `apps/backend/src/` | ✅ P9 |
 | Naming migration | — | ✅ P10 (public API only; full rename + Checkpointer split deferred to P11) |
-| Framework absorption | — | ✅ P11 (plugins+backend consume agent; framework kept as agent internal dep) |
