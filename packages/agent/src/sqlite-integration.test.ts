@@ -24,17 +24,17 @@ function makeAgent(cfg: Partial<AgentConfig> & { sessionId: string; db: string }
 }
 
 describe("SQLite compact persistence", () => {
-  test("compact persists and reloads from checkpointer", async () => {
+  test("compact persists and reloads from messageStore", async () => {
     const db = tmpDb();
     const sessionId = "test-compact-reload";
     const a1 = makeAgent({ sessionId, db });
     await a1.prompt("long conversation about state");
-    // compact saves to checkpointer + session storage
+    // compact saves to messageStore + session storage
     await a1.compact();
     a1.dispose();
 
     const a2 = makeAgent({ sessionId, db });
-    // trigger init to load checkpointer state
+    // trigger init to load persisted state
     await a2.continue();
     const count = a2.getContextUsage()?.messageCount ?? 0;
     expect(count).toBeGreaterThan(0);

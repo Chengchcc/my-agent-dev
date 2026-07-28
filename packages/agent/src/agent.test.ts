@@ -135,7 +135,7 @@ describe("Agent", () => {
   });
 
   // ── compact ──
-  test("compact throws without checkpointer", async () => {
+  test("compact throws without messageStore", async () => {
     const agent = new Agent(makeConfig());
     await agent.prompt("hi");
     await expect(agent.compact()).rejects.toThrow("MessageStore");

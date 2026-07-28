@@ -178,11 +178,7 @@
       "path": "docs/architecture/runtime/framework.md",
       "summary": "Agent 运行循环是 Agent 真正「思考-行动」的运行时核心（packages/agent）。它的心脏是 runLoop：受 maxSteps 约束的循环，每一步可能调模型、可能调工具，并把过程拆成一串结构化 AgentEvent 往外吐。",
       "depends_on": [],
-      "used_by": [
-        "runtime.context-manager",
-        "runtime.plugin",
-        "plugins.task-guard"
-      ]
+      "used_by": ["runtime.context-manager", "runtime.plugin", "plugins.task-guard"]
     },
     {
       "id": "runtime.context-manager",
@@ -270,11 +266,7 @@
       "owners": "architecture",
       "path": "docs/architecture/foundations/loop.md",
       "summary": "Loop 是统一工作的文件态本体：配置在 .loop/ 文件、item 状态在 STATE.md、CronJob 退成调度者、loopStep() 无状态推进。Goal 是过渡态，验收标准沉淀为 config.yml 的 acceptance 字段。不新增数据库表。",
-      "depends_on": [
-        "foundations.loop-engineering",
-        "foundations.cron-job",
-        "runtime.framework"
-      ],
+      "depends_on": ["foundations.loop-engineering", "foundations.cron-job", "runtime.framework"],
       "used_by": ["backend.loop-runner", "foundations.loop-pattern"]
     },
     {
