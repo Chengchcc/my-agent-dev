@@ -1,7 +1,7 @@
 import type { ChatModel } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
-import type { Logger } from "../runtime/logger.js";
 import type { Session } from "../persistence/session.js";
+import type { Logger } from "../runtime/logger.js";
 
 /** Marks index ranges in a Message[] that must not be dropped by shape(). */
 export interface PreserveHint {

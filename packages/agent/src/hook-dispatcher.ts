@@ -1,8 +1,8 @@
 import type { ToolResultBlock, ToolUseBlock } from "@my-agent-team/core";
-import type { HookContext, Plugin } from "./runtime/plugin.js";
-import { definePlugin } from "./runtime/plugin.js";
 import type { Message } from "@my-agent-team/message";
 import type { AgentContext, AgentHooks } from "./agent-hooks.js";
+import type { HookContext, Plugin } from "./runtime/plugin.js";
+import { definePlugin } from "./runtime/plugin.js";
 
 export function createHookPlugin(hooks: AgentHooks, agentCtx: AgentContext): Plugin {
   const fw: Record<string, unknown> = {};

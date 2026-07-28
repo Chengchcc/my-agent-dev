@@ -1,8 +1,8 @@
 import { mkdirSync } from "node:fs";
 import type { ContextPipeline, Plugin } from "@my-agent-team/agent";
+import { autoSummarize, pipeContextManagers, toolResultTruncator } from "@my-agent-team/agent";
 import { type Model, type ModelRegistry, type ProviderAuth, resolveModel } from "@my-agent-team/ai";
 import type { ChatModel, Tool } from "@my-agent-team/core";
-import { autoSummarize, pipeContextManagers, toolResultTruncator } from "@my-agent-team/agent";
 import { identityPlugin } from "@my-agent-team/plugin-identity";
 import { memoryPlugin } from "@my-agent-team/plugin-memory";
 import { progressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";

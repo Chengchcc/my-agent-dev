@@ -2,11 +2,11 @@ import type { Tool, ToolResultBlock, ToolUseBlock } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 import type { ContextStore } from "../context/context.js";
 import type { ContextManager } from "../context/context-manager.js";
-import type { AgentEvent } from "./create-agent.js";
 import type { EventLog } from "../persistence/event-log.js";
 import type { InterruptStore } from "../persistence/interrupt-store.js";
-import type { Logger } from "./logger.js";
 import type { MessageStore } from "../persistence/message-store.js";
+import type { AgentEvent } from "./create-agent.js";
+import type { Logger } from "./logger.js";
 import type { RunSpan } from "./trace.js";
 
 /** M14.6: Stop-gate verdict. continue=true means "veto stop, keep running with reason as input". */

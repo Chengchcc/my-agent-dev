@@ -1,7 +1,7 @@
 import type { ToolResultBlock, ToolUseBlock } from "@my-agent-team/core";
+import { InterruptSignal } from "../persistence/interrupt-store.js";
 import type { AgentEvent } from "./agent-event.js";
 import type { AgentRuntime } from "./agent-options.js";
-import { InterruptSignal } from "../persistence/interrupt-store.js";
 import { wrapToolResult } from "./plugin-dispatcher.js";
 
 // ─── executeOne (extracted from createAgentInternal) ────────────

@@ -1,6 +1,6 @@
 import type { Message } from "@my-agent-team/message";
-import type { ContextManager } from "./context-manager.js";
 import { repairToolPairs } from "../runtime/repair-tool-pairs.js";
+import type { ContextManager } from "./context-manager.js";
 
 export interface SlidingWindowOptions {
   maxTurns: number;

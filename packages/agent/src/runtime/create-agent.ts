@@ -1,4 +1,13 @@
 import type { Message } from "@my-agent-team/message";
+import { createContextStore } from "../context/context.js";
+import { passthroughContextManager } from "../context/passthrough.js";
+import { type Checkpointer, validateCheckpointer } from "../persistence/checkpointer.js";
+import type { EventLog } from "../persistence/event-log.js";
+import { inMemoryCheckpointer } from "../persistence/in-memory.js";
+import type { InterruptStore } from "../persistence/interrupt-store.js";
+import { memorySessionStorage } from "../persistence/memory-session-storage.js";
+import type { MessageStore } from "../persistence/message-store.js";
+import { Session } from "../persistence/session.js";
 import type { AgentEvent } from "./agent-event.js";
 import type {
   Agent,
@@ -8,20 +17,11 @@ import type {
   AgentRuntime,
   ResumeCommand,
 } from "./agent-options.js";
-import { type Checkpointer, validateCheckpointer } from "../persistence/checkpointer.js";
-import { inMemoryCheckpointer } from "../persistence/in-memory.js";
-import { createContextStore } from "../context/context.js";
-import { passthroughContextManager } from "../context/passthrough.js";
-import type { EventLog } from "../persistence/event-log.js";
-import type { InterruptStore } from "../persistence/interrupt-store.js";
 import { consoleLogger } from "./logger.js";
-import type { MessageStore } from "../persistence/message-store.js";
 import type { HookContext } from "./plugin.js";
 import { validatePlugins } from "./plugin.js";
 import { createPluginRunner } from "./plugin-dispatcher.js";
-import { Session } from "../persistence/session.js";
 import { spanLoop } from "./span-loop.js";
-import { memorySessionStorage } from "../persistence/memory-session-storage.js";
 import { createThread } from "./thread.js";
 
 export type { AgentEvent, Interrupt } from "./agent-event.js";

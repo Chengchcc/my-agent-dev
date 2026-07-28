@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { pipeContextManagers, autoSummarize, toolResultTruncator } from "@my-agent-team/agent";
+import { autoSummarize, pipeContextManagers, toolResultTruncator } from "@my-agent-team/agent";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { FeatureSet } from "../app.js";
 import { createAgentSvc } from "../features/agent/agent-compose.js";

@@ -1,11 +1,11 @@
-import type { RunSpan } from "./runtime/trace.js";
+import { Agent } from "./agent.js";
+import type { AgentConfig } from "./agent-options.js";
 import { Session } from "./persistence/session.js";
-import { type SessionRepo } from "./persistence/session-repo.js";
+import type { SessionRepo } from "./persistence/session-repo.js";
 import { sqliteCheckpointer } from "./persistence/sqlite-checkpointer.js";
 import { sqliteSessionRepo } from "./persistence/sqlite-session-repo.js";
 import { sqliteSessionStorage } from "./persistence/sqlite-session-storage.js";
-import { Agent } from "./agent.js";
-import type { AgentConfig } from "./agent-options.js";
+import type { RunSpan } from "./runtime/trace.js";
 
 export type StartSpanFn = (
   spanId: string,

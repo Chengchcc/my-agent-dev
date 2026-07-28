@@ -1,11 +1,11 @@
 import type { ChatModel } from "@my-agent-team/core";
 import { collectStream } from "@my-agent-team/core";
 import { extractText, type Message } from "@my-agent-team/message";
+import { repairToolPairs } from "../runtime/repair-tool-pairs.js";
 import { findCutPoint } from "./compaction/cut-point.js";
 import { STRUCTURED_SUMMARY_PROMPT, UPDATE_SUMMARY_PROMPT } from "./compaction/prompts.js";
 import { DEFAULT_SHAKE_CONFIG, shakeMessages } from "./compaction/shake.js";
 import type { ContextManager } from "./context-manager.js";
-import { repairToolPairs } from "../runtime/repair-tool-pairs.js";
 
 export interface SummarizingOptions {
   triggerAt: number;

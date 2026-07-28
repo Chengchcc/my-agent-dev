@@ -1,7 +1,7 @@
 import type { ChatModel } from "@my-agent-team/core";
 import { collectStream } from "@my-agent-team/core";
-import type { Checkpointer } from "./persistence/checkpointer.js";
 import type { Message } from "@my-agent-team/message";
+import type { Checkpointer } from "./persistence/checkpointer.js";
 
 export interface CompactionOptions {
   model: ChatModel;
