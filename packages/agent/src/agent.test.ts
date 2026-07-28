@@ -165,7 +165,7 @@ describe("Agent", () => {
   test("compact throws without checkpointer", async () => {
     const agent = new Agent(makeConfig());
     await agent.prompt("hi");
-    await expect(agent.compact()).rejects.toThrow("Checkpointer");
+    await expect(agent.compact()).rejects.toThrow("MessageStore");
   });
   // ── Multiple runs ──
   test("second prompt routes as steer (does not error)", async () => {

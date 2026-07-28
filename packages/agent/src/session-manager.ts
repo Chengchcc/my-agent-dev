@@ -2,7 +2,7 @@ import { Agent } from "./agent.js";
 import type { AgentConfig } from "./agent-options.js";
 import { Session } from "./persistence/session.js";
 import type { SessionRepo } from "./persistence/session-repo.js";
-import { sqliteCheckpointer } from "./persistence/sqlite-checkpointer.js";
+import { sqlitePersistence } from "./persistence/sqlite-persistence.js";
 import { sqliteSessionRepo } from "./persistence/sqlite-session-repo.js";
 import { sqliteSessionStorage } from "./persistence/sqlite-session-storage.js";
 import type { RunSpan } from "./runtime/trace.js";
@@ -28,10 +28,12 @@ export interface SessionManager {
 export class SqliteSessionManager implements SessionManager {
   #sessions = new Map<string, Agent>();
   #config: SessionManagerConfig;
+  #persistence: ReturnType<typeof sqlitePersistence>;
   #repo: SessionRepo;
 
   constructor(config: SessionManagerConfig) {
     this.#config = config;
+    this.#persistence = sqlitePersistence({ db: config.checkpointerPath });
     this.#repo = sqliteSessionRepo({ db: config.checkpointerPath });
   }
 
@@ -40,7 +42,9 @@ export class SqliteSessionManager implements SessionManager {
     const agent = new Agent({
       ...config,
       sessionId,
-      checkpointer: sqliteCheckpointer({ db: this.#config.checkpointerPath }),
+      messageStore: this.#persistence.messageStore,
+      eventLog: this.#persistence.eventLog,
+      interruptStore: this.#persistence.interruptStore,
       session: new Session(sqliteSessionStorage({ db: this.#config.checkpointerPath, sessionId })),
       startSpan: this.#config.startSpan,
     });
@@ -54,7 +58,9 @@ export class SqliteSessionManager implements SessionManager {
     const agent = new Agent({
       ...config,
       sessionId,
-      checkpointer: sqliteCheckpointer({ db: this.#config.checkpointerPath }),
+      messageStore: this.#persistence.messageStore,
+      eventLog: this.#persistence.eventLog,
+      interruptStore: this.#persistence.interruptStore,
       session: new Session(sqliteSessionStorage({ db: this.#config.checkpointerPath, sessionId })),
       startSpan: this.#config.startSpan,
     });

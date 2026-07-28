@@ -1,11 +1,11 @@
 import type { ChatModel } from "@my-agent-team/core";
 import { collectStream } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
-import type { Checkpointer } from "./persistence/checkpointer.js";
+import type { MessageStore } from "./persistence/message-store.js";
 
 export interface CompactionOptions {
   model: ChatModel;
-  checkpointer: Checkpointer;
+  messageStore: MessageStore;
   sessionId: string;
   keepRecent?: number;
   customInstructions?: string;
@@ -28,7 +28,7 @@ export async function compactThread(opts: CompactionOptions): Promise<{
   result: CompactionResult;
 }> {
   const keepRecent = opts.keepRecent ?? 10;
-  const allMessages = (await opts.checkpointer.load(opts.sessionId)) ?? [];
+  const allMessages = (await opts.messageStore.load(opts.sessionId)) ?? [];
 
   if (allMessages.length <= keepRecent) {
     return {

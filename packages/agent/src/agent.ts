@@ -140,7 +140,8 @@ export class Agent {
 
   async compact(instructions?: string): Promise<CompactionResult> {
     if (!this.#core) throw new Error("Agent not initialized");
-    if (!this.#config.checkpointer) throw new Error("Checkpointer required for compaction");
+    const store = this.#config.messageStore ?? this.#config.checkpointer;
+    if (!store) throw new Error("MessageStore required for compaction");
     this.#state = "compacting";
     const reason = instructions ? "manual" : "threshold";
     this.#emit({ type: "compaction_start", reason } as AgentEvent);
@@ -148,12 +149,12 @@ export class Agent {
       const { compactThread } = await import("./compaction.js");
       const { messages, result } = await compactThread({
         model: this.#config.model,
-        checkpointer: this.#config.checkpointer,
+        messageStore: store,
         sessionId: this.sessionId ?? "",
         keepRecent: this.#config.compaction?.keepRecent,
         customInstructions: instructions,
       });
-      await this.#config.checkpointer.save(this.sessionId ?? "", messages);
+      await store.save(this.sessionId ?? "", messages);
       this.#core.thread.messages.splice(0, this.#core.thread.messages.length, ...messages);
       this.#core.thread.markDirty?.();
       this.#emit({
@@ -182,13 +183,13 @@ export class Agent {
   }
 
   async getUsage(): Promise<number> {
-    const cp = this.#config.checkpointer;
-    if (!cp || !this.sessionId) return 0;
-    const readEvents = cp.readEvents;
+    const el = this.#config.eventLog ?? this.#config.checkpointer;
+    if (!el || !this.sessionId) return 0;
+    const readEvents = el.readEvents;
     if (typeof readEvents !== "function") return 0;
     try {
       let total = 0;
-      for await (const e of readEvents.call(cp, this.sessionId)) {
+      for await (const e of readEvents.call(el, this.sessionId)) {
         if (e.type === "model_end" && "usage" in e) {
           const u = e.usage as { input?: number; output?: number };
           total += (u.input ?? 0) + (u.output ?? 0);
