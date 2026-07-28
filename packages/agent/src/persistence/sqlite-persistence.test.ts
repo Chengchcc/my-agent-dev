@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { describe, expect, test } from "bun:test";
 import { unlinkSync } from "node:fs";
 import type { Message } from "@my-agent-team/message";
 import { sqlitePersistence } from "./sqlite-persistence.js";
@@ -58,4 +58,51 @@ describe("sqlitePersistence legacy compatibility", () => {
       /* */
     }
   });
+});
+
+test("eventLog reads legacy checkpoint_events", async () => {
+  const dbPath = tmpDb();
+  const stores = sqlitePersistence({ db: dbPath });
+
+  const db = new Database(dbPath);
+  db.run(
+    "INSERT INTO checkpoint_events (session_id, span_id, event, ts) VALUES ('s1', 'sp1', ?, 1)",
+    [
+      JSON.stringify({
+        type: "model_end",
+        usage: { input: 10, output: 5 },
+        model: "test",
+        step: 1,
+        latencyMs: 100,
+        ts: 1,
+      }),
+    ],
+  );
+  db.run(
+    "INSERT INTO checkpoint_events (session_id, span_id, event, ts) VALUES ('s1', 'sp2', ?, 2)",
+    [
+      JSON.stringify({
+        type: "model_end",
+        usage: { input: 3, output: 2 },
+        model: "test",
+        step: 1,
+        latencyMs: 50,
+        ts: 2,
+      }),
+    ],
+  );
+  db.close();
+
+  const span1: unknown[] = [];
+  for await (const e of stores.eventLog.readEvents("s1", { spanId: "sp1" })) span1.push(e);
+  expect(span1.length).toBe(1);
+
+  const all: unknown[] = [];
+  for await (const e of stores.eventLog.readEvents("s1")) all.push(e);
+  expect(all.length).toBe(2);
+  try {
+    unlinkSync(dbPath);
+  } catch {
+    /* */
+  }
 });

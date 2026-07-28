@@ -21,6 +21,7 @@ describe("createAgentSession (P7-0 thin facade)", () => {
         provider: "test",
         name: "test",
         chatModel: echoModel({ turns: [{ type: "text", text: ref }] }),
+      }),
     };
     const agent = await createAgentSession({
       model: "test/model",
@@ -128,6 +129,7 @@ describe("resolveModel", () => {
         provider: "test",
         name: "model",
         chatModel: echoModel({ turns: [] }),
+      }),
     };
     const resolved = await resolveModel("test/model", runtime);
     expect(resolved.id).toBe("test/model");

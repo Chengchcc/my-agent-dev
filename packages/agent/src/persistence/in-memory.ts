@@ -53,7 +53,6 @@ export function inMemoryInterruptStore(): InterruptStore {
   };
 }
 
-
 /** Convenience: all three in-memory stores for testing. */
 export function inMemoryPersistence() {
   return {
@@ -62,4 +61,3 @@ export function inMemoryPersistence() {
     interruptStore: inMemoryInterruptStore(),
   };
 }
-

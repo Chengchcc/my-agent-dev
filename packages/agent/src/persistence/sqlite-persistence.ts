@@ -133,4 +133,3 @@ export function sqlitePersistence(opts: SqlitePersistenceOptions) {
 
   return { messageStore, eventLog, interruptStore };
 }
-

@@ -3,7 +3,7 @@ import { echoModel } from "@my-agent-team/test-helpers";
 import { Agent } from "./agent.js";
 import type { AgentConfig } from "./agent-options.js";
 import { Session } from "./persistence/session.js";
-import { sqliteCheckpointer } from "./persistence/sqlite-checkpointer.js";
+import { sqlitePersistence } from "./persistence/sqlite-persistence.js";
 import { sqliteSessionStorage } from "./persistence/sqlite-session-storage.js";
 
 function tmpDb(): string {
@@ -11,11 +11,13 @@ function tmpDb(): string {
 }
 
 function makeAgent(cfg: Partial<AgentConfig> & { sessionId: string; db: string }): Agent {
+  const stores = sqlitePersistence({ db: cfg.db });
   return new Agent({
     model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
     maxSteps: 2,
-
-    checkpointer: sqliteCheckpointer({ db: cfg.db }),
+    messageStore: stores.messageStore,
+    eventLog: stores.eventLog,
+    interruptStore: stores.interruptStore,
     session: new Session(sqliteSessionStorage({ db: cfg.db, sessionId: cfg.sessionId })),
     ...cfg,
   });

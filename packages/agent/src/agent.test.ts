@@ -13,18 +13,18 @@ function makeConfig(opts?: Record<string, unknown>) {
 describe("Agent", () => {
   // ── Basic lifecycle ──
   test("constructs with idle state", () => {
-    const agent = new Agent(makeConfig({ eventLog: { readEvents: async function* () { yield { type: "model_end", usage: { input: 100, output: 50 }, model: "test", step: 0, latencyMs: 1, ts: 1 }; } } } }));
+    const agent = new Agent(makeConfig());
     expect(agent.state).toBe("idle");
   });
 
   test("prompt transitions to done", async () => {
-    const agent = new Agent(makeConfig({ eventLog: { readEvents: async function* () { yield { type: "model_end", usage: { input: 100, output: 50 }, model: "test", step: 0, latencyMs: 1, ts: 1 }; } } } }));
+    const agent = new Agent(makeConfig());
     await agent.prompt("hello");
     expect(agent.state === "done" || agent.state === "idle").toBe(true);
   });
 
   test("subscribe receives events", async () => {
-    const agent = new Agent(makeConfig({ eventLog: { readEvents: async function* () { yield { type: "model_end", usage: { input: 100, output: 50 }, model: "test", step: 0, latencyMs: 1, ts: 1 }; } } } }));
+    const agent = new Agent(makeConfig());
     const events: string[] = [];
     agent.subscribe((e) => events.push(e.type));
     await agent.prompt("hi");
@@ -32,7 +32,7 @@ describe("Agent", () => {
   });
 
   test("subscribe returns unsubscribe", () => {
-    const agent = new Agent(makeConfig({ eventLog: { readEvents: async function* () { yield { type: "model_end", usage: { input: 100, output: 50 }, model: "test", step: 0, latencyMs: 1, ts: 1 }; } } } }));
+    const agent = new Agent(makeConfig());
     let calls = 0;
     const unsub = agent.subscribe(() => calls++);
     unsub();
@@ -40,14 +40,14 @@ describe("Agent", () => {
   });
 
   test("dispose returns to idle", () => {
-    const agent = new Agent(makeConfig({ eventLog: { readEvents: async function* () { yield { type: "model_end", usage: { input: 100, output: 50 }, model: "test", step: 0, latencyMs: 1, ts: 1 }; } } } }));
+    const agent = new Agent(makeConfig());
     agent.dispose();
     expect(agent.state).toBe("idle");
   });
 
   // ── State transitions ──
   test("idle→running→done on prompt", async () => {
-    const agent = new Agent(makeConfig({ eventLog: { readEvents: async function* () { yield { type: "model_end", usage: { input: 100, output: 50 }, model: "test", step: 0, latencyMs: 1, ts: 1 }; } } } }));
+    const agent = new Agent(makeConfig());
     expect(agent.state).toBe("idle");
     let sawRunning = false;
     agent.subscribe(() => {
@@ -58,7 +58,7 @@ describe("Agent", () => {
   });
 
   test("agent_end has status succeeded", async () => {
-    const agent = new Agent(makeConfig({ eventLog: { readEvents: async function* () { yield { type: "model_end", usage: { input: 100, output: 50 }, model: "test", step: 0, latencyMs: 1, ts: 1 }; } } } }));
+    const agent = new Agent(makeConfig());
     let status: string | undefined;
     agent.subscribe((e) => {
       if (e.type === "agent_end") status = (e as { status: string }).status;
@@ -69,7 +69,7 @@ describe("Agent", () => {
 
   // ── Steer / followUp ──
   test("steer throws when idle", () => {
-    const agent = new Agent(makeConfig({ eventLog: { readEvents: async function* () { yield { type: "model_end", usage: { input: 100, output: 50 }, model: "test", step: 0, latencyMs: 1, ts: 1 }; } } } }));
+    const agent = new Agent(makeConfig());
     expect(() => agent.steer("hey")).toThrow();
   });
 
@@ -82,6 +82,7 @@ describe("Agent", () => {
             { type: "text", text: "done" },
           ],
         }),
+      }),
     );
     agent.subscribe((_e) => {});
     const p = agent.prompt("hi");
@@ -97,14 +98,14 @@ describe("Agent", () => {
 
   // ── waitForIdle ──
   test("waitForIdle resolves when done", async () => {
-    const agent = new Agent(makeConfig({ eventLog: { readEvents: async function* () { yield { type: "model_end", usage: { input: 100, output: 50 }, model: "test", step: 0, latencyMs: 1, ts: 1 }; } } } }));
+    const agent = new Agent(makeConfig());
     await agent.prompt("hi");
     await agent.waitForIdle();
   });
 
   // ── getContextUsage ──
   test("getContextUsage returns message count after run", async () => {
-    const agent = new Agent(makeConfig({ eventLog: { readEvents: async function* () { yield { type: "model_end", usage: { input: 100, output: 50 }, model: "test", step: 0, latencyMs: 1, ts: 1 }; } } } }));
+    const agent = new Agent(makeConfig());
     await agent.prompt("hi");
     const usage = agent.getContextUsage();
     expect(usage).toBeDefined();
@@ -113,18 +114,38 @@ describe("Agent", () => {
 
   // ── compact ──
   // ── getUsage ──
+  test("getUsage returns 0 without sessionId", async () => {
+    const agent = new Agent(makeConfig());
+    expect(await agent.getUsage()).toBe(0);
+  });
 
-
+  test("getUsage returns 0 when readEvents throws", async () => {
+    const agent = new Agent(
+      makeConfig({
+        sessionId: "t",
+        checkpointer: {
+          save() {},
+          load() {
+            return [];
+          },
+          readEvents() {
+            throw new Error("boom");
+          },
+        },
+      }),
+    );
+    expect(await agent.getUsage()).toBe(0);
+  });
 
   // ── compact ──
   test("compact throws without checkpointer", async () => {
-    const agent = new Agent(makeConfig({ eventLog: { readEvents: async function* () { yield { type: "model_end", usage: { input: 100, output: 50 }, model: "test", step: 0, latencyMs: 1, ts: 1 }; } } } }));
+    const agent = new Agent(makeConfig());
     await agent.prompt("hi");
     await expect(agent.compact()).rejects.toThrow("MessageStore");
   });
   // ── Multiple runs ──
   test("second prompt routes as steer (does not error)", async () => {
-    const agent = new Agent(makeConfig({ eventLog: { readEvents: async function* () { yield { type: "model_end", usage: { input: 100, output: 50 }, model: "test", step: 0, latencyMs: 1, ts: 1 }; } } } }));
+    const agent = new Agent(makeConfig());
     // Start first prompt in background
     const p1 = agent.prompt("first");
     // Second prompt should route as steer, not crash
@@ -143,6 +164,7 @@ describe("Agent", () => {
     const agent = new Agent(
       makeConfig({
         hooks: { "after:turn": async (_ctx: unknown, msgs: unknown[]) => void calls.push(msgs) },
+      }),
     );
     await agent.prompt("hi");
     expect(calls.length).toBe(1);
@@ -155,6 +177,7 @@ describe("Agent", () => {
         hooks: { "after:turn": async (_ctx: unknown, msgs: unknown[]) => void calls.push(msgs) },
         model: {},
         retry: { maxAttempts: 2, backoffMs: 10 },
+      }),
     );
     try {
       await agent.prompt("hi");
@@ -178,6 +201,7 @@ describe("Agent", () => {
           },
           countTokens: async () => 0,
         } as unknown as typeof echoModel extends (...args: infer A) => infer R ? R : never,
+      }),
     );
     const events: string[] = [];
     agent.subscribe((e) => events.push(e.type));
