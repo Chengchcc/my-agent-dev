@@ -86,9 +86,9 @@ interface HookContext {
   sessionId: string;              // 当前 session ID
   signal?: AbortSignal;          // 运行中止信号
   span?: RunSpan;                // 当前运行 span（trace）
-  messageStore: MessageStore;    // 消息存取（旧 checkpointer.load/save 的职责）
-  eventLog?: EventLog;           // 执行事件追加（旧 checkpointer 的事件记录职责）
-  interruptStore: InterruptStore;// 中断状态存取（旧 checkpointer.saveInterrupt 的职责）
+  messageStore: MessageStore;    // 消息存取（恢复用消息快照）
+  eventLog?: EventLog;           // 执行事件追加（按 spanId 切的执行事实流）
+  interruptStore: InterruptStore;// 中断状态存取（中断-恢复配对）
   logger: Logger;                // 日志器
   contextManager: ContextManager;// 上下文管理器（ContextPipeline 别名，用于上下文窗口整形等）
   emit?(event: AgentEvent): void;// 可选事件发射器，插件可通过它推送 AgentEvent

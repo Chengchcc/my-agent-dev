@@ -8,8 +8,8 @@ function tmpDir() {
   return mkdtempSync("/tmp/checkpoint-events-store-test-");
 }
 
-/** Helper: create a WAL database with checkpoint_events schema (simulates framework checkpointer setup). */
-function createCheckpointerDb(dbPath: string): Database {
+/** Helper: create a WAL database with checkpoint_events schema (simulates agent sqlitePersistence setup). */
+function createPersistenceDb(dbPath: string): Database {
   const db = new Database(dbPath);
   db.exec("PRAGMA journal_mode=WAL");
   db.exec(
@@ -30,8 +30,8 @@ describe("createCheckpointEventsStore", () => {
     const dir = tmpDir();
     const dbPath = join(dir, "test.db");
     try {
-      // Write side: framework checkpointer creates WAL db + schema
-      const writer = createCheckpointerDb(dbPath);
+      // Write side: agent sqlitePersistence creates WAL db + schema
+      const writer = createPersistenceDb(dbPath);
       writer.close();
 
       // Read side: main.ts:216 opens readonly for Ops consumption
@@ -54,7 +54,7 @@ describe("createCheckpointEventsStore", () => {
     const dir = tmpDir();
     const dbPath = join(dir, "test.db");
     try {
-      const writer = createCheckpointerDb(dbPath);
+      const writer = createPersistenceDb(dbPath);
       writer.close();
 
       const reader = new Database(dbPath, { readonly: true });
@@ -71,7 +71,7 @@ describe("createCheckpointEventsStore", () => {
     const dir = tmpDir();
     const dbPath = join(dir, "test.db");
     try {
-      const writer = createCheckpointerDb(dbPath);
+      const writer = createPersistenceDb(dbPath);
       // Insert some test events
       writer.run(
         `INSERT INTO checkpoint_events (session_id, span_id, ts, type, event) VALUES (?, ?, ?, ?, ?)`,

@@ -12,7 +12,7 @@
 | **MessageRevision** | 消息的版本化 envelope（同 messageId 多次写入，state 从 streaming→done） | 不是独立消息 |
 | **Ledger（conversation_ledger）** | 对话可见内容的 canonical fact store | 不是执行日志 |
 | **checkpoint_events** | 执行事实流（tool_start/tool_end/llm_call），按 sessionId+spanId 切 | 不是对话内容 |
-| **Session（= trace）** | 「哪个 agent、在哪个上下文里、的那条持久记忆线」— checkpointer 主键 | 不是 span/run |
+| **Session（= trace）** | 「哪个 agent、在哪个上下文里、的那条持久记忆线」- persistence 主键 | 不是 span/run |
 | **Span** | backend 的规范术语：session 上的一次 `prompt()` 调用（= root span）。DB 表 `span`、`spanId` 字段 | 不是 run（用户可见层的同义词，ADR 0007） |
 | **Run** | Web UI 用户可见术语：一次 agent 执行。后端等价于 1 Span，但用户不需要知道 span 这个词 | 不是 Span（同义词，层不同，ADR 0007） |
 | **attemptSeq** | span 内的重试序号，span 内单调递增 | 不是独立 id |

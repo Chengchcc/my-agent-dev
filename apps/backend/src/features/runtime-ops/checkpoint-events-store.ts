@@ -35,9 +35,9 @@ export interface CheckpointEventsStore {
 }
 
 export function createCheckpointEventsStore(db: Database): CheckpointEventsStore {
-  // WAL mode is set and persisted by the framework checkpointer (the writer).
-  // This store opens the DB readonly — executing write PRAGMAs would throw SQLITE_READONLY.
-  // The checkpointer.db schema is managed by framework's ensureCheckpointerSchema.
+  // WAL mode is set and persisted by the agent's sqlitePersistence (the writer).
+  // This store opens the DB readonly - executing write PRAGMAs would throw SQLITE_READONLY.
+  // The checkpointer.db schema is managed by the agent's drizzle migration.
   // We just open a read-only connection.
 
   function parseRows(

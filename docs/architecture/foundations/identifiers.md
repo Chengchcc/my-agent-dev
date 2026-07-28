@@ -142,7 +142,7 @@ span     ->  这条线「按一次次输入切分的执行事实流」（checkpo
 
 ## resume 不需要新 id
 
-`resume`（恢复）不是一次新 span，而是**同一个 span 被中断后从 checkpointer 续上继续跑**。它对应 `agent.continue()` 语义：同一条 session、同一个 spanId、只是新开一次 attempt。所以 resume 既不需要新 sessionId 也不需要新 spanId——它只是让 `attemptSeq` +1。把 resume 误当成新 span 来发 id，正是概念膨胀的典型来源。
+`resume`（恢复）不是一次新 span，而是**同一个 span 被中断后从持久层续上继续跑**。它对应 `agent.continue()` 语义：同一条 session、同一个 spanId、只是新开一次 attempt。所以 resume 既不需要新 sessionId 也不需要新 spanId--它只是让 `attemptSeq` +1。把 resume 误当成新 span 来发 id，正是概念膨胀的典型来源。
 
 ## 每个 id 归属哪一层
 

@@ -21,7 +21,7 @@ export function escapeRegExp(s: string): string {
 /** Build preloaded Message[] for a run from the conversation ledger.
  *  Eliminates the thread_projection round-trip: the ledger is the canonical
  *  source, and materializing to thread_projection eagerly was a vestige of
- *  M9's checkpointer-only recovery path. */
+ *  M9's persistence-only recovery path. */
 
 export interface RunAccumulator {
   senderMemberId: string;

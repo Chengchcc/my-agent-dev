@@ -100,7 +100,7 @@ export function createAgentService(opts: {
       // 1. Guard: assert no active runs (throws AgentBusyError if busy)
       opts.assertNoActiveRun(id);
 
-      // 2. Collect session IDs for checkpointer cleanup
+      // 2. Collect session IDs for persistence cleanup
       const sessionIds = await opts.listSessionIds(id);
 
       // 3. backend.db: single transaction — agent + threads + checkpoint + member
