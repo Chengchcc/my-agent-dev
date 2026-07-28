@@ -69,3 +69,13 @@ export function inMemoryCheckpointer(): Checkpointer {
     consumeInterrupt: interruptStore.consumeInterrupt.bind(interruptStore),
   };
 }
+
+/** Convenience: all three in-memory stores for testing. */
+export function inMemoryPersistence() {
+  return {
+    messageStore: inMemoryMessageStore(),
+    eventLog: inMemoryEventLog(),
+    interruptStore: inMemoryInterruptStore(),
+  };
+}
+
