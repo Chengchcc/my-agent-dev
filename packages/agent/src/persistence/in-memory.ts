@@ -53,7 +53,6 @@ export function inMemoryInterruptStore(): InterruptStore {
   };
 }
 
-/** 组合 checkpointer -- 三个拆分实现组装为 Checkpointer 复合接口。 */
 
 /** Convenience: all three in-memory stores for testing. */
 export function inMemoryPersistence() {

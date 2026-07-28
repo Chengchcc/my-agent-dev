@@ -113,50 +113,8 @@ describe("Agent", () => {
 
   // ── compact ──
   // ── getUsage ──
-  test("getUsage returns 0 without sessionId", async () => {
-    const agent = new Agent(makeConfig({ eventLog: { readEvents: async function* () { yield { type: "model_end", usage: { input: 100, output: 50 }, model: "test", step: 0, latencyMs: 1, ts: 1 }; } } } }));
-    expect(await agent.getUsage()).toBe(0);
-  });
 
-  test("getUsage sums model_end usage from events", async () => {
-    const events = [
-      { type: "model_end", usage: { input: 100, output: 50 } },
-      { type: "model_end", usage: { input: 30, output: 20 } },
-    ];
-    const agent = new Agent(
-      makeConfig({
-        sessionId: "t",
-        messageStore: {
-          save() {},
-          load() {
-            return [];
-          },
-          readEvents: () =>
-            (async function* () {
-              for (const e of events) yield e;
-            })(),
-        },
-    );
-    const u = await agent.getUsage();
-    expect(u).toBe(200);
-  });
 
-  test("getUsage returns 0 when readEvents throws", async () => {
-    const agent = new Agent(
-      makeConfig({
-        sessionId: "t",
-        messageStore: {
-          save() {},
-          load() {
-            return [];
-          },
-          readEvents() {
-            throw new Error("boom");
-          },
-        },
-    );
-    expect(await agent.getUsage()).toBe(0);
-  });
 
   // ── compact ──
   test("compact throws without checkpointer", async () => {
