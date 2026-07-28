@@ -19,7 +19,7 @@ my-agent-team 是一个**团队级 Agent 运行时**。把多个 AI Agent 拉进
 - **对话账本** — canonical conversation store，所有消息（人 + Agent）经单一入口写入，端只做渲染
 - **Loop 自动化** — 定时触发的 Agent 流水线：Generator → Evaluator → Human Gate，自动 triage、review、cleanup
 - **插件体系** — 身份注入、渐进式技能加载、文件记忆、对话上下文、任务防早停，6 个生命周期 hook
-- **进程内编排** — AgentSession 直管 Agent + Checkpointer + PluginRunner + ContextManager，无额外服务依赖
+- **进程内编排** - Agent 直管运行循环 + 持久化端口 + Plugin + ContextPipeline，无额外服务依赖
 - **SQLite 单文件存储** — backend.db（业务） + checkpointer.db（执行），零运维部署
 
 ## 🚀 快速开始
@@ -44,15 +44,15 @@ bun run dev
 ┌─────────────────────────────────┐
 │ Surfaces       Web 控制台  飞书 Bot │
 ├─────────────────────────────────┤
-│ Backend        HTTP/SSE · AgentSession 编排 · Loop 调度 │
+│ Backend        HTTP/SSE · Agent 编排 · Loop 调度 │
 ├─────────────────────────────────┤
-│ Agent Runtime  createAgent() · 插件 · Checkpointer · ContextManager │
+│ Agent Runtime  createAgentSession() · 插件 · 持久化端口 · ContextPipeline │
 ├─────────────────────────────────┤
 │ Storage        backend.db + checkpointer.db（SQLite）      │
 └─────────────────────────────────┘
 ```
 
-一次对话的完整链路：**人发消息 → 端 POST → Backend 写账本 → AgentSession 拉起 Agent → assistant 消息直写账本 → SSE 推到所有端**。
+一次对话的完整链路：**人发消息 -> 端 POST -> Backend 写账本 -> Agent 拉起运行循环 -> assistant 消息直写账本 -> SSE 推到所有端**。
 
 详细架构见 [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)。
 
@@ -66,8 +66,7 @@ apps/
 
 packages/
   core/                    运行时原语：Message、Tool、ChatModel、run()
-  framework/               createAgent()、插件系统、Checkpointer、ContextManager
-  harness/                 AgentSession 编排、identityPlugin、compaction
+  agent/                   Agent 生命周期、createAgentSession()、插件、ContextPipeline、持久化端口
   loop/                    Loop 状态机（纯 reducer）
   ai/                      Provider 注册制 + Model 元数据 + AnthropicChatModel
   message/                 消息类型与 MessageRevision

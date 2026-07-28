@@ -35,17 +35,15 @@ Every response has two parts:
 ## Architecture & Data Flow
 
 ```
-L6 Surfaces     Frontend web / IM bot — talk HTTP/SSE to backend
-L5 Backend      Multi-agent service (Elysia HTTP, auth, tenancy, runner pool)
-L4 Harness      Opinionated product layer: built-in tools + system prompt + policy
-L3 Framework    createAgent() — composes model + tools + plugins + checkpointer + contextManager
-L2 Runtime      run() async generator — messages → model stream → tool execute → loop
+L5 Surfaces     Frontend web / IM bot - talk HTTP/SSE to backend
+L4 Backend      Multi-agent service (Elysia HTTP, auth, tenancy, runner pool)
+L3 Agent        createAgentSession() - composes model + tools + plugins + persistence ports + contextPipeline
+L2 Runtime      run() async generator - messages -> model stream -> tool execute -> loop
 L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock
-```
 
 **Package dependency graph:**
 - Leaves: `@my-agent-team/message`, `@my-agent-team/config`, `@my-agent-team/loop`
-- Core: `@my-agent-team/core` → `@my-agent-team/framework`
+- Core: `@my-agent-team/core` -> `@my-agent-team/agent`
 - Plugins: 5 packages under `packages/plugin-*` (identity, fs-memory, progressive-skill, task-guard, conversation-context)
 - Apps: `@my-agent-team/backend` (consumes all), `@my-agent-team/web` (Next.js), `@my-agent-team/lark-bot`
 
@@ -56,7 +54,7 @@ L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock
 | Directory | Purpose |
 |---|---|
 | `packages/core/` | Protocol types + `run()` + `collectStream()` |
-| `packages/framework/` | `createAgent()`, plugins, context managers, checkpointers |
+| `packages/agent/` | Agent lifecycle, `createAgentSession()`, plugins, context pipeline, split persistence (MessageStore/EventLog/InterruptStore) |
 | `packages/loop/` | Pure state machine (reducer, STATE.md I/O, config parsing) |
 | `packages/ai/` | Provider + Model registry, AnthropicChatModel, model metadata |
 | `packages/tools-common/` | read/write/edit/bash/grep/glob/web tools |
@@ -114,12 +112,14 @@ index.ts           — Barrel re-exports
   modelName: string;
   plugins: Plugin[];
   tools: Tool[];         // read/write/edit/bash/glob/grep by default
-  checkpointer: Checkpointer;
-  contextManager: ContextManager;
+  messageStore?: MessageStore;
+  eventLog?: EventLog;
+  interruptStore?: InterruptStore;
+  contextManager?: ContextPipeline;
 }
 ```
 
-Use `sessionFactory.getOrCreate(sessionId, spec)` to materialize or reuse an `AgentSession`.
+Use `createAgentSession()` (SDK entry point) or `sessionFactory.getOrCreate(sessionId, spec)` to materialize or reuse an `Agent`.
 
 ### Plugin System
 Plugins contribute tools and hooks. Six lifecycle points fire in registration order:
@@ -196,8 +196,8 @@ Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop
 - **Framework:** `bun:test` (`describe`/`test`/`expect`)
 - **Location:** `*.test.ts` files beside source
 - **Model mocking:** Define scripted `ChatModel` implementations that yield predetermined turns. `echoModel()` from `@my-agent-team/test-helpers` provides a reusable factory.
-- **Core mocking primitives:** `inMemoryCheckpointer()`, `consoleLogger({ level: "silent" })`, `passthroughContextManager()`
-- **Integration tests:** Use `createAgent()` with real plugins (identity, fs-memory, progressive-skill) and scripted models
+- **Core mocking primitives:** `inMemoryPersistence()`, `consoleLogger({ level: "silent" })`, `passthroughContextManager()`
+- **Integration tests:** Use `createAgentSession()` with real plugins (identity, memory, progressive-skill) and scripted models
 - **Loop tests:** `mockSessionFactory(verdictMd)` — creates a `SessionFactory` that writes VERDICT.md when evaluator runs
 - **Coverage:** No enforced threshold; tests should cover behavior (conditional branches, invariants, error handling), not plumbing
 - **Test helpers:** `@my-agent-team/test-helpers` exports `echoModel()` with `EchoScript` type for deterministic model responses
