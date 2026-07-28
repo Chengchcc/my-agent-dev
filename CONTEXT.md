@@ -36,12 +36,10 @@
 ## 架构分层（6 层，自底向上）
 
 ```
-L6 Surfaces     apps/web, apps/lark-bot — 输入与渲染，不持有事实
-L5 Backend      apps/backend — HTTP/SSE, auth, tenancy, runner pool
-L4 Harness      packages/harness — AgentSession 编排 + compaction
-L3 Framework    packages/framework — createAgent() + runLoop + plugin system
-L2 Runtime      packages/core — run() async generator
-L1 Protocols    packages/core, packages/message — Message/ChatModel/Tool 类型契约
+L4 Agent        packages/agent — Agent lifecycle + Plugin system + persistence + context pipeline
+L3 Runtime      packages/core — run() async generator
+L2 Message      packages/message — Message/ChatModel types
+L1 Contracts    packages/message — ContentBlock, Tool contract
 ```
 
 ## 包地图与进出口
@@ -51,8 +49,7 @@ L1 Protocols    packages/core, packages/message — Message/ChatModel/Tool 类�
 | `@my-agent-team/core` | L1+L2 | `Message`, `ChatModel`, `Tool`, `run()`, `collectStream()` |
 | `@my-agent-team/message` | L1 | `Message`, `MessageRevision`, `ContentBlock`, `MessageAuthor`, `assistantMessageId()` |
 | `@my-agent-team/conversation` | L1 | `LedgerEntry`, `LedgerKind`, `Member`, `Conversation`, `TriggerMode` |
-| `@my-agent-team/framework` | L3 | `createAgent()`, `definePlugin()`, `pipeContextManagers()`, `InterruptSignal`, checkpointer 实现 |
-| `@my-agent-team/harness` | L4 | `AgentSession`, `compactThread()`, `reflectionGuidance()` |
+| `@my-agent-team/agent` | L4 | Agent runtime, definePlugin(), session management, persistence, context pipeline |
 | `@my-agent-team/loop` | L4 | `loopReducer()` — Item step 状态转移纯函数, `LoopState`, `LoopAction` 类型 |
 | `@my-agent-team/api-contract` | 跨层 | Elysia `App` 类型真源（HTTP/SSE 契约），`SSEEventMap` |
 | `@my-agent-team/config` | 跨层 | `envSchema` + `parseEnv()` — 环境变量单源 |
@@ -131,8 +128,8 @@ bun run build        # tsc → dist/ (turbo)
 bun run dev          # 启动 backend + web
 ```
 
-单包测试：`cd packages/framework && bun test`
-单文件/模式：`cd packages/framework && bun test --test-name-pattern="createAgent"`
+单包测试：`cd packages/agent && bun test`
+单文件/模式：`cd packages/agent && bun test --test-name-pattern="createAgent"`
 
 ## 工具链
 
