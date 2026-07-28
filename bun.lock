@@ -137,6 +137,8 @@
         "@my-agent-team/core": "workspace:*",
         "@my-agent-team/framework": "workspace:*",
         "@my-agent-team/message": "workspace:*",
+        "drizzle-orm": "^0.44.0",
+        "zod": "^3.23.0",
       },
       "devDependencies": {
         "@my-agent-team/test-helpers": "workspace:*",
