@@ -1,6 +1,6 @@
+import { definePlugin, type Plugin } from "@my-agent-team/agent";
 import type { ChatModel } from "@my-agent-team/core";
 import { collectStream } from "@my-agent-team/core";
-import { definePlugin, type Plugin } from "@my-agent-team/agent";
 import { extractText, type Message } from "@my-agent-team/message";
 import { formatRecapPrompt } from "./prompt.js";
 

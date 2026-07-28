@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { AIMessageChunk, ChatModel, Tool } from "@my-agent-team/core";
 import { createAgent, createContextStore } from "@my-agent-team/agent";
+import type { AIMessageChunk, ChatModel, Tool } from "@my-agent-team/core";
 import {
   type ConversationContext,
   ConversationCtx,

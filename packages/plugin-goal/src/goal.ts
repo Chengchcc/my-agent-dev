@@ -1,11 +1,11 @@
-import type { ChatModel } from "@my-agent-team/core";
-import { collectStream } from "@my-agent-team/core";
 import {
   definePlugin,
   type HookContext,
   type Plugin,
   type StopDecision,
 } from "@my-agent-team/agent";
+import type { ChatModel } from "@my-agent-team/core";
+import { collectStream } from "@my-agent-team/core";
 import { extractText, type Message } from "@my-agent-team/message";
 
 // ─── Types ───

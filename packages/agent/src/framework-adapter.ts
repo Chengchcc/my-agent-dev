@@ -12,6 +12,7 @@ export type {
   ContextKey,
   ContextManager as ContextPipeline,
   ContextStore,
+  HookContext,
   Logger,
   Plugin,
   RunSpan,

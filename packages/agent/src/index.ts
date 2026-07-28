@@ -1,3 +1,10 @@
+export {
+  createAgent,
+  createContextStore,
+  defineContext,
+  definePlugin,
+  validatePlugins,
+} from "@my-agent-team/framework";
 export { Agent } from "./agent.js";
 export type { AgentEvent, AgentEventListener } from "./agent-events.js";
 export type { AgentContext, AgentHooks, BeforeToolResult, StopDecision } from "./agent-hooks.js";
@@ -10,6 +17,7 @@ export type {
   CheckpointEventRow,
   ContextPipeline,
   ContextStore,
+  HookContext,
   Plugin,
   RunSpan,
 } from "./framework-adapter.js";
@@ -18,5 +26,3 @@ export { resolveModel } from "./model-runtime.js";
 export type { ContextKey, RunState } from "./run-state.js";
 export type { SessionManager, SessionManagerConfig } from "./session-manager.js";
 export { InMemorySessionManager, SqliteSessionManager } from "./session-manager.js";
-export { definePlugin, validatePlugins } from "@my-agent-team/framework";
-export { defineContext, createContextStore, createAgent } from "@my-agent-team/framework";

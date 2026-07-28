@@ -2,7 +2,7 @@
 
 **日期**: 2026-07-22
 **状态**: design
-**范围**: `packages/agent`（新建）、`packages/framework`（重构）、`packages/harness`（吸收）、`apps/backend`（精简为薄壳）
+**范围**: `packages/agent`（新建）、`packages/framework (agent internal dep)`（重构）、`packages/harness`（吸收）、`apps/backend`（精简为薄壳）
 
 ---
 
@@ -169,7 +169,7 @@ Agent 暴露 `agent.on(event, handler)`；不把任意 `agent.emit(event, payloa
 
 | 当前 | 目标 |
 |------|------|
-| `packages/framework` | → `packages/agent` 内部实现，最终删除 |
+| `packages/framework (agent internal dep)` | → `packages/agent` 内部实现，最终删除 |
 | `packages/harness` | → 核心并入 `agent`，最终删除 |
 | `apps/backend/main.ts` | → 薄启动层，调用 SDK/feature installers |
 | `conversation-compose.ts` | → Agent 生命周期壳，调用 `createAgentSession()` |
@@ -246,4 +246,4 @@ Tracing · Debugging · Evals · Metrics
 | Backend assembly cleanup | `apps/backend/src/` | ✅ P8 |
 | Backend bootstrap cleanup | `apps/backend/src/` | ✅ P9 |
 | Naming migration | — | ✅ P10 (public API only; full rename + Checkpointer split deferred to P11) |
-| Framework / harness deletion | — | ⏳ P11 |
+| Framework absorption | — | ✅ P11 (plugins+backend consume agent; framework kept as agent internal dep) |
