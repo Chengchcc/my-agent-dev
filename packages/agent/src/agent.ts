@@ -229,7 +229,6 @@ export class Agent {
       sessionId: this.#config.sessionId,
       tools: this.#config.tools,
       plugins: [...(this.#config.plugins ?? []), ...plugins],
-      checkpointer: this.#config.checkpointer,
       session: this.#config.session,
       contextManager: this.#config.contextManager,
       logger: this.#config.logger,

@@ -33,11 +33,11 @@ export interface AgentConfig {
   }) => string | undefined;
   systemPrompt?: string;
   sessionId?: string;
-  /** @deprecated Prefer messageStore. Kept for compatibility. */
+  /** @deprecated Prefer messageStore/eventLog/interruptStore. */
   checkpointer?: Checkpointer;
-  messageStore?: MessageStore;
-  eventLog?: EventLog;
-  interruptStore?: InterruptStore;
+import type { EventLog } from "./persistence/event-log.js";
+import type { InterruptStore } from "./persistence/interrupt-store.js";
+import type { MessageStore } from "./persistence/message-store.js";
   session?: Session;
   logger?: Logger;
   hooks?: AgentHooks;

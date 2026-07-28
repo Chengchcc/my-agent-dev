@@ -134,5 +134,3 @@ export function sqlitePersistence(opts: SqlitePersistenceOptions) {
   return { messageStore, eventLog, interruptStore };
 }
 
-// Legacy: keep existing sqliteCheckpointer for compatibility during migration
-export { sqliteCheckpointer, ensureCheckpointerSchema } from "./sqlite-checkpointer.js";

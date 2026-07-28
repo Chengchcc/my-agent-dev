@@ -18,14 +18,13 @@ export { toolResultTruncator } from "./context/tool-result-truncator.js";
 // Model
 export type { ModelRef, ModelRuntime, ResolvedModel } from "./model-runtime.js";
 export { resolveModel } from "./model-runtime.js";
-export type { Checkpointer } from "./persistence/checkpointer.js";
 // Persistence
 export type { CheckpointEvent, CheckpointEventRow, EventLog } from "./persistence/event-log.js";
+export { inMemoryPersistence } from "./persistence/in-memory.js";
 export type { InterruptSignal, InterruptStore } from "./persistence/interrupt-store.js";
 export type { MessageStore } from "./persistence/message-store.js";
-export { sqlitePersistence } from "./persistence/sqlite-persistence.js";
-export { inMemoryPersistence } from "./persistence/in-memory.js";
 export type { Session } from "./persistence/session.js";
+export { sqlitePersistence } from "./persistence/sqlite-persistence.js";
 // Runtime
 export { createAgent } from "./runtime/create-agent.js";
 export type { HookContext, Plugin, PluginHooks } from "./runtime/plugin.js";
