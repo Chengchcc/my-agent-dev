@@ -1,0 +1,26 @@
+{
+  "name": "@my-agent-team/agent-backend",
+  "version": "0.1.0",
+  "description": "Implementation-independent Agent Backend contracts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "biome check . && eslint .",
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit"
+  },
+  "dependencies": {
+    "@my-agent-team/message": "workspace:*"
+  },
+  "devDependencies": {}
+}

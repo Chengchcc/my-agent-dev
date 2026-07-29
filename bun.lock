@@ -144,6 +144,13 @@
         "typescript": "^5.7.0",
       },
     },
+    "packages/agent-backend": {
+      "name": "@my-agent-team/agent-backend",
+      "version": "0.1.0",
+      "dependencies": {
+        "@my-agent-team/message": "workspace:*",
+      },
+    },
     "packages/ai": {
       "name": "@my-agent-team/ai",
       "version": "0.1.0",
@@ -645,6 +652,8 @@
     "@my-agent-team/adapter-mcp": ["@my-agent-team/adapter-mcp@workspace:packages/adapter-mcp"],
 
     "@my-agent-team/agent": ["@my-agent-team/agent@workspace:packages/agent"],
+
+    "@my-agent-team/agent-backend": ["@my-agent-team/agent-backend@workspace:packages/agent-backend"],
 
     "@my-agent-team/ai": ["@my-agent-team/ai@workspace:packages/ai"],
 
