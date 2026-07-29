@@ -33,7 +33,7 @@ Agent 运行循环是 Agent 真正「思考-行动」的运行时核心。它的
 
 | 事件 | 含义 |
 |------|------|
-| `message` | 一条完整消息（经进程内 Agent 透出后，由 Backend 的 `onRunMessage` [直写进账本](../conversation/ledger.md)，再由 `broadcastMessage` [扇出](../backend/conversation-projection.md)到前端） |
+| `message` | 一条完整消息（经进程内 Agent 透出后，由 Backend 的 `onRunMessage` [直写进账本](../conversation/history.md)，再由 `broadcastMessage` [扇出](../runs/output-and-live-updates.md)到前端） |
 | `interrupted` | 运行被中断 |
 | `error` | 运行出错 |
 | `text_delta` | 文本streaming 增量 |
@@ -164,6 +164,6 @@ interface InterruptStore {
 - [上下文管理器](context-manager.md)
 - [运行时插件](plugin.md)
 - [task-guard plugin](../plugins/task-guard.md)
-- [会话投影](../backend/conversation-projection.md)
+- [会话投影](../runs/output-and-live-updates.md)
 - [依赖注入](../foundations/dependency-injection.md) -- DI 手法与 spanLoopOpts 透传
 - [标识符体系](../foundations/identifiers.md) -- runId / threadId 的分工与回退

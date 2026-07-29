@@ -1,83 +1,86 @@
 # LLM 入口索引
 
-当一个 LLM 需要回答关于 `my-agent-team` 架构的问题时，先读这个文件，再按下面的「问题类型 → 该读哪几页」去取对应正文。每一页正文都基于真实代码撰写，frontmatter 里的 `summary` 与 `depends_on` / `used_by` 可用于快速判断相关性。
+本目录主 Wiki 描述目标架构。核心目标是让 Product Backend 与 Agent 执行引擎解耦，使 Claude Code、Codex、OpenCode 和自研 Agent Engine 都能通过 Agent Backend 接入。
 
-> 提示：大部分页面为 `status: current`（基于当前代码）。少量页面为 `status: design`（已锁定但尚未进代码）。阅读时注意 frontmatter 的 `status` 字段区分。
+页面可独立阅读；`status: design` 表示设计已固定但实现尚未完全迁移。
 
-## 如果问的是整个系统怎么运转
+## 整体架构
 
 1. `system-overview.md`
 2. `foundations/facts-and-projections.md`
-3. `foundations/lifecycle-overview.md`
-4. `backend/conversation-projection.md`
+3. `backend/overview.md`
 
-## 如果问的是消息重复 / 消息丢失 / 端上历史不一致
-
-1. `foundations/facts-and-projections.md`
-2. `backend/conversation-projection.md`
-3. `conversation/ledger.md`
-4. `surfaces/web.md` 或 `surfaces/lark-adapter.md`
-5. `operations/troubleshooting.md`
-
-## 如果问的是运行生命周期 / 取消 / 恢复 / 卡住的运行
-
-1. `backend/overview.md`
-2. `runtime/framework.md`
-3. `foundations/identifiers.md`
-4. `foundations/lifecycle-overview.md`
-
-## 如果问的是数据归属（谁是事实来源）
+## 数据归属与历史
 
 1. `foundations/facts-and-projections.md`
-2. `backend/data-model.md`
-3. `conversation/ledger.md`
-4. `backend/event-log.md`（已废止，tombstone：执行事实流回归 checkpoint_events）
+2. `conversation/history.md`
+3. `agents/context.md`
+4. `backend/data-model.md`
 
-## 如果问的是飞书
+关键结论：
 
-1. `flows/e2e-lark-message.md`
-2. `surfaces/lark-adapter.md`
-3. `backend/conversation-projection.md`
-4. `conversation/conversation-and-members.md`
+```text
+Conversation History = 共享会话事实
+Agent Context = 单 Agent Member 的 context 事实
+Execution session = 可丢弃执行缓存
+```
 
-## 如果问的是 Web
+Agent Run = Product Backend 持久执行身份，可包含多个 run segments
+Agent Loop = Coding Agent 内部执行机制
+
+## Agent Backend / Claude / Codex / OpenCode
+
+1. `execution/agent-backend.md`
+2. `agents/context.md`
+3. `backend/overview.md`
+
+Product Backend 只依赖 AgentBackend 协议，不依赖 Runtime 内部 transcript、tool loop、retry、compaction 或 sub-agent。
+
+## 消息重复、丢失与终态
+
+1. `runs/output-and-live-updates.md`
+2. `conversation/history.md`
+3. `agents/context.md`
+4. `flows/e2e-web-message.md`
+
+关键结论：Streaming 是 transient projection；Terminal BackendRunOutcome 后才原子提交 Ledger Message 与 Tree 引用。
+
+## Context Branch / Fork / Rollback
+
+1. `agents/context.md`
+2. `execution/agent-backend.md`
+3. `backend/data-model.md`
+
+Context Branch 内固定 Agent Backend。切换 Backend 必须 fork；fork 默认继承，也可显式选择新 Backend。
+
+## 工具与 MCP
+
+1. `execution/agent-backend.md`
+2. `agents/context.md`
+
+Runtime 原生工具由 Runtime 自己执行。Conversation、Task、Memory、Artifact、审批、History 等 Product Tool 由 Product Backend 执行，MCP 优先、Adapter fallback。
+
+## Web
 
 1. `flows/e2e-web-message.md`
 2. `surfaces/web.md`
-3. `conversation/ledger.md`
-4. `backend/conversation-projection.md`
+3. `runs/output-and-live-updates.md`
 
-## 如果问的是 Agent 执行内核 / 插件 / 记忆 / 技能 / task-guard
+## Lark
 
-1. `runtime/framework.md`
-2. `runtime/plugin.md`
-3. `runtime/context-manager.md`
-4. `harness/harness.md`（Agent 的构造与生命周期）
-5. `plugins/fs-memory.md`、`plugins/progressive-skill.md`、`plugins/task-guard.md`、`plugins/skill-pack.md`
+1. `surfaces/lark.md`
+2. `conversation/history.md`
+3. `runs/output-and-live-updates.md`
 
-## 如果问的是上下文窗口 / 历史压缩 / 摘要 / 裁剪
+## 自研 Runtime
 
-1. `runtime/context-manager.md`
-2. `runtime/framework.md`
-3. `harness/harness.md`（Agent 的构造与生命周期）
+1. `runtime/coding-agent.md`
+2. `runtime/coding-agent-session.md`
+3. `runtime/coding-agent-prompt.md`
+4. `runtime/coding-agent-models.md`
 
-## 如果问的是安全 / 隔离
+Coding Agent 是无 UI、独立进程的 Coding Runtime，通过 CodingAgentBackend 接入 Product Backend。其 Coding Session Tree 是可重建执行缓存，不是 Agent Context。
 
-1. `security/overview.md`
-2. `conversation/conversation-and-members.md`
+## 结构化索引
 
-## 如果问的是 Loop / 自动化编排 / Generator-Evaluator 分离
-
-> `foundations/loop.md`、`backend/loop-runner.md`、`foundations/loop-pattern.md` 均为 `status: design`（已锁定设计，尚未进代码）。
-
-1. `foundations/loop.md`
-2. `backend/loop-runner.md`
-3. `foundations/loop-pattern.md`
-
-## 如果问的是未来方向
-
-读 `roadmap/future-work.md`，并顺其关联链接。**不要把 roadmap 条目当成当前行为。**
-
-## 结构化清单
-
-完整的概念图谱（id / 标题 / 状态 / 依赖 / 被依赖 / 路径 / 摘要）见同目录 `concepts.json`，可直接被程序消费。
+完整页面图谱见 `concepts.json`。

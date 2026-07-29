@@ -7,7 +7,7 @@ last_verified_against_code: 2026-07-28
 summary: "一次 Agent 运行的完整时间线：从 Backend 创建 Agent，经 agent runtime (span-loop) 执行，到事件固化写账本，最后收尾释放。"
 depends_on:
   - foundations.facts-and-projections
-  - backend.conversation-projection
+  - runs.output-and-live-updates
   - runtime.framework
   - harness.harness
 used_by:
@@ -24,7 +24,7 @@ sequenceDiagram
   participant B as Backend
   participant AG as Agent
   participant EL as EventLog
-  participant L as Conversation Ledger
+  participant L as Conversation History
 
   B->>AG: startAgentRun(input) -> 创建 Agent
   AG runs: span-loop
@@ -55,7 +55,7 @@ sequenceDiagram
 ## 关联页面
 
 - [事实与投影](facts-and-projections.md)
-- [会话消息流](../backend/conversation-projection.md)
+- [会话消息流](../runs/output-and-live-updates.md)
 - [Agent](../runtime/plugin.md)
 - [Framework 运行循环](../runtime/framework.md)
 - [Web 消息端到端](../flows/e2e-web-message.md)

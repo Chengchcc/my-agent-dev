@@ -8,7 +8,7 @@ summary: "端是面向用户的适配器，目前是 Web 和飞书。它们采�
 depends_on:
 used_by:
   - surfaces.web
-  - surfaces.lark-adapter
+  - surfaces.lark
 ---
 
 # 端总览
@@ -46,5 +46,5 @@ flowchart LR
 ## 关联页面
 
 - [Web 端](./web.md)
-- [飞书适配器](./lark-adapter.md)
-- [对话账本](../conversation/ledger.md)
+- [飞书](./lark.md)
+- [对话账本](../conversation/history.md)

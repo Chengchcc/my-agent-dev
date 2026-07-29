@@ -1,97 +1,142 @@
 ---
 id: foundations.facts-and-projections
 title: 事实与投影
-status: current
+status: design
 owners: architecture
-last_verified_against_code: 2026-07-28
+summary: "目标架构区分三类状态：Conversation History 是共享会话事实，Agent Context 是单个 Agent Member 的上下文事实，Execution session 是可丢弃执行缓存。Streaming、thinking、process status 和 provider 原始事件都是投影或诊断，不定义产品历史。"
 depends_on:
 used_by:
-  - backend.conversation-projection
+  - architecture.system-overview
+  - backend.overview
+  - agents.context
   - backend.data-model
-  - operations.troubleshooting
 ---
 
 # 事实与投影
 
-**Message 领域类型只有一处定义**：`@my-agent-team/message` 的 `Message` / `MessageRevision`。其它层都引用这个类型，没有自己再造一个 "Message"。
+本页回答：系统中哪些数据可以作为产品决策和恢复依据，哪些只是执行缓存、实时展示或诊断记录。
 
-```
-@my-agent-team/message
- ├── Message          { role, text?, blocks? }        ← Agent 看到的对话轮次
- ├── MessageRevision  { messageId, state, ... }       ← 带生命周期的消息 envelope
- └── ContentBlock     { type, text?, tool_use?, ... } ← 消息内容块
-```
+## 单一 Message 本体
 
-## 事实层与 infrastructure
+`Message` 仍然是唯一消息领域类型。Ledger、Tree、Runtime 和 Surface 不各自发明不同的 Message；它们只保存引用、包装生命周期或转换协议。
 
-| 层 | 持久 | 角色 | 写者 | 读者 | 可重建 |
-|---|---:|---|---|---|---|
-| **事实** | | | | | |
-| conversation_ledger | 是 | 对话可见内容 | appendLedgerEntry | 所有端 | 否 |
-| checkpoint_events | 是 | 执行事实流（按 spanId） | EventLog（eventLog.appendEvent） | Ops、排障 | 否 |
-| **infrastructure** | | | | | |
-| ledger（broadcast cache） | 是 | broadcast cache | broadcastMessage（best-effort） | SSE subscriber 轮询 | 是 |
-| SSE 流 | 否 | transport | RunSupervisor / ConvService | Web / Lark 实时 UI | 否 |
-
-### 为什么这些不能合并
-
-- **conversation_ledger vs checkpoint_events**：ledger 存对话可见内容，checkpoint_events 存 execution detail（tool_start/tool_end/llm_call 等）。tool call 细节排障需要，但进了 ledger 会让 Lark 消息卡片渲染出 `[Unsupported content]`。反过来，成员加入通知属于 ledger，跟哪个 span 都没关系。两者都是 session 的事实，但一类对话可见、一类执行内部，渲染面不同，所以不混。
-- **checkpoint_events 归 persistence ports (EventLog)**：执行事实流是 session 运行档案的一部分，和恢复状态同库同源（见[标识符体系](identifiers.md)）。曾被剥离出去的 `event_log` 表已废止（见 [EventLog tombstone](../backend/event-log.md)）。
-
-## 数据流
-
-```mermaid
-graph LR
-  Human[人的消息] --> Ledger[(conversation_ledger)]
-  Sup[RunSupervisor] -->|"onRunMessage"| Ledger
-  BPM -->|"Message[]"| Spec[preloadedMessages]
-  EL[EventLog] -->|"eventLog.appendEvent(sessionId, spanId, …)"| CE[(checkpoint_events)]
-  CE --> OpsUI[Ops / 排障]
-  Ledger -->|"broadcast"| TP[(ledger)]
-  TP --> SSE[SSE subscriber]
-  Ledger -->|"SSE poll"| ConvUI[对话 UI]
+```text
+Message
+  ├─ 在 Conversation History 中作为共享会话事实
+  ├─ 在 Agent Context 中通过 ledgerSeq 被某 Agent context 引用
+  ├─ 被 Adapter 转换为 Runtime-native input
+  └─ 被 Web/Lark 渲染
 ```
 
-## 关键路径
+## 三种状态
 
-- **人发消息**：`postMessage → appendAndBroadcast`（写 ledger + broadcastMessage fan-out）
-- **assistant 产出**：`onRunMessage → appendAssistantMessage`（直写 ledger）→ `broadcastMessage`（best-effort fan-out，fire-and-forget）
-- **UI 怎么更新**：`subscribeConversation` SSE 从 ledger 直接 poll
+### Conversation History：共享事实
 
+Ledger 记录所有成员可见的 Conversation 内容，包括人类与 Agent 的最终 Message、成员事件和产品控制条目。它决定用户看到的共享历史。
 
-|---|---|---|
-| 触发时机 | forkRun（运行开始前） | 每次 ledger 写入后 |
-| 输入 | ledger 全量 `getLedgerEntries` | 单条 LedgerEntry |
-| 可靠性 | critical（读失败上抛） | best-effort（失败只记日志） |
-| 消费方 | Agent（preloadedMessages） | SSE subscriber / Web UI |
+### Agent Context：Agent 上下文事实
 
-## 失败模式
+Tree 的 scope 是 `(conversationId, agentMemberId)`。它决定该 Agent 在某条 branch 上实际消费过什么、保留了哪些 Product Tool 结果、应用了什么 Product Summary，以及从哪个历史节点继续。
 
-### ledger 写入成功但 broadcast 失败
+共享 Message 在 Tree 中保存 `ledgerSeq` 引用，不复制 Message 内容。
 
-前端 SSE 有延迟/缺失，但事实已持久化。重连后从 ledger 重放。
+### Execution session：执行缓存
 
+Claude Code session、Codex thread、OpenCode session 和 Coding Agent Session 都是 opaque cache。它们可以保存 provider context、内部 compaction、tool state 和 sub-agent，但不能成为产品事实。
 
-按 messageId 折叠（后写覆盖先写）。如果同一消息有两个 messageId 则折叠失效导致重复。当前 messageId 由 `assistantMessageId(spanId, 0)` 生成，同一 span 内 stable。
+Execution session 丢失时，Product Backend 从 Agent Context active branch 投影线性 `ProjectedHistoryItem[]` 重建。
 
-### Lark 渲染出 `[Unsupported content]`
+## 事实、缓存、投影和审计
 
-纯 `tool_use`/`tool_result` block 进了 ledger。过滤应在 `onRunMessage` 回调或 Lark adapter 的 `renderRevision` 做。
+| 类型 | 示例 | 可作为产品恢复真源 | 可重建 |
+|---|---|---:|---:|
+| 共享事实 | Conversation History | 是 | 否 |
+| Agent 上下文事实 | Agent Context | 是 | 否 |
+| Runtime cache | backendSessionId、live process、provider transcript | 否 | 是 |
+| 实时投影 | streaming delta、typing/status、SSE buffer | 否 | 是 |
+| 执行审计 | model/tool latency、usage、raw provider diagnostic | 否 | 通常否，但不参与语义恢复 |
+
+## Message 何时成为产品事实
+
+### 人类 Message
+
+```text
+写 Ledger
+→ 端可见
+→ Agent 被触发时按实际消费追加 Tree ledgerSeq refs
+```
+
+### Agent Message
+
+```text
+Agent Backend streaming events
+→ transient UI projection
+→ terminal BackendRunOutcome
+→ 同一事务写 Ledger + Tree ref + branch leaf/revision
+```
+
+Streaming delta 不写 canonical history。只有 terminal assistant Message 才提交。
+
+## Product Tool 结果何时进入 Context
+
+Agent Backend 原生工具由 Runtime 自己执行，其原始 tool lifecycle 属于 runtime events。Product Tool 由 Product Backend 执行。
+
+只有满足以下条件的 Product Tool call/result 才进入 Agent Context：
+
+```text
+后续模型需要读取
+或用户需要理解其因果
+或切换 Runtime 时必须保留
+```
+
+通知、presence、heartbeat、queue status 和 UI refresh 只进投影或审计。
+
+## Product Summary 和 Runtime compaction 有什么区别
+
+Product Summary 是 Tree entry，由 Product Policy 和可插拔 summarizer 生成。它只改变 context projection，原始历史保留。
+
+Runtime compaction 是 Claude/Codex/OpenCode/Coding Agent 的内部缓存优化，不写 Agent Context，也不改变产品历史。
+
+## 为什么更早历史按需加载
+
+Branch metadata 保存 `ledgerCursor`。触发时 Backend 从 cursor 之后筛选该 Agent 可见的 Ledger entries，并按统一 N 条或 token budget 追加最近历史。
+
+更早历史通过 Product History MCP 读取。读取默认是当前 Agent Run 临时 tool result；只有显式 retain 才追加到 Tree。
+
+## 为什么 Ledger 和 Agent Context 都需要
+
+Ledger 回答：
+
+```text
+Conversation 中所有成员共同发生了什么？
+```
+
+Tree 回答：
+
+```text
+这个 Agent 在这条 branch 上实际知道什么？
+```
+
+如果只保留 Ledger，就难以表达每个 Agent 的私有上下文、工具语义、summary 和 branch。如果只保留 Tree，就失去多人共享顺序、统一可见性和端侧恢复事实。
+
+二者通过 `ledgerSeq` 引用连接，而不是复制 Message。
 
 ## 不变量
 
-1. Message 领域类型只有 `@my-agent-team/message` 一处定义。
-2. conversation_ledger 是对话消息的 canonical fact store。
-3. checkpoint_events 只含 execution detail（tool_start/tool_end/llm_call/text_delta），不含对话内容；按 sessionId + spanId 切，归 persistence ports (EventLog)。
-5. ledger（broadcast cache）可随时从 conversation_ledger 重建。
-6. persistence ports: MessageStore 持恢复状态, EventLog 持执行事实流, InterruptStore 持中断状态, 但不是对话历史库--对话历史的 canonical 在 conversation_ledger。
-7. SSE 流不定义事实。
+1. Message 领域类型只有一处定义。
+2. Conversation History 是共享会话 canonical store。
+3. Agent Context 是单 Agent Member 的 context canonical store。
+4. Execution session 永远不是产品事实。
+5. Streaming、thinking 和运行状态不进入 canonical history。
+6. Ledger Message 与 Tree terminal ref 原子提交。
+7. Product Summary 不删除历史。
+8. Event/ops 数据不能替代 Ledger 或 Tree。
+9. Surface 只能渲染或提交命令，不能成为事实来源。
 
 ## 关联页面
 
-- [标识符体系](identifiers.md)
-- [对话账本](../conversation/ledger.md)
-- [EventLog（已废止）](../backend/event-log.md)
-- [会话投影](../backend/conversation-projection.md)
-- [Web 端](../surfaces/web.md)
-- [标识符体系](identifiers.md) —— sessionId / runId / attemptSeq 的派生链与层归属
+- [系统总览](../system-overview.md)
+- [Conversation History](../conversation/history.md)
+- [Agent Context](../agents/context.md)
+- [Agent Backend](../execution/agent-backend.md)
+- [数据模型](../backend/data-model.md)

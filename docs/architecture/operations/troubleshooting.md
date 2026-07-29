@@ -6,7 +6,7 @@ owners: architecture
 last_verified_against_code: 2026-07-28
 depends_on:
   - foundations.facts-and-projections
-  - backend.conversation-projection
+  - runs.output-and-live-updates
   - backend.overview
 used_by:
 ---
@@ -30,7 +30,7 @@ used_by:
 |------|----------|----------|
 | 某成员看不到本该有的消息 | 该成员的 ledger entries（thread_id = conversationId:memberId） | `broadcastMessage` fan-out 失败；thread 推导错；账本其实有、投影缓存没跟上 |
 | 所有人都缺同一条消息 | 对话账本 + 执行事实流 | `onRunMessage` 直写失败（critical，会抛错）；或 Agent 没产出该 message 事件 |
-| 飞书收到重复消息 | 飞书适配器 `canSkipFinalLedgerText` | 首次投递必发的特性叠加终稿重发；去重条件未命中 |
+| 飞书收到重复消息 | 飞书 `canSkipFinalLedgerText` | 首次投递必发的特性叠加终稿重发；去重条件未命中 |
 | Web 状态卡在 running doesn't complete | run_done → run_finalized 握手 | completion sequence某步未完成；delta 订阅未关闭 |
 | 运行崩溃后无法恢复 | checkpointer.db | 中断状态未 interruptStore.saveInterrupt，或被 interruptStore.consumeInterrupt 重复消费 |
 | Agent 活没干完就停 | task-guard / maxForceContinues | 强制继续已用满 3 次；待办状态没正确标 done |
@@ -48,6 +48,6 @@ used_by:
 ## 关联页面
 
 - [事实与投影](../foundations/facts-and-projections.md)
-- [会话投影](../backend/conversation-projection.md)
+- [会话投影](../runs/output-and-live-updates.md)
 - [后端总览](../backend/overview.md)
-- [飞书适配器](../surfaces/lark-adapter.md)
+- [飞书](../surfaces/lark.md)

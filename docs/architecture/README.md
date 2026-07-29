@@ -1,88 +1,104 @@
 ---
 id: architecture.index
 title: 架构 Wiki 首页
-status: current
+status: design
 owners: architecture
-last_verified_against_code: 2026-07-28
-summary: "这是给人看的架构 Wiki 入口。它不是按里程碑流水账排的，而是按「你想干什么」组织阅读路线。先在这里选好路线，再去读具体实现页。"
+summary: "目标架构以 Agent、Conversation、Message、Conversation History、Agent Context、Context Branch、Agent Run、Agent Backend、Product Tool 和 Coding Agent 为核心概念。"
 depends_on:
 used_by:
 ---
 
-# 架构 Wiki 首页
+# 架构文档
 
-这是给人看的架构 Wiki 入口，按「你想干什么」组织阅读路线。先选路线，再读具体实现。
+这套文档描述目标架构：Product Backend 保存 Conversation History 和 Agent Context，创建 Agent Run；Claude Code、Codex、OpenCode 和 Coding Agent 作为 Agent Backend 执行 Run。
 
-读完相关页面，你应该不用翻源码就能讲清楚系统怎么运转--消息怎么从输入框到 ledger、一次运行怎么被监督和恢复、一份产出怎么在 Lark 端做到不重不丢。每页正文是中文叙述加配图和伪代码；页首 frontmatter（YAML 元数据：`summary` / `depends_on` / `used_by`）和独立的 `index.llm.md`、`concepts.json` 供 LLM 消费。
+建议先阅读系统总览、Conversation History、Agent Context、Agent Run 和 Agent Backend。页面中的 `status: design` 表示设计已固定，但代码尚未全部迁移。
 
-## 推荐阅读路线
+## 推荐阅读顺序
 
-### 想搞懂整个系统
+1. [系统总览](./system-overview.md)：产品事实、Agent Run 和执行引擎的全景。
+2. [Conversation History](./conversation/history.md)：Conversation 共同发生了什么。
+3. [Agent Context](./agents/context.md)：每个 Agent 实际知道什么，以及如何 branch。
+4. [Agent Backend](./execution/agent-backend.md)：Agent Run 如何交给不同执行引擎。
 
-1. [系统总览](./system-overview.md)
-2. [事实与投影](./foundations/facts-and-projections.md)
-3. [Web 消息端到端](./flows/e2e-web-message.md)
-4. [会话投影](./backend/conversation-projection.md)
-5. [排障手册](./operations/troubleshooting.md)
+## 按主题查找
 
-### 在后端运行时上干活
+### Product Backend 与数据归属
 
-1. [后端总览](./backend/overview.md)
-2. [Agent](./harness/harness.md)
-3. [EventLog（已废止）](./backend/event-log.md)
-4. [会话投影](./backend/conversation-projection.md)
-5. [数据模型](./backend/data-model.md)
+1. [Product Backend 总览](./backend/overview.md)
+2. [目标数据模型](./backend/data-model.md)
+3. [Conversation History](./conversation/history.md)
+4. [Agent Context](./agents/context.md)
+5. [Agent Run 输出与实时更新](./runs/output-and-live-updates.md)
 
-### 在 Agent 运行时上干活
+### Web / Lark 消息链路
 
-1. [Agent](./harness/harness.md)
-2. [Agent 运行循环](./runtime/framework.md)
-3. [上下文管理器](./runtime/context-manager.md)
-4. [Compaction](./runtime/compaction.md)
-5. [Memory](./runtime/memory.md)
-6. [运行时插件机制](./runtime/plugin.md)
-7. [标识符体系](./foundations/identifiers.md)
-
-### 在 Web 或飞书端干活
-
-1. [端总览](./surfaces/overview.md)
+1. [Web 消息端到端](./flows/e2e-web-message.md)
 2. [Web 端](./surfaces/web.md)
-3. [飞书适配器](./surfaces/lark-adapter.md)
-4. [对话账本](./conversation/ledger.md)
-5. [飞书消息端到端](./flows/e2e-lark-message.md)
+3. [飞书](./surfaces/lark.md)
+4. [Conversation History](./conversation/history.md)
 
-### 想搞懂 Loop 与自动化编排
+### 可替换 Agent 执行引擎
 
-> `foundations/loop.md`、`backend/loop-runner.md`、`foundations/loop-pattern.md` 均为 `status: design`（已锁定设计，尚未进代码）。
+1. [Agent Backend](./execution/agent-backend.md)
+2. [Agent Context](./agents/context.md)
+3. [Product Backend 总览](./backend/overview.md)
 
-1. [Loop](./foundations/loop.md) - 按调度自动发现工作、用 Generator/Evaluator 分离的流水线推进
-2. [LoopRunner](./backend/loop-runner.md) - Loop 的编排引擎：discovery -> generator -> evaluator -> human gate
-3. [Loop Pattern](./foundations/loop-pattern.md) - 7 种预制配置模板 + L1/L2/L3 信任层级 + Loop Ready Score
-4. [Loop Engineering](./foundations/loop-engineering.md)（`status: design`）
-5. [Loop 验证端到端](./flows/e2e-loop-verification.md)（`status: design`）
+Coding Session、Plugin、Prompt、Model/Provider 和 Worker 生命周期属于 Coding Agent 内部设计，不进入 Product Backend 主心智。
 
-## 给 LLM 的入口
+### 在 Coding Agent 上工作
 
-- [LLM 索引](./index.llm.md)：按问题类型给出「先读这几页」的路由。
-- [概念图谱](./concepts.json)：机器可读的页面依赖图。
-- [跨页地图](./map.md)：给人看的依赖关系图。
+1. [Coding Agent](./runtime/coding-agent.md)
+2. [Coding Agent Session](./runtime/coding-agent-session.md)
+3. [Coding Agent Prompt 与 Context](./runtime/coding-agent-prompt.md)
+4. [Coding Agent Provider 与 ModelRuntime](./runtime/coding-agent-models.md)
 
-## 每页的固定骨架
+### Task / Cron / Loop
 
-核心页大致是这个顺序，方便你在不同页之间快速定位：
+这些产品能力创建 Agent Run，不直接依赖某个执行引擎的内部 session 或 loop：
 
-1. 页首一句话导读（H1 正下方那段）。
-2. 这页解决什么问题。
-3. 现在代码怎么做的（真实符号名、控制流、配图）。
-4. 输入与输出。
-5. 关键数据结构。
-6. 运行时序。
-7. 不变量。
-8. 失败模式。
-9. 例子。
-10. 当前缺口。
-11. 关联页面。
+1. [CronJob](./foundations/cron-job.md)
+2. [Loop](./foundations/loop.md)
 
-## 一条规则：先写现状
+## 核心概念
 
-正文描述的是「当前代码就是这么跑的」。还没落地的设想统一放进 [未来工作](./roadmap/future-work.md) 或某页的「当前缺口」小节，不要混进现状描述里--否则读者会把愿景当成已实现。
+| 术语 | 含义 |
+|---|---|
+| Agent | 身份、角色、Memory、Skills、默认 Agent Backend 和 Model |
+| Conversation | 多成员共享协作空间 |
+| Message | 人类或 Agent 产生的唯一消息领域对象 |
+| Conversation History | Conversation 中所有成员共同发生的事实 |
+| Agent Context | 单个 Agent Member 实际消费和保留的语义历史 |
+| Context Branch | Agent Context 中一条可 fork/rollback 的历史路径 |
+| Agent Run | Context Branch 上的一次持久产品执行 |
+| Agent Backend | 执行 Agent Run 的可替换引擎 |
+| Product Tool | Conversation、Task、Memory、Artifact、History 等产品能力 |
+| Coding Agent | 本项目自研、无 UI 的 coding execution engine |
+
+## 设计约束
+
+```text
+Conversation 保存共享 Message。
+Agent Context 保存某个 Agent 实际知道什么。
+Agent Run 记录一次产品执行。
+Agent Backend 执行 Agent Run。
+```
+
+- Context Branch 内固定 Agent Backend；切换 Backend 必须 fork。
+- Streaming 不进入 Conversation History 或 Agent Context。
+- Agent 最终 Message 与 Context 引用必须同事务提交。
+- Product Tools 的权限和事实归 Product Backend。
+- Coding Agent 的 session、worker、provider 和 compaction 都是内部实现。
+
+## 结构化入口
+
+- [LLM 索引](./index.llm.md)
+- [概念图谱](./concepts.json)
+- [跨页地图](./map.md)
+
+## 文档写法
+
+1. 主 Wiki 描述目标架构，不把当前临时实现当成长期边界。
+2. 每篇页面必须独立定义必要上下文。
+3. 历史迁移、旧包名和临时兼容路径放 ADR/plan，不放主叙述。
+4. 未固定的自研 Runtime 细节暂不写成目标事实。

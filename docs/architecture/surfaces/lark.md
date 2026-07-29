@@ -1,25 +1,25 @@
 ---
-id: surfaces.lark-adapter
-title: 飞书适配器
+id: surfaces.lark
+title: 飞书
 status: current
 owners: architecture
 last_verified_against_code: 2026-06-16
-summary: "飞书适配器把飞书的群/用户映射成对话/成员，把入站消息 POST 给后端，通过 sse-watcher 消费 conversation ledger SSE 中的 MessageRevision 决定流式/最终可见文本。sse-watcher 是唯一出站流入口。去重依赖 revision 的 messageId + canSkipFinalLedgerText。"
+summary: "飞书把飞书的群/用户映射成对话/成员，把入站消息 POST 给后端，通过 sse-watcher 消费 conversation ledger SSE 中的 MessageRevision 决定流式/最终可见文本。sse-watcher 是唯一出站流入口。去重依赖 revision 的 messageId + canSkipFinalLedgerText。"
 depends_on:
-  - conversation.ledger
-  - backend.conversation-projection
+  - conversation.history
+  - runs.output-and-live-updates
 used_by:
   - flows.e2e-lark-message
   - operations.troubleshooting
 ---
 
-# 飞书适配器
+# 飞书
 
-飞书适配器把飞书的群/用户映射成对话/成员，把入站消息 POST 给后端，通过 sse-watcher 消费 conversation ledger SSE 中的 MessageRevision 决定流式/最终可见文本。sse-watcher 是唯一出站流入口。去重依赖 revision 的 messageId + canSkipFinalLedgerText。
+飞书把飞书的群/用户映射成对话/成员，把入站消息 POST 给后端，通过 sse-watcher 消费 conversation ledger SSE 中的 MessageRevision 决定流式/最终可见文本。sse-watcher 是唯一出站流入口。去重依赖 revision 的 messageId + canSkipFinalLedgerText。
 
 ## 这页解决什么问题
 
-飞书是外部 IM，有 chat_id、用户、卡片、消息投递规则、webhook/event 语义。后端不该被这些细节绑死。飞书适配器在飞书与后端对话概念之间做翻译。
+飞书是外部 IM，有 chat_id、用户、卡片、消息投递规则、webhook/event 语义。后端不该被这些细节绑死。飞书在飞书与后端对话概念之间做翻译。
 
 ## 入站流
 
@@ -105,7 +105,7 @@ runId 匹配在调用方 `sse-watcher.processEntry` 做：解析 revision 的 `r
 ## 关联页面
 
 - [端总览](./overview.md)
-- [对话账本](../conversation/ledger.md)
-- [会话投影](../backend/conversation-projection.md)
+- [对话账本](../conversation/history.md)
+- [会话投影](../runs/output-and-live-updates.md)
 - [飞书消息端到端](../flows/e2e-lark-message.md)
 - [排障手册](../operations/troubleshooting.md)

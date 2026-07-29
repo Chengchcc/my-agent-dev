@@ -6,8 +6,8 @@ owners: architecture
 last_verified_against_code: 2026-07-28
 summary: "飞书消息的完整生命周期：飞书用户发消息 -> lark-bot 解析绑定、POST 到 Backend -> Agent 执行 -> onEvent 回调写 conversation ledger -> sse-watcher 解析 revision -> 去重推送到飞书。"
 depends_on:
-  - surfaces.lark-adapter
-  - backend.conversation-projection
+  - surfaces.lark
+  - runs.output-and-live-updates
 used_by:
 ---
 
@@ -23,7 +23,7 @@ sequenceDiagram
   participant Bot as 飞书 Bot
   participant B as Backend
   participant AG as Agent
-  participant L as Conversation Ledger
+  participant L as Conversation History
 
   U->>Bot: 发消息 / @机器人
   Bot->>B: 解析 chat 绑定（无则新建 Conversation + 成员）
@@ -48,7 +48,7 @@ sequenceDiagram
 
 ## 绑定模型
 
-飞书适配器维护四组映射：飞书 chat → conversationId；飞书 user → human member；Bot/Agent 身份 → agent member；飞书消息 ID → 投递状态。
+飞书维护四组映射：飞书 chat → conversationId；飞书 user → human member；Bot/Agent 身份 → agent member；飞书消息 ID → 投递状态。
 
 ## 流式输出
 
@@ -68,13 +68,13 @@ Agent 可调用 `start_new_conversation` 工具请求开启新对话。Backend �
 
 | 症状 | 可能成因 | 接着读 |
 |---|---|---|
-| 最终答案重复 | terminal revision 重放 / 去重未命中 | [飞书适配器](../surfaces/lark-adapter.md) |
-| 流式输出不更新 | conversation SSE 断连 | [会话消息流](../backend/conversation-projection.md) |
+| 最终答案重复 | terminal revision 重放 / 去重未命中 | [飞书](../surfaces/lark.md) |
+| 流式输出不更新 | conversation SSE 断连 | [会话消息流](../runs/output-and-live-updates.md) |
 | Agent 没触发 | 绑定/成员/提及问题 | [对话与成员](../conversation/conversation-and-members.md) |
 
 ## 关联页面
 
-- [飞书适配器](../surfaces/lark-adapter.md)
-- [会话消息流](../backend/conversation-projection.md)
+- [飞书](../surfaces/lark.md)
+- [会话消息流](../runs/output-and-live-updates.md)
 - [对话与成员](../conversation/conversation-and-members.md)
 - [排障手册](../operations/troubleshooting.md)

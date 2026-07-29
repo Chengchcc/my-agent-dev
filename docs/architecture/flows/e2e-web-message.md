@@ -1,61 +1,126 @@
 ---
 id: flows.e2e-web-message
 title: Web 消息端到端
-status: current
+status: design
 owners: architecture
-last_verified_against_code: 2026-07-28
-summary: "Web 消息的完整生命周期：用户发送消息 -> 账本记录 -> Agent 执行 -> onEvent 回调写入 MessageRevision -> 账本 SSE 推送到前端。Agent 在 Backend 进程内直接执行。"
+summary: "目标 Web 消息流从 Conversation History 写入开始，在 Agent 实际触发时同步 Agent Context，通过 Agent Runs 调用可替换 Agent Backend；streaming 只做实时投影，terminal outcome 后原子提交 Ledger 与 Tree。"
 depends_on:
   - surfaces.web
-  - backend.conversation-projection
+  - runs.output-and-live-updates
+  - agents.context
+  - execution.agent-backend
 used_by:
 ---
 
 # Web 消息端到端
 
-Web 用户在对话中发消息后，经过以下几个阶段完成往返：消息写入 conversation ledger，Agent 在 Backend 进程内执行，assistant 消息通过账本 SSE 推送到前端，前端按 messageId upsert 渲染。
+本页用一条 Web 消息串起 Product Backend、Agent Context 和 Agent Backend 的边界。
 
-## 时序图
+## 时序
 
 ```mermaid
 sequenceDiagram
   participant U as 用户
   participant W as Web
-  participant B as Backend
-  participant AG as Agent
-  participant EL as EventLog
-  participant L as Conversation Ledger
+  participant P as Product Backend
+  participant L as Conversation History
+  participant T as Agent Context
+  participant S as Agent Runs
+  participant A as Agent Backend
+  participant R as Agent Runtime
 
-  U->>W: 发消息 / @agent
-  W->>W: 加乐观消息（opt-）
-  W->>B: POST /api/conversations/:id/messages
-  B->>L: 写入人类 MessageRevision
-  L-->>W: 账本 SSE 回声 -> upsert 乐观消息（按 messageId）
-  AG: createAgentSession + prompt
-  AG->>AG: span-loop（自动多轮）
-  AG-->>B: onAssistantMessage("message_update") -> appendAssistantMessage
-  B->>L: appendAssistantMessage -> 写入 MessageRevision（同 messageId）
-  L-->>W: 账本 SSE（push buffer + 100ms poll）-> upsert -> UI 显示 streaming
-  AG-->>AG: tool_call -> execute -> tool_result -> 继续产出
-  AG emits agent_end
-  AG-->>B: onEvent("agent_end", willRetry: false)
-  B->>L: terminal revision（state: done）
-  L-->>W: 账本 SSE -> 同 messageId upsert -> UI 显示终态
+  U->>W: 发送消息 / @Agent
+  W->>P: POST Conversation Message
+  P->>L: 追加人类 Message
+  L-->>W: Ledger SSE 确认
+  P->>P: trigger / visibility / branch 选择
+  P->>S: CAS 获取 branch run ownership
+  P->>T: 同事务同步 Ledger refs + 创建 Agent Run
+  S->>A: resume/start + AgentRunSnapshot
+  A->>R: runtime-native input
+  R-->>A: stream events
+  A-->>P: core BackendEvents
+  P-->>W: transient SSE delta/status
+  R-->>A: terminal outcome
+  A-->>P: BackendRunOutcome
+  P->>P: 原子 Product commit
+  P->>L: 最终 assistant Message
+  P->>T: ledgerSeq ref + branch leaf/revision
+  P->>S: binding sync point + release lock
+  L-->>W: canonical Ledger SSE
 ```
 
-## BFF 路由
+## 1. 人类 Message
 
-Web 端 API 调用直接挂载在 `/api` 前缀下（无 `/bff` 中间层）。conversation SSE 走 `/api/conversations/:id/events`，消息 POST 走 `/api/conversations/:id/messages`。
+Web 可以先显示乐观消息，但 Product Backend 写入 Conversation History 后才形成共享事实。Ledger SSE 使用稳定 message identity 与乐观消息对账。
 
-前端维护一份按 `messageId` 索引的消息列表。assistant 消息从 streaming 到 done 是同一 `messageId` 的多次 revision，每次账本 SSE 到达时按 `messageId` upsert。
+## 2. Agent 触发与 Tree 同步
 
-`MessageRevision` 携带 `runStatus` 字段，可取值："running"（正常执行中）、"retrying"（自动重试中）、"compacting"（压缩上下文中）、"waiting"（等待审批）。前端从当前 revision 的 `runStatus` 推导状态指示器。
+Backend 根据 trigger mode、mention、addressedTo、权限和 branch 选择目标 Agent。
 
-前端不维护独立的 run 阶段状态——消息的 `state`（streaming/done/error/waiting）和 `runStatus` 字段本身就是状态来源。
+消息不会发送时就复制到所有 Agent Tree。目标 Agent 真正启动 Agent Run 时，Backend 根据 `ledgerCursor` 查询尚未消费的可见 Ledger entries，并按照统一 N 条或 token budget 选择最近历史，追加 refs 到当前 branch。
+
+更早上下文通过 Product History MCP 渐进加载；只有显式 retain 才永久追加到 Tree。
+
+## 3. Agent Runs
+
+Pool 使用 branch scope key 查找 live execution session。若 binding 的 backend、branch、同步 entry 和 product revision 完全匹配，则优先调用 Adapter 原生 resume/send；否则从 Agent Context 当前 branch 投影线性 `ProjectedHistoryItem[]`，启动新 execution session。
+
+同一 branch 同时最多一个 active run。其他输入进入 normal、steer 或 follow-up 队列。
+
+获取 branch run ownership、同步 Ledger refs、推进 cursor 和创建 Agent Run 是同一事务。无法获得 ownership 的输入进入持久 normal/steer/follow-up queue，不能并发修改 Tree。
+
+## 4. Streaming
+
+Adapter 把 Runtime 原生 stream 映射为 Product Backend 核心事件。Web 可以实时显示 text、thinking、tool 和 status，但这些更新是 transient projection，不写 canonical Tree。
+
+Backend-specific 事件可以显示在诊断 UI，但产品逻辑不依赖它。
+
+## 5. Terminal commit
+
+只有 terminal `BackendRunOutcome` 决定 Agent Run 终态。Completed 时，Backend 在同一事务完成：
+
+```text
+Ledger final Message
+Tree ledger_message ref
+branch leaf/revision
+execution session binding sync point
+Agent Run completed
+```
+
+事务成功后 Web 从 Ledger SSE 收到 canonical Message，branch lock 才释放。
+
+## 6. Steer 与 follow-up
+
+- normal、steer、follow-up 都先进入持久产品队列；
+- steer 在 Adapter 支持 native steer 时立即转发，否则在安全 run boundary 发送；
+- follow-up 始终等待当前 Agent Run terminal 后发送；
+- Runtime 内部 sub-agent 不创建额外 Agent Run。
+
+## 7. 失败与恢复
+
+| 场景 | 恢复方式 |
+|---|---|
+| Web 断线 | 从 Ledger 重放已提交历史，从 Agent Run 状态恢复执行 UI |
+| Runtime process crash | 原生 resume；同步点不匹配或 resume 失败则从 Agent Context 重建 |
+| Streaming delta 丢失 | 不影响 canonical history |
+| Product commit 失败 | Agent Run 进入 commit_failed，保存 terminal outcome，binding 标 stale；幂等重试 commit，成功前不释放 branch，失败到底则 detach execution session |
+| Branch rollback | execution session binding stale，下次从新 branch 投影重建 |
+
+## 不变量
+
+1. Web 不是事实来源。
+2. Ledger 保存共享历史，Tree 保存该 Agent context。
+3. Streaming 不是 canonical history。
+4. Terminal outcome 是完成依据。
+5. Ledger 与 Tree terminal commit 原子。
+6. Branch 内 Agent Backend 固定。
+7. Execution session 可丢失，Agent Context 不可丢失。
 
 ## 关联页面
 
-- [Web 端](../surfaces/web.md)
-- [Agent](../runtime/plugin.md)
-- [会话消息流](../backend/conversation-projection.md)
-- [Framework 运行循环](../runtime/framework.md)
+- [系统总览](../system-overview.md)
+- [Conversation History](../conversation/history.md)
+- [Agent Run 输出与实时更新](../runs/output-and-live-updates.md)
+- [Agent Context](../agents/context.md)
+- [Agent Backend](../execution/agent-backend.md)

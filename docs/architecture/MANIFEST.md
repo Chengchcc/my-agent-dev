@@ -8,14 +8,14 @@
 - `docs/adr/0005-mcp-deferred-for-loop.md`
 - `README.md`
 - `docs/architecture/README.md`
-- `docs/architecture/backend/conversation-projection.md`
+- `docs/architecture/runs/output-and-live-updates.md`
 - `docs/architecture/backend/data-model.md`
 - `docs/architecture/backend/event-log.md`
 - `docs/architecture/backend/overview.md`
 - `docs/architecture/backend/loop-runner.md`
 - `docs/architecture/concepts.json`
 - `docs/architecture/conversation/conversation-and-members.md`
-- `docs/architecture/conversation/ledger.md`
+- `docs/architecture/conversation/history.md`
 - `docs/architecture/flows/e2e-lark-message.md`
 - `docs/architecture/flows/e2e-web-message.md`
 - `docs/architecture/flows/e2e-loop-verification.md`
@@ -39,7 +39,7 @@
 - `docs/architecture/runtime/plugin.md`
 - `docs/architecture/runtime/context-manager.md`
 - `docs/architecture/security/overview.md`
-- `docs/architecture/surfaces/lark-adapter.md`
+- `docs/architecture/surfaces/lark.md`
 - `docs/architecture/surfaces/overview.md`
 - `docs/architecture/surfaces/web.md`
 - `docs/architecture/design-philosophy.md`
