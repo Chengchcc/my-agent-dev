@@ -7,7 +7,7 @@ import type {
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
-  BackendSessionHandle,
+  BackendSessionRef,
   BackendSessionRun,
   BackendStartInput,
   PendingActionResponse,
@@ -27,22 +27,21 @@ function completedSegment(output?: Message): BackendRunSegment<"fake"> {
   };
 }
 
-/** Adapter-private handle subtype carrying live state the public protocol
- *  never reads. Demonstrates the THandle extension point without leaking. */
-interface FakeHandle extends BackendSessionHandle<"fake"> {
+/** Adapter-private session ref subtype carrying live state the public protocol
+ *  never reads. Demonstrates the TRef extension point without leaking. */
+interface FakeRef extends BackendSessionRef<"fake"> {
   readonly liveClient: unknown;
 }
 
-const SESSION: FakeHandle = {
+const SESSION: FakeRef = {
   backendSessionId: "session-1",
   backendKind: "fake",
-  state: "open",
   liveClient: {},
 };
 
 /** FakeBackend implements all six AgentBackend methods with deterministic
  *  completed segments. No adapter base class. */
-class FakeBackend implements AgentBackend<"fake", FakeHandle> {
+class FakeBackend implements AgentBackend<"fake", FakeRef> {
   readonly kind = "fake" as const;
   readonly capabilities: AgentBackendCapabilities = {
     persistentSession: true,
@@ -53,34 +52,37 @@ class FakeBackend implements AgentBackend<"fake", FakeHandle> {
     pendingActionResponse: false,
   };
 
-  async start(input: BackendStartInput): Promise<BackendSessionRun<"fake", FakeHandle>> {
+  async start(input: BackendStartInput<"fake">): Promise<BackendSessionRun<"fake", FakeRef>> {
     expect(input.run.runId).toBe("run-1");
     return { session: SESSION, segment: completedSegment() };
   }
 
-  async send(_session: FakeHandle, input: BackendRunInput): Promise<BackendRunSegment<"fake">> {
+  async send(
+    _session: FakeRef,
+    input: BackendRunInput<"fake">,
+  ): Promise<BackendRunSegment<"fake">> {
     expect(input.run.runId).toBe("run-1");
     return completedSegment();
   }
 
   async resume(
     _backendSessionId: string,
-    input: BackendStartInput,
-  ): Promise<BackendSessionRun<"fake", FakeHandle>> {
+    input: BackendStartInput<"fake">,
+  ): Promise<BackendSessionRun<"fake", FakeRef>> {
     expect(input.run.runId).toBe("run-1");
     return { session: SESSION, segment: completedSegment() };
   }
 
   async respond(
-    _session: FakeHandle,
+    _session: FakeRef,
     _action: PendingActionResponse,
   ): Promise<BackendRunSegment<"fake">> {
     return completedSegment();
   }
 
-  async stop(_session: FakeHandle): Promise<void> {}
+  async stop(_session: FakeRef): Promise<void> {}
 
-  async close(_session: FakeHandle): Promise<void> {}
+  async close(_session: FakeRef): Promise<void> {}
 }
 
 const RUN_SNAPSHOT = {
@@ -96,7 +98,7 @@ const HISTORY: readonly ProjectedHistoryItem[] = [
 
 describe("agent-backend contracts", () => {
   test("FakeBackend implements all six methods", () => {
-    const backend: AgentBackend<"fake", FakeHandle> = new FakeBackend();
+    const backend: AgentBackend<"fake", FakeRef> = new FakeBackend();
     expect(backend.kind).toBe("fake");
     expect(backend.capabilities.pendingActionResponse).toBe(false);
     expect(typeof backend.start).toBe("function");
@@ -108,7 +110,7 @@ describe("agent-backend contracts", () => {
   });
 
   test("barrel-only consumer consumes events and outcome from start()", async () => {
-    const backend: AgentBackend<"fake", FakeHandle> = new FakeBackend();
+    const backend: AgentBackend<"fake", FakeRef> = new FakeBackend();
     const { session, segment } = await backend.start({
       history: HISTORY,
       run: RUN_SNAPSHOT,
@@ -130,7 +132,7 @@ describe("agent-backend contracts", () => {
   });
 
   test("send() continues an open session and resolves completed", async () => {
-    const backend: AgentBackend<"fake", FakeHandle> = new FakeBackend();
+    const backend: AgentBackend<"fake", FakeRef> = new FakeBackend();
     const segment = await backend.send(SESSION, {
       messages: [{ productEntryId: "e2", message: { role: "user", text: "next" } }],
       run: RUN_SNAPSHOT,
@@ -219,6 +221,23 @@ const _wrongKind: BackendEvent<"fake"> =
   // @ts-expect-error - backend.claude.tool_trace is not a "fake" extension event
   { type: "backend.claude.tool_trace", payload: {} };
 
+// A Backend of kind "fake" cannot receive a "claude-code" run input: the
+// model ref's backendKind must match the Backend's K. Pure type-level check:
+// assigning a claude-code input to a fake-typed slot must fail.
+const claudeInput: BackendRunInput<"claude-code"> = {
+  messages: [],
+  run: {
+    runId: "r2",
+    model: { backendKind: "claude-code", modelId: "claude-sonnet" },
+    productTools: [],
+    configRevision: 1,
+  },
+  mode: "normal",
+  metadata: { branchId: "b1", productRevision: 1 },
+};
+// @ts-expect-error - BackendRunInput<"claude-code"> is not assignable to BackendRunInput<"fake">
+const _crossKind: BackendRunInput<"fake"> = claudeInput;
+
 // Forbidden legacy names are not exported from the barrel. Each is imported in
 // its own non-contiguous statement (separated by a no-op binding) so Biome's
 // import-organize assist cannot merge them; @ts-expect-error proves each name
@@ -270,6 +289,8 @@ type _Unused = [
   typeof _nativeFork,
   typeof _noEventSegment,
   typeof _wrongKind,
+  typeof _crossKind,
+  typeof claudeInput,
   typeof _sep1,
   typeof _sep2,
   typeof _sep3,

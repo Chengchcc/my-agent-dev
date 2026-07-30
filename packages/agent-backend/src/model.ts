@@ -1,6 +1,8 @@
-/** Stable reference to a model within a specific Agent Backend. */
-export interface BackendModelRef {
-  readonly backendKind: string;
+/** Stable reference to a model within a specific Agent Backend kind. `K`
+ *  constrains the ref to the Backend's own kind so a Backend of kind "fake"
+ *  cannot receive a "claude-code" model ref. */
+export interface BackendModelRef<K extends string = string> {
+  readonly backendKind: K;
   readonly modelId: string;
 }
 

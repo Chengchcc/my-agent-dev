@@ -16,7 +16,7 @@ export type {
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
-  BackendSessionHandle,
+  BackendSessionRef,
   BackendSessionRun,
   BackendStartInput,
   PendingAction,

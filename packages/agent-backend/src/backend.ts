@@ -1,7 +1,7 @@
 import type {
   BackendRunInput,
   BackendRunSegment,
-  BackendSessionHandle,
+  BackendSessionRef,
   BackendSessionRun,
   BackendStartInput,
   PendingActionResponse,
@@ -21,32 +21,35 @@ export interface AgentBackendCapabilities {
 /** The only execution protocol Product Backend depends on.
  *
  *  `K` is the Backend's kind string (e.g. `"claude_code"`, `"coding_agent"`).
- *  It locks extension events to `backend.<K>.*` and brands session handles so a
- *  Backend of one kind cannot emit or accept another kind's events/handles.
+ *  It locks extension events to `backend.<K>.*`, brands session refs, and
+ *  constrains every input's model ref to the same `K` - so a Backend of one
+ *  kind cannot receive another kind's model, events, or session ref.
  *
- *  `THandle` is the adapter's private session handle subtype, extending
- *  `BackendSessionHandle<K>` with whatever live state (client, process,
- *  connection) the adapter needs. Product Backend never constructs `THandle`
- *  directly; it only passes handles the adapter previously returned. */
+ *  `TRef` is the adapter's session ref subtype, extending
+ *  `BackendSessionRef<K>` with whatever live state (client, process,
+ *  connection) the adapter needs. Product Backend never constructs `TRef`
+ *  directly; it only passes refs the adapter previously returned. The base
+ *  `BackendSessionRef` is a plain identity; the adapter looks up live state by
+ *  `backendSessionId` in its own registry. */
 export interface AgentBackend<
   K extends string = string,
-  THandle extends BackendSessionHandle<K> = BackendSessionHandle<K>,
+  TRef extends BackendSessionRef<K> = BackendSessionRef<K>,
 > {
   readonly kind: K;
   readonly capabilities: AgentBackendCapabilities;
 
-  start(input: BackendStartInput): Promise<BackendSessionRun<K, THandle>>;
+  start(input: BackendStartInput<K>): Promise<BackendSessionRun<K, TRef>>;
 
-  send(session: THandle, input: BackendRunInput): Promise<BackendRunSegment<K>>;
+  send(session: TRef, input: BackendRunInput<K>): Promise<BackendRunSegment<K>>;
 
   resume(
     backendSessionId: string,
-    input: BackendStartInput,
-  ): Promise<BackendSessionRun<K, THandle>>;
+    input: BackendStartInput<K>,
+  ): Promise<BackendSessionRun<K, TRef>>;
 
-  respond(session: THandle, action: PendingActionResponse): Promise<BackendRunSegment<K>>;
+  respond(session: TRef, action: PendingActionResponse): Promise<BackendRunSegment<K>>;
 
-  stop(session: THandle): Promise<void>;
+  stop(session: TRef): Promise<void>;
 
-  close(session: THandle): Promise<void>;
+  close(session: TRef): Promise<void>;
 }

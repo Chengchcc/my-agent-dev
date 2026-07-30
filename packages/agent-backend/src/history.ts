@@ -25,10 +25,11 @@ export interface ProductToolDescriptor {
 
 /** Frozen per-Run configuration. Fixed at Agent Run start; `send()` re-receives
  *  it so model, system prompt and Product Tool manifest changes take effect on
- *  the next Run without forcing a session rebuild. */
-export interface AgentRunSnapshot {
+ *  the next Run without forcing a session rebuild. Parameterized by `K` so the
+ *  model ref's backendKind is locked to the Backend's kind. */
+export interface AgentRunSnapshot<K extends string = string> {
   readonly runId: string;
-  readonly model: BackendModelRef;
+  readonly model: BackendModelRef<K>;
   readonly systemPrompt?: string;
   readonly productTools: readonly ProductToolDescriptor[];
   readonly configRevision: number;
