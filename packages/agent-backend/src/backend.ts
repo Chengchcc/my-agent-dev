@@ -18,23 +18,35 @@ export interface AgentBackendCapabilities {
   readonly pendingActionResponse: boolean;
 }
 
-/** The only execution protocol Product Backend depends on. `kind` identifies
- *  the backend (e.g. "claude_code", "coding_agent") and matches
- *  `BackendModelRef.backendKind`. `start()` and `resume()` return handle plus
- *  first segment; `send()` continues an open session. */
-export interface AgentBackend {
-  readonly kind: string;
+/** The only execution protocol Product Backend depends on.
+ *
+ *  `K` is the Backend's kind string (e.g. `"claude_code"`, `"coding_agent"`).
+ *  It locks extension events to `backend.<K>.*` and brands session handles so a
+ *  Backend of one kind cannot emit or accept another kind's events/handles.
+ *
+ *  `THandle` is the adapter's private session handle subtype, extending
+ *  `BackendSessionHandle<K>` with whatever live state (client, process,
+ *  connection) the adapter needs. Product Backend never constructs `THandle`
+ *  directly; it only passes handles the adapter previously returned. */
+export interface AgentBackend<
+  K extends string = string,
+  THandle extends BackendSessionHandle<K> = BackendSessionHandle<K>,
+> {
+  readonly kind: K;
   readonly capabilities: AgentBackendCapabilities;
 
-  start(input: BackendStartInput): Promise<BackendSessionRun>;
+  start(input: BackendStartInput): Promise<BackendSessionRun<K, THandle>>;
 
-  send(session: BackendSessionHandle, input: BackendRunInput): Promise<BackendRunSegment>;
+  send(session: THandle, input: BackendRunInput): Promise<BackendRunSegment<K>>;
 
-  resume(backendSessionId: string, input: BackendStartInput): Promise<BackendSessionRun>;
+  resume(
+    backendSessionId: string,
+    input: BackendStartInput,
+  ): Promise<BackendSessionRun<K, THandle>>;
 
-  respond(session: BackendSessionHandle, action: PendingActionResponse): Promise<BackendRunSegment>;
+  respond(session: THandle, action: PendingActionResponse): Promise<BackendRunSegment<K>>;
 
-  stop(session: BackendSessionHandle): Promise<void>;
+  stop(session: THandle): Promise<void>;
 
-  close(session: BackendSessionHandle): Promise<void>;
+  close(session: THandle): Promise<void>;
 }

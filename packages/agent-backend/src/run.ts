@@ -30,13 +30,21 @@ export interface BackendRunInput {
   };
 }
 
-/** Adapter-private live session handle. Product Backend reads only the opaque
- *  `backendSessionId`, backend kind and lifecycle state; it must not read or
- *  mutate Runtime-internal transcript. */
-export interface BackendSessionHandle {
+/** Brand symbol marking a value as an opaque Backend session handle. Product
+ *  Backend treats the whole handle as an opaque token; only adapters construct
+ *  subtypes that carry private live state (client, process, connection) the
+ *  public protocol never reads. */
+export declare const BACKEND_SESSION_HANDLE: unique symbol;
+
+/** Base opaque session identity. Product Backend reads only `backendSessionId`
+ *  and `backendKind`; it must never read or mutate adapter-private fields.
+ *  Parameterized by `K` so a Backend of kind `K` only yields handles branded
+ *  with the same `K`. Adapters extend this interface to attach private state. */
+export interface BackendSessionHandle<K extends string = string> {
   readonly backendSessionId: string;
-  readonly backendKind: string;
+  readonly backendKind: K;
   readonly state: "open" | "closed";
+  readonly [BACKEND_SESSION_HANDLE]: K;
 }
 
 /** A pending approval, question or permission request awaiting a product
@@ -57,7 +65,8 @@ export interface PendingActionResponse {
 /** Terminal outcome of a run segment. `completed`, `failed`, `aborted` and
  *  `timeout` are Agent Run terminal states. `suspended` is nonterminal: the
  *  Agent Run retains its branch lock and active-run identity, awaiting a
- *  PendingActionResponse. */
+ *  PendingActionResponse. This is the ONLY terminal authority - event streams
+ *  must not be interpreted as terminal. */
 export type BackendRunOutcome =
   | { readonly status: "completed"; readonly output?: Message; readonly usage?: Usage }
   | { readonly status: "suspended"; readonly pendingAction: PendingAction; readonly usage?: Usage }
@@ -68,9 +77,10 @@ export type BackendRunOutcome =
     };
 
 /** A single run continuation: an event stream plus a terminal outcome promise.
- *  `stop()` requests cancellation; the outcome still resolves. */
-export interface BackendRunSegment {
-  readonly events: AsyncIterable<BackendEvent>;
+ *  `stop()` requests cancellation; the outcome still resolves. Parameterized by
+ *  `K` so events are namespaced to the Backend's kind. */
+export interface BackendRunSegment<K extends string = string> {
+  readonly events: AsyncIterable<BackendEvent<K>>;
   readonly outcome: Promise<BackendRunOutcome>;
   stop(): Promise<void>;
 }
@@ -78,7 +88,10 @@ export interface BackendRunSegment {
 /** A started/resumed session: the live handle and the first run segment.
  *  Returning the first segment alongside the handle avoids a cold-start
  *  requiring an extra `send()` before execution begins. */
-export interface BackendSessionRun {
-  readonly session: BackendSessionHandle;
-  readonly segment: BackendRunSegment;
+export interface BackendSessionRun<
+  K extends string = string,
+  THandle extends BackendSessionHandle<K> = BackendSessionHandle<K>,
+> {
+  readonly session: THandle;
+  readonly segment: BackendRunSegment<K>;
 }

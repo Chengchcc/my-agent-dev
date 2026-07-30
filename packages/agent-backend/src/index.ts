@@ -1,5 +1,10 @@
 export type { AgentBackend, AgentBackendCapabilities } from "./backend.js";
-export type { BackendEvent, Usage } from "./event.js";
+export type {
+  BackendEvent,
+  BackendExtensionEvent,
+  CoreBackendEvent,
+  Usage,
+} from "./event.js";
 export type {
   AgentRunSnapshot,
   ProductToolDescriptor,
@@ -17,3 +22,4 @@ export type {
   PendingAction,
   PendingActionResponse,
 } from "./run.js";
+export { BACKEND_SESSION_HANDLE } from "./run.js";
