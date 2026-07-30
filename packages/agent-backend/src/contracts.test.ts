@@ -38,7 +38,7 @@ const SESSION: FakeHandle = {
   backendKind: "fake",
   state: "open",
   liveClient: {},
-} as FakeHandle;
+};
 
 /** FakeBackend implements all six AgentBackend methods with deterministic
  *  completed segments. No adapter base class. */
@@ -158,6 +158,11 @@ describe("agent-backend contracts", () => {
       "@my-agent-team/message": "workspace:*",
     });
     expect(pkg.devDependencies).toEqual({});
+  });
+
+  test("package runtime entry imports without missing exports", async () => {
+    const module = await import("./index.js");
+    expect(module).toEqual({});
   });
 
   test("extension events are namespaced to the backend kind", () => {

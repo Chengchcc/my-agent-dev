@@ -30,21 +30,23 @@ export interface BackendRunInput {
   };
 }
 
-/** Brand symbol marking a value as an opaque Backend session handle. Product
- *  Backend treats the whole handle as an opaque token; only adapters construct
- *  subtypes that carry private live state (client, process, connection) the
- *  public protocol never reads. */
-export declare const BACKEND_SESSION_HANDLE: unique symbol;
+/** Phantom brand key marking a value as an opaque Backend session handle.
+ *  Module-private: never exported as a runtime value. Product Backend treats
+ *  the whole handle as an opaque token; adapters extend this interface to
+ *  attach private live state (client, process, connection) the public protocol
+ *  never reads. The optional phantom field carries no runtime data. */
+declare const BACKEND_SESSION_HANDLE: unique symbol;
 
 /** Base opaque session identity. Product Backend reads only `backendSessionId`
  *  and `backendKind`; it must never read or mutate adapter-private fields.
  *  Parameterized by `K` so a Backend of kind `K` only yields handles branded
- *  with the same `K`. Adapters extend this interface to attach private state. */
+ *  with the same `K`. Adapters extend this interface to attach private state;
+ *  they do not construct the phantom field at runtime. */
 export interface BackendSessionHandle<K extends string = string> {
   readonly backendSessionId: string;
   readonly backendKind: K;
   readonly state: "open" | "closed";
-  readonly [BACKEND_SESSION_HANDLE]: K;
+  readonly [BACKEND_SESSION_HANDLE]?: K;
 }
 
 /** A pending approval, question or permission request awaiting a product

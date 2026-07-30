@@ -22,4 +22,3 @@ export type {
   PendingAction,
   PendingActionResponse,
 } from "./run.js";
-export { BACKEND_SESSION_HANDLE } from "./run.js";
