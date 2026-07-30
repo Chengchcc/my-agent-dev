@@ -1,6 +1,5 @@
 import type { AIMessageChunk, ChatModel } from "@my-agent-team/core";
-import type { Message } from "@my-agent-team/message";
-import { ProviderError, type Model, type Provider, type ProviderAuth } from "../types.js";
+import { type Model, type Provider, type ProviderAuth, ProviderError } from "../types.js";
 import { ANTHROPIC_MODELS } from "./anthropic-models.js";
 
 function normalizeError(err: unknown): ProviderError {

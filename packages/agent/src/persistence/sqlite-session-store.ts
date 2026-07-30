@@ -43,14 +43,25 @@ function schema(db: Database): void {
 }
 
 export function createSqliteSessionStore(dbPath: string): SessionStore {
-  // Each session gets its own SQLite file
   const db = new Database(dbPath);
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
   schema(db);
 
+  let boundSessionId: string | null = null;
+
+  function guard(sessionId: string): void {
+    if (boundSessionId === null) {
+      boundSessionId = sessionId;
+      return;
+    }
+    if (sessionId !== boundSessionId) {
+      throw new Error(`SQLite store bound to ${boundSessionId}, rejected ${sessionId}`);
+    }
+  }
   return {
     async create(metadata: CodingSessionMetadata): Promise<void> {
+      guard(metadata.sessionId);
       db.transaction(() => {
         db.query(`INSERT INTO meta (session_id, backend_kind, workspace_root, model_ref, system_prompt_hash, active_loop_id, leaf_entry_id, created_at, updated_at)
           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`).run(
@@ -66,8 +77,8 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
         );
       })();
     },
-
     async open(sessionId: string): Promise<CodingSessionSnapshot> {
+      guard(sessionId);
       const meta = db.query("SELECT * FROM meta WHERE session_id = ?").get(sessionId) as Record<
         string,
         unknown
@@ -103,8 +114,8 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
         operations: parsedOps,
       };
     },
-
     async delete(sessionId: string): Promise<void> {
+      guard(sessionId);
       db.exec("DELETE FROM entries");
       db.exec("DELETE FROM operations");
       db.exec("DELETE FROM meta WHERE session_id = ?", [sessionId]);
@@ -112,6 +123,7 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
     },
 
     async appendBatch(sessionId: string, input: AppendBatchInput): Promise<AppendBatchResult> {
+      guard(sessionId);
       return db.transaction(() => {
         const meta = db
           .query("SELECT leaf_entry_id FROM meta WHERE session_id = ?")
@@ -142,7 +154,7 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
             entryId,
             parentId,
             productEntryId ?? null,
-            entry.type,
+            entry.type as string,
             (entry as { role?: string }).role ?? null,
             (entry as { source?: string }).source ?? null,
             msg ? JSON.stringify(msg) : null,
@@ -171,8 +183,8 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
         return { appendedIds } satisfies AppendBatchResult;
       })();
     },
-
     async moveLeaf(sessionId: string, entryId: string): Promise<void> {
+      guard(sessionId);
       db.transaction(() => {
         const meta = db
           .query("SELECT leaf_entry_id FROM meta WHERE session_id = ?")
@@ -191,8 +203,8 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
         );
       })();
     },
-
     async readBranch(sessionId: string): Promise<readonly CodingSessionEntry[]> {
+      guard(sessionId);
       const meta = db
         .query("SELECT leaf_entry_id FROM meta WHERE session_id = ?")
         .get(sessionId) as { leaf_entry_id: string | null } | null;
@@ -210,11 +222,12 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
       }
       return result.reverse();
     },
-
     async findByProductEntryIds(
-      _sessionId: string,
+      sessionId: string,
       ids: readonly string[],
     ): Promise<readonly CodingSessionEntry[]> {
+      guard(sessionId);
+      if (!ids.length) return [];
       const placeholders = ids.map(() => "?").join(",");
       const rows = db
         .query(`SELECT * FROM entries WHERE product_entry_id IN (${placeholders})`)

@@ -5,7 +5,7 @@ import type {
 } from "./session-tree.js";
 
 export interface AppendBatchInput {
-  readonly entries: readonly (Partial<CodingSessionEntry> & { type: string; createdAt?: number })[];
+  readonly entries: readonly Record<string, unknown>[];
 }
 
 export interface AppendBatchResult {

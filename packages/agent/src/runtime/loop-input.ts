@@ -1,4 +1,4 @@
-import type { ProjectedHistoryItem, AgentRunSnapshot } from "@my-agent-team/agent-backend";
+import type { AgentRunSnapshot, ProjectedHistoryItem } from "@my-agent-team/agent-backend";
 import type { AppendBatchInput } from "../persistence/session-store.js";
 
 export interface LoopInputResult {

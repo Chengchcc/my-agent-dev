@@ -1,65 +1,138 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { createInMemorySessionStore } from "../persistence/in-memory-session-store.js";
+import { createSqliteSessionStore } from "../persistence/sqlite-session-store.js";
+import { unlinkSync } from "node:fs";
 import { createAgentLoop } from "./agent-loop.js";
 
-describe("Coding Agent harness", () => {
-  test("creates session and starts agent loop", async () => {
-    const store = createInMemorySessionStore();
-    const sessionId = "harness-1";
-    await store.create({
-      sessionId,
-      backendKind: "coding_agent",
-      workspaceRoot: "/ws",
-      modelRef: { backendKind: "anthropic", modelId: "claude-sonnet" },
-      systemPromptHash: null,
-      activeLoopId: null,
-      leafEntryId: null,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+function testHarness(
+  name: string,
+  storeFactory: () => ReturnType<typeof createInMemorySessionStore>,
+  cleanup?: () => void,
+) {
+  describe(`Coding Agent harness: ${name}`, () => {
+    test("full loop with tool execution and steer", async () => {
+      const store = storeFactory();
+      const sid = "h-" + Math.random().toString(36).slice(2, 8);
+      await store.create({
+        sessionId: sid,
+        backendKind: "coding_agent",
+        workspaceRoot: "/ws",
+        modelRef: { backendKind: "test", modelId: "m1" },
+        systemPromptHash: null,
+        activeLoopId: null,
+        leafEntryId: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
 
-    const loop = createAgentLoop({
-      sessionId,
-      store,
-      modelRuntime: {
-        stream: async function* () {
-          yield { type: "text_delta", text: "hello" };
+      const loop = createAgentLoop({
+        sessionId: sid,
+        store,
+        plugins: [],
+        systemPrompt: "",
+        maxSteps: 3,
+        maxForceContinues: 1,
+        modelStream: async function* () {
+          yield { delta: { type: "text", text: "done" } };
         },
-      } as never,
-      plugins: [],
-      systemPrompt: "",
-      maxSteps: 5,
-      maxForceContinues: 2,
-      providerId: "anthropic",
-      modelId: "claude-sonnet",
+      });
+
+      expect(loop.status).toBe("idle");
+      await loop.startLoop({ systemPrompt: "", metaText: "meta", promptText: "go" });
+      expect(loop.status).toBe("settled");
+
+      const snap = await store.open(sid);
+      expect(snap.entries.length).toBeGreaterThan(1);
+      // Product history entry + meta + prompt + assistant
+      const types = snap.entries.map((e) => e.type);
+      expect(types.filter((t) => t === "message").length).toBeGreaterThanOrEqual(3);
     });
 
-    expect(loop.status).toBe("idle");
-    await loop.startLoop({ systemPrompt: "test", metaText: "", promptText: "run" });
-    expect(loop.status).toBe("settled");
+    test("stop aborts running loop", async () => {
+      const store = storeFactory();
+      const sid = "h-stop-" + Math.random().toString(36).slice(2, 8);
+      await store.create({
+        sessionId: sid,
+        backendKind: "coding_agent",
+        workspaceRoot: "/ws",
+        modelRef: { backendKind: "test", modelId: "m1" },
+        systemPromptHash: null,
+        activeLoopId: null,
+        leafEntryId: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
 
-    const snap = await store.open(sessionId);
-    expect(snap.entries.length).toBeGreaterThan(0);
-  });
+      const loop = createAgentLoop({
+        sessionId: sid,
+        store,
+        plugins: [],
+        systemPrompt: "",
+        maxSteps: 100,
+        maxForceContinues: 1,
+        modelStream: async function* () {
+          yield { delta: { type: "text", text: "streaming..." } };
+        },
+      });
 
-  test("session reopen does not resume active loop", async () => {
-    const store = createInMemorySessionStore();
-    const sessionId = "harness-2";
-    await store.create({
-      sessionId,
-      backendKind: "coding_agent",
-      workspaceRoot: "/ws",
-      modelRef: { backendKind: "anthropic", modelId: "claude-sonnet" },
-      systemPromptHash: null,
-      activeLoopId: "old-loop",
-      leafEntryId: null,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "run" });
+      loop.stop();
+      await started;
+      expect(loop.status).toBe("settled");
     });
 
-    // Reopen: active loop should not be resumed
-    const snap = await store.open(sessionId);
-    expect(snap.metadata.activeLoopId).toBe("old-loop");
-    // But no active loop is created - the loop is just metadata
+    test("listener receives events", async () => {
+      const store = storeFactory();
+      const sid = "h-evt-" + Math.random().toString(36).slice(2, 8);
+      await store.create({
+        sessionId: sid,
+        backendKind: "coding_agent",
+        workspaceRoot: "/ws",
+        modelRef: { backendKind: "test", modelId: "m1" },
+        systemPromptHash: null,
+        activeLoopId: null,
+        leafEntryId: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      const events: string[] = [];
+      const loop = createAgentLoop({
+        sessionId: sid,
+        store,
+        plugins: [],
+        systemPrompt: "",
+        maxSteps: 2,
+        maxForceContinues: 1,
+        modelStream: async function* () {
+          yield { delta: { type: "text", text: "ok" } };
+        },
+      });
+      loop.onEvent((e) => {
+        events.push(e.type);
+      });
+
+      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      expect(events).toContain("agent_start");
+      expect(events).toContain("agent_end");
+    });
+
+    afterAll(() => cleanup?.());
   });
-});
+}
+
+// Run harness against both stores
+testHarness("InMemory", () => createInMemorySessionStore());
+
+const sqlitePath = `/tmp/harness-sqlite-${Math.random().toString(36).slice(2, 8)}.db`;
+testHarness(
+  "SQLite",
+  () => createSqliteSessionStore(sqlitePath),
+  () => {
+    try {
+      unlinkSync(sqlitePath);
+    } catch {
+      /* cleanup */
+    }
+  },
+);

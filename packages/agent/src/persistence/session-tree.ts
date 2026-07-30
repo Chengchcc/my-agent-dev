@@ -6,8 +6,7 @@ export interface MessageEntry {
   readonly type: "message";
   readonly entryId: string;
   readonly parentId: string | null;
-  readonly productEntryId: string | null;
-  readonly role: "user" | "assistant" | "system";
+  readonly role: "user" | "assistant" | "system" | "tool";
   readonly source:
     | "product_history"
     | "meta"
