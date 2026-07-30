@@ -7,12 +7,10 @@ export { createEditTool, createReadTool, createWriteTool, withDefaultCwd } from 
 export { globTool } from "./glob.js";
 export { grepTool } from "./grep.js";
 export { createLsTool, createTreeTool } from "./ls-tree.js";
-export { webFetchTool } from "./web-fetch.js";
 export type { WebFetchPort, WebSearchPort } from "./web-ports.js";
 export {
   createWebFetchTool as createPortWebFetchTool,
   createWebSearchTool as createPortWebSearchTool,
 } from "./web-ports.js";
-export { createWebSearchTool } from "./web-search.js";
 // Phase 2: workspace sandbox and web ports
 export { WorkspaceEscapeError, WorkspaceSandbox } from "./workspace-sandbox.js";

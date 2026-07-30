@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { unlinkSync } from "node:fs";
 import { createInMemorySessionStore } from "../persistence/in-memory-session-store.js";
 import { createSqliteSessionStore } from "../persistence/sqlite-session-store.js";
-import { unlinkSync } from "node:fs";
 import { createAgentLoop } from "./agent-loop.js";
 
 function testHarness(
@@ -12,7 +12,7 @@ function testHarness(
   describe(`Coding Agent harness: ${name}`, () => {
     test("full loop with tool execution and steer", async () => {
       const store = storeFactory();
-      const sid = "h-" + Math.random().toString(36).slice(2, 8);
+      const sid = `h-${Math.random().toString(36).slice(2, 8)}`;
       await store.create({
         sessionId: sid,
         backendKind: "coding_agent",
@@ -50,7 +50,7 @@ function testHarness(
 
     test("stop aborts running loop", async () => {
       const store = storeFactory();
-      const sid = "h-stop-" + Math.random().toString(36).slice(2, 8);
+      const sid = `h-stop-${Math.random().toString(36).slice(2, 8)}`;
       await store.create({
         sessionId: sid,
         backendKind: "coding_agent",
@@ -83,7 +83,7 @@ function testHarness(
 
     test("listener receives events", async () => {
       const store = storeFactory();
-      const sid = "h-evt-" + Math.random().toString(36).slice(2, 8);
+      const sid = `h-evt-${Math.random().toString(36).slice(2, 8)}`;
       await store.create({
         sessionId: sid,
         backendKind: "coding_agent",
