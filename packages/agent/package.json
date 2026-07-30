@@ -9,6 +9,8 @@
     "test": "bun test --pass-with-no-tests"
   },
   "dependencies": {
+    "@my-agent-team/agent-backend": "workspace:*",
+    "@my-agent-team/ai": "workspace:*",
     "@my-agent-team/core": "workspace:*",
     "@my-agent-team/message": "workspace:*",
     "drizzle-orm": "^0.44.0",

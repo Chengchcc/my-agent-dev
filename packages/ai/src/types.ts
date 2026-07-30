@@ -75,3 +75,87 @@ export interface ApiImplementation {
     options?: ApiStreamOptions,
   ): AsyncIterable<AIMessageChunk>;
 }
+
+// ─── Phase 2: ModelRuntime (provider registry + credential store) ───
+
+/** Normalised provider error categories for retry/no-retry decisions. */
+export const ProviderErrorKind = {
+  Transient: "transient",
+  Overload: "overload",
+  Auth: "auth",
+  InvalidRequest: "invalid_request",
+  Fatal: "fatal",
+  Aborted: "aborted",
+} as const;
+export type ProviderErrorKind = (typeof ProviderErrorKind)[keyof typeof ProviderErrorKind];
+
+export class ProviderError extends Error {
+  readonly kind: ProviderErrorKind;
+  readonly statusCode?: number;
+  readonly retryable: boolean;
+  readonly raw?: unknown;
+
+  constructor(
+    message: string,
+    kind: ProviderErrorKind,
+    opts?: { statusCode?: number; raw?: unknown },
+  ) {
+    super(message);
+    this.name = "ProviderError";
+    this.kind = kind;
+    this.statusCode = opts?.statusCode;
+    this.raw = opts?.raw;
+    this.retryable = kind === "transient" || kind === "overload";
+  }
+}
+
+/** Resolved credential for a model request. */
+export interface ResolvedCredential {
+  apiKey?: string;
+  baseUrl?: string;
+  headers?: Record<string, string>;
+}
+
+/** Stores and resolves provider credentials. Implementations may read
+ *  from env, Vault, or a Product Backend config service. */
+export interface CredentialStore {
+  resolve(providerId: string): Promise<ResolvedCredential | null>;
+}
+
+/** Result of refreshing the model catalog from all registered providers. */
+export interface CatalogRefreshResult {
+  readonly models: readonly ModelRuntimeEntry[];
+  readonly timestamp: number;
+}
+
+export interface ModelRuntimeEntry {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly displayName: string;
+  readonly reasoning: boolean;
+  readonly inputModalities: readonly string[];
+  readonly contextWindow: number;
+  readonly maxOutputTokens: number;
+  readonly available: boolean;
+}
+/** Callback that converts a model into a streaming ChatModel. */
+
+/** Phase 2 ModelRuntime: provider registry, credential resolution, catalog,
+ *  availability filtering, refresh, and stream dispatch. */
+export interface ModelRuntime {
+  registerProvider(provider: Provider): void;
+  setProvider(provider: Provider): void;
+  getProvider(id: string): Provider | undefined;
+  resolveModel(
+    providerId: string,
+    modelId: string,
+  ): Promise<{ model: ModelRuntimeEntry; credential: ResolvedCredential }>;
+  getCatalog(): Promise<CatalogRefreshResult>;
+  refreshCatalog(): Promise<CatalogRefreshResult>;
+  stream(
+    providerId: string,
+    modelId: string,
+    messages: readonly Message[],
+    opts?: { signal?: AbortSignal; tools?: readonly Tool[] },
+  ): AsyncIterable<AIMessageChunk>;
+}

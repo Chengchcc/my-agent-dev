@@ -1,32 +1,66 @@
 import type { Message } from "@my-agent-team/message";
 
-export interface SessionTreeEntryBase {
-  id: string;
-  parentId: string | null;
-  timestamp: number;
+// ─── Coding Session Tree entries ─────────────────────────────────
+
+export interface MessageEntry {
+  readonly type: "message";
+  readonly entryId: string;
+  readonly parentId: string | null;
+  readonly productEntryId: string | null;
+  readonly role: "user" | "assistant" | "system";
+  readonly source:
+    | "product_history"
+    | "meta"
+    | "prompt"
+    | "steer"
+    | "follow_up"
+    | "assistant"
+    | "tool_result";
+  readonly message: Message;
+  readonly createdAt: number;
 }
 
-export interface MessageEntry extends SessionTreeEntryBase {
-  type: "message";
-  message: Message;
+export interface CompactionEntry {
+  readonly type: "compaction";
+  readonly entryId: string;
+  readonly parentId: string | null;
+  readonly summary: string;
+  readonly coversEntryIds: readonly string[];
+  readonly createdAt: number;
 }
 
-export interface CompactionEntry extends SessionTreeEntryBase {
-  type: "compaction";
-  summary: string;
-  firstKeptEntryId: string;
-  tokensBefore: number;
+export interface TodoStateEntry {
+  readonly type: "todo";
+  readonly entryId: string;
+  readonly parentId: string | null;
+  readonly state: Readonly<Record<string, unknown>>;
+  readonly createdAt: number;
 }
 
-export interface ModelChangeEntry extends SessionTreeEntryBase {
-  type: "model_change";
-  provider: string;
-  modelId: string;
+export type CodingSessionEntry = MessageEntry | CompactionEntry | TodoStateEntry;
+
+export type CodingSessionOperation = {
+  readonly type: "leaf_moved";
+  readonly entryId: string;
+  readonly fromLeafId: string | null;
+};
+
+// ─── Coding Session metadata ─────────────────────────────────────
+
+export interface CodingSessionMetadata {
+  readonly sessionId: string;
+  readonly backendKind: string;
+  readonly workspaceRoot: string;
+  readonly modelRef: { readonly backendKind: string; readonly modelId: string };
+  readonly systemPromptHash: string | null;
+  readonly activeLoopId: string | null;
+  readonly leafEntryId: string | null;
+  readonly createdAt: number;
+  readonly updatedAt: number;
 }
 
-export type SessionTreeEntry = MessageEntry | CompactionEntry | ModelChangeEntry;
-
-export interface SessionContext {
-  messages: Message[];
-  model?: { provider: string; modelId: string };
+export interface CodingSessionSnapshot {
+  readonly metadata: CodingSessionMetadata;
+  readonly entries: readonly CodingSessionEntry[];
+  readonly operations: readonly CodingSessionOperation[];
 }
