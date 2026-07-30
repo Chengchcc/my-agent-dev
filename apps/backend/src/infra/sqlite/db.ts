@@ -14,6 +14,11 @@ export function openDb(dbPath: string): Database {
 
   sqlite.exec("PRAGMA journal_mode = WAL");
   sqlite.exec("PRAGMA synchronous = NORMAL");
+  // Phase 1: foreign keys ON so cascade deletes and FK constraints are enforced
+  // in every transaction; busy_timeout lets a competing writer wait briefly
+  // instead of failing immediately under concurrent acquire/commit.
+  sqlite.exec("PRAGMA foreign_keys = ON");
+  sqlite.exec("PRAGMA busy_timeout = 5000");
 
   // Run drizzle-kit migrations (replaces hand-rolled ALL_MIGRATIONS + _migrations ledger).
   // The schema is used only for the drizzle instance type; migrate() reads SQL files

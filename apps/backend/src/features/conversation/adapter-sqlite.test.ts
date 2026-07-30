@@ -185,3 +185,18 @@ describe("searchLedger", () => {
     expect(results.length).toBe(1);
   });
 });
+
+describe("no session binding surface", () => {
+  test("member reads expose no session binding", () => {
+    const members = adapter.getMembers("conv-1");
+    for (const m of members) {
+      expect("sessionId" in m).toBe(false);
+      expect("session_id" in m).toBe(false);
+    }
+  });
+
+  test("getMemberSessionId and updateMemberSessionId are not on the adapter", () => {
+    expect("getMemberSessionId" in adapter).toBe(false);
+    expect("updateMemberSessionId" in adapter).toBe(false);
+  });
+});

@@ -22,6 +22,7 @@
   "dependencies": {
     "@my-agent-team/adapter-mcp": "workspace:*",
     "@my-agent-team/agent": "workspace:*",
+    "@my-agent-team/agent-backend": "workspace:*",
     "@my-agent-team/ai": "workspace:*",
     "@my-agent-team/api-contract": "workspace:*",
     "@my-agent-team/config": "workspace:*",

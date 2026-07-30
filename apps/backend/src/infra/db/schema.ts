@@ -56,9 +56,9 @@ export const member = sqliteTable(
     agentId: text(),
     userRef: text(),
     displayName: text(),
-    /** Session binding: the Agent sessionId for this (conversation, member).
-     *  Null until first agent run; set by conversation feature via createAgentSession(). */
-    sessionId: text(),
+    /** DESTRUCTIVE CLEAN CUTOVER (Phase 1): session binding removed.
+     *  Execution session state now lives in backend_session_binding. */
+    // sessionId: text(),
     joinedAt: integer({ mode: "number" }).notNull(),
   },
   (table) => [
@@ -397,3 +397,191 @@ export const mcpServerSelectSchema = createSelectSchema(mcpServer, {
 /** Convert boolean to 0|1 for integer columns. Single source of truth
  *  for the bool→int conversion used by adapters. */
 export const boolToInt = (v: boolean): number => (v ? 1 : 0);
+
+// ─── Phase 1: Agent Context, Branches, Runs, Queue, PendingAction ──────────
+// DESTRUCTIVE CLEAN CUTOVER - old session/checkpoint state is intentionally discarded.
+
+// Agent Context Tree: one per (conversation, agent member).
+export const agentContextTree = sqliteTable(
+  "agent_context_tree",
+  {
+    treeId: text("tree_id").notNull(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversation.conversationId, { onDelete: "cascade" }),
+    agentMemberId: text("agent_member_id").notNull(),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.treeId] }),
+    uniqueIndex("idx_context_tree_member").on(table.conversationId, table.agentMemberId),
+  ],
+);
+
+// Agent Context Entry: append-only tree nodes with parent links.
+export const agentContextEntry = sqliteTable(
+  "agent_context_entry",
+  {
+    entryId: text("entry_id").notNull(),
+    treeId: text("tree_id")
+      .notNull()
+      .references(() => agentContextTree.treeId, { onDelete: "cascade" }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- self-referencing FK requires any
+    parentId: text("parent_id").references((): any => agentContextEntry.entryId),
+    type: text().notNull(), // ledger_message | private_message | product_tool_exchange | summary | model_change
+    payload: text().notNull(), // JSON: type-specific payload
+    ledgerSeq: integer("ledger_seq"), // only for ledger_message
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.entryId] }),
+    index("idx_context_entry_tree").on(table.treeId, table.parentId),
+    index("idx_context_entry_leaf").on(table.treeId, table.entryId),
+  ],
+);
+
+// Context Branch: a path from root to a leaf entry.
+export const agentContextBranch = sqliteTable(
+  "agent_context_branch",
+  {
+    branchId: text("branch_id").notNull(),
+    treeId: text("tree_id")
+      .notNull()
+      .references(() => agentContextTree.treeId, { onDelete: "cascade" }),
+    leafEntryId: text("leaf_entry_id"),
+    ledgerCursor: integer("ledger_cursor").notNull().default(0),
+    backendKind: text("backend_kind").notNull(),
+    isDefault: integer("is_default", { mode: "number" }).notNull().default(0),
+    revision: integer().notNull().default(1),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.branchId] }),
+    // One default branch per tree (partial unique index).
+    uniqueIndex("idx_context_branch_default").on(table.treeId).where(sql`is_default = 1`),
+    index("idx_context_branch_tree").on(table.treeId),
+  ],
+);
+
+// Backend Session Binding: opaque execution session metadata per branch.
+export const backendSessionBinding = sqliteTable(
+  "backend_session_binding",
+  {
+    branchId: text("branch_id")
+      .notNull()
+      .references(() => agentContextBranch.branchId, { onDelete: "cascade" }),
+    backendSessionId: text("backend_session_id"),
+    backendKind: text("backend_kind").notNull(),
+    syncedEntryId: text("synced_entry_id"),
+    syncedRevision: integer("synced_revision"),
+    state: text().notNull().default("active"), // active | stale | detached
+    updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.branchId] })],
+);
+
+// Agent Run: product execution identity.
+export const agentRun = sqliteTable(
+  "agent_run",
+  {
+    runId: text("run_id").notNull(),
+    branchId: text("branch_id")
+      .notNull()
+      .references(() => agentContextBranch.branchId, { onDelete: "cascade" }),
+    conversationId: text("conversation_id").notNull(),
+    agentMemberId: text("agent_member_id").notNull(),
+    modelRef: text("model_ref").notNull(), // JSON: BackendModelRef
+    status: text().notNull().default("running"), // running|waiting|commit_failed|completed|failed|aborted|timeout
+    idempotencyKey: text("idempotency_key").notNull(),
+    terminalResult: text("terminal_result"), // JSON: serialized BackendRunOutcome, set on terminal
+    configRevision: integer("config_revision").notNull(),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+    terminalAt: integer("terminal_at", { mode: "number" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId] }),
+    uniqueIndex("idx_agent_run_idempotency").on(table.idempotencyKey),
+    // Single active run per branch: partial unique index on active statuses.
+    uniqueIndex("idx_agent_run_active_branch")
+      .on(table.branchId)
+      .where(sql`status IN ('running', 'waiting', 'commit_failed')`),
+    index("idx_agent_run_branch").on(table.branchId),
+  ],
+);
+
+// Branch Input Queue: durable normal/steer/follow_up inputs.
+export const branchInputQueue = sqliteTable(
+  "branch_input_queue",
+  {
+    inputId: text("input_id").notNull(),
+    branchId: text("branch_id")
+      .notNull()
+      .references(() => agentContextBranch.branchId, { onDelete: "cascade" }),
+    mode: text().notNull(), // normal | steer | follow_up
+    message: text().notNull(), // JSON: serialized Message
+    status: text().notNull().default("pending"), // pending | delivering | delivered | cancelled
+    deliveryIdempotencyKey: text("delivery_idempotency_key").notNull(),
+    inputIdempotencyKey: text("input_idempotency_key").notNull(),
+    runId: text("run_id"), // set when acquired
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+    deliveredAt: integer("delivered_at", { mode: "number" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.inputId] }),
+    uniqueIndex("idx_queue_delivery_idem").on(table.deliveryIdempotencyKey),
+    uniqueIndex("idx_queue_input_idem").on(table.branchId, table.inputIdempotencyKey),
+    // Stable queue ordering: branch + createdAt + inputId.
+    index("idx_queue_order").on(table.branchId, table.createdAt, table.inputId),
+  ],
+);
+
+// Pending Action: approval/question awaiting a response.
+export const pendingAction = sqliteTable(
+  "pending_action",
+  {
+    actionId: text("action_id").notNull(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => agentRun.runId, { onDelete: "cascade" }),
+    kind: text().notNull(),
+    payload: text().notNull(), // JSON
+    status: text().notNull().default("pending"), // pending | resolved | cancelled
+    response: text(), // JSON: PendingActionResponse
+    responseIdempotencyKey: text("response_idempotency_key"),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+    resolvedAt: integer("resolved_at", { mode: "number" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.actionId] }),
+    uniqueIndex("idx_pending_action_response_idem").on(table.responseIdempotencyKey),
+    index("idx_pending_action_run").on(table.runId),
+  ],
+);
+
+// ── Phase 1 select schemas (JSON/bool columns need transform pattern) ──
+
+export const agentContextEntrySelectSchema = createSelectSchema(agentContextEntry, {
+  payload: (s) => s.transform((v: string) => JSON.parse(v) as Record<string, unknown>),
+});
+
+export const agentContextBranchSelectSchema = createSelectSchema(agentContextBranch, {
+  isDefault: (s) => s.transform((v: number) => v !== 0),
+});
+
+export const backendSessionBindingSelectSchema = createSelectSchema(backendSessionBinding);
+
+export const agentRunSelectSchema = createSelectSchema(agentRun, {
+  modelRef: (s) => s.transform((v: string) => JSON.parse(v) as Record<string, unknown>),
+  terminalResult: (s) =>
+    s.transform((v: string | null) => (v ? (JSON.parse(v) as Record<string, unknown>) : null)),
+});
+
+export const branchInputQueueSelectSchema = createSelectSchema(branchInputQueue, {
+  message: (s) => s.transform((v: string) => JSON.parse(v) as Record<string, unknown>),
+});
+
+export const pendingActionSelectSchema = createSelectSchema(pendingAction, {
+  payload: (s) => s.transform((v: string) => JSON.parse(v) as Record<string, unknown>),
+  response: (s) =>
+    s.transform((v: string | null) => (v ? (JSON.parse(v) as Record<string, unknown>) : null)),
+});

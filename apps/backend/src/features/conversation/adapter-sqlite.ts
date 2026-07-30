@@ -191,32 +191,6 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
         .all();
       return rows.length > 0;
     },
-    getMemberSessionId(conversationId: string, memberId: string): string | null {
-      const row = d
-        .select({ sessionId: schema.member.sessionId })
-        .from(schema.member)
-        .where(
-          and(
-            eq(schema.member.conversationId, conversationId),
-            eq(schema.member.memberId, memberId),
-          ),
-        )
-        .get();
-      return row?.sessionId ?? null;
-    },
-
-    updateMemberSessionId(conversationId: string, memberId: string, sessionId: string): void {
-      d.update(schema.member)
-        .set({ sessionId })
-        .where(
-          and(
-            eq(schema.member.conversationId, conversationId),
-            eq(schema.member.memberId, memberId),
-          ),
-        )
-        .run();
-    },
-
     // ─── Ledger ────────────────────────────────────
 
     appendLedgerEntry(input: AppendLedgerInput): number {

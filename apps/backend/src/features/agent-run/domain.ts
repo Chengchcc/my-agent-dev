@@ -1,0 +1,130 @@
+import type { BackendModelRef, BackendRunOutcome } from "@my-agent-team/agent-backend";
+import type { Message } from "@my-agent-team/message";
+
+// ─── Agent Run status ────────────────────────────────────────────
+
+export type AgentRunStatus =
+  | "running"
+  | "waiting"
+  | "commit_failed"
+  | "completed"
+  | "failed"
+  | "aborted"
+  | "timeout";
+
+/** Active statuses that occupy the branch's single active-run slot. */
+export const ACTIVE_RUN_STATUSES = ["running", "waiting", "commit_failed"] as const;
+
+/** Terminal statuses that release the active-run slot. */
+export const TERMINAL_RUN_STATUSES = ["completed", "failed", "aborted", "timeout"] as const;
+
+export function isTerminalStatus(status: AgentRunStatus): boolean {
+  return (TERMINAL_RUN_STATUSES as readonly string[]).includes(status);
+}
+
+export function isActiveStatus(status: AgentRunStatus): boolean {
+  return (ACTIVE_RUN_STATUSES as readonly string[]).includes(status);
+}
+
+// ─── Agent Run entity ────────────────────────────────────────────
+
+export interface AgentRun {
+  readonly runId: string;
+  readonly branchId: string;
+  readonly conversationId: string;
+  readonly agentMemberId: string;
+  readonly modelRef: BackendModelRef;
+  readonly status: AgentRunStatus;
+  readonly idempotencyKey: string;
+  readonly terminalResult: BackendRunOutcome | null;
+  readonly configRevision: number;
+  readonly createdAt: number;
+  readonly terminalAt: number | null;
+}
+
+// ─── Branch Input Queue ──────────────────────────────────────────
+
+export type BranchInputMode = "normal" | "steer" | "follow_up";
+
+export type BranchInputStatus = "pending" | "delivering" | "delivered" | "cancelled";
+
+export interface BranchInput {
+  readonly inputId: string;
+  readonly branchId: string;
+  readonly mode: BranchInputMode;
+  readonly message: Message;
+  readonly status: BranchInputStatus;
+  readonly deliveryIdempotencyKey: string;
+  readonly inputIdempotencyKey: string;
+  readonly runId: string | null;
+  readonly createdAt: number;
+  readonly deliveredAt: number | null;
+}
+
+// ─── Pending Action ──────────────────────────────────────────────
+
+export type PendingActionStatus = "pending" | "resolved" | "cancelled";
+
+export interface PendingActionRecord {
+  readonly actionId: string;
+  readonly runId: string;
+  readonly kind: string;
+  readonly payload: Readonly<Record<string, unknown>>;
+  readonly status: PendingActionStatus;
+  readonly response: unknown | null;
+  readonly responseIdempotencyKey: string | null;
+  readonly createdAt: number;
+  readonly resolvedAt: number | null;
+}
+
+// ─── Commands ────────────────────────────────────────────────────
+
+export interface AcquireAgentRunCommand {
+  readonly conversationId: string;
+  readonly agentMemberId: string;
+  readonly branchId: string;
+  readonly mode: BranchInputMode;
+  readonly message: Message;
+  readonly inputIdempotencyKey: string;
+  readonly runIdempotencyKey: string;
+  readonly deliveryIdempotencyKey: string;
+  readonly defaultModel: BackendModelRef;
+  readonly configRevision: number;
+  readonly expectedRevision: number;
+}
+
+export interface AcquireAgentRunResult {
+  readonly acquired: boolean;
+  readonly queued: boolean;
+  readonly replayed: boolean;
+  readonly run?: AgentRun;
+  readonly inputId: string;
+}
+
+export interface ClaimedBranchInput {
+  readonly input: BranchInput;
+  readonly runId: string;
+}
+
+// ─── Errors ──────────────────────────────────────────────────────
+
+export class BranchAlreadyActiveError extends Error {
+  constructor(readonly branchId: string) {
+    super(`Branch ${branchId} already has an active Agent Run`);
+    this.name = "BranchAlreadyActiveError";
+  }
+}
+
+export class AgentRunConflictError extends Error {
+  constructor(readonly runId: string) {
+    super(`Agent Run ${runId} conflict: terminal outcome mismatch`);
+    this.name = "AgentRunConflictError";
+  }
+}
+
+export class PendingActionAlreadyConsumedError extends Error {
+  constructor(readonly actionId: string) {
+    super(`PendingAction ${actionId} already consumed with a different response`);
+    this.name = "PendingActionAlreadyConsumedError";
+  }
+}
