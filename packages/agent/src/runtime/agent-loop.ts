@@ -85,7 +85,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
       let naturalStop = false;
 
       while (step < opts.maxSteps && !naturalStop) {
-        if (controller.signal.aborted) break;
+        if (controller?.signal.aborted) break;
         step++;
         await emit({ type: "turn_start", turn: step });
 
@@ -133,6 +133,15 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
             if (toolCalls.length > 0) {
               // Tool calls: execute and continue to the next turn
               const toolResults = await executeTools(toolCalls);
+
+              // stop() during tool execution: do not persist partial results,
+              // transition straight to the stopped terminal state.
+              if (controller?.signal.aborted) {
+                status = "stopped";
+                await emit({ type: "agent_end", status });
+                controller = null;
+                return;
+              }
 
               // Persist assistant tool_use message
               await opts.store.appendBatch(opts.sessionId, {
@@ -205,7 +214,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
           } catch (err) {
             // Explicit stop/abort is a distinct terminal state
             if (
-              controller.signal.aborted ||
+              controller?.signal.aborted ||
               (err instanceof ProviderError && err.kind === "aborted")
             ) {
               status = "stopped";
@@ -238,7 +247,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
         if (naturalStop) break;
       }
 
-      if (controller.signal.aborted) {
+      if (controller?.signal.aborted) {
         status = "stopped";
         await emit({ type: "agent_end", status });
       } else if (!naturalStop && step >= opts.maxSteps && status === "running") {
@@ -322,18 +331,24 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
   ): Promise<Array<{ id: string; result: unknown }>> {
     const results: Array<{ id: string; result: unknown }> = [];
     for (const call of calls) {
+      // Stop() aborts in-flight tools too: pass the controller signal so
+      // long-running tools (bash, web, MCP) can cancel and return promptly.
+      if (controller?.signal.aborted) break;
       await emit({ type: "tool_execution_start", toolName: call.name });
       const tool = toolMap.get(call.name);
       let result: unknown;
       if (tool) {
         try {
-          result = await tool.execute(call.input);
+          result = await tool.execute(call.input, controller?.signal);
         } catch (err) {
           result = { error: err instanceof Error ? err.message : String(err) };
         }
       } else {
         result = { error: `Unknown tool: ${call.name}` };
       }
+      // If stop() fired mid-execution, discard the result and stop the loop
+      // rather than persisting output from a cancelled turn.
+      if (controller?.signal.aborted) break;
       results.push({ id: call.id, result });
       await emit({
         type: "tool_execution_end",

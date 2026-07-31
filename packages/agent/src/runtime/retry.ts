@@ -23,13 +23,19 @@ export async function* retryStream(
 
   while (attempt < opts.maxAttempts) {
     if (signal?.aborted) throw new Error("Aborted");
+    attempt++;
+    await opts.onRetryStart?.(attempt);
+    // Buffer this attempt's output; only forward it once the attempt completes
+    // cleanly. A failed attempt's partial output is discarded so it can never
+    // contaminate the canonical transcript.
+    const buffered: AIMessageChunk[] = [];
     try {
-      attempt++;
-      await opts.onRetryStart?.(attempt);
-      yield* streamFactory(signal);
-      return;
+      for await (const chunk of streamFactory(signal)) {
+        buffered.push(chunk);
+      }
     } catch (err) {
       lastError = err;
+      await opts.onRetryEnd?.(attempt);
       if (err instanceof ProviderError && err.retryable && attempt < opts.maxAttempts) {
         const { promise, resolve } = Promise.withResolvers<void>();
         setTimeout(resolve, opts.baseDelayMs * 2 ** (attempt - 1));
@@ -37,9 +43,11 @@ export async function* retryStream(
         continue;
       }
       throw err;
-    } finally {
-      await opts.onRetryEnd?.(attempt);
     }
+    await opts.onRetryEnd?.(attempt);
+    // Attempt succeeded atomically: emit the whole buffered turn.
+    for (const chunk of buffered) yield chunk;
+    return;
   }
   throw lastError;
 }

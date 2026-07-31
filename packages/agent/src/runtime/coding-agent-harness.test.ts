@@ -316,6 +316,41 @@ function testHarness(
       expect(metas).toHaveLength(1);
     });
 
+    test("7c. failed retry attempt partial output does not contaminate final message", async () => {
+      const store = storeFactory("h7c");
+      await createSession(store, "h7c");
+      let attempts = 0;
+      const loop = createAgentLoop({
+        sessionId: "h7c",
+        store,
+        plugins: [],
+        maxSteps: 1,
+        maxForceContinues: 0,
+        maxRetries: 3,
+        modelStream: async function* () {
+          attempts++;
+          // First attempt emits partial text "A" then fails transiently;
+          // second attempt emits the complete text "AB".
+          if (attempts === 1) {
+            yield { delta: { type: "text", text: "A" } };
+            throw new ProviderError("network timeout", "transient");
+          }
+          yield { delta: { type: "text", text: "AB" } };
+        },
+      });
+      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      expect(attempts).toBe(2);
+      expect(loop.status).toBe("completed");
+      // The canonical transcript must contain only the successful attempt's
+      // output ("AB"), never the failed "A" prefix ("AAB").
+      const snap = await store.open("h7c");
+      const assistantText = snap.entries
+        .filter((e) => e.type === "message" && (e as { source?: string }).source === "assistant")
+        .map((e) => (e as { message: { text?: string } }).message.text ?? "")
+        .join("");
+      expect(assistantText).toBe("AB");
+    });
+
     test("7b. retries exhausted fails directly, no extra outer retry", async () => {
       const store = storeFactory("h7b");
       await createSession(store, "h7b");
@@ -338,6 +373,60 @@ function testHarness(
       // fails without consuming the second maxStep.
       expect(attempts).toBe(2);
       expect(loop.status).toBe("failed");
+    });
+
+    test("7d. stop during tool execution cancels the tool and does not persist its result", async () => {
+      const store = storeFactory("h7d");
+      await createSession(store, "h7d");
+      let signalSeen: AbortSignal | undefined;
+      // Deterministic handshake: the tool resolves `toolStarted` once it is
+      // running, so the test waits on a real signal instead of guessing a delay.
+      const { promise: toolStarted, resolve: toolStartedResolve } = Promise.withResolvers<void>();
+      const slowTool = {
+        name: "slow",
+        description: "Long-running tool",
+        async execute(_args: Readonly<Record<string, unknown>>, signal?: AbortSignal) {
+          signalSeen = signal;
+          toolStartedResolve();
+          // Block until aborted (simulates a long bash/web call).
+          if (signal) {
+            const { promise, resolve } = Promise.withResolvers<void>();
+            signal.addEventListener("abort", () => resolve());
+            await promise;
+          } else {
+            const { promise, resolve } = Promise.withResolvers<void>();
+            setTimeout(resolve, 50);
+            await promise;
+          }
+          return { done: true };
+        },
+      };
+      const plugin: Plugin = { name: "test", tools: [slowTool] };
+      const loop = createAgentLoop({
+        sessionId: "h7d",
+        store,
+        plugins: [plugin],
+        maxSteps: 5,
+        maxForceContinues: 0,
+        modelStream: async function* () {
+          yield { delta: { type: "tool_use", id: "tc-1", name: "slow" } };
+          yield { stopReason: "tool_use" };
+        },
+      });
+      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      // Wait for the tool to actually start, then stop() to abort it.
+      await toolStarted;
+      loop.stop();
+      await started;
+      expect(loop.status).toBe("stopped");
+      // The loop forwarded its AbortSignal to the tool
+      expect(signalSeen).toBeTruthy();
+      // The cancelled tool's result must NOT be persisted
+      const snap = await store.open("h7d");
+      const toolResults = snap.entries.filter(
+        (e) => e.type === "message" && (e as { source?: string }).source === "tool_result",
+      );
+      expect(toolResults).toHaveLength(0);
     });
 
     test("8. steer injects at safe boundary without new Meta", async () => {

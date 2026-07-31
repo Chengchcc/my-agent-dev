@@ -79,8 +79,12 @@ export function createInMemorySessionStore(): SessionStore {
       }
 
       if (appendedIds.length > 0) {
+        const oldLeaf = s.metadata.leafEntryId;
         (s.metadata as unknown as Record<string, unknown>).leafEntryId = parentId;
         (s.metadata as unknown as Record<string, unknown>).updatedAt = Date.now();
+        // Mirror SQLite: entries + leaf_moved operation + cache are one logical
+        // transaction. The operation log lets reopen() reconstruct the leaf.
+        s.operations.push({ type: "leaf_moved", entryId: parentId!, fromLeafId: oldLeaf });
       }
 
       return { appendedIds };

@@ -4,7 +4,10 @@ export interface PluginTool {
   readonly name: string;
   readonly description: string;
   readonly inputSchema?: Readonly<Record<string, unknown>>;
-  execute(args: Readonly<Record<string, unknown>>): Promise<Readonly<Record<string, unknown>>>;
+  execute(
+    args: Readonly<Record<string, unknown>>,
+    signal?: AbortSignal,
+  ): Promise<Readonly<Record<string, unknown>>>;
 }
 
 export interface PluginHooks {

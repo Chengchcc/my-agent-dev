@@ -51,7 +51,7 @@ export function runSessionStoreContract(
       expect(snap.entries).toHaveLength(0);
     });
 
-    test("appendBatch appends entries atomically", async () => {
+    test("appendBatch appends entries atomically and records a leaf_moved operation", async () => {
       const result = await store.appendBatch(sessionId, {
         entries: [messageEntry("hello", "pe1")],
       });
@@ -60,6 +60,11 @@ export function runSessionStoreContract(
       const snap = await store.open(sessionId);
       expect(snap.metadata.leafEntryId!).toBe(result.appendedIds[0]!);
       expect(snap.entries).toHaveLength(1);
+      // entries + leaf operation + cache are one logical transaction: a
+      // successful append must record a leaf_moved operation too.
+      const lastOp = snap.operations.at(-1);
+      expect(lastOp?.type).toBe("leaf_moved");
+      expect(lastOp?.entryId).toBe(result.appendedIds[0]);
     });
 
     test("appendBatch skips duplicate productEntryIds", async () => {

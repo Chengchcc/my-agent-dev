@@ -352,7 +352,7 @@ describe("Provider contract", () => {
     const model = provider.getModels()[0]!;
     let sentBody: Record<string, unknown> | null = null;
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
       sentBody = JSON.parse(String(init?.body));
       return new Response("data: [DONE]\n", {
         status: 200,
