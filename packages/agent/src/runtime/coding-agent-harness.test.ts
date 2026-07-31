@@ -225,6 +225,43 @@ function testHarness(
       expect(toolResult?.message.blocks?.[0]?.tool_use_id).toBe("tc-1");
     });
 
+    test("5a. unknown tool and throwing tool persist is_error on tool_result", async () => {
+      const store = storeFactory("h5a");
+      await createSession(store, "h5a");
+      const throwingTool = {
+        name: "boom",
+        description: "Always throws",
+        async execute() {
+          throw new Error("kaboom");
+        },
+      };
+      const plugin: Plugin = { name: "test", tools: [throwingTool] };
+      const loop = createAgentLoop({
+        sessionId: "h5a",
+        store,
+        plugins: [plugin],
+        maxSteps: 1,
+        maxForceContinues: 0,
+        modelStream: async function* () {
+          // Unknown tool + a throwing tool in one turn
+          yield { delta: { type: "tool_use", id: "u", name: "missing" } };
+          yield { delta: { type: "tool_use", id: "b", name: "boom" } };
+          yield { stopReason: "tool_use" };
+        },
+      });
+      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "run" });
+      const snap = await store.open("h5a");
+      const results = snap.entries.filter(
+        (e) => e.type === "message" && (e as { source?: string }).source === "tool_result",
+      ) as Array<{
+        message: { blocks?: Array<{ tool_use_id?: string; is_error?: boolean }> };
+      }>;
+      expect(results).toHaveLength(2);
+      for (const r of results) {
+        expect(r.message.blocks?.[0]?.is_error).toBe(true);
+      }
+    });
+
     test("5b. stop during provider stream ends as stopped, not failed", async () => {
       const store = storeFactory("h5b");
       await createSession(store, "h5b");
@@ -349,6 +386,43 @@ function testHarness(
         .map((e) => (e as { message: { text?: string } }).message.text ?? "")
         .join("");
       expect(assistantText).toBe("AB");
+    });
+
+    test("7e. stop during retry backoff ends the loop promptly", async () => {
+      const store = storeFactory("h7e");
+      await createSession(store, "h7e");
+      let attempts = 0;
+      const loop = createAgentLoop({
+        sessionId: "h7e",
+        store,
+        plugins: [],
+        maxSteps: 2,
+        maxForceContinues: 0,
+        maxRetries: 3,
+        modelStream: async function* () {
+          attempts++;
+          yield { delta: { type: "text", text: "x" } };
+          throw new ProviderError("transient", "transient");
+        },
+      });
+      // baseDelayMs in retryStream is fixed at 1000ms (2^attempt). We assert
+      // the loop settles in well under that window when stop() fires during
+      // the backoff wait, proving the backoff is abortable.
+      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      // Deterministic handshake: wait until the first attempt has failed and
+      // the backoff has begun (attempts === 1, retryStart emitted).
+      const { promise: firstFailed, resolve: firstFailedResolve } = Promise.withResolvers<void>();
+      loop.onEvent((e) => {
+        if (e.type === "retry_start" && attempts === 1) firstFailedResolve();
+      });
+      await Promise.race([firstFailed, started.then(() => {})]);
+      loop.stop();
+      const settleStart = Date.now();
+      await started;
+      const elapsed = Date.now() - settleStart;
+      expect(loop.status).toBe("stopped");
+      // Must settle far faster than the 1000ms backoff.
+      expect(elapsed).toBeLessThan(900);
     });
 
     test("7b. retries exhausted fails directly, no extra outer retry", async () => {

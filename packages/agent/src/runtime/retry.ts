@@ -37,9 +37,18 @@ export async function* retryStream(
       lastError = err;
       await opts.onRetryEnd?.(attempt);
       if (err instanceof ProviderError && err.retryable && attempt < opts.maxAttempts) {
+        // Backoff is interruptible: stop() during the delay resolves the
+        // promise immediately so the loop can transition to stopped without
+        // waiting out the full exponential delay.
         const { promise, resolve } = Promise.withResolvers<void>();
-        setTimeout(resolve, opts.baseDelayMs * 2 ** (attempt - 1));
+        const timer = setTimeout(resolve, opts.baseDelayMs * 2 ** (attempt - 1));
+        const onAbort = () => resolve();
+        // If abort already fired (race with pre-backoff stop()), resolve now.
+        if (signal?.aborted) resolve();
+        signal?.addEventListener("abort", onAbort, { once: true });
         await promise;
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
         continue;
       }
       throw err;

@@ -181,6 +181,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
                             type: "tool_result",
                             tool_use_id: result.id,
                             content: JSON.stringify(result.result),
+                            ...(result.isError ? { is_error: true } : {}),
                           },
                         ],
                       },
@@ -328,8 +329,8 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
 
   async function executeTools(
     calls: readonly PendingToolCall[],
-  ): Promise<Array<{ id: string; result: unknown }>> {
-    const results: Array<{ id: string; result: unknown }> = [];
+  ): Promise<Array<{ id: string; result: unknown; isError: boolean }>> {
+    const results: Array<{ id: string; result: unknown; isError: boolean }> = [];
     for (const call of calls) {
       // Stop() aborts in-flight tools too: pass the controller signal so
       // long-running tools (bash, web, MCP) can cancel and return promptly.
@@ -337,19 +338,26 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
       await emit({ type: "tool_execution_start", toolName: call.name });
       const tool = toolMap.get(call.name);
       let result: unknown;
+      let isError = false;
       if (tool) {
         try {
           result = await tool.execute(call.input, controller?.signal);
+          // Honor a tool's own isError flag if it follows the core contract.
+          if (result && typeof result === "object" && "isError" in result) {
+            isError = Boolean((result as { isError?: unknown }).isError);
+          }
         } catch (err) {
           result = { error: err instanceof Error ? err.message : String(err) };
+          isError = true;
         }
       } else {
         result = { error: `Unknown tool: ${call.name}` };
+        isError = true;
       }
       // If stop() fired mid-execution, discard the result and stop the loop
       // rather than persisting output from a cancelled turn.
       if (controller?.signal.aborted) break;
-      results.push({ id: call.id, result });
+      results.push({ id: call.id, result, isError });
       await emit({
         type: "tool_execution_end",
         toolName: call.name,

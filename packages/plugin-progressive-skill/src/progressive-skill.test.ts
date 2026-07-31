@@ -63,4 +63,29 @@ describe("progressive skill index", () => {
     rmSync(linkRoot, { recursive: true, force: true });
     rmSync(realDir, { recursive: true, force: true });
   });
+
+  test("later root overrides earlier root on name collision", async () => {
+    const first = tmpDir("first");
+    const second = tmpDir("second");
+    mkdirSync(first, { recursive: true });
+    mkdirSync(second, { recursive: true });
+    writeFileSync(join(first, "SKILL.md"), "---\nname: same\n---\n\nFIRST body");
+    writeFileSync(join(second, "SKILL.md"), "---\nname: same\n---\n\nSECOND body");
+
+    // [first, second]: second (later) wins for name "same"
+    const entries = buildSkillIndex([first, second]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.root).toBe(second);
+    // skill_load serves the overriding body
+    const plugin = createProgressiveSkillPlugin({ roots: [first, second] });
+    const tool = plugin.tools?.find((t) => t.name === "skill_load");
+    const result = (await tool!.execute({ name: "same" })) as { body: string };
+    expect(result.body).toContain("SECOND body");
+
+    // Reverse order: first (now later) wins
+    const entriesRev = buildSkillIndex([second, first]);
+    expect(entriesRev[0]?.root).toBe(first);
+    rmSync(first, { recursive: true, force: true });
+    rmSync(second, { recursive: true, force: true });
+  });
 });

@@ -37,19 +37,23 @@ export interface ProgressiveSkillOptions {
 /** Scan configured roots for SKILL.md files, parse frontmatter for
  *  name + description. Deterministic order by root then name. */
 export function buildSkillIndex(roots: readonly string[]): SkillIndexEntry[] {
-  const entries: SkillIndexEntry[] = [];
+  // Roots are ordered by precedence (earliest = highest priority for the
+  // Product Skill Pack contract). A later root overrides an earlier one for
+  // the same skill name; the final index keeps exactly one entry per name.
+  const byName = new Map<string, SkillIndexEntry>();
   for (const root of roots) {
     // Canonical root is the containment authority; entries store it so
     // skill_load re-validates against the same realpath.
     const canonical = canonicalRoot(root);
     if (!canonical) continue;
-    scanDir(canonical, canonical, entries);
+    const scanned: SkillIndexEntry[] = [];
+    scanDir(canonical, canonical, scanned);
+    for (const entry of scanned) {
+      byName.set(entry.name, entry);
+    }
   }
-  // Deterministic: sort by root then name
-  entries.sort((a, b) =>
-    a.root === b.root ? a.name.localeCompare(b.name) : a.root.localeCompare(b.root),
-  );
-  return entries;
+  // Deterministic Meta order: sort by name.
+  return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 function scanDir(root: string, currentDir: string, entries: SkillIndexEntry[]): void {
   let items: string[];
