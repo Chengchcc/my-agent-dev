@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildSkillIndex, createProgressiveSkillPlugin } from "./progressive-skill.js";
 
@@ -72,10 +72,11 @@ describe("progressive skill index", () => {
     writeFileSync(join(first, "SKILL.md"), "---\nname: same\n---\n\nFIRST body");
     writeFileSync(join(second, "SKILL.md"), "---\nname: same\n---\n\nSECOND body");
 
-    // [first, second]: second (later) wins for name "same"
+    // [first, second]: second (later) wins for name "same". Entries store the
+    // canonical (realpath) root for containment; compare against realpath.
     const entries = buildSkillIndex([first, second]);
     expect(entries).toHaveLength(1);
-    expect(entries[0]?.root).toBe(second);
+    expect(entries[0]?.root).toBe(realpathSync(second));
     // skill_load serves the overriding body
     const plugin = createProgressiveSkillPlugin({ roots: [first, second] });
     const tool = plugin.tools?.find((t) => t.name === "skill_load");
@@ -84,7 +85,7 @@ describe("progressive skill index", () => {
 
     // Reverse order: first (now later) wins
     const entriesRev = buildSkillIndex([second, first]);
-    expect(entriesRev[0]?.root).toBe(first);
+    expect(entriesRev[0]?.root).toBe(realpathSync(first));
     rmSync(first, { recursive: true, force: true });
     rmSync(second, { recursive: true, force: true });
   });

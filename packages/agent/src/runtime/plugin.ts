@@ -4,6 +4,9 @@ export interface PluginTool {
   readonly name: string;
   readonly description: string;
   readonly inputSchema?: Readonly<Record<string, unknown>>;
+  /** "serial" (default) = must run alone; "concurrent" = read-only, safe to
+   *  run in parallel with other concurrent tools in the same turn. */
+  readonly executionMode?: "serial" | "concurrent";
   execute(
     args: Readonly<Record<string, unknown>>,
     signal?: AbortSignal,

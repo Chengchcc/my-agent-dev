@@ -262,6 +262,127 @@ function testHarness(
       }
     });
 
+    test("5c. concurrent tools run in parallel preserving order", async () => {
+      const store = storeFactory("h5c");
+      await createSession(store, "h5c");
+      const order: string[] = [];
+      const slowRead = {
+        name: "slow_read",
+        description: "Concurrent read",
+        executionMode: "concurrent" as const,
+        async execute(args: Readonly<Record<string, unknown>>) {
+          const { promise, resolve } = Promise.withResolvers<void>();
+          // Resolve only when the parallel peer has also started
+          setTimeout(resolve, 30);
+          order.push(`start ${String(args.tag)}`);
+          await promise;
+          order.push(`end ${String(args.tag)}`);
+          return { v: args.tag };
+        },
+      };
+      const plugin: Plugin = { name: "test", tools: [slowRead] };
+      const loop = createAgentLoop({
+        sessionId: "h5c",
+        store,
+        plugins: [plugin],
+        maxSteps: 1,
+        maxForceContinues: 0,
+        modelStream: async function* () {
+          yield { delta: { type: "tool_use", id: "a", name: "slow_read" } };
+          yield { delta: { type: "tool_use", id: "b", name: "slow_read" } };
+          yield { stopReason: "tool_use" };
+        },
+      });
+      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "run" });
+      // Both started before either ended -> parallel execution
+      expect(order[0]).toMatch(/^start/);
+      expect(order[1]).toMatch(/^start/);
+      expect(order[2]).toMatch(/^end/);
+      expect(order[3]).toMatch(/^end/);
+      // Results persisted in original tool-call order
+      const snap = await store.open("h5c");
+      const results = snap.entries.filter(
+        (e) => e.type === "message" && (e as { source?: string }).source === "tool_result",
+      ) as Array<{ message: { blocks?: Array<{ tool_use_id?: string }> } }>;
+      expect(results[0]?.message.blocks?.[0]?.tool_use_id).toBe("a");
+      expect(results[1]?.message.blocks?.[0]?.tool_use_id).toBe("b");
+    });
+
+    test("5d. tool terminate hint stops the loop after persisting results", async () => {
+      const store = storeFactory("h5d");
+      await createSession(store, "h5d");
+      let modelTurns = 0;
+      const finishTool = {
+        name: "finish",
+        description: "Signal completion",
+        async execute() {
+          return { terminate: true, done: true } as unknown as Readonly<Record<string, unknown>>;
+        },
+      };
+      const plugin: Plugin = { name: "test", tools: [finishTool] };
+      const loop = createAgentLoop({
+        sessionId: "h5d",
+        store,
+        plugins: [plugin],
+        maxSteps: 5,
+        maxForceContinues: 0,
+        modelStream: async function* () {
+          modelTurns++;
+          yield { delta: { type: "tool_use", id: "f", name: "finish" } };
+          yield { stopReason: "tool_use" };
+        },
+      });
+      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      expect(loop.status).toBe("completed");
+      // Only one model turn despite maxSteps=5: terminate hint stopped it
+      expect(modelTurns).toBe(1);
+      // The tool result was persisted before stopping
+      const snap = await store.open("h5d");
+      const results = snap.entries.filter(
+        (e) => e.type === "message" && (e as { source?: string }).source === "tool_result",
+      );
+      expect(results).toHaveLength(1);
+    });
+
+    test("5e. threshold compaction proactively compacts before a model turn", async () => {
+      const store = storeFactory("h5e");
+      await createSession(store, "h5e");
+      // Pre-seed enough messages to exceed the threshold
+      for (let i = 0; i < 6; i++) {
+        await store.appendBatch("h5e", {
+          entries: [
+            {
+              type: "message",
+              role: "user",
+              source: "prompt",
+              message: { role: "user", text: `seed ${i}` },
+              createdAt: Date.now(),
+            },
+          ],
+        });
+      }
+      let compacted = false;
+      const loop = createAgentLoop({
+        sessionId: "h5e",
+        store,
+        plugins: [],
+        maxSteps: 1,
+        maxForceContinues: 0,
+        compactionThreshold: 4,
+        modelStream: async function* () {
+          yield { delta: { type: "text", text: "done" } };
+        },
+      });
+      loop.onEvent((e) => {
+        if (e.type === "compaction_end") compacted = true;
+      });
+      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      expect(compacted).toBe(true);
+      expect(loop.status).toBe("completed");
+      const snap = await store.open("h5e");
+      expect(snap.entries.some((e) => e.type === "compaction")).toBe(true);
+    });
+
     test("5b. stop during provider stream ends as stopped, not failed", async () => {
       const store = storeFactory("h5b");
       await createSession(store, "h5b");

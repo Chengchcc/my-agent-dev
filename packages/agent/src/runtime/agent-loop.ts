@@ -29,6 +29,10 @@ export interface AgentLoopOptions {
     signal?: AbortSignal,
   ) => AsyncIterable<AIMessageChunk>;
   readonly maxRetries?: number;
+  /** Proactive compaction threshold: when the number of message entries on the
+   *  active branch exceeds this value before a model turn, compact once. Leave
+   *  undefined to disable proactive (threshold) compaction. */
+  readonly compactionThreshold?: number;
 }
 
 export interface AgentLoop {
@@ -82,6 +86,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
       let step = 0;
       let forceContinues = 0;
       let overflowCompacted = false;
+      let thresholdCompacted = false;
       let naturalStop = false;
 
       while (step < opts.maxSteps && !naturalStop) {
@@ -115,6 +120,22 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
         // error escaping it (retries exhausted, auth, invalid, fatal, aborted)
         // is terminal here.
         while (true) {
+          // Proactive (threshold) compaction: if the branch grew past the
+          // configured threshold, compact once before the model turn. Shares
+          // the one compaction implementation with manual/overflow triggers.
+          if (opts.compactionThreshold !== undefined && !thresholdCompacted) {
+            const branch = await opts.store.readBranch(opts.sessionId);
+            const msgCount = branch.filter((e) => e.type === "message").length;
+            if (msgCount > opts.compactionThreshold) {
+              thresholdCompacted = true; // at most one proactive compaction per loop
+              await emit({ type: "compaction_start" });
+              await compactSession(opts.store, opts.sessionId, async (texts) => {
+                return `[Compacted ${texts.length} earlier messages (threshold)]`;
+              });
+              await emit({ type: "compaction_end" });
+              messages = await readBranchMessages();
+            }
+          }
           // beforeModel hook
           const transformed = [...messages];
           for (const p of opts.plugins) {
@@ -192,6 +213,11 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
               }
 
               messages = await readBranchMessages();
+              // Tool terminate hint: any tool may ask the loop to stop after
+              // this turn's results are persisted (no further model turns).
+              if (toolResults.some((r) => r.terminate)) {
+                naturalStop = true;
+              }
               break; // tool turn complete -> next step
             }
 
@@ -329,22 +355,32 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
 
   async function executeTools(
     calls: readonly PendingToolCall[],
-  ): Promise<Array<{ id: string; result: unknown; isError: boolean }>> {
-    const results: Array<{ id: string; result: unknown; isError: boolean }> = [];
-    for (const call of calls) {
-      // Stop() aborts in-flight tools too: pass the controller signal so
-      // long-running tools (bash, web, MCP) can cancel and return promptly.
-      if (controller?.signal.aborted) break;
+  ): Promise<Array<{ id: string; result: unknown; isError: boolean; terminate: boolean }>> {
+    const results: Array<{ id: string; result: unknown; isError: boolean; terminate: boolean }> =
+      [];
+    // Batch execution: consecutive concurrent tools run in parallel via
+    // Promise.all; a serial tool acts as a barrier. Results preserve the
+    // original tool-call order regardless of completion order.
+    async function runOne(
+      call: PendingToolCall,
+    ): Promise<{ id: string; result: unknown; isError: boolean; terminate: boolean }> {
       await emit({ type: "tool_execution_start", toolName: call.name });
       const tool = toolMap.get(call.name);
       let result: unknown;
       let isError = false;
+      let terminate = false;
       if (tool) {
         try {
           result = await tool.execute(call.input, controller?.signal);
-          // Honor a tool's own isError flag if it follows the core contract.
-          if (result && typeof result === "object" && "isError" in result) {
-            isError = Boolean((result as { isError?: unknown }).isError);
+          if (result && typeof result === "object") {
+            if ("isError" in result) {
+              isError = Boolean((result as { isError?: unknown }).isError);
+            }
+            // Tool terminate hint: the tool asks the loop to stop after this
+            // turn's results are persisted (no further model turns).
+            if ("terminate" in result) {
+              terminate = Boolean((result as { terminate?: unknown }).terminate);
+            }
           }
         } catch (err) {
           result = { error: err instanceof Error ? err.message : String(err) };
@@ -354,15 +390,42 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
         result = { error: `Unknown tool: ${call.name}` };
         isError = true;
       }
-      // If stop() fired mid-execution, discard the result and stop the loop
-      // rather than persisting output from a cancelled turn.
-      if (controller?.signal.aborted) break;
-      results.push({ id: call.id, result, isError });
       await emit({
         type: "tool_execution_end",
         toolName: call.name,
         result: (result ?? {}) as Readonly<Record<string, unknown>>,
       });
+      return { id: call.id, result, isError, terminate };
+    }
+
+    let i = 0;
+    while (i < calls.length) {
+      if (controller?.signal.aborted) break;
+      const call = calls[i]!;
+      const isConcurrent = toolMap.get(call.name)?.executionMode === "concurrent";
+      if (!isConcurrent) {
+        // Serial tool: run alone (barrier before and after).
+        if (controller?.signal.aborted) break;
+        const r = await runOne(call);
+        if (controller?.signal.aborted) break;
+        results.push(r);
+        i++;
+        continue;
+      }
+      // Collect a maximal run of consecutive concurrent tools.
+      const batch: PendingToolCall[] = [call];
+      let j = i + 1;
+      while (j < calls.length) {
+        const next = calls[j]!;
+        if (toolMap.get(next.name)?.executionMode !== "concurrent") break;
+        batch.push(next);
+        j++;
+      }
+      // Run the whole batch in parallel.
+      const batchResults = await Promise.all(batch.map((c) => runOne(c)));
+      if (controller?.signal.aborted) break;
+      results.push(...batchResults);
+      i = j;
     }
     return results;
   }
