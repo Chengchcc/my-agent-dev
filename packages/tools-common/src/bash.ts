@@ -1,4 +1,5 @@
 import type { Tool } from "@my-agent-team/core";
+import { WorkspaceSandbox } from "./workspace-sandbox.js";
 
 const descriptionParam = {
   type: "string" as const,
@@ -39,6 +40,15 @@ export const bashTool: Tool = {
       timeout?: number;
       cwd?: string;
     };
+    const validatedCwd = cwd
+      ? (() => {
+          try {
+            return new WorkspaceSandbox(cwd).validateCwd(cwd);
+          } catch {
+            return undefined;
+          }
+        })()
+      : undefined;
     const clamped = Math.min(Math.max(timeout, 1), 600_000);
 
     // setsid → new session + process group, so timeout can kill all descendants.
@@ -49,7 +59,7 @@ export const bashTool: Tool = {
       {
         stdout: "pipe",
         stderr: "pipe",
-        cwd,
+        cwd: validatedCwd,
       },
     );
     const timer = setTimeout(() => {

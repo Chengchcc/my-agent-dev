@@ -90,13 +90,24 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
       >;
       const ops = db.query("SELECT * FROM operations").all() as Array<Record<string, unknown>>;
 
-      // Rebuild leaf cache from operations if needed
-      const leafId = meta.leaf_entry_id as string | null;
+      // Rebuild leaf cache from operations log when cache is absent or stale
+      let leafId = meta.leaf_entry_id as string | null;
       const parsedOps = ops.map((o) => ({
         type: "leaf_moved" as const,
         entryId: o.entry_id as string,
         fromLeafId: o.from_leaf_id as string | null,
       }));
+      // If leaf cache is null but operations exist, repair from last operation
+      if (!leafId && parsedOps.length > 0) {
+        leafId = parsedOps[parsedOps.length - 1]!.entryId;
+      }
+      // Verify leaf points to an existing entry; if stale, use latest entry
+      if (leafId) {
+        const leafExists = entries.some((e) => e.entry_id === leafId);
+        if (!leafExists && entries.length > 0) {
+          leafId = entries[entries.length - 1]!.entry_id as string;
+        }
+      }
 
       return {
         metadata: {

@@ -1,7 +1,7 @@
-import { describe, expect, test, beforeAll, afterAll } from "bun:test";
-import { mkdirSync, writeFileSync, symlinkSync, rmSync, existsSync } from "node:fs";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { WorkspaceSandbox, WorkspaceEscapeError } from "./workspace-sandbox.js";
+import { WorkspaceEscapeError, WorkspaceSandbox } from "./workspace-sandbox.js";
 
 const tmpRoot = `/tmp/sandbox-test-${Math.random().toString(36).slice(2, 8)}`;
 const outsideFile = `/tmp/sandbox-outside-${Math.random().toString(36).slice(2, 8)}.txt`;
@@ -54,7 +54,7 @@ describe("WorkspaceSandbox", () => {
   test("rejects prefix collision", () => {
     const sandbox = new WorkspaceSandbox(tmpRoot);
     // A directory named like tmpRoot + "-evil" should not match
-    const evilPath = tmpRoot + "-evil/secret";
+    const evilPath = `${tmpRoot}-evil/secret`;
     expect(() => sandbox.validate(evilPath)).toThrow(WorkspaceEscapeError);
   });
 

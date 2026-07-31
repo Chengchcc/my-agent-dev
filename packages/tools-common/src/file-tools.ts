@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { extname } from "node:path";
+import { extname, resolve } from "node:path";
 import type { Tool } from "@my-agent-team/core";
 import { WorkspaceSandbox } from "./workspace-sandbox.js";
 

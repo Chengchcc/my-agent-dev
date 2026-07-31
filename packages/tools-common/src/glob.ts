@@ -1,4 +1,5 @@
 import type { Tool } from "@my-agent-team/core";
+import { WorkspaceSandbox } from "./workspace-sandbox.js";
 
 const descriptionParam = {
   type: "string" as const,
@@ -28,12 +29,21 @@ export const globTool: Tool = {
   },
   async execute(input) {
     const { pattern, cwd } = input as { pattern: string; cwd?: string };
+    const validatedCwd = cwd
+      ? (() => {
+          try {
+            return new WorkspaceSandbox(cwd).validateCwd(cwd);
+          } catch {
+            return undefined;
+          }
+        })()
+      : undefined;
 
     const LIMIT = 500;
     const glob = new Bun.Glob(pattern);
     const matches: string[] = [];
     let truncated = false;
-    for await (const m of glob.scan({ cwd, absolute: false, onlyFiles: true })) {
+    for await (const m of glob.scan({ cwd: validatedCwd, absolute: false, onlyFiles: true })) {
       if (matches.length >= LIMIT) {
         truncated = true;
         break;
