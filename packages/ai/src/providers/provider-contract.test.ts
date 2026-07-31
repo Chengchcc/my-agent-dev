@@ -307,4 +307,87 @@ describe("Provider contract", () => {
     expect(deltas[0]?.delta?.id).toBe("call_a");
     expect(deltas[1]?.delta?.id).toBe("call_b");
   });
+
+  test("openai-compat survives SSE lines split across network chunks", async () => {
+    const provider = createOpenAICompatProvider({
+      id: "openai",
+      name: "OpenAI",
+      baseUrl: "https://api.openai.com/v1",
+      auth: { apiKey: "test" },
+      models: OPENAI_MODELS,
+    });
+    // One data: line torn across two body chunks mid-line.
+    const full = `data: ${JSON.stringify({ choices: [{ delta: { content: "hello-world" } }] })}\n\ndata: [DONE]\n`;
+    const cut = Math.floor(full.length / 2);
+    const part1 = new TextEncoder().encode(full.slice(0, cut));
+    const part2 = new TextEncoder().encode(full.slice(cut));
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(part1);
+        controller.enqueue(part2);
+        controller.close();
+      },
+    });
+    const chunks = await withFetch(
+      new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+      async () => {
+        const out: unknown[] = [];
+        for await (const c of provider.stream(OPENAI_MODELS[0]!, [{ role: "user", text: "hi" }], {
+          apiKey: "test",
+        })) {
+          out.push(c);
+        }
+        return out;
+      },
+    );
+    const texts = (chunks as Array<{ delta?: { type: string; text?: string } }>)
+      .filter((c) => c.delta?.type === "text")
+      .map((c) => c.delta?.text)
+      .join("");
+    expect(texts).toBe("hello-world");
+  });
+
+  test("anthropic serializes tool_result blocks under a user role message", async () => {
+    const provider = anthropicProvider({ apiKey: "test-key" });
+    const model = provider.getModels()[0]!;
+    let sentBody: Record<string, unknown> | null = null;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      sentBody = JSON.parse(String(init?.body));
+      return new Response("data: [DONE]\n", {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }) as unknown as typeof fetch;
+    try {
+      await drain(
+        provider.stream(
+          model,
+          [
+            { role: "user", text: "hi" },
+            {
+              role: "assistant",
+              text: "",
+              blocks: [{ type: "tool_use", id: "t1", name: "read", input: {} }],
+            },
+            {
+              role: "tool",
+              text: "ok",
+              blocks: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }],
+            },
+          ],
+          { apiKey: "test-key" },
+        ),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const messages = (sentBody ?? {}) as { messages: Array<{ role: string; content: unknown }> };
+    expect(messages.messages).toHaveLength(3);
+    const toolResultMsg = messages.messages[2]!;
+    expect(toolResultMsg.role).toBe("user");
+    expect(toolResultMsg.content).toEqual([
+      { type: "tool_result", tool_use_id: "t1", content: "ok" },
+    ]);
+  });
 });

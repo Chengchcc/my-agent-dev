@@ -37,8 +37,14 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
             .filter((m) => m.role !== "system")
             .map((m) => {
               if (m.blocks && m.blocks.length > 0) {
+                // Anthropic Messages API accepts only user/assistant top-level
+                // roles; tool_result blocks live inside a user message.
+                const wireRole =
+                  m.role === "tool" && m.blocks.some((b) => b.type === "tool_result")
+                    ? "user"
+                    : m.role;
                 return {
-                  role: m.role,
+                  role: wireRole,
                   content: m.blocks.map((b) => {
                     if (b.type === "text") return { type: "text", text: b.text };
                     if (b.type === "tool_use")

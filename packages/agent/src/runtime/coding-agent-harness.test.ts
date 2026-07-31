@@ -225,6 +225,30 @@ function testHarness(
       expect(toolResult?.message.blocks?.[0]?.tool_use_id).toBe("tc-1");
     });
 
+    test("5b. stop during provider stream ends as stopped, not failed", async () => {
+      const store = storeFactory("h5b");
+      await createSession(store, "h5b");
+      const loop = createAgentLoop({
+        sessionId: "h5b",
+        store,
+        plugins: [],
+        maxSteps: 5,
+        maxForceContinues: 0,
+        modelStream: async function* (_messages, signal) {
+          // Provider honors the abort signal and throws kind=aborted
+          signal?.addEventListener("abort", () => {
+            /* provider would abort its fetch here */
+          });
+          yield { delta: { type: "text", text: "partial" } };
+          throw new ProviderError("aborted by user", "aborted");
+        },
+      });
+      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "run" });
+      loop.stop();
+      await started;
+      expect(loop.status).toBe("stopped");
+    });
+
     test("6. next model turn sees valid tool pair", async () => {
       const store = storeFactory("h6");
       await createSession(store, "h6");
@@ -290,6 +314,30 @@ function testHarness(
         (e) => e.type === "message" && (e as { source?: string }).source === "meta",
       );
       expect(metas).toHaveLength(1);
+    });
+
+    test("7b. retries exhausted fails directly, no extra outer retry", async () => {
+      const store = storeFactory("h7b");
+      await createSession(store, "h7b");
+      let attempts = 0;
+      const loop = createAgentLoop({
+        sessionId: "h7b",
+        store,
+        plugins: [],
+        maxSteps: 2,
+        maxForceContinues: 0,
+        maxRetries: 2,
+        modelStream: async function* () {
+          attempts++;
+          yield { delta: { type: "text", text: "partial" } };
+          throw new ProviderError("network timeout", "transient");
+        },
+      });
+      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      // retryStream does exactly maxRetries provider calls, then the loop
+      // fails without consuming the second maxStep.
+      expect(attempts).toBe(2);
+      expect(loop.status).toBe("failed");
     });
 
     test("8. steer injects at safe boundary without new Meta", async () => {
@@ -385,7 +433,7 @@ function testHarness(
       expect(msgCount).toBe(8);
     });
 
-    test("11. overflow compacts once and retries once", async () => {
+    test("11. overflow compacts once and retries once within the same turn", async () => {
       const store = storeFactory("h11");
       await createSession(store, "h11");
       let attempts = 0;
@@ -394,7 +442,8 @@ function testHarness(
         sessionId: "h11",
         store,
         plugins: [],
-        maxSteps: 5,
+        // maxSteps = 1: overflow recovery must NOT consume an extra step
+        maxSteps: 1,
         maxForceContinues: 0,
         modelStream: async function* () {
           attempts++;
@@ -413,6 +462,7 @@ function testHarness(
       await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
       expect(attempts).toBe(2);
       expect(compacted).toBe(true);
+      expect(loop.status).toBe("completed");
       expect(events).toContain("compaction_start");
       expect(events).toContain("compaction_end");
     });

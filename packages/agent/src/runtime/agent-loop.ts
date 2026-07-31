@@ -82,8 +82,9 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
       let step = 0;
       let forceContinues = 0;
       let overflowCompacted = false;
+      let naturalStop = false;
 
-      while (step < opts.maxSteps) {
+      while (step < opts.maxSteps && !naturalStop) {
         if (controller.signal.aborted) break;
         step++;
         await emit({ type: "turn_start", turn: step });
@@ -108,122 +109,139 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
           await emit({ type: "queue_update" });
         }
 
-        // beforeModel hook
-        const transformed = [...messages];
-        for (const p of opts.plugins) {
-          if (p.hooks?.beforeModel) {
-            const result = p.hooks.beforeModel(transformed);
-            transformed.length = 0;
-            transformed.push(...result);
+        // One turn = one model call. Overflow recovery (compact + retry) stays
+        // INSIDE this turn and never consumes an extra maxStep. Provider
+        // retry is owned solely by retryStream with its bounded policy; any
+        // error escaping it (retries exhausted, auth, invalid, fatal, aborted)
+        // is terminal here.
+        while (true) {
+          // beforeModel hook
+          const transformed = [...messages];
+          for (const p of opts.plugins) {
+            if (p.hooks?.beforeModel) {
+              const result = p.hooks.beforeModel(transformed);
+              transformed.length = 0;
+              transformed.push(...result);
+            }
           }
-        }
 
-        try {
-          const modelMessages = systemPrompt
-            ? [{ role: "system", text: systemPrompt } as Message, ...transformed]
-            : transformed;
-          const toolCalls = await processModelTurn(modelMessages);
-          if (toolCalls.length > 0) {
-            // Tool calls: execute and continue
-            const toolResults = await executeTools(toolCalls);
+          try {
+            const modelMessages = systemPrompt
+              ? [{ role: "system", text: systemPrompt } as Message, ...transformed]
+              : transformed;
+            const toolCalls = await processModelTurn(modelMessages);
+            if (toolCalls.length > 0) {
+              // Tool calls: execute and continue to the next turn
+              const toolResults = await executeTools(toolCalls);
 
-            // Persist assistant tool_use message
-            await opts.store.appendBatch(opts.sessionId, {
-              entries: [
-                {
-                  type: "message",
-                  role: "assistant",
-                  source: "assistant",
-                  message: {
-                    role: "assistant",
-                    text: "",
-                    blocks: toolCalls.map((tc) => ({
-                      type: "tool_use",
-                      id: tc.id,
-                      name: tc.name,
-                      input: tc.input,
-                    })),
-                  },
-                  createdAt: Date.now(),
-                },
-              ],
-            });
-
-            // Persist tool results
-            for (const result of toolResults) {
+              // Persist assistant tool_use message
               await opts.store.appendBatch(opts.sessionId, {
                 entries: [
                   {
                     type: "message",
-                    role: "tool",
-                    source: "tool_result",
+                    role: "assistant",
+                    source: "assistant",
                     message: {
-                      role: "tool",
-                      text: JSON.stringify(result.result),
-                      blocks: [
-                        {
-                          type: "tool_result",
-                          tool_use_id: result.id,
-                          content: JSON.stringify(result.result),
-                        },
-                      ],
+                      role: "assistant",
+                      text: "",
+                      blocks: toolCalls.map((tc) => ({
+                        type: "tool_use",
+                        id: tc.id,
+                        name: tc.name,
+                        input: tc.input,
+                      })),
                     },
                     createdAt: Date.now(),
                   },
                 ],
               });
+
+              // Persist tool results
+              for (const result of toolResults) {
+                await opts.store.appendBatch(opts.sessionId, {
+                  entries: [
+                    {
+                      type: "message",
+                      role: "tool",
+                      source: "tool_result",
+                      message: {
+                        role: "tool",
+                        text: JSON.stringify(result.result),
+                        blocks: [
+                          {
+                            type: "tool_result",
+                            tool_use_id: result.id,
+                            content: JSON.stringify(result.result),
+                          },
+                        ],
+                      },
+                      createdAt: Date.now(),
+                    },
+                  ],
+                });
+              }
+
+              messages = await readBranchMessages();
+              break; // tool turn complete -> next step
             }
 
-            messages = await readBranchMessages();
-            await emit({ type: "turn_end", turn: step });
-            continue;
-          }
-
-          // Natural stop: let plugins veto
-          let stopped = true;
-          for (const p of opts.plugins) {
-            if (p.hooks?.beforeStop) {
-              let vetoed = false;
-              p.hooks.beforeStop(() => {
-                vetoed = true;
-              });
-              if (vetoed && forceContinues < opts.maxForceContinues) {
-                forceContinues++;
-                stopped = false;
-                break;
+            // Natural stop: let plugins veto
+            let stopped = true;
+            for (const p of opts.plugins) {
+              if (p.hooks?.beforeStop) {
+                let vetoed = false;
+                p.hooks.beforeStop(() => {
+                  vetoed = true;
+                });
+                if (vetoed && forceContinues < opts.maxForceContinues) {
+                  forceContinues++;
+                  stopped = false;
+                  break;
+                }
               }
             }
-          }
-
-          await emit({ type: "turn_end", turn: step });
-          if (stopped) break;
-        } catch (err) {
-          // Overflow: one-shot compaction recovery (shared implementation)
-          if (err instanceof ProviderError && err.kind === "overflow" && !overflowCompacted) {
-            overflowCompacted = true;
-            await emit({ type: "compaction_start" });
-            await compactSession(opts.store, opts.sessionId, async (texts) => {
-              return `[Compacted ${texts.length} earlier messages due to context overflow]`;
-            });
-            await emit({ type: "compaction_end" });
-            continue; // retry with compacted context
-          }
-
-          const isFatal = !(err instanceof ProviderError) || !err.retryable;
-          if (isFatal) {
+            naturalStop = stopped;
+            break;
+          } catch (err) {
+            // Explicit stop/abort is a distinct terminal state
+            if (
+              controller.signal.aborted ||
+              (err instanceof ProviderError && err.kind === "aborted")
+            ) {
+              status = "stopped";
+              await emit({ type: "agent_end", status });
+              controller = null;
+              return;
+            }
+            // Overflow: one-shot compaction recovery inside the same turn
+            if (err instanceof ProviderError && err.kind === "overflow" && !overflowCompacted) {
+              overflowCompacted = true;
+              await emit({ type: "compaction_start" });
+              await compactSession(opts.store, opts.sessionId, async (texts) => {
+                return `[Compacted ${texts.length} earlier messages due to context overflow]`;
+              });
+              await emit({ type: "compaction_end" });
+              messages = await readBranchMessages();
+              continue; // retry model call in the SAME turn, no extra step
+            }
+            // Anything else (retries exhausted, auth, invalid_request, fatal)
+            // is terminal: the loop is the only retry owner and retryStream
+            // already applied its bounded policy.
             status = "failed";
             await emit({ type: "agent_end", status });
             controller = null;
             return;
           }
-          // Retryable: retryStream handles backoff internally
         }
+
+        await emit({ type: "turn_end", turn: step });
+        if (naturalStop) break;
       }
 
       if (controller.signal.aborted) {
         status = "stopped";
         await emit({ type: "agent_end", status });
-      } else if (step >= opts.maxSteps && status === "running") {
+      } else if (!naturalStop && step >= opts.maxSteps && status === "running") {
         status = "failed";
         await emit({ type: "agent_end", status });
       } else if (status === "running") {

@@ -91,7 +91,10 @@ export function createOpenAICompatProvider(config: OpenAICompatProviderConfig): 
           const { done, value } = await reader.read();
           if (done) break;
           buf += dec.decode(value, { stream: true });
-          for (const line of buf.split("\n")) {
+          // Keep the trailing partial line; a data: line may span chunks.
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
             const t = line.trim();
             if (!t.startsWith("data: ")) continue;
             const data = t.slice(6);
@@ -103,7 +106,6 @@ export function createOpenAICompatProvider(config: OpenAICompatProviderConfig): 
               /* skip */
             }
           }
-          buf = "";
         }
       } catch (err) {
         throw normalizeProviderError(err, secrets);
