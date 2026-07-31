@@ -13,14 +13,16 @@ export interface RetryOptions {
 export async function* retryStream(
   streamFactory: (signal?: AbortSignal) => AsyncIterable<AIMessageChunk>,
   opts: RetryOptions,
+  signal?: AbortSignal,
 ): AsyncIterable<AIMessageChunk> {
   let attempt = 0;
   let lastError: unknown;
 
   while (attempt < opts.maxAttempts) {
+    if (signal?.aborted) throw new Error("Aborted");
     try {
       attempt++;
-      yield* streamFactory();
+      yield* streamFactory(signal);
       return;
     } catch (err) {
       lastError = err;

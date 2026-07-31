@@ -15,11 +15,19 @@ export function withDefaultCwd(tool: Tool, cwd: string): Tool {
     },
   };
 }
-
 function safePath(cwd: string, userPath: string): string | null {
   try {
     const sandbox = new WorkspaceSandbox(cwd);
     return sandbox.validate(userPath);
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve a path against a fixed workspace root using realpath containment. */
+export function resolveWorkspacePath(root: string, userPath: string): string | null {
+  try {
+    return new WorkspaceSandbox(root).validate(userPath);
   } catch {
     return null;
   }

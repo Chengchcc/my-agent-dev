@@ -167,7 +167,11 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
                       role: "tool",
                       text: JSON.stringify(result.result),
                       blocks: [
-                        { type: "tool_result", toolUseId: result.id, content: result.result },
+                        {
+                          type: "tool_result",
+                          tool_use_id: result.id,
+                          content: JSON.stringify(result.result),
+                        },
                       ],
                     },
                     createdAt: Date.now(),
@@ -236,10 +240,11 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
     let assistantText = "";
     const toolCallBuilders = new Map<string, { id: string; name: string; jsonParts: string[] }>();
 
-    const stream = retryStream((signal) => opts.modelStream(messages, signal), {
-      maxAttempts: opts.maxRetries ?? 3,
-      baseDelayMs: 1000,
-    });
+    const stream = retryStream(
+      (signal) => opts.modelStream(messages, signal),
+      { maxAttempts: opts.maxRetries ?? 3, baseDelayMs: 1000 },
+      controller?.signal,
+    );
 
     for await (const chunk of stream) {
       if (controller?.signal.aborted) break;
@@ -307,11 +312,40 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
 
   async function readBranchMessages(): Promise<Message[]> {
     const entries = await opts.store.readBranch(opts.sessionId);
+
+    // Find latest CompactionEntry
+    let compactionSummary: string | null = null;
+    let coveredIds: Set<string> | null = null;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      if (entries[i]?.type === "compaction") {
+        const comp = entries[i] as { summary: string; coversEntryIds: readonly string[] };
+        compactionSummary = comp.summary;
+        coveredIds = new Set(comp.coversEntryIds);
+        break;
+      }
+    }
+
     return entries
-      .filter((e) => e.type === "message")
+      .filter((e) => {
+        if (e.type !== "message") return false;
+        // If compaction exists, skip covered entries
+        if (coveredIds && coveredIds.has(e.entryId)) return false;
+        return true;
+      })
       .map((e) => {
         const msg = (e as { message: Message }).message;
+        // Prepend compaction summary as a system note if entries were compacted
         return msg;
+      })
+      .flatMap((msg, _i, arr) => {
+        // Insert summary as first user message if compaction applied
+        if (_i === 0 && compactionSummary && coveredIds && coveredIds.size > 0) {
+          return [
+            { role: "user" as const, text: `[Context summary: ${compactionSummary}]` } as Message,
+            msg,
+          ];
+        }
+        return [msg];
       });
   }
 

@@ -59,7 +59,26 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
                 max_tokens: model.maxTokens,
                 messages: messages
                   .filter((m) => m.role !== "system")
-                  .map((m) => ({ role: m.role, content: m.text ?? "" })),
+                  .map((m) => {
+                    if (m.blocks && m.blocks.length > 0) {
+                      return {
+                        role: m.role,
+                        content: m.blocks.map((b) => {
+                          if (b.type === "text") return { type: "text", text: b.text };
+                          if (b.type === "tool_use")
+                            return { type: "tool_use", id: b.id, name: b.name, input: b.input };
+                          if (b.type === "tool_result")
+                            return {
+                              type: "tool_result",
+                              tool_use_id: b.tool_use_id,
+                              content: b.content,
+                            };
+                          return { type: "text", text: "" };
+                        }),
+                      };
+                    }
+                    return { role: m.role, content: m.text ?? "" };
+                  }),
                 system: systemMsg?.text,
                 stream: true,
                 tools: options?.tools?.map((t) => ({

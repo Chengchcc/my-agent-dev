@@ -58,7 +58,34 @@ export function createOpenAICompatProvider(config: OpenAICompatProviderConfig): 
 
               const body = {
                 model: model.id,
-                messages: messages.map((m) => ({ role: m.role, content: m.text ?? "" })),
+                messages: messages.map((m) => {
+                  if (m.blocks && m.blocks.length > 0) {
+                    const toolCalls = m.blocks
+                      .filter((b) => b.type === "tool_use")
+                      .map((b, i) => ({
+                        id: b.id,
+                        type: "function" as const,
+                        function: { name: b.name, arguments: JSON.stringify(b.input) },
+                      }));
+                    const textBlocks = m.blocks
+                      .filter((b) => b.type === "text")
+                      .map((b) => b.text)
+                      .join("");
+                    const resultBlock = m.blocks.find((b) => b.type === "tool_result");
+                    if (resultBlock) {
+                      return {
+                        role: "tool",
+                        tool_call_id: resultBlock.tool_use_id,
+                        content: resultBlock.content,
+                      };
+                    }
+                    if (toolCalls.length > 0) {
+                      return { role: m.role, content: textBlocks || null, tool_calls: toolCalls };
+                    }
+                    return { role: m.role, content: (textBlocks || m.text) ?? "" };
+                  }
+                  return { role: m.role, content: m.text ?? "" };
+                }),
                 max_tokens: model.maxTokens,
                 stream: true,
                 stream_options: { include_usage: true },
