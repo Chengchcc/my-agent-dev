@@ -1,1 +1,2 @@
-export { type Todo, TodoKey, type TodoPluginOptions, type TodoStatus, todoPlugin } from "./todo.js";
+export type { TodoPluginOptions } from "./todo.js";
+export { createTodoPlugin, createTodoReadTool } from "./todo.js";

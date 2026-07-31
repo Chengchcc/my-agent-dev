@@ -1,14 +1,9 @@
-import type { Plugin, PluginTool } from "@my-agent-team/agent";
+import type { Plugin, PluginTool, SessionStore } from "@my-agent-team/agent";
+import { readTodo, writeTodo } from "@my-agent-team/agent";
 
 export interface TodoPluginOptions {
   readonly sessionId: string;
-  readonly store: {
-    appendBatch(
-      sid: string,
-      input: { entries: readonly Record<string, unknown>[] },
-    ): Promise<unknown>;
-    readBranch(sid: string): Promise<readonly { type: string; entryId: string }[]>;
-  };
+  readonly store: SessionStore;
 }
 
 export function createTodoPlugin(opts: TodoPluginOptions): Plugin {
@@ -19,14 +14,14 @@ export function createTodoPlugin(opts: TodoPluginOptions): Plugin {
       {
         name: "Todo",
         render(): string {
-          return "Track tasks with the todo_write tool. Current state is maintained across sessions.";
+          return "Use todo_write to track tasks. State persists across sessions.";
         },
       },
     ],
   };
 }
 
-function createTodoWriteTool(_opts: TodoPluginOptions): PluginTool {
+function createTodoWriteTool(opts: TodoPluginOptions): PluginTool {
   return {
     name: "todo_write",
     description: "Update the task list. Provide the full desired state.",
@@ -48,10 +43,30 @@ function createTodoWriteTool(_opts: TodoPluginOptions): PluginTool {
       },
       required: ["items"],
     },
-    async execute(args: Readonly<Record<string, unknown>>) {
+    async execute(
+      args: Readonly<Record<string, unknown>>,
+    ): Promise<Readonly<Record<string, unknown>>> {
       const items = args.items as Array<{ id: string; text: string; status: string }>;
-      // Mock read/write since direct store access needs the full AgentLoop context
-      return { items: items.map((i) => ({ ...i })) };
+      await writeTodo(opts.store, opts.sessionId, {
+        items: items.map((i) => ({
+          id: i.id,
+          text: i.text,
+          status: i.status as "pending" | "in_progress" | "done" | "cancelled",
+        })),
+      });
+      return { items } as unknown as Readonly<Record<string, unknown>>;
+    },
+  };
+}
+
+export function createTodoReadTool(opts: TodoPluginOptions): PluginTool {
+  return {
+    name: "todo_read",
+    description: "Read the current task list.",
+    inputSchema: { type: "object", properties: {} },
+    async execute(): Promise<Readonly<Record<string, unknown>>> {
+      const state = await readTodo(opts.store, opts.sessionId);
+      return { items: state.items } as unknown as Readonly<Record<string, unknown>>;
     },
   };
 }

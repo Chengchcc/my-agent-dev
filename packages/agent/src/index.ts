@@ -23,9 +23,16 @@ export { createSqliteSessionStore } from "./persistence/sqlite-session-store.js"
 export type { AgentLoopListener, CodingAgentLoopEvent } from "./runtime/agent-event.js";
 export type { AgentLoop, AgentLoopOptions } from "./runtime/agent-loop.js";
 export { createAgentLoop } from "./runtime/agent-loop.js";
+export type { CompactionResult } from "./runtime/compaction.js";
+// Compaction + retry
+export { compactSession } from "./runtime/compaction.js";
 export type { LoopInputDeps, LoopInputResult } from "./runtime/loop-input.js";
 export { buildLoopInput } from "./runtime/loop-input.js";
-
 // Plugin
 export type { MetaSectionProvider, Plugin, PluginHooks, PluginTool } from "./runtime/plugin.js";
 export { collectTools, renderMeta, validatePlugins } from "./runtime/plugin.js";
+export type { RetryOptions } from "./runtime/retry.js";
+export { retryStream } from "./runtime/retry.js";
+export type { TodoItem, TodoState } from "./runtime/todo.js";
+// Todo
+export { readTodo, updateTodo, writeTodo } from "./runtime/todo.js";

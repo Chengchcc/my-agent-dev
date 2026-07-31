@@ -1,15 +1,15 @@
+import { ProviderError } from "@my-agent-team/ai";
 import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 import type { SessionStore } from "../persistence/session-store.js";
-import { buildLoopInput } from "./loop-input.js";
+import type { AgentLoopListener, CodingAgentLoopEvent } from "./agent-event.js";
 import type { LoopInputDeps } from "./loop-input.js";
-import { ProviderError } from "@my-agent-team/ai";
-import type { Plugin, PluginTool } from "./plugin.js";
+import { buildLoopInput } from "./loop-input.js";
+import type { Plugin } from "./plugin.js";
 import { collectTools, validatePlugins } from "./plugin.js";
-import type { CodingAgentLoopEvent, AgentLoopListener } from "./agent-event.js";
 import { retryStream } from "./retry.js";
 
-export type { CodingAgentLoopEvent, AgentLoopListener };
+export type { AgentLoopListener, CodingAgentLoopEvent };
 
 interface PendingToolCall {
   id: string;
