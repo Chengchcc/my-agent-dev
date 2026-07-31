@@ -13,10 +13,16 @@ function normalizeError(err: unknown): ProviderError {
   const msg = err instanceof Error ? err.message : String(err);
   const s = msg.match(/status[= ](\d+)/);
   const code = s ? Number(s[1]) : undefined;
+  // Context-length errors (400/422 with body mentioning limits) are overflow,
+  // a distinct retryable-after-compaction category from invalid_request.
+  if (code === 400 || code === 422) {
+    if (/context|too long|maximum|overflow|token limit/i.test(msg)) {
+      return new ProviderError(msg, "overflow", { statusCode: code, raw: err });
+    }
+    return new ProviderError(msg, "invalid_request", { statusCode: code, raw: err });
+  }
   if (code === 401 || code === 403)
     return new ProviderError(msg, "auth", { statusCode: code, raw: err });
-  if (code === 400 || code === 422)
-    return new ProviderError(msg, "invalid_request", { statusCode: code, raw: err });
   if (code === 429) return new ProviderError(msg, "overload", { statusCode: code, raw: err });
   if (code !== undefined && code >= 500)
     return new ProviderError(msg, "transient", { statusCode: code, raw: err });

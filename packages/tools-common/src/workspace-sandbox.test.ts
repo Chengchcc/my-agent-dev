@@ -73,4 +73,28 @@ describe("WorkspaceSandbox", () => {
     const sandbox = new WorkspaceSandbox(tmpRoot);
     expect(() => sandbox.validate("escape-link")).toThrow(WorkspaceEscapeError);
   });
+
+  test("validateNew rejects writing through a symlinked parent", () => {
+    // A symlinked directory inside the root pointing outside; writing a new
+    // file through it must be rejected even though the leaf does not exist.
+    const outsideDir = `/tmp/sandbox-outside-dir-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      mkdirSync(outsideDir);
+      symlinkSync(outsideDir, join(tmpRoot, "escape-dir"));
+      const sandbox = new WorkspaceSandbox(tmpRoot);
+      expect(() => sandbox.validateNew("escape-dir/new.txt")).toThrow(WorkspaceEscapeError);
+      expect(() => sandbox.validateNew("escape-dir/sub/new.txt")).toThrow(WorkspaceEscapeError);
+    } finally {
+      try {
+        rmSync(join(tmpRoot, "escape-dir"));
+      } catch {
+        /* */
+      }
+      try {
+        rmSync(outsideDir, { recursive: true });
+      } catch {
+        /* */
+      }
+    }
+  });
 });

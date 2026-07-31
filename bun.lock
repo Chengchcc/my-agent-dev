@@ -134,6 +134,8 @@
       "name": "@my-agent-team/agent",
       "version": "0.0.0",
       "dependencies": {
+        "@my-agent-team/agent-backend": "workspace:*",
+        "@my-agent-team/ai": "workspace:*",
         "@my-agent-team/core": "workspace:*",
         "@my-agent-team/message": "workspace:*",
         "drizzle-orm": "^0.44.0",

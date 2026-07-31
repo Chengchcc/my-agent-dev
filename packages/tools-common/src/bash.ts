@@ -87,6 +87,3 @@ export function createBashTool(opts: { workspaceRoot: string }): Tool {
     },
   };
 }
-
-/** Legacy static tool using process.cwd() as workspace root. */
-export const bashTool: Tool = createBashTool({ workspaceRoot: process.cwd() });

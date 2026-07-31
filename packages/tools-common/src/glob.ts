@@ -56,5 +56,3 @@ export function createGlobTool(opts: { workspaceRoot: string }): Tool {
     },
   };
 }
-
-export const globTool: Tool = createGlobTool({ workspaceRoot: process.cwd() });

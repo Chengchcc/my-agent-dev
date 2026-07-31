@@ -72,5 +72,3 @@ export function createGrepTool(opts: { workspaceRoot: string }): Tool {
     },
   };
 }
-
-export const grepTool: Tool = createGrepTool({ workspaceRoot: process.cwd() });

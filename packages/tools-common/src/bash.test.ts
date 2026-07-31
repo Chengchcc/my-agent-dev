@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { bashTool } from "./bash.js";
+import { createBashTool } from "./bash.js";
+
+const bashTool = createBashTool({ workspaceRoot: process.cwd() });
 
 describe("bashTool", () => {
   test("exit code 0 returns stdout", async () => {
