@@ -35,4 +35,15 @@ describe("bashTool", () => {
     expect(result.content).toInclude("stdout-text");
     expect(result.content).toInclude("stderr-text");
   });
+
+  test("out-of-bounds cwd returns tool error, does not run in process cwd", async () => {
+    const tmpDir = `/tmp/test-bash-escape-${Date.now()}`;
+    await Bun.$`mkdir -p ${tmpDir}`.quiet();
+    const tool = createBashTool({ workspaceRoot: tmpDir });
+    const result = await tool.execute({ command: "pwd", cwd: "/etc" });
+    expect(result.isError).toBe(true);
+    expect(result.content).toInclude("escapes workspace");
+    expect(result.content).not.toInclude(process.cwd());
+    await Bun.$`rm -rf ${tmpDir}`.quiet();
+  });
 });

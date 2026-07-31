@@ -86,6 +86,7 @@ export function createOpenAICompatProvider(config: OpenAICompatProviderConfig): 
         const reader = res.body.getReader();
         const dec = new TextDecoder();
         let buf = "";
+        const convertChunk = createChunkConverter();
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -111,29 +112,58 @@ export function createOpenAICompatProvider(config: OpenAICompatProviderConfig): 
   };
 }
 
-function* convertChunk(raw: Record<string, unknown>): Generator<AIMessageChunk> {
-  const choices = raw.choices as Array<Record<string, unknown>> | undefined;
-  if (choices?.[0]) {
-    const delta = choices[0].delta as Record<string, unknown> | undefined;
-    if (delta?.content) yield { delta: { type: "text", text: delta.content as string } };
-    if (delta?.tool_calls) {
-      const tc = (delta.tool_calls as Array<Record<string, unknown>>)[0];
-      if (tc)
-        yield {
-          delta: {
-            type: "tool_use",
-            id: (tc.id as string) ?? "",
-            name: ((tc.function as Record<string, unknown>)?.name as string) ?? "",
-          },
-        };
+/** Streaming converter for OpenAI-compatible SSE. Tool calls arrive as
+ *  fragments: first chunk carries id+name, later chunks carry only
+ *  index + function.arguments deltas. Maintains index → (id, name) so every
+ *  argument fragment emits as input_json_delta paired to the initial tool. */
+function createChunkConverter(): (raw: Record<string, unknown>) => Generator<AIMessageChunk> {
+  const toolCallsByIndex = new Map<number, { id: string; name: string }>();
+
+  return function* convertChunk(raw: Record<string, unknown>): Generator<AIMessageChunk> {
+    const choices = raw.choices as Array<Record<string, unknown>> | undefined;
+    if (choices?.[0]) {
+      const delta = choices[0].delta as Record<string, unknown> | undefined;
+      if (delta?.content) yield { delta: { type: "text", text: delta.content as string } };
+      if (delta?.tool_calls) {
+        for (const tc of delta.tool_calls as Array<Record<string, unknown>>) {
+          const index = (tc.index as number) ?? 0;
+          const fn = (tc.function as Record<string, unknown> | undefined) ?? {};
+          const id = (tc.id as string | undefined) ?? "";
+          const name = (fn.name as string | undefined) ?? "";
+          const existing = toolCallsByIndex.get(index);
+          // Register the tool call on the chunk that announces id/name.
+          if (id && !existing) {
+            toolCallsByIndex.set(index, { id, name });
+            yield { delta: { type: "tool_use", id, name } };
+          } else if (name && existing && !existing.name) {
+            // Name arrived in a later chunk; keep the id stable.
+            toolCallsByIndex.set(index, { ...existing, name });
+          }
+          // Argument fragments are always deltas paired to the stored id.
+          if (typeof fn.arguments === "string" && fn.arguments.length > 0) {
+            const slot = existing ?? toolCallsByIndex.get(index);
+            if (slot) {
+              yield {
+                delta: {
+                  type: "input_json_delta",
+                  id: slot.id,
+                  partial_json: fn.arguments,
+                },
+              };
+            }
+          }
+        }
+      }
+      if (choices[0].finish_reason) {
+        const fr = choices[0].finish_reason as string;
+        if (fr === "tool_calls") yield { stopReason: "tool_use" };
+        else if (fr === "stop") yield { stopReason: "end_turn" };
+      }
     }
-    if (choices[0].finish_reason) {
-      const fr = choices[0].finish_reason as string;
-      if (fr === "tool_calls") yield { stopReason: "tool_use" };
-      else if (fr === "stop") yield { stopReason: "end_turn" };
-    }
-  }
-  const usage = raw.usage as Record<string, number> | undefined;
-  if (usage)
-    yield { usage: { input: usage.prompt_tokens ?? 0, output: usage.completion_tokens ?? 0 } };
+    const usage = raw.usage as Record<string, number> | undefined;
+    if (usage)
+      yield {
+        usage: { input: usage.prompt_tokens ?? 0, output: usage.completion_tokens ?? 0 },
+      };
+  };
 }

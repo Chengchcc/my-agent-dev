@@ -44,16 +44,19 @@ export function createBashTool(opts: { workspaceRoot: string }): Tool {
         cwd?: string;
       };
 
-      // Validate cwd against the fixed workspace sandbox
-      const validatedCwd = cwd
-        ? (() => {
-            try {
-              return sandbox.validateCwd(cwd);
-            } catch {
-              return undefined;
-            }
-          })()
-        : opts.workspaceRoot;
+      // Validate cwd against the fixed workspace sandbox. Out-of-bounds cwd
+      // is a tool error, never a silent fallback to process cwd.
+      let validatedCwd = opts.workspaceRoot;
+      if (cwd) {
+        try {
+          validatedCwd = sandbox.validateCwd(cwd);
+        } catch {
+          return {
+            content: `Error: cwd escapes workspace root: ${String(cwd)}`,
+            isError: true,
+          };
+        }
+      }
 
       const clamped = Math.min(Math.max(timeout, 1), 600_000);
       const hasSetsid = Bun.which("setsid") !== null;

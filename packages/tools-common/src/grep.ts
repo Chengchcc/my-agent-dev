@@ -38,15 +38,17 @@ export function createGrepTool(opts: { workspaceRoot: string }): Tool {
         glob?: string;
       };
 
-      const validatedPath = searchPath
-        ? (() => {
-            try {
-              return sandbox.validate(searchPath);
-            } catch {
-              return opts.workspaceRoot;
-            }
-          })()
-        : opts.workspaceRoot;
+      let validatedPath = opts.workspaceRoot;
+      if (searchPath) {
+        try {
+          validatedPath = sandbox.validate(searchPath);
+        } catch {
+          return {
+            content: `Error: path escapes workspace root: ${String(searchPath)}`,
+            isError: true,
+          };
+        }
+      }
 
       const args = ["rg", "-n", "--color=never"];
       if (glob) args.push("--glob", glob);

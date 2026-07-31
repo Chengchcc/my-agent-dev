@@ -57,7 +57,6 @@ function testHarness(
         sessionId: "h1",
         store,
         plugins: [],
-        systemPrompt: "",
         maxSteps: 2,
         maxForceContinues: 0,
         modelStream: textModel("done"),
@@ -85,7 +84,6 @@ function testHarness(
         sessionId: "h1",
         store,
         plugins: [],
-        systemPrompt: "",
         maxSteps: 1,
         maxForceContinues: 0,
         modelStream: textModel("x"),
@@ -110,7 +108,6 @@ function testHarness(
         sessionId: "h2",
         store,
         plugins: [],
-        systemPrompt: "TOP SECRET SYSTEM",
         maxSteps: 1,
         maxForceContinues: 0,
         modelStream: textModel("ok"),
@@ -119,6 +116,28 @@ function testHarness(
       const snap = await store.open("h2");
       const serialized = JSON.stringify(snap.entries);
       expect(serialized).not.toContain("TOP SECRET SYSTEM");
+    });
+
+    test("2b. each run uses its own system prompt snapshot", async () => {
+      const store = storeFactory("h2b");
+      await createSession(store, "h2b");
+      let seenSystem = "";
+      const loop = createAgentLoop({
+        sessionId: "h2b",
+        store,
+        plugins: [],
+        maxSteps: 2,
+        maxForceContinues: 0,
+        modelStream: async function* (messages) {
+          seenSystem = messages.find((m) => m.role === "system")?.text ?? "";
+          yield { delta: { type: "text", text: "ok" } };
+        },
+      });
+      // Loop constructed without any system prompt; each run supplies its own
+      await loop.startLoop({ systemPrompt: "SP-ONE", metaText: "", promptText: "first" });
+      expect(seenSystem).toBe("SP-ONE");
+      await loop.startFollowUp({ systemPrompt: "SP-TWO", metaText: "", promptText: "second" });
+      expect(seenSystem).toBe("SP-TWO");
     });
 
     test("3. model requests a tool", async () => {
@@ -130,7 +149,6 @@ function testHarness(
         sessionId: "h3",
         store,
         plugins: [plugin],
-        systemPrompt: "",
         maxSteps: 5,
         maxForceContinues: 0,
         modelStream: async function* () {
@@ -165,7 +183,6 @@ function testHarness(
         sessionId: "h4",
         store,
         plugins: [plugin],
-        systemPrompt: "",
         maxSteps: 5,
         maxForceContinues: 0,
         modelStream: async function* () {
@@ -187,7 +204,6 @@ function testHarness(
         sessionId: "h5",
         store,
         plugins: [plugin],
-        systemPrompt: "",
         maxSteps: 5,
         maxForceContinues: 0,
         modelStream: async function* () {
@@ -218,7 +234,6 @@ function testHarness(
         sessionId: "h6",
         store,
         plugins: [plugin],
-        systemPrompt: "",
         maxSteps: 5,
         maxForceContinues: 0,
         modelStream: async function* (messages) {
@@ -248,7 +263,6 @@ function testHarness(
         sessionId: "h7",
         store,
         plugins: [],
-        systemPrompt: "",
         maxSteps: 3,
         maxForceContinues: 0,
         maxRetries: 3,
@@ -296,7 +310,6 @@ function testHarness(
         sessionId: "h8",
         store,
         plugins: [plugin],
-        systemPrompt: "",
         maxSteps: 5,
         maxForceContinues: 0,
         modelStream: async function* () {
@@ -326,7 +339,6 @@ function testHarness(
         sessionId: "h9",
         store,
         plugins: [],
-        systemPrompt: "",
         maxSteps: 2,
         maxForceContinues: 0,
         modelStream: textModel("done"),
@@ -360,7 +372,6 @@ function testHarness(
         sessionId: "h10",
         store,
         plugins: [],
-        systemPrompt: "",
         maxSteps: 1,
         maxForceContinues: 0,
         modelStream: textModel("done"),
@@ -383,7 +394,6 @@ function testHarness(
         sessionId: "h11",
         store,
         plugins: [],
-        systemPrompt: "",
         maxSteps: 5,
         maxForceContinues: 0,
         modelStream: async function* () {
@@ -478,7 +488,6 @@ function testHarness(
         sessionId: "h14",
         store,
         plugins: [],
-        systemPrompt: "",
         maxSteps: 2,
         maxForceContinues: 0,
         modelStream: textModel("ok"),
@@ -513,7 +522,6 @@ function testHarness(
         sessionId: "h15",
         store,
         plugins: [],
-        systemPrompt: "",
         maxSteps: 2,
         maxForceContinues: 0,
         modelStream: textModel("done"),
@@ -529,7 +537,6 @@ function testHarness(
         sessionId: "h15",
         store: reopened,
         plugins: [],
-        systemPrompt: "",
         maxSteps: 2,
         maxForceContinues: 0,
         modelStream: textModel("x"),
@@ -545,7 +552,6 @@ function testHarness(
         sessionId: "h16",
         store,
         plugins: [],
-        systemPrompt: "",
         maxSteps: 3,
         maxForceContinues: 0,
         modelStream: async function* () {

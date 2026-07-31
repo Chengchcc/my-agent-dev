@@ -22,7 +22,6 @@ export interface AgentLoopOptions {
   readonly sessionId: string;
   readonly store: SessionStore;
   readonly plugins: readonly Plugin[];
-  readonly systemPrompt: string;
   readonly maxSteps: number;
   readonly maxForceContinues: number;
   readonly modelStream: (
@@ -70,8 +69,11 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
     await emit({ type: "agent_start" });
 
     try {
-      // Build and persist loop input: product history + one Meta + one Prompt
+      // Build and persist loop input: product history + one Meta + one Prompt.
+      // The System Prompt snapshot comes from THIS run's input (AgentRunSnapshot),
+      // not from loop construction.
       const input = buildLoopInput(deps, mode);
+      const systemPrompt = input.systemPrompt;
       await opts.store.appendBatch(opts.sessionId, input.batch);
 
       // Read branch for model messages
@@ -117,8 +119,8 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
         }
 
         try {
-          const modelMessages = opts.systemPrompt
-            ? [{ role: "system", text: opts.systemPrompt } as Message, ...transformed]
+          const modelMessages = systemPrompt
+            ? [{ role: "system", text: systemPrompt } as Message, ...transformed]
             : transformed;
           const toolCalls = await processModelTurn(modelMessages);
           if (toolCalls.length > 0) {

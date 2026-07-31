@@ -152,6 +152,12 @@ describe("Provider contract", () => {
     expect((err as ProviderError).kind).toBe("auth");
     expect(String((err as ProviderError).message)).not.toContain("sk-ant-secret-sentinel");
     expect(String((err as ProviderError).message)).toContain("[REDACTED]");
+    // The raw error object must not be retained anywhere on ProviderError
+    const serialized = JSON.stringify(err);
+    expect(serialized).not.toContain("sk-ant-secret-sentinel");
+    expect(err as ProviderError).not.toHaveProperty("raw");
+    // detail carries only the redacted message
+    expect((err as ProviderError).detail).toContain("[REDACTED]");
   });
 
   test("anthropic tool_use stream pairs input_json_delta with tool id", async () => {
@@ -181,5 +187,124 @@ describe("Provider contract", () => {
     );
     expect(toolUse).toBeTruthy();
     expect((toolUse as { delta: { id: string } }).delta.id).toBe("toolu_1");
+  });
+
+  test("openai-compat streams tool arguments as input_json_delta pairs", async () => {
+    const provider = createOpenAICompatProvider({
+      id: "openai",
+      name: "OpenAI",
+      baseUrl: "https://api.openai.com/v1",
+      auth: { apiKey: "test" },
+      models: OPENAI_MODELS,
+    });
+    // Standard OpenAI tool-call streaming: first chunk carries id+name,
+    // later chunks carry only index + function.arguments fragments.
+    const sse = [
+      `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "echo", arguments: "" } }] } }] })}`,
+      `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '{"x":' } }] } }] })}`,
+      `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: "1}" } }] } }] })}`,
+      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "tool_calls" }] })}`,
+      "data: [DONE]",
+    ].join("\n");
+    const chunks = await withFetch(
+      new Response(sse, { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+      async () => {
+        const out: unknown[] = [];
+        for await (const c of provider.stream(OPENAI_MODELS[0]!, [{ role: "user", text: "hi" }], {
+          apiKey: "test",
+        })) {
+          out.push(c);
+        }
+        return out;
+      },
+    );
+    const typed = chunks as Array<{
+      delta?: { type: string; id?: string; name?: string; partial_json?: string };
+    }>;
+    const toolUse = typed.find((c) => c.delta?.type === "tool_use");
+    expect(toolUse).toBeTruthy();
+    expect(toolUse?.delta?.id).toBe("call_1");
+    expect(toolUse?.delta?.name).toBe("echo");
+
+    // Argument fragments must pair to the same tool id, not spawn empty tool_use
+    const deltas = typed.filter((c) => c.delta?.type === "input_json_delta");
+    expect(deltas).toHaveLength(2);
+    expect(deltas[0]?.delta?.id).toBe("call_1");
+    expect(deltas[1]?.delta?.id).toBe("call_1");
+    expect(deltas.map((d) => d.delta?.partial_json).join("")).toBe('{"x":1}');
+    // No empty-id tool_use emitted for argument-only chunks
+    const emptyToolUses = typed.filter((c) => c.delta?.type === "tool_use" && !c.delta.id);
+    expect(emptyToolUses).toHaveLength(0);
+  });
+
+  test("openai-compat streams multiple tool calls in one chunk", async () => {
+    const provider = createOpenAICompatProvider({
+      id: "openai",
+      name: "OpenAI",
+      baseUrl: "https://api.openai.com/v1",
+      auth: { apiKey: "test" },
+      models: OPENAI_MODELS,
+    });
+    const sse = [
+      `data: ${JSON.stringify({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_a",
+                  type: "function",
+                  function: { name: "read", arguments: "" },
+                },
+                {
+                  index: 1,
+                  id: "call_b",
+                  type: "function",
+                  function: { name: "bash", arguments: "" },
+                },
+              ],
+            },
+          },
+        ],
+      })}`,
+      `data: ${JSON.stringify({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, function: { arguments: '{"path":"a"}' } },
+                { index: 1, function: { arguments: '{"cmd":"pwd"}' } },
+              ],
+            },
+          },
+        ],
+      })}`,
+      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "tool_calls" }] })}`,
+      "data: [DONE]",
+    ].join("\n");
+    const chunks = await withFetch(
+      new Response(sse, { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+      async () => {
+        const out: unknown[] = [];
+        for await (const c of provider.stream(OPENAI_MODELS[0]!, [{ role: "user", text: "hi" }], {
+          apiKey: "test",
+        })) {
+          out.push(c);
+        }
+        return out;
+      },
+    );
+    const typed = chunks as Array<{
+      delta?: { type: string; id?: string; name?: string; partial_json?: string };
+    }>;
+    const toolUses = typed.filter((c) => c.delta?.type === "tool_use");
+    expect(toolUses).toHaveLength(2);
+    expect(toolUses[0]?.delta?.id).toBe("call_a");
+    expect(toolUses[1]?.delta?.id).toBe("call_b");
+    const deltas = typed.filter((c) => c.delta?.type === "input_json_delta");
+    expect(deltas).toHaveLength(2);
+    expect(deltas[0]?.delta?.id).toBe("call_a");
+    expect(deltas[1]?.delta?.id).toBe("call_b");
   });
 });

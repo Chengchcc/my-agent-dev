@@ -28,15 +28,17 @@ export function createGlobTool(opts: { workspaceRoot: string }): Tool {
     },
     async execute(input) {
       const { pattern, cwd } = input as { pattern: string; cwd?: string };
-      const validatedCwd = cwd
-        ? (() => {
-            try {
-              return sandbox.validateCwd(cwd);
-            } catch {
-              return opts.workspaceRoot;
-            }
-          })()
-        : opts.workspaceRoot;
+      let validatedCwd = opts.workspaceRoot;
+      if (cwd) {
+        try {
+          validatedCwd = sandbox.validateCwd(cwd);
+        } catch {
+          return {
+            content: `Error: cwd escapes workspace root: ${String(cwd)}`,
+            isError: true,
+          };
+        }
+      }
 
       const LIMIT = 500;
       const glob = new Bun.Glob(pattern);

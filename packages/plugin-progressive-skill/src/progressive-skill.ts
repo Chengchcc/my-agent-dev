@@ -11,6 +11,18 @@ function isWithinRoot(root: string, target: string): boolean {
   }
 }
 
+/** Canonicalize a skill root: resolve symlinks so realpath(target) comparisons
+ *  work on platforms where the root itself is a symlink (e.g. macOS /tmp →
+ *  /private/tmp). Returns null if the root does not exist or is not a dir. */
+function canonicalRoot(root: string): string | null {
+  try {
+    const real = realpathSync(root);
+    return statSync(real).isDirectory() ? real : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface SkillIndexEntry {
   readonly name: string;
   readonly description: string;
@@ -27,7 +39,11 @@ export interface ProgressiveSkillOptions {
 export function buildSkillIndex(roots: readonly string[]): SkillIndexEntry[] {
   const entries: SkillIndexEntry[] = [];
   for (const root of roots) {
-    scanDir(root, root, entries);
+    // Canonical root is the containment authority; entries store it so
+    // skill_load re-validates against the same realpath.
+    const canonical = canonicalRoot(root);
+    if (!canonical) continue;
+    scanDir(canonical, canonical, entries);
   }
   // Deterministic: sort by root then name
   entries.sort((a, b) =>
@@ -115,9 +131,10 @@ export function createProgressiveSkillPlugin(opts: ProgressiveSkillOptions): Plu
       const entry = index.find((s) => s.name === name);
       if (!entry) return { error: `Skill "${name}" not found` };
 
-      // Resolve and validate path within root using realpath
+      // Resolve and validate path within canonical root using realpath.
+      // entry.root is already canonicalized by buildSkillIndex.
       const fullPath = resolve(entry.root, entry.relativePath);
-      if (!isWithinRoot(resolve(entry.root), fullPath)) {
+      if (!isWithinRoot(entry.root, fullPath)) {
         return { error: "Path escape detected" };
       }
       if (!existsSync(fullPath)) return { error: `Skill file not found` };

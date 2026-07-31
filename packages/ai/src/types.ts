@@ -78,18 +78,20 @@ export class ProviderError extends Error {
   readonly kind: ProviderErrorKind;
   readonly statusCode?: number;
   readonly retryable: boolean;
-  readonly raw?: unknown;
+  /** Redacted diagnostic message; never the raw error object (which may carry
+   *  credential material). */
+  readonly detail?: string;
 
   constructor(
     message: string,
     kind: ProviderErrorKind,
-    opts?: { statusCode?: number; raw?: unknown },
+    opts?: { statusCode?: number; detail?: string },
   ) {
     super(message);
     this.name = "ProviderError";
     this.kind = kind;
     this.statusCode = opts?.statusCode;
-    this.raw = opts?.raw;
+    this.detail = opts?.detail;
     this.retryable = kind === "transient" || kind === "overload";
   }
 }
@@ -97,7 +99,8 @@ export class ProviderError extends Error {
 const OVERFLOW_RE = /context|too long|maximum|overflow|token limit/i;
 
 /** Normalize a raw provider error into a ProviderError, redacting credential
- *  material from the message. Shared by all providers. */
+ *  material from the message. The raw error object is never retained; only the
+ *  redacted message survives. Shared by all providers. */
 export function normalizeProviderError(
   err: unknown,
   redactSecrets: readonly string[] = [],
@@ -106,31 +109,32 @@ export function normalizeProviderError(
   for (const secret of redactSecrets) {
     if (secret) msg = msg.replaceAll(secret, "[REDACTED]");
   }
+  const detail = msg;
   const s = msg.match(/status[= ](\d+)/);
   const code = s ? Number(s[1]) : undefined;
   // Context-length errors (400/422 with body mentioning limits) are overflow,
   // a distinct retryable-after-compaction category from invalid_request.
   if (code === 400 || code === 422) {
     if (OVERFLOW_RE.test(msg)) {
-      return new ProviderError(msg, "overflow", { statusCode: code, raw: err });
+      return new ProviderError(msg, "overflow", { statusCode: code, detail });
     }
-    return new ProviderError(msg, "invalid_request", { statusCode: code, raw: err });
+    return new ProviderError(msg, "invalid_request", { statusCode: code, detail });
   }
   if (code === 401 || code === 403)
-    return new ProviderError(msg, "auth", { statusCode: code, raw: err });
-  if (code === 429) return new ProviderError(msg, "overload", { statusCode: code, raw: err });
+    return new ProviderError(msg, "auth", { statusCode: code, detail });
+  if (code === 429) return new ProviderError(msg, "overload", { statusCode: code, detail });
   if (code !== undefined && code >= 500)
-    return new ProviderError(msg, "transient", { statusCode: code, raw: err });
+    return new ProviderError(msg, "transient", { statusCode: code, detail });
   if (
     msg.includes("fetch") ||
     msg.includes("network") ||
     msg.includes("ECONN") ||
     msg.includes("timeout")
   )
-    return new ProviderError(msg, "transient", { raw: err });
+    return new ProviderError(msg, "transient", { detail });
   if (err instanceof DOMException && err.name === "AbortError")
-    return new ProviderError(msg, "aborted", { raw: err });
-  return new ProviderError(msg, "fatal", { raw: err });
+    return new ProviderError(msg, "aborted", { detail });
+  return new ProviderError(msg, "fatal", { detail });
 }
 
 /** Resolved credential for a model request. */

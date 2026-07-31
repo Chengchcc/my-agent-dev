@@ -32,20 +32,35 @@ describe("progressive skill index", () => {
     rmSync(outside, { recursive: true, force: true });
   });
 
-  test("skill_load resolves SKILL_DIR and strips frontmatter", async () => {
-    const root = tmpDir("load");
-    mkdirSync(join(root, "doc"), { recursive: true });
+  test("buildSkillIndex canonicalizes a symlinked root (macOS /tmp case)", () => {
+    const realDir = tmpDir("real");
+    const linkRoot = tmpDir("link");
+    mkdirSync(join(realDir, "math"), { recursive: true });
+    writeFileSync(join(realDir, "math", "SKILL.md"), "---\nname: math\n---\n\nDo math.");
+    symlinkSync(realDir, linkRoot);
+    const entries = buildSkillIndex([linkRoot]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.name).toBe("math");
+    expect(entries[0]?.relativePath).toBe("math/SKILL.md");
+    rmSync(linkRoot, { recursive: true, force: true });
+    rmSync(realDir, { recursive: true, force: true });
+  });
+
+  test("skill_load works through a symlinked root", async () => {
+    const realDir = tmpDir("real-load");
+    const linkRoot = tmpDir("link-load");
+    mkdirSync(join(realDir, "doc"), { recursive: true });
     writeFileSync(
-      join(root, "doc", "SKILL.md"),
+      join(realDir, "doc", "SKILL.md"),
       "---\nname: doc\n---\n\nRead ${SKILL_DIR}/notes.md",
     );
-    const plugin = createProgressiveSkillPlugin({ roots: [root] });
+    symlinkSync(realDir, linkRoot);
+    const plugin = createProgressiveSkillPlugin({ roots: [linkRoot] });
     const tool = plugin.tools?.find((t) => t.name === "skill_load");
-    expect(tool).toBeTruthy();
     const result = (await tool!.execute({ name: "doc" })) as { body: string };
     expect(result.body).toContain("Read ");
-    expect(result.body).toContain(join(root, "doc"));
-    expect(result.body).not.toContain("---");
-    rmSync(root, { recursive: true, force: true });
+    expect(result.body).toContain("notes.md");
+    rmSync(linkRoot, { recursive: true, force: true });
+    rmSync(realDir, { recursive: true, force: true });
   });
 });

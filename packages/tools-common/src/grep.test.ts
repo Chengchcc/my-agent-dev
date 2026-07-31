@@ -59,4 +59,14 @@ describe("grepTool", () => {
     expect(result.content).not.toInclude("b.txt");
     await Bun.$`rm -rf ${tmpDir}`.quiet();
   });
+
+  test("out-of-bounds path returns tool error instead of root fallback", async () => {
+    const tmpDir = `/tmp/test-grep-escape-${Date.now()}`;
+    await Bun.$`mkdir -p ${tmpDir}`.quiet();
+    const tool = createGrepTool({ workspaceRoot: tmpDir });
+    const result = await tool.execute({ pattern: "x", path: "/etc/passwd" });
+    expect(result.isError).toBe(true);
+    expect(result.content).toInclude("escapes workspace");
+    await Bun.$`rm -rf ${tmpDir}`.quiet();
+  });
 });

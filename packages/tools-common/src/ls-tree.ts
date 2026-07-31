@@ -65,15 +65,17 @@ export function createLsTool(opts: { cwd: string }): Tool {
     },
     async execute(input) {
       const rec = input as { path?: string };
-      const dir = rec.path
-        ? (() => {
-            try {
-              return sandbox.validate(rec.path);
-            } catch {
-              return cwd;
-            }
-          })()
-        : cwd;
+      let dir = cwd;
+      if (rec.path) {
+        try {
+          dir = sandbox.validate(rec.path);
+        } catch {
+          return {
+            content: `Error: path escapes workspace root: ${String(rec.path)}`,
+            isError: true,
+          };
+        }
+      }
       try {
         const entries = readdirSync(dir, { withFileTypes: true })
           .filter((e) => !isIgnored(e.name))
@@ -129,15 +131,17 @@ export function createTreeTool(opts: { cwd: string }): Tool {
     },
     async execute(input) {
       const rec = input as { path?: string; max_depth?: number };
-      const dir = rec.path
-        ? (() => {
-            try {
-              return sandbox.validate(rec.path);
-            } catch {
-              return cwd;
-            }
-          })()
-        : cwd;
+      let dir = cwd;
+      if (rec.path) {
+        try {
+          dir = sandbox.validate(rec.path);
+        } catch {
+          return {
+            content: `Error: path escapes workspace root: ${String(rec.path)}`,
+            isError: true,
+          };
+        }
+      }
       const maxDepth = rec.max_depth ?? 3;
 
       const lines: string[] = [];

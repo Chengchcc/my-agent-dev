@@ -42,4 +42,14 @@ describe("globTool", () => {
     expect(result.content).not.toInclude("y.ts");
     await Bun.$`rm -rf ${tmpDir}`.quiet();
   });
+
+  test("out-of-bounds cwd returns tool error instead of root fallback", async () => {
+    const tmpDir = `/tmp/test-glob-escape-${Date.now()}`;
+    await Bun.$`mkdir -p ${tmpDir}`.quiet();
+    const tool = createGlobTool({ workspaceRoot: tmpDir });
+    const result = await tool.execute({ pattern: "**/*", cwd: "/etc" });
+    expect(result.isError).toBe(true);
+    expect(result.content).toInclude("escapes workspace");
+    await Bun.$`rm -rf ${tmpDir}`.quiet();
+  });
 });
