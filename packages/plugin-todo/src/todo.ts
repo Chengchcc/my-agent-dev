@@ -1,5 +1,4 @@
 import type { Plugin, PluginTool } from "@my-agent-team/agent";
-import { readTodo, updateTodo } from "@my-agent-team/agent";
 
 export interface TodoPluginOptions {
   readonly sessionId: string;
@@ -27,7 +26,7 @@ export function createTodoPlugin(opts: TodoPluginOptions): Plugin {
   };
 }
 
-function createTodoWriteTool(opts: TodoPluginOptions): PluginTool {
+function createTodoWriteTool(_opts: TodoPluginOptions): PluginTool {
   return {
     name: "todo_write",
     description: "Update the task list. Provide the full desired state.",

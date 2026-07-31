@@ -39,7 +39,7 @@ function testHarness(
 
       expect(loop.status).toBe("idle");
       await loop.startLoop({ systemPrompt: "", metaText: "meta", promptText: "go" });
-      expect(loop.status).toBe("settled");
+      expect(loop.status).toBe("completed");
 
       const snap = await store.open(sid);
       expect(snap.entries.length).toBeGreaterThan(1);
@@ -78,7 +78,7 @@ function testHarness(
       const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "run" });
       loop.stop();
       await started;
-      expect(loop.status).toBe("settled");
+      expect(loop.status).toBe("completed");
     });
 
     test("listener receives events", async () => {

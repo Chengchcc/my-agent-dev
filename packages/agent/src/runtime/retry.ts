@@ -1,6 +1,5 @@
-import type { AIMessageChunk } from "@my-agent-team/core";
-import type { Message } from "@my-agent-team/message";
 import { ProviderError } from "@my-agent-team/ai";
+import type { AIMessageChunk } from "@my-agent-team/core";
 
 export interface RetryOptions {
   readonly maxAttempts: number;
@@ -26,7 +25,7 @@ export async function* retryStream(
     } catch (err) {
       lastError = err;
       if (err instanceof ProviderError && err.retryable && attempt < opts.maxAttempts) {
-        await new Promise((r) => setTimeout(r, opts.baseDelayMs * Math.pow(2, attempt - 1)));
+        await new Promise((r) => setTimeout(r, opts.baseDelayMs * 2 ** (attempt - 1)));
         continue;
       }
       throw err;
