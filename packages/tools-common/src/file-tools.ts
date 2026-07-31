@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { extname, resolve } from "node:path";
+import { extname } from "node:path";
 import type { Tool } from "@my-agent-team/core";
+import { WorkspaceSandbox } from "./workspace-sandbox.js";
 
 type InputRec = Record<string, unknown>;
 
@@ -16,9 +17,12 @@ export function withDefaultCwd(tool: Tool, cwd: string): Tool {
 }
 
 function safePath(cwd: string, userPath: string): string | null {
-  const full = resolve(cwd, userPath);
-  if (!full.startsWith(cwd)) return null;
-  return full;
+  try {
+    const sandbox = new WorkspaceSandbox(cwd);
+    return sandbox.validate(userPath);
+  } catch {
+    return null;
+  }
 }
 
 const IMAGE_EXTENSIONS = new Set([

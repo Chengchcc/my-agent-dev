@@ -15,6 +15,13 @@ export class WorkspaceSandbox {
     if (!resolved.startsWith(`${this.root}/`) && resolved !== this.root) {
       throw new WorkspaceEscapeError(target, this.root);
     }
+    // Check realpath for existing files to catch symlink escapes
+    if (existsSync(resolved)) {
+      const real = realpathSafe(resolved);
+      if (real && !real.startsWith(`${this.root}/`) && real !== this.root) {
+        throw new WorkspaceEscapeError(target, this.root);
+      }
+    }
     return resolved;
   }
 
