@@ -1,11 +1,11 @@
-import { readdirSync, readFileSync, existsSync, realpathSync, statSync } from "node:fs";
-import { join, resolve, isAbsolute } from "node:path";
-import type { Plugin, PluginTool, MetaSectionProvider } from "@my-agent-team/agent";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
+import type { MetaSectionProvider, Plugin, PluginTool } from "@my-agent-team/agent";
 
 function isWithinRoot(root: string, target: string): boolean {
   try {
     const real = realpathSync(target);
-    return real === root || real.startsWith(root + "/");
+    return real === root || real.startsWith(`${root}/`);
   } catch {
     return false;
   }

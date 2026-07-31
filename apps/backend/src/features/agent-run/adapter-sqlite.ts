@@ -280,6 +280,13 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           .where(eq(schema.agentContextBranch.branchId, command.branchId))
           .run();
 
+        // 8a. If context entries were appended, mark existing binding stale
+        if (selected.length > 0) {
+          d.update(schema.backendSessionBinding)
+            .set({ state: "stale", updatedAt: now })
+            .where(eq(schema.backendSessionBinding.branchId, command.branchId))
+            .run();
+        }
         // 9. Resolve effective model: walk from leaf to root, find last model_change.
         //    Synchronous DB query inside the transaction (no async port call).
         let effectiveModel = command.defaultModel;
@@ -410,14 +417,15 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
 
       if (result) return parseInput(result);
 
-      // Already delivered? Return existing
+      // Already delivered? Return existing (idempotent)
       const existing = d
         .select()
         .from(schema.branchInputQueue)
         .where(eq(schema.branchInputQueue.inputId, inputId))
         .get();
       if (!existing) throw new Error(`Input not found: ${inputId}`);
-      return parseInput(existing);
+      if (existing.status === "delivered") return parseInput(existing);
+      throw new Error(`Input ${inputId} cannot be accepted from status ${existing.status}`);
     },
 
     async createPendingAction(runId, action) {

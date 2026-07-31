@@ -37,6 +37,7 @@ export interface AgentContextPort {
 
   getTree(conversationId: string, agentMemberId: string): Promise<AgentContextTree | null>;
 
+  getTreeById(treeId: string): Promise<AgentContextTree | null>;
   getOrCreateDefaultBranch(treeId: string, backendKind: string): Promise<ContextBranch>;
 
   getBranch(branchId: string): Promise<ContextBranch | null>;

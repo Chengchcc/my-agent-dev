@@ -159,6 +159,22 @@ export function sqliteAgentContextAdapter(
         : null;
     },
 
+    async getTreeById(treeId) {
+      const row = d
+        .select()
+        .from(schema.agentContextTree)
+        .where(eq(schema.agentContextTree.treeId, treeId))
+        .get();
+      return row
+        ? {
+            treeId: row.treeId,
+            conversationId: row.conversationId,
+            agentMemberId: row.agentMemberId,
+            createdAt: row.createdAt,
+          }
+        : null;
+    },
+
     async getOrCreateDefaultBranch(treeId, backendKind) {
       const existing = d
         .select()

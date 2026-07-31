@@ -75,7 +75,7 @@ describe("Agent Context projection", () => {
 
     const items = await projectAgentContext(
       { port, ledgerResolver },
-      { conversationId, branchId: branch.branchId },
+      { branchId: branch.branchId },
     );
     expect(items).toHaveLength(2);
     expect(items[0]?.productEntryId).toBe(r1.entryId);
@@ -115,7 +115,7 @@ describe("Agent Context projection", () => {
 
     const items = await projectAgentContext(
       { port, ledgerResolver },
-      { conversationId, branchId: branch.branchId },
+      { branchId: branch.branchId },
     );
     // The summary replaces the covered entry and itself produces a context message
     expect(items).toHaveLength(1);
@@ -136,7 +136,7 @@ describe("Agent Context projection", () => {
     expect(
       projectAgentContext(
         { port, ledgerResolver },
-        { conversationId, branchId: branch.branchId, throughEntryId: "nonexistent" },
+        { branchId: branch.branchId, throughEntryId: "nonexistent" },
       ),
     ).rejects.toThrow();
   });
@@ -155,10 +155,121 @@ describe("Agent Context projection", () => {
 
     const items = await projectAgentContext(
       { port, ledgerResolver },
-      { conversationId, branchId: branch.branchId },
+      { branchId: branch.branchId },
     );
     expect(items).toHaveLength(1);
     expect(items[0]?.productEntryId).toBe(r1.entryId);
     expect(items[0]?.message.text).toBe("private");
+  });
+
+  test("summary retains uncovered tail entries after coverage point", async () => {
+    const { conversationId, agentMemberId } = freshFixture("tail");
+    const seqCovered = conv.appendLedgerEntry({
+      conversationId,
+      senderMemberId: agentMemberId,
+      addressedTo: [],
+      kind: "message",
+      content: JSON.stringify({ role: "user", text: "covered-msg" }),
+      ts: Date.now(),
+    });
+    const seqRetained = conv.appendLedgerEntry({
+      conversationId,
+      senderMemberId: agentMemberId,
+      addressedTo: [],
+      kind: "message",
+      content: JSON.stringify({ role: "user", text: "retained-msg" }),
+      ts: Date.now(),
+    });
+
+    const tree = await port.getOrCreateTree(conversationId, agentMemberId);
+    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    // e1 (covered) -> e2 (retained) -> s1 (summary coversThrough=e1)
+    const e1 = await port.appendEntry({
+      branchId: branch.branchId,
+      expectedRevision: 1,
+      type: "ledger_message",
+      parentId: null,
+      payload: {},
+      ledgerSeq: seqCovered,
+    });
+    const e2 = await port.appendEntry({
+      branchId: branch.branchId,
+      expectedRevision: 2,
+      type: "ledger_message",
+      parentId: e1.entryId,
+      payload: {},
+      ledgerSeq: seqRetained,
+    });
+    await port.appendEntry({
+      branchId: branch.branchId,
+      expectedRevision: 3,
+      type: "summary",
+      parentId: e2.entryId,
+      payload: { summary: "summary text", coversThroughEntryId: e1.entryId },
+    });
+
+    const items = await projectAgentContext(
+      { port, ledgerResolver },
+      { branchId: branch.branchId },
+    );
+    // Expected: summary message + retained e2 message
+    expect(items).toHaveLength(2);
+    expect(items[0]?.message.text).toBe("summary text");
+    expect(items[1]?.productEntryId).toBe(e2.entryId);
+    expect(items[1]?.message.text).toBe("retained-msg");
+  });
+
+  test("projection resolves messages from the branch's own conversation", async () => {
+    // Conversation A and B both hold a ledger entry with the same seq.
+    // The branch lives in A; projection must resolve A's message even though
+    // B was created first (and would be found by a naive global lookup).
+    const a = freshFixture("a");
+    const b = freshFixture("b");
+    // B gets a ledger entry first so a naive cross-conversation lookup
+    // would find B's message; the projection must still resolve A's.
+    conv.appendLedgerEntry({
+      conversationId: b.conversationId,
+      senderMemberId: b.agentMemberId,
+      addressedTo: [],
+      kind: "message",
+      content: JSON.stringify({ role: "user", text: "msg-from-B" }),
+      ts: Date.now(),
+    });
+    const seqA = conv.appendLedgerEntry({
+      conversationId: a.conversationId,
+      senderMemberId: a.agentMemberId,
+      addressedTo: [],
+      kind: "message",
+      content: JSON.stringify({ role: "user", text: "msg-from-A" }),
+      ts: Date.now(),
+    });
+    // Use the same numeric seq for both conversations via a custom resolver
+    // that returns a distinguishable message per conversation.
+    const customResolver: LedgerMessageResolver = {
+      async resolveMessage(conversationId, ledgerSeq) {
+        const entries = conv.getLedgerEntries(conversationId, { sinceSeq: 0 });
+        const entry = entries.find((e) => e.seq === ledgerSeq);
+        if (!entry) return null;
+        return entry.content as never;
+      },
+    };
+
+    const tree = await port.getOrCreateTree(a.conversationId, a.agentMemberId);
+    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    await port.appendEntry({
+      branchId: branch.branchId,
+      expectedRevision: 1,
+      type: "ledger_message",
+      parentId: null,
+      payload: {},
+      ledgerSeq: seqA,
+    });
+
+    const items = await projectAgentContext(
+      { port, ledgerResolver: customResolver },
+      { branchId: branch.branchId },
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0]?.message.text).toBe("msg-from-A");
   });
 });

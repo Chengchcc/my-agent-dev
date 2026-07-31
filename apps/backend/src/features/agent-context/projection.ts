@@ -13,7 +13,6 @@ export interface ProjectionDeps {
 }
 
 export interface ProjectionInput {
-  readonly conversationId: string;
   readonly branchId: string;
   readonly throughEntryId?: string;
 }
@@ -27,9 +26,13 @@ export async function projectAgentContext(
   deps: ProjectionDeps,
   input: ProjectionInput,
 ): Promise<ProjectedHistoryItem[]> {
+  // Derive conversationId from branch scope, do not trust caller
+  const branch = await deps.port.getBranch(input.branchId);
+  if (!branch) throw new Error(`Branch not found: ${input.branchId}`);
+  const tree = await deps.port.getTreeById(branch.treeId);
+  if (!tree) throw new Error(`Tree not found for branch ${input.branchId}`);
+  const conversationId = tree.conversationId;
   const entries = await deps.port.listEntriesToLeaf(input.branchId);
-
-  // If throughEntryId is specified, truncate to that entry
   let working: AgentContextEntry[] = entries;
   if (input.throughEntryId) {
     const idx = entries.findIndex((e) => e.entryId === input.throughEntryId);
@@ -48,7 +51,9 @@ export async function projectAgentContext(
     }
   }
 
-  // If a summary exists, replace entries through its coversThroughEntryId
+  // If a summary exists: replace covered entries with the summary message,
+  // keeping the summary entry first, then the retained tail between the
+  // coverage point and the summary, then entries after the summary.
   if (summary) {
     const coverIdx = working.findIndex((e) => e.entryId === summary.coversThroughEntryId);
     if (coverIdx === -1) {
@@ -57,7 +62,9 @@ export async function projectAgentContext(
       );
     }
     const summaryIdx = working.findIndex((e) => e.entryId === summary.entryId);
-    working = working.slice(Math.max(coverIdx + 1, summaryIdx));
+    const retainedTail = working.slice(coverIdx + 1, summaryIdx);
+    const afterSummary = working.slice(summaryIdx + 1);
+    working = [...working.slice(summaryIdx, summaryIdx + 1), ...retainedTail, ...afterSummary];
   }
 
   // Build projected history items
@@ -66,7 +73,7 @@ export async function projectAgentContext(
     if (entry.type === "ledger_message") {
       const ledgerEntry = entry as LedgerMessageEntry;
       const message = await deps.ledgerResolver.resolveMessage(
-        input.conversationId,
+        conversationId,
         ledgerEntry.ledgerSeq,
       );
       if (!message) {

@@ -125,6 +125,49 @@ describe("Agent Run: atomic acquire", () => {
     expect(active).toBeTruthy();
   });
 
+  test("acquire with new ledger refs marks existing binding stale", async () => {
+    const { conversationId, agentMemberId, branch } = await setupBranch("acq4");
+    // Existing backend session binding claims to be active + synced at rev 1
+    await ctxPort.upsertBinding({
+      backendSessionId: "bs-acq4",
+      branchId: branch.branchId,
+      backendKind: "coding_agent",
+      syncedEntryId: null,
+      syncedRevision: 1,
+      state: "active",
+      updatedAt: Date.now(),
+    });
+
+    // A user message lands in the ledger
+    conv.appendLedgerEntry({
+      conversationId,
+      senderMemberId: "user-1",
+      addressedTo: [agentMemberId],
+      kind: "message",
+      content: JSON.stringify({ role: "user", text: "hello" }),
+      ts: Date.now(),
+    });
+
+    const result = await runPort.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      branchId: branch.branchId,
+      mode: "normal",
+      message: { role: "user", text: "hello" },
+      inputIdempotencyKey: `ikey-acq4`,
+      runIdempotencyKey: `rkey-acq4`,
+      deliveryIdempotencyKey: `dkey-acq4`,
+      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      configRevision: 1,
+      expectedRevision: branch.revision,
+    });
+    expect(result.acquired).toBe(true);
+
+    // The binding must no longer claim synced state: context changed underneath it
+    const binding = await ctxPort.getBinding(branch.branchId);
+    expect(binding?.state).toBe("stale");
+  });
+
   test("duplicate input idempotency key returns queued", async () => {
     const { conversationId, agentMemberId, branch } = await setupBranch("acq3");
     await runPort.enqueueAndAcquire({
@@ -205,6 +248,49 @@ describe("Agent Run: queue delivery", () => {
     // Idempotent: second accept returns same row
     const accepted2 = await runPort.markInputAccepted(result.inputId);
     expect(accepted2.status).toBe("delivered");
+  });
+
+  test("markInputAccepted rejects inputs not in delivering state", async () => {
+    const { conversationId, agentMemberId, branch } = await setupBranch("q2b");
+    // First input acquires the run (delivering)
+    const first = await runPort.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      branchId: branch.branchId,
+      mode: "normal",
+      message: { role: "user", text: "first" },
+      inputIdempotencyKey: `ikey-q2b-1`,
+      runIdempotencyKey: `rkey-q2b-1`,
+      deliveryIdempotencyKey: `dkey-q2b-1`,
+      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      configRevision: 1,
+      expectedRevision: branch.revision,
+    });
+    expect(first.acquired).toBe(true);
+
+    // Second input stays pending because the run slot is occupied
+    const second = await runPort.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      branchId: branch.branchId,
+      mode: "normal",
+      message: { role: "user", text: "second" },
+      inputIdempotencyKey: `ikey-q2b-2`,
+      runIdempotencyKey: `rkey-q2b-2`,
+      deliveryIdempotencyKey: `dkey-q2b-2`,
+      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      configRevision: 1,
+      expectedRevision: branch.revision,
+    });
+    expect(second.acquired).toBe(false);
+    expect(second.queued).toBe(true);
+
+    // Accepting a pending input must fail loudly, not silently return it
+    expect(runPort.markInputAccepted(second.inputId!)).rejects.toThrow(/cannot be accepted/);
+
+    // The delivering input is still accept-able (recovery path)
+    const acceptedFirst = await runPort.markInputAccepted(first.inputId!);
+    expect(acceptedFirst.status).toBe("delivered");
   });
 
   test("restart recovery: delivering item reclaimed before pending", async () => {

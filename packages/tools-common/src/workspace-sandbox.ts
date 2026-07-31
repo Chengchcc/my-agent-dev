@@ -66,13 +66,6 @@ export class WorkspaceSandbox {
     if (isAbsolute(normalized)) return resolve(normalized);
     return resolve(this.root, normalized);
   }
-
-  private parsePath(p: string): { dir: string; base: string } {
-    const lastSep = p.lastIndexOf("/");
-    return lastSep >= 0
-      ? { dir: p.slice(0, lastSep), base: p.slice(lastSep + 1) }
-      : { dir: ".", base: p };
-  }
 }
 
 export class WorkspaceEscapeError extends Error {
