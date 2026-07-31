@@ -19,8 +19,8 @@ function fakeProvider(id: string, modelIds: string[]): Provider {
         maxTokens: 4096,
         baseUrl: undefined,
       })),
-    createModel() {
-      throw new Error("not used");
+    async *stream() {
+      yield { delta: { type: "text", text: "ok" } };
     },
   };
 }

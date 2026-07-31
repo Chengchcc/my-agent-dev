@@ -1,13 +1,3 @@
-// API layer - must be imported first to register APIs
-import "./api/index.js";
-
-export {
-  anthropicMessagesApi,
-  getApiImplementation,
-  openAICompletionsApi,
-  parseSSE,
-  registerApi,
-} from "./api/index.js";
 export type { ModelConfig, ProviderConfig } from "./builtin-providers.js";
 export type { ModelRuntimeOptions } from "./model-runtime.js";
 // Phase 2: new ModelRuntime
@@ -24,8 +14,6 @@ export {
 } from "./providers/index.js";
 export type {
   Api,
-  ApiImplementation,
-  ApiStreamOptions,
   CatalogRefreshResult,
   CredentialStore,
   InputModality,
@@ -36,6 +24,7 @@ export type {
   ModelRuntimeEntry,
   Provider,
   ProviderAuth,
+  ProviderStreamOptions,
   ResolvedCredential,
 } from "./types.js";
 export { ProviderError, ProviderErrorKind } from "./types.js";

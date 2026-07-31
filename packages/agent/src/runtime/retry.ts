@@ -4,6 +4,9 @@ import type { AIMessageChunk } from "@my-agent-team/core";
 export interface RetryOptions {
   readonly maxAttempts: number;
   readonly baseDelayMs: number;
+  /** Lifecycle callbacks so the loop can emit retry_start/retry_end. */
+  readonly onRetryStart?: (attempt: number) => void | Promise<void>;
+  readonly onRetryEnd?: (attempt: number) => void | Promise<void>;
 }
 
 /** Wrap a model stream with provider-only retry. Only normalized transient
@@ -22,15 +25,20 @@ export async function* retryStream(
     if (signal?.aborted) throw new Error("Aborted");
     try {
       attempt++;
+      await opts.onRetryStart?.(attempt);
       yield* streamFactory(signal);
       return;
     } catch (err) {
       lastError = err;
       if (err instanceof ProviderError && err.retryable && attempt < opts.maxAttempts) {
-        await new Promise((r) => setTimeout(r, opts.baseDelayMs * 2 ** (attempt - 1)));
+        const { promise, resolve } = Promise.withResolvers<void>();
+        setTimeout(resolve, opts.baseDelayMs * 2 ** (attempt - 1));
+        await promise;
         continue;
       }
       throw err;
+    } finally {
+      await opts.onRetryEnd?.(attempt);
     }
   }
   throw lastError;

@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import type { AppendBatchInput, AppendBatchResult, SessionStore } from "./session-store.js";
+import { validateBatch } from "./session-store.js";
 import type {
   CodingSessionEntry,
   CodingSessionMetadata,
@@ -90,23 +91,29 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
       >;
       const ops = db.query("SELECT * FROM operations").all() as Array<Record<string, unknown>>;
 
-      // Rebuild leaf cache from operations log when cache is absent or stale
-      let leafId = meta.leaf_entry_id as string | null;
+      // Rebuild leaf cache from operations log when cache is absent or stale.
+      // The operation log is authoritative: the last leaf_moved entry is the
+      // true leaf even when the meta cache is stale.
       const parsedOps = ops.map((o) => ({
         type: "leaf_moved" as const,
         entryId: o.entry_id as string,
         fromLeafId: o.from_leaf_id as string | null,
       }));
-      // If leaf cache is null but operations exist, repair from last operation
-      if (!leafId && parsedOps.length > 0) {
+      let leafId: string | null = null;
+      if (parsedOps.length > 0) {
         leafId = parsedOps[parsedOps.length - 1]!.entryId;
-      }
-      // Verify leaf points to an existing entry; if stale, use latest entry
-      if (leafId) {
-        const leafExists = entries.some((e) => e.entry_id === leafId);
-        if (!leafExists && entries.length > 0) {
+      } else {
+        // No operations yet: trust the meta cache, then fall back to latest entry
+        leafId = meta.leaf_entry_id as string | null;
+        if (leafId && !entries.some((e) => e.entry_id === leafId)) leafId = null;
+        if (!leafId && entries.length > 0) {
           leafId = entries[entries.length - 1]!.entry_id as string;
         }
+      }
+
+      // Persist the repaired leaf so later reads (readBranch) see it.
+      if (leafId !== (meta.leaf_entry_id as string | null)) {
+        db.query("UPDATE meta SET leaf_entry_id = ? WHERE session_id = ?").run(leafId, sessionId);
       }
 
       return {
@@ -135,6 +142,7 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
 
     async appendBatch(sessionId: string, input: AppendBatchInput): Promise<AppendBatchResult> {
       guard(sessionId);
+      validateBatch(input.entries);
       return db.transaction(() => {
         const meta = db
           .query("SELECT leaf_entry_id FROM meta WHERE session_id = ?")
@@ -184,6 +192,11 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
         }
 
         if (appendedIds.length > 0) {
+          // Record the leaf movement as a durable operation in the same
+          // transaction as entries + leaf cache (spec: leaf_moved op).
+          db.query(
+            "INSERT INTO operations (entry_id, from_leaf_id, op_type) VALUES (?1, ?2, 'leaf_moved')",
+          ).run(parentId, meta.leaf_entry_id);
           db.query("UPDATE meta SET leaf_entry_id = ?, updated_at = ? WHERE session_id = ?").run(
             parentId,
             Date.now(),

@@ -1,4 +1,5 @@
 import type { AppendBatchInput, AppendBatchResult, SessionStore } from "./session-store.js";
+import { validateBatch } from "./session-store.js";
 import type {
   CodingSessionEntry,
   CodingSessionMetadata,
@@ -49,6 +50,8 @@ export function createInMemorySessionStore(): SessionStore {
     async appendBatch(sessionId: string, input: AppendBatchInput): Promise<AppendBatchResult> {
       const s = sessions.get(sessionId);
       if (!s) throw new Error(`Session ${sessionId} not found`);
+      // Validate before any mutation so a failed batch writes nothing.
+      validateBatch(input.entries);
 
       const appendedIds: string[] = [];
       let parentId = s.metadata.leafEntryId;

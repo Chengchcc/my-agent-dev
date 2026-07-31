@@ -1,3 +1,5 @@
+import { assertSafeUrl } from "./url-guard.js";
+
 /** Port for web search. Implementations inject search providers. */
 export interface WebSearchPort {
   search(
@@ -6,7 +8,8 @@ export interface WebSearchPort {
   ): Promise<ReadonlyArray<{ title: string; url: string; snippet: string }>>;
 }
 
-/** Port for web fetch. Implementations inject HTTP fetch behavior. */
+/** Port for web fetch. Implementations inject HTTP fetch behavior and own
+ *  redirect validation, response limits, and timeouts. */
 export interface WebFetchPort {
   fetch(url: string): Promise<{ text: string; title?: string }>;
 }
@@ -25,13 +28,21 @@ export function createWebSearchTool(port: WebSearchPort) {
       required: ["query"],
     } as const,
     async execute(args: Readonly<Record<string, unknown>>) {
-      const results = await port.search(args.query as string, (args.limit as number) ?? 5);
-      return { results } as unknown as Readonly<Record<string, unknown>>;
+      try {
+        const results = await port.search(args.query as string, (args.limit as number) ?? 5);
+        return { results } as unknown as Readonly<Record<string, unknown>>;
+      } catch (err) {
+        return {
+          error: `web_search failed: ${err instanceof Error ? err.message : String(err)}`,
+        } as unknown as Readonly<Record<string, unknown>>;
+      }
     },
   };
 }
 
-/** Create a web_fetch tool backed by the given port. */
+/** Create a web_fetch tool backed by the given port. URL safety (protocol,
+ *  private-host) is enforced here; redirects/limits/timeouts belong to the
+ *  injected port implementation. */
 export function createWebFetchTool(port: WebFetchPort) {
   return {
     name: "web_fetch",
@@ -42,10 +53,21 @@ export function createWebFetchTool(port: WebFetchPort) {
       required: ["url"],
     } as const,
     async execute(args: Readonly<Record<string, unknown>>) {
-      const result = await port.fetch(args.url as string);
-      return { text: result.text, title: result.title } as unknown as Readonly<
-        Record<string, unknown>
-      >;
+      const rawUrl = args.url as string;
+      try {
+        assertSafeUrl(rawUrl);
+        const result = await port.fetch(rawUrl);
+        return { text: result.text, title: result.title } as unknown as Readonly<
+          Record<string, unknown>
+        >;
+      } catch (err) {
+        if (err instanceof Error && err.name === "UrlGuardError") {
+          return { error: err.message } as unknown as Readonly<Record<string, unknown>>;
+        }
+        return {
+          error: `web_fetch failed: ${err instanceof Error ? err.message : String(err)}`,
+        } as unknown as Readonly<Record<string, unknown>>;
+      }
     },
   };
 }

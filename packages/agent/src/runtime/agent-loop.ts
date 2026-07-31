@@ -3,6 +3,7 @@ import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 import type { SessionStore } from "../persistence/session-store.js";
 import type { AgentLoopListener, CodingAgentLoopEvent } from "./agent-event.js";
+import { compactSession } from "./compaction.js";
 import type { LoopInputDeps } from "./loop-input.js";
 import { buildLoopInput } from "./loop-input.js";
 import type { Plugin } from "./plugin.js";
@@ -33,7 +34,7 @@ export interface AgentLoopOptions {
 
 export interface AgentLoop {
   readonly sessionId: string;
-  readonly status: "idle" | "running" | "completed" | "failed";
+  readonly status: "idle" | "running" | "completed" | "failed" | "stopped";
   startLoop(deps: LoopInputDeps): Promise<void>;
   startFollowUp(deps: LoopInputDeps): Promise<void>;
   steer(text: string): void;
@@ -47,7 +48,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
   const listeners = new Set<AgentLoopListener>();
   const tools = collectTools(opts.plugins);
   const toolMap = new Map(tools.map((t) => [t.name, t]));
-  let status: "idle" | "running" | "completed" | "failed" = "idle";
+  let status: "idle" | "running" | "completed" | "failed" | "stopped" = "idle";
   let controller: AbortController | null = null;
   const steerQueue: string[] = [];
 
@@ -69,18 +70,8 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
     await emit({ type: "agent_start" });
 
     try {
-      // Build and persist loop input
-      const input = buildLoopInput(
-        [],
-        {
-          runId: crypto.randomUUID(),
-          model: { backendKind: "", modelId: "" },
-          productTools: [],
-          configRevision: 1,
-        } as never,
-        deps,
-        mode,
-      );
+      // Build and persist loop input: product history + one Meta + one Prompt
+      const input = buildLoopInput(deps, mode);
       await opts.store.appendBatch(opts.sessionId, input.batch);
 
       // Read branch for model messages
@@ -205,37 +196,21 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
           await emit({ type: "turn_end", turn: step });
           if (stopped) break;
         } catch (err) {
-          // Overflow: one-shot compaction recovery
+          // Overflow: one-shot compaction recovery (shared implementation)
           if (err instanceof ProviderError && err.kind === "overflow" && !overflowCompacted) {
             overflowCompacted = true;
             await emit({ type: "compaction_start" });
-            // Trigger compaction
-            const entries = await opts.store.readBranch(opts.sessionId);
-            const msgEntries = entries.filter((e) => e.type === "message");
-            if (msgEntries.length > 4) {
-              await opts.store.appendBatch(opts.sessionId, {
-                entries: [
-                  {
-                    type: "compaction",
-                    summary: `[Compacted ${msgEntries.length - 4} earlier messages due to context overflow]`,
-                    coversEntryIds: msgEntries.slice(0, -4).map((e) => e.entryId),
-                    createdAt: Date.now(),
-                  },
-                ],
-              });
-            }
+            await compactSession(opts.store, opts.sessionId, async (texts) => {
+              return `[Compacted ${texts.length} earlier messages due to context overflow]`;
+            });
             await emit({ type: "compaction_end" });
             continue; // retry with compacted context
           }
 
           const isFatal = !(err instanceof ProviderError) || !err.retryable;
-          await emit({
-            type: "turn_failed",
-            error: err instanceof Error ? err.message : String(err),
-          });
           if (isFatal) {
             status = "failed";
-            await emit({ type: "agent_end" });
+            await emit({ type: "agent_end", status });
             controller = null;
             return;
           }
@@ -243,20 +218,24 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
         }
       }
 
-      if (step >= opts.maxSteps && status === "running") {
+      if (controller.signal.aborted) {
+        status = "stopped";
+        await emit({ type: "agent_end", status });
+      } else if (step >= opts.maxSteps && status === "running") {
         status = "failed";
-        await emit({ type: "agent_end" });
+        await emit({ type: "agent_end", status });
       } else if (status === "running") {
         status = "completed";
-        await emit({ type: "agent_end" });
+        await emit({ type: "agent_end", status });
       }
     } catch (err) {
+      // Surface failure through agent_end status only; raw error text never
+      // enters events or the tree (credential-safe).
+      void err;
       status = "failed";
-      await emit({ type: "turn_failed", error: err instanceof Error ? err.message : String(err) });
-      await emit({ type: "agent_end" });
+      await emit({ type: "agent_end", status });
     } finally {
       controller = null;
-      if (status === "running") status = "completed";
     }
   }
 
@@ -264,9 +243,15 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
     let assistantText = "";
     const toolCallBuilders = new Map<string, { id: string; name: string; jsonParts: string[] }>();
 
+    await emit({ type: "message_start" });
     const stream = retryStream(
       (signal) => opts.modelStream(messages, signal),
-      { maxAttempts: opts.maxRetries ?? 3, baseDelayMs: 1000 },
+      {
+        maxAttempts: opts.maxRetries ?? 3,
+        baseDelayMs: 1000,
+        onRetryStart: (attempt) => emit({ type: "retry_start", attempt }),
+        onRetryEnd: () => emit({ type: "retry_end" }),
+      },
       controller?.signal,
     );
 
@@ -287,6 +272,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
         if (builder) builder.jsonParts.push(chunk.delta.partial_json);
       }
     }
+    await emit({ type: "message_end" });
 
     // Persist assistant text if any
     if (assistantText) {
@@ -316,7 +302,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
   ): Promise<Array<{ id: string; result: unknown }>> {
     const results: Array<{ id: string; result: unknown }> = [];
     for (const call of calls) {
-      await emit({ type: "tool_execution_start" });
+      await emit({ type: "tool_execution_start", toolName: call.name });
       const tool = toolMap.get(call.name);
       let result: unknown;
       if (tool) {
@@ -329,7 +315,11 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
         result = { error: `Unknown tool: ${call.name}` };
       }
       results.push({ id: call.id, result });
-      await emit({ type: "tool_execution_end" });
+      await emit({
+        type: "tool_execution_end",
+        toolName: call.name,
+        result: (result ?? {}) as Readonly<Record<string, unknown>>,
+      });
     }
     return results;
   }
@@ -397,22 +387,11 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
 
     async compact() {
       await emit({ type: "compaction_start" });
-      // Simple truncation: remove oldest messages past a threshold
-      const entries = await opts.store.readBranch(opts.sessionId);
-      const msgEntries = entries.filter((e) => e.type === "message");
-      if (msgEntries.length > 8) {
-        const summary = `[Compacted ${msgEntries.length - 4} earlier messages]`;
-        await opts.store.appendBatch(opts.sessionId, {
-          entries: [
-            {
-              type: "compaction",
-              summary,
-              coversEntryIds: msgEntries.slice(0, -4).map((e) => e.entryId),
-              createdAt: Date.now(),
-            },
-          ],
-        });
-      }
+      // Manual compaction shares the one compaction implementation with
+      // threshold/overflow triggers.
+      await compactSession(opts.store, opts.sessionId, async (texts) => {
+        return `[Compacted ${texts.length} earlier messages]`;
+      });
       await emit({ type: "compaction_end" });
     },
 

@@ -1,4 +1,4 @@
-import type { AgentRunSnapshot, ProjectedHistoryItem } from "@my-agent-team/agent-backend";
+import type { ProjectedHistoryItem } from "@my-agent-team/agent-backend";
 import type { AppendBatchInput } from "../persistence/session-store.js";
 
 export interface LoopInputResult {
@@ -12,17 +12,17 @@ export interface LoopInputDeps {
   readonly systemPrompt: string;
   readonly metaText: string;
   readonly promptText: string;
+  /** Projected Product history to sync idempotently (productEntryId). */
+  readonly history?: readonly ProjectedHistoryItem[];
 }
 
 export function buildLoopInput(
-  history: readonly ProjectedHistoryItem[],
-  _snapshot: AgentRunSnapshot<string>,
   deps: LoopInputDeps,
-  mode: "normal" | "steer" | "follow_up" = "normal",
+  mode: "normal" | "follow_up" = "normal",
 ): LoopInputResult {
   const items: AppendBatchInput["entries"][number][] = [];
 
-  for (const item of history) {
+  for (const item of deps.history ?? []) {
     items.push({
       type: "message",
       productEntryId: item.productEntryId,
@@ -34,23 +34,22 @@ export function buildLoopInput(
   }
 
   const metaId = crypto.randomUUID().replace(/-/g, "").slice(0, 26);
-  if (mode !== "steer") {
-    items.push({
-      type: "message",
-      productEntryId: null,
-      role: "user",
-      source: "meta",
-      message: { role: "user", text: deps.metaText },
-      createdAt: Date.now(),
-    } as AppendBatchInput["entries"][number]);
-  }
+  // Every new loop gets exactly one Meta user message.
+  items.push({
+    type: "message",
+    productEntryId: null,
+    role: "user",
+    source: "meta",
+    message: { role: "user", text: deps.metaText },
+    createdAt: Date.now(),
+  } as AppendBatchInput["entries"][number]);
 
   const promptId = crypto.randomUUID().replace(/-/g, "").slice(0, 26);
   items.push({
     type: "message",
     productEntryId: null,
     role: "user",
-    source: mode === "steer" ? "steer" : mode === "follow_up" ? "follow_up" : "prompt",
+    source: mode === "follow_up" ? "follow_up" : "prompt",
     message: { role: "user", text: deps.promptText },
     createdAt: Date.now(),
   } as AppendBatchInput["entries"][number]);

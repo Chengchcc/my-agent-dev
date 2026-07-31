@@ -1,4 +1,4 @@
-import type { AIMessageChunk, ChatModel, Tool } from "@my-agent-team/core";
+import type { AIMessageChunk, Tool } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 
 /** 模型输入模态 */
@@ -33,21 +33,22 @@ export interface ProviderAuth {
   headers?: Record<string, string>;
 }
 
-/** 一个 LLM 提供商的运行时定义。 */
+/** 一个 LLM 提供商的运行时定义。Provider 不缓存 credential-bearing ChatModel；
+ *  credential 由 ModelRuntime 每次 request resolve 后传入 stream。 */
 export interface Provider {
   readonly id: string;
   readonly name: string;
   readonly baseUrl?: string;
   getModels(): readonly Model[];
-  createModel(model: Model, auth?: ProviderAuth): ChatModel;
+  stream(
+    model: Model,
+    messages: readonly Message[],
+    opts?: ProviderStreamOptions,
+  ): AsyncIterable<AIMessageChunk>;
 }
 
-/** API 类型标识。 */
-export type KnownApi = "anthropic-messages" | "openai-completions";
-export type Api = KnownApi | (string & {});
-
-/** API 流选项。 */
-export interface ApiStreamOptions {
+/** Per-request provider stream options. Credentials are resolved per request. */
+export interface ProviderStreamOptions {
   apiKey?: string;
   baseUrl?: string;
   headers?: Record<string, string>;
@@ -55,14 +56,9 @@ export interface ApiStreamOptions {
   tools?: readonly Tool[];
 }
 
-/** API 实现接口 -- 每个 API 导出一个 stream 函数。 */
-export interface ApiImplementation {
-  stream(
-    model: Model,
-    messages: readonly Message[],
-    options?: ApiStreamOptions,
-  ): AsyncIterable<AIMessageChunk>;
-}
+/** API 类型标识（模型元数据，仅用于 catalog 标记）。 */
+export type KnownApi = "anthropic-messages" | "openai-completions";
+export type Api = KnownApi | (string & {});
 
 // ─── Phase 2: ModelRuntime (provider registry + credential store) ───
 
@@ -96,6 +92,45 @@ export class ProviderError extends Error {
     this.raw = opts?.raw;
     this.retryable = kind === "transient" || kind === "overload";
   }
+}
+
+const OVERFLOW_RE = /context|too long|maximum|overflow|token limit/i;
+
+/** Normalize a raw provider error into a ProviderError, redacting credential
+ *  material from the message. Shared by all providers. */
+export function normalizeProviderError(
+  err: unknown,
+  redactSecrets: readonly string[] = [],
+): ProviderError {
+  let msg = err instanceof Error ? err.message : String(err);
+  for (const secret of redactSecrets) {
+    if (secret) msg = msg.replaceAll(secret, "[REDACTED]");
+  }
+  const s = msg.match(/status[= ](\d+)/);
+  const code = s ? Number(s[1]) : undefined;
+  // Context-length errors (400/422 with body mentioning limits) are overflow,
+  // a distinct retryable-after-compaction category from invalid_request.
+  if (code === 400 || code === 422) {
+    if (OVERFLOW_RE.test(msg)) {
+      return new ProviderError(msg, "overflow", { statusCode: code, raw: err });
+    }
+    return new ProviderError(msg, "invalid_request", { statusCode: code, raw: err });
+  }
+  if (code === 401 || code === 403)
+    return new ProviderError(msg, "auth", { statusCode: code, raw: err });
+  if (code === 429) return new ProviderError(msg, "overload", { statusCode: code, raw: err });
+  if (code !== undefined && code >= 500)
+    return new ProviderError(msg, "transient", { statusCode: code, raw: err });
+  if (
+    msg.includes("fetch") ||
+    msg.includes("network") ||
+    msg.includes("ECONN") ||
+    msg.includes("timeout")
+  )
+    return new ProviderError(msg, "transient", { raw: err });
+  if (err instanceof DOMException && err.name === "AbortError")
+    return new ProviderError(msg, "aborted", { raw: err });
+  return new ProviderError(msg, "fatal", { raw: err });
 }
 
 /** Resolved credential for a model request. */

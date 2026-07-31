@@ -86,13 +86,15 @@ export function createModelRuntime(opts: ModelRuntimeOptions = {}): ModelRuntime
       const models = provider.getModels();
       const matched = models.find((m) => m.id === modelId);
       if (!matched) throw new Error(`Model "${modelId}" not found`);
+      // Credential resolved per request; provider never caches it.
       const credential = store ? ((await store.resolve(providerId)) ?? {}) : {};
-      const chatModel = provider.createModel(matched, {
+      yield* provider.stream(matched, messages, {
         apiKey: credential.apiKey,
         baseUrl: credential.baseUrl,
         headers: credential.headers,
+        signal: opts?.signal,
+        tools: opts?.tools,
       });
-      yield* chatModel.stream(messages, { signal: opts?.signal, tools: opts?.tools });
     },
   };
 }
