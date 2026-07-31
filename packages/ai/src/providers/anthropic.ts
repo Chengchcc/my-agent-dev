@@ -100,6 +100,8 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
               const reader = res.body.getReader();
               const dec = new TextDecoder();
               let buf = "";
+              // Track content block index → tool_use ID for input_json_delta pairing
+              const blockIdByIndex = new Map<number, string>();
               while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -113,8 +115,7 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
                   if (data === "[DONE]") return;
                   try {
                     const p = JSON.parse(data);
-                    const chunk = convertChunk(p);
-                    if (chunk) yield chunk;
+                    for (const chunk of convertChunks(p, blockIdByIndex)) yield chunk;
                   } catch {
                     /* skip */
                   }
@@ -132,40 +133,58 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
   };
 }
 
-function convertChunk(raw: Record<string, unknown>): AIMessageChunk | null {
+function* convertChunks(
+  raw: Record<string, unknown>,
+  blockIdByIndex: Map<number, string>,
+): Generator<AIMessageChunk> {
   const type = raw.type as string;
-  if (type === "content_block_delta") {
-    const d = raw.delta as Record<string, unknown>;
-    if (d?.type === "text_delta")
-      return { delta: { type: "text", text: (d.text as string) ?? "" } };
-    if (d?.type === "input_json_delta")
-      return {
-        delta: { type: "input_json_delta", id: "", partial_json: (d.partial_json as string) ?? "" },
-      };
-  }
+
   if (type === "content_block_start") {
     const block = raw.content_block as Record<string, unknown>;
+    const index = raw.index as number;
     if (block?.type === "tool_use") {
-      return {
-        delta: {
-          type: "tool_use",
-          id: (block.id as string) ?? "",
-          name: (block.name as string) ?? "",
-        },
+      const id = (block.id as string) ?? "";
+      blockIdByIndex.set(index, id);
+      yield { delta: { type: "tool_use", id, name: (block.name as string) ?? "" } };
+    }
+    return;
+  }
+
+  if (type === "content_block_delta") {
+    const d = raw.delta as Record<string, unknown>;
+    if (d?.type === "text_delta") {
+      yield { delta: { type: "text", text: (d.text as string) ?? "" } };
+      return;
+    }
+    if (d?.type === "input_json_delta") {
+      const index = raw.index as number;
+      const id = blockIdByIndex.get(index) ?? "";
+      yield {
+        delta: { type: "input_json_delta", id, partial_json: (d.partial_json as string) ?? "" },
       };
+      return;
     }
   }
+
   if (type === "message_delta") {
     const d = raw.delta as Record<string, unknown>;
-    if ((d as { stop_reason?: string }).stop_reason === "tool_use")
-      return { stopReason: "tool_use" };
-    if ((d as { stop_reason?: string }).stop_reason === "end_turn")
-      return { stopReason: "end_turn" };
+    if ((d as { stop_reason?: string }).stop_reason === "tool_use") {
+      yield { stopReason: "tool_use" };
+      return;
+    }
+    if ((d as { stop_reason?: string }).stop_reason === "end_turn") {
+      yield { stopReason: "end_turn" };
+      return;
+    }
   }
-  if (type === "message_stop") return { done: true };
+
+  if (type === "message_stop") {
+    yield { done: true };
+    return;
+  }
+
   const usage = raw.usage as Record<string, number> | undefined;
   if (usage) {
-    return { usage: { input: usage.input_tokens ?? 0, output: usage.output_tokens ?? 0 } };
+    yield { usage: { input: usage.input_tokens ?? 0, output: usage.output_tokens ?? 0 } };
   }
-  return null;
 }

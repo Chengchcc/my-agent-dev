@@ -62,7 +62,7 @@ export function createOpenAICompatProvider(config: OpenAICompatProviderConfig): 
                   if (m.blocks && m.blocks.length > 0) {
                     const toolCalls = m.blocks
                       .filter((b) => b.type === "tool_use")
-                      .map((b, i) => ({
+                      .map((b, _i) => ({
                         id: b.id,
                         type: "function" as const,
                         function: { name: b.name, arguments: JSON.stringify(b.input) },

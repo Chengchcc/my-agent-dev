@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { globTool } from "./glob.js";
+import { createGlobTool } from "./glob.js";
 
 describe("globTool", () => {
   test("matches files by pattern", async () => {
@@ -9,10 +9,8 @@ describe("globTool", () => {
     await Bun.write(`${tmpDir}/b.ts`, "");
     await Bun.write(`${tmpDir}/c.txt`, "");
 
-    const result = await globTool.execute({
-      pattern: "*.ts",
-      cwd: tmpDir,
-    });
+    const tool = createGlobTool({ workspaceRoot: tmpDir });
+    const result = await tool.execute({ pattern: "*.ts" });
 
     expect(result.content).toInclude("a.ts");
     expect(result.content).toInclude("b.ts");
@@ -24,25 +22,21 @@ describe("globTool", () => {
     const tmpDir = `/tmp/test-glob-${Date.now()}`;
     await Bun.$`mkdir -p ${tmpDir}`.quiet();
 
-    const result = await globTool.execute({
-      pattern: "*.xyz",
-      cwd: tmpDir,
-    });
+    const tool = createGlobTool({ workspaceRoot: tmpDir });
+    const result = await tool.execute({ pattern: "*.xyz" });
 
     expect(result.content).toBe("(no matches)");
     await Bun.$`rm -rf ${tmpDir}`.quiet();
   });
 
-  test("cwd parameter works", async () => {
+  test("subdirectory cwd works within workspace", async () => {
     const tmpDir = `/tmp/test-glob-${Date.now()}`;
     await Bun.$`mkdir -p ${tmpDir}/sub`.quiet();
     await Bun.write(`${tmpDir}/sub/x.ts`, "");
     await Bun.write(`${tmpDir}/y.ts`, "");
 
-    const result = await globTool.execute({
-      pattern: "*.ts",
-      cwd: `${tmpDir}/sub`,
-    });
+    const tool = createGlobTool({ workspaceRoot: tmpDir });
+    const result = await tool.execute({ pattern: "*.ts", cwd: "sub" });
 
     expect(result.content).toInclude("x.ts");
     expect(result.content).not.toInclude("y.ts");

@@ -74,6 +74,7 @@ export const ProviderErrorKind = {
   InvalidRequest: "invalid_request",
   Fatal: "fatal",
   Aborted: "aborted",
+  Overflow: "overflow",
 } as const;
 export type ProviderErrorKind = (typeof ProviderErrorKind)[keyof typeof ProviderErrorKind];
 

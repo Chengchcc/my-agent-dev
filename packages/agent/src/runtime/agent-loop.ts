@@ -88,6 +88,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
 
       let step = 0;
       let forceContinues = 0;
+      let overflowCompacted = false;
 
       while (step < opts.maxSteps) {
         if (controller.signal.aborted) break;
@@ -204,6 +205,29 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
           await emit({ type: "turn_end", turn: step });
           if (stopped) break;
         } catch (err) {
+          // Overflow: one-shot compaction recovery
+          if (err instanceof ProviderError && err.kind === "overflow" && !overflowCompacted) {
+            overflowCompacted = true;
+            await emit({ type: "compaction_start" });
+            // Trigger compaction
+            const entries = await opts.store.readBranch(opts.sessionId);
+            const msgEntries = entries.filter((e) => e.type === "message");
+            if (msgEntries.length > 4) {
+              await opts.store.appendBatch(opts.sessionId, {
+                entries: [
+                  {
+                    type: "compaction",
+                    summary: `[Compacted ${msgEntries.length - 4} earlier messages due to context overflow]`,
+                    coversEntryIds: msgEntries.slice(0, -4).map((e) => e.entryId),
+                    createdAt: Date.now(),
+                  },
+                ],
+              });
+            }
+            await emit({ type: "compaction_end" });
+            continue; // retry with compacted context
+          }
+
           const isFatal = !(err instanceof ProviderError) || !err.retryable;
           await emit({
             type: "turn_failed",
@@ -215,7 +239,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
             controller = null;
             return;
           }
-          // Retryable: continue loop (retryStream handles backoff)
+          // Retryable: retryStream handles backoff internally
         }
       }
 
@@ -329,7 +353,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
       .filter((e) => {
         if (e.type !== "message") return false;
         // If compaction exists, skip covered entries
-        if (coveredIds && coveredIds.has(e.entryId)) return false;
+        if (coveredIds?.has(e.entryId)) return false;
         return true;
       })
       .map((e) => {
@@ -337,7 +361,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
         // Prepend compaction summary as a system note if entries were compacted
         return msg;
       })
-      .flatMap((msg, _i, arr) => {
+      .flatMap((msg, _i, _arr) => {
         // Insert summary as first user message if compaction applied
         if (_i === 0 && compactionSummary && coveredIds && coveredIds.size > 0) {
           return [
