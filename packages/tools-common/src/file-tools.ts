@@ -24,6 +24,14 @@ function safePath(cwd: string, userPath: string): string | null {
   }
 }
 
+function safePathNew(cwd: string, userPath: string): string | null {
+  try {
+    const sandbox = new WorkspaceSandbox(cwd);
+    return sandbox.validateNew(userPath);
+  } catch {
+    return null;
+  }
+}
 /** Resolve a path against a fixed workspace root using realpath containment. */
 export function resolveWorkspacePath(root: string, userPath: string): string | null {
   try {
@@ -156,7 +164,7 @@ export function createWriteTool(opts: { cwd: string }): Tool {
     },
     async execute(input: unknown) {
       const rec = input as InputRec;
-      const full = safePath(cwd, String(rec.path ?? ""));
+      const full = safePathNew(cwd, String(rec.path ?? ""));
       if (!full) return { content: "Error: path escapes workspace", isError: true };
       try {
         mkdirSync(resolve(full, ".."), { recursive: true });

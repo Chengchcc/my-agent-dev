@@ -25,13 +25,27 @@ export class WorkspaceSandbox {
     return resolved;
   }
 
-  /** Validate a new path for creation (checks nearest existing parent). */
+  /** Validate a new path for creation. Walks up to the nearest existing
+   *  parent and checks its realpath is within root. This catches cases
+   *  where an intermediate directory is a symlink pointing outside. */
   validateNew(target: string): string {
     const resolved = this.resolve(target);
-    // For new files, check the parent directory exists and is within root
-    const { dir } = this.parsePath(resolved);
-    const parentReal = realpathSafe(dir);
-    if (!parentReal || (!parentReal.startsWith(`${this.root}/`) && parentReal !== this.root)) {
+    if (!resolved.startsWith(`${this.root}/`) && resolved !== this.root) {
+      throw new WorkspaceEscapeError(target, this.root);
+    }
+    // Walk up to find nearest existing parent
+    let checkPath = resolved;
+    const tried: string[] = [];
+    while (checkPath !== this.root && checkPath !== "/") {
+      if (existsSync(checkPath)) break;
+      tried.push(checkPath);
+      const idx = checkPath.lastIndexOf("/");
+      if (idx <= 0) break;
+      checkPath = checkPath.slice(0, idx);
+    }
+    // Check realpath of the nearest existing ancestor
+    const real = realpathSafe(checkPath);
+    if (!real || (!real.startsWith(`${this.root}/`) && real !== this.root)) {
       throw new WorkspaceEscapeError(target, this.root);
     }
     return resolved;

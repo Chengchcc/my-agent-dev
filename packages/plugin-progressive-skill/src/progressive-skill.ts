@@ -1,6 +1,15 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import type { MetaSectionProvider, Plugin, PluginTool } from "@my-agent-team/agent";
+import { readdirSync, readFileSync, existsSync, realpathSync, statSync } from "node:fs";
+import { join, resolve, isAbsolute } from "node:path";
+import type { Plugin, PluginTool, MetaSectionProvider } from "@my-agent-team/agent";
+
+function isWithinRoot(root: string, target: string): boolean {
+  try {
+    const real = realpathSync(target);
+    return real === root || real.startsWith(root + "/");
+  } catch {
+    return false;
+  }
+}
 
 export interface SkillIndexEntry {
   readonly name: string;
@@ -26,7 +35,6 @@ export function buildSkillIndex(roots: readonly string[]): SkillIndexEntry[] {
   );
   return entries;
 }
-
 function scanDir(root: string, currentDir: string, entries: SkillIndexEntry[]): void {
   let items: string[];
   try {
@@ -37,6 +45,9 @@ function scanDir(root: string, currentDir: string, entries: SkillIndexEntry[]): 
 
   for (const item of items) {
     const fullPath = join(currentDir, item);
+    // Skip symlinks/dirs pointing outside root
+    if (!isWithinRoot(root, fullPath)) continue;
+
     if (item === "SKILL.md") {
       const parsed = parseFrontmatter(fullPath);
       if (parsed) {
@@ -49,12 +60,11 @@ function scanDir(root: string, currentDir: string, entries: SkillIndexEntry[]): 
       }
       continue;
     }
-    // Recurse into subdirectories (max depth 3 to avoid deep scans)
+    // Recurse into subdirectories (max depth 3)
     const depth = currentDir.split("/").length - root.split("/").length;
     if (depth < 3) {
       try {
-        const stat = readdirSync(fullPath);
-        if (stat.length > 0) scanDir(root, fullPath, entries);
+        if (statSync(fullPath).isDirectory()) scanDir(root, fullPath, entries);
       } catch {
         /* not a dir */
       }
@@ -105,10 +115,9 @@ export function createProgressiveSkillPlugin(opts: ProgressiveSkillOptions): Plu
       const entry = index.find((s) => s.name === name);
       if (!entry) return { error: `Skill "${name}" not found` };
 
-      // Resolve and validate path within root
+      // Resolve and validate path within root using realpath
       const fullPath = resolve(entry.root, entry.relativePath);
-      // Prevent escape: must start with root
-      if (!fullPath.startsWith(resolve(entry.root))) {
+      if (!isWithinRoot(resolve(entry.root), fullPath)) {
         return { error: "Path escape detected" };
       }
       if (!existsSync(fullPath)) return { error: `Skill file not found` };

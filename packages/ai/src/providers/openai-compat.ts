@@ -105,7 +105,10 @@ export function createOpenAICompatProvider(config: OpenAICompatProviderConfig): 
                 body: JSON.stringify(body),
                 signal: options?.signal,
               });
-              if (!res.ok) throw new Error(`OpenAI error status=${res.status}`);
+              if (!res.ok) {
+                const errBody = await res.text().catch(() => "");
+                throw new Error(`OpenAI error status=${res.status} ${errBody}`);
+              }
               if (!res.body) throw new Error("No response body");
 
               const reader = res.body.getReader();
