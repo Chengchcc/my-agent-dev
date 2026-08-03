@@ -3,7 +3,7 @@ import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 import type { SessionStore } from "../persistence/session-store.js";
 import type { AgentLoopListener, CodingAgentLoopEvent } from "./agent-event.js";
-import { compactSession } from "./compaction.js";
+import { type CompactionBudget, compactSession } from "./compaction.js";
 import type { LoopInputDeps } from "./loop-input.js";
 import { buildLoopInput } from "./loop-input.js";
 import type { Plugin } from "./plugin.js";
@@ -27,15 +27,13 @@ export type ContextSummarizer = (
   signal?: AbortSignal,
 ) => Promise<string>;
 
-/** Token-aware context budget for proactive compaction. Phase 3 injects a
- *  real model limit and token estimator; tests inject a simple char/4 proxy. */
-export interface ContextBudget {
-  /** Estimate token cost of a single message (first version: chars/4). */
-  estimate(message: Message): number;
-  /** Maximum token budget for the active context window. */
-  limit: number;
+/** Token-aware context budget for proactive compaction. Extends the compaction
+ *  budget with a trigger ratio: compaction triggers when estimated tokens
+ *  exceed limit * triggerRatio. Phase 3 injects a real model limit and token
+ *  estimator; tests inject a simple char/4 proxy. */
+export interface ContextBudget extends CompactionBudget {
   /** Compaction triggers when estimated tokens exceed limit * triggerRatio. */
-  triggerRatio: number;
+  readonly triggerRatio: number;
 }
 
 export interface CodingAgentSessionOptions {

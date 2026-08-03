@@ -4,8 +4,6 @@ import type { AppendBatchInput } from "../persistence/session-store.js";
 export interface LoopInputResult {
   readonly batch: AppendBatchInput;
   readonly systemPrompt: string;
-  readonly metaMessageId: string;
-  readonly promptMessageId: string;
 }
 
 export interface LoopInputDeps {
@@ -33,7 +31,6 @@ export function buildLoopInput(
     } as AppendBatchInput["entries"][number]);
   }
 
-  const metaId = crypto.randomUUID().replace(/-/g, "").slice(0, 26);
   // Every new loop gets exactly one Meta user message.
   items.push({
     type: "message",
@@ -44,7 +41,6 @@ export function buildLoopInput(
     createdAt: Date.now(),
   } as AppendBatchInput["entries"][number]);
 
-  const promptId = crypto.randomUUID().replace(/-/g, "").slice(0, 26);
   items.push({
     type: "message",
     productEntryId: null,
@@ -57,7 +53,5 @@ export function buildLoopInput(
   return {
     batch: { entries: items },
     systemPrompt: deps.systemPrompt,
-    metaMessageId: metaId,
-    promptMessageId: promptId,
   };
 }

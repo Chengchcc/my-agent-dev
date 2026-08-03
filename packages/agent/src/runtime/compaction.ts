@@ -7,7 +7,8 @@ export interface CompactionResult {
   readonly coveredIds: readonly string[];
 }
 
-/** Context budget used for token-aware cut points. */
+/** Token budget used for compaction cut points. `estimate` is a per-message
+ *  token cost; `limit` is the target ceiling for the retained context. */
 export interface CompactionBudget {
   estimate(message: Message): number;
   limit: number;
