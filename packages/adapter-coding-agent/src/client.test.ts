@@ -90,4 +90,19 @@ describe("CodingAgentClient SSE parser", () => {
     const outcome = await client(fetchImpl).getOutcome("r");
     expect(outcome).toBeNull();
   });
+
+  test("streamEvents surfaces structured error codes (not all internal)", async () => {
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ code: "replay_window_exceeded", message: "too old" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      })) as typeof fetch;
+    await expect(
+      (async () => {
+        for await (const _ev of client(fetchImpl).streamEvents("r")) {
+          void _ev;
+        }
+      })(),
+    ).rejects.toMatchObject({ code: "replay_window_exceeded" });
+  });
 });

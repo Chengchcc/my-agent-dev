@@ -69,4 +69,40 @@ describe("run event buffer", () => {
     expect(seen).toEqual([0]);
     expect(buf.lastId()).toBe(0);
   });
+
+  test("a throwing sink is evicted (slow-subscriber path)", () => {
+    const buf = createRunEventBuffer(10);
+    const ok: number[] = [];
+    let throws = 0;
+    // First subscriber throws once (simulating a slow-subscriber eviction),
+    // then must be removed so it does not keep throwing.
+    buf.subscribeAfter(-1, () => {
+      throws++;
+      throw new Error("slow");
+    });
+    buf.subscribeAfter(-1, (e) => ok.push(e.id));
+    buf.append({ type: "a", data: {} });
+    buf.append({ type: "b", data: {} });
+    // The healthy subscriber still receives both; the throwing one was evicted
+    // after the first event (no second throw).
+    expect(ok).toEqual([0, 1]);
+    expect(throws).toBe(1);
+  });
+
+  test("onClose fires once when the buffer closes", () => {
+    const buf = createRunEventBuffer(10);
+    let fired = 0;
+    buf.onClose(() => fired++);
+    buf.close();
+    buf.close();
+    expect(fired).toBe(1);
+  });
+
+  test("onClose registered after close fires immediately", () => {
+    const buf = createRunEventBuffer(10);
+    buf.close();
+    let fired = 0;
+    buf.onClose(() => fired++);
+    expect(fired).toBe(1);
+  });
 });

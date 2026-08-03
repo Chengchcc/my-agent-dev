@@ -149,10 +149,12 @@ export class CodingAgentClient {
     });
     if (!res.ok || !res.body) {
       const raw = await res.text().catch(() => "");
-      throw new (await import("./transport.js")).TransportError(
-        "internal",
-        `SSE failed: ${res.status} ${raw.slice(0, 200)}`,
-      );
+      const { TransportError, transportErrorSchema } = await import("./transport.js");
+      const parsed = transportErrorSchema.safeParse(raw ? JSON.parse(raw) : null);
+      if (parsed.success) {
+        throw new TransportError(parsed.data.code, parsed.data.message);
+      }
+      throw new TransportError("internal", `SSE failed: ${res.status} ${raw.slice(0, 200)}`);
     }
 
     const reader = res.body.getReader();

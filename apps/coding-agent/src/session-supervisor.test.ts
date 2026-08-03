@@ -330,7 +330,7 @@ describe("session supervisor", () => {
       // The wake send resolves on acceptance; confirm the registry reflects
       // the live worker (tolerant of a brief async update window under load).
       let woke = sleepSup.listSessions().find((v) => v.backendSessionId === "sess-sleep");
-      for (let i = 0; i < 50 && (!woke || woke.state !== "live" || woke.workerPid === null); i++) {
+      for (let i = 0; i < 50 && (woke?.state !== "live" || woke.workerPid === null); i++) {
         await new Promise((r) => setTimeout(r, 10));
         woke = sleepSup.listSessions().find((v) => v.backendSessionId === "sess-sleep");
       }

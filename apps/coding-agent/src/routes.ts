@@ -9,6 +9,9 @@ import { bearerToken, verifyToken } from "./auth.js";
 import { ReplayWindowExceededError, type RunEventBuffer } from "./event-buffer.js";
 import type { CodingSessionSupervisor } from "./session-supervisor.js";
 
+/** Max queued chunks before a slow SSE subscriber is evicted (its stream is
+ *  closed; the run keeps flowing for others). Bounds memory per connection. */
+const SLOW_SUBSCRIBER_LIMIT = 64;
 export interface RouteDeps {
   supervisor: CodingSessionSupervisor;
   authToken: string;
@@ -233,6 +236,12 @@ export function createRoutes(deps: RouteDeps): Elysia {
         // Capture the unsubscribe so abort removes the sink from the buffer's
         // subscriber set (no leak across reconnects).
         const unsubscribe = buf.subscribeAfter(lastEventId, (event) => {
+          // Slow-subscriber bound: if the reader falls behind (queue backed
+          // up past the threshold), evict this subscriber by throwing - the
+          // buffer removes it so the run keeps flowing for others.
+          if ((controller.desiredSize ?? 0) < -SLOW_SUBSCRIBER_LIMIT) {
+            throw new Error("slow subscriber evicted");
+          }
           controller.enqueue(encoder.encode(sseEncode(event.id, event.type, event.data)));
         });
         const cleanup = () => {

@@ -41,7 +41,9 @@ export function createRunEventBuffer(size: number): RunEventBuffer {
         try {
           sink({ id, ...event });
         } catch {
-          /* subscriber errors must not break the run */
+          // A throwing sink is either errored or a slow subscriber the route
+          // is evicting (desiredSize bound). Remove it so the run is unaffected.
+          subscribers.delete(sink);
         }
       }
       return id;
