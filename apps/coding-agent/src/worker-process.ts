@@ -90,19 +90,19 @@ export function spawnWorkerProcess(opts: WorkerProcessOptions): WorkerProcessHan
     pid: proc.pid!,
     send(cmd) {
       const stdin = proc.stdin as unknown as { write(chunk: string): void } | null;
-      stdin?.write(JSON.stringify(cmd) + "\n");
+      stdin?.write(`${JSON.stringify(cmd)}\n`);
     },
     shutdown() {
       if (shuttingDown) return;
       shuttingDown = true;
       const stdin = proc.stdin as unknown as { write(chunk: string): void } | null;
       stdin?.write(
-        JSON.stringify({
+        `${JSON.stringify({
           protocolVersion: 1,
           type: "shutdown",
           commandId: `shutdown-${Date.now()}`,
           backendSessionId: "shutdown",
-        }) + "\n",
+        })}\n`,
       );
       // Grace period, then escalate
       setTimeout(() => {
