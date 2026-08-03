@@ -123,6 +123,12 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
     switch (cmd.type) {
       case "open_session": {
         const modelRuntime = createModelRuntime();
+        // Register built-in providers from the daemon-injected env. The
+        // Anthropic provider resolves ANTHROPIC_API_KEY per request.
+        if (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) {
+          const { anthropicProvider } = await import("@my-agent-team/ai");
+          modelRuntime.registerProvider(anthropicProvider());
+        }
         runtime = opts.runtimeFactory
           ? await opts.runtimeFactory({
               dataDir: cmd.dataDir,

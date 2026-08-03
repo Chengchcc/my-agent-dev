@@ -27,7 +27,7 @@ export function createCodingAgentApp(deps: CodingAgentAppDeps): CodingAgentApp {
       workerEntry: `${import.meta.dir}/worker-main.ts`,
       cwd: process.cwd(),
       sessionsDir: deps.config.sessionsDir,
-      authEnv: {},
+      authEnv: { ...deps.config.providerEnv },
       eventBufferSize: deps.config.eventBufferSize,
       workerStopGraceMs: deps.config.workerStopGraceMs,
       acceptTimeoutMs: deps.config.acceptTimeoutMs,

@@ -15,6 +15,9 @@ export interface CodingAgentConfig {
   reapIntervalMs: number;
   workerStopGraceMs: number;
   acceptTimeoutMs: number;
+  /** Provider credentials forwarded to Workers (minimal surface: only known
+   *  provider env, never the whole process env). */
+  providerEnv: Readonly<Record<string, string>>;
   eventBufferSize: number;
 }
 
@@ -80,6 +83,13 @@ export function loadConfig(
     );
   }
 
+  // Forward only known provider credentials to Workers (minimal env surface).
+  const providerEnv: Record<string, string> = {};
+  for (const key of ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"]) {
+    const v = env[key];
+    if (v) providerEnv[key] = v;
+  }
+
   return {
     host,
     port,
@@ -87,6 +97,7 @@ export function loadConfig(
     dataDir,
     sessionsDir,
     workspaceRoots,
+    providerEnv,
     maxStartingWorkers: intField(
       "CODING_AGENT_MAX_STARTING_WORKERS",
       env.CODING_AGENT_MAX_STARTING_WORKERS,
