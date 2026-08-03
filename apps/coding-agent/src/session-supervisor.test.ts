@@ -22,7 +22,9 @@ rl.on("line", async (line) => {
   }
   if (cmd.type === "start_run") {
     stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId, runId: cmd.runId }) + "\\n");
-    // emit one event then complete
+    // emit one event then complete (slight delay keeps the run active long
+    // enough for concurrent-mutation assertions to observe an active run)
+    await new Promise((r) => setTimeout(r, 150));
     stdout.write(JSON.stringify({ protocolVersion: 1, type: "event", backendSessionId: cmd.backendSessionId, runId: cmd.runId, event: { type: "message_update", text: "hi" } }) + "\\n");
     stdout.write(JSON.stringify({ protocolVersion: 1, type: "outcome", backendSessionId: cmd.backendSessionId, runId: cmd.runId, outcome: { status: "completed" } }) + "\\n");
   }
@@ -115,14 +117,14 @@ describe("session supervisor", () => {
         backendSessionId: "sess-active",
         runId: "run-active-2",
         mode: "normal",
-        messages: [],
+        history: [],
+        input: { inputId: "in-send-1", message: { role: "user", text: "p" } },
         run: {
           runId: "run-active-2",
           model: { backendKind: "coding_agent", modelId: "m" },
           productTools: [],
           configRevision: 1,
         },
-        promptText: "p",
         metadata: { branchId: "b", productRevision: 1 },
       }),
     ).rejects.toMatchObject({ code: "busy" });
@@ -315,17 +317,23 @@ describe("session supervisor", () => {
         backendSessionId: "sess-sleep",
         runId: "run-sleep-2",
         mode: "normal",
-        messages: [],
+        history: [],
+        input: { inputId: "in-wake", message: { role: "user", text: "wake" } },
         run: {
           runId: "run-sleep-2",
           model: { backendKind: "coding_agent", modelId: "m" },
           productTools: [],
           configRevision: 1,
         },
-        promptText: "wake",
         metadata: { branchId: "b", productRevision: 1 },
       });
-      const woke = sleepSup.listSessions().find((v) => v.backendSessionId === "sess-sleep");
+      // The wake send resolves on acceptance; confirm the registry reflects
+      // the live worker (tolerant of a brief async update window under load).
+      let woke = sleepSup.listSessions().find((v) => v.backendSessionId === "sess-sleep");
+      for (let i = 0; i < 50 && (!woke || woke.state !== "live" || woke.workerPid === null); i++) {
+        await new Promise((r) => setTimeout(r, 10));
+        woke = sleepSup.listSessions().find((v) => v.backendSessionId === "sess-sleep");
+      }
       expect(woke?.state).toBe("live");
       expect(woke?.workerPid).not.toBeNull();
     } finally {
