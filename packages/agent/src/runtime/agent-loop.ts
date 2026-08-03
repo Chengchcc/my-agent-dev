@@ -27,6 +27,17 @@ export type ContextSummarizer = (
   signal?: AbortSignal,
 ) => Promise<string>;
 
+/** Token-aware context budget for proactive compaction. Phase 3 injects a
+ *  real model limit and token estimator; tests inject a simple char/4 proxy. */
+export interface ContextBudget {
+  /** Estimate token cost of a single message (first version: chars/4). */
+  estimate(message: Message): number;
+  /** Maximum token budget for the active context window. */
+  limit: number;
+  /** Compaction triggers when estimated tokens exceed limit * triggerRatio. */
+  triggerRatio: number;
+}
+
 export interface CodingAgentSessionOptions {
   readonly sessionId: string;
   readonly store: SessionStore;
@@ -39,10 +50,10 @@ export interface CodingAgentSessionOptions {
   ) => AsyncIterable<AIMessageChunk>;
   readonly summarize: ContextSummarizer;
   readonly maxRetries?: number;
-  /** Proactive compaction threshold: when the number of message entries on the
-   *  active branch exceeds this value before a model turn, compact once. Leave
-   *  undefined to disable proactive (threshold) compaction. */
-  readonly compactionThreshold?: number;
+  /** Token-aware proactive compaction budget. When estimated context tokens
+   *  exceed limit * triggerRatio before a model turn, compact once. Leave
+   *  undefined to disable proactive compaction. */
+  readonly contextBudget?: ContextBudget;
 }
 
 /** A Coding Agent Session owns the store, plugins, listeners, and lifecycle.
@@ -65,11 +76,12 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   const tools = collectTools(opts.plugins);
   const toolMap = new Map(tools.map((t) => [t.name, t]));
   let status: "idle" | "running" | "completed" | "failed" | "stopped" = "idle";
+  // Active-loop ownership is separate from terminal status: the loop is
+  // "active" from startLoop until listeners settle in finally. This prevents
+  // a concurrent startFollowUp from racing with agent_end listeners.
+  let active = false;
   let controller: AbortController | null = null;
   const steerQueue: string[] = [];
-  // Steer is only accepted when the current loop still has capacity for at
-  // least one more safe-boundary turn. Prevents accepted-but-lost steers at
-  // the final step.
   let acceptingSteer = false;
 
   async function emit(event: CodingAgentLoopEvent): Promise<void> {
@@ -83,11 +95,10 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   }
 
   async function runLoop(deps: LoopInputDeps, mode: "normal" | "follow_up"): Promise<void> {
-    if (status === "running") throw new Error("Loop already active");
+    if (active) throw new Error("Loop already active");
+    active = true;
     status = "running";
     controller = new AbortController();
-    // Each loop starts with a clean steer queue: a late steer from a previous
-    // loop must never leak into a new follow-up.
     steerQueue.length = 0;
 
     await emit({ type: "agent_start" });
@@ -145,13 +156,25 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
           // Proactive (threshold) compaction: if the branch grew past the
           // configured threshold, compact once before the model turn. Shares
           // the one compaction implementation with manual/overflow triggers.
-          if (opts.compactionThreshold !== undefined && !thresholdCompacted) {
+          if (opts.contextBudget && !thresholdCompacted) {
             const branch = await opts.store.readBranch(opts.sessionId);
-            const msgCount = branch.filter((e) => e.type === "message").length;
-            if (msgCount > opts.compactionThreshold) {
-              thresholdCompacted = true; // at most one proactive compaction per loop
+            const msgEntries = branch.filter((e) => e.type === "message") as Array<{
+              message: Message;
+            }>;
+            const totalTokens = msgEntries.reduce(
+              (sum, e) => sum + opts.contextBudget!.estimate(e.message),
+              0,
+            );
+            if (totalTokens > opts.contextBudget.limit * opts.contextBudget.triggerRatio) {
+              thresholdCompacted = true;
               await emit({ type: "compaction_start" });
-              await compactSession(opts.store, opts.sessionId, opts.summarize, controller?.signal);
+              await compactSession(
+                opts.store,
+                opts.sessionId,
+                opts.summarize,
+                controller?.signal,
+                opts.contextBudget,
+              );
               await emit({ type: "compaction_end" });
               messages = await readBranchMessages();
             }
@@ -315,6 +338,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       status = controller?.signal.aborted ? "stopped" : "failed";
       await emit({ type: "agent_end", status });
     } finally {
+      active = false;
       controller = null;
       steerQueue.length = 0;
       acceptingSteer = false;

@@ -24,6 +24,7 @@ export type { AgentLoopListener, CodingAgentLoopEvent } from "./runtime/agent-ev
 export type {
   CodingAgentSession,
   CodingAgentSessionOptions,
+  ContextBudget,
   ContextSummarizer,
 } from "./runtime/agent-loop.js";
 export { createCodingAgentSession } from "./runtime/agent-loop.js";

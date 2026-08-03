@@ -25,6 +25,10 @@ export interface CompactionEntry {
   readonly parentId: string | null;
   readonly summary: string;
   readonly coversEntryIds: readonly string[];
+  /** Estimated token count of covered messages before compaction. */
+  readonly tokensBefore?: number;
+  /** Entry IDs deliberately left uncovered (the retained tail). */
+  readonly retainedEntryIds?: readonly string[];
   readonly createdAt: number;
 }
 

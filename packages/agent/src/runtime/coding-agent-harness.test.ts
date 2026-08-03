@@ -390,7 +390,11 @@ function testHarness(
         maxSteps: 1,
         maxForceContinues: 0,
         summarize: fakeSummarize,
-        compactionThreshold: 4,
+        contextBudget: {
+          estimate: (m: { text?: string }) => Math.ceil((m.text ?? "").length / 4),
+          limit: 10,
+          triggerRatio: 0.5,
+        },
         modelStream: async function* () {
           yield { delta: { type: "text", text: "done" } };
         },
@@ -661,7 +665,7 @@ function testHarness(
       let signalSeen: AbortSignal | undefined;
       // Deterministic handshake: the tool resolves `toolStarted` once it is
       // running, so the test waits on a real signal instead of guessing a delay.
-      const { promise: _toolStarted, resolve: toolStartedResolve } = Promise.withResolvers<void>();
+      const { promise: toolStarted, resolve: toolStartedResolve } = Promise.withResolvers<void>();
       const slowTool = {
         name: "slow",
         description: "Long-running tool",
@@ -696,7 +700,7 @@ function testHarness(
       });
       const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
       // Wait for the tool to actually start, then stop() to abort it.
-      void _toolStarted;
+      await toolStarted;
       loop.stop();
       await started;
       expect(loop.status).toBe("stopped");
@@ -892,7 +896,8 @@ function testHarness(
         receivedMessages = [...messages];
         return `[Summary with ${messages.length} messages]`;
       };
-      // Seed 8 entries: tool exchange at positions 2-3, within the 60% cut
+      // Seed 10 entries: tool exchange at positions 2-3, enough trailing msgs
+      // so the token-aware cut keeps both fully covered (no pair adjustment).
       await store.appendBatch("h8f", {
         entries: [
           {
@@ -945,7 +950,7 @@ function testHarness(
           },
         ],
       });
-      for (let i = 4; i < 8; i++) {
+      for (let i = 4; i < 10; i++) {
         await store.appendBatch("h8f", {
           entries: [
             {
@@ -965,7 +970,11 @@ function testHarness(
         maxSteps: 1,
         maxForceContinues: 0,
         summarize: summaryWithToolBlocks,
-        compactionThreshold: 4,
+        contextBudget: {
+          estimate: (m: { text?: string }) => Math.ceil((m.text ?? "").length / 4),
+          limit: 10,
+          triggerRatio: 0.5,
+        },
         modelStream: async function* () {
           yield { delta: { type: "text", text: "done" } };
         },
@@ -1020,7 +1029,11 @@ function testHarness(
         maxSteps: 1,
         maxForceContinues: 0,
         summarize: blockingSummarizer,
-        compactionThreshold: 4,
+        contextBudget: {
+          estimate: (m: { text?: string }) => Math.ceil((m.text ?? "").length / 4),
+          limit: 10,
+          triggerRatio: 0.5,
+        },
         modelStream: async function* () {
           yield { delta: { type: "text", text: "done" } };
         },

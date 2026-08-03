@@ -50,20 +50,43 @@ export async function compactSession(
   sessionId: string,
   summarizer: (messages: readonly Message[], signal?: AbortSignal) => Promise<string>,
   signal?: AbortSignal,
+  budget?: { estimate(message: Message): number; limit: number },
 ): Promise<CompactionResult> {
   const branch = await store.readBranch(sessionId);
   const messages = branch.filter((e) => e.type === "message");
   if (messages.length < 4) return { entryId: "", coveredIds: [] };
 
-  const rawCut = Math.floor(messages.length * 0.6);
-  const cutIdx = adjustCutForToolPairs(messages, rawCut);
+  // Token-aware cut: if a budget is provided, accumulate from oldest to
+  // newest until removing enough tokens to fit under limit. Otherwise fall
+  // back to message-count heuristic.
+  let cutIdx: number;
+  let tokensBefore = 0;
+  if (budget) {
+    const allTokens = messages.reduce(
+      (sum, m) => sum + budget!.estimate((m as { message: Message }).message),
+      0,
+    );
+    tokensBefore = allTokens;
+    const limit = budget.limit;
+    let accumulated = allTokens;
+    for (let i = 0; i < messages.length; i++) {
+      const msgTokens = budget.estimate((messages[i] as { message: Message }).message);
+      if (accumulated - msgTokens < limit) break;
+      accumulated -= msgTokens;
+      cutIdx = i + 1;
+    }
+  } else {
+    cutIdx = Math.floor(messages.length * 0.6);
+  }
+
+  cutIdx = adjustCutForToolPairs(messages, cutIdx);
   const coveredEntries = messages.slice(0, cutIdx);
   const coveredIds = coveredEntries.map((m) => m.entryId);
+  const retainedIds = messages.slice(cutIdx).map((m) => m.entryId);
   const coveredMessages = coveredEntries.map((m) => (m as { message: Message }).message);
 
   const summary = await summarizer(coveredMessages, signal);
 
-  // If aborted during summarization, do not write a CompactionEntry.
   if (signal?.aborted) return { entryId: "", coveredIds: [] };
 
   const result = await store.appendBatch(sessionId, {
@@ -72,6 +95,7 @@ export async function compactSession(
         type: "compaction",
         summary,
         coversEntryIds: coveredIds,
+        ...(budget ? { tokensBefore, retainedEntryIds: retainedIds } : {}),
         createdAt: Date.now(),
       },
     ],
