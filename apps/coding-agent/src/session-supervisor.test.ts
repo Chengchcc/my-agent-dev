@@ -76,7 +76,7 @@ beforeAll(() => {
     workerStopGraceMs: 500,
     acceptTimeoutMs: 5000,
     idleTimeoutMs: 60_000,
-    workspaceRoot: wsDir,
+    workspaceRoots: [wsDir],
   });
 });
 
@@ -206,7 +206,7 @@ describe("session supervisor", () => {
       workerStopGraceMs: 500,
       acceptTimeoutMs: 5000,
       idleTimeoutMs: 60_000,
-      workspaceRoot: wsDir,
+      workspaceRoots: [wsDir],
     });
     const goodSup = supervisor; // sibling on the healthy fixture
     try {
@@ -267,7 +267,7 @@ describe("session supervisor", () => {
       workerStopGraceMs: 500,
       acceptTimeoutMs: 5000,
       idleTimeoutMs: 60_000,
-      workspaceRoot: wsDir,
+      workspaceRoots: [wsDir],
     });
     try {
       await crashSup.startSession(startInput("sess-norecover", "run-nr-1"));
@@ -294,7 +294,7 @@ describe("session supervisor", () => {
       acceptTimeoutMs: 5000,
       idleTimeoutMs: 150,
       reapIntervalMs: 50,
-      workspaceRoot: wsDir,
+      workspaceRoots: [wsDir],
     });
     try {
       await sleepSup.startSession(startInput("sess-sleep", "run-sleep-1"));

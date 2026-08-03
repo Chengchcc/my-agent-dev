@@ -10,7 +10,8 @@ export interface SessionRecord {
   state: SessionState;
   workerPid: number | null;
   activeRunId: string | null;
-  /** Pending commands keyed by commandId awaiting command_accepted. */
+  /** Validated workspace root established at start/resume; reused on wake. */
+  workspaceRoot: string;
   pendingCommands: Map<string, { commandId: string; idempotencyKey: string }>;
   lastActivityAt: number;
   /** Completed outcomes by runId (diagnostics + outcome endpoint). */
@@ -40,6 +41,7 @@ export function createSessionRecord(backendSessionId: string): SessionRecord {
     state: "starting",
     workerPid: null,
     activeRunId: null,
+    workspaceRoot: "",
     pendingCommands: new Map(),
     lastActivityAt: Date.now(),
     completedOutcomes: new Map(),

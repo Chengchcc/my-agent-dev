@@ -27,7 +27,7 @@ function makeApp() {
     workerStopGraceMs: 100,
     acceptTimeoutMs: 5000,
     idleTimeoutMs: 60_000,
-    workspaceRoot: ws,
+    workspaceRoots: [ws],
   });
   return createCodingAgentApp({ config, modelRuntime, supervisor });
 }

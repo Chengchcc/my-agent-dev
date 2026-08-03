@@ -60,7 +60,7 @@ beforeAll(() => {
     workerStopGraceMs: 500,
     acceptTimeoutMs: 5000,
     idleTimeoutMs: 60_000,
-    workspaceRoot: ws,
+    workspaceRoots: [ws],
   });
   app = createCodingAgentApp({ config, modelRuntime: createModelRuntime(), supervisor });
   server = Bun.serve({ port: 0, hostname: "127.0.0.1", idleTimeout: 0, fetch: app.fetch });

@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type {
   AgentRunSnapshot,
   BackendInputMessage,
@@ -31,7 +31,8 @@ export interface SupervisorOptions {
   idleTimeoutMs: number;
   /** sweep interval for sleeping idle sessions; 0 disables the reaper */
   reapIntervalMs?: number;
-  workspaceRoot: string;
+  /** Workspace root allowlist: requested roots must be within one of these. */
+  workspaceRoots: readonly string[];
 }
 
 export interface SessionView {
@@ -133,9 +134,22 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
   function recordMutation(key: string, payload: unknown, result: unknown): void {
     mutations.set(key, { key, payloadHash: hashPayload(payload), result });
   }
+  /** Validate a requested workspace root is within the configured allowlist.
+   *  Returns the resolved root or throws invalid_request. */
+  function validateWorkspace(root: string): string {
+    const resolved = resolve(root);
+    const allowed = opts.workspaceRoots.some(
+      (allowed) => resolved === allowed || resolved.startsWith(`${allowed}/`),
+    );
+    if (!allowed) {
+      throw err("invalid_request", `workspace root not in allowlist: ${resolved}`);
+    }
+    return resolved;
+  }
   async function ensureWorker(
     rec: SessionRecord,
     backendSessionId: string,
+    workspaceRoot: string,
   ): Promise<WorkerProcessHandle> {
     if (rec.workerPid !== null) {
       throw err("busy", `session already has a live worker: ${backendSessionId}`);
@@ -167,7 +181,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       commandId: `open-${backendSessionId}`,
       backendSessionId,
       dataDir: opts.sessionsDir.replace(/\/sessions$/, ""),
-      workspaceRoot: opts.workspaceRoot,
+      workspaceRoot,
       backendKind: "coding_agent",
     });
     return handle;
@@ -180,7 +194,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     if (rec.state === "sleeping" || rec.workerPid === null) {
       // wake: start a new Worker over the same session file
       transition(rec, "starting");
-      const handle = await ensureWorker(rec, backendSessionId);
+      const handle = await ensureWorker(rec, backendSessionId, rec.workspaceRoot);
       transition(rec, "live");
       return handle;
     }
@@ -294,12 +308,14 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       if (sessions.has(input.backendSessionId)) {
         throw err("busy", `session already exists: ${input.backendSessionId}`);
       }
+      const workspaceRoot = validateWorkspace(input.workspace.root);
       const rec = createSessionRecord(input.backendSessionId);
+      rec.workspaceRoot = workspaceRoot;
       sessions.set(input.backendSessionId, rec);
       const runId = input.run.runId;
       rec.activeRunId = runId;
       eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
-      const handle = await ensureWorker(rec, input.backendSessionId);
+      const handle = await ensureWorker(rec, input.backendSessionId, workspaceRoot);
       handles.set(input.backendSessionId, handle);
       transition(rec, "live");
       await handle.send({
