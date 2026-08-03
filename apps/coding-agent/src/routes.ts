@@ -230,25 +230,32 @@ export function createRoutes(deps: RouteDeps): Elysia {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         const encoder = new TextEncoder();
-        buf.subscribeAfter(lastEventId, (event) => {
+        // Capture the unsubscribe so abort removes the sink from the buffer's
+        // subscriber set (no leak across reconnects).
+        const unsubscribe = buf.subscribeAfter(lastEventId, (event) => {
           controller.enqueue(encoder.encode(sseEncode(event.id, event.type, event.data)));
         });
+        const cleanup = () => {
+          clearInterval(heartbeat);
+          unsubscribe();
+          try {
+            controller.close();
+          } catch {
+            /* already closed */
+          }
+        };
         // heartbeat
         const heartbeat = setInterval(() => {
           try {
             controller.enqueue(encoder.encode(": ping\n\n"));
           } catch {
-            clearInterval(heartbeat);
+            cleanup();
           }
         }, 15_000);
-        request.signal.addEventListener("abort", () => {
-          clearInterval(heartbeat);
-          try {
-            controller.close();
-          } catch {
-            /* */
-          }
-        });
+        // End the stream when the client disconnects.
+        request.signal.addEventListener("abort", cleanup);
+        // End the stream when the run settles (buffer closed by the outcome).
+        buf.onClose(cleanup);
       },
     });
     return new Response(stream, {

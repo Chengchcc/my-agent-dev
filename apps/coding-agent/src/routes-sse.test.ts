@@ -168,6 +168,69 @@ describe("daemon SSE routes", () => {
     );
     expect(res.status).toBe(202);
   });
+
+  test("SSE stream ends when the run buffer closes (outcome settled)", async () => {
+    const buf = createRunEventBuffer(100);
+    buf.append({ type: "message_update", data: { text: "a" } });
+    const config = loadConfig({
+      CODING_AGENT_AUTH_TOKEN: "token-123",
+      CODING_AGENT_DATA_DIR: tmp,
+      CODING_AGENT_WORKSPACE_ROOTS: tmp,
+    });
+    const fake: CodingSessionSupervisor = {
+      async startSession() {
+        throw new Error("ni");
+      },
+      async resumeSession() {
+        throw new Error("ni");
+      },
+      async send() {
+        throw new Error("ni");
+      },
+      async stop() {
+        return { stopped: true };
+      },
+      async compact() {
+        return { compacted: true };
+      },
+      async close() {
+        return { closed: true };
+      },
+      getEvents() {
+        return buf;
+      },
+      getOutcome() {
+        return null;
+      },
+      listSessions() {
+        return [];
+      },
+      async shutdown() {
+        /* */
+      },
+    };
+    const app = createCodingAgentApp({
+      config,
+      modelRuntime: createModelRuntime(),
+      supervisor: fake,
+    });
+    const res = await app.fetch(
+      new Request("http://localhost/v1/runs/r1/events", {
+        headers: { authorization: "Bearer token-123" },
+      }),
+    );
+    const reader = res.body!.getReader();
+    // Read the seeded event, then close the buffer (simulating outcome).
+    await reader.read();
+    buf.close();
+    const next = await Promise.race([
+      reader.read().then((r) => ({ kind: "read", ...r })),
+      new Promise((r) => setTimeout(() => r({ kind: "timeout" }), 500)),
+    ]);
+    // The stream must end (done=true), not hang on the heartbeat.
+    expect((next as { kind: string; done?: boolean }).kind).toBe("read");
+    expect((next as { done?: boolean }).done).toBe(true);
+  });
 });
 
 afterAll(() => {

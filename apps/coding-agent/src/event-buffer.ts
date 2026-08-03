@@ -17,6 +17,9 @@ export class ReplayWindowExceededError extends Error {
 export interface RunEventBuffer {
   append(event: Omit<BufferedEvent, "id">): number;
   subscribeAfter(lastEventId: number, sink: (event: BufferedEvent) => void): () => void;
+  /** Register a callback fired once when the buffer closes (run settled), so
+   *  open SSE streams can end instead of waiting on heartbeats forever. */
+  onClose(cb: () => void): () => void;
   oldestRetainedId(): number | null;
   lastId(): number;
   close(): void;
@@ -25,9 +28,9 @@ export interface RunEventBuffer {
 export function createRunEventBuffer(size: number): RunEventBuffer {
   const buffer: BufferedEvent[] = [];
   const subscribers = new Set<(event: BufferedEvent) => void>();
+  const closeCallbacks = new Set<() => void>();
   let nextId = 0;
   let closed = false;
-
   return {
     append(event) {
       if (closed) return nextId;
@@ -67,6 +70,17 @@ export function createRunEventBuffer(size: number): RunEventBuffer {
       };
     },
 
+    onClose(cb) {
+      if (closed) {
+        cb();
+        return () => {};
+      }
+      closeCallbacks.add(cb);
+      return () => {
+        closeCallbacks.delete(cb);
+      };
+    },
+
     oldestRetainedId() {
       return buffer[0]?.id ?? null;
     },
@@ -78,6 +92,14 @@ export function createRunEventBuffer(size: number): RunEventBuffer {
     close() {
       closed = true;
       subscribers.clear();
+      for (const cb of closeCallbacks) {
+        try {
+          cb();
+        } catch {
+          /* a closing callback must not break other subscribers */
+        }
+      }
+      closeCallbacks.clear();
     },
   };
 }
