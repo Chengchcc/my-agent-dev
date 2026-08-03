@@ -5,7 +5,7 @@ import type { AIMessageChunk } from "@my-agent-team/core";
 import { createInMemorySessionStore } from "../persistence/in-memory-session-store.js";
 import type { SessionStore } from "../persistence/session-store.js";
 import { createSqliteSessionStore } from "../persistence/sqlite-session-store.js";
-import { createAgentLoop } from "./agent-loop.js";
+import { createCodingAgentSession } from "./agent-loop.js";
 import type { Plugin } from "./plugin.js";
 import { readTodo, writeTodo } from "./todo.js";
 
@@ -17,9 +17,6 @@ function createSession(store: SessionStore, sid: string) {
     sessionId: sid,
     backendKind: "coding_agent",
     workspaceRoot: "/ws",
-    modelRef: { backendKind: "test", modelId: "m1" },
-    systemPromptHash: null,
-    activeLoopId: null,
     leafEntryId: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -52,6 +49,11 @@ function echoTool(name = "echo") {
   };
 }
 
+/** Deterministic fake summarizer for tests. */
+const fakeSummarize = async (messages: readonly string[]): Promise<string> => {
+  return `[Summary of ${messages.length} messages]`;
+};
+
 function testHarness(
   name: string,
   storeFactory: StoreFactory,
@@ -62,12 +64,13 @@ function testHarness(
     test("1. product history + one Meta + one Prompt enter the tree", async () => {
       const store = storeFactory("h1");
       await createSession(store, "h1");
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h1",
         store,
         plugins: [],
         maxSteps: 2,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: textModel("done"),
       });
       await loop.startLoop({
@@ -89,12 +92,13 @@ function testHarness(
       // Exactly one meta per loop
       expect(sources.filter((s) => s === "meta")).toHaveLength(1);
       // Product history is idempotent: re-run with same productEntryId skips
-      const loop2 = createAgentLoop({
+      const loop2 = createCodingAgentSession({
         sessionId: "h1",
         store,
         plugins: [],
         maxSteps: 1,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: textModel("x"),
       });
       await loop2.startLoop({
@@ -113,12 +117,13 @@ function testHarness(
     test("2. system prompt never enters SessionStore", async () => {
       const store = storeFactory("h2");
       await createSession(store, "h2");
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h2",
         store,
         plugins: [],
         maxSteps: 1,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: textModel("ok"),
       });
       await loop.startLoop({ systemPrompt: "TOP SECRET SYSTEM", metaText: "", promptText: "go" });
@@ -131,12 +136,13 @@ function testHarness(
       const store = storeFactory("h2b");
       await createSession(store, "h2b");
       let seenSystem = "";
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h2b",
         store,
         plugins: [],
         maxSteps: 2,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* (messages) {
           seenSystem = messages.find((m) => m.role === "system")?.text ?? "";
           yield { delta: { type: "text", text: "ok" } };
@@ -154,12 +160,13 @@ function testHarness(
       await createSession(store, "h3");
       const plugin: Plugin = { name: "test", tools: [echoTool()] };
       let callCount = 0;
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h3",
         store,
         plugins: [plugin],
         maxSteps: 5,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* () {
           callCount++;
           if (callCount === 1) {
@@ -188,12 +195,13 @@ function testHarness(
         },
       };
       const plugin: Plugin = { name: "test", tools: [tool] };
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h4",
         store,
         plugins: [plugin],
         maxSteps: 5,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* () {
           yield { delta: { type: "tool_use", id: "tc-1", name: "capture" } };
           yield { delta: { type: "input_json_delta", id: "tc-1", partial_json: '{"a":1,"b":' } };
@@ -209,12 +217,13 @@ function testHarness(
       const store = storeFactory("h5");
       await createSession(store, "h5");
       const plugin: Plugin = { name: "test", tools: [echoTool()] };
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h5",
         store,
         plugins: [plugin],
         maxSteps: 5,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* () {
           yield { delta: { type: "tool_use", id: "tc-1", name: "echo" } };
           yield { stopReason: "tool_use" };
@@ -245,12 +254,13 @@ function testHarness(
         },
       };
       const plugin: Plugin = { name: "test", tools: [throwingTool] };
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h5a",
         store,
         plugins: [plugin],
         maxSteps: 1,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* () {
           // Unknown tool + a throwing tool in one turn
           yield { delta: { type: "tool_use", id: "u", name: "missing" } };
@@ -290,12 +300,13 @@ function testHarness(
         },
       };
       const plugin: Plugin = { name: "test", tools: [slowRead] };
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h5c",
         store,
         plugins: [plugin],
         maxSteps: 1,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* () {
           yield { delta: { type: "tool_use", id: "a", name: "slow_read" } };
           yield { delta: { type: "tool_use", id: "b", name: "slow_read" } };
@@ -329,12 +340,13 @@ function testHarness(
         },
       };
       const plugin: Plugin = { name: "test", tools: [finishTool] };
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h5d",
         store,
         plugins: [plugin],
         maxSteps: 5,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* () {
           modelTurns++;
           yield { delta: { type: "tool_use", id: "f", name: "finish" } };
@@ -371,12 +383,13 @@ function testHarness(
         });
       }
       let compacted = false;
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h5e",
         store,
         plugins: [],
         maxSteps: 1,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         compactionThreshold: 4,
         modelStream: async function* () {
           yield { delta: { type: "text", text: "done" } };
@@ -395,12 +408,13 @@ function testHarness(
     test("5b. stop during provider stream ends as stopped, not failed", async () => {
       const store = storeFactory("h5b");
       await createSession(store, "h5b");
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h5b",
         store,
         plugins: [],
         maxSteps: 5,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* (_messages, signal) {
           // Provider honors the abort signal and throws kind=aborted
           signal?.addEventListener("abort", () => {
@@ -421,12 +435,13 @@ function testHarness(
       await createSession(store, "h6");
       const plugin: Plugin = { name: "test", tools: [echoTool()] };
       let seenMessages: Array<{ role: string; blocks?: Array<{ type: string }> }> = [];
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h6",
         store,
         plugins: [plugin],
         maxSteps: 5,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* (messages) {
           seenMessages = messages as typeof seenMessages;
           if (seenMessages.length < 4) {
@@ -450,12 +465,13 @@ function testHarness(
       await createSession(store, "h7");
       let attempts = 0;
       let firstCallMessages: unknown = null;
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h7",
         store,
         plugins: [],
         maxSteps: 3,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         maxRetries: 3,
         modelStream: async function* (messages) {
           attempts++;
@@ -488,12 +504,13 @@ function testHarness(
       await createSession(store, "h7c");
       let attempts = 0;
       const updates: string[] = [];
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h7c",
         store,
         plugins: [],
         maxSteps: 1,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         maxRetries: 3,
         modelStream: async function* () {
           attempts++;
@@ -523,12 +540,13 @@ function testHarness(
       const store = storeFactory("h7f");
       await createSession(store, "h7f");
       const { promise: yieldedFirst, resolve: yieldedResolve } = Promise.withResolvers<void>();
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h7f",
         store,
         plugins: [],
         maxSteps: 5,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* (_msgs: readonly unknown[], signal?: AbortSignal) {
           yield { delta: { type: "text", text: "partial" } };
           yieldedResolve();
@@ -556,12 +574,13 @@ function testHarness(
     test("7g. message_start always pairs with message_end, even on failure", async () => {
       const store = storeFactory("h7g");
       await createSession(store, "h7g");
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h7g",
         store,
         plugins: [],
         maxSteps: 1,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         maxRetries: 1,
         modelStream: async function* () {
           yield { delta: { type: "text", text: "A" } };
@@ -584,12 +603,13 @@ function testHarness(
       const store = storeFactory("h7e");
       await createSession(store, "h7e");
       let attempts = 0;
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h7e",
         store,
         plugins: [],
         maxSteps: 2,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         maxRetries: 3,
         modelStream: () => {
           attempts++;
@@ -617,12 +637,13 @@ function testHarness(
       const store = storeFactory("h7b");
       await createSession(store, "h7b");
       let attempts = 0;
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h7b",
         store,
         plugins: [],
         maxSteps: 2,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         maxRetries: 2,
         modelStream: () => {
           attempts++;
@@ -661,12 +682,13 @@ function testHarness(
         },
       };
       const plugin: Plugin = { name: "test", tools: [slowTool] };
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h7d",
         store,
         plugins: [plugin],
         maxSteps: 5,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* () {
           yield { delta: { type: "tool_use", id: "tc-1", name: "slow" } };
           yield { stopReason: "tool_use" };
@@ -692,7 +714,7 @@ function testHarness(
       const store = storeFactory("h8");
       await createSession(store, "h8");
       let turn = 0;
-      let loopRef: ReturnType<typeof createAgentLoop> | null = null;
+      let loopRef: ReturnType<typeof createCodingAgentSession> | null = null;
       const steerTool = {
         name: "steer_from_tool",
         description: "Steer the loop",
@@ -702,12 +724,13 @@ function testHarness(
         },
       };
       const plugin: Plugin = { name: "test", tools: [steerTool] };
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h8",
         store,
         plugins: [plugin],
         maxSteps: 5,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* () {
           turn++;
           if (turn === 1) {
@@ -731,16 +754,17 @@ function testHarness(
     test("8a. idle steer is rejected and does not enter the loop", async () => {
       const store = storeFactory("h8a");
       await createSession(store, "h8a");
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h8a",
         store,
         plugins: [],
         maxSteps: 1,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: textModel("done"),
       });
       // steer before the loop starts -> rejected
-      expect(() => loop.steer("before run")).toThrow(/active loop/);
+      expect(() => loop.steer("before run")).toThrow(/remaining turn capacity|active loop/);
       await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
       expect(loop.status).toBe("completed");
       const snap = await store.open("h8a");
@@ -751,18 +775,19 @@ function testHarness(
     test("8b. late steer does not leak into follow-up", async () => {
       const store = storeFactory("h8b");
       await createSession(store, "h8b");
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h8b",
         store,
         plugins: [],
         maxSteps: 2,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: textModel("done"),
       });
       await loop.startLoop({ systemPrompt: "", metaText: "m1", promptText: "p1" });
       expect(loop.status).toBe("completed");
       // After the loop ended, steer is rejected (not running)
-      expect(() => loop.steer("late")).toThrow(/active loop/);
+      expect(() => loop.steer("late")).toThrow(/remaining turn capacity|active loop/);
       // Follow-up must not contain the late steer
       await loop.startFollowUp({ systemPrompt: "", metaText: "m2", promptText: "p2" });
       const snap = await store.open("h8b");
@@ -776,12 +801,13 @@ function testHarness(
       const store = storeFactory("h8c");
       await createSession(store, "h8c");
       const { promise: modelStarted, resolve: modelResolve } = Promise.withResolvers<void>();
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h8c",
         store,
         plugins: [],
         maxSteps: 5,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* () {
           modelResolve();
           yield { delta: { type: "text", text: "done" } };
@@ -802,12 +828,13 @@ function testHarness(
     test("8d. setup failure settles to failed with agent_end", async () => {
       const store = storeFactory("h8d");
       // Do NOT create the session — appendBatch will throw "not found"
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h8d",
         store,
         plugins: [],
         maxSteps: 3,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: textModel("done"),
       });
       const events: string[] = [];
@@ -824,12 +851,13 @@ function testHarness(
     test("9. follow-up creates a new loop with new Meta", async () => {
       const store = storeFactory("h9");
       await createSession(store, "h9");
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h9",
         store,
         plugins: [],
         maxSteps: 2,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: textModel("done"),
       });
       await loop.startLoop({ systemPrompt: "", metaText: "meta-1", promptText: "first" });
@@ -857,12 +885,13 @@ function testHarness(
           ],
         });
       }
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h10",
         store,
         plugins: [],
         maxSteps: 1,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: textModel("done"),
       });
       await loop.compact();
@@ -879,13 +908,14 @@ function testHarness(
       await createSession(store, "h11");
       let attempts = 0;
       let compacted = false;
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h11",
         store,
         plugins: [],
         // maxSteps = 1: overflow recovery must NOT consume an extra step
         maxSteps: 1,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* () {
           attempts++;
           if (!compacted) {
@@ -975,12 +1005,13 @@ function testHarness(
     test("14. delayed listener blocks loop settlement", async () => {
       const store = storeFactory("h14");
       await createSession(store, "h14");
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h14",
         store,
         plugins: [],
         maxSteps: 2,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: textModel("ok"),
       });
       let resolved = false;
@@ -1009,12 +1040,13 @@ function testHarness(
     test("15. reopen does not restore an active loop", async () => {
       const store = storeFactory("h15");
       await createSession(store, "h15");
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h15",
         store,
         plugins: [],
         maxSteps: 2,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: textModel("done"),
       });
       await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
@@ -1024,12 +1056,13 @@ function testHarness(
       // Completed branch + todo remain, but no active loop object exists
       expect(snap.entries.length).toBeGreaterThan(0);
       // A fresh loop starts idle; nothing auto-resumes
-      const fresh = createAgentLoop({
+      const fresh = createCodingAgentSession({
         sessionId: "h15",
         store: reopened,
         plugins: [],
         maxSteps: 2,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: textModel("x"),
       });
       expect(fresh.status).toBe("idle");
@@ -1039,12 +1072,13 @@ function testHarness(
       const store = storeFactory("h16");
       await createSession(store, "h16");
       const SENTINEL = "sk-sentinel-123456";
-      const loop = createAgentLoop({
+      const loop = createCodingAgentSession({
         sessionId: "h16",
         store,
         plugins: [],
         maxSteps: 3,
         maxForceContinues: 0,
+        summarize: fakeSummarize,
         modelStream: async function* () {
           // Partial output, then a fatal auth error containing the sentinel.
           yield { delta: { type: "text", text: "partial" } };

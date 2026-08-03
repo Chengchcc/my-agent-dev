@@ -50,9 +50,6 @@ export interface CodingSessionMetadata {
   readonly sessionId: string;
   readonly backendKind: string;
   readonly workspaceRoot: string;
-  readonly modelRef: { readonly backendKind: string; readonly modelId: string };
-  readonly systemPromptHash: string | null;
-  readonly activeLoopId: string | null;
   readonly leafEntryId: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;

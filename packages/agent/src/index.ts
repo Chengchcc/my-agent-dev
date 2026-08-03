@@ -21,8 +21,12 @@ export { createSqliteSessionStore } from "./persistence/sqlite-session-store.js"
 
 // Runtime
 export type { AgentLoopListener, CodingAgentLoopEvent } from "./runtime/agent-event.js";
-export type { AgentLoop, AgentLoopOptions } from "./runtime/agent-loop.js";
-export { createAgentLoop } from "./runtime/agent-loop.js";
+export type {
+  CodingAgentSession,
+  CodingAgentSessionOptions,
+  ContextSummarizer,
+} from "./runtime/agent-loop.js";
+export { createCodingAgentSession } from "./runtime/agent-loop.js";
 export type { CompactionResult } from "./runtime/compaction.js";
 // Compaction + retry
 export { compactSession } from "./runtime/compaction.js";

@@ -18,7 +18,14 @@ interface PendingToolCall {
   input: Record<string, unknown>;
 }
 
-export interface AgentLoopOptions {
+/** Summarizes covered messages into a compact context summary. Injected by
+ *  the caller (Phase 3 Worker uses ModelRuntime; tests inject a fake). */
+export type ContextSummarizer = (
+  messages: readonly string[],
+  signal?: AbortSignal,
+) => Promise<string>;
+
+export interface CodingAgentSessionOptions {
   readonly sessionId: string;
   readonly store: SessionStore;
   readonly plugins: readonly Plugin[];
@@ -28,6 +35,7 @@ export interface AgentLoopOptions {
     messages: readonly Message[],
     signal?: AbortSignal,
   ) => AsyncIterable<AIMessageChunk>;
+  readonly summarize: ContextSummarizer;
   readonly maxRetries?: number;
   /** Proactive compaction threshold: when the number of message entries on the
    *  active branch exceeds this value before a model turn, compact once. Leave
@@ -35,7 +43,10 @@ export interface AgentLoopOptions {
   readonly compactionThreshold?: number;
 }
 
-export interface AgentLoop {
+/** A Coding Agent Session owns the store, plugins, listeners, and lifecycle.
+ *  Each call to startLoop/startFollowUp creates a one-shot internal loop; the
+ *  session itself is the long-lived controller. */
+export interface CodingAgentSession {
   readonly sessionId: string;
   readonly status: "idle" | "running" | "completed" | "failed" | "stopped";
   startLoop(deps: LoopInputDeps): Promise<void>;
@@ -46,7 +57,7 @@ export interface AgentLoop {
   onEvent(listener: AgentLoopListener): () => void;
 }
 
-export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
+export function createCodingAgentSession(opts: CodingAgentSessionOptions): CodingAgentSession {
   validatePlugins(opts.plugins);
   const listeners = new Set<AgentLoopListener>();
   const tools = collectTools(opts.plugins);
@@ -54,6 +65,10 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
   let status: "idle" | "running" | "completed" | "failed" | "stopped" = "idle";
   let controller: AbortController | null = null;
   const steerQueue: string[] = [];
+  // Steer is only accepted when the current loop still has capacity for at
+  // least one more safe-boundary turn. Prevents accepted-but-lost steers at
+  // the final step.
+  let acceptingSteer = false;
 
   async function emit(event: CodingAgentLoopEvent): Promise<void> {
     for (const l of listeners) {
@@ -95,7 +110,9 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
       while (step < opts.maxSteps && !naturalStop) {
         if (controller?.signal.aborted) break;
         step++;
-        await emit({ type: "turn_start", turn: step });
+        // Steer is accepted only when there's capacity for at least one more
+        // safe-boundary turn after the current one.
+        acceptingSteer = step < opts.maxSteps;
 
         // Drain steer queue at safe boundary
         if (steerQueue.length > 0) {
@@ -132,9 +149,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
             if (msgCount > opts.compactionThreshold) {
               thresholdCompacted = true; // at most one proactive compaction per loop
               await emit({ type: "compaction_start" });
-              await compactSession(opts.store, opts.sessionId, async (texts) => {
-                return `[Compacted ${texts.length} earlier messages (threshold)]`;
-              });
+              await compactSession(opts.store, opts.sessionId, opts.summarize);
               await emit({ type: "compaction_end" });
               messages = await readBranchMessages();
             }
@@ -262,9 +277,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
             if (err instanceof ProviderError && err.kind === "overflow" && !overflowCompacted) {
               overflowCompacted = true;
               await emit({ type: "compaction_start" });
-              await compactSession(opts.store, opts.sessionId, async (texts) => {
-                return `[Compacted ${texts.length} earlier messages due to context overflow]`;
-              });
+              await compactSession(opts.store, opts.sessionId, opts.summarize);
               await emit({ type: "compaction_end" });
               messages = await readBranchMessages();
               continue; // retry model call in the SAME turn, no extra step
@@ -302,6 +315,7 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
     } finally {
       controller = null;
       steerQueue.length = 0;
+      acceptingSteer = false;
     }
   }
 
@@ -502,10 +516,9 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
     async startFollowUp(deps) {
       await runLoop(deps, "follow_up");
     },
-
     steer(text) {
-      if (status !== "running") {
-        throw new Error("Steer is only allowed during an active loop");
+      if (status !== "running" || !acceptingSteer) {
+        throw new Error("Steer is only accepted during a loop with remaining turn capacity");
       }
       steerQueue.push(text);
     },
@@ -513,14 +526,9 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
     stop() {
       controller?.abort();
     },
-
     async compact() {
       await emit({ type: "compaction_start" });
-      // Manual compaction shares the one compaction implementation with
-      // threshold/overflow triggers.
-      await compactSession(opts.store, opts.sessionId, async (texts) => {
-        return `[Compacted ${texts.length} earlier messages]`;
-      });
+      await compactSession(opts.store, opts.sessionId, opts.summarize);
       await emit({ type: "compaction_end" });
     },
 

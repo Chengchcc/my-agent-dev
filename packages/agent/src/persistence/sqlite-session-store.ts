@@ -12,9 +12,6 @@ function schema(db: Database): void {
     session_id TEXT PRIMARY KEY,
     backend_kind TEXT NOT NULL,
     workspace_root TEXT NOT NULL,
-    model_ref TEXT NOT NULL,
-    system_prompt_hash TEXT,
-    active_loop_id TEXT,
     leaf_entry_id TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
@@ -64,14 +61,11 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
     async create(metadata: CodingSessionMetadata): Promise<void> {
       guard(metadata.sessionId);
       db.transaction(() => {
-        db.query(`INSERT INTO meta (session_id, backend_kind, workspace_root, model_ref, system_prompt_hash, active_loop_id, leaf_entry_id, created_at, updated_at)
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`).run(
+        db.query(`INSERT INTO meta (session_id, backend_kind, workspace_root, leaf_entry_id, created_at, updated_at)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6)`).run(
           metadata.sessionId,
           metadata.backendKind,
           metadata.workspaceRoot,
-          JSON.stringify(metadata.modelRef),
-          metadata.systemPromptHash,
-          metadata.activeLoopId,
           metadata.leafEntryId,
           metadata.createdAt,
           metadata.updatedAt,
@@ -121,9 +115,6 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
           sessionId: meta.session_id as string,
           backendKind: meta.backend_kind as string,
           workspaceRoot: meta.workspace_root as string,
-          modelRef: JSON.parse(meta.model_ref as string),
-          systemPromptHash: meta.system_prompt_hash as string | null,
-          activeLoopId: meta.active_loop_id as string | null,
           leafEntryId: leafId,
           createdAt: meta.created_at as number,
           updatedAt: meta.updated_at as number,
