@@ -1,11 +1,17 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import type {
+  AgentRunSnapshot,
+  BackendInputMessage,
+  WorkspaceBinding,
+} from "@my-agent-team/agent-backend";
 import { ProviderError } from "@my-agent-team/ai";
 import type { AIMessageChunk } from "@my-agent-team/core";
 import { createInMemorySessionStore } from "../persistence/in-memory-session-store.js";
 import type { SessionStore } from "../persistence/session-store.js";
 import { createSqliteSessionStore } from "../persistence/sqlite-session-store.js";
 import { createCodingAgentSession } from "./agent-loop.js";
+import type { CodingLoopInput } from "./loop-input.js";
 import type { Plugin } from "./plugin.js";
 import { readTodo, writeTodo } from "./todo.js";
 
@@ -53,6 +59,34 @@ function echoTool(name = "echo") {
 const fakeSummarize = async <T>(messages: readonly T[]): Promise<string> => {
   return `[Summary of ${messages.length} messages]`;
 };
+const LOOP_RUN: AgentRunSnapshot<"coding_agent"> = {
+  runId: "loop-run",
+  model: { backendKind: "coding_agent", modelId: "test-1" },
+  productTools: [],
+  configRevision: 1,
+};
+const LOOP_WS: WorkspaceBinding = { root: "/ws", access: "read_write" };
+const LOOP_META = { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 };
+
+/** Build a CodingLoopInput for tests. The Session renders Meta internally, so
+ *  callers only provide the driving input (and optional history/run overrides). */
+function loopInput(over: {
+  message: string;
+  history?: CodingLoopInput["history"];
+  run?: AgentRunSnapshot<"coding_agent">;
+}): CodingLoopInput {
+  const input: BackendInputMessage = {
+    inputId: "ti",
+    message: { role: "user", text: over.message },
+  };
+  return {
+    history: over.history ?? [],
+    input,
+    run: over.run ?? LOOP_RUN,
+    workspace: LOOP_WS,
+    metadata: LOOP_META,
+  };
+}
 
 function testHarness(
   name: string,
@@ -73,17 +107,18 @@ function testHarness(
         summarize: fakeSummarize,
         modelStream: textModel("done"),
       });
-      await loop.startLoop({
-        systemPrompt: "sp",
-        metaText: "meta",
-        promptText: "go",
-        history: [
-          {
-            productEntryId: "pe-1",
-            message: { role: "user", text: "previous turn" },
-          },
-        ],
-      });
+      await loop.startLoop(
+        loopInput({
+          message: "go",
+          history: [
+            {
+              productEntryId: "pe-1",
+              message: { role: "user", text: "previous turn" },
+            },
+          ],
+          run: { ...LOOP_RUN, systemPrompt: "sp" },
+        }),
+      );
       const snap = await store.open("h1");
       const sources = snap.entries.filter((e) => e.type === "message").map((e) => e.source);
       expect(sources).toContain("product_history");
@@ -101,12 +136,12 @@ function testHarness(
         summarize: fakeSummarize,
         modelStream: textModel("x"),
       });
-      await loop2.startLoop({
-        systemPrompt: "",
-        metaText: "m2",
-        promptText: "go2",
-        history: [{ productEntryId: "pe-1", message: { role: "user", text: "previous turn" } }],
-      });
+      await loop2.startLoop(
+        loopInput({
+          message: "go2",
+          history: [{ productEntryId: "pe-1", message: { role: "user", text: "previous turn" } }],
+        }),
+      );
       const after = await store.open("h1");
       // Product history skipped as duplicate: exactly one meta + one prompt added
       const sourcesAfter = after.entries.filter((e) => e.type === "message").map((e) => e.source);
@@ -126,7 +161,9 @@ function testHarness(
         summarize: fakeSummarize,
         modelStream: textModel("ok"),
       });
-      await loop.startLoop({ systemPrompt: "TOP SECRET SYSTEM", metaText: "", promptText: "go" });
+      await loop.startLoop(
+        loopInput({ message: "go", run: { ...LOOP_RUN, systemPrompt: "TOP SECRET SYSTEM" } }),
+      );
       const snap = await store.open("h2");
       const serialized = JSON.stringify(snap.entries);
       expect(serialized).not.toContain("TOP SECRET SYSTEM");
@@ -149,9 +186,13 @@ function testHarness(
         },
       });
       // Loop constructed without any system prompt; each run supplies its own
-      await loop.startLoop({ systemPrompt: "SP-ONE", metaText: "", promptText: "first" });
+      await loop.startLoop(
+        loopInput({ message: "first", run: { ...LOOP_RUN, systemPrompt: "SP-ONE" } }),
+      );
       expect(seenSystem).toBe("SP-ONE");
-      await loop.startFollowUp({ systemPrompt: "SP-TWO", metaText: "", promptText: "second" });
+      await loop.startFollowUp(
+        loopInput({ message: "second", run: { ...LOOP_RUN, systemPrompt: "SP-TWO" } }),
+      );
       expect(seenSystem).toBe("SP-TWO");
     });
 
@@ -177,7 +218,7 @@ function testHarness(
           }
         },
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "run" });
+      await loop.startLoop(loopInput({ message: "run" }));
       expect(loop.status).toBe("completed");
       expect(callCount).toBeGreaterThanOrEqual(2);
     });
@@ -209,7 +250,7 @@ function testHarness(
           yield { stopReason: "tool_use" };
         },
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "run" });
+      await loop.startLoop(loopInput({ message: "run" }));
       expect(received).toEqual({ a: 1, b: "two" });
     });
 
@@ -229,7 +270,7 @@ function testHarness(
           yield { stopReason: "tool_use" };
         },
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "run" });
+      await loop.startLoop(loopInput({ message: "run" }));
       const snap = await store.open("h5");
       const messages = snap.entries.filter((e) => e.type === "message");
       const assistant = messages.find((m) => m.source === "assistant") as {
@@ -268,7 +309,7 @@ function testHarness(
           yield { stopReason: "tool_use" };
         },
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "run" });
+      await loop.startLoop(loopInput({ message: "run" }));
       const snap = await store.open("h5a");
       const results = snap.entries.filter(
         (e) => e.type === "message" && (e as { source?: string }).source === "tool_result",
@@ -313,7 +354,7 @@ function testHarness(
           yield { stopReason: "tool_use" };
         },
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "run" });
+      await loop.startLoop(loopInput({ message: "run" }));
       // Both started before either ended -> parallel execution
       expect(order[0]).toMatch(/^start/);
       expect(order[1]).toMatch(/^start/);
@@ -353,7 +394,7 @@ function testHarness(
           yield { stopReason: "tool_use" };
         },
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await loop.startLoop(loopInput({ message: "go" }));
       expect(loop.status).toBe("completed");
       // Only one model turn despite maxSteps=5: terminate hint stopped it
       expect(modelTurns).toBe(1);
@@ -402,7 +443,7 @@ function testHarness(
       loop.onEvent((e) => {
         if (e.type === "compaction_end") compacted = true;
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await loop.startLoop(loopInput({ message: "go" }));
       expect(compacted).toBe(true);
       expect(loop.status).toBe("completed");
       const snap = await store.open("h5e");
@@ -428,7 +469,7 @@ function testHarness(
           throw new ProviderError("aborted by user", "aborted");
         },
       });
-      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "run" });
+      const started = loop.startLoop(loopInput({ message: "run" }));
       loop.stop();
       await started;
       expect(loop.status).toBe("stopped");
@@ -456,7 +497,7 @@ function testHarness(
           }
         },
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "run" });
+      await loop.startLoop(loopInput({ message: "run" }));
       // Final turn's input contains the assistant tool_use + tool_result pair
       const toolUse = seenMessages.find((m) => m.blocks?.some((b) => b.type === "tool_use"));
       const toolResult = seenMessages.find((m) => m.blocks?.[0]?.type === "tool_result");
@@ -490,7 +531,7 @@ function testHarness(
       loop.onEvent((e) => {
         events.push(e.type);
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await loop.startLoop(loopInput({ message: "go" }));
       expect(attempts).toBe(3);
       expect(loop.status).toBe("completed");
       expect(events).toContain("retry_start");
@@ -527,7 +568,7 @@ function testHarness(
       loop.onEvent((e) => {
         if (e.type === "message_update") updates.push(e.text);
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await loop.startLoop(loopInput({ message: "go" }));
       expect(attempts).toBe(1); // committed -> no retry
       expect(loop.status).toBe("failed");
       // Real-time streaming: "A" was forwarded immediately via message_update
@@ -562,7 +603,7 @@ function testHarness(
           }
         },
       });
-      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      const started = loop.startLoop(loopInput({ message: "go" }));
       await yieldedFirst;
       loop.stop();
       await started;
@@ -595,7 +636,7 @@ function testHarness(
       loop.onEvent((e) => {
         events.push(e.type);
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await loop.startLoop(loopInput({ message: "go" }));
       // message_start must have a matching message_end regardless of failure
       expect(events).toContain("message_start");
       expect(events).toContain("message_end");
@@ -623,7 +664,7 @@ function testHarness(
       // baseDelayMs in retryStream is fixed at 1000ms (2^attempt). We assert
       // the loop settles in well under that window when stop() fires during
       // the backoff wait, proving the backoff is abortable.
-      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      const started = loop.startLoop(loopInput({ message: "go" }));
       // Wait until retry_end (attempt 1 failed, backoff about to start)
       const { promise: backoffStarted, resolve: backoffResolve } = Promise.withResolvers<void>();
       loop.onEvent((e) => {
@@ -654,7 +695,7 @@ function testHarness(
           return throwingModel(new ProviderError("network timeout", "transient"))();
         },
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await loop.startLoop(loopInput({ message: "go" }));
       expect(attempts).toBe(2);
       expect(loop.status).toBe("failed");
     });
@@ -698,7 +739,7 @@ function testHarness(
           yield { stopReason: "tool_use" };
         },
       });
-      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      const started = loop.startLoop(loopInput({ message: "go" }));
       // Wait for the tool to actually start, then stop() to abort it.
       await toolStarted;
       loop.stop();
@@ -723,7 +764,7 @@ function testHarness(
         name: "steer_from_tool",
         description: "Steer the loop",
         async execute() {
-          loopRef?.steer("steer-me");
+          loopRef?.steer({ inputId: "ti", message: { role: "user", text: "steer-me" } });
           return { ok: true };
         },
       };
@@ -747,7 +788,7 @@ function testHarness(
         },
       });
       loopRef = loop;
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await loop.startLoop(loopInput({ message: "go" }));
       const snap = await store.open("h8");
       const sources = snap.entries.filter((e) => e.type === "message").map((e) => e.source);
       expect(sources).toContain("steer");
@@ -768,8 +809,10 @@ function testHarness(
         modelStream: textModel("done"),
       });
       // steer before the loop starts -> rejected
-      expect(() => loop.steer("before run")).toThrow(/remaining turn capacity|active loop/);
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      expect(() =>
+        loop.steer({ inputId: "ti", message: { role: "user", text: "before run" } }),
+      ).toThrow(/remaining turn capacity|active loop/);
+      await loop.startLoop(loopInput({ message: "go" }));
       expect(loop.status).toBe("completed");
       const snap = await store.open("h8a");
       const sources = snap.entries.filter((e) => e.type === "message").map((e) => e.source);
@@ -788,12 +831,14 @@ function testHarness(
         summarize: fakeSummarize,
         modelStream: textModel("done"),
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "m1", promptText: "p1" });
+      await loop.startLoop(loopInput({ message: "p1" }));
       expect(loop.status).toBe("completed");
       // After the loop ended, steer is rejected (not running)
-      expect(() => loop.steer("late")).toThrow(/remaining turn capacity|active loop/);
+      expect(() => loop.steer({ inputId: "ti", message: { role: "user", text: "late" } })).toThrow(
+        /remaining turn capacity|active loop/,
+      );
       // Follow-up must not contain the late steer
-      await loop.startFollowUp({ systemPrompt: "", metaText: "m2", promptText: "p2" });
+      await loop.startFollowUp(loopInput({ message: "p2" }));
       const snap = await store.open("h8b");
       const sources = snap.entries.filter((e) => e.type === "message").map((e) => e.source);
       expect(sources).not.toContain("steer");
@@ -817,10 +862,10 @@ function testHarness(
           yield { delta: { type: "text", text: "done" } };
         },
       });
-      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      const started = loop.startLoop(loopInput({ message: "go" }));
       // Wait for the model turn to start, then steer while it's running.
       await modelStarted;
-      loop.steer("accepted-but-late");
+      loop.steer({ inputId: "ti", message: { role: "user", text: "accepted-but-late" } });
       await started;
       expect(loop.status).toBe("completed");
       // The late steer must appear in the store, not be silently dropped
@@ -845,7 +890,7 @@ function testHarness(
       loop.onEvent((e) => {
         events.push(e.type);
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await loop.startLoop(loopInput({ message: "go" }));
       expect(loop.status).toBe("failed");
       // agent_start emitted, then agent_end (never stuck at running)
       expect(events[0]).toBe("agent_start");
@@ -863,7 +908,7 @@ function testHarness(
         async execute() {
           toolStartedResolve();
           // Steer arrives during tool execution
-          loopRef?.steer("late-steer");
+          loopRef?.steer({ inputId: "ti", message: { role: "user", text: "late-steer" } });
           return { terminate: true };
         },
       };
@@ -881,7 +926,7 @@ function testHarness(
         },
       });
       loopRef = loop;
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await loop.startLoop(loopInput({ message: "go" }));
       // Steer must be persisted despite terminate hint
       const snap = await store.open("h8e");
       const sources = snap.entries.filter((e) => e.type === "message").map((e) => e.source);
@@ -979,7 +1024,7 @@ function testHarness(
           yield { delta: { type: "text", text: "done" } };
         },
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await loop.startLoop(loopInput({ message: "go" }));
       // Summarizer received Message objects, not just text strings
       expect(receivedMessages.length).toBeGreaterThan(0);
       const firstMsg = receivedMessages[0] as { role?: string; blocks?: unknown[] };
@@ -1038,7 +1083,7 @@ function testHarness(
           yield { delta: { type: "text", text: "done" } };
         },
       });
-      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      const started = loop.startLoop(loopInput({ message: "go" }));
       await summarizerStarted;
       loop.stop();
       await started;
@@ -1061,13 +1106,16 @@ function testHarness(
         summarize: fakeSummarize,
         modelStream: textModel("done"),
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "meta-1", promptText: "first" });
-      await loop.startFollowUp({ systemPrompt: "", metaText: "meta-2", promptText: "second" });
+      await loop.startLoop(loopInput({ message: "first" }));
+      await loop.startFollowUp(loopInput({ message: "second" }));
       const snap = await store.open("h9");
-      const metas = snap.entries
-        .filter((e) => e.type === "message" && e.source === "meta")
-        .map((e) => (e as { message: { text: string } }).message.text);
-      expect(metas).toEqual(["meta-1", "meta-2"]);
+      const metas = snap.entries.filter((e) => e.type === "message" && e.source === "meta");
+      // Meta is rendered internally per loop (not a passed string); each loop
+      // produces exactly one, distinct from the prompt.
+      expect(metas).toHaveLength(2);
+      for (const m of metas) {
+        expect((m as { message: { text: string } }).message.text).toContain("<system-reminder>");
+      }
     });
 
     test("10. compaction appends entry and shapes next turn", async () => {
@@ -1152,7 +1200,7 @@ function testHarness(
         events.push(e.type);
         if (e.type === "compaction_end") compacted = true;
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await loop.startLoop(loopInput({ message: "go" }));
       expect(attempts).toBe(2);
       expect(compacted).toBe(true);
       expect(loop.status).toBe("completed");
@@ -1253,7 +1301,7 @@ function testHarness(
         }
         return undefined;
       });
-      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      const started = loop.startLoop(loopInput({ message: "go" }));
       const settle = started.then(() => {
         settleSeen = true;
       });
@@ -1277,7 +1325,7 @@ function testHarness(
         summarize: fakeSummarize,
         modelStream: textModel("done"),
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await loop.startLoop(loopInput({ message: "go" }));
       if (!reopenFactory) return;
       const reopened = reopenFactory("h15");
       const snap = await reopened.open("h15");
@@ -1317,7 +1365,7 @@ function testHarness(
       loop.onEvent((e) => {
         eventPayloads.push(JSON.stringify(e));
       });
-      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await loop.startLoop(loopInput({ message: "go" }));
       // The loop surfaces the failure via agent_end only; the raw error is
       // normalized by the provider layer before reaching the loop.
       const snap = await store.open("h16");

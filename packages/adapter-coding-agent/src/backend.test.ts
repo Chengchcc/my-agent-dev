@@ -89,6 +89,7 @@ describe("CodingAgentBackend", () => {
     const backend = new CodingAgentBackend(client);
     const result = await backend.start({
       history: [],
+      input: { inputId: "in-1", message: { role: "user", text: "go" } },
       run: {
         runId: "run-1",
         model: { backendKind: "coding_agent", modelId: "m" },

@@ -38,11 +38,20 @@ const projectedHistorySchema = z.array(
   z.object({ productEntryId: productEntryIdSchema, message: messageSchema }),
 );
 
+/** Wire form of BackendInputMessage: the durable input id + canonical Message +
+ *  optional productEntryId. The actual driving input - never inferred. */
+const inputMessageSchema = z.object({
+  inputId: z.string().min(1).max(256),
+  message: messageSchema,
+  productEntryId: productEntryIdSchema.optional(),
+});
+
 // ─── Requests ─────────────────────────────────────────────────────────
 
 export const startSessionRequestSchema = z.object({
   idempotencyKey: idempotencyKeySchema,
   history: projectedHistorySchema,
+  input: inputMessageSchema,
   run: runSnapshotSchema,
   workspace: z.object({ root: z.string(), access: z.enum(["read_only", "read_write"]) }),
   env: z.record(z.string()).optional(),
@@ -58,12 +67,10 @@ export type StartSessionRequest = z.infer<typeof startSessionRequestSchema>;
 export const sendRunRequestSchema = z.object({
   idempotencyKey: idempotencyKeySchema,
   commandId: commandIdSchema,
-  messages: projectedHistorySchema,
+  history: projectedHistorySchema,
+  input: inputMessageSchema,
   run: runSnapshotSchema,
   mode: z.enum(["normal", "steer", "follow_up"]),
-  promptText: z.string(),
-  metaText: z.string().optional(),
-  systemPrompt: z.string().optional(),
   workspaceRoot: z.string().optional(),
   metadata: z.object({
     branchId: branchIdSchema,

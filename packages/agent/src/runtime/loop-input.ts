@@ -1,19 +1,46 @@
-import type { ProjectedHistoryItem } from "@my-agent-team/agent-backend";
+import type {
+  AgentRunSnapshot,
+  BackendInputMessage,
+  ProjectedHistoryItem,
+  WorkspaceBinding,
+} from "@my-agent-team/agent-backend";
 import type { AppendBatchInput } from "../persistence/session-store.js";
-
 export interface LoopInputResult {
   readonly batch: AppendBatchInput;
   readonly systemPrompt: string;
+}
+/** Cross-boundary input for one loop. Carries only domain facts - NO metaText
+ *  and NO systemPrompt: the CodingAgentSession renders the Meta Message
+ *  internally from run/workspace/plugin/todo state (renderLoopMeta is the sole
+ *  Meta owner), and reads the system prompt from `run.systemPrompt`. */
+export interface CodingLoopInput {
+  readonly history: readonly ProjectedHistoryItem[];
+  readonly input: BackendInputMessage;
+  readonly run: AgentRunSnapshot<"coding_agent">;
+  readonly workspace: WorkspaceBinding;
+  readonly metadata: {
+    readonly conversationId: string;
+    readonly agentMemberId: string;
+    readonly branchId: string;
+    readonly productRevision: number;
+  };
 }
 
 export interface LoopInputDeps {
   readonly systemPrompt: string;
   readonly metaText: string;
-  readonly promptText: string;
+  /** The actual driving input for this loop. Its `message` is persisted as the
+   *  prompt/follow-up entry (never inferred from history); `inputId` is the
+   *  durable idempotency source; `productEntryId`, when present, is written onto
+   *  the appended entry so the same canonical Message is never persisted twice. */
+  readonly input: BackendInputMessage;
   /** Projected Product history to sync idempotently (productEntryId). */
   readonly history?: readonly ProjectedHistoryItem[];
 }
 
+/** Build the append batch for a loop: projected history + one Meta + the
+ *  driving input Message (source = prompt for normal, follow_up otherwise).
+ *  The input Message is preserved verbatim (blocks, role, identity). */
 export function buildLoopInput(
   deps: LoopInputDeps,
   mode: "normal" | "follow_up" = "normal",
@@ -41,12 +68,13 @@ export function buildLoopInput(
     createdAt: Date.now(),
   } as AppendBatchInput["entries"][number]);
 
+  // The driving input: the full canonical Message, source-tagged by mode.
   items.push({
     type: "message",
-    productEntryId: null,
-    role: "user",
+    productEntryId: deps.input.productEntryId ?? null,
+    role: deps.input.message.role as "user" | "assistant" | "system",
     source: mode === "follow_up" ? "follow_up" : "prompt",
-    message: { role: "user", text: deps.promptText },
+    message: deps.input.message,
     createdAt: Date.now(),
   } as AppendBatchInput["entries"][number]);
 

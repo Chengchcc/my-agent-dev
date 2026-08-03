@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AgentRunSnapshot,
+  BackendInputMessage,
   ProjectedHistoryItem,
   WorkspaceBinding,
 } from "@my-agent-team/agent-backend";
@@ -57,8 +58,10 @@ export interface CodingSessionSupervisor {
     idempotencyKey: string;
     backendSessionId: string;
     history: readonly ProjectedHistoryItem[];
+    input: BackendInputMessage;
     run: AgentRunSnapshot<"coding_agent">;
     workspace: WorkspaceBinding;
+    env?: Readonly<Record<string, string>>;
     metadata: {
       conversationId: string;
       agentMemberId: string;
@@ -75,11 +78,9 @@ export interface CodingSessionSupervisor {
     backendSessionId: string;
     runId: string;
     mode: "normal" | "steer" | "follow_up";
-    messages: readonly ProjectedHistoryItem[];
+    history: readonly ProjectedHistoryItem[];
+    input: BackendInputMessage;
     run: AgentRunSnapshot<"coding_agent">;
-    promptText: string;
-    metaText?: string;
-    systemPrompt?: string;
     metadata: { branchId: string; throughEntryId?: string; productRevision: number };
   }): Promise<{ accepted: boolean; runId: string; commandId: string }>;
   stop(input: {
@@ -301,11 +302,10 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         runId,
         mode: "normal",
         history: input.history as never,
+        input: input.input as never,
         run: input.run as never,
-        metaText: "",
-        promptText: "[start]",
-        systemPrompt: input.run.systemPrompt ?? "",
-        workspaceRoot: input.workspace.root,
+        workspace: input.workspace,
+        metadata: input.metadata,
       });
       const result = { backendSessionId: input.backendSessionId, runId };
       recordMutation(input.idempotencyKey, input, result);
@@ -338,11 +338,10 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         runId,
         mode: "normal",
         history: input.history as never,
+        input: input.input as never,
         run: input.run as never,
-        metaText: "",
-        promptText: "[resume]",
-        systemPrompt: input.run.systemPrompt ?? "",
-        workspaceRoot: input.workspace.root,
+        workspace: input.workspace,
+        metadata: input.metadata,
       });
       const result = { backendSessionId: input.backendSessionId, runId };
       recordMutation(input.idempotencyKey, input, result);
@@ -377,11 +376,9 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         backendSessionId: input.backendSessionId,
         runId,
         mode: input.mode,
-        messages: input.messages as never,
+        history: input.history as never,
+        input: input.input as never,
         run: input.run as never,
-        promptText: input.promptText,
-        metaText: input.metaText,
-        systemPrompt: input.systemPrompt,
       });
       const result = { accepted: true, runId, commandId: input.commandId };
       recordMutation(input.idempotencyKey, input, result);

@@ -74,8 +74,13 @@ export class CodingAgentClient {
     return sessionResponseSchema.parse(await this.request("POST", "/v1/sessions/start", input));
   }
 
-  async resumeSession(input: ResumeSessionRequest): Promise<SessionResponse> {
-    return sessionResponseSchema.parse(await this.request("POST", "/v1/sessions/start", input));
+  async resumeSession(
+    backendSessionId: string,
+    input: ResumeSessionRequest,
+  ): Promise<SessionResponse> {
+    return sessionResponseSchema.parse(
+      await this.request("POST", `/v1/sessions/${backendSessionId}/resume`, input),
+    );
   }
 
   async sendRun(backendSessionId: string, input: SendRunRequest): Promise<{ accepted: boolean }> {
@@ -84,9 +89,12 @@ export class CodingAgentClient {
     };
   }
 
-  async stopSession(backendSessionId: string): Promise<{ stopped: boolean }> {
+  async stopSession(backendSessionId: string, runId?: string): Promise<{ stopped: boolean }> {
     return (await this.request("POST", `/v1/sessions/${backendSessionId}/stop`, {
-      idempotencyKey: `stop-${Date.now()}`,
+      // Stable idempotency: keyed by the active run when known.
+      idempotencyKey: runId ? `stop-${runId}` : `stop-${backendSessionId}`,
+      commandId: runId ? `stop-${runId}` : `stop-${backendSessionId}`,
+      runId,
     })) as { stopped: boolean };
   }
 

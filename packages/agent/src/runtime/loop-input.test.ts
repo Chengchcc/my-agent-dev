@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { buildLoopInput } from "./loop-input.js";
+import { buildLoopInput, type LoopInputDeps } from "./loop-input.js";
 
-const baseDeps = {
+const baseDeps: LoopInputDeps = {
   systemPrompt: "sp",
   metaText: "meta",
-  promptText: "prompt",
+  input: { inputId: "ti", message: { role: "user", text: "prompt" } },
 };
 
 describe("buildLoopInput", () => {

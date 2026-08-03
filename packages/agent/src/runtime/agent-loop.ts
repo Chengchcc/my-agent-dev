@@ -1,13 +1,15 @@
+import type { BackendInputMessage } from "@my-agent-team/agent-backend";
 import { ProviderError } from "@my-agent-team/ai";
 import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 import type { SessionStore } from "../persistence/session-store.js";
 import type { AgentLoopListener, CodingAgentLoopEvent } from "./agent-event.js";
 import { type CompactionBudget, compactSession } from "./compaction.js";
-import type { LoopInputDeps } from "./loop-input.js";
+import type { CodingLoopInput } from "./loop-input.js";
 import { buildLoopInput } from "./loop-input.js";
 import type { Plugin } from "./plugin.js";
 import { collectTools, validatePlugins } from "./plugin.js";
+import { renderLoopMeta } from "./prompt.js";
 import { retryStream } from "./retry.js";
 
 export type { AgentLoopListener, CodingAgentLoopEvent };
@@ -47,6 +49,9 @@ export interface CodingAgentSessionOptions {
     signal?: AbortSignal,
   ) => AsyncIterable<AIMessageChunk>;
   readonly summarize: ContextSummarizer;
+  /** Resolve the model display identity for a run's model ref, used to render
+   *  the per-loop Meta. Optional: when omitted (tests), Meta omits the model line. */
+  readonly resolveModel?: (modelId: string) => Promise<{ provider: string; id: string }>;
   readonly maxRetries?: number;
   /** Token-aware proactive compaction budget. When estimated context tokens
    *  exceed limit * triggerRatio before a model turn, compact once. Leave
@@ -60,9 +65,11 @@ export interface CodingAgentSessionOptions {
 export interface CodingAgentSession {
   readonly sessionId: string;
   readonly status: "idle" | "running" | "completed" | "failed" | "stopped";
-  startLoop(deps: LoopInputDeps): Promise<void>;
-  startFollowUp(deps: LoopInputDeps): Promise<void>;
-  steer(text: string): void;
+  startLoop(input: CodingLoopInput): Promise<void>;
+  startFollowUp(input: CodingLoopInput): Promise<void>;
+  /** Inject a steer input into the active loop. No Meta, no new Loop: the
+   *  message is queued and appended at the next safe boundary. */
+  steer(input: BackendInputMessage): void;
   stop(): void;
   compact(): Promise<void>;
   onEvent(listener: AgentLoopListener): () => void;
@@ -79,7 +86,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   // a concurrent startFollowUp from racing with agent_end listeners.
   let active = false;
   let controller: AbortController | null = null;
-  const steerQueue: string[] = [];
+  const steerQueue: BackendInputMessage[] = [];
   let acceptingSteer = false;
 
   async function emit(event: CodingAgentLoopEvent): Promise<void> {
@@ -92,7 +99,10 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     }
   }
 
-  async function runLoop(deps: LoopInputDeps, mode: "normal" | "follow_up"): Promise<void> {
+  async function runLoop(
+    codingInput: CodingLoopInput,
+    mode: "normal" | "follow_up",
+  ): Promise<void> {
     if (active) throw new Error("Loop already active");
     active = true;
     status = "running";
@@ -102,12 +112,28 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     await emit({ type: "agent_start" });
 
     try {
-      // Build and persist loop input: product history + one Meta + one Prompt.
-      // The System Prompt snapshot comes from THIS run's input (AgentRunSnapshot),
-      // not from loop construction.
-      const input = buildLoopInput(deps, mode);
-      const systemPrompt = input.systemPrompt;
-      await opts.store.appendBatch(opts.sessionId, input.batch);
+      // The Session is the sole Meta owner: it renders the per-loop Meta
+      // Message from run/workspace/plugin state (never passed across the
+      // Backend boundary). systemPrompt comes from the run snapshot.
+      const model = opts.resolveModel
+        ? await opts.resolveModel(codingInput.run.model.modelId)
+        : undefined;
+      const metaText = renderLoopMeta({
+        plugins: opts.plugins,
+        workspace: { root: codingInput.workspace.root },
+        model,
+      });
+      const systemPrompt = codingInput.run.systemPrompt ?? "";
+      const built = buildLoopInput(
+        {
+          systemPrompt,
+          metaText,
+          input: codingInput.input,
+          history: codingInput.history,
+        },
+        mode,
+      );
+      await opts.store.appendBatch(opts.sessionId, built.batch);
 
       // Read branch for model messages
       let messages = await readBranchMessages();
@@ -125,22 +151,20 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         // safe-boundary turn after the current one.
         acceptingSteer = step < opts.maxSteps;
 
-        // Drain steer queue at safe boundary
+        // Drain steer queue at safe boundary. Steer appends only the input
+        // message (source=steer) - no Meta, no new Loop.
         if (steerQueue.length > 0) {
           const steers = steerQueue.splice(0);
-          for (const text of steers) {
-            await opts.store.appendBatch(opts.sessionId, {
-              entries: [
-                {
-                  type: "message",
-                  role: "user",
-                  source: "steer",
-                  message: { role: "user", text },
-                  createdAt: Date.now(),
-                },
-              ],
-            });
-          }
+          await opts.store.appendBatch(opts.sessionId, {
+            entries: steers.map((s) => ({
+              type: "message",
+              productEntryId: s.productEntryId ?? null,
+              role: s.message.role as "user" | "assistant" | "system",
+              source: "steer",
+              message: s.message,
+              createdAt: Date.now(),
+            })),
+          });
           messages = await readBranchMessages();
           await emit({ type: "queue_update" });
         }
@@ -546,11 +570,11 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     async startFollowUp(deps) {
       await runLoop(deps, "follow_up");
     },
-    steer(text) {
+    steer(input: BackendInputMessage) {
       if (status !== "running" || !acceptingSteer) {
         throw new Error("Steer is only accepted during a loop with remaining turn capacity");
       }
-      steerQueue.push(text);
+      steerQueue.push(input);
     },
 
     stop() {

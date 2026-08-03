@@ -9,6 +9,7 @@ function validStart() {
   return {
     idempotencyKey: "ikey-1",
     history: [{ productEntryId: "pe-1", message: { role: "user", text: "hi" } }],
+    input: { inputId: "in-1", message: { role: "user", text: "do it" } },
     run: {
       runId: "run-1",
       model: { backendKind: "coding_agent", modelId: "anthropic/claude-sonnet" },
@@ -48,10 +49,10 @@ describe("transport DTOs", () => {
     const body = {
       idempotencyKey: "k",
       commandId: "c",
-      messages: [],
+      history: [],
+      input: { inputId: "in-1", message: { role: "user", text: "x" } },
       run: validStart().run,
       mode: "teleport",
-      promptText: "p",
       metadata: { branchId: "b", productRevision: 1 },
     };
     expect(() => sendRunRequestSchema.parse(body)).toThrow();
@@ -62,10 +63,10 @@ describe("transport DTOs", () => {
       const body = {
         idempotencyKey: "k",
         commandId: "c",
-        messages: [],
+        history: [],
+        input: { inputId: "in-1", message: { role: "user", text: "x" } },
         run: validStart().run,
         mode,
-        promptText: "p",
         metadata: { branchId: "b", productRevision: 1 },
       };
       expect(sendRunRequestSchema.parse(body).mode).toBe(mode);

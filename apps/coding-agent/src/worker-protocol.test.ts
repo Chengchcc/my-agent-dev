@@ -93,10 +93,9 @@ describe("worker protocol", () => {
         productTools: [],
         configRevision: 1,
       },
-      metaText: "meta",
-      promptText: "prompt",
-      systemPrompt: "sp",
-      workspaceRoot: "/tmp/ws",
+      input: { inputId: "in-1", message: { role: "user", text: "prompt" } },
+      workspace: { root: "/tmp/ws", access: "read_write" },
+      metadata: { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 },
     };
     const parsed = parseCommand(JSON.stringify(cmd));
     expect(parsed.type).toBe("start_run");

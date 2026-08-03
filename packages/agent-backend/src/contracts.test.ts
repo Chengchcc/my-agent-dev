@@ -4,6 +4,7 @@ import type {
   AgentBackend,
   AgentBackendCapabilities,
   BackendEvent,
+  BackendInputMessage,
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
@@ -91,10 +92,22 @@ const RUN_SNAPSHOT = {
   productTools: [],
   configRevision: 1,
 } as const;
-
 const HISTORY: readonly ProjectedHistoryItem[] = [
   { productEntryId: "e1", message: { role: "user", text: "hello" } },
 ];
+
+const INPUT: BackendInputMessage = {
+  inputId: "in-1",
+  message: { role: "user", text: "do the thing" },
+};
+
+const START_INPUT: BackendStartInput<"fake"> = {
+  history: HISTORY,
+  input: INPUT,
+  run: RUN_SNAPSHOT,
+  workspace: { root: "/tmp", access: "read_write" },
+  metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1", productRevision: 1 },
+};
 
 describe("agent-backend contracts", () => {
   test("FakeBackend implements all six methods", () => {
@@ -111,17 +124,7 @@ describe("agent-backend contracts", () => {
 
   test("barrel-only consumer consumes events and outcome from start()", async () => {
     const backend: AgentBackend<"fake", FakeRef> = new FakeBackend();
-    const { session, segment } = await backend.start({
-      history: HISTORY,
-      run: RUN_SNAPSHOT,
-      workspace: { root: "/tmp", access: "read_write" },
-      metadata: {
-        conversationId: "c1",
-        agentMemberId: "m1",
-        branchId: "b1",
-        productRevision: 1,
-      },
-    });
+    const { session, segment } = await backend.start(START_INPUT);
     expect(session.backendSessionId).toBe("session-1");
 
     for await (const _event of segment.events) {
@@ -134,12 +137,44 @@ describe("agent-backend contracts", () => {
   test("send() continues an open session and resolves completed", async () => {
     const backend: AgentBackend<"fake", FakeRef> = new FakeBackend();
     const segment = await backend.send(SESSION, {
-      messages: [{ productEntryId: "e2", message: { role: "user", text: "next" } }],
+      history: [{ productEntryId: "e2", message: { role: "user", text: "ctx" } }],
+      input: INPUT,
       run: RUN_SNAPSHOT,
       mode: "normal",
       metadata: { branchId: "b1", productRevision: 1 },
     });
     expect((await segment.outcome).status).toBe("completed");
+  });
+
+  test("BackendInputMessage carries blocks and inputId round-trip", () => {
+    const rich: BackendInputMessage = {
+      inputId: "in-2",
+      message: {
+        role: "user",
+        blocks: [{ type: "text", text: "multi" }],
+      },
+      productEntryId: "e3",
+    };
+    expect(rich.inputId).toBe("in-2");
+    expect(rich.message.blocks?.[0]?.type).toBe("text");
+    expect(rich.productEntryId).toBe("e3");
+  });
+
+  test("history and input are distinct; input is never inferred from history", () => {
+    // The contract has no path from history to input: a Backend must read
+    // `input.message` explicitly. Confirm the field is required, not optional.
+    const hist: readonly ProjectedHistoryItem[] = [
+      { productEntryId: "e1", message: { role: "user", text: "past" } },
+    ];
+    const turn: BackendStartInput<"fake"> = {
+      history: hist,
+      input: INPUT,
+      run: RUN_SNAPSHOT,
+      workspace: { root: "/tmp", access: "read_write" },
+      metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1", productRevision: 1 },
+    };
+    expect(turn.input.message).toBe(INPUT.message);
+    expect(turn.history).not.toBe(turn.input);
   });
 
   test("suspended outcome carries a PendingAction", () => {
@@ -185,7 +220,8 @@ describe("agent-backend contracts", () => {
 // line (TS2741), so the directive sits directly above it.
 // @ts-expect-error - missing required `run` field
 const _noRun: BackendRunInput = {
-  messages: [],
+  history: [],
+  input: INPUT,
   mode: "normal",
   metadata: { branchId: "b1", productRevision: 1 },
 };
@@ -223,9 +259,9 @@ const _wrongKind: BackendEvent<"fake"> =
 
 // A Backend of kind "fake" cannot receive a "claude-code" run input: the
 // model ref's backendKind must match the Backend's K. Pure type-level check:
-// assigning a claude-code input to a fake-typed slot must fail.
 const claudeInput: BackendRunInput<"claude-code"> = {
-  messages: [],
+  history: [],
+  input: INPUT,
   run: {
     runId: "r2",
     model: { backendKind: "claude-code", modelId: "claude-sonnet" },

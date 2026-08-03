@@ -78,6 +78,7 @@ describe("adapter-to-daemon integration", () => {
     const backend = new CodingAgentBackend(client);
     const result = await backend.start({
       history: [{ productEntryId: "pe-1", message: { role: "user", text: "hi" } }],
+      input: { inputId: "in-1", message: { role: "user", text: "do it" } },
       run: {
         runId: "run-int-1",
         model: { backendKind: "coding_agent", modelId: "m" },
@@ -110,6 +111,7 @@ describe("adapter-to-daemon integration", () => {
     const backend = new CodingAgentBackend(client);
     const started = await backend.start({
       history: [],
+      input: { inputId: "in-2", message: { role: "user", text: "go" } },
       run: {
         runId: "run-int-2",
         model: { backendKind: "coding_agent", modelId: "m" },
@@ -119,9 +121,10 @@ describe("adapter-to-daemon integration", () => {
       workspace: { root: ws, access: "read_write" },
       metadata: { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 },
     });
-    // Send a steer as a new run input
+    // Steer is delivered to the active run; send() returns a settled segment.
     const segment = await backend.send(started.session, {
-      messages: [],
+      history: [],
+      input: { inputId: "in-3", message: { role: "user", text: "steer me" } },
       run: {
         runId: "run-int-3",
         model: { backendKind: "coding_agent", modelId: "m" },

@@ -13,6 +13,18 @@ export const sessionIdSchema = z
 export const runIdSchema = z.string().min(1).max(128);
 export const commandIdSchema = z.string().min(1).max(128);
 export const idempotencyKeySchema = z.string().min(1).max(256);
+const historyItemSchema = z.object({
+  productEntryId: z.string(),
+  message: z.record(z.unknown()),
+});
+
+/** Wire BackendInputMessage: durable input id + canonical Message + optional
+ *  productEntryId. The sole "actual prompt" - never inferred from history. */
+const inputMessageSchema = z.object({
+  inputId: z.string().min(1).max(256),
+  message: z.record(z.unknown()),
+  productEntryId: z.string().optional(),
+});
 
 // ─── Daemon → Worker commands ──────────────────────────────────────────
 
@@ -34,12 +46,7 @@ export const startRunCommand = z.object({
   backendSessionId: sessionIdSchema,
   runId: runIdSchema,
   mode: z.enum(["normal", "follow_up"]),
-  history: z.array(
-    z.object({
-      productEntryId: z.string(),
-      message: z.record(z.unknown()),
-    }),
-  ),
+  history: z.array(historyItemSchema),
   run: z.object({
     runId: runIdSchema,
     model: z.object({ backendKind: z.literal("coding_agent"), modelId: z.string() }),
@@ -54,10 +61,14 @@ export const startRunCommand = z.object({
     ),
     configRevision: z.number(),
   }),
-  metaText: z.string(),
-  promptText: z.string(),
-  systemPrompt: z.string(),
-  workspaceRoot: z.string(),
+  input: inputMessageSchema,
+  workspace: z.object({ root: z.string(), access: z.enum(["read_only", "read_write"]) }),
+  metadata: z.object({
+    conversationId: z.string(),
+    agentMemberId: z.string(),
+    branchId: z.string(),
+    productRevision: z.number(),
+  }),
 });
 
 export const sendCommand = z.object({
@@ -67,12 +78,7 @@ export const sendCommand = z.object({
   backendSessionId: sessionIdSchema,
   runId: runIdSchema,
   mode: z.enum(["normal", "steer", "follow_up"]),
-  messages: z.array(
-    z.object({
-      productEntryId: z.string(),
-      message: z.record(z.unknown()),
-    }),
-  ),
+  history: z.array(historyItemSchema),
   run: z.object({
     runId: runIdSchema,
     model: z.object({ backendKind: z.literal("coding_agent"), modelId: z.string() }),
@@ -87,9 +93,7 @@ export const sendCommand = z.object({
     ),
     configRevision: z.number(),
   }),
-  promptText: z.string(),
-  metaText: z.string().optional(),
-  systemPrompt: z.string().optional(),
+  input: inputMessageSchema,
   workspaceRoot: z.string().optional(),
 });
 

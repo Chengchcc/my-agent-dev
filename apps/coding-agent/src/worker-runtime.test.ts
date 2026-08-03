@@ -62,7 +62,7 @@ describe("worker runtime assembly", () => {
 
 describe("worker main dispatch", () => {
   test("start_run dispatches normal loop and emits exactly one outcome", async () => {
-    const events: string[] = [];
+    const _events: string[] = [];
     const sent: Array<Record<string, unknown>> = [];
     const sentLines: string[] = [];
     const { runWorkerMain } = await import("./worker-main.js");
@@ -96,10 +96,14 @@ describe("worker main dispatch", () => {
               productTools: [],
               configRevision: 1,
             },
-            metaText: "meta",
-            promptText: "go",
-            systemPrompt: "sp",
-            workspaceRoot: "/tmp/ws",
+            input: { inputId: "in-1", message: { role: "user", text: "go" } },
+            workspace: { root: "/tmp/ws", access: "read_write" },
+            metadata: {
+              conversationId: "c",
+              agentMemberId: "m",
+              branchId: "b",
+              productRevision: 1,
+            },
           })}\n`,
         );
         this.push(null);
@@ -124,9 +128,8 @@ describe("worker main dispatch", () => {
     const outcomes = parsed.filter((p) => p.type === "outcome");
     expect(accepted).toHaveLength(2);
     expect(outcomes).toHaveLength(1);
-    expect(outcomes[0]?.outcome).toEqual({ status: "completed" });
     expect(result).toBe(0);
-    void events;
+    expect(outcomes[0]?.outcome).toMatchObject({ status: "completed" });
     void sent;
   });
 });

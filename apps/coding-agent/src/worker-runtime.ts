@@ -7,7 +7,6 @@ import {
   createSqliteSessionStore,
   type Plugin,
   type PluginTool,
-  renderLoopMeta,
   type SessionStore,
 } from "@my-agent-team/agent";
 import type { AgentRunSnapshot, ProjectedHistoryItem } from "@my-agent-team/agent-backend";
@@ -32,13 +31,13 @@ import {
 
 /** Dependencies the daemon injects into a Worker's Runtime assembly. */
 export interface WorkerRuntimeDeps {
-  readonly dataDir: string;
-  readonly workspaceRoot: string;
-  readonly backendSessionId: string;
-  readonly modelRuntime: ModelRuntime;
-  readonly skillRoots: readonly string[];
-  readonly webSearch?: WebSearchPort;
-  readonly webFetch?: WebFetchPort;
+  dataDir: string;
+  workspaceRoot: string;
+  backendSessionId: string;
+  modelRuntime: ModelRuntime;
+  skillRoots?: readonly string[];
+  webSearch?: WebSearchPort;
+  webFetch?: WebFetchPort;
 }
 
 export interface WorkerRuntime {
@@ -51,9 +50,9 @@ export interface WorkerRuntime {
   setActiveRun(run: AgentRunSnapshot<"coding_agent"> | null): void;
 }
 
-/** Build the complete Runtime assembly for exactly one session. The model is
- *  resolved per run: `setActiveRun` installs the AgentRunSnapshot model before
- *  the loop starts. */
+/** Build the complete Runtime assembly for exactly one session. The store file
+ *  is created/opened by the caller (open_session); this only assembles the
+ *  store handle + plugins + session. The model is resolved per run. */
 export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<WorkerRuntime> {
   const sessionsDir = `${deps.dataDir}/sessions`;
   mkdirSync(sessionsDir, { recursive: true });
@@ -80,10 +79,20 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
   const plugins: Plugin[] = [
     nativeToolsPlugin,
     createTodoPlugin({ sessionId: deps.backendSessionId, store }),
-    createProgressiveSkillPlugin({ roots: deps.skillRoots }),
+    createProgressiveSkillPlugin({ roots: deps.skillRoots ?? [] }),
   ];
 
   let activeRun: AgentRunSnapshot<"coding_agent"> | null = null;
+
+  // Resolve the model display identity for a run's ref - used by the Session to
+  // render the per-loop Meta (workspace/model fact line). The Session is the
+  // sole Meta owner; the Worker never passes a meta string.
+  const resolveModel = async (modelId: string): Promise<{ provider: string; id: string }> => {
+    const catalog = await deps.modelRuntime.getCatalog();
+    const model = catalog.models.find((m) => `${m.providerId}/${m.modelId}` === modelId);
+    if (!model) throw new Error(`model not found: ${modelId}`);
+    return { provider: model.providerId, id: model.modelId };
+  };
 
   // Summarizer: call the summary model through ModelRuntime with full
   // Message[] input and AbortSignal support. No placeholder summaries.
@@ -140,6 +149,7 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
     },
     summarize,
     contextBudget,
+    resolveModel,
   });
 
   return {
@@ -152,29 +162,6 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
       activeRun = run;
     },
   };
-}
-
-/** Build the Meta text for a loop input from plugins + runtime facts. */
-export function renderMetaForRun(
-  plugins: readonly Plugin[],
-  workspaceRoot: string,
-  modelId: string,
-): string {
-  return renderLoopMeta({
-    plugins,
-    workspace: { root: workspaceRoot },
-    model: {
-      id: modelId,
-      name: modelId,
-      provider: "coding_agent",
-      api: "anthropic-messages",
-      reasoning: false,
-      input: ["text"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: 200000,
-      maxTokens: 8192,
-    },
-  });
 }
 
 export type { AgentRunSnapshot, PluginTool, ProjectedHistoryItem };

@@ -1,4 +1,3 @@
-import type { Model } from "@my-agent-team/ai";
 import type { MetaSectionProvider, Plugin } from "./plugin.js";
 import type { TodoState } from "./todo.js";
 
@@ -6,7 +5,9 @@ import type { TodoState } from "./todo.js";
 export interface LoopMetaInput {
   readonly plugins: readonly Plugin[];
   readonly workspace: { readonly root: string; readonly cwd?: string };
-  readonly model: Model;
+  /** Resolved model display identity for the workspace/model fact line.
+   *  Kept minimal so Meta rendering does not depend on a full Model type. */
+  readonly model?: { readonly provider: string; readonly id: string };
   readonly productContext?: string;
   readonly todo?: TodoState;
 }
@@ -38,7 +39,7 @@ export function renderLoopMeta(input: LoopMetaInput): string {
   // Workspace / runtime facts
   const wsParts: string[] = [`Workspace root: ${input.workspace.root}`];
   if (input.workspace.cwd) wsParts.push(`Working directory: ${input.workspace.cwd}`);
-  wsParts.push(`Model: ${input.model.provider}/${input.model.id}`);
+  if (input.model) wsParts.push(`Model: ${input.model.provider}/${input.model.id}`);
   const ws = section("Workspace", wsParts.join("\n"));
   if (ws) sections.push(ws);
 

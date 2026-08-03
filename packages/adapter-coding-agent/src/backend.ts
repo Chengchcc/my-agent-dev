@@ -2,6 +2,7 @@ import type {
   AgentBackend,
   AgentBackendCapabilities,
   BackendEvent,
+  BackendInputMessage,
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
@@ -14,11 +15,10 @@ import type { CodingAgentClient } from "./client.js";
 import { mapRunEvent, mapRunOutcome } from "./event-mapper.js";
 import type { RunEventEnvelope } from "./transport.js";
 
-/** Live session handle for the Coding Agent backend. Product Backend only
- *  sees the opaque backendSessionId via the base ref. */
-export interface CodingAgentSessionRef extends BackendSessionRef<"coding_agent"> {
-  readonly runId: string;
-}
+/** The adapter's session ref is the plain contract identity only -
+ *  `{ backendSessionId, backendKind }`. Run identity is segment-internal and
+ *  tracked in the adapter's live registry, never on the public ref. */
+export type CodingAgentSessionRef = BackendSessionRef<"coding_agent">;
 
 const CAPABILITIES: AgentBackendCapabilities = {
   persistentSession: true,
@@ -29,10 +29,19 @@ const CAPABILITIES: AgentBackendCapabilities = {
   pendingActionResponse: false,
 };
 
+interface ActiveRun {
+  readonly runId: string;
+  stop(): Promise<void>;
+}
+
 export class CodingAgentBackend implements AgentBackend<"coding_agent", CodingAgentSessionRef> {
   readonly kind = "coding_agent" as const;
   readonly capabilities = CAPABILITIES;
   private readonly client: CodingAgentClient;
+  /** backendSessionId -> currently active run segment. Lets stop(session) -
+   *  which carries only the ref - target the active run without leaking runId
+   *  onto the public SessionRef. */
+  private readonly activeRuns = new Map<string, ActiveRun>();
 
   constructor(client: CodingAgentClient) {
     this.client = client;
@@ -42,85 +51,113 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent", CodingAg
     input: BackendStartInput<"coding_agent">,
   ): Promise<BackendSessionRun<"coding_agent", CodingAgentSessionRef>> {
     const resp = await this.client.startSession({
-      idempotencyKey: `start-${input.run.runId}`,
+      // Idempotency source is the durable input id, never a clock or runId.
+      idempotencyKey: input.input.inputId,
       history: input.history as never,
+      input: input.input as never,
       run: input.run as never,
       workspace: input.workspace,
+      env: input.env,
       metadata: input.metadata,
     });
     const ref: CodingAgentSessionRef = {
       backendSessionId: resp.backendSessionId,
       backendKind: "coding_agent",
-      runId: resp.runId,
     };
-    return {
-      session: ref,
-      segment: buildSegment(this.client, ref),
-    };
+    return { session: ref, segment: buildSegment(this.client, this.activeRuns, ref, resp.runId) };
   }
 
   async send(
     session: CodingAgentSessionRef,
     input: BackendRunInput<"coding_agent">,
   ): Promise<BackendRunSegment<"coding_agent">> {
-    // steer routes through send(mode: "steer") — no separate method
+    // Steer routes through send(mode: "steer") - no separate method, no new
+    // run segment (the active run's segment keeps streaming).
+    if (input.mode === "steer") {
+      await this.client.sendRun(session.backendSessionId, {
+        idempotencyKey: input.input.inputId,
+        commandId: input.input.inputId,
+        history: input.history as never,
+        input: input.input as never,
+        run: input.run as never,
+        mode: "steer",
+        metadata: input.metadata,
+      });
+      // Steer is an in-flight injection into the active run - it has no segment
+      // of its own. Return a settled empty segment so the contract's send()
+      // return type holds; the caller observes steer through the active segment.
+      return {
+        events: (async function* () {})(),
+        outcome: Promise.resolve({ status: "completed" } as BackendRunOutcome),
+        stop: async () => {},
+      };
+    }
     await this.client.sendRun(session.backendSessionId, {
-      idempotencyKey: `send-${input.run.runId}-${input.mode}`,
-      commandId: `cmd-${Date.now()}-${input.mode}`,
-      messages: input.messages as never,
+      idempotencyKey: input.input.inputId,
+      commandId: input.input.inputId,
+      history: input.history as never,
+      input: input.input as never,
       run: input.run as never,
       mode: input.mode,
-      promptText: "[prompt]",
       metadata: input.metadata,
     });
-    return buildSegment(this.client, { ...session, runId: input.run.runId });
+    return buildSegment(this.client, this.activeRuns, session, input.run.runId);
   }
 
   async resume(
     backendSessionId: string,
     input: BackendStartInput<"coding_agent">,
   ): Promise<BackendSessionRun<"coding_agent", CodingAgentSessionRef>> {
-    const resp = await this.client.resumeSession({
-      idempotencyKey: `resume-${input.run.runId}`,
+    const resp = await this.client.resumeSession(backendSessionId, {
+      idempotencyKey: input.input.inputId,
       history: input.history as never,
+      input: input.input as never,
       run: input.run as never,
       workspace: input.workspace,
+      env: input.env,
       metadata: input.metadata,
     });
-    const ref: CodingAgentSessionRef = {
-      backendSessionId,
-      backendKind: "coding_agent",
-      runId: resp.runId,
-    };
-    return {
-      session: ref,
-      segment: buildSegment(this.client, ref),
-    };
+    const ref: CodingAgentSessionRef = { backendSessionId, backendKind: "coding_agent" };
+    return { session: ref, segment: buildSegment(this.client, this.activeRuns, ref, resp.runId) };
   }
 
   async respond(
     _session: CodingAgentSessionRef,
     _action: PendingActionResponse,
   ): Promise<BackendRunSegment<"coding_agent">> {
-    // pendingActionResponse=false: respond is unsupported, no HTTP call
+    // pendingActionResponse=false: respond is unsupported, no HTTP call.
     throw new Error("coding_agent backend does not support pending action responses");
   }
 
   async stop(session: CodingAgentSessionRef): Promise<void> {
-    await this.client.stopSession(session.backendSessionId);
+    const active = this.activeRuns.get(session.backendSessionId);
+    if (active) await active.stop();
+    else await this.client.stopSession(session.backendSessionId);
   }
 
   async close(session: CodingAgentSessionRef): Promise<void> {
     await this.client.closeSession(session.backendSessionId);
+    this.activeRuns.delete(session.backendSessionId);
   }
 }
 
 function buildSegment(
   client: CodingAgentClient,
+  activeRuns: Map<string, ActiveRun>,
   ref: CodingAgentSessionRef,
+  runId: string,
 ): BackendRunSegment<"coding_agent"> {
-  const runId = ref.runId;
   let lastEventId: number | undefined;
+  let stopped = false;
+
+  const doStop = async (): Promise<void> => {
+    if (stopped) return;
+    stopped = true;
+    await client.stopSession(ref.backendSessionId, runId);
+  };
+
+  const active: ActiveRun = { runId, stop: doStop };
+  activeRuns.set(ref.backendSessionId, active);
 
   async function* eventStream(): AsyncIterable<BackendEvent<"coding_agent">> {
     for await (const envelope of client.streamEvents(runId, lastEventId)) {
@@ -135,13 +172,14 @@ function buildSegment(
       if (outcome) return mapRunOutcome(outcome);
       await new Promise((r) => setTimeout(r, 200));
     }
-  })();
+  })().finally(() => {
+    if (activeRuns.get(ref.backendSessionId) === active) {
+      activeRuns.delete(ref.backendSessionId);
+    }
+  });
 
-  return {
-    events: eventStream(),
-    outcome: outcomePromise,
-    stop: async () => {
-      await client.stopSession(ref.backendSessionId);
-    },
-  };
+  return { events: eventStream(), outcome: outcomePromise, stop: doStop };
 }
+
+// Re-export so callers can construct the input message type explicitly.
+export type { BackendInputMessage };

@@ -1,8 +1,14 @@
-import { stdin, stdout } from "node:process";
+import { stderr, stdin, stdout } from "node:process";
 import { createInterface } from "node:readline";
 import type { AgentLoopListener, CodingAgentLoopEvent } from "@my-agent-team/agent";
-import type { AgentRunSnapshot, ProjectedHistoryItem } from "@my-agent-team/agent-backend";
+import type {
+  AgentRunSnapshot,
+  BackendInputMessage,
+  ProjectedHistoryItem,
+  WorkspaceBinding,
+} from "@my-agent-team/agent-backend";
 import { createModelRuntime, type ModelRuntime } from "@my-agent-team/ai";
+import type { Message } from "@my-agent-team/message";
 import {
   parseCommand,
   type SendCommand,
@@ -13,7 +19,13 @@ import {
 import { assembleWorkerRuntime, type WorkerRuntime } from "./worker-runtime.js";
 
 /** Daemon-spawned Worker entry: reads NDJSON commands on stdin, emits
- *  protocol NDJSON on stdout only, logs to stderr. Exactly one session. */
+ *  protocol NDJSON on stdout only, logs to stderr. Exactly one session.
+ *
+ *  Command dispatch is serialized for lifecycle mutations (open/start/follow-up/
+ *  compact/close) via a promise chain - readline does NOT await async line
+ *  listeners, so without a chain multiple commands would interleave. steer and
+ *  stop are control inputs delivered to the active loop immediately and do not
+ *  wait on the chain. */
 
 export interface WorkerMainOptions {
   stdin: NodeJS.ReadableStream;
@@ -25,7 +37,7 @@ export interface WorkerMainOptions {
     workspaceRoot: string;
     backendSessionId: string;
     modelRuntime: ModelRuntime;
-  }) => WorkerRuntime;
+  }) => Promise<WorkerRuntime>;
 }
 
 function log(stderr: NodeJS.WritableStream, msg: string): void {
@@ -37,7 +49,18 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
   let runtime: WorkerRuntime | null = null;
   let closed = false;
   let currentRunId: string | null = null;
+  // Per-run accumulator for the terminal assistant Message (events carry text
+  // deltas; the outcome must carry the canonical final output).
+  let runAssistantText = "";
   let runTerminalStatus: "completed" | "failed" | "stopped" = "completed";
+  // Session-level facts captured on the first start_run, reused by follow-ups.
+  let sessionWorkspace: WorkspaceBinding | null = null;
+  let sessionMetadata: {
+    conversationId: string;
+    agentMemberId: string;
+    branchId: string;
+    productRevision: number;
+  } | null = null;
 
   const send = (msg: Parameters<typeof serializeMessage>[0]): void => {
     outStream.write(serializeMessage(msg));
@@ -45,6 +68,7 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
 
   function emitEvent(event: CodingAgentLoopEvent): void {
     if (!runtime || !currentRunId) return;
+    if (event.type === "message_update") runAssistantText += event.text;
     send({
       protocolVersion: 1,
       type: "event",
@@ -55,11 +79,44 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
   }
 
   const listener: AgentLoopListener = async (event) => {
-    if (event.type === "agent_end") {
-      runTerminalStatus = event.status;
-    }
+    if (event.type === "agent_end") runTerminalStatus = event.status;
     emitEvent(event);
   };
+
+  /** Build the CodingLoopInput the Session consumes. Meta is rendered by the
+   *  Session internally (never crosses this boundary). */
+  function buildLoopInput(
+    cmd: StartRunCommand | SendCommand,
+    history: readonly ProjectedHistoryItem[],
+    input: BackendInputMessage,
+    mode: "normal" | "follow_up",
+  ) {
+    const workspace: WorkspaceBinding =
+      cmd.type === "start_run"
+        ? cmd.workspace
+        : (sessionWorkspace ?? { root: process.cwd(), access: "read_write" });
+    const metadata =
+      cmd.type === "start_run"
+        ? cmd.metadata
+        : (sessionMetadata ?? {
+            conversationId: "",
+            agentMemberId: "",
+            branchId: "",
+            productRevision: 0,
+          });
+    if (cmd.type === "start_run") {
+      sessionWorkspace = cmd.workspace;
+      sessionMetadata = cmd.metadata;
+    }
+    return {
+      history,
+      input,
+      run: cmd.run as AgentRunSnapshot<"coding_agent">,
+      workspace,
+      metadata,
+      mode,
+    };
+  }
 
   async function handleCommand(cmd: WorkerCommand): Promise<void> {
     if (closed) return;
@@ -67,7 +124,7 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
       case "open_session": {
         const modelRuntime = createModelRuntime();
         runtime = opts.runtimeFactory
-          ? opts.runtimeFactory({
+          ? await opts.runtimeFactory({
               dataDir: cmd.dataDir,
               workspaceRoot: cmd.workspaceRoot,
               backendSessionId: cmd.backendSessionId,
@@ -81,6 +138,19 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
               skillRoots: [],
             });
         runtime.session.onEvent(listener);
+        // Create or reopen the durable session file before any run.
+        try {
+          await runtime.store.open(cmd.backendSessionId);
+        } catch {
+          await runtime.store.create({
+            sessionId: cmd.backendSessionId,
+            backendKind: "coding_agent",
+            workspaceRoot: cmd.workspaceRoot,
+            leafEntryId: null,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          });
+        }
         send({
           protocolVersion: 1,
           type: "command_accepted",
@@ -93,59 +163,51 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
       case "start_run":
       case "send": {
         if (!runtime) throw new Error("session not open");
-        const runCmd = cmd as StartRunCommand | SendCommand;
-        runtime.setActiveRun(runCmd.run as AgentRunSnapshot<"coding_agent">);
-        currentRunId = runCmd.runId;
+        runtime.setActiveRun(cmd.run as AgentRunSnapshot<"coding_agent">);
+        currentRunId = cmd.runId;
+        runAssistantText = "";
 
-        // steer: append only a steer input to the current active loop
-        if (runCmd.mode === "steer") {
-          runtime.session.steer(runCmd.promptText);
+        // Steer is a control input: deliver to the active loop immediately,
+        // no new Loop, no Meta, no acceptance of a new run.
+        if (cmd.type === "send" && cmd.mode === "steer") {
+          runtime.session.steer(cmd.input as unknown as BackendInputMessage);
           send({
             protocolVersion: 1,
             type: "command_accepted",
             commandId: cmd.commandId,
-            backendSessionId: cmd.backendSessionId,
-            runId: runCmd.runId,
+            backendSessionId: runtime.sessionId,
+            runId: cmd.runId,
           });
           break;
         }
 
-        const history = (runCmd.type === "start_run"
-          ? runCmd.history
-          : runCmd.messages) as unknown as readonly ProjectedHistoryItem[];
-        const metaText =
-          "metaText" in runCmd && runCmd.metaText ? runCmd.metaText : `[run ${runCmd.runId}]`;
-        const deps = {
-          systemPrompt: runCmd.systemPrompt ?? "",
-          metaText,
-          promptText: runCmd.promptText,
-          history,
-        };
+        const mode: "normal" | "follow_up" =
+          cmd.type === "start_run" ? "normal" : cmd.mode === "follow_up" ? "follow_up" : "normal";
         send({
           protocolVersion: 1,
           type: "command_accepted",
           commandId: cmd.commandId,
-          backendSessionId: cmd.backendSessionId,
-          runId: runCmd.runId,
+          backendSessionId: runtime.sessionId,
+          runId: cmd.runId,
         });
-        // Run the loop; outcome emitted after listeners settle (agent_end)
-        if (runCmd.type === "start_run") {
-          await runtime.session.startLoop(deps);
+
+        const loopInput = buildLoopInput(
+          cmd,
+          cmd.history as unknown as readonly ProjectedHistoryItem[],
+          cmd.input as unknown as BackendInputMessage,
+          mode,
+        );
+        if (mode === "follow_up") {
+          await runtime.session.startFollowUp(loopInput);
         } else {
-          await runtime.session.startFollowUp(deps);
+          await runtime.session.startLoop(loopInput);
         }
-        // Exactly one terminal outcome per run, derived from agent_end status
         send({
           protocolVersion: 1,
           type: "outcome",
-          backendSessionId: cmd.backendSessionId,
-          runId: runCmd.runId,
-          outcome:
-            runTerminalStatus === "completed"
-              ? { status: "completed" }
-              : runTerminalStatus === "stopped"
-                ? { status: "aborted", error: "stopped by user" }
-                : { status: "failed", error: "loop failed" },
+          backendSessionId: runtime.sessionId,
+          runId: cmd.runId,
+          outcome: buildOutcome() as never,
         });
         currentRunId = null;
         break;
@@ -157,14 +219,14 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
           protocolVersion: 1,
           type: "command_accepted",
           commandId: cmd.commandId,
-          backendSessionId: cmd.backendSessionId,
+          backendSessionId: runtime.sessionId,
         });
         await runtime.session.compact();
         send({
           protocolVersion: 1,
           type: "command_result",
           commandId: cmd.commandId,
-          backendSessionId: cmd.backendSessionId,
+          backendSessionId: runtime.sessionId,
           result: { compacted: true },
         });
         break;
@@ -172,12 +234,13 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
 
       case "stop_run": {
         if (!runtime) throw new Error("session not open");
+        // Control input: abort the active loop immediately.
         runtime.session.stop();
         send({
           protocolVersion: 1,
           type: "command_accepted",
           commandId: cmd.commandId,
-          backendSessionId: cmd.backendSessionId,
+          backendSessionId: runtime.sessionId,
           runId: cmd.runId,
         });
         break;
@@ -189,7 +252,7 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
           protocolVersion: 1,
           type: "command_accepted",
           commandId: cmd.commandId,
-          backendSessionId: cmd.backendSessionId,
+          backendSessionId: runtime?.sessionId ?? cmd.backendSessionId,
         });
         closed = true;
         break;
@@ -200,7 +263,7 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
           protocolVersion: 1,
           type: "command_accepted",
           commandId: cmd.commandId,
-          backendSessionId: cmd.backendSessionId,
+          backendSessionId: runtime?.sessionId ?? cmd.backendSessionId,
         });
         closed = true;
         break;
@@ -208,31 +271,71 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
     }
   }
 
+  /** Build the terminal outcome from the run's accumulated state. The final
+   *  assistant Message is the canonical output (Phase 4 terminal commit). */
+  function buildOutcome():
+    | { status: "completed"; output: Message }
+    | { status: "aborted"; error: string }
+    | { status: "failed"; error: string } {
+    if (runTerminalStatus === "completed") {
+      return {
+        status: "completed",
+        output: { role: "assistant", text: runAssistantText },
+      };
+    }
+    if (runTerminalStatus === "stopped") {
+      return { status: "aborted", error: "stopped by user" };
+    }
+    return { status: "failed", error: "loop failed" };
+  }
+
+  // Serialize lifecycle commands: readline does not await async listeners, so a
+  // bare `await handleCommand` would let the next command interleave. steer and
+  // stop are dispatched ahead of the chain as control inputs.
+  let chain: Promise<void> = Promise.resolve();
   const rl = createInterface({ input: inStream, terminal: false });
-  rl.on("line", async (line) => {
+  rl.on("line", (line) => {
     if (closed) return;
     try {
       const cmd = parseCommand(line);
-      await handleCommand(cmd);
+      // Control inputs bypass the lifecycle chain.
+      const isControl = (cmd.type === "send" && cmd.mode === "steer") || cmd.type === "stop_run";
+      if (isControl) {
+        void handleCommand(cmd).catch((err) => reportError(cmd.commandId ?? "", err));
+        return;
+      }
+      chain = chain
+        .then(() => handleCommand(cmd))
+        .catch((err) => reportError((cmd as { commandId?: string }).commandId ?? "", err));
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      log(errStream, `command failed: ${message}`);
-      send({
-        protocolVersion: 1,
-        type: "command_error",
-        code: "command_failed",
-        message,
-      });
+      reportError("", err);
     }
   });
+
+  function reportError(commandId: string, err: unknown): void {
+    const message = err instanceof Error ? err.message : String(err);
+    log(errStream, `command failed: ${message}`);
+    send({
+      protocolVersion: 1,
+      type: "command_error",
+      commandId: commandId || undefined,
+      backendSessionId: runtime?.sessionId,
+      code: "command_failed",
+      message,
+    });
+  }
+
   await new Promise<void>((resolve) => {
-    rl.on("close", () => resolve());
+    rl.on("close", () => {
+      // Let the serialized command chain drain before exiting so a fast
+      // stdin close (tests) does not truncate in-flight commands.
+      chain.finally(() => resolve());
+    });
   });
   return 0;
 }
 
 // Direct execution: spawned as `bun src/worker-main.ts`
 if (import.meta.main) {
-  const exitCode = await runWorkerMain({ stdin, stdout, stderr: process.stderr });
-  process.exit(exitCode);
+  runWorkerMain({ stdin, stdout, stderr }).then((code) => process.exit(code));
 }

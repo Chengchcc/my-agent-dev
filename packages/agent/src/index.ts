@@ -31,7 +31,7 @@ export { createCodingAgentSession } from "./runtime/agent-loop.js";
 export type { CompactionResult } from "./runtime/compaction.js";
 // Compaction + retry
 export { compactSession } from "./runtime/compaction.js";
-export type { LoopInputDeps, LoopInputResult } from "./runtime/loop-input.js";
+export type { CodingLoopInput, LoopInputDeps, LoopInputResult } from "./runtime/loop-input.js";
 export { buildLoopInput } from "./runtime/loop-input.js";
 // Plugin
 export type { MetaSectionProvider, Plugin, PluginHooks, PluginTool } from "./runtime/plugin.js";

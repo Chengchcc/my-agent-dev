@@ -13,6 +13,7 @@ export type {
 } from "./history.js";
 export type { BackendModel, BackendModelCatalog, BackendModelRef } from "./model.js";
 export type {
+  BackendInputMessage,
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,

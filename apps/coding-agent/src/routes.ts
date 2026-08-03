@@ -86,6 +86,7 @@ export function createRoutes(deps: RouteDeps): Elysia {
           idempotencyKey: parsed.data.idempotencyKey,
           backendSessionId: crypto.randomUUID().replace(/-/g, "").slice(0, 26),
           history: parsed.data.history as never,
+          input: parsed.data.input as never,
           run: parsed.data.run as never,
           workspace: parsed.data.workspace,
           metadata: parsed.data.metadata,
@@ -117,11 +118,9 @@ export function createRoutes(deps: RouteDeps): Elysia {
           backendSessionId: params.backendSessionId,
           runId: parsed.data.run.runId,
           mode: parsed.data.mode,
-          messages: parsed.data.messages as never,
+          history: parsed.data.history as never,
+          input: parsed.data.input as never,
           run: parsed.data.run as never,
-          promptText: parsed.data.promptText,
-          metaText: parsed.data.metaText,
-          systemPrompt: parsed.data.systemPrompt,
           metadata: parsed.data.metadata,
         });
         return Response.json(result);
