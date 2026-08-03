@@ -11,6 +11,7 @@
     "lint": "biome check . && eslint ."
   },
   "dependencies": {
+    "@my-agent-team/adapter-coding-agent": "workspace:*",
     "@my-agent-team/adapter-mcp": "workspace:*",
     "@my-agent-team/agent": "workspace:*",
     "@my-agent-team/agent-backend": "workspace:*",

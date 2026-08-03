@@ -166,11 +166,11 @@ export const transportErrorSchema = z.object({
   ]),
   message: z.string(),
 });
-export type TransportError = z.infer<typeof transportErrorSchema>;
+type TransportErrorCode = z.infer<typeof transportErrorSchema>["code"];
 
 export class TransportError extends Error {
-  readonly code: TransportError["code"];
-  constructor(code: TransportError["code"], message: string) {
+  readonly code: TransportErrorCode;
+  constructor(code: TransportErrorCode, message: string) {
     super(message);
     this.name = "TransportError";
     this.code = code;

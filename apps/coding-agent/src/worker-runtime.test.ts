@@ -71,7 +71,7 @@ describe("worker main dispatch", () => {
     const input = new Readable({
       read() {
         this.push(
-          JSON.stringify({
+          `${JSON.stringify({
             protocolVersion: 1,
             type: "open_session",
             commandId: "c1",
@@ -79,10 +79,10 @@ describe("worker main dispatch", () => {
             dataDir: "/tmp/d",
             workspaceRoot: "/tmp/ws",
             backendKind: "coding_agent",
-          }) + "\n",
+          })}\n`,
         );
         this.push(
-          JSON.stringify({
+          `${JSON.stringify({
             protocolVersion: 1,
             type: "start_run",
             commandId: "c2",
@@ -100,7 +100,7 @@ describe("worker main dispatch", () => {
             promptText: "go",
             systemPrompt: "sp",
             workspaceRoot: "/tmp/ws",
-          }) + "\n",
+          })}\n`,
         );
         this.push(null);
       },

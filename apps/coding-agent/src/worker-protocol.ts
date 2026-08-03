@@ -269,5 +269,5 @@ export function parseWorkerMessage(line: string): WorkerMessage {
 }
 
 export function serializeMessage(message: WorkerMessage): string {
-  return JSON.stringify(message) + "\n";
+  return `${JSON.stringify(message)}\n`;
 }
