@@ -27,6 +27,8 @@ function schema(db: Database): void {
     state TEXT,
     summary TEXT,
     covers_entry_ids TEXT,
+    tokens_before INTEGER,
+    retained_entry_ids TEXT,
     created_at INTEGER NOT NULL
   )`);
   db.exec(`CREATE TABLE IF NOT EXISTS operations (
@@ -159,8 +161,8 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
           const now = Date.now();
           const msg = "message" in entry ? (entry as { message: unknown }).message : null;
 
-          db.query(`INSERT INTO entries (entry_id, parent_id, product_entry_id, type, role, source, message, state, summary, covers_entry_ids, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`).run(
+          db.query(`INSERT INTO entries (entry_id, parent_id, product_entry_id, type, role, source, message, state, summary, covers_entry_ids, tokens_before, retained_entry_ids, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`).run(
             entryId,
             parentId,
             productEntryId ?? null,
@@ -174,6 +176,10 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
             (entry as { summary?: string }).summary ?? null,
             (entry as { coversEntryIds?: readonly string[] }).coversEntryIds
               ? JSON.stringify((entry as { coversEntryIds: readonly string[] }).coversEntryIds)
+              : null,
+            (entry as { tokensBefore?: number }).tokensBefore ?? null,
+            (entry as { retainedEntryIds?: readonly string[] }).retainedEntryIds
+              ? JSON.stringify((entry as { retainedEntryIds: readonly string[] }).retainedEntryIds)
               : null,
             now,
           );
@@ -267,12 +273,21 @@ function parseEntry(r: Record<string, unknown>): CodingSessionEntry {
     } as CodingSessionEntry;
   }
   if (type === "compaction") {
-    return {
+    const entry: CodingSessionEntry = {
       ...base,
       type: "compaction",
       summary: r.summary as string,
       coversEntryIds: JSON.parse((r.covers_entry_ids as string) ?? "[]"),
     } as CodingSessionEntry;
+    const tokensBefore = r.tokens_before as number | null;
+    const retained = r.retained_entry_ids as string | null;
+    if (tokensBefore !== null && tokensBefore !== undefined) {
+      (entry as { tokensBefore?: number }).tokensBefore = tokensBefore;
+    }
+    if (retained) {
+      (entry as { retainedEntryIds?: readonly string[] }).retainedEntryIds = JSON.parse(retained);
+    }
+    return entry;
   }
   return {
     ...base,

@@ -85,4 +85,49 @@ describe("SQLite SessionStore specifics", () => {
       /* cleanup */
     }
   });
+
+  test("compaction metadata round-trips through SQLite", async () => {
+    const path = `/tmp/sqlite-compaction-${Math.random().toString(36).slice(2, 8)}.db`;
+    const store = createSqliteSessionStore(path);
+    await store.create(meta("comp"));
+    for (let i = 0; i < 6; i++) {
+      await store.appendBatch("comp", {
+        entries: [
+          {
+            type: "message",
+            role: "user",
+            source: "prompt",
+            message: { role: "user", text: `m${i}` },
+            createdAt: i,
+          },
+        ],
+      });
+    }
+    await store.appendBatch("comp", {
+      entries: [
+        {
+          type: "compaction",
+          summary: "s",
+          coversEntryIds: ["e1", "e2"],
+          tokensBefore: 42,
+          retainedEntryIds: ["e3", "e4"],
+          createdAt: Date.now(),
+        },
+      ],
+    });
+    const snap = await store.open("comp");
+    const comp = snap.entries.find((e) => e.type === "compaction") as {
+      tokensBefore?: number;
+      retainedEntryIds?: readonly string[];
+    };
+    expect(comp).toBeTruthy();
+    expect(comp.tokensBefore).toBe(42);
+    expect(comp.retainedEntryIds).toEqual(["e3", "e4"]);
+    await store.delete("comp");
+    try {
+      unlinkSync(path);
+    } catch {
+      /* cleanup */
+    }
+  });
 });

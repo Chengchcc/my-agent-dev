@@ -302,7 +302,13 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
             if (err instanceof ProviderError && err.kind === "overflow" && !overflowCompacted) {
               overflowCompacted = true;
               await emit({ type: "compaction_start" });
-              await compactSession(opts.store, opts.sessionId, opts.summarize, controller?.signal);
+              await compactSession(
+                opts.store,
+                opts.sessionId,
+                opts.summarize,
+                controller?.signal,
+                opts.contextBudget,
+              );
               await emit({ type: "compaction_end" });
               messages = await readBranchMessages();
               continue; // retry model call in the SAME turn, no extra step
@@ -554,7 +560,13 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     },
     async compact() {
       await emit({ type: "compaction_start" });
-      await compactSession(opts.store, opts.sessionId, opts.summarize, controller?.signal);
+      await compactSession(
+        opts.store,
+        opts.sessionId,
+        opts.summarize,
+        controller?.signal,
+        opts.contextBudget,
+      );
       await emit({ type: "compaction_end" });
     },
 

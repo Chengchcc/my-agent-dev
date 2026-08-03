@@ -131,4 +131,110 @@ describe("compactSession", () => {
     // Raw cut 3 lands exactly after the tool_result; no adjustment needed
     expect(result.coveredIds).toHaveLength(3);
   });
+
+  test("under budget is a no-op: no summarizer call, no entry", async () => {
+    const { store, sid } = await setup([
+      {
+        type: "message",
+        role: "user",
+        source: "prompt",
+        message: { role: "user", text: "m1" },
+        createdAt: 1,
+      },
+      {
+        type: "message",
+        role: "user",
+        source: "prompt",
+        message: { role: "user", text: "m2" },
+        createdAt: 2,
+      },
+      {
+        type: "message",
+        role: "user",
+        source: "prompt",
+        message: { role: "user", text: "m3" },
+        createdAt: 3,
+      },
+      {
+        type: "message",
+        role: "user",
+        source: "prompt",
+        message: { role: "user", text: "m4" },
+        createdAt: 4,
+      },
+    ]);
+    let summarizerCalls = 0;
+    const budget = {
+      estimate: () => 1, // 4 messages * 1 = 4 tokens
+      limit: 10, // under limit -> no compaction
+    };
+    const result = await compactSession(
+      store,
+      sid,
+      async () => {
+        summarizerCalls++;
+        return "sum";
+      },
+      undefined,
+      budget,
+    );
+    expect(summarizerCalls).toBe(0);
+    expect(result.coveredIds).toHaveLength(0);
+    const branch = await store.readBranch(sid);
+    expect(branch.some((e) => e.type === "compaction")).toBe(false);
+  });
+
+  test("over budget cuts by tokens and records diagnostics", async () => {
+    const { store, sid } = await setup([
+      {
+        type: "message",
+        role: "user",
+        source: "prompt",
+        message: { role: "user", text: "m1" },
+        createdAt: 1,
+      },
+      {
+        type: "message",
+        role: "user",
+        source: "prompt",
+        message: { role: "user", text: "m2" },
+        createdAt: 2,
+      },
+      {
+        type: "message",
+        role: "user",
+        source: "prompt",
+        message: { role: "user", text: "m3" },
+        createdAt: 3,
+      },
+      {
+        type: "message",
+        role: "user",
+        source: "prompt",
+        message: { role: "user", text: "m4" },
+        createdAt: 4,
+      },
+    ]);
+    const budget = {
+      estimate: () => 3, // 4 messages * 3 = 12 tokens
+      limit: 9, // over limit -> compact until retained <= 9
+    };
+    const result = await compactSession(
+      store,
+      sid,
+      async (msgs) => `[sum:${msgs.length}]`,
+      undefined,
+      budget,
+    );
+    // Cover oldest until remaining <= 9: cover 1 msg (12-3=9 <= 9)
+    expect(result.coveredIds).toHaveLength(1);
+    const branch = await store.readBranch(sid);
+    const comp = branch.find((e) => e.type === "compaction") as {
+      tokensBefore?: number;
+      retainedEntryIds?: readonly string[];
+    };
+    expect(comp).toBeTruthy();
+    expect(comp.tokensBefore).toBe(12);
+    expect(comp.retainedEntryIds?.length).toBe(3);
+  });
 });

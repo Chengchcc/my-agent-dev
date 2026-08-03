@@ -1107,6 +1107,20 @@ function testHarness(
     test("11. overflow compacts once and retries once within the same turn", async () => {
       const store = storeFactory("h11");
       await createSession(store, "h11");
+      // Seed messages so overflow compaction has something to cover
+      for (let i = 0; i < 6; i++) {
+        await store.appendBatch("h11", {
+          entries: [
+            {
+              type: "message",
+              role: "user",
+              source: "prompt",
+              message: { role: "user", text: `seed ${i}` },
+              createdAt: i,
+            },
+          ],
+        });
+      }
       let attempts = 0;
       let compacted = false;
       const loop = createCodingAgentSession({
@@ -1117,6 +1131,13 @@ function testHarness(
         maxSteps: 1,
         maxForceContinues: 0,
         summarize: fakeSummarize,
+        // triggerRatio high enough that proactive does NOT preempt overflow;
+        // this isolates the overflow path using the same ContextBudget.
+        contextBudget: {
+          estimate: (m: { text?: string }) => Math.ceil((m.text ?? "").length / 4),
+          limit: 10,
+          triggerRatio: 100,
+        },
         modelStream: async function* () {
           attempts++;
           if (!compacted) {
@@ -1137,6 +1158,12 @@ function testHarness(
       expect(loop.status).toBe("completed");
       expect(events).toContain("compaction_start");
       expect(events).toContain("compaction_end");
+      // Overflow used the same ContextBudget: diagnostics recorded
+      const snap11 = await store.open("h11");
+      const comp11 = snap11.entries.find((e) => e.type === "compaction") as {
+        tokensBefore?: number;
+      };
+      expect(comp11?.tokensBefore).toBeGreaterThan(0);
     });
 
     test("12. todo survives restart", async () => {
