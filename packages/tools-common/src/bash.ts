@@ -33,7 +33,7 @@ export function createBashTool(opts: { workspaceRoot: string }): Tool {
       },
       required: ["description", "command"],
     },
-    async execute(input) {
+    async execute(input, signal?: AbortSignal) {
       const {
         command,
         timeout = 30_000,
@@ -65,14 +65,19 @@ export function createBashTool(opts: { workspaceRoot: string }): Tool {
         { stdout: "pipe", stderr: "pipe", cwd: validatedCwd },
       );
 
-      const timer = setTimeout(() => {
+      // Kill the process group on timeout OR abort signal.
+      const killGroup = () => {
         proc.kill();
         try {
           process.kill(-proc.pid!, "SIGKILL");
         } catch {
           /* */
         }
-      }, clamped);
+      };
+      const timer = setTimeout(killGroup, clamped);
+      const onAbort = () => killGroup();
+      if (signal?.aborted) killGroup();
+      signal?.addEventListener("abort", onAbort, { once: true });
 
       try {
         const [stdout, stderr] = await Promise.all([
@@ -86,6 +91,7 @@ export function createBashTool(opts: { workspaceRoot: string }): Tool {
         };
       } finally {
         clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
       }
     },
   };

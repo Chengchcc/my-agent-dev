@@ -44,15 +44,19 @@ describe("web tools", () => {
     expect(result.error).toContain("Blocked protocol");
   });
 
-  test("web_fetch port errors become tool errors", async () => {
+  test("web_fetch port errors become tool errors with isError", async () => {
     const tool = createWebFetchTool({
       async fetch() {
         throw new Error("network down");
       },
     });
-    const result = (await tool.execute({ url: "https://example.com/" })) as { error?: string };
+    const result = (await tool.execute({ url: "https://example.com/" })) as {
+      error?: string;
+      isError?: boolean;
+    };
     expect(result.error).toContain("web_fetch failed");
     expect(result.error).toContain("network down");
+    expect(result.isError).toBe(true);
   });
 
   test("web_search delegates to injected port", async () => {

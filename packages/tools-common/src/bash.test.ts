@@ -46,4 +46,21 @@ describe("bashTool", () => {
     expect(result.content).not.toInclude(process.cwd());
     await Bun.$`rm -rf ${tmpDir}`.quiet();
   });
+
+  test("AbortSignal kills a long-running command", async () => {
+    const tmpDir = `/tmp/test-bash-abort-${Date.now()}`;
+    await Bun.$`mkdir -p ${tmpDir}`.quiet();
+    const tool = createBashTool({ workspaceRoot: tmpDir });
+    const controller = new AbortController();
+    const started = tool.execute({ command: "sleep 5", timeout: 10_000 }, controller.signal);
+    // Abort shortly after the command starts
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 50);
+    await promise;
+    controller.abort();
+    const result = await started;
+    // The command should have been killed (non-zero exit or error)
+    expect(result.isError).toBe(true);
+    await Bun.$`rm -rf ${tmpDir}`.quiet();
+  });
 });

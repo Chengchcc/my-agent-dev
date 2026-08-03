@@ -12,7 +12,13 @@ export interface RetryOptions {
 /** Wrap a model stream with provider-only retry. Only normalized transient
  *  errors from ProviderError are retried. Tool/business/overflow/auth errors
  *  pass through immediately. The same input messages are reused (no duplicate
- *  Meta/Prompt/history in the tree). */
+ *  Meta/Prompt/history in the tree).
+ *
+ *  Streaming is real-time: chunks are forwarded immediately, not buffered.
+ *  Retry is only permitted when the attempt has produced ZERO output (a
+ *  transient connection error before the first token). Once the first chunk
+ *  is emitted the attempt is committed — a later failure makes the Run fail,
+ *  never produces a partial "AAB" contamination. */
 export async function* retryStream(
   streamFactory: (signal?: AbortSignal) => AsyncIterable<AIMessageChunk>,
   opts: RetryOptions,
@@ -25,25 +31,24 @@ export async function* retryStream(
     if (signal?.aborted) throw new Error("Aborted");
     attempt++;
     await opts.onRetryStart?.(attempt);
-    // Buffer this attempt's output; only forward it once the attempt completes
-    // cleanly. A failed attempt's partial output is discarded so it can never
-    // contaminate the canonical transcript.
-    const buffered: AIMessageChunk[] = [];
+    let committed = false; // becomes true on the first forwarded chunk
     try {
       for await (const chunk of streamFactory(signal)) {
-        buffered.push(chunk);
+        committed = true;
+        yield chunk;
       }
     } catch (err) {
       lastError = err;
       await opts.onRetryEnd?.(attempt);
-      if (err instanceof ProviderError && err.retryable && attempt < opts.maxAttempts) {
-        // Backoff is interruptible: stop() during the delay resolves the
-        // promise immediately so the loop can transition to stopped without
-        // waiting out the full exponential delay.
+      // Only retry if the attempt produced zero output AND the error is
+      // a retryable transient provider error. A committed attempt that
+      // fails mid-stream cannot be retried (partial output already emitted).
+      const canRetry =
+        !committed && err instanceof ProviderError && err.retryable && attempt < opts.maxAttempts;
+      if (canRetry) {
         const { promise, resolve } = Promise.withResolvers<void>();
         const timer = setTimeout(resolve, opts.baseDelayMs * 2 ** (attempt - 1));
         const onAbort = () => resolve();
-        // If abort already fired (race with pre-backoff stop()), resolve now.
         if (signal?.aborted) resolve();
         signal?.addEventListener("abort", onAbort, { once: true });
         await promise;
@@ -54,8 +59,6 @@ export async function* retryStream(
       throw err;
     }
     await opts.onRetryEnd?.(attempt);
-    // Attempt succeeded atomically: emit the whole buffered turn.
-    for (const chunk of buffered) yield chunk;
     return;
   }
   throw lastError;

@@ -33,6 +33,15 @@ function textModel(text: string) {
   };
 }
 
+/** Fake model that throws before producing any output (zero-output failure). */
+function throwingModel(err: unknown): () => AsyncIterable<AIMessageChunk> {
+  return () => ({
+    [Symbol.asyncIterator]() {
+      return { next: async () => Promise.reject(err) };
+    },
+  });
+}
+
 function echoTool(name = "echo") {
   return {
     name,
@@ -474,10 +483,11 @@ function testHarness(
       expect(metas).toHaveLength(1);
     });
 
-    test("7c. failed retry attempt partial output does not contaminate final message", async () => {
+    test("7c. committed attempt streams real-time then fails without contaminating store", async () => {
       const store = storeFactory("h7c");
       await createSession(store, "h7c");
       let attempts = 0;
+      const updates: string[] = [];
       const loop = createAgentLoop({
         sessionId: "h7c",
         store,
@@ -487,26 +497,26 @@ function testHarness(
         maxRetries: 3,
         modelStream: async function* () {
           attempts++;
-          // First attempt emits partial text "A" then fails transiently;
-          // second attempt emits the complete text "AB".
-          if (attempts === 1) {
-            yield { delta: { type: "text", text: "A" } };
-            throw new ProviderError("network timeout", "transient");
-          }
-          yield { delta: { type: "text", text: "AB" } };
+          // First chunk commits the attempt; subsequent transient failure
+          // makes the Run fail immediately (no retry, no "AAB").
+          yield { delta: { type: "text", text: "A" } };
+          throw new ProviderError("network timeout", "transient");
         },
       });
+      loop.onEvent((e) => {
+        if (e.type === "message_update") updates.push(e.text);
+      });
       await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
-      expect(attempts).toBe(2);
-      expect(loop.status).toBe("completed");
-      // The canonical transcript must contain only the successful attempt's
-      // output ("AB"), never the failed "A" prefix ("AAB").
+      expect(attempts).toBe(1); // committed -> no retry
+      expect(loop.status).toBe("failed");
+      // Real-time streaming: "A" was forwarded immediately via message_update
+      expect(updates).toEqual(["A"]);
+      // No contamination: the failed turn's partial output is NOT persisted
       const snap = await store.open("h7c");
-      const assistantText = snap.entries
-        .filter((e) => e.type === "message" && (e as { source?: string }).source === "assistant")
-        .map((e) => (e as { message: { text?: string } }).message.text ?? "")
-        .join("");
-      expect(assistantText).toBe("AB");
+      const assistantEntries = snap.entries.filter(
+        (e) => e.type === "message" && (e as { source?: string }).source === "assistant",
+      );
+      expect(assistantEntries).toHaveLength(0);
     });
 
     test("7e. stop during retry backoff ends the loop promptly", async () => {
@@ -520,33 +530,29 @@ function testHarness(
         maxSteps: 2,
         maxForceContinues: 0,
         maxRetries: 3,
-        modelStream: async function* () {
+        modelStream: () => {
           attempts++;
-          yield { delta: { type: "text", text: "x" } };
-          throw new ProviderError("transient", "transient");
+          return throwingModel(new ProviderError("transient", "transient"))();
         },
       });
       // baseDelayMs in retryStream is fixed at 1000ms (2^attempt). We assert
       // the loop settles in well under that window when stop() fires during
       // the backoff wait, proving the backoff is abortable.
       const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
-      // Deterministic handshake: wait until the first attempt has failed and
-      // the backoff has begun (attempts === 1, retryStart emitted).
-      const { promise: firstFailed, resolve: firstFailedResolve } = Promise.withResolvers<void>();
+      // Wait until retry_end (attempt 1 failed, backoff about to start)
+      const { promise: backoffStarted, resolve: backoffResolve } = Promise.withResolvers<void>();
       loop.onEvent((e) => {
-        if (e.type === "retry_start" && attempts === 1) firstFailedResolve();
+        if (e.type === "retry_end" && attempts === 1) backoffResolve();
       });
-      await Promise.race([firstFailed, started.then(() => {})]);
+      await Promise.race([backoffStarted, started.then(() => {})]);
       loop.stop();
       const settleStart = Date.now();
       await started;
       const elapsed = Date.now() - settleStart;
       expect(loop.status).toBe("stopped");
-      // Must settle far faster than the 1000ms backoff.
       expect(elapsed).toBeLessThan(900);
     });
-
-    test("7b. retries exhausted fails directly, no extra outer retry", async () => {
+    test("7b. zero-output transient retries exhaust then fails directly", async () => {
       const store = storeFactory("h7b");
       await createSession(store, "h7b");
       let attempts = 0;
@@ -557,15 +563,12 @@ function testHarness(
         maxSteps: 2,
         maxForceContinues: 0,
         maxRetries: 2,
-        modelStream: async function* () {
+        modelStream: () => {
           attempts++;
-          yield { delta: { type: "text", text: "partial" } };
-          throw new ProviderError("network timeout", "transient");
+          return throwingModel(new ProviderError("network timeout", "transient"))();
         },
       });
       await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
-      // retryStream does exactly maxRetries provider calls, then the loop
-      // fails without consuming the second maxStep.
       expect(attempts).toBe(2);
       expect(loop.status).toBe("failed");
     });
