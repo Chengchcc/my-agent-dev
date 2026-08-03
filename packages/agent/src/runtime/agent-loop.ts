@@ -69,6 +69,9 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
     if (status === "running") throw new Error("Loop already active");
     status = "running";
     controller = new AbortController();
+    // Each loop starts with a clean steer queue: a late steer from a previous
+    // loop must never leak into a new follow-up.
+    steerQueue.length = 0;
 
     await emit({ type: "agent_start" });
 
@@ -288,10 +291,9 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
       // Surface failure through agent_end status only; raw error text never
       // enters events or the tree (credential-safe).
       void err;
-      status = "failed";
-      await emit({ type: "agent_end", status });
     } finally {
       controller = null;
+      steerQueue.length = 0;
     }
   }
 
@@ -494,6 +496,9 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
     },
 
     steer(text) {
+      if (status !== "running") {
+        throw new Error("Steer is only allowed during an active loop");
+      }
       steerQueue.push(text);
     },
 

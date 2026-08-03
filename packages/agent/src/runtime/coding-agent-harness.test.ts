@@ -728,6 +728,50 @@ function testHarness(
       expect(sources.filter((s) => s === "meta")).toHaveLength(1);
     });
 
+    test("8a. idle steer is rejected and does not enter the loop", async () => {
+      const store = storeFactory("h8a");
+      await createSession(store, "h8a");
+      const loop = createAgentLoop({
+        sessionId: "h8a",
+        store,
+        plugins: [],
+        maxSteps: 1,
+        maxForceContinues: 0,
+        modelStream: textModel("done"),
+      });
+      // steer before the loop starts -> rejected
+      expect(() => loop.steer("before run")).toThrow(/active loop/);
+      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      expect(loop.status).toBe("completed");
+      const snap = await store.open("h8a");
+      const sources = snap.entries.filter((e) => e.type === "message").map((e) => e.source);
+      expect(sources).not.toContain("steer");
+    });
+
+    test("8b. late steer does not leak into follow-up", async () => {
+      const store = storeFactory("h8b");
+      await createSession(store, "h8b");
+      const loop = createAgentLoop({
+        sessionId: "h8b",
+        store,
+        plugins: [],
+        maxSteps: 2,
+        maxForceContinues: 0,
+        modelStream: textModel("done"),
+      });
+      await loop.startLoop({ systemPrompt: "", metaText: "m1", promptText: "p1" });
+      expect(loop.status).toBe("completed");
+      // After the loop ended, steer is rejected (not running)
+      expect(() => loop.steer("late")).toThrow(/active loop/);
+      // Follow-up must not contain the late steer
+      await loop.startFollowUp({ systemPrompt: "", metaText: "m2", promptText: "p2" });
+      const snap = await store.open("h8b");
+      const sources = snap.entries.filter((e) => e.type === "message").map((e) => e.source);
+      expect(sources).not.toContain("steer");
+      // Two metas (one per loop), no steer
+      expect(sources.filter((s) => s === "meta")).toHaveLength(2);
+    });
+
     test("9. follow-up creates a new loop with new Meta", async () => {
       const store = storeFactory("h9");
       await createSession(store, "h9");
