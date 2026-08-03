@@ -1,0 +1,132 @@
+import { describe, expect, test } from "bun:test";
+import {
+  type CodingAgentSession,
+  createInMemorySessionStore,
+  type SessionStore,
+} from "@my-agent-team/agent";
+import type { WorkerRuntime } from "./worker-runtime.js";
+
+function makeRuntime(sessionId: string): WorkerRuntime & { store: SessionStore } {
+  const store = createInMemorySessionStore();
+  const session: CodingAgentSession = {
+    sessionId,
+    status: "idle",
+    async startLoop() {
+      session.status = "running";
+      session.status = "completed";
+    },
+    async startFollowUp() {
+      session.status = "running";
+      session.status = "completed";
+    },
+    steer() {},
+    stop() {
+      session.status = "stopped";
+    },
+    async compact() {},
+    onEvent() {
+      return () => {};
+    },
+  };
+  return {
+    sessionId,
+    store,
+    session,
+    summarize: async () => "sum",
+    contextBudget: undefined,
+    setActiveRun() {},
+  } as unknown as WorkerRuntime & { store: SessionStore };
+}
+
+describe("worker runtime assembly", () => {
+  test("assembleWorkerRuntime wires one session", async () => {
+    const { mkdirSync, rmSync } = await import("node:fs");
+    const dataDir = `/tmp/coding-agent-test-${Math.random().toString(36).slice(2, 8)}`;
+    const ws = `${dataDir}/ws`;
+    mkdirSync(ws, { recursive: true });
+    const { assembleWorkerRuntime } = await import("./worker-runtime.js");
+    const { createModelRuntime } = await import("@my-agent-team/ai");
+    const runtime = await assembleWorkerRuntime({
+      dataDir,
+      workspaceRoot: ws,
+      backendSessionId: "sess-1",
+      modelRuntime: createModelRuntime(),
+      skillRoots: [],
+    });
+    expect(runtime.sessionId).toBe("sess-1");
+    // Empty model catalog => no budget (proactive compaction disabled)
+    expect(runtime.contextBudget).toBeUndefined();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+});
+
+describe("worker main dispatch", () => {
+  test("start_run dispatches normal loop and emits exactly one outcome", async () => {
+    const events: string[] = [];
+    const sent: Array<Record<string, unknown>> = [];
+    const sentLines: string[] = [];
+    const { runWorkerMain } = await import("./worker-main.js");
+    const { Readable, Writable } = await import("node:stream");
+
+    const input = new Readable({
+      read() {
+        this.push(
+          JSON.stringify({
+            protocolVersion: 1,
+            type: "open_session",
+            commandId: "c1",
+            backendSessionId: "sess-1",
+            dataDir: "/tmp/d",
+            workspaceRoot: "/tmp/ws",
+            backendKind: "coding_agent",
+          }) + "\n",
+        );
+        this.push(
+          JSON.stringify({
+            protocolVersion: 1,
+            type: "start_run",
+            commandId: "c2",
+            backendSessionId: "sess-1",
+            runId: "run-1",
+            mode: "normal",
+            history: [],
+            run: {
+              runId: "run-1",
+              model: { backendKind: "coding_agent", modelId: "m" },
+              productTools: [],
+              configRevision: 1,
+            },
+            metaText: "meta",
+            promptText: "go",
+            systemPrompt: "sp",
+            workspaceRoot: "/tmp/ws",
+          }) + "\n",
+        );
+        this.push(null);
+      },
+    });
+    const output = new Writable({
+      write(chunk: Buffer, _enc, cb) {
+        sentLines.push(chunk.toString());
+        cb();
+      },
+    });
+
+    const result = await runWorkerMain({
+      stdin: input as never,
+      stdout: output as never,
+      stderr: process.stderr,
+      runtimeFactory: ({ backendSessionId }) => makeRuntime(backendSessionId),
+    });
+
+    const parsed = sentLines.map((l) => JSON.parse(l.trim()));
+    const accepted = parsed.filter((p) => p.type === "command_accepted");
+    const outcomes = parsed.filter((p) => p.type === "outcome");
+    expect(accepted).toHaveLength(2);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]?.outcome).toEqual({ status: "completed" });
+    expect(result).toBe(0);
+    void events;
+    void sent;
+  });
+});
