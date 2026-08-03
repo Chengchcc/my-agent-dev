@@ -240,6 +240,12 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
               }
             }
             naturalStop = stopped;
+            // Accepted-but-late steer: if a steer arrived during this model
+            // turn and the model chose to stop naturally, do NOT discard the
+            // steer. Force one more safe-boundary turn to drain it.
+            if (naturalStop && steerQueue.length > 0) {
+              naturalStop = false;
+            }
             break;
           } catch (err) {
             // Explicit stop/abort is a distinct terminal state
@@ -288,9 +294,11 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
         await emit({ type: "agent_end", status });
       }
     } catch (err) {
-      // Surface failure through agent_end status only; raw error text never
-      // enters events or the tree (credential-safe).
+      // Setup/persistence failure: the loop must settle to a terminal state
+      // so listeners always receive agent_end and the loop is reusable.
       void err;
+      status = controller?.signal.aborted ? "stopped" : "failed";
+      await emit({ type: "agent_end", status });
     } finally {
       controller = null;
       steerQueue.length = 0;

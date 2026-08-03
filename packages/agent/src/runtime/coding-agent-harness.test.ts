@@ -772,6 +772,55 @@ function testHarness(
       expect(sources.filter((s) => s === "meta")).toHaveLength(2);
     });
 
+    test("8c. accepted late steer is delivered even if model turn ends naturally", async () => {
+      const store = storeFactory("h8c");
+      await createSession(store, "h8c");
+      const { promise: modelStarted, resolve: modelResolve } = Promise.withResolvers<void>();
+      const loop = createAgentLoop({
+        sessionId: "h8c",
+        store,
+        plugins: [],
+        maxSteps: 5,
+        maxForceContinues: 0,
+        modelStream: async function* () {
+          modelResolve();
+          yield { delta: { type: "text", text: "done" } };
+        },
+      });
+      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      // Wait for the model turn to start, then steer while it's running.
+      await modelStarted;
+      loop.steer("accepted-but-late");
+      await started;
+      expect(loop.status).toBe("completed");
+      // The late steer must appear in the store, not be silently dropped
+      const snap = await store.open("h8c");
+      const sources = snap.entries.filter((e) => e.type === "message").map((e) => e.source);
+      expect(sources).toContain("steer");
+    });
+
+    test("8d. setup failure settles to failed with agent_end", async () => {
+      const store = storeFactory("h8d");
+      // Do NOT create the session — appendBatch will throw "not found"
+      const loop = createAgentLoop({
+        sessionId: "h8d",
+        store,
+        plugins: [],
+        maxSteps: 3,
+        maxForceContinues: 0,
+        modelStream: textModel("done"),
+      });
+      const events: string[] = [];
+      loop.onEvent((e) => {
+        events.push(e.type);
+      });
+      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      expect(loop.status).toBe("failed");
+      // agent_start emitted, then agent_end (never stuck at running)
+      expect(events[0]).toBe("agent_start");
+      expect(events[events.length - 1]).toBe("agent_end");
+    });
+
     test("9. follow-up creates a new loop with new Meta", async () => {
       const store = storeFactory("h9");
       await createSession(store, "h9");
