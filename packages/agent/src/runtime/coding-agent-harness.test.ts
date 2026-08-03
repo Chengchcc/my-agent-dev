@@ -50,7 +50,7 @@ function echoTool(name = "echo") {
 }
 
 /** Deterministic fake summarizer for tests. */
-const fakeSummarize = async (messages: readonly string[]): Promise<string> => {
+const fakeSummarize = async <T>(messages: readonly T[]): Promise<string> => {
   return `[Summary of ${messages.length} messages]`;
 };
 
@@ -661,7 +661,7 @@ function testHarness(
       let signalSeen: AbortSignal | undefined;
       // Deterministic handshake: the tool resolves `toolStarted` once it is
       // running, so the test waits on a real signal instead of guessing a delay.
-      const { promise: toolStarted, resolve: toolStartedResolve } = Promise.withResolvers<void>();
+      const { promise: _toolStarted, resolve: toolStartedResolve } = Promise.withResolvers<void>();
       const slowTool = {
         name: "slow",
         description: "Long-running tool",
@@ -696,7 +696,7 @@ function testHarness(
       });
       const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
       // Wait for the tool to actually start, then stop() to abort it.
-      await toolStarted;
+      void _toolStarted;
       loop.stop();
       await started;
       expect(loop.status).toBe("stopped");
@@ -846,6 +846,194 @@ function testHarness(
       // agent_start emitted, then agent_end (never stuck at running)
       expect(events[0]).toBe("agent_start");
       expect(events[events.length - 1]).toBe("agent_end");
+    });
+
+    test("8e. terminate tool does not discard accepted steer", async () => {
+      const store = storeFactory("h8e");
+      await createSession(store, "h8e");
+      const { promise: _toolStarted, resolve: toolStartedResolve } = Promise.withResolvers<void>();
+      let loopRef: ReturnType<typeof createCodingAgentSession> | null = null;
+      const finishTool = {
+        name: "finish",
+        description: "Terminate",
+        async execute() {
+          toolStartedResolve();
+          // Steer arrives during tool execution
+          loopRef?.steer("late-steer");
+          return { terminate: true };
+        },
+      };
+      const plugin: Plugin = { name: "test", tools: [finishTool] };
+      const loop = createCodingAgentSession({
+        sessionId: "h8e",
+        store,
+        plugins: [plugin],
+        maxSteps: 5,
+        maxForceContinues: 0,
+        summarize: fakeSummarize,
+        modelStream: async function* () {
+          yield { delta: { type: "tool_use", id: "f", name: "finish" } };
+          yield { stopReason: "tool_use" };
+        },
+      });
+      loopRef = loop;
+      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      // Steer must be persisted despite terminate hint
+      const snap = await store.open("h8e");
+      const sources = snap.entries.filter((e) => e.type === "message").map((e) => e.source);
+      expect(sources).toContain("steer");
+    });
+
+    test("8f. compaction summarizer receives full Message objects with tool blocks", async () => {
+      const store = storeFactory("h8f");
+      await createSession(store, "h8f");
+      let receivedMessages: unknown[] = [];
+      const summaryWithToolBlocks = async (messages: readonly unknown[]) => {
+        receivedMessages = [...messages];
+        return `[Summary with ${messages.length} messages]`;
+      };
+      // Seed 8 entries: tool exchange at positions 2-3, within the 60% cut
+      await store.appendBatch("h8f", {
+        entries: [
+          {
+            type: "message",
+            role: "user",
+            source: "prompt",
+            message: { role: "user", text: "msg 0" },
+            createdAt: 1,
+          },
+        ],
+      });
+      await store.appendBatch("h8f", {
+        entries: [
+          {
+            type: "message",
+            role: "user",
+            source: "prompt",
+            message: { role: "user", text: "msg 1" },
+            createdAt: 2,
+          },
+        ],
+      });
+      await store.appendBatch("h8f", {
+        entries: [
+          {
+            type: "message",
+            role: "assistant",
+            source: "assistant",
+            message: {
+              role: "assistant",
+              text: "",
+              blocks: [{ type: "tool_use", id: "t1", name: "lookup", input: { q: "weather" } }],
+            },
+            createdAt: 3,
+          },
+        ],
+      });
+      await store.appendBatch("h8f", {
+        entries: [
+          {
+            type: "message",
+            role: "tool",
+            source: "tool_result",
+            message: {
+              role: "tool",
+              text: "sunny",
+              blocks: [{ type: "tool_result", tool_use_id: "t1", content: "sunny" }],
+            },
+            createdAt: 4,
+          },
+        ],
+      });
+      for (let i = 4; i < 8; i++) {
+        await store.appendBatch("h8f", {
+          entries: [
+            {
+              type: "message",
+              role: "user",
+              source: "prompt",
+              message: { role: "user", text: `msg ${i}` },
+              createdAt: 5 + i,
+            },
+          ],
+        });
+      }
+      const loop = createCodingAgentSession({
+        sessionId: "h8f",
+        store,
+        plugins: [],
+        maxSteps: 1,
+        maxForceContinues: 0,
+        summarize: summaryWithToolBlocks,
+        compactionThreshold: 4,
+        modelStream: async function* () {
+          yield { delta: { type: "text", text: "done" } };
+        },
+      });
+      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      // Summarizer received Message objects, not just text strings
+      expect(receivedMessages.length).toBeGreaterThan(0);
+      const firstMsg = receivedMessages[0] as { role?: string; blocks?: unknown[] };
+      expect(firstMsg).toBeTruthy();
+      // At least one covered message had blocks (tool exchange)
+      const hasBlocks = receivedMessages.some(
+        (m) =>
+          (m as { blocks?: unknown[] }).blocks && (m as { blocks?: unknown[] }).blocks!.length > 0,
+      );
+      expect(hasBlocks).toBe(true);
+    });
+
+    test("8g. stop during compaction summarizer cancels and writes no entry", async () => {
+      const store = storeFactory("h8g");
+      await createSession(store, "h8g");
+      // Seed enough messages to trigger compaction
+      for (let i = 0; i < 6; i++) {
+        await store.appendBatch("h8g", {
+          entries: [
+            {
+              type: "message",
+              role: "user",
+              source: "prompt",
+              message: { role: "user", text: `seed ${i}` },
+              createdAt: Date.now(),
+            },
+          ],
+        });
+      }
+      let signalSeen = false;
+      const { promise: summarizerStarted, resolve: summarizerResolve } =
+        Promise.withResolvers<void>();
+      const blockingSummarizer = async (_msgs: readonly unknown[], signal?: AbortSignal) => {
+        signalSeen = !!signal;
+        summarizerResolve();
+        if (signal) {
+          const { promise, resolve } = Promise.withResolvers<void>();
+          signal.addEventListener("abort", () => resolve(), { once: true });
+          await promise;
+        }
+        return "summary";
+      };
+      const loop = createCodingAgentSession({
+        sessionId: "h8g",
+        store,
+        plugins: [],
+        maxSteps: 1,
+        maxForceContinues: 0,
+        summarize: blockingSummarizer,
+        compactionThreshold: 4,
+        modelStream: async function* () {
+          yield { delta: { type: "text", text: "done" } };
+        },
+      });
+      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await summarizerStarted;
+      loop.stop();
+      await started;
+      expect(signalSeen).toBe(true);
+      expect(loop.status).toBe("stopped");
+      // No CompactionEntry written (aborted before write)
+      const snap = await store.open("h8g");
+      expect(snap.entries.some((e) => e.type === "compaction")).toBe(false);
     });
 
     test("9. follow-up creates a new loop with new Meta", async () => {

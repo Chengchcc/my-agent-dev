@@ -18,10 +18,12 @@ interface PendingToolCall {
   input: Record<string, unknown>;
 }
 
-/** Summarizes covered messages into a compact context summary. Injected by
- *  the caller (Phase 3 Worker uses ModelRuntime; tests inject a fake). */
+/** Summarizes covered messages into a compact context summary. Receives full
+ *  Message objects (including tool_use/tool_result blocks) so tool semantics
+ *  survive compaction. Injected by the caller (Phase 3 Worker uses
+ *  ModelRuntime; tests inject a fake). */
 export type ContextSummarizer = (
-  messages: readonly string[],
+  messages: readonly Message[],
   signal?: AbortSignal,
 ) => Promise<string>;
 
@@ -149,7 +151,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
             if (msgCount > opts.compactionThreshold) {
               thresholdCompacted = true; // at most one proactive compaction per loop
               await emit({ type: "compaction_start" });
-              await compactSession(opts.store, opts.sessionId, opts.summarize);
+              await compactSession(opts.store, opts.sessionId, opts.summarize, controller?.signal);
               await emit({ type: "compaction_end" });
               messages = await readBranchMessages();
             }
@@ -233,7 +235,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
               messages = await readBranchMessages();
               // Tool terminate hint: any tool may ask the loop to stop after
               // this turn's results are persisted (no further model turns).
-              if (toolResults.some((r) => r.terminate)) {
+              if (toolResults.some((r) => r.terminate) && steerQueue.length === 0) {
                 naturalStop = true;
               }
               break; // tool turn complete -> next step
@@ -277,7 +279,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
             if (err instanceof ProviderError && err.kind === "overflow" && !overflowCompacted) {
               overflowCompacted = true;
               await emit({ type: "compaction_start" });
-              await compactSession(opts.store, opts.sessionId, opts.summarize);
+              await compactSession(opts.store, opts.sessionId, opts.summarize, controller?.signal);
               await emit({ type: "compaction_end" });
               messages = await readBranchMessages();
               continue; // retry model call in the SAME turn, no extra step
@@ -528,7 +530,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     },
     async compact() {
       await emit({ type: "compaction_start" });
-      await compactSession(opts.store, opts.sessionId, opts.summarize);
+      await compactSession(opts.store, opts.sessionId, opts.summarize, controller?.signal);
       await emit({ type: "compaction_end" });
     },
 
