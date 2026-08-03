@@ -105,3 +105,63 @@ describe("CodingAgentBackend", () => {
     expect(typeof result.segment.stop).toBe("function");
   });
 });
+
+describe("segment reconnect", () => {
+  test("eventStream reconnects by lastEventId after a mid-stream drop", async () => {
+    let calls = 0;
+    const fakeClient = {
+      async startSession() {
+        return { backendSessionId: "s", runId: "r" };
+      },
+      async resumeSession() {
+        return { backendSessionId: "s", runId: "r" };
+      },
+      async sendRun() {
+        return { accepted: true };
+      },
+      async stopSession() {
+        return { stopped: true };
+      },
+      async closeSession() {
+        return { closed: true };
+      },
+      async getOutcome() {
+        // Outcome stays pending until after the reconnect so the segment
+        // resumes the dropped stream instead of ending.
+        return calls < 2 ? null : { runId: "r", status: "completed" as const };
+      },
+      async *streamEvents(_runId: string, lastEventId?: number) {
+        calls++;
+        if (calls === 1) {
+          // First connection: deliver one event, then drop (no error).
+          yield { id: 0, type: "message_update", data: { text: "a" } };
+          return;
+        }
+        // Reconnect: resume after the last delivered id, deliver the rest.
+        expect(lastEventId).toBe(0);
+        yield { id: 1, type: "agent_end", data: {} };
+      },
+    } as unknown as CodingAgentClient;
+    const backend = new CodingAgentBackend(fakeClient);
+    const { segment } = await backend.start({
+      history: [],
+      input: { inputId: "in", message: { role: "user", text: "x" } },
+      run: {
+        runId: "r",
+        model: { backendKind: "coding_agent", modelId: "m" },
+        productTools: [],
+        configRevision: 1,
+      },
+      workspace: { root: "/tmp", access: "read_write" },
+      metadata: { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 },
+    });
+    const types: string[] = [];
+    for await (const ev of segment.events) {
+      types.push(ev.type);
+      if (ev.type === "status") break;
+    }
+    expect(calls).toBe(2);
+    expect(types).toContain("text_delta");
+    expect(types).toContain("status");
+  });
+});

@@ -149,6 +149,7 @@ function buildSegment(
 ): BackendRunSegment<"coding_agent"> {
   let lastEventId: number | undefined;
   let stopped = false;
+  let settled = false;
 
   const doStop = async (): Promise<void> => {
     if (stopped) return;
@@ -160,9 +161,22 @@ function buildSegment(
   activeRuns.set(ref.backendSessionId, active);
 
   async function* eventStream(): AsyncIterable<BackendEvent<"coding_agent">> {
-    for await (const envelope of client.streamEvents(runId, lastEventId)) {
-      lastEventId = envelope.id;
-      yield mapRunEvent(envelope as unknown as RunEventEnvelope);
+    // Reconnect by lastEventId if the SSE connection drops before the run
+    // settles. A replay_window_exceeded error is unrecoverable (events lost);
+    // a normal end-of-stream mid-run means the connection dropped, so resume.
+    for (;;) {
+      try {
+        for await (const envelope of client.streamEvents(runId, lastEventId)) {
+          lastEventId = envelope.id;
+          yield mapRunEvent(envelope as unknown as RunEventEnvelope);
+        }
+        if (settled) return;
+        await new Promise((r) => setTimeout(r, 200));
+      } catch (err) {
+        const code = (err as { code?: string })?.code;
+        if (code === "replay_window_exceeded") throw err;
+        await new Promise((r) => setTimeout(r, 200));
+      }
     }
   }
 
@@ -173,6 +187,7 @@ function buildSegment(
       await new Promise((r) => setTimeout(r, 200));
     }
   })().finally(() => {
+    settled = true;
     if (activeRuns.get(ref.backendSessionId) === active) {
       activeRuns.delete(ref.backendSessionId);
     }
