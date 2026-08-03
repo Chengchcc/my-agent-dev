@@ -124,8 +124,12 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
       case "open_session": {
         const modelRuntime = createModelRuntime();
         // Register built-in providers from the daemon-injected env. The
-        // Anthropic provider resolves ANTHROPIC_API_KEY per request.
-        if (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) {
+        // Anthropic provider resolves ANTHROPIC_API_KEY per request; a fake
+        // deterministic provider is available for integration tests.
+        if (process.env.CODING_AGENT_FAKE_PROVIDER === "1") {
+          const { fakeProvider } = await import("./fake-provider.js");
+          modelRuntime.registerProvider(fakeProvider());
+        } else if (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) {
           const { anthropicProvider } = await import("@my-agent-team/ai");
           modelRuntime.registerProvider(anthropicProvider());
         }
