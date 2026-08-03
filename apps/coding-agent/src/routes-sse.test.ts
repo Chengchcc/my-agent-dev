@@ -39,7 +39,7 @@ function makeApp(seed: Array<{ type: string; data: Record<string, unknown> }>) {
     },
     getEvents(runId) {
       if (runId !== "r1") {
-        const e = new Error("no event stream for run: " + runId) as Error & { code: string };
+        const e = new Error(`no event stream for run: ${runId}`) as Error & { code: string };
         e.code = "not_found";
         throw e;
       }
