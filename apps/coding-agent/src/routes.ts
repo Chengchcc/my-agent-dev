@@ -6,7 +6,7 @@ import {
 import type { BackendModelCatalog } from "@my-agent-team/agent-backend";
 import { Elysia, t } from "elysia";
 import { bearerToken, verifyToken } from "./auth.js";
-import { ReplayWindowExceededError } from "./event-buffer.js";
+import { ReplayWindowExceededError, type RunEventBuffer } from "./event-buffer.js";
 import type { CodingSessionSupervisor } from "./session-supervisor.js";
 
 export interface RouteDeps {
@@ -199,28 +199,41 @@ export function createRoutes(deps: RouteDeps): Elysia {
   app.get("/v1/runs/:runId/events", ({ params, headers, request }) => {
     const denied = authGuard(headers);
     if (denied) return denied;
-    const buf = deps.supervisor.getEvents(params.runId);
+    let buf: RunEventBuffer;
+    try {
+      buf = deps.supervisor.getEvents(params.runId);
+    } catch (err) {
+      return errorResponse(err);
+    }
 
     const lastEventIdHeader = headers["last-event-id"];
     const lastEventId = lastEventIdHeader !== undefined ? Number(lastEventIdHeader) : -1;
 
+    // Reject stale replays before the stream opens so the 409 is an HTTP
+    // status, not an in-band SSE error event. Both a requested id older than
+    // the retained window (events evicted) and one ahead of the buffer (the
+    // run never produced it) are unreplayable.
+    const oldest = buf.oldestRetainedId();
+    const newest = buf.lastId();
+    if (
+      (oldest !== null && lastEventId >= 0 && lastEventId < oldest) ||
+      (newest >= 0 && lastEventId > newest)
+    ) {
+      return Response.json(
+        {
+          code: "replay_window_exceeded",
+          message: `replay window exceeded: requested ${lastEventId}, retained ${oldest}..${newest}`,
+        },
+        { status: 409 },
+      );
+    }
+
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         const encoder = new TextEncoder();
-        try {
-          buf.subscribeAfter(lastEventId, (event) => {
-            controller.enqueue(encoder.encode(sseEncode(event.id, event.type, event.data)));
-          });
-        } catch (err) {
-          // stale Last-Event-ID
-          const body = JSON.stringify({
-            code: "replay_window_exceeded",
-            message: err instanceof Error ? err.message : String(err),
-          });
-          controller.enqueue(encoder.encode(`data: ${body}\n\n`));
-          controller.close();
-          return;
-        }
+        buf.subscribeAfter(lastEventId, (event) => {
+          controller.enqueue(encoder.encode(sseEncode(event.id, event.type, event.data)));
+        });
         // heartbeat
         const heartbeat = setInterval(() => {
           try {

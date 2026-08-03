@@ -45,9 +45,11 @@ export function createRunEventBuffer(size: number): RunEventBuffer {
     },
 
     subscribeAfter(lastEventId, sink) {
-      // Replay strictly after lastEventId from retained history
+      // Replay strictly after lastEventId from retained history. A reconnect
+      // claiming an id older than the retained window has missed evicted
+      // events => 409. Fresh clients (-1) replay from the oldest retained.
       const firstRetained = buffer[0];
-      if (firstRetained && lastEventId < firstRetained.id) {
+      if (firstRetained && lastEventId >= 0 && lastEventId < firstRetained.id) {
         throw new ReplayWindowExceededError(lastEventId, firstRetained.id);
       }
       for (const event of buffer) {

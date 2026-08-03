@@ -29,7 +29,7 @@ export interface WorkerProcessOptions {
 
 export function spawnWorkerProcess(opts: WorkerProcessOptions): WorkerProcessHandle {
   const proc: Subprocess = spawn({
-    cmd: ["bun", opts.workerEntry],
+    cmd: [process.execPath, opts.workerEntry],
     env: opts.env,
     cwd: opts.cwd,
     stdin: "pipe",

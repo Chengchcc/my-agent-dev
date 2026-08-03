@@ -27,6 +27,8 @@ export interface SupervisorOptions {
   workerStopGraceMs: number;
   idleTimeoutMs: number;
   workspaceRoot: string;
+  /** sweep interval for sleeping idle sessions; 0 disables the reaper */
+  reapIntervalMs?: number;
 }
 
 export interface SessionView {
@@ -182,6 +184,36 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
 
   const handles = new Map<string, WorkerProcessHandle>();
 
+  /** Sleep idle sessions: close the Worker, keep the session file and record.
+   *  Wake happens lazily in workerFor() on the next command. */
+  function sleepIdle(): void {
+    const now = Date.now();
+    for (const [sessionId, rec] of sessions) {
+      if (
+        rec.state === "live" &&
+        rec.activeRunId === null &&
+        now - rec.lastActivityAt >= opts.idleTimeoutMs
+      ) {
+        const handle = handles.get(sessionId);
+        if (handle) {
+          try {
+            handle.shutdown();
+          } catch {
+            /* */
+          }
+          handles.delete(sessionId);
+        }
+        rec.workerPid = null;
+        transition(rec, "sleeping");
+      }
+    }
+  }
+
+  const reaper =
+    opts.reapIntervalMs && opts.reapIntervalMs > 0
+      ? setInterval(sleepIdle, opts.reapIntervalMs)
+      : undefined;
+
   function handleWorkerMessage(backendSessionId: string, msg: WorkerMessage): void {
     const rec = sessions.get(backendSessionId);
     if (!rec) return;
@@ -195,7 +227,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         });
       }
     } else if (msg.type === "outcome") {
-      outcomes.set(msg.runId, msg.outcome);
+      outcomes.set(msg.runId, { runId: msg.runId, ...(msg.outcome as object) });
       eventBuffers.get(msg.runId)?.close();
       if (rec.activeRunId === msg.runId) rec.activeRunId = null;
     } else if (msg.type === "command_error" || msg.type === "fatal") {
@@ -211,7 +243,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     rec.crashedAt = Date.now();
     if (rec.activeRunId) {
       const runId = rec.activeRunId;
-      outcomes.set(runId, { status: "failed", error: reason });
+      outcomes.set(runId, { runId, status: "failed", error: reason });
       eventBuffers.get(runId)?.close();
       rec.activeRunId = null;
     }
@@ -258,7 +290,6 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       const runId = input.run.runId;
       rec.activeRunId = runId;
       eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
-      transition(rec, "starting");
       const handle = ensureWorker(rec, input.backendSessionId);
       handles.set(input.backendSessionId, handle);
       transition(rec, "live");
@@ -437,6 +468,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     },
 
     async shutdown() {
+      clearInterval(reaper);
       for (const [sessionId, rec] of sessions) {
         const handle = handles.get(sessionId);
         if (handle) {
@@ -448,8 +480,12 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
           handles.delete(sessionId);
         }
         rec.workerPid = null;
-        if (rec.state !== "closed") transition(rec, "stopping");
-        if (rec.state !== "closed") transition(rec, "closed");
+        // crashed records can't transition to stopping/closed; they are
+        // already terminal and just get dropped from the registry.
+        if (rec.state !== "closed" && rec.state !== "crashed") {
+          transition(rec, "stopping");
+          transition(rec, "closed");
+        }
       }
       sessions.clear();
       for (const b of eventBuffers.values()) b.close();

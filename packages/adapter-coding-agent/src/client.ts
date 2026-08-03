@@ -174,7 +174,14 @@ export class CodingAgentClient {
         buf = lines.pop() ?? "";
         for (const rawLine of lines) {
           const line = rawLine.trim();
-          if (!line || line.startsWith(":")) continue; // heartbeat comment
+          if (line === "") {
+            const flushed = flush();
+            if (flushed) yield flushed;
+            currentId = undefined;
+            currentEvent = undefined;
+            continue;
+          }
+          if (line.startsWith(":")) continue; // heartbeat comment
           if (line.startsWith("id: ")) {
             const flushed = flush();
             if (flushed) yield flushed;
@@ -183,11 +190,6 @@ export class CodingAgentClient {
             currentEvent = line.slice(7);
           } else if (line.startsWith("data: ")) {
             dataLines.push(line.slice(6));
-          } else if (line === "") {
-            const flushed = flush();
-            if (flushed) yield flushed;
-            currentId = undefined;
-            currentEvent = undefined;
           }
         }
       }

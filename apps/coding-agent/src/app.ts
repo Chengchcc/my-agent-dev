@@ -31,6 +31,7 @@ export function createCodingAgentApp(deps: CodingAgentAppDeps): CodingAgentApp {
       eventBufferSize: deps.config.eventBufferSize,
       workerStopGraceMs: deps.config.workerStopGraceMs,
       idleTimeoutMs: deps.config.idleTimeoutMs,
+      reapIntervalMs: deps.config.reapIntervalMs,
       workspaceRoot: deps.config.workspaceRoots[0]!,
     });
 
