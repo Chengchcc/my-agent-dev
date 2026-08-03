@@ -311,24 +311,34 @@ export function createAgentLoop(opts: AgentLoopOptions): AgentLoop {
       controller?.signal,
     );
 
-    for await (const chunk of stream) {
-      if (controller?.signal.aborted) break;
-      if (chunk.delta?.type === "text") {
-        assistantText += chunk.delta.text;
-        await emit({ type: "message_update", text: chunk.delta.text });
-      }
-      if (chunk.delta?.type === "tool_use") {
-        const id = chunk.delta.id;
-        if (!toolCallBuilders.has(id)) {
-          toolCallBuilders.set(id, { id, name: chunk.delta.name, jsonParts: [] });
+    try {
+      for await (const chunk of stream) {
+        if (controller?.signal.aborted) break;
+        if (chunk.delta?.type === "text") {
+          assistantText += chunk.delta.text;
+          await emit({ type: "message_update", text: chunk.delta.text });
+        }
+        if (chunk.delta?.type === "tool_use") {
+          const id = chunk.delta.id;
+          if (!toolCallBuilders.has(id)) {
+            toolCallBuilders.set(id, { id, name: chunk.delta.name, jsonParts: [] });
+          }
+        }
+        if (chunk.delta?.type === "input_json_delta") {
+          const builder = toolCallBuilders.get(chunk.delta.id);
+          if (builder) builder.jsonParts.push(chunk.delta.partial_json);
         }
       }
-      if (chunk.delta?.type === "input_json_delta") {
-        const builder = toolCallBuilders.get(chunk.delta.id);
-        if (builder) builder.jsonParts.push(chunk.delta.partial_json);
-      }
+    } finally {
+      // message_end always pairs with message_start, even on failure/abort.
+      await emit({ type: "message_end" });
     }
-    await emit({ type: "message_end" });
+
+    // Aborted mid-stream: discard partial output — an uncompleted turn must
+    // not enter the canonical Coding Session Tree (same as tool cancellation).
+    if (controller?.signal.aborted) {
+      return [];
+    }
 
     // Persist assistant text if any
     if (assistantText) {

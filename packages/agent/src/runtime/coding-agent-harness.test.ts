@@ -519,6 +519,67 @@ function testHarness(
       expect(assistantEntries).toHaveLength(0);
     });
 
+    test("7f. stop during model stream discards partial assistant text", async () => {
+      const store = storeFactory("h7f");
+      await createSession(store, "h7f");
+      const { promise: yieldedFirst, resolve: yieldedResolve } = Promise.withResolvers<void>();
+      const loop = createAgentLoop({
+        sessionId: "h7f",
+        store,
+        plugins: [],
+        maxSteps: 5,
+        maxForceContinues: 0,
+        modelStream: async function* (_msgs: readonly unknown[], signal?: AbortSignal) {
+          yield { delta: { type: "text", text: "partial" } };
+          yieldedResolve();
+          // Block until abort arrives via the signal
+          if (signal) {
+            const { promise, resolve } = Promise.withResolvers<void>();
+            signal.addEventListener("abort", () => resolve(), { once: true });
+            await promise;
+          }
+        },
+      });
+      const started = loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      await yieldedFirst;
+      loop.stop();
+      await started;
+      expect(loop.status).toBe("stopped");
+      // Partial "partial" was streamed as a live event but NOT persisted
+      const snap = await store.open("h7f");
+      const assistantEntries = snap.entries.filter(
+        (e) => e.type === "message" && (e as { source?: string }).source === "assistant",
+      );
+      expect(assistantEntries).toHaveLength(0);
+    });
+
+    test("7g. message_start always pairs with message_end, even on failure", async () => {
+      const store = storeFactory("h7g");
+      await createSession(store, "h7g");
+      const loop = createAgentLoop({
+        sessionId: "h7g",
+        store,
+        plugins: [],
+        maxSteps: 1,
+        maxForceContinues: 0,
+        maxRetries: 1,
+        modelStream: async function* () {
+          yield { delta: { type: "text", text: "A" } };
+          throw new ProviderError("network timeout", "transient");
+        },
+      });
+      const events: string[] = [];
+      loop.onEvent((e) => {
+        events.push(e.type);
+      });
+      await loop.startLoop({ systemPrompt: "", metaText: "", promptText: "go" });
+      // message_start must have a matching message_end regardless of failure
+      expect(events).toContain("message_start");
+      expect(events).toContain("message_end");
+      const startIdx = events.indexOf("message_start");
+      const endIdx = events.indexOf("message_end");
+      expect(endIdx).toBeGreaterThan(startIdx);
+    });
     test("7e. stop during retry backoff ends the loop promptly", async () => {
       const store = storeFactory("h7e");
       await createSession(store, "h7e");
