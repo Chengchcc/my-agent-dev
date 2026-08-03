@@ -14,6 +14,7 @@ export interface CodingAgentConfig {
   idleTimeoutMs: number;
   reapIntervalMs: number;
   workerStopGraceMs: number;
+  acceptTimeoutMs: number;
   eventBufferSize: number;
 }
 
@@ -109,6 +110,12 @@ export function loadConfig(
       env.CODING_AGENT_WORKER_STOP_GRACE_MS,
       5_000,
       100,
+    ),
+    acceptTimeoutMs: intField(
+      "CODING_AGENT_ACCEPT_TIMEOUT_MS",
+      env.CODING_AGENT_ACCEPT_TIMEOUT_MS,
+      30_000,
+      1_000,
     ),
     eventBufferSize: intField(
       "CODING_AGENT_EVENT_BUFFER_SIZE",

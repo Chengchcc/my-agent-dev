@@ -30,6 +30,7 @@ export function createCodingAgentApp(deps: CodingAgentAppDeps): CodingAgentApp {
       authEnv: {},
       eventBufferSize: deps.config.eventBufferSize,
       workerStopGraceMs: deps.config.workerStopGraceMs,
+      acceptTimeoutMs: deps.config.acceptTimeoutMs,
       idleTimeoutMs: deps.config.idleTimeoutMs,
       reapIntervalMs: deps.config.reapIntervalMs,
       workspaceRoot: deps.config.workspaceRoots[0]!,

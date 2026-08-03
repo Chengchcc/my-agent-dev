@@ -26,10 +26,12 @@ export interface SupervisorOptions {
   authEnv: Record<string, string>;
   eventBufferSize: number;
   workerStopGraceMs: number;
+  /** Max ms to await Worker command acceptance before rejecting the mutation. */
+  acceptTimeoutMs: number;
   idleTimeoutMs: number;
-  workspaceRoot: string;
   /** sweep interval for sleeping idle sessions; 0 disables the reaper */
   reapIntervalMs?: number;
+  workspaceRoot: string;
 }
 
 export interface SessionView {
@@ -131,8 +133,10 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
   function recordMutation(key: string, payload: unknown, result: unknown): void {
     mutations.set(key, { key, payloadHash: hashPayload(payload), result });
   }
-
-  function ensureWorker(rec: SessionRecord, backendSessionId: string): WorkerProcessHandle {
+  async function ensureWorker(
+    rec: SessionRecord,
+    backendSessionId: string,
+  ): Promise<WorkerProcessHandle> {
     if (rec.workerPid !== null) {
       throw err("busy", `session already has a live worker: ${backendSessionId}`);
     }
@@ -144,6 +148,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       },
       cwd: opts.cwd,
       stopGraceMs: opts.workerStopGraceMs,
+      acceptTimeoutMs: opts.acceptTimeoutMs,
       events: {
         onMessage: (msg) => handleWorkerMessage(backendSessionId, msg),
         onExit: () => handleWorkerExit(backendSessionId),
@@ -156,7 +161,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     });
     rec.workerPid = handle.pid;
     // open_session command
-    handle.send({
+    await handle.send({
       protocolVersion: 1,
       type: "open_session",
       commandId: `open-${backendSessionId}`,
@@ -168,11 +173,14 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     return handle;
   }
 
-  function workerFor(rec: SessionRecord, backendSessionId: string): WorkerProcessHandle {
+  async function workerFor(
+    rec: SessionRecord,
+    backendSessionId: string,
+  ): Promise<WorkerProcessHandle> {
     if (rec.state === "sleeping" || rec.workerPid === null) {
       // wake: start a new Worker over the same session file
       transition(rec, "starting");
-      const handle = ensureWorker(rec, backendSessionId);
+      const handle = await ensureWorker(rec, backendSessionId);
       transition(rec, "live");
       return handle;
     }
@@ -291,10 +299,10 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       const runId = input.run.runId;
       rec.activeRunId = runId;
       eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
-      const handle = ensureWorker(rec, input.backendSessionId);
+      const handle = await ensureWorker(rec, input.backendSessionId);
       handles.set(input.backendSessionId, handle);
       transition(rec, "live");
-      handle.send({
+      await handle.send({
         protocolVersion: 1,
         type: "start_run",
         commandId: `start-${runId}`,
@@ -325,12 +333,12 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         // context must use a different identity. Reject.
         throw err("invalid_request", `session crashed, not resumable: ${input.backendSessionId}`);
       }
-      const handle = workerFor(rec, input.backendSessionId);
+      const handle = await workerFor(rec, input.backendSessionId);
       handles.set(input.backendSessionId, handle);
       const runId = input.run.runId;
       rec.activeRunId = runId;
       eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
-      handle.send({
+      await handle.send({
         protocolVersion: 1,
         type: "start_run",
         commandId: `start-${runId}`,
@@ -353,7 +361,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       if (replay) return replay.replay as { accepted: boolean; runId: string; commandId: string };
       const rec = recordFor(input.backendSessionId);
       if (rec.state === "sleeping" || rec.workerPid === null) {
-        const handle = workerFor(rec, input.backendSessionId);
+        const handle = await workerFor(rec, input.backendSessionId);
         handles.set(input.backendSessionId, handle);
       }
       if (rec.activeRunId && input.mode !== "steer") {
@@ -369,7 +377,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         rec.activeRunId = runId;
         eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
       }
-      handle.send({
+      await handle.send({
         protocolVersion: 1,
         type: "send",
         commandId: input.commandId,
@@ -389,7 +397,9 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       const rec = recordFor(input.backendSessionId);
       const handle = handles.get(input.backendSessionId);
       if (handle && rec.activeRunId) {
-        handle.send({
+        // Control input: fire-and-forget (acceptance is not load-bearing for
+        // an abort; the run settles to aborted regardless).
+        handle.post({
           protocolVersion: 1,
           type: "stop_run",
           commandId: input.commandId,
@@ -405,9 +415,9 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       if (rec.activeRunId) {
         throw err("busy", "manual compact is only allowed when idle");
       }
-      const handle = workerFor(rec, input.backendSessionId);
+      const handle = await workerFor(rec, input.backendSessionId);
       handles.set(input.backendSessionId, handle);
-      handle.send({
+      await handle.send({
         protocolVersion: 1,
         type: "compact",
         commandId: input.commandId,
@@ -421,7 +431,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       if (!rec) return { closed: true }; // idempotent
       const handle = handles.get(input.backendSessionId);
       if (handle) {
-        handle.send({
+        handle.post({
           protocolVersion: 1,
           type: "close_session",
           commandId: `close-${input.backendSessionId}`,

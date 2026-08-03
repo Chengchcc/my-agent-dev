@@ -25,6 +25,7 @@ function makeApp() {
     authEnv: {},
     eventBufferSize: 10,
     workerStopGraceMs: 100,
+    acceptTimeoutMs: 5000,
     idleTimeoutMs: 60_000,
     workspaceRoot: ws,
   });

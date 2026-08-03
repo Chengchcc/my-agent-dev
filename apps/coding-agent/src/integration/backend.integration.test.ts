@@ -17,7 +17,7 @@ const rl = createInterface({ input: stdin, terminal: false });
 rl.on("line", async (line) => {
   const cmd = JSON.parse(line);
   if (cmd.type === "open_session") {
-    stdout.write(JSON.stringify({ protocolVersion: 1, type: "ready", backendSessionId: cmd.backendSessionId }) + "\\n");
+    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId }) + "\\n");
   }
   if (cmd.type === "start_run") {
     stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId, runId: cmd.runId }) + "\\n");
@@ -58,6 +58,7 @@ beforeAll(() => {
     authEnv: {},
     eventBufferSize: 100,
     workerStopGraceMs: 500,
+    acceptTimeoutMs: 5000,
     idleTimeoutMs: 60_000,
     workspaceRoot: ws,
   });

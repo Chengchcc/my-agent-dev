@@ -3,7 +3,13 @@ import type { WorkerCommand, WorkerMessage } from "./worker-protocol.js";
 import { parseWorkerMessage } from "./worker-protocol.js";
 
 /** One supervised Worker process handle. stdout is protocol NDJSON only;
- *  stderr is diagnostics (never parsed as business events). */
+ *  stderr is diagnostics (never parsed as business events).
+ *
+ *  `send(cmd)` returns a Promise that resolves when the Worker acknowledges
+ *  the command (command_accepted / command_result) and rejects on
+ *  command_error, fatal output, process exit, or an acceptance timeout. This
+ *  is the Backend-accept invariant: an HTTP mutation does not return success
+ *  until the Worker has accepted the command. */
 
 export interface WorkerProcessEvents {
   onMessage(msg: WorkerMessage): void;
@@ -11,9 +17,24 @@ export interface WorkerProcessEvents {
   onMalformedOutput(line: string, err: unknown): void;
 }
 
+interface PendingCommand {
+  commandId: string;
+  backendSessionId: string;
+  runId?: string;
+  resolve(msg: WorkerMessage): void;
+  reject(err: Error): void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 export interface WorkerProcessHandle {
   readonly pid: number;
-  send(cmd: WorkerCommand): void;
+  /** Send a command and await the Worker's acceptance. Resolves on
+   *  command_accepted/command_result (identity verified), rejects on
+   *  command_error/fatal/exit/timeout. */
+  send(cmd: WorkerCommand): Promise<WorkerMessage>;
+  /** Fire-and-forget write (control inputs that bypass acceptance, e.g.
+   *  shutdown). */
+  post(cmd: WorkerCommand): void;
   shutdown(): void;
   kill(signal?: "SIGTERM" | "SIGKILL"): void;
   readonly exited: Promise<number | null>;
@@ -24,6 +45,8 @@ export interface WorkerProcessOptions {
   env: Record<string, string>;
   cwd: string;
   stopGraceMs: number;
+  /** Max ms to await command acceptance before rejecting the mutation. */
+  acceptTimeoutMs: number;
   events: WorkerProcessEvents;
 }
 
@@ -36,6 +59,52 @@ export function spawnWorkerProcess(opts: WorkerProcessOptions): WorkerProcessHan
     stdout: "pipe",
     stderr: "pipe",
   });
+
+  const pending = new Map<string, PendingCommand>();
+
+  function failPending(err: Error): void {
+    for (const p of pending.values()) {
+      clearTimeout(p.timer);
+      p.reject(err);
+    }
+    pending.clear();
+  }
+
+  /** Resolve/reject a pending command from an accepted/result/error message.
+   *  Verifies backendSessionId + runId match the command (identity). Returns
+   *  true if the message was consumed as a command reply. */
+  function settle(msg: WorkerMessage): boolean {
+    const commandId = "commandId" in msg ? msg.commandId : undefined;
+    if (!commandId) return false;
+    const p = pending.get(commandId);
+    if (!p) return false;
+    pending.delete(commandId);
+    clearTimeout(p.timer);
+
+    if (msg.type === "command_accepted" || msg.type === "command_result") {
+      // Identity check: the reply must be for the same session (and run, when
+      // both carry one). A crossed/forgeed reply rejects the mutation.
+      if (msg.backendSessionId !== p.backendSessionId) {
+        p.reject(
+          new Error(
+            `identity mismatch: expected session ${p.backendSessionId}, got ${msg.backendSessionId}`,
+          ),
+        );
+        return true;
+      }
+      if ("runId" in msg && p.runId !== undefined && msg.runId !== p.runId) {
+        p.reject(new Error(`identity mismatch: expected run ${p.runId}, got ${msg.runId}`));
+        return true;
+      }
+      p.resolve(msg);
+      return true;
+    }
+    if (msg.type === "command_error" || msg.type === "fatal") {
+      p.reject(new Error(msg.message));
+      return true;
+    }
+    return false;
+  }
 
   let buf = "";
   const exited = proc.exited as Promise<number | null>;
@@ -55,7 +124,11 @@ export function spawnWorkerProcess(opts: WorkerProcessOptions): WorkerProcessHan
           buf = buf.slice(idx + 1);
           if (!line) continue;
           try {
-            opts.events.onMessage(parseWorkerMessage(line));
+            const msg = parseWorkerMessage(line);
+            // Command replies settle pending acceptances first; all messages
+            // (events, outcomes, accepted) still forward to the supervisor.
+            settle(msg);
+            opts.events.onMessage(msg);
           } catch (err) {
             opts.events.onMalformedOutput(line, err);
           }
@@ -71,7 +144,6 @@ export function spawnWorkerProcess(opts: WorkerProcessOptions): WorkerProcessHan
       while (true) {
         const { done, value } = await stderrReader.read();
         if (done) break;
-        // stderr is diagnostics only; never parsed as protocol
         const text = new TextDecoder().decode(value);
         if (text.trim()) process.stderr.write(`[worker ${proc.pid}] ${text}`);
       }
@@ -79,32 +151,49 @@ export function spawnWorkerProcess(opts: WorkerProcessOptions): WorkerProcessHan
   })();
 
   exited
-    .then((code) => opts.events.onExit(code, null))
+    .then((code) => {
+      failPending(new Error(`worker exited before accepting (code ${code})`));
+      opts.events.onExit(code, null);
+    })
     .catch(() => {
+      failPending(new Error("worker exited abnormally"));
       opts.events.onExit(null, null);
     });
+
+  function writeCmd(cmd: WorkerCommand): void {
+    const stdin = proc.stdin as unknown as { write(chunk: string): void } | null;
+    stdin?.write(`${JSON.stringify(cmd)}\n`);
+  }
 
   let shuttingDown = false;
 
   return {
     pid: proc.pid!,
     send(cmd) {
-      const stdin = proc.stdin as unknown as { write(chunk: string): void } | null;
-      stdin?.write(`${JSON.stringify(cmd)}\n`);
+      const commandId = cmd.commandId;
+      const backendSessionId = cmd.backendSessionId;
+      const runId = "runId" in cmd ? cmd.runId : undefined;
+      return new Promise<WorkerMessage>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          pending.delete(commandId);
+          reject(new Error(`command acceptance timed out: ${commandId}`));
+        }, opts.acceptTimeoutMs);
+        pending.set(commandId, { commandId, backendSessionId, runId, resolve, reject, timer });
+        writeCmd(cmd);
+      });
+    },
+    post(cmd) {
+      writeCmd(cmd);
     },
     shutdown() {
       if (shuttingDown) return;
       shuttingDown = true;
-      const stdin = proc.stdin as unknown as { write(chunk: string): void } | null;
-      stdin?.write(
-        `${JSON.stringify({
-          protocolVersion: 1,
-          type: "shutdown",
-          commandId: `shutdown-${Date.now()}`,
-          backendSessionId: "shutdown",
-        })}\n`,
-      );
-      // Grace period, then escalate
+      writeCmd({
+        protocolVersion: 1,
+        type: "shutdown",
+        commandId: `shutdown-${proc.pid}`,
+        backendSessionId: "shutdown",
+      });
       setTimeout(() => {
         try {
           proc.kill("SIGTERM");

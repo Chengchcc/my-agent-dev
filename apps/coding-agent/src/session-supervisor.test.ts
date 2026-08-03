@@ -18,12 +18,16 @@ const rl = createInterface({ input: stdin, terminal: false });
 rl.on("line", async (line) => {
   const cmd = JSON.parse(line);
   if (cmd.type === "open_session") {
-    stdout.write(JSON.stringify({ protocolVersion: 1, type: "ready", backendSessionId: cmd.backendSessionId }) + "\\n");
+    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId }) + "\\n");
   }
   if (cmd.type === "start_run") {
     stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId, runId: cmd.runId }) + "\\n");
     // emit one event then complete
     stdout.write(JSON.stringify({ protocolVersion: 1, type: "event", backendSessionId: cmd.backendSessionId, runId: cmd.runId, event: { type: "message_update", text: "hi" } }) + "\\n");
+    stdout.write(JSON.stringify({ protocolVersion: 1, type: "outcome", backendSessionId: cmd.backendSessionId, runId: cmd.runId, outcome: { status: "completed" } }) + "\\n");
+  }
+  if (cmd.type === "send" && cmd.mode !== "steer") {
+    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId, runId: cmd.runId }) + "\\n");
     stdout.write(JSON.stringify({ protocolVersion: 1, type: "outcome", backendSessionId: cmd.backendSessionId, runId: cmd.runId, outcome: { status: "completed" } }) + "\\n");
   }
   if (cmd.type === "send" && cmd.mode === "steer") {
@@ -70,6 +74,7 @@ beforeAll(() => {
     authEnv: {},
     eventBufferSize: 100,
     workerStopGraceMs: 500,
+    acceptTimeoutMs: 5000,
     idleTimeoutMs: 60_000,
     workspaceRoot: wsDir,
   });
@@ -183,7 +188,7 @@ describe("session supervisor", () => {
         `rl.on("line", (line) => {`,
         `  const cmd = JSON.parse(line);`,
         `  if (cmd.type === "open_session") {`,
-        `    stdout.write(JSON.stringify({ protocolVersion: 1, type: "ready", backendSessionId: cmd.backendSessionId }) + "\\n");`,
+        `    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId }) + "\\n");`,
         `  }`,
         `  if (cmd.type === "start_run") {`,
         `    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId, runId: cmd.runId }) + "\\n");`,
@@ -199,6 +204,7 @@ describe("session supervisor", () => {
       authEnv: {},
       eventBufferSize: 100,
       workerStopGraceMs: 500,
+      acceptTimeoutMs: 5000,
       idleTimeoutMs: 60_000,
       workspaceRoot: wsDir,
     });
@@ -243,9 +249,10 @@ describe("session supervisor", () => {
         `rl.on("line", (line) => {`,
         `  const cmd = JSON.parse(line);`,
         `  if (cmd.type === "open_session") {`,
-        `    stdout.write(JSON.stringify({ protocolVersion: 1, type: "ready", backendSessionId: cmd.backendSessionId }) + "\\n");`,
+        `    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId }) + "\\n");`,
         `  }`,
         `  if (cmd.type === "start_run") {`,
+        `    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId, runId: cmd.runId }) + "\\n");`,
         `    process.exit(4);`,
         `  }`,
         `});`,
@@ -258,6 +265,7 @@ describe("session supervisor", () => {
       authEnv: {},
       eventBufferSize: 100,
       workerStopGraceMs: 500,
+      acceptTimeoutMs: 5000,
       idleTimeoutMs: 60_000,
       workspaceRoot: wsDir,
     });
@@ -283,6 +291,7 @@ describe("session supervisor", () => {
       authEnv: {},
       eventBufferSize: 100,
       workerStopGraceMs: 300,
+      acceptTimeoutMs: 5000,
       idleTimeoutMs: 150,
       reapIntervalMs: 50,
       workspaceRoot: wsDir,
