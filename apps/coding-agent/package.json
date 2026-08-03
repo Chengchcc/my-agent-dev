@@ -16,6 +16,7 @@
     "@my-agent-team/agent": "workspace:*",
     "@my-agent-team/agent-backend": "workspace:*",
     "@my-agent-team/ai": "workspace:*",
+    "@my-agent-team/core": "workspace:*",
     "@my-agent-team/config": "workspace:*",
     "@my-agent-team/message": "workspace:*",
     "@my-agent-team/plugin-progressive-skill": "workspace:*",
