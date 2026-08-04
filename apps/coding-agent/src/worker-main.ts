@@ -16,7 +16,11 @@ import {
   serializeMessage,
   type WorkerCommand,
 } from "./worker-protocol.js";
-import { assembleWorkerRuntime, type WorkerRuntime } from "./worker-runtime.js";
+import {
+  assembleWorkerRuntime,
+  registerBuiltinProviders,
+  type WorkerRuntime,
+} from "./worker-runtime.js";
 
 /** Daemon-spawned Worker entry: reads NDJSON commands on stdin, emits
  *  protocol NDJSON on stdout only, logs to stderr. Exactly one session.
@@ -123,16 +127,8 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
     switch (cmd.type) {
       case "open_session": {
         const modelRuntime = createModelRuntime();
-        // Register built-in providers from the daemon-injected env. The
-        // Anthropic provider resolves ANTHROPIC_API_KEY per request; a fake
-        // deterministic provider is available for integration tests.
-        if (process.env.CODING_AGENT_FAKE_PROVIDER === "1") {
-          const { fakeProvider } = await import("./fake-provider.js");
-          modelRuntime.registerProvider(fakeProvider());
-        } else if (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) {
-          const { anthropicProvider } = await import("@my-agent-team/ai");
-          modelRuntime.registerProvider(anthropicProvider());
-        }
+        // Same provider assembly as the daemon catalog (single source of truth).
+        registerBuiltinProviders(modelRuntime);
         runtime = opts.runtimeFactory
           ? await opts.runtimeFactory({
               dataDir: cmd.dataDir,

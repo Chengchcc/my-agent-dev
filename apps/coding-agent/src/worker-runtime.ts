@@ -14,7 +14,7 @@ import type {
   ProductToolDescriptor,
   ProjectedHistoryItem,
 } from "@my-agent-team/agent-backend";
-import type { ModelRuntime } from "@my-agent-team/ai";
+import { anthropicProvider, type ModelRuntime } from "@my-agent-team/ai";
 import type { Message } from "@my-agent-team/message";
 import { createProgressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
 import { createTodoPlugin } from "@my-agent-team/plugin-todo";
@@ -32,6 +32,7 @@ import {
   type WebFetchPort,
   type WebSearchPort,
 } from "@my-agent-team/tools-common";
+import { fakeProvider } from "./fake-provider.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
 
 /** Dependencies the daemon injects into a Worker's Runtime assembly. */
@@ -63,6 +64,21 @@ export interface WorkerRuntime {
   readonly contextBudget: ContextBudget | undefined;
   /** Set before each start_run/send so modelStream resolves the run's model. */
   setActiveRun(run: AgentRunSnapshot<"coding_agent"> | null): void;
+}
+
+/** Single provider assembly shared by the daemon catalog and Workers: register
+ *  built-in providers from the daemon-injected env. The fake deterministic
+ *  provider is available for integration tests. Synchronous so the catalog is
+ *  populated before any /v1/models request. */
+export function registerBuiltinProviders(
+  runtime: ModelRuntime,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): void {
+  if (env.CODING_AGENT_FAKE_PROVIDER === "1") {
+    runtime.registerProvider(fakeProvider());
+  } else if (env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN) {
+    runtime.registerProvider(anthropicProvider());
+  }
 }
 
 /** Build the complete Runtime assembly for exactly one session. The store file

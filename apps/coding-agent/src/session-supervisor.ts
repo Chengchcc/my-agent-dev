@@ -326,16 +326,19 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         agentMemberId: input.metadata.agentMemberId,
         branchId: input.metadata.branchId,
       };
-      sessions.set(input.backendSessionId, rec);
-      rec.activeRunId = runId;
-      eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
+      // Acceptance first, state commit after: ensureWorker spawns + awaits the
+      // open_session handshake. Only after the Worker accepted do we publish
+      // the record, so a spawn/acceptance failure leaves no half-state.
       const handle = await ensureWorker(
         rec,
         input.backendSessionId,
         workspaceRoot,
         input.workspace.access,
       );
+      sessions.set(input.backendSessionId, rec);
       handles.set(input.backendSessionId, handle);
+      rec.activeRunId = runId;
+      eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
       transition(rec, "live");
       await handle.send({
         protocolVersion: 1,
@@ -371,8 +374,8 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       const handle = await workerFor(rec, input.backendSessionId);
       handles.set(input.backendSessionId, handle);
       const runId = input.run.runId;
-      rec.activeRunId = runId;
-      eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
+      // Acceptance first: only publish the active-run state after the Worker
+      // accepted start_run, so a rejection leaves the previous state intact.
       await handle.send({
         protocolVersion: 1,
         type: "start_run",
@@ -386,6 +389,8 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         workspace: input.workspace,
         metadata: input.metadata,
       });
+      rec.activeRunId = runId;
+      eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
       const result = { backendSessionId: input.backendSessionId, runId };
       recordMutation(input.idempotencyKey, input, result);
       return result;
@@ -408,10 +413,8 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       const handle = handles.get(input.backendSessionId);
       if (!handle) throw err("busy", `no live worker: ${input.backendSessionId}`);
       const runId = input.runId;
-      if (input.mode !== "steer") {
-        rec.activeRunId = runId;
-        eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
-      }
+      // Acceptance first: only publish the active-run state after the Worker
+      // accepted the send, so a rejection leaves the previous state intact.
       await handle.send({
         protocolVersion: 1,
         type: "send",
@@ -423,18 +426,22 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         input: input.input as never,
         run: input.run as never,
       });
+      if (input.mode !== "steer") {
+        rec.activeRunId = runId;
+        eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
+      }
       const result = { accepted: true, runId, commandId: input.commandId };
       recordMutation(input.idempotencyKey, input, result);
       return result;
     },
 
     async stop(input) {
+      const replay = mutationResult(input.idempotencyKey, input);
+      if (replay) return replay.replay as { stopped: boolean };
       const rec = recordFor(input.backendSessionId);
       const handle = handles.get(input.backendSessionId);
       if (handle && rec.activeRunId) {
-        // Control input: fire-and-forget (acceptance is not load-bearing for
-        // an abort; the run settles to aborted regardless).
-        handle.post({
+        await handle.send({
           protocolVersion: 1,
           type: "stop_run",
           commandId: input.commandId,
@@ -442,10 +449,14 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
           runId: input.runId ?? rec.activeRunId,
         });
       }
-      return { stopped: true };
+      const result = { stopped: true };
+      recordMutation(input.idempotencyKey, input, result);
+      return result;
     },
 
     async compact(input) {
+      const replay = mutationResult(input.idempotencyKey, input);
+      if (replay) return replay.replay as { compacted: boolean };
       const rec = recordFor(input.backendSessionId);
       if (rec.activeRunId) {
         throw err("busy", "manual compact is only allowed when idle");
@@ -458,15 +469,23 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         commandId: input.commandId,
         backendSessionId: input.backendSessionId,
       });
-      return { compacted: true };
+      const result = { compacted: true };
+      recordMutation(input.idempotencyKey, input, result);
+      return result;
     },
 
     async close(input) {
+      const replay = mutationResult(input.idempotencyKey, input);
+      if (replay) return replay.replay as { closed: boolean };
       const rec = sessions.get(input.backendSessionId);
-      if (!rec) return { closed: true }; // idempotent
+      if (!rec) {
+        const result = { closed: true };
+        recordMutation(input.idempotencyKey, input, result);
+        return result;
+      }
       const handle = handles.get(input.backendSessionId);
       if (handle) {
-        handle.post({
+        await handle.send({
           protocolVersion: 1,
           type: "close_session",
           commandId: `close-${input.backendSessionId}`,
@@ -487,7 +506,9 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         }
       }
       sessions.delete(input.backendSessionId);
-      return { closed: true };
+      const result = { closed: true };
+      recordMutation(input.idempotencyKey, input, result);
+      return result;
     },
 
     getEvents(runId) {

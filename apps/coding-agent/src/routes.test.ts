@@ -58,6 +58,21 @@ describe("daemon routes", () => {
     expect(ok.status).toBe(200);
   });
 
+  test("catalog is non-empty when a provider is registered (single assembly)", async () => {
+    const config = loadConfig({
+      CODING_AGENT_AUTH_TOKEN: "token-123",
+      CODING_AGENT_DATA_DIR: tmp,
+      CODING_AGENT_WORKSPACE_ROOTS: ws,
+      CODING_AGENT_FAKE_PROVIDER: "1",
+    });
+    const app = createCodingAgentApp({ config, modelRuntime: createModelRuntime() });
+    const res = await call(app, "/v1/models", { token: "token-123" });
+    const json = (await res.json()) as { models?: unknown[] };
+    // The daemon catalog and the Workers share one provider assembly, so the
+    // fake provider must appear here (P1: catalog was previously always empty).
+    expect(json.models?.length).toBeGreaterThan(0);
+  });
+
   test("respond endpoint does not exist", async () => {
     const app = makeApp();
     const res = await call(app, "/v1/sessions/x/respond", { method: "POST", token: "token-123" });

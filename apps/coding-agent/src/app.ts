@@ -7,6 +7,7 @@ import {
   type CodingSessionSupervisor,
   createCodingSessionSupervisor,
 } from "./session-supervisor.js";
+import { registerBuiltinProviders } from "./worker-runtime.js";
 
 export interface CodingAgentAppDeps {
   config: CodingAgentConfig;
@@ -21,6 +22,10 @@ export interface CodingAgentApp {
 }
 
 export function createCodingAgentApp(deps: CodingAgentAppDeps): CodingAgentApp {
+  // Single provider assembly: the daemon catalog (/v1/models) and the Workers
+  // must agree on which models exist. Register built-ins from the same env the
+  // Workers receive, so the catalog is not empty when credentials exist.
+  registerBuiltinProviders(deps.modelRuntime, deps.config.providerEnv);
   const supervisor =
     deps.supervisor ??
     createCodingSessionSupervisor({

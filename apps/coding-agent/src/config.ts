@@ -85,7 +85,12 @@ export function loadConfig(
 
   // Forward only known provider credentials to Workers (minimal env surface).
   const providerEnv: Record<string, string> = {};
-  for (const key of ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"]) {
+  for (const key of [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "CODING_AGENT_FAKE_PROVIDER",
+  ]) {
     const v = env[key];
     if (v) providerEnv[key] = v;
   }
