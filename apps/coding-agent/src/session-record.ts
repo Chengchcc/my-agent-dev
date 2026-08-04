@@ -10,8 +10,9 @@ export interface SessionRecord {
   state: SessionState;
   workerPid: number | null;
   activeRunId: string | null;
-  /** Validated workspace root established at start/resume; reused on wake. */
   workspaceRoot: string;
+  /** Workspace access level established at start; gates tool installation. */
+  workspaceAccess: "read_only" | "read_write";
   pendingCommands: Map<string, { commandId: string; idempotencyKey: string }>;
   lastActivityAt: number;
   /** Completed outcomes by runId (diagnostics + outcome endpoint). */
@@ -42,6 +43,7 @@ export function createSessionRecord(backendSessionId: string): SessionRecord {
     workerPid: null,
     activeRunId: null,
     workspaceRoot: "",
+    workspaceAccess: "read_write",
     pendingCommands: new Map(),
     lastActivityAt: Date.now(),
     completedOutcomes: new Map(),

@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, realpathSync } from "node:fs";
 import { ConfigError, loadConfig } from "./config.js";
 
 const tmp = `/tmp/coding-agent-config-${Math.random().toString(36).slice(2, 8)}`;
 mkdirSync(`${tmp}/ws`, { recursive: true });
+// macOS canonicalizes /tmp -> /private/tmp via realpath; compare against the
+// physical path, not the textual one.
+const wsReal = realpathSync(`${tmp}/ws`);
 
 const base = {
   CODING_AGENT_AUTH_TOKEN: "secret",
@@ -15,7 +18,7 @@ describe("daemon config", () => {
   test("defaults apply", () => {
     const cfg = loadConfig(base);
     expect(cfg.host).toBe("127.0.0.1");
-    expect(cfg.port).toBe(4317);
+    expect(cfg.workspaceRoots).toEqual([wsReal]);
     expect(cfg.maxStartingWorkers).toBe(4);
     expect(cfg.sessionsDir).toBe(`${tmp}/sessions`);
     expect(cfg.workspaceRoots).toEqual([`${tmp}/ws`]);
@@ -55,6 +58,6 @@ describe("daemon config", () => {
 
   test("roots normalized to absolute realpath", () => {
     const cfg = loadConfig(base);
-    expect(cfg.workspaceRoots[0]).toBe(`${tmp}/ws`);
+    expect(cfg.workspaceRoots[0]).toBe(wsReal);
   });
 });

@@ -1,5 +1,6 @@
 import {
   type RunOutcomeResponse,
+  resumeSessionRequestSchema,
   sendRunRequestSchema,
   startSessionRequestSchema,
 } from "@my-agent-team/adapter-coding-agent";
@@ -92,6 +93,36 @@ export function createRoutes(deps: RouteDeps): Elysia {
           input: parsed.data.input as never,
           run: parsed.data.run as never,
           workspace: parsed.data.workspace,
+          metadata: parsed.data.metadata,
+        });
+        return Response.json(result);
+      } catch (err) {
+        return errorResponse(err);
+      }
+    },
+    { body: t.Any() },
+  );
+  app.post(
+    "/v1/sessions/:backendSessionId/resume",
+    async ({ params, body, headers }) => {
+      const denied = authGuard(headers);
+      if (denied) return denied;
+      const parsed = resumeSessionRequestSchema.safeParse(body);
+      if (!parsed.success) {
+        return Response.json(
+          { code: "invalid_request", message: parsed.error.message },
+          { status: 400 },
+        );
+      }
+      try {
+        const result = await deps.supervisor.resumeSession({
+          idempotencyKey: parsed.data.idempotencyKey,
+          backendSessionId: params.backendSessionId,
+          history: parsed.data.history as never,
+          input: parsed.data.input as never,
+          run: parsed.data.run as never,
+          workspace: parsed.data.workspace,
+          env: parsed.data.env,
           metadata: parsed.data.metadata,
         });
         return Response.json(result);

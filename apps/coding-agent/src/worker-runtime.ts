@@ -33,6 +33,8 @@ import {
 export interface WorkerRuntimeDeps {
   dataDir: string;
   workspaceRoot: string;
+  /** Gates tool installation: read_only sessions omit write/edit/bash. */
+  workspaceAccess: "read_only" | "read_write";
   backendSessionId: string;
   modelRuntime: ModelRuntime;
   skillRoots?: readonly string[];
@@ -57,17 +59,20 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
   const sessionsDir = `${deps.dataDir}/sessions`;
   mkdirSync(sessionsDir, { recursive: true });
   const store = createSqliteSessionStore(`${sessionsDir}/${deps.backendSessionId}.sqlite`);
-
+  // omitted entirely so the trust boundary is enforced at the tool table, not
+  // relies on per-call checks.
   const tools: PluginTool[] = [
     createReadTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
-    createWriteTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
-    createEditTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
     createLsTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
     createTreeTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
-    createBashTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool,
     createGlobTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool,
     createGrepTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool,
   ];
+  if (deps.workspaceAccess === "read_write") {
+    tools.push(createWriteTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
+    tools.push(createEditTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
+    tools.push(createBashTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool);
+  }
   if (deps.webSearch) {
     tools.push(createPortWebSearchTool(deps.webSearch) as unknown as PluginTool);
   }

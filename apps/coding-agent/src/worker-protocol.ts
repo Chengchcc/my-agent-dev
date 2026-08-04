@@ -35,8 +35,8 @@ export const openSessionCommand = z.object({
   backendSessionId: sessionIdSchema,
   dataDir: z.string(),
   workspaceRoot: z.string(),
+  workspaceAccess: z.enum(["read_only", "read_write"]),
   backendKind: z.literal("coding_agent"),
-  systemPromptHash: z.string().optional(),
 });
 
 export const startRunCommand = z.object({

@@ -18,6 +18,7 @@ function openCommand(overrides: Record<string, unknown> = {}): WorkerCommand {
     backendSessionId: "sess-1",
     dataDir: "/tmp/data",
     workspaceRoot: "/tmp/ws",
+    workspaceAccess: "read_write" as const,
     backendKind: "coding_agent",
     ...overrides,
   } as unknown as WorkerCommand;

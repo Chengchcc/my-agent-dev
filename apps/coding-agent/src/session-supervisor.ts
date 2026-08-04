@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type {
   AgentRunSnapshot,
@@ -135,12 +135,11 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     mutations.set(key, { key, payloadHash: hashPayload(payload), result });
   }
   /** Validate a requested workspace root is within the configured allowlist.
-   *  Returns the resolved root or throws invalid_request. */
+   *  Both sides canonicalize with realpathSync (matching config's allowlist),
+   *  so symlinked roots like macOS /tmp -> /private/tmp compare equal. */
   function validateWorkspace(root: string): string {
-    const resolved = resolve(root);
-    const allowed = opts.workspaceRoots.some(
-      (allowed) => resolved === allowed || resolved.startsWith(`${allowed}/`),
-    );
+    const resolved = realpathSync(resolve(root));
+    const allowed = opts.workspaceRoots.some((a) => resolved === a || resolved.startsWith(`${a}/`));
     if (!allowed) {
       throw err("invalid_request", `workspace root not in allowlist: ${resolved}`);
     }
@@ -150,6 +149,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     rec: SessionRecord,
     backendSessionId: string,
     workspaceRoot: string,
+    workspaceAccess: "read_only" | "read_write",
   ): Promise<WorkerProcessHandle> {
     if (rec.workerPid !== null) {
       throw err("busy", `session already has a live worker: ${backendSessionId}`);
@@ -167,14 +167,12 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         onMessage: (msg) => handleWorkerMessage(backendSessionId, msg),
         onExit: () => handleWorkerExit(backendSessionId),
         onMalformedOutput: (line, _err) => {
-          // Malformed IPC fails only this Worker's active run
           failActiveRun(backendSessionId, `malformed worker output: ${line.slice(0, 200)}`);
           handle.kill("SIGKILL");
         },
       },
     });
     rec.workerPid = handle.pid;
-    // open_session command
     await handle.send({
       protocolVersion: 1,
       type: "open_session",
@@ -182,6 +180,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       backendSessionId,
       dataDir: opts.sessionsDir.replace(/\/sessions$/, ""),
       workspaceRoot,
+      workspaceAccess,
       backendKind: "coding_agent",
     });
     return handle;
@@ -194,7 +193,12 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     if (rec.state === "sleeping" || rec.workerPid === null) {
       // wake: start a new Worker over the same session file
       transition(rec, "starting");
-      const handle = await ensureWorker(rec, backendSessionId, rec.workspaceRoot);
+      const handle = await ensureWorker(
+        rec,
+        backendSessionId,
+        rec.workspaceRoot,
+        rec.workspaceAccess,
+      );
       transition(rec, "live");
       return handle;
     }
@@ -311,11 +315,17 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       const workspaceRoot = validateWorkspace(input.workspace.root);
       const rec = createSessionRecord(input.backendSessionId);
       rec.workspaceRoot = workspaceRoot;
+      rec.workspaceAccess = input.workspace.access;
       sessions.set(input.backendSessionId, rec);
       const runId = input.run.runId;
       rec.activeRunId = runId;
       eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
-      const handle = await ensureWorker(rec, input.backendSessionId, workspaceRoot);
+      const handle = await ensureWorker(
+        rec,
+        input.backendSessionId,
+        workspaceRoot,
+        input.workspace.access,
+      );
       handles.set(input.backendSessionId, handle);
       transition(rec, "live");
       await handle.send({

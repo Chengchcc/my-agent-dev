@@ -78,6 +78,7 @@ describe("worker main dispatch", () => {
             backendSessionId: "sess-1",
             dataDir: "/tmp/d",
             workspaceRoot: "/tmp/ws",
+            workspaceAccess: "read_write" as const,
             backendKind: "coding_agent",
           })}\n`,
         );

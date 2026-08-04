@@ -143,6 +143,7 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
           : await assembleWorkerRuntime({
               dataDir: cmd.dataDir,
               workspaceRoot: cmd.workspaceRoot,
+              workspaceAccess: cmd.workspaceAccess,
               backendSessionId: cmd.backendSessionId,
               modelRuntime,
               skillRoots: [],
