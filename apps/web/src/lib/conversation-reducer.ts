@@ -49,8 +49,6 @@ export interface ConvState {
   pendingSendCount: number;
   /** W7: Monotonic sequence number for client-generated message IDs. */
   optimisticSeq: number;
-  /** Steer2: queued messages waiting to be sent (busy state). */
-  queuedMessages: string[];
 }
 
 export type Action =
@@ -70,10 +68,7 @@ export type Action =
       /** Soft-delete flag from ledger entry (absent = live). */
       undone?: boolean;
     }
-  | { type: "undo"; undoneSeqs: number[] }
-  | { type: "queue/add"; text: string }
-  | { type: "queue/edit"; index: number; text: string }
-  | { type: "queue/remove"; index: number };
+  | { type: "undo"; undoneSeqs: number[] };
 
 export function initialState(): ConvState {
   return {
@@ -86,7 +81,6 @@ export function initialState(): ConvState {
     todos: [],
     pendingSendCount: 0,
     optimisticSeq: 0,
-    queuedMessages: [],
   };
 }
 
@@ -96,8 +90,10 @@ export function initialState(): ConvState {
  *  that means the UI should show a busy state. */
 /** Busy = a send is in flight or messages are queued locally. Execution
  *  state itself comes from Agent Runs (active run set in the hook layer). */
+/** Busy = a send is in flight. Execution state itself comes from Agent
+ *  Runs (active run set in the hook layer). */
 export function isBusy(s: ConvState): boolean {
-  return s.pendingSendCount > 0 || s.queuedMessages.length > 0;
+  return s.pendingSendCount > 0;
 }
 
 function upsertAuthoritative(
@@ -326,21 +322,6 @@ export function reducer(s: ConvState, a: Action): ConvState {
 
     case "todo/update":
       return { ...s, todos: a.todos };
-
-    case "queue/add":
-      return { ...s, queuedMessages: [...s.queuedMessages, a.text] };
-
-    case "queue/edit":
-      return {
-        ...s,
-        queuedMessages: s.queuedMessages.map((m, i) => (i === a.index ? a.text : m)),
-      };
-
-    case "queue/remove":
-      return {
-        ...s,
-        queuedMessages: s.queuedMessages.filter((_, i) => i !== a.index),
-      };
 
     default:
       return s;

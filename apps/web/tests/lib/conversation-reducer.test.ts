@@ -103,12 +103,6 @@ describe("isBusy", () => {
     expect(isBusy(s)).toBe(true);
   });
 
-  test("busy while messages are queued locally", () => {
-    let s = bootstrap();
-    s = reducer(s, { type: "queue/add", text: "later" });
-    expect(isBusy(s)).toBe(true);
-  });
-
   test("not busy when idle (canonical done messages only)", () => {
     let s = bootstrap();
     s = reducer(s, {

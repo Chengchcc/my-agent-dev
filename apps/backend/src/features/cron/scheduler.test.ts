@@ -384,6 +384,81 @@ describe("createCronScheduler (Agent Run cutover)", () => {
     sched.dispose();
   });
 
+  test("COMPLETED run does not re-fire even with maxRetries set", async () => {
+    const fakes = makeRunsFakes({ status: "completed" });
+    let fired: (() => void) | null = null;
+    const deps = {
+      cronSvc: {
+        port: {
+          listEnabledCronJobs: () => [] as CronJobRow[],
+          getCronJob: () => makeJob({ maxRetries: 3 }),
+        },
+      },
+      config: { dataDir: "/tmp" },
+      convPort: {
+        createConversation: () => ({}),
+        addMember: () => ({}),
+        getConversation: () => null,
+        getMembers: () => [],
+      },
+      agentRunService: fakes.runService,
+      agentRunExecution: fakes.execution,
+      resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
+      backoffMs: () => 1,
+      scheduler: {
+        schedule: (_expr: string, fn: () => void) => {
+          fired = fn;
+          return { stop: () => {} };
+        },
+      } as Scheduler,
+      store: { load: () => ({ loopId: "x", lastRun: null, items: {} }) },
+    } as unknown as Parameters<typeof createCronScheduler>[0];
+    const sched = createCronScheduler(deps);
+    sched.register(makeJob({ maxRetries: 3 }));
+    fired!();
+    await new Promise((r) => setTimeout(r, 40));
+    // success must NOT retry: exactly one run
+    expect(fakes.enqueues).toHaveLength(1);
+    sched.dispose();
+  });
+
+  test("commit_failed run does not re-fire (repaired by retryTerminalCommit)", async () => {
+    const fakes = makeRunsFakes({ status: "commit_failed" });
+    let fired: (() => void) | null = null;
+    const deps = {
+      cronSvc: {
+        port: {
+          listEnabledCronJobs: () => [] as CronJobRow[],
+          getCronJob: () => makeJob({ maxRetries: 2 }),
+        },
+      },
+      config: { dataDir: "/tmp" },
+      convPort: {
+        createConversation: () => ({}),
+        addMember: () => ({}),
+        getConversation: () => null,
+        getMembers: () => [],
+      },
+      agentRunService: fakes.runService,
+      agentRunExecution: fakes.execution,
+      resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
+      backoffMs: () => 1,
+      scheduler: {
+        schedule: (_expr: string, fn: () => void) => {
+          fired = fn;
+          return { stop: () => {} };
+        },
+      } as Scheduler,
+      store: { load: () => ({ loopId: "x", lastRun: null, items: {} }) },
+    } as unknown as Parameters<typeof createCronScheduler>[0];
+    const sched = createCronScheduler(deps);
+    sched.register(makeJob({ maxRetries: 2 }));
+    fired!();
+    await new Promise((r) => setTimeout(r, 40));
+    expect(fakes.enqueues).toHaveLength(1);
+    sched.dispose();
+  });
+
   test("overlapping triggers stay single-flight", async () => {
     const fakes = makeRunsFakes({ status: "failed" });
     let fired: (() => void) | null = null;

@@ -74,28 +74,31 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent", CodingAg
     input: BackendRunInput<"coding_agent">,
   ): Promise<BackendRunSegment<"coding_agent">> {
     // Steer routes through send(mode: "steer") - no separate method, no new
-    // run segment (the active run's segment keeps streaming). The daemon
-    // rejects a steer naming a different run, so the adapter targets the
-    // active runId, never the input's (which may be a fresh id).
+    // run segment (the active run's segment keeps streaming). The runId
+    // travels with the input (the Product Backend always sends the CURRENT
+    // run's id), so no live-handle lookup is needed: the per-segment
+    // activeRuns entry may already be gone once the first outcome settled.
     if (input.mode === "steer") {
       const active = this.activeRuns.get(session.backendSessionId);
-      if (active) {
-        await this.client.sendRun(session.backendSessionId, {
-          idempotencyKey: input.input.inputId,
-          commandId: input.input.inputId,
-          history: input.history as never,
-          input: input.input as never,
-          run: { ...input.run, runId: active.runId } as never,
-          mode: "steer",
-          metadata: input.metadata,
-        });
-        // Steer is an in-flight injection into the active run - it has no
-        // terminal outcome of its own. Return the SAME segment object the
-        // caller already holds (one stream, one outcome, one stop state).
-        return active.segment;
-      }
-      // No active run: steer was rejected daemon-side; surface a settled
-      // failed segment so the caller never treats steer as a completion.
+      // The daemon validates the steer runId against its ACTIVE run. Prefer
+      // the tracked active runId when available; the per-segment entry can
+      // be gone once the first outcome settled, in which case the caller's
+      // runId IS the active one (the Product Backend always steers the run
+      // it is dispatching).
+      const targetRunId = active?.runId ?? input.run.runId;
+      await this.client.sendRun(session.backendSessionId, {
+        idempotencyKey: input.input.inputId,
+        commandId: input.input.inputId,
+        history: input.history as never,
+        input: input.input as never,
+        run: { ...input.run, runId: targetRunId } as never,
+        mode: "steer",
+        metadata: input.metadata,
+      });
+      // Steer is an in-flight injection - it has no terminal outcome of its
+      // own. Surface the live segment when one is still tracked, else a
+      // settled no-op so callers never treat steer as a completion.
+      if (active) return active.segment;
       return {
         events: (async function* () {})(),
         outcome: Promise.resolve({

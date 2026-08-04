@@ -249,9 +249,8 @@ export function useConversation(
       };
       const resolved = addressedTo ?? [];
       dispatch({ type: "send", text, viewer });
-      if (isBusy(state)) {
-        dispatch({ type: "queue/add", text });
-      }
+      // There is no client-side queue: every message is POSTed immediately
+      // and the backend persists it as normal/steer/follow_up.
       sendMut.mutate(
         {
           senderMemberId: state.viewerMemberId,
@@ -276,12 +275,6 @@ export function useConversation(
   const toggleTriggerMode = useCallback(() => {
     dispatch({ type: "toggleTriggerMode" });
   }, []);
-  const queueEdit = useCallback((index: number, newText: string) => {
-    dispatch({ type: "queue/edit", index, text: newText });
-  }, []);
-  const queueRemove = useCallback((index: number) => {
-    dispatch({ type: "queue/remove", index });
-  }, []);
 
   const busy = isBusy(state) || activeRuns.size > 0;
 
@@ -290,9 +283,6 @@ export function useConversation(
     busy,
     send,
     toggleTriggerMode,
-    queuedMessages: state.queuedMessages,
-    queueEdit,
-    queueRemove,
     activeRuns,
     transientText,
   };

@@ -268,6 +268,7 @@ export function createAgentRunExecutionService(
     // Steer is a control injection into the LIVE run: no new outcome of its
     // own. It requires an in-memory live segment on this process.
     if (input.mode === "steer") {
+      console.log("STEER DELIVER", runId, "live?", !!live, "sid", live?.session.backendSessionId);
       if (!live) throw new Error(`steer requires a live run: ${runId}`);
       await backend.send(live.session, {
         history: [],
@@ -342,6 +343,9 @@ export function createAgentRunExecutionService(
       });
       session = resumed.session;
       segment = resumed.segment;
+      // A resumed segment is just as live as a freshly started one: steer
+      // injection, stop() and event subscription all need the handle.
+      liveRuns.set(runId, { session, segment });
     } else {
       if (binding) await contextPort.markBindingStale(run.branchId);
       const history = await projectHistory(run.branchId);
@@ -409,6 +413,11 @@ export function createAgentRunExecutionService(
 
     // Deliver every queued input of this run in queue order: the first via
     // start/resume, follow-ups via send on the live segment, steer injected.
+    // A steer produces NO outcome of its own; the run's terminal outcome is
+    // the last real (normal/follow_up) outcome seen. If the loop ends on a
+    // steer, that outcome must still be settled - otherwise the run stays
+    // `running` forever and the branch locks permanently.
+    let lastReal: { outcome: BackendRunOutcome; backendSessionId: string } | null = null;
     let claimed = await runPort.claimNextInput(run.branchId);
     while (claimed && claimed.runId === runId) {
       const { outcome, backendSessionId } = await deliverInput(run, claimed);
@@ -418,7 +427,13 @@ export function createAgentRunExecutionService(
       const next = await runPort.claimNextInput(run.branchId);
       const isFinal = !next || next.runId !== runId;
       if (outcome) {
-        await settleOutcome(run, outcome, isFinal, backendSessionId);
+        lastReal = { outcome, backendSessionId };
+        if (isFinal) {
+          await settleOutcome(run, outcome, true, backendSessionId);
+        }
+      } else if (isFinal && lastReal) {
+        // The last input was a steer: settle the last real outcome now.
+        await settleOutcome(run, lastReal.outcome, true, lastReal.backendSessionId);
       }
       // Live ref lives until the run is terminal; steer/follow-ups keep it.
       if (isFinal) {

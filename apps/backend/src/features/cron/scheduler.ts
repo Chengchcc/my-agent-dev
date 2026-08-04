@@ -103,7 +103,7 @@ export function createCronScheduler(deps: {
       configRevision: 1,
       idempotencyKey: `${fireKey}:${agentMemberId}:${retry}`,
     });
-    if (!acquired || !run) return false; // queued behind another run - nothing to dispatch
+    if (!acquired || !run) return true; // queued: input is persisted; nothing to re-fire
 
     let wdHit = false;
     const timer =
@@ -116,7 +116,11 @@ export function createCronScheduler(deps: {
     try {
       await deps.agentRunExecution.dispatch(run.runId);
       const final = await deps.agentRunService.getRun(run.runId);
-      return wdHit || final?.status === "timeout" || final?.status === "aborted";
+      // Only a plain `failed` outcome re-fires. completed and commit_failed
+      // are terminal-no-retry (commit_failed is repaired by
+      // retryTerminalCommit/recover), aborted/timeout are watchdog
+      // outcomes that must not burn retries.
+      return wdHit || final?.status !== "failed";
     } finally {
       if (timer) clearTimeout(timer);
     }

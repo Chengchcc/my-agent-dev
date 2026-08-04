@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import type { BackendModelRef, BackendRunOutcome } from "@my-agent-team/agent-backend";
 import type { LoopConfig, LoopState } from "@my-agent-team/loop";
 import { loopReducer, parseLoopConfig, parseVerdictMd } from "@my-agent-team/loop";
+import { isTerminalStatus } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";
@@ -334,7 +335,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       .quiet()
       .text()
       .catch(() => "");
-    const genAcquire = await params.agentRunService.enqueueAndAcquire({
+    let genAcquire = await params.agentRunService.enqueueAndAcquire({
       conversationId: genConversationId,
       agentMemberId: genMemberId,
       backendKind: "coding_agent",
@@ -347,6 +348,32 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       configRevision: 1,
       idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}`,
     });
+    if (
+      genAcquire.replayed &&
+      genAcquire.run &&
+      isTerminalStatus(genAcquire.run.status) &&
+      genAcquire.run.status !== "completed"
+    ) {
+      // The previous attempt for this (item, baseSha) ended terminal without
+      // committing (failed/aborted/timeout) - replaying it would short-
+      // circuit forever. Issue a fresh run for the retry.
+      const retry = await params.agentRunService.enqueueAndAcquire({
+        conversationId: genConversationId,
+        agentMemberId: genMemberId,
+        backendKind: "coding_agent",
+        mode: "normal",
+        message: {
+          role: "user",
+          text: buildGeneratorPrompt(item, genPrompt, { repoPath: cwd, gitLog }),
+        },
+        defaultModel: await params.resolveModel(genModel),
+        configRevision: 1,
+        idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}:retry`,
+      });
+      if (retry.acquired && retry.run) {
+        genAcquire = { ...retry, replayed: false };
+      }
+    }
     if (!genAcquire.acquired || !genAcquire.run) {
       throw new Error(
         `loopStep: generator run for item ${item.id} could not acquire its branch (queued behind an active run)`,
@@ -407,7 +434,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       // ignore
     }
 
-    const evalAcquire = await params.agentRunService.enqueueAndAcquire({
+    let evalAcquire = await params.agentRunService.enqueueAndAcquire({
       conversationId: evalConversationId,
       agentMemberId: evalMemberId,
       backendKind: "coding_agent",
@@ -417,6 +444,26 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       configRevision: 1,
       idempotencyKey: `loop-eval:${params.loopId}:${item.id}:${baseSha}`,
     });
+    if (
+      evalAcquire.replayed &&
+      evalAcquire.run &&
+      isTerminalStatus(evalAcquire.run.status) &&
+      evalAcquire.run.status !== "completed"
+    ) {
+      const retry = await params.agentRunService.enqueueAndAcquire({
+        conversationId: evalConversationId,
+        agentMemberId: evalMemberId,
+        backendKind: "coding_agent",
+        mode: "normal",
+        message: { role: "user", text: evaluatorPrompt },
+        defaultModel: await params.resolveModel(evalModel),
+        configRevision: 1,
+        idempotencyKey: `loop-eval:${params.loopId}:${item.id}:${baseSha}:retry`,
+      });
+      if (retry.acquired && retry.run) {
+        evalAcquire = { ...retry, replayed: false };
+      }
+    }
     if (!evalAcquire.acquired || !evalAcquire.run) {
       throw new Error(
         `loopStep: evaluator run for item ${item.id} could not acquire its branch (queued behind an active run)`,

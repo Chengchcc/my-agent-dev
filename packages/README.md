@@ -14,12 +14,10 @@
 
 **框架与插件**
 
-- [`agent`](./agent/):`Agent` lifecycle + Plugin system + split persistence (MessageStore/EventLog/InterruptStore) + context pipeline + SessionManager. The unified L4 runtime.
+- [`agent`](./agent/):Coding Agent runtime — plugin system, split persistence, session store, model loop.
 - [`plugin-fs-memory`](./plugin-fs-memory/):基于文件系统的长期记忆插件。支持 ws 和 cwd 两种模式。
 - [`plugin-progressive-skill`](./plugin-progressive-skill/):SKILL.md 渐进式加载插件,按需分页把技能正文喂给模型。
 - [`plugin-task-guard`](./plugin-task-guard/):规划 + 进度跟踪 + 停止前确定性把关插件。
-- [`plugin-identity`](./plugin-identity/):Agent 身份插件——读取 SOUL/USER/记忆文件，注入系统提示。
-- [`plugin-conversation-context`](./plugin-conversation-context/):对话上下文注入插件——收 Tool[] + systemPrompt，零后端依赖。
 
 **支撑设施**
 

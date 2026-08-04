@@ -36,6 +36,7 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
   const startCalls: Array<{ idempotencyKey: string; runId: string }> = [];
   const resumeCalls: Array<{ backendSessionId: string; runId: string }> = [];
   const sendCalls: Array<{ runId: string; mode: string }> = [];
+  const stopCalls: string[] = [];
   let startAttempts = 0;
   let sidSeq = 0;
   const sessions = new Map<string, string>(); // idempotencyKey -> backendSessionId
@@ -89,7 +90,7 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
       return Response.json({ backendSessionId: sid, runId });
     }
     if (method === "POST" && path.includes("/send")) {
-      const runId = String(body?.runId);
+      const runId = String((body?.run as { runId?: string } | undefined)?.runId ?? body?.runId);
       const mode = String(body?.mode);
       sendCalls.push({ runId, mode });
       readyAt.set(runId, Date.now() + (opts.outcomeDelayMs ?? 60));
@@ -134,6 +135,7 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
       });
     }
     if (method === "POST" && path.includes("/stop")) {
+      stopCalls.push(path);
       return Response.json({ stopped: true });
     }
     if (method === "DELETE") {
@@ -148,6 +150,7 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
     startCalls,
     resumeCalls,
     sendCalls,
+    stopCalls,
     setVerifyManifest: (fn: (runId: string) => void) => {
       verifyManifestAtAccept = fn;
     },
@@ -905,5 +908,97 @@ describe("agent run execution", () => {
     expect(fake.resumeCalls).toHaveLength(1);
     expect(fake.startCalls).toHaveLength(1); // only the FIRST run started
     expect(fake.resumeCalls[0]!.runId).toBe(runId2);
+  }, 15_000);
+
+  test("steer as the LAST input still settles the run's terminal outcome", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeDeps(fake);
+
+    // First input acquires the run; the steer queues behind it.
+    const first = await backend.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "original" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "ikey-steer-1",
+    });
+    const runId = first.run!.runId;
+    const steer = await backend.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "steer",
+      message: { role: "user", text: "steer now" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "ikey-steer-2",
+    });
+    expect(steer.queued).toBe(true);
+
+    await execution.dispatch(runId);
+    await waitForTerminal(runId);
+
+    // The steer was injected on the live segment...
+    expect(fake.sendCalls.some((c) => c.mode === "steer")).toBe(true);
+    // ...AND the run still committed its terminal outcome (P0: a null-outcome
+    // steer must not leave the branch locked `running` forever).
+    const run = await runPort.getRun(runId);
+    expect(run?.status).toBe("completed");
+    const msgs = convPort.getLedgerEntries(conversationId).filter((e) => e.kind === "message");
+    expect(msgs.some((m) => JSON.stringify(m.content).includes('"role":"assistant"'))).toBe(true);
+  }, 15_000);
+
+  test("a resumed run registers the live handle: stop reaches the daemon session", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeDeps(fake);
+
+    const first = await backend.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "one" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "ikey-resume-stop-1",
+    });
+    await execution.dispatch(first.run!.runId);
+    await waitForTerminal(first.run!.runId);
+
+    // Second run resumes the same backend session; a steer mid-loop must be
+    // deliverable and stop() must reach the daemon (not just mark aborted).
+    const second = await backend.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "two" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "ikey-resume-stop-2",
+    });
+    const runId2 = second.run!.runId;
+    const steer2 = await backend.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "steer",
+      message: { role: "user", text: "steer on resume" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "ikey-resume-stop-3",
+    });
+    expect(steer2.queued).toBe(true);
+
+    await execution.dispatch(runId2);
+    await waitForTerminal(runId2);
+    expect(fake.resumeCalls).toHaveLength(1);
+    // steer injected through the RESUME path (live handle registered)
+    expect(fake.sendCalls.some((c) => c.mode === "steer" && c.runId === runId2)).toBe(true);
+    const run2 = await runPort.getRun(runId2);
+    expect(run2?.status).toBe("completed");
   }, 15_000);
 });

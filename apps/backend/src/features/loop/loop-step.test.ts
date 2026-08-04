@@ -131,6 +131,9 @@ interface RunScript {
   usageTokens?: number;
   /** generator rejects the input (queued behind another run). */
   genQueued?: boolean;
+  /** first generator enqueue REPLAYS a terminal failed run; the retry-scoped
+   *  key must then acquire a FRESH run. */
+  genReplayTerminal?: boolean;
 }
 
 function makeFakeRuns(script: RunScript, workDir: string = TMP) {
@@ -175,6 +178,21 @@ function makeFakeRuns(script: RunScript, workDir: string = TMP) {
       });
       if (script.genQueued && input.agentMemberId.startsWith("loop-generator")) {
         return { acquired: false, queued: true, replayed: false, inputId: "in" };
+      }
+      if (
+        script.genReplayTerminal &&
+        input.agentMemberId.startsWith("loop-generator") &&
+        !input.idempotencyKey.endsWith(":retry")
+      ) {
+        const old = makeRun(input.agentMemberId, input.conversationId, input.idempotencyKey);
+        (old as { status: AgentRun["status"] }).status = "failed";
+        return {
+          acquired: false,
+          queued: false,
+          replayed: true,
+          run: old,
+          inputId: `in-${old.runId}`,
+        };
       }
       const run = makeRun(input.agentMemberId, input.conversationId, input.idempotencyKey);
       return { acquired: true, queued: false, replayed: false, run, inputId: `in-${run.runId}` };
@@ -380,6 +398,28 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     } finally {
       await cleanup();
     }
+  });
+
+  test("terminal replay of a failed generator issues a FRESH run under a retry key", async () => {
+    const store = createTestStore();
+    stateWithFixingItem(store);
+    const { enqueues } = await runStep({
+      store,
+      script: {
+        genReplayTerminal: true,
+        evalVerdictMd: "verdict: PASS\nevidence: e",
+      },
+    });
+    // first enqueue replayed the terminal run; the retry-scoped key acquired
+    // a fresh run and the loop completed normally
+    const genKeys = enqueues
+      .filter((e) => e.agentMemberId.startsWith("loop-generator"))
+      .map((e) => e.idempotencyKey);
+    expect(genKeys).toHaveLength(2);
+    expect(genKeys[1]).toContain(":retry");
+    const saved = store.load("test");
+    const item = Object.values(saved.items)[0]!;
+    expect(item.generatorSpanId).toMatch(/^run-\d+$/);
   });
 
   test("generator commit_failed → loopStep throws, evaluator never created", async () => {
