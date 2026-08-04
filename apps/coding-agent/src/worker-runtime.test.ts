@@ -12,12 +12,12 @@ function makeRuntime(sessionId: string): WorkerRuntime & { store: SessionStore }
     sessionId,
     status: "idle",
     async startLoop() {
-      session.status = "running";
       session.status = "completed";
+      return { status: "completed", output: { role: "assistant", text: "done" } };
     },
     async startFollowUp() {
-      session.status = "running";
       session.status = "completed";
+      return { status: "completed", output: { role: "assistant", text: "done" } };
     },
     steer() {},
     stop() {

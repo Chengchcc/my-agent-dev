@@ -22,6 +22,7 @@ export { createSqliteSessionStore } from "./persistence/sqlite-session-store.js"
 // Runtime
 export type { AgentLoopListener, CodingAgentLoopEvent } from "./runtime/agent-event.js";
 export type {
+  CodingAgentLoopResult,
   CodingAgentSession,
   CodingAgentSessionOptions,
   ContextBudget,

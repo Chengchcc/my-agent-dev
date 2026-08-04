@@ -1,6 +1,10 @@
 import { stderr, stdin, stdout } from "node:process";
 import { createInterface } from "node:readline";
-import type { AgentLoopListener, CodingAgentLoopEvent } from "@my-agent-team/agent";
+import type {
+  AgentLoopListener,
+  CodingAgentLoopEvent,
+  CodingAgentLoopResult,
+} from "@my-agent-team/agent";
 import type {
   AgentRunSnapshot,
   BackendInputMessage,
@@ -53,10 +57,6 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
   let runtime: WorkerRuntime | null = null;
   let closed = false;
   let currentRunId: string | null = null;
-  // Per-run accumulator for the terminal assistant Message (events carry text
-  // deltas; the outcome must carry the canonical final output).
-  let runAssistantText = "";
-  let runTerminalStatus: "completed" | "failed" | "stopped" = "completed";
   // Session-level facts captured on the first start_run, reused by follow-ups.
   let sessionWorkspace: WorkspaceBinding | null = null;
   let sessionMetadata: {
@@ -72,7 +72,6 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
 
   function emitEvent(event: CodingAgentLoopEvent): void {
     if (!runtime || !currentRunId) return;
-    if (event.type === "message_update") runAssistantText += event.text;
     send({
       protocolVersion: 1,
       type: "event",
@@ -83,7 +82,6 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
   }
 
   const listener: AgentLoopListener = async (event) => {
-    if (event.type === "agent_end") runTerminalStatus = event.status;
     emitEvent(event);
   };
 
@@ -174,7 +172,6 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
         if (!runtime) throw new Error("session not open");
         runtime.setActiveRun(cmd.run as AgentRunSnapshot<"coding_agent">);
         currentRunId = cmd.runId;
-        runAssistantText = "";
 
         // Steer is a control input: deliver to the active loop immediately,
         // no new Loop, no Meta, no acceptance of a new run.
@@ -206,17 +203,16 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
           cmd.input as unknown as BackendInputMessage,
           mode,
         );
-        if (mode === "follow_up") {
-          await runtime.session.startFollowUp(loopInput);
-        } else {
-          await runtime.session.startLoop(loopInput);
-        }
+        const result =
+          mode === "follow_up"
+            ? await runtime.session.startFollowUp(loopInput)
+            : await runtime.session.startLoop(loopInput);
         send({
           protocolVersion: 1,
           type: "outcome",
           backendSessionId: runtime.sessionId,
           runId: cmd.runId,
-          outcome: buildOutcome() as never,
+          outcome: mapLoopResult(result) as never,
         });
         currentRunId = null;
         break;
@@ -280,22 +276,26 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
     }
   }
 
-  /** Build the terminal outcome from the run's accumulated state. The final
-   *  assistant Message is the canonical output (Phase 4 terminal commit). */
-  function buildOutcome():
-    | { status: "completed"; output: Message }
+  /** Map the canonical CodingAgentLoopResult to the wire outcome. The output
+   *  Message is the persisted assistant entry (blocks intact); error is the
+   *  redacted terminal reason - never a generic placeholder. */
+  function mapLoopResult(
+    result: CodingAgentLoopResult,
+  ):
+    | { status: "completed"; output: Message; usage?: unknown }
     | { status: "aborted"; error: string }
     | { status: "failed"; error: string } {
-    if (runTerminalStatus === "completed") {
+    if (result.status === "completed") {
       return {
         status: "completed",
-        output: { role: "assistant", text: runAssistantText },
+        output: result.output ?? { role: "assistant", text: "" },
+        usage: result.usage,
       };
     }
-    if (runTerminalStatus === "stopped") {
-      return { status: "aborted", error: "stopped by user" };
+    if (result.status === "stopped") {
+      return { status: "aborted", error: result.error ?? "stopped by user" };
     }
-    return { status: "failed", error: "loop failed" };
+    return { status: "failed", error: result.error ?? "loop failed" };
   }
 
   // Serialize lifecycle commands: readline does not await async listeners, so a

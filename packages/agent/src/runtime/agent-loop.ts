@@ -1,4 +1,4 @@
-import type { BackendInputMessage } from "@my-agent-team/agent-backend";
+import type { BackendInputMessage, Usage } from "@my-agent-team/agent-backend";
 import { ProviderError } from "@my-agent-team/ai";
 import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
@@ -62,11 +62,22 @@ export interface CodingAgentSessionOptions {
 /** A Coding Agent Session owns the store, plugins, listeners, and lifecycle.
  *  Each call to startLoop/startFollowUp creates a one-shot internal loop; the
  *  session itself is the long-lived controller. */
+/** Terminal result of a loop. `output` is the canonical persisted assistant
+ *  Message (blocks + tool pairs), not a reconstruction from deltas; `usage` is
+ *  the last usage chunk from the model stream; `error` is a redacted reason
+ *  for failed/stopped outcomes. */
+export interface CodingAgentLoopResult {
+  readonly status: "completed" | "failed" | "stopped";
+  readonly output?: Message;
+  readonly usage?: Usage;
+  readonly error?: string;
+}
+
 export interface CodingAgentSession {
   readonly sessionId: string;
   readonly status: "idle" | "running" | "completed" | "failed" | "stopped";
-  startLoop(input: CodingLoopInput): Promise<void>;
-  startFollowUp(input: CodingLoopInput): Promise<void>;
+  startLoop(input: CodingLoopInput): Promise<CodingAgentLoopResult>;
+  startFollowUp(input: CodingLoopInput): Promise<CodingAgentLoopResult>;
   /** Inject a steer input into the active loop. No Meta, no new Loop: the
    *  message is queued and appended at the next safe boundary. */
   steer(input: BackendInputMessage): void;
@@ -81,6 +92,9 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   const tools = collectTools(opts.plugins);
   const toolMap = new Map(tools.map((t) => [t.name, t]));
   let status: "idle" | "running" | "completed" | "failed" | "stopped" = "idle";
+  // Per-run usage accumulated from model chunks (session scope so both runLoop
+  // and processModelTurn can read/write it).
+  let runUsage: Usage | undefined;
   // Active-loop ownership is separate from terminal status: the loop is
   // "active" from startLoop until listeners settle in finally. This prevents
   // a concurrent startFollowUp from racing with agent_end listeners.
@@ -102,12 +116,13 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   async function runLoop(
     codingInput: CodingLoopInput,
     mode: "normal" | "follow_up",
-  ): Promise<void> {
+  ): Promise<CodingAgentLoopResult> {
     if (active) throw new Error("Loop already active");
     active = true;
     status = "running";
     controller = new AbortController();
     steerQueue.length = 0;
+    let runError: string | undefined;
 
     await emit({ type: "agent_start" });
 
@@ -226,7 +241,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
                 status = "stopped";
                 await emit({ type: "agent_end", status });
                 controller = null;
-                return;
+                return { status, usage: runUsage, error: "stopped by user" };
               }
 
               // Persist assistant tool_use message
@@ -316,9 +331,10 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
               (err instanceof ProviderError && err.kind === "aborted")
             ) {
               status = "stopped";
+              runError ??= err instanceof Error ? err.message : "stopped by user";
               await emit({ type: "agent_end", status });
               controller = null;
-              return;
+              return { status, usage: runUsage, error: runError };
             }
             // Overflow: one-shot compaction recovery inside the same turn
             if (err instanceof ProviderError && err.kind === "overflow" && !overflowCompacted) {
@@ -338,10 +354,11 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
             // Anything else (retries exhausted, auth, invalid_request, fatal)
             // is terminal: the loop is the only retry owner and retryStream
             // already applied its bounded policy.
+            runError ??= err instanceof Error ? err.message : String(err);
             status = "failed";
             await emit({ type: "agent_end", status });
             controller = null;
-            return;
+            return { status, usage: runUsage, error: runError };
           }
         }
 
@@ -354,18 +371,30 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         await emit({ type: "agent_end", status });
       } else if (!naturalStop && step >= opts.maxSteps && status === "running") {
         status = "failed";
+        runError ??= `max steps exceeded (${opts.maxSteps})`;
         await emit({ type: "agent_end", status });
       } else if (status === "running") {
         status = "completed";
         await emit({ type: "agent_end", status });
       }
+      // Canonical output: the last persisted assistant Message (blocks + tool
+      // pairs intact), not a reconstruction from text deltas.
+      let output: Message | undefined;
+      if (status === "completed") {
+        const branch = await readBranchMessages();
+        output = [...branch].reverse().find((m) => m.role === "assistant");
+      }
+      return { status, output, usage: runUsage, error: runError };
     } catch (err) {
       // Setup/persistence failure: the loop must settle to a terminal state
       // so listeners always receive agent_end and the loop is reusable.
-      void err;
+      runError ??= err instanceof Error ? err.message : String(err);
       status = controller?.signal.aborted ? "stopped" : "failed";
       await emit({ type: "agent_end", status });
+      return { status, usage: runUsage, error: runError };
     } finally {
+      // Active-loop ownership must be released on EVERY exit path (normal,
+      // early return, throw) so the session is reusable.
       active = false;
       controller = null;
       steerQueue.length = 0;
@@ -392,6 +421,14 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     try {
       for await (const chunk of stream) {
         if (controller?.signal.aborted) break;
+        if (chunk.usage) {
+          runUsage = {
+            inputTokens: chunk.usage.input,
+            outputTokens: chunk.usage.output,
+            cacheReadTokens: chunk.usage.cacheRead,
+            cacheWriteTokens: chunk.usage.cacheCreate,
+          };
+        }
         if (chunk.delta?.type === "text") {
           assistantText += chunk.delta.text;
           await emit({ type: "message_update", text: chunk.delta.text });
@@ -564,11 +601,11 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     },
 
     async startLoop(deps) {
-      await runLoop(deps, "normal");
+      return runLoop(deps, "normal");
     },
 
     async startFollowUp(deps) {
-      await runLoop(deps, "follow_up");
+      return runLoop(deps, "follow_up");
     },
     steer(input: BackendInputMessage) {
       if (status !== "running" || !acceptingSteer) {
