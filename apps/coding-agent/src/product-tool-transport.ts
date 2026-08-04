@@ -17,7 +17,10 @@ export interface ProductToolCallIdentity {
  *  without a live MCP server. */
 export interface ProductToolCaller {
   callTool(params: {
+    /** MCP tool name (descriptor.name). */
     readonly name: string;
+    /** MCP server address (descriptor.entrypoint) - the transport binding. */
+    readonly entrypoint: string;
     readonly arguments?: unknown;
     readonly identity: ProductToolCallIdentity;
     readonly signal?: AbortSignal;
@@ -51,11 +54,23 @@ export function adaptProductTool(
     inputSchema: descriptor.inputSchema,
     async execute(input: unknown, signal?: AbortSignal): Promise<ToolExecuteResult> {
       const identity: ProductToolCallIdentity = { ...opts.identity, callId: nextCallId() };
+      // A per-call controller lets BOTH the run's stop signal and the timeout
+      // abort the underlying MCP request (the caller tears its transport down).
+      const controller = new AbortController();
+      const onRunAbort = () => controller.abort();
+      signal?.addEventListener("abort", onRunAbort, { once: true });
       try {
         const result = await callWithTimeout(
-          opts.caller.callTool({ name: descriptor.name, arguments: input, identity, signal }),
+          opts.caller.callTool({
+            name: descriptor.name,
+            entrypoint: descriptor.entrypoint,
+            arguments: input,
+            identity,
+            signal: controller.signal,
+          }),
           opts.timeoutMs,
-          signal,
+          controller.signal,
+          () => controller.abort(),
         );
         return {
           content:
@@ -64,6 +79,8 @@ export function adaptProductTool(
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { content: message, isError: true };
+      } finally {
+        signal?.removeEventListener("abort", onRunAbort);
       }
     },
   };
@@ -81,27 +98,39 @@ export function buildProductTools(
 
 /** Race a promise against a timeout, also rejecting early if the run's
  *  AbortSignal fires. Keeps Product Tool calls bounded by both wall time and
- *  run cancellation. */
+ *  run cancellation. `onCancel` lets the caller tear down the underlying
+ *  transport so a timed-out/aborted MCP request actually dies instead of
+ *  producing a side effect after the caller moved on. All timers and abort
+ *  listeners are cleaned up on settle. */
 async function callWithTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
   signal?: AbortSignal,
+  onCancel?: () => void,
 ): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error(`product tool timed out after ${timeoutMs}ms`)),
-        timeoutMs,
-      );
-      signal?.addEventListener(
-        "abort",
-        () => {
-          clearTimeout(timer);
-          reject(new Error("product tool aborted by run stop"));
-        },
-        { once: true },
-      );
-    }),
-  ]);
+  let timer: Timer | undefined;
+  let rejectTimeout!: (err: Error) => void;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    rejectTimeout = reject;
+  });
+  const abort = (message: string): void => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    // Remove the listener BEFORE onCancel: onCancel may abort the signal this
+    // listens on, which must not re-trigger with a different message.
+    signal?.removeEventListener("abort", abortListener);
+    onCancel?.();
+    rejectTimeout(new Error(message));
+  };
+  const abortListener = () => abort("product tool aborted by run stop");
+  signal?.addEventListener("abort", abortListener, { once: true });
+  try {
+    timer = setTimeout(() => abort(`product tool timed out after ${timeoutMs}ms`), timeoutMs);
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abortListener);
+  }
 }

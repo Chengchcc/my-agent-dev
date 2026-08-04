@@ -29,6 +29,9 @@ export interface SessionRecord {
   lastActivityAt: number;
   /** True once a Worker exited unexpectedly for this session. */
   crashedAt: number | null;
+  /** Set while the Supervisor is deliberately shutting this session's Worker
+   *  down (sleep/close): the resulting exit must not be marked crashed. */
+  exiting: boolean;
 }
 
 export type SessionTransition = { from: SessionState; to: SessionState };
@@ -58,6 +61,7 @@ export function createSessionRecord(backendSessionId: string): SessionRecord {
     productIdentity: { runId: "", conversationId: "", agentMemberId: "", branchId: "" },
     lastActivityAt: Date.now(),
     crashedAt: null,
+    exiting: false,
   };
 }
 

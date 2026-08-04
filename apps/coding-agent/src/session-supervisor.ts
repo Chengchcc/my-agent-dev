@@ -115,6 +115,9 @@ export interface CodingSessionSupervisor {
 
 export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSessionSupervisor {
   mkdirSync(opts.sessionsDir, { recursive: true });
+  // Canonicalize the allowlist at construction (matching config's realpath):
+  // tests and callers may pass raw /tmp paths; on macOS /tmp -> /private/tmp.
+  const workspaceRoots = opts.workspaceRoots.map((r) => realpathSync(resolve(r)));
   const sessions = new Map<string, SessionRecord>();
   const eventBuffers = new Map<string, RunEventBuffer>();
   const outcomes = new Map<string, unknown>();
@@ -161,7 +164,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
    *  so symlinked roots like macOS /tmp -> /private/tmp compare equal. */
   function validateWorkspace(root: string): string {
     const resolved = realpathSync(resolve(root));
-    const allowed = opts.workspaceRoots.some((a) => resolved === a || resolved.startsWith(`${a}/`));
+    const allowed = workspaceRoots.some((a) => resolved === a || resolved.startsWith(`${a}/`));
     if (!allowed) {
       throw err("invalid_request", `workspace root not in allowlist: ${resolved}`);
     }
@@ -247,27 +250,38 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
   const handles = new Map<string, WorkerProcessHandle>();
 
   /** Sleep idle sessions: close the Worker, keep the session file and record.
-   *  Wake happens lazily in workerFor() on the next command. */
-  function sleepIdle(): void {
-    const now = Date.now();
-    for (const [sessionId, rec] of sessions) {
-      if (
-        rec.state === "live" &&
-        rec.activeRunId === null &&
-        now - rec.lastActivityAt >= opts.idleTimeoutMs
-      ) {
-        const handle = handles.get(sessionId);
-        if (handle) {
-          try {
-            handle.shutdown();
-          } catch {
-            /* */
+   *  Wake happens lazily in workerFor() on the next command. The state only
+   *  becomes sleeping AFTER the Worker process has exited, so a wake never
+   *  spawns a second Worker over the same SQLite file. */
+  let reaping = false;
+  async function sleepIdle(): Promise<void> {
+    if (reaping) return;
+    reaping = true;
+    try {
+      const now = Date.now();
+      for (const [sessionId, rec] of sessions) {
+        if (
+          rec.state === "live" &&
+          rec.activeRunId === null &&
+          now - rec.lastActivityAt >= opts.idleTimeoutMs
+        ) {
+          const handle = handles.get(sessionId);
+          if (handle) {
+            rec.exiting = true;
+            try {
+              handle.shutdown();
+              await handle.exited;
+            } catch {
+              /* worker already gone */
+            }
+            handles.delete(sessionId);
           }
-          handles.delete(sessionId);
+          rec.workerPid = null;
+          transition(rec, "sleeping");
         }
-        rec.workerPid = null;
-        transition(rec, "sleeping");
       }
+    } finally {
+      reaping = false;
     }
   }
 
@@ -280,7 +294,15 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     const rec = sessions.get(backendSessionId);
     if (!rec) return;
     rec.lastActivityAt = Date.now();
+    // Identity validation: a crossed/forged message must not affect this
+    // session's events or runs - drop it. (The supervisor's own shutdown
+    // sentinel carries backendSessionId "shutdown", which is deliberately
+    // not this session; dropping is harmless.)
+    if ("backendSessionId" in msg && msg.backendSessionId !== backendSessionId) {
+      return;
+    }
     if (msg.type === "event") {
+      if (msg.runId !== rec.activeRunId) return; // stale/unknown run event
       const buf = eventBuffers.get(msg.runId);
       if (buf) {
         buf.append({
@@ -289,9 +311,13 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         });
       }
     } else if (msg.type === "outcome") {
+      // Terminal outcomes are first-write-wins: a later outcome for the same
+      // run (or a replay after close) must not overwrite the settled one.
+      if (outcomes.has(msg.runId)) return;
+      if (msg.runId !== rec.activeRunId) return;
       outcomes.set(msg.runId, { runId: msg.runId, ...(msg.outcome as object) });
       eventBuffers.get(msg.runId)?.close();
-      if (rec.activeRunId === msg.runId) rec.activeRunId = null;
+      rec.activeRunId = null;
     } else if (msg.type === "command_error" || msg.type === "fatal") {
       if (msg.type === "fatal" || (rec.activeRunId && msg.commandId?.startsWith("start-"))) {
         failActiveRun(backendSessionId, msg.message);
@@ -331,6 +357,11 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     if (!rec) return;
     rec.workerPid = null;
     handles.delete(backendSessionId);
+    // Deliberate shutdown (sleep/close) is not a crash.
+    if (rec.exiting) {
+      rec.exiting = false;
+      return;
+    }
     // Unexpected exit during an active run => run failed
     if (rec.activeRunId) {
       failActiveRun(backendSessionId, "worker exited unexpectedly");
@@ -373,19 +404,33 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       rec.activeRunId = runId;
       eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
       transition(rec, "live");
-      await handle.send({
-        protocolVersion: 1,
-        type: "start_run",
-        commandId: `start-${runId}`,
-        backendSessionId: input.backendSessionId,
-        runId,
-        mode: "normal",
-        history: input.history as never,
-        input: input.input as never,
-        run: input.run as never,
-        workspace: input.workspace,
-        metadata: input.metadata,
-      });
+      try {
+        await handle.send({
+          protocolVersion: 1,
+          type: "start_run",
+          commandId: `start-${runId}`,
+          backendSessionId: input.backendSessionId,
+          runId,
+          mode: "normal",
+          history: input.history as never,
+          input: input.input as never,
+          run: input.run as never,
+          workspace: input.workspace,
+          metadata: input.metadata,
+        });
+      } catch (err) {
+        // Roll back the published state: no half-initialized session survives
+        // a failed start_run acceptance.
+        sessions.delete(input.backendSessionId);
+        handles.delete(input.backendSessionId);
+        eventBuffers.delete(runId);
+        try {
+          handle.kill("SIGKILL");
+        } catch {
+          /* already gone */
+        }
+        throw err;
+      }
       const result = { backendSessionId: input.backendSessionId, runId };
       recordMutation(input.idempotencyKey, input, result);
       return result;
@@ -407,23 +452,28 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       const handle = await workerFor(rec, input.backendSessionId);
       handles.set(input.backendSessionId, handle);
       const runId = input.run.runId;
-      // Acceptance first: only publish the active-run state after the Worker
-      // accepted start_run, so a rejection leaves the previous state intact.
-      await handle.send({
-        protocolVersion: 1,
-        type: "start_run",
-        commandId: `start-${runId}`,
-        backendSessionId: input.backendSessionId,
-        runId,
-        mode: "normal",
-        history: input.history as never,
-        input: input.input as never,
-        run: input.run as never,
-        workspace: input.workspace,
-        metadata: input.metadata,
-      });
-      rec.activeRunId = runId;
+      // Reserve the buffer before the command (no event-loss window); roll
+      // back on rejection so no half-state remains.
       eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
+      try {
+        await handle.send({
+          protocolVersion: 1,
+          type: "start_run",
+          commandId: `start-${runId}`,
+          backendSessionId: input.backendSessionId,
+          runId,
+          mode: "normal",
+          history: input.history as never,
+          input: input.input as never,
+          run: input.run as never,
+          workspace: input.workspace,
+          metadata: input.metadata,
+        });
+      } catch (err) {
+        eventBuffers.delete(runId);
+        throw err;
+      }
+      rec.activeRunId = runId;
       const result = { backendSessionId: input.backendSessionId, runId };
       recordMutation(input.idempotencyKey, input, result);
       return result;
@@ -443,25 +493,40 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       if (input.mode === "steer" && !rec.activeRunId) {
         throw err("invalid_request", "steer requires an active run");
       }
+      if (input.mode === "steer" && input.runId !== rec.activeRunId) {
+        // Steer targets the CURRENT active run - it never names a new run.
+        throw err(
+          "invalid_request",
+          `steer runId ${input.runId} does not match active run ${rec.activeRunId}`,
+        );
+      }
       const handle = handles.get(input.backendSessionId);
       if (!handle) throw err("busy", `no live worker: ${input.backendSessionId}`);
       const runId = input.runId;
-      // Acceptance first: only publish the active-run state after the Worker
-      // accepted the send, so a rejection leaves the previous state intact.
-      await handle.send({
-        protocolVersion: 1,
-        type: "send",
-        commandId: input.commandId,
-        backendSessionId: input.backendSessionId,
-        runId,
-        mode: input.mode,
-        history: input.history as never,
-        input: input.input as never,
-        run: input.run as never,
-      });
+      // Reserve the event buffer BEFORE the command so events the Worker emits
+      // in the same stdout chunk as command_accepted are not lost. Roll back
+      // the reservation if acceptance fails.
+      if (input.mode !== "steer") {
+        eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
+      }
+      try {
+        await handle.send({
+          protocolVersion: 1,
+          type: "send",
+          commandId: input.commandId,
+          backendSessionId: input.backendSessionId,
+          runId,
+          mode: input.mode,
+          history: input.history as never,
+          input: input.input as never,
+          run: input.run as never,
+        });
+      } catch (err) {
+        if (input.mode !== "steer") eventBuffers.delete(runId);
+        throw err;
+      }
       if (input.mode !== "steer") {
         rec.activeRunId = runId;
-        eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
       }
       const result = { accepted: true, runId, commandId: input.commandId };
       recordMutation(input.idempotencyKey, input, result);
@@ -496,7 +561,9 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       }
       const handle = await workerFor(rec, input.backendSessionId);
       handles.set(input.backendSessionId, handle);
-      await handle.send({
+      // compact's real completion is the command_result, not the intermediate
+      // command_accepted - await the result so failure surfaces to the caller.
+      await handle.sendForResult({
         protocolVersion: 1,
         type: "compact",
         commandId: input.commandId,
@@ -518,6 +585,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       }
       const handle = handles.get(input.backendSessionId);
       if (handle) {
+        rec.exiting = true;
         await handle.send({
           protocolVersion: 1,
           type: "close_session",
@@ -525,7 +593,9 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
           backendSessionId: input.backendSessionId,
           deleteData: input.deleteData ?? false,
         });
-        handle.shutdown();
+        // Wait for the Worker to actually exit before touching the session
+        // file: a live Worker may still hold the SQLite handle.
+        await handle.exited.catch(() => {});
         handles.delete(input.backendSessionId);
       }
       rec.workerPid = null;
@@ -533,7 +603,8 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       transition(rec, "closed");
       if (input.deleteData) {
         try {
-          Bun.spawnSync(["rm", "-rf", join(opts.sessionsDir, `${input.backendSessionId}.sqlite`)]);
+          const base = join(opts.sessionsDir, input.backendSessionId);
+          Bun.spawnSync(["rm", "-f", `${base}.sqlite`, `${base}.sqlite-wal`, `${base}.sqlite-shm`]);
         } catch {
           /* */
         }

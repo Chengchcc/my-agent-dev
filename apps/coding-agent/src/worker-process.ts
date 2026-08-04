@@ -21,6 +21,10 @@ interface PendingCommand {
   commandId: string;
   backendSessionId: string;
   runId?: string;
+  /** "accepted": resolve on the first command_accepted (default). "result":
+   *  skip the intermediate accepted and resolve only on command_result - for
+   *  commands whose real completion is the result (compact). */
+  waitFor: "accepted" | "result";
   resolve(msg: WorkerMessage): void;
   reject(err: Error): void;
   timer: ReturnType<typeof setTimeout>;
@@ -32,6 +36,9 @@ export interface WorkerProcessHandle {
    *  command_accepted/command_result (identity verified), rejects on
    *  command_error/fatal/exit/timeout. */
   send(cmd: WorkerCommand): Promise<WorkerMessage>;
+  /** Send a command and await its command_result (skipping the intermediate
+   *  accepted) - for commands whose completion is the result, e.g. compact. */
+  sendForResult(cmd: WorkerCommand): Promise<WorkerMessage>;
   /** Fire-and-forget write (control inputs that bypass acceptance, e.g.
    *  shutdown). */
   post(cmd: WorkerCommand): void;
@@ -82,6 +89,9 @@ export function spawnWorkerProcess(opts: WorkerProcessOptions): WorkerProcessHan
     clearTimeout(p.timer);
 
     if (msg.type === "command_accepted" || msg.type === "command_result") {
+      // waitFor "result": command_accepted is only the intermediate ack - keep
+      // the pending command until the real result arrives.
+      if (p.waitFor === "result" && msg.type === "command_accepted") return false;
       // Identity check: the reply must be for the same session (and run, when
       // both carry one). A crossed/forgeed reply rejects the mutation.
       if (msg.backendSessionId !== p.backendSessionId) {
@@ -165,22 +175,42 @@ export function spawnWorkerProcess(opts: WorkerProcessOptions): WorkerProcessHan
     stdin?.write(`${JSON.stringify(cmd)}\n`);
   }
 
+  function sendCommand(cmd: WorkerCommand, waitFor: "accepted" | "result"): Promise<WorkerMessage> {
+    const commandId = cmd.commandId;
+    const backendSessionId = cmd.backendSessionId;
+    const runId = "runId" in cmd ? cmd.runId : undefined;
+    // Duplicate in-flight commandId: reject instead of overwriting the first
+    // resolver (a retried mutation must not corrupt the original's outcome).
+    if (pending.has(commandId)) {
+      return Promise.reject(new Error(`duplicate in-flight command: ${commandId}`));
+    }
+    return new Promise<WorkerMessage>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(commandId);
+        reject(new Error(`command ${waitFor} timed out: ${commandId}`));
+      }, opts.acceptTimeoutMs);
+      pending.set(commandId, {
+        commandId,
+        backendSessionId,
+        runId,
+        waitFor,
+        resolve,
+        reject,
+        timer,
+      });
+      writeCmd(cmd);
+    });
+  }
+
   let shuttingDown = false;
 
   return {
     pid: proc.pid!,
     send(cmd) {
-      const commandId = cmd.commandId;
-      const backendSessionId = cmd.backendSessionId;
-      const runId = "runId" in cmd ? cmd.runId : undefined;
-      return new Promise<WorkerMessage>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          pending.delete(commandId);
-          reject(new Error(`command acceptance timed out: ${commandId}`));
-        }, opts.acceptTimeoutMs);
-        pending.set(commandId, { commandId, backendSessionId, runId, resolve, reject, timer });
-        writeCmd(cmd);
-      });
+      return sendCommand(cmd, "accepted");
+    },
+    sendForResult(cmd) {
+      return sendCommand(cmd, "result");
     },
     post(cmd) {
       writeCmd(cmd);

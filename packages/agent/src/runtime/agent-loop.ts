@@ -7,7 +7,7 @@ import type { AgentLoopListener, CodingAgentLoopEvent } from "./agent-event.js";
 import { type CompactionBudget, compactSession } from "./compaction.js";
 import type { CodingLoopInput } from "./loop-input.js";
 import { buildLoopInput } from "./loop-input.js";
-import type { Plugin } from "./plugin.js";
+import type { Plugin, PluginTool } from "./plugin.js";
 import { collectTools, validatePlugins } from "./plugin.js";
 import { renderLoopMeta } from "./prompt.js";
 import { retryStream } from "./retry.js";
@@ -52,6 +52,10 @@ export interface CodingAgentSessionOptions {
   /** Resolve the model display identity for a run's model ref, used to render
    *  the per-loop Meta. Optional: when omitted (tests), Meta omits the model line. */
   readonly resolveModel?: (modelId: string) => Promise<{ provider: string; id: string }>;
+  /** Resolve per-Run additional tools (e.g. the Product Tool manifest from
+   *  `input.run.productTools`). Merged into the tool table at each runLoop
+   *  start so snapshot changes apply on the next Run without a rebuild. */
+  readonly resolveTools?: (input: CodingLoopInput) => Promise<readonly PluginTool[]>;
   readonly maxRetries?: number;
   /** Token-aware proactive compaction budget. When estimated context tokens
    *  exceed limit * triggerRatio before a model turn, compact once. Leave
@@ -89,8 +93,11 @@ export interface CodingAgentSession {
 export function createCodingAgentSession(opts: CodingAgentSessionOptions): CodingAgentSession {
   validatePlugins(opts.plugins);
   const listeners = new Set<AgentLoopListener>();
-  const tools = collectTools(opts.plugins);
-  const toolMap = new Map(tools.map((t) => [t.name, t]));
+  // Static plugin tools + per-run resolved tools (Product Tool manifest).
+  // The tool table is rebuilt at each runLoop start so AgentRunSnapshot
+  // changes (productTools) take effect on the next Run without a rebuild.
+  const baseTools = collectTools(opts.plugins);
+  let toolMap = new Map(baseTools.map((t) => [t.name, t]));
   let status: "idle" | "running" | "completed" | "failed" | "stopped" = "idle";
   // Per-run usage accumulated from model chunks (session scope so both runLoop
   // and processModelTurn can read/write it).
@@ -122,7 +129,14 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     status = "running";
     controller = new AbortController();
     steerQueue.length = 0;
+    // Reset per-run: a Run without usage must not inherit the previous Run's.
+    runUsage = undefined;
     let runError: string | undefined;
+
+    // Per-Run tool resolution: static plugins + this run's resolved tools
+    // (Product Tool manifest). Snapshot changes take effect on the next Run.
+    const runTools = opts.resolveTools ? await opts.resolveTools(codingInput) : [];
+    toolMap = new Map([...baseTools, ...runTools].map((t) => [t.name, t]));
 
     await emit({ type: "agent_start" });
 
@@ -422,11 +436,12 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       for await (const chunk of stream) {
         if (controller?.signal.aborted) break;
         if (chunk.usage) {
+          // Accumulate across all model calls in the Run (not last-wins).
           runUsage = {
-            inputTokens: chunk.usage.input,
-            outputTokens: chunk.usage.output,
-            cacheReadTokens: chunk.usage.cacheRead,
-            cacheWriteTokens: chunk.usage.cacheCreate,
+            inputTokens: (runUsage?.inputTokens ?? 0) + (chunk.usage.input ?? 0),
+            outputTokens: (runUsage?.outputTokens ?? 0) + (chunk.usage.output ?? 0),
+            cacheReadTokens: (runUsage?.cacheReadTokens ?? 0) + (chunk.usage.cacheRead ?? 0),
+            cacheWriteTokens: (runUsage?.cacheWriteTokens ?? 0) + (chunk.usage.cacheCreate ?? 0),
           };
         }
         if (chunk.delta?.type === "text") {

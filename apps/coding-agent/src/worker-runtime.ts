@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import {
   type CodingAgentSession,
+  type CodingLoopInput,
   type ContextBudget,
   type ContextSummarizer,
   createCodingAgentSession,
@@ -116,62 +117,79 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
     createProgressiveSkillPlugin({ roots: deps.skillRoots ?? [] }),
   ];
 
-  // Product Tools from the run manifest: installed into the tool table so the
-  // model can call them; every call carries identity + abort + timeout through
-  // the transport. An empty manifest yields no tools.
-  if (deps.productTools && deps.productTools.length > 0 && deps.productIdentity) {
-    const { buildProductTools } = await import("./product-tool-transport.js");
-    // Direct MCP client per entrypoint (sse url or stdio command). Identity is
-    // injected per call; the transport wraps timeout + abort. The manager in
-    // adapter-mcp cannot carry identity, so we connect here.
-    const clients = new Map<string, unknown>();
-    const caller: ProductToolCaller = {
-      async callTool(p) {
-        let client = clients.get(p.name);
-        if (!client) {
-          const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-          const isHttp = p.name.startsWith("http");
-          let transport: unknown;
-          if (isHttp) {
-            const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
-            transport = new SSEClientTransport(new URL(p.name));
-          } else {
-            const { StdioClientTransport } = await import(
-              "@modelcontextprotocol/sdk/client/stdio.js"
-            );
-            transport = new StdioClientTransport({ command: p.name, args: [] });
-          }
-          const c = new Client({ name: "coding-agent", version: "0.1.0" }, { capabilities: {} });
-          await c.connect(transport as never);
-          client = c;
-          clients.set(p.name, c);
+  // Product Tools are resolved PER RUN from the AgentRunSnapshot manifest:
+  // resolveTools builds the tool table from input.run.productTools + the run's
+  // identity (runId + metadata), so snapshot changes take effect on the next
+  // Run without a session rebuild. Every call carries identity + abort +
+  // timeout through the transport.
+  const { buildProductTools } = await import("./product-tool-transport.js");
+  // Direct MCP client per ENTRYPOINT (sse url or stdio command); the tool
+  // NAME is the MCP tool name. Identity is injected per call; timeout/abort
+  // close the transport so a canceled call cannot produce a late side effect.
+  const clients = new Map<string, unknown>();
+  const caller: ProductToolCaller = {
+    async callTool(p) {
+      let client = clients.get(p.entrypoint);
+      if (!client) {
+        const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+        const isHttp = p.entrypoint.startsWith("http");
+        let transport: unknown;
+        if (isHttp) {
+          const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
+          transport = new SSEClientTransport(new URL(p.entrypoint));
+        } else {
+          const { StdioClientTransport } = await import(
+            "@modelcontextprotocol/sdk/client/stdio.js"
+          );
+          transport = new StdioClientTransport({ command: p.entrypoint, args: [] });
         }
-        const res = await (
-          client as {
-            callTool(params: {
-              name: string;
-              arguments?: unknown;
-              _meta?: { identity: unknown };
-            }): Promise<{ content: unknown }>;
-          }
-        ).callTool({
+        const c = new Client({ name: "coding-agent", version: "0.1.0" }, { capabilities: {} });
+        await c.connect(transport as never);
+        client = c;
+        clients.set(p.entrypoint, c);
+      }
+      const mcpClient = client as {
+        callTool(params: {
+          name: string;
+          arguments?: unknown;
+          _meta?: { identity: unknown };
+        }): Promise<{ content: unknown }>;
+        close(): Promise<void>;
+      };
+      const cancel = (): void => {
+        clients.delete(p.entrypoint);
+        void mcpClient.close().catch(() => {});
+      };
+      p.signal?.addEventListener("abort", cancel, { once: true });
+      try {
+        const res = await mcpClient.callTool({
           name: p.name,
           arguments: p.arguments,
           _meta: { identity: p.identity },
         });
         return { content: res.content };
+      } catch (err) {
+        cancel();
+        throw err;
+      } finally {
+        p.signal?.removeEventListener("abort", cancel);
+      }
+    },
+  };
+  const resolveTools = async (input: CodingLoopInput): Promise<readonly PluginTool[]> => {
+    const manifest = input.run.productTools;
+    if (!manifest || manifest.length === 0) return [];
+    return buildProductTools(manifest, {
+      identity: {
+        runId: input.run.runId,
+        conversationId: input.metadata.conversationId,
+        agentMemberId: input.metadata.agentMemberId,
+        branchId: input.metadata.branchId,
       },
-    };
-    const productToolsPlugin: Plugin = {
-      name: "product-tools",
-      tools: buildProductTools(deps.productTools, {
-        identity: deps.productIdentity,
-        caller,
-        timeoutMs: 30_000,
-      }) as unknown as PluginTool[],
-    };
-    plugins.push(productToolsPlugin);
-  }
+      caller,
+      timeoutMs: 30_000,
+    }) as unknown as PluginTool[];
+  };
 
   let activeRun: AgentRunSnapshot<"coding_agent"> | null = null;
 
@@ -245,6 +263,7 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
     summarize,
     contextBudget,
     resolveModel,
+    resolveTools,
   });
 
   return {

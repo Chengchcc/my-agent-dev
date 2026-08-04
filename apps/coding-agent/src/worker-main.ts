@@ -56,6 +56,9 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
   const { stdin: inStream, stdout: outStream, stderr: errStream } = opts;
   let runtime: WorkerRuntime | null = null;
   let closed = false;
+  // Set once the readline exists; close_session/shutdown call it so the
+  // process actually exits (readline close -> chain drains -> main returns).
+  let closeRl: (() => void) | null = null;
   let currentRunId: string | null = null;
   // Session-level facts captured on the first start_run, reused by follow-ups.
   let sessionWorkspace: WorkspaceBinding | null = null;
@@ -181,11 +184,9 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
       case "start_run":
       case "send": {
         if (!runtime) throw new Error("session not open");
-        runtime.setActiveRun(cmd.run as AgentRunSnapshot<"coding_agent">);
-        currentRunId = cmd.runId;
-
-        // Steer is a control input: deliver to the active loop immediately,
-        // no new Loop, no Meta, no acceptance of a new run.
+        // Steer is a control input into the ACTIVE loop: it must not touch
+        // setActiveRun/currentRunId (its runId names the active run, not a new
+        // one), otherwise subsequent active-loop events would be mislabeled.
         if (cmd.type === "send" && cmd.mode === "steer") {
           runtime.session.steer(cmd.input as unknown as BackendInputMessage);
           send({
@@ -193,10 +194,12 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
             type: "command_accepted",
             commandId: cmd.commandId,
             backendSessionId: runtime.sessionId,
-            runId: cmd.runId,
+            runId: currentRunId ?? cmd.runId,
           });
           break;
         }
+        runtime.setActiveRun(cmd.run as AgentRunSnapshot<"coding_agent">);
+        currentRunId = cmd.runId;
 
         const mode: "normal" | "follow_up" =
           cmd.type === "start_run" ? "normal" : cmd.mode === "follow_up" ? "follow_up" : "normal";
@@ -271,6 +274,10 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
           backendSessionId: runtime?.sessionId ?? cmd.backendSessionId,
         });
         closed = true;
+        // Actually exit: close the readline (stdin) so the process terminates
+        // and the Supervisor's awaited handle.exited resolves - the session
+        // file is then safe to delete or reopen.
+        closeRl?.();
         break;
       }
 
@@ -282,6 +289,7 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
           backendSessionId: runtime?.sessionId ?? cmd.backendSessionId,
         });
         closed = true;
+        closeRl?.();
         break;
       }
     }
@@ -293,14 +301,16 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
   function mapLoopResult(
     result: CodingAgentLoopResult,
   ):
-    | { status: "completed"; output: Message; usage?: unknown }
+    | { status: "completed"; output?: Message; usage?: unknown }
     | { status: "aborted"; error: string }
     | { status: "failed"; error: string } {
     if (result.status === "completed") {
+      // No fabricated output: when the loop persisted no canonical assistant
+      // Message, omit it rather than inventing an empty one for Phase 4.
       return {
         status: "completed",
-        output: result.output ?? { role: "assistant", text: "" },
-        usage: result.usage,
+        ...(result.output ? { output: result.output } : {}),
+        ...(result.usage ? { usage: result.usage } : {}),
       };
     }
     if (result.status === "stopped") {
@@ -314,6 +324,7 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
   // stop are dispatched ahead of the chain as control inputs.
   let chain: Promise<void> = Promise.resolve();
   const rl = createInterface({ input: inStream, terminal: false });
+  closeRl = () => rl.close();
   rl.on("line", (line) => {
     if (closed) return;
     try {

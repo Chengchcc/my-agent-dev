@@ -72,23 +72,24 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent", CodingAg
     input: BackendRunInput<"coding_agent">,
   ): Promise<BackendRunSegment<"coding_agent">> {
     // Steer routes through send(mode: "steer") - no separate method, no new
-    // run segment (the active run's segment keeps streaming).
+    // run segment (the active run's segment keeps streaming). The daemon
+    // rejects a steer naming a different run, so the adapter targets the
+    // active runId, never the input's (which may be a fresh id).
     if (input.mode === "steer") {
-      await this.client.sendRun(session.backendSessionId, {
-        idempotencyKey: input.input.inputId,
-        commandId: input.input.inputId,
-        history: input.history as never,
-        input: input.input as never,
-        run: input.run as never,
-        mode: "steer",
-        metadata: input.metadata,
-      });
-      // Steer is an in-flight injection into the active run - it has no
-      // terminal outcome of its own. Return the ACTIVE segment so the caller
-      // keeps observing the real run; a synthetic completed outcome would let
-      // a caller wrongly terminal-commit.
       const active = this.activeRuns.get(session.backendSessionId);
       if (active) {
+        await this.client.sendRun(session.backendSessionId, {
+          idempotencyKey: input.input.inputId,
+          commandId: input.input.inputId,
+          history: input.history as never,
+          input: input.input as never,
+          run: { ...input.run, runId: active.runId } as never,
+          mode: "steer",
+          metadata: input.metadata,
+        });
+        // Steer is an in-flight injection into the active run - it has no
+        // terminal outcome of its own. Return the ACTIVE segment so the caller
+        // keeps observing the real run.
         return buildSegment(this.client, this.activeRuns, session, active.runId);
       }
       // No active run: steer was rejected daemon-side; surface a settled

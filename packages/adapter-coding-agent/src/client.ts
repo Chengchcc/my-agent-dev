@@ -98,7 +98,7 @@ export class CodingAgentClient {
     })) as { stopped: boolean };
   }
 
-  async closeSession(backendSessionId: string, deleteData = false): Promise<{ closed: boolean }> {
+  async closeSession(backendSessionId: string, deleteData = true): Promise<{ closed: boolean }> {
     return (await this.request("DELETE", `/v1/sessions/${backendSessionId}`, {
       idempotencyKey: `close-${backendSessionId}`,
       commandId: `close-${backendSessionId}`,

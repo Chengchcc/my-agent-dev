@@ -1118,6 +1118,69 @@ function testHarness(
       }
     });
 
+    test("9b. resolveTools applies per-run manifest to the tool table", async () => {
+      const store = storeFactory("h9b");
+      await createSession(store, "h9b");
+      let ptAExecutions = 0;
+      const loop = createCodingAgentSession({
+        sessionId: "h9b",
+        store,
+        plugins: [],
+        maxSteps: 2,
+        maxForceContinues: 0,
+        summarize: fakeSummarize,
+        modelStream: async function* () {
+          yield { delta: { type: "tool_use", id: "tc-1", name: "pt-a" } };
+          yield { stopReason: "tool_use" };
+        },
+        resolveTools: async (input) => {
+          const names = input.run.productTools.map((t) => t.name);
+          return names.map((n) => ({
+            name: n,
+            description: n,
+            inputSchema: { type: "object" },
+            async execute() {
+              if (n === "pt-a") ptAExecutions++;
+              return { ok: true };
+            },
+          }));
+        },
+      });
+      // Run 1: manifest has pt-a -> it exists and executes.
+      await loop.startLoop(
+        loopInput({
+          message: "first",
+          run: {
+            ...LOOP_RUN,
+            productTools: [{ name: "pt-a", description: "", inputSchema: {}, entrypoint: "x" }],
+          },
+        }),
+      );
+      expect(ptAExecutions).toBe(2); // one per step in run 1 (maxSteps 2)
+      // Run 2: manifest has only pt-b -> pt-a is gone from the table; the
+      // model's pt-a call resolves to is_error (unknown tool), so pt-a's
+      // execute is NOT invoked again. Tools are per-Run, not frozen.
+      await loop.startFollowUp(
+        loopInput({
+          message: "second",
+          run: {
+            ...LOOP_RUN,
+            productTools: [{ name: "pt-b", description: "", inputSchema: {}, entrypoint: "y" }],
+          },
+        }),
+      );
+      expect(ptAExecutions).toBe(2); // pt-a NOT executed in run 2
+      const snap = await store.open("h9b");
+      const results = snap.entries.filter(
+        (e) => e.type === "message" && (e as { source?: string }).source === "tool_result",
+      );
+      // Run 2's pt-a call produced an is_error tool_result (tool not found).
+      const run2Result = results[results.length - 1] as {
+        message: { blocks?: Array<{ is_error?: boolean }> };
+      };
+      expect(run2Result?.message.blocks?.[0]?.is_error).toBe(true);
+    });
+
     test("10. compaction appends entry and shapes next turn", async () => {
       const store = storeFactory("h10");
       await createSession(store, "h10");

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   closeSessionRequestSchema,
   compactSessionRequestSchema,
@@ -16,6 +17,13 @@ import type { CodingSessionSupervisor } from "./session-supervisor.js";
 /** Max queued chunks before a slow SSE subscriber is evicted (its stream is
  *  closed; the run keeps flowing for others). Bounds memory per connection. */
 const SLOW_SUBSCRIBER_LIMIT = 64;
+
+/** Deterministic session id from an idempotency key (SHA-256, hex, 26 chars -
+ *  matches the sessionIdSchema charset). Same key => same session, so start
+ *  retries replay instead of conflicting. */
+function deriveSessionId(idempotencyKey: string): string {
+  return createHash("sha256").update(idempotencyKey).digest("hex").slice(0, 26);
+}
 export interface RouteDeps {
   supervisor: CodingSessionSupervisor;
   authToken: string;
@@ -91,7 +99,11 @@ export function createRoutes(deps: RouteDeps): Elysia {
       try {
         const result = await deps.supervisor.startSession({
           idempotencyKey: parsed.data.idempotencyKey,
-          backendSessionId: crypto.randomUUID().replace(/-/g, "").slice(0, 26),
+          // Stable derivation from the idempotency key: a retry of the same
+          // start request maps to the SAME session, so the supervisor's
+          // idempotency replay returns the original result instead of a
+          // payload-conflict on a freshly randomized ID.
+          backendSessionId: deriveSessionId(parsed.data.idempotencyKey),
           history: parsed.data.history as never,
           input: parsed.data.input as never,
           run: parsed.data.run as never,
