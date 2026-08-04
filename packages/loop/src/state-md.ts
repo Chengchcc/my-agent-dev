@@ -65,6 +65,9 @@ function itemStateToYaml(item: ItemState): string {
   if (item.generatorSpanId) {
     lines.push(`generatorSpanId: ${yamlEscape(item.generatorSpanId)}`);
   }
+  if (item.evaluatorRunId) {
+    lines.push(`evaluatorRunId: ${yamlEscape(item.evaluatorRunId)}`);
+  }
   if (item.result !== null) {
     lines.push("result:");
     lines.push(formatVerdict(item.result, 1));
@@ -86,6 +89,7 @@ function parseItemYaml(id: string, lines: string[]): ItemState {
         ? parseVerdict(data.result as Record<string, YamlValue>)
         : null,
     generatorSpanId: data.generatorSpanId ? String(data.generatorSpanId) : undefined,
+    evaluatorRunId: data.evaluatorRunId ? String(data.evaluatorRunId) : undefined,
   };
 }
 

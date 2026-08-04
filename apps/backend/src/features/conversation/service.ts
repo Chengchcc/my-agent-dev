@@ -1,9 +1,9 @@
+import type { BackendModelRef } from "@my-agent-team/agent-backend";
 import {
   type AgentMember,
   Conversation as ConversationSchema,
   resolveTriggerTargets,
 } from "@my-agent-team/conversation";
-import type { BackendModelRef } from "@my-agent-team/agent-backend";
 import type { Message } from "@my-agent-team/message";
 import {
   ContentBlockSchema,
@@ -13,10 +13,10 @@ import {
   serializeMessageRevision,
   systemMessageId,
 } from "@my-agent-team/message";
+import { selectWakeAgentIDs } from "../agent/relationship-service.js";
 import type { AgentContextService } from "../agent-context/service.js";
 import type { BranchInputMode } from "../agent-run/domain.js";
 import type { AgentRunService } from "../agent-run/service.js";
-import { selectWakeAgentIDs } from "../agent/relationship-service.js";
 import type { ConversationPort, LedgerEntry, LedgerKind, MemberRow } from "./ports.js";
 
 /** Reserved memberId for the conversation owner (the human who owns an

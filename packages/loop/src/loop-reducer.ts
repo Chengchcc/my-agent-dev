@@ -51,12 +51,12 @@ export function loopReducer(state: LoopState, action: LoopAction, opts?: Reducer
       const item = items[action.itemId];
       if (item?.step !== "verifying") break;
 
-      const { verdict } = action;
+      const { verdict, evaluatorRunId } = action;
 
       if (verdict.verdict === "PASS") {
         if (isEvidenceEmpty(verdict.evidence)) {
           items[action.itemId] = {
-            ...item,
+            ...item, evaluatorRunId: evaluatorRunId ?? item.evaluatorRunId,
             step: "inbox",
             result: {
               verdict: "ESCALATE",
@@ -67,20 +67,20 @@ export function loopReducer(state: LoopState, action: LoopAction, opts?: Reducer
           break;
         }
         items[action.itemId] = {
-          ...item,
+          ...item, evaluatorRunId: evaluatorRunId ?? item.evaluatorRunId,
           step: autoResolve ? "resolved" : "awaiting_review",
           result: verdict,
         };
       } else if (verdict.verdict === "REJECT") {
         if (item.attempt >= maxRetries) {
           items[action.itemId] = {
-            ...item,
+            ...item, evaluatorRunId: evaluatorRunId ?? item.evaluatorRunId,
             step: "inbox",
             result: verdict,
           };
         } else {
           items[action.itemId] = {
-            ...item,
+            ...item, evaluatorRunId: evaluatorRunId ?? item.evaluatorRunId,
             step: "fixing",
             attempt: item.attempt + 1,
             result: verdict,
@@ -89,7 +89,7 @@ export function loopReducer(state: LoopState, action: LoopAction, opts?: Reducer
       } else {
         // ESCALATE
         items[action.itemId] = {
-          ...item,
+          ...item, evaluatorRunId: evaluatorRunId ?? item.evaluatorRunId,
           step: "inbox",
           result: verdict,
         };

@@ -1,9 +1,9 @@
 import type { BackendModelRef } from "@my-agent-team/agent-backend";
 import { ulid } from "../../infra/ids.js";
-import type { AgentContextService } from "../agent-context/service.js";
-import type { AgentRunService } from "../agent-run/service.js";
 import type { AgentService } from "../agent/index.js";
 import type { RelationshipService } from "../agent/relationship-service.js";
+import type { AgentContextService } from "../agent-context/service.js";
+import type { AgentRunService } from "../agent-run/service.js";
 import type { SettingsService } from "../settings/index.js";
 import { createGoalStateStore, type GoalStateStore } from "./goal-state.js";
 import type { ConversationPort } from "./ports.js";

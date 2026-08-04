@@ -210,7 +210,6 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
       return row!.seq;
     },
 
-
     getLedgerEntries(conversationId: string, opts?: { sinceSeq?: number }): LedgerEntry[] {
       const since = opts?.sinceSeq ?? 0;
       const rows = d

@@ -27,6 +27,7 @@ export type ItemState = {
   priority: number;
   result: Verdict | null;
   generatorSpanId?: string;
+  evaluatorRunId?: string;
 };
 
 // === Loop state ===
@@ -40,7 +41,7 @@ export type LoopState = {
 export type LoopAction =
   | { type: "TICK" }
   | { type: "GENERATOR_DONE"; itemId: ItemId; generatorSpanId?: string }
-  | { type: "EVALUATOR_VERDICT"; itemId: ItemId; verdict: Verdict }
+  | { type: "EVALUATOR_VERDICT"; itemId: ItemId; verdict: Verdict; evaluatorRunId?: string }
   | { type: "APPROVE"; itemId: ItemId }
   | { type: "REJECT_HUMAN"; itemId: ItemId; feedback?: string }
   | { type: "PROMOTE"; itemId: ItemId }

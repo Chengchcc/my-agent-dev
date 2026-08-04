@@ -266,9 +266,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
         senderMemberId: run.agentMemberId,
         message: output,
       });
-    })().catch((err) =>
-      console.error(`[bootstrap] mention cascade failed for ${runId}:`, err),
-    );
+    })().catch((err) => console.error(`[bootstrap] mention cascade failed for ${runId}:`, err));
   };
   if (config.codingAgentUrl && config.codingAgentServiceToken) {
     const client = new CodingAgentClient({
@@ -414,14 +412,16 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   const cronScheduler = createCronScheduler({
     cronSvc,
-    supervisor,
-    opsStore: services.opsStore,
     config,
-    agentSvc,
-    idGen: ulid,
-    sessionManager,
+    convPort,
+    agentRunService,
+    agentRunExecution,
+    resolveDefaultModel: async (agentId: string) => {
+      const agent = await agentSvc.getById(agentId);
+      return { backendKind: "coding_agent", modelId: agent.modelName };
+    },
     store: loopStore,
-    modelRegistry,
+    projectPort,
   });
 
   // ─── Resume ─────────────────────────────────────────────────
@@ -456,32 +456,21 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore),
     ops: opsRoutes(opsSvc),
     projects: projectRoutes(projectSvc),
-    loops: loopRoutes(
+    loops: loopRoutes({
       cronSvc,
-      cronScheduler,
-      sqliteCronJobAdapter(db),
-      config.dataDir,
-      ulid,
-      sessionManager,
-      (params: { modelName: string; cwd: string; skillRoots?: unknown }) => ({
-        model: createModel(
-          resolveModel(params.modelName, modelRegistry),
-          modelRegistry,
-          anthropicAuth,
-        ),
-        tools: [...defaultTools(params.cwd), ...mcpClientManager.getTools("loop-agent")],
-        plugins: defaultPlugins(
-          params.cwd,
-          config,
-          params.skillRoots as Parameters<typeof defaultPlugins>[2],
-        ),
-        contextManager: defaultContextManager(settingsSvc),
-      }),
-      loopStore,
+      scheduler: cronScheduler,
+      dataDir: config.dataDir,
+      store: loopStore,
       projectPort,
-      conv.convPort,
+      convPort,
+      agentRunService,
+      agentRunExecution,
+      resolveModel: async (modelName: string) => ({
+        backendKind: "coding_agent",
+        modelId: modelName,
+      }),
       settingsSvc,
-    ),
+    }),
     cronJobs: cronJobRoutes(cronSvc, cronScheduler),
     skillPacks: skillPackRoutes(skillPackSvc, config.dataDir),
     settings: settingsRoutes(settingsSvc),
