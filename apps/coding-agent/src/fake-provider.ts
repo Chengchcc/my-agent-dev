@@ -25,6 +25,7 @@ export function fakeProvider(): Provider {
     getModels: () => [FAKE_MODEL],
     async *stream(_model: Model, _messages: readonly Message[]): AsyncIterable<AIMessageChunk> {
       yield { delta: { type: "text", text: "done" } };
+      yield { usage: { input: 10, output: 3, cacheRead: 1, cacheCreate: 0 } };
       yield { stopReason: "end_turn" };
     },
   };
