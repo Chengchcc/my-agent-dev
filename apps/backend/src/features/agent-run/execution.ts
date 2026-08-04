@@ -372,9 +372,11 @@ export function createAgentRunExecutionService(
         });
       } catch (err) {
         // Backend finished but the Product transaction failed: keep the
-        // branch occupied, store the outcome for retryTerminalCommit.
+        // branch occupied, store the outcome for retryTerminalCommit. The
+        // run is now terminal (commit_failed) - dispatch completes; the
+        // failure is recoverable only through the explicit retry path.
         await runPort.failCommit(run.runId, outcome).catch(() => {});
-        throw err;
+        console.error(`[agent-run] commit failed for ${run.runId}:`, err);
       }
       return;
     }

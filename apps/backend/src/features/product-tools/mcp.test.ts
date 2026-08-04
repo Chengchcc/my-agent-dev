@@ -134,7 +134,7 @@ const IDENTITY = {
   agentMemberId: MEMBER,
   branchId: "",
   callId: "toolu-mcp-1",
-  idempotencyKey: "ik-mcp-1",
+  idempotencyKey: "",
 };
 
 describe("product tools MCP", () => {
@@ -162,7 +162,9 @@ describe("product tools MCP", () => {
       const res = await client.callTool({
         name: "history_recent",
         arguments: { limit: 10 },
-        _meta: { identity: { ...IDENTITY, runId, branchId } },
+        _meta: {
+          identity: { ...IDENTITY, runId, branchId, idempotencyKey: `${runId}:${IDENTITY.callId}` },
+        },
       });
       expect(res.isError).not.toBe(true);
       const items = JSON.parse(res.content[0]?.text ?? "[]") as Array<{ text: string }>;
@@ -193,7 +195,9 @@ describe("product tools MCP", () => {
       const res = await client.callTool({
         name: "history_search",
         arguments: {},
-        _meta: { identity: { ...IDENTITY, runId, branchId } },
+        _meta: {
+          identity: { ...IDENTITY, runId, branchId, idempotencyKey: `${runId}:${IDENTITY.callId}` },
+        },
       });
       expect(res.isError).toBe(true);
       expect(res.content[0]?.text).toContain("keyword");
@@ -235,7 +239,9 @@ describe("product tools MCP", () => {
       const res = await client.callTool({
         name: "history_retain",
         arguments: { seq },
-        _meta: { identity: { ...IDENTITY, runId, branchId } },
+        _meta: {
+          identity: { ...IDENTITY, runId, branchId, idempotencyKey: `${runId}:${IDENTITY.callId}` },
+        },
       });
       expect(res.isError).not.toBe(true);
       expect(JSON.parse(res.content[0]?.text ?? "{}")).toEqual({ retained: true, seq });
@@ -247,7 +253,9 @@ describe("product tools MCP", () => {
       const replay = await client.callTool({
         name: "history_retain",
         arguments: { seq },
-        _meta: { identity: { ...IDENTITY, runId, branchId } },
+        _meta: {
+          identity: { ...IDENTITY, runId, branchId, idempotencyKey: `${runId}:${IDENTITY.callId}` },
+        },
       });
       expect(replay.content[0]?.text).toBe(res.content[0]?.text);
     } finally {

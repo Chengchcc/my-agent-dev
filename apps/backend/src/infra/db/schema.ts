@@ -81,11 +81,16 @@ export const conversationLedger = sqliteTable(
     content: text().notNull(),
     ts: integer({ mode: "number" }).notNull(),
     spanId: text("span_id"),
+    /** Terminal-commit identity: set on the final assistant Message of a
+     *  completed Agent Run. UNIQUE - the commit for a runId can never be
+     *  written twice, even across connections/restarts. */
+    agentRunId: text("agent_run_id"),
     undone: integer({ mode: "number" }).notNull().default(0),
   },
   (table) => [
     index("idx_ledger_conv").on(table.conversationId, table.seq),
     index("idx_ledger_run").on(table.spanId).where(sql`span_id IS NOT NULL`),
+    uniqueIndex("idx_ledger_agent_run").on(table.agentRunId).where(sql`agent_run_id IS NOT NULL`),
   ],
 );
 

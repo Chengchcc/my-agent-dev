@@ -160,7 +160,11 @@ let runPort: ReturnType<typeof sqliteAgentRunAdapter>;
 const conversationId = "conv-1";
 const agentMemberId = "mem-1";
 
-function makeDeps(fakeDaemon: ReturnType<typeof createFakeDaemon>) {
+function makeDeps(
+  fakeDaemon: ReturnType<typeof createFakeDaemon>,
+  runPortOverride?: ReturnType<typeof sqliteAgentRunAdapter>,
+) {
+  const activeRunPort = runPortOverride ?? runPort;
   const ledgerResolver = {
     async resolveMessage(cid: string, seq: number) {
       const entries = convPort.getLedgerEntries(cid);
@@ -174,7 +178,7 @@ function makeDeps(fakeDaemon: ReturnType<typeof createFakeDaemon>) {
     fetchImpl: fakeDaemon.fetchImpl,
   });
   const execution = createAgentRunExecutionService({
-    runPort,
+    runPort: activeRunPort,
     contextPort,
     ledgerResolver,
     backend: new CodingAgentBackend(realClient),
@@ -396,6 +400,136 @@ describe("agent run execution", () => {
     // only ONE assistant message committed (the final outcome)
     const messages = convPort.getLedgerEntries(conversationId).filter((e) => e.kind === "message");
     expect(messages).toHaveLength(1);
+  }, 15_000);
+
+  test("commit transaction failure -> commit_failed, no partial facts, stale binding; retry commits once without re-executing", async () => {
+    // A dedicated adapter with the test-only commit hook that throws at the
+    // END of the commit transaction - proving the whole thing rolls back.
+    const hookRunPort = sqliteAgentRunAdapter(db, {
+      contextPort,
+      ledgerResolver: {
+        async resolveMessage(cid: string, seq: number) {
+          const hit = convPort.getLedgerEntries(cid).find((e) => e.seq === seq);
+          return hit ? (hit.content as never) : null;
+        },
+      },
+      idGen: { ulid: () => `h-${Math.random().toString(36).slice(2, 8)}` },
+      commitTestHook: () => {
+        throw new Error("injected commit failure");
+      },
+    });
+    const fake = createFakeDaemon();
+    const execution = makeDeps(fake, hookRunPort);
+    const acquired = await backend.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "commit fail" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "ikey-commitfail",
+    });
+    const runId = acquired.run!.runId;
+    const activeBranchId = acquired.run!.branchId;
+
+    await execution.dispatch(runId);
+    const run = await waitForTerminal(runId);
+    expect(run?.status).toBe("commit_failed");
+    expect(run?.terminalResult?.status).toBe("completed");
+
+    // ZERO partial Product facts: the rolled-back transaction left no
+    // assistant ledger message and no context ref.
+    expect(
+      convPort.getLedgerEntries(conversationId).filter((e) => e.kind === "message"),
+    ).toHaveLength(0);
+    expect(
+      (await contextPort.listEntriesToLeaf(activeBranchId)).filter(
+        (e) => e.type === "ledger_message",
+      ),
+    ).toHaveLength(0);
+    // branch revision untouched
+    const branch = await contextPort.getBranch(activeBranchId);
+    expect(branch?.revision).toBe(2); // acquire bumped 1->2; the failed commit added nothing
+
+    // no active binding survived (this run never had one; a pre-existing
+    // binding would have gone stale in the failCommit transaction)
+    const binding = await contextPort.getBinding(activeBranchId);
+    expect(binding).toBeNull();
+
+    // retry replays ONLY the stored outcome - the Backend is never called
+    // again - and the commit succeeds exactly once.
+    const startsBefore = fake.startCalls.length;
+    // retry goes through the NORMAL adapter (no fault hook) - the stored
+    // outcome is the only input, so the commit succeeds.
+    const exec2 = createAgentRunExecutionService({
+      runPort,
+      contextPort,
+      ledgerResolver: {
+        async resolveMessage(cid: string, seq: number) {
+          const hit = convPort.getLedgerEntries(cid).find((e) => e.seq === seq);
+          return hit ? (hit.content as never) : null;
+        },
+      },
+      backend: new CodingAgentBackend(
+        new CodingAgentClient({
+          baseUrl: "http://fake",
+          authToken: "t",
+          fetchImpl: fake.fetchImpl,
+        }),
+      ),
+      modelCatalog: new CodingAgentModelCatalog(
+        new CodingAgentClient({
+          baseUrl: "http://fake",
+          authToken: "t",
+          fetchImpl: fake.fetchImpl,
+        }),
+      ),
+      idGen: { ulid: () => `z-${Math.random().toString(36).slice(2, 8)}` },
+      resolveWorkspace: async () => ({ root: dataDir, access: "read_write" }),
+      productToolsEntrypoint: "sse:http://127.0.0.1:1/mcp",
+    });
+    await exec2.retryTerminalCommit(runId);
+    const done = await hookRunPort.getRun(runId);
+    expect(done?.status).toBe("completed");
+    expect(fake.startCalls.length).toBe(startsBefore);
+    expect(
+      convPort.getLedgerEntries(conversationId).filter((e) => e.kind === "message"),
+    ).toHaveLength(1);
+  }, 15_000);
+
+  test("CONCURRENT retryTerminalCommit commits exactly once", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeDeps(fake);
+    const acquired = await backend.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "concurrent retry" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "ikey-ccretry",
+    });
+    const runId = acquired.run!.runId;
+    // The Backend already finished; only the Product commit failed.
+    const outcome = {
+      status: "completed" as const,
+      output: { role: "assistant" as const, text: "final" },
+    };
+    await runPort.failCommit(runId, outcome);
+
+    await Promise.all([execution.retryTerminalCommit(runId), execution.retryTerminalCommit(runId)]);
+    const run = await runPort.getRun(runId);
+    expect(run?.status).toBe("completed");
+    // the runId commit identity allows exactly ONE final Message
+    const ledger = convPort.getLedgerEntries(conversationId);
+    const messages = ledger.filter(
+      (e) => e.kind === "message" && e.senderMemberId === agentMemberId,
+    );
+    expect(messages).toHaveLength(1);
+    // and the Backend was never re-invoked
+    expect(fake.startCalls).toHaveLength(0);
   }, 15_000);
 
   test("configRevision changes do NOT force rebuild (travel with every input)", () => {

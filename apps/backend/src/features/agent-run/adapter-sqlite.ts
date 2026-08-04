@@ -80,6 +80,11 @@ export interface AgentRunAdapterDeps {
   readonly contextPort: AgentContextPort;
   readonly ledgerResolver: LedgerMessageResolver;
   readonly idGen: IdGenerator;
+  /** TEST-ONLY fault injection: called at the end of the commitCompletedRun
+   *  transaction (before the run is marked completed). Production callers
+   *  never pass it; tests throw here to prove the whole transaction rolls
+   *  back with zero partial Product facts. */
+  readonly commitTestHook?: () => void;
 }
 
 export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): AgentRunPort {
@@ -355,7 +360,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             eq(schema.branchInputQueue.status, "delivering"),
           ),
         )
-        .orderBy(schema.branchInputQueue.createdAt, schema.branchInputQueue.inputId)
+        .orderBy(sql`rowid`)
         .get();
 
       if (delivering) {
@@ -650,8 +655,13 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
         // Insert the final assistant Message into Conversation History and
         // append its ledger_message ref to Agent Context. A completed run
         // without an output Message commits nothing to the ledger.
+        //
+        // The ledger row carries the runId as its COMMIT IDENTITY:
+        // conversation_ledger.agent_run_id is UNIQUE, so concurrent commits
+        // (parallel retries, restart, second instance) can never write the
+        // final Message twice - the second writer reuses the first seq.
         if (output) {
-          const seq = d
+          const inserted = d
             .insert(schema.conversationLedger)
             .values({
               conversationId: run.conversationId,
@@ -660,34 +670,64 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
               kind: "message",
               content: JSON.stringify(output),
               ts: now,
+              agentRunId: runId,
             })
+            // ON CONFLICT DO NOTHING (no target): the identity is the
+            // partial UNIQUE index on agent_run_id, which SQLite cannot use
+            // as an UPSERT target - a conflicting insert is simply a no-op
+            // and the seq below is re-read from the existing row.
+            .onConflictDoNothing()
             .returning({ seq: schema.conversationLedger.seq })
             .get();
+          const seq =
+            inserted?.seq ??
+            d
+              .select({ seq: schema.conversationLedger.seq })
+              .from(schema.conversationLedger)
+              .where(eq(schema.conversationLedger.agentRunId, runId))
+              .get()?.seq;
           if (!seq) throw new Error("ledger insert returned no seq");
 
-          const entryId = deps.idGen.ulid();
-          d.insert(schema.agentContextEntry)
-            .values({
-              entryId,
-              treeId: branch.treeId,
-              parentId: leafEntryId,
-              type: "ledger_message",
-              payload: "{}",
-              ledgerSeq: seq.seq,
-              createdAt: now,
-            })
-            .run();
-
-          newRevision = branch.revision + 1;
-          leafEntryId = entryId;
-          d.update(schema.agentContextBranch)
-            .set({
-              leafEntryId,
-              ledgerCursor: seq.seq,
-              revision: newRevision,
-            })
-            .where(eq(schema.agentContextBranch.branchId, run.branchId))
-            .run();
+          // Context ref is deduped by (treeId, ledgerSeq): a crash between
+          // the ledger insert and the ref append leaves no duplicate ref on
+          // retry.
+          const existingRef = d
+            .select()
+            .from(schema.agentContextEntry)
+            .where(
+              and(
+                eq(schema.agentContextEntry.treeId, branch.treeId),
+                eq(schema.agentContextEntry.type, "ledger_message"),
+                eq(schema.agentContextEntry.ledgerSeq, seq),
+              ),
+            )
+            .get();
+          if (existingRef) {
+            leafEntryId = existingRef.entryId;
+          } else {
+            const entryId = deps.idGen.ulid();
+            d.insert(schema.agentContextEntry)
+              .values({
+                entryId,
+                treeId: branch.treeId,
+                parentId: branch.leafEntryId,
+                type: "ledger_message",
+                payload: "{}",
+                ledgerSeq: seq,
+                createdAt: now,
+              })
+              .run();
+            newRevision = branch.revision + 1;
+            leafEntryId = entryId;
+            d.update(schema.agentContextBranch)
+              .set({
+                leafEntryId,
+                ledgerCursor: seq,
+                revision: newRevision,
+              })
+              .where(eq(schema.agentContextBranch.branchId, run.branchId))
+              .run();
+          }
         }
 
         // Sync the Backend Session Binding to the new leaf.
@@ -714,7 +754,13 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           })
           .run();
 
-        // Mark the Run completed.
+        // Test-only fault injection point: a throw here must roll back the
+        // ledger insert, the context ref, the branch update, and the binding
+        // sync together.
+        deps.commitTestHook?.();
+
+        // Mark the Run completed (CAS on the active statuses so a racing
+        // finalizer cannot double-transition).
         const updated = d
           .update(schema.agentRun)
           .set({
@@ -722,7 +768,12 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             terminalResult: JSON.stringify(outcome),
             terminalAt: now,
           })
-          .where(eq(schema.agentRun.runId, runId))
+          .where(
+            and(
+              eq(schema.agentRun.runId, runId),
+              inArray(schema.agentRun.status, ["running", "commit_failed"]),
+            ),
+          )
           .returning()
           .get();
         if (!updated) throw new AgentRunConflictError(runId);
@@ -731,37 +782,65 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
     },
 
     async failCommit(runId, outcome) {
-      const row = d.select().from(schema.agentRun).where(eq(schema.agentRun.runId, runId)).get();
-      if (!row) throw new Error(`Agent Run not found: ${runId}`);
-      if (isTerminalStatus(row.status as AgentRun["status"])) {
-        const stored = row.terminalResult
-          ? (JSON.parse(row.terminalResult) as BackendRunOutcome)
-          : null;
-        if (stored && JSON.stringify(stored) === JSON.stringify(outcome)) {
-          return parseRun(row);
+      // ONE transaction: the Run transitions running -> commit_failed AND the
+      // Backend Session Binding goes stale together. A stale binding keeps
+      // later logic from treating the session as synced while the commit is
+      // unrecoverable-yet.
+      return db.transaction(() => {
+        const row = d.select().from(schema.agentRun).where(eq(schema.agentRun.runId, runId)).get();
+        if (!row) throw new Error(`Agent Run not found: ${runId}`);
+        if (isTerminalStatus(row.status as AgentRun["status"])) {
+          const stored = row.terminalResult
+            ? (JSON.parse(row.terminalResult) as BackendRunOutcome)
+            : null;
+          if (stored && JSON.stringify(stored) === JSON.stringify(outcome)) {
+            return parseRun(row);
+          }
+          throw new AgentRunConflictError(runId);
         }
-        throw new AgentRunConflictError(runId);
-      }
-      const now = Date.now();
-      const updated = d
-        .update(schema.agentRun)
-        .set({
-          status: "commit_failed",
-          terminalResult: JSON.stringify(outcome),
-          terminalAt: now,
-        })
-        .where(and(eq(schema.agentRun.runId, runId), eq(schema.agentRun.status, "running")))
-        .returning()
-        .get();
-      if (!updated) throw new AgentRunConflictError(runId);
-      return parseRun(updated);
+        const now = Date.now();
+        const updated = d
+          .update(schema.agentRun)
+          .set({
+            status: "commit_failed",
+            terminalResult: JSON.stringify(outcome),
+            terminalAt: now,
+          })
+          .where(and(eq(schema.agentRun.runId, runId), eq(schema.agentRun.status, "running")))
+          .returning()
+          .get();
+        if (!updated) throw new AgentRunConflictError(runId);
+        d.update(schema.backendSessionBinding)
+          .set({ state: "stale", updatedAt: now })
+          .where(eq(schema.backendSessionBinding.branchId, row.branchId))
+          .run();
+        return parseRun(updated);
+      })();
     },
 
     async setRunProductTools(runId, manifest) {
-      d.update(schema.agentRun)
-        .set({ productTools: JSON.stringify(manifest) })
+      const json = JSON.stringify(manifest);
+      // Write-once: the run snapshot is frozen at first dispatch. A replay
+      // with the same manifest is a no-op; a different manifest conflicts; a
+      // missing run errors.
+      const updated = d
+        .update(schema.agentRun)
+        .set({ productTools: json })
+        .where(and(eq(schema.agentRun.runId, runId), sql`${schema.agentRun.productTools} IS NULL`))
+        .returning({ runId: schema.agentRun.runId })
+        .get();
+      if (updated) return;
+      const existing = d
+        .select({ productTools: schema.agentRun.productTools })
+        .from(schema.agentRun)
         .where(eq(schema.agentRun.runId, runId))
-        .run();
+        .get();
+      if (!existing) throw new Error(`Agent Run not found: ${runId}`);
+      if (existing.productTools !== json) {
+        throw new Error(
+          `Product Tool manifest for run ${runId} is frozen; a different manifest is a conflict`,
+        );
+      }
     },
 
     async listDeliveringInputs() {
@@ -769,7 +848,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
         .select()
         .from(schema.branchInputQueue)
         .where(eq(schema.branchInputQueue.status, "delivering"))
-        .orderBy(schema.branchInputQueue.createdAt, schema.branchInputQueue.inputId)
+        .orderBy(sql`rowid`)
         .all();
       return rows
         .filter((r) => r.runId != null)
@@ -804,7 +883,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
         .select()
         .from(schema.branchInputQueue)
         .where(eq(schema.branchInputQueue.branchId, branchId))
-        .orderBy(schema.branchInputQueue.createdAt, schema.branchInputQueue.inputId)
+        .orderBy(sql`rowid`)
         .all();
       return rows.map(parseInput);
     },

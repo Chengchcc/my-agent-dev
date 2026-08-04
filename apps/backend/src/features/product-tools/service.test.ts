@@ -137,7 +137,7 @@ describe("product tools service", () => {
       service.call({
         identity: identity(runId, { conversationId: "other-conv" }),
         callId: "toolu-1",
-        idempotencyKey: "k",
+        idempotencyKey: `${runId}:toolu-1`,
         tool: "history_recent",
         args: {},
       }),
@@ -146,7 +146,7 @@ describe("product tools service", () => {
       service.call({
         identity: identity(runId, { agentMemberId: "other-member" }),
         callId: "toolu-1",
-        idempotencyKey: "k",
+        idempotencyKey: `${runId}:toolu-1`,
         tool: "history_recent",
         args: {},
       }),
@@ -155,7 +155,7 @@ describe("product tools service", () => {
       service.call({
         identity: identity(runId, { branchId: "other-branch" }),
         callId: "toolu-1",
-        idempotencyKey: "k",
+        idempotencyKey: `${runId}:toolu-1`,
         tool: "history_recent",
         args: {},
       }),
@@ -164,7 +164,7 @@ describe("product tools service", () => {
       service.call({
         identity: identity("no-such-run"),
         callId: "toolu-1",
-        idempotencyKey: "k",
+        idempotencyKey: `${runId}:toolu-1`,
         tool: "history_recent",
         args: {},
       }),
@@ -181,7 +181,7 @@ describe("product tools service", () => {
       service.call({
         identity: identity(runId),
         callId: "toolu-1",
-        idempotencyKey: "k",
+        idempotencyKey: `${runId}:toolu-1`,
         tool: "history_recent",
         args: {},
       }),
@@ -194,7 +194,7 @@ describe("product tools service", () => {
       service.call({
         identity: identity(runId),
         callId: "toolu-1",
-        idempotencyKey: "k",
+        idempotencyKey: `${runId}:toolu-1`,
         tool: "history_undeclared",
         args: {},
       }),
@@ -221,7 +221,7 @@ describe("product tools service", () => {
     const result = await service.call({
       identity: identity(runId),
       callId: "toolu-1",
-      idempotencyKey: "k",
+      idempotencyKey: `${runId}:toolu-1`,
       tool: "history_recent",
       args: { limit: 10 },
     });
@@ -250,7 +250,7 @@ describe("product tools service", () => {
     const result = await service.call({
       identity: identity(runId),
       callId: "toolu-1",
-      idempotencyKey: "k",
+      idempotencyKey: `${runId}:toolu-1`,
       tool: "history_search",
       args: { keyword: "alpha" },
     });
@@ -269,7 +269,7 @@ describe("product tools service", () => {
     const result = await service.call({
       identity: identity(runId),
       callId: "toolu-1",
-      idempotencyKey: "k",
+      idempotencyKey: `${runId}:toolu-1`,
       tool: "history_around",
       args: { seq: seq2, before: 2, after: 0 },
     });
@@ -283,7 +283,7 @@ describe("product tools service", () => {
     await service.call({
       identity: identity(runId),
       callId: "toolu-1",
-      idempotencyKey: "k",
+      idempotencyKey: `${runId}:toolu-1`,
       tool: "history_recent",
       args: {},
     });
@@ -314,7 +314,7 @@ describe("product tools service", () => {
     const first = await service.call({
       identity: identity(runId),
       callId: "toolu-retain",
-      idempotencyKey: "ik-1",
+      idempotencyKey: `${runId}:toolu-retain`,
       tool: "history_retain",
       args: { seq },
     });
@@ -330,7 +330,7 @@ describe("product tools service", () => {
     const replay = await service.call({
       identity: identity(runId),
       callId: "toolu-retain",
-      idempotencyKey: "ik-1",
+      idempotencyKey: `${runId}:toolu-retain`,
       tool: "history_retain",
       args: { seq },
     });
@@ -343,7 +343,7 @@ describe("product tools service", () => {
       service.call({
         identity: identity(runId),
         callId: "toolu-retain",
-        idempotencyKey: "ik-1",
+        idempotencyKey: `${runId}:toolu-retain`,
         tool: "history_retain",
         args: { seq: seq + 999 },
       }),
@@ -361,7 +361,7 @@ describe("product tools service", () => {
       service.call({
         identity: identity(runId),
         callId: "toolu-internal",
-        idempotencyKey: "k",
+        idempotencyKey: `${runId}:toolu-internal`,
         tool: "history_retain",
         args: { seq: internalSeq },
       }),
@@ -371,7 +371,7 @@ describe("product tools service", () => {
       service.call({
         identity: identity(runId),
         callId: "toolu-missing",
-        idempotencyKey: "k",
+        idempotencyKey: `${runId}:toolu-missing`,
         tool: "history_retain",
         args: { seq: 99999 },
       }),
@@ -391,14 +391,14 @@ describe("product tools service", () => {
       service.call({
         identity: identity(runId),
         callId: "toolu-cc",
-        idempotencyKey: "ik-cc",
+        idempotencyKey: `${runId}:toolu-cc`,
         tool: "history_retain",
         args: { seq },
       }),
       service.call({
         identity: identity(runId),
         callId: "toolu-cc",
-        idempotencyKey: "ik-cc",
+        idempotencyKey: `${runId}:toolu-cc`,
         tool: "history_retain",
         args: { seq },
       }),
@@ -427,7 +427,7 @@ describe("product tools service", () => {
       service.call({
         identity: identity(runId),
         callId: "toolu-abort",
-        idempotencyKey: "k",
+        idempotencyKey: `${runId}:toolu-abort`,
         tool: "history_recent",
         args: {},
         signal: controller.signal,

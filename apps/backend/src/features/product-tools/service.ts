@@ -253,6 +253,14 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
         throw new ProductToolRejectedError(`run not found: ${input.identity.runId}`);
       }
       assertScope(run, input.identity);
+      // The wire idempotencyKey is defined as `${runId}:${callId}` (Phase 3
+      // Product Tool identity). Validate it so a forged/crossed field cannot
+      // carry a semantic it does not have.
+      if (input.idempotencyKey !== `${run.runId}:${input.callId}`) {
+        throw new ProductToolRejectedError(
+          `idempotencyKey ${input.idempotencyKey} does not match ${run.runId}:${input.callId}`,
+        );
+      }
       if (!isActiveStatus(run.status) || run.status !== "running") {
         throw new ProductToolRejectedError(`run ${run.runId} is ${run.status}, not active`);
       }

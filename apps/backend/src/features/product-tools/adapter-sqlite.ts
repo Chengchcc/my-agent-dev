@@ -2,13 +2,17 @@ import type { Database } from "bun:sqlite";
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import * as schema from "../../infra/db/schema.js";
+import type { IdGenerator } from "../agent-context/ports.js";
 import type { ProductToolCallPort } from "./service.js";
 
 /** SQLite implementation of the durable Product Tool call idempotency port.
  *  Read-only tools never write; only semantic mutations (history_retain)
  *  record a row. UNIQUE(run_id, call_id) makes replays return the stored
  *  result and conflicting inputs fail. */
-export function sqliteProductToolCallAdapter(db: Database): ProductToolCallPort {
+export function sqliteProductToolCallAdapter(
+  db: Database,
+  idGen: IdGenerator = { ulid: () => crypto.randomUUID().replace(/-/g, "").slice(0, 26) },
+): ProductToolCallPort {
   const d = drizzle(db, { schema, casing: "snake_case" });
 
   return {
@@ -92,7 +96,7 @@ export function sqliteProductToolCallAdapter(db: Database): ProductToolCallPort 
           )
           .get();
         if (!alreadyRetained) {
-          const entryId = `${runId}-${callId}-${ledgerSeq}`;
+          const entryId = idGen.ulid();
           d.insert(schema.agentContextEntry)
             .values({
               entryId,
@@ -104,10 +108,26 @@ export function sqliteProductToolCallAdapter(db: Database): ProductToolCallPort 
               createdAt: now,
             })
             .run();
-          d.update(schema.agentContextBranch)
+          // CAS the branch revision: a concurrent retain on the SAME branch
+          // must not silently drop one update (that would orphan an entry).
+          // SQLite serializes transactions on one connection, but the CAS is
+          // the data-model guarantee across connections/instances.
+          const cas = d
+            .update(schema.agentContextBranch)
             .set({ leafEntryId: entryId, revision: branch.revision + 1 })
-            .where(eq(schema.agentContextBranch.branchId, branchId))
-            .run();
+            .where(
+              and(
+                eq(schema.agentContextBranch.branchId, branchId),
+                eq(schema.agentContextBranch.revision, branch.revision),
+              ),
+            )
+            .returning({ branchId: schema.agentContextBranch.branchId })
+            .get();
+          if (!cas) {
+            throw new Error(
+              `branch ${branchId} revision conflict while retaining ledger seq ${ledgerSeq}`,
+            );
+          }
         }
 
         // 3. Record the call terminal result in the SAME transaction.
