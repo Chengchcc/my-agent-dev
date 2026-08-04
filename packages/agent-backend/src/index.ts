@@ -23,6 +23,20 @@ export type {
   PendingAction,
   PendingActionResponse,
 } from "./run.js";
+export type {
+  CloseSessionRequest,
+  CompactSessionRequest,
+  ModelCatalogResponse,
+  ResumeSessionRequest,
+  RunEventEnvelope,
+  RunOutcomeResponse,
+  SendRunRequest,
+  SendRunResponse,
+  SessionResponse,
+  StartSessionRequest,
+  StopSessionRequest,
+  TransportErrorCode,
+} from "./transport.js";
 export {
   agentMemberIdSchema,
   backendSessionIdSchema,
@@ -47,18 +61,4 @@ export {
   stopSessionRequestSchema,
   stopSessionResponseSchema,
   transportErrorSchema,
-} from "./transport.js";
-export type {
-  CloseSessionRequest,
-  CompactSessionRequest,
-  ModelCatalogResponse,
-  ResumeSessionRequest,
-  RunEventEnvelope,
-  RunOutcomeResponse,
-  SendRunRequest,
-  SendRunResponse,
-  SessionResponse,
-  StartSessionRequest,
-  StopSessionRequest,
-  TransportErrorCode,
 } from "./transport.js";

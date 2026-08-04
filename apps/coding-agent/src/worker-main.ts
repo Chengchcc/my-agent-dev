@@ -175,13 +175,19 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
         sessionWorkspace = { root: cmd.workspaceRoot, access: cmd.workspaceAccess };
         sessionIdentity = cmd.identity;
         // Create or reopen the durable session file before any run. Only a
-        // genuine not-found creates; corruption/permission errors must NOT be
-        // misread as "missing" (they propagate as command_error).
+        // genuine not-found creates (when allowed); corruption/permission
+        // errors must NOT be misread as "missing" (they propagate as
+        // command_error). resume/send/compact require the file to already
+        // exist - a missing file fails, never silently starts fresh.
         try {
           await runtime.store.open(cmd.backendSessionId);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (!/not found/i.test(message)) throw err;
+          // resume/send/compact require the file to already exist: propagate
+          // the store's "Session X not found" unchanged (the supervisor maps
+          // it to not_found) - never silently start fresh.
+          if (!cmd.createIfMissing) throw err;
           await runtime.store.create({
             sessionId: cmd.backendSessionId,
             backendKind: "coding_agent",

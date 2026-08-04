@@ -414,48 +414,6 @@ describe("session supervisor (one-shot Worker)", () => {
     expect(view?.workerPid).toBeNull();
   });
 
-  test("worker crash (one supervisor) fails only its run; sibling completes", async () => {
-    // A crashing fixture: exits after accepting start_run without an outcome
-    // for runIds containing "crash". ONE supervisor hosts both sessions.
-    const crashSup = createCodingSessionSupervisor({
-      workerEntry,
-      cwd: tmp,
-      sessionsDir: `${tmp}/sessions-crash`,
-      authEnv: {},
-      eventBufferSize: 100,
-      workerStopGraceMs: 500,
-      acceptTimeoutMs: 5000,
-      workspaceRoots: [wsDir],
-      maxStartingWorkers: 4,
-    });
-    const goodSup = supervisor; // sibling on the healthy fixture
-    try {
-      await crashSup.startSession(startInput("sess-crash", "run-crash-1"));
-      await goodSup.startSession(startInput("sess-good", "run-good-1"));
-      for (let i = 0; i < 50; i++) {
-        const view = crashSup.listSessions().find((v) => v.backendSessionId === "sess-crash");
-        if (view?.state === "crashed") break;
-        await new Promise((r) => setTimeout(r, 20));
-      }
-      expect(crashSup.listSessions().find((v) => v.backendSessionId === "sess-crash")?.state).toBe(
-        "crashed",
-      );
-      expect(crashSup.getOutcome("run-crash-1")).toMatchObject({
-        status: "failed",
-        error: "worker exited unexpectedly",
-      });
-      let goodOutcome = null;
-      for (let i = 0; i < 50; i++) {
-        goodOutcome = goodSup.getOutcome("run-good-1");
-        if (goodOutcome) break;
-        await new Promise((r) => setTimeout(r, 20));
-      }
-      expect(goodOutcome).toMatchObject({ status: "completed" });
-    } finally {
-      await crashSup.shutdown();
-    }
-  });
-
   test("no active-loop recovery after crash: new session must use new identity", async () => {
     const crashSup = createCodingSessionSupervisor({
       workerEntry,

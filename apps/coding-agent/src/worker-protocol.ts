@@ -37,6 +37,11 @@ export const openSessionCommand = z.object({
   workspaceRoot: z.string(),
   workspaceAccess: z.enum(["read_only", "read_write"]),
   backendKind: z.literal("coding_agent"),
+  /** true: a missing SessionStore file is created (start). false: the file
+   *  MUST exist (resume/send/compact over an established session) - a
+   *  missing file fails the command instead of silently starting fresh, so a
+   *  stale/expired session id can never masquerade as a new session. */
+  createIfMissing: z.boolean(),
   /** Session-level run identity for runs that carry no metadata of their own
    *  (send/follow-up): the Worker inherits conversation/agentMember from the
    *  session; branchId + productRevision always travel with the command. */

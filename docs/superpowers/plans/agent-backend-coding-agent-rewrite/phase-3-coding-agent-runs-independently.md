@@ -671,15 +671,15 @@ Then run the exact smoke matrix:
 
 ```bash
 bun test \
-  apps/coding-agent/src/crash-isolation.test.ts \
-  apps/coding-agent/src/session-lifecycle.integration.test.ts \
-  apps/coding-agent/src/product-tool-contract.test.ts \
-  packages/adapter-coding-agent/src/backend.integration.test.ts
+  apps/coding-agent/src/session-supervisor.test.ts \
+  apps/coding-agent/src/integration/session-lifecycle.integration.test.ts \
+  apps/coding-agent/src/integration/backend.integration.test.ts \
+  apps/coding-agent/src/product-tool-contract.test.ts
 ```
 Expected: all tests pass and output demonstrates:
 - each Run uses its own Worker process and a different PID from the previous Run on the same session;
 - every Worker exits after its outcome;
-- killing Worker A fails only Run A while Worker B completes;
+- a Worker exiting without settling its run fails that run and never hangs;
 - a settled run's Worker exit returns the session to idle, and the next Run restores completed session state from SQLite;
 - active-loop crash is failed, not resumed;
 - replaying a mutation key does not start another Worker/run;

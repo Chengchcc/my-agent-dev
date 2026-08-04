@@ -2,9 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { CodingAgentBackend, CodingAgentClient } from "@my-agent-team/adapter-coding-agent";
-import { createModelRuntime } from "@my-agent-team/ai";
 import type { CodingSessionEntry, SessionStore } from "@my-agent-team/agent";
 import { createSqliteSessionStore } from "@my-agent-team/agent";
+import { createModelRuntime } from "@my-agent-team/ai";
 import { createCodingAgentApp } from "../app.js";
 import { loadConfig } from "../config.js";
 import { createCodingSessionSupervisor } from "../session-supervisor.js";
@@ -326,6 +326,111 @@ describe("session lifecycle (real worker)", () => {
       persistServer.stop();
       await persistApp.stop();
       rmSync(persistTmp, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("cold resume opens an existing session but refuses a missing one", async () => {
+    // The nativeResume contract: resume never creates a fresh session. With
+    // no in-memory record (as after a daemon restart) the Worker must OPEN
+    // the existing SQLite file; a missing file must fail with not_found, not
+    // silently start with empty context.
+    const tmp3 = `/tmp/coding-resume-${Math.random().toString(36).slice(2, 8)}`;
+    mkdirSync(`${tmp3}/ws`, { recursive: true });
+    const resumeConfig = loadConfig({
+      CODING_AGENT_AUTH_TOKEN: "token-123",
+      CODING_AGENT_DATA_DIR: tmp3,
+      CODING_AGENT_WORKSPACE_ROOTS: `${tmp3}/ws`,
+      CODING_AGENT_FAKE_PROVIDER: "1",
+    });
+    const resumeRuntime = createModelRuntime();
+    const resumeSup = createCodingSessionSupervisor({
+      workerEntry: join(import.meta.dir, "..", "worker-main.ts"),
+      cwd: tmp3,
+      sessionsDir: `${tmp3}/sessions`,
+      authEnv: { ...resumeConfig.providerEnv, CODING_AGENT_FAKE_PROVIDER: "1" },
+      eventBufferSize: 100,
+      workerStopGraceMs: 500,
+      acceptTimeoutMs: 10_000,
+      workspaceRoots: resumeConfig.workspaceRoots,
+      maxStartingWorkers: 4,
+      modelRuntime: resumeRuntime,
+    });
+    const resumeApp = createCodingAgentApp({
+      config: resumeConfig,
+      modelRuntime: resumeRuntime,
+      supervisor: resumeSup,
+    });
+    const resumeServer = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      idleTimeout: 0,
+      fetch: resumeApp.fetch,
+    });
+    const resumeClient = new CodingAgentClient({
+      baseUrl: `http://127.0.0.1:${resumeServer.port}`,
+      authToken: "token-123",
+    });
+    const resumeBackend = new CodingAgentBackend(resumeClient);
+    try {
+      const started = await resumeBackend.start({
+        history: [],
+        input: { inputId: "in-r1", message: { role: "user", text: "first" } },
+        run: {
+          runId: "run-r-1",
+          model: { backendKind: "coding_agent", modelId: "fake/echo" },
+          productTools: [],
+          configRevision: 1,
+        },
+        workspace: { root: `${tmp3}/ws`, access: "read_write" },
+        metadata: { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 },
+      });
+      const out1 = await started.segment.outcome;
+      expect(out1.status).toBe("completed");
+      const sid = started.session.backendSessionId;
+
+      // Close WITHOUT deleting the session file, then cold-resume: the new
+      // Worker must open the existing session (state preserved, run works).
+      await resumeClient.closeSession(sid, false);
+      const resumed = await resumeBackend.resume(sid, {
+        history: [],
+        input: { inputId: "in-r2", message: { role: "user", text: "again" } },
+        run: {
+          runId: "run-r-2",
+          model: { backendKind: "coding_agent", modelId: "fake/echo" },
+          productTools: [],
+          configRevision: 2,
+        },
+        workspace: { root: `${tmp3}/ws`, access: "read_write" },
+        metadata: { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 2 },
+      });
+      expect(resumed.session.backendSessionId).toBe(sid);
+      const out2 = await resumed.segment.outcome;
+      expect(out2.status).toBe("completed");
+      await resumeClient.closeSession(sid, false);
+
+      // Resume of a NEVER-EXISTED session must fail with not_found - the
+      // daemon must not silently create it.
+      const phantom = await resumeBackend
+        .resume("no-such-session-id", {
+          history: [],
+          input: { inputId: "in-r3", message: { role: "user", text: "x" } },
+          run: {
+            runId: "run-r-3",
+            model: { backendKind: "coding_agent", modelId: "fake/echo" },
+            productTools: [],
+            configRevision: 3,
+          },
+          workspace: { root: `${tmp3}/ws`, access: "read_write" },
+          metadata: { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 3 },
+        })
+        .then(() => null)
+        .catch((e: unknown) => e);
+      expect(phantom).not.toBeNull();
+      expect((phantom as { code?: string }).code).toBe("not_found");
+    } finally {
+      resumeServer.stop();
+      await resumeApp.stop();
+      rmSync(tmp3, { recursive: true, force: true });
     }
   }, 30_000);
 });

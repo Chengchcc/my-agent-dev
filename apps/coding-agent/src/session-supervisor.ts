@@ -242,6 +242,14 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     });
   }
 
+  /** Idempotency scope: idempotencyKey is only unique per operation per
+   *  session. Two sessions may legitimately reuse the same input id; the
+   *  global maps must never conflate them. start's backendSessionId is the
+   *  derived one (sha256 of the key), so the composite is still stable. */
+  function opKey(op: string, sessionId: string, key: string): string {
+    return `${op}:${sessionId}:${key}`;
+  }
+
   function mutationResult(key: string, payload: unknown): { replay: unknown } | null {
     const existing = mutations.get(key);
     if (!existing) return null;
@@ -293,12 +301,20 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
 
   /** One-shot Worker spawn: process + open_session handshake over the
    *  session's binding and run identity. The Worker lives exactly as long as
-   *  its single command. */
-  async function spawnRunWorker(rec: SessionRecord): Promise<WorkerProcessHandle> {
-    return withStartupSlot(() => spawnWorkerLocked(rec));
+   *  its single command. createIfMissing=false refuses a session whose
+   *  SessionStore file does not exist (resume/send/compact must never
+   *  silently create a fresh session). */
+  async function spawnRunWorker(
+    rec: SessionRecord,
+    createIfMissing: boolean,
+  ): Promise<WorkerProcessHandle> {
+    return withStartupSlot(() => spawnWorkerLocked(rec, createIfMissing));
   }
 
-  async function spawnWorkerLocked(rec: SessionRecord): Promise<WorkerProcessHandle> {
+  async function spawnWorkerLocked(
+    rec: SessionRecord,
+    createIfMissing: boolean,
+  ): Promise<WorkerProcessHandle> {
     const backendSessionId = rec.backendSessionId;
     const handle = spawnWorkerProcess({
       workerEntry: opts.workerEntry,
@@ -331,6 +347,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       workspaceRoot: rec.workspaceRoot,
       workspaceAccess: rec.workspaceAccess,
       backendKind: "coding_agent",
+      createIfMissing,
       identity: { conversationId: rec.conversationId, agentMemberId: rec.agentMemberId },
     });
     return handle;
@@ -379,6 +396,27 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
 
   function canTransitionToCrashed(rec: SessionRecord): boolean {
     return rec.state === "starting" || rec.state === "running" || rec.state === "closing";
+  }
+
+  /** The outcome is published BEFORE the one-shot Worker exits (it sends the
+   *  outcome, then closes the Runtime and exits). A caller that observed the
+   *  outcome and immediately starts the next Run must not hit a transient
+   *  busy: if the session is still "running" but its run has settled, wait a
+   *  bounded time for the Worker's exit (which returns the session to idle)
+   *  instead of rejecting. */
+  async function awaitPreviousExit(rec: SessionRecord): Promise<void> {
+    if (rec.state !== "running" || !rec.activeRunId || !outcomes.has(rec.activeRunId)) return;
+    const prev = handles.get(rec.backendSessionId);
+    if (!prev) return;
+    try {
+      await withTimeout(prev.exited, opts.workerStopGraceMs);
+    } catch {
+      return; // still alive after grace: the caller will see busy
+    }
+    // The exit handler settles the record asynchronously; give it a tick.
+    for (let i = 0; i < 50 && (rec.state as SessionRecord["state"]) !== "idle"; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
   }
 
   /** Fail the session's current run (if any) and mark the session crashed.
@@ -449,6 +487,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
   async function runOnSession(
     rec: SessionRecord,
     runId: string,
+    createIfMissing: boolean,
     command: (handle: WorkerProcessHandle) => Promise<unknown>,
   ): Promise<void> {
     rec.activeRunId = runId;
@@ -456,7 +495,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     transition(rec, "starting");
     let handle: WorkerProcessHandle | null = null;
     try {
-      handle = await spawnRunWorker(rec);
+      handle = await spawnRunWorker(rec, createIfMissing);
       handles.set(rec.backendSessionId, handle);
       transition(rec, "running");
       await command(handle);
@@ -479,7 +518,10 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
 
   const api = {
     async startSessionInner(input: StartInput) {
-      const replay = mutationResult(input.idempotencyKey, input);
+      const replay = mutationResult(
+        opKey("start", input.backendSessionId, input.idempotencyKey),
+        input,
+      );
       if (replay) return replay.replay as { backendSessionId: string; runId: string };
       if (sessions.has(input.backendSessionId)) {
         throw err("busy", `session already exists: ${input.backendSessionId}`);
@@ -495,7 +537,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       rec.agentMemberId = input.metadata.agentMemberId;
       sessions.set(input.backendSessionId, rec);
       try {
-        await runOnSession(rec, runId, (handle) =>
+        await runOnSession(rec, runId, true, (handle) =>
           handle.send({
             protocolVersion: 1,
             type: "start_run",
@@ -519,11 +561,11 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         throw err;
       }
       const result = { backendSessionId: input.backendSessionId, runId };
-      recordMutation(input.idempotencyKey, input, result);
+      recordMutation(opKey("start", input.backendSessionId, input.idempotencyKey), input, result);
       return result;
     },
     startSession(input: StartInput) {
-      return deduped(input.idempotencyKey, input, () =>
+      return deduped(opKey("start", input.backendSessionId, input.idempotencyKey), input, () =>
         serialized(input.backendSessionId, () => this.startSessionInner(input)),
       );
     },
@@ -531,18 +573,69 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     async resumeSessionInner(input: StartInput) {
       // Idempotent replay: the same resume mutation returns the original
       // result instead of re-starting the run or surfacing a spurious busy.
-      const replay = mutationResult(input.idempotencyKey, input);
+      const replay = mutationResult(
+        opKey("resume", input.backendSessionId, input.idempotencyKey),
+        input,
+      );
       if (replay) return replay.replay as { backendSessionId: string; runId: string };
       const rec = sessions.get(input.backendSessionId);
       if (!rec) {
-        // No live record: start fresh (session file may exist on disk)
-        return this.startSession(input);
+        // Cold resume (e.g. after a daemon restart): the SessionStore file
+        // MUST already exist - resume never creates a fresh session, so a
+        // stale/expired session id fails instead of silently starting with
+        // empty context.
+        const workspaceRoot = validateWorkspace(input.workspace.root);
+        await validateModel(input.run.model.modelId);
+        const runId = input.run.runId;
+        assertRunIdAvailable(runId);
+        const fresh = createSessionRecord(input.backendSessionId);
+        fresh.workspaceRoot = workspaceRoot;
+        fresh.workspaceAccess = input.workspace.access;
+        fresh.conversationId = input.metadata.conversationId;
+        fresh.agentMemberId = input.metadata.agentMemberId;
+        sessions.set(input.backendSessionId, fresh);
+        try {
+          await runOnSession(fresh, runId, false, (handle) =>
+            handle.send({
+              protocolVersion: 1,
+              type: "start_run",
+              commandId: `start-${runId}`,
+              backendSessionId: input.backendSessionId,
+              runId,
+              mode: "normal",
+              history: input.history as never,
+              input: input.input as never,
+              run: input.run as never,
+              workspace: input.workspace,
+              metadata: input.metadata,
+            }),
+          );
+        } catch (caught) {
+          sessions.delete(input.backendSessionId);
+          // The Worker failed to OPEN the existing session: surface not_found
+          // for a missing file (the store's "Session <id> not found"), anything
+          // else unchanged.
+          if (caught instanceof Error && /not found/i.test(caught.message)) {
+            throw err("not_found", `session not found: ${input.backendSessionId}`);
+          }
+          throw caught;
+        }
+        const result = { backendSessionId: input.backendSessionId, runId };
+        recordMutation(
+          opKey("resume", input.backendSessionId, input.idempotencyKey),
+          input,
+          result,
+        );
+        return result;
       }
       if (rec.state === "crashed") {
         // Crashed active loop is NOT resumable; a new session from fresh
         // context must use a different identity. Reject.
         throw err("invalid_request", `session crashed, not resumable: ${input.backendSessionId}`);
       }
+      // The previous run may have settled (outcome) while its one-shot
+      // Worker was still exiting: wait it out instead of a transient busy.
+      await awaitPreviousExit(rec);
       if (rec.activeRunId)
         throw err("busy", `session has an active run: ${input.backendSessionId}`);
       if (rec.state !== "idle") {
@@ -562,7 +655,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       await validateModel(input.run.model.modelId);
       const runId = input.run.runId;
       assertRunIdAvailable(runId);
-      await runOnSession(rec, runId, (handle) =>
+      await runOnSession(rec, runId, false, (handle) =>
         handle.send({
           protocolVersion: 1,
           type: "start_run",
@@ -578,17 +671,20 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         }),
       );
       const result = { backendSessionId: input.backendSessionId, runId };
-      recordMutation(input.idempotencyKey, input, result);
+      recordMutation(opKey("resume", input.backendSessionId, input.idempotencyKey), input, result);
       return result;
     },
     resumeSession(input: StartInput) {
-      return deduped(input.idempotencyKey, input, () =>
+      return deduped(opKey("resume", input.backendSessionId, input.idempotencyKey), input, () =>
         serialized(input.backendSessionId, () => this.resumeSessionInner(input)),
       );
     },
 
     async sendInner(input: SendInput) {
-      const replay = mutationResult(input.idempotencyKey, input);
+      const replay = mutationResult(
+        opKey("send", input.backendSessionId, input.idempotencyKey),
+        input,
+      );
       if (replay) return replay.replay as { accepted: boolean; runId: string; commandId: string };
       const rec = recordFor(input.backendSessionId);
       if (input.mode === "steer") {
@@ -618,9 +714,12 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
           metadata: input.metadata as never,
         });
         const result = { accepted: true, runId: rec.activeRunId, commandId: input.commandId };
-        recordMutation(input.idempotencyKey, input, result);
+        recordMutation(opKey("send", input.backendSessionId, input.idempotencyKey), input, result);
         return result;
       }
+      // The previous run may have settled (outcome) while its one-shot
+      // Worker was still exiting: wait it out instead of a transient busy.
+      await awaitPreviousExit(rec);
       if (rec.state !== "idle") {
         throw err("busy", `session not idle: ${input.backendSessionId}`);
       }
@@ -629,7 +728,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       await validateModel(input.run.model.modelId);
       const runId = input.runId;
       assertRunIdAvailable(runId);
-      await runOnSession(rec, runId, (handle) =>
+      await runOnSession(rec, runId, false, (handle) =>
         handle.send({
           protocolVersion: 1,
           type: "send",
@@ -644,17 +743,20 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         }),
       );
       const result = { accepted: true, runId, commandId: input.commandId };
-      recordMutation(input.idempotencyKey, input, result);
+      recordMutation(opKey("send", input.backendSessionId, input.idempotencyKey), input, result);
       return result;
     },
     send(input: SendInput) {
-      return deduped(input.idempotencyKey, input, () =>
+      return deduped(opKey("send", input.backendSessionId, input.idempotencyKey), input, () =>
         serialized(input.backendSessionId, () => this.sendInner(input)),
       );
     },
 
     async stopInner(input: StopInput) {
-      const replay = mutationResult(input.idempotencyKey, input);
+      const replay = mutationResult(
+        opKey("stop", input.backendSessionId, input.idempotencyKey),
+        input,
+      );
       if (replay) return replay.replay as { stopped: boolean };
       const rec = recordFor(input.backendSessionId);
       const runId = rec.activeRunId;
@@ -669,19 +771,25 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         });
       }
       const result = { stopped: true };
-      recordMutation(input.idempotencyKey, input, result);
+      recordMutation(opKey("stop", input.backendSessionId, input.idempotencyKey), input, result);
       return result;
     },
     stop(input: StopInput) {
-      return deduped(input.idempotencyKey, input, () =>
+      return deduped(opKey("stop", input.backendSessionId, input.idempotencyKey), input, () =>
         serialized(input.backendSessionId, () => this.stopInner(input)),
       );
     },
 
     async compactInner(input: CompactInput) {
-      const replay = mutationResult(input.idempotencyKey, input);
+      const replay = mutationResult(
+        opKey("compact", input.backendSessionId, input.idempotencyKey),
+        input,
+      );
       if (replay) return replay.replay as { compacted: boolean };
       const rec = recordFor(input.backendSessionId);
+      // The previous run may have settled (outcome) while its one-shot
+      // Worker was still exiting: wait it out instead of a transient busy.
+      await awaitPreviousExit(rec);
       if (rec.activeRunId) {
         throw err("busy", "manual compact is only allowed when idle");
       }
@@ -694,7 +802,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       transition(rec, "starting");
       let handle: WorkerProcessHandle | null = null;
       try {
-        handle = await spawnRunWorker(rec);
+        handle = await spawnRunWorker(rec, false);
         handles.set(input.backendSessionId, handle);
         await handle.sendForResult({
           protocolVersion: 1,
@@ -735,22 +843,25 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         throw err;
       }
       const result = { compacted: true };
-      recordMutation(input.idempotencyKey, input, result);
+      recordMutation(opKey("compact", input.backendSessionId, input.idempotencyKey), input, result);
       return result;
     },
     compact(input: CompactInput) {
-      return deduped(input.idempotencyKey, input, () =>
+      return deduped(opKey("compact", input.backendSessionId, input.idempotencyKey), input, () =>
         serialized(input.backendSessionId, () => this.compactInner(input)),
       );
     },
 
     async closeInner(input: CloseInput) {
-      const replay = mutationResult(input.idempotencyKey, input);
+      const replay = mutationResult(
+        opKey("close", input.backendSessionId, input.idempotencyKey),
+        input,
+      );
       if (replay) return replay.replay as { closed: boolean };
       const rec = sessions.get(input.backendSessionId);
       if (!rec) {
         const result = { closed: true };
-        recordMutation(input.idempotencyKey, input, result);
+        recordMutation(opKey("close", input.backendSessionId, input.idempotencyKey), input, result);
         return result;
       }
       // 1. Stop any live run via the CONTROL path first, with a bounded
@@ -815,11 +926,11 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       }
       sessions.delete(input.backendSessionId);
       const result = { closed: true };
-      recordMutation(input.idempotencyKey, input, result);
+      recordMutation(opKey("close", input.backendSessionId, input.idempotencyKey), input, result);
       return result;
     },
     close(input: CloseInput) {
-      return deduped(input.idempotencyKey, input, () =>
+      return deduped(opKey("close", input.backendSessionId, input.idempotencyKey), input, () =>
         serialized(input.backendSessionId, () => this.closeInner(input)),
       );
     },
@@ -850,6 +961,16 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     async shutdown() {
       // Collect every Worker's exit promise, then await them all so the
       // daemon does not tear down while a Worker still holds a session file.
+      // Runs that never settled get a terminal failed outcome FIRST so an
+      // active segment observes a terminal state, not just a closed stream.
+      for (const [, rec] of sessions) {
+        const runId = rec.activeRunId;
+        if (runId && !outcomes.has(runId)) {
+          outcomes.set(runId, { runId, status: "failed", error: "daemon shutdown" });
+          notifyOutcomeWaiters(runId);
+          eventBuffers.get(runId)?.close();
+        }
+      }
       const exits: Promise<number | null>[] = [];
       for (const [sessionId, rec] of sessions) {
         const handle = handles.get(sessionId);
