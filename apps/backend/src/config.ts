@@ -18,6 +18,11 @@ export interface BackendConfig {
   stepStallTimeoutMs: number;
   /** Absolute path to the repo skills/ directory (source for builtin seed). */
   builtinSkillsDir: string;
+  /** Phase 4: Coding Agent daemon + Product Tools MCP service endpoints. */
+  codingAgentUrl?: string;
+  codingAgentServiceToken?: string;
+  productToolsMcpUrl?: string;
+  productToolsServiceToken?: string;
 }
 
 /**
@@ -45,5 +50,9 @@ export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
     reaperIntervalMs: env.BACKEND_REAPER_INTERVAL_MS,
     stepStallTimeoutMs: env.BACKEND_STEP_STALL_TIMEOUT_MS,
     builtinSkillsDir: process.env.BUILTIN_SKILLS_DIR ?? resolve(import.meta.dir, "../../skills"),
+    codingAgentUrl: env.CODING_AGENT_URL,
+    codingAgentServiceToken: env.CODING_AGENT_SERVICE_TOKEN,
+    productToolsMcpUrl: env.PRODUCT_TOOLS_MCP_URL,
+    productToolsServiceToken: env.PRODUCT_TOOLS_SERVICE_TOKEN,
   };
 }

@@ -1,0 +1,241 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  CodingAgentBackend,
+  CodingAgentClient,
+  CodingAgentModelCatalog,
+} from "@my-agent-team/adapter-coding-agent";
+import { createModelRuntime } from "@my-agent-team/ai";
+import { createCodingAgentApp } from "../../../../apps/coding-agent/src/app.js";
+import { loadConfig } from "../../../../apps/coding-agent/src/config.js";
+import { createCodingSessionSupervisor } from "../../../../apps/coding-agent/src/session-supervisor.js";
+import {
+  createAgentContextService,
+  sqliteAgentContextAdapter,
+} from "../../src/features/agent-context/index.js";
+import { sqliteAgentRunAdapter } from "../../src/features/agent-run/adapter-sqlite.js";
+import { createAgentRunExecutionService } from "../../src/features/agent-run/execution.js";
+import { createAgentRunService } from "../../src/features/agent-run/service.js";
+import { sqliteConversationAdapter } from "../../src/features/conversation/adapter-sqlite.js";
+import { sqliteProductToolCallAdapter } from "../../src/features/product-tools/adapter-sqlite.js";
+import { createProductToolsMcpServer } from "../../src/features/product-tools/mcp.js";
+import { createProductToolsService } from "../../src/features/product-tools/service.js";
+import { openDb } from "../../src/infra/sqlite/db.js";
+
+/** THE Phase 4 acceptance chain, all real:
+ *
+ *  Product Backend (this process)
+ *    → CodingAgentBackend over HTTP/SSE
+ *    → real Coding Agent daemon (createCodingAgentApp + Bun.serve)
+ *    → real one-shot Worker (worker-main.ts)
+ *    → real CodingAgentSession with the scripted fake provider
+ *    → production resolveTools → real Product Tools MCP (SSE + Bearer token)
+ *    → BackendRunOutcome
+ *    → backend.db terminal commit (ledger + context + branch + binding + run)
+ *
+ *  No fake/in-process Backend anywhere in the chain. */
+
+const TOKEN = "product-tools-token";
+const CONV = "conv-e2e";
+const MEMBER = "mem-e2e";
+
+let dataDir: string;
+let db: ReturnType<typeof openDb>;
+let convPort: ReturnType<typeof sqliteConversationAdapter>;
+let contextPort: ReturnType<typeof sqliteAgentContextAdapter>;
+let runPort: ReturnType<typeof sqliteAgentRunAdapter>;
+let backend: ReturnType<typeof createAgentRunService>;
+let execution: ReturnType<typeof createAgentRunExecutionService>;
+let mcp: Awaited<ReturnType<typeof createProductToolsMcpServer>>;
+let daemonServer: ReturnType<typeof Bun.serve> | null = null;
+let branchId: string;
+
+beforeAll(async () => {
+  dataDir = mkdtempSync(join(tmpdir(), "phase4-e2e-"));
+  db = openDb(`${dataDir}/backend.db`);
+  convPort = sqliteConversationAdapter(db);
+  contextPort = sqliteAgentContextAdapter(db, {
+    ulid: () => `c-${Math.random().toString(36).slice(2, 8)}`,
+  });
+  const ledgerResolver = {
+    async resolveMessage(cid: string, seq: number) {
+      const hit = convPort.getLedgerEntries(cid).find((e) => e.seq === seq);
+      return hit ? (hit.content as never) : null;
+    },
+  };
+  runPort = sqliteAgentRunAdapter(db, {
+    contextPort,
+    ledgerResolver,
+    idGen: { ulid: () => `r-${Math.random().toString(36).slice(2, 8)}` },
+  });
+  const contextSvc = createAgentContextService({
+    port: contextPort,
+    idGen: { ulid: () => `x-${Math.random().toString(36).slice(2, 8)}` },
+    ledgerResolver,
+  });
+  backend = createAgentRunService({
+    port: runPort,
+    contextService: contextSvc,
+    idGen: { ulid: () => `x-${Math.random().toString(36).slice(2, 8)}` },
+    ledgerResolver,
+  });
+
+  // Real Product Tools MCP server (this process).
+  const productTools = createProductToolsService({
+    runPort,
+    contextPort,
+    conversationPort: convPort,
+    callPort: sqliteProductToolCallAdapter(db),
+    idGen: { ulid: () => `y-${Math.random().toString(36).slice(2, 8)}` },
+  });
+  mcp = await createProductToolsMcpServer({ service: productTools, serviceToken: TOKEN });
+
+  // Real Coding Agent daemon in this process, served over real HTTP/SSE.
+  const tmp = mkdtempSync(join(tmpdir(), "phase4-daemon-"));
+  const daemonTmp = `${tmp}/daemon`;
+  mkdtempSync(daemonTmp);
+  const daemonWs = mkdtempSync(join(tmpdir(), "phase4-ws-"));
+  const config = loadConfig({
+    CODING_AGENT_AUTH_TOKEN: "daemon-token",
+    CODING_AGENT_DATA_DIR: daemonTmp,
+    CODING_AGENT_WORKSPACE_ROOTS: daemonWs,
+    CODING_AGENT_FAKE_PROVIDER: "1",
+    CODING_AGENT_ACCEPT_TIMEOUT_MS: "10000",
+  });
+  const runtime = createModelRuntime();
+  const supervisor = createCodingSessionSupervisor({
+    workerEntry: join(import.meta.dir, "../../../../apps/coding-agent/src/worker-main.ts"),
+    cwd: daemonTmp,
+    sessionsDir: `${daemonTmp}/sessions`,
+    authEnv: {
+      ...config.providerEnv,
+      CODING_AGENT_FAKE_PROVIDER: "1",
+      // the worker's model calls history_recent ONCE, then produces text
+      CODING_AGENT_FAKE_TOOL: JSON.stringify([{ name: "history_recent", input: { limit: 5 } }]),
+      // service token the worker attaches to its Product Tools MCP transport
+      CODING_AGENT_PRODUCT_TOOL_TOKEN: TOKEN,
+    },
+    eventBufferSize: 100,
+    workerStopGraceMs: 2000,
+    acceptTimeoutMs: 10_000,
+    workspaceRoots: config.workspaceRoots,
+    maxStartingWorkers: 4,
+    modelRuntime: runtime,
+  });
+  const app = createCodingAgentApp({ config, modelRuntime: runtime, supervisor });
+  daemonServer = Bun.serve({ port: 0, hostname: "127.0.0.1", idleTimeout: 0, fetch: app.fetch });
+
+  const client = new CodingAgentClient({
+    baseUrl: `http://127.0.0.1:${daemonServer.port}`,
+    authToken: "daemon-token",
+  });
+  execution = createAgentRunExecutionService({
+    runPort,
+    contextPort,
+    ledgerResolver,
+    backend: new CodingAgentBackend(client),
+    modelCatalog: new CodingAgentModelCatalog(client),
+    idGen: { ulid: () => `z-${Math.random().toString(36).slice(2, 8)}` },
+    resolveWorkspace: async () => ({ root: daemonWs, access: "read_write" }),
+    productToolsEntrypoint: `sse:${mcp.url}`,
+  });
+
+  convPort.createConversation({ conversationId: CONV, createdAt: Date.now() });
+  convPort.addMember({
+    memberId: MEMBER,
+    conversationId: CONV,
+    kind: "agent",
+    agentId: "a1",
+    joinedAt: Date.now(),
+  });
+  const tree = await contextPort.getOrCreateTree(CONV, MEMBER);
+  const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+  branchId = branch.branchId;
+});
+
+afterAll(async () => {
+  daemonServer?.stop();
+  await mcp.close();
+  db.close();
+  rmSync(dataDir, { recursive: true, force: true });
+});
+
+async function waitForTerminal(runId: string): Promise<Awaited<ReturnType<typeof runPort.getRun>>> {
+  for (let i = 0; i < 200; i++) {
+    const run = await runPort.getRun(runId);
+    if (run && run.status !== "running" && run.status !== "waiting") return run;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error(`run ${runId} never reached terminal`);
+}
+
+describe("Phase 4 acceptance: Product Backend -> Coding Agent -> Product Tools MCP", () => {
+  test("a dispatched run completes end to end and commits exactly once", async () => {
+    // seed a conversation message the worker's history_recent call will read
+    convPort.appendLedgerEntry({
+      conversationId: CONV,
+      senderMemberId: "human-1",
+      kind: "message",
+      content: JSON.stringify({ role: "user", text: "seed question" }),
+      ts: Date.now(),
+    });
+
+    const acquired = await backend.enqueueAndAcquire({
+      conversationId: CONV,
+      agentMemberId: MEMBER,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "run this" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "e2e-run-1",
+    });
+    expect(acquired.acquired).toBe(true);
+    const runId = acquired.run!.runId;
+
+    const events: string[] = [];
+    const sub = execution.subscribe(runId);
+    const collector = (async () => {
+      for await (const ev of sub) events.push(ev.type);
+    })();
+
+    await execution.dispatch(runId);
+    const run = await waitForTerminal(runId);
+    await collector;
+
+    // Terminal outcome is the authority: the run completed.
+    expect(run?.status).toBe("completed");
+    // Live updates flowed transiently (adapter-mapped events).
+    expect(events).toContain("text_delta");
+    // The Product Tool call went through the REAL MCP chain (the worker's
+    // scripted model called history_recent once).
+    expect(events).toContain("product_tool_started");
+    expect(events).toContain("product_tool_completed");
+
+    // Conversation History: exactly ONE final assistant message
+    // (the worker's last assistant output; the product tool call itself
+    // produced no ledger message).
+    const ledgerMessages = convPort.getLedgerEntries(CONV).filter((e) => e.kind === "message");
+    expect(ledgerMessages).toHaveLength(2); // seed user + final assistant
+    const assistant = ledgerMessages.find((e) => e.senderMemberId === MEMBER);
+    expect(assistant).toBeDefined();
+    expect((assistant!.content as { role?: string }).role).toBe("assistant");
+
+    // Agent Context: the ledger_message ref for the final message exists.
+    const entries = await contextPort.listEntriesToLeaf(branchId);
+    const refs = entries.filter((e) => e.type === "ledger_message");
+    expect(refs.length).toBeGreaterThanOrEqual(1);
+
+    // Binding synced to the new leaf with the daemon session id.
+    const binding = await contextPort.getBinding(branchId);
+    expect(binding?.state).toBe("active");
+    expect(binding?.backendSessionId).toBeTruthy();
+
+    // Replay the SAME dispatch: no second commit, no duplicate ledger row.
+    await execution.dispatch(runId);
+    const ledgerAfter = convPort.getLedgerEntries(CONV).filter((e) => e.kind === "message");
+    expect(ledgerAfter).toHaveLength(2);
+  }, 60_000);
+});

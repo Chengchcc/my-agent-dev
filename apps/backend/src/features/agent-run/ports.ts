@@ -1,4 +1,5 @@
 import type { BackendRunOutcome, PendingActionResponse } from "@my-agent-team/agent-backend";
+import type { Message } from "@my-agent-team/message";
 import type {
   AcquireAgentRunCommand,
   AcquireAgentRunResult,
@@ -40,6 +41,33 @@ export interface AgentRunPort {
   /** Finalize a Run with a terminal outcome. Same runId replay returns
    *  stored result; conflicting outcome fails. */
   finalizeRun(runId: string, outcome: BackendRunOutcome): Promise<AgentRun>;
+
+  /** Atomically commit a COMPLETED run: verify the run is running/commit_failed
+   *  and branch ownership, insert the final assistant Message into
+   *  Conversation History, append its ledger_message ref to Agent Context,
+   *  advance the branch leaf/revision/ledger cursor, sync the Backend Session
+   *  Binding, and mark the Run completed - one backend.db transaction. Same
+   *  runId replay returns the completed Run without rewriting anything. */
+  commitCompletedRun(input: {
+    runId: string;
+    outcome: BackendRunOutcome;
+    output: Message | undefined;
+    backendSessionId: string;
+  }): Promise<AgentRun>;
+
+  /** Mark a run commit_failed (Backend outcome arrived, Product transaction
+   *  failed): store the outcome, keep the branch occupied, binding stale.
+   *  Same runId replay returns the stored run. */
+  failCommit(runId: string, outcome: BackendRunOutcome): Promise<AgentRun>;
+
+  /** Persist the run's Product Tool manifest at first dispatch. */
+  setRunProductTools(runId: string, manifest: readonly unknown[]): Promise<void>;
+
+  /** All durable `delivering` inputs across branches (crash recovery). */
+  listDeliveringInputs(): Promise<ClaimedBranchInput[]>;
+
+  /** All commit_failed runs awaiting retryTerminalCommit. */
+  listCommitFailedRuns(): Promise<AgentRun[]>;
 
   // ── Getters ───────────────────────────────────────────────────
 

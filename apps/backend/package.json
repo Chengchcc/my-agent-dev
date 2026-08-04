@@ -20,6 +20,8 @@
     "db:check:backend": "drizzle-kit check --config drizzle.backend.config.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@my-agent-team/adapter-coding-agent": "workspace:*",
     "@my-agent-team/adapter-mcp": "workspace:*",
     "@my-agent-team/agent": "workspace:*",
     "@my-agent-team/agent-backend": "workspace:*",
@@ -31,12 +33,12 @@
     "@my-agent-team/loop": "workspace:*",
     "@my-agent-team/message": "workspace:*",
     "@my-agent-team/plugin-conversation-context": "workspace:*",
-    "@my-agent-team/plugin-memory": "workspace:*",
     "@my-agent-team/plugin-goal": "workspace:*",
     "@my-agent-team/plugin-identity": "workspace:*",
+    "@my-agent-team/plugin-memory": "workspace:*",
     "@my-agent-team/plugin-pet": "workspace:*",
-    "@my-agent-team/plugin-recap": "workspace:*",
     "@my-agent-team/plugin-progressive-skill": "workspace:*",
+    "@my-agent-team/plugin-recap": "workspace:*",
     "@my-agent-team/plugin-todo": "workspace:*",
     "@my-agent-team/runtime-observability": "workspace:*",
     "@my-agent-team/tools-common": "workspace:*",

@@ -38,6 +38,11 @@ export interface AgentRun {
   readonly idempotencyKey: string;
   readonly terminalResult: BackendRunOutcome | null;
   readonly configRevision: number;
+  /** Product Tool manifest (ProductToolDescriptor[]), persisted at first
+   *  dispatch; Product Tools MCP validates calls against it. */
+  readonly productTools:
+    | readonly { name: string; description: string; inputSchema: unknown; entrypoint: string }[]
+    | null;
   readonly createdAt: number;
   readonly terminalAt: number | null;
 }

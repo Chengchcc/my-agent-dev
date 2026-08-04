@@ -39,6 +39,9 @@ function parseRun(row: typeof schema.agentRun.$inferSelect): AgentRun {
       ? (JSON.parse(row.terminalResult) as BackendRunOutcome)
       : null,
     configRevision: row.configRevision,
+    productTools: row.productTools
+      ? (JSON.parse(row.productTools) as AgentRun["productTools"])
+      : null,
     createdAt: row.createdAt,
     terminalAt: row.terminalAt,
   };
@@ -601,6 +604,185 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
     async getRun(runId) {
       const row = d.select().from(schema.agentRun).where(eq(schema.agentRun.runId, runId)).get();
       return row ? parseRun(row) : null;
+    },
+
+    async commitCompletedRun({ runId, outcome, output, backendSessionId }) {
+      if (outcome.status !== "completed") {
+        throw new Error(`commitCompletedRun requires a completed outcome, got ${outcome.status}`);
+      }
+      const now = Date.now();
+      return db.transaction(() => {
+        const run = d.select().from(schema.agentRun).where(eq(schema.agentRun.runId, runId)).get();
+        if (!run) throw new Error(`Agent Run not found: ${runId}`);
+
+        // Idempotent replay: already completed -> return, never rewrite.
+        if (run.status === "completed") return parseRun(run);
+
+        // Only a running or commit_failed run may be committed.
+        if (run.status !== "running" && run.status !== "commit_failed") {
+          throw new AgentRunConflictError(runId);
+        }
+
+        // Branch ownership: the branch must belong to the run's conversation
+        // + agent member.
+        const branch = d
+          .select()
+          .from(schema.agentContextBranch)
+          .where(eq(schema.agentContextBranch.branchId, run.branchId))
+          .get();
+        if (!branch) throw new Error(`Branch not found: ${run.branchId}`);
+        const tree = d
+          .select()
+          .from(schema.agentContextTree)
+          .where(eq(schema.agentContextTree.treeId, branch.treeId))
+          .get();
+        if (
+          !tree ||
+          tree.conversationId !== run.conversationId ||
+          tree.agentMemberId !== run.agentMemberId
+        ) {
+          throw new AgentRunConflictError(runId);
+        }
+
+        let newRevision = branch.revision;
+        let leafEntryId = branch.leafEntryId;
+
+        // Insert the final assistant Message into Conversation History and
+        // append its ledger_message ref to Agent Context. A completed run
+        // without an output Message commits nothing to the ledger.
+        if (output) {
+          const seq = d
+            .insert(schema.conversationLedger)
+            .values({
+              conversationId: run.conversationId,
+              senderMemberId: run.agentMemberId,
+              addressedTo: "[]",
+              kind: "message",
+              content: JSON.stringify(output),
+              ts: now,
+            })
+            .returning({ seq: schema.conversationLedger.seq })
+            .get();
+          if (!seq) throw new Error("ledger insert returned no seq");
+
+          const entryId = deps.idGen.ulid();
+          d.insert(schema.agentContextEntry)
+            .values({
+              entryId,
+              treeId: branch.treeId,
+              parentId: leafEntryId,
+              type: "ledger_message",
+              payload: "{}",
+              ledgerSeq: seq.seq,
+              createdAt: now,
+            })
+            .run();
+
+          newRevision = branch.revision + 1;
+          leafEntryId = entryId;
+          d.update(schema.agentContextBranch)
+            .set({
+              leafEntryId,
+              ledgerCursor: seq.seq,
+              revision: newRevision,
+            })
+            .where(eq(schema.agentContextBranch.branchId, run.branchId))
+            .run();
+        }
+
+        // Sync the Backend Session Binding to the new leaf.
+        d.insert(schema.backendSessionBinding)
+          .values({
+            branchId: run.branchId,
+            backendSessionId,
+            backendKind: branch.backendKind,
+            syncedEntryId: leafEntryId,
+            syncedRevision: newRevision,
+            state: "active",
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: schema.backendSessionBinding.branchId,
+            set: {
+              backendSessionId,
+              backendKind: branch.backendKind,
+              syncedEntryId: leafEntryId,
+              syncedRevision: newRevision,
+              state: "active",
+              updatedAt: now,
+            },
+          })
+          .run();
+
+        // Mark the Run completed.
+        const updated = d
+          .update(schema.agentRun)
+          .set({
+            status: "completed",
+            terminalResult: JSON.stringify(outcome),
+            terminalAt: now,
+          })
+          .where(eq(schema.agentRun.runId, runId))
+          .returning()
+          .get();
+        if (!updated) throw new AgentRunConflictError(runId);
+        return parseRun(updated);
+      })();
+    },
+
+    async failCommit(runId, outcome) {
+      const row = d.select().from(schema.agentRun).where(eq(schema.agentRun.runId, runId)).get();
+      if (!row) throw new Error(`Agent Run not found: ${runId}`);
+      if (isTerminalStatus(row.status as AgentRun["status"])) {
+        const stored = row.terminalResult
+          ? (JSON.parse(row.terminalResult) as BackendRunOutcome)
+          : null;
+        if (stored && JSON.stringify(stored) === JSON.stringify(outcome)) {
+          return parseRun(row);
+        }
+        throw new AgentRunConflictError(runId);
+      }
+      const now = Date.now();
+      const updated = d
+        .update(schema.agentRun)
+        .set({
+          status: "commit_failed",
+          terminalResult: JSON.stringify(outcome),
+          terminalAt: now,
+        })
+        .where(and(eq(schema.agentRun.runId, runId), eq(schema.agentRun.status, "running")))
+        .returning()
+        .get();
+      if (!updated) throw new AgentRunConflictError(runId);
+      return parseRun(updated);
+    },
+
+    async setRunProductTools(runId, manifest) {
+      d.update(schema.agentRun)
+        .set({ productTools: JSON.stringify(manifest) })
+        .where(eq(schema.agentRun.runId, runId))
+        .run();
+    },
+
+    async listDeliveringInputs() {
+      const rows = d
+        .select()
+        .from(schema.branchInputQueue)
+        .where(eq(schema.branchInputQueue.status, "delivering"))
+        .orderBy(schema.branchInputQueue.createdAt, schema.branchInputQueue.inputId)
+        .all();
+      return rows
+        .filter((r) => r.runId != null)
+        .map((r) => ({ input: parseInput(r), runId: r.runId! }));
+    },
+
+    async listCommitFailedRuns() {
+      const rows = d
+        .select()
+        .from(schema.agentRun)
+        .where(eq(schema.agentRun.status, "commit_failed"))
+        .all();
+      return rows.map(parseRun);
     },
 
     async getActiveRun(branchId) {

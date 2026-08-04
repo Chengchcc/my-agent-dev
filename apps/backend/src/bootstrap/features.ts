@@ -1,11 +1,27 @@
 import { Database } from "bun:sqlite";
+import {
+  CodingAgentBackend,
+  CodingAgentClient,
+  CodingAgentModelCatalog,
+} from "@my-agent-team/adapter-coding-agent";
 import { autoSummarize, pipeContextManagers, toolResultTruncator } from "@my-agent-team/agent";
+import type { Message } from "@my-agent-team/message";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { FeatureSet } from "../app.js";
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
 import { agentRoutes } from "../features/agent/index.js";
 import { createRelationshipService } from "../features/agent/relationship-service.js";
+import {
+  createAgentContextService,
+  sqliteAgentContextAdapter,
+} from "../features/agent-context/index.js";
+import type { LedgerMessageResolver } from "../features/agent-context/ports.js";
+import {
+  createAgentRunExecutionService,
+  createAgentRunService,
+  sqliteAgentRunAdapter,
+} from "../features/agent-run/index.js";
 import { createConversationFeature } from "../features/conversation/conversation-compose.js";
 import { conversationRoutes } from "../features/conversation/index.js";
 import { onRunComplete } from "../features/conversation/run-accumulator.js";
@@ -19,6 +35,11 @@ import { CliSetupProvisioner, LarkSetupManager } from "../features/lark-bot/inde
 import { loopRoutes } from "../features/loop/http.js";
 import { createMcpService, mcpRoutes, sqliteMcpServerAdapter } from "../features/mcp/index.js";
 import { modelRoutes } from "../features/models/index.js";
+import {
+  createProductToolsMcpServer,
+  createProductToolsService,
+  sqliteProductToolCallAdapter,
+} from "../features/product-tools/index.js";
 import {
   createProjectService,
   projectRoutes,
@@ -64,6 +85,10 @@ function createSkillPackModel(services: BackendServices) {
 export interface InstalledFeatures {
   featureSet: FeatureSet;
   cronScheduler: ReturnType<typeof createCronScheduler>;
+  /** Phase 4 internal handles for Phase 5 callers (not exposed via HTTP). */
+  agentRunService: ReturnType<typeof createAgentRunService>;
+  agentRunExecution: ReturnType<typeof createAgentRunExecutionService>;
+  productTools: ReturnType<typeof createProductToolsService>;
 
   start(): Promise<void>;
   dispose(): Promise<void>;
@@ -179,6 +204,105 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     modelRegistry,
     relSvc,
   );
+
+  // ─── Phase 4: Agent Run execution over CodingAgentBackend ────────
+
+  const ledgerResolver: LedgerMessageResolver = {
+    async resolveMessage(conversationId, ledgerSeq) {
+      const entries = conv.convPort.getLedgerEntries(conversationId, { sinceSeq: ledgerSeq });
+      const hit = entries.find((e) => e.seq === ledgerSeq);
+      if (hit?.kind !== "message") return null;
+      // getLedgerEntries returns content already parsed (port type lies).
+      return (hit.content as unknown as Message) ?? null;
+    },
+  };
+
+  const contextPort = sqliteAgentContextAdapter(db, { ulid });
+  const contextSvc = createAgentContextService({
+    port: contextPort,
+    idGen: { ulid },
+    ledgerResolver,
+  });
+  const agentRunPort = sqliteAgentRunAdapter(db, { contextPort, ledgerResolver, idGen: { ulid } });
+  const agentRunService = createAgentRunService({
+    port: agentRunPort,
+    contextService: contextSvc,
+    idGen: { ulid },
+    ledgerResolver,
+  });
+
+  // Product Tools (History) - assembled unconditionally so the MCP endpoint
+  // and the execution manifest are consistent; the MCP server only listens
+  // when a URL is configured.
+  const productTools = createProductToolsService({
+    runPort: agentRunPort,
+    contextPort,
+    conversationPort: conv.convPort,
+    callPort: sqliteProductToolCallAdapter(db),
+    idGen: { ulid },
+  });
+  let productToolsMcp: Awaited<ReturnType<typeof createProductToolsMcpServer>> | null = null;
+  if (config.productToolsMcpUrl && config.productToolsServiceToken) {
+    const mcpUrl = new URL(config.productToolsMcpUrl);
+    productToolsMcp = await createProductToolsMcpServer({
+      service: productTools,
+      serviceToken: config.productToolsServiceToken,
+      host: mcpUrl.hostname,
+      port: Number(mcpUrl.port) || 0,
+    });
+    console.log(`[bootstrap] product tools MCP listening at ${productToolsMcp.url}`);
+  }
+
+  // The execution service exists only when the Coding Agent daemon is
+  // configured; without it recover() is a no-op and Phase 5 callers still
+  // have the service handle for enqueue/query.
+  let agentRunExecution: ReturnType<typeof createAgentRunExecutionService>;
+  if (config.codingAgentUrl && config.codingAgentServiceToken) {
+    const client = new CodingAgentClient({
+      baseUrl: config.codingAgentUrl,
+      authToken: config.codingAgentServiceToken,
+    });
+    agentRunExecution = createAgentRunExecutionService({
+      runPort: agentRunPort,
+      contextPort,
+      ledgerResolver,
+      backend: new CodingAgentBackend(client),
+      modelCatalog: new CodingAgentModelCatalog(client),
+      idGen: { ulid },
+      resolveWorkspace: async ({ conversationId, agentMemberId }) => {
+        // Workspace comes from the agent member's Agent record; the
+        // permission mode maps to the binding (auto -> read_write).
+        const members = conv.convPort.getMembers(conversationId);
+        const member = members.find((m) => m.memberId === agentMemberId);
+        const agent = member?.agentId ? await agentSvc.getById(member.agentId) : null;
+        return {
+          root: agent?.workspacePath ?? config.workspaceRoot,
+          access: agent?.permissionMode === "ask" ? "read_only" : "read_write",
+        };
+      },
+      productToolsEntrypoint: config.productToolsMcpUrl
+        ? `sse:${config.productToolsMcpUrl}`
+        : "stdio:/nonexistent",
+    });
+  } else {
+    agentRunExecution = createAgentRunExecutionService({
+      runPort: agentRunPort,
+      contextPort,
+      ledgerResolver,
+      backend: new CodingAgentBackend(
+        new CodingAgentClient({ baseUrl: "http://127.0.0.1:1", authToken: "unconfigured" }),
+      ),
+      modelCatalog: new CodingAgentModelCatalog(
+        new CodingAgentClient({ baseUrl: "http://127.0.0.1:1", authToken: "unconfigured" }),
+      ),
+      idGen: { ulid },
+      resolveWorkspace: async () => ({ root: config.workspaceRoot, access: "read_write" }),
+      productToolsEntrypoint: "stdio:/nonexistent",
+    });
+    console.warn(
+      "[bootstrap] CODING_AGENT_URL not configured - Agent Run execution is inert until Phase 5 wiring",
+    );
+  }
 
   // ─── Event wiring ───────────────────────────────────────────
 
@@ -377,13 +501,28 @@ export async function installFeatures(services: BackendServices): Promise<Instal
           .catch((err: Error) => console.error(`[lark] failed to start bot for ${agent.id}:`, err));
       }
     }
+
+    // Phase 4: redeliver durable delivering inputs and retry commit_failed
+    // runs once at boot (no scheduler, no lease).
+    await agentRunExecution.recover();
   }
 
   async function dispose(): Promise<void> {
     cronScheduler.dispose();
     await larkBotRegistry.dispose();
     setupManager?.dispose();
+    // Phase 4: close the Product Tools MCP server (live run segments are
+    // one-shot daemon Workers; the daemon shuts them down on its own exit).
+    await productToolsMcp?.close();
   }
 
-  return { featureSet, cronScheduler, start, dispose };
+  return {
+    featureSet,
+    cronScheduler,
+    agentRunService,
+    agentRunExecution,
+    productTools,
+    start,
+    dispose,
+  };
 }

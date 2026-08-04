@@ -20,6 +20,12 @@ export {
   PendingActionAlreadyConsumedError,
   TERMINAL_RUN_STATUSES,
 } from "./domain.js";
+export type { AgentRunExecutionDeps, AgentRunExecutionService } from "./execution.js";
+export {
+  buildHistoryTools,
+  createAgentRunExecutionService,
+  decideExecutionPath,
+} from "./execution.js";
 export type { AgentRunPort } from "./ports.js";
 export type { AgentRunService, AgentRunServiceDeps } from "./service.js";
 export { createAgentRunService } from "./service.js";

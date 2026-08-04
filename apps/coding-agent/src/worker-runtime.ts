@@ -127,7 +127,14 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
         let transport: unknown;
         if (p.entrypoint.startsWith("sse:")) {
           const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
-          transport = new SSEClientTransport(new URL(p.entrypoint.slice(4)));
+          // Service-token auth for remote Product Tools endpoints: the token
+          // is daemon/Worker configuration (CODING_AGENT_PRODUCT_TOOL_TOKEN),
+          // never part of the entrypoint URI or MCP arguments.
+          const token = process.env.CODING_AGENT_PRODUCT_TOOL_TOKEN;
+          transport = new SSEClientTransport(
+            new URL(p.entrypoint.slice(4)),
+            token ? { requestInit: { headers: { Authorization: `Bearer ${token}` } } } : undefined,
+          );
         } else if (p.entrypoint.startsWith("stdio:")) {
           const { StdioClientTransport } = await import(
             "@modelcontextprotocol/sdk/client/stdio.js"

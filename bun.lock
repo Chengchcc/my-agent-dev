@@ -33,6 +33,8 @@
       "name": "@my-agent-team/backend",
       "version": "0.1.0",
       "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.12.1",
+        "@my-agent-team/adapter-coding-agent": "workspace:*",
         "@my-agent-team/adapter-mcp": "workspace:*",
         "@my-agent-team/agent": "workspace:*",
         "@my-agent-team/agent-backend": "workspace:*",

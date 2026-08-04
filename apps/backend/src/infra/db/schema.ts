@@ -495,6 +495,9 @@ export const agentRun = sqliteTable(
     idempotencyKey: text("idempotency_key").notNull(),
     terminalResult: text("terminal_result"), // JSON: serialized BackendRunOutcome, set on terminal
     configRevision: integer("config_revision").notNull(),
+    /** JSON: the run's Product Tool manifest (ProductToolDescriptor[]),
+     *  written at first dispatch; Product Tools MCP validates against it. */
+    productTools: text("product_tools"),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     terminalAt: integer("terminal_at", { mode: "number" }),
   },
@@ -555,6 +558,30 @@ export const pendingAction = sqliteTable(
     primaryKey({ columns: [table.actionId] }),
     uniqueIndex("idx_pending_action_response_idem").on(table.responseIdempotencyKey),
     index("idx_pending_action_run").on(table.runId),
+  ],
+);
+
+// Product Tool Call: durable idempotency + audit for SEMANTIC MUTATION calls
+// (e.g. history_retain). Read-only tools never write here. One row per
+// (runId, callId); replay returns the stored result, conflicting input fails.
+export const productToolCall = sqliteTable(
+  "product_tool_call",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => agentRun.runId, { onDelete: "cascade" }),
+    callId: text("call_id").notNull(),
+    toolName: text("tool_name").notNull(),
+    inputHash: text("input_hash").notNull(),
+    status: text().notNull().default("completed"), // completed | failed
+    result: text(), // JSON: standardized tool result
+    error: text(),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+    completedAt: integer("completed_at", { mode: "number" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId, table.callId] }),
+    index("idx_product_tool_call_run").on(table.runId),
   ],
 );
 
