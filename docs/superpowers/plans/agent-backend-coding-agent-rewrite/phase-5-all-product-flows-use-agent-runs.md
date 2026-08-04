@@ -243,3 +243,7 @@ Phase 5 is complete only when all of the following are simultaneously true:
 - `apps/backend` does not depend on `@my-agent-team/agent`.
 - No compatibility layer, fallback, or dual write.
 - Full repository build/typecheck/test/lint are green.
+
+## 实施完成记录（2026-08-04）
+
+所有 Step 已按本 plan 执行完毕；最终 phase gate 全部成立（见 spec 完成记录）。关键 commit：`fd0e4da8`（Wave 1）→ `48c78b8a`（Waves 2–4）→ `80612df3`（Wave 5）→ `17e0b1eb`（Waves 6+7+11）→ `c3b3fb01`（Wave 8）→ `0f2467c2`（Wave 9）→ `61a0070f`（清理与门禁恢复）。实施中按依赖关系合并了 Wave 11（span 目录删除）到 Wave 6/7，并将死 plugin 包（无消费者、无法编译）删除以恢复全仓 build。

@@ -547,3 +547,16 @@ apps/backend 不依赖 @my-agent-team/agent
 8. 静态 clean gate 结果；
 9. 所有验证命令与真实输出；
 10. 仍存在的明确 ceiling。
+
+## 完成记录（2026-08-04）
+
+Phase 5 已实施完毕，所有验收标准通过：
+
+- Conversation、Cron、Loop Generator/Evaluator 只通过 `AgentRunService` + `AgentRunExecutionService` 执行；Loop config 与 Skill Pack 为确定性 service；自动 title 停用。
+- 所有 final assistant Message 只由 Phase 4 terminal commit 写入（`commitCompletedRun`）。
+- normal/steer/follow_up 全部先持久化（`branch_input_queue`，rowid 排序），restart 后顺序保持。
+- Web 只用 canonical Conversation History + transient Agent Run Live Updates；Lark final 只来自 canonical History。
+- Ops 以 Agent Run 为唯一执行身份（`/api/agent-runs` list/detail/cancel/events）。
+- `apps/backend` 零 `@my-agent-team/agent` 依赖，无 SessionManager/createAgentSession/ConversationLock/checkpointer.db。
+- 删除的旧 Runtime 文件与包见实施记录；无兼容层、fallback 或双写。
+- 全仓 build / typecheck / test / lint 恢复绿色。
