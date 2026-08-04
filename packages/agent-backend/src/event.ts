@@ -15,9 +15,19 @@ export type CoreBackendEvent =
   | { readonly type: "text_delta"; readonly text: string }
   | { readonly type: "thinking_delta"; readonly text: string }
   | { readonly type: "product_tool_started"; readonly toolName: string; readonly callId: string }
-  | { readonly type: "product_tool_completed"; readonly toolName: string; readonly callId: string }
+  | {
+      readonly type: "product_tool_completed";
+      readonly toolName: string;
+      readonly callId: string;
+      readonly result?: Readonly<Record<string, unknown>>;
+    }
   | { readonly type: "native_tool_started"; readonly toolName: string; readonly callId: string }
-  | { readonly type: "native_tool_completed"; readonly toolName: string; readonly callId: string }
+  | {
+      readonly type: "native_tool_completed";
+      readonly toolName: string;
+      readonly callId: string;
+      readonly result?: Readonly<Record<string, unknown>>;
+    }
   | { readonly type: "pending_action"; readonly actionId: string }
   | { readonly type: "status"; readonly status: string };
 

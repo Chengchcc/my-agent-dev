@@ -7,11 +7,12 @@ export type CodingAgentLoopEvent =
   | { type: "message_start" }
   | { type: "message_update"; text: string }
   | { type: "message_end" }
-  | { type: "tool_execution_start"; toolName: string; kind?: "native" | "product" }
+  | { type: "tool_execution_start"; toolName: string; kind?: "native" | "product"; callId: string }
   | {
       type: "tool_execution_end";
       toolName: string;
       kind?: "native" | "product";
+      callId: string;
       result?: Readonly<Record<string, unknown>>;
     }
   | { type: "retry_start"; attempt: number }

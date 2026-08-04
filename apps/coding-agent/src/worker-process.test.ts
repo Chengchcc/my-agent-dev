@@ -115,6 +115,57 @@ describe("worker-process acceptance", () => {
     await expect(handle.send(openCmd("s4"))).rejects.toThrow(/identity mismatch/);
     handle.kill("SIGKILL");
   });
+
+  test("sendForResult() resolves on the result after the intermediate accepted", async () => {
+    // The Worker acks twice: command_accepted (intermediate) then
+    // command_result (the real completion, e.g. compact). The pending command
+    // must survive the intermediate ack or the result orphans and hangs.
+    const entry = fixture(
+      "two-phase.ts",
+      `  const cmd = JSON.parse(line);\n  if (cmd.type === "compact") {\n    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId }) + "\\n");\n    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_result", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId, result: { compacted: true } }) + "\\n");\n  }`,
+    );
+    const handle = spawnWorkerProcess({
+      workerEntry: entry,
+      env: {},
+      cwd: tmp,
+      stopGraceMs: 100,
+      acceptTimeoutMs: 5000,
+      events: noopEvents(),
+    });
+    const msg = await handle.sendForResult({
+      protocolVersion: 1,
+      type: "compact",
+      commandId: "compact-1",
+      backendSessionId: "s5",
+    });
+    expect(msg.type).toBe("command_result");
+    expect((msg as { result?: unknown }).result).toEqual({ compacted: true });
+    handle.kill("SIGKILL");
+  });
+
+  test("sendForResult() rejects on acceptance timeout (no result)", async () => {
+    const entry = fixture(
+      "accepted-only.ts",
+      `  const cmd = JSON.parse(line);\n  if (cmd.type === "compact") {\n    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId }) + "\\n");\n  }`,
+    );
+    const handle = spawnWorkerProcess({
+      workerEntry: entry,
+      env: {},
+      cwd: tmp,
+      stopGraceMs: 100,
+      acceptTimeoutMs: 200,
+      events: noopEvents(),
+    });
+    await expect(
+      handle.sendForResult({
+        protocolVersion: 1,
+        type: "compact",
+        commandId: "compact-2",
+        backendSessionId: "s6",
+      }),
+    ).rejects.toThrow(/timed out/);
+    handle.kill("SIGKILL");
+  });
 });
 
 void serializeMessage;

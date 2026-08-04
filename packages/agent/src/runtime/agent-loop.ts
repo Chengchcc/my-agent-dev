@@ -509,13 +509,14 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         type: "tool_execution_start",
         toolName: call.name,
         kind: tool?.kind ?? "native",
+        callId: call.id,
       });
       let result: unknown;
       let isError = false;
       let terminate = false;
       if (tool) {
         try {
-          result = await tool.execute(call.input, controller?.signal);
+          result = await tool.execute(call.input, controller?.signal, { callId: call.id });
           if (result && typeof result === "object") {
             if ("isError" in result) {
               isError = Boolean((result as { isError?: unknown }).isError);
@@ -538,6 +539,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         type: "tool_execution_end",
         toolName: call.name,
         kind: tool?.kind ?? "native",
+        callId: call.id,
         result: (result ?? {}) as Readonly<Record<string, unknown>>,
       });
       return { id: call.id, result, isError, terminate };

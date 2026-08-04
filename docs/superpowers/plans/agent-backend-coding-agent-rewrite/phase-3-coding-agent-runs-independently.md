@@ -1,8 +1,8 @@
 # Phase 3 — Coding Agent Runs Independently Implementation Plan
 
-**Goal:** Deploy the Coding Agent as an independent, authenticated Agent Backend service with one Worker process per live Coding Session.
+**Goal:** Deploy the Coding Agent as an independent, authenticated Agent Backend service with one Worker process per active Agent Run. Session continuity is guaranteed by the SQLite `SessionStore`, never by a resident Worker process.
 
-**Outcome:** `apps/coding-agent` owns Worker lifecycle, NDJSON IPC, session sleep/wake, bounded event replay, model catalog publication, and Product Tool MCP connectivity; `packages/adapter-coding-agent` implements the exact `AgentBackend` method set `start/send/resume/respond/stop/close` over HTTP + SSE. A real Adapter contract test completes an Agent Run in a Worker without Product Backend caller cutover.
+**Outcome:** `apps/coding-agent` owns one-shot Worker lifecycle (spawn per Run, execute, emit one outcome, exit), NDJSON IPC, bounded event replay, model catalog publication, and Product Tool MCP connectivity; `packages/adapter-coding-agent` implements the exact `AgentBackend` method set `start/send/resume/respond/stop/close` over HTTP + SSE. A real Adapter contract test completes an Agent Run in a Worker without Product Backend caller cutover.
 
 **Prerequisites:** Phase 0 `@my-agent-team/agent-backend` contracts compile; Phase 2 exposes the Coding Agent Runtime, SQLite `SessionStore`, `ModelRuntime`, runtime event types, and Worker-safe construction APIs. Read `docs/superpowers/specs/agent-backend-coding-agent-rewrite/phase-3-coding-agent-service.md`, `docs/architecture/execution/agent-backend.md`, `docs/architecture/runtime/coding-agent.md`, `docs/architecture/runtime/coding-agent-session.md`, and `docs/architecture/runtime/coding-agent-models.md` before implementation.
 
@@ -74,7 +74,7 @@ Expected: both new workspace packages are listed exactly once.
 - Modify: `apps/coding-agent/src/main.ts`
 
 **Actions:**
-1. Define and validate dedicated `CODING_AGENT_*` variables: `HOST`, `PORT`, `AUTH_TOKEN`, `DATA_DIR`, `WORKSPACE_ROOTS`, `MAX_STARTING_WORKERS`, `IDLE_TIMEOUT_MS`, `REAP_INTERVAL_MS`, `WORKER_STOP_GRACE_MS`, `EVENT_BUFFER_SIZE`, and optional provider variables consumed by Phase 2 `ModelRuntime`.
+1. Define and validate dedicated `CODING_AGENT_*` variables: `HOST`, `PORT`, `AUTH_TOKEN`, `DATA_DIR`, `WORKSPACE_ROOTS`, `MAX_STARTING_WORKERS`, `WORKER_STOP_GRACE_MS`, `ACCEPT_TIMEOUT_MS`, `EVENT_BUFFER_SIZE`, and optional provider variables consumed by Phase 2 `ModelRuntime`. There is deliberately no idle timeout or reap interval: Workers are one-shot and never idle-sleep.
 2. Resolve `DATA_DIR/sessions` and workspace allowlisted roots to absolute paths at startup; reject an empty auth token, empty allowlist, non-positive limits, and roots that do not exist.
 3. Keep provider credentials inside the Coding Agent process configuration and expose only redacted configured/missing status to later model catalog code.
 4. Test defaults, malformed numbers, empty token, and root normalization; do not add the variables to shared Product Backend configuration unless another non-Product process already requires them.
@@ -191,17 +191,18 @@ Expected: all replay/eviction/disconnect tests pass with monotonic IDs.
 - Create: `apps/coding-agent/src/session-record.test.ts`
 
 **Actions:**
-1. Define daemon-local states `starting`, `live`, `sleeping`, `stopping`, `closed`, and `crashed`, plus active `runId`, Worker PID, last activity, pending command map, and completed run outcomes.
-2. Permit one Worker and at most one active Agent Run per `backendSessionId`; reject concurrent normal/follow-up starts while allowing `send(mode: "steer")` only against the active run.
-3. Make worker crash transition the active run to failed and retain completed session metadata only for diagnostics; never mark the active loop resumable.
-4. Define sleep as Worker exit with the per-session SQLite file retained; define close as Worker stop plus SessionStore deletion.
-5. Test every legal transition and rejection of illegal/concurrent transitions.
+1. Define daemon-local states `idle`, `starting`, `running`, `closing`, `closed`, and `crashed`, plus `activeRunId`, Worker PID, last activity, and settled run outcomes. There is no `sleeping` state: a session is `idle` whenever no Worker is live.
+2. Permit one Worker and at most one active Agent Run per `backendSessionId`; the Worker lives only while its Run executes. Reject concurrent normal/follow-up starts while allowing `send(mode: "steer")` only against the active run.
+3. Make worker crash transition the active run to failed and the session to `crashed`; never mark the active loop resumable. A settled run's Worker exiting returns the session to `idle`.
+4. Do not store Product Tool manifests or run identity on the record: Product Tools come only from the current `AgentRunSnapshot`, and run identity (conversation/agentMember) is the session's, carried into `open_session`.
+5. Define close as stop (when a run is live) plus SessionStore deletion; define compact as a one-shot maintenance Worker, not a long-lived path.
+6. Test every legal transition and rejection of illegal/concurrent transitions.
 
 **Check:**
 ```bash
 bun test apps/coding-agent/src/session-record.test.ts
 ```
-Expected: lifecycle matrix tests pass; a crashed active record cannot return to `live` through resume.
+Expected: lifecycle matrix tests pass; a crashed record cannot return to `running` through resume.
 
 **Done when:** Session lifecycle semantics are fixed before the supervisor introduces process races.
 
@@ -220,10 +221,10 @@ Expected: lifecycle matrix tests pass; a crashed active record cannot return to 
 
 **Actions:**
 1. Read NDJSON commands from stdin with the Task 2 parser and emit protocol messages only on stdout; send logs to stderr with session/run prefixes and secret redaction.
-2. On `open_session`, construct Phase 2 `SqliteSessionStore`, `ModelRuntime`, native tools, static plugins, skill roots, web ports, and MCP tool transport for exactly one session file.
+2. On `open_session`, construct Phase 2 `SqliteSessionStore`, `ModelRuntime`, native tools, static plugins, skill roots, web ports, and MCP tool transport for exactly one session file; retain the session's conversation/agentMember identity from the command.
 3. On `start_run`/normal or follow-up `send`, atomically submit projected history + one Meta + one Prompt; on steer append only a steer input at the Runtime safe boundary.
 4. Forward typed Runtime lifecycle events and exactly one terminal outcome; await Runtime listeners before emitting outcome.
-5. Treat malformed daemon input, session identity mismatch, and uncaught Runtime errors as `fatal` then exit non-zero; never create a second session in the same Worker.
+5. **One-shot:** after the run's outcome (or compact's `command_result`) close the Runtime (MCP clients, store), close stdin, and exit. A second `start_run` or normal/follow-up `send` is a protocol violation: emit `fatal` and exit non-zero. Treat malformed daemon input, session identity mismatch, and uncaught Runtime errors as `fatal` then exit non-zero; never create a second session in the same Worker.
 
 **Check:**
 ```bash
@@ -265,21 +266,22 @@ Expected: process tests pass; malformed stdout kills only the fixture Worker and
 - Create: `apps/coding-agent/src/session-supervisor.test.ts`
 
 **Actions:**
-1. Maintain a map keyed by `backendSessionId`; serialize lifecycle mutations per session and reject duplicate live Workers.
-2. Implement create/start, resume/open, normal/follow-up send, active-run steer, stop, compact, and close by dispatching Worker commands and updating the session record only after `command_accepted`.
-3. Store mutation results by `idempotencyKey`; an exact replay returns the original session/run response, while key reuse with a different payload returns conflict.
-4. Route Worker events/outcomes to the per-run event buffer; a Worker exit fails only that Worker’s active run and leaves other records untouched.
-5. Test two-session isolation, active-run exclusion, mutation replay, key conflict, stop idempotency, and close idempotency.
+1. Maintain a map keyed by `backendSessionId`; serialize lifecycle mutations per session with a Promise chain and dedupe concurrent identical idempotency keys into one in-flight Promise (no double Worker spawn).
+2. Implement create/start, resume/open, normal/follow-up send, active-run steer, stop, compact, and close by dispatching Worker commands. Every run path: reserve the run (`activeRunId` + event buffer) BEFORE the Worker exists, spawn the one-shot Worker, hand it the command, and return on `command_accepted`. The Worker executes and exits on its own.
+3. Store mutation results by `idempotencyKey`; an exact replay returns the original session/run response, while key reuse with a different payload returns conflict. A `runId` already owned by any session's buffer/outcome is a global collision, rejected.
+4. Route Worker events/outcomes to the per-run event buffer; a Worker exit fails only that Worker's active run (first-write-wins failed outcome, buffer closed, session `crashed`) and leaves other records untouched. A Worker exit after its run settled returns the session to `idle`.
+5. steer/stop are control paths to the current run's Worker (no new run, no new Worker); compact is a one-shot maintenance Worker whose completion is `command_result`; close stops the active run with a bounded outcome window, then a bounded Worker exit with SIGTERM/SIGKILL escalation, then deletes the SessionStore.
+6. Test two-session isolation, one-run-one-Worker PID rotation, active-run exclusion, mutation replay, key conflict, stop idempotency, and close idempotency.
 
 **Check:**
 ```bash
 bun test apps/coding-agent/src/session-supervisor.test.ts
 ```
-Expected: supervisor tests pass, including two distinct Worker PIDs and one-crash/other-continues isolation.
+Expected: supervisor tests pass, including two distinct Worker PIDs per Run and one-crash/other-continues isolation.
 
-**Done when:** Every live Coding Session has exactly one supervised Worker and command acceptance is idempotent.
+**Done when:** Every active Run has exactly one Worker, the session returns to `idle` after that Worker exits, and command acceptance is idempotent.
 
-### Task 3.4 — Add startup limiting and idle sleep/wake
+### Task 3.4 — Enforce one Worker per Run with startup limiting
 
 **Time box:** 25 minutes
 
@@ -289,18 +291,17 @@ Expected: supervisor tests pass, including two distinct Worker PIDs and one-cras
 
 **Actions:**
 1. Add a small FIFO semaphore around Worker starts using `MAX_STARTING_WORKERS`; do not limit already-running Workers with this semaphore.
-2. Add a reap timer that sleeps only idle sessions with no active run and no pending command.
-3. On sleep, gracefully stop the Worker but retain its SQLite file and session metadata; on resume/send, start a new PID and open the existing session.
-4. Reset last activity on accepted commands/events and stop the reap timer during supervisor disposal.
-5. Test bounded concurrent starts, no sleep during active runs, new PID after wake, and restored completed branch/todo/compaction state.
+2. Do NOT implement an idle reaper, sleep state, or wake path: a Worker lives only while its Run executes and exits after its outcome. The next Run spawns a fresh PID over the same SQLite session.
+3. Enforce that a Worker receiving a second normal Run (start_run or normal/follow-up send) fails fatally; the Supervisor never sends one.
+4. Test bounded concurrent starts, at most one active Run per session, distinct PIDs for consecutive Runs on the same session, and session state restoration after a Worker exits (branch/todo/compaction preserved via the SQLite store).
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/session-supervisor.test.ts --test-name-pattern='startup|idle|sleep|wake'
+bun test apps/coding-agent/src/session-supervisor.test.ts --test-name-pattern='startup|one-shot|PID'
 ```
-Expected: focused tests pass; wake uses a different PID and completed session state is preserved.
+Expected: focused tests pass; consecutive Runs on one session use different Worker PIDs and the second Worker reads the state the first persisted.
 
-**Done when:** Resource control does not sacrifice persistent-session behavior.
+**Done when:** Resource control is bounded without a resident-Worker lifecycle.
 
 ### Task 3.5 — Make crash semantics explicit and non-recovering
 
@@ -311,11 +312,11 @@ Expected: focused tests pass; wake uses a different PID and completed session st
 - Create: `apps/coding-agent/src/crash-isolation.test.ts`
 
 **Actions:**
-1. On unexpected Worker exit, append one `status`/`turn_failed` observation and resolve the active run outcome as `failed` with a stable worker-crash code.
+1. On unexpected Worker exit (its run has not settled), resolve the active run outcome as `failed` with a stable worker-crash code, close the run's event buffer, and mark the session `crashed`.
 2. Reject resume of that active loop and reject any attempt to reconstruct it from partial Worker/session data.
 3. Permit a later new Coding Session to be started from fresh projected Agent Context; do not silently reuse the crashed session as canonical history.
 4. Keep sibling Workers, their event streams, and their outcomes running.
-5. Cover non-zero exit, signal exit, malformed IPC, and crash during synchronous Product Tool wait.
+5. Cover non-zero exit, signal exit, malformed IPC, and crash during synchronous Product Tool wait. Use ONE supervisor whose fixture Worker decides per sessionId/runId whether to crash or complete - not two independent daemons.
 
 **Check:**
 ```bash
@@ -410,7 +411,7 @@ Expected: focused tests pass; disconnecting the first stream does not abort the 
 **Actions:**
 1. Compose config, model runtime/catalog, event store, supervisor, routes, and auth in `createCodingAgentApp`; keep constructors injectable for tests.
 2. Start `Bun.serve` with `idleTimeout: 0` for SSE, mirroring `apps/backend/src/server.ts`.
-3. On SIGTERM/SIGINT, stop accepting HTTP, stop the reaper, stop active runs, gracefully terminate all Workers, close session stores, then exit.
+3. On SIGTERM/SIGINT, stop accepting HTTP, stop active runs, gracefully terminate all Workers, close session stores, then exit.
 4. Make shutdown idempotent and bounded; force-kill only Workers exceeding grace.
 5. Test health, startup failure, double shutdown, and Worker cleanup with injected process handles.
 
@@ -557,10 +558,10 @@ Expected: catalog Adapter tests pass and `CodingAgentBackend` has no model-listi
 
 **Actions:**
 1. Implement a dedicated Product Tool MCP wrapper in this file; do not reuse `adaptMcpTool`, whose current caller interface drops `AbortSignal`.
-2. Bind every call to immutable `runId`, `conversationId`, `agentMemberId`, `branchId`, tool call ID, and idempotency key through request metadata.
+2. Bind every call to immutable `runId`, `conversationId`, `agentMemberId`, `branchId`, the REAL model tool-use ID (`PendingToolCall.id`), and idempotency key `${runId}:${toolUseId}` through request metadata. If `Tool.execute()` cannot receive the tool-use ID today, make the minimal internal execution-context change to pass it; do not build a generic framework.
 3. Define a cancellable caller interface such as `callTool(params, { signal, timeoutMs })`; wire stop/Worker shutdown to `AbortSignal` when the MCP SDK transport supports it, otherwise close the dedicated transport and normalize cancellation deterministically.
 4. Await the MCP response synchronously and return timeout, cancellation, authorization, and Product Tool failures as tool results, not provider retry.
-5. Test identity propagation, timeout, cancellation/transport close, and error normalization with a fake caller.
+5. Test identity propagation, timeout, cancellation/transport close, and error normalization with a fake caller; the recorded callId must be the model tool-use ID, never an event-id or order counter.
 
 **Check:**
 ```bash
@@ -602,16 +603,16 @@ Expected: real Worker-to-MCP contract tests pass for success, identity, synchron
 
 **Actions:**
 1. Start a daemon fixture with a temporary data directory and deterministic fake model provider; create a session with projected history containing known `productEntryId` values.
-2. Complete a run, allow idle reap to sleep the Worker, then resume/send another run and record the new Worker PID.
-3. Open the per-session SQLite store through the Phase 2 read API and assert original `productEntryId` values are unchanged and not duplicated.
-4. Assert completed branch, todo, and compaction state survive wake while the system prompt remains outside the Coding Session Tree.
+2. Complete Run 1, assert its one-shot Worker exited (session `idle`), then send Run 2 and record the new Worker PID - it must differ from Run 1's.
+3. Open the per-session SQLite store through the Phase 2 read API and assert original `productEntryId` values are unchanged and not duplicated across the two Workers.
+4. Assert completed branch, todo, and compaction state survive the Worker replacement while the system prompt remains outside the Coding Session Tree.
 5. Replay the original mutation idempotency key and assert no new Worker/run/input batch is created.
 
 **Check:**
 ```bash
 bun test apps/coding-agent/src/session-lifecycle.integration.test.ts
 ```
-Expected: integration test passes with different pre/post-sleep PIDs, one copy of each Product entry, and one semantic run for the replayed mutation.
+Expected: integration test passes with different pre/post Worker PIDs, one copy of each Product entry, and one semantic run for the replayed mutation.
 
 **Done when:** Persistent session behavior and Product history identity survive real Worker replacement.
 
@@ -650,7 +651,7 @@ Expected: a real independent Worker completes the Agent Run through Adapter HTTP
 
 **Actions:**
 1. Run package tests/typechecks/builds for the two new workspace units.
-2. Run the daemon smoke scenario with two sessions, distinct PIDs, one forced crash, idle wake, idempotent replay, and SSE reconnect.
+2. Run the daemon smoke scenario with two sessions, one Worker per Run (distinct PIDs), one forced crash, idempotent replay, and SSE reconnect.
 3. Run the Product Tool MCP contract and full Adapter integration tests.
 4. Search for forbidden fallback/respond/legacy surfaces and dependency leaks.
 5. Record exact command output in the implementation handoff; do not waive a gate because Phase 4 is not implemented.
@@ -676,11 +677,13 @@ bun test \
   packages/adapter-coding-agent/src/backend.integration.test.ts
 ```
 Expected: all tests pass and output demonstrates:
-- two live sessions have different Worker PIDs;
+- each Run uses its own Worker process and a different PID from the previous Run on the same session;
+- every Worker exits after its outcome;
 - killing Worker A fails only Run A while Worker B completes;
-- idle sleep followed by resume uses a new PID and restores completed session state;
+- a settled run's Worker exit returns the session to idle, and the next Run restores completed session state from SQLite;
 - active-loop crash is failed, not resumed;
 - replaying a mutation key does not start another Worker/run;
+- concurrent identical mutations spawn only one Worker;
 - SSE reconnect after `Last-Event-ID` emits only later events;
 - disconnecting SSE does not change the terminal outcome;
 - malformed IPC terminates only its Worker;

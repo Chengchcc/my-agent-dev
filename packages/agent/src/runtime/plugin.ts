@@ -13,6 +13,9 @@ export interface PluginTool {
   execute(
     args: Readonly<Record<string, unknown>>,
     signal?: AbortSignal,
+    /** Per-call execution context: the model tool-use id (stable per-run
+     *  idempotency identity for Product Tools). */
+    options?: { callId?: string },
   ): Promise<Readonly<Record<string, unknown>>>;
 }
 

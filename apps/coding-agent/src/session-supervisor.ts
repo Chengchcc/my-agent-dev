@@ -29,9 +29,6 @@ export interface SupervisorOptions {
   workerStopGraceMs: number;
   /** Max ms to await Worker command acceptance before rejecting the mutation. */
   acceptTimeoutMs: number;
-  idleTimeoutMs: number;
-  /** sweep interval for sleeping idle sessions; 0 disables the reaper */
-  reapIntervalMs?: number;
   /** Workspace root allowlist: requested roots must be within one of these. */
   workspaceRoots: readonly string[];
   /** Max concurrent Worker process spawns (FIFO startup semaphore). */
@@ -70,7 +67,6 @@ export interface CodingSessionSupervisor {
     input: BackendInputMessage;
     run: AgentRunSnapshot<"coding_agent">;
     workspace: WorkspaceBinding;
-    env?: Readonly<Record<string, string>>;
     metadata: {
       conversationId: string;
       agentMemberId: string;
@@ -151,6 +147,90 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     return rec;
   }
 
+  // ─── Mutation serialization ─────────────────────────────────────────
+  // Concurrent HTTP mutations can corrupt session state: two identical
+  // starts could double-spawn a Worker over the same SQLite file, and two
+  // idle sends could otherwise both reserve a run. Every mutation is
+  // therefore BOTH deduped by idempotency key (a concurrent duplicate joins
+  // the in-flight promise instead of executing twice) AND serialized per
+  // session (the next mutation waits for the previous one's acceptance to
+  // settle, including its Worker round-trip).
+  const mutationChains = new Map<string, Promise<unknown>>();
+  const inFlightMutations = new Map<string, Promise<unknown>>();
+
+  function serialized<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = mutationChains.get(sessionId) ?? Promise.resolve();
+    const run = prev.catch(() => {}).then(fn);
+    mutationChains.set(sessionId, run);
+    // Clean the chain slot when the run settles. Both branches must handle
+    // the rejection: a bare `void run.finally(...)` would leave the
+    // finally-promise itself unhandled whenever the mutation rejects.
+    const cleanup = (): void => {
+      if (mutationChains.get(sessionId) === run) mutationChains.delete(sessionId);
+    };
+    void run.then(cleanup, cleanup);
+    return run;
+  }
+
+  function deduped<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const existing = inFlightMutations.get(key);
+    if (existing) return existing as Promise<T>;
+    const p = fn().finally(() => {
+      if (inFlightMutations.get(key) === p) inFlightMutations.delete(key);
+    });
+    inFlightMutations.set(key, p);
+    return p;
+  }
+
+  /** Resolve when the run settles (or the bound elapses) - used by close() to
+   *  bound the stop->outcome window instead of waiting on a stuck loop. */
+  const outcomeWaiters = new Map<string, Array<() => void>>();
+  function waitForOutcome(runId: string, timeoutMs: number): Promise<boolean> {
+    if (outcomes.has(runId)) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const notify = (): void => settle(true);
+      const settle = (settled: boolean): void => {
+        if (timer) clearTimeout(timer);
+        const arr = outcomeWaiters.get(runId);
+        if (arr) {
+          const idx = arr.indexOf(notify);
+          if (idx >= 0) arr.splice(idx, 1);
+          if (arr.length === 0) outcomeWaiters.delete(runId);
+        }
+        resolve(settled);
+      };
+      timer = setTimeout(() => settle(false), timeoutMs);
+      const arr = outcomeWaiters.get(runId) ?? [];
+      arr.push(notify);
+      outcomeWaiters.set(runId, arr);
+    });
+  }
+
+  function notifyOutcomeWaiters(runId: string): void {
+    const arr = outcomeWaiters.get(runId);
+    if (arr) {
+      outcomeWaiters.delete(runId);
+      for (const w of arr) w();
+    }
+  }
+
+  function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+      promise.then(
+        (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      );
+    });
+  }
+
   function mutationResult(key: string, payload: unknown): { replay: unknown } | null {
     const existing = mutations.get(key);
     if (!existing) return null;
@@ -163,6 +243,16 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
   function recordMutation(key: string, payload: unknown, result: unknown): void {
     mutations.set(key, { key, payloadHash: hashPayload(payload), result });
   }
+
+  /** A runId owned by another session's live buffer or settled outcome is a
+   *  trust-boundary collision, never a silent overwrite. start/resume/send
+   *  share this check so no path can hijack an existing run's identity. */
+  function assertRunIdAvailable(runId: string): void {
+    if (eventBuffers.has(runId) || outcomes.has(runId)) {
+      throw err("conflict", `runId already in use: ${runId}`);
+    }
+  }
+
   /** Preflight model validation: reject unknown/unavailable models at HTTP
    *  acceptance so the caller can distinguish config errors from accepted-then-
    *  failed runs. */
@@ -189,30 +279,23 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     }
     return resolved;
   }
-  async function ensureWorker(
-    rec: SessionRecord,
-    backendSessionId: string,
-    workspaceRoot: string,
-    workspaceAccess: "read_only" | "read_write",
-  ): Promise<WorkerProcessHandle> {
-    if (rec.workerPid !== null) {
-      throw err("busy", `session already has a live worker: ${backendSessionId}`);
-    }
-    return withStartupSlot(() =>
-      spawnWorkerLocked(rec, backendSessionId, workspaceRoot, workspaceAccess),
-    );
+
+  /** One-shot Worker spawn: process + open_session handshake over the
+   *  session's binding and run identity. The Worker lives exactly as long as
+   *  its single command. */
+  async function spawnRunWorker(rec: SessionRecord): Promise<WorkerProcessHandle> {
+    return withStartupSlot(() => spawnWorkerLocked(rec));
   }
 
-  async function spawnWorkerLocked(
-    rec: SessionRecord,
-    backendSessionId: string,
-    workspaceRoot: string,
-    workspaceAccess: "read_only" | "read_write",
-  ): Promise<WorkerProcessHandle> {
+  async function spawnWorkerLocked(rec: SessionRecord): Promise<WorkerProcessHandle> {
+    const backendSessionId = rec.backendSessionId;
     const handle = spawnWorkerProcess({
       workerEntry: opts.workerEntry,
       env: {
         ...opts.authEnv,
+        // Workers spawn MCP stdio children (Product Tools) via their own
+        // PATH - inherit the daemon's so `bun`/executables resolve.
+        PATH: process.env.PATH ?? "",
         CODING_AGENT_DATA_DIR: opts.sessionsDir.replace(/\/sessions$/, ""),
       },
       cwd: opts.cwd,
@@ -222,7 +305,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         onMessage: (msg) => handleWorkerMessage(backendSessionId, msg),
         onExit: () => handleWorkerExit(backendSessionId),
         onMalformedOutput: (line, _err) => {
-          failActiveRun(backendSessionId, `malformed worker output: ${line.slice(0, 200)}`);
+          failRun(backendSessionId, `malformed worker output: ${line.slice(0, 200)}`);
           handle.kill("SIGKILL");
         },
       },
@@ -234,80 +317,17 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       commandId: `open-${backendSessionId}`,
       backendSessionId,
       dataDir: opts.sessionsDir.replace(/\/sessions$/, ""),
-      workspaceRoot,
-      workspaceAccess,
+      workspaceRoot: rec.workspaceRoot,
+      workspaceAccess: rec.workspaceAccess,
       backendKind: "coding_agent",
-      productTools: rec.productTools as never,
-      identity: rec.productIdentity as never,
+      identity: { conversationId: rec.conversationId, agentMemberId: rec.agentMemberId },
     });
     return handle;
   }
 
-  async function workerFor(
-    rec: SessionRecord,
-    backendSessionId: string,
-  ): Promise<WorkerProcessHandle> {
-    if (rec.state === "sleeping" || rec.workerPid === null) {
-      // wake: start a new Worker over the same session file
-      transition(rec, "starting");
-      const handle = await ensureWorker(
-        rec,
-        backendSessionId,
-        rec.workspaceRoot,
-        rec.workspaceAccess,
-      );
-      transition(rec, "live");
-      return handle;
-    }
-    if (rec.state !== "live") {
-      throw err("busy", `session not live: ${backendSessionId}`);
-    }
-    // Reuse the handle registry
-    return handles.get(backendSessionId)!;
-  }
-
+  /** Live Worker handles, keyed by session id (the record keeps the pid for
+   *  observability; the handle is needed for control commands). */
   const handles = new Map<string, WorkerProcessHandle>();
-
-  /** Sleep idle sessions: close the Worker, keep the session file and record.
-   *  Wake happens lazily in workerFor() on the next command. The state only
-   *  becomes sleeping AFTER the Worker process has exited, so a wake never
-   *  spawns a second Worker over the same SQLite file. */
-  let reaping = false;
-  async function sleepIdle(): Promise<void> {
-    if (reaping) return;
-    reaping = true;
-    try {
-      const now = Date.now();
-      for (const [sessionId, rec] of sessions) {
-        if (
-          rec.state === "live" &&
-          rec.activeRunId === null &&
-          now - rec.lastActivityAt >= opts.idleTimeoutMs
-        ) {
-          const handle = handles.get(sessionId);
-          if (handle) {
-            rec.exiting = true;
-            try {
-              handle.shutdown();
-              await handle.exited;
-            } catch {
-              /* worker already gone */
-            }
-            handles.delete(sessionId);
-          }
-          rec.workerPid = null;
-          transition(rec, "sleeping");
-        }
-      }
-    } finally {
-      reaping = false;
-    }
-  }
-
-  const reaper =
-    opts.reapIntervalMs && opts.reapIntervalMs > 0
-      ? setInterval(sleepIdle, opts.reapIntervalMs)
-      : undefined;
 
   function handleWorkerMessage(backendSessionId: string, msg: WorkerMessage): void {
     const rec = sessions.get(backendSessionId);
@@ -321,9 +341,9 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       return;
     }
     if (msg.type === "event") {
-      // Accept events for the pending run (reserved, pre-acceptance) or the
-      // active run. A stale/unknown run is dropped.
-      if (msg.runId !== rec.pendingRunId && msg.runId !== rec.activeRunId) return;
+      // Only the session's current run may emit events. A stale/unknown run
+      // (after close or from a crossed message) is dropped.
+      if (msg.runId !== rec.activeRunId) return;
       const buf = eventBuffers.get(msg.runId);
       if (buf) {
         buf.append({
@@ -335,28 +355,33 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       // Terminal outcomes are first-write-wins: a later outcome for the same
       // run (or a replay after close) must not overwrite the settled one.
       if (outcomes.has(msg.runId)) return;
-      if (msg.runId !== rec.pendingRunId && msg.runId !== rec.activeRunId) return;
+      if (msg.runId !== rec.activeRunId) return;
       outcomes.set(msg.runId, { runId: msg.runId, ...(msg.outcome as object) });
+      notifyOutcomeWaiters(msg.runId);
       eventBuffers.get(msg.runId)?.close();
-      // If the outcome arrived BEFORE acceptance, the run already settled:
-      // clear both pending and active so the resume of handle.send() does not
-      // re-mark a finished run as active (permanent busy).
-      if (rec.pendingRunId === msg.runId) rec.pendingRunId = null;
-      if (rec.activeRunId === msg.runId) rec.activeRunId = null;
     } else if (msg.type === "command_error" || msg.type === "fatal") {
       if (msg.type === "fatal" || (rec.activeRunId && msg.commandId?.startsWith("start-"))) {
-        failActiveRun(backendSessionId, msg.message);
+        failRun(backendSessionId, msg.message);
       }
     }
   }
 
-  function failActiveRun(backendSessionId: string, reason: string): void {
+  function canTransitionToCrashed(rec: SessionRecord): boolean {
+    return rec.state === "starting" || rec.state === "running" || rec.state === "closing";
+  }
+
+  /** Fail the session's current run (if any) and mark the session crashed.
+   *  The run's event buffer is closed and a first-write-wins failed outcome
+   *  is published so callers never poll a phantom run forever. */
+  function failRun(backendSessionId: string, reason: string): void {
     const rec = sessions.get(backendSessionId);
     if (!rec) return;
-    rec.crashedAt = Date.now();
-    if (rec.activeRunId) {
-      const runId = rec.activeRunId;
-      outcomes.set(runId, { runId, status: "failed", error: reason });
+    const runId = rec.activeRunId;
+    if (runId) {
+      if (!outcomes.has(runId)) {
+        outcomes.set(runId, { runId, status: "failed", error: reason });
+        notifyOutcomeWaiters(runId);
+      }
       eventBuffers.get(runId)?.close();
       rec.activeRunId = null;
     }
@@ -368,13 +393,9 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         /* */
       }
       handles.delete(backendSessionId);
-      rec.workerPid = null;
     }
+    rec.workerPid = null;
     if (canTransitionToCrashed(rec)) transition(rec, "crashed");
-  }
-
-  function canTransitionToCrashed(rec: SessionRecord): boolean {
-    return rec.state === "live" || rec.state === "starting" || rec.state === "stopping";
   }
 
   function handleWorkerExit(backendSessionId: string): void {
@@ -382,22 +403,71 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     if (!rec) return;
     rec.workerPid = null;
     handles.delete(backendSessionId);
-    // Deliberate shutdown (sleep/close) is not a crash.
-    if (rec.exiting) {
-      rec.exiting = false;
+    // close/shutdown own the teardown of their worker.
+    if (rec.state === "closing" || rec.state === "closed") return;
+    const runId = rec.activeRunId;
+    if (runId) {
+      if (outcomes.has(runId)) {
+        // Normal one-shot completion: the run settled (outcome emitted) and
+        // the Worker exited. The session returns to idle for the next Run.
+        rec.activeRunId = null;
+        if (rec.state === "running") transition(rec, "idle");
+        return;
+      }
+      // The Worker died without settling its run: fail it.
+      failRun(backendSessionId, "worker exited unexpectedly");
       return;
     }
-    // Unexpected exit during an active run => run failed
-    if (rec.activeRunId) {
-      failActiveRun(backendSessionId, "worker exited unexpectedly");
-    } else if (rec.state === "live") {
-      // Idle worker exited: treat as crashed (no active loop to recover)
-      if (canTransitionToCrashed(rec)) transition(rec, "crashed");
+    // No active run: a maintenance Worker (compact) exits normally while the
+    // session is starting; an idle-session Worker exiting is a crash.
+    if (rec.state === "starting") return;
+    if (rec.state === "running" && canTransitionToCrashed(rec)) transition(rec, "crashed");
+  }
+
+  type StartInput = Parameters<CodingSessionSupervisor["startSession"]>[0];
+  type SendInput = Parameters<CodingSessionSupervisor["send"]>[0];
+  type StopInput = Parameters<CodingSessionSupervisor["stop"]>[0];
+  type CompactInput = Parameters<CodingSessionSupervisor["compact"]>[0];
+  type CloseInput = Parameters<CodingSessionSupervisor["close"]>[0];
+
+  /** Shared body for every "run a new Run on this session" path: reserve the
+   *  run (activeRunId + buffer) BEFORE the Worker exists - no event/outcome
+   *  can arrive before acceptance, and activeRunId gates every worker
+   *  message - then spawn the one-shot Worker, hand it the command, and let
+   *  it execute and exit. Rollback restores the session to idle. */
+  async function runOnSession(
+    rec: SessionRecord,
+    runId: string,
+    command: (handle: WorkerProcessHandle) => Promise<unknown>,
+  ): Promise<void> {
+    rec.activeRunId = runId;
+    eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
+    transition(rec, "starting");
+    let handle: WorkerProcessHandle | null = null;
+    try {
+      handle = await spawnRunWorker(rec);
+      handles.set(rec.backendSessionId, handle);
+      transition(rec, "running");
+      await command(handle);
+    } catch (err) {
+      rec.activeRunId = null;
+      eventBuffers.delete(runId);
+      handles.delete(rec.backendSessionId);
+      rec.workerPid = null;
+      if (handle) {
+        try {
+          handle.kill("SIGKILL");
+        } catch {
+          /* already gone */
+        }
+      }
+      if (rec.state === "starting" || rec.state === "running") transition(rec, "idle");
+      throw err;
     }
   }
 
-  return {
-    async startSession(input) {
+  const api = {
+    async startSessionInner(input: StartInput) {
       const replay = mutationResult(input.idempotencyKey, input);
       if (replay) return replay.replay as { backendSessionId: string; runId: string };
       if (sessions.has(input.backendSessionId)) {
@@ -406,35 +476,15 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       const workspaceRoot = validateWorkspace(input.workspace.root);
       await validateModel(input.run.model.modelId);
       const runId = input.run.runId;
-      if (eventBuffers.has(runId) || outcomes.has(runId)) {
-        throw err("conflict", `runId already in use: ${runId}`);
-      }
+      assertRunIdAvailable(runId);
       const rec = createSessionRecord(input.backendSessionId);
       rec.workspaceRoot = workspaceRoot;
       rec.workspaceAccess = input.workspace.access;
-      rec.productTools = input.run.productTools;
-      rec.productIdentity = {
-        runId,
-        conversationId: input.metadata.conversationId,
-        agentMemberId: input.metadata.agentMemberId,
-        branchId: input.metadata.branchId,
-      };
-      // Acceptance first, state commit after: ensureWorker spawns + awaits the
-      // open_session handshake. Only after the Worker accepted do we publish
-      // the record, so a spawn/acceptance failure leaves no half-state.
-      const handle = await ensureWorker(
-        rec,
-        input.backendSessionId,
-        workspaceRoot,
-        input.workspace.access,
-      );
+      rec.conversationId = input.metadata.conversationId;
+      rec.agentMemberId = input.metadata.agentMemberId;
       sessions.set(input.backendSessionId, rec);
-      handles.set(input.backendSessionId, handle);
-      rec.activeRunId = runId;
-      eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
-      transition(rec, "live");
-      try {
-        await handle.send({
+      await runOnSession(rec, runId, (handle) =>
+        handle.send({
           protocolVersion: 1,
           type: "start_run",
           commandId: `start-${runId}`,
@@ -446,26 +496,19 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
           run: input.run as never,
           workspace: input.workspace,
           metadata: input.metadata,
-        });
-      } catch (err) {
-        // Roll back the published state: no half-initialized session survives
-        // a failed start_run acceptance.
-        sessions.delete(input.backendSessionId);
-        handles.delete(input.backendSessionId);
-        eventBuffers.delete(runId);
-        try {
-          handle.kill("SIGKILL");
-        } catch {
-          /* already gone */
-        }
-        throw err;
-      }
+        }),
+      );
       const result = { backendSessionId: input.backendSessionId, runId };
       recordMutation(input.idempotencyKey, input, result);
       return result;
     },
+    startSession(input: StartInput) {
+      return deduped(input.idempotencyKey, () =>
+        serialized(input.backendSessionId, () => this.startSessionInner(input)),
+      );
+    },
 
-    async resumeSession(input) {
+    async resumeSessionInner(input: StartInput) {
       // Idempotent replay: the same resume mutation returns the original
       // result instead of re-starting the run or surfacing a spurious busy.
       const replay = mutationResult(input.idempotencyKey, input);
@@ -475,23 +518,32 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         // No live record: start fresh (session file may exist on disk)
         return this.startSession(input);
       }
-      if (rec.activeRunId || rec.pendingRunId)
-        throw err("busy", `session has an active run: ${input.backendSessionId}`);
       if (rec.state === "crashed") {
         // Crashed active loop is NOT resumable; a new session from fresh
         // context must use a different identity. Reject.
         throw err("invalid_request", `session crashed, not resumable: ${input.backendSessionId}`);
       }
-      const handle = await workerFor(rec, input.backendSessionId);
-      handles.set(input.backendSessionId, handle);
-      const runId = input.run.runId;
+      if (rec.activeRunId)
+        throw err("busy", `session has an active run: ${input.backendSessionId}`);
+      if (rec.state !== "idle") {
+        throw err("busy", `session not idle: ${input.backendSessionId}`);
+      }
+      // The session's Worker tools are bound to the workspace established at
+      // start. A resume naming a different root/access would render Meta and
+      // the actual tool sandbox inconsistent - reject instead of accepting a
+      // workspace that the tools do not honor.
+      const requestedRoot = validateWorkspace(input.workspace.root);
+      if (requestedRoot !== rec.workspaceRoot || input.workspace.access !== rec.workspaceAccess) {
+        throw err(
+          "invalid_request",
+          `workspace binding mismatch for ${input.backendSessionId}: session is ${rec.workspaceRoot}/${rec.workspaceAccess}, got ${requestedRoot}/${input.workspace.access}`,
+        );
+      }
       await validateModel(input.run.model.modelId);
-      // Reserve the buffer + pendingRunId before the command (no event-loss
-      // window, no busy-after-settled); roll back on rejection.
-      eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
-      rec.pendingRunId = runId;
-      try {
-        await handle.send({
+      const runId = input.run.runId;
+      assertRunIdAvailable(runId);
+      await runOnSession(rec, runId, (handle) =>
+        handle.send({
           protocolVersion: 1,
           type: "start_run",
           commandId: `start-${runId}`,
@@ -503,57 +555,62 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
           run: input.run as never,
           workspace: input.workspace,
           metadata: input.metadata,
-        });
-      } catch (err) {
-        eventBuffers.delete(runId);
-        if (rec.pendingRunId === runId) rec.pendingRunId = null;
-        throw err;
-      }
-      rec.pendingRunId = null;
-      if (!outcomes.has(runId)) rec.activeRunId = runId;
+        }),
+      );
       const result = { backendSessionId: input.backendSessionId, runId };
       recordMutation(input.idempotencyKey, input, result);
       return result;
     },
+    resumeSession(input: StartInput) {
+      return deduped(input.idempotencyKey, () =>
+        serialized(input.backendSessionId, () => this.resumeSessionInner(input)),
+      );
+    },
 
-    async send(input) {
+    async sendInner(input: SendInput) {
       const replay = mutationResult(input.idempotencyKey, input);
       if (replay) return replay.replay as { accepted: boolean; runId: string; commandId: string };
       const rec = recordFor(input.backendSessionId);
-      if (rec.state === "sleeping" || rec.workerPid === null) {
-        const handle = await workerFor(rec, input.backendSessionId);
-        handles.set(input.backendSessionId, handle);
-      }
-      if (rec.activeRunId && input.mode !== "steer") {
-        throw err("busy", `session has an active run: ${input.backendSessionId}`);
-      }
-      if (input.mode === "steer" && !rec.activeRunId) {
-        throw err("invalid_request", "steer requires an active run");
-      }
-      if (input.mode === "steer" && input.runId !== rec.activeRunId) {
-        // Steer targets the CURRENT active run - it never names a new run.
-        throw err(
-          "invalid_request",
-          `steer runId ${input.runId} does not match active run ${rec.activeRunId}`,
-        );
-      }
-      const handle = handles.get(input.backendSessionId);
-      if (!handle) throw err("busy", `no live worker: ${input.backendSessionId}`);
-      const runId = input.runId;
-      // Reserve the buffer + pendingRunId BEFORE the command: events/outcomes
-      // in the same stdout chunk as command_accepted are accepted for the
-      // pending run. Roll back on rejection. A runId already owned elsewhere
-      // is a trust-boundary collision, not a silent overwrite.
-      if (input.mode !== "steer") {
-        await validateModel(input.run.model.modelId);
-        if (eventBuffers.has(runId) || outcomes.has(runId)) {
-          throw err("conflict", `runId already in use: ${runId}`);
+      if (input.mode === "steer") {
+        // Steer targets the CURRENT active Run's Worker: no new Run, no new
+        // Worker, no runId change. Returns under the active run identity.
+        if (!rec.activeRunId || rec.state !== "running") {
+          throw err("invalid_request", "steer requires an active run");
         }
-        eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
-        rec.pendingRunId = runId;
-      }
-      try {
+        if (input.runId !== rec.activeRunId) {
+          throw err(
+            "invalid_request",
+            `steer runId ${input.runId} does not match active run ${rec.activeRunId}`,
+          );
+        }
+        const handle = handles.get(input.backendSessionId);
+        if (!handle) throw err("busy", `no live worker: ${input.backendSessionId}`);
         await handle.send({
+          protocolVersion: 1,
+          type: "send",
+          commandId: input.commandId,
+          backendSessionId: input.backendSessionId,
+          runId: rec.activeRunId,
+          mode: "steer",
+          history: input.history as never,
+          input: input.input as never,
+          run: input.run as never,
+          metadata: input.metadata as never,
+        });
+        const result = { accepted: true, runId: rec.activeRunId, commandId: input.commandId };
+        recordMutation(input.idempotencyKey, input, result);
+        return result;
+      }
+      if (rec.state !== "idle") {
+        throw err("busy", `session not idle: ${input.backendSessionId}`);
+      }
+      if (rec.activeRunId)
+        throw err("busy", `session has an active run: ${input.backendSessionId}`);
+      await validateModel(input.run.model.modelId);
+      const runId = input.runId;
+      assertRunIdAvailable(runId);
+      await runOnSession(rec, runId, (handle) =>
+        handle.send({
           protocolVersion: 1,
           type: "send",
           commandId: input.commandId,
@@ -564,67 +621,110 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
           input: input.input as never,
           run: input.run as never,
           metadata: input.metadata as never,
-        });
-      } catch (err) {
-        if (input.mode !== "steer") {
-          eventBuffers.delete(runId);
-          if (rec.pendingRunId === runId) rec.pendingRunId = null;
-        }
-        throw err;
-      }
-      if (input.mode !== "steer") {
-        // Promote pending -> active ONLY if the run did not already settle
-        // (its outcome arrived before acceptance).
-        rec.pendingRunId = null;
-        if (!outcomes.has(runId)) rec.activeRunId = runId;
-      }
+        }),
+      );
       const result = { accepted: true, runId, commandId: input.commandId };
       recordMutation(input.idempotencyKey, input, result);
       return result;
     },
+    send(input: SendInput) {
+      return deduped(input.idempotencyKey, () =>
+        serialized(input.backendSessionId, () => this.sendInner(input)),
+      );
+    },
 
-    async stop(input) {
+    async stopInner(input: StopInput) {
       const replay = mutationResult(input.idempotencyKey, input);
       if (replay) return replay.replay as { stopped: boolean };
       const rec = recordFor(input.backendSessionId);
-      const handle = handles.get(input.backendSessionId);
-      if (handle && rec.activeRunId) {
+      const runId = rec.activeRunId;
+      const handle = runId ? handles.get(input.backendSessionId) : undefined;
+      if (handle && runId) {
         await handle.send({
           protocolVersion: 1,
           type: "stop_run",
           commandId: input.commandId,
           backendSessionId: input.backendSessionId,
-          runId: input.runId ?? rec.activeRunId,
+          runId: input.runId ?? runId,
         });
       }
       const result = { stopped: true };
       recordMutation(input.idempotencyKey, input, result);
       return result;
     },
+    stop(input: StopInput) {
+      return deduped(input.idempotencyKey, () =>
+        serialized(input.backendSessionId, () => this.stopInner(input)),
+      );
+    },
 
-    async compact(input) {
+    async compactInner(input: CompactInput) {
       const replay = mutationResult(input.idempotencyKey, input);
       if (replay) return replay.replay as { compacted: boolean };
       const rec = recordFor(input.backendSessionId);
       if (rec.activeRunId) {
         throw err("busy", "manual compact is only allowed when idle");
       }
-      const handle = await workerFor(rec, input.backendSessionId);
-      handles.set(input.backendSessionId, handle);
-      // compact's real completion is the command_result, not the intermediate
-      // command_accepted - await the result so failure surfaces to the caller.
-      await handle.sendForResult({
-        protocolVersion: 1,
-        type: "compact",
-        commandId: input.commandId,
-        backendSessionId: input.backendSessionId,
-      });
+      if (rec.state !== "idle") {
+        throw err("busy", `session not idle: ${input.backendSessionId}`);
+      }
+      // Compact is a one-shot MAINTENANCE Worker: open the SessionStore,
+      // compact, emit command_result, exit. HTTP returns only after the
+      // result - command_accepted is never the completion.
+      transition(rec, "starting");
+      let handle: WorkerProcessHandle | null = null;
+      try {
+        handle = await spawnRunWorker(rec);
+        handles.set(input.backendSessionId, handle);
+        await handle.sendForResult({
+          protocolVersion: 1,
+          type: "compact",
+          commandId: input.commandId,
+          backendSessionId: input.backendSessionId,
+        });
+        // The Worker exits itself after the result; bound + escalate.
+        try {
+          await withTimeout(handle.exited, opts.workerStopGraceMs);
+        } catch {
+          handle.kill("SIGTERM");
+          try {
+            await withTimeout(handle.exited, opts.workerStopGraceMs);
+          } catch {
+            handle.kill("SIGKILL");
+            await handle.exited.catch(() => {});
+          }
+        }
+        handles.delete(input.backendSessionId);
+        rec.workerPid = null;
+        transition(rec, "idle");
+      } catch (err) {
+        handles.delete(input.backendSessionId);
+        rec.workerPid = null;
+        if (handle) {
+          try {
+            handle.kill("SIGKILL");
+          } catch {
+            /* already gone */
+          }
+        }
+        try {
+          transition(rec, "idle");
+        } catch {
+          /* already terminal */
+        }
+        throw err;
+      }
       const result = { compacted: true };
       recordMutation(input.idempotencyKey, input, result);
       return result;
     },
+    compact(input: CompactInput) {
+      return deduped(input.idempotencyKey, () =>
+        serialized(input.backendSessionId, () => this.compactInner(input)),
+      );
+    },
 
-    async close(input) {
+    async closeInner(input: CloseInput) {
       const replay = mutationResult(input.idempotencyKey, input);
       if (replay) return replay.replay as { closed: boolean };
       const rec = sessions.get(input.backendSessionId);
@@ -633,24 +733,58 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         recordMutation(input.idempotencyKey, input, result);
         return result;
       }
+      // 1. Stop any live run via the CONTROL path first, with a bounded
+      //    outcome window. The run's one-shot Worker would otherwise finish
+      //    its loop at its own pace.
+      transition(rec, "closing");
+      const runId = rec.activeRunId;
+      const liveHandle = runId ? handles.get(input.backendSessionId) : undefined;
+      if (liveHandle && runId) {
+        try {
+          await liveHandle.send({
+            protocolVersion: 1,
+            type: "stop_run",
+            commandId: `stop-close-${input.backendSessionId}`,
+            backendSessionId: input.backendSessionId,
+            runId,
+          });
+          await waitForOutcome(runId, opts.acceptTimeoutMs);
+        } catch {
+          /* worker already gone - close_session will fail below */
+        }
+      }
+      // 2. close_session (when a Worker is still live) then a bounded process
+      //    exit with SIGTERM -> SIGKILL escalation, so a stuck loop or MCP
+      //    teardown cannot hang the HTTP close.
       const handle = handles.get(input.backendSessionId);
       if (handle) {
-        rec.exiting = true;
-        await handle.send({
-          protocolVersion: 1,
-          type: "close_session",
-          commandId: `close-${input.backendSessionId}`,
-          backendSessionId: input.backendSessionId,
-          deleteData: input.deleteData ?? false,
-        });
-        // Wait for the Worker to actually exit before touching the session
-        // file: a live Worker may still hold the SQLite handle.
-        await handle.exited.catch(() => {});
+        try {
+          await handle.send({
+            protocolVersion: 1,
+            type: "close_session",
+            commandId: `close-${input.backendSessionId}`,
+            backendSessionId: input.backendSessionId,
+            deleteData: input.deleteData ?? false,
+          });
+        } catch {
+          /* worker already gone */
+        }
+        try {
+          await withTimeout(handle.exited, opts.workerStopGraceMs);
+        } catch {
+          handle.kill("SIGTERM");
+          try {
+            await withTimeout(handle.exited, opts.workerStopGraceMs);
+          } catch {
+            handle.kill("SIGKILL");
+            await handle.exited.catch(() => {});
+          }
+        }
         handles.delete(input.backendSessionId);
       }
       rec.workerPid = null;
-      transition(rec, "stopping");
-      transition(rec, "closed");
+      if (rec.state === "closing") transition(rec, "closed");
+      // 3. Delete the SessionStore files (all three WAL artifacts).
       if (input.deleteData) {
         try {
           const base = join(opts.sessionsDir, input.backendSessionId);
@@ -664,18 +798,23 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       recordMutation(input.idempotencyKey, input, result);
       return result;
     },
+    close(input: CloseInput) {
+      return deduped(input.idempotencyKey, () =>
+        serialized(input.backendSessionId, () => this.closeInner(input)),
+      );
+    },
 
-    getEvents(runId) {
+    getEvents(runId: string) {
       const buf = eventBuffers.get(runId);
       if (!buf) throw err("not_found", `no event stream for run: ${runId}`);
       return buf;
     },
 
-    hasRun(runId) {
+    hasRun(runId: string) {
       return eventBuffers.has(runId) || outcomes.has(runId);
     },
 
-    getOutcome(runId) {
+    getOutcome(runId: string) {
       return outcomes.get(runId) ?? null;
     },
 
@@ -689,15 +828,12 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     },
 
     async shutdown() {
-      clearInterval(reaper);
       // Collect every Worker's exit promise, then await them all so the
-      // daemon does not tear down while a Worker still holds a session file
-      // or is mid-outcome.
+      // daemon does not tear down while a Worker still holds a session file.
       const exits: Promise<number | null>[] = [];
       for (const [sessionId, rec] of sessions) {
         const handle = handles.get(sessionId);
         if (handle) {
-          rec.exiting = true;
           try {
             handle.shutdown();
             exits.push(handle.exited);
@@ -708,8 +844,12 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         }
         rec.workerPid = null;
         if (rec.state !== "closed" && rec.state !== "crashed") {
-          transition(rec, "stopping");
-          transition(rec, "closed");
+          try {
+            transition(rec, "closing");
+            transition(rec, "closed");
+          } catch {
+            /* already terminal */
+          }
         }
       }
       await Promise.allSettled(exits);
@@ -717,5 +857,8 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       for (const b of eventBuffers.values()) b.close();
       eventBuffers.clear();
     },
+    // The literal also carries the *Inner bodies (not on the public
+    // interface); the wrappers above are the typed public surface.
   };
+  return api as CodingSessionSupervisor;
 }

@@ -37,21 +37,12 @@ export const openSessionCommand = z.object({
   workspaceRoot: z.string(),
   workspaceAccess: z.enum(["read_only", "read_write"]),
   backendKind: z.literal("coding_agent"),
-  /** Product Tool manifest from the establishing run (installed at session
-   *  open; per-run changes on later sends are a Phase 5 refinement). */
-  productTools: z.array(
-    z.object({
-      name: z.string(),
-      description: z.string(),
-      inputSchema: z.record(z.unknown()),
-      entrypoint: z.string(),
-    }),
-  ),
+  /** Session-level run identity for runs that carry no metadata of their own
+   *  (send/follow-up): the Worker inherits conversation/agentMember from the
+   *  session; branchId + productRevision always travel with the command. */
   identity: z.object({
-    runId: z.string(),
     conversationId: z.string(),
     agentMemberId: z.string(),
-    branchId: z.string(),
   }),
 });
 

@@ -10,11 +10,7 @@ import {
   type PluginTool,
   type SessionStore,
 } from "@my-agent-team/agent";
-import type {
-  AgentRunSnapshot,
-  ProductToolDescriptor,
-  ProjectedHistoryItem,
-} from "@my-agent-team/agent-backend";
+import type { AgentRunSnapshot, ProjectedHistoryItem } from "@my-agent-team/agent-backend";
 import { anthropicProvider, type ModelRuntime } from "@my-agent-team/ai";
 import type { Message } from "@my-agent-team/message";
 import { createProgressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
@@ -47,14 +43,6 @@ export interface WorkerRuntimeDeps {
   skillRoots?: readonly string[];
   webSearch?: WebSearchPort;
   webFetch?: WebFetchPort;
-  /** Product Tool manifest + call identity from the establishing run. */
-  productTools?: readonly ProductToolDescriptor[];
-  productIdentity?: {
-    runId: string;
-    conversationId: string;
-    agentMemberId: string;
-    branchId: string;
-  };
 }
 
 export interface WorkerRuntime {
@@ -78,7 +66,7 @@ export function registerBuiltinProviders(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): void {
   if (env.CODING_AGENT_FAKE_PROVIDER === "1") {
-    runtime.registerProvider(fakeProvider());
+    runtime.registerProvider(fakeProvider(env));
   } else if (env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN) {
     runtime.registerProvider(anthropicProvider({ baseUrl: env.ANTHROPIC_BASE_URL ?? undefined }));
   }

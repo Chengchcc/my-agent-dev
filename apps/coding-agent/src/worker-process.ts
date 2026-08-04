@@ -85,13 +85,14 @@ export function spawnWorkerProcess(opts: WorkerProcessOptions): WorkerProcessHan
     if (!commandId) return false;
     const p = pending.get(commandId);
     if (!p) return false;
+    // waitFor "result": command_accepted is only the intermediate ack - KEEP
+    // the pending command (and its timer) until the real command_result
+    // arrives. Deleting here would orphan the result and hang the promise.
+    if (p.waitFor === "result" && msg.type === "command_accepted") return false;
     pending.delete(commandId);
     clearTimeout(p.timer);
 
     if (msg.type === "command_accepted" || msg.type === "command_result") {
-      // waitFor "result": command_accepted is only the intermediate ack - keep
-      // the pending command until the real result arrives.
-      if (p.waitFor === "result" && msg.type === "command_accepted") return false;
       // Identity check: the reply must be for the same session (and run, when
       // both carry one). A crossed/forgeed reply rejects the mutation.
       if (msg.backendSessionId !== p.backendSessionId) {

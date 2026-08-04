@@ -1,6 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { BackendEvent } from "@my-agent-team/agent-backend";
+import { createModelRuntime } from "@my-agent-team/ai";
+import { CodingAgentBackend, CodingAgentClient } from "@my-agent-team/adapter-coding-agent";
+import { createCodingAgentApp } from "./app.js";
+import { loadConfig } from "./config.js";
+import { createCodingSessionSupervisor } from "./session-supervisor.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { buildProductTools } from "./product-tool-transport.js";
 
@@ -116,4 +122,172 @@ describe("product-tool contract (real MCP server via entrypoint)", () => {
 
 afterAll(() => {
   rmSync(tmp, { recursive: true, force: true });
+});
+
+// ─── Full-stack: real Worker -> production caller -> MCP server ────────
+
+const fullStackTmp = `/tmp/ptc-full-${Math.random().toString(36).slice(2, 8)}`;
+const ws = `${fullStackTmp}/ws`;
+const wrapper = join(fullStackTmp, "mcp-wrapper.sh");
+mkdirSync(ws, { recursive: true });
+// Absolute bun path: the Worker's spawn env is a controlled allowlist, so a
+// PATH lookup for `bun` inside the wrapper is not guaranteed.
+writeFileSync(wrapper, `#!/bin/sh\nexec ${process.execPath} ${serverPath}\n`, { mode: 0o755 });
+const entrypoint = `stdio:${wrapper}`;
+
+/** One daemon running the REAL worker (worker-main.ts) with a scripted fake
+ *  provider + a real stdio MCP echo server reachable via the wrapper. */
+function startDaemon(toolScript: Array<{ name: string; input: Record<string, unknown> }>) {
+  const tmp = `${fullStackTmp}-${Math.random().toString(36).slice(2, 6)}`;
+  mkdirSync(tmp, { recursive: true });
+  const config = loadConfig({
+    CODING_AGENT_AUTH_TOKEN: "token-123",
+    CODING_AGENT_DATA_DIR: tmp,
+    CODING_AGENT_WORKSPACE_ROOTS: ws,
+    CODING_AGENT_FAKE_PROVIDER: "1",
+    CODING_AGENT_ACCEPT_TIMEOUT_MS: "10000",
+  });
+  const runtime = createModelRuntime();
+  const supervisor = createCodingSessionSupervisor({
+    workerEntry: join(import.meta.dir, "worker-main.ts"),
+    cwd: tmp,
+    sessionsDir: `${tmp}/sessions`,
+    authEnv: {
+      ...config.providerEnv,
+      CODING_AGENT_FAKE_PROVIDER: "1",
+      CODING_AGENT_FAKE_TOOL: JSON.stringify(toolScript),
+    },
+    eventBufferSize: 100,
+    workerStopGraceMs: 2000,
+    acceptTimeoutMs: 10_000,
+    workspaceRoots: [ws],
+    maxStartingWorkers: 4,
+    modelRuntime: runtime,
+  });
+  const app = createCodingAgentApp({ config, modelRuntime: runtime, supervisor });
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", idleTimeout: 0, fetch: app.fetch });
+  const client = new CodingAgentClient({
+    baseUrl: `http://127.0.0.1:${server.port}`,
+    authToken: "token-123",
+  });
+  return { tmp, backend: new CodingAgentBackend(client), app, server };
+}
+
+function runInput(runId: string) {
+  return {
+    history: [],
+    input: { inputId: `in-${runId}`, message: { role: "user" as const, text: "go" } },
+    run: {
+      runId,
+      model: { backendKind: "coding_agent" as const, modelId: "fake/echo" },
+      productTools: [
+        {
+          name: "echo",
+          description: "Echo",
+          inputSchema: { type: "object" },
+          entrypoint,
+        },
+      ],
+      configRevision: 1,
+    },
+    workspace: { root: ws, access: "read_write" as const },
+    metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1", productRevision: 1 },
+  };
+}
+
+describe("full-stack product tool acceptance (real Worker -> production caller)", () => {
+  test("identity rides in call params._meta; events carry the model tool-use callId", async () => {
+    const d = startDaemon([{ name: "echo", input: { echo: "hello" } }]);
+    try {
+      const started = await d.backend.start(runInput("run-fs-1"));
+      const outcomeP = started.segment.outcome;
+      const events: BackendEvent<"coding_agent">[] = [];
+      for await (const ev of started.segment.events) events.push(ev);
+      const startedEvent = events.find((e) => e.type === "product_tool_started");
+      const outcome = await outcomeP;
+      expect(outcome.status).toBe("completed");
+      // The START event carries the MODEL tool-use id (PendingToolCall.id),
+      // not a fabricated `call-<eventId>`: consumers can correlate it with
+      // the Product Tool request identity.
+      expect(startedEvent?.type).toBe("product_tool_started");
+      if (startedEvent?.type === "product_tool_started") {
+        expect(startedEvent.callId).toMatch(/^toolu-fake-\d+$/);
+      }
+      // The COMPLETED event carries the real result: the echo server echoed
+      // the TOP-LEVEL _meta.identity (production wire shape).
+      const completed = events.find((e) => e.type === "product_tool_completed");
+      expect(completed?.type).toBe("product_tool_completed");
+      if (completed?.type === "product_tool_completed") {
+        const body = JSON.parse(String((completed.result as { content?: string })?.content));
+        const echoed = JSON.parse((body[0] as { text?: string })?.text ?? "{}") as {
+          name: string;
+          meta?: { identity?: Record<string, unknown> };
+          echo?: string;
+        };
+        expect(echoed.name).toBe("echo");
+        expect(echoed.echo).toBe("hello");
+        const identity = echoed.meta?.identity;
+        expect(identity?.runId).toBe("run-fs-1");
+        expect(identity?.conversationId).toBe("c1");
+        expect(identity?.agentMemberId).toBe("m1");
+        expect(identity?.branchId).toBe("b1");
+        // Idempotency key derives from the model tool-use id (same identity
+        // as the started event), stable under same-semantics replays.
+        expect(identity?.idempotencyKey).toBe(`run-fs-1:${startedEvent?.callId}`);
+      }
+      await d.backend.close(started.session);
+    } finally {
+      d.server.stop();
+      await d.app.stop();
+      rmSync(d.tmp, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("a failing MCP call surfaces as isError on product_tool_completed", async () => {
+    const d = startDaemon([{ name: "echo", input: { echo: "fail" } }]);
+    try {
+      const started = await d.backend.start(runInput("run-fs-fail"));
+      const events: BackendEvent<"coding_agent">[] = [];
+      for await (const ev of started.segment.events) events.push(ev);
+      const outcome = await started.segment.outcome;
+      expect(outcome.status).toBe("completed");
+      const completed = events.find((e) => e.type === "product_tool_completed");
+      expect(completed?.type).toBe("product_tool_completed");
+      if (completed?.type === "product_tool_completed") {
+        expect((completed.result as { isError?: boolean })?.isError).toBe(true);
+      }
+      await d.backend.close(started.session);
+    } finally {
+      d.server.stop();
+      await d.app.stop();
+      rmSync(d.tmp, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("close during a hung product tool call stops promptly (bounded, no hang)", async () => {
+    const d = startDaemon([{ name: "echo", input: { echo: "slow" } }]);
+    try {
+      const started = await d.backend.start(runInput("run-fs-slow"));
+      // Wait until the tool call is in flight (started event observed).
+      for await (const ev of started.segment.events) {
+        if (ev.type === "product_tool_started") break;
+      }
+      const closeAt = Date.now();
+      await d.backend.close(started.session);
+      const closeMs = Date.now() - closeAt;
+      // Bounded: stop_run -> aborted outcome -> close_session -> exit must
+      // NOT wait for the 30s MCP sleep.
+      expect(closeMs).toBeLessThan(10_000);
+      const outcome = await started.segment.outcome;
+      expect(["aborted", "failed"]).toContain(outcome.status);
+    } finally {
+      d.server.stop();
+      await d.app.stop();
+      rmSync(d.tmp, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
+afterAll(() => {
+  rmSync(fullStackTmp, { recursive: true, force: true });
 });

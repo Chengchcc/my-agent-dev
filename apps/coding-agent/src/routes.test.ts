@@ -26,7 +26,6 @@ function makeApp() {
     eventBufferSize: 10,
     workerStopGraceMs: 100,
     acceptTimeoutMs: 5000,
-    idleTimeoutMs: 60_000,
     workspaceRoots: [ws],
     maxStartingWorkers: 4,
   });

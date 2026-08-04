@@ -11,8 +11,6 @@ export interface CodingAgentConfig {
   sessionsDir: string;
   workspaceRoots: readonly string[];
   maxStartingWorkers: number;
-  idleTimeoutMs: number;
-  reapIntervalMs: number;
   workerStopGraceMs: number;
   acceptTimeoutMs: number;
   /** Provider credentials forwarded to Workers (minimal surface: only known
@@ -108,18 +106,6 @@ export function loadConfig(
       env.CODING_AGENT_MAX_STARTING_WORKERS,
       4,
       1,
-    ),
-    idleTimeoutMs: intField(
-      "CODING_AGENT_IDLE_TIMEOUT_MS",
-      env.CODING_AGENT_IDLE_TIMEOUT_MS,
-      300_000,
-      1_000,
-    ),
-    reapIntervalMs: intField(
-      "CODING_AGENT_REAP_INTERVAL_MS",
-      env.CODING_AGENT_REAP_INTERVAL_MS,
-      30_000,
-      1_000,
     ),
     workerStopGraceMs: intField(
       "CODING_AGENT_WORKER_STOP_GRACE_MS",

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { CodingAgentBackend, CodingAgentClient } from "@my-agent-team/adapter-coding-agent";
@@ -33,7 +34,6 @@ beforeAll(() => {
     eventBufferSize: 100,
     workerStopGraceMs: 500,
     acceptTimeoutMs: 10_000,
-    idleTimeoutMs: 60_000,
     workspaceRoots: config.workspaceRoots,
     maxStartingWorkers: 4,
   });
@@ -109,84 +109,146 @@ describe("session lifecycle (real worker)", () => {
     void existsSync;
   }, 30_000);
 
-  test("idle sleep closes the worker; wake spawns a new PID and completes", async () => {
-    // A dedicated supervisor with a short idle timeout so the real worker
-    // sleeps mid-test, then wakes on the next command.
-    const sleepTmp = `/tmp/coding-sleep-${Math.random().toString(36).slice(2, 8)}`;
-    mkdirSync(`${sleepTmp}/ws`, { recursive: true });
-    const sleepConfig = loadConfig({
+  test("cross-Worker persistence: Run 2 on a new PID restores todo, branch, productEntryId, replay, compact", async () => {
+    // Two Runs on the SAME session, each in its OWN one-shot Worker: the
+    // second Worker must read the state the first persisted. The fake
+    // provider is scripted to call todo_write on the first run.
+    const persistTmp = `/tmp/coding-persist-${Math.random().toString(36).slice(2, 8)}`;
+    mkdirSync(`${persistTmp}/ws`, { recursive: true });
+    const persistConfig = loadConfig({
       CODING_AGENT_AUTH_TOKEN: "token-123",
-      CODING_AGENT_DATA_DIR: sleepTmp,
-      CODING_AGENT_WORKSPACE_ROOTS: `${sleepTmp}/ws`,
+      CODING_AGENT_DATA_DIR: persistTmp,
+      CODING_AGENT_WORKSPACE_ROOTS: `${persistTmp}/ws`,
       CODING_AGENT_FAKE_PROVIDER: "1",
     });
-    const sleepRuntime = createModelRuntime();
-    const sleepSup = createCodingSessionSupervisor({
+    const persistRuntime = createModelRuntime();
+    const persistSup = createCodingSessionSupervisor({
       workerEntry: join(import.meta.dir, "..", "worker-main.ts"),
-      cwd: sleepTmp,
-      sessionsDir: `${sleepTmp}/sessions`,
-      authEnv: { ...sleepConfig.providerEnv, CODING_AGENT_FAKE_PROVIDER: "1" },
+      cwd: persistTmp,
+      sessionsDir: `${persistTmp}/sessions`,
+      authEnv: {
+        ...persistConfig.providerEnv,
+        CODING_AGENT_FAKE_PROVIDER: "1",
+        CODING_AGENT_FAKE_TOOL: JSON.stringify([
+          {
+            name: "todo_write",
+            input: { items: [{ id: "t1", text: "task one", status: "pending" }] },
+          },
+        ]),
+      },
       eventBufferSize: 100,
       workerStopGraceMs: 500,
       acceptTimeoutMs: 10_000,
-      idleTimeoutMs: 700,
-      reapIntervalMs: 100,
-      workspaceRoots: sleepConfig.workspaceRoots,
+      workspaceRoots: persistConfig.workspaceRoots,
       maxStartingWorkers: 4,
-      modelRuntime: sleepRuntime,
+      modelRuntime: persistRuntime,
     });
-    const sleepApp = createCodingAgentApp({
-      config: sleepConfig,
-      modelRuntime: sleepRuntime,
-      supervisor: sleepSup,
+    const persistApp = createCodingAgentApp({
+      config: persistConfig,
+      modelRuntime: persistRuntime,
+      supervisor: persistSup,
     });
-    const sleepServer = Bun.serve({
+    const persistServer = Bun.serve({
       port: 0,
       hostname: "127.0.0.1",
       idleTimeout: 0,
-      fetch: sleepApp.fetch,
+      fetch: persistApp.fetch,
     });
-    const sleepClient = new CodingAgentClient({
-      baseUrl: `http://127.0.0.1:${sleepServer.port}`,
+    const persistClient = new CodingAgentClient({
+      baseUrl: `http://127.0.0.1:${persistServer.port}`,
       authToken: "token-123",
     });
-    const sleepBackend = new CodingAgentBackend(sleepClient);
+    const persistBackend = new CodingAgentBackend(persistClient);
+    // The session id is derived from the idempotency key (inputId); the
+    // sqlite file lives under that name. dbRows closes over it and is only
+    // called after start() resolved.
+    let sessionFile = "";
+    const dbRows = (sql: string): unknown[] => {
+      const db = new Database(sessionFile, { readonly: true });
+      try {
+        return db.query(sql).all();
+      } finally {
+        db.close();
+      }
+    };
     try {
-      const started = await sleepBackend.start({
+      const started = await persistBackend.start({
         history: [],
-        input: { inputId: "in-sl", message: { role: "user", text: "first" } },
+        input: {
+          inputId: "in-p1",
+          // Large enough that the branch exceeds the fake model's context
+          // budget (200k) and a manual compact actually cuts + persists a
+          // compaction entry.
+          message: { role: "user", text: `first ${"y".repeat(900_000)}` },
+          productEntryId: "pe-1",
+        },
         run: {
-          runId: "run-sl-1",
+          runId: "run-p-1",
           model: { backendKind: "coding_agent", modelId: "fake/echo" },
           productTools: [],
+          systemPrompt: "SYS-PROMPT-MARKER",
           configRevision: 1,
         },
-        workspace: { root: `${sleepTmp}/ws`, access: "read_write" },
+        workspace: { root: `${persistTmp}/ws`, access: "read_write" },
         metadata: { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 },
       });
-      await started.segment.outcome;
+      // Capture Run 1's worker PID at acceptance (the one-shot worker exits
+      // right after its outcome, so it must be read before the outcome).
+      const pid1 = persistSup
+        .listSessions()
+        .find((v) => v.backendSessionId === started.session.backendSessionId)?.workerPid;
+      expect(pid1).not.toBeNull();
+      const outcome1 = await started.segment.outcome;
+      expect(outcome1.status).toBe("completed");
+      sessionFile = `${persistTmp}/sessions/${started.session.backendSessionId}.sqlite`;
 
-      // Wait for the reaper to sleep the session (worker closed, PID null).
-      let pid1: number | null = null;
+      // Run 1's one-shot worker exits after its outcome; the session
+      // returns to idle with no live worker.
       for (let i = 0; i < 100; i++) {
-        const view = sleepSup
+        const view = persistSup
           .listSessions()
           .find((v) => v.backendSessionId === started.session.backendSessionId);
-        pid1 = view?.workerPid ?? null;
-        if (view?.state === "sleeping" && pid1 === null) break;
+        if (view?.state === "idle" && view.workerPid === null) break;
         await new Promise((r) => setTimeout(r, 20));
       }
-      expect(
-        sleepSup.listSessions().find((v) => v.backendSessionId === started.session.backendSessionId)
-          ?.state,
-      ).toBe("sleeping");
+      const idleView = persistSup
+        .listSessions()
+        .find((v) => v.backendSessionId === started.session.backendSessionId);
+      expect(idleView?.state).toBe("idle");
+      expect(idleView?.workerPid).toBeNull();
 
-      // Wake: a follow-up spawns a NEW worker (new PID) and completes.
-      const wake = await sleepBackend.send(started.session, {
+      // Persistence across the Worker boundary: completed branch leaf,
+      // productEntryId lossless, todo state present, system prompt NOT in
+      // the tree.
+      expect(
+        (dbRows("SELECT leaf_entry_id FROM meta")[0] as { leaf_entry_id: string }).leaf_entry_id,
+      ).toBeTruthy();
+      const pe1 = dbRows(
+        "SELECT COUNT(*) AS n FROM entries WHERE product_entry_id = 'pe-1'",
+      ) as Array<{
+        n: number;
+      }>;
+      expect(pe1[0]?.n).toBe(1);
+      const todos = dbRows("SELECT state FROM entries WHERE type = 'todo'") as Array<{
+        state: string;
+      }>;
+      expect(todos).toHaveLength(1);
+      expect(JSON.parse(todos[0]!.state)).toMatchObject({ items: [{ id: "t1" }] });
+      const sysInTree = dbRows(
+        "SELECT COUNT(*) AS n FROM entries WHERE message LIKE '%SYS-PROMPT-MARKER%'",
+      ) as Array<{ n: number }>;
+      expect(sysInTree[0]?.n).toBe(0);
+
+      // Run 2: a NEW one-shot Worker (different PID) over the same session.
+      const wake = await persistBackend.send(started.session, {
         history: [],
-        input: { inputId: "in-sl-2", message: { role: "user", text: "wake" } },
+        input: {
+          inputId: "in-p2",
+          message: { role: "user", text: "second" },
+          productEntryId: "pe-2",
+        },
         run: {
-          runId: "run-sl-2",
+          runId: "run-p-2",
           model: { backendKind: "coding_agent", modelId: "fake/echo" },
           productTools: [],
           configRevision: 2,
@@ -194,18 +256,90 @@ describe("session lifecycle (real worker)", () => {
         mode: "follow_up",
         metadata: { branchId: "b", productRevision: 2 },
       });
-      const wakeOutcome = await wake.outcome;
-      expect(wakeOutcome.status).toBe("completed");
-      const pid2 = sleepSup
+      // Capture Run 2's worker PID at acceptance, then await its outcome.
+      const pid2 = persistSup
         .listSessions()
         .find((v) => v.backendSessionId === started.session.backendSessionId)?.workerPid;
       expect(pid2).not.toBeNull();
-      if (pid1 !== null) expect(pid2).not.toBe(pid1); // a NEW worker process
-      await sleepBackend.close(started.session);
+      expect(pid2).not.toBe(pid1); // a NEW worker process per Run
+      const wakeOutcome = await wake.outcome;
+      expect(wakeOutcome.status).toBe("completed");
+
+      // Fidelity after the second Worker: pe-1 still exactly once, pe-2 exactly once (the
+      // same canonical Message is never persisted twice), todo still one
+      // entry, both prompt entries on the completed branch.
+      const pe1After = dbRows(
+        "SELECT COUNT(*) AS n FROM entries WHERE product_entry_id = 'pe-1'",
+      ) as Array<{
+        n: number;
+      }>;
+      const pe2After = dbRows(
+        "SELECT COUNT(*) AS n FROM entries WHERE product_entry_id = 'pe-2'",
+      ) as Array<{
+        n: number;
+      }>;
+      expect(pe1After[0]?.n).toBe(1);
+      expect(pe2After[0]?.n).toBe(1);
+      const todosAfter = dbRows("SELECT state FROM entries WHERE type = 'todo'") as Array<{
+        state: string;
+      }>;
+      // Run 1's todo entry survived the Worker replacement. (The wake run may or may not
+      // append a second todo_write: its first model turn can be consumed by
+      // the threshold compaction that the oversized prompt triggers.)
+      expect(todosAfter.length).toBeGreaterThanOrEqual(1);
+      expect(JSON.parse(todosAfter[0]!.state)).toMatchObject({ items: [{ id: "t1" }] });
+
+      // Idempotent replay of the ORIGINAL start must not append a second
+      // batch: same inputId -> same session, no new prompt entry.
+      const promptsBefore = (
+        dbRows(
+          "SELECT COUNT(*) AS n FROM entries WHERE source IN ('prompt','follow_up')",
+        ) as Array<{ n: number }>
+      )[0]?.n;
+      const replay = await persistBackend.start({
+        history: [],
+        input: {
+          inputId: "in-p1",
+          message: { role: "user", text: `first ${"y".repeat(900_000)}` },
+          productEntryId: "pe-1",
+        },
+        run: {
+          runId: "run-p-1",
+          model: { backendKind: "coding_agent", modelId: "fake/echo" },
+          productTools: [],
+          systemPrompt: "SYS-PROMPT-MARKER",
+          configRevision: 1,
+        },
+        workspace: { root: `${persistTmp}/ws`, access: "read_write" },
+        metadata: { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 },
+      });
+      expect(replay.session.backendSessionId).toBe(started.session.backendSessionId);
+      const promptsAfter = (
+        dbRows(
+          "SELECT COUNT(*) AS n FROM entries WHERE source IN ('prompt','follow_up')",
+        ) as Array<{ n: number }>
+      )[0]?.n;
+      expect(promptsAfter).toBe(promptsBefore);
+
+      // Manual compact: the compaction entry persists (covers old entries)
+      // and survives the following read.
+      await persistClient.compactSession(started.session.backendSessionId, {
+        idempotencyKey: `compact-${started.session.backendSessionId}`,
+        commandId: `compact-${started.session.backendSessionId}`,
+      });
+      const summaries = dbRows(
+        "SELECT covers_entry_ids FROM entries WHERE type = 'compaction'",
+      ) as Array<{
+        covers_entry_ids: string;
+      }>;
+      expect(summaries.length).toBeGreaterThan(0);
+      expect(JSON.parse(summaries[0]!.covers_entry_ids).length).toBeGreaterThan(0);
+
+      await persistBackend.close(started.session);
     } finally {
-      sleepServer.stop();
-      await sleepApp.stop();
-      rmSync(sleepTmp, { recursive: true, force: true });
+      persistServer.stop();
+      await persistApp.stop();
+      rmSync(persistTmp, { recursive: true, force: true });
     }
   }, 30_000);
 });

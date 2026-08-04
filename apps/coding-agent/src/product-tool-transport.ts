@@ -56,8 +56,16 @@ export function adaptProductTool(
     name: descriptor.name,
     description: descriptor.description,
     inputSchema: descriptor.inputSchema,
-    async execute(input: unknown, signal?: AbortSignal): Promise<ToolExecuteResult> {
-      const callId = nextCallId();
+    async execute(
+      input: unknown,
+      signal?: AbortSignal,
+      options?: { callId?: string },
+    ): Promise<ToolExecuteResult> {
+      // The model tool-use id (PendingToolCall.id) when the loop supplies it:
+      // stable under same-semantics replays, unlike an order-dependent
+      // counter. The counter is only the fallback for direct/caller-driven
+      // executions that carry no model identity.
+      const callId = options?.callId ?? nextCallId();
       const identity: ProductToolCallIdentity = {
         ...opts.identity,
         callId,

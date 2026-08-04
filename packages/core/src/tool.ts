@@ -12,5 +12,11 @@ export interface Tool {
    *  "concurrent" = read-only, no side effects, safe to run in parallel
    *  with other concurrent tools in the same turn. */
   readonly executionMode?: "serial" | "concurrent";
-  execute(input: unknown, signal?: AbortSignal): ToolExecuteResult | Promise<ToolExecuteResult>;
+  execute(
+    input: unknown,
+    signal?: AbortSignal,
+    /** Per-call execution context from the loop: the model tool-use id when
+     *  the call originated from the model (stable idempotency identity). */
+    options?: { callId?: string },
+  ): ToolExecuteResult | Promise<ToolExecuteResult>;
 }

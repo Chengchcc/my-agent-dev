@@ -32,6 +32,9 @@ rl.on("line", async (line) => {
     stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId, runId: cmd.runId }) + "\\n");
     stdout.write(JSON.stringify({ protocolVersion: 1, type: "event", backendSessionId: cmd.backendSessionId, runId: cmd.runId, event: { type: "message_update", text: "steered" } }) + "\\n");
   }
+  if (cmd.type === "stop_run") {
+    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId, runId: cmd.runId }) + "\\n");
+  }
   if (cmd.type === "shutdown" || cmd.type === "close_session") {
     stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId }) + "\\n");
     process.exit(0);
@@ -59,7 +62,6 @@ beforeAll(() => {
     eventBufferSize: 100,
     workerStopGraceMs: 500,
     acceptTimeoutMs: 5000,
-    idleTimeoutMs: 60_000,
     workspaceRoots: [ws],
     maxStartingWorkers: 4,
   });

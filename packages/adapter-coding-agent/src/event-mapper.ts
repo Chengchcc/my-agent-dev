@@ -42,10 +42,11 @@ export function mapRunEvent(event: TransportRunEvent): BackendEvent<"coding_agen
     case "tool_execution_end": {
       const toolName = String(event.data.toolName ?? "unknown");
       const callId = String(event.data.callId ?? `call-${event.id}`);
+      const result = event.data.result as Readonly<Record<string, unknown>> | undefined;
       if (event.data.kind === "product") {
-        return { type: "product_tool_completed", toolName, callId };
+        return { type: "product_tool_completed", toolName, callId, result };
       }
-      return { type: "native_tool_completed", toolName, callId };
+      return { type: "native_tool_completed", toolName, callId, result };
     }
     case "agent_start":
     case "agent_end":

@@ -1,51 +1,41 @@
 /** Daemon-local session record and legal lifecycle transitions. This is the
  *  single in-memory owner of per-session live state; it is NOT a database and
  *  NOT the source of truth for Agent Runs (that is Product Backend + the
- *  per-session SQLite file). */
+ *  per-session SQLite file).
+ *
+ *  One-shot Worker model: a Worker exists only while its Run is executing.
+ *  There is no long-lived Worker, no sleeping state, no wake path. Session
+ *  continuity across Workers is guaranteed by the SQLite SessionStore, never
+ *  by a resident process. */
 
-export type SessionState = "starting" | "live" | "sleeping" | "stopping" | "closed" | "crashed";
+export type SessionState = "idle" | "starting" | "running" | "closing" | "closed" | "crashed";
 
 export interface SessionRecord {
   readonly backendSessionId: string;
   state: SessionState;
-  workerPid: number | null;
-  activeRunId: string | null;
-  /** Run reserved but not yet accepted by the Worker. Events/outcomes for this
-   *  run are accepted BEFORE activeRunId is set, closing the accepted+event
-   *  same-chunk race. Cleared on acceptance (moved to activeRunId) or
-   *  rejection (buffer rolled back). */
-  pendingRunId: string | null;
+  /** Workspace binding established at start; gates tool installation and is
+   *  enforced on every later resume/send. */
   workspaceRoot: string;
-  /** Workspace access level established at start; gates tool installation. */
   workspaceAccess: "read_only" | "read_write";
-  /** Product Tool manifest + call identity from the establishing run. */
-  productTools: readonly {
-    name: string;
-    description: string;
-    inputSchema: Readonly<Record<string, unknown>>;
-    entrypoint: string;
-  }[];
-  productIdentity: {
-    runId: string;
-    conversationId: string;
-    agentMemberId: string;
-    branchId: string;
-  };
+  /** The run currently owned by the live Worker (at most one per session). */
+  activeRunId: string | null;
+  /** PID of the Worker executing the active run (or the maintenance Worker).
+   *  null when no Worker is live. */
+  workerPid: number | null;
+  /** Session-level run identity carried on every run of this session
+   *  (branchId/productRevision are per-Run and travel with the command). */
+  conversationId: string;
+  agentMemberId: string;
   lastActivityAt: number;
-  /** True once a Worker exited unexpectedly for this session. */
-  crashedAt: number | null;
-  /** Set while the Supervisor is deliberately shutting this session's Worker
-   *  down (sleep/close): the resulting exit must not be marked crashed. */
-  exiting: boolean;
 }
 
 export type SessionTransition = { from: SessionState; to: SessionState };
 
 const LEGAL_TRANSITIONS: Record<SessionState, readonly SessionState[]> = {
-  starting: ["live", "stopping", "closed", "crashed"],
-  live: ["sleeping", "stopping", "closed", "crashed", "starting"],
-  sleeping: ["starting", "stopping", "closed", "crashed"],
-  stopping: ["closed", "crashed"],
+  idle: ["starting", "closing", "crashed"],
+  starting: ["running", "idle", "closing", "crashed"],
+  running: ["idle", "closing", "crashed"],
+  closing: ["closed", "crashed"],
   closed: [],
   crashed: [],
 };
@@ -57,17 +47,14 @@ export function canTransition(from: SessionState, to: SessionState): boolean {
 export function createSessionRecord(backendSessionId: string): SessionRecord {
   return {
     backendSessionId,
-    state: "starting",
-    workerPid: null,
-    activeRunId: null,
-    pendingRunId: null,
+    state: "idle",
     workspaceRoot: "",
     workspaceAccess: "read_write",
-    productTools: [],
-    productIdentity: { runId: "", conversationId: "", agentMemberId: "", branchId: "" },
+    activeRunId: null,
+    workerPid: null,
+    conversationId: "",
+    agentMemberId: "",
     lastActivityAt: Date.now(),
-    crashedAt: null,
-    exiting: false,
   };
 }
 

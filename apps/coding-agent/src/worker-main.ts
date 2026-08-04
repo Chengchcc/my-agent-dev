@@ -26,14 +26,17 @@ import {
   type WorkerRuntime,
 } from "./worker-runtime.js";
 
-/** Daemon-spawned Worker entry: reads NDJSON commands on stdin, emits
- *  protocol NDJSON on stdout only, logs to stderr. Exactly one session.
+/** Daemon-spawned ONE-SHOT Worker: reads NDJSON commands on stdin, emits
+ *  protocol NDJSON on stdout only, logs to stderr. Exactly one session and at
+ *  most one normal Run: after the run's outcome (or compact's result) the
+ *  Worker closes its Runtime and exits. Session continuity across Runs is the
+ *  SQLite SessionStore's job, not a resident process.
  *
- *  Command dispatch is serialized for lifecycle mutations (open/start/follow-up/
- *  compact/close) via a promise chain - readline does NOT await async line
- *  listeners, so without a chain multiple commands would interleave. steer and
- *  stop are control inputs delivered to the active loop immediately and do not
- *  wait on the chain. */
+ *  Command dispatch is serialized for lifecycle commands (open/start/compact/
+ *  close) via a promise chain - readline does NOT await async line listeners,
+ *  so without a chain multiple commands would interleave. steer and stop are
+ *  control inputs delivered to the active loop immediately and do not wait on
+ *  the chain. A second normal Run is a protocol violation: fatal + exit. */
 
 export interface WorkerMainOptions {
   stdin: NodeJS.ReadableStream;
@@ -60,14 +63,12 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
   // process actually exits (readline close -> chain drains -> main returns).
   let closeRl: (() => void) | null = null;
   let currentRunId: string | null = null;
-  // Session-level facts captured on the first start_run, reused by follow-ups.
+  // Session-level facts from open_session, reused by the single run command.
   let sessionWorkspace: WorkspaceBinding | null = null;
-  let sessionMetadata: {
-    conversationId: string;
-    agentMemberId: string;
-    branchId: string;
-    productRevision: number;
-  } | null = null;
+  let sessionIdentity: { conversationId: string; agentMemberId: string } | null = null;
+  /** True once a normal run (start_run/send) executed: one-shot Worker, a
+   *  second normal run is a protocol violation. */
+  let runExecuted = false;
 
   const send = (msg: Parameters<typeof serializeMessage>[0]): void => {
     outStream.write(serializeMessage(msg));
@@ -96,10 +97,10 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
     input: BackendInputMessage,
     mode: "normal" | "follow_up",
   ) {
-    const workspace: WorkspaceBinding =
-      cmd.type === "start_run"
-        ? cmd.workspace
-        : (sessionWorkspace ?? { root: process.cwd(), access: "read_write" });
+    const workspace: WorkspaceBinding = sessionWorkspace ?? {
+      root: process.cwd(),
+      access: "read_write",
+    };
     let metadata: {
       conversationId: string;
       agentMemberId: string;
@@ -108,18 +109,16 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
     };
     if (cmd.type === "start_run") {
       metadata = cmd.metadata;
-      sessionWorkspace = cmd.workspace;
-      sessionMetadata = cmd.metadata;
     } else {
-      // Follow-up/steer: conversation + agentMember inherit the session;
-      // branchId + productRevision come from the CURRENT send (a fork or
-      // branch change must take effect, and Product Tool identity uses it).
-      const current = cmd.metadata;
+      // Follow-up: conversation + agentMember inherit the session (from
+      // open_session); branchId + productRevision come from the CURRENT send
+      // (a fork or branch change must take effect, and Product Tool identity
+      // uses it).
       metadata = {
-        conversationId: sessionMetadata?.conversationId ?? "",
-        agentMemberId: sessionMetadata?.agentMemberId ?? "",
-        branchId: current?.branchId ?? sessionMetadata?.branchId ?? "",
-        productRevision: current?.productRevision ?? sessionMetadata?.productRevision ?? 0,
+        conversationId: sessionIdentity?.conversationId ?? "",
+        agentMemberId: sessionIdentity?.agentMemberId ?? "",
+        branchId: cmd.metadata?.branchId ?? "",
+        productRevision: cmd.metadata?.productRevision ?? 0,
       };
     }
     return {
@@ -153,8 +152,6 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
               backendSessionId: cmd.backendSessionId,
               modelRuntime,
               skillRoots: [],
-              productTools: cmd.productTools as never,
-              productIdentity: cmd.identity as never,
             });
         runtime.session.onEvent(listener);
         // Exactly one open_session per Worker: a second one with a different
@@ -164,6 +161,8 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
             `open_session identity mismatch: worker is ${runtime.sessionId}, got ${cmd.backendSessionId}`,
           );
         }
+        sessionWorkspace = { root: cmd.workspaceRoot, access: cmd.workspaceAccess };
+        sessionIdentity = cmd.identity;
         // Create or reopen the durable session file before any run. Only a
         // genuine not-found creates; corruption/permission errors must NOT be
         // misread as "missing" (they propagate as command_error).
@@ -207,6 +206,11 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
           });
           break;
         }
+        // One-shot: one normal Run per Worker process.
+        if (runExecuted) {
+          throw new Error("second normal run on a one-shot worker (protocol violation)");
+        }
+        runExecuted = true;
         runtime.setActiveRun(cmd.run as AgentRunSnapshot<"coding_agent">);
         currentRunId = cmd.runId;
 
@@ -238,11 +242,19 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
           outcome: mapLoopResult(result) as never,
         });
         currentRunId = null;
+        // The Run is done: this Worker has no second Run. Close the Runtime
+        // (MCP clients, store) and exit; the Supervisor observes the outcome
+        // and our exit independently.
+        await runtime.close();
+        closeRl?.();
         break;
       }
 
       case "compact": {
         if (!runtime) throw new Error("session not open");
+        if (runExecuted) {
+          throw new Error("compact after a run on a one-shot worker (protocol violation)");
+        }
         send({
           protocolVersion: 1,
           type: "command_accepted",
@@ -257,6 +269,9 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
           backendSessionId: runtime.sessionId,
           result: { compacted: true },
         });
+        // One-shot maintenance Worker: exit after the result.
+        await runtime.close();
+        closeRl?.();
         break;
       }
 

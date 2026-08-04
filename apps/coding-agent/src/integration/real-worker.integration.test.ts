@@ -38,7 +38,6 @@ beforeAll(() => {
     eventBufferSize: 100,
     workerStopGraceMs: 500,
     acceptTimeoutMs: 10_000,
-    idleTimeoutMs: 60_000,
     workspaceRoots: config.workspaceRoots,
     maxStartingWorkers: 4,
   });
