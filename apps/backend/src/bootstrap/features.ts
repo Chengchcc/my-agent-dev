@@ -23,8 +23,7 @@ import {
   sqliteAgentRunAdapter,
 } from "../features/agent-run/index.js";
 import { createConversationFeature } from "../features/conversation/conversation-compose.js";
-import { conversationRoutes } from "../features/conversation/index.js";
-import { onRunComplete } from "../features/conversation/run-accumulator.js";
+import { conversationRoutes, sqliteConversationAdapter } from "../features/conversation/index.js";
 import {
   createCronJobService,
   createCronScheduler,
@@ -190,26 +189,15 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   const relSvc = createRelationshipService(db, config);
 
-  // ─── Conversation ───────────────────────────────────────────
+  // ─── Conversation + Phase 4 Agent Run (conversation first: the ledger
+  //      resolver and run services build on its port; the execution service
+  //      is wired last through dispatchRun to break the cascade cycle) ──
 
-  const conv = createConversationFeature(
-    db,
-    config,
-    supervisor,
-    agentSvc,
-    services.opsStore,
-    sessionManager,
-    settingsSvc,
-    mcpClientManager,
-    modelRegistry,
-    relSvc,
-  );
-
-  // ─── Phase 4: Agent Run execution over CodingAgentBackend ────────
+  const convPort = sqliteConversationAdapter(db);
 
   const ledgerResolver: LedgerMessageResolver = {
     async resolveMessage(conversationId, ledgerSeq) {
-      const entries = conv.convPort.getLedgerEntries(conversationId, { sinceSeq: ledgerSeq });
+      const entries = convPort.getLedgerEntries(conversationId, { sinceSeq: ledgerSeq });
       const hit = entries.find((e) => e.seq === ledgerSeq);
       if (hit?.kind !== "message") return null;
       // getLedgerEntries returns content already parsed (port type lies).
@@ -231,13 +219,24 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     ledgerResolver,
   });
 
+  let dispatchRun: (runId: string) => Promise<void> = async () => {};
+  const conv = createConversationFeature({
+    convPort,
+    agentSvc,
+    settingsSvc,
+    relSvc,
+    agentRunService,
+    dispatchRun,
+    contextService: contextSvc,
+  });
+
   // Product Tools (History) - assembled unconditionally so the MCP endpoint
   // and the execution manifest are consistent; the MCP server only listens
   // when a URL is configured.
   const productTools = createProductToolsService({
     runPort: agentRunPort,
     contextPort,
-    conversationPort: conv.convPort,
+    conversationPort: convPort,
     callPort: sqliteProductToolCallAdapter(db),
     idGen: { ulid },
   });
@@ -257,6 +256,20 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   // configured; without it recover() is a no-op and Phase 5 callers still
   // have the service handle for enqueue/query.
   let agentRunExecution: ReturnType<typeof createAgentRunExecutionService>;
+  const onRunCommitted = (runId: string, output: Message | undefined): void => {
+    void (async () => {
+      const run = await agentRunPort.getRun(runId);
+      if (!run || !output) return;
+      await conv.convSvc.cascadeMentionedAgents({
+        conversationId: run.conversationId,
+        sourceRunId: runId,
+        senderMemberId: run.agentMemberId,
+        message: output,
+      });
+    })().catch((err) =>
+      console.error(`[bootstrap] mention cascade failed for ${runId}:`, err),
+    );
+  };
   if (config.codingAgentUrl && config.codingAgentServiceToken) {
     const client = new CodingAgentClient({
       baseUrl: config.codingAgentUrl,
@@ -283,6 +296,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       productToolsEntrypoint: config.productToolsMcpUrl
         ? `sse:${config.productToolsMcpUrl}`
         : "stdio:/nonexistent",
+      onRunCommitted,
     });
   } else {
     agentRunExecution = createAgentRunExecutionService({
@@ -298,27 +312,14 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       idGen: { ulid },
       resolveWorkspace: async () => ({ root: config.workspaceRoot, access: "read_write" }),
       productToolsEntrypoint: "stdio:/nonexistent",
+      onRunCommitted,
     });
     console.warn(
       "[bootstrap] CODING_AGENT_URL not configured - Agent Run execution is inert until Phase 5 wiring",
     );
   }
 
-  // ─── Event wiring ───────────────────────────────────────────
-
-  supervisor.onRunComplete(
-    (_sessionId: string, spanId: string, status: string, kind?: string, errorMessage?: string) => {
-      return onRunComplete(
-        spanId,
-        status,
-        conv.convPort,
-        conv.convSvc,
-        services.opsStore,
-        kind,
-        errorMessage,
-      );
-    },
-  );
+  dispatchRun = (runId: string) => agentRunExecution.dispatch(runId);
 
   // ─── Identity store + Lark setup ────────────────────────────
 

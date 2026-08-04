@@ -102,6 +102,11 @@ export interface AgentRunExecutionDeps {
   /** Product Tools MCP endpoint the Coding Agent Worker connects to
    *  (`sse:<url>`), from PRODUCT_TOOLS_MCP_URL. */
   readonly productToolsEntrypoint: string;
+  /** Called after a completed run's Product commit (History Message +
+   *  Context ref + binding) lands atomically. Fired on the original commit
+   *  AND on retryTerminalCommit replay - consumers must be idempotent per
+   *  (runId, ...). Used by Conversation for the mention cascade. */
+  readonly onRunCommitted?: (runId: string, output: Message | undefined) => void;
 }
 
 interface LiveRun {
@@ -370,6 +375,7 @@ export function createAgentRunExecutionService(
           output: outcome.output,
           backendSessionId,
         });
+        deps.onRunCommitted?.(run.runId, outcome.output);
       } catch (err) {
         // Backend finished but the Product transaction failed: keep the
         // branch occupied, store the outcome for retryTerminalCommit. The
@@ -473,6 +479,7 @@ export function createAgentRunExecutionService(
         output: outcome.output,
         backendSessionId: binding?.backendSessionId ?? "",
       });
+      deps.onRunCommitted?.(runId, outcome.output);
       liveRuns.delete(runId);
       closeSubscribers(runId);
     },

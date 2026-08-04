@@ -68,7 +68,7 @@ export function sqliteProductToolCallAdapter(
           .from(schema.agentRun)
           .where(eq(schema.agentRun.runId, runId))
           .get();
-        if (!run || run.status !== "running" || run.branchId !== branchId) {
+        if (run?.status !== "running" || run.branchId !== branchId) {
           throw new Error(`run ${runId} is not an active owner of branch ${branchId}`);
         }
 

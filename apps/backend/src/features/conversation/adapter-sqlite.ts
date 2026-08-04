@@ -210,27 +210,6 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
       return row!.seq;
     },
 
-    updateLedgerContent(seq: number, content: string, ts: number): void {
-      d.update(schema.conversationLedger)
-        .set({ content, ts })
-        .where(eq(schema.conversationLedger.seq, seq))
-        .run();
-    },
-
-    hasLedgerContent(spanId: string, content: string): boolean {
-      const row = d
-        .select({ one: sql`1` })
-        .from(schema.conversationLedger)
-        .where(
-          and(
-            eq(schema.conversationLedger.spanId, spanId),
-            eq(schema.conversationLedger.content, content),
-          ),
-        )
-        .limit(1)
-        .get();
-      return row !== undefined;
-    },
 
     getLedgerEntries(conversationId: string, opts?: { sinceSeq?: number }): LedgerEntry[] {
       const since = opts?.sinceSeq ?? 0;
