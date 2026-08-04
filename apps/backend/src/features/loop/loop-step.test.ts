@@ -120,12 +120,6 @@ function emptyState(): LoopState {
   return { loopId: "test", lastRun: null, items: {} };
 }
 
-const noopGitRunner = {
-  revParse: () => Promise.resolve({ text: () => "deadbeef" }),
-  diff: () => Promise.resolve({ text: () => "" }),
-  resetHard: () => Promise.resolve({ text: () => "" }),
-} satisfies GitRunner;
-
 // ── Fake Agent Run services ────────────────────────────────────────────────
 
 interface RunScript {

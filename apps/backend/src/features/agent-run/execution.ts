@@ -2,7 +2,6 @@ import type {
   CodingAgentBackend,
   CodingAgentModelCatalog,
 } from "@my-agent-team/adapter-coding-agent";
-import type { Message } from "@my-agent-team/message";
 import type {
   BackendEvent,
   BackendModelRef,
@@ -14,6 +13,7 @@ import type {
   ProjectedHistoryItem,
   WorkspaceBinding,
 } from "@my-agent-team/agent-backend";
+import type { Message } from "@my-agent-team/message";
 import type {
   AgentContextPort,
   IdGenerator,

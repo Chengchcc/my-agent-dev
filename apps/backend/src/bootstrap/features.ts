@@ -1,4 +1,3 @@
-import { Database } from "bun:sqlite";
 import {
   CodingAgentBackend,
   CodingAgentClient,
@@ -8,10 +7,9 @@ import type { Message } from "@my-agent-team/message";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Elysia } from "elysia";
 import type { FeatureSet } from "../app.js";
-import { AgentBusyError } from "../features/agent/index.js";
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
-import { agentRoutes } from "../features/agent/index.js";
+import { AgentBusyError, agentRoutes } from "../features/agent/index.js";
 import { createRelationshipService } from "../features/agent/relationship-service.js";
 import {
   createAgentContextService,
@@ -78,14 +76,7 @@ export interface InstalledFeatures {
 }
 
 export async function installFeatures(services: BackendServices): Promise<InstalledFeatures> {
-  const {
-    config,
-    db,
-    settingsSvc,
-    mcpClientManager,
-    loopStore,
-    larkBotRegistry,
-  } = services;
+  const { config, db, settingsSvc, mcpClientManager, loopStore, larkBotRegistry } = services;
 
   // ─── Skill Pack (before agentSvc — onCreate depends on it) ──
 
@@ -139,10 +130,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   // ─── Agent service ──────────────────────────────────────────
 
   // Busy guard for hardDelete is wired after the Agent Run adapter exists.
-  let agentBusyCheck: ((agentId: string) => void) | undefined;
+  const busyGuard: { check: ((agentId: string) => void) | undefined } = { check: undefined };
   const agentSvc = createAgentSvc(db, config, larkBotRegistry, {
     onAgentCreate: (agentId: string) => skillPackSvc.setAgentPacks(agentId, ["builtin"]),
-    assertNoActiveRun: (agentId: string) => agentBusyCheck?.(agentId),
+    assertNoActiveRun: (agentId: string) => busyGuard.check?.(agentId),
   });
 
   async function ensureAgent(id: string, name: string, model: string) {
@@ -186,7 +177,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     ledgerResolver,
   });
   const agentRunPort = sqliteAgentRunAdapter(db, { contextPort, ledgerResolver, idGen: { ulid } });
-  agentBusyCheck = (agentId: string) => {
+  busyGuard.check = (agentId: string) => {
     const row = db
       .query(
         `SELECT 1 FROM agent_run
@@ -203,14 +194,14 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     ledgerResolver,
   });
 
-  let dispatchRun: (runId: string) => Promise<void> = async () => {};
+  const dispatchRun: { fn: (runId: string) => Promise<void> } = { fn: async () => {} };
   const conv = createConversationFeature({
     convPort,
     agentSvc,
     settingsSvc,
     relSvc,
     agentRunService,
-    dispatchRun,
+    dispatchRun: (runId: string) => dispatchRun.fn(runId),
     contextService: contextSvc,
   });
 
@@ -301,7 +292,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     );
   }
 
-  dispatchRun = (runId: string) => agentRunExecution.dispatch(runId);
+  dispatchRun.fn = (runId: string) => agentRunExecution.dispatch(runId);
 
   // ─── Identity store + Lark setup ────────────────────────────
 
@@ -430,7 +421,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     settings: settingsRoutes(settingsSvc),
     mcp: mcpRoutes(mcpSvc),
     models: new Elysia().get("/api/models", () => ({
-      providers: [{ id: "coding_agent", name: "Coding Agent", models: [{ id: "claude-sonnet-4-20250514" }] }],
+      providers: [
+        { id: "coding_agent", name: "Coding Agent", models: [{ id: "claude-sonnet-4-20250514" }] },
+      ],
     })),
   };
 

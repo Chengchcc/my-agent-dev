@@ -1,6 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { unlinkSync } from "node:fs";
 import { Elysia } from "elysia";
+import {
+  createAgentContextService,
+  sqliteAgentContextAdapter,
+} from "../../src/features/agent-context/index.js";
 import { sqliteConversationAdapter } from "../../src/features/conversation/adapter-sqlite.js";
 import { createGoalStateStore } from "../../src/features/conversation/goal-state.js";
 import { conversationRoutes } from "../../src/features/conversation/http.js";
@@ -9,10 +13,6 @@ import {
   createConversationService,
 } from "../../src/features/conversation/service.js";
 import { openDb } from "../../src/infra/sqlite/db.js";
-import {
-  createAgentContextService,
-  sqliteAgentContextAdapter,
-} from "../../src/features/agent-context/index.js";
 
 const dbPath = `/tmp/test-e2e-conv-${Date.now()}.db`;
 const db = openDb(dbPath);

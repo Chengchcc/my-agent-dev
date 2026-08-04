@@ -26,8 +26,7 @@ export {
   createAgentRunExecutionService,
   decideExecutionPath,
 } from "./execution.js";
+export { agentRunRoutes } from "./http.js";
 export type { AgentRunPort } from "./ports.js";
 export type { AgentRunService, AgentRunServiceDeps } from "./service.js";
 export { createAgentRunService } from "./service.js";
-
-export { agentRunRoutes } from "./http.js";

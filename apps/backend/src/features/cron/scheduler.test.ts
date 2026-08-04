@@ -301,7 +301,6 @@ describe("createCronScheduler (Agent Run cutover)", () => {
     const fakes = makeRunsFakes({ status: "aborted" });
     const stopSpy = mock(async () => {});
     let fired: (() => void) | null = null;
-    let fireCount = 0;
     const deps = {
       cronSvc: {
         port: {
@@ -322,7 +321,6 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       scheduler: {
         schedule: (_expr: string, fn: () => void) => {
           fired = () => {
-            fireCount++;
             void fn();
           };
           return { stop: () => {} };
