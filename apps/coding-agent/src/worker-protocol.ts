@@ -111,6 +111,13 @@ export const sendCommand = z.object({
   }),
   input: inputMessageSchema,
   workspaceRoot: z.string().optional(),
+  metadata: z
+    .object({
+      branchId: z.string(),
+      throughEntryId: z.string().optional(),
+      productRevision: z.number(),
+    })
+    .optional(),
 });
 
 export const compactCommand = z.object({

@@ -137,7 +137,6 @@ export function createRoutes(deps: RouteDeps): Elysia {
           input: parsed.data.input as never,
           run: parsed.data.run as never,
           workspace: parsed.data.workspace,
-          env: parsed.data.env,
           metadata: parsed.data.metadata,
         });
         return Response.json(result);

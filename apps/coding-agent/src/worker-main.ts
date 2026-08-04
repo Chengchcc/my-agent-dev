@@ -100,18 +100,27 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
       cmd.type === "start_run"
         ? cmd.workspace
         : (sessionWorkspace ?? { root: process.cwd(), access: "read_write" });
-    const metadata =
-      cmd.type === "start_run"
-        ? cmd.metadata
-        : (sessionMetadata ?? {
-            conversationId: "",
-            agentMemberId: "",
-            branchId: "",
-            productRevision: 0,
-          });
+    let metadata: {
+      conversationId: string;
+      agentMemberId: string;
+      branchId: string;
+      productRevision: number;
+    };
     if (cmd.type === "start_run") {
+      metadata = cmd.metadata;
       sessionWorkspace = cmd.workspace;
       sessionMetadata = cmd.metadata;
+    } else {
+      // Follow-up/steer: conversation + agentMember inherit the session;
+      // branchId + productRevision come from the CURRENT send (a fork or
+      // branch change must take effect, and Product Tool identity uses it).
+      const current = cmd.metadata;
+      metadata = {
+        conversationId: sessionMetadata?.conversationId ?? "",
+        agentMemberId: sessionMetadata?.agentMemberId ?? "",
+        branchId: current?.branchId ?? sessionMetadata?.branchId ?? "",
+        productRevision: current?.productRevision ?? sessionMetadata?.productRevision ?? 0,
+      };
     }
     return {
       history,
@@ -274,6 +283,7 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
           backendSessionId: runtime?.sessionId ?? cmd.backendSessionId,
         });
         closed = true;
+        if (runtime) await runtime.close();
         // Actually exit: close the readline (stdin) so the process terminates
         // and the Supervisor's awaited handle.exited resolves - the session
         // file is then safe to delete or reopen.
@@ -289,6 +299,7 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
           backendSessionId: runtime?.sessionId ?? cmd.backendSessionId,
         });
         closed = true;
+        if (runtime) await runtime.close();
         closeRl?.();
         break;
       }

@@ -29,7 +29,6 @@ export interface BackendStartInput<K extends string = string> {
   readonly input: BackendInputMessage;
   readonly run: AgentRunSnapshot<K>;
   readonly workspace: WorkspaceBinding;
-  readonly env?: Readonly<Record<string, string>>;
   readonly metadata: {
     readonly conversationId: string;
     readonly agentMemberId: string;

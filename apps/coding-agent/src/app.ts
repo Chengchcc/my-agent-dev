@@ -40,6 +40,7 @@ export function createCodingAgentApp(deps: CodingAgentAppDeps): CodingAgentApp {
       reapIntervalMs: deps.config.reapIntervalMs,
       workspaceRoots: deps.config.workspaceRoots,
       maxStartingWorkers: deps.config.maxStartingWorkers,
+      modelRuntime: deps.modelRuntime,
     });
 
   const app = new Elysia().use(

@@ -6,6 +6,7 @@ import type {
   ProjectedHistoryItem,
   WorkspaceBinding,
 } from "@my-agent-team/agent-backend";
+import type { ModelRuntime } from "@my-agent-team/ai";
 import { createRunEventBuffer, type RunEventBuffer } from "./event-buffer.js";
 import { createSessionRecord, type SessionRecord, transition } from "./session-record.js";
 import { spawnWorkerProcess, type WorkerProcessHandle } from "./worker-process.js";
@@ -35,6 +36,9 @@ export interface SupervisorOptions {
   workspaceRoots: readonly string[];
   /** Max concurrent Worker process spawns (FIFO startup semaphore). */
   maxStartingWorkers: number;
+  /** Daemon ModelRuntime for preflight model validation (reject unknown /
+   *  unavailable models at HTTP acceptance, not after the run starts). */
+  modelRuntime?: ModelRuntime;
 }
 
 export interface SessionView {
@@ -159,6 +163,21 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
   function recordMutation(key: string, payload: unknown, result: unknown): void {
     mutations.set(key, { key, payloadHash: hashPayload(payload), result });
   }
+  /** Preflight model validation: reject unknown/unavailable models at HTTP
+   *  acceptance so the caller can distinguish config errors from accepted-then-
+   *  failed runs. */
+  async function validateModel(modelId: string): Promise<void> {
+    if (!opts.modelRuntime) return;
+    const catalog = await opts.modelRuntime.getCatalog();
+    const model = catalog.models.find((m) => `${m.providerId}/${m.modelId}` === modelId);
+    if (!model) {
+      throw err("invalid_request", `model not found in daemon catalog: ${modelId}`);
+    }
+    if (model.available === false) {
+      throw err("invalid_request", `model unavailable: ${modelId}`);
+    }
+  }
+
   /** Validate a requested workspace root is within the configured allowlist.
    *  Both sides canonicalize with realpathSync (matching config's allowlist),
    *  so symlinked roots like macOS /tmp -> /private/tmp compare equal. */
@@ -302,7 +321,9 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       return;
     }
     if (msg.type === "event") {
-      if (msg.runId !== rec.activeRunId) return; // stale/unknown run event
+      // Accept events for the pending run (reserved, pre-acceptance) or the
+      // active run. A stale/unknown run is dropped.
+      if (msg.runId !== rec.pendingRunId && msg.runId !== rec.activeRunId) return;
       const buf = eventBuffers.get(msg.runId);
       if (buf) {
         buf.append({
@@ -314,10 +335,14 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       // Terminal outcomes are first-write-wins: a later outcome for the same
       // run (or a replay after close) must not overwrite the settled one.
       if (outcomes.has(msg.runId)) return;
-      if (msg.runId !== rec.activeRunId) return;
+      if (msg.runId !== rec.pendingRunId && msg.runId !== rec.activeRunId) return;
       outcomes.set(msg.runId, { runId: msg.runId, ...(msg.outcome as object) });
       eventBuffers.get(msg.runId)?.close();
-      rec.activeRunId = null;
+      // If the outcome arrived BEFORE acceptance, the run already settled:
+      // clear both pending and active so the resume of handle.send() does not
+      // re-mark a finished run as active (permanent busy).
+      if (rec.pendingRunId === msg.runId) rec.pendingRunId = null;
+      if (rec.activeRunId === msg.runId) rec.activeRunId = null;
     } else if (msg.type === "command_error" || msg.type === "fatal") {
       if (msg.type === "fatal" || (rec.activeRunId && msg.commandId?.startsWith("start-"))) {
         failActiveRun(backendSessionId, msg.message);
@@ -379,7 +404,11 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         throw err("busy", `session already exists: ${input.backendSessionId}`);
       }
       const workspaceRoot = validateWorkspace(input.workspace.root);
+      await validateModel(input.run.model.modelId);
       const runId = input.run.runId;
+      if (eventBuffers.has(runId) || outcomes.has(runId)) {
+        throw err("conflict", `runId already in use: ${runId}`);
+      }
       const rec = createSessionRecord(input.backendSessionId);
       rec.workspaceRoot = workspaceRoot;
       rec.workspaceAccess = input.workspace.access;
@@ -437,12 +466,16 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     },
 
     async resumeSession(input) {
+      // Idempotent replay: the same resume mutation returns the original
+      // result instead of re-starting the run or surfacing a spurious busy.
+      const replay = mutationResult(input.idempotencyKey, input);
+      if (replay) return replay.replay as { backendSessionId: string; runId: string };
       const rec = sessions.get(input.backendSessionId);
       if (!rec) {
         // No live record: start fresh (session file may exist on disk)
         return this.startSession(input);
       }
-      if (rec.activeRunId)
+      if (rec.activeRunId || rec.pendingRunId)
         throw err("busy", `session has an active run: ${input.backendSessionId}`);
       if (rec.state === "crashed") {
         // Crashed active loop is NOT resumable; a new session from fresh
@@ -452,9 +485,11 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       const handle = await workerFor(rec, input.backendSessionId);
       handles.set(input.backendSessionId, handle);
       const runId = input.run.runId;
-      // Reserve the buffer before the command (no event-loss window); roll
-      // back on rejection so no half-state remains.
+      await validateModel(input.run.model.modelId);
+      // Reserve the buffer + pendingRunId before the command (no event-loss
+      // window, no busy-after-settled); roll back on rejection.
       eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
+      rec.pendingRunId = runId;
       try {
         await handle.send({
           protocolVersion: 1,
@@ -471,9 +506,11 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         });
       } catch (err) {
         eventBuffers.delete(runId);
+        if (rec.pendingRunId === runId) rec.pendingRunId = null;
         throw err;
       }
-      rec.activeRunId = runId;
+      rec.pendingRunId = null;
+      if (!outcomes.has(runId)) rec.activeRunId = runId;
       const result = { backendSessionId: input.backendSessionId, runId };
       recordMutation(input.idempotencyKey, input, result);
       return result;
@@ -503,11 +540,17 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       const handle = handles.get(input.backendSessionId);
       if (!handle) throw err("busy", `no live worker: ${input.backendSessionId}`);
       const runId = input.runId;
-      // Reserve the event buffer BEFORE the command so events the Worker emits
-      // in the same stdout chunk as command_accepted are not lost. Roll back
-      // the reservation if acceptance fails.
+      // Reserve the buffer + pendingRunId BEFORE the command: events/outcomes
+      // in the same stdout chunk as command_accepted are accepted for the
+      // pending run. Roll back on rejection. A runId already owned elsewhere
+      // is a trust-boundary collision, not a silent overwrite.
       if (input.mode !== "steer") {
+        await validateModel(input.run.model.modelId);
+        if (eventBuffers.has(runId) || outcomes.has(runId)) {
+          throw err("conflict", `runId already in use: ${runId}`);
+        }
         eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
+        rec.pendingRunId = runId;
       }
       try {
         await handle.send({
@@ -520,13 +563,20 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
           history: input.history as never,
           input: input.input as never,
           run: input.run as never,
+          metadata: input.metadata as never,
         });
       } catch (err) {
-        if (input.mode !== "steer") eventBuffers.delete(runId);
+        if (input.mode !== "steer") {
+          eventBuffers.delete(runId);
+          if (rec.pendingRunId === runId) rec.pendingRunId = null;
+        }
         throw err;
       }
       if (input.mode !== "steer") {
-        rec.activeRunId = runId;
+        // Promote pending -> active ONLY if the run did not already settle
+        // (its outcome arrived before acceptance).
+        rec.pendingRunId = null;
+        if (!outcomes.has(runId)) rec.activeRunId = runId;
       }
       const result = { accepted: true, runId, commandId: input.commandId };
       recordMutation(input.idempotencyKey, input, result);
@@ -640,24 +690,29 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
 
     async shutdown() {
       clearInterval(reaper);
+      // Collect every Worker's exit promise, then await them all so the
+      // daemon does not tear down while a Worker still holds a session file
+      // or is mid-outcome.
+      const exits: Promise<number | null>[] = [];
       for (const [sessionId, rec] of sessions) {
         const handle = handles.get(sessionId);
         if (handle) {
+          rec.exiting = true;
           try {
             handle.shutdown();
+            exits.push(handle.exited);
           } catch {
             /* */
           }
           handles.delete(sessionId);
         }
         rec.workerPid = null;
-        // crashed records can't transition to stopping/closed; they are
-        // already terminal and just get dropped from the registry.
         if (rec.state !== "closed" && rec.state !== "crashed") {
           transition(rec, "stopping");
           transition(rec, "closed");
         }
       }
+      await Promise.allSettled(exits);
       sessions.clear();
       for (const b of eventBuffers.values()) b.close();
       eventBuffers.clear();

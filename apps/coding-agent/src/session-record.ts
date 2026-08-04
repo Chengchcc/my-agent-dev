@@ -10,6 +10,11 @@ export interface SessionRecord {
   state: SessionState;
   workerPid: number | null;
   activeRunId: string | null;
+  /** Run reserved but not yet accepted by the Worker. Events/outcomes for this
+   *  run are accepted BEFORE activeRunId is set, closing the accepted+event
+   *  same-chunk race. Cleared on acceptance (moved to activeRunId) or
+   *  rejection (buffer rolled back). */
+  pendingRunId: string | null;
   workspaceRoot: string;
   /** Workspace access level established at start; gates tool installation. */
   workspaceAccess: "read_only" | "read_write";
@@ -55,6 +60,7 @@ export function createSessionRecord(backendSessionId: string): SessionRecord {
     state: "starting",
     workerPid: null,
     activeRunId: null,
+    pendingRunId: null,
     workspaceRoot: "",
     workspaceAccess: "read_write",
     productTools: [],

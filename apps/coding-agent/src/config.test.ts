@@ -21,7 +21,6 @@ describe("daemon config", () => {
     expect(cfg.workspaceRoots).toEqual([wsReal]);
     expect(cfg.maxStartingWorkers).toBe(4);
     expect(cfg.sessionsDir).toBe(`${tmp}/sessions`);
-    expect(cfg.workspaceRoots).toEqual([`${tmp}/ws`]);
   });
 
   test("empty token rejected", () => {

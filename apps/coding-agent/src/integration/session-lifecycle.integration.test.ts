@@ -108,4 +108,104 @@ describe("session lifecycle (real worker)", () => {
     expect(leftovers).toHaveLength(0);
     void existsSync;
   }, 30_000);
+
+  test("idle sleep closes the worker; wake spawns a new PID and completes", async () => {
+    // A dedicated supervisor with a short idle timeout so the real worker
+    // sleeps mid-test, then wakes on the next command.
+    const sleepTmp = `/tmp/coding-sleep-${Math.random().toString(36).slice(2, 8)}`;
+    mkdirSync(`${sleepTmp}/ws`, { recursive: true });
+    const sleepConfig = loadConfig({
+      CODING_AGENT_AUTH_TOKEN: "token-123",
+      CODING_AGENT_DATA_DIR: sleepTmp,
+      CODING_AGENT_WORKSPACE_ROOTS: `${sleepTmp}/ws`,
+      CODING_AGENT_FAKE_PROVIDER: "1",
+    });
+    const sleepRuntime = createModelRuntime();
+    const sleepSup = createCodingSessionSupervisor({
+      workerEntry: join(import.meta.dir, "..", "worker-main.ts"),
+      cwd: sleepTmp,
+      sessionsDir: `${sleepTmp}/sessions`,
+      authEnv: { ...sleepConfig.providerEnv, CODING_AGENT_FAKE_PROVIDER: "1" },
+      eventBufferSize: 100,
+      workerStopGraceMs: 500,
+      acceptTimeoutMs: 10_000,
+      idleTimeoutMs: 700,
+      reapIntervalMs: 100,
+      workspaceRoots: sleepConfig.workspaceRoots,
+      maxStartingWorkers: 4,
+      modelRuntime: sleepRuntime,
+    });
+    const sleepApp = createCodingAgentApp({
+      config: sleepConfig,
+      modelRuntime: sleepRuntime,
+      supervisor: sleepSup,
+    });
+    const sleepServer = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      idleTimeout: 0,
+      fetch: sleepApp.fetch,
+    });
+    const sleepClient = new CodingAgentClient({
+      baseUrl: `http://127.0.0.1:${sleepServer.port}`,
+      authToken: "token-123",
+    });
+    const sleepBackend = new CodingAgentBackend(sleepClient);
+    try {
+      const started = await sleepBackend.start({
+        history: [],
+        input: { inputId: "in-sl", message: { role: "user", text: "first" } },
+        run: {
+          runId: "run-sl-1",
+          model: { backendKind: "coding_agent", modelId: "fake/echo" },
+          productTools: [],
+          configRevision: 1,
+        },
+        workspace: { root: `${sleepTmp}/ws`, access: "read_write" },
+        metadata: { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 },
+      });
+      await started.segment.outcome;
+
+      // Wait for the reaper to sleep the session (worker closed, PID null).
+      let pid1: number | null = null;
+      for (let i = 0; i < 100; i++) {
+        const view = sleepSup
+          .listSessions()
+          .find((v) => v.backendSessionId === started.session.backendSessionId);
+        pid1 = view?.workerPid ?? null;
+        if (view?.state === "sleeping" && pid1 === null) break;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      expect(
+        sleepSup.listSessions().find((v) => v.backendSessionId === started.session.backendSessionId)
+          ?.state,
+      ).toBe("sleeping");
+
+      // Wake: a follow-up spawns a NEW worker (new PID) and completes.
+      const wake = await sleepBackend.send(started.session, {
+        history: [],
+        input: { inputId: "in-sl-2", message: { role: "user", text: "wake" } },
+        run: {
+          runId: "run-sl-2",
+          model: { backendKind: "coding_agent", modelId: "fake/echo" },
+          productTools: [],
+          configRevision: 2,
+        },
+        mode: "follow_up",
+        metadata: { branchId: "b", productRevision: 2 },
+      });
+      const wakeOutcome = await wake.outcome;
+      expect(wakeOutcome.status).toBe("completed");
+      const pid2 = sleepSup
+        .listSessions()
+        .find((v) => v.backendSessionId === started.session.backendSessionId)?.workerPid;
+      expect(pid2).not.toBeNull();
+      if (pid1 !== null) expect(pid2).not.toBe(pid1); // a NEW worker process
+      await sleepBackend.close(started.session);
+    } finally {
+      sleepServer.stop();
+      await sleepApp.stop();
+      rmSync(sleepTmp, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

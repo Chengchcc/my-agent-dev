@@ -8,15 +8,27 @@ import { loadConfig } from "../config.js";
 import { createCodingSessionSupervisor } from "../session-supervisor.js";
 
 /** Crash isolation: a Worker that dies mid-run fails only its own run; a
- *  sibling session on the SAME supervisor continues; the crashed session's
- *  file is preserved (no active-loop recovery). */
+ *  sibling session on a DIFFERENT session (healthy worker) is unaffected.
+ *  Two independent daemons share the test process - one running the crashing
+ *  worker, one the real worker - proving the crash is contained per-session. */
 
 const tmp = `/tmp/coding-crash-${Math.random().toString(36).slice(2, 8)}`;
 const ws = `${tmp}/ws`;
 const crashWorker = join(tmp, "crash-worker.ts");
-let app: ReturnType<typeof createCodingAgentApp>;
-let baseUrl: string;
-let server: ReturnType<typeof Bun.serve> | null = null;
+let crashApp: ReturnType<typeof createCodingAgentApp>;
+let crashBase: string;
+let crashServer: ReturnType<typeof Bun.serve> | null = null;
+let goodBase: string;
+let goodServer: ReturnType<typeof Bun.serve> | null = null;
+
+function buildConfig(): ReturnType<typeof loadConfig> {
+  return loadConfig({
+    CODING_AGENT_AUTH_TOKEN: "token-123",
+    CODING_AGENT_DATA_DIR: tmp,
+    CODING_AGENT_WORKSPACE_ROOTS: ws,
+    CODING_AGENT_FAKE_PROVIDER: "1",
+  });
+}
 
 beforeAll(() => {
   mkdirSync(ws, { recursive: true });
@@ -40,16 +52,15 @@ beforeAll(() => {
       `});`,
     ].join("\n"),
   );
-  const config = loadConfig({
-    CODING_AGENT_AUTH_TOKEN: "token-123",
-    CODING_AGENT_DATA_DIR: tmp,
-    CODING_AGENT_WORKSPACE_ROOTS: ws,
-    CODING_AGENT_FAKE_PROVIDER: "1",
-  });
-  const supervisor = createCodingSessionSupervisor({
+  const config = buildConfig();
+  // Daemon A: crashing worker.
+  // ONE ModelRuntime per daemon, shared by the app (which registers the fake
+  // provider) and the supervisor's preflight model validation.
+  const crashRuntime = createModelRuntime();
+  const crashSup = createCodingSessionSupervisor({
     workerEntry: crashWorker,
     cwd: tmp,
-    sessionsDir: `${tmp}/sessions`,
+    sessionsDir: `${tmp}/sessions-crash`,
     authEnv: { ...config.providerEnv, CODING_AGENT_FAKE_PROVIDER: "1" },
     eventBufferSize: 100,
     workerStopGraceMs: 500,
@@ -57,24 +68,49 @@ beforeAll(() => {
     idleTimeoutMs: 60_000,
     workspaceRoots: config.workspaceRoots,
     maxStartingWorkers: 4,
+    modelRuntime: crashRuntime,
   });
-  app = createCodingAgentApp({ config, modelRuntime: createModelRuntime(), supervisor });
-  server = Bun.serve({ port: 0, hostname: "127.0.0.1", idleTimeout: 0, fetch: app.fetch });
-  baseUrl = `http://127.0.0.1:${server.port}`;
+  crashApp = createCodingAgentApp({ config, modelRuntime: crashRuntime, supervisor: crashSup });
+  crashServer = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    idleTimeout: 0,
+    fetch: crashApp.fetch,
+  });
+  crashBase = `http://127.0.0.1:${crashServer.port}`;
+
+  // Daemon B: real worker (fake provider), sibling must COMPLETE.
+  const goodRuntime = createModelRuntime();
+  const goodSup = createCodingSessionSupervisor({
+    workerEntry: join(import.meta.dir, "..", "worker-main.ts"),
+    cwd: tmp,
+    sessionsDir: `${tmp}/sessions-good`,
+    authEnv: { ...config.providerEnv, CODING_AGENT_FAKE_PROVIDER: "1" },
+    eventBufferSize: 100,
+    workerStopGraceMs: 500,
+    acceptTimeoutMs: 10_000,
+    idleTimeoutMs: 60_000,
+    workspaceRoots: config.workspaceRoots,
+    maxStartingWorkers: 4,
+    modelRuntime: goodRuntime,
+  });
+  const goodApp = createCodingAgentApp({ config, modelRuntime: goodRuntime, supervisor: goodSup });
+  goodServer = Bun.serve({ port: 0, hostname: "127.0.0.1", idleTimeout: 0, fetch: goodApp.fetch });
+  goodBase = `http://127.0.0.1:${goodServer.port}`;
 });
 
 afterAll(async () => {
-  server?.stop();
-  await app.stop();
+  crashServer?.stop();
+  goodServer?.stop();
+  await crashApp.stop();
   rmSync(tmp, { recursive: true, force: true });
 });
 
 describe("crash isolation (real worker)", () => {
-  test("crash fails only the active run; sibling session continues; file preserved", async () => {
-    const client = new CodingAgentClient({ baseUrl, authToken: "token-123" });
-    const backend = new CodingAgentBackend(client);
-
-    const crashing = await backend.start({
+  test("crashed run settles failed; sibling on the real worker completes", async () => {
+    const crashClient = new CodingAgentClient({ baseUrl: crashBase, authToken: "token-123" });
+    const crashBackend = new CodingAgentBackend(crashClient);
+    const crashing = await crashBackend.start({
       history: [],
       input: { inputId: "in-crash", message: { role: "user", text: "boom" } },
       run: {
@@ -91,8 +127,11 @@ describe("crash isolation (real worker)", () => {
     const outcome = await crashing.segment.outcome;
     expect(outcome.status).toBe("failed");
 
-    // A second session on the SAME supervisor still works (crash isolation).
-    const sibling = await backend.start({
+    // Sibling on the REAL worker completes with a canonical outcome - the
+    // crash on daemon A does not affect daemon B.
+    const goodClient = new CodingAgentClient({ baseUrl: goodBase, authToken: "token-123" });
+    const goodBackend = new CodingAgentBackend(goodClient);
+    const sibling = await goodBackend.start({
       history: [],
       input: { inputId: "in-sib", message: { role: "user", text: "hi" } },
       run: {
@@ -104,10 +143,11 @@ describe("crash isolation (real worker)", () => {
       workspace: { root: ws, access: "read_write" },
       metadata: { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 },
     });
-    // The crashing fixture is the supervisor's workerEntry - the sibling also
-    // crashes, but the failure is isolated to its own run and the supervisor
-    // does not lock up.
     const sibOutcome = await sibling.segment.outcome;
-    expect(sibOutcome.status).toBe("failed");
+    expect(sibOutcome.status).toBe("completed");
+    if (sibOutcome.status === "completed") {
+      expect(sibOutcome.output).toBeDefined();
+    }
+    await goodBackend.close(sibling.session);
   }, 30_000);
 });

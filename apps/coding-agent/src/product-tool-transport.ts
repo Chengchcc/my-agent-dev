@@ -10,6 +10,10 @@ export interface ProductToolCallIdentity {
   readonly agentMemberId: string;
   readonly branchId: string;
   readonly callId: string;
+  /** Stable per-run idempotency key for the Product Backend
+   *  (`${runId}:${callId}`). callId is monotonic per run, so retries within
+   *  the run replay; a fresh run produces fresh keys. */
+  readonly idempotencyKey: string;
 }
 
 /** Caller that reaches the Product backend's tool endpoint over MCP (or any
@@ -28,7 +32,7 @@ export interface ProductToolCaller {
 }
 
 export interface ProductToolTransportOptions {
-  readonly identity: Omit<ProductToolCallIdentity, "callId">;
+  readonly identity: Omit<ProductToolCallIdentity, "callId" | "idempotencyKey">;
   readonly caller: ProductToolCaller;
   /** Per-call timeout. The run's AbortSignal is forwarded regardless. */
   readonly timeoutMs: number;
@@ -53,7 +57,12 @@ export function adaptProductTool(
     description: descriptor.description,
     inputSchema: descriptor.inputSchema,
     async execute(input: unknown, signal?: AbortSignal): Promise<ToolExecuteResult> {
-      const identity: ProductToolCallIdentity = { ...opts.identity, callId: nextCallId() };
+      const callId = nextCallId();
+      const identity: ProductToolCallIdentity = {
+        ...opts.identity,
+        callId,
+        idempotencyKey: `${opts.identity.runId}:${callId}`,
+      };
       // A per-call controller lets BOTH the run's stop signal and the timeout
       // abort the underlying MCP request (the caller tears its transport down).
       const controller = new AbortController();

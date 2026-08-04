@@ -31,11 +31,20 @@ export function mapRunEvent(event: TransportRunEvent): BackendEvent<"coding_agen
     case "tool_execution_start": {
       const toolName = String(event.data.toolName ?? "unknown");
       const callId = String(event.data.callId ?? `call-${event.id}`);
+      // Product Tools map to product_tool_started; native tools to
+      // native_tool_started. The worker's resolved Product Tools carry
+      // kind="product", surfaced on the runtime event.
+      if (event.data.kind === "product") {
+        return { type: "product_tool_started", toolName, callId };
+      }
       return { type: "native_tool_started", toolName, callId };
     }
     case "tool_execution_end": {
       const toolName = String(event.data.toolName ?? "unknown");
       const callId = String(event.data.callId ?? `call-${event.id}`);
+      if (event.data.kind === "product") {
+        return { type: "product_tool_completed", toolName, callId };
+      }
       return { type: "native_tool_completed", toolName, callId };
     }
     case "agent_start":

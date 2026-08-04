@@ -31,6 +31,9 @@ const CAPABILITIES: AgentBackendCapabilities = {
 
 interface ActiveRun {
   readonly runId: string;
+  /** The ORIGINAL segment object for the run - steer returns this exact
+   *  object so callers observe one stream, one outcome, one stop state. */
+  readonly segment: BackendRunSegment<"coding_agent">;
   stop(): Promise<void>;
 }
 
@@ -57,7 +60,6 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent", CodingAg
       input: input.input as never,
       run: input.run as never,
       workspace: input.workspace,
-      env: input.env,
       metadata: input.metadata,
     });
     const ref: CodingAgentSessionRef = {
@@ -88,9 +90,9 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent", CodingAg
           metadata: input.metadata,
         });
         // Steer is an in-flight injection into the active run - it has no
-        // terminal outcome of its own. Return the ACTIVE segment so the caller
-        // keeps observing the real run.
-        return buildSegment(this.client, this.activeRuns, session, active.runId);
+        // terminal outcome of its own. Return the SAME segment object the
+        // caller already holds (one stream, one outcome, one stop state).
+        return active.segment;
       }
       // No active run: steer was rejected daemon-side; surface a settled
       // failed segment so the caller never treats steer as a completion.
@@ -125,7 +127,6 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent", CodingAg
       input: input.input as never,
       run: input.run as never,
       workspace: input.workspace,
-      env: input.env,
       metadata: input.metadata,
     });
     const ref: CodingAgentSessionRef = { backendSessionId, backendKind: "coding_agent" };
@@ -167,9 +168,6 @@ function buildSegment(
     stopped = true;
     await client.stopSession(ref.backendSessionId, runId);
   };
-
-  const active: ActiveRun = { runId, stop: doStop };
-  activeRuns.set(ref.backendSessionId, active);
 
   async function* eventStream(): AsyncIterable<BackendEvent<"coding_agent">> {
     // Reconnect by lastEventId if the SSE connection drops before the run
@@ -214,7 +212,14 @@ function buildSegment(
     }
   });
 
-  return { events: eventStream(), outcome: outcomePromise, stop: doStop };
+  const segment: BackendRunSegment<"coding_agent"> = {
+    events: eventStream(),
+    outcome: outcomePromise,
+    stop: doStop,
+  };
+  const active: ActiveRun = { runId, segment, stop: doStop };
+  activeRuns.set(ref.backendSessionId, active);
+  return segment;
 }
 
 // Re-export so callers can construct the input message type explicitly.

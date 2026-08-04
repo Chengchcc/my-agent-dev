@@ -504,8 +504,12 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     async function runOne(
       call: PendingToolCall,
     ): Promise<{ id: string; result: unknown; isError: boolean; terminate: boolean }> {
-      await emit({ type: "tool_execution_start", toolName: call.name });
       const tool = toolMap.get(call.name);
+      await emit({
+        type: "tool_execution_start",
+        toolName: call.name,
+        kind: tool?.kind ?? "native",
+      });
       let result: unknown;
       let isError = false;
       let terminate = false;
@@ -533,6 +537,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       await emit({
         type: "tool_execution_end",
         toolName: call.name,
+        kind: tool?.kind ?? "native",
         result: (result ?? {}) as Readonly<Record<string, unknown>>,
       });
       return { id: call.id, result, isError, terminate };

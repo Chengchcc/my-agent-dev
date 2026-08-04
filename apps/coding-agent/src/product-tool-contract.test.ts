@@ -12,35 +12,9 @@ import { buildProductTools } from "./product-tool-transport.js";
 const tmp = `/tmp/ptc-${Math.random().toString(36).slice(2, 8)}`;
 mkdirSync(tmp, { recursive: true });
 
-const MCP_SERVER = `
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-const server = new Server({ name: "echo-server", version: "1.0.0" }, { capabilities: { tools: {} } });
-server.setRequestHandler({ method: "tools/list" }, async () => ({
-  tools: [{ name: "echo", description: "Echo", inputSchema: { type: "object" } }],
-}));
-server.setRequestHandler({ method: "tools/call" }, async (req) => {
-  const name = req.params.name;
-  const args = req.params.arguments ?? {};
-  // Echo the tool name + identity meta back so the test can assert the wire
-  // binding without needing the Product backend.
-  return {
-    content: [{
-      type: "text",
-      text: JSON.stringify({ name, meta: args._meta ?? null, echo: args.echo ?? null }),
-    }],
-  };
-});
-await server.connect(new StdioServerTransport());
-`;
-
-let serverPath: string;
-try {
-  serverPath = join(tmp, "mcp-server.ts");
-  writeFileSync(serverPath, MCP_SERVER);
-} catch {
-  serverPath = "";
-}
+// In-repo fixture server so bun resolves @modelcontextprotocol/sdk from the
+// workspace node_modules (a /tmp file cannot).
+const serverPath = join(import.meta.dir, "__fixtures__", "mcp-echo-server.ts");
 
 const IDENTITY = { runId: "r1", conversationId: "c1", agentMemberId: "m1", branchId: "b1" };
 
@@ -99,26 +73,42 @@ describe("product-tool contract (real MCP server via entrypoint)", () => {
     expect(seen[0]).not.toBe("stdio:product-tool-server|create_issue");
   });
 
-  test("spawned MCP server receives the tool name over the entrypoint transport", async () => {
-    // Exercise the Worker's real caller path: entrypoint -> stdio command
-    // (here: bun mcp-server.ts), name -> MCP tool name.
-    const entrypoint = `bun ${serverPath}`;
-    const calls: Array<{ name: string; entrypoint: string }> = [];
-    const caller: ProductToolCaller = {
-      async callTool(p) {
-        calls.push({ name: p.name, entrypoint: p.entrypoint });
-        return { content: "ok" };
-      },
-    };
-    const tools = buildProductTools(
-      [{ name: "echo", description: "Echo", inputSchema: {}, entrypoint }],
-      { identity: IDENTITY, caller, timeoutMs: 5000 },
-    );
-    expect(tools[0]?.name).toBe("echo");
-    expect(calls).toHaveLength(0);
-    // The entrypoint string itself is passed through untouched - the Worker
-    // caller maps it to StdioClientTransport({ command: entrypoint }).
-    expect(entrypoint.startsWith("bun ")).toBe(true);
+  test("real MCP connection: Worker caller executes entrypoint + verifies identity", async () => {
+    // A single-executable wrapper (entrypoint must be ONE executable per the
+    // URI format - no shell-splitting): `stdio:<wrapper>`.
+    const wrapper = join(tmp, "mcp-wrapper.sh");
+    writeFileSync(wrapper, `#!/bin/sh\nexec bun ${serverPath}\n`, { mode: 0o755 });
+    const entrypoint = `stdio:${wrapper}`;
+
+    // The REAL caller path (same code the Worker uses): connect, list tools,
+    // call the tool named `echo` over the transport at `entrypoint`.
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+    const transport = new StdioClientTransport({ command: wrapper, args: [] });
+    const client = new Client({ name: "test", version: "0.0.1" }, { capabilities: {} });
+    await client.connect(transport as never);
+    const tools = await (client as { listTools: () => Promise<{ tools: unknown[] }> }).listTools();
+    expect(tools.tools).toHaveLength(1);
+
+    const res = await (
+      client as {
+        callTool(p: {
+          name: string;
+          arguments?: unknown;
+          _meta?: { identity: unknown };
+        }): Promise<{ content: unknown }>;
+      }
+    ).callTool({
+      name: "echo",
+      arguments: { echo: "hi", _meta: { identity: IDENTITY } },
+      _meta: { identity: IDENTITY },
+    });
+    const contentArr = res.content as Array<{ text?: string }>;
+    const text = contentArr[0]?.text ?? "";
+    expect(text).toContain('"name":"echo"');
+    // Identity reached the server through the wire (the server echoes it).
+    expect(text).toContain('"runId":"r1"');
+    await (client as { close: () => Promise<void> }).close();
   });
 });
 

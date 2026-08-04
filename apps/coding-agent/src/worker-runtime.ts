@@ -65,6 +65,8 @@ export interface WorkerRuntime {
   readonly contextBudget: ContextBudget | undefined;
   /** Set before each start_run/send so modelStream resolves the run's model. */
   setActiveRun(run: AgentRunSnapshot<"coding_agent"> | null): void;
+  /** Close MCP clients etc. Call before the Worker process exits. */
+  close(): Promise<void>;
 }
 
 /** Single provider assembly shared by the daemon catalog and Workers: register
@@ -78,7 +80,7 @@ export function registerBuiltinProviders(
   if (env.CODING_AGENT_FAKE_PROVIDER === "1") {
     runtime.registerProvider(fakeProvider());
   } else if (env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN) {
-    runtime.registerProvider(anthropicProvider());
+    runtime.registerProvider(anthropicProvider({ baseUrl: env.ANTHROPIC_BASE_URL ?? undefined }));
   }
 }
 
@@ -123,25 +125,33 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
   // Run without a session rebuild. Every call carries identity + abort +
   // timeout through the transport.
   const { buildProductTools } = await import("./product-tool-transport.js");
-  // Direct MCP client per ENTRYPOINT (sse url or stdio command); the tool
-  // NAME is the MCP tool name. Identity is injected per call; timeout/abort
-  // close the transport so a canceled call cannot produce a late side effect.
+  // Direct MCP client per ENTRYPOINT; the tool NAME is the MCP tool name.
+  // entrypoint is a structured URI: `sse:<url>` or `stdio:<executable>` (a
+  // single executable path - never shell-split). Identity is injected per
+  // call; timeout/abort close the transport so a canceled call cannot produce
+  // a late side effect.
   const clients = new Map<string, unknown>();
   const caller: ProductToolCaller = {
     async callTool(p) {
       let client = clients.get(p.entrypoint);
       if (!client) {
         const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-        const isHttp = p.entrypoint.startsWith("http");
         let transport: unknown;
-        if (isHttp) {
+        if (p.entrypoint.startsWith("sse:")) {
           const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
-          transport = new SSEClientTransport(new URL(p.entrypoint));
-        } else {
+          transport = new SSEClientTransport(new URL(p.entrypoint.slice(4)));
+        } else if (p.entrypoint.startsWith("stdio:")) {
           const { StdioClientTransport } = await import(
             "@modelcontextprotocol/sdk/client/stdio.js"
           );
-          transport = new StdioClientTransport({ command: p.entrypoint, args: [] });
+          transport = new StdioClientTransport({
+            command: p.entrypoint.slice(6),
+            args: [],
+          });
+        } else {
+          throw new Error(
+            `invalid product tool entrypoint (expected sse:<url> or stdio:<executable>): ${p.entrypoint}`,
+          );
         }
         const c = new Client({ name: "coding-agent", version: "0.1.0" }, { capabilities: {} });
         await c.connect(transport as never);
@@ -179,7 +189,7 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
   const resolveTools = async (input: CodingLoopInput): Promise<readonly PluginTool[]> => {
     const manifest = input.run.productTools;
     if (!manifest || manifest.length === 0) return [];
-    return buildProductTools(manifest, {
+    const tools = buildProductTools(manifest, {
       identity: {
         runId: input.run.runId,
         conversationId: input.metadata.conversationId,
@@ -189,6 +199,12 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
       caller,
       timeoutMs: 30_000,
     }) as unknown as PluginTool[];
+    // Mark them so the loop's tool events carry kind="product" and consumers
+    // map them to product_tool_started/completed (not native_tool_*).
+    for (const t of tools) {
+      (t as PluginTool & { kind?: string }).kind = "product";
+    }
+    return tools;
   };
 
   let activeRun: AgentRunSnapshot<"coding_agent"> | null = null;
@@ -274,6 +290,18 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
     contextBudget,
     setActiveRun(run) {
       activeRun = run;
+    },
+    async close() {
+      // Tear down every MCP client (Product Tool transports) so no child
+      // process or connection outlives the Worker.
+      const closePromises: Promise<unknown>[] = [];
+      for (const [entrypoint, c] of clients) {
+        clients.delete(entrypoint);
+        closePromises.push(
+          (c as { close?: () => Promise<void> }).close?.().catch(() => {}) ?? Promise.resolve(),
+        );
+      }
+      await Promise.allSettled(closePromises);
     },
   };
 }

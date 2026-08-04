@@ -54,7 +54,6 @@ export const startSessionRequestSchema = z.object({
   input: inputMessageSchema,
   run: runSnapshotSchema,
   workspace: z.object({ root: z.string(), access: z.enum(["read_only", "read_write"]) }),
-  env: z.record(z.string()).optional(),
   metadata: z.object({
     conversationId: conversationIdSchema,
     agentMemberId: agentMemberIdSchema,
