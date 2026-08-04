@@ -6,7 +6,9 @@ import {
 } from "@my-agent-team/adapter-coding-agent";
 import type { Message } from "@my-agent-team/message";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { Elysia } from "elysia";
 import type { FeatureSet } from "../app.js";
+import { AgentBusyError } from "../features/agent/index.js";
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
 import { agentRoutes } from "../features/agent/index.js";
@@ -17,6 +19,7 @@ import {
 } from "../features/agent-context/index.js";
 import type { LedgerMessageResolver } from "../features/agent-context/ports.js";
 import {
+  agentRunRoutes,
   createAgentRunExecutionService,
   createAgentRunService,
   sqliteAgentRunAdapter,
@@ -32,7 +35,6 @@ import {
 import { CliSetupProvisioner, LarkSetupManager } from "../features/lark-bot/index.js";
 import { loopRoutes } from "../features/loop/http.js";
 import { createMcpService, mcpRoutes, sqliteMcpServerAdapter } from "../features/mcp/index.js";
-import { modelRoutes } from "../features/models/index.js";
 import {
   createProductToolsMcpServer,
   createProductToolsService,
@@ -43,7 +45,6 @@ import {
   projectRoutes,
   sqliteProjectAdapter,
 } from "../features/project/index.js";
-import { createCheckpointEventsStore } from "../features/runtime-ops/checkpoint-events-store.js";
 import { createRuntimeOpsService, opsRoutes } from "../features/runtime-ops/index.js";
 import { settingsRoutes } from "../features/settings/index.js";
 import type { SkillPackRow } from "../features/skill-pack/index.js";
@@ -56,8 +57,6 @@ import {
   skillPackRoutes,
   sqliteSkillPackAdapter,
 } from "../features/skill-pack/index.js";
-import { createModel, resolveModel } from "../features/span/agent-helpers.js";
-import { resumeRoutes } from "../features/span/http.js";
 import * as backendSchema from "../infra/db/schema.js";
 import { ulid } from "../infra/ids.js";
 import type { BackendServices } from "./services.js";
@@ -83,11 +82,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     config,
     db,
     settingsSvc,
-    modelRegistry,
-    anthropicAuth,
     mcpClientManager,
-    sessionManager,
-    supervisor,
     loopStore,
     larkBotRegistry,
   } = services;
@@ -143,8 +138,11 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   // ─── Agent service ──────────────────────────────────────────
 
-  const agentSvc = createAgentSvc(db, config, supervisor, larkBotRegistry, {
+  // Busy guard for hardDelete is wired after the Agent Run adapter exists.
+  let agentBusyCheck: ((agentId: string) => void) | undefined;
+  const agentSvc = createAgentSvc(db, config, larkBotRegistry, {
     onAgentCreate: (agentId: string) => skillPackSvc.setAgentPacks(agentId, ["builtin"]),
+    assertNoActiveRun: (agentId: string) => agentBusyCheck?.(agentId),
   });
 
   async function ensureAgent(id: string, name: string, model: string) {
@@ -188,6 +186,16 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     ledgerResolver,
   });
   const agentRunPort = sqliteAgentRunAdapter(db, { contextPort, ledgerResolver, idGen: { ulid } });
+  agentBusyCheck = (agentId: string) => {
+    const row = db
+      .query(
+        `SELECT 1 FROM agent_run
+         WHERE agent_member_id IN (SELECT member_id FROM member WHERE agent_id = ?)
+           AND status IN ('running','waiting','commit_failed') LIMIT 1`,
+      )
+      .get(agentId);
+    if (row) throw new AgentBusyError(agentId);
+  };
   const agentRunService = createAgentRunService({
     port: agentRunPort,
     contextService: contextSvc,
@@ -320,27 +328,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     return setupManager;
   }
 
-  // ─── Runtime Ops ────────────────────────────────────────────
-
-  let checkpointEventsStore: ReturnType<typeof createCheckpointEventsStore>;
-  try {
-    const checkpointDb = new Database(`${config.dataDir}/checkpointer.db`, { readonly: true });
-    checkpointEventsStore = createCheckpointEventsStore(checkpointDb);
-  } catch (err) {
-    if ((err as { code?: string }).code === "SQLITE_CANTOPEN") {
-      const noop = () => [];
-      checkpointEventsStore = {
-        readBySpan: noop,
-        readBySession: noop,
-        readWindow: noop,
-      };
-      console.warn(
-        `[bootstrap] checkpointer.db not found at ${config.dataDir} — ops fact-events will be empty until the first agent run`,
-      );
-    } else {
-      throw err;
-    }
-  }
+  // ─── Runtime Ops (surface-health audit only) ───────────────
 
   const backendDrizzle = drizzle(db, { casing: "snake_case", schema: backendSchema });
   const agentNames = new Map<string, string>();
@@ -354,8 +342,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   const opsSvc = createRuntimeOpsService({
     opsStore: services.opsStore,
-    supervisor,
-    checkpointEventsStore,
     getAgentName: (agentId: string) => agentNames.get(agentId),
   });
 
@@ -400,18 +386,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     projectPort,
   });
 
-  // ─── Resume ─────────────────────────────────────────────────
-
-  const resumeRun = resumeRoutes({
-    sessionManager,
-    getSessionIdByRunId: (spanId: string) =>
-      services.opsStore.getRuns([spanId])[0]?.sessionId ?? null,
-  });
-
   // ─── FeatureSet ─────────────────────────────────────────────
 
   const featureSet: FeatureSet = {
-    resumeRun,
     agents: agentRoutes(
       agentSvc,
       {
@@ -431,6 +408,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     ),
     conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore),
     ops: opsRoutes(opsSvc),
+    agentRuns: agentRunRoutes({ db, agentRunService, agentRunExecution }),
     projects: projectRoutes(projectSvc),
     loops: loopRoutes({
       cronSvc,
@@ -451,7 +429,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     skillPacks: skillPackRoutes(skillPackSvc, config.dataDir),
     settings: settingsRoutes(settingsSvc),
     mcp: mcpRoutes(mcpSvc),
-    models: modelRoutes(modelRegistry),
+    models: new Elysia().get("/api/models", () => ({
+      providers: [{ id: "coding_agent", name: "Coding Agent", models: [{ id: "claude-sonnet-4-20250514" }] }],
+    })),
   };
 
   // ─── Lifecycle ──────────────────────────────────────────────

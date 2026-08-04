@@ -21,8 +21,9 @@ export function createAgentService(opts: {
   materializeWorkspace: (agentId: string, template?: string) => Promise<string>;
   // M11 hardDelete dependencies — all closures from composition root (main.ts)
   purgeWorkspace: (agentId: string) => Promise<void>;
-  purgeEventsForSessions: (sessionIds: string[]) => Promise<void>;
-  listSessionIds: (agentId: string) => Promise<string[]>;
+  /** Guard: throws BusyError when the agent has an ACTIVE Agent Run
+   *  (running/waiting/commit_failed). Agent Run is the only execution
+   *  identity in Phase 5 - old session/attempt queries are gone. */
   assertNoActiveRun: (agentId: string) => void;
   /** Optional hook called after agent creation (e.g. assign builtin skill pack). */
   onCreate?: (agentId: string) => Promise<void>;
@@ -97,19 +98,13 @@ export function createAgentService(opts: {
       // 0. Verify agent exists (throws AgentNotFoundError if not)
       await this.getById(id);
 
-      // 1. Guard: assert no active runs (throws AgentBusyError if busy)
+      // 1. Guard: assert no active Agent Runs (throws AgentBusyError if busy)
       opts.assertNoActiveRun(id);
 
-      // 2. Collect session IDs for persistence cleanup
-      const sessionIds = await opts.listSessionIds(id);
-
-      // 3. backend.db: single transaction — agent + threads + checkpoint + member
+      // 2. backend.db: single transaction — agent + threads + member
       await port.hardDelete(id);
 
-      // 4. persistence: purge execution data for this agent's sessions
-      await opts.purgeEventsForSessions(sessionIds);
-
-      // 5. workspace: physical rm -rf (idempotent)
+      // 3. workspace: physical rm -rf (idempotent)
       await opts.purgeWorkspace(id);
     },
   };

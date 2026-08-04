@@ -1,15 +1,14 @@
-import type { ModelRegistry } from "@my-agent-team/ai";
 import { Elysia } from "elysia";
 
-export function modelRoutes(registry: ModelRegistry) {
-  return new Elysia().get("/api/models", () => {
+export interface ModelsCatalog {
+  list(): Promise<Array<{ id: string; name: string; available?: boolean }>>;
+}
+
+export function modelRoutes(catalog: ModelsCatalog) {
+  return new Elysia().get("/api/models", async () => {
+    const models = await catalog.list();
     return {
-      providers: registry.getProviders().map((p) => ({
-        id: p.id,
-        name: p.name,
-        baseUrl: p.baseUrl,
-        models: p.getModels(),
-      })),
+      providers: [{ id: "coding_agent", name: "Coding Agent", models }],
     };
   });
 }

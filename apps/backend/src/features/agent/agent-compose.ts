@@ -1,26 +1,28 @@
 import type { Database } from "bun:sqlite";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { eq, inArray } from "drizzle-orm";
 import type { BackendConfig } from "../../config.js";
-import * as schema from "../../infra/db/schema.js";
 import { ulid } from "../../infra/ids.js";
 import type { LarkBotRegistry } from "../lark-bot/index.js";
 import { larkProfileInit } from "../lark-bot/index.js";
-import type { SpanSupervisor } from "../span/supervisor.js";
 import { sqliteAgentAdapter } from "./adapter-sqlite.js";
 import { withLarkLifecycle } from "./agent-lark.js";
 import type { AgentService } from "./index.js";
-import { AgentBusyError, createAgentService } from "./index.js";
+import { createAgentService } from "./index.js";
 
-/** Create the full agent service with workspace materialization, thread-id lookup,
- *  hard-delete dependencies, lark-bot orchestration, and optional onCreate hook. */
+/** Create the full agent service with workspace materialization, hard-delete
+ *  dependencies, lark-bot orchestration, and optional onCreate hook.
+ *  The busy guard is injected as a function so features.ts can wire the
+ *  Agent Run query once the run adapter exists (no circular composition). */
 export function createAgentSvc(
   db: Database,
   config: BackendConfig,
-  supervisor: SpanSupervisor,
   larkBotRegistry: LarkBotRegistry,
-  opts?: { onAgentCreate?: (agentId: string) => Promise<void> },
+  opts?: {
+    onAgentCreate?: (agentId: string) => Promise<void>;
+    /** Throws when the agent has an active Agent Run. Defaults to no-op. */
+    assertNoActiveRun?: (agentId: string) => void;
+  },
 ): AgentService {
   const agentPort = sqliteAgentAdapter(db);
   const agentsDir = join(config.dataDir, "agents");
@@ -41,49 +43,8 @@ export function createAgentSvc(
       await rm(dir, { recursive: true, force: true });
     },
 
-    purgeEventsForSessions: async (sessionIds) => {
-      const d = supervisor.getDrizzle();
-      await d.transaction(async (tx) => {
-        for (const tid of sessionIds) {
-          tx.delete(schema.attempt)
-            .where(
-              inArray(
-                schema.attempt.spanId,
-                tx
-                  .select({ spanId: schema.span.spanId })
-                  .from(schema.span)
-                  .where(eq(schema.span.sessionId, tid)),
-              ),
-            )
-            .run();
-          tx.delete(schema.span).where(eq(schema.span.sessionId, tid)).run();
-        }
-      });
-    },
-
-    listSessionIds: async (agentId) =>
-      (
-        db
-          .query("SELECT conversation_id || ':' || member_id AS id FROM member WHERE agent_id = ?")
-          .all(agentId) as { id: string }[]
-      ).map((r) => r.id),
-
     assertNoActiveRun: (agentId) => {
-      const edb = supervisor.getDb();
-      const sessionIds = (
-        db
-          .query("SELECT conversation_id || ':' || member_id AS id FROM member WHERE agent_id = ?")
-          .all(agentId) as { id: string }[]
-      ).map((r) => r.id);
-      if (sessionIds.length === 0) return;
-      const placeholders = sessionIds.map(() => "?").join(",");
-      const busy = edb
-        .query(
-          `SELECT 1 FROM attempt WHERE ended_at IS NULL
-           AND span_id IN (SELECT span_id FROM span WHERE session_id IN (${placeholders})) LIMIT 1`,
-        )
-        .all(...sessionIds);
-      if (busy.length > 0) throw new AgentBusyError(agentId);
+      opts?.assertNoActiveRun?.(agentId);
     },
   });
 

@@ -115,7 +115,7 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
       return skills.map((s) => ({
         name: s.name,
         description: s.description,
-        dir: s.dir,
+        dir: s.relativePath,
       }));
     })
 

@@ -4,38 +4,99 @@ import { Elysia } from "elysia";
 import { sqliteConversationAdapter } from "../../src/features/conversation/adapter-sqlite.js";
 import { createGoalStateStore } from "../../src/features/conversation/goal-state.js";
 import { conversationRoutes } from "../../src/features/conversation/http.js";
-import { ConversationLock } from "../../src/features/conversation/lock.js";
 import {
   type ConversationServiceDeps,
   createConversationService,
 } from "../../src/features/conversation/service.js";
 import { openDb } from "../../src/infra/sqlite/db.js";
+import {
+  createAgentContextService,
+  sqliteAgentContextAdapter,
+} from "../../src/features/agent-context/index.js";
 
 const dbPath = `/tmp/test-e2e-conv-${Date.now()}.db`;
 const db = openDb(dbPath);
 const port = sqliteConversationAdapter(db);
-const lock = new ConversationLock();
-const activeSessions = new Map<
-  string,
-  Map<string, { steer: (t: string) => void; followUp: (t: string) => void }>
->();
+
+const contextPort = sqliteAgentContextAdapter(db, {
+  ulid: () => `c-${Math.random().toString(36).slice(2, 8)}`,
+});
+const ledgerResolver = {
+  async resolveMessage(conversationId: string, ledgerSeq: number) {
+    const entries = port.getLedgerEntries(conversationId, { sinceSeq: ledgerSeq });
+    const hit = entries.find((e) => e.seq === ledgerSeq);
+    return hit?.kind === "message" ? (hit.content as never) : null;
+  },
+};
+const contextSvc = createAgentContextService({
+  port: contextPort,
+  idGen: { ulid: () => `x-${Math.random().toString(36).slice(2, 8)}` },
+  ledgerResolver,
+});
 
 let idCount = 0;
 const idGen = () => `e2e-${idCount++}`;
 
 // Track agent runs triggered by postMessage
-const runLog: Array<{ spanId: string; agentMemberId: string; input?: string }> = [];
+const runLog: Array<{ agentMemberId: string; runId: string }> = [];
 
 const deps: ConversationServiceDeps = {
   port,
-  lock,
+  contextService: contextSvc,
+  dispatchRun: async () => {},
+  resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
   maxConsecutiveAgentHops: () => 8,
-  activeSessions,
-  startAgentRun: async (spanId, ctx) => {
-    runLog.push({ spanId, agentMemberId: ctx.agentMemberId, input: ctx.input });
-    return { spanId, attemptSeq: 0 };
-  },
   idGen,
+  agentRunService: {
+    async enqueueAndAcquire(input) {
+      const runId = `run-${runLog.length}`;
+      runLog.push({ agentMemberId: input.agentMemberId, runId });
+      return {
+        acquired: true,
+        queued: false,
+        replayed: false,
+        run: {
+          runId,
+          branchId: "b",
+          conversationId: input.conversationId,
+          agentMemberId: input.agentMemberId,
+          modelRef: { backendKind: "coding_agent", modelId: "m" },
+          status: "running",
+          idempotencyKey: input.idempotencyKey,
+          terminalResult: null,
+          configRevision: 1,
+          productTools: null,
+          createdAt: Date.now(),
+          terminalAt: null,
+        },
+        inputId: `in-${runId}`,
+      };
+    },
+    async claimNextInput() {
+      return null;
+    },
+    async markInputAccepted(inputId) {
+      return { inputId } as never;
+    },
+    async createPendingAction(runId, action) {
+      return { runId, actionId: "a", ...action } as never;
+    },
+    async consumePendingAction(actionId) {
+      return { action: { actionId } as never, runId: "r" };
+    },
+    async finalizeRun(runId) {
+      return { runId } as never;
+    },
+    async getRun() {
+      return null;
+    },
+    async getActiveRun() {
+      return null;
+    },
+    async listInputs() {
+      return [];
+    },
+  } as never,
 };
 
 const svc = createConversationService(deps);
@@ -116,10 +177,10 @@ describe("E2E Conversation lifecycle", () => {
     expect(msgResult.triggeredRuns.length).toBe(1);
     expect(msgResult.triggeredRuns[0]!.agentMemberId).toBe("agent-1");
 
-    // Verify startAgentRun was called with correct input
+    // Verify the Agent Run was enqueued for the addressed member
     expect(runLog.length).toBe(1);
-    expect(runLog[0]!.input).toBe("Hello agent!");
     expect(runLog[0]!.agentMemberId).toBe("agent-1");
+    expect(runLog[0]!.runId).toBeTruthy();
   });
 
   test("delete conversation", async () => {

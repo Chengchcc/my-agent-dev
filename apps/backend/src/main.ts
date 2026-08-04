@@ -31,12 +31,9 @@ async function shutdown(signal: string) {
   console.log(`[backend] ${signal} received, shutting down...`);
 
   server.stop();
-  services.supervisor.cancelAll();
-
   await Bun.sleep(config.cancelGraceMs);
 
   await installed.dispose();
-  await services.supervisor.dispose();
   await services.mcpClientManager.disconnectAll();
   services.db.close();
   process.exit(0);

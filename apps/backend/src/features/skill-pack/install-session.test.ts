@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "../../infra/sqlite/db.js";
 import { sqliteSkillPackAdapter } from "./adapter-sqlite.js";
-import { runInstall, runSync } from "./install-session.js";
 import { posixSkillRoot } from "./entities.js";
+import { runInstall, runSync } from "./install-session.js";
 import type { SkillPackPort } from "./ports.js";
 
 describe("install-session (deterministic)", () => {

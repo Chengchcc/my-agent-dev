@@ -6,4 +6,3 @@
 
 export * from "./mock-agent.js";
 export * from "./mock-general.js";
-export * from "./mock-span.js";

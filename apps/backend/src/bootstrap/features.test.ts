@@ -58,16 +58,15 @@ describe("InstalledFeatures", () => {
     expect(installed.featureSet.loops).toBeDefined();
     expect(installed.featureSet.cronJobs).toBeDefined();
     expect(installed.featureSet.skillPacks).toBeDefined();
+    expect(installed.featureSet.agentRuns).toBeDefined();
     expect(installed.featureSet.settings).toBeDefined();
     expect(installed.featureSet.mcp).toBeDefined();
     expect(installed.featureSet.models).toBeDefined();
-    expect(installed.featureSet.resumeRun).toBeDefined();
     expect(installed.cronScheduler).toBeDefined();
     expect(typeof installed.start).toBe("function");
     expect(typeof installed.dispose).toBe("function");
 
     await installed.dispose();
-    await services.supervisor.dispose();
     await services.mcpClientManager.disconnectAll();
     services.db.close();
   });
@@ -92,7 +91,6 @@ describe("InstalledFeatures", () => {
     await installed.start();
     await installed.dispose();
 
-    await services.supervisor.dispose();
     await services.mcpClientManager.disconnectAll();
     services.db.close();
   });

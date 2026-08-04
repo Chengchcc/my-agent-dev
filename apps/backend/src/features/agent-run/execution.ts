@@ -2,6 +2,7 @@ import type {
   CodingAgentBackend,
   CodingAgentModelCatalog,
 } from "@my-agent-team/adapter-coding-agent";
+import type { Message } from "@my-agent-team/message";
 import type {
   BackendEvent,
   BackendModelRef,

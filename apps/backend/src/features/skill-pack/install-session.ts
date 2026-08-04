@@ -1,18 +1,7 @@
-import {
-  existsSync,
-  lstatSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { spawn } from "node:child_process";
 import type { SkillPackSource } from "./entities.js";
 import { posixSkillRoot } from "./entities.js";
 import type { SkillPackPort } from "./ports.js";
