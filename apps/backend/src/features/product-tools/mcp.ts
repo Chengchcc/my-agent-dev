@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -35,7 +36,11 @@ function authorize(req: IncomingMessage, token: string): boolean {
   const header = req.headers.authorization;
   if (!header) return false;
   const [scheme, value] = header.split(" ");
-  return scheme === "Bearer" && value === token;
+  if (scheme !== "Bearer" || value === undefined) return false;
+  // constant-time comparison (equal-length guard + timingSafeEqual)
+  const a = new TextEncoder().encode(value);
+  const b = new TextEncoder().encode(token);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 /** MCP layer only: protocol parsing, service-token authentication, input

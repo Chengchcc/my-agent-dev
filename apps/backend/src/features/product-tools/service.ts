@@ -49,6 +49,19 @@ export interface ProductToolCallPort {
     inputHash: string;
     result: string;
   }): Promise<void>;
+  /** Atomically retain a ledger message into the branch AND record the call
+   *  terminal result in ONE transaction: the Context append and the durable
+   *  call record can never diverge (no half-retained crash state, no
+   *  duplicate ref under concurrent same-call replays). */
+  retainHistoryMessageOnce(input: {
+    runId: string;
+    callId: string;
+    toolName: string;
+    inputHash: string;
+    branchId: string;
+    ledgerSeq: number;
+    result: string;
+  }): Promise<{ outcome: "stored" | "retained" | "conflict"; result?: string }>;
 }
 
 /** A Product Tool call was rejected (identity/scope/manifest violation). The
@@ -177,8 +190,10 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
     const seq = Number(input.args.seq);
     if (!Number.isFinite(seq)) throw new ProductToolRejectedError("history_retain requires a seq");
 
-    // Durable call idempotency: same (runId, callId) replays the stored
-    // result; a different tool/input under the same id conflicts.
+    // Durable call idempotency fast path: an existing (runId, callId) row is
+    // terminal - replay returns the stored result, a different tool/input
+    // conflicts regardless of input validity. The atomic retain below
+    // re-checks inside the transaction for concurrent safety.
     const existing = await callPort.getCall(run.runId, input.callId);
     const inputHash = JSON.stringify({ tool: input.tool, args: input.args });
     if (existing) {
@@ -191,7 +206,7 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
     }
 
     // The message must exist in THIS conversation and be visible to the
-    // member, and must not already be retained on the branch.
+    // member (read checks stay outside the mutation transaction).
     const entries = conversationPort.getLedgerEntries(run.conversationId);
     const target = entries.find((e) => e.seq === seq && e.kind === "message");
     if (!target || target.conversationId !== run.conversationId) {
@@ -204,29 +219,27 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
 
     const branch = await contextPort.getBranch(run.branchId);
     if (!branch) throw new ProductToolRejectedError(`branch not found: ${run.branchId}`);
-    const entriesOnBranch = await contextPort.listEntriesToLeaf(run.branchId);
-    const alreadyRetained = entriesOnBranch.some(
-      (e) => e.type === "ledger_message" && e.ledgerSeq === seq,
-    );
-    if (!alreadyRetained) {
-      await contextPort.appendEntry({
-        branchId: run.branchId,
-        expectedRevision: branch.revision,
-        type: "ledger_message",
-        parentId: branch.leafEntryId,
-        payload: {},
-        ledgerSeq: seq,
-      });
-    }
 
+    // The Context append and the durable call record happen in ONE SQLite
+    // transaction: exact replay returns the stored result, a different
+    // tool/input conflicts, and concurrent same-call replays produce exactly
+    // one Context ref and one call row. inputHash comes from the fast path
+    // above (same serialization).
     const result = JSON.stringify({ retained: true, seq });
-    await callPort.recordCall({
+    const { outcome } = await callPort.retainHistoryMessageOnce({
       runId: run.runId,
       callId: input.callId,
       toolName: input.tool,
       inputHash,
+      branchId: run.branchId,
+      ledgerSeq: seq,
       result,
     });
+    if (outcome === "conflict") {
+      throw new ProductToolRejectedError(
+        `call id ${input.callId} reused with a different tool/input`,
+      );
+    }
     return { content: result };
   }
 

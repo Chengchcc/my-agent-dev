@@ -121,9 +121,17 @@ export interface AgentRunExecutionService {
  *  persisted session metadata; a binding is reusable when it is active, names
  *  a live backend session, matches the branch's backend kind, the run has not
  *  failed its Product commit, and the branch has not moved past what the
- *  binding synced (a revision gap > 1 means context changed underneath -
- *  rebuild from projection). model/systemPrompt/productTools/configRevision
- *  NEVER force a rebuild: they travel with every start/send/resume input. */
+ *  binding synced. model/systemPrompt/productTools/configRevision NEVER force
+ *  a rebuild: they travel with every start/send/resume input.
+ *
+ *  Revision-gap invariant (<= 1 means resume): acquire bumps the branch
+ *  revision exactly once per new Run, and every commit bumps it exactly once
+ *  per written entry. So between a commit (binding.syncedRevision = the post-
+ *  commit revision) and the next dispatch, the branch has advanced by at most
+ *  the acquiring bump (gap 1 = the current input, safe to resume). Any gap > 1
+ *  means OTHER context mutations (private messages, tool exchanges, retains,
+ *  forks) happened after the sync - the binding no longer describes the
+ *  branch, so rebuild from a full projection. */
 export function decideExecutionPath(
   binding: {
     backendSessionId: string | null;
@@ -302,7 +310,11 @@ export function createAgentRunExecutionService(
     }
 
     // Cold path: resume when the binding is reusable, otherwise rebuild from
-    // the full projection.
+    // the full projection. The run's Product Tool manifest MUST be durable
+    // BEFORE the Backend is called: the Worker can invoke a Product Tool the
+    // moment it accepts, and MCP authorization validates against the stored
+    // manifest - a fire-and-forget write would race that first call.
+    await runPort.setRunProductTools(runId, [...buildHistoryTools(deps.productToolsEntrypoint)]);
     const binding = await contextPort.getBinding(run.branchId);
     const branch = await contextPort.getBranch(run.branchId);
     if (!branch) throw new Error(`Branch not found: ${run.branchId}`);
@@ -336,11 +348,6 @@ export function createAgentRunExecutionService(
     }
 
     await runPort.markInputAccepted(input.inputId);
-    // Persist the manifest once per run (first dispatch) for Product Tool
-    // authorization (MCP validates against the stored manifest).
-    void runPort
-      .setRunProductTools(runId, [...buildHistoryTools(deps.productToolsEntrypoint)])
-      .catch(() => {});
     forwardEvents(runId, segment);
     return { outcome: await segment.outcome, segment, backendSessionId: session.backendSessionId };
   }
@@ -395,7 +402,7 @@ export function createAgentRunExecutionService(
     // start/resume, follow-ups via send on the live segment, steer injected.
     let claimed = await runPort.claimNextInput(run.branchId);
     while (claimed && claimed.runId === runId) {
-      const { outcome, backendSessionId } = await deliverInput(run, claimed, branch.backendKind);
+      const { outcome, backendSessionId } = await deliverInput(run, claimed);
 
       // The outcome the caller sees: for the LAST input only. Earlier
       // outcomes are intermediate (product facts untouched).

@@ -378,6 +378,47 @@ describe("product tools service", () => {
     ).rejects.toThrow(/not found/);
   });
 
+  test("CONCURRENT identical retains produce exactly one Context ref and one call row", async () => {
+    const runId = await createRun("hi");
+    const seq = convPort.appendLedgerEntry({
+      conversationId: CONV,
+      senderMemberId: "human-1",
+      kind: "message",
+      content: JSON.stringify({ role: "user", text: "concurrent pin" }),
+      ts: Date.now(),
+    });
+    const results = await Promise.allSettled([
+      service.call({
+        identity: identity(runId),
+        callId: "toolu-cc",
+        idempotencyKey: "ik-cc",
+        tool: "history_retain",
+        args: { seq },
+      }),
+      service.call({
+        identity: identity(runId),
+        callId: "toolu-cc",
+        idempotencyKey: "ik-cc",
+        tool: "history_retain",
+        args: { seq },
+      }),
+    ]);
+    // both settle (one retained, one stored replay) - never an error
+    for (const r of results) expect(r.status).toBe("fulfilled");
+    // exactly ONE new ledger_message ref for this seq
+    const refs = (await contextPort.listEntriesToLeaf(branchId)).filter(
+      (e) => e.type === "ledger_message" && e.ledgerSeq === seq,
+    );
+    expect(refs).toHaveLength(1);
+    // exactly ONE durable call row
+    const row = await sqliteProductToolCallAdapter(db).getCall(runId, "toolu-cc");
+    expect(row).not.toBeNull();
+    const count = db
+      .query("SELECT COUNT(*) AS n FROM product_tool_call WHERE run_id = ? AND call_id = ?")
+      .get(runId, "toolu-cc") as { n: number };
+    expect(count.n).toBe(1);
+  });
+
   test("an already-aborted signal rejects the call", async () => {
     const runId = await createRun("hi");
     const controller = new AbortController();

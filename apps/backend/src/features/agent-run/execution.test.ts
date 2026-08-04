@@ -46,6 +46,7 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
     { id: 3, type: "agent_end", data: { status: "completed" } },
   ];
 
+  let verifyManifestAtAccept: ((runId: string) => void) | null = null;
   const fetchImpl: typeof fetch = async (url, init) => {
     const path = String(url).replace(/^https?:\/\/[^/]+/, "");
     const method = init?.method ?? "GET";
@@ -58,6 +59,7 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
       const key = String(body?.idempotencyKey);
       const runId = String((body?.run as { runId?: string })?.runId);
       startCalls.push({ idempotencyKey: key, runId });
+      verifyManifestAtAccept?.(runId);
       if (opts.failFirstStart && startAttempts === 1) {
         return Response.json(
           { code: "internal", message: "simulated start failure" },
@@ -135,7 +137,15 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
     return Response.json({ code: "not_found", message: path }, { status: 404 });
   };
 
-  return { fetchImpl, startCalls, resumeCalls, sendCalls };
+  return {
+    fetchImpl,
+    startCalls,
+    resumeCalls,
+    sendCalls,
+    setVerifyManifest: (fn: (runId: string) => void) => {
+      verifyManifestAtAccept = fn;
+    },
+  };
 }
 
 // ─── Test harness ──────────────────────────────────────────────────────
@@ -479,6 +489,33 @@ describe("agent run execution", () => {
       ),
     ).toBe("rebuild");
   });
+
+  test("the run manifest is durable BEFORE the Backend accepts (no auth race)", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeDeps(fake);
+    // The daemon "accepts" the run the moment it sees start - at that point
+    // the manifest must already be queryable, because the Worker may call a
+    // Product Tool immediately and MCP authorization reads it from the DB.
+    fake.setVerifyManifest(async (runId) => {
+      const run = await runPort.getRun(runId);
+      expect(run?.productTools?.length).toBeGreaterThan(0);
+    });
+    const acquired = await backend.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "manifest" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "ikey-manifest",
+    });
+    await execution.dispatch(acquired.run!.runId);
+    const run = await waitForTerminal(acquired.run!.runId);
+    expect(run?.status).toBe("completed");
+    // and the persisted manifest matches the injected entrypoint
+    expect(run?.productTools?.[0]?.entrypoint).toBe("sse:http://127.0.0.1:1/mcp");
+  }, 15_000);
 
   test("a completed run on an active binding resumes on the SAME backend session", async () => {
     const fake = createFakeDaemon();
