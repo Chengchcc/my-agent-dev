@@ -438,7 +438,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
     } as Parameters<typeof createCronScheduler>[0]);
     sched.register(makeJob({ loopConfigPath: "loops/x", cronExpr: "" }));
     sched.dispose();
-    // construction succeeds without SessionManager/ModelRegistry
+    // construction succeeds without legacy runtime services
     expect(true).toBe(true);
   });
 });

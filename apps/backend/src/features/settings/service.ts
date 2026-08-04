@@ -83,7 +83,6 @@ export function createSettingsService(deps: {
           workspaceRoot: config.workspaceRoot,
           agentWorkspace: `${config.dataDir}/agents/:id`,
           skillPacks: `${config.dataDir}/skill-packs`,
-          checkpointerDb: `${config.dataDir}/checkpointer.db`,
           backendDb: `${config.dataDir}/backend.db`,
           builtinSkills: config.builtinSkillsDir,
         },

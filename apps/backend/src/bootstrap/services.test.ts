@@ -38,7 +38,7 @@ describe("BackendServices", () => {
     expect(services.opsStore).toBeDefined();
     expect(services.loopStore).toBeDefined();
     expect(services.larkBotRegistry).toBeDefined();
-    // Phase 5: no SessionManager / ModelRegistry / supervisor in composition
+    // Phase 5: composition has no legacy runtime services
     expect((services as Record<string, unknown>).sessionManager).toBeUndefined();
     expect((services as Record<string, unknown>).modelRegistry).toBeUndefined();
     services.db.close();

@@ -1,4 +1,3 @@
-// Execution facts sourced from checkpointer.db (legacy span audit).
 // Phase 5: Agent Run is the ONLY Product execution identity and terminal
 // authority. Spans/attempts/control-plane rows remain as audit data but
 // never decide run state; the session/run/recover/insights Ops APIs are
