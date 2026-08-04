@@ -88,6 +88,11 @@ export function loadConfig(
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_BASE_URL",
     "CODING_AGENT_FAKE_PROVIDER",
+    // fake-provider tool script (deterministic integration tests)
+    "CODING_AGENT_FAKE_TOOL",
+    // service token for remote Product Tools MCP endpoints (worker attaches
+    // it to the SSE transport; never part of entrypoints or arguments)
+    "CODING_AGENT_PRODUCT_TOOL_TOKEN",
   ]) {
     const v = env[key];
     if (v) providerEnv[key] = v;

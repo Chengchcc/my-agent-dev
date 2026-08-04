@@ -59,6 +59,19 @@ export function sqliteProductToolCallAdapter(
     }) {
       const now = Date.now();
       return db.transaction(() => {
+        // 0. TOCTOU guard: the run must still be running AND own the branch
+        //    inside the same transaction that mutates the branch (the service
+        //    validated scope earlier, but a concurrent finalize/terminal
+        //    commit must not race this mutation).
+        const run = d
+          .select({ status: schema.agentRun.status, branchId: schema.agentRun.branchId })
+          .from(schema.agentRun)
+          .where(eq(schema.agentRun.runId, runId))
+          .get();
+        if (!run || run.status !== "running" || run.branchId !== branchId) {
+          throw new Error(`run ${runId} is not an active owner of branch ${branchId}`);
+        }
+
         // 1. Durable call idempotency first: an existing row is the terminal
         //    authority for this (runId, callId) - exact replay returns the
         //    stored result, a different tool/input conflicts.

@@ -50,6 +50,7 @@ function parseRun(row: typeof schema.agentRun.$inferSelect): AgentRun {
 function parseInput(row: typeof schema.branchInputQueue.$inferSelect): BranchInput {
   return {
     inputId: row.inputId,
+    seq: row.seq,
     branchId: row.branchId,
     mode: row.mode as BranchInput["mode"],
     message: JSON.parse(row.message) as BranchInput["message"],
@@ -360,7 +361,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             eq(schema.branchInputQueue.status, "delivering"),
           ),
         )
-        .orderBy(sql`rowid`)
+        .orderBy(schema.branchInputQueue.seq)
         .get();
 
       if (delivering) {
@@ -396,7 +397,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
               schema.branchInputQueue.inputId,
               sql`(SELECT input_id FROM branch_input_queue
                    WHERE branch_id=${branchId} AND status='pending'
-                   ORDER BY created_at, input_id LIMIT 1)`,
+                   ORDER BY seq LIMIT 1)`,
             ),
             eq(schema.branchInputQueue.status, "pending"),
           ),
@@ -719,14 +720,29 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
               .run();
             newRevision = branch.revision + 1;
             leafEntryId = entryId;
-            d.update(schema.agentContextBranch)
+            // CAS the branch revision: a concurrent history_retain (late MCP
+            // call, timeout recovery, cross-process retry) must not clobber
+            // or be clobbered by this commit's leaf/revision update. On
+            // conflict the WHOLE transaction rolls back and the commit retry
+            // re-reads the branch.
+            const cas = d
+              .update(schema.agentContextBranch)
               .set({
                 leafEntryId,
                 ledgerCursor: seq,
                 revision: newRevision,
               })
-              .where(eq(schema.agentContextBranch.branchId, run.branchId))
-              .run();
+              .where(
+                and(
+                  eq(schema.agentContextBranch.branchId, run.branchId),
+                  eq(schema.agentContextBranch.revision, branch.revision),
+                ),
+              )
+              .returning({ branchId: schema.agentContextBranch.branchId })
+              .get();
+            if (!cas) {
+              throw new Error(`branch ${run.branchId} revision conflict during terminal commit`);
+            }
           }
         }
 
@@ -848,7 +864,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
         .select()
         .from(schema.branchInputQueue)
         .where(eq(schema.branchInputQueue.status, "delivering"))
-        .orderBy(sql`rowid`)
+        .orderBy(schema.branchInputQueue.seq)
         .all();
       return rows
         .filter((r) => r.runId != null)
@@ -883,7 +899,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
         .select()
         .from(schema.branchInputQueue)
         .where(eq(schema.branchInputQueue.branchId, branchId))
-        .orderBy(sql`rowid`)
+        .orderBy(schema.branchInputQueue.seq)
         .all();
       return rows.map(parseInput);
     },

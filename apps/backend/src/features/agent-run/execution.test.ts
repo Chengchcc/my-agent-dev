@@ -11,6 +11,8 @@ import type { BackendRunOutcome, RunEventEnvelope } from "@my-agent-team/agent-b
 import { openDb } from "../../infra/sqlite/db.js";
 import { createAgentContextService, sqliteAgentContextAdapter } from "../agent-context/index.js";
 import { sqliteConversationAdapter } from "../conversation/adapter-sqlite.js";
+import { sqliteProductToolCallAdapter } from "../product-tools/adapter-sqlite.js";
+import { createProductToolsService } from "../product-tools/service.js";
 import { sqliteAgentRunAdapter } from "./adapter-sqlite.js";
 import type { AgentRun } from "./domain.js";
 import { createAgentRunExecutionService, decideExecutionPath } from "./execution.js";
@@ -47,7 +49,10 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
   ];
 
   let verifyManifestAtAccept: ((runId: string) => void) | null = null;
-  const fetchImpl: typeof fetch = async (url, init) => {
+  // Bun's `typeof fetch` carries static members (preconnect) that an arrow
+  // function cannot satisfy; the assertion is intentional - this fake only
+  // implements the callable.
+  const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
     const path = String(url).replace(/^https?:\/\/[^/]+/, "");
     const method = init?.method ?? "GET";
     const body = init?.body
@@ -138,7 +143,8 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
   };
 
   return {
-    fetchImpl,
+    // the fake only implements the callable, not Bun's static fetch members
+    fetchImpl: fetchImpl as typeof fetch,
     startCalls,
     resumeCalls,
     sendCalls,
@@ -530,6 +536,218 @@ describe("agent run execution", () => {
     expect(messages).toHaveLength(1);
     // and the Backend was never re-invoked
     expect(fake.startCalls).toHaveLength(0);
+  }, 15_000);
+
+  test("failCommit transitions an ACTIVE binding to stale in the same transaction", async () => {
+    const acquired = await backend.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "stale" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "ikey-stale",
+    });
+    const runId = acquired.run!.runId;
+    // an established, ACTIVE binding (as if a previous run had synced)
+    await contextPort.upsertBinding({
+      branchId: acquired.run!.branchId,
+      backendSessionId: "sid-old",
+      backendKind: "coding_agent",
+      syncedEntryId: "e-old",
+      syncedRevision: 2,
+      state: "active",
+      updatedAt: Date.now(),
+    });
+    await runPort.failCommit(runId, {
+      status: "completed",
+      output: { role: "assistant", text: "x" },
+    });
+    const binding = await contextPort.getBinding(acquired.run!.branchId);
+    expect(binding?.state).toBe("stale");
+    expect(binding?.backendSessionId).toBe("sid-old");
+    const run = await runPort.getRun(runId);
+    expect(run?.status).toBe("commit_failed");
+  });
+
+  test("queue order survives a real DB reopen + recover (two inputs, stable seq)", async () => {
+    // A file-backed database: enqueue two inputs, close the DB, reopen it
+    // with fresh adapters, and recover - the redelivery order must match the
+    // original insertion order.
+    const dir = mkdtempSync(join(tmpdir(), "phase4-restart-"));
+    const db1 = openDb(`${dir}/backend.db`);
+    const conv1 = sqliteConversationAdapter(db1);
+    const ctx1 = sqliteAgentContextAdapter(db1, {
+      ulid: () => `c-${Math.random().toString(36).slice(2, 8)}`,
+    });
+    const resolver1 = {
+      async resolveMessage(cid: string, seq: number) {
+        const hit = conv1.getLedgerEntries(cid).find((e) => e.seq === seq);
+        return hit ? (hit.content as never) : null;
+      },
+    };
+    const runPort1 = sqliteAgentRunAdapter(db1, {
+      contextPort: ctx1,
+      ledgerResolver: resolver1,
+      idGen: { ulid: () => `r-${Math.random().toString(36).slice(2, 8)}` },
+    });
+    const ctxSvc1 = createAgentContextService({
+      port: ctx1,
+      idGen: { ulid: () => `x-${Math.random().toString(36).slice(2, 8)}` },
+      ledgerResolver: resolver1,
+    });
+    const backend1 = createAgentRunService({
+      port: runPort1,
+      contextService: ctxSvc1,
+      idGen: { ulid: () => `x-${Math.random().toString(36).slice(2, 8)}` },
+      ledgerResolver: resolver1,
+    });
+    conv1.createConversation({ conversationId: "c-restart", createdAt: Date.now() });
+    conv1.addMember({
+      memberId: "m-restart",
+      conversationId: "c-restart",
+      kind: "agent",
+      agentId: "a",
+      joinedAt: Date.now(),
+    });
+    const tree1 = await ctx1.getOrCreateTree("c-restart", "m-restart");
+    await ctx1.getOrCreateDefaultBranch(tree1.treeId, "coding_agent");
+
+    const first = await backend1.enqueueAndAcquire({
+      conversationId: "c-restart",
+      agentMemberId: "m-restart",
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "first" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "restart-1",
+    });
+    const second = await backend1.enqueueAndAcquire({
+      conversationId: "c-restart",
+      agentMemberId: "m-restart",
+      backendKind: "coding_agent",
+      mode: "follow_up",
+      message: { role: "user", text: "second" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "restart-2",
+    });
+    const runId = first.run!.runId;
+    db1.close();
+
+    // "restart": reopen the SAME file with fresh adapters.
+    const db2 = openDb(`${dir}/backend.db`);
+    const conv2 = sqliteConversationAdapter(db2);
+    const ctx2 = sqliteAgentContextAdapter(db2, {
+      ulid: () => `c-${Math.random().toString(36).slice(2, 8)}`,
+    });
+    const resolver2 = {
+      async resolveMessage(cid: string, seq: number) {
+        const hit = conv2.getLedgerEntries(cid).find((e) => e.seq === seq);
+        return hit ? (hit.content as never) : null;
+      },
+    };
+    const runPort2 = sqliteAgentRunAdapter(db2, {
+      contextPort: ctx2,
+      ledgerResolver: resolver2,
+      idGen: { ulid: () => `r-${Math.random().toString(36).slice(2, 8)}` },
+    });
+    const ctxSvc2 = createAgentContextService({
+      port: ctx2,
+      idGen: { ulid: () => `x-${Math.random().toString(36).slice(2, 8)}` },
+      ledgerResolver: resolver2,
+    });
+    const backend2 = createAgentRunService({
+      port: runPort2,
+      contextService: ctxSvc2,
+      idGen: { ulid: () => `x-${Math.random().toString(36).slice(2, 8)}` },
+      ledgerResolver: resolver2,
+    });
+
+    const branch2 = await ctx2.getBranch(first.run!.branchId);
+    const claimed1 = await backend2.claimNextInput(branch2!.branchId);
+    // the first input was left delivering by the crash; the recovery claim
+    // returns it, and once accepted the NEXT claim must yield the second
+    // input in original order
+    expect(claimed1?.input.message.text).toBe("first");
+    await backend2.markInputAccepted(claimed1!.input.inputId);
+    const claimed2 = await backend2.claimNextInput(branch2!.branchId);
+    expect(claimed2?.input.message.text).toBe("second");
+    expect(claimed1?.runId).toBe(runId);
+    // the follow-up stayed queued (pending) for the SAME run's loop
+    expect(second.queued).toBe(true);
+    db2.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a retain before the terminal commit keeps the branch chain intact (no orphan)", async () => {
+    // Sequential retain + commit: the commit re-reads the branch (revision
+    // advanced by the retain) and appends the final ref on top. The CAS in
+    // commitCompletedRun protects the CONCURRENT case across connections;
+    // this proves the sequential chain never orphans an entry.
+    const acquired = await backend.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "retain then commit" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "ikey-retain-commit",
+    });
+    const runId = acquired.run!.runId;
+    await runPort.setRunProductTools(runId, [
+      { name: "history_retain", description: "t", inputSchema: {}, entrypoint: "sse:x" },
+    ]);
+    // a message to retain (post-acquire so it is not yet projected)
+    const seq = convPort.appendLedgerEntry({
+      conversationId,
+      senderMemberId: "human-1",
+      kind: "message",
+      content: JSON.stringify({ role: "user", text: "pin before commit" }),
+      ts: Date.now(),
+    });
+    const callPort = sqliteProductToolCallAdapter(db);
+    const toolSvc = createProductToolsService({
+      runPort,
+      contextPort,
+      conversationPort: convPort,
+      callPort,
+      idGen: { ulid: () => `y-${Math.random().toString(36).slice(2, 8)}` },
+    });
+    const retained = await toolSvc.call({
+      identity: {
+        runId,
+        conversationId,
+        agentMemberId,
+        branchId: acquired.run!.branchId,
+      },
+      callId: "toolu-rc",
+      idempotencyKey: `${runId}:toolu-rc`,
+      tool: "history_retain",
+      args: { seq },
+    });
+    expect(JSON.parse(retained.content)).toEqual({ retained: true, seq });
+
+    // now the terminal commit must append the final ref ON TOP of the retain
+    await runPort.commitCompletedRun({
+      runId,
+      outcome: { status: "completed", output: { role: "assistant", text: "final" } },
+      output: { role: "assistant", text: "final" },
+      backendSessionId: "sid-rc",
+    });
+    const branch = await contextPort.getBranch(acquired.run!.branchId);
+    const entries = await contextPort.listEntriesToLeaf(acquired.run!.branchId);
+    const refs = entries.filter((e) => e.type === "ledger_message");
+    // 1 retain + 1 final commit ref (no other ledger in this harness)
+    expect(refs).toHaveLength(2);
+    expect(refs[refs.length - 1]!.ledgerSeq).toBeGreaterThan(seq);
+    // the chain is intact: walking from the leaf reaches the retain entry
+    const leaf = entries[entries.length - 1]!;
+    expect(leaf.entryId === branch?.leafEntryId).toBe(true);
+    expect(leaf.parentId).toBe(refs[refs.length - 2]!.entryId);
   }, 15_000);
 
   test("configRevision changes do NOT force rebuild (travel with every input)", () => {

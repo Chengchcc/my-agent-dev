@@ -7,10 +7,6 @@ import {
   CodingAgentClient,
   CodingAgentModelCatalog,
 } from "@my-agent-team/adapter-coding-agent";
-import { createModelRuntime } from "@my-agent-team/ai";
-import { createCodingAgentApp } from "../../../../apps/coding-agent/src/app.js";
-import { loadConfig } from "../../../../apps/coding-agent/src/config.js";
-import { createCodingSessionSupervisor } from "../../../../apps/coding-agent/src/session-supervisor.js";
 import {
   createAgentContextService,
   sqliteAgentContextAdapter,
@@ -49,7 +45,7 @@ let runPort: ReturnType<typeof sqliteAgentRunAdapter>;
 let backend: ReturnType<typeof createAgentRunService>;
 let execution: ReturnType<typeof createAgentRunExecutionService>;
 let mcp: Awaited<ReturnType<typeof createProductToolsMcpServer>>;
-let daemonServer: ReturnType<typeof Bun.serve> | null = null;
+let daemonProc: ReturnType<typeof Bun.spawn> | null = null;
 let branchId: string;
 
 beforeAll(async () => {
@@ -92,43 +88,60 @@ beforeAll(async () => {
   });
   mcp = await createProductToolsMcpServer({ service: productTools, serviceToken: TOKEN });
 
-  // Real Coding Agent daemon in this process, served over real HTTP/SSE.
-  const tmp = mkdtempSync(join(tmpdir(), "phase4-daemon-"));
-  const daemonTmp = `${tmp}/daemon`;
-  mkdtempSync(daemonTmp);
+  // Real Coding Agent daemon as a SEPARATE PROCESS (deployment-shaped):
+  // spawned from apps/coding-agent/src/main.ts, reached over real HTTP/SSE.
+  const daemonTmp = mkdtempSync(join(tmpdir(), "phase4-daemon-"));
   const daemonWs = mkdtempSync(join(tmpdir(), "phase4-ws-"));
-  const config = loadConfig({
-    CODING_AGENT_AUTH_TOKEN: "daemon-token",
-    CODING_AGENT_DATA_DIR: daemonTmp,
-    CODING_AGENT_WORKSPACE_ROOTS: daemonWs,
-    CODING_AGENT_FAKE_PROVIDER: "1",
-    CODING_AGENT_ACCEPT_TIMEOUT_MS: "10000",
-  });
-  const runtime = createModelRuntime();
-  const supervisor = createCodingSessionSupervisor({
-    workerEntry: join(import.meta.dir, "../../../../apps/coding-agent/src/worker-main.ts"),
-    cwd: daemonTmp,
-    sessionsDir: `${daemonTmp}/sessions`,
-    authEnv: {
-      ...config.providerEnv,
+  const { createServer: createNetServer } = await import("node:net");
+  const portProbe = createNetServer();
+  await new Promise<void>((resolve) => portProbe.listen(0, "127.0.0.1", resolve));
+  const daemonPort = (portProbe.address() as { port: number }).port;
+  await new Promise<void>((resolve) => portProbe.close(() => resolve()));
+  const mainPath = new URL("../../../../apps/coding-agent/src/main.ts", import.meta.url).pathname;
+  daemonProc = Bun.spawn({
+    cmd: [process.execPath, mainPath],
+    env: {
+      ...process.env,
+      CODING_AGENT_AUTH_TOKEN: "daemon-token",
+      CODING_AGENT_DATA_DIR: daemonTmp,
+      CODING_AGENT_WORKSPACE_ROOTS: daemonWs,
       CODING_AGENT_FAKE_PROVIDER: "1",
+      CODING_AGENT_ACCEPT_TIMEOUT_MS: "10000",
       // the worker's model calls history_recent ONCE, then produces text
       CODING_AGENT_FAKE_TOOL: JSON.stringify([{ name: "history_recent", input: { limit: 5 } }]),
       // service token the worker attaches to its Product Tools MCP transport
       CODING_AGENT_PRODUCT_TOOL_TOKEN: TOKEN,
+      CODING_AGENT_HOST: "127.0.0.1",
+      CODING_AGENT_PORT: String(daemonPort),
     },
-    eventBufferSize: 100,
-    workerStopGraceMs: 2000,
-    acceptTimeoutMs: 10_000,
-    workspaceRoots: config.workspaceRoots,
-    maxStartingWorkers: 4,
-    modelRuntime: runtime,
+    cwd: import.meta.dir,
+    stdout: "pipe",
+    stderr: "pipe",
   });
-  const app = createCodingAgentApp({ config, modelRuntime: runtime, supervisor });
-  daemonServer = Bun.serve({ port: 0, hostname: "127.0.0.1", idleTimeout: 0, fetch: app.fetch });
+  void (async () => {
+    const reader = (daemonProc.stderr as ReadableStream<Uint8Array>).getReader();
+    const dec = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      process.stderr.write(`[coding-agent-daemon] ${dec.decode(value)}`);
+    }
+  })();
+  // wait for readiness
+  let ready = false;
+  for (let i = 0; i < 200 && !ready; i++) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${daemonPort}/health`);
+      ready = res.ok;
+    } catch {
+      /* not up yet */
+    }
+    if (!ready) await new Promise((r) => setTimeout(r, 50));
+  }
+  if (!ready) throw new Error("coding agent daemon did not become ready");
 
   const client = new CodingAgentClient({
-    baseUrl: `http://127.0.0.1:${daemonServer.port}`,
+    baseUrl: `http://127.0.0.1:${daemonPort}`,
     authToken: "daemon-token",
   });
   execution = createAgentRunExecutionService({
@@ -156,7 +169,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  daemonServer?.stop();
+  if (daemonProc) {
+    daemonProc.kill();
+    await daemonProc.exited;
+  }
   await mcp.close();
   db.close();
   rmSync(dataDir, { recursive: true, force: true });

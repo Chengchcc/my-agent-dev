@@ -55,6 +55,8 @@ export type BranchInputStatus = "pending" | "delivering" | "delivered" | "cancel
 
 export interface BranchInput {
   readonly inputId: string;
+  /** Monotonic queue sequence (insertion order), the stable sort key. */
+  readonly seq: number;
   readonly branchId: string;
   readonly mode: BranchInputMode;
   readonly message: Message;

@@ -521,7 +521,10 @@ export const agentRun = sqliteTable(
 export const branchInputQueue = sqliteTable(
   "branch_input_queue",
   {
-    inputId: text("input_id").notNull(),
+    /** Monotonic insertion order (the real queue sequence): the sort key for
+     *  claim/recover/list. Never derived from timestamps or random ids. */
+    seq: integer().primaryKey({ autoIncrement: true }),
+    inputId: text("input_id").notNull().unique(),
     branchId: text("branch_id")
       .notNull()
       .references(() => agentContextBranch.branchId, { onDelete: "cascade" }),
@@ -535,11 +538,10 @@ export const branchInputQueue = sqliteTable(
     deliveredAt: integer("delivered_at", { mode: "number" }),
   },
   (table) => [
-    primaryKey({ columns: [table.inputId] }),
     uniqueIndex("idx_queue_delivery_idem").on(table.deliveryIdempotencyKey),
     uniqueIndex("idx_queue_input_idem").on(table.branchId, table.inputIdempotencyKey),
-    // Stable queue ordering: branch + createdAt + inputId.
-    index("idx_queue_order").on(table.branchId, table.createdAt, table.inputId),
+    // Stable queue ordering: branch + monotonic seq.
+    index("idx_queue_order").on(table.branchId, table.seq),
   ],
 );
 
