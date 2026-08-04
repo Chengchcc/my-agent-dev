@@ -20,6 +20,8 @@ function openCommand(overrides: Record<string, unknown> = {}): WorkerCommand {
     workspaceRoot: "/tmp/ws",
     workspaceAccess: "read_write" as const,
     backendKind: "coding_agent",
+    productTools: [],
+    identity: { runId: "r", conversationId: "c", agentMemberId: "m", branchId: "b" },
     ...overrides,
   } as unknown as WorkerCommand;
 }

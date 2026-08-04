@@ -13,6 +13,19 @@ export interface SessionRecord {
   workspaceRoot: string;
   /** Workspace access level established at start; gates tool installation. */
   workspaceAccess: "read_only" | "read_write";
+  /** Product Tool manifest + call identity from the establishing run. */
+  productTools: readonly {
+    name: string;
+    description: string;
+    inputSchema: Readonly<Record<string, unknown>>;
+    entrypoint: string;
+  }[];
+  productIdentity: {
+    runId: string;
+    conversationId: string;
+    agentMemberId: string;
+    branchId: string;
+  };
   pendingCommands: Map<string, { commandId: string; idempotencyKey: string }>;
   lastActivityAt: number;
   /** Completed outcomes by runId (diagnostics + outcome endpoint). */
@@ -44,6 +57,8 @@ export function createSessionRecord(backendSessionId: string): SessionRecord {
     activeRunId: null,
     workspaceRoot: "",
     workspaceAccess: "read_write",
+    productTools: [],
+    productIdentity: { runId: "", conversationId: "", agentMemberId: "", branchId: "" },
     pendingCommands: new Map(),
     lastActivityAt: Date.now(),
     completedOutcomes: new Map(),

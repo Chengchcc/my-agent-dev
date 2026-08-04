@@ -30,6 +30,9 @@ rl.on("line", async (line) => {
   }
   if (cmd.type === "send" && cmd.mode !== "steer") {
     stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId, runId: cmd.runId }) + "\\n");
+    // delay the outcome so the wake assertion observes the live worker before
+    // the run completes and the reaper can re-sleep the session
+    await new Promise((r) => setTimeout(r, 150));
     stdout.write(JSON.stringify({ protocolVersion: 1, type: "outcome", backendSessionId: cmd.backendSessionId, runId: cmd.runId, outcome: { status: "completed" } }) + "\\n");
   }
   if (cmd.type === "send" && cmd.mode === "steer") {
@@ -294,7 +297,7 @@ describe("session supervisor", () => {
       eventBufferSize: 100,
       workerStopGraceMs: 300,
       acceptTimeoutMs: 5000,
-      idleTimeoutMs: 150,
+      idleTimeoutMs: 400,
       reapIntervalMs: 50,
       workspaceRoots: [wsDir],
     });

@@ -9,7 +9,11 @@ import {
   type PluginTool,
   type SessionStore,
 } from "@my-agent-team/agent";
-import type { AgentRunSnapshot, ProjectedHistoryItem } from "@my-agent-team/agent-backend";
+import type {
+  AgentRunSnapshot,
+  ProductToolDescriptor,
+  ProjectedHistoryItem,
+} from "@my-agent-team/agent-backend";
 import type { ModelRuntime } from "@my-agent-team/ai";
 import type { Message } from "@my-agent-team/message";
 import { createProgressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
@@ -28,6 +32,7 @@ import {
   type WebFetchPort,
   type WebSearchPort,
 } from "@my-agent-team/tools-common";
+import type { ProductToolCaller } from "./product-tool-transport.js";
 
 /** Dependencies the daemon injects into a Worker's Runtime assembly. */
 export interface WorkerRuntimeDeps {
@@ -40,6 +45,14 @@ export interface WorkerRuntimeDeps {
   skillRoots?: readonly string[];
   webSearch?: WebSearchPort;
   webFetch?: WebFetchPort;
+  /** Product Tool manifest + call identity from the establishing run. */
+  productTools?: readonly ProductToolDescriptor[];
+  productIdentity?: {
+    runId: string;
+    conversationId: string;
+    agentMemberId: string;
+    branchId: string;
+  };
 }
 
 export interface WorkerRuntime {
@@ -86,6 +99,63 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
     createTodoPlugin({ sessionId: deps.backendSessionId, store }),
     createProgressiveSkillPlugin({ roots: deps.skillRoots ?? [] }),
   ];
+
+  // Product Tools from the run manifest: installed into the tool table so the
+  // model can call them; every call carries identity + abort + timeout through
+  // the transport. An empty manifest yields no tools.
+  if (deps.productTools && deps.productTools.length > 0 && deps.productIdentity) {
+    const { buildProductTools } = await import("./product-tool-transport.js");
+    // Direct MCP client per entrypoint (sse url or stdio command). Identity is
+    // injected per call; the transport wraps timeout + abort. The manager in
+    // adapter-mcp cannot carry identity, so we connect here.
+    const clients = new Map<string, unknown>();
+    const caller: ProductToolCaller = {
+      async callTool(p) {
+        let client = clients.get(p.name);
+        if (!client) {
+          const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+          const isHttp = p.name.startsWith("http");
+          let transport: unknown;
+          if (isHttp) {
+            const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
+            transport = new SSEClientTransport(new URL(p.name));
+          } else {
+            const { StdioClientTransport } = await import(
+              "@modelcontextprotocol/sdk/client/stdio.js"
+            );
+            transport = new StdioClientTransport({ command: p.name, args: [] });
+          }
+          const c = new Client({ name: "coding-agent", version: "0.1.0" }, { capabilities: {} });
+          await c.connect(transport as never);
+          client = c;
+          clients.set(p.name, c);
+        }
+        const res = await (
+          client as {
+            callTool(params: {
+              name: string;
+              arguments?: unknown;
+              _meta?: { identity: unknown };
+            }): Promise<{ content: unknown }>;
+          }
+        ).callTool({
+          name: p.name,
+          arguments: p.arguments,
+          _meta: { identity: p.identity },
+        });
+        return { content: res.content };
+      },
+    };
+    const productToolsPlugin: Plugin = {
+      name: "product-tools",
+      tools: buildProductTools(deps.productTools, {
+        identity: deps.productIdentity,
+        caller,
+        timeoutMs: 30_000,
+      }) as unknown as PluginTool[],
+    };
+    plugins.push(productToolsPlugin);
+  }
 
   let activeRun: AgentRunSnapshot<"coding_agent"> | null = null;
 

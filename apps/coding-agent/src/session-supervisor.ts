@@ -182,6 +182,8 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       workspaceRoot,
       workspaceAccess,
       backendKind: "coding_agent",
+      productTools: rec.productTools as never,
+      identity: rec.productIdentity as never,
     });
     return handle;
   }
@@ -313,11 +315,18 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
         throw err("busy", `session already exists: ${input.backendSessionId}`);
       }
       const workspaceRoot = validateWorkspace(input.workspace.root);
+      const runId = input.run.runId;
       const rec = createSessionRecord(input.backendSessionId);
       rec.workspaceRoot = workspaceRoot;
       rec.workspaceAccess = input.workspace.access;
+      rec.productTools = input.run.productTools;
+      rec.productIdentity = {
+        runId,
+        conversationId: input.metadata.conversationId,
+        agentMemberId: input.metadata.agentMemberId,
+        branchId: input.metadata.branchId,
+      };
       sessions.set(input.backendSessionId, rec);
-      const runId = input.run.runId;
       rec.activeRunId = runId;
       eventBuffers.set(runId, createRunEventBuffer(opts.eventBufferSize));
       const handle = await ensureWorker(

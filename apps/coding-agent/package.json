@@ -19,6 +19,7 @@
     "@my-agent-team/core": "workspace:*",
     "@my-agent-team/config": "workspace:*",
     "@my-agent-team/message": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.12.1",
     "@my-agent-team/plugin-progressive-skill": "workspace:*",
     "@my-agent-team/plugin-todo": "workspace:*",
     "@my-agent-team/tools-common": "workspace:*",

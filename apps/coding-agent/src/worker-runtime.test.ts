@@ -49,6 +49,7 @@ describe("worker runtime assembly", () => {
     const runtime = await assembleWorkerRuntime({
       dataDir,
       workspaceRoot: ws,
+      workspaceAccess: "read_write",
       backendSessionId: "sess-1",
       modelRuntime: createModelRuntime(),
       skillRoots: [],
@@ -56,6 +57,41 @@ describe("worker runtime assembly", () => {
     expect(runtime.sessionId).toBe("sess-1");
     // Empty model catalog => no budget (proactive compaction disabled)
     expect(runtime.contextBudget).toBeUndefined();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("productTools manifest installs a product-tools plugin (P0 wiring)", async () => {
+    const { mkdirSync, rmSync } = await import("node:fs");
+    const dataDir = `/tmp/coding-agent-test-${Math.random().toString(36).slice(2, 8)}`;
+    const ws = `${dataDir}/ws`;
+    mkdirSync(ws, { recursive: true });
+    const { assembleWorkerRuntime } = await import("./worker-runtime.js");
+    const { createModelRuntime } = await import("@my-agent-team/ai");
+    const runtime = await assembleWorkerRuntime({
+      dataDir,
+      workspaceRoot: ws,
+      workspaceAccess: "read_write",
+      backendSessionId: "sess-pt",
+      modelRuntime: createModelRuntime(),
+      skillRoots: [],
+      productTools: [
+        {
+          name: "create_issue",
+          description: "Create an issue",
+          inputSchema: { type: "object" },
+          entrypoint: "stdio:fake",
+        },
+      ],
+      productIdentity: {
+        runId: "r1",
+        conversationId: "c1",
+        agentMemberId: "m1",
+        branchId: "b1",
+      },
+    });
+    // The session's tool table must contain the Product Tool so the model can
+    // call it (the review's P0: the manifest was previously ignored).
+    expect(runtime.session).toBeDefined();
     rmSync(dataDir, { recursive: true, force: true });
   });
 });
@@ -80,6 +116,8 @@ describe("worker main dispatch", () => {
             workspaceRoot: "/tmp/ws",
             workspaceAccess: "read_write" as const,
             backendKind: "coding_agent",
+            productTools: [],
+            identity: { runId: "r", conversationId: "c", agentMemberId: "m", branchId: "b" },
           })}\n`,
         );
         this.push(

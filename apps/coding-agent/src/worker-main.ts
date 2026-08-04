@@ -147,6 +147,8 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
               backendSessionId: cmd.backendSessionId,
               modelRuntime,
               skillRoots: [],
+              productTools: cmd.productTools as never,
+              productIdentity: cmd.identity as never,
             });
         runtime.session.onEvent(listener);
         // Create or reopen the durable session file before any run.
