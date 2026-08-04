@@ -2,444 +2,214 @@
 
 ## Goal
 
-Destructively cut every Product Backend execution caller from `Agent`/`createAgentSession`/`SessionManager` to the Phase 4 Agent Run scope and execution services.
+Destructively cut every Product Backend execution caller from `@my-agent-team/agent` / `createAgentSession` / `SessionManager` to the Phase 4 Agent Run services. One real Backend (`coding_agent`). No registry, no pool, no scope service, no coordinator.
 
 ## Outcome
 
-Conversation, Cron, Loop, and Skill Pack flows create durable Agent Runs through Agent Backend; Web/Lark consume canonical Conversation History plus transient Live Updates; Ops uses Agent Run status plus audit only; `apps/backend` has zero `@my-agent-team/agent` dependency or legacy direct execution calls.
+Conversation, Cron, Loop Generator/Evaluator create durable Agent Runs through `AgentRunService` + `AgentRunExecutionService`; Loop config and Skill Pack become deterministic services; Web/Lark consume canonical Conversation History plus transient Live Updates; Ops uses Agent Run as the only Product execution identity; `apps/backend` has zero `@my-agent-team/agent` dependency and zero legacy direct execution calls.
 
 ## Prerequisites
 
-- Phases 0–4 are complete. Use `AgentRunScopeService.getOrCreateHeadless(...)`, the existing Phase 1 Agent Run enqueue/acquire API, and `AgentRunExecutionService.dispatch(runId)`, `recover()`, `retryTerminalCommit(runId)`, `stop(runId)`, and `subscribe(runId, signal)` from the Phase 4 services.
-- Reuse the composed `agentRunScope`, `agentRuns`, `agentRunQueries`, and `productTools` handles; do not invent a second coordinator or wrapper. Coding Agent declares `pendingActionResponse=false`, so no replacement for the old session resume route is added.
-- Run cards in order. Product caller cutover is allowed only in this phase.
+- Phases 0–4 complete. Use the composed Phase 4 handles: `agentRunService`, `agentRunExecution`, `productTools` from `installFeatures()`.
+- `AgentRunExecutionService` is the ONLY execution entry point (`dispatch` / `recover` / `retryTerminalCommit` / `stop` / `subscribe`).
+- `enqueueAndAcquire()` is the only run creation path; acquired → `void dispatch(runId)`, queued → nothing.
 
 ## Non-goals
 
 - No old session/checkpoint migration, fallback, dual write, aliases, compatibility DTOs, or legacy endpoint redirects.
-- Do not delete legacy packages or historical data beyond what is required to make `apps/backend` use only Agent Runs; repository-wide legacy deletion belongs to Phase 6.
+- No second execution coordinator, no Pool/Registry/Scope Service recreation, no scope tables.
 - Do not redesign Product Agent, Conversation, Message, Context Branch, or Agent Backend contracts.
+- Do not delete repository-level packages or historical data beyond `apps/backend` (Phase 6).
+- Do not start Phase 6.
 
 ## Estimated size
 
-12–16 focused hours across 8 destructive waves.
+10 destructive steps, strict order (each caller's old path is deleted in the same step).
 
-## Wave 1 — Cut Conversation to durable Agent Runs
-
-### Task 1.1 — Replace Conversation locking and direct session dispatch
-
-**Time box:** 30 minutes
+## Step 1 — Conversation cutover + old side-effect triage
 
 **Files:**
-- Modify: `apps/backend/src/features/conversation/service.ts`
-- Modify: `apps/backend/src/features/conversation/conversation-compose.ts`
-- Modify: `apps/backend/src/features/conversation/service.test.ts`
-- Delete: `apps/backend/src/features/conversation/lock.ts`
-- Delete: `apps/backend/src/features/conversation/lock.test.ts`
+- Modify: `conversation/service.ts`, `conversation-compose.ts`, `http.ts`, `ports.ts`, `adapter-sqlite.ts`, `service.test.ts`, `adapter-sqlite.test.ts`
+- Delete: `lock.ts`, `lock.test.ts`, `agent-factory.ts`, `agent-projection.ts`, `run-accumulator.ts`, `run-accumulator.test.ts`, `run-accumulator.guard.test.ts`
 
 **Actions:**
-1. Replace `ConversationLock`, `activeSessions`, `startAgentRun(spanId, ...)`, and direct `steer`/`followUp` callbacks with the Phase 4 scope acquire/enqueue command keyed by `conversationId + agentMemberId + branchId`.
-2. After the human Message is canonical, enqueue `normal`, `steer`, or `follow_up` before dispatch; branch ownership failure must enqueue without modifying Agent Context.
-3. Return real `runId` values from trigger results; use Agent Run status for busy handling, not in-memory state.
-4. Make `/clear` invalidate/fork Product Context as defined by Phase 1 and make `/compact` invoke Product Context summary policy; neither may call an execution session.
-5. Rewrite tests for concurrent branch ownership, durable busy queues, restart ordering, and per-member scope isolation.
-
-**Check:**
-```bash
-bun test apps/backend/src/features/conversation/service.test.ts
-```
-Expected: all Conversation command tests pass; busy input is persisted and no test constructs `ConversationLock`.
-
-**Done when:** Conversation Message handling only creates/enqueues Agent Runs and survives reconstruction from `backend.db`.
-
-### Task 1.2 — Remove streaming-to-History projection and session binding
-
-**Time box:** 30 minutes
-
-**Files:**
-- Modify: `apps/backend/src/features/conversation/ports.ts`
-- Modify: `apps/backend/src/features/conversation/adapter-sqlite.ts`
-- Modify: `apps/backend/src/features/conversation/adapter-sqlite.test.ts`
-- Delete: `apps/backend/src/features/conversation/agent-factory.ts`
-- Delete: `apps/backend/src/features/conversation/agent-projection.ts`
-- Delete: `apps/backend/src/features/conversation/run-accumulator.ts`
-- Delete: `apps/backend/src/features/conversation/run-accumulator.test.ts`
-- Delete: `apps/backend/src/features/conversation/run-accumulator.guard.test.ts`
-
-**Actions:**
-1. Remove member session binding APIs and all streaming revision mutation/dedup APIs used by the old projection.
-2. Delete Agent assembly, event subscription, run accumulator, terminal callback, and in-place streaming History writes.
-3. Route final assistant Message creation only through Phase 4 terminal commit; retain Conversation History notification after the transaction commits.
-4. Re-home every behavior currently hidden in `agent-factory.ts`/`agent-projection.ts`: goal evaluation, memory extraction/consolidation, mention follow-on triggering, title generation, todo, recap, and pet effects. Each becomes either a canonical Product service triggered from terminal commit, a Product Tool, or an explicit Live Update consumer; none may disappear with file deletion.
-5. Add integration coverage proving no final Message appears before terminal commit, exactly one appears after replay, and goal/memory/title side effects still occur exactly once.
+1. Replace `ConversationLock` / `activeSessions` / `startAgentRun(spanId)` / `onClear` / `onCompact` deps with `AgentRunService` + `AgentRunExecutionService` (+ `AgentContextPort` for clear-branch semantics).
+2. `postMessage()`: human Message becomes canonical History first (append), then trigger rules → per-target `enqueueAndAcquire({ mode: normal|steer|follow_up, idempotencyKey })`; acquired → `void dispatch(runId)`. Return `{ seq, triggeredRuns: [{ agentMemberId, runId, queued }] }`. No spanId, no 409 busy path via lock.
+   - Mode selection: branch has no active run → normal; caller wants to affect the active run → steer; otherwise follow_up. All modes persist; never call in-memory session methods.
+3. `triggerMentionedAgents` → same enqueue path, best-effort.
+4. `/clear`: operates the Product Context branch (existing fork/move/new-branch semantics via AgentContextPort); deletes nothing Runtime. `/compact`: unsupported/no-op (no canonical Product summary exists) — no Coding Session compact.
+5. `completeRun` / `appendAssistantMessage` / `#streamingSeq` / `#forkAgentRuns` / `verifyRunOwnsConversation`: delete. Final assistant Messages come only from Phase 4 `commitCompletedRun` (already implemented).
+6. Mention cascade: terminal commit explicit callback (wired in compose where `commitCompletedRun` effects live) → `findMentionedAgentMembers(message, roster)` in conversation module → enqueue per mentioned member with idempotency key `sourceRunId:targetMemberId`.
+7. Title: disable auto-title; delete `title.ts` model calls (keep explicit `PATCH title` API). Goal/Memory: only if a canonical service + consumer exists in-repo; otherwise delete the path and report it (goal-state.ts is settings-backed UI state, not runtime-plugin — keep as-is if no `@my-agent-team/agent` dependency).
+8. `startNewConversationForSurface`: `requestedByRunId` verification switches from span origin to `agentRunPort.getRun(runId)` + run.conversationId match.
 
 **Check:**
 ```bash
 bun test apps/backend/src/features/conversation
+grep -RInE 'ChatModel|createModel\(|resolveModel\(|\.stream\(' apps/backend/src/features/conversation || true
 ```
-Expected: all tests pass; terminal commit is the sole assistant History writer and streaming updates never mutate ledger rows.
+Expected: pass; no direct model execution in conversation; no ConversationLock/activeSessions anywhere.
 
-**Done when:** Conversation History contains human and terminal canonical Messages only; no Product flow reads or writes `member.sessionId`.
+**Done when:** conversation Message handling only enqueues/dispatches Agent Runs; final assistant Messages appear exactly once after terminal commit; mention cascade idempotent per `sourceRunId:targetMemberId`.
 
-### Task 1.3 — Remove direct Conversation model execution
+## Step 2 — Cron cutover
 
-**Time box:** 25 minutes
-
-**Files:**
-- Modify or delete: `apps/backend/src/features/conversation/title.ts`
-- Modify: `apps/backend/src/features/conversation/title.test.ts`
-- Create: `apps/backend/src/features/conversation/run-effects.ts`
-- Create: `apps/backend/src/features/conversation/run-effects.test.ts`
+**Files:** `cron/scheduler.ts`, `cron/scheduler.test.ts`, `cron/service.test.ts`
 
 **Actions:**
-1. Remove direct `ChatModel.stream` and model construction from Conversation feature code.
-2. Move title generation to `run-effects.ts` behind an injected narrow summarizer or an explicit Agent Run; choose one and test the concrete owner.
-3. Move goal evaluation and memory extraction/consolidation into `run-effects.ts` using canonical Goal/Memory ports; remove their runtime-plugin ownership.
-4. Trigger title/goal/memory from terminal Message commit and make replay idempotent.
-5. Add a static guard for direct model streaming/construction in Product execution features.
-
-**Check:**
-```bash
-bun test apps/backend/src/features/conversation/title.test.ts apps/backend/src/features/conversation/service.test.ts
-grep -RInE 'ChatModel|\.stream\(|createModel\(|resolveModel\(' apps/backend/src/features/conversation apps/backend/src/features/cron apps/backend/src/features/loop apps/backend/src/features/skill-pack || true
-```
-Expected: behavior tests pass; search has no direct model execution in Product flow features.
-
-**Done when:** deleting old Agent assembly does not drop goal, memory, or title behavior and Product flows no longer call models directly.
-
-## Wave 2 — Cut Cron to a stable headless Agent Run scope
-
-### Task 2.1 — Replace Cron sessions, watchdog completion, and retry authority
-
-**Time box:** 30 minutes
-
-**Files:**
-- Modify: `apps/backend/src/features/cron/scheduler.ts`
-- Modify: `apps/backend/src/features/cron/scheduler.test.ts`
-- Modify: `apps/backend/src/features/cron/service.test.ts`
-
-**Actions:**
-1. Resolve each Cron job to the same durable headless Conversation, Agent Member, and Context Branch on every fire/restart.
-2. Create/enqueue an Agent Run with a Cron idempotency key; remove model/tool/plugin/session construction from the scheduler.
-3. Drive timeout cancellation and retry decisions from Agent Run status/outcome, retaining scheduler timers only as trigger/watchdog mechanics.
-4. Store retry audit against `runId`; do not infer success from span, attempt, heartbeat, or checkpoint events.
-5. Test restart reuses the same branch, overlapping fires remain single-flight, timeout becomes `timeout/aborted`, and retry does not duplicate semantic input.
+1. Add pure id helpers (in cron module): `cronConversationId(cronJobId)`, `cronAgentMemberId(agentId)`.
+2. Per fire: ensure Conversation (create if missing) + Agent Member (add if missing) via ConversationPort; `AgentContextService.getOrCreateDefaultBranch()`; then `enqueueAndAcquire({ mode: "normal", idempotencyKey: cronJobId + scheduledAt })` → acquired → `void dispatch(runId)`.
+3. Timeout timer only calls `agentRunExecution.stop(runId)`. Retry creates a new Run reusing the same semantic idempotency rule; no Cron attempt state machine.
+4. Remove SessionManager / ModelRegistry / ProviderAuth / session construction from scheduler; scheduler deps become `ConversationPort`-backed scope helpers + `AgentRunService` + `AgentRunExecutionService`.
 
 **Check:**
 ```bash
 bun test apps/backend/src/features/cron
 ```
-Expected: all Cron tests pass; scheduler dependencies contain Agent Run scope/execution services and no runtime session/model assembly.
+Expected: restart reuses same Conversation/Member/Branch; overlap single active run; timeout → stop; retry no duplicate semantic input.
 
-**Done when:** every non-Loop Cron fire is a durable Agent Run on one stable headless branch.
+## Step 3 — Loop config de-Agented
 
-## Wave 3 — Cut every Loop Agent caller independently
-
-### Task 3.1 — Cut Loop configuration generation
-
-**Time box:** 25 minutes
-
-**Files:**
-- Modify: `apps/backend/src/features/loop/loop-service.ts`
-- Modify: `apps/backend/src/features/loop/http.ts`
-- Add or modify: `apps/backend/src/features/loop/loop-service.test.ts`
+**Files:** `loop/loop-service.ts`, `loop/http.ts`, `loop-service.test.ts`
 
 **Actions:**
-1. Replace `BuildConfigFn`/`SessionManager` inputs with Agent Run scope and execution dependencies.
-2. Give Loop configuration generation a stable Product Agent member and Context Branch under the Loop Conversation.
-3. Submit generation intent through an Agent Run; expose `update_loop_config` through Product Tools rather than an in-process tool closure.
-4. Wait on persisted Agent Run terminal status before reading `LOOP.md` or clarification output; map failed/timeout/aborted explicitly.
-5. Test create/refine reuse the generation branch and never call direct Agent APIs.
-
-**Check:**
-```bash
-bun test apps/backend/src/features/loop/loop-service.test.ts
-```
-Expected: generation/refinement tests pass with fake Agent Run services.
-
-**Done when:** Loop configuration creation/refinement is a Product Agent Run, not a temporary Coding Session.
-
-### Task 3.2 — Cut Loop Generator
-
-**Time box:** 30 minutes
-
-**Files:**
-- Modify: `apps/backend/src/features/loop/loop-step.ts`
-- Modify: `apps/backend/src/features/loop/loop-step.test.ts`
-
-**Actions:**
-1. Resolve a stable Generator Product Agent + Context Branch per Loop; never share it with Evaluator.
-2. Create a Generator Agent Run with workspace, role skill selection, project context, and item idempotency metadata.
-3. Obtain usage and terminal state from Agent Run records/outcome; remove session subscription, `sessionId`, and disposal.
-4. Keep git base/head/diff and denylist checks deterministic in Product Backend.
-5. Rewrite Generator tests around run inputs/outcomes, stable scope, usage budget, and crash/timeout failure.
-
-**Check:**
-```bash
-bun test apps/backend/src/features/loop/loop-step.test.ts --test-name-pattern="generator|budget|denylist"
-```
-Expected: focused Generator tests pass with no `Agent` or `SessionManager` mock.
-
-**Done when:** every Generator invocation is independently identifiable by `runId` on its own stable branch.
-
-### Task 3.3 — Cut Loop Evaluator
-
-**Time box:** 30 minutes
-
-**Files:**
-- Modify: `apps/backend/src/features/loop/loop-step.ts`
-- Modify: `apps/backend/src/features/loop/loop-step.test.ts`
-
-**Actions:**
-1. Resolve a separate stable Evaluator Product Agent + Context Branch per Loop.
-2. Create the Evaluator Agent Run only after deterministic diff/denylist preparation; keep evaluator timeout in Agent Run cancellation.
-3. Read the terminal result/artifact only after Agent Run terminal status; preserve empty-verdict escalation and rollback policy.
-4. Persist Generator and Evaluator `runId` values in Loop state/evidence instead of span/session identifiers.
-5. Test PASS/REJECT/ESCALATE, timeout, worker crash, and independent Generator/Evaluator scopes.
+1. Delete `runLoopConfigGeneration()` Agent path and `BuildConfigFn` dependency.
+2. Route creation/refinement through existing `writeDefaultLoopMd()` deterministic template generation (name/intent/project/settings → LOOP.md + fixed skill templates + cron config) as a plain service. Keep directory creation, LOOP.md write, skill template copy, cron config set.
+3. Delete `update_loop_config` Product Tool and Loop config Agent/Context Branch references.
 
 **Check:**
 ```bash
 bun test apps/backend/src/features/loop
 ```
-Expected: all Loop tests pass; no test imports `Agent`, `AgentConfig`, or `SessionManager`.
+Expected: config creation/refinement tests pass with no Agent/session mocks.
 
-**Done when:** Generator and Evaluator use separate durable scopes and all Loop entry points share the Agent Run path.
+## Step 4 — Loop Generator/Evaluator cutover
 
-## Wave 4 — Cut Skill Pack installer/sync to Pool-backed Agent Runs
-
-### Task 4.1 — Replace the temporary installer Agent
-
-**Time box:** 30 minutes
-
-**Files:**
-- Modify: `apps/backend/src/features/skill-pack/install-session.ts`
-- Modify: `apps/backend/src/features/skill-pack/install-session.test.ts`
-- Modify: `apps/backend/src/features/skill-pack/service.test.ts`
+**Files:** `loop/loop-step.ts`, `loop-step.test.ts`, `loop-service.ts`, `http.ts`
 
 **Actions:**
-1. Replace `ChatModel`, Plugin, Context pipeline, and `createAgentSession` dependencies with Agent Run scope/execution services.
-2. Resolve a stable headless Conversation/Agent Member/Context Branch per pack and action; dispatch through the registered Agent Backend Pool.
-3. Expose install/sync operations as authorized Product Tools with pack/run identity and idempotency; keep zip staging/cleanup deterministic.
-4. Derive `ready`/`failed` only from tool state plus terminal Agent Run outcome; worker crash must leave the pack failed, never ready.
-5. Test install, sync, retry, zip cleanup, Pool dispatch, and crash behavior.
+1. Id helpers: `loopGeneratorConversationId(loopId)`, `loopEvaluatorConversationId(loopId)`, `loopGeneratorMemberId(loopId)`, `loopEvaluatorMemberId(loopId)`; independent Conversations/Branches.
+2. Generator: ensure scope → `enqueueAndAcquire({ mode: "normal", message: { item, LOOP.md prompt, workspace, git log, acceptance, STATE }, idempotencyKey: loopId + itemId + scheduledAt })` → acquired → dispatch. Wait for Agent Run terminal:
+   - completed → continue deterministic git base/head/diff/denylist/rollback;
+   - failed/aborted/timeout → existing Loop failure policy;
+   - commit_failed → do not continue to Evaluator.
+   - Usage from `AgentRun.terminalResult.usage`.
+3. Evaluator: created only after deterministic preparation; separate scope; input = acceptance + files changed + diff/evidence + prompt + workspace; output still VERDICT.md + `parseVerdictMd` (PASS/REJECT/ESCALATE).
+4. Persist `generatorRunId` / `evaluatorRunId` in loop state/evidence instead of span/session. No new Loop coordinator.
+5. Remove AgentConfig / SessionManager / createAgentSession / session usage/dispose / spanId from loop-step and http.
+
+**Check:**
+```bash
+bun test apps/backend/src/features/loop
+```
+Expected: PASS/REJECT/ESCALATE, timeout, worker crash, independent scopes; no `Agent`/`SessionManager` imports.
+
+## Step 5 — Skill Pack deterministic service
+
+**Files:** `skill-pack/install-session.ts`, `service.ts`, `tools.ts`, `install-session.test.ts`, `service.test.ts`
+
+**Actions:**
+1. Delete Agent/ChatModel/Plugin/progressiveSkillPlugin/createAgentSession/installer prompt usage.
+2. Re-orchestrate the existing deterministic logic as plain service functions:
+   - git install: pending → installing → clone/fetch → checkout versionRef → validate → copy/install → ready;
+   - zip install: stage → safe unzip → validate → install → cleanup → ready;
+   - sync: ready → syncing → fetch/update → validate → atomic replace → ready;
+   - failure: status failed + error persisted + temp cleanup.
+3. Keep zip path traversal guard, source validation, temp cleanup, state transitions, idempotency/retry. Reuse existing ports/fs adapters/helpers; do not route through `Tool.execute`.
 
 **Check:**
 ```bash
 bun test apps/backend/src/features/skill-pack
 ```
-Expected: all Skill Pack tests pass and installer execution cannot bypass Agent Backend Pool.
+Expected: pass with zero model/Agent Run calls.
 
-**Done when:** Skill Pack install/sync has no temporary Agent session and satisfies the same Agent Run audit/terminal rules as other Product flows.
+## Step 6 — Bootstrap removes Runtime composition
 
-## Wave 5 — Converge composition and remove Backend runtime assembly
-
-### Task 5.1 — Replace bootstrap services with Agent Backend composition
-
-**Time box:** 30 minutes
-
-**Files:**
-- Modify: `apps/backend/src/bootstrap/services.ts`
-- Modify: `apps/backend/src/bootstrap/services.test.ts`
-- Modify: `apps/backend/src/bootstrap/features.ts`
-- Modify: `apps/backend/src/bootstrap/features.test.ts`
-- Modify: `apps/backend/src/main.ts`
-- Modify: `apps/backend/src/features/agent/agent-compose.ts`
-- Modify: `apps/backend/src/features/agent/service.ts`
-- Delete: `apps/backend/src/features/span/agent-helpers.ts`
-- Delete: `apps/backend/src/features/span/session-manager.test.ts`
+**Files:** `bootstrap/services.ts`, `services.test.ts`, `features.ts`, `features.test.ts`, `main.ts`, `features/agent/agent-compose.ts`, `features/agent/service.ts`, `apps/backend/package.json`
 
 **Actions:**
-1. Compose the Phase 4 Agent Backend registry/pool, Context/Run/Scope services, Product Tools server, transient Live Updates, and Coding Agent Backend client.
-2. Remove `SqliteSessionManager`, `checkpointer.db`, direct provider/model/tool/plugin assembly, and supervisor-to-session disposal wiring.
-3. Make Agent deletion guard/query active Agent Runs and audit by Product Agent identity, not derived session ids.
-4. Update feature constructors for the new dependencies; remove the old global completion listener and old resume route composition.
-5. On shutdown stop accepting runs, drain/cancel Pool work per contract, then close Pool, adapter/daemon client, MCP client, Lark registry, and database in order.
+1. Delete SqliteSessionManager / SessionManager / checkpointer.db / ModelRegistry / ProviderAuth-for-execution / createDefaultModelRegistry / defaultTools/defaultPlugins/defaultContextManager / supervisor→sessionManager disposal / old resume route.
+2. Compose conversation/cron/loop with Phase 4 handles (`agentRunService`, `agentRunExecution`, `productTools`); conversation gets terminal-commit mention-cascade callback wired to the execution service.
+3. `AgentService.hardDelete()` busy guard → query active Agent Run by agentId; remove session-id-based guards and checkpoint purge hooks.
+4. Shutdown: stop accepting → drain/cancel runs → close adapters/daemon client/MCP/db (existing order, minus session manager).
 
 **Check:**
 ```bash
 bun test apps/backend/src/bootstrap apps/backend/src/features/agent
 ```
-Expected: composition tests pass without creating `checkpointer.db` or an in-process Agent.
+Expected: pass without checkpointer.db or in-process Agent.
 
-**Done when:** Product Backend bootstrap knows Agent Backend services but no Coding Session, provider SDK loop, runtime persistence, or SessionManager.
+## Step 7 — Agent Run API + minimal Ops
 
-## Wave 6 — Converge Agent Run API, Ops, and audit
-
-### Task 6.1 — Replace span/session control routes with Agent Run routes
-
-**Time box:** 30 minutes
-
-**Files:**
-- Modify: `apps/backend/src/app.ts`
-- Modify: `apps/backend/src/features/runtime-ops/http.ts`
-- Modify: `apps/backend/src/features/runtime-ops/service.ts`
-- Modify: `apps/backend/src/features/runtime-ops/store.ts`
-- Modify: `apps/backend/src/features/runtime-ops/insights.ts`
-- Modify: `apps/backend/src/features/runtime-ops/insights.test.ts`
-- Modify: `apps/backend/src/features/runtime-ops/store.test.ts`
-- Delete: `apps/backend/src/features/span/http.ts`
-- Delete: `apps/backend/src/features/span/http.test.ts`
-- Delete: `apps/backend/src/features/runtime-ops/checkpoint-events-store.ts`
-- Delete: `apps/backend/src/features/runtime-ops/checkpoint-events-store.test.ts`
+**Files:** `app.ts`, `features/runtime-ops/http.ts`, `service.ts`, `store.ts`, `insights.ts` + tests; delete `features/span/http.ts` + `http.test.ts`, `runtime-ops/checkpoint-events-store.ts` + test
 
 **Actions:**
-1. Mount Agent Run status/detail/cancel endpoints keyed only by `runId`; remove old session listing/detail and span resume/recover contracts. Do not add a Coding Agent pending-action response endpoint.
-2. Read terminal/busy/waiting/commit_failed state from Agent Run; use attempts/spans/events only as subordinate audit.
-3. Replace checkpoint-event insights with Agent Run usage plus new audit records; never infer terminal state from the last event.
-4. Ensure cancel uses the Phase 4 Agent Run stop command idempotently; synchronous Product Tool approvals remain authorized/idempotent through Product Tools.
-5. Test worker crash reports failed, commit_failed remains active and keeps branch ownership, and audit disagreement cannot override Agent Run status.
+1. New routes (read AgentRunService + ExecutionService + adapters): `GET /api/agent-runs`, `GET /api/agent-runs/:runId`, `POST /api/agent-runs/:runId/cancel` → `agentRunExecution.stop(runId)`, `GET /api/agent-runs/:runId/events` → `subscribe(runId)`.
+2. Status vocabulary: running / waiting / commit_failed / completed / failed / aborted / timeout (from agent_run rows; waiting derives from PendingAction or queued inputs).
+3. Delete span/session resume, session list/detail, checkpoint terminal inference, heartbeat-as-Product-state. Keep non-Product audit rows untouched but non-authoritative.
 
 **Check:**
 ```bash
 bun test apps/backend/src/features/runtime-ops
 ```
-Expected: Ops tests pass using Agent Run fixtures only; no checkpoint database is opened.
+Expected: pass using Agent Run fixtures only; no checkpoint DB opened.
 
-**Done when:** Agent Run is the only Product execution identity and terminal authority exposed by Backend APIs.
+## Step 8 — Web cutover
 
-## Wave 7 — Converge Web, Lark, and shared surface contracts
-
-### Task 7.1 — Split canonical History SSE from transient Agent Run updates
-
-**Time box:** 30 minutes
-
-**Files:**
-- Modify: `packages/api-contract/src/sse.ts`
-- Modify: `packages/api-contract/src/index.ts`
-- Modify: `apps/backend/src/features/conversation/http.ts`
-- Add or modify: `apps/backend/src/features/conversation/http.test.ts`
-- Modify: `apps/web/src/hooks/useConversation.ts`
-- Modify: `apps/web/src/lib/conversation-reducer.ts`
-- Modify: `apps/web/tests/lib/conversation-reducer.test.ts`
-- Modify: `apps/web/src/components/ConversationCanvas.tsx`
-- Modify: `apps/web/src/components/MessageBubble.tsx`
-- Modify: `apps/web/src/components/Timeline.tsx`
+**Files:** `packages/api-contract/src/sse.ts` (+ `index.ts`), `apps/backend/src/features/conversation/http.ts` (events route shape), `apps/web/src/hooks/useConversation.ts`, `lib/conversation-reducer.ts`, `tests/lib/conversation-reducer.test.ts`, `components/ConversationCanvas.tsx`, `MessageBubble.tsx`, `Timeline.tsx`, `lib/api.ts`, `features/ops/*`, `app/(main)/system/page.tsx`, `app/(main)/system/runs/[runId]/page.tsx`, `app/(main)/work/[loopId]/runs/[runId]/page.tsx`, `components/ops/*`
 
 **Actions:**
-1. Keep Conversation SSE for canonical History entries and add the Phase 4 transient Live Update stream keyed by Conversation/run with shared schemas.
-2. Derive busy/waiting/failed and approval identity from Agent Run status/Live Updates, not open Message revisions, `spanId`, or Coding Agent private events.
-3. Keep transient text/thinking/tool UI separate from canonical Message reducer state; reconcile/clear it when terminal History Message arrives.
-4. Point stop/cancel to the new `runId` endpoint and delete the old approval resume client path for Coding Agent.
-5. Test terminal Message appears once, disconnect loses only transient updates, reconnect restores canonical History plus active Agent Run status, and `backend.coding_agent.*` cannot change Product state.
+1. Conversation SSE stays canonical History; add transient Agent Run Live Update stream keyed by conversation/run (shared api-contract schema). Busy/waiting/failed from Agent Run status.
+2. Reducer: canonicalMessages (History) + transientText/transientTools/activeRun; transient cleared when the run's final Message lands in History. No stream reconciler service.
+3. Stop/cancel → `runId` endpoint; delete old approval-resume and session stop/recover client paths.
+4. Ops screens → Agent Run DTOs (list/detail/cancel); spans/attempts as audit children; Loop evidence links use runId.
 
 **Check:**
 ```bash
 bun test packages/api-contract apps/web/tests/lib/conversation-reducer.test.ts
 bun run --cwd apps/web typecheck
+bun run --cwd apps/web lint
 ```
-Expected: contract/reducer tests and Web typecheck pass with no span/session execution contract.
 
-**Done when:** Web consumes Conversation History + Live Updates and treats Agent Run status as the sole execution state.
+## Step 9 — Lark cutover
 
-### Task 7.2 — Make Lark resilient to transient stream loss
-
-**Time box:** 25 minutes
-
-**Files:**
-- Modify: `apps/lark-bot/src/sse-watcher.ts`
-- Modify: `apps/lark-bot/src/sse-watcher.test.ts`
-- Modify: `apps/lark-bot/src/render.ts`
-- Modify: `apps/lark-bot/src/render.test.ts`
-- Modify: `apps/lark-bot/src/client.ts`
+**Files:** `apps/lark-bot/src/sse-watcher.ts` + test, `render.ts` + test, `client.ts`
 
 **Actions:**
-1. Continue consuming canonical final Messages from Conversation History and optionally render transient Live Updates without persisting them as delivered History.
-2. Key transient delivery by `runId`; final delivery remains keyed by canonical Message identity/idempotency.
-3. Remove assumptions that streaming/waiting Message revisions or span ids define Product state.
-4. Ensure Live Update disconnect/reconnect cannot suppress or duplicate the final canonical Message.
-5. Test final delivery after transient disconnect, failed Agent Run display, and private Coding Agent event isolation.
+1. Final delivery keyed by canonical Message identity from Conversation History; transient render (optional "thinking" edit) keyed by runId, never marked delivered.
+2. Remove span/session-based final idempotency and streaming-Message assumptions; disconnect cannot suppress/duplicate final.
 
 **Check:**
 ```bash
 bun test apps/lark-bot/src/sse-watcher.test.ts apps/lark-bot/src/render.test.ts
 bun run --cwd apps/lark-bot typecheck
+bun run --cwd apps/lark-bot lint
 ```
-Expected: Lark tests/typecheck pass; canonical terminal delivery is independent of transient stream continuity.
 
-**Done when:** Lark disconnects cannot change, lose, or duplicate the canonical Agent result.
+## Step 10 — Static zero-reference + full repository gate
 
-### Task 7.3 — Cut Web Ops screens and API client to Agent Run DTOs
+**Files:** fix only files owned above; delete `features/span/supervisor.ts` + `supervisor.test.ts` if Agent-execution-only, `test-helpers/mock-span.ts`, remaining legacy-only files; remove `@my-agent-team/agent` and legacy plugin/model deps from `apps/backend/package.json`.
 
-**Time box:** 30 minutes
-
-**Files:**
-- Modify: `apps/web/src/lib/api.ts`
-- Modify: `apps/web/src/features/ops/queries.ts`
-- Modify: `apps/web/src/features/ops/hooks.ts`
-- Modify: `apps/web/src/features/ops/query-keys.ts`
-- Modify: `apps/web/src/app/(main)/system/page.tsx`
-- Modify: `apps/web/src/app/(main)/system/runs/[runId]/page.tsx`
-- Modify: `apps/web/src/app/(main)/work/[loopId]/runs/[runId]/page.tsx`
-- Modify: `apps/web/src/components/ops/RunOpsTable.tsx`
-- Modify: `apps/web/src/components/ops/RunDiagnosisHeader.tsx`
-- Modify: `apps/web/src/components/ops/NeedsAttentionList.tsx`
-- Modify: `apps/web/src/components/ops/RunInsightsPanel.tsx`
-
-**Actions:**
-1. Remove session-list/detail clients and screens; use Agent Run list/detail keyed by `runId`.
-2. Display Agent Run status including waiting, commit_failed, completed, failed, aborted, and timeout; show spans/attempts only as audit children.
-3. Point cancel to Agent Run commands; remove old recover/resume semantics that infer state from missing sessions.
-4. Update Loop evidence links from generator span/session identifiers to Agent Run identifiers.
-5. Typecheck all treaty-derived DTO usage so no old HTTP compatibility response remains.
-
-**Check:**
-```bash
-bun run --cwd apps/web typecheck
-bun run --cwd apps/web lint
-```
-Expected: Web compiles/lints using only Agent Run Product API contracts.
-
-**Done when:** all Web execution and Ops surfaces speak Agent Run, not span/session/checkpoint terminology.
-
-## Wave 8 — Destructive zero-reference and full compilation gate
-
-### Task 8.1 — Remove every remaining Backend legacy execution reference
-
-**Time box:** 25 minutes
-
-**Files:**
-- Modify: `apps/backend/package.json`
-- Modify or delete as indicated by the grep results: `apps/backend/src/features/span/supervisor.ts`, `apps/backend/test-helpers/mock-span.ts`, and any remaining `apps/backend/**/*.ts` legacy-only file
-
-**Actions:**
-1. Remove `@my-agent-team/agent` and legacy runtime/plugin dependencies that no active Backend source imports.
-2. Replace remaining supervisor/session mocks with Agent Run/audit fixtures, or delete tests whose subject was removed.
-3. Run every static search below and fix the source, contract, or test—not the grep command.
-4. Confirm no direct runtime caller was missed: Conversation, Cron, Loop config/Generator/Evaluator, Skill Pack, ops control, Web approval/stop, Lark projection, bootstrap/startup/shutdown.
-
-**Check:**
+**Check (all must exit 0 — fix the owner, never the grep):**
 ```bash
 ! grep -R '@my-agent-team/agent' apps/backend --include='*.ts' --include='package.json'
-! grep -R -E 'createAgentSession|SessionManager|ConversationLock|activeSessions|member\.sessionId|resumeRoutes' apps/backend --include='*.ts'
+! grep -R -E 'createAgentSession|SessionManager|SqliteSessionManager|ConversationLock|activeSessions|member\.sessionId|resumeRoutes' apps/backend --include='*.ts'
 ! grep -R -E '\.(prompt|steer|followUp|compact)\(' apps/backend/src --include='*.ts'
 ! grep -R 'checkpointer\.db' apps/backend/src --include='*.ts'
 ! grep -R -E 'client\.api\.ops\.sessions|useOpsSession|spanId.*resume|resumeRun' apps/web apps/lark-bot --include='*.ts' --include='*.tsx'
 ```
-Expected: every command exits 0 because each forbidden search has zero matches.
 
-**Done when:** `apps/backend` cannot compile against or invoke the old execution model.
-
-### Task 8.2 — Run the Phase 5 gate and restore full repository compilation
-
-**Time box:** 30 minutes
-
-**Files:**
-- No planned edits; fix only failures caused by this phase in the owning files above.
-
-**Actions:**
-1. Run scoped Product caller tests in order so the first ownership boundary failure is visible.
-2. Run Backend typecheck and lint after all callers and bootstrap converge.
-3. Run API contract, Web, and Lark checks after Backend API types are final.
-4. Run the repository build and typecheck; this is the exact point where programme-wide compilation, intentionally broken by the Phase 2 destructive API removal, must return.
-5. Do not proceed to Phase 6 while any command fails.
-
-**Check:**
+Then the ordered gate:
 ```bash
+bun install --frozen-lockfile
 bun test apps/backend/src/features/conversation
 bun test apps/backend/src/features/cron
 bun test apps/backend/src/features/loop
 bun test apps/backend/src/features/skill-pack
-bun test apps/backend/src/features/agent-run apps/backend/src/features/agent-run-scope apps/backend/src/features/runtime-ops apps/backend/src/bootstrap
+bun test apps/backend/src/features/agent-run
+bun test apps/backend/src/features/product-tools
+bun test apps/backend/src/bootstrap
+bun test apps/backend/src/features/runtime-ops
 bun run --cwd apps/backend typecheck
 bun run --cwd apps/backend lint
 bun test packages/api-contract
@@ -449,21 +219,27 @@ bun run --cwd apps/lark-bot typecheck
 bun run --cwd apps/lark-bot lint
 bun run build
 bun run typecheck
+bun run test
 ```
-Expected: every command exits 0. In particular, `bun run build` is the full-repository compilation restoration gate for Phase 5.
-
-**Done when:** all Phase 5 behavior and static criteria pass, every Product caller uses Agent Runs, worker crash is failed, commit_failed retains branch ownership, queues survive restart, surfaces recover from canonical facts, and full repository build/typecheck are green.
+Sequential execution; shared-/tmp parallel false failures avoided.
 
 ## Final phase gate
 
 Phase 5 is complete only when all of the following are simultaneously true:
 
-- Web Message → durable scope/acquire → Agent Backend Pool → transient Live Updates → atomic final Conversation History + Agent Context commit.
-- Busy `normal`/`steer`/`follow_up` inputs survive Backend restart in order.
-- Cron reuses its stable headless branch after restart.
-- Loop configuration, Generator, and Evaluator each use the intended stable Product Agent scope; Generator and Evaluator are independent.
-- Skill Pack installer/sync cannot bypass Pool.
-- Agent Run outcome is terminal authority: Worker crash is failed; `commit_failed` does not release the Context Branch.
-- Web/Lark disconnection does not affect the canonical result.
-- Ops reads Agent Run plus audit and never checkpoint events for Product status.
-- All static zero-reference commands and the ordered full compilation gate pass with no fallback or compatibility layer.
+- Conversation only executes through Agent Runs.
+- Cron only executes through Agent Runs.
+- Loop Generator/Evaluator only execute through Agent Runs.
+- Loop config generation does not depend on an Agent.
+- Skill Pack install/sync does not depend on an Agent or a model.
+- All final assistant Messages are written only by Phase 4 terminal commit.
+- normal/steer/follow_up are all persisted before any execution.
+- Busy queues keep order across restart.
+- Web uses only canonical History + transient updates.
+- Lark final delivery comes only from canonical History.
+- Ops treats Agent Run as the only Product execution identity.
+- Backend has no SessionManager/createAgentSession/ConversationLock.
+- Backend has no checkpointer.db product dependency.
+- `apps/backend` does not depend on `@my-agent-team/agent`.
+- No compatibility layer, fallback, or dual write.
+- Full repository build/typecheck/test/lint are green.
