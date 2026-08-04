@@ -1,9 +1,10 @@
-import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { CodingAgentBackend, CodingAgentClient } from "@my-agent-team/adapter-coding-agent";
 import { createModelRuntime } from "@my-agent-team/ai";
+import type { CodingSessionEntry, SessionStore } from "@my-agent-team/agent";
+import { createSqliteSessionStore } from "@my-agent-team/agent";
 import { createCodingAgentApp } from "../app.js";
 import { loadConfig } from "../config.js";
 import { createCodingSessionSupervisor } from "../session-supervisor.js";
@@ -160,17 +161,8 @@ describe("session lifecycle (real worker)", () => {
     });
     const persistBackend = new CodingAgentBackend(persistClient);
     // The session id is derived from the idempotency key (inputId); the
-    // sqlite file lives under that name. dbRows closes over it and is only
-    // called after start() resolved.
+    // sqlite file lives under that name.
     let sessionFile = "";
-    const dbRows = (sql: string): unknown[] => {
-      const db = new Database(sessionFile, { readonly: true });
-      try {
-        return db.query(sql).all();
-      } finally {
-        db.close();
-      }
-    };
     try {
       const started = await persistBackend.start({
         history: [],
@@ -192,6 +184,22 @@ describe("session lifecycle (real worker)", () => {
         workspace: { root: `${persistTmp}/ws`, access: "read_write" },
         metadata: { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 },
       });
+      // Read through the Phase 2 SessionStore PUBLIC API (never the SQLite
+      // table layout): open/readBranch/findByProductEntryIds are the
+      // persistence contract.
+      const sid = started.session.backendSessionId;
+      const withStore = async <T>(fn: (store: SessionStore) => Promise<T>): Promise<T> => {
+        const store = createSqliteSessionStore(sessionFile);
+        try {
+          await store.open(sid);
+          return await fn(store);
+        } finally {
+          await store.close();
+        }
+      };
+      const readBranch = () => withStore((store) => store.readBranch(sid));
+      const countProductEntry = (id: string) =>
+        withStore((store) => store.findByProductEntryIds(sid, [id]).then((r) => r.length));
       // Capture Run 1's worker PID at acceptance (the one-shot worker exits
       // right after its outcome, so it must be read before the outcome).
       const pid1 = persistSup
@@ -220,24 +228,19 @@ describe("session lifecycle (real worker)", () => {
       // Persistence across the Worker boundary: completed branch leaf,
       // productEntryId lossless, todo state present, system prompt NOT in
       // the tree.
-      expect(
-        (dbRows("SELECT leaf_entry_id FROM meta")[0] as { leaf_entry_id: string }).leaf_entry_id,
-      ).toBeTruthy();
-      const pe1 = dbRows(
-        "SELECT COUNT(*) AS n FROM entries WHERE product_entry_id = 'pe-1'",
-      ) as Array<{
-        n: number;
-      }>;
-      expect(pe1[0]?.n).toBe(1);
-      const todos = dbRows("SELECT state FROM entries WHERE type = 'todo'") as Array<{
-        state: string;
+      const branch1 = await readBranch();
+      const snapshot = await withStore((store) => store.open(sid));
+      expect(snapshot.metadata.leafEntryId).toBeTruthy();
+      expect(await countProductEntry("pe-1")).toBe(1);
+      const todos = branch1.filter((e) => e.type === "todo") as Array<{
+        state: Record<string, unknown>;
       }>;
       expect(todos).toHaveLength(1);
-      expect(JSON.parse(todos[0]!.state)).toMatchObject({ items: [{ id: "t1" }] });
-      const sysInTree = dbRows(
-        "SELECT COUNT(*) AS n FROM entries WHERE message LIKE '%SYS-PROMPT-MARKER%'",
-      ) as Array<{ n: number }>;
-      expect(sysInTree[0]?.n).toBe(0);
+      expect(todos[0]!.state).toMatchObject({ items: [{ id: "t1" }] });
+      const sysInTree = branch1.filter(
+        (e) => e.type === "message" && JSON.stringify(e.message).includes("SYS-PROMPT-MARKER"),
+      );
+      expect(sysInTree).toHaveLength(0);
 
       // Run 2: a NEW one-shot Worker (different PID) over the same session.
       const wake = await persistBackend.send(started.session, {
@@ -266,36 +269,25 @@ describe("session lifecycle (real worker)", () => {
       expect(wakeOutcome.status).toBe("completed");
 
       // Fidelity after the second Worker: pe-1 still exactly once, pe-2 exactly once (the
-      // same canonical Message is never persisted twice), todo still one
-      // entry, both prompt entries on the completed branch.
-      const pe1After = dbRows(
-        "SELECT COUNT(*) AS n FROM entries WHERE product_entry_id = 'pe-1'",
-      ) as Array<{
-        n: number;
-      }>;
-      const pe2After = dbRows(
-        "SELECT COUNT(*) AS n FROM entries WHERE product_entry_id = 'pe-2'",
-      ) as Array<{
-        n: number;
-      }>;
-      expect(pe1After[0]?.n).toBe(1);
-      expect(pe2After[0]?.n).toBe(1);
-      const todosAfter = dbRows("SELECT state FROM entries WHERE type = 'todo'") as Array<{
-        state: string;
+      // same canonical Message is never persisted twice), and run 1's todo
+      // entry is still on the branch.
+      const branch2 = await readBranch();
+      expect(await countProductEntry("pe-1")).toBe(1);
+      expect(await countProductEntry("pe-2")).toBe(1);
+      const todosAfter = branch2.filter((e) => e.type === "todo") as Array<{
+        state: Record<string, unknown>;
       }>;
       // Run 1's todo entry survived the Worker replacement. (The wake run may or may not
       // append a second todo_write: its first model turn can be consumed by
       // the threshold compaction that the oversized prompt triggers.)
       expect(todosAfter.length).toBeGreaterThanOrEqual(1);
-      expect(JSON.parse(todosAfter[0]!.state)).toMatchObject({ items: [{ id: "t1" }] });
+      expect(todosAfter[0]!.state).toMatchObject({ items: [{ id: "t1" }] });
 
       // Idempotent replay of the ORIGINAL start must not append a second
       // batch: same inputId -> same session, no new prompt entry.
-      const promptsBefore = (
-        dbRows(
-          "SELECT COUNT(*) AS n FROM entries WHERE source IN ('prompt','follow_up')",
-        ) as Array<{ n: number }>
-      )[0]?.n;
+      const countPrompts = (branch: readonly CodingSessionEntry[]) =>
+        branch.filter((e) => e.type === "message" && e.source === "prompt").length;
+      const promptsBefore = countPrompts(branch2);
       const replay = await persistBackend.start({
         history: [],
         input: {
@@ -314,11 +306,7 @@ describe("session lifecycle (real worker)", () => {
         metadata: { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 },
       });
       expect(replay.session.backendSessionId).toBe(started.session.backendSessionId);
-      const promptsAfter = (
-        dbRows(
-          "SELECT COUNT(*) AS n FROM entries WHERE source IN ('prompt','follow_up')",
-        ) as Array<{ n: number }>
-      )[0]?.n;
+      const promptsAfter = countPrompts(await readBranch());
       expect(promptsAfter).toBe(promptsBefore);
 
       // Manual compact: the compaction entry persists (covers old entries)
@@ -327,13 +315,11 @@ describe("session lifecycle (real worker)", () => {
         idempotencyKey: `compact-${started.session.backendSessionId}`,
         commandId: `compact-${started.session.backendSessionId}`,
       });
-      const summaries = dbRows(
-        "SELECT covers_entry_ids FROM entries WHERE type = 'compaction'",
-      ) as Array<{
-        covers_entry_ids: string;
+      const summaries = (await readBranch()).filter((e) => e.type === "compaction") as Array<{
+        coversEntryIds: readonly string[];
       }>;
       expect(summaries.length).toBeGreaterThan(0);
-      expect(JSON.parse(summaries[0]!.covers_entry_ids).length).toBeGreaterThan(0);
+      expect(summaries[0]!.coversEntryIds.length).toBeGreaterThan(0);
 
       await persistBackend.close(started.session);
     } finally {

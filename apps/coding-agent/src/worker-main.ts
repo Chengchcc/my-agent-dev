@@ -55,10 +55,16 @@ function log(stderr: NodeJS.WritableStream, msg: string): void {
   stderr.write(`[worker] ${msg}\n`);
 }
 
+/** A Worker state violation (second open_session, second normal Run). The
+ *  Worker is one-shot: these are fatal - the process must exit non-zero, not
+ *  surface a recoverable command_error. */
+class ProtocolViolationError extends Error {}
+
 export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
   const { stdin: inStream, stdout: outStream, stderr: errStream } = opts;
   let runtime: WorkerRuntime | null = null;
   let closed = false;
+  let exitCode = 0;
   // Set once the readline exists; close_session/shutdown call it so the
   // process actually exits (readline close -> chain drains -> main returns).
   let closeRl: (() => void) | null = null;
@@ -135,6 +141,11 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
     if (closed) return;
     switch (cmd.type) {
       case "open_session": {
+        // Exactly one open_session per Worker: a second one would overwrite
+        // the existing Runtime - protocol violation, fatal.
+        if (runtime) {
+          throw new ProtocolViolationError("second open_session on a one-shot worker");
+        }
         const modelRuntime = createModelRuntime();
         // Same provider assembly as the daemon catalog (single source of truth).
         registerBuiltinProviders(modelRuntime);
@@ -208,7 +219,7 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
         }
         // One-shot: one normal Run per Worker process.
         if (runExecuted) {
-          throw new Error("second normal run on a one-shot worker (protocol violation)");
+          throw new ProtocolViolationError("second normal run on a one-shot worker");
         }
         runExecuted = true;
         runtime.setActiveRun(cmd.run as AgentRunSnapshot<"coding_agent">);
@@ -253,7 +264,7 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
       case "compact": {
         if (!runtime) throw new Error("session not open");
         if (runExecuted) {
-          throw new Error("compact after a run on a one-shot worker (protocol violation)");
+          throw new ProtocolViolationError("compact after a run on a one-shot worker");
         }
         send({
           protocolVersion: 1,
@@ -363,7 +374,31 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
       }
       chain = chain
         .then(() => handleCommand(cmd))
-        .catch((err) => reportError((cmd as { commandId?: string }).commandId ?? "", err));
+        .catch((err) => {
+          // A protocol state violation is FATAL for a one-shot Worker:
+          // emit fatal, release resources, exit non-zero. The Supervisor
+          // treats fatal as a crash of the current run, never a retryable
+          // command error.
+          if (err instanceof ProtocolViolationError) {
+            const message = err.message;
+            log(errStream, `protocol violation: ${message}`);
+            closed = true;
+            send({
+              protocolVersion: 1,
+              type: "fatal",
+              backendSessionId: runtime?.sessionId,
+              code: "protocol_violation",
+              message,
+            });
+            exitCode = 1;
+            void (async () => {
+              if (runtime) await runtime.close().catch(() => {});
+              closeRl?.();
+            })();
+            return;
+          }
+          reportError((cmd as { commandId?: string }).commandId ?? "", err);
+        });
     } catch (err) {
       reportError("", err);
     }
@@ -389,7 +424,7 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
       chain.finally(() => resolve());
     });
   });
-  return 0;
+  return exitCode;
 }
 
 // Direct execution: spawned as `bun src/worker-main.ts`

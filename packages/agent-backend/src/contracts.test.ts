@@ -188,18 +188,23 @@ describe("agent-backend contracts", () => {
     }
   });
 
-  test("package manifest allows only @my-agent-team/message", async () => {
+  test("package manifest allows only @my-agent-team/message and zod", async () => {
     const url = new URL("../package.json", import.meta.url);
     const pkg = await Bun.file(url).json();
     expect(pkg.dependencies).toEqual({
       "@my-agent-team/message": "workspace:*",
+      // zod powers the neutral transport wire contract (daemon + adapter
+      // share these schemas without importing each other's implementation).
+      zod: "^3.23.0",
     });
     expect(pkg.devDependencies).toEqual({});
   });
 
   test("package runtime entry imports without missing exports", async () => {
     const module = await import("./index.js");
-    expect(module).toEqual({});
+    // The barrel exports the transport wire contract next to the types.
+    expect(module.startSessionRequestSchema).toBeDefined();
+    expect(module.runOutcomeResponseSchema).toBeDefined();
   });
 
   test("extension events are namespaced to the backend kind", () => {

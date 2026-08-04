@@ -61,4 +61,9 @@ export interface SessionStore {
     sessionId: string,
     ids: readonly string[],
   ): Promise<readonly CodingSessionEntry[]>;
+
+  /** Release backend resources (SQLite connection). Idempotent; the store is
+   *  unusable afterwards. One-shot Workers call this before exiting so the
+   *  session file is not held open after the outcome. */
+  close(): Promise<void>;
 }

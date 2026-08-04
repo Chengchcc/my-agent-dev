@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { BackendModelCatalog } from "@my-agent-team/agent-backend";
 import {
   closeSessionRequestSchema,
   compactSessionRequestSchema,
@@ -7,8 +8,7 @@ import {
   sendRunRequestSchema,
   startSessionRequestSchema,
   stopSessionRequestSchema,
-} from "@my-agent-team/adapter-coding-agent";
-import type { BackendModelCatalog } from "@my-agent-team/agent-backend";
+} from "@my-agent-team/agent-backend";
 import { Elysia, t } from "elysia";
 import { bearerToken, verifyToken } from "./auth.js";
 import { ReplayWindowExceededError, type RunEventBuffer } from "./event-buffer.js";

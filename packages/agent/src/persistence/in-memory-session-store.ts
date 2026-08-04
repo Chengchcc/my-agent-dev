@@ -47,6 +47,10 @@ export function createInMemorySessionStore(): SessionStore {
       }
     },
 
+    async close(): Promise<void> {
+      // In-memory store holds no external resources.
+    },
+
     async appendBatch(sessionId: string, input: AppendBatchInput): Promise<AppendBatchResult> {
       const s = sessions.get(sessionId);
       if (!s) throw new Error(`Session ${sessionId} not found`);

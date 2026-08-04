@@ -68,7 +68,6 @@
       "version": "0.1.0",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.12.1",
-        "@my-agent-team/adapter-coding-agent": "workspace:*",
         "@my-agent-team/adapter-mcp": "workspace:*",
         "@my-agent-team/agent": "workspace:*",
         "@my-agent-team/agent-backend": "workspace:*",
@@ -83,6 +82,7 @@
         "zod": "^3.23.0",
       },
       "devDependencies": {
+        "@my-agent-team/adapter-coding-agent": "workspace:*",
         "@my-agent-team/test-helpers": "workspace:*",
         "bun-types": "latest",
         "typescript": "^5.7.0",
@@ -187,6 +187,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@my-agent-team/message": "workspace:*",
+        "zod": "^3.23.0",
       },
     },
     "packages/ai": {

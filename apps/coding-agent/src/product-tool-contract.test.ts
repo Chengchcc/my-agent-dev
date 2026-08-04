@@ -137,7 +137,10 @@ const entrypoint = `stdio:${wrapper}`;
 
 /** One daemon running the REAL worker (worker-main.ts) with a scripted fake
  *  provider + a real stdio MCP echo server reachable via the wrapper. */
-function startDaemon(toolScript: Array<{ name: string; input: Record<string, unknown> }>) {
+function startDaemon(
+  toolScript: Array<{ name: string; input: Record<string, unknown> }>,
+  extraEnv: Record<string, string> = {},
+) {
   const tmp = `${fullStackTmp}-${Math.random().toString(36).slice(2, 6)}`;
   mkdirSync(tmp, { recursive: true });
   const config = loadConfig({
@@ -156,6 +159,7 @@ function startDaemon(toolScript: Array<{ name: string; input: Record<string, unk
       ...config.providerEnv,
       CODING_AGENT_FAKE_PROVIDER: "1",
       CODING_AGENT_FAKE_TOOL: JSON.stringify(toolScript),
+      ...extraEnv,
     },
     eventBufferSize: 100,
     workerStopGraceMs: 2000,
@@ -280,6 +284,37 @@ describe("full-stack product tool acceptance (real Worker -> production caller)"
       expect(closeMs).toBeLessThan(10_000);
       const outcome = await started.segment.outcome;
       expect(["aborted", "failed"]).toContain(outcome.status);
+    } finally {
+      d.server.stop();
+      await d.app.stop();
+      rmSync(d.tmp, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("a real MCP call that hangs past the injected timeout becomes isError and the run completes", async () => {
+    // Short per-call timeout injected through the Worker env: the real
+    // production path (caller -> transport -> MCP server sleeping 30s) must
+    // time out, tear the transport down, and surface isError - then the Run
+    // continues and completes.
+    const d = startDaemon([{ name: "echo", input: { echo: "slow" } }], {
+      CODING_AGENT_PRODUCT_TOOL_TIMEOUT_MS: "500",
+    });
+    try {
+      const started = await d.backend.start(runInput("run-fs-timeout"));
+      const events: BackendEvent<"coding_agent">[] = [];
+      for await (const ev of started.segment.events) events.push(ev);
+      const outcome = await started.segment.outcome;
+      expect(outcome.status).toBe("completed");
+      const completed = events.find((e) => e.type === "product_tool_completed");
+      expect(completed?.type).toBe("product_tool_completed");
+      if (completed?.type === "product_tool_completed") {
+        // The timed-out call is a TOOL result (isError), not a run failure.
+        expect((completed.result as { isError?: boolean })?.isError).toBe(true);
+        expect(String((completed.result as { content?: string })?.content)).toContain(
+          "product tool timed out",
+        );
+      }
+      await d.backend.close(started.session);
     } finally {
       d.server.stop();
       await d.app.stop();

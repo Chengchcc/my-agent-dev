@@ -35,6 +35,9 @@ function makeRuntime(sessionId: string): WorkerRuntime & { store: SessionStore }
     summarize: async () => "sum",
     contextBudget: undefined,
     setActiveRun() {},
+    async close() {
+      await store.close();
+    },
   } as unknown as WorkerRuntime & { store: SessionStore };
 }
 

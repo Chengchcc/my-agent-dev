@@ -177,6 +177,10 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
   const resolveTools = async (input: CodingLoopInput): Promise<readonly PluginTool[]> => {
     const manifest = input.run.productTools;
     if (!manifest || manifest.length === 0) return [];
+    // Per-call timeout: default 30s, overridable via env so the real MCP
+    // timeout path is testable without waiting 30s.
+    const rawTimeout = process.env.CODING_AGENT_PRODUCT_TOOL_TIMEOUT_MS;
+    const timeoutMs = rawTimeout ? Number(rawTimeout) || 30_000 : 30_000;
     const tools = buildProductTools(manifest, {
       identity: {
         runId: input.run.runId,
@@ -185,7 +189,7 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
         branchId: input.metadata.branchId,
       },
       caller,
-      timeoutMs: 30_000,
+      timeoutMs,
     }) as unknown as PluginTool[];
     // Mark them so the loop's tool events carry kind="product" and consumers
     // map them to product_tool_started/completed (not native_tool_*).
@@ -281,7 +285,8 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
     },
     async close() {
       // Tear down every MCP client (Product Tool transports) so no child
-      // process or connection outlives the Worker.
+      // process or connection outlives the Worker, and release the SQLite
+      // connection so the session file is not held open after the outcome.
       const closePromises: Promise<unknown>[] = [];
       for (const [entrypoint, c] of clients) {
         clients.delete(entrypoint);
@@ -289,6 +294,7 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
           (c as { close?: () => Promise<void> }).close?.().catch(() => {}) ?? Promise.resolve(),
         );
       }
+      closePromises.push(store.close());
       await Promise.allSettled(closePromises);
     },
   };

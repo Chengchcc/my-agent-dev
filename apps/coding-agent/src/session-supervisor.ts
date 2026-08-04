@@ -156,7 +156,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
   // session (the next mutation waits for the previous one's acceptance to
   // settle, including its Worker round-trip).
   const mutationChains = new Map<string, Promise<unknown>>();
-  const inFlightMutations = new Map<string, Promise<unknown>>();
+  const inFlightMutations = new Map<string, { payloadHash: string; promise: Promise<unknown> }>();
 
   function serialized<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
     const prev = mutationChains.get(sessionId) ?? Promise.resolve();
@@ -172,13 +172,23 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     return run;
   }
 
-  function deduped<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  /** Dedupe concurrent mutations by idempotency key AND payload: a duplicate
+   *  with the SAME key and SAME payload joins the in-flight promise (one
+   *  Worker spawn); the same key with a DIFFERENT payload conflicts
+   *  immediately - the settled-result cache already enforces this, so the
+   *  in-flight window must too. */
+  function deduped<T>(key: string, payload: unknown, fn: () => Promise<T>): Promise<T> {
     const existing = inFlightMutations.get(key);
-    if (existing) return existing as Promise<T>;
+    if (existing) {
+      if (existing.payloadHash !== hashPayload(payload)) {
+        throw err("conflict", `idempotency key ${key} reused with different payload`);
+      }
+      return existing.promise as Promise<T>;
+    }
     const p = fn().finally(() => {
-      if (inFlightMutations.get(key) === p) inFlightMutations.delete(key);
+      if (inFlightMutations.get(key)?.promise === p) inFlightMutations.delete(key);
     });
-    inFlightMutations.set(key, p);
+    inFlightMutations.set(key, { payloadHash: hashPayload(payload), promise: p });
     return p;
   }
 
@@ -484,27 +494,36 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       rec.conversationId = input.metadata.conversationId;
       rec.agentMemberId = input.metadata.agentMemberId;
       sessions.set(input.backendSessionId, rec);
-      await runOnSession(rec, runId, (handle) =>
-        handle.send({
-          protocolVersion: 1,
-          type: "start_run",
-          commandId: `start-${runId}`,
-          backendSessionId: input.backendSessionId,
-          runId,
-          mode: "normal",
-          history: input.history as never,
-          input: input.input as never,
-          run: input.run as never,
-          workspace: input.workspace,
-          metadata: input.metadata,
-        }),
-      );
+      try {
+        await runOnSession(rec, runId, (handle) =>
+          handle.send({
+            protocolVersion: 1,
+            type: "start_run",
+            commandId: `start-${runId}`,
+            backendSessionId: input.backendSessionId,
+            runId,
+            mode: "normal",
+            history: input.history as never,
+            input: input.input as never,
+            run: input.run as never,
+            workspace: input.workspace,
+            metadata: input.metadata,
+          }),
+        );
+      } catch (err) {
+        // A first start that never got accepted establishes NO session:
+        // remove the fresh record so the same idempotency key can be retried
+        // (a partially-created SQLite file is still reachable via resume /
+        // a fresh start over the same file - never via this dead record).
+        sessions.delete(input.backendSessionId);
+        throw err;
+      }
       const result = { backendSessionId: input.backendSessionId, runId };
       recordMutation(input.idempotencyKey, input, result);
       return result;
     },
     startSession(input: StartInput) {
-      return deduped(input.idempotencyKey, () =>
+      return deduped(input.idempotencyKey, input, () =>
         serialized(input.backendSessionId, () => this.startSessionInner(input)),
       );
     },
@@ -563,7 +582,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       return result;
     },
     resumeSession(input: StartInput) {
-      return deduped(input.idempotencyKey, () =>
+      return deduped(input.idempotencyKey, input, () =>
         serialized(input.backendSessionId, () => this.resumeSessionInner(input)),
       );
     },
@@ -629,7 +648,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       return result;
     },
     send(input: SendInput) {
-      return deduped(input.idempotencyKey, () =>
+      return deduped(input.idempotencyKey, input, () =>
         serialized(input.backendSessionId, () => this.sendInner(input)),
       );
     },
@@ -654,7 +673,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       return result;
     },
     stop(input: StopInput) {
-      return deduped(input.idempotencyKey, () =>
+      return deduped(input.idempotencyKey, input, () =>
         serialized(input.backendSessionId, () => this.stopInner(input)),
       );
     },
@@ -720,7 +739,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       return result;
     },
     compact(input: CompactInput) {
-      return deduped(input.idempotencyKey, () =>
+      return deduped(input.idempotencyKey, input, () =>
         serialized(input.backendSessionId, () => this.compactInner(input)),
       );
     },
@@ -800,7 +819,7 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       return result;
     },
     close(input: CloseInput) {
-      return deduped(input.idempotencyKey, () =>
+      return deduped(input.idempotencyKey, input, () =>
         serialized(input.backendSessionId, () => this.closeInner(input)),
       );
     },

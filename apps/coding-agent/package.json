@@ -11,7 +11,6 @@
     "lint": "biome check . && eslint ."
   },
   "dependencies": {
-    "@my-agent-team/adapter-coding-agent": "workspace:*",
     "@my-agent-team/adapter-mcp": "workspace:*",
     "@my-agent-team/agent": "workspace:*",
     "@my-agent-team/agent-backend": "workspace:*",
@@ -29,6 +28,7 @@
   "devDependencies": {
     "@my-agent-team/test-helpers": "workspace:*",
     "bun-types": "latest",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "@my-agent-team/adapter-coding-agent": "workspace:*"
   }
 }

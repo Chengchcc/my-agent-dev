@@ -241,6 +241,140 @@ describe("session supervisor (one-shot Worker)", () => {
     ).rejects.toMatchObject({ code: "conflict" });
   });
 
+  test("CONCURRENT same key with different payloads conflicts (in-flight window)", async () => {
+    const key = `ikey-conc-conflict-${Math.random().toString(36).slice(2, 6)}`;
+    const a = { ...startInput("sess-cc", "run-cc-1"), idempotencyKey: key };
+    const b = {
+      ...a,
+      input: { inputId: "other", message: { role: "user" as const, text: "different" } },
+    };
+    // The second call is deferred a tick so a synchronous dedupe throw
+    // becomes a rejection instead of breaking array construction.
+    const results = await Promise.allSettled([
+      supervisor.startSession(a),
+      Promise.resolve().then(() => supervisor.startSession(b)),
+    ]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    // Exactly one run is accepted; the other must conflict - never two
+    // fulfilled, never a silent replay of the wrong payload.
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ code: "conflict" });
+    // and exactly one worker was spawned for the one accepted run
+    expect(supervisor.listSessions().filter((v) => v.backendSessionId === "sess-cc")).toHaveLength(
+      1,
+    );
+  });
+
+  test("a failed first start removes the fresh record so the key can be retried", async () => {
+    // A fixture that never replies to open_session: every start times out.
+    const silentEntry = join(tmp, "silent-worker.ts");
+    writeFileSync(
+      silentEntry,
+      [
+        `import { createInterface } from "node:readline";`,
+        `import { stdin } from "node:process";`,
+        `const rl = createInterface({ input: stdin, terminal: false });`,
+        `rl.on("line", () => {});`,
+      ].join("\n"),
+    );
+    const failSup = createCodingSessionSupervisor({
+      workerEntry: silentEntry,
+      cwd: tmp,
+      sessionsDir: `${tmp}/sessions-failstart`,
+      authEnv: {},
+      eventBufferSize: 100,
+      workerStopGraceMs: 200,
+      acceptTimeoutMs: 300,
+      workspaceRoots: [wsDir],
+      maxStartingWorkers: 4,
+    });
+    try {
+      await expect(failSup.startSession(startInput("sess-failstart", "run-fs-1"))).rejects.toThrow(
+        /timed out|exited/,
+      );
+      // The fresh record must NOT linger: the session id is retryable.
+      expect(failSup.listSessions().some((v) => v.backendSessionId === "sess-failstart")).toBe(
+        false,
+      );
+      await expect(failSup.startSession(startInput("sess-failstart", "run-fs-1"))).rejects.toThrow(
+        /timed out|exited/,
+      );
+    } finally {
+      await failSup.shutdown();
+    }
+  });
+
+  test("startup limiter: maxStartingWorkers bounds concurrent spawns", async () => {
+    // A fixture that delays open_session acceptance so the starting window
+    // is wide enough to observe concurrency.
+    const slowEntry = join(tmp, "slow-open-worker.ts");
+    writeFileSync(
+      slowEntry,
+      [
+        `import { createInterface } from "node:readline";`,
+        `import { stdin, stdout } from "node:process";`,
+        `const rl = createInterface({ input: stdin, terminal: false });`,
+        `rl.on("line", async (line) => {`,
+        `  const cmd = JSON.parse(line);`,
+        `  if (cmd.type === "open_session") {`,
+        `    await new Promise((r) => setTimeout(r, 150));`,
+        `    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId }) + "\\n");`,
+        `  }`,
+        `  if (cmd.type === "start_run") {`,
+        `    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId, runId: cmd.runId }) + "\\n");`,
+        `    await new Promise((r) => setTimeout(r, 100));`,
+        `    stdout.write(JSON.stringify({ protocolVersion: 1, type: "outcome", backendSessionId: cmd.backendSessionId, runId: cmd.runId, outcome: { status: "completed" } }) + "\\n");`,
+        `    process.exit(0);`,
+        `  }`,
+        `  if (cmd.type === "shutdown" || cmd.type === "close_session") {`,
+        `    stdout.write(JSON.stringify({ protocolVersion: 1, type: "command_accepted", commandId: cmd.commandId, backendSessionId: cmd.backendSessionId }) + "\\n");`,
+        `    process.exit(0);`,
+        `  }`,
+        `});`,
+      ].join("\n"),
+    );
+    const limSup = createCodingSessionSupervisor({
+      workerEntry: slowEntry,
+      cwd: tmp,
+      sessionsDir: `${tmp}/sessions-limit`,
+      authEnv: {},
+      eventBufferSize: 100,
+      workerStopGraceMs: 300,
+      acceptTimeoutMs: 5000,
+      workspaceRoots: [wsDir],
+      maxStartingWorkers: 1,
+    });
+    try {
+      const starts = await Promise.all([
+        limSup.startSession(startInput("sess-lim-1", "run-lim-1")),
+        limSup.startSession(startInput("sess-lim-2", "run-lim-2")),
+        limSup.startSession(startInput("sess-lim-3", "run-lim-3")),
+      ]);
+      expect(starts).toHaveLength(3);
+      // While they were spawning, at most ONE session could be in "starting"
+      // at any observed instant (FIFO semaphore).
+      let maxStarting = 0;
+      for (let i = 0; i < 60; i++) {
+        const starting = limSup.listSessions().filter((v) => v.state === "starting").length;
+        maxStarting = Math.max(maxStarting, starting);
+        if (limSup.listSessions().every((v) => v.state === "idle")) break;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      expect(maxStarting).toBeLessThanOrEqual(1);
+      for (const runId of ["run-lim-1", "run-lim-2", "run-lim-3"]) {
+        for (let i = 0; i < 50; i++) {
+          if (limSup.getOutcome(runId)) break;
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        expect(limSup.getOutcome(runId)).toMatchObject({ status: "completed" });
+      }
+    } finally {
+      await limSup.shutdown();
+    }
+  }, 15_000);
+
   test("close is idempotent", async () => {
     await supervisor.startSession(startInput("sess-close", "run-close-1"));
     await supervisor.close({ idempotencyKey: "k", backendSessionId: "sess-close" });

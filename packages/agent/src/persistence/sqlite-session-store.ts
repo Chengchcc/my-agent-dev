@@ -48,6 +48,7 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
   db.exec("PRAGMA foreign_keys = ON");
   schema(db);
 
+  let closed = false;
   let boundSessionId: string | null = null;
 
   function guard(sessionId: string): void {
@@ -130,6 +131,13 @@ export function createSqliteSessionStore(dbPath: string): SessionStore {
       db.exec("DELETE FROM entries");
       db.exec("DELETE FROM operations");
       db.exec("DELETE FROM meta WHERE session_id = ?", [sessionId]);
+      closed = true;
+      db.close();
+    },
+
+    async close(): Promise<void> {
+      if (closed) return;
+      closed = true;
       db.close();
     },
 

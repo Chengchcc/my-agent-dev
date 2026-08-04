@@ -20,7 +20,8 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
-    "@my-agent-team/message": "workspace:*"
+    "@my-agent-team/message": "workspace:*",
+    "zod": "^3.23.0"
   },
   "devDependencies": {}
 }
