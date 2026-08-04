@@ -98,10 +98,12 @@ export class CodingAgentClient {
     })) as { stopped: boolean };
   }
 
-  async closeSession(backendSessionId: string): Promise<{ closed: boolean }> {
-    return (await this.request("DELETE", `/v1/sessions/${backendSessionId}`)) as {
-      closed: boolean;
-    };
+  async closeSession(backendSessionId: string, deleteData = false): Promise<{ closed: boolean }> {
+    return (await this.request("DELETE", `/v1/sessions/${backendSessionId}`, {
+      idempotencyKey: `close-${backendSessionId}`,
+      commandId: `close-${backendSessionId}`,
+      deleteData,
+    })) as { closed: boolean };
   }
 
   async compactSession(
@@ -120,9 +122,10 @@ export class CodingAgentClient {
     });
     if (res.status === 202) return null; // still running
     if (!res.ok) {
-      throw new (await import("./transport.js")).TransportError(
-        "internal",
-        `outcome fetch failed: ${res.status}`,
+      const { TransportError } = await import("./transport.js");
+      throw new TransportError(
+        res.status === 404 ? "not_found" : "internal",
+        `outcome fetch failed: ${res.status} for ${runId}`,
       );
     }
     return runOutcomeResponseSchema.parse(await res.json());

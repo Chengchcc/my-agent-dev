@@ -13,6 +13,7 @@ export type {
   StopSessionRequest,
 } from "./transport.js";
 export {
+  closeSessionRequestSchema,
   compactSessionRequestSchema,
   modelCatalogResponseSchema,
   resumeSessionRequestSchema,

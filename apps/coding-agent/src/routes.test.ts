@@ -28,6 +28,7 @@ function makeApp() {
     acceptTimeoutMs: 5000,
     idleTimeoutMs: 60_000,
     workspaceRoots: [ws],
+    maxStartingWorkers: 4,
   });
   return createCodingAgentApp({ config, modelRuntime, supervisor });
 }
@@ -104,9 +105,9 @@ describe("daemon routes", () => {
     expect(res.status).toBe(401);
   });
 
-  test("unknown session returns not_found", async () => {
+  test("unknown run outcome returns 404 (never a phantom 202)", async () => {
     const app = makeApp();
     const res = await call(app, "/v1/runs/nosuch/outcome", { token: "token-123" });
-    expect(res.status).toBe(202); // running (no outcome yet)
+    expect(res.status).toBe(404);
   });
 });

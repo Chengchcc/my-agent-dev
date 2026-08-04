@@ -40,6 +40,7 @@ beforeAll(() => {
     acceptTimeoutMs: 10_000,
     idleTimeoutMs: 60_000,
     workspaceRoots: config.workspaceRoots,
+    maxStartingWorkers: 4,
   });
   app = createCodingAgentApp({ config, modelRuntime: createModelRuntime(), supervisor });
   server = Bun.serve({ port: 0, hostname: "127.0.0.1", idleTimeout: 0, fetch: app.fetch });
@@ -56,6 +57,7 @@ describe("real worker process integration (fake provider)", () => {
   test("start() runs the real Runtime and resolves a completed outcome with output", async () => {
     const client = new CodingAgentClient({ baseUrl, authToken: "token-123" });
     const backend = new CodingAgentBackend(client);
+    console.error("DBG: calling start");
     const result = await backend.start({
       history: [{ productEntryId: "pe-1", message: { role: "user", text: "hi" } }],
       input: { inputId: "in-1", message: { role: "user", text: "say done" } },
@@ -68,9 +70,11 @@ describe("real worker process integration (fake provider)", () => {
       workspace: { root: ws, access: "read_write" },
       metadata: { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 },
     });
+    console.error("DBG: started", result.session);
     expect(result.session.backendKind).toBe("coding_agent");
 
     // Consume the event stream until the run settles.
+    console.error("DBG: consuming events");
     const types: string[] = [];
     for await (const event of result.segment.events) {
       types.push(event.type);
@@ -79,6 +83,7 @@ describe("real worker process integration (fake provider)", () => {
     expect(types).toContain("text_delta");
 
     // Outcome is terminal authority and carries the final assistant Message.
+    console.error("DBG: awaiting outcome");
     const outcome = await result.segment.outcome;
     expect(outcome.status).toBe("completed");
     if (outcome.status === "completed") {

@@ -1,8 +1,11 @@
 import {
+  closeSessionRequestSchema,
+  compactSessionRequestSchema,
   type RunOutcomeResponse,
   resumeSessionRequestSchema,
   sendRunRequestSchema,
   startSessionRequestSchema,
+  stopSessionRequestSchema,
 } from "@my-agent-team/adapter-coding-agent";
 import type { BackendModelCatalog } from "@my-agent-team/agent-backend";
 import { Elysia, t } from "elysia";
@@ -170,12 +173,19 @@ export function createRoutes(deps: RouteDeps): Elysia {
     async ({ params, body, headers }) => {
       const denied = authGuard(headers);
       if (denied) return denied;
+      const parsed = stopSessionRequestSchema.safeParse(body);
+      if (!parsed.success) {
+        return Response.json(
+          { code: "invalid_request", message: parsed.error.message },
+          { status: 400 },
+        );
+      }
       try {
         const result = await deps.supervisor.stop({
-          idempotencyKey: (body as { idempotencyKey?: string })?.idempotencyKey ?? "stop",
-          commandId: `stop-${Date.now()}`,
+          idempotencyKey: parsed.data.idempotencyKey,
+          commandId: parsed.data.commandId,
           backendSessionId: params.backendSessionId,
-          runId: (body as { runId?: string })?.runId,
+          runId: parsed.data.runId,
         });
         return Response.json(result);
       } catch (err) {
@@ -190,11 +200,19 @@ export function createRoutes(deps: RouteDeps): Elysia {
     async ({ params, body, headers }) => {
       const denied = authGuard(headers);
       if (denied) return denied;
+      const parsed = compactSessionRequestSchema.safeParse(body);
+      if (!parsed.success) {
+        return Response.json(
+          { code: "invalid_request", message: parsed.error.message },
+          { status: 400 },
+        );
+      }
       try {
         const result = await deps.supervisor.compact({
-          idempotencyKey: (body as { idempotencyKey?: string })?.idempotencyKey ?? "compact",
-          commandId: `compact-${Date.now()}`,
+          idempotencyKey: parsed.data.idempotencyKey,
+          commandId: parsed.data.commandId,
           backendSessionId: params.backendSessionId,
+          runId: parsed.data.runId,
         });
         return Response.json(result);
       } catch (err) {
@@ -204,14 +222,24 @@ export function createRoutes(deps: RouteDeps): Elysia {
     { body: t.Any() },
   );
 
-  app.delete("/v1/sessions/:backendSessionId", async ({ params, headers }) => {
+  app.delete("/v1/sessions/:backendSessionId", async ({ body, params, headers }) => {
     const denied = authGuard(headers);
     if (denied) return denied;
+    // Accept a caller-supplied idempotency key + deleteData via the request
+    // body (DELETE bodies are optional; default to a stable per-session key).
+    const parsed = closeSessionRequestSchema.safeParse(body ?? {});
+    if (!parsed.success) {
+      return Response.json(
+        { code: "invalid_request", message: parsed.error.message },
+        { status: 400 },
+      );
+    }
     try {
       const result = await deps.supervisor.close({
-        idempotencyKey: `close-${params.backendSessionId}`,
+        idempotencyKey: parsed.data.idempotencyKey,
+        commandId: parsed.data.commandId,
         backendSessionId: params.backendSessionId,
-        deleteData: false,
+        deleteData: parsed.data.deleteData ?? false,
       });
       return Response.json(result);
     } catch (err) {
@@ -222,6 +250,12 @@ export function createRoutes(deps: RouteDeps): Elysia {
   app.get("/v1/runs/:runId/outcome", ({ params, headers }) => {
     const denied = authGuard(headers);
     if (denied) return denied;
+    if (!deps.supervisor.hasRun(params.runId)) {
+      // Unknown run: 404 so the Adapter never polls a phantom run forever.
+      const e = new Error(`no such run: ${params.runId}`) as Error & { code: string };
+      e.code = "not_found";
+      return errorResponse(e);
+    }
     const outcome = deps.supervisor.getOutcome(params.runId) as RunOutcomeResponse | null;
     if (!outcome) {
       return Response.json({ status: "running" }, { status: 202 });

@@ -33,6 +33,8 @@ export interface SupervisorOptions {
   reapIntervalMs?: number;
   /** Workspace root allowlist: requested roots must be within one of these. */
   workspaceRoots: readonly string[];
+  /** Max concurrent Worker process spawns (FIFO startup semaphore). */
+  maxStartingWorkers: number;
 }
 
 export interface SessionView {
@@ -100,10 +102,12 @@ export interface CodingSessionSupervisor {
   }): Promise<{ compacted: boolean }>;
   close(input: {
     idempotencyKey: string;
+    commandId: string;
     backendSessionId: string;
     deleteData?: boolean;
   }): Promise<{ closed: boolean }>;
   getEvents(runId: string): RunEventBuffer;
+  hasRun(runId: string): boolean;
   getOutcome(runId: string): unknown | null;
   listSessions(): SessionView[];
   shutdown(): Promise<void>;
@@ -115,6 +119,24 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
   const eventBuffers = new Map<string, RunEventBuffer>();
   const outcomes = new Map<string, unknown>();
   const mutations = new Map<string, MutationRecord>();
+
+  // FIFO startup semaphore: bounds concurrent Worker spawns (Phase 3 resource
+  // limit). Spawners queue; a slot frees when a spawn completes or fails.
+  let startingWorkers = 0;
+  const startupQueue: Array<() => void> = [];
+  async function withStartupSlot<T>(fn: () => Promise<T>): Promise<T> {
+    if (startingWorkers < opts.maxStartingWorkers) {
+      startingWorkers++;
+      try {
+        return await fn();
+      } finally {
+        startingWorkers--;
+        startupQueue.shift()?.();
+      }
+    }
+    await new Promise<void>((resolve) => startupQueue.push(resolve));
+    return withStartupSlot(fn);
+  }
 
   function recordFor(sessionId: string): SessionRecord {
     const rec = sessions.get(sessionId);
@@ -154,6 +176,17 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
     if (rec.workerPid !== null) {
       throw err("busy", `session already has a live worker: ${backendSessionId}`);
     }
+    return withStartupSlot(() =>
+      spawnWorkerLocked(rec, backendSessionId, workspaceRoot, workspaceAccess),
+    );
+  }
+
+  async function spawnWorkerLocked(
+    rec: SessionRecord,
+    backendSessionId: string,
+    workspaceRoot: string,
+    workspaceAccess: "read_only" | "read_write",
+  ): Promise<WorkerProcessHandle> {
     const handle = spawnWorkerProcess({
       workerEntry: opts.workerEntry,
       env: {
@@ -515,6 +548,10 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
       const buf = eventBuffers.get(runId);
       if (!buf) throw err("not_found", `no event stream for run: ${runId}`);
       return buf;
+    },
+
+    hasRun(runId) {
+      return eventBuffers.has(runId) || outcomes.has(runId);
     },
 
     getOutcome(runId) {

@@ -82,6 +82,7 @@ beforeAll(() => {
     acceptTimeoutMs: 5000,
     idleTimeoutMs: 60_000,
     workspaceRoots: [wsDir],
+    maxStartingWorkers: 4,
   });
 });
 
@@ -212,6 +213,7 @@ describe("session supervisor", () => {
       acceptTimeoutMs: 5000,
       idleTimeoutMs: 60_000,
       workspaceRoots: [wsDir],
+      maxStartingWorkers: 4,
     });
     const goodSup = supervisor; // sibling on the healthy fixture
     try {
@@ -273,6 +275,7 @@ describe("session supervisor", () => {
       acceptTimeoutMs: 5000,
       idleTimeoutMs: 60_000,
       workspaceRoots: [wsDir],
+      maxStartingWorkers: 4,
     });
     try {
       await crashSup.startSession(startInput("sess-norecover", "run-nr-1"));
@@ -300,6 +303,7 @@ describe("session supervisor", () => {
       idleTimeoutMs: 400,
       reapIntervalMs: 50,
       workspaceRoots: [wsDir],
+      maxStartingWorkers: 4,
     });
     try {
       await sleepSup.startSession(startInput("sess-sleep", "run-sleep-1"));

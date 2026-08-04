@@ -13,7 +13,7 @@ import type {
 } from "@my-agent-team/agent-backend";
 import type { CodingAgentClient } from "./client.js";
 import { mapRunEvent, mapRunOutcome } from "./event-mapper.js";
-import type { RunEventEnvelope } from "./transport.js";
+import { type RunEventEnvelope, TransportError } from "./transport.js";
 
 /** The adapter's session ref is the plain contract identity only -
  *  `{ backendSessionId, backendKind }`. Run identity is segment-internal and
@@ -83,12 +83,22 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent", CodingAg
         mode: "steer",
         metadata: input.metadata,
       });
-      // Steer is an in-flight injection into the active run - it has no segment
-      // of its own. Return a settled empty segment so the contract's send()
-      // return type holds; the caller observes steer through the active segment.
+      // Steer is an in-flight injection into the active run - it has no
+      // terminal outcome of its own. Return the ACTIVE segment so the caller
+      // keeps observing the real run; a synthetic completed outcome would let
+      // a caller wrongly terminal-commit.
+      const active = this.activeRuns.get(session.backendSessionId);
+      if (active) {
+        return buildSegment(this.client, this.activeRuns, session, active.runId);
+      }
+      // No active run: steer was rejected daemon-side; surface a settled
+      // failed segment so the caller never treats steer as a completion.
       return {
         events: (async function* () {})(),
-        outcome: Promise.resolve({ status: "completed" } as BackendRunOutcome),
+        outcome: Promise.resolve({
+          status: "failed",
+          error: "steer requires an active run",
+        } as BackendRunOutcome),
         stop: async () => {},
       };
     }
@@ -182,8 +192,18 @@ function buildSegment(
 
   const outcomePromise = (async (): Promise<BackendRunOutcome> => {
     for (;;) {
-      const outcome = await client.getOutcome(runId);
-      if (outcome) return mapRunOutcome(outcome);
+      try {
+        const outcome = await client.getOutcome(runId);
+        if (outcome) return mapRunOutcome(outcome);
+      } catch (err) {
+        // 404 = the session/run was closed while we were polling. The run is
+        // gone: settle as failed instead of polling a phantom forever (and
+        // never leak an unhandled rejection to concurrent consumers).
+        if (err instanceof TransportError && err.code === "not_found") {
+          return { status: "failed", error: "run closed before outcome" };
+        }
+        throw err;
+      }
       await new Promise((r) => setTimeout(r, 200));
     }
   })().finally(() => {

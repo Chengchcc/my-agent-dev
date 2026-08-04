@@ -97,6 +97,13 @@ export const stopSessionRequestSchema = z.object({
 });
 export type StopSessionRequest = z.infer<typeof stopSessionRequestSchema>;
 
+export const closeSessionRequestSchema = z.object({
+  idempotencyKey: idempotencyKeySchema,
+  commandId: commandIdSchema,
+  deleteData: z.boolean().optional(),
+});
+export type CloseSessionRequest = z.infer<typeof closeSessionRequestSchema>;
+
 // ─── Responses ────────────────────────────────────────────────────────
 
 export const sessionResponseSchema = z.object({

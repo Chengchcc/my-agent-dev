@@ -45,6 +45,9 @@ function makeApp(seed: Array<{ type: string; data: Record<string, unknown> }>) {
       }
       return buf;
     },
+    hasRun(runId) {
+      return runId === "r1";
+    },
     getOutcome() {
       return null;
     },
@@ -198,6 +201,9 @@ describe("daemon SSE routes", () => {
       },
       getEvents() {
         return buf;
+      },
+      hasRun() {
+        return true;
       },
       getOutcome() {
         return null;
