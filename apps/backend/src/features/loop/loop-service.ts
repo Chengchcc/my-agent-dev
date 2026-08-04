@@ -4,8 +4,6 @@ import type { ItemState, LoopState, Verdict } from "@my-agent-team/loop";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";
-import type { CronJobPort } from "../cron/ports.js";
-import type { CronScheduler } from "../cron/scheduler.js";
 import type { CronJobService } from "../cron/service.js";
 import { loopStep } from "../loop/loop-step.js";
 import { resolveLoopPaths } from "../loop/resolve-paths.js";
@@ -228,7 +226,7 @@ export async function refineLoop(
     settingsSvc?: SettingsService;
   },
   id: string,
-  input: RefineLoopInput,
+  _input: RefineLoopInput,
 ): Promise<RefineLoopResult | null> {
   const { cronSvc, dataDir, settingsSvc } = deps;
   const job = cronSvc.getById(id);

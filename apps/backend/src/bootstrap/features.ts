@@ -4,7 +4,6 @@ import {
   CodingAgentClient,
   CodingAgentModelCatalog,
 } from "@my-agent-team/adapter-coding-agent";
-import { autoSummarize, pipeContextManagers, toolResultTruncator } from "@my-agent-team/agent";
 import type { Message } from "@my-agent-team/message";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { FeatureSet } from "../app.js";
@@ -57,27 +56,13 @@ import {
   skillPackRoutes,
   sqliteSkillPackAdapter,
 } from "../features/skill-pack/index.js";
-import {
-  createModel,
-  defaultContextManager,
-  defaultPlugins,
-  defaultTools,
-  resolveModel,
-} from "../features/span/agent-helpers.js";
+import { createModel, resolveModel } from "../features/span/agent-helpers.js";
 import { resumeRoutes } from "../features/span/http.js";
 import * as backendSchema from "../infra/db/schema.js";
 import { ulid } from "../infra/ids.js";
 import type { BackendServices } from "./services.js";
 
 // ─── Helper ───────────────────────────────────────────────────
-
-function createSkillPackModel(services: BackendServices) {
-  return createModel(
-    resolveModel("anthropic/claude-sonnet-4-6", services.modelRegistry),
-    services.modelRegistry,
-    services.anthropicAuth,
-  );
-}
 
 // ─── Installer ────────────────────────────────────────────────
 
@@ -118,12 +103,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     builtinSkillsDir: config.builtinSkillsDir,
   });
 
-  const skillPackModel = createSkillPackModel(services);
-  const skillPackContext = pipeContextManagers(
-    toolResultTruncator({ maxCharsPerResult: 50_000 }),
-    autoSummarize({ triggerAt: 100_000, keepRecent: 10 }),
-  );
-
+  // Deterministic Skill Pack install/sync: no model, no Agent session.
   const skillPackSvc = createSkillPackServiceFn({
     port: skillPackPort,
     idGen: ulid,
@@ -136,10 +116,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
           versionRef: ctx.versionRef,
         },
         {
-          model: skillPackModel,
           dataDir: config.dataDir,
           port: skillPackPort,
-          contextManager: skillPackContext,
           zipBuffer:
             ctx.sourceKind === "zip" && ctx.sourceUrl
               ? Buffer.from(ctx.sourceUrl, "base64")
@@ -156,10 +134,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
           versionRef: ctx.versionRef,
         },
         {
-          model: skillPackModel,
           dataDir: config.dataDir,
           port: skillPackPort,
-          contextManager: skillPackContext,
         },
       ).catch((err: Error) => console.error(`[skill-pack] sync failed for ${packId}:`, err));
     },

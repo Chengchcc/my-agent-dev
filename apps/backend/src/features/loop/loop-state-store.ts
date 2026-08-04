@@ -30,7 +30,19 @@ export function createLoopStateStore(db: Database): LoopStateStore {
 
   const upsertItem = db.query<
     void,
-    [string, string, string, string, string, number, number, string | null, string | null, string | null, number]
+    [
+      string,
+      string,
+      string,
+      string,
+      string,
+      number,
+      number,
+      string | null,
+      string | null,
+      string | null,
+      number,
+    ]
   >(
     `INSERT INTO loop_item(loop_id, item_id, source, summary, step, attempt, priority, result, generator_run_id, evaluator_run_id, updated_at)
      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

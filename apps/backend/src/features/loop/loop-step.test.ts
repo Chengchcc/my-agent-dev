@@ -37,7 +37,11 @@ function createTestStore(): LoopStateStore {
   return createLoopStateStore(db);
 }
 
-async function initLoopDir(projectId?: string, denylist?: string, budgetYaml?: string): Promise<string> {
+async function initLoopDir(
+  projectId?: string,
+  denylist?: string,
+  budgetYaml?: string,
+): Promise<string> {
   await rm(TMP, { recursive: true, force: true });
   await mkdir(TMP, { recursive: true });
   const denylistYaml = denylist ? `denylist:\n${denylist}\n` : "";
@@ -260,8 +264,7 @@ async function runStep(
     convPort: Parameters<typeof loopStep>[0]["convPort"];
   }> = {},
 ) {
-  const ownGit =
-    !overrides.projectPort || !overrides.dataDir ? await setupGitDataDir() : null;
+  const ownGit = !overrides.projectPort || !overrides.dataDir ? await setupGitDataDir() : null;
   const store = overrides.store ?? createTestStore();
   const dataDir = overrides.dataDir ?? ownGit!.dataDir;
   const projectPort = overrides.projectPort ?? ownGit!.projectPort;
@@ -367,7 +370,13 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
           loopId: "test",
           projectPort,
           dataDir,
-          convPort: { createConversation: () => ({}), addMember: () => ({ member: null, created: true }), getConversation: () => null, getMembers: () => [], appendLedgerEntry: () => 1 } as never,
+          convPort: {
+            createConversation: () => ({}),
+            addMember: () => ({ member: null, created: true }),
+            getConversation: () => null,
+            getMembers: () => [],
+            appendLedgerEntry: () => 1,
+          } as never,
           agentRunService: fake.agentRunService,
           agentRunExecution: fake.agentRunExecution,
           resolveModel: async (name) => ({ backendKind: "coding_agent", modelId: name }),

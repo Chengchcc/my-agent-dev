@@ -1,6 +1,5 @@
 import type { BackendModelRef } from "@my-agent-team/agent-backend";
 import type { BackendConfig } from "../../config.js";
-import type { AgentContextService } from "../agent-context/service.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";

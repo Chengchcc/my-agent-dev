@@ -4,7 +4,7 @@ import type { LoopConfig, LoopState } from "@my-agent-team/loop";
 import { loopReducer, parseLoopConfig, parseVerdictMd } from "@my-agent-team/loop";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
-import type { AppendLedgerInput, ConversationPort } from "../conversation/ports.js";
+import type { ConversationPort } from "../conversation/ports.js";
 import type { ProjectPort } from "../project/ports.js";
 import type { LoopStateStore } from "./loop-state-store.js";
 

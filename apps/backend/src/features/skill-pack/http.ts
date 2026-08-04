@@ -1,6 +1,6 @@
 import { existsSync, rmSync, statSync } from "node:fs";
-import { resolve } from "node:path";
-import { loadSkillIndexWithMtimeCache } from "@my-agent-team/plugin-progressive-skill";
+import { join, resolve } from "node:path";
+import { buildSkillIndex } from "@my-agent-team/plugin-progressive-skill";
 import { Elysia, t } from "elysia";
 import type { SkillPackRow } from "./entities.js";
 import { installPath, posixSkillRoot } from "./entities.js";
@@ -111,9 +111,8 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
     })
 
     .get("/api/skill-packs/:id/skills", async ({ params: { id } }) => {
-      const ws = nodeFsAdapter(posixSkillRoot(dataDir));
-      const skills = await loadSkillIndexWithMtimeCache(ws, [id]);
-      return skills.map((s: { name: string; description: string; dir: string }) => ({
+      const skills = buildSkillIndex([join(posixSkillRoot(dataDir), id)]);
+      return skills.map((s) => ({
         name: s.name,
         description: s.description,
         dir: s.dir,

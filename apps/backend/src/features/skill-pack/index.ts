@@ -28,4 +28,4 @@ export {
   type SkillPackService,
   type SkillPackServiceDeps,
 } from "./service.js";
-export { assertSafeEntry, createAllPackTools, type PackToolsDeps } from "./tools.js";
+export { assertSafeEntry } from "./tools.js";
