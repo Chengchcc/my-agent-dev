@@ -188,20 +188,21 @@ export function createCodingSessionSupervisor(opts: SupervisorOptions): CodingSe
   function waitForOutcome(runId: string, timeoutMs: number): Promise<boolean> {
     if (outcomes.has(runId)) return Promise.resolve(true);
     return new Promise((resolve) => {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const notify = (): void => settle(true);
-      const settle = (settled: boolean): void => {
-        if (timer) clearTimeout(timer);
-        const arr = outcomeWaiters.get(runId);
-        if (arr) {
-          const idx = arr.indexOf(notify);
-          if (idx >= 0) arr.splice(idx, 1);
-          if (arr.length === 0) outcomeWaiters.delete(runId);
-        }
-        resolve(settled);
-      };
-      timer = setTimeout(() => settle(false), timeoutMs);
       const arr = outcomeWaiters.get(runId) ?? [];
+      const remove = (): void => {
+        const idx = arr.indexOf(notify);
+        if (idx >= 0) arr.splice(idx, 1);
+        if (arr.length === 0) outcomeWaiters.delete(runId);
+      };
+      const timer = setTimeout(() => {
+        remove();
+        resolve(false);
+      }, timeoutMs);
+      const notify = (): void => {
+        clearTimeout(timer);
+        remove();
+        resolve(true);
+      };
       arr.push(notify);
       outcomeWaiters.set(runId, arr);
     });

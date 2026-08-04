@@ -1,14 +1,14 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { CodingAgentBackend, CodingAgentClient } from "@my-agent-team/adapter-coding-agent";
 import type { BackendEvent } from "@my-agent-team/agent-backend";
 import { createModelRuntime } from "@my-agent-team/ai";
-import { CodingAgentBackend, CodingAgentClient } from "@my-agent-team/adapter-coding-agent";
 import { createCodingAgentApp } from "./app.js";
 import { loadConfig } from "./config.js";
-import { createCodingSessionSupervisor } from "./session-supervisor.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { buildProductTools } from "./product-tool-transport.js";
+import { createCodingSessionSupervisor } from "./session-supervisor.js";
 
 /** Contract test: the transport binds descriptor.entrypoint (the MCP server
  *  address) and descriptor.name (the MCP tool name). A real stdio MCP server
