@@ -16,28 +16,6 @@ import {
 } from "./bindings-sqlite.js";
 import { renderRevision } from "./render.js";
 
-// L2: throttle non-terminal lark sends (one timer per messageId, shared across watchers)
-const pendingSends = new Map<string, { text: string; idempotencyKey: string }>();
-const sendTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-function flushSend(
-  key: string,
-  h: { onSend: (chatId: string, text: string, idempotencyKey: string) => Promise<void> },
-) {
-  const timer = sendTimers.get(key);
-  if (timer) {
-    clearTimeout(timer);
-    sendTimers.delete(key);
-  }
-  const pending = pendingSends.get(key);
-  if (!pending) return;
-  pendingSends.delete(key);
-  const [larkChatId] = key.split(":", 1) as [string];
-  void h
-    .onSend(larkChatId, pending.text, pending.idempotencyKey)
-    .catch((err) => console.error(`[lark] throttle flush failed for ${key}:`, err));
-}
-
 export interface SseWatcherDeps {
   db: Database;
   backendUrl: string;
@@ -284,28 +262,11 @@ async function processEntry(
     updatedAt: Date.now(),
   });
 
-  // Render and send with L2 throttle + L6 retry
+  // Render and send (canonical History only carries terminal frames; there
+  // is no streaming revision path in Phase 5). L6: retry with backoff.
   const text = renderRevision(revision);
   const idempotencyKey = `${entry.conversationId}:${messageId}:${entry.seq}`;
-  const isTerminal = isTerminalMessageState(revision.state);
 
-  // L2: throttle non-terminal frames (≥500ms), flush terminal immediately
-  const sendKey = `${larkChatId}:${messageId}`;
-  if (!isTerminal) {
-    pendingSends.set(sendKey, { text, idempotencyKey });
-    if (!sendTimers.has(sendKey)) {
-      sendTimers.set(
-        sendKey,
-        setTimeout(() => flushSend(sendKey, h), 500),
-      );
-    }
-    updatePushedSeq(db, larkChatId, entry.seq);
-    return;
-  }
-  // Terminal: flush pending immediately, then send
-  flushSend(sendKey, h);
-
-  // L6: retry terminal send with exponential backoff, keep stream alive
   let attempt = 0;
   while (attempt < 3) {
     try {
