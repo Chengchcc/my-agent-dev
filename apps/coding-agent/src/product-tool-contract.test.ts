@@ -81,10 +81,12 @@ describe("product-tool contract (real MCP server via entrypoint)", () => {
     const entrypoint = `stdio:${wrapper}`;
 
     // The REAL caller path (same code the Worker uses): connect, list tools,
-    // call the tool named `echo` over the transport at `entrypoint`.
+    // call the tool named `echo` over the transport at `entrypoint`. The URI
+    // prefix is stripped: `stdio:` -> command.
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
     const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
-    const transport = new StdioClientTransport({ command: wrapper, args: [] });
+    const command = entrypoint.startsWith("stdio:") ? entrypoint.slice(6) : entrypoint;
+    const transport = new StdioClientTransport({ command, args: [] });
     const client = new Client({ name: "test", version: "0.0.1" }, { capabilities: {} });
     await client.connect(transport as never);
     const tools = await (client as { listTools: () => Promise<{ tools: unknown[] }> }).listTools();
