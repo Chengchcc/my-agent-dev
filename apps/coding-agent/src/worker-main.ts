@@ -145,10 +145,21 @@ export async function runWorkerMain(opts: WorkerMainOptions): Promise<number> {
               productIdentity: cmd.identity as never,
             });
         runtime.session.onEvent(listener);
-        // Create or reopen the durable session file before any run.
+        // Exactly one open_session per Worker: a second one with a different
+        // backendSessionId is an identity violation, not a session switch.
+        if (runtime.sessionId !== cmd.backendSessionId) {
+          throw new Error(
+            `open_session identity mismatch: worker is ${runtime.sessionId}, got ${cmd.backendSessionId}`,
+          );
+        }
+        // Create or reopen the durable session file before any run. Only a
+        // genuine not-found creates; corruption/permission errors must NOT be
+        // misread as "missing" (they propagate as command_error).
         try {
           await runtime.store.open(cmd.backendSessionId);
-        } catch {
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!/not found/i.test(message)) throw err;
           await runtime.store.create({
             sessionId: cmd.backendSessionId,
             backendKind: "coding_agent",

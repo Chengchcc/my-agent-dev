@@ -26,10 +26,7 @@ export interface SessionRecord {
     agentMemberId: string;
     branchId: string;
   };
-  pendingCommands: Map<string, { commandId: string; idempotencyKey: string }>;
   lastActivityAt: number;
-  /** Completed outcomes by runId (diagnostics + outcome endpoint). */
-  completedOutcomes: Map<string, unknown>;
   /** True once a Worker exited unexpectedly for this session. */
   crashedAt: number | null;
 }
@@ -59,9 +56,7 @@ export function createSessionRecord(backendSessionId: string): SessionRecord {
     workspaceAccess: "read_write",
     productTools: [],
     productIdentity: { runId: "", conversationId: "", agentMemberId: "", branchId: "" },
-    pendingCommands: new Map(),
     lastActivityAt: Date.now(),
-    completedOutcomes: new Map(),
     crashedAt: null,
   };
 }

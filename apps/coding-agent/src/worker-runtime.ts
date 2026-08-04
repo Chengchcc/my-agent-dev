@@ -212,7 +212,11 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
     return text || "[empty summary]";
   };
 
-  // ContextBudget from the model catalog's context window
+  // ContextBudget from the model catalog's context window.
+  // ponytail: budget is fixed at session assembly from the catalog's first
+  // model; switching models on later runs keeps the first window. A per-run
+  // budget would need a session API to update ContextBudget - add when
+  // multi-model sessions actually run.
   const primaryModel = (await deps.modelRuntime.getCatalog()).models[0];
   const contextBudget: ContextBudget | undefined = primaryModel
     ? {
