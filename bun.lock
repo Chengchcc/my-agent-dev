@@ -43,7 +43,6 @@
         "@my-agent-team/core": "workspace:*",
         "@my-agent-team/loop": "workspace:*",
         "@my-agent-team/message": "workspace:*",
-        "@my-agent-team/plugin-goal": "workspace:*",
         "@my-agent-team/plugin-progressive-skill": "workspace:*",
         "@my-agent-team/runtime-observability": "workspace:*",
         "@my-agent-team/tools-common": "workspace:*",
@@ -237,55 +236,6 @@
         "zod": "^3.23.0",
       },
     },
-    "packages/plugin-conversation-context": {
-      "name": "@my-agent-team/plugin-conversation-context",
-      "version": "0.1.0",
-      "dependencies": {
-        "@my-agent-team/agent": "workspace:*",
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
-      },
-    },
-    "packages/plugin-goal": {
-      "name": "@my-agent-team/plugin-goal",
-      "version": "0.1.0",
-      "dependencies": {
-        "@my-agent-team/agent": "workspace:*",
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
-      },
-      "devDependencies": {
-        "@my-agent-team/test-helpers": "workspace:*",
-      },
-    },
-    "packages/plugin-identity": {
-      "name": "@my-agent-team/plugin-identity",
-      "version": "0.1.0",
-      "dependencies": {
-        "@my-agent-team/agent": "workspace:*",
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
-      },
-    },
-    "packages/plugin-memory": {
-      "name": "@my-agent-team/plugin-memory",
-      "version": "0.1.0",
-      "dependencies": {
-        "@my-agent-team/agent": "workspace:*",
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
-        "@my-agent-team/tools-common": "workspace:*",
-      },
-    },
-    "packages/plugin-pet": {
-      "name": "@my-agent-team/plugin-pet",
-      "version": "0.1.0",
-      "dependencies": {
-        "@my-agent-team/agent": "workspace:*",
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
-      },
-    },
     "packages/plugin-progressive-skill": {
       "name": "@my-agent-team/plugin-progressive-skill",
       "version": "0.1.0",
@@ -295,19 +245,6 @@
         "@my-agent-team/message": "workspace:*",
         "@my-agent-team/tools-common": "workspace:*",
         "gray-matter": "^4.0.3",
-      },
-    },
-    "packages/plugin-recap": {
-      "name": "@my-agent-team/plugin-recap",
-      "version": "0.0.0",
-      "dependencies": {
-        "@my-agent-team/agent": "workspace:*",
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
-      },
-      "devDependencies": {
-        "bun-types": "latest",
-        "typescript": "^5.7.0",
       },
     },
     "packages/plugin-todo": {
@@ -708,19 +645,7 @@
 
     "@my-agent-team/message": ["@my-agent-team/message@workspace:packages/message"],
 
-    "@my-agent-team/plugin-conversation-context": ["@my-agent-team/plugin-conversation-context@workspace:packages/plugin-conversation-context"],
-
-    "@my-agent-team/plugin-goal": ["@my-agent-team/plugin-goal@workspace:packages/plugin-goal"],
-
-    "@my-agent-team/plugin-identity": ["@my-agent-team/plugin-identity@workspace:packages/plugin-identity"],
-
-    "@my-agent-team/plugin-memory": ["@my-agent-team/plugin-memory@workspace:packages/plugin-memory"],
-
-    "@my-agent-team/plugin-pet": ["@my-agent-team/plugin-pet@workspace:packages/plugin-pet"],
-
     "@my-agent-team/plugin-progressive-skill": ["@my-agent-team/plugin-progressive-skill@workspace:packages/plugin-progressive-skill"],
-
-    "@my-agent-team/plugin-recap": ["@my-agent-team/plugin-recap@workspace:packages/plugin-recap"],
 
     "@my-agent-team/plugin-todo": ["@my-agent-team/plugin-todo@workspace:packages/plugin-todo"],
 
@@ -1967,8 +1892,6 @@
     "@my-agent-team/agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@my-agent-team/coding-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@my-agent-team/plugin-recap/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@pnpm/network.ca-file/graceful-fs": ["graceful-fs@4.2.10", "https://registry.npmmirror.com/graceful-fs/-/graceful-fs-4.2.10.tgz", {}, "sha512-9ByhssR2fPVsNZj478qUUbKfmL0+t5BDVyjShtyZZLiK7ZDAArFFfopyOTj0M05wE2tJPisA4iTnnXl2YoPvOA=="],
 

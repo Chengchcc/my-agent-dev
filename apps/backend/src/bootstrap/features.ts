@@ -433,15 +433,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     skillPacks: skillPackRoutes(skillPackSvc, config.dataDir),
     settings: settingsRoutes(settingsSvc),
     mcp: mcpRoutes(mcpSvc),
-    models: new Elysia().get("/api/models", () => ({
-      providers: [
-        {
-          id: "coding_agent",
-          name: "Coding Agent",
-          models: [{ id: "claude-sonnet-4-20250514", name: "claude-sonnet-4-20250514" }],
-        },
-      ],
-    })),
+    models: staticModelsRoutes(),
   };
 
   // ─── Lifecycle ──────────────────────────────────────────────

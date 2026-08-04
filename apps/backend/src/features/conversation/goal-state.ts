@@ -1,4 +1,12 @@
-import type { WorkSummary } from "@my-agent-team/plugin-goal";
+/** Work summary produced by the (removed) goal plugin - kept as a plain
+ *  UI state shape for the conversation goal panel. */
+export interface WorkSummary {
+  changed_files: string[];
+  commands_run: string[];
+  test_result: "pass" | "fail" | "unknown";
+  summary: string;
+}
+
 import type { SettingsService } from "../settings/service.js";
 
 export interface GoalHistoryEntry {

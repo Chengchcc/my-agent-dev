@@ -48,7 +48,11 @@ const deps: ConversationServiceDeps = {
   maxConsecutiveAgentHops: () => 8,
   idGen,
   agentRunService: {
-    async enqueueAndAcquire(input) {
+    async enqueueAndAcquire(input: {
+      agentMemberId: string;
+      conversationId: string;
+      idempotencyKey: string;
+    }) {
       const runId = `run-${runLog.length}`;
       runLog.push({ agentMemberId: input.agentMemberId, runId });
       return {
@@ -72,28 +76,31 @@ const deps: ConversationServiceDeps = {
         inputId: `in-${runId}`,
       };
     },
-    async claimNextInput() {
+    async claimNextInput(_branchId: string) {
       return null;
     },
-    async markInputAccepted(inputId) {
+    async markInputAccepted(inputId: string) {
       return { inputId } as never;
     },
-    async createPendingAction(runId, action) {
+    async createPendingAction(
+      runId: string,
+      action: { kind: string; payload: Readonly<Record<string, unknown>> },
+    ) {
       return { runId, actionId: "a", ...action } as never;
     },
-    async consumePendingAction(actionId) {
+    async consumePendingAction(actionId: string) {
       return { action: { actionId } as never, runId: "r" };
     },
-    async finalizeRun(runId) {
+    async finalizeRun(runId: string) {
       return { runId } as never;
     },
-    async getRun() {
+    async getRun(_runId: string) {
       return null;
     },
-    async getActiveRun() {
+    async getActiveRun(_branchId: string) {
       return null;
     },
-    async listInputs() {
+    async listInputs(_branchId: string) {
       return [];
     },
   } as never,

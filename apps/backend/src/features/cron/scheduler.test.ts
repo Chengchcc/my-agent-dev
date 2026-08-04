@@ -85,8 +85,8 @@ function makeRunsFakes(script: {
     async getRun(runId) {
       const run = runs.get(runId);
       if (run) {
-        run.status = script.status ?? "completed";
-        run.terminalResult = {
+        (run as { status: AgentRun["status"] }).status = script.status ?? "completed";
+        (run as { terminalResult: BackendRunOutcome | null }).terminalResult = {
           status:
             script.status === "completed" || script.status === undefined
               ? "completed"
@@ -108,7 +108,7 @@ function makeRunsFakes(script: {
   const execution: AgentRunExecutionService = {
     async dispatch(runId) {
       const run = runs.get(runId);
-      if (run) run.status = script.status ?? "completed";
+      if (run) (run as { status: AgentRun["status"] }).status = script.status ?? "completed";
     },
     async recover() {},
     async retryTerminalCommit() {},
@@ -156,7 +156,6 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
       resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
       scheduler: fakeSched,
       store: { load: () => ({ loopId: "x", lastRun: null, items: {} }) },
-      ...overrides.deps,
     } as unknown as Parameters<typeof createCronScheduler>[0],
   };
 }
@@ -168,14 +167,14 @@ describe("createCronScheduler (Agent Run cutover)", () => {
     const handles = new Map<string, () => void>();
     // re-create with a capturing scheduler
     const deps2 = {
-      ...deps,
+      ...(deps as unknown as Record<string, unknown>),
       scheduler: {
         schedule: (expr: string, fn: () => void) => {
           handles.set(expr, fn);
           return { stop: () => {} };
         },
       } as Scheduler,
-    } as Parameters<typeof createCronScheduler>[0];
+    } as unknown as Parameters<typeof createCronScheduler>[0];
     const sched2 = createCronScheduler(deps2);
     sched2.register(makeJob());
     expect(handles.has("0 9 * * *")).toBe(true);
@@ -195,7 +194,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
           return { stop: () => {} };
         },
       } as Scheduler,
-    } as Parameters<typeof createCronScheduler>[0]);
+    } as unknown as Parameters<typeof createCronScheduler>[0]);
     sched.register(makeJob({ enabled: false }));
     expect(handles.size).toBe(0);
     sched.dispose();
@@ -211,7 +210,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
           return { stop: () => (stopped = true) };
         },
       } as Scheduler,
-    } as Parameters<typeof createCronScheduler>[0]);
+    } as unknown as Parameters<typeof createCronScheduler>[0]);
     sched.register(makeJob());
     sched.unregister("cj-test");
     expect(stopped).toBe(true);
@@ -247,7 +246,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
         },
       } as Scheduler,
       store: { load: () => ({ loopId: "x", lastRun: null, items: {} }) },
-    } as Parameters<typeof createCronScheduler>[0];
+    } as unknown as Parameters<typeof createCronScheduler>[0];
 
     const sched = createCronScheduler(deps);
     const job = makeJob();
@@ -288,7 +287,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
         },
       } as Scheduler,
       store: { load: () => ({ loopId: "x", lastRun: null, items: {} }) },
-    } as Parameters<typeof createCronScheduler>[0];
+    } as unknown as Parameters<typeof createCronScheduler>[0];
     const sched = createCronScheduler(deps);
     sched.register(makeJob());
     fired!();
@@ -327,7 +326,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
         },
       } as Scheduler,
       store: { load: () => ({ loopId: "x", lastRun: null, items: {} }) },
-    } as Parameters<typeof createCronScheduler>[0];
+    } as unknown as Parameters<typeof createCronScheduler>[0];
     const sched = createCronScheduler(deps);
     // the watchdog fires while dispatch is "running"; simulate by stopping
     // after a short delay
@@ -369,7 +368,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
         },
       } as Scheduler,
       store: { load: () => ({ loopId: "x", lastRun: null, items: {} }) },
-    } as Parameters<typeof createCronScheduler>[0];
+    } as unknown as Parameters<typeof createCronScheduler>[0];
     const sched = createCronScheduler(deps);
     sched.register(makeJob({ maxRetries: 2 }));
     fired!();
@@ -412,7 +411,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
         },
       } as Scheduler,
       store: { load: () => ({ loopId: "x", lastRun: null, items: {} }) },
-    } as Parameters<typeof createCronScheduler>[0];
+    } as unknown as Parameters<typeof createCronScheduler>[0];
     const sched = createCronScheduler(deps);
     sched.register(makeJob({ maxRetries: 0 }));
     fired!();
@@ -435,7 +434,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
         getConversation: () => null,
         getMembers: () => [],
       },
-    } as Parameters<typeof createCronScheduler>[0]);
+    } as unknown as Parameters<typeof createCronScheduler>[0]);
     sched.register(makeJob({ loopConfigPath: "loops/x", cronExpr: "" }));
     sched.dispose();
     // construction succeeds without legacy runtime services

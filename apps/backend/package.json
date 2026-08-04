@@ -30,7 +30,6 @@
     "@my-agent-team/core": "workspace:*",
     "@my-agent-team/loop": "workspace:*",
     "@my-agent-team/message": "workspace:*",
-    "@my-agent-team/plugin-goal": "workspace:*",
     "@my-agent-team/plugin-progressive-skill": "workspace:*",
     "@my-agent-team/runtime-observability": "workspace:*",
     "@my-agent-team/tools-common": "workspace:*",

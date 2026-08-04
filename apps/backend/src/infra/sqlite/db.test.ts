@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { openDb } from "./db.js";
 
 // ─── Test 1: openDb creates file and runs drizzle-kit migrations ───
@@ -220,11 +220,15 @@ test("Phase 1: fresh migration creates seven tables and active-branch index, dro
 function buildPreMigrationFixture(dbPath: string): void {
   const db = new Database(dbPath);
   db.exec("PRAGMA foreign_keys = ON");
-  const files = readdirSync("apps/backend/drizzle/backend")
+  // bun test runs from both the repo root and the package dir; probe both.
+  const migrationsDir =
+    ["drizzle/backend", "apps/backend/drizzle/backend"].find((p) => existsSync(p)) ??
+    "drizzle/backend";
+  const files = readdirSync(migrationsDir)
     .filter((f) => f.endsWith(".sql") && f < "0012_")
     .sort();
   for (const f of files) {
-    const sql = readFileSync(`apps/backend/drizzle/backend/${f}`, "utf8");
+    const sql = readFileSync(`${migrationsDir}/${f}`, "utf8");
     const stmts = sql
       .split("--> statement-breakpoint")
       .map((s) => s.replace(/^--.*$/gm, "").trim())
@@ -258,10 +262,10 @@ test("Phase 1: existing product facts survive 0012 migration, no Context backfil
   // tracks its own ledger, so we apply the raw SQL like a real upgrade would).
   const db = new Database(tmpPath);
   db.exec("PRAGMA foreign_keys = ON");
-  const sql0012 = readFileSync(
-    "apps/backend/drizzle/backend/0012_agent_context_and_runs.sql",
-    "utf8",
-  );
+  const migrationsDir2 =
+    ["drizzle/backend", "apps/backend/drizzle/backend"].find((p) => existsSync(p)) ??
+    "drizzle/backend";
+  const sql0012 = readFileSync(`${migrationsDir2}/0012_agent_context_and_runs.sql`, "utf8");
   for (const s of sql0012
     .split("--> statement-breakpoint")
     .map((s: string) => s.replace(/^--.*$/gm, "").trim())

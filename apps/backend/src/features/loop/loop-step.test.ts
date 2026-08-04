@@ -211,11 +211,11 @@ function makeFakeRuns(script: RunScript, workDir: string = TMP) {
       if (!run) return;
       if (run.agentMemberId.startsWith("loop-evaluator")) {
         const status = script.evalStatus ?? "completed";
-        run.status = status;
+        (run as { status: AgentRun["status"] }).status = status;
         if (script.evalVerdictMd !== undefined) {
           await Bun.write(`${workDir}/VERDICT.md`, script.evalVerdictMd);
         }
-        run.terminalResult = {
+        (run as { terminalResult: BackendRunOutcome | null }).terminalResult = {
           status: status === "completed" ? "completed" : status,
           ...(script.usageTokens !== undefined
             ? { usage: { inputTokens: script.usageTokens, outputTokens: 0 } }
@@ -223,8 +223,8 @@ function makeFakeRuns(script: RunScript, workDir: string = TMP) {
         } as BackendRunOutcome;
       } else {
         const status = script.genStatus ?? "completed";
-        run.status = status;
-        run.terminalResult = {
+        (run as { status: AgentRun["status"] }).status = status;
+        (run as { terminalResult: BackendRunOutcome | null }).terminalResult = {
           status: status === "completed" ? "completed" : status,
           ...(script.usageTokens !== undefined
             ? { usage: { inputTokens: script.usageTokens, outputTokens: 0 } }
@@ -457,7 +457,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
             step: "awaiting_review",
             attempt: 1,
             priority: 3,
-            result: { verdict: "PASS", reasons: [], evidence: "e" },
+            result: { verdict: "PASS", reasons: [], evidence: "e" } as never,
           },
         },
       },
