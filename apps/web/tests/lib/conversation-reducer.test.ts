@@ -97,18 +97,19 @@ describe("message", () => {
 });
 
 describe("isBusy", () => {
-  test("busy when open streaming message exists", () => {
+  test("busy while a send is in flight", () => {
     let s = bootstrap();
-    s = reducer(s, {
-      type: "message",
-      seq: 1,
-      senderMemberId: "agent-1",
-      content: rev({ state: "streaming" }),
-    });
+    s = reducer(s, { type: "send", text: "hi", viewer: { memberId: "h", kind: "human" } });
     expect(isBusy(s)).toBe(true);
   });
 
-  test("not busy when all agent messages are done", () => {
+  test("busy while messages are queued locally", () => {
+    let s = bootstrap();
+    s = reducer(s, { type: "queue/add", text: "later" });
+    expect(isBusy(s)).toBe(true);
+  });
+
+  test("not busy when idle (canonical done messages only)", () => {
     let s = bootstrap();
     s = reducer(s, {
       type: "message",
@@ -117,17 +118,6 @@ describe("isBusy", () => {
       content: rev({ state: "done" }),
     });
     expect(isBusy(s)).toBe(false);
-  });
-
-  test("busy when waiting on approval", () => {
-    let s = bootstrap();
-    s = reducer(s, {
-      type: "message",
-      seq: 1,
-      senderMemberId: "agent-1",
-      content: rev({ state: "waiting" }),
-    });
-    expect(isBusy(s)).toBe(true);
   });
 });
 

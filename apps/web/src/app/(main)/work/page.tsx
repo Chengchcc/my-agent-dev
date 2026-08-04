@@ -10,9 +10,9 @@ import {
 } from "@/components/ui/breadcrumb";
 import { ReviewQueueCard } from "@/components/work/ReviewQueueCard";
 import { useLoopList } from "@/features/loop/hooks";
-import { useOpsInsightsSummary, useOpsRuns } from "@/features/ops/hooks";
+import { useAgentRuns } from "@/features/ops/hooks";
 import { useWorkToday } from "@/features/work/hooks";
-import type { LoopRow, RunOpsListItem } from "@/lib/api";
+import type { LoopRow } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -32,25 +32,24 @@ export default function WorkTodayPage() {
   const { data, isLoading } = useWorkToday();
   const queue = data?.reviewQueue ?? [];
   const { data: loopsData } = useLoopList();
-  const { data: runs } = useOpsRuns();
+  const { data: runs } = useAgentRuns();
 
   const draftLoops = (loopsData?.loops ?? []).filter((l: LoopRow) => l.enabled === false);
 
-  const todayRuns = (runs ?? []).filter((r: RunOpsListItem) => isToday(r.startedAt));
-  const succeeded = todayRuns.filter((r) => r.status === "succeeded").length;
-  const failed = todayRuns.filter((r) => r.status === "failed" || r.status === "error").length;
-  const running = todayRuns.filter((r) => r.status === "running").length;
+  const todayRuns = (runs?.runs ?? []).filter((r) => isToday(r.createdAt));
+  const succeeded = todayRuns.filter((r) => r.status === "completed").length;
+  const failed = todayRuns.filter(
+    (r) => r.status === "failed" || r.status === "aborted" || r.status === "timeout",
+  ).length;
+  const running = todayRuns.filter(
+    (r) => r.status === "running" || r.status === "waiting" || r.status === "commit_failed",
+  ).length;
 
-  // ponytail: reuse existing insights-summary API (real token data from checkpoint_events) — no new backend field
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
-  const summaryQuery = useOpsInsightsSummary({ from: startOfDay, to: dayEnd });
-  const totalTokens = (summaryQuery.data?.tokenSeries ?? []).reduce(
-    (sum, b) => sum + b.input + b.output,
-    0,
-  );
-  const tokensUnavailable = summaryQuery.isError;
+  // Usage totals from Agent Run terminal results (no checkpoint-event pipeline)
+  const totalTokens = (runs?.runs ?? [])
+    .filter((r) => isToday(r.createdAt))
+    .reduce((sum, r) => sum + (r.usage?.inputTokens ?? 0) + (r.usage?.outputTokens ?? 0), 0);
+  const tokensUnavailable = false;
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
     year: "numeric",
@@ -149,11 +148,7 @@ export default function WorkTodayPage() {
           </div>
           <div className="mt-3 rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-4 text-center">
             <div className="text-2xl font-semibold text-[var(--ink)]">
-              {summaryQuery.isLoading
-                ? "…"
-                : tokensUnavailable
-                  ? "Token data unavailable"
-                  : totalTokens.toLocaleString()}
+              {tokensUnavailable ? "Token data unavailable" : totalTokens.toLocaleString()}
             </div>
             <div className="text-xs text-[var(--mute)]">Total Tokens</div>
           </div>

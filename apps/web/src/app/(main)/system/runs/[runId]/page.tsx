@@ -1,7 +1,6 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { RunInsightsPanel } from "@/components/ops/RunInsightsPanel";
 import { Badge } from "@/components/ui/badge";
 import {
   Breadcrumb,
@@ -10,24 +9,17 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { useOpsSessionDetail } from "@/features/ops/hooks";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAgentRunDetail } from "@/features/ops/hooks";
 
 export const dynamic = "force-dynamic";
 
 export default function SystemRunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
 
-  const detailQuery = useOpsSessionDetail(runId);
-  const detail = detailQuery.data;
+  const detailQuery = useAgentRunDetail(runId);
+  const run = detailQuery.data?.run;
+  const inputs = detailQuery.data?.inputs ?? [];
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -37,7 +29,7 @@ export default function SystemRunDetailPage() {
             <BreadcrumbLink href="/system">System</BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbItem>
-            <BreadcrumbPage>Run {runId.slice(0, 12)}</BreadcrumbPage>
+            <BreadcrumbPage>{runId.slice(0, 12)}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -45,75 +37,71 @@ export default function SystemRunDetailPage() {
       {detailQuery.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
       {detailQuery.error && <p className="text-sm text-destructive">Failed to load run detail</p>}
 
-      {detail && (
+      {run && (
         <>
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold">Session Detail</h1>
-            <Badge variant="outline" className="text-xs font-mono">
-              {detail.sessionId.slice(0, 16)}
-            </Badge>
-            <Badge
-              variant={detail.status === "running" ? "default" : "outline"}
-              className="text-xs"
-            >
-              {detail.status}
-            </Badge>
+            <h1 className="text-lg font-semibold">{run.runId.slice(0, 12)}</h1>
+            <Badge>{run.status}</Badge>
           </div>
 
           <Card>
-            <CardContent className="pt-6">
-              <Table>
-                <TableBody>
-                  <TableRow>
-                    <TableCell className="text-xs text-muted-foreground w-40">Agent</TableCell>
-                    <TableCell className="text-xs">{detail.agentId}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="text-xs text-muted-foreground">Span Count</TableCell>
-                    <TableCell className="text-xs">{detail.spanCount}</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+            <CardHeader>
+              <CardTitle className="text-sm">Run</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <span className="text-xs text-[var(--mute)]">Conversation</span>
+                <div>{run.conversationId}</div>
+              </div>
+              <div>
+                <span className="text-xs text-[var(--mute)]">Member</span>
+                <div>{run.agentMemberId}</div>
+              </div>
+              <div>
+                <span className="text-xs text-[var(--mute)]">Model</span>
+                <div>
+                  {run.model.backendKind}/{run.model.modelId}
+                </div>
+              </div>
+              <div>
+                <span className="text-xs text-[var(--mute)]">Created</span>
+                <div>{new Date(run.createdAt).toLocaleString()}</div>
+              </div>
+              {run.usage && (
+                <div>
+                  <span className="text-xs text-[var(--mute)]">Usage</span>
+                  <div>{(run.usage.inputTokens ?? 0) + (run.usage.outputTokens ?? 0)} tok</div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
-              <h3 className="text-sm font-semibold mb-3">Spans</h3>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs">Span ID</TableHead>
-                    <TableHead className="text-xs">Kind</TableHead>
-                    <TableHead className="text-xs">Status</TableHead>
-                    <TableHead className="text-xs">Started</TableHead>
-                    <TableHead className="text-xs">Ended</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {detail.spans.map((sp) => (
-                    <TableRow key={sp.spanId}>
-                      <TableCell className="font-mono text-xs">{sp.spanId.slice(0, 16)}…</TableCell>
-                      <TableCell className="text-xs">{sp.kind}</TableCell>
-                      <TableCell className="text-xs">
-                        <Badge variant="outline" className="text-xs">
-                          {sp.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {sp.startedAt ? new Date(sp.startedAt).toLocaleString() : "-"}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {sp.endedAt ? new Date(sp.endedAt).toLocaleString() : "-"}
-                      </TableCell>
-                    </TableRow>
+            <CardHeader>
+              <CardTitle className="text-sm">Queued inputs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {inputs.length === 0 ? (
+                <p className="text-sm text-[var(--mute)]">No queued inputs.</p>
+              ) : (
+                <div className="space-y-1">
+                  {inputs.map((i) => (
+                    <div
+                      key={i.inputId}
+                      className="flex items-center justify-between text-sm border-b border-[var(--hairline)] py-1"
+                    >
+                      <span>
+                        {i.mode} · {i.status}
+                      </span>
+                      <span className="text-xs text-[var(--mute)]">
+                        {new Date(i.createdAt).toLocaleString()}
+                      </span>
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
-
-          <RunInsightsPanel runId={runId} />
         </>
       )}
     </div>

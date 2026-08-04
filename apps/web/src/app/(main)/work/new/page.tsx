@@ -13,9 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useActivateLoop, useCreateLoop, useRefineLoop } from "@/features/loop/hooks";
+import { useActivateLoop, useCreateLoop } from "@/features/loop/hooks";
 
-type Stage = "intent" | "clarify" | "preview";
+type Stage = "intent" | "preview";
 
 export default function NewLoopPage() {
   const router = useRouter();
@@ -24,12 +24,8 @@ export default function NewLoopPage() {
   const [stage, setStage] = useState<Stage>("intent");
   const [intent, setIntent] = useState("");
   const [loopId, setLoopId] = useState<string | null>(null);
-  const refineLoop = useRefineLoop(loopId ?? "");
-  const [questions, setQuestions] = useState<string[]>([]);
   const [preview, setPreview] = useState("");
   const [loopName, setLoopName] = useState("");
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [clarifyCount, setClarifyCount] = useState(0);
   const [note, setNote] = useState("");
 
   function handleCreate() {
@@ -42,48 +38,10 @@ export default function NewLoopPage() {
             setPreview(res.loop.preview);
             setLoopName(res.loop.name);
             setStage("preview");
-          } else if (res.status === "needs_clarification") {
-            setLoopId(res.loopId ?? null);
-            setQuestions(res.questions ?? []);
-            setStage("clarify");
           }
         },
         onError: (err) => {
           toast.error("Failed to generate loop", {
-            description: err instanceof Error ? err.message : "Unknown error",
-          });
-        },
-      },
-    );
-  }
-
-  function handleRefine() {
-    if (!loopId) return;
-    const nextRound = clarifyCount + 1;
-    const merged = [intent, ...questions.map((q, i) => `${q} ${answers[i] ?? ""}`)].join("\n\n");
-    refineLoop.mutate(
-      { intent: merged, clarifyRound: nextRound },
-      {
-        onSuccess: (res) => {
-          if ("error" in res) {
-            toast.error(res.error);
-            return;
-          }
-          if (res.status === "generated" && "loop" in res) {
-            setPreview(res.loop.preview);
-            setLoopName(res.loop.name);
-            setNote("note" in res ? (res.note ?? "") : "");
-            setStage("preview");
-          } else if (clarifyCount >= 2) {
-            toast.error("已达澄清上限，请手动编辑预览");
-            setStage("preview");
-          } else if (res.status === "needs_clarification") {
-            setQuestions(res.questions);
-            setClarifyCount(nextRound);
-          }
-        },
-        onError: (err) => {
-          toast.error("Refinement failed", {
             description: err instanceof Error ? err.message : "Unknown error",
           });
         },
@@ -109,12 +67,9 @@ export default function NewLoopPage() {
     setStage("intent");
     setIntent("");
     setLoopId(null);
-    setQuestions([]);
     setPreview("");
     setLoopName("");
-    setClarifyCount(0);
     setNote("");
-    setAnswers({});
   }
 
   return (
@@ -151,32 +106,6 @@ export default function NewLoopPage() {
                 <Button onClick={handleCreate} disabled={!intent.trim() || createLoop.isPending}>
                   {createLoop.isPending ? "生成中…" : "下一步"}
                 </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {stage === "clarify" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>需要补充几个细节</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {questions.map((q, i) => (
-                  <div key={i} className="space-y-1">
-                    <label className="text-sm font-medium">{q}</label>
-                    <Input
-                      value={answers[i] ?? ""}
-                      onChange={(e) => setAnswers((a) => ({ ...a, [i]: e.target.value }))}
-                      placeholder="回答…"
-                    />
-                  </div>
-                ))}
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setStage("intent")}>
-                    返回修改
-                  </Button>
-                  <Button onClick={handleRefine}>继续</Button>
-                </div>
               </CardContent>
             </Card>
           )}

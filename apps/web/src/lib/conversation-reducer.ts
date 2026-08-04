@@ -1,10 +1,5 @@
 import type { Message, MessageRevision } from "@my-agent-team/message";
-import {
-  extractText,
-  isOpenMessageState,
-  mergeMessageRevision,
-  parseMessageRevision,
-} from "@my-agent-team/message";
+import { extractText, mergeMessageRevision, parseMessageRevision } from "@my-agent-team/message";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -76,7 +71,6 @@ export type Action =
       undone?: boolean;
     }
   | { type: "undo"; undoneSeqs: number[] }
-  | { type: "queue/update"; messages: string[] }
   | { type: "queue/add"; text: string }
   | { type: "queue/edit"; index: number; text: string }
   | { type: "queue/remove"; index: number };
@@ -100,51 +94,10 @@ export function initialState(): ConvState {
 
 /** Whether there is an open (not done/error) assistant message
  *  that means the UI should show a busy state. */
+/** Busy = a send is in flight or messages are queued locally. Execution
+ *  state itself comes from Agent Runs (active run set in the hook layer). */
 export function isBusy(s: ConvState): boolean {
-  if (s.pendingSendCount > 0) return true;
-  return s.items.some(
-    (item) =>
-      item.kind === "message" &&
-      item.sender.kind === "agent" &&
-      ((item.content.state != null && isOpenMessageState(item.content.state)) ||
-        item.content.runStatus === "retrying" ||
-        item.content.runStatus === "compacting"),
-  );
-}
-
-/** M17: Extract pending approval from a waiting revision for ToolApprovalCard. */
-export function getApprovalTarget(s: ConvState): {
-  messageId: string;
-  runId: string;
-  text: string;
-  tools: Array<{ id: string; name: string; input: unknown }>;
-} | null {
-  for (const item of s.items) {
-    if (item.kind !== "message") continue;
-    if (item.sender.kind === "agent" && item.content.state === "waiting" && item.content.spanId) {
-      // The tool params live ONLY in blocks[] (tool_use blocks carry `input`).
-      // tools[] (MessageToolState) is identity+state only — reading params from
-      // there yields nothing, which is why the card rendered `{}`. Index the
-      // tool_use blocks by id and join them onto the running tool states.
-      const inputById = new Map<string, unknown>();
-      for (const b of item.content.blocks ?? []) {
-        if (b.type === "tool_use") inputById.set(b.id, b.input);
-      }
-      return {
-        messageId: item.content.id ?? "",
-        runId: item.content.spanId,
-        text: item.content.text ?? "",
-        tools: (item.content.tools ?? [])
-          .filter((t: { state: string }) => t.state === "running")
-          .map((t: { id: string; name: string }) => ({
-            id: t.id,
-            name: t.name,
-            input: inputById.get(t.id) ?? {},
-          })),
-      };
-    }
-  }
-  return null;
+  return s.pendingSendCount > 0 || s.queuedMessages.length > 0;
 }
 
 function upsertAuthoritative(
@@ -373,9 +326,6 @@ export function reducer(s: ConvState, a: Action): ConvState {
 
     case "todo/update":
       return { ...s, todos: a.todos };
-
-    case "queue/update":
-      return { ...s, queuedMessages: a.messages };
 
     case "queue/add":
       return { ...s, queuedMessages: [...s.queuedMessages, a.text] };

@@ -8,8 +8,8 @@ import { AgentPetPanel } from "@/components/AgentPetPanel";
 import { ConversationList } from "@/components/ConversationList";
 import { IdentityPanel } from "@/components/IdentityPanel";
 import { McpServerPanel } from "@/components/McpServerPanel";
+import { AgentRunsTable } from "@/components/ops/AgentRunsTable";
 import { QueryState } from "@/components/ops/QueryState";
-import { RunOpsTable } from "@/components/ops/RunOpsTable";
 import { RelationshipPanel } from "@/components/RelationshipPanel";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { useAgentDetail, useAgentList, useAgentRelationships } from "@/features/agents/hooks";
-import { useOpsRuns } from "@/features/ops/hooks";
+import { useAgentRuns } from "@/features/ops/hooks";
 import { useAgentSkillPacks } from "@/features/skill-packs/hooks";
 
 type Tab = "persona" | "skills" | "activity" | "mcp" | "relationships" | "pet" | "memory";
@@ -253,8 +253,7 @@ function AgentRelationshipsPanel({ agentId }: { agentId: string }) {
 }
 
 function RecentRuns({ agentId }: { agentId: string }) {
-  // ponytail: server-side filter — listOpsRuns supports agentId, no client filter needed
-  const runsQuery = useOpsRuns({ agentId, limit: 50 });
+  const runsQuery = useAgentRuns({ agentId, limit: 50 });
   return (
     <div>
       <h2 className="text-[10px] tracking-[2.52px] uppercase text-[var(--mute)] font-[family-name:var(--font-sans)] font-semibold mb-3">
@@ -262,12 +261,23 @@ function RecentRuns({ agentId }: { agentId: string }) {
       </h2>
       <QueryState
         query={runsQuery}
-        empty={(data) => !data || data.length === 0}
+        empty={(data) => data.runs.length === 0}
         emptyMessage="No recent runs."
       >
-        {(runs) => (
+        {(data) => (
           <div className="rounded-lg border border-[var(--hairline)]">
-            <RunOpsTable runs={runs} />
+            <AgentRunsTable
+              runs={data.runs.map((r) => ({
+                runId: r.runId,
+                status: r.status,
+                agentId: r.agentId ?? "",
+                model: r.model.modelId,
+                createdAt: r.createdAt,
+                terminalAt: r.terminalAt,
+                usage: r.usage ?? null,
+              }))}
+              onCancel={() => {}}
+            />
           </div>
         )}
       </QueryState>

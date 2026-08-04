@@ -27,6 +27,10 @@ export function agentRunRoutes(input: {
           where.push("ar.status = ?");
           args.push(query.status);
         }
+        if (query.agentId) {
+          where.push("m.agent_id = ?");
+          args.push(query.agentId);
+        }
         const sql = `SELECT ar.run_id, ar.conversation_id, ar.agent_member_id, ar.status,
                             ar.model_ref, ar.created_at, ar.terminal_at, ar.terminal_result,
                             m.agent_id
@@ -73,6 +77,7 @@ export function agentRunRoutes(input: {
               t.Literal("timeout"),
             ]),
           ),
+          agentId: t.Optional(t.String()),
           limit: t.Optional(t.String()),
         }),
       },

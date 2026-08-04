@@ -6,12 +6,10 @@ import { toast } from "sonner";
 import {
   useConversationSnapshot,
   usePostConversationMessage,
-  useResumeRun,
 } from "@/features/conversations/hooks";
 import type { ConversationSnapshot } from "@/lib/api";
 import {
   type ConvState,
-  getApprovalTarget,
   initialState,
   isBusy,
   reducer,
@@ -39,23 +37,16 @@ function resolveAddressedTo(s: ConvState): string[] {
   return [];
 }
 
-interface PetBarkData {
-  mood: "happy" | "neutral" | "frustrated" | "excited";
-  text: string;
-  level: number;
-  turn: number;
-}
-const VALID_MOODS = new Set(["happy", "neutral", "frustrated", "excited"]);
-function isPetMood(s: string): s is "happy" | "neutral" | "frustrated" | "excited" {
-  return VALID_MOODS.has(s);
-}
 export function useConversation(
   conversationId: string,
   preFetchedSnapshot?: ConversationSnapshot | null,
 ) {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
-  const [petBark, setPetBark] = useState<PetBarkData | null>(null);
-  const [recap, setRecap] = useState<{ text: string; turn: number } | null>(null);
+  /** Transient Agent Run state (Live Updates): a set of active runIds.
+   *  Runs are removed when their terminal state is observed on the run
+   *  event stream OR when the canonical final Message lands in History. */
+  const [activeRuns, setActiveRuns] = useState<Set<string>>(new Set());
+  const [transientText, setTransientText] = useState<string | null>(null);
 
   // 1) Snapshot bootstrap (roster + viewerMemberId)
   const snap = useConversationSnapshot(conversationId, preFetchedSnapshot);
@@ -144,32 +135,6 @@ export function useConversation(
       if (seq === null) return;
       const content = typeof entry.content === "string" ? safeParse(entry.content) : entry.content;
       if (entry.senderMemberId === "__system__") {
-        // queue_update arrives as a system message whose content is a
-        // MessageRevision whose `text` is a JSON string
-        // { type: "queue_update", steering: string[], followUp: string[] }.
-        if (content && typeof content === "object" && "text" in content) {
-          const revText = content.text;
-          if (typeof revText === "string") {
-            const parsed = safeParse(revText);
-            if (
-              parsed &&
-              typeof parsed === "object" &&
-              "type" in parsed &&
-              parsed.type === "queue_update"
-            ) {
-              const steering =
-                "steering" in parsed && Array.isArray(parsed.steering)
-                  ? (parsed.steering as string[])
-                  : [];
-              const followUp =
-                "followUp" in parsed && Array.isArray(parsed.followUp)
-                  ? (parsed.followUp as string[])
-                  : [];
-              dispatch({ type: "queue/update", messages: [...steering, ...followUp] });
-              return;
-            }
-          }
-        }
         dispatch({
           type: "member",
           seq,
@@ -213,34 +178,6 @@ export function useConversation(
       }
     });
 
-    ts.on("pet_bark", (entry) => {
-      const payload = typeof entry.content === "string" ? safeParse(entry.content) : entry.content;
-      if (payload && typeof payload === "object" && "mood" in payload && "text" in payload) {
-        const mood = String(payload.mood);
-        if (!isPetMood(mood)) return;
-        setPetBark({
-          mood,
-          text: String(payload.text),
-          level:
-            payload && typeof payload === "object" && "level" in payload
-              ? Number(payload.level)
-              : 1,
-          turn:
-            payload && typeof payload === "object" && "turn" in payload ? Number(payload.turn) : 0,
-        });
-      }
-    });
-
-    ts.on("recap", (entry) => {
-      const payload = typeof entry.content === "string" ? safeParse(entry.content) : entry.content;
-      if (payload && typeof payload === "object" && "text" in payload && "turn" in payload) {
-        setRecap({
-          text: String(payload.text),
-          turn: "turn" in payload ? Number(payload.turn) : 0,
-        });
-      }
-    });
-
     ts.on("undo", (entry) => {
       const seq = guard(entry);
       if (seq === null) return;
@@ -261,6 +198,49 @@ export function useConversation(
   //    upserts the optimistic message by messageId. No run EventSource needed.
   const sendMut = usePostConversationMessage(conversationId);
 
+  /** Follow one run through its Live Update stream. Transient only: when
+   *  the run's terminal state is observed the run is dropped; the canonical
+   *  final Message still arrives via the conversation History SSE. The
+   *  stream is best-effort - losing it never affects the final Message. */
+  const watchRun = useCallback((runId: string) => {
+    setActiveRuns((prev) => new Set(prev).add(runId));
+    const es = new EventSource(`/api/bff/api/agent-runs/${runId}/events`);
+    const done = () => {
+      es.close();
+      setActiveRuns((prev) => {
+        const next = new Set(prev);
+        next.delete(runId);
+        return next;
+      });
+      setTransientText(null);
+    };
+    es.onerror = done;
+    es.addEventListener("status", (e) => {
+      try {
+        const ev = JSON.parse((e as MessageEvent).data) as {
+          type?: string;
+          status?: string;
+        };
+        if (
+          ev.type === "status" &&
+          ["completed", "failed", "aborted", "timeout"].includes(ev.status ?? "")
+        ) {
+          done();
+        }
+      } catch {
+        /* malformed - ignore */
+      }
+    });
+    es.addEventListener("text_delta", (e) => {
+      try {
+        const ev = JSON.parse((e as MessageEvent).data) as { text?: string };
+        if (ev.text) setTransientText((prev) => `${prev ?? ""}${ev.text}`);
+      } catch {
+        /* malformed - ignore */
+      }
+    });
+  }, []);
+
   const send = useCallback(
     (text: string, addressedTo?: string[]) => {
       const viewer = state.roster[state.viewerMemberId] ?? {
@@ -269,7 +249,6 @@ export function useConversation(
       };
       const resolved = addressedTo ?? [];
       dispatch({ type: "send", text, viewer });
-      // Busy → backend will steer; optimistically queue the message.
       if (isBusy(state)) {
         dispatch({ type: "queue/add", text });
       }
@@ -280,16 +259,18 @@ export function useConversation(
           addressedTo: resolved.length > 0 ? resolved : resolveAddressedTo(state),
         },
         {
-          onError: (err) => {
-            // 409 = busy → backend already steered, not an error.
-            const msg = err instanceof Error ? err.message : String(err);
-            if (msg.includes("409") || msg.includes("Busy")) return;
+          onSuccess: (result) => {
+            for (const run of result.triggeredRuns ?? []) {
+              if (!run.queued && run.runId) watchRun(run.runId);
+            }
+          },
+          onError: () => {
             dispatch({ type: "send/error", message: "Send failed — retry" });
           },
         },
       );
     },
-    [sendMut, state.roster, state.viewerMemberId, state],
+    [sendMut, state.roster, state.viewerMemberId, state, watchRun],
   );
 
   const toggleTriggerMode = useCallback(() => {
@@ -302,37 +283,17 @@ export function useConversation(
     dispatch({ type: "queue/remove", index });
   }, []);
 
-  const busy = isBusy(state);
-  const approvalTarget = getApprovalTarget(state);
-
-  // M17: Ledger-native approval via run resume API (not run EventSource)
-  const approveMut = useResumeRun();
-
-  const approve = useCallback(
-    (message?: string) =>
-      approveMut.mutate({ runId: approvalTarget!.runId, approved: true, message }),
-    [approveMut, approvalTarget],
-  );
-
-  const deny = useCallback(
-    (message?: string) =>
-      approveMut.mutate({ runId: approvalTarget!.runId, approved: false, message }),
-    [approveMut, approvalTarget],
-  );
+  const busy = isBusy(state) || activeRuns.size > 0;
 
   return {
     state,
     busy,
     send,
     toggleTriggerMode,
-    approvalTarget,
-    approve,
-    deny,
-    resuming: approveMut.isPending,
     queuedMessages: state.queuedMessages,
     queueEdit,
     queueRemove,
-    petBark,
-    recap,
+    activeRuns,
+    transientText,
   };
 }

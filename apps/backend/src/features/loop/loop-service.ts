@@ -22,6 +22,7 @@ export interface LoopListItem {
   loopConfigPath: string | null;
   state: string;
   lastRun: string | null;
+  pendingCount: number;
 }
 
 export interface ReviewQueueItem extends ItemState {
@@ -50,6 +51,8 @@ export interface LoopDetail {
   items: LoopDetailItem[];
   lastRun: string | null;
   state: LoopState;
+  pendingCount: number;
+  budgetHistory: Array<{ date: string; spent: number }>;
 }
 
 export type CreateLoopResult = {
@@ -88,6 +91,9 @@ export function listLoops(cronSvc: CronJobService, store: LoopStateStore): LoopL
       loopConfigPath: job.loopConfigPath ?? null,
       state: job.loopConfigPath ? (state?.items ? "active" : "empty") : "not_loop",
       lastRun: state?.lastRun ?? null,
+      pendingCount: state
+        ? Object.values(state.items).filter((i) => i.step === "awaiting_review").length
+        : 0,
     };
   });
 }
@@ -134,6 +140,8 @@ export function getLoopDetail(
     items,
     lastRun: state.lastRun,
     state,
+    pendingCount: items.filter((i) => i.step === "awaiting_review").length,
+    budgetHistory: store.getBudgetHistory(id, 7),
   };
 }
 

@@ -44,12 +44,14 @@ export function AgentList() {
   const active = (agents ?? []).filter((a) => !a.archivedAt);
   const agentIds = active.map((a) => a.id);
   // ponytail: refetch every 15s keeps the dot fresh without a websocket.
-  const { data: runtimes } = useAgentRuntimes(agentIds, { refetchInterval: 15_000 });
+  const runtimeQueries = useAgentRuntimes(agentIds, { refetchInterval: 15_000 });
   const runtimeById = useMemo(() => {
     const m = new Map<string, AgentRuntimeStatus>();
-    for (const rt of runtimes ?? []) m.set(rt.agentId, rt);
+    for (const q of runtimeQueries) {
+      if (q.data) m.set(q.data.agentId, q.data);
+    }
     return m;
-  }, [runtimes]);
+  }, [runtimeQueries]);
   function handleArchive(id: string) {
     setConfirmingId(id);
     archive.mutate(id, {

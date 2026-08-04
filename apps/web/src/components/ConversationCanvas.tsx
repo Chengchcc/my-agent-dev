@@ -6,8 +6,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { PetStatusBar } from "@/components/PetBar";
-import { RecapPanel } from "@/components/RecapPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useConversation } from "@/hooks/useConversation";
@@ -20,7 +18,6 @@ import { Composer } from "./Composer";
 import { RosterList } from "./RosterList";
 import { Timeline } from "./Timeline";
 import { TodoPanel } from "./TodoPanel";
-import { ToolApprovalCard } from "./ToolApprovalCard";
 
 interface ConversationCanvasProps {
   conversationId: string;
@@ -39,15 +36,11 @@ export function ConversationCanvas({
     busy,
     send,
     toggleTriggerMode,
-    approvalTarget,
-    approve,
-    deny,
-    resuming,
     queuedMessages,
     queueEdit,
     queueRemove,
-    petBark,
-    recap,
+    transientText,
+    activeRuns,
   } = useConversation(conversationId, snapshot);
   const { viewerMemberId, roster, items, error, todos, triggerMode, streamConn } = state;
 
@@ -138,23 +131,9 @@ export function ConversationCanvas({
     URL.revokeObjectURL(url);
   }, [conversationId]);
 
-  // Derive the latest active agent run spanId (non-terminal state) for /stop.
-  const currentRunId = (() => {
-    for (let i = state.items.length - 1; i >= 0; i--) {
-      const item = state.items[i]!;
-      if (
-        item.kind === "message" &&
-        item.sender.kind === "agent" &&
-        item.content.spanId &&
-        item.content.state &&
-        item.content.state !== "done" &&
-        item.content.state !== "error"
-      ) {
-        return item.content.spanId;
-      }
-    }
-    return null;
-  })();
+  // Active Agent Run (from the transient Live Update stream) - /stop target.
+  // Never inferred from message state; canonical History has no open runs.
+  const currentRunId = activeRuns.size > 0 ? [...activeRuns][0]! : null;
 
   const handleSlashCommand = useCallback(
     async (input: string) => {
@@ -232,7 +211,7 @@ export function ConversationCanvas({
                 size="sm"
                 className="h-7 text-xs text-destructive hover:text-destructive"
                 onClick={() => {
-                  api.opsCancelRun(currentRunId).then(() => toast.success("Stopped"));
+                  api.cancelAgentRun(currentRunId).then(() => toast.success("Stopped"));
                 }}
               >
                 Stop
@@ -387,25 +366,14 @@ export function ConversationCanvas({
           </>
         )}
 
-        {/* RecapPanel — right sidebar */}
-        {recap && <RecapPanel recap={recap} />}
+        {/* Transient Agent Run output (Live Updates) - never canonical */}
+        {transientText && (
+          <div className="shrink-0 border-t border-[var(--hairline)] px-4 py-2 text-sm text-[var(--mute)] italic">
+            {transientText}
+            <span className="ml-1 animate-pulse">▍</span>
+          </div>
+        )}
       </div>
-
-      {/* M17: Ledger-native approval — data from waiting revision, not run EventSource */}
-      {approvalTarget && (
-        <div className="shrink-0 border-t border-[var(--hairline)]">
-          <ToolApprovalCard
-            tool={{
-              id: approvalTarget.tools[0]?.id ?? "",
-              name: approvalTarget.tools[0]?.name ?? "",
-              input: approvalTarget.tools[0]?.input ?? {},
-            }}
-            onApprove={approve}
-            onDeny={deny}
-            disabled={resuming}
-          />
-        </div>
-      )}
 
       {/* Queued steer messages */}
       {queuedMessages.length > 0 && (
@@ -433,7 +401,6 @@ export function ConversationCanvas({
       {/* Composer */}
       <div className="shrink-0 border-t border-[var(--hairline)]">
         <div className="flex items-center gap-2 px-6 pt-3">
-          <PetStatusBar bark={petBark} />
           <Button
             onClick={toggleTriggerMode}
             className="text-[10px] tracking-[0.1em] uppercase px-2 py-0.5 rounded border border-[var(--hairline)] text-[var(--mute)] hover:text-[var(--body)] hover:border-[var(--primary)] transition-colors"

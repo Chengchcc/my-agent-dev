@@ -7,6 +7,18 @@ import type { Message } from "@my-agent-team/message";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Elysia } from "elysia";
 import type { FeatureSet } from "../app.js";
+
+function staticModelsRoutes() {
+  return new Elysia().get("/api/models", () => ({
+    providers: [
+      {
+        id: "coding_agent",
+        name: "Coding Agent",
+        models: [{ id: "claude-sonnet-4-20250514", name: "claude-sonnet-4-20250514" }],
+      },
+    ],
+  }));
+}
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
 import { AgentBusyError, agentRoutes } from "../features/agent/index.js";
@@ -422,7 +434,11 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     mcp: mcpRoutes(mcpSvc),
     models: new Elysia().get("/api/models", () => ({
       providers: [
-        { id: "coding_agent", name: "Coding Agent", models: [{ id: "claude-sonnet-4-20250514" }] },
+        {
+        id: "coding_agent",
+        name: "Coding Agent",
+        models: [{ id: "claude-sonnet-4-20250514", name: "claude-sonnet-4-20250514" }],
+      },
       ],
     })),
   };

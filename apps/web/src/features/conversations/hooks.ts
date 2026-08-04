@@ -76,13 +76,6 @@ export function usePostConversationMessage(conversationId: string) {
   });
 }
 
-export function useResumeRun() {
-  return useMutation({
-    mutationFn: (params: { runId: string; approved: boolean; message?: string }) =>
-      api.resumeRun(params.runId, params.approved, params.message),
-  });
-}
-
 export function useForkConversation() {
   const qc = useQueryClient();
   return useMutation({

@@ -48,7 +48,7 @@ export const slashCommands: SlashCommand[] = [
         ctx.toast("No active run", "error");
         return { handled: true };
       }
-      await api.opsCancelRun(ctx.currentRunId);
+      await api.cancelAgentRun(ctx.currentRunId);
       ctx.toast("Stopped", "success");
       return { handled: true };
     },
