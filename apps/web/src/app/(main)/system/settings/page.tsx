@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,6 +12,9 @@ import { useSettings, useSystemInfo, useUpdateSetting } from "@/features/setting
 import type { SettingsMap, SystemInfo } from "@/lib/api";
 
 // ── Field definitions ──
+// Only keys with real Product Backend readers are surfaced (verified against
+// apps/backend/src: conversation.maxHops in conversation-compose.ts, loop.*
+// defaults in loop-service.ts). Keys without a reader are ghost knobs.
 
 interface NumberField {
   key: string;
@@ -41,73 +43,15 @@ interface Section {
   id: string;
   title: string;
   description?: string;
-  needsRestart?: boolean;
   fields: Field[];
 }
 
 const SECTIONS: Section[] = [
   {
-    id: "agent",
-    title: "Agent Session",
-    description: "Per-run execution parameters for agent sessions.",
-    fields: [
-      { key: "agent.maxSteps", label: "Max Steps", type: "number" },
-      { key: "agent.retryMaxAttempts", label: "Retry Max Attempts", type: "number" },
-      { key: "agent.retryBackoffMs", label: "Retry Backoff", type: "number", unit: "ms" },
-      { key: "agent.retryMaxBackoffMs", label: "Retry Max Backoff", type: "number", unit: "ms" },
-      { key: "agent.compactionAutoCompact", label: "Auto Compact", type: "boolean" },
-      { key: "agent.compactionKeepRecent", label: "Keep Recent", type: "number" },
-    ],
-  },
-  {
     id: "conversation",
     title: "Conversation",
     description: "Conversation flow control.",
     fields: [{ key: "conversation.maxHops", label: "Max Agent Hops", type: "number" }],
-  },
-  {
-    id: "context",
-    title: "Context Manager",
-    description: "Context window management and summarization.",
-    fields: [
-      {
-        key: "context.toolResultMaxChars",
-        label: "Tool Result Max",
-        type: "number",
-        unit: "chars",
-      },
-      {
-        key: "context.summarizeTriggerAt",
-        label: "Summarize Trigger",
-        type: "number",
-        unit: "tokens",
-      },
-      { key: "context.summarizeKeepRecent", label: "Keep Recent", type: "number" },
-    ],
-  },
-  {
-    id: "runtime",
-    title: "Runtime",
-    description: "Supervisor and reaper timing parameters.",
-    needsRestart: true,
-    fields: [
-      {
-        key: "runtime.heartbeatIntervalMs",
-        label: "Heartbeat Interval",
-        type: "number",
-        unit: "ms",
-      },
-      { key: "runtime.heartbeatTimeoutMs", label: "Heartbeat Timeout", type: "number", unit: "ms" },
-      { key: "runtime.cancelGraceMs", label: "Cancel Grace", type: "number", unit: "ms" },
-      { key: "runtime.reaperIntervalMs", label: "Reaper Interval", type: "number", unit: "ms" },
-      {
-        key: "runtime.stepStallTimeoutMs",
-        label: "Step Stall Timeout",
-        type: "number",
-        unit: "ms",
-      },
-      { key: "runtime.maxConcurrentRuns", label: "Max Concurrent Runs", type: "number" },
-    ],
   },
   {
     id: "loop",
@@ -121,53 +65,17 @@ const SECTIONS: Section[] = [
       { key: "loop.defaultDenylist", label: "Denylist (comma-separated)", type: "array" },
     ],
   },
-  {
-    id: "memory",
-    title: "Memory",
-    description: "Autonomous memory extraction and search configuration.",
-    fields: [
-      { key: "memory.autoExtract", label: "Auto Extract", type: "boolean" },
-      { key: "memory.extractProvider", label: "Extract Provider", type: "string" },
-      { key: "memory.extractModel", label: "Extract Model", type: "string" },
-      { key: "memory.consolidateProvider", label: "Consolidate Provider", type: "string" },
-      { key: "memory.consolidateModel", label: "Consolidate Model", type: "string" },
-      { key: "memory.minMessagesForExtraction", label: "Min Msgs for Extract", type: "number" },
-      { key: "memory.consolidateThreshold", label: "Consolidate Threshold", type: "number" },
-    ],
-  },
 ];
 
 // ── Default values (used when settings KV is empty) ──
 
 const DEFAULTS: Record<string, unknown> = {
-  "agent.maxSteps": 50,
-  "agent.retryMaxAttempts": 3,
-  "agent.retryBackoffMs": 2000,
-  "agent.retryMaxBackoffMs": 30000,
-  "agent.compactionAutoCompact": true,
-  "agent.compactionKeepRecent": 10,
   "conversation.maxHops": 8,
-  "context.toolResultMaxChars": 50000,
-  "context.summarizeTriggerAt": 100000,
-  "context.summarizeKeepRecent": 10,
-  "runtime.heartbeatIntervalMs": 5000,
-  "runtime.heartbeatTimeoutMs": 120000,
-  "runtime.cancelGraceMs": 5000,
-  "runtime.reaperIntervalMs": 60000,
-  "runtime.stepStallTimeoutMs": 300000,
-  "runtime.maxConcurrentRuns": 10,
   "loop.generatorModel": "claude-sonnet-4",
   "loop.evaluatorModel": "claude-opus-4",
   "loop.defaultAcceptance": "",
   "loop.defaultDailyCap": 200000,
   "loop.defaultDenylist": [".env", "auth/", "payments/", "secrets/"],
-  "memory.autoExtract": true,
-  "memory.extractProvider": "anthropic",
-  "memory.extractModel": "claude-haiku-3-5",
-  "memory.consolidateProvider": "anthropic",
-  "memory.consolidateModel": "claude-sonnet-4-6",
-  "memory.minMessagesForExtraction": 5,
-  "memory.consolidateThreshold": 10,
 };
 
 // ── Helpers ──
@@ -236,14 +144,7 @@ function SettingsSection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {section.title}
-          {section.needsRestart && (
-            <Badge variant="secondary" className="text-xs">
-              需重启生效
-            </Badge>
-          )}
-        </CardTitle>
+        <CardTitle>{section.title}</CardTitle>
         {section.description && <CardDescription>{section.description}</CardDescription>}
       </CardHeader>
       <CardContent className="space-y-4">

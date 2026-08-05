@@ -32,14 +32,8 @@
       "owners": "backend-runtime",
       "path": "docs/architecture/backend/overview.md",
       "summary": "Product Backend 拥有 Conversation History、Agent Context、Agent Run、输入队列与 Product Tools；执行由一次性 coding-agent 子进程完成。",
-      "depends_on": [
-        "architecture.system-overview"
-      ],
-      "used_by": [
-        "backend.data-model",
-        "execution.agent-backend",
-        "agents.context"
-      ]
+      "depends_on": ["architecture.system-overview"],
+      "used_by": ["backend.data-model", "execution.agent-backend", "agents.context"]
     },
     {
       "id": "agents.context",
@@ -48,9 +42,7 @@
       "owners": "architecture",
       "path": "docs/architecture/agents/context.md",
       "summary": "每个 Conversation Agent Member 实际知道什么；保存共享 Message 引用、私有语义、Product Tool 结果、summary 和 Context Branch。",
-      "depends_on": [
-        "conversation.history"
-      ],
+      "depends_on": ["conversation.history"],
       "used_by": [
         "architecture.system-overview",
         "execution.agent-backend",
@@ -64,14 +56,8 @@
       "owners": "architecture",
       "path": "docs/architecture/execution/agent-backend.md",
       "summary": "AgentBackend 协议（execute/steer/abort）与 CodingAgentBackend 实现：每个 Run spawn 一次性 coding-agent 子进程，stdin/stdout JSONL，BackendRunOutcome 唯一终态。",
-      "depends_on": [
-        "agents.context"
-      ],
-      "used_by": [
-        "architecture.system-overview",
-        "backend.overview",
-        "flows.e2e-web-message"
-      ]
+      "depends_on": ["agents.context"],
+      "used_by": ["architecture.system-overview", "backend.overview", "flows.e2e-web-message"]
     },
     {
       "id": "conversation.history",
@@ -81,12 +67,7 @@
       "path": "docs/architecture/conversation/history.md",
       "summary": "所有成员共享的 Conversation 事实；人类和 Agent 最终 Message 都进入 History，Agent Context 保存稳定引用。",
       "depends_on": [],
-      "used_by": [
-        "agents.context",
-        "runs.output-and-live-updates",
-        "surfaces.web",
-        "surfaces.lark"
-      ]
+      "used_by": ["agents.context", "runs.output-and-live-updates", "surfaces.web", "surfaces.lark"]
     },
     {
       "id": "runs.output-and-live-updates",
@@ -95,16 +76,8 @@
       "owners": "backend-runtime",
       "path": "docs/architecture/runs/output-and-live-updates.md",
       "summary": "Agent Backend 产生 Live Updates 与 outcome；只有 terminal outcome 才原子提交 History Message 与 Agent Context。",
-      "depends_on": [
-        "conversation.history",
-        "agents.context",
-        "execution.agent-backend"
-      ],
-      "used_by": [
-        "surfaces.web",
-        "surfaces.lark",
-        "flows.e2e-web-message"
-      ]
+      "depends_on": ["conversation.history", "agents.context", "execution.agent-backend"],
+      "used_by": ["surfaces.web", "surfaces.lark", "flows.e2e-web-message"]
     },
     {
       "id": "backend.data-model",
@@ -113,13 +86,8 @@
       "owners": "architecture",
       "path": "docs/architecture/backend/data-model.md",
       "summary": "conversation_ledger 与 agent_context_* 是产品事实，agent_run + branch_input_queue + product_tool_call 是执行控制面；无 span/attempt/session。",
-      "depends_on": [
-        "agents.context"
-      ],
-      "used_by": [
-        "backend.overview",
-        "runs.output-and-live-updates"
-      ]
+      "depends_on": ["agents.context"],
+      "used_by": ["backend.overview", "runs.output-and-live-updates"]
     },
     {
       "id": "flows.e2e-web-message",
@@ -143,13 +111,8 @@
       "owners": "architecture",
       "path": "docs/architecture/surfaces/web.md",
       "summary": "浏览器对话与运行界面，消费 Conversation History 与 Live Updates，不拥有持久事实。",
-      "depends_on": [
-        "conversation.history",
-        "runs.output-and-live-updates"
-      ],
-      "used_by": [
-        "flows.e2e-web-message"
-      ]
+      "depends_on": ["conversation.history", "runs.output-and-live-updates"],
+      "used_by": ["flows.e2e-web-message"]
     },
     {
       "id": "surfaces.lark",
@@ -158,10 +121,7 @@
       "owners": "architecture",
       "path": "docs/architecture/surfaces/lark.md",
       "summary": "将飞书身份与消息映射到 Product Backend，并从 Conversation History/事件通道推送 Agent 输出。",
-      "depends_on": [
-        "conversation.history",
-        "runs.output-and-live-updates"
-      ],
+      "depends_on": ["conversation.history", "runs.output-and-live-updates"],
       "used_by": []
     },
     {
@@ -191,9 +151,7 @@
       "owners": "architecture",
       "path": "docs/architecture/runtime/coding-agent.md",
       "summary": "无 UI 的一次性 CLI 执行引擎（print/json/rpc），由 Adapter 按 Run spawn；子进程内 per-Run Runtime（packages/agent）跑完产出 BackendRunOutcome 后退出。",
-      "depends_on": [
-        "execution.agent-backend"
-      ],
+      "depends_on": ["execution.agent-backend"],
       "used_by": [
         "runtime.coding-agent-session",
         "runtime.coding-agent-prompt",
@@ -207,12 +165,8 @@
       "owners": "architecture",
       "path": "docs/architecture/runtime/coding-agent-session.md",
       "summary": "Runtime 的 SessionStore 是 per-Run、in-memory 执行缓存：seed full Product history + meta + input，Run 结束销毁；无 SQLite session、无 worker、无跨 Run 恢复。",
-      "depends_on": [
-        "runtime.coding-agent"
-      ],
-      "used_by": [
-        "runtime.coding-agent-prompt"
-      ]
+      "depends_on": ["runtime.coding-agent"],
+      "used_by": ["runtime.coding-agent-prompt"]
     },
     {
       "id": "runtime.coding-agent-prompt",
@@ -221,10 +175,7 @@
       "owners": "architecture",
       "path": "docs/architecture/runtime/coding-agent-prompt.md",
       "summary": "每个 Run 使用 Run 快照冻结的 systemPrompt + Meta User Message + 真实 Prompt，随 full Product history seed 进 SessionStore。",
-      "depends_on": [
-        "runtime.coding-agent",
-        "runtime.coding-agent-session"
-      ],
+      "depends_on": ["runtime.coding-agent", "runtime.coding-agent-session"],
       "used_by": []
     },
     {
@@ -234,12 +185,8 @@
       "owners": "architecture",
       "path": "docs/architecture/runtime/coding-agent-models.md",
       "summary": "模型系统由 packages/ai（Provider 注册制 + ModelRuntime）提供；Product Backend 只保存 BackendModelRef，子进程内解析并 stream。",
-      "depends_on": [
-        "runtime.coding-agent"
-      ],
-      "used_by": [
-        "runtime.coding-agent-prompt"
-      ]
+      "depends_on": ["runtime.coding-agent"],
+      "used_by": ["runtime.coding-agent-prompt"]
     }
   ]
 }

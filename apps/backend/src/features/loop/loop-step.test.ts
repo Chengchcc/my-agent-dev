@@ -1,6 +1,8 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { BackendRunOutcome } from "@my-agent-team/agent-backend";
 import type { LoopState } from "@my-agent-team/loop";
 import { loopReducer } from "@my-agent-team/loop";
@@ -13,8 +15,9 @@ import { createLoopStateStore, type LoopStateStore } from "./loop-state-store.js
 import type { GitRunner } from "./loop-step.js";
 import { loopStep } from "./loop-step.js";
 
-const TMP = "/tmp/loop-step-m3-test";
-const DATA = "/tmp/loop-step-m3-data";
+// Every test gets its own mkdtemp dirs — no shared fixed /tmp paths, so the
+// file is safe under full-suite parallel execution (a shared dir would let one
+// test's cleanup delete another test's git repo mid-flight).
 
 function createTestStore(): LoopStateStore {
   const db = new Database(":memory:");
@@ -42,8 +45,7 @@ async function initLoopDir(
   denylist?: string,
   budgetYaml?: string,
 ): Promise<string> {
-  await rm(TMP, { recursive: true, force: true });
-  await mkdir(TMP, { recursive: true });
+  const dir = await mkdtemp(join(tmpdir(), "loop-step-"));
   const denylistYaml = denylist ? `denylist:\n${denylist}\n` : "";
   const budget = budgetYaml ? `budget:\n${budgetYaml}\n` : "";
   const frontMatter = `---
@@ -54,8 +56,8 @@ evaluator:
 ${projectId ? `projectId: ${projectId}\n` : ""}
 ${denylistYaml}${budget}---
 `;
-  await Bun.write(`${TMP}/LOOP.md`, frontMatter);
-  return TMP;
+  await Bun.write(`${dir}/LOOP.md`, frontMatter);
+  return dir;
 }
 
 async function setupGitDataDir(): Promise<{
@@ -63,10 +65,10 @@ async function setupGitDataDir(): Promise<{
   projectPort: ProjectPort;
   cleanup: () => Promise<void>;
 }> {
-  await rm(DATA, { recursive: true, force: true });
+  const root = await mkdtemp(join(tmpdir(), "loop-step-data-"));
 
-  const srcWorktree = `${DATA}/src-wt`;
-  const bareSrc = `${DATA}/src.git`;
+  const srcWorktree = `${root}/src-wt`;
+  const bareSrc = `${root}/src.git`;
   await mkdir(srcWorktree, { recursive: true });
   await Bun.$`git init`.cwd(srcWorktree).quiet();
   await Bun.$`git -C ${srcWorktree} config user.email "test@test"`.quiet();
@@ -108,10 +110,10 @@ async function setupGitDataDir(): Promise<{
   };
 
   return {
-    dataDir: DATA,
+    dataDir: root,
     projectPort,
     cleanup: async () => {
-      await rm(DATA, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     },
   };
 }
@@ -136,7 +138,7 @@ interface RunScript {
   genReplayTerminal?: boolean;
 }
 
-function makeFakeRuns(script: RunScript, workDir: string = TMP) {
+function makeFakeRuns(script: RunScript, workDir: string = "") {
   const enqueues: Array<{
     conversationId: string;
     agentMemberId: string;
@@ -283,29 +285,35 @@ async function runStep(
   const projectPort = overrides.projectPort ?? ownGit!.projectPort;
   const dir = overrides.dir ?? (await initLoopDir("test-project"));
   const fake = makeFakeRuns(overrides.script ?? {}, `${dataDir}/repos/test-project`);
-  const result = await loopStep({
-    loopConfigPath: dir,
-    store,
-    loopId: "test",
-    convPort:
-      overrides.convPort ??
-      ({
-        createConversation: () => ({}),
-        addMember: () => ({ member: null, created: true }),
-        getConversation: () => null,
-        getMembers: () => [],
-        appendLedgerEntry: () => 1,
-      } as never),
-    projectPort,
-    dataDir,
-    gitRunner: overrides.gitRunner,
-    action: overrides.action,
-    agentRunService: fake.agentRunService,
-    agentRunExecution: fake.agentRunExecution,
-    resolveModel: async (name) => ({ backendKind: "coding_agent", modelId: name }),
-  });
-  await ownGit?.cleanup();
-  return { result, ...fake };
+  try {
+    const result = await loopStep({
+      loopConfigPath: dir,
+      store,
+      loopId: "test",
+      convPort:
+        overrides.convPort ??
+        ({
+          createConversation: () => ({}),
+          addMember: () => ({ member: null, created: true }),
+          getConversation: () => null,
+          getMembers: () => [],
+          appendLedgerEntry: () => 1,
+        } as never),
+      projectPort,
+      dataDir,
+      gitRunner: overrides.gitRunner,
+      action: overrides.action,
+      agentRunService: fake.agentRunService,
+      agentRunExecution: fake.agentRunExecution,
+      resolveModel: async (name) => ({ backendKind: "coding_agent", modelId: name }),
+    });
+    return { result, ...fake };
+  } finally {
+    await ownGit?.cleanup();
+    // The loop dir is always a per-test mkdtemp (created here or by the
+    // caller); no test reads it after runStep returns.
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 function stateWithFixingItem(store: LoopStateStore): LoopState {
@@ -375,27 +383,31 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     const { dataDir, projectPort, cleanup } = await setupGitDataDir();
     try {
       const dir = await initLoopDir("test-project");
-      const fake = makeFakeRuns({ genStatus: "failed" }, `${dataDir}/repos/test-project`);
-      await expect(
-        loopStep({
-          loopConfigPath: dir,
-          store,
-          loopId: "test",
-          projectPort,
-          dataDir,
-          convPort: {
-            createConversation: () => ({}),
-            addMember: () => ({ member: null, created: true }),
-            getConversation: () => null,
-            getMembers: () => [],
-            appendLedgerEntry: () => 1,
-          } as never,
-          agentRunService: fake.agentRunService,
-          agentRunExecution: fake.agentRunExecution,
-          resolveModel: async (name) => ({ backendKind: "coding_agent", modelId: name }),
-        }),
-      ).rejects.toThrow("generator run");
-      expect(fake.enqueues.some((e) => e.agentMemberId.startsWith("loop-evaluator"))).toBe(false);
+      try {
+        const fake = makeFakeRuns({ genStatus: "failed" }, `${dataDir}/repos/test-project`);
+        await expect(
+          loopStep({
+            loopConfigPath: dir,
+            store,
+            loopId: "test",
+            projectPort,
+            dataDir,
+            convPort: {
+              createConversation: () => ({}),
+              addMember: () => ({ member: null, created: true }),
+              getConversation: () => null,
+              getMembers: () => [],
+              appendLedgerEntry: () => 1,
+            } as never,
+            agentRunService: fake.agentRunService,
+            agentRunExecution: fake.agentRunExecution,
+            resolveModel: async (name) => ({ backendKind: "coding_agent", modelId: name }),
+          }),
+        ).rejects.toThrow("generator run");
+        expect(fake.enqueues.some((e) => e.agentMemberId.startsWith("loop-evaluator"))).toBe(false);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
     } finally {
       await cleanup();
     }

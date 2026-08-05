@@ -3,7 +3,7 @@ id: roadmap.future-work
 title: 未来工作
 status: future
 owners: architecture
-last_verified_against_code: 2026-07-01
+last_verified_against_code: 2026-08-05
 summary: "这一页是唯一谈「还没做 / 想做」的地方——刻意和描述当前状态的所有页面隔离开，避免把「现状」和「设想」混在一起误导读者。其余每一页都只讲代码现在确实是怎样的；任何前瞻性的方向都收拢到这里，并标注它依赖哪些现有抽象。"
 depends_on:
   - runs.output-and-live-updates
@@ -29,10 +29,10 @@ used_by:
 
 - **更细的投影可见性策略**　当前 assistant 消息经 `onRunMessage` 直写账本，projection bridge只做 best-effort fan-out。未来可引入更细的可见性规则（按成员、按事件子类型），但任何扩展都应保持「assistant 消息与人类消息同一入口直写账本」「账本为唯一对话事实」这两条不变式。依赖：[会话投影](../runs/output-and-live-updates.md)、[事实与投影](../foundations/facts-and-projections.md)。
 - **端去重的统一化**　**已解决。** 飞书侧的 `canSkipFinalLedgerText` 及相关 dedup 逻辑已随 Lark 重构移除，SSE 事件直接渲染。当前仅 Web + Lark 两端，各自无去重负担。若未来接入更多端再考虑共享去重层。
-- **恢复语义的强化**　checkpointer 的 saveInterrupt / consumeInterrupt 已支撑中断恢复。可进一步明确多次中断、反思分叉（`reflect:<threadId>`）与主线恢复之间的交互边界。依赖：[Framework 运行循环](../runtime/framework.md)、[后端总览](../backend/overview.md)。
-- **Issue 协作工作流演进**　**已被 Loop Engineering 取代。** Issue 本体与 Orchestrator 模块已删除（无 `features/orchestrator/`、无 Issue CRUD），工作流编排能力由 Loop 系统承接（Generator -> Evaluator -> Human Gate）。M18.3-M18.7 里程碑失效，Project 实体化已独立落地（`features/project/` CRUD 已完成）。`span_origin.issueId` 字段为历史残留。
+- **恢复语义的强化**　**历史方案，已随 Phase 5/6 删除。** checkpointer 的 saveInterrupt / consumeInterrupt 与整个 session 持久化体系已不存在。当前语义：中断/崩溃 = 当前 Agent Run failed；下一个输入 = 新 Run = 从 Agent Context full projection 重建，无恢复路径。
+- **Issue 协作工作流演进**　**已被 Loop Engineering 取代。** Issue 本体与 Orchestrator 模块已删除（无 `features/orchestrator/`、无 Issue CRUD），工作流编排能力由 Loop 系统承接（Generator -> Evaluator -> Human Gate）。M18.3-M18.7 里程碑失效，Project 实体化已独立落地（`features/project/` CRUD 已完成）。旧 `span_origin` 表（含 issueId 列）已随 Phase 6 迁移 0020 删除。
 - **@提及收编进编排**　**已解决。** Orchestrator 已删除，@提及自动触发（`conversation/service.ts` 的 `#forkAgentRuns`）是唯一驱动来源。两套驱动的问题不存在了。
-- **Loop Engineering（统一工作系统，把半个回路补成完整回路）**　现有 Issue/CronJob 覆盖了 loop 五动作里的交接、持久化、半个调度，但两个概念各管一半、都不表达「按调度自动发现工作 + 多步流水线推进 + 跨轮状态持久」。Loop 把它们统一成一个**文件态**工作系统：配置在 `.loop/` 文件、item 状态在 STATE.md、CronJob 退成调度者、`loopStep()` 无状态推进。**Goal 是创建对话框里的过渡态，翻译成 config 后消失，验收标准沉淀为 config.yml 的 `acceptance` 字段——不新增 Goal/Step/Edge 数据库实体**。完整设计与不变量收拢在 [Loop Engineering](../foundations/loop-engineering.md)（第一性原理入口）、[Loop](../foundations/loop.md)、[LoopRunner](../backend/loop-runner.md)、[Loop Pattern](../foundations/loop-pattern.md)、[Loop 验证端到端](../flows/e2e-loop-verification.md)；本节只记**落地顺序**。核心判断：这是**最小 DB 改动**（唯一加 `cron_job.loop_config_path` 一列）+ 文件态本体，不是 schema 大重构；MVP 是**入口统一、数据未统一**——`/issues` 移除、Issue 表只读**不迁移**（迁移列入 Phase 3）。落地顺序、并发一致性、预算等硬约束以 [PRD](../../prd/loop-engineering.md) 为准。依赖：[Loop Engineering](../foundations/loop-engineering.md)、[定时任务](../foundations/cron-job.md)、[Agent](../harness/harness.md)、[Orchestrator](../backend/orchestrator.md)、[文件型记忆插件](../plugins/fs-memory.md)。
+- **Loop Engineering（统一工作系统，把半个回路补成完整回路）**　现有 Issue/CronJob 覆盖了 loop 五动作里的交接、持久化、半个调度，但两个概念各管一半、都不表达「按调度自动发现工作 + 多步流水线推进 + 跨轮状态持久」。Loop 把它们统一成一个**文件态**工作系统：配置在 `.loop/` 文件、item 状态在 STATE.md、CronJob 退成调度者、`loopStep()` 无状态推进。**Goal 是创建对话框里的过渡态，翻译成 config 后消失，验收标准沉淀为 config.yml 的 `acceptance` 字段——不新增 Goal/Step/Edge 数据库实体**。完整设计与不变量收拢在 [Loop Engineering](../foundations/loop-engineering.md)（第一性原理入口）、[Loop](../foundations/loop.md)、[LoopRunner](../backend/loop-runner.md)、[Loop Pattern](../foundations/loop-pattern.md)、[Loop 验证端到端](../flows/e2e-loop-verification.md)；本节只记**落地顺序**。核心判断：这是**最小 DB 改动**（唯一加 `cron_job.loop_config_path` 一列）+ 文件态本体，不是 schema 大重构；MVP 是**入口统一、数据未统一**——`/issues` 移除、Issue 表只读**不迁移**（迁移列入 Phase 3）。落地顺序、并发一致性、预算等硬约束以 [PRD](../../prd/loop-engineering.md) 为准。依赖：[Loop Engineering](../foundations/loop-engineering.md)、[定时任务](../foundations/cron-job.md)、[Agent Backend](../execution/agent-backend.md)、[LoopRunner](../backend/loop-runner.md)。
 
   里程碑切法（对齐 [PRD](../../prd/loop-engineering.md) §8 的 Phase 1/2/3；**检查先于并行**——验证第一，并行最后）：
 
@@ -99,22 +99,16 @@ used_by:
   | **P1** | AgentMessage declaration merging | ⏳ 待办 | Message 是固定 union | 半天 |
   | **P2** | ExecutionEnv 抽象 | ⏳ 待办 | 工具直接用 node:fs 和 Bun.spawn | 3-5 天 |
 
-  | **P0** | Session Tree + Checkpointer 拆分 | ✅ 已完成 | 见下方专节（Step 1-3 全部落地） | 2026-07-17 |
+  | **P0** | Session Tree + Checkpointer 拆分 | ⏳ 已删除 | 见下方专节（历史方案，Phase 5/6 删除，被 per-Run in-memory SessionStore 取代） | 2026-08-05 |
   | **P3** | Result<T,E> 错误类型 | `Result<TValue, TError>` 显式 `{ok, value} \| {ok: false, error}`，不依赖 throw | 全用 throw + try/catch + DomainError 层级 | 低（风格偏好，不值得迁移） |
   | **P3** | Tool terminate 标记 | `AgentToolResult.terminate: boolean`，工具可标记"执行后终止 agent loop" | 无，工具不能主动终止 loop（InterruptSignal 已覆盖类似场景） | 低 |
 
   Pi 的 Provider 设计已落地：`@my-agent-team/ai` 包，`anthropicProvider` + `openAICompletionsApi` + `createOpenAICompatProvider`，删掉 `@anthropic-ai/sdk` 依赖，直接 fetch + SSE 解析。加新 provider（DeepSeek/Groq/custom）只需 5 行配置。
 
   不值得借鉴的：OAuth（桌面端场景）、动态 model 列表拉取（可后加）、TypeBox 类型（我们用 zod 已够用）。
-- **Session Tree + Checkpointer 拆分（2026-07-17）**　**已落地。** 参考 pi-ai 的 Session 设计，将线性消息数组升级为树结构，同时拆分 Checkpointer 的混合职责。三步全部完成：
+- **Session Tree + Checkpointer 拆分（2026-07-17）**　**历史方案，已随 Phase 5/6 删除。** Checkpointer / MessageStore / EventLog / InterruptStore 拆分、Session Tree（SQLite session 文件、SessionRepo、SessionManager）均已不存在。当前 Runtime 状态是 per-Run、in-memory 的 SessionStore（`packages/agent`），Run 结束即销毁；产品恢复只依赖 Conversation History 与 Agent Context。
 
-  | 步骤 | 状态 | 内容 |
-  |---|---|---|
-  | **Step 1: 拆 Checkpointer** | ✅ 已完成 | `Checkpointer` 拆成 `MessageStore` + `EventLog` + `InterruptStore`。AgentRuntime 用拆分接口。 |
-  | **Step 2: Session Tree** | ✅ 已完成 | `SessionTreeEntry[]` 树结构，Session 类（appendMessage/buildContext/moveTo/getBranch/appendCompaction），Memory + SQLite 存储，Thread 委托 Session。 |
-  | **Step 3: SessionRepo** | ✅ 已完成 | `SessionRepo` 接口（create/open/list/delete/fork），`SqliteSessionRepo` 实现，SessionManager 暴露 `.repo` getter。 |
-
-  Conversation fork/undo/replay 也已落地（migration 0011，ledger 软删除 + fork 来源追踪）。
+  Conversation fork/undo/replay 仍落地（migration 0011，ledger 软删除 + fork 来源追踪）。
 
   不做：Pi 的 `CustomAgentMessages` declaration merging（Message 类型已稳定）、`Result<T,E>` 错误类型（风格偏好）。
 - **oh-my-pi 架构借鉴（2026-07-21）**　分析了 [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) 的增强架构，以下值得借鉴：
@@ -125,34 +119,14 @@ used_by:
   | **P2** | Compaction "Shake"（机械缩减） | ✅ 已完成 | shakeMessages 在 autoSummarize Step 1 机械替换大 tool_result | 2026-07-21 |
   | **P2** | Tool Protection（工具结果保护） | ✅ 已完成 | shakeMessages protectedTools 配置，默认保护 skill | 2026-07-21 |
   | **P2** | Pause Gate（进程级暂停） | ❌ 不做 | 服务端运行时不需要，/stop 够用 | - |
-  | **P3** | Telemetry（OTel GenAI 语义约定） | ⏳ 待办 | 有 runtime-observability 但非 OTel 标准 | 1 周 |
+  | **P3** | Telemetry（OTel GenAI 语义约定） | ⏳ 待办 | 无当前 implementation；旧 runtime-observability 已删除。未来如做，按 child-process 链路（每次 Run 的 adapter 侧）重做，不引入常驻进程观测 | 1 周 |
   | **P3** | Tokenizer（精确 token 计数） | ✅ 已完成 | countTokens/countMessageTokens 工具函数 | 2026-07-21 |
 
   OMP 的 dialect 系统（anthropic/deepseek/gemini/glm/kimi/qwen3 等 15+ 个 dialect 的 prompt 格式适配）不值得抄 -- 我们的 API 层已有消息转换，且不需要 thinking 格式适配（不同模型的 reasoning 格式差异由 API 层处理）。
-- **Autonomous Memory（自主记忆）（2026-07-22）**　✅ **已完成**。参考 OMP 的 memory pipeline，实现两阶段自动提取 + 合并。
-
-  | 组件 | 实现 |
-  |---|---|
-  | **包改名** | `plugin-fs-memory` → `plugin-memory` |
-  | **工具升级** | `memory_retain`（批量 + context）、`memory_search`（多词 AND + 时间过滤） |
-  | **Stage 1** | 每轮 afterModel 后用小模型提取增量消息的 durable knowledge → `memory/facts/<ts>-<slug>.md` |
-  | **Phase 2** | 累积 10 条 facts 后 LLM 合并 → `memory_summary.md`（1-3 句浓缩） |
-  | **注入** | `memoryPlugin.beforeRun` 读 `memory_summary.md` → `<memory>` 标签注入 system prompt |
-  | **UI** | Agent 详情页 Memory tab（只读 facts + summary） |
-  | **配置** | 7 项 settings，`memory.autoExtract` 默认开启 |
+- **Autonomous Memory（自主记忆）（2026-07-22）**　**历史方案，已随 Phase 6 删除。** `plugin-fs-memory` / `plugin-memory` 包不存在；memory.autoExtract 等 settings 已从 UI 移除。当前没有 autonomous memory pipeline producer。Agent 详情页 Memory tab 仍存在，但只读取 workspace 中已有的文件（如 memory/facts、memory_summary.md），不做自动提取/合并。若恢复，必须作为 Coding Agent 或 Product 侧的真实能力重做。
 
 
-- **Pet（陪伴审查 agent）（2026-07-21）**　✅ **已完成（2026-07-22）**。参考 OMP 的 advisor，实现一个有状态的生命体 agent，每轮结束后审查 primary agent 的输出并"叫"出建议。
-
-  | 组件 | 设计 | 实现 |
-  |---|---|---|
-  | **PetPlugin** | beforeRun/afterTool/afterModel 三个 hook | `packages/plugin-pet`：情绪状态机（happy/neutral/frustrated/excited）、XP/等级系统、连续成功/失败检测 |
-  | **Bark** | pet 的唯一输出，去重 + 过滤垃圾建议 | `bark.ts`：shouldBark（frustrated/excited 必叫）、generateBark（一次 model.stream）、filterBark（去重 + USELESS_NOTES 黑名单） |
-  | **持久化** | settings KV per-agent | `pet.<agentId>.level/xp/totalTurns/totalBarks` |
-  | **SSE 转发** | pet_bark event → ledger → conversation SSE → 前端 PetStatusBar 实时更新 | `LedgerKind` 加 `pet_bark`，subscriber 写账本，useConversation 消费 |
-  | **meta 注入** | `<pet mood="..." level="...">text</pet>` 标签注入 meta user message | primary agent 能在 system-reminder 里看到 pet 的叫声 |
-  | **前端** | 底部 PetStatusBar（情绪 + 等级）+ Agent 详情 Pet tab（XP 进度条） | ConversationCanvas + AgentPetPanel |
-  | **配置** | `pet.enabled` / `pet.provider` / `pet.model` via settings KV | 前端下拉从 `/api/models` 加载 |
+- **Pet（陪伴审查 agent）（2026-07-21）**　**历史方案，已随 Phase 6 删除。** `packages/plugin-pet`、PetStatusBar、Pet tab、`pet.*` settings、`pet_bark` LedgerKind/SSE 事件均不存在（源码 clean search 为零）。若未来恢复，Pet 必须作为 Product-side post-run feature 重新设计（不恢复 runtime plugin）。
 
 - **Provider 配置化（models.yml + 环境变量自动检测）（2026-07-22）**　✅ **已完成**。在 Pi Provider 注册制基础上，将 Provider 从代码注册升级为声明式配置：
 
@@ -163,17 +137,9 @@ used_by:
   | **resolveModel** | 统一模型解析入口，支持 `"provider/id"` 和 bare id 两种格式 |
   | **前端下拉** | AgentForm provider+model 级联 Select，`/api/models` 动态加载 |
   | **Runtime 替换** | 12 处 `getModel("anthropic", ...)` 全部替换为 `resolveModel(name, registry)` |
-  | **LedgerKind** | 加 `pet_bark` 枚举值，pet bark 事件通过 conversation SSE 转发到前端 |
+  | **LedgerKind** | 加 `pet_bark` 枚举值，pet bark 事件通过 conversation SSE 转发到前端（该枚举已随 Phase 6 Pet 删除） |
 
-- **Recap Panel（每轮对话实时摘要）（2026-07-22）**　✅ **已完成**。参考 pi-recap，在 ConversationCanvas 右侧添加常驻 RecapPanel，每轮 loop 结束后用 cheap model 生成一句话摘要。
-
-  | 组件 | 内容 |
-  |---|---|
-  | **plugin-recap** | beforeRun/afterModel hook，`lastReviewedMessageCount` 只摘本轮增量消息，`ChatModel.stream()` 一次性调用 |
-  | **recap_update 事件** | AgentEvent → subscriber → ledger（`kind: "recap"`）→ conversation SSE → 前端 |
-  | **RecapPanel** | ConversationCanvas 右侧 260px，显示最新 recap 文本 |
-  | **配置** | `recap.enabled` / `recap.provider` / `recap.model` via settings KV |
-  | **Prompt** | XML 格式（`<recap-request>` + `<objective>` / `<constraints>` / `<example>`） |
+- **Recap Panel（每轮对话实时摘要）（2026-07-22）**　**历史方案，已随 Phase 6 删除。** `plugin-recap`、`recap_update` 事件、RecapPanel、`recap.*` settings 与 `recap` LedgerKind/SSE 事件均不存在。若未来恢复，Recap 必须作为 terminal Message 之后的 Product-derived summary 重新设计。
 - **Compaction 质量提升（2026-07-22）**　✅ **已完成**。三个改进全部落地 + 架构文档（`docs/architecture/runtime/compaction.md`）：
 
   | 改进 | 来源 | 实现 |
@@ -183,16 +149,8 @@ used_by:
   | **智能切点** | Pi `findCutPoint` | 从尾部反向累 token，只停在 user/assistant 边界，双向 fallback |
   | **废弃别名** | — | 删除 `summarizingContextManager`，完成重构 |
 
-- **Ops 导航转 session / trace 中心**　现状 Ops 面以 run 为中心列举（run 列表 → run 详情），词汇与分区都停在 daemon 时代的 `run`。[标识符体系](../foundations/identifiers.md) 把本体收敛为「session（一条 trace）→ span（root span）→ attempt（重试序号）」后，Ops 导航也应顺着这条链改：顶层按 **session** 聚合（一个 agent 在一个上下文里的整条记忆线），点进去看这条线上的 **span 序列**（每次 prompt loop 一段，按 spanId 切的 `checkpoint_events` 即其执行事实流），再下钻到 **attempt / child span**。这让「这条线到底跑过几轮、第 3 轮前是什么状态」成为一次自然的层层下钻，而不是在扁平 run 列表里靠 `idempotencyKey` 反推。依赖：[标识符体系](../foundations/identifiers.md)、[数据模型](../backend/data-model.md)。
-- **删除 transport / heartbeat 残骸**　**已解决。** `attempt` 表的 `pid` / `heartbeat_at` 列已删除（migration 0009），reaper 心跳分支已移除，超时由 per-span 看门狗（主动 cancel）表达。
-- **Harness 运行时加固（M22）**　**已落地。** 四项子任务全部完成，相关 `status: current` 页面已回填：
-
-  | 子项 | 结果 | 回填页面 |
-  |---|---|---|
-  | **上下文压缩转默认** | shape/beforeModel 顺序反转（先注入再整形，预算不再「瞎」）；Harness 默认 `pipeContextManagers(toolResultTruncator, summarizingContextManager{structuredSummarize})`；引入 `structuredSummarize` 结构化摘要器。 | [上下文管理器](../runtime/context-manager.md) |
-  | **回合内工具并行** | 工具声明 `executionMode: "concurrent"`，同回合并发执行；串行/并行混跑，`tool_result` 按原始顺序插入保证消息合法。 | [Framework 运行循环](../runtime/framework.md) |
-  | **运行中插话（steering / follow-up）** | 引入 SteeringQueue（每步排出干预消息）+ FollowUpQueue（外层跟进循环），长任务中途可纠偏/补充而无需打断重启。 | [Framework 运行循环](../runtime/framework.md) |
-  | **Skill 双域 + 显式调用** | 双域发现（global + project 双 roots，project 同名覆盖 global）；`/skill:name` 显式调用；`disableModelInvocation` 关闭模型自动触发。 | [渐进式技能](../plugins/progressive-skill.md) |
+- **删除 transport / heartbeat 残骸**　**已解决。** `attempt` 表的 `pid` / `heartbeat_at` 列已删除（migration 0009），reaper 心跳分支已移除。Phase 6 进一步删除了整个 span/attempt/control_plane_event/span_origin 审计体系（迁移 0020）；Ops 面以 Agent Run 为中心（`/api/agent-runs`），无 session/span 概念。
+- **Harness 运行时加固（M22）**　**历史方案，已随 Phase 5/6 删除。** harness/framework 包与进程内运行循环已不存在；其产物（steering/follow-up、工具并行、压缩管线）以 Coding Agent Runtime 形式保留在 `packages/agent`（per-Run、子进程内），相关当前页面见 [Coding Agent](../runtime/coding-agent.md)。
 
 ## 处理原则
 

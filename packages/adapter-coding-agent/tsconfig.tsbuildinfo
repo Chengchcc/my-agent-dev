@@ -1,0 +1,1 @@
+{"root":["./src/backend.ts","./src/event-mapper.ts","./src/index.ts","./src/model-catalog.ts","./src/process.ts","./src/protocol.ts","./src/stderr-tail.ts","./src/__fixtures__/rpc-fixture.ts"],"version":"6.0.3"}
