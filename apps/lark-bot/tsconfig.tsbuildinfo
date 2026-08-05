@@ -1,1 +1,0 @@
-{"root":["./src/args.ts","./src/bindings-sqlite.ts","./src/bootstrap.ts","./src/client.ts","./src/diagnostics.ts","./src/event-parser.ts","./src/ingest.ts","./src/main.ts","./src/markdown-normalizer.ts","./src/render.ts","./src/safe-agent-id.ts","./src/send-text-only.ts","./src/sender.ts","./src/sse-watcher.ts","./src/db/schema.ts"],"version":"6.0.3"}

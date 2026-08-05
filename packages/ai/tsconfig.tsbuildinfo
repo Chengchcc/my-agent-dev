@@ -1,1 +1,0 @@
-{"root":["./src/builtin-providers.ts","./src/index.ts","./src/model-runtime.ts","./src/provider-config.ts","./src/types.ts","./src/providers/anthropic-models.ts","./src/providers/anthropic.ts","./src/providers/custom.ts","./src/providers/deepseek.ts","./src/providers/index.ts","./src/providers/openai-compat.ts"],"version":"6.0.3"}
