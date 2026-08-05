@@ -104,13 +104,19 @@ describe("coding-agent CLI (spawned)", () => {
       }
       if (lines.some((l) => (JSON.parse(l) as { type?: string }).type === "outcome")) break;
     }
-    // The child exits once stdin closes after the outcome.
-    proc.stdin!.end();
-    const exitCode = await proc.exited;
+    // The child exits ON ITS OWN after the outcome - stdin stays open (the
+    // process must not depend on the parent closing it).
+    const exitCode = await Promise.race([
+      proc.exited,
+      new Promise<number>((_, reject) =>
+        setTimeout(() => reject(new Error("child did not exit after outcome")), 10_000),
+      ),
+    ]);
     expect(exitCode).toBe(0);
     const outputs = lines.map((l) => JSON.parse(l) as CodingAgentOutput);
-    // protocol order: execute response first, outcome last
-    expect(outputs[0]).toMatchObject({ type: "response", success: true });
+    // protocol: an execute success response exists (agent_start may precede
+    // it), and the outcome is the terminal line.
+    expect(outputs.some((o) => o.type === "response" && o.success === true)).toBe(true);
     expect(outputs[outputs.length - 1]?.type).toBe("outcome");
     expect(outputs.filter((o) => o.type === "outcome")).toHaveLength(1);
     for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();

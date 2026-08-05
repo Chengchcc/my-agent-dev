@@ -2,7 +2,7 @@ import type { Model, Provider } from "@my-agent-team/ai";
 import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 
-/** Deterministic fake Provider for daemon integration tests. Yields one text
+/** Deterministic fake Provider for child-process integration tests. Yields one text
  *  chunk then a natural stop - no network, no credentials. Registered by the
  *  Worker when CODING_AGENT_FAKE_PROVIDER=1 is in its env.
  *
@@ -24,6 +24,14 @@ const FAKE_MODEL: Model = {
   maxTokens: 8192,
 };
 
+/** Second deterministic model: LOOP.md requires generator.model !=
+ *  evaluator.model, and the child validates the model against the catalog. */
+const FAKE_MODEL_2: Model = {
+  ...FAKE_MODEL,
+  id: "echo2",
+  name: "Fake Echo 2",
+};
+
 let toolUseSeq = 0;
 
 export function fakeProvider(
@@ -39,7 +47,7 @@ export function fakeProvider(
   return {
     id: "fake",
     name: "Fake",
-    getModels: () => [FAKE_MODEL],
+    getModels: () => [FAKE_MODEL, FAKE_MODEL_2],
     async *stream(_model: Model, _messages: readonly Message[]): AsyncIterable<AIMessageChunk> {
       const next = script.shift();
       if (next) {

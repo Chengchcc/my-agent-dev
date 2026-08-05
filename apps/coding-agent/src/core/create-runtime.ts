@@ -79,8 +79,24 @@ export async function createCodingAgentRuntime(
       }
       started = true;
 
+      // run() resolves only when the loop is at a SAFE steer boundary
+      // (message_start fires after acceptingSteer=true) or settled without
+      // starting - acceptance therefore implies steer/abort are routable,
+      // with no timing window.
+      let liveResolve: (() => void) | null = null;
+      const live = new Promise<void>((resolve) => {
+        liveResolve = resolve;
+      });
+      let liveSettled = false;
+      const settleLive = (): void => {
+        if (liveSettled) return;
+        liveSettled = true;
+        liveResolve?.();
+      };
+
       // Stop landing before the loop starts settles aborted without running.
       if (stopRequested) {
+        settleLive();
         const outcome: BackendRunOutcome = { status: "aborted", error: "stopped before start" };
         return {
           events: (async function* () {})() as AsyncIterable<never>,
@@ -96,6 +112,7 @@ export async function createCodingAgentRuntime(
       let closed = false;
       let seq = 0;
       const unsubscribe = rt.session.onEvent((event) => {
+        if (event.type === "message_start" || event.type === "agent_end") settleLive();
         const envelope: RunEventEnvelope = { id: seq++, type: event.type, data: event as never };
         queue.push(envelope);
         options.onEvent?.(envelope);
@@ -129,6 +146,7 @@ export async function createCodingAgentRuntime(
           const errObj = caught instanceof Error ? caught : new Error(String(caught));
           return { status: "failed", error: errObj.message };
         } finally {
+          settleLive(); // loop settled without starting: live is still resolved
           unsubscribe();
           closed = true;
           for (const w of waiters.splice(0)) w();
@@ -151,6 +169,8 @@ export async function createCodingAgentRuntime(
           rt.session.stop();
         },
       };
+      // Acceptance = live: run() resolves once steer/abort are routable.
+      await live;
       return segment;
     },
 

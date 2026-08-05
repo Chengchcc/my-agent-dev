@@ -164,8 +164,8 @@ describe("createCodingAgentRuntime", () => {
       skillRoots: [],
     });
     const segment = await rt.run(runInput("r-steer"));
-    // The loop is live once agent_start fires; steer must be routable.
-    await new Promise((r) => setTimeout(r, 30));
+    // run() resolves only once the loop is live: steer is routable with no
+    // timing window.
     await expect(
       rt.steer({ inputId: "steer-1", message: { role: "user", text: "steer me" } }),
     ).resolves.toBeUndefined();

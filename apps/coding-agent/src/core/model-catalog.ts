@@ -1,7 +1,7 @@
 import type { BackendModel, BackendModelCatalog } from "@my-agent-team/agent-backend";
 import type { ModelRuntime } from "@my-agent-team/ai";
 
-/** Map the daemon's ModelRuntime catalog to the Backend model contract.
+/** Map the process ModelRuntime catalog to the Backend model contract.
  *  Never exposes credentials, headers, Provider objects, or internal runtime
  *  state — only configured/missing availability. */
 

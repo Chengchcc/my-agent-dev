@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BackendRunInput } from "@my-agent-team/agent-backend";
@@ -73,7 +73,9 @@ describe("CodingAgentBackend (child process)", () => {
       workspace: { root: ws, access: "read_write" },
     });
     await segment.outcome;
-    expect(readFileSync(marker, "utf-8")).toBe(ws);
+    // The child's cwd is the canonicalized workspace (macOS /tmp -> /private/tmp):
+    // compare canonical forms, never the raw string.
+    expect(realpathSync(readFileSync(marker, "utf-8").trim())).toBe(realpathSync(ws));
   }, 10_000);
 
   test("events map through the shared mapper", async () => {
@@ -224,5 +226,50 @@ describe("CodingAgentModelCatalog", () => {
       executable: "/nonexistent/coding-agent-binary",
     });
     await expect(catalog.list()).rejects.toThrow(/spawn/);
+  }, 10_000);
+});
+
+describe("CodingAgentBackend spawn-slot limit (maxConcurrent)", () => {
+  test("live children are bounded FIFO; queued executes spawn after a slot frees", async () => {
+    const record = join(tmp, "rec-concurrent.txt");
+    const backend = new CodingAgentBackend(
+      makeConfig("normal", {
+        RPC_FIXTURE_RECORD: record,
+        RPC_FIXTURE_OUTCOME_DELAY_MS: "300",
+      }),
+      { maxConcurrent: 1 },
+    );
+    const first = backend.execute(inputWith("r-conc-1"));
+    const second = backend.execute(inputWith("r-conc-2"));
+    const [seg1, seg2] = await Promise.all([first, second]);
+    const [o1, o2] = await Promise.all([seg1.outcome, seg2.outcome]);
+    expect(o1.status).toBe("completed");
+    expect(o2.status).toBe("completed");
+    const lines = readFileSync(record, "utf-8").trim().split("\n");
+    expect(lines.filter((l) => l.startsWith("execute "))).toEqual([
+      "execute r-conc-1 " + realpathSync(tmp),
+      "execute r-conc-2 " + realpathSync(tmp),
+    ]);
+  }, 10_000);
+
+  test("stop() cancels a queued execute: the Run never spawns", async () => {
+    const record = join(tmp, "rec-cancel.txt");
+    const backend = new CodingAgentBackend(
+      makeConfig("normal", {
+        RPC_FIXTURE_RECORD: record,
+        RPC_FIXTURE_OUTCOME_DELAY_MS: "500",
+      }),
+      { maxConcurrent: 1 },
+    );
+    const first = await backend.execute(inputWith("r-hold"));
+    const queued = backend.execute(inputWith("r-cancel"));
+    // Give the queue a beat to register, then stop the queued Run.
+    await new Promise((r) => setTimeout(r, 50));
+    await backend.stop("r-cancel");
+    await expect(queued).rejects.toThrow(/stopped while waiting/);
+    await first.outcome;
+    const lines = readFileSync(record, "utf-8").trim().split("\n");
+    expect(lines.filter((l) => l.startsWith("execute "))).toHaveLength(1);
+    expect(lines[0]).toContain("r-hold");
   }, 10_000);
 });

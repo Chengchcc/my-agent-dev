@@ -31,10 +31,10 @@ import {
 import { fakeProvider } from "./fake-provider.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
 
-/** Dependencies the daemon injects into ONE Run's runtime assembly. The
- *  runtime is per-Run: a fresh in-memory SessionStore and a fresh
- *  CodingAgentSession are created for every execute() - no state is shared
- *  across Runs except the daemon-level Provider/ModelRuntime. */
+/** Dependencies for ONE Run's runtime assembly. The runtime is per-Run: a
+ *  fresh in-memory SessionStore and a fresh CodingAgentSession are created
+ *  for every execute() - no state is shared across Runs except the
+ *  process-level Provider/ModelRuntime. */
 export interface RunRuntimeDeps {
   workspaceRoot: string;
   /** Gates tool installation: read_only runs omit write/edit/bash. */
@@ -124,7 +124,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
         if (p.entrypoint.startsWith("sse:")) {
           const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
           // Service-token auth for remote Product Tools endpoints: the token
-          // is daemon configuration (CODING_AGENT_PRODUCT_TOOL_TOKEN), never
+          // is process configuration (CODING_AGENT_PRODUCT_TOOL_TOKEN), never
           // part of the entrypoint URI or MCP arguments.
           const token = process.env.CODING_AGENT_PRODUCT_TOOL_TOKEN;
           transport = new SSEClientTransport(
@@ -290,7 +290,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       // Tear down every MCP client (Product Tool transports) so no child
       // process or connection outlives the Run. Each close is BOUNDED: a
       // stuck transport (e.g. an SSE socket that never answers close) must
-      // not wedge the daemon.
+      // not wedge the child process.
       const closeWithTimeout = (p: Promise<unknown>): Promise<unknown> =>
         Promise.race([p, new Promise((r) => setTimeout(r, 2000))]);
       const closePromises: Promise<unknown>[] = [];

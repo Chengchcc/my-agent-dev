@@ -26,7 +26,7 @@ import type { AgentRunPort } from "./ports.js";
 
 /** The Product Tool manifest: history read tools plus one semantic mutation
  *  (history_retain) with durable call idempotency. Entrypoint is the
- *  daemon-reachable Product Tools MCP endpoint (`sse:<url>`); it is injected
+ *  child-reachable Product Tools MCP endpoint (`sse:<url>`); it is injected
  *  per service so tests and deployments can point at a real endpoint. */
 export function buildHistoryTools(entrypoint: string): readonly ProductToolDescriptor[] {
   return [
@@ -149,7 +149,7 @@ export function createAgentRunExecutionService(
 
   /** Transient live-update fan-out: events from the run's segment are
    *  broadcast to current-process subscribers. Never persisted; subscriber
-   *  failure never affects the run; the stream ends when the daemon closes
+   *  failure never affects the run; the stream ends when the run settles.
    *  the run's event buffer (outcome). Returns a promise that resolves when
    *  the segment stream has been fully drained (used by dispatch to close
    *  subscribers only AFTER the last event broadcast). */
@@ -283,7 +283,7 @@ export function createAgentRunExecutionService(
   }
 
   /** One Run / one input: claim THIS run's bound input (acquire-time marker
-   *  or crash recovery) and deliver it exactly once. The daemon rejects a
+   *  or crash recovery) and deliver it exactly once. The child rejects a
    *  second segment for an already-settled runId, so a run NEVER carries
    *  more than one real input; follow-ups chain into FRESH runs below. A
    *  steer input whose live run is gone is cancelled (never replayed as a
@@ -369,7 +369,7 @@ export function createAgentRunExecutionService(
       try {
         await backend.steer(active.runId, { inputId: input.inputId, message: input.message });
       } catch (err) {
-        // The daemon rejected the steer (run settled in between): the input
+        // The child rejected the steer (run settled in between): the input
         // must not linger as a phantom delivering row.
         await runPort.cancelInput(input.inputId).catch(() => {});
         throw err;

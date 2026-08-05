@@ -2,6 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import type {
   AbortCommand,
   BackendRunOutcome,
+  BackendRunSegment,
   CodingAgentCommand,
   CodingAgentOutput,
   ExecuteCommand,
@@ -74,9 +75,11 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
   let executed = false;
   let finished = false;
 
+  const reader = createJsonlReader(stdin);
+
   const promise = (async (): Promise<number> => {
     try {
-      for await (const line of createJsonlReader(stdin)) {
+      for await (const line of reader.lines) {
         if (finished) {
           // The Run settled: the process exits. One more line is read so a
           // protocol-violating second execute gets an explicit rejection;
@@ -155,10 +158,11 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     }
   })();
 
-  /** Validate + assemble the Runtime and emit the execute response. Awaited
-   *  by the reader so the acceptance response is always the first output;
-   *  the loop itself runs CONCURRENTLY via driveRun, keeping steer/abort
-   *  routable for the whole run. */
+  /** Validate + assemble the Runtime, START the loop, and emit the execute
+   *  response ONLY once the loop is live (agent_start). Awaited by the
+   *  reader so the acceptance response is always the first output AND
+   *  implies steer/abort are routable; the outcome runs CONCURRENTLY via
+   *  driveOutcome, keeping steer/abort routable for the whole run. */
   async function acceptExecute(command: ExecuteCommand): Promise<void> {
     const input = command.input;
     const err = await validateExecute(input, opts.modelRuntime);
@@ -167,6 +171,7 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
       return;
     }
     const runId = input.run.runId;
+    let segment: BackendRunSegment<"coding_agent">;
     try {
       runtime = await createCodingAgentRuntime({
         runId,
@@ -178,27 +183,30 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
           if (!finished) emit(eventOutputSchema.parse({ type: "event", runId, event }));
         },
       });
+      // run() resolves when the loop is live: acceptance ⟹ routable.
+      segment = await runtime.run(input as never);
     } catch (caught) {
       emitResponse(command.id, "execute", false, `runtime assembly failed: ${redactError(caught)}`);
       return;
     }
 
     // Acceptance: the runtime is assembled, event forwarding is registered,
-    // and steer/abort now route to it.
+    // the loop is live, and steer/abort route to it.
     currentRunId = runId;
     emitResponse(command.id, "execute", true, undefined);
-    void driveRun(runtime, input);
+    void driveOutcome(runtime, segment, runId);
   }
 
-  /** Run the loop to its outcome, emit the outcome envelope, then finish. */
-  async function driveRun(
+  /** Await the outcome, emit the outcome envelope, flush, close the runtime,
+   *  then END the reader so the process exits on its own (one Run → one
+   *  outcome → exit) - no dependency on the parent closing stdin. */
+  async function driveOutcome(
     runtime: CodingAgentRuntime,
-    input: ExecuteCommand["input"],
+    segment: BackendRunSegment<"coding_agent">,
+    runId: string,
   ): Promise<void> {
-    const runId = input.run.runId;
     let outcome: BackendRunOutcome;
     try {
-      const segment = await runtime.run(input as never);
       outcome = await segment.outcome;
     } catch (caught) {
       outcome = { status: "failed", error: redactError(caught) };
@@ -207,6 +215,10 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     await runtime.close().catch(() => {});
     emit(outcomeOutputSchema.parse({ type: "outcome", runId, outcome }));
     await writeChain;
+    // Unblock the reader: the pending stdin read resolves done and the main
+    // promise returns; main() exits with the code. Never a hard process.exit
+    // before the outcome is written and the runtime closed.
+    await reader.cancel();
   }
 
   function handleSteer(command: SteerCommand): void {

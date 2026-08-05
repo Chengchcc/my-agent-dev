@@ -40,6 +40,11 @@ export class CodingAgentProcessError extends Error {
 export interface CodingAgentBackendOptions {
   /** Bounded grace for the child to exit after outcome/abort before kill. */
   abortGraceMs?: number;
+  /** Max simultaneously LIVE children (spawned Runs). Further executes wait
+   *  FIFO for a slot; the input stays undelivered while queued. `stop()`
+   *  cancels a queued wait so the Run never spawns. No pool: the limit only
+   *  gates spawn. */
+  maxConcurrent?: number;
 }
 
 interface CommandWaiter {
@@ -83,18 +88,62 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
   readonly kind = "coding_agent" as const;
   private readonly command: CodingAgentCommandConfig;
   private readonly abortGraceMs: number;
+  private readonly maxConcurrent: number;
   private readonly active = new Map<string, ActiveHandle>();
   /** Per-run command response waiters (steer/abort), matched by command id. */
   readonly pendingResponses = new Map<string, Map<string, CommandWaiter>>();
+  /** FIFO spawn-slot waiters (runId → release resolver). */
+  private readonly slotQueue: Array<{
+    runId: string;
+    resolve(release: (() => void) | null): void;
+  }> = [];
+  private liveSlots = 0;
 
   constructor(command: CodingAgentCommandConfig, opts: CodingAgentBackendOptions = {}) {
     this.command = command;
     this.abortGraceMs = opts.abortGraceMs ?? 3_000;
+    this.maxConcurrent = opts.maxConcurrent ?? 0; // 0 = unbounded
+  }
+
+  /** FIFO spawn-slot acquire. Resolves `null` when the wait was cancelled by
+   *  stop() - the caller must NOT spawn. */
+  private acquireSlot(runId: string): Promise<(() => void) | null> {
+    if (this.maxConcurrent === 0 || this.liveSlots < this.maxConcurrent) {
+      this.liveSlots++;
+      return Promise.resolve(() => this.releaseSlot());
+    }
+    return new Promise((resolve) => {
+      this.slotQueue.push({ runId, resolve });
+    });
+  }
+
+  private releaseSlot(): void {
+    this.liveSlots--;
+    while (
+      this.maxConcurrent > 0 &&
+      this.liveSlots < this.maxConcurrent &&
+      this.slotQueue.length > 0
+    ) {
+      const next = this.slotQueue.shift()!;
+      this.liveSlots++;
+      next.resolve(() => this.releaseSlot());
+    }
+  }
+
+  /** Cancel a queued slot wait (stop() on a not-yet-spawned Run). */
+  private cancelQueuedSlot(runId: string): boolean {
+    const idx = this.slotQueue.findIndex((w) => w.runId === runId);
+    if (idx === -1) return false;
+    const entry = this.slotQueue.splice(idx, 1)[0]!;
+    entry.resolve(null);
+    return true;
   }
 
   /** Spawn a fresh child for the Run, send execute, and return the segment
    *  ONLY after the child accepted (runtime assembled, steer/abort routable).
-   *  On rejection the child is reaped and the input stays unaccepted. */
+   *  On rejection the child is reaped and the input stays unaccepted. While
+   *  waiting for a spawn slot the input is still delivering; stop() cancels
+   *  the wait so the Run never spawns. */
   async execute(
     input: BackendRunInput<"coding_agent">,
   ): Promise<BackendRunSegment<"coding_agent">> {
@@ -106,10 +155,26 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
       );
     }
 
+    // Bounded live children: wait FIFO for a slot before spawning.
+    const release = await this.acquireSlot(runId);
+    if (release === null) {
+      throw new CodingAgentProcessError(
+        "conflict",
+        `run ${runId} was stopped while waiting for a spawn slot`,
+      );
+    }
+    let released = false;
+    const releaseOnce = (): void => {
+      if (released) return;
+      released = true;
+      release();
+    };
+
     let proc: SpawnedCodingAgentProcess;
     try {
       proc = spawnCodingAgentProcess(this.command, { cwd: input.workspace.root });
     } catch (err) {
+      releaseOnce();
       throw new CodingAgentProcessError(
         "spawn_failed",
         err instanceof Error ? err.message : String(err),
@@ -117,8 +182,9 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
     }
 
     // Register the handle BEFORE acceptance so steer/stop route the moment
-    // the caller sees the segment.
-    const handle = createActiveHandle(runId, proc);
+    // the caller sees the segment. The slot is held until the Run settles
+    // (settle is exactly-once, covering outcome/exit/protocol-failure).
+    const handle = createActiveHandle(runId, proc, releaseOnce);
     this.active.set(runId, handle);
 
     // Exit watcher: a child that dies before acceptance or before outcome is
@@ -149,6 +215,9 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
 
     const acceptanceError = await handle.acceptance;
     if (acceptanceError !== null) {
+      // Settle explicitly: a child that REJECTED but kept running never
+      // reaches the exit/outcome paths, and the spawn slot must be freed.
+      handle.settle({ status: "failed", error: acceptanceError });
       await this.reap(handle);
       throw new CodingAgentProcessError(
         "invalid_request",
@@ -177,10 +246,15 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
   }
 
   /** Abort the live child: send abort, wait a bounded grace for the outcome,
-   *  kill on timeout. The segment's outcome always resolves. */
+   *  kill on timeout. The segment's outcome always resolves. A Run still
+   *  waiting for a spawn slot is cancelled so it never spawns. */
   async stop(runId: string): Promise<void> {
     const handle = this.active.get(runId);
-    if (!handle) return; // no live child: nothing to stop
+    if (!handle) {
+      // No live child: either already settled/reaped, or queued for a slot.
+      this.cancelQueuedSlot(runId);
+      return;
+    }
     const sendAbort = (): void => {
       if (handle.settled) return;
       void this.sendCommand(handle, `abort-${runId}`, {
@@ -263,7 +337,11 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
 
 // ─── Handle / segment plumbing ────────────────────────────────────────
 
-function createActiveHandle(runId: string, proc: SpawnedCodingAgentProcess): ActiveHandle {
+function createActiveHandle(
+  runId: string,
+  proc: SpawnedCodingAgentProcess,
+  onSettled: () => void,
+): ActiveHandle {
   let settleOutcome: ((o: BackendRunOutcome) => void) | null = null;
   let settled = false;
   let accepted = false;
@@ -293,6 +371,7 @@ function createActiveHandle(runId: string, proc: SpawnedCodingAgentProcess): Act
       settled = true;
       settleOutcome?.(o);
       eventsClosed = true;
+      onSettled(); // exactly-once: frees the spawn slot
       for (const w of waiters.splice(0)) w();
     },
     outcome,

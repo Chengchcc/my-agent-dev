@@ -122,16 +122,19 @@ describe("RPC mode (in-process)", () => {
   test("execute success only after the runtime accepts steer/abort; events follow", async () => {
     const h = makeHarness({ slowMs: 400 });
     h.write(JSON.stringify(EXECUTE));
-    await waitFor(() => h.lines().length > 0);
-    const response = parseLines(h.lines())[0];
+    // agent_start may precede the acceptance response (live ⟹ acceptance);
+    // the response itself is what gates steer/abort.
+    await waitFor(() => parseLines(h.lines()).some((o) => o.type === "response" && o.id === "e1"));
+    const response = parseLines(h.lines()).find((o) => o.type === "response" && o.id === "e1");
     expect(response).toMatchObject({
       id: "e1",
       type: "response",
       command: "execute",
       success: true,
     });
-    // Steer/abort are routable once the loop is live.
-    await new Promise((r) => setTimeout(r, 50));
+    // Acceptance implies the loop is live: steer/abort are routable with no
+    // delay, and the process exits on its own after the outcome (no stdin
+    // close needed).
     h.write(
       JSON.stringify({
         id: "s1",
@@ -142,7 +145,6 @@ describe("RPC mode (in-process)", () => {
     );
     h.write(JSON.stringify({ id: "a1", type: "abort", runId: "r-1" }));
     await waitFor(() => parseLines(h.lines()).some((o) => o.type === "outcome"));
-    h.close();
     expect(await h.exitCode).toBe(0);
     const all = parseLines(h.lines());
     const steerResp = all.find((o) => o.type === "response" && o.id === "s1");
@@ -165,7 +167,6 @@ describe("RPC mode (in-process)", () => {
     const second = parseLines(h.lines()).find((o) => o.type === "response" && o.id === "e2");
     expect(second).toMatchObject({ success: false });
     expect(second && "error" in second ? second.error : "").toMatch(/at most one execute/);
-    h.close();
   }, 10_000);
 
   test("steer only enters the current Run (runId mismatch rejected)", async () => {
@@ -183,19 +184,16 @@ describe("RPC mode (in-process)", () => {
     const steerResp = parseLines(h.lines()).find((o) => o.type === "response" && o.id === "s1");
     expect(steerResp).toMatchObject({ success: false });
     expect(steerResp && "error" in steerResp ? steerResp.error : "").toMatch(/no live run/);
-    h.close();
   }, 10_000);
 
   test("abort terminates the current Run (outcome aborted)", async () => {
     const h = makeHarness({ slowMs: 400 });
     h.write(JSON.stringify(EXECUTE));
     await waitFor(() => h.lines().length > 0);
-    await new Promise((r) => setTimeout(r, 50));
     h.write(JSON.stringify({ id: "a1", type: "abort", runId: "r-1" }));
     await waitFor(() => parseLines(h.lines()).some((o) => o.type === "outcome"));
     const outcome = parseLines(h.lines()).find((o) => o.type === "outcome");
     expect(outcome?.outcome.status).toBe("aborted");
-    h.close();
   }, 10_000);
 
   test("malformed JSON gets a failure response and never pollutes the stdout protocol", async () => {
@@ -209,7 +207,6 @@ describe("RPC mode (in-process)", () => {
     expect(failure && "error" in failure ? failure.error : "").toMatch(/malformed/);
     const outcome = parseLines(h.lines()).find((o) => o.type === "outcome");
     expect(outcome).toBeDefined();
-    h.close();
   }, 10_000);
 
   test("stdin EOF without execute exits non-zero", async () => {

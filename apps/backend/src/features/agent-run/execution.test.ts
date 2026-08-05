@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -336,14 +336,15 @@ describe("agent run execution (Run-centric)", () => {
     });
     const runId = acquired.run!.runId;
     await expect(execution.dispatch(runId)).rejects.toThrow(/simulated execute failure/);
-    expect(fake.executeCalls[0]!.workspaceRoot).toBe(pinnedWorkspace);
+    // The child records its cwd (canonicalized on macOS): compare realpaths.
+    expect(realpathSync(fake.executeCalls[0]!.workspaceRoot)).toBe(realpathSync(pinnedWorkspace));
 
     // Restart: a NEW execution service recovers - it must NOT re-resolve the
     // workspace from the conversation; it re-uses the persisted snapshot.
     const execution2 = makeExecution(fake);
     await execution2.recover();
     await waitForTerminal(runId);
-    expect(fake.executeCalls[1]!.workspaceRoot).toBe(pinnedWorkspace);
+    expect(realpathSync(fake.executeCalls[1]!.workspaceRoot)).toBe(realpathSync(pinnedWorkspace));
   }, 15_000);
 
   test("steer is injected into the live run after persistence; accepted only after Backend acceptance", async () => {

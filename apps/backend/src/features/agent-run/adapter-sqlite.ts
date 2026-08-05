@@ -435,7 +435,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
      *  Run is built from the queued input's OWN config snapshot - never
      *  reuses the settled run's config (model/workspace/systemPrompt/
      *  skillRoots are request-time facts of the input). Never reuses the
-     *  settled run's id - the daemon rejects a second segment for an
+     *  settled run's id - the child rejects a second segment for an
      *  already-settled runId. */
     async acquireNextRun(branchId: string): Promise<AgentRun | null> {
       const txn = db.transaction(() => {
@@ -915,10 +915,9 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
     },
 
     async failCommit(runId, outcome) {
-      // ONE transaction: the Run transitions running -> commit_failed AND the
-      // Backend Session Binding goes stale together. A stale binding keeps
-      // later logic from treating the session as synced while the commit is
-      // unrecoverable-yet.
+      // The Run transitions running -> commit_failed in ONE transaction: the
+      // branch stays occupied while the terminal Product commit is
+      // unrecoverable-yet (recoverable only via retryTerminalCommit).
       return db.transaction(() => {
         const row = d.select().from(schema.agentRun).where(eq(schema.agentRun.runId, runId)).get();
         if (!row) throw new Error(`Agent Run not found: ${runId}`);

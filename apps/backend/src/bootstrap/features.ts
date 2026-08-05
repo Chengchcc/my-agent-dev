@@ -80,7 +80,7 @@ export function buildAgentSystemPrompt(
 export interface InstalledFeatures {
   featureSet: FeatureSet;
   cronScheduler: ReturnType<typeof createCronScheduler>;
-  /** Phase 4 internal handles for Phase 5 callers (not exposed via HTTP). */
+  /** Phase 5 internal handles (not exposed via HTTP). */
   agentRunService: ReturnType<typeof createAgentRunService>;
   agentRunExecution: ReturnType<typeof createAgentRunExecutionService>;
   productTools: ReturnType<typeof createProductToolsService>;
@@ -168,7 +168,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   const relSvc = createRelationshipService(db, config);
 
-  // ─── Conversation + Phase 4 Agent Run (conversation first: the ledger
+  // ─── Conversation + Phase 5 Agent Run (conversation first: the ledger
   //      resolver and run services build on its port; the execution service
   //      is wired last through dispatchRun to break the cascade cycle) ──
 
@@ -303,7 +303,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     runPort: agentRunPort,
     contextPort,
     ledgerResolver,
-    backend: new CodingAgentBackend(codingAgentCommand),
+    backend: new CodingAgentBackend(codingAgentCommand, {
+      maxConcurrent: config.maxConcurrentRuns,
+    }),
     modelCatalog,
     idGen: { ulid },
     resolveWorkspace: async ({ conversationId, agentMemberId }) => {
@@ -448,7 +450,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     settings: settingsRoutes(settingsSvc),
     mcp: mcpRoutes(mcpSvc),
     models: new Elysia().get("/api/models", async () => {
-      // The daemon catalog is the source of truth; group its canonical
+      // The Coding Agent catalog is the source of truth; group its canonical
       // `<provider>/<model>` ids into the Web provider DTO shape.
       const catalog = await modelCatalog.list();
       const byProvider = new Map<
@@ -487,8 +489,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       }
     }
 
-    // Phase 4: redeliver durable delivering inputs and retry commit_failed
-    // runs once at boot (no scheduler, no lease).
+    // Phase 5: redeliver durable delivering inputs, promote idle-branch
+    // pending inputs, and retry commit_failed runs once at boot.
     await agentRunExecution.recover();
   }
 
@@ -496,8 +498,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     cronScheduler.dispose();
     await larkBotRegistry.dispose();
     setupManager?.dispose();
-    // Phase 4: close the Product Tools MCP server (live run segments are
-    // one-shot daemon Workers; the daemon shuts them down on its own exit).
+    // Phase 5: close the Product Tools MCP server (each Run is a one-shot
+    // coding-agent child that exits on its own after its outcome).
     await productToolsMcp?.close();
   }
 
