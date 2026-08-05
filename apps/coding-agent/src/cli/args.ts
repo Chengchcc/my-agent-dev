@@ -4,7 +4,6 @@ export interface CliArgs {
   mode: CliMode;
   prompt: string;
   listModels: boolean;
-  listModelsJson: boolean;
 }
 
 export class UsageError extends Error {}
@@ -13,13 +12,21 @@ const USAGE = `coding-agent - Coding Agent product CLI
 
 Usage:
   coding-agent -p "<prompt>"              print mode: one Run, final text on stdout
+  coding-agent "<prompt>"                 print mode shorthand
   coding-agent --mode json "<prompt>"     json mode: all events + one outcome as JSONL
   coding-agent --mode rpc                 rpc mode: stdin/stdout JSONL protocol
-  coding-agent --list-models [--json]     print the model catalog as JSON
+  coding-agent --list-models              print the model catalog as JSON
+
+Piped stdin (print/json modes):
+  cat file | coding-agent -p "Review"
+  git diff | coding-agent --mode json "Review"
+  cat error.log | coding-agent -p          (stdin only)
 `;
 
+/** Parse argv SYNTAX only: whether a run actually has an input (prompt or
+ *  piped stdin) is decided in main() after stdin is read. */
 export function parseArgs(argv: readonly string[]): CliArgs {
-  const args: CliArgs = { mode: "print", prompt: "", listModels: false, listModelsJson: false };
+  const args: CliArgs = { mode: "print", prompt: "", listModels: false };
   const positional: string[] = [];
   let modeFlag: string | null = null;
   let i = 0;
@@ -42,8 +49,6 @@ export function parseArgs(argv: readonly string[]): CliArgs {
       modeFlag = value;
     } else if (arg === "--list-models") {
       args.listModels = true;
-    } else if (arg === "--json") {
-      args.listModelsJson = true;
     } else if (arg === "--help" || arg === "-h") {
       throw new UsageError(USAGE);
     } else if (arg.startsWith("-")) {
@@ -55,8 +60,5 @@ export function parseArgs(argv: readonly string[]): CliArgs {
   }
   if (modeFlag) args.mode = modeFlag as CliMode;
   args.prompt = positional.join(" ");
-  if (args.mode !== "rpc" && !args.listModels && !args.prompt) {
-    throw new UsageError(`no prompt given\n\n${USAGE}`);
-  }
   return args;
 }

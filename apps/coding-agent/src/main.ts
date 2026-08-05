@@ -1,5 +1,6 @@
 import { createModelRuntime } from "@my-agent-team/ai";
 import { parseArgs, UsageError } from "./cli/args.js";
+import { mergeInitialInput, readPipedStdin } from "./cli/initial-input.js";
 import { buildBackendModelCatalog } from "./core/model-catalog.js";
 import { registerBuiltinProviders } from "./core/run-runtime.js";
 import { runJsonMode } from "./modes/json-mode.js";
@@ -20,26 +21,30 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     return 0;
   }
 
-  const workspaceRoot = process.cwd();
-
-  switch (args.mode) {
-    case "rpc": {
-      const controller = runRpcMode({ modelRuntime });
-      let signaled = false;
-      const onSignal = (): void => {
-        if (signaled) return;
-        signaled = true;
-        controller.stop();
-      };
-      process.on("SIGTERM", onSignal);
-      process.on("SIGINT", onSignal);
-      return await controller.promise;
-    }
-    case "json":
-      return runJsonMode({ prompt: args.prompt, workspaceRoot, modelRuntime });
-    case "print":
-      return runPrintMode({ prompt: args.prompt, workspaceRoot, modelRuntime });
+  if (args.mode === "rpc") {
+    // RPC stdin is the JSONL command stream: NEVER pre-read it.
+    const controller = runRpcMode({ modelRuntime });
+    let signaled = false;
+    const onSignal = (): void => {
+      if (signaled) return;
+      signaled = true;
+      controller.stop();
+    };
+    process.on("SIGTERM", onSignal);
+    process.on("SIGINT", onSignal);
+    return await controller.promise;
   }
+
+  const prompt = mergeInitialInput({
+    prompt: args.prompt,
+    piped: await readPipedStdin(),
+  });
+  if (!prompt) {
+    throw new UsageError("no prompt or piped stdin given");
+  }
+
+  const opts = { prompt, workspaceRoot: process.cwd(), modelRuntime };
+  return args.mode === "json" ? runJsonMode(opts) : runPrintMode(opts);
 }
 
 if (import.meta.main) {

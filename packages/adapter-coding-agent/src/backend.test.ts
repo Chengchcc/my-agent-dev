@@ -247,8 +247,8 @@ describe("CodingAgentBackend spawn-slot limit (maxConcurrent)", () => {
     expect(o2.status).toBe("completed");
     const lines = readFileSync(record, "utf-8").trim().split("\n");
     expect(lines.filter((l) => l.startsWith("execute "))).toEqual([
-      "execute r-conc-1 " + realpathSync(tmp),
-      "execute r-conc-2 " + realpathSync(tmp),
+      `execute r-conc-1 ${realpathSync(tmp)}`,
+      `execute r-conc-2 ${realpathSync(tmp)}`,
     ]);
   }, 10_000);
 

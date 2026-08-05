@@ -27,7 +27,7 @@ export class CodingAgentModelCatalog {
     if (this.cached) return this.cached;
     const listCommand: CodingAgentCommandConfig = {
       executable: this.command.executable,
-      args: [...(this.command.args ?? []), "--list-models", "--json"],
+      args: [...(this.command.args ?? []), "--list-models"],
       env: this.command.env,
     };
     let proc: SpawnedCodingAgentProcess;

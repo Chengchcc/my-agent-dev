@@ -18,14 +18,33 @@ interface SpawnResult {
   exitCode: number;
 }
 
-async function spawnCli(args: string[], env: Record<string, string> = {}): Promise<SpawnResult> {
+async function spawnCli(
+  args: string[],
+  env: Record<string, string> = {},
+  stdinText?: string,
+): Promise<SpawnResult> {
   const proc = Bun.spawn({
     cmd: [process.execPath, MAIN, ...args],
     cwd: tmp,
     env: { ...process.env, CODING_AGENT_FAKE_PROVIDER: "1", ...env },
+    // "ignore" = /dev/null: the child's readPipedStdin sees a closed non-TTY
+    // stream and skips; explicit pipes are used by the piped-stdin tests.
+    stdin: stdinText === undefined ? "ignore" : "pipe",
     stdout: "pipe",
     stderr: "pipe",
   });
+  if (stdinText !== undefined) {
+    try {
+      proc.stdin!.write(stdinText);
+    } catch {
+      // EPIPE: the child exited early (e.g. the 16 MiB bound) - expected.
+    }
+    try {
+      proc.stdin!.end();
+    } catch {
+      /* already broken */
+    }
+  }
   const [stdout, stderr] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -122,8 +141,8 @@ describe("coding-agent CLI (spawned)", () => {
     for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
   }, 15_000);
 
-  test("--list-models --json returns the canonical catalog and exits 0", async () => {
-    const res = await spawnCli(["--list-models", "--json"]);
+  test("--list-models returns the canonical catalog as JSON and exits 0", async () => {
+    const res = await spawnCli(["--list-models"]);
     expect(res.exitCode).toBe(0);
     const catalog = JSON.parse(res.stdout) as {
       backendKind: string;
@@ -131,6 +150,82 @@ describe("coding-agent CLI (spawned)", () => {
     };
     expect(catalog.backendKind).toBe("coding_agent");
     expect(catalog.models[0]).toMatchObject({ id: "fake/echo", available: true });
+  }, 15_000);
+
+  test("piped stdin only (no prompt) works in print mode", async () => {
+    const res = await spawnCli(["-p"], {}, "error line 1\nerror line 2\n");
+    expect(res.exitCode).toBe(0);
+    expect(res.stdout).toBe("done\n");
+  }, 15_000);
+
+  test("piped stdin + prompt are both accepted (stdin feeds the run)", async () => {
+    const res = await spawnCli(["-p", "analyze"], {}, "the error log\n");
+    expect(res.exitCode).toBe(0);
+    expect(res.stdout).toBe("done\n");
+  }, 15_000);
+
+  test("piped stdin works in json mode", async () => {
+    const res = await spawnCli(["--mode", "json", "translate"], {}, "hello world\n");
+    expect(res.exitCode).toBe(0);
+    const lines = res.stdout.trim().split("\n");
+    expect(lines.filter((l) => JSON.parse(l).type === "outcome")).toHaveLength(1);
+  }, 15_000);
+
+  test("no prompt and no piped stdin fails with exit 2", async () => {
+    const res = await spawnCli(["-p"], {}, "");
+    expect(res.exitCode).toBe(2);
+    expect(res.stderr).toContain("no prompt or piped stdin");
+    expect(res.stdout).toBe("");
+  }, 15_000);
+
+  test("oversized piped stdin fails with exit 2 (16 MiB bound)", async () => {
+    // A filler process feeds >16 MiB so an EPIPE on the test side cannot
+    // fail the run: the filler dies of SIGPIPE silently when the child
+    // exits at the bound.
+    const filler = Bun.spawn({
+      cmd: ["head", "-c", String(17 * 1024 * 1024), "/dev/zero"],
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const proc = Bun.spawn({
+      cmd: [process.execPath, MAIN, "-p", "x"],
+      cwd: tmp,
+      env: { ...process.env, CODING_AGENT_FAKE_PROVIDER: "1" },
+      stdin: filler.stdout,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+    void filler.exited.catch(() => {});
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("16 MiB");
+  }, 30_000);
+
+  test("RPC mode does not pre-consume stdin (execute still reaches the protocol)", async () => {
+    const proc = Bun.spawn({
+      cmd: [process.execPath, MAIN, "--mode", "rpc"],
+      cwd: tmp,
+      env: { ...process.env, CODING_AGENT_FAKE_PROVIDER: "1" },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    proc.stdin!.write(`${JSON.stringify(EXECUTE)}\n`);
+    // stdin stays OPEN: if main() had pre-read it as piped input, the
+    // execute command would be consumed and never answered.
+    const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let sawResponse = false;
+    for (let i = 0; i < 100 && !sawResponse; i++) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      sawResponse = buffer.includes('"type":"response"');
+    }
+    expect(sawResponse).toBe(true);
+    proc.stdin!.end();
+    expect(await proc.exited).toBe(0);
   }, 15_000);
 
   test("run failure exits non-zero with the error on stderr (no model provider)", async () => {
