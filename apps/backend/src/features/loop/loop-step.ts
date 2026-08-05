@@ -114,7 +114,10 @@ function denylistedFiles(files: string[], patterns: string[]): string[] {
   return files.filter((f) => patterns.some((p) => matchesGlob(f, p)));
 }
 
-async function resolveRepoPath(
+/** Resolve (and materialize) the loop's cloned repo workspace. Exported so
+ *  the composition root can bind Agent Run workspaces for loop scopes to the
+ *  actual clone, not the loop-agent's own workspace. */
+export async function resolveRepoPath(
   loopConfigPath: string,
   projectPort: ProjectPort | undefined,
   dataDir: string | undefined,

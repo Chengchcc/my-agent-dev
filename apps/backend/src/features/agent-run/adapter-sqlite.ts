@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { BackendRunOutcome } from "@my-agent-team/agent-backend";
+import { serializeMessageRevision } from "@my-agent-team/message";
 import { and, eq, gt, inArray, not, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import * as schema from "../../infra/db/schema.js";
@@ -662,6 +663,22 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
         // (parallel retries, restart, second instance) can never write the
         // final Message twice - the second writer reuses the first seq.
         if (output) {
+          // The canonical assistant Message MUST satisfy the
+          // MessageRevision contract (messageId/state/updatedAt) that every
+          // surface parser (Web reducer, Lark watcher) enforces. The raw
+          // Backend output is a plain Message; stamp the terminal fields
+          // here - the single place a final assistant Message is written.
+          const terminalRevision = {
+            messageId: `msg:${run.conversationId}:${run.agentMemberId}:${runId}`,
+            role: output.role,
+            state: "done" as const,
+            text: output.text,
+            blocks: output.blocks,
+            tools: output.tools,
+            conversationId: run.conversationId,
+            visibility: "conversation" as const,
+            updatedAt: now,
+          };
           const inserted = d
             .insert(schema.conversationLedger)
             .values({
@@ -669,7 +686,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
               senderMemberId: run.agentMemberId,
               addressedTo: "[]",
               kind: "message",
-              content: JSON.stringify(output),
+              content: serializeMessageRevision(terminalRevision),
               ts: now,
               agentRunId: runId,
             })

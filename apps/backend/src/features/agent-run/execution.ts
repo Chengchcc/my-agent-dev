@@ -268,7 +268,6 @@ export function createAgentRunExecutionService(
     // Steer is a control injection into the LIVE run: no new outcome of its
     // own. It requires an in-memory live segment on this process.
     if (input.mode === "steer") {
-      console.log("STEER DELIVER", runId, "live?", !!live, "sid", live?.session.backendSessionId);
       if (!live) throw new Error(`steer requires a live run: ${runId}`);
       await backend.send(live.session, {
         history: [],

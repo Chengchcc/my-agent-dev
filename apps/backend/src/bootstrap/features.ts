@@ -45,6 +45,8 @@ import {
 } from "../features/cron/index.js";
 import { CliSetupProvisioner, LarkSetupManager } from "../features/lark-bot/index.js";
 import { loopRoutes } from "../features/loop/http.js";
+import { resolveRepoPath } from "../features/loop/loop-step.js";
+import { resolveLoopPaths } from "../features/loop/resolve-paths.js";
 import { createMcpService, mcpRoutes, sqliteMcpServerAdapter } from "../features/mcp/index.js";
 import {
   createProductToolsMcpServer,
@@ -269,6 +271,21 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       modelCatalog: new CodingAgentModelCatalog(client),
       idGen: { ulid },
       resolveWorkspace: async ({ conversationId, agentMemberId }) => {
+        // Loop Generator/Evaluator scopes run in the loop's CLONED repo
+        // (${dataDir}/repos/<projectId>), not the loop-agent workspace.
+        // The scope's deterministic conversationId carries the loopId.
+        if (conversationId.startsWith("loop:")) {
+          const loopId = conversationId.slice("loop:".length).split(":")[0]!;
+          const job = cronSvc.port.getCronJob(loopId);
+          if (job?.loopConfigPath) {
+            const repo = await resolveRepoPath(
+              resolveLoopPaths(job, config.dataDir).loopConfigPath,
+              projectPort,
+              config.dataDir,
+            );
+            if (repo) return { root: repo, access: "read_write" };
+          }
+        }
         // Workspace comes from the agent member's Agent record; the
         // permission mode maps to the binding (auto -> read_write).
         const members = conv.convPort.getMembers(conversationId);
@@ -384,7 +401,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     agentRunExecution,
     resolveDefaultModel: async (agentId: string) => {
       const agent = await agentSvc.getById(agentId);
-      return { backendKind: "coding_agent", modelId: agent.modelName };
+      // The Coding Agent catalog keys models as `<provider>/<model>`; the
+      // agent record stores the bare model name.
+      return { backendKind: "coding_agent", modelId: `${agent.modelProvider}/${agent.modelName}` };
     },
     store: loopStore,
     projectPort,
@@ -425,7 +444,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       agentRunExecution,
       resolveModel: async (modelName: string) => ({
         backendKind: "coding_agent",
-        modelId: modelName,
+        // LOOP.md stores bare model names; the daemon catalog is
+        // `<provider>/<model>` (anthropic is the only provider today).
+        modelId: `anthropic/${modelName}`,
       }),
       settingsSvc,
     }),

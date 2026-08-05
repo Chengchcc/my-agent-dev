@@ -49,10 +49,14 @@ export function mapRunEvent(event: TransportRunEvent): BackendEvent<"coding_agen
       return { type: "native_tool_completed", toolName, callId, result };
     }
     case "agent_start":
-    case "agent_end":
     case "turn_start":
     case "turn_end":
       return { type: "status", status: event.type };
+    case "agent_end":
+      // The daemon emits agent_end ONLY for completed runs; map it onto the
+      // core terminal vocabulary so surfaces can rely on `status: completed`
+      // instead of parsing daemon-private event names.
+      return { type: "status", status: "completed" };
     default:
       return {
         type: `backend.coding_agent.${event.type}`,

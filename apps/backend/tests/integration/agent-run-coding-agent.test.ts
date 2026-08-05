@@ -7,6 +7,7 @@ import {
   CodingAgentClient,
   CodingAgentModelCatalog,
 } from "@my-agent-team/adapter-coding-agent";
+import { parseMessageRevision } from "@my-agent-team/message";
 import {
   createAgentContextService,
   sqliteAgentContextAdapter,
@@ -237,7 +238,15 @@ describe("Phase 4 acceptance: Product Backend -> Coding Agent -> Product Tools M
     expect(ledgerMessages).toHaveLength(2); // seed user + final assistant
     const assistant = ledgerMessages.find((e) => e.senderMemberId === MEMBER);
     expect(assistant).toBeDefined();
-    expect((assistant!.content as { role?: string }).role).toBe("assistant");
+    // SURFACE CONTRACT: the canonical assistant Message must parse as a full
+    // MessageRevision (messageId/state/updatedAt) - Web reducer and Lark
+    // watcher skip entries that fail parseMessageRevision.
+    const revision = parseMessageRevision(assistant!.content);
+    expect(revision.role).toBe("assistant");
+    expect(revision.state).toBe("done");
+    expect(revision.messageId).toBeTruthy();
+    expect(revision.updatedAt).toBeGreaterThan(0);
+    expect(revision.conversationId).toBe(CONV);
 
     // Agent Context: the ledger_message ref for the final message exists.
     const entries = await contextPort.listEntriesToLeaf(branchId);

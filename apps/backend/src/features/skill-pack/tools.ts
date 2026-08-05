@@ -48,9 +48,11 @@ export function validateExtractedEntries(root: string, dir: string): void {
       throw new Error(`Symlinks are not allowed in skill packs: ${entry.name}`);
     }
 
-    // For regular files/dirs, verify realpath is within root
+    // For regular files/dirs, verify realpath is within root. BOTH sides
+    // are canonicalized: the extract root may itself be a symlink (e.g.
+    // macOS /var -> /private/var), which would otherwise false-positive.
     const real = realpathSync(fullPath);
-    const normalizedRoot = resolve(root);
+    const normalizedRoot = realpathSync(root);
     if (!real.startsWith(`${normalizedRoot}/`) && real !== normalizedRoot) {
       throw new Error(`Path escape detected: ${entry.name} → ${real}`);
     }

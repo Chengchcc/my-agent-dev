@@ -43,7 +43,8 @@ export function createConversationFeature(input: {
     idGen: ulid,
     resolveDefaultModel: async (agentId): Promise<BackendModelRef> => {
       const agent = await agentSvc.getById(agentId);
-      return { backendKind: "coding_agent", modelId: agent.modelName };
+      // Coding Agent catalog keys models as `<provider>/<model>`.
+      return { backendKind: "coding_agent", modelId: `${agent.modelProvider}/${agent.modelName}` };
     },
     getRelationshipEdges: (agentIds) => relSvc.getEdges(agentIds),
   });

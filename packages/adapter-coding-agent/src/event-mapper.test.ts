@@ -23,7 +23,7 @@ describe("event mapper", () => {
 
   test("agent_end maps to status", () => {
     const mapped = mapRunEvent({ id: 4, type: "agent_end", data: { status: "completed" } });
-    expect(mapped).toEqual({ type: "status", status: "agent_end" });
+    expect(mapped).toEqual({ type: "status", status: "completed" });
   });
 
   test("all extension names start with backend.coding_agent.", () => {
