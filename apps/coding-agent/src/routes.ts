@@ -1,31 +1,20 @@
-import { createHash } from "node:crypto";
 import type { BackendModelCatalog } from "@my-agent-team/agent-backend";
 import {
-  closeSessionRequestSchema,
-  compactSessionRequestSchema,
-  type RunOutcomeResponse,
-  resumeSessionRequestSchema,
-  sendRunRequestSchema,
-  startSessionRequestSchema,
-  stopSessionRequestSchema,
+  createRunRequestSchema,
+  steerRunRequestSchema,
+  stopRunRequestSchema,
 } from "@my-agent-team/agent-backend";
 import { Elysia, t } from "elysia";
 import { bearerToken, verifyToken } from "./auth.js";
 import { ReplayWindowExceededError, type RunEventBuffer } from "./event-buffer.js";
-import type { CodingSessionSupervisor } from "./session-supervisor.js";
+import type { CodingRunRegistry } from "./run-registry.js";
 
 /** Max queued chunks before a slow SSE subscriber is evicted (its stream is
  *  closed; the run keeps flowing for others). Bounds memory per connection. */
 const SLOW_SUBSCRIBER_LIMIT = 64;
 
-/** Deterministic session id from an idempotency key (SHA-256, hex, 26 chars -
- *  matches the sessionIdSchema charset). Same key => same session, so start
- *  retries replay instead of conflicting. */
-function deriveSessionId(idempotencyKey: string): string {
-  return createHash("sha256").update(idempotencyKey).digest("hex").slice(0, 26);
-}
 export interface RouteDeps {
-  supervisor: CodingSessionSupervisor;
+  registry: CodingRunRegistry;
   authToken: string;
   getModelCatalog(): Promise<BackendModelCatalog>;
 }
@@ -85,11 +74,11 @@ export function createRoutes(deps: RouteDeps): Elysia {
   });
 
   app.post(
-    "/v1/sessions/start",
+    "/v1/runs",
     async ({ body, headers }) => {
       const denied = authGuard(headers);
       if (denied) return denied;
-      const parsed = startSessionRequestSchema.safeParse(body);
+      const parsed = createRunRequestSchema.safeParse(body);
       if (!parsed.success) {
         return Response.json(
           { code: "invalid_request", message: parsed.error.message },
@@ -97,48 +86,7 @@ export function createRoutes(deps: RouteDeps): Elysia {
         );
       }
       try {
-        const result = await deps.supervisor.startSession({
-          idempotencyKey: parsed.data.idempotencyKey,
-          // Stable derivation from the idempotency key: a retry of the same
-          // start request maps to the SAME session, so the supervisor's
-          // idempotency replay returns the original result instead of a
-          // payload-conflict on a freshly randomized ID.
-          backendSessionId: deriveSessionId(parsed.data.idempotencyKey),
-          history: parsed.data.history as never,
-          input: parsed.data.input as never,
-          run: parsed.data.run as never,
-          workspace: parsed.data.workspace,
-          metadata: parsed.data.metadata,
-        });
-        return Response.json(result);
-      } catch (err) {
-        return errorResponse(err);
-      }
-    },
-    { body: t.Any() },
-  );
-  app.post(
-    "/v1/sessions/:backendSessionId/resume",
-    async ({ params, body, headers }) => {
-      const denied = authGuard(headers);
-      if (denied) return denied;
-      const parsed = resumeSessionRequestSchema.safeParse(body);
-      if (!parsed.success) {
-        return Response.json(
-          { code: "invalid_request", message: parsed.error.message },
-          { status: 400 },
-        );
-      }
-      try {
-        const result = await deps.supervisor.resumeSession({
-          idempotencyKey: parsed.data.idempotencyKey,
-          backendSessionId: params.backendSessionId,
-          history: parsed.data.history as never,
-          input: parsed.data.input as never,
-          run: parsed.data.run as never,
-          workspace: parsed.data.workspace,
-          metadata: parsed.data.metadata,
-        });
+        const result = await deps.registry.execute(parsed.data as never);
         return Response.json(result);
       } catch (err) {
         return errorResponse(err);
@@ -148,11 +96,11 @@ export function createRoutes(deps: RouteDeps): Elysia {
   );
 
   app.post(
-    "/v1/sessions/:backendSessionId/send",
+    "/v1/runs/:runId/steer",
     async ({ params, body, headers }) => {
       const denied = authGuard(headers);
       if (denied) return denied;
-      const parsed = sendRunRequestSchema.safeParse(body);
+      const parsed = steerRunRequestSchema.safeParse(body);
       if (!parsed.success) {
         return Response.json(
           { code: "invalid_request", message: parsed.error.message },
@@ -160,18 +108,8 @@ export function createRoutes(deps: RouteDeps): Elysia {
         );
       }
       try {
-        const result = await deps.supervisor.send({
-          idempotencyKey: parsed.data.idempotencyKey,
-          commandId: parsed.data.commandId,
-          backendSessionId: params.backendSessionId,
-          runId: parsed.data.run.runId,
-          mode: parsed.data.mode,
-          history: parsed.data.history as never,
-          input: parsed.data.input as never,
-          run: parsed.data.run as never,
-          metadata: parsed.data.metadata,
-        });
-        return Response.json(result);
+        await deps.registry.steer(params.runId, parsed.data.input as never);
+        return Response.json({ accepted: true });
       } catch (err) {
         return errorResponse(err);
       }
@@ -180,11 +118,11 @@ export function createRoutes(deps: RouteDeps): Elysia {
   );
 
   app.post(
-    "/v1/sessions/:backendSessionId/stop",
+    "/v1/runs/:runId/stop",
     async ({ params, body, headers }) => {
       const denied = authGuard(headers);
       if (denied) return denied;
-      const parsed = stopSessionRequestSchema.safeParse(body);
+      const parsed = stopRunRequestSchema.safeParse(body ?? {});
       if (!parsed.success) {
         return Response.json(
           { code: "invalid_request", message: parsed.error.message },
@@ -192,82 +130,25 @@ export function createRoutes(deps: RouteDeps): Elysia {
         );
       }
       try {
-        const result = await deps.supervisor.stop({
-          idempotencyKey: parsed.data.idempotencyKey,
-          commandId: parsed.data.commandId,
-          backendSessionId: params.backendSessionId,
-          runId: parsed.data.runId,
-        });
-        return Response.json(result);
+        await deps.registry.stop(params.runId);
+        return Response.json({ stopped: true });
       } catch (err) {
         return errorResponse(err);
       }
     },
     { body: t.Any() },
   );
-
-  app.post(
-    "/v1/sessions/:backendSessionId/compact",
-    async ({ params, body, headers }) => {
-      const denied = authGuard(headers);
-      if (denied) return denied;
-      const parsed = compactSessionRequestSchema.safeParse(body);
-      if (!parsed.success) {
-        return Response.json(
-          { code: "invalid_request", message: parsed.error.message },
-          { status: 400 },
-        );
-      }
-      try {
-        const result = await deps.supervisor.compact({
-          idempotencyKey: parsed.data.idempotencyKey,
-          commandId: parsed.data.commandId,
-          backendSessionId: params.backendSessionId,
-          runId: parsed.data.runId,
-        });
-        return Response.json(result);
-      } catch (err) {
-        return errorResponse(err);
-      }
-    },
-    { body: t.Any() },
-  );
-
-  app.delete("/v1/sessions/:backendSessionId", async ({ body, params, headers }) => {
-    const denied = authGuard(headers);
-    if (denied) return denied;
-    // Accept a caller-supplied idempotency key + deleteData via the request
-    // body (DELETE bodies are optional; default to a stable per-session key).
-    const parsed = closeSessionRequestSchema.safeParse(body ?? {});
-    if (!parsed.success) {
-      return Response.json(
-        { code: "invalid_request", message: parsed.error.message },
-        { status: 400 },
-      );
-    }
-    try {
-      const result = await deps.supervisor.close({
-        idempotencyKey: parsed.data.idempotencyKey,
-        commandId: parsed.data.commandId,
-        backendSessionId: params.backendSessionId,
-        deleteData: parsed.data.deleteData ?? false,
-      });
-      return Response.json(result);
-    } catch (err) {
-      return errorResponse(err);
-    }
-  });
 
   app.get("/v1/runs/:runId/outcome", ({ params, headers }) => {
     const denied = authGuard(headers);
     if (denied) return denied;
-    if (!deps.supervisor.hasRun(params.runId)) {
+    if (!deps.registry.hasRun(params.runId)) {
       // Unknown run: 404 so the Adapter never polls a phantom run forever.
       const e = new Error(`no such run: ${params.runId}`) as Error & { code: string };
       e.code = "not_found";
       return errorResponse(e);
     }
-    const outcome = deps.supervisor.getOutcome(params.runId) as RunOutcomeResponse | null;
+    const outcome = deps.registry.getOutcome(params.runId);
     if (!outcome) {
       return Response.json({ status: "running" }, { status: 202 });
     }
@@ -279,7 +160,7 @@ export function createRoutes(deps: RouteDeps): Elysia {
     if (denied) return denied;
     let buf: RunEventBuffer;
     try {
-      buf = deps.supervisor.getEvents(params.runId);
+      buf = deps.registry.getEvents(params.runId);
     } catch (err) {
       return errorResponse(err);
     }

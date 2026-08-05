@@ -10,7 +10,6 @@ const wsReal = realpathSync(`${tmp}/ws`);
 
 const base = {
   CODING_AGENT_AUTH_TOKEN: "secret",
-  CODING_AGENT_DATA_DIR: tmp,
   CODING_AGENT_WORKSPACE_ROOTS: `${tmp}/ws`,
 };
 
@@ -19,8 +18,7 @@ describe("daemon config", () => {
     const cfg = loadConfig(base);
     expect(cfg.host).toBe("127.0.0.1");
     expect(cfg.workspaceRoots).toEqual([wsReal]);
-    expect(cfg.maxStartingWorkers).toBe(4);
-    expect(cfg.sessionsDir).toBe(`${tmp}/sessions`);
+    expect(cfg.eventBufferSize).toBe(1000);
   });
 
   test("empty token rejected", () => {
@@ -32,9 +30,9 @@ describe("daemon config", () => {
     expect(() => loadConfig({ ...base, CODING_AGENT_PORT: "0" })).toThrow(ConfigError);
   });
 
-  test("missing data dir rejected", () => {
+  test("missing workspace roots rejected", () => {
     const bad = { ...base };
-    delete bad.CODING_AGENT_DATA_DIR;
+    delete bad.CODING_AGENT_WORKSPACE_ROOTS;
     expect(() => loadConfig(bad)).toThrow(ConfigError);
   });
 

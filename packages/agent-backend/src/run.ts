@@ -20,11 +20,14 @@ export interface BackendInputMessage {
   readonly productEntryId?: string;
 }
 
-/** Input for creating or resuming an execution session. `start()` and
- *  `resume()` both receive the full snapshot, the projected history, and the
- *  actual input Message that drives this Run. Parameterized by `K` so the
- *  snapshot's model ref is locked to the Backend's kind. */
-export interface BackendStartInput<K extends string = string> {
+/** The complete durable facts of one Agent Run crossing the Backend boundary.
+ *  A Run is executed from a FULL projection of the Product Context Branch -
+ *  there is no incremental resume and no session identity: `runId` is the only
+ *  execution identity. `workspace` is a Run execution fact (the caller pins
+ *  the cloned repo for Loop Runs, the agent-record workspace otherwise), never
+ *  re-derived by the Backend. Parameterized by `K` so the snapshot's model ref
+ *  is locked to the Backend's kind. */
+export interface BackendRunInput<K extends string = string> {
   readonly history: readonly ProjectedHistoryItem[];
   readonly input: BackendInputMessage;
   readonly run: AgentRunSnapshot<K>;
@@ -33,41 +36,11 @@ export interface BackendStartInput<K extends string = string> {
     readonly conversationId: string;
     readonly agentMemberId: string;
     readonly branchId: string;
-    readonly productRevision: number;
   };
-}
-
-/** Input for continuing an existing execution session. `history` is the
- *  projected context (renamed from `messages` so context is never confused
- *  with the driving input); `input` is the actual Message for this turn.
- *  `run` is required so model/prompt/tool changes apply on the next Run without
- *  a rebuild. Parameterized by `K` so the snapshot's model ref matches the
- *  Backend's kind. */
-export interface BackendRunInput<K extends string = string> {
-  readonly history: readonly ProjectedHistoryItem[];
-  readonly input: BackendInputMessage;
-  readonly run: AgentRunSnapshot<K>;
-  readonly mode: "normal" | "steer" | "follow_up";
-  readonly metadata: {
-    readonly branchId: string;
-    readonly throughEntryId?: string;
-    readonly productRevision: number;
-  };
-}
-
-/** Execution session reference - the plain identity Product Backend holds for
- *  an open session. It carries only `backendSessionId` and `backendKind`; it is
- *  intentionally not an opaque/unforgeable token. The adapter looks up live
- *  state (client, process, connection) by `backendSessionId` in its own
- *  registry. Lifecycle (open/closed) is NOT a snapshot on this immutable ref -
- *  it belongs to the execution layer and the adapter's live session registry. */
-export interface BackendSessionRef<K extends string = string> {
-  readonly backendSessionId: string;
-  readonly backendKind: K;
 }
 
 /** A pending approval, question or permission request awaiting a product
- *  control-plane response. */
+ *  control-plane response. Product-side record; not part of the Run protocol. */
 export interface PendingAction {
   readonly actionId: string;
   readonly kind: string;
@@ -81,36 +54,22 @@ export interface PendingActionResponse {
   readonly response: unknown;
 }
 
-/** Terminal outcome of a run segment. `completed`, `failed`, `aborted` and
- *  `timeout` are Agent Run terminal states. `suspended` is nonterminal: the
- *  Agent Run retains its branch lock and active-run identity, awaiting a
- *  PendingActionResponse. This is the ONLY terminal authority - event streams
- *  must not be interpreted as terminal. */
+/** Terminal outcome of a Run. `completed`, `failed`, `aborted` and `timeout`
+ *  are the four terminal states. This is the ONLY terminal authority - event
+ *  streams must never be interpreted as terminal. */
 export type BackendRunOutcome =
   | { readonly status: "completed"; readonly output?: Message; readonly usage?: Usage }
-  | { readonly status: "suspended"; readonly pendingAction: PendingAction; readonly usage?: Usage }
   | {
       readonly status: "failed" | "aborted" | "timeout";
       readonly error?: string;
       readonly usage?: Usage;
     };
 
-/** A single run continuation: an event stream plus a terminal outcome promise.
+/** A single run segment: an event stream plus a terminal outcome promise.
  *  `stop()` requests cancellation; the outcome still resolves. Parameterized by
  *  `K` so events are namespaced to the Backend's kind. */
 export interface BackendRunSegment<K extends string = string> {
   readonly events: AsyncIterable<BackendEvent<K>>;
   readonly outcome: Promise<BackendRunOutcome>;
   stop(): Promise<void>;
-}
-
-/** A started/resumed session: the session ref and the first run segment.
- *  Returning the first segment alongside the ref avoids a cold-start requiring
- *  an extra `send()` before execution begins. */
-export interface BackendSessionRun<
-  K extends string = string,
-  TRef extends BackendSessionRef<K> = BackendSessionRef<K>,
-> {
-  readonly session: TRef;
-  readonly segment: BackendRunSegment<K>;
 }

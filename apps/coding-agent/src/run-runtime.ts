@@ -1,11 +1,10 @@
-import { mkdirSync } from "node:fs";
 import {
   type CodingAgentSession,
   type CodingLoopInput,
   type ContextBudget,
   type ContextSummarizer,
   createCodingAgentSession,
-  createSqliteSessionStore,
+  createInMemorySessionStore,
   type Plugin,
   type PluginTool,
   type SessionStore,
@@ -32,35 +31,37 @@ import {
 import { fakeProvider } from "./fake-provider.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
 
-/** Dependencies the daemon injects into a Worker's Runtime assembly. */
-export interface WorkerRuntimeDeps {
-  dataDir: string;
+/** Dependencies the daemon injects into ONE Run's runtime assembly. The
+ *  runtime is per-Run: a fresh in-memory SessionStore and a fresh
+ *  CodingAgentSession are created for every execute() - no state is shared
+ *  across Runs except the daemon-level Provider/ModelRuntime. */
+export interface RunRuntimeDeps {
   workspaceRoot: string;
-  /** Gates tool installation: read_only sessions omit write/edit/bash. */
+  /** Gates tool installation: read_only runs omit write/edit/bash. */
   workspaceAccess: "read_only" | "read_write";
-  backendSessionId: string;
+  runId: string;
   modelRuntime: ModelRuntime;
   skillRoots?: readonly string[];
   webSearch?: WebSearchPort;
   webFetch?: WebFetchPort;
 }
 
-export interface WorkerRuntime {
-  readonly sessionId: string;
+export interface RunRuntime {
+  readonly runId: string;
   readonly store: SessionStore;
   readonly session: CodingAgentSession;
   readonly summarize: ContextSummarizer;
   readonly contextBudget: ContextBudget | undefined;
-  /** Set before each start_run/send so modelStream resolves the run's model. */
+  /** Set before startLoop so modelStream resolves the run's model. */
   setActiveRun(run: AgentRunSnapshot<"coding_agent"> | null): void;
-  /** Close MCP clients etc. Call before the Worker process exits. */
+  /** Close MCP clients etc. Call after the run settles. */
   close(): Promise<void>;
 }
 
-/** Single provider assembly shared by the daemon catalog and Workers: register
- *  built-in providers from the daemon-injected env. The fake deterministic
- *  provider is available for integration tests. Synchronous so the catalog is
- *  populated before any /v1/models request. */
+/** Single provider assembly shared by the daemon catalog and Run loops:
+ *  register built-in providers from the daemon-injected env. The fake
+ *  deterministic provider is available for integration tests. Synchronous so
+ *  the catalog is populated before any /v1/models request. */
 export function registerBuiltinProviders(
   runtime: ModelRuntime,
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -72,15 +73,11 @@ export function registerBuiltinProviders(
   }
 }
 
-/** Build the complete Runtime assembly for exactly one session. The store file
- *  is created/opened by the caller (open_session); this only assembles the
- *  store handle + plugins + session. The model is resolved per run. */
-export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<WorkerRuntime> {
-  const sessionsDir = `${deps.dataDir}/sessions`;
-  mkdirSync(sessionsDir, { recursive: true });
-  const store = createSqliteSessionStore(`${sessionsDir}/${deps.backendSessionId}.sqlite`);
-  // omitted entirely so the trust boundary is enforced at the tool table, not
-  // relies on per-call checks.
+/** Build the complete Runtime assembly for exactly ONE Run. The Run's
+ *  in-memory SessionStore is created here (never shared with other Runs);
+ *  the model is resolved per run from the AgentRunSnapshot. */
+export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRuntime> {
+  const store = createInMemorySessionStore();
   const tools: PluginTool[] = [
     createReadTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
     createLsTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
@@ -103,14 +100,13 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
   const nativeToolsPlugin: Plugin = { name: "native-tools", tools };
   const plugins: Plugin[] = [
     nativeToolsPlugin,
-    createTodoPlugin({ sessionId: deps.backendSessionId, store }),
+    createTodoPlugin({ sessionId: deps.runId, store }),
     createProgressiveSkillPlugin({ roots: deps.skillRoots ?? [] }),
   ];
 
   // Product Tools are resolved PER RUN from the AgentRunSnapshot manifest:
   // resolveTools builds the tool table from input.run.productTools + the run's
-  // identity (runId + metadata), so snapshot changes take effect on the next
-  // Run without a session rebuild. Every call carries identity + abort +
+  // identity (runId + metadata). Every call carries identity + abort +
   // timeout through the transport.
   const { buildProductTools } = await import("./product-tool-transport.js");
   // Direct MCP client per ENTRYPOINT; the tool NAME is the MCP tool name.
@@ -128,8 +124,8 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
         if (p.entrypoint.startsWith("sse:")) {
           const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
           // Service-token auth for remote Product Tools endpoints: the token
-          // is daemon/Worker configuration (CODING_AGENT_PRODUCT_TOOL_TOKEN),
-          // never part of the entrypoint URI or MCP arguments.
+          // is daemon configuration (CODING_AGENT_PRODUCT_TOOL_TOKEN), never
+          // part of the entrypoint URI or MCP arguments.
           const token = process.env.CODING_AGENT_PRODUCT_TOOL_TOKEN;
           transport = new SSEClientTransport(
             new URL(p.entrypoint.slice(4)),
@@ -208,9 +204,9 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
 
   let activeRun: AgentRunSnapshot<"coding_agent"> | null = null;
 
-  // Resolve the model display identity for a run's ref - used by the Session to
-  // render the per-loop Meta (workspace/model fact line). The Session is the
-  // sole Meta owner; the Worker never passes a meta string.
+  // Resolve the model display identity for a run's ref - used by the Session
+  // to render the per-loop Meta (workspace/model fact line). The Session is
+  // the sole Meta owner; the Run runtime never passes a meta string.
   const resolveModel = async (modelId: string): Promise<{ provider: string; id: string }> => {
     const catalog = await deps.modelRuntime.getCatalog();
     const model = catalog.models.find((m) => `${m.providerId}/${m.modelId}` === modelId);
@@ -246,10 +242,10 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
   };
 
   // ContextBudget from the model catalog's context window.
-  // ponytail: budget is fixed at session assembly from the catalog's first
+  // ponytail: budget is fixed at run assembly from the catalog's first
   // model; switching models on later runs keeps the first window. A per-run
   // budget would need a session API to update ContextBudget - add when
-  // multi-model sessions actually run.
+  // multi-model runs actually run.
   const primaryModel = (await deps.modelRuntime.getCatalog()).models[0];
   const contextBudget: ContextBudget | undefined = primaryModel
     ? {
@@ -260,7 +256,7 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
     : undefined;
 
   const session = createCodingAgentSession({
-    sessionId: deps.backendSessionId,
+    sessionId: deps.runId,
     store,
     plugins,
     maxSteps: 32,
@@ -282,7 +278,7 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
   });
 
   return {
-    sessionId: deps.backendSessionId,
+    runId: deps.runId,
     store,
     session,
     summarize,
@@ -292,16 +288,21 @@ export async function assembleWorkerRuntime(deps: WorkerRuntimeDeps): Promise<Wo
     },
     async close() {
       // Tear down every MCP client (Product Tool transports) so no child
-      // process or connection outlives the Worker, and release the SQLite
-      // connection so the session file is not held open after the outcome.
+      // process or connection outlives the Run. Each close is BOUNDED: a
+      // stuck transport (e.g. an SSE socket that never answers close) must
+      // not wedge the daemon.
+      const closeWithTimeout = (p: Promise<unknown>): Promise<unknown> =>
+        Promise.race([p, new Promise((r) => setTimeout(r, 2000))]);
       const closePromises: Promise<unknown>[] = [];
       for (const [entrypoint, c] of clients) {
         clients.delete(entrypoint);
         closePromises.push(
-          (c as { close?: () => Promise<void> }).close?.().catch(() => {}) ?? Promise.resolve(),
+          closeWithTimeout(
+            (c as { close?: () => Promise<void> }).close?.().catch(() => {}) ?? Promise.resolve(),
+          ),
         );
       }
-      closePromises.push(store.close());
+      closePromises.push(closeWithTimeout(store.close()));
       await Promise.allSettled(closePromises);
     },
   };

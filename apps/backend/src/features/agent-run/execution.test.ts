@@ -7,23 +7,24 @@ import {
   CodingAgentClient,
   CodingAgentModelCatalog,
 } from "@my-agent-team/adapter-coding-agent";
-import type { BackendRunOutcome, RunEventEnvelope } from "@my-agent-team/agent-backend";
+import type { RunEventEnvelope } from "@my-agent-team/agent-backend";
+import { assistantMessageId, parseMessageRevision } from "@my-agent-team/message";
 import { openDb } from "../../infra/sqlite/db.js";
 import { createAgentContextService, sqliteAgentContextAdapter } from "../agent-context/index.js";
 import { sqliteConversationAdapter } from "../conversation/adapter-sqlite.js";
-import { sqliteProductToolCallAdapter } from "../product-tools/adapter-sqlite.js";
-import { createProductToolsService } from "../product-tools/service.js";
 import { sqliteAgentRunAdapter } from "./adapter-sqlite.js";
 import type { AgentRun } from "./domain.js";
-import { createAgentRunExecutionService, decideExecutionPath } from "./execution.js";
+import { createAgentRunExecutionService } from "./execution.js";
 import { createAgentRunService } from "./service.js";
 
-// ─── Fake Coding Agent daemon (HTTP-level; real CodingAgentClient/Backend) ─
+// ─── Fake Coding Agent daemon on the Run-centric protocol ─────────────
 
 interface FakeDaemonOptions {
-  /** Fail the first start attempt (acceptance-before crash). */
-  failFirstStart?: boolean;
+  /** Fail the first execute (acceptance-before crash simulation). */
+  failFirstExecute?: boolean;
   outcomeDelayMs?: number;
+  /** Fail steer with this error code. */
+  steerError?: { code: string; message: string };
 }
 
 function encodeSSE(events: readonly RunEventEnvelope[]): string {
@@ -33,15 +34,13 @@ function encodeSSE(events: readonly RunEventEnvelope[]): string {
 }
 
 function createFakeDaemon(opts: FakeDaemonOptions = {}) {
-  const startCalls: Array<{ idempotencyKey: string; runId: string }> = [];
-  const resumeCalls: Array<{ backendSessionId: string; runId: string }> = [];
-  const sendCalls: Array<{ runId: string; mode: string }> = [];
+  const executeCalls: Array<{ runId: string; workspaceRoot: string }> = [];
+  const steerCalls: string[] = [];
   const stopCalls: string[] = [];
-  let startAttempts = 0;
-  let sidSeq = 0;
-  const sessions = new Map<string, string>(); // idempotencyKey -> backendSessionId
   const readyAt = new Map<string, number>();
   const eventsByRun = new Map<string, RunEventEnvelope[]>();
+  let executeAttempts = 0;
+  let verifyManifestAtAccept: ((runId: string) => void) | null = null;
 
   const eventsFor = (): RunEventEnvelope[] => [
     { id: 1, type: "agent_start", data: {} },
@@ -49,10 +48,6 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
     { id: 3, type: "agent_end", data: { status: "completed" } },
   ];
 
-  let verifyManifestAtAccept: ((runId: string) => void) | null = null;
-  // Bun's `typeof fetch` carries static members (preconnect) that an arrow
-  // function cannot satisfy; the assertion is intentional - this fake only
-  // implements the callable.
   const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
     const path = String(url).replace(/^https?:\/\/[^/]+/, "");
     const method = init?.method ?? "GET";
@@ -60,42 +55,33 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
       ? (JSON.parse(String(init.body)) as Record<string, unknown>)
       : undefined;
 
-    if (method === "POST" && path.endsWith("/start")) {
-      startAttempts++;
-      const key = String(body?.idempotencyKey);
+    if (method === "POST" && path === "/v1/runs") {
+      executeAttempts++;
       const runId = String((body?.run as { runId?: string })?.runId);
-      startCalls.push({ idempotencyKey: key, runId });
+      const workspaceRoot = String((body?.workspace as { root?: string })?.root ?? "");
+      executeCalls.push({ runId, workspaceRoot });
       verifyManifestAtAccept?.(runId);
-      if (opts.failFirstStart && startAttempts === 1) {
+      if (opts.failFirstExecute && executeAttempts === 1) {
         return Response.json(
-          { code: "internal", message: "simulated start failure" },
+          { code: "internal", message: "simulated execute failure" },
           { status: 500 },
         );
       }
-      let sid = sessions.get(key);
-      if (!sid) {
-        sid = `sid-${++sidSeq}`;
-        sessions.set(key, sid);
+      readyAt.set(runId, Date.now() + (opts.outcomeDelayMs ?? 60));
+      eventsByRun.set(runId, eventsFor());
+      return Response.json({ runId, accepted: true });
+    }
+    if (method === "POST" && path.endsWith("/steer")) {
+      const runId = path.split("/")[3]!;
+      steerCalls.push(runId);
+      if (opts.steerError) {
+        return Response.json(opts.steerError, { status: 409 });
       }
-      readyAt.set(runId, Date.now() + (opts.outcomeDelayMs ?? 60));
-      eventsByRun.set(runId, eventsFor());
-      return Response.json({ backendSessionId: sid, runId });
+      return Response.json({ accepted: true });
     }
-    if (method === "POST" && path.includes("/resume")) {
-      const runId = String((body?.run as { runId?: string })?.runId);
-      const sid = path.split("/")[4] ?? "sid-resume";
-      resumeCalls.push({ backendSessionId: sid, runId });
-      readyAt.set(runId, Date.now() + (opts.outcomeDelayMs ?? 60));
-      eventsByRun.set(runId, eventsFor());
-      return Response.json({ backendSessionId: sid, runId });
-    }
-    if (method === "POST" && path.includes("/send")) {
-      const runId = String((body?.run as { runId?: string } | undefined)?.runId ?? body?.runId);
-      const mode = String(body?.mode);
-      sendCalls.push({ runId, mode });
-      readyAt.set(runId, Date.now() + (opts.outcomeDelayMs ?? 60));
-      eventsByRun.set(runId, eventsFor());
-      return Response.json({ backendSessionId: "sid-send", runId, commandId: "c", accepted: true });
+    if (method === "POST" && path.endsWith("/stop")) {
+      stopCalls.push(path.split("/")[3]!);
+      return Response.json({ stopped: true });
     }
     if (method === "GET" && path.includes("/events")) {
       const runId = path.split("/")[3]!;
@@ -112,11 +98,11 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
       if (Date.now() < ready) {
         return new Response(null, { status: 202 });
       }
-      const outcome: BackendRunOutcome = {
+      return Response.json({
+        runId,
         status: "completed",
         output: { role: "assistant", text: "done" },
-      };
-      return Response.json({ runId, ...outcome });
+      });
     }
     if (method === "GET" && path === "/v1/models") {
       return Response.json({
@@ -134,22 +120,13 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
         ],
       });
     }
-    if (method === "POST" && path.includes("/stop")) {
-      stopCalls.push(path);
-      return Response.json({ stopped: true });
-    }
-    if (method === "DELETE") {
-      return Response.json({ closed: true });
-    }
     return Response.json({ code: "not_found", message: path }, { status: 404 });
   };
 
   return {
-    // the fake only implements the callable, not Bun's static fetch members
     fetchImpl: fetchImpl as typeof fetch,
-    startCalls,
-    resumeCalls,
-    sendCalls,
+    executeCalls,
+    steerCalls,
     stopCalls,
     setVerifyManifest: (fn: (runId: string) => void) => {
       verifyManifestAtAccept = fn;
@@ -168,8 +145,9 @@ let runPort: ReturnType<typeof sqliteAgentRunAdapter>;
 
 const conversationId = "conv-1";
 const agentMemberId = "mem-1";
+let branchId: string;
 
-function makeDeps(
+function makeExecution(
   fakeDaemon: ReturnType<typeof createFakeDaemon>,
   runPortOverride?: ReturnType<typeof sqliteAgentRunAdapter>,
 ) {
@@ -186,7 +164,7 @@ function makeDeps(
     authToken: "t",
     fetchImpl: fakeDaemon.fetchImpl,
   });
-  const execution = createAgentRunExecutionService({
+  return createAgentRunExecutionService({
     runPort: activeRunPort,
     contextPort,
     ledgerResolver,
@@ -196,7 +174,6 @@ function makeDeps(
     resolveWorkspace: async () => ({ root: dataDir, access: "read_write" }),
     productToolsEntrypoint: "sse:http://127.0.0.1:1/mcp",
   });
-  return execution;
 }
 
 async function waitForTerminal(runId: string): Promise<AgentRun> {
@@ -217,7 +194,7 @@ async function waitForTerminal(runId: string): Promise<AgentRun> {
 }
 
 beforeEach(async () => {
-  dataDir = mkdtempSync(join(tmpdir(), "phase4-exec-"));
+  dataDir = mkdtempSync(join(tmpdir(), "phase5-exec-"));
   db = openDb(`${dataDir}/backend.db`);
   convPort = sqliteConversationAdapter(db);
   contextPort = sqliteAgentContextAdapter(db, {
@@ -255,10 +232,9 @@ beforeEach(async () => {
     agentId: "a1",
     joinedAt: Date.now(),
   });
-  // Tree + default branch exist before enqueue (service creates them lazily;
-  // here we create them explicitly so the branch id is known).
   const tree = await contextPort.getOrCreateTree(conversationId, agentMemberId);
-  await contextPort.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+  const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+  branchId = branch.branchId;
 });
 
 afterEach(() => {
@@ -266,21 +242,25 @@ afterEach(() => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
-describe("agent run execution", () => {
-  test("dispatch completes a run: input delivered once, terminal commit writes history/context/binding", async () => {
-    const fake = createFakeDaemon();
-    const execution = makeDeps(fake);
+function enqueue(mode: "normal" | "follow_up" | "steer", key: string, text: string) {
+  return backend.enqueueAndAcquire({
+    conversationId,
+    agentMemberId,
+    backendKind: "coding_agent",
+    mode,
+    message: { role: "user", text },
+    defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+    configRevision: 1,
+    idempotencyKey: key,
+  });
+}
 
-    const acquired = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: "hello" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-1",
-    });
+describe("agent run execution (Run-centric)", () => {
+  test("a normal input creates one Run; terminal commit writes a parseable final Message", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeExecution(fake);
+
+    const acquired = await enqueue("normal", "ikey-1", "hello");
     expect(acquired.acquired).toBe(true);
     const runId = acquired.run!.runId;
 
@@ -295,710 +275,273 @@ describe("agent run execution", () => {
     expect(run.status).toBe("completed");
     await collector;
 
-    // input delivered exactly once
+    // one input, one backend execute, one delivered input
+    expect(fake.executeCalls).toHaveLength(1);
+    expect(fake.executeCalls[0]!.runId).toBe(runId);
     const inputs = await runPort.listInputs(run.branchId);
     expect(inputs).toHaveLength(1);
     expect(inputs[0]!.status).toBe("delivered");
 
-    // exactly one assistant message in the ledger
+    // exactly one assistant message in the ledger - a VALID MessageRevision
     const ledger = convPort.getLedgerEntries(conversationId);
     const messages = ledger.filter((e) => e.kind === "message");
     expect(messages).toHaveLength(1);
-    expect(messages[0]!.content as unknown).toMatchObject({ role: "assistant", text: "done" });
+    const revision = parseMessageRevision(messages[0]!.content);
+    expect(revision).toMatchObject({
+      messageId: assistantMessageId(runId, 0),
+      role: "assistant",
+      state: "done",
+      conversationId,
+    });
+    expect(revision.updatedAt).toBeGreaterThan(0);
 
     // exactly one ledger_message ref in context
     const entries = await contextPort.listEntriesToLeaf(run.branchId);
     const refs = entries.filter((e) => e.type === "ledger_message");
     expect(refs).toHaveLength(1);
 
-    // binding synced to the new leaf
-    const binding = await contextPort.getBinding(run.branchId);
-    expect(binding?.state).toBe("active");
-    expect(binding?.syncedEntryId).toBe(refs[0]!.entryId);
-    expect(binding?.backendSessionId).toBeTruthy();
-
     // subscriber saw the transient events
-    expect(events).toContain("text_delta"); // adapter-mapped transient events
+    expect(events).toContain("text_delta");
+    expect(events).toContain("status");
 
-    // replay of the same dispatch must not rewrite product facts
+    // replay of the same dispatch must NOT call the Backend again
     await execution.dispatch(runId);
+    expect(fake.executeCalls).toHaveLength(1);
     const ledgerAfter = convPort
       .getLedgerEntries(conversationId)
       .filter((e) => e.kind === "message");
     expect(ledgerAfter).toHaveLength(1);
   }, 15_000);
 
-  test("acceptance-before failure keeps the input delivering; recover redelivers with the same idempotency", async () => {
-    const fake = createFakeDaemon({ failFirstStart: true });
-    const execution = makeDeps(fake);
+  test("branch busy: a second normal/follow_up input creates a QUEUED run; the oldest promotes after the first settles", async () => {
+    const fake = createFakeDaemon({ outcomeDelayMs: 120 });
+    const execution = makeExecution(fake);
 
-    const acquired = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: "hi" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-recover",
-    });
-    const runId = acquired.run!.runId;
+    const first = await enqueue("normal", "chain-1", "first");
+    expect(first.acquired).toBe(true);
+    const followUp = await enqueue("follow_up", "chain-2", "second");
+    expect(followUp.queued).toBe(true);
+    const third = await enqueue("normal", "chain-3", "third");
+    expect(third.queued).toBe(true);
 
-    await expect(execution.dispatch(runId)).rejects.toThrow();
-
-    // input still delivering (not delivered)
-    const inputs = await runPort.listInputs(acquired.run!.branchId);
-    expect(inputs[0]!.status).toBe("delivering");
-
-    // recover redelivers with the same runId/inputId/idempotency
-    await execution.recover();
-    const run = await waitForTerminal(runId);
-    expect(run.status).toBe("completed");
-
-    // the fake daemon saw the SAME idempotency key on both attempts
-    expect(fake.startCalls).toHaveLength(2);
-    expect(fake.startCalls[0]!.idempotencyKey).toBe(fake.startCalls[1]!.idempotencyKey);
-    const delivered = (await runPort.listInputs(run.branchId))[0]!;
-    expect(delivered.status).toBe("delivered");
-  }, 15_000);
-
-  test("two inputs on one run: queue order preserved, both delivered, only the final outcome commits", async () => {
-    const fake = createFakeDaemon();
-    const execution = makeDeps(fake);
-
-    const first = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: "first" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-2a",
-    });
-    const runId = first.run!.runId;
-
-    // follow_up while active: queued, not acquired
-    const second = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "follow_up",
-      message: { role: "user", text: "second" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-2b",
-    });
-    expect(second.acquired).toBe(false);
-    expect(second.queued).toBe(true);
-
-    await execution.dispatch(runId);
-    const run = await waitForTerminal(runId);
-    expect(run.status).toBe("completed");
-
-    const inputs = await runPort.listInputs(run.branchId);
-    expect(inputs).toHaveLength(2);
-    expect(inputs.map((i) => i.status)).toEqual(["delivered", "delivered"]);
-    expect(inputs[0]!.message.text).toBe("first");
-    expect(inputs[1]!.message.text).toBe("second");
-
-    // the second input went through send (follow_up) on the live segment
-    expect(fake.sendCalls).toHaveLength(1);
-    expect(fake.sendCalls[0]!.mode).toBe("follow_up");
-
-    // only ONE assistant message committed (the final outcome)
-    const messages = convPort.getLedgerEntries(conversationId).filter((e) => e.kind === "message");
-    expect(messages).toHaveLength(1);
-  }, 15_000);
-
-  test("commit transaction failure -> commit_failed, no partial facts, stale binding; retry commits once without re-executing", async () => {
-    // A dedicated adapter with the test-only commit hook that throws at the
-    // END of the commit transaction - proving the whole thing rolls back.
-    const hookRunPort = sqliteAgentRunAdapter(db, {
-      contextPort,
-      ledgerResolver: {
-        async resolveMessage(cid: string, seq: number) {
-          const hit = convPort.getLedgerEntries(cid).find((e) => e.seq === seq);
-          return hit ? (hit.content as never) : null;
-        },
-      },
-      idGen: { ulid: () => `h-${Math.random().toString(36).slice(2, 8)}` },
-      commitTestHook: () => {
-        throw new Error("injected commit failure");
-      },
-    });
-    const fake = createFakeDaemon();
-    const execution = makeDeps(fake, hookRunPort);
-    const acquired = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: "commit fail" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-commitfail",
-    });
-    const runId = acquired.run!.runId;
-    const activeBranchId = acquired.run!.branchId;
-
-    await execution.dispatch(runId);
-    const run = await waitForTerminal(runId);
-    expect(run?.status).toBe("commit_failed");
-    expect(run?.terminalResult?.status).toBe("completed");
-
-    // ZERO partial Product facts: the rolled-back transaction left no
-    // assistant ledger message and no context ref.
-    expect(
-      convPort.getLedgerEntries(conversationId).filter((e) => e.kind === "message"),
-    ).toHaveLength(0);
-    expect(
-      (await contextPort.listEntriesToLeaf(activeBranchId)).filter(
-        (e) => e.type === "ledger_message",
-      ),
-    ).toHaveLength(0);
-    // branch revision untouched
-    const branch = await contextPort.getBranch(activeBranchId);
-    expect(branch?.revision).toBe(2); // acquire bumped 1->2; the failed commit added nothing
-
-    // no active binding survived (this run never had one; a pre-existing
-    // binding would have gone stale in the failCommit transaction)
-    const binding = await contextPort.getBinding(activeBranchId);
-    expect(binding).toBeNull();
-
-    // retry replays ONLY the stored outcome - the Backend is never called
-    // again - and the commit succeeds exactly once.
-    const startsBefore = fake.startCalls.length;
-    // retry goes through the NORMAL adapter (no fault hook) - the stored
-    // outcome is the only input, so the commit succeeds.
-    const exec2 = createAgentRunExecutionService({
-      runPort,
-      contextPort,
-      ledgerResolver: {
-        async resolveMessage(cid: string, seq: number) {
-          const hit = convPort.getLedgerEntries(cid).find((e) => e.seq === seq);
-          return hit ? (hit.content as never) : null;
-        },
-      },
-      backend: new CodingAgentBackend(
-        new CodingAgentClient({
-          baseUrl: "http://fake",
-          authToken: "t",
-          fetchImpl: fake.fetchImpl,
-        }),
-      ),
-      modelCatalog: new CodingAgentModelCatalog(
-        new CodingAgentClient({
-          baseUrl: "http://fake",
-          authToken: "t",
-          fetchImpl: fake.fetchImpl,
-        }),
-      ),
-      idGen: { ulid: () => `z-${Math.random().toString(36).slice(2, 8)}` },
-      resolveWorkspace: async () => ({ root: dataDir, access: "read_write" }),
-      productToolsEntrypoint: "sse:http://127.0.0.1:1/mcp",
-    });
-    await exec2.retryTerminalCommit(runId);
-    const done = await hookRunPort.getRun(runId);
-    expect(done?.status).toBe("completed");
-    expect(fake.startCalls.length).toBe(startsBefore);
-    expect(
-      convPort.getLedgerEntries(conversationId).filter((e) => e.kind === "message"),
-    ).toHaveLength(1);
-  }, 15_000);
-
-  test("CONCURRENT retryTerminalCommit commits exactly once", async () => {
-    const fake = createFakeDaemon();
-    const execution = makeDeps(fake);
-    const acquired = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: "concurrent retry" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-ccretry",
-    });
-    const runId = acquired.run!.runId;
-    // The Backend already finished; only the Product commit failed.
-    const outcome = {
-      status: "completed" as const,
-      output: { role: "assistant" as const, text: "final" },
-    };
-    await runPort.failCommit(runId, outcome);
-
-    await Promise.all([execution.retryTerminalCommit(runId), execution.retryTerminalCommit(runId)]);
-    const run = await runPort.getRun(runId);
-    expect(run?.status).toBe("completed");
-    // the runId commit identity allows exactly ONE final Message
-    const ledger = convPort.getLedgerEntries(conversationId);
-    const messages = ledger.filter(
-      (e) => e.kind === "message" && e.senderMemberId === agentMemberId,
-    );
-    expect(messages).toHaveLength(1);
-    // and the Backend was never re-invoked
-    expect(fake.startCalls).toHaveLength(0);
-  }, 15_000);
-
-  test("failCommit transitions an ACTIVE binding to stale in the same transaction", async () => {
-    const acquired = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: "stale" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-stale",
-    });
-    const runId = acquired.run!.runId;
-    // an established, ACTIVE binding (as if a previous run had synced)
-    await contextPort.upsertBinding({
-      branchId: acquired.run!.branchId,
-      backendSessionId: "sid-old",
-      backendKind: "coding_agent",
-      syncedEntryId: "e-old",
-      syncedRevision: 2,
-      state: "active",
-      updatedAt: Date.now(),
-    });
-    await runPort.failCommit(runId, {
-      status: "completed",
-      output: { role: "assistant", text: "x" },
-    });
-    const binding = await contextPort.getBinding(acquired.run!.branchId);
-    expect(binding?.state).toBe("stale");
-    expect(binding?.backendSessionId).toBe("sid-old");
-    const run = await runPort.getRun(runId);
-    expect(run?.status).toBe("commit_failed");
-  });
-
-  test("queue order survives a real DB reopen + recover (two inputs, stable seq)", async () => {
-    // A file-backed database: enqueue two inputs, close the DB, reopen it
-    // with fresh adapters, and recover - the redelivery order must match the
-    // original insertion order.
-    const dir = mkdtempSync(join(tmpdir(), "phase4-restart-"));
-    const db1 = openDb(`${dir}/backend.db`);
-    const conv1 = sqliteConversationAdapter(db1);
-    const ctx1 = sqliteAgentContextAdapter(db1, {
-      ulid: () => `c-${Math.random().toString(36).slice(2, 8)}`,
-    });
-    const resolver1 = {
-      async resolveMessage(cid: string, seq: number) {
-        const hit = conv1.getLedgerEntries(cid).find((e) => e.seq === seq);
-        return hit ? (hit.content as never) : null;
-      },
-    };
-    const runPort1 = sqliteAgentRunAdapter(db1, {
-      contextPort: ctx1,
-      ledgerResolver: resolver1,
-      idGen: { ulid: () => `r-${Math.random().toString(36).slice(2, 8)}` },
-    });
-    const ctxSvc1 = createAgentContextService({
-      port: ctx1,
-      idGen: { ulid: () => `x-${Math.random().toString(36).slice(2, 8)}` },
-      ledgerResolver: resolver1,
-    });
-    const backend1 = createAgentRunService({
-      port: runPort1,
-      contextService: ctxSvc1,
-      idGen: { ulid: () => `x-${Math.random().toString(36).slice(2, 8)}` },
-      ledgerResolver: resolver1,
-    });
-    conv1.createConversation({ conversationId: "c-restart", createdAt: Date.now() });
-    conv1.addMember({
-      memberId: "m-restart",
-      conversationId: "c-restart",
-      kind: "agent",
-      agentId: "a",
-      joinedAt: Date.now(),
-    });
-    const tree1 = await ctx1.getOrCreateTree("c-restart", "m-restart");
-    await ctx1.getOrCreateDefaultBranch(tree1.treeId, "coding_agent");
-
-    const first = await backend1.enqueueAndAcquire({
-      conversationId: "c-restart",
-      agentMemberId: "m-restart",
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: "first" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "restart-1",
-    });
-    const second = await backend1.enqueueAndAcquire({
-      conversationId: "c-restart",
-      agentMemberId: "m-restart",
-      backendKind: "coding_agent",
-      mode: "follow_up",
-      message: { role: "user", text: "second" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "restart-2",
-    });
-    const runId = first.run!.runId;
-    db1.close();
-
-    // "restart": reopen the SAME file with fresh adapters.
-    const db2 = openDb(`${dir}/backend.db`);
-    const conv2 = sqliteConversationAdapter(db2);
-    const ctx2 = sqliteAgentContextAdapter(db2, {
-      ulid: () => `c-${Math.random().toString(36).slice(2, 8)}`,
-    });
-    const resolver2 = {
-      async resolveMessage(cid: string, seq: number) {
-        const hit = conv2.getLedgerEntries(cid).find((e) => e.seq === seq);
-        return hit ? (hit.content as never) : null;
-      },
-    };
-    const runPort2 = sqliteAgentRunAdapter(db2, {
-      contextPort: ctx2,
-      ledgerResolver: resolver2,
-      idGen: { ulid: () => `r-${Math.random().toString(36).slice(2, 8)}` },
-    });
-    const ctxSvc2 = createAgentContextService({
-      port: ctx2,
-      idGen: { ulid: () => `x-${Math.random().toString(36).slice(2, 8)}` },
-      ledgerResolver: resolver2,
-    });
-    const backend2 = createAgentRunService({
-      port: runPort2,
-      contextService: ctxSvc2,
-      idGen: { ulid: () => `x-${Math.random().toString(36).slice(2, 8)}` },
-      ledgerResolver: resolver2,
-    });
-
-    const branch2 = await ctx2.getBranch(first.run!.branchId);
-    const claimed1 = await backend2.claimNextInput(branch2!.branchId);
-    // the first input was left delivering by the crash; the recovery claim
-    // returns it, and once accepted the NEXT claim must yield the second
-    // input in original order
-    expect(claimed1?.input.message.text).toBe("first");
-    await backend2.markInputAccepted(claimed1!.input.inputId);
-    const claimed2 = await backend2.claimNextInput(branch2!.branchId);
-    expect(claimed2?.input.message.text).toBe("second");
-    expect(claimed1?.runId).toBe(runId);
-    // the follow-up stayed queued (pending) for the SAME run's loop
-    expect(second.queued).toBe(true);
-    db2.close();
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  test("a retain before the terminal commit keeps the branch chain intact (no orphan)", async () => {
-    // Sequential retain + commit: the commit re-reads the branch (revision
-    // advanced by the retain) and appends the final ref on top. The CAS in
-    // commitCompletedRun protects the CONCURRENT case across connections;
-    // this proves the sequential chain never orphans an entry.
-    const acquired = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: "retain then commit" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-retain-commit",
-    });
-    const runId = acquired.run!.runId;
-    await runPort.setRunProductTools(runId, [
-      { name: "history_retain", description: "t", inputSchema: {}, entrypoint: "sse:x" },
-    ]);
-    // a message to retain (post-acquire so it is not yet projected)
-    const seq = convPort.appendLedgerEntry({
-      conversationId,
-      senderMemberId: "human-1",
-      kind: "message",
-      content: JSON.stringify({ role: "user", text: "pin before commit" }),
-      ts: Date.now(),
-    });
-    const callPort = sqliteProductToolCallAdapter(db);
-    const toolSvc = createProductToolsService({
-      runPort,
-      contextPort,
-      conversationPort: convPort,
-      callPort,
-      idGen: { ulid: () => `y-${Math.random().toString(36).slice(2, 8)}` },
-    });
-    const retained = await toolSvc.call({
-      identity: {
-        runId,
-        conversationId,
-        agentMemberId,
-        branchId: acquired.run!.branchId,
-      },
-      callId: "toolu-rc",
-      idempotencyKey: `${runId}:toolu-rc`,
-      tool: "history_retain",
-      args: { seq },
-    });
-    expect(JSON.parse(retained.content)).toEqual({ retained: true, seq });
-
-    // now the terminal commit must append the final ref ON TOP of the retain
-    await runPort.commitCompletedRun({
-      runId,
-      outcome: { status: "completed", output: { role: "assistant", text: "final" } },
-      output: { role: "assistant", text: "final" },
-      backendSessionId: "sid-rc",
-    });
-    const branch = await contextPort.getBranch(acquired.run!.branchId);
-    const entries = await contextPort.listEntriesToLeaf(acquired.run!.branchId);
-    const refs = entries.filter((e) => e.type === "ledger_message");
-    // 1 retain + 1 final commit ref (no other ledger in this harness)
-    expect(refs).toHaveLength(2);
-    expect(refs[refs.length - 1]!.ledgerSeq).toBeGreaterThan(seq);
-    // the chain is intact: walking from the leaf reaches the retain entry
-    const leaf = entries[entries.length - 1]!;
-    expect(leaf.entryId === branch?.leafEntryId).toBe(true);
-    expect(leaf.parentId).toBe(refs[refs.length - 2]!.entryId);
-  }, 15_000);
-
-  test("configRevision changes do NOT force rebuild (travel with every input)", () => {
-    const branch = { backendKind: "coding_agent", revision: 3 };
-    const binding = {
-      backendSessionId: "s1",
-      backendKind: "coding_agent",
-      syncedEntryId: "e1",
-      syncedRevision: 2,
-      state: "active",
-    };
-    // model/systemPrompt/productTools/configRevision are per-run snapshot
-    // fields, always re-sent - never part of the resume decision.
-    expect(decideExecutionPath(binding, branch, { status: "running" } as AgentRun)).toBe("resume");
-  });
-
-  test("resume/rebuild decision is a pure function of binding/branch/run", () => {
-    const run = {
-      status: "running",
-    } as AgentRun;
-    const branch = { backendKind: "coding_agent", revision: 3 };
-    expect(
-      decideExecutionPath(
-        {
-          backendSessionId: "s1",
-          backendKind: "coding_agent",
-          syncedEntryId: "e1",
-          syncedRevision: 2,
-          state: "active",
-        },
-        branch,
-        run,
-      ),
-    ).toBe("resume");
-    // missing binding -> rebuild
-    expect(decideExecutionPath(null, branch, run)).toBe("rebuild");
-    // stale binding -> rebuild
-    expect(
-      decideExecutionPath(
-        {
-          backendSessionId: "s1",
-          backendKind: "coding_agent",
-          syncedEntryId: "e1",
-          syncedRevision: 2,
-          state: "stale",
-        },
-        branch,
-        run,
-      ),
-    ).toBe("rebuild");
-    // kind mismatch -> rebuild
-    expect(
-      decideExecutionPath(
-        {
-          backendSessionId: "s1",
-          backendKind: "other",
-          syncedEntryId: "e1",
-          syncedRevision: 2,
-          state: "active",
-        },
-        branch,
-        run,
-      ),
-    ).toBe("rebuild");
-    // revision gap > 1 (context changed) -> rebuild
-    expect(
-      decideExecutionPath(
-        {
-          backendSessionId: "s1",
-          backendKind: "coding_agent",
-          syncedEntryId: "e1",
-          syncedRevision: 1,
-          state: "active",
-        },
-        branch,
-        run,
-      ),
-    ).toBe("rebuild");
-    // commit_failed -> rebuild
-    expect(
-      decideExecutionPath(
-        {
-          backendSessionId: "s1",
-          backendKind: "coding_agent",
-          syncedEntryId: "e1",
-          syncedRevision: 2,
-          state: "active",
-        },
-        branch,
-        { status: "commit_failed" } as AgentRun,
-      ),
-    ).toBe("rebuild");
-  });
-
-  test("the run manifest is durable BEFORE the Backend accepts (no auth race)", async () => {
-    const fake = createFakeDaemon();
-    const execution = makeDeps(fake);
-    // The daemon "accepts" the run the moment it sees start - at that point
-    // the manifest must already be queryable, because the Worker may call a
-    // Product Tool immediately and MCP authorization reads it from the DB.
-    fake.setVerifyManifest(async (runId) => {
-      const run = await runPort.getRun(runId);
-      expect(run?.productTools?.length).toBeGreaterThan(0);
-    });
-    const acquired = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: "manifest" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-manifest",
-    });
-    await execution.dispatch(acquired.run!.runId);
-    const run = await waitForTerminal(acquired.run!.runId);
-    expect(run?.status).toBe("completed");
-    // and the persisted manifest matches the injected entrypoint
-    expect(run?.productTools?.[0]?.entrypoint).toBe("sse:http://127.0.0.1:1/mcp");
-  }, 15_000);
-
-  test("a completed run on an active binding resumes on the SAME backend session", async () => {
-    const fake = createFakeDaemon();
-    const execution = makeDeps(fake);
-
-    const first = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: "one" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-resume-1",
-    });
-    const runId1 = first.run!.runId;
-    await execution.dispatch(runId1);
-    await waitForTerminal(runId1);
-
-    // A second run on the same branch: binding is active + synced -> resume.
-    const second = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: "two" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 2,
-      idempotencyKey: "ikey-resume-2",
-    });
-    const runId2 = second.run!.runId;
-    await execution.dispatch(runId2);
-    await waitForTerminal(runId2);
-
-    expect(fake.resumeCalls).toHaveLength(1);
-    expect(fake.startCalls).toHaveLength(1); // only the FIRST run started
-    expect(fake.resumeCalls[0]!.runId).toBe(runId2);
-  }, 15_000);
-
-  test("steer as the LAST input still settles the run's terminal outcome", async () => {
-    const fake = createFakeDaemon();
-    const execution = makeDeps(fake);
-
-    // First input acquires the run; the steer queues behind it.
-    const first = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: "original" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-steer-1",
-    });
-    const runId = first.run!.runId;
-    const steer = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "steer",
-      message: { role: "user", text: "steer now" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-steer-2",
-    });
-    expect(steer.queued).toBe(true);
-
-    await execution.dispatch(runId);
-    await waitForTerminal(runId);
-
-    // The steer was injected on the live segment...
-    expect(fake.sendCalls.some((c) => c.mode === "steer")).toBe(true);
-    // ...AND the run still committed its terminal outcome (P0: a null-outcome
-    // steer must not leave the branch locked `running` forever).
-    const run = await runPort.getRun(runId);
-    expect(run?.status).toBe("completed");
-    const msgs = convPort.getLedgerEntries(conversationId).filter((e) => e.kind === "message");
-    expect(msgs.some((m) => JSON.stringify(m.content).includes('"role":"assistant"'))).toBe(true);
-  }, 15_000);
-
-  test("a resumed run registers the live handle: stop reaches the daemon session", async () => {
-    const fake = createFakeDaemon();
-    const execution = makeDeps(fake);
-
-    const first = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: "one" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-resume-stop-1",
-    });
     await execution.dispatch(first.run!.runId);
     await waitForTerminal(first.run!.runId);
 
-    // Second run resumes the same backend session; a steer mid-loop must be
-    // deliverable and stop() must reach the daemon (not just mark aborted).
-    const second = await backend.enqueueAndAcquire({
+    // Both queued inputs became FRESH runs, executed in FIFO order. The
+    // chain promotes one run per settle - wait for the full chain.
+    for (let i = 0; i < 200 && fake.executeCalls.length < 3; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    const inputs = await runPort.listInputs(first.run!.branchId);
+    const queued = inputs.filter((i) => i.runId && i.runId !== first.run!.runId);
+    expect(queued).toHaveLength(2);
+    const [secondRunId, thirdRunId] = [queued[0]!.runId!, queued[1]!.runId!];
+    const second = await waitForTerminal(secondRunId);
+    expect(second.status).toBe("completed");
+    const thirdRun = await waitForTerminal(thirdRunId);
+    expect(thirdRun.status).toBe("completed");
+    expect(fake.executeCalls.map((c) => c.runId)).toEqual([
+      first.run!.runId,
+      secondRunId,
+      thirdRunId,
+    ]);
+  }, 20_000);
+
+  test("a Run never calls Backend execute twice (acceptance failure keeps input delivering; retry re-executes once)", async () => {
+    const fake = createFakeDaemon({ failFirstExecute: true });
+    const execution = makeExecution(fake);
+
+    const acquired = await enqueue("normal", "retry-1", "hello");
+    const runId = acquired.run!.runId;
+
+    // First dispatch: the daemon rejects acceptance - the input stays
+    // delivering, the run stays running. The acceptance error is surfaced.
+    await expect(execution.dispatch(runId)).rejects.toThrow(/simulated execute failure/);
+    const run = await runPort.getRun(runId);
+    expect(run?.status).toBe("running");
+    const inputs = await runPort.listInputs(run!.branchId);
+    expect(inputs[0]!.status).toBe("delivering");
+
+    // A fresh execution service (process restart) recovers the same input
+    // with the same runId: the daemon dedupes by runId + payload.
+    const execution2 = makeExecution(fake);
+    await execution2.recover();
+    const settled = await waitForTerminal(runId);
+    expect(settled.status).toBe("completed");
+    expect(fake.executeCalls.map((c) => c.runId)).toEqual([runId, runId]);
+    // Same runId delivered twice to the daemon (retry), but the run only
+    // ever produced ONE ledger message.
+    const ledger = convPort.getLedgerEntries(conversationId).filter((e) => e.kind === "message");
+    expect(ledger).toHaveLength(1);
+  }, 15_000);
+
+  test("recovery uses the workspace snapshot persisted on the Run", async () => {
+    const fake = createFakeDaemon({ failFirstExecute: true });
+    const execution = makeExecution(fake);
+
+    const pinnedWorkspace = `${dataDir}/pinned-ws`;
+    const acquired = await backend.enqueueAndAcquire({
       conversationId,
       agentMemberId,
       backendKind: "coding_agent",
       mode: "normal",
-      message: { role: "user", text: "two" },
+      message: { role: "user", text: "hello" },
       defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
       configRevision: 1,
-      idempotencyKey: "ikey-resume-stop-2",
+      idempotencyKey: "ws-1",
+      workspace: { root: pinnedWorkspace, access: "read_write" },
     });
-    const runId2 = second.run!.runId;
-    const steer2 = await backend.enqueueAndAcquire({
-      conversationId,
-      agentMemberId,
-      backendKind: "coding_agent",
-      mode: "steer",
-      message: { role: "user", text: "steer on resume" },
-      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
-      configRevision: 1,
-      idempotencyKey: "ikey-resume-stop-3",
-    });
-    expect(steer2.queued).toBe(true);
+    const runId = acquired.run!.runId;
+    await expect(execution.dispatch(runId)).rejects.toThrow(/simulated execute failure/);
+    expect(fake.executeCalls[0]!.workspaceRoot).toBe(pinnedWorkspace);
 
-    await execution.dispatch(runId2);
-    await waitForTerminal(runId2);
-    expect(fake.resumeCalls).toHaveLength(1);
-    // steer injected through the RESUME path (live handle registered)
-    expect(fake.sendCalls.some((c) => c.mode === "steer" && c.runId === runId2)).toBe(true);
-    const run2 = await runPort.getRun(runId2);
-    expect(run2?.status).toBe("completed");
+    // Restart: a NEW execution service recovers - it must NOT re-resolve the
+    // workspace from the conversation; it re-uses the persisted snapshot.
+    const execution2 = makeExecution(fake);
+    await execution2.recover();
+    await waitForTerminal(runId);
+    expect(fake.executeCalls[1]!.workspaceRoot).toBe(pinnedWorkspace);
+  }, 15_000);
+
+  test("steer is injected into the live run after persistence; accepted only after Backend acceptance", async () => {
+    const fake = createFakeDaemon({ outcomeDelayMs: 1500 });
+    const execution = makeExecution(fake);
+
+    const first = await enqueue("normal", "steer-1", "first");
+    // Fire dispatch WITHOUT awaiting: the steer must land while the run is
+    // live (dispatch resolves only after the run settles).
+    const dispatchP = execution.dispatch(first.run!.runId);
+    // Wait until the daemon accepted the run (input delivered).
+    for (let i = 0; i < 100; i++) {
+      const inputs = await runPort.listInputs(first.run!.branchId);
+      if (inputs[0]?.status === "delivered") break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    // The steer input persists FIRST, then injectSteer delivers it live.
+    const steer = await enqueue("steer", "steer-2", "steer me");
+    expect(steer.queued).toBe(true);
+    const steerInputId = steer.inputId;
+    const inputsAfter = await runPort.listInputs(first.run!.branchId);
+    const steerRow = inputsAfter.find((i) => i.inputId === steerInputId)!;
+    expect(steerRow.status).toBe("pending"); // not delivered yet
+
+    await execution.injectSteer(first.run!.branchId, {
+      inputId: steerInputId,
+      message: { role: "user", text: "steer me" },
+    });
+    expect(fake.steerCalls).toEqual([first.run!.runId]);
+    const after = await runPort.listInputs(first.run!.branchId);
+    expect(after.find((i) => i.inputId === steerInputId)!.status).toBe("delivered");
+
+    await dispatchP;
+    await waitForTerminal(first.run!.runId);
+  }, 15_000);
+
+  test("steer is cancelled (never delivered) when Backend acceptance fails", async () => {
+    const fake = createFakeDaemon({
+      outcomeDelayMs: 1500,
+      steerError: { code: "conflict", message: "steer requires a live run" },
+    });
+    const execution = makeExecution(fake);
+
+    const first = await enqueue("normal", "steer-3", "first");
+    const dispatchP = execution.dispatch(first.run!.runId);
+    for (let i = 0; i < 100; i++) {
+      const inputs = await runPort.listInputs(first.run!.branchId);
+      if (inputs[0]?.status === "delivered") break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    const steer = await enqueue("steer", "steer-4", "steer me");
+    const steerInputId = steer.inputId;
+    await expect(
+      execution.injectSteer(first.run!.branchId, {
+        inputId: steerInputId,
+        message: { role: "user", text: "steer me" },
+      }),
+    ).rejects.toThrow(/live run/);
+    const after = await runPort.listInputs(first.run!.branchId);
+    expect(after.find((i) => i.inputId === steerInputId)!.status).toBe("cancelled");
+    await dispatchP;
+    await waitForTerminal(first.run!.runId);
+  }, 15_000);
+
+  test("steer with no active run is cancelled at enqueue and never creates a Run", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeExecution(fake);
+
+    const steer = await enqueue("steer", "steer-5", "steer me");
+    expect(steer.acquired).toBe(false);
+    expect(steer.cancelled).toBe(true);
+    // No run was created on the branch at all.
+    expect(await runPort.getActiveRun(branchId)).toBeNull();
+    const inputs = await runPort.listInputs(branchId);
+    const steerRow = inputs.find((i) => i.inputId === steer.inputId);
+    expect(steerRow?.status).toBe("cancelled");
+    expect(fake.executeCalls).toHaveLength(0);
+    void execution;
+  }, 15_000);
+
+  test("retryTerminalCommit replays the STORED outcome without re-executing the Backend", async () => {
+    // Fault-inject the commit once so the run lands in commit_failed.
+    let failCommit = true;
+    const fake = createFakeDaemon();
+    const ledgerResolver = {
+      async resolveMessage(cid: string, seq: number) {
+        const entries = convPort.getLedgerEntries(cid);
+        const hit = entries.find((e) => e.seq === seq);
+        return hit ? (hit.content as never) : null;
+      },
+    };
+    const failingRunPort = sqliteAgentRunAdapter(db, {
+      contextPort,
+      ledgerResolver,
+      idGen: { ulid: () => `f-${Math.random().toString(36).slice(2, 10)}` },
+      commitTestHook: () => {
+        if (failCommit) throw new Error("simulated product commit failure");
+      },
+    });
+    const execution = makeExecution(fake, failingRunPort);
+
+    const acquired = await enqueue("normal", "commit-1", "hello");
+    const runId = acquired.run!.runId;
+    await execution.dispatch(runId);
+    const failed = await waitForTerminal(runId);
+    expect(failed.status).toBe("commit_failed");
+    expect(fake.executeCalls).toHaveLength(1);
+    // Branch stays occupied: a queued input must NOT be promoted.
+    const queued = await enqueue("normal", "commit-2", "second");
+    expect(queued.queued).toBe(true);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(fake.executeCalls).toHaveLength(1);
+
+    // Retry the terminal commit: no Backend call, one ledger message.
+    failCommit = false;
+    await execution.retryTerminalCommit(runId);
+    const run = await runPort.getRun(runId);
+    expect(run?.status).toBe("completed");
+    expect(fake.executeCalls).toHaveLength(1);
+    const ledger = convPort.getLedgerEntries(conversationId).filter((e) => e.kind === "message");
+    expect(ledger).toHaveLength(1);
+    const revision = parseMessageRevision(ledger[0]!.content);
+    expect(revision.messageId).toBe(assistantMessageId(runId, 0));
+  }, 15_000);
+
+  test("stop() requests cancellation on the live segment", async () => {
+    const fake = createFakeDaemon({ outcomeDelayMs: 2000 });
+    const execution = makeExecution(fake);
+    const acquired = await enqueue("normal", "stop-1", "hello");
+    const runId = acquired.run!.runId;
+    const dispatchPromise = execution.dispatch(runId);
+    // Wait for the live handle to exist.
+    for (let i = 0; i < 50; i++) {
+      if (fake.executeCalls.length > 0) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    await execution.stop(runId);
+    await dispatchPromise;
+    expect(fake.stopCalls).toEqual([runId]);
+    await waitForTerminal(runId);
   }, 15_000);
 });

@@ -1,165 +1,57 @@
 import type {
   AgentBackend,
-  AgentBackendCapabilities,
   BackendEvent,
   BackendInputMessage,
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
-  BackendSessionRef,
-  BackendSessionRun,
-  BackendStartInput,
-  PendingActionResponse,
 } from "@my-agent-team/agent-backend";
 import type { CodingAgentClient } from "./client.js";
 import { mapRunEvent, mapRunOutcome } from "./event-mapper.js";
 import { type RunEventEnvelope, TransportError } from "./transport.js";
 
-/** The adapter's session ref is the plain contract identity only -
- *  `{ backendSessionId, backendKind }`. Run identity is segment-internal and
- *  tracked in the adapter's live registry, never on the public ref. */
-export type CodingAgentSessionRef = BackendSessionRef<"coding_agent">;
-
-const CAPABILITIES: AgentBackendCapabilities = {
-  persistentSession: true,
-  nativeResume: true,
-  nativeSteer: true,
-  thinkingStream: false,
-  productTools: "mcp",
-  pendingActionResponse: false,
-};
-
 interface ActiveRun {
   readonly runId: string;
-  /** The ORIGINAL segment object for the run - steer returns this exact
-   *  object so callers observe one stream, one outcome, one stop state. */
   readonly segment: BackendRunSegment<"coding_agent">;
   stop(): Promise<void>;
 }
 
-export class CodingAgentBackend implements AgentBackend<"coding_agent", CodingAgentSessionRef> {
+/** The Coding Agent adapter: one `execute()` = one daemon Run = one loop =
+ *  one outcome. No session lifecycle, no resume; steer/stop target the
+ *  runId directly. */
+export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
   readonly kind = "coding_agent" as const;
-  readonly capabilities = CAPABILITIES;
   private readonly client: CodingAgentClient;
-  /** backendSessionId -> currently active run segment. Lets stop(session) -
-   *  which carries only the ref - target the active run without leaking runId
-   *  onto the public SessionRef. */
   private readonly activeRuns = new Map<string, ActiveRun>();
 
   constructor(client: CodingAgentClient) {
     this.client = client;
   }
 
-  async start(
-    input: BackendStartInput<"coding_agent">,
-  ): Promise<BackendSessionRun<"coding_agent", CodingAgentSessionRef>> {
-    const resp = await this.client.startSession({
-      // Idempotency source is the durable input id, never a clock or runId.
-      idempotencyKey: input.input.inputId,
-      history: input.history as never,
-      input: input.input as never,
-      run: input.run as never,
-      workspace: input.workspace,
-      metadata: input.metadata,
-    });
-    const ref: CodingAgentSessionRef = {
-      backendSessionId: resp.backendSessionId,
-      backendKind: "coding_agent",
-    };
-    return { session: ref, segment: buildSegment(this.client, this.activeRuns, ref, resp.runId) };
-  }
-
-  async send(
-    session: CodingAgentSessionRef,
+  async execute(
     input: BackendRunInput<"coding_agent">,
   ): Promise<BackendRunSegment<"coding_agent">> {
-    // Steer routes through send(mode: "steer") - no separate method, no new
-    // run segment (the active run's segment keeps streaming). The runId
-    // travels with the input (the Product Backend always sends the CURRENT
-    // run's id), so no live-handle lookup is needed: the per-segment
-    // activeRuns entry may already be gone once the first outcome settled.
-    if (input.mode === "steer") {
-      const active = this.activeRuns.get(session.backendSessionId);
-      // The daemon validates the steer runId against its ACTIVE run. Prefer
-      // the tracked active runId when available; the per-segment entry can
-      // be gone once the first outcome settled, in which case the caller's
-      // runId IS the active one (the Product Backend always steers the run
-      // it is dispatching).
-      const targetRunId = active?.runId ?? input.run.runId;
-      await this.client.sendRun(session.backendSessionId, {
-        idempotencyKey: input.input.inputId,
-        commandId: input.input.inputId,
-        history: input.history as never,
-        input: input.input as never,
-        run: { ...input.run, runId: targetRunId } as never,
-        mode: "steer",
-        metadata: input.metadata,
-      });
-      // Steer is an in-flight injection - it has no terminal outcome of its
-      // own. Surface the live segment when one is still tracked, else a
-      // settled no-op so callers never treat steer as a completion.
-      if (active) return active.segment;
-      return {
-        events: (async function* () {})(),
-        outcome: Promise.resolve({
-          status: "failed",
-          error: "steer requires an active run",
-        } as BackendRunOutcome),
-        stop: async () => {},
-      };
-    }
-    await this.client.sendRun(session.backendSessionId, {
-      idempotencyKey: input.input.inputId,
-      commandId: input.input.inputId,
-      history: input.history as never,
-      input: input.input as never,
-      run: input.run as never,
-      mode: input.mode,
-      metadata: input.metadata,
-    });
-    return buildSegment(this.client, this.activeRuns, session, input.run.runId);
+    const resp = await this.client.execute(input as never);
+    return buildSegment(this.client, this.activeRuns, resp.runId);
   }
 
-  async resume(
-    backendSessionId: string,
-    input: BackendStartInput<"coding_agent">,
-  ): Promise<BackendSessionRun<"coding_agent", CodingAgentSessionRef>> {
-    const resp = await this.client.resumeSession(backendSessionId, {
-      idempotencyKey: input.input.inputId,
-      history: input.history as never,
-      input: input.input as never,
-      run: input.run as never,
-      workspace: input.workspace,
-      metadata: input.metadata,
-    });
-    const ref: CodingAgentSessionRef = { backendSessionId, backendKind: "coding_agent" };
-    return { session: ref, segment: buildSegment(this.client, this.activeRuns, ref, resp.runId) };
+  async steer(runId: string, input: BackendInputMessage): Promise<void> {
+    // Steer is an in-flight injection into the LIVE daemon run: the daemon
+    // rejects it when the run is not live, so no local activeRuns lookup is
+    // needed - the runId IS the target.
+    await this.client.steer(runId, input as never);
   }
 
-  async respond(
-    _session: CodingAgentSessionRef,
-    _action: PendingActionResponse,
-  ): Promise<BackendRunSegment<"coding_agent">> {
-    // pendingActionResponse=false: respond is unsupported, no HTTP call.
-    throw new Error("coding_agent backend does not support pending action responses");
-  }
-
-  async stop(session: CodingAgentSessionRef): Promise<void> {
-    const active = this.activeRuns.get(session.backendSessionId);
+  async stop(runId: string): Promise<void> {
+    const active = this.activeRuns.get(runId);
     if (active) await active.stop();
-    else await this.client.stopSession(session.backendSessionId);
-  }
-
-  async close(session: CodingAgentSessionRef): Promise<void> {
-    await this.client.closeSession(session.backendSessionId);
-    this.activeRuns.delete(session.backendSessionId);
+    else await this.client.stop(runId);
   }
 }
 
 function buildSegment(
   client: CodingAgentClient,
   activeRuns: Map<string, ActiveRun>,
-  ref: CodingAgentSessionRef,
   runId: string,
 ): BackendRunSegment<"coding_agent"> {
   let lastEventId: number | undefined;
@@ -169,7 +61,7 @@ function buildSegment(
   const doStop = async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
-    await client.stopSession(ref.backendSessionId, runId);
+    await client.stop(runId);
   };
 
   async function* eventStream(): AsyncIterable<BackendEvent<"coding_agent">> {
@@ -187,6 +79,7 @@ function buildSegment(
       } catch (err) {
         const code = (err as { code?: string })?.code;
         if (code === "replay_window_exceeded") throw err;
+        if (code === "not_found") return; // run closed: stream is over
         await new Promise((r) => setTimeout(r, 200));
       }
     }
@@ -198,7 +91,7 @@ function buildSegment(
         const outcome = await client.getOutcome(runId);
         if (outcome) return mapRunOutcome(outcome);
       } catch (err) {
-        // 404 = the session/run was closed while we were polling. The run is
+        // 404 = the run is unknown (daemon restart or closed). The run is
         // gone: settle as failed instead of polling a phantom forever (and
         // never leak an unhandled rejection to concurrent consumers).
         if (err instanceof TransportError && err.code === "not_found") {
@@ -210,8 +103,8 @@ function buildSegment(
     }
   })().finally(() => {
     settled = true;
-    if (activeRuns.get(ref.backendSessionId) === active) {
-      activeRuns.delete(ref.backendSessionId);
+    if (activeRuns.get(runId) === active) {
+      activeRuns.delete(runId);
     }
   });
 
@@ -221,7 +114,7 @@ function buildSegment(
     stop: doStop,
   };
   const active: ActiveRun = { runId, segment, stop: doStop };
-  activeRuns.set(ref.backendSessionId, active);
+  activeRuns.set(runId, active);
   return segment;
 }
 

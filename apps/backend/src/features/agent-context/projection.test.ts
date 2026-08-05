@@ -128,19 +128,6 @@ describe("Agent Context projection", () => {
     expect(count.c).toBe(2);
   });
 
-  test("invalid throughEntryId throws", async () => {
-    const { conversationId, agentMemberId } = freshFixture("3");
-    const tree = await port.getOrCreateTree(conversationId, agentMemberId);
-    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
-
-    expect(
-      projectAgentContext(
-        { port, ledgerResolver },
-        { branchId: branch.branchId, throughEntryId: "nonexistent" },
-      ),
-    ).rejects.toThrow();
-  });
-
   test("private messages are projected with stable productEntryId", async () => {
     const { conversationId, agentMemberId } = freshFixture("4");
     const tree = await port.getOrCreateTree(conversationId, agentMemberId);

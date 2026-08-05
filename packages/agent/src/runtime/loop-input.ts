@@ -22,7 +22,6 @@ export interface CodingLoopInput {
     readonly conversationId: string;
     readonly agentMemberId: string;
     readonly branchId: string;
-    readonly productRevision: number;
   };
 }
 

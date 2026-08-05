@@ -157,11 +157,10 @@ export function createCronScheduler(deps: {
       convPort: deps.convPort,
       agentRunService: deps.agentRunService,
       agentRunExecution: deps.agentRunExecution,
-      resolveModel: async (modelName: string): Promise<BackendModelRef> => ({
+      // LOOP.md stores the full canonical model ID; pass it through.
+      resolveModel: async (modelId: string): Promise<BackendModelRef> => ({
         backendKind: "coding_agent",
-        // LOOP.md stores bare model names; the daemon catalog is
-        // `<provider>/<model>` (anthropic is the only provider today).
-        modelId: `anthropic/${modelName}`,
+        modelId,
       }),
     };
     let attempt = 0;

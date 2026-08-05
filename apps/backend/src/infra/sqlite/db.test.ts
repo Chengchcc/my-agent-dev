@@ -170,13 +170,12 @@ const PHASE1_TABLES = [
   "agent_context_tree",
   "agent_context_entry",
   "agent_context_branch",
-  "backend_session_binding",
   "agent_run",
   "branch_input_queue",
   "pending_action",
 ] as const;
 
-test("Phase 1: fresh migration creates seven tables and active-branch index, drops session_id", () => {
+test("Phase 1: fresh migration creates six tables and active-branch index, drops session_id and the session binding", () => {
   const tmpPath = `/tmp/test-backend-db-p1-fresh-${Math.random().toString(36).slice(2, 8)}.db`;
   const db = openDb(tmpPath);
 
@@ -193,6 +192,9 @@ test("Phase 1: fresh migration creates seven tables and active-branch index, dro
   expect(names).not.toContain("checkpoint_messages");
   expect(names).not.toContain("checkpoint_interrupts");
   expect(names).not.toContain("checkpoint_events");
+
+  // The Backend Session Binding table is gone (no cross-Run sessions).
+  expect(names).not.toContain("backend_session_binding");
 
   // member.session_id must be gone
   const memCols = db.query("PRAGMA table_info('member')").all() as { name: string }[];

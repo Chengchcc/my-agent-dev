@@ -1,27 +1,26 @@
-export { CodingAgentBackend, type CodingAgentSessionRef } from "./backend.js";
+export { CodingAgentBackend } from "./backend.js";
 export { CodingAgentClient, type CodingAgentClientOptions } from "./client.js";
 export { mapRunEvent, mapRunOutcome } from "./event-mapper.js";
 export { CodingAgentModelCatalog } from "./model-catalog.js";
 export type {
-  CompactSessionRequest,
+  CreateRunRequest,
+  CreateRunResponse,
   ModelCatalogResponse,
-  ResumeSessionRequest,
   RunEventEnvelope,
   RunOutcomeResponse,
-  SendRunRequest,
-  StartSessionRequest,
-  StopSessionRequest,
+  SteerRunRequest,
+  StopRunRequest,
 } from "./transport.js";
 export {
-  closeSessionRequestSchema,
-  compactSessionRequestSchema,
+  createRunRequestSchema,
+  createRunResponseSchema,
   modelCatalogResponseSchema,
-  resumeSessionRequestSchema,
   runEventEnvelopeSchema,
   runOutcomeResponseSchema,
-  sendRunRequestSchema,
-  startSessionRequestSchema,
-  stopSessionRequestSchema,
+  steerRunRequestSchema,
+  steerRunResponseSchema,
+  stopRunRequestSchema,
+  stopRunResponseSchema,
   TransportError,
   transportErrorSchema,
 } from "./transport.js";

@@ -25,8 +25,13 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const name = req.params.name;
   const args = (req.params.arguments ?? {}) as Record<string, unknown>;
   const params = req.params as { _meta?: unknown };
-  if (args.echo === "slow") {
-    await new Promise((r) => setTimeout(r, 30_000));
+  if (typeof args.echo === "string" && args.echo.startsWith("slow")) {
+    // "slow" sleeps 30s (default); "slow:<ms>" overrides for in-process
+    // daemon tests so an aborted call doesn't linger a full 30s. Duration
+    // travels in-band because the SDK child env is a safe-list, not the
+    // parent's full env.
+    const ms = Number(args.echo.split(":")[1] ?? 30_000);
+    await new Promise((r) => setTimeout(r, ms));
   }
   if (args.echo === "fail") {
     throw new Error("echo failed on purpose");

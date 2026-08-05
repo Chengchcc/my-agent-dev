@@ -40,7 +40,7 @@ export function loopReducer(state: LoopState, action: LoopAction, opts?: Reducer
           ...item,
           step: "verifying",
           result: null,
-          generatorSpanId: action.generatorSpanId ?? item.generatorSpanId,
+          generatorRunId: action.generatorRunId ?? item.generatorRunId,
         };
       }
       break;

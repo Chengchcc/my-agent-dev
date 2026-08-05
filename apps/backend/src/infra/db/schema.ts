@@ -56,9 +56,6 @@ export const member = sqliteTable(
     agentId: text(),
     userRef: text(),
     displayName: text(),
-    /** DESTRUCTIVE CLEAN CUTOVER (Phase 1): session binding removed.
-     *  Execution session state now lives in backend_session_binding. */
-    // sessionId: text(),
     joinedAt: integer({ mode: "number" }).notNull(),
   },
   (table) => [
@@ -468,23 +465,6 @@ export const agentContextBranch = sqliteTable(
   ],
 );
 
-// Backend Session Binding: opaque execution session metadata per branch.
-export const backendSessionBinding = sqliteTable(
-  "backend_session_binding",
-  {
-    branchId: text("branch_id")
-      .notNull()
-      .references(() => agentContextBranch.branchId, { onDelete: "cascade" }),
-    backendSessionId: text("backend_session_id"),
-    backendKind: text("backend_kind").notNull(),
-    syncedEntryId: text("synced_entry_id"),
-    syncedRevision: integer("synced_revision"),
-    state: text().notNull().default("active"), // active | stale | detached
-    updatedAt: integer("updated_at", { mode: "number" }).notNull(),
-  },
-  (table) => [primaryKey({ columns: [table.branchId] })],
-);
-
 // Agent Run: product execution identity.
 export const agentRun = sqliteTable(
   "agent_run",
@@ -500,6 +480,10 @@ export const agentRun = sqliteTable(
     idempotencyKey: text("idempotency_key").notNull(),
     terminalResult: text("terminal_result"), // JSON: serialized BackendRunOutcome, set on terminal
     configRevision: integer("config_revision").notNull(),
+    /** Run-level workspace snapshot: root + access. Null = resolve from the
+     *  agent member record at dispatch. */
+    workspaceRoot: text("workspace_root"),
+    workspaceAccess: text("workspace_access"),
     /** JSON: the run's Product Tool manifest (ProductToolDescriptor[]),
      *  written at first dispatch; Product Tools MCP validates against it. */
     productTools: text("product_tools"),
@@ -601,8 +585,6 @@ export const agentContextEntrySelectSchema = createSelectSchema(agentContextEntr
 export const agentContextBranchSelectSchema = createSelectSchema(agentContextBranch, {
   isDefault: (s) => s.transform((v: number) => v !== 0),
 });
-
-export const backendSessionBindingSelectSchema = createSelectSchema(backendSessionBinding);
 
 export const agentRunSelectSchema = createSelectSchema(agentRun, {
   modelRef: (s) => s.transform((v: string) => JSON.parse(v) as Record<string, unknown>),

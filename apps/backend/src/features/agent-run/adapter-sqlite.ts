@@ -1,7 +1,12 @@
 import type { Database } from "bun:sqlite";
-import type { BackendRunOutcome } from "@my-agent-team/agent-backend";
-import { serializeMessageRevision } from "@my-agent-team/message";
-import { and, eq, gt, inArray, not, sql } from "drizzle-orm";
+import type { BackendModelRef, BackendRunOutcome } from "@my-agent-team/agent-backend";
+import {
+  assistantMessageId,
+  type MessageRevision,
+  MessageRevisionSchema,
+  serializeMessageRevision,
+} from "@my-agent-team/message";
+import { and, eq, gt, inArray, isNull, not, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import * as schema from "../../infra/db/schema.js";
 import type {
@@ -40,6 +45,10 @@ function parseRun(row: typeof schema.agentRun.$inferSelect): AgentRun {
       ? (JSON.parse(row.terminalResult) as BackendRunOutcome)
       : null,
     configRevision: row.configRevision,
+    workspace:
+      row.workspaceRoot && row.workspaceAccess
+        ? { root: row.workspaceRoot, access: row.workspaceAccess as "read_only" | "read_write" }
+        : null,
     productTools: row.productTools
       ? (JSON.parse(row.productTools) as AgentRun["productTools"])
       : null,
@@ -177,6 +186,24 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           } satisfies AcquireAgentRunResult;
         }
 
+        // A steer input never creates a Run: steer belongs to the CURRENT
+        // active Run. With no active Run the steer cannot be delivered -
+        // cancel it explicitly instead of silently converting it into a
+        // normal input (the caller surfaces the explicit failure).
+        if (command.mode === "steer") {
+          d.update(schema.branchInputQueue)
+            .set({ status: "cancelled" })
+            .where(eq(schema.branchInputQueue.inputId, inputId))
+            .run();
+          return {
+            acquired: false,
+            queued: false,
+            replayed: false,
+            cancelled: true,
+            inputId,
+          } satisfies AcquireAgentRunResult;
+        }
+
         // 3. Validate command scope: branch must belong to the claimed
         //    conversation + agent member, and the default model must match
         //    the branch's backend kind.
@@ -290,13 +317,8 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           .where(eq(schema.agentContextBranch.branchId, command.branchId))
           .run();
 
-        // 8a. If context entries were appended, mark existing binding stale
-        if (selected.length > 0) {
-          d.update(schema.backendSessionBinding)
-            .set({ state: "stale", updatedAt: now })
-            .where(eq(schema.backendSessionBinding.branchId, command.branchId))
-            .run();
-        }
+        // 8a. (removed) - no Backend Session Binding exists anymore
+
         // 9. Resolve effective model: walk from leaf to root, find last model_change.
         //    Synchronous DB query inside the transaction (no async port call).
         let effectiveModel = command.defaultModel;
@@ -328,6 +350,8 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             status: "running",
             idempotencyKey: command.runIdempotencyKey,
             configRevision: command.configRevision,
+            workspaceRoot: command.workspace?.root ?? null,
+            workspaceAccess: command.workspace?.access ?? null,
             createdAt: now,
           })
           .run();
@@ -351,64 +375,146 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
       return txn();
     },
 
-    async claimNextInput(branchId: string): Promise<ClaimedBranchInput | null> {
-      // First, check for an existing delivering row (crash recovery)
-      const delivering = d
+    /** Claim the input bound to THIS run (run_id = ?). One Run / one
+     *  input: pending inputs are never bound to a run by a claim - only
+     *  acquire (enqueue/acquireNextRun) binds them. */
+    async claimInputForRun(runId: string): Promise<ClaimedBranchInput | null> {
+      const row = d
         .select()
         .from(schema.branchInputQueue)
         .where(
           and(
-            eq(schema.branchInputQueue.branchId, branchId),
-            eq(schema.branchInputQueue.status, "delivering"),
+            eq(schema.branchInputQueue.runId, runId),
+            inArray(schema.branchInputQueue.status, ["pending", "delivering"]),
           ),
         )
         .orderBy(schema.branchInputQueue.seq)
         .get();
+      if (!row) return null;
+      return { input: parseInput(row), runId: row.runId! };
+    },
 
-      if (delivering) {
-        const input = parseInput(delivering);
-        if (input.runId) {
-          return { input, runId: input.runId };
-        }
-      }
-
-      // Get the active run for this branch
-      const run = d
-        .select()
-        .from(schema.agentRun)
+    async cancelInput(inputId: string): Promise<void> {
+      d.update(schema.branchInputQueue)
+        .set({ status: "cancelled" })
         .where(
           and(
-            eq(schema.agentRun.branchId, branchId),
-            inArray(schema.agentRun.status, [...ACTIVE_RUN_STATUSES]),
+            eq(schema.branchInputQueue.inputId, inputId),
+            inArray(schema.branchInputQueue.status, ["pending", "delivering"]),
           ),
         )
-        .get();
+        .run();
+    },
 
-      if (!run) return null;
+    /** One Run / one input: promote the oldest still-unowned queued input
+     *  (run_id IS NULL) into a FRESH Run when the branch is idle. Never
+     *  reuses the settled run's id - the daemon rejects a second segment
+     *  for an already-settled runId. */
+    async acquireNextRun(
+      branchId: string,
+      from: {
+        modelRef: BackendModelRef;
+        configRevision: number;
+        workspace: { root: string; access: "read_only" | "read_write" } | null;
+      },
+    ): Promise<AgentRun | null> {
+      const txn = db.transaction(() => {
+        const now = Date.now();
+        // Branch must be idle: an active run (or commit_failed) still owns it.
+        const active = d
+          .select()
+          .from(schema.agentRun)
+          .where(
+            and(
+              eq(schema.agentRun.branchId, branchId),
+              inArray(schema.agentRun.status, [...ACTIVE_RUN_STATUSES]),
+            ),
+          )
+          .get();
+        if (active) return null;
 
-      // Atomic CAS: claim the oldest pending row in a single statement.
-      // Updates only if status='pending', so concurrent callers cannot
-      // claim the same input.
+        const branch = d
+          .select()
+          .from(schema.agentContextBranch)
+          .where(eq(schema.agentContextBranch.branchId, branchId))
+          .get();
+        if (!branch) return null;
+
+        // Oldest queued NON-STEER input not yet owned by any run.
+        const input = d
+          .select()
+          .from(schema.branchInputQueue)
+          .where(
+            and(
+              eq(schema.branchInputQueue.branchId, branchId),
+              eq(schema.branchInputQueue.status, "pending"),
+              isNull(schema.branchInputQueue.runId),
+              not(eq(schema.branchInputQueue.mode, "steer")),
+            ),
+          )
+          .orderBy(schema.branchInputQueue.seq)
+          .get();
+        if (!input) return null;
+
+        // One revision bump per new run (matching acquire); CAS guards
+        // concurrent chainers.
+        const cas = d
+          .update(schema.agentContextBranch)
+          .set({ revision: branch.revision + 1 })
+          .where(
+            and(
+              eq(schema.agentContextBranch.branchId, branchId),
+              eq(schema.agentContextBranch.revision, branch.revision),
+            ),
+          )
+          .returning()
+          .get();
+        if (!cas) return null;
+
+        const tree = d
+          .select()
+          .from(schema.agentContextTree)
+          .where(eq(schema.agentContextTree.treeId, branch.treeId))
+          .get();
+        const runId = deps.idGen.ulid();
+        d.insert(schema.agentRun)
+          .values({
+            runId,
+            branchId,
+            conversationId: tree?.conversationId ?? "",
+            agentMemberId: tree?.agentMemberId ?? "",
+            modelRef: JSON.stringify(from.modelRef),
+            status: "running",
+            idempotencyKey: `${input.inputIdempotencyKey}:run`,
+            configRevision: from.configRevision,
+            workspaceRoot: from.workspace?.root ?? null,
+            workspaceAccess: from.workspace?.access ?? null,
+            createdAt: now,
+          })
+          .run();
+        d.update(schema.branchInputQueue)
+          .set({ status: "delivering", runId })
+          .where(eq(schema.branchInputQueue.inputId, input.inputId))
+          .run();
+        const run = d.select().from(schema.agentRun).where(eq(schema.agentRun.runId, runId)).get()!;
+        return parseRun(run);
+      });
+      return txn();
+    },
+
+    async deliverSteerInput(inputId: string, runId: string): Promise<BranchInput | null> {
       const claimed = d
         .update(schema.branchInputQueue)
-        .set({ status: "delivering", runId: run.runId })
+        .set({ status: "delivering", runId })
         .where(
           and(
-            eq(
-              schema.branchInputQueue.inputId,
-              sql`(SELECT input_id FROM branch_input_queue
-                   WHERE branch_id=${branchId} AND status='pending'
-                   ORDER BY seq LIMIT 1)`,
-            ),
+            eq(schema.branchInputQueue.inputId, inputId),
             eq(schema.branchInputQueue.status, "pending"),
           ),
         )
         .returning()
         .get();
-
-      if (!claimed) return null;
-
-      return { input: parseInput(claimed), runId: run.runId };
+      return claimed ? parseInput(claimed) : null;
     },
 
     async markInputAccepted(inputId: string): Promise<BranchInput> {
@@ -564,10 +670,6 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
       })();
     },
     async finalizeRun(runId, outcome) {
-      if (outcome.status === "suspended") {
-        throw new Error("suspended is not a terminal Agent Run status; use createPendingAction");
-      }
-
       const row = d.select().from(schema.agentRun).where(eq(schema.agentRun.runId, runId)).get();
 
       if (!row) throw new Error(`Agent Run not found: ${runId}`);
@@ -613,7 +715,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
       return row ? parseRun(row) : null;
     },
 
-    async commitCompletedRun({ runId, outcome, output, backendSessionId }) {
+    async commitCompletedRun({ runId, outcome, output }) {
       if (outcome.status !== "completed") {
         throw new Error(`commitCompletedRun requires a completed outcome, got ${outcome.status}`);
       }
@@ -651,9 +753,6 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           throw new AgentRunConflictError(runId);
         }
 
-        let newRevision = branch.revision;
-        let leafEntryId = branch.leafEntryId;
-
         // Insert the final assistant Message into Conversation History and
         // append its ledger_message ref to Agent Context. A completed run
         // without an output Message commits nothing to the ledger.
@@ -668,17 +767,20 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           // surface parser (Web reducer, Lark watcher) enforces. The raw
           // Backend output is a plain Message; stamp the terminal fields
           // here - the single place a final assistant Message is written.
-          const terminalRevision = {
-            messageId: `msg:${run.conversationId}:${run.agentMemberId}:${runId}`,
+          // The messageId derives from the runId (the Product Run identity),
+          // NOT from the Coding Agent output - it has no obligation to
+          // produce Product Message IDs.
+          const revision = MessageRevisionSchema.parse({
+            messageId: assistantMessageId(runId, 0),
             role: output.role,
-            state: "done" as const,
-            text: output.text,
+            state: "done",
+            text: output.text ?? undefined,
             blocks: output.blocks,
             tools: output.tools,
             conversationId: run.conversationId,
-            visibility: "conversation" as const,
+            visibility: output.visibility ?? "conversation",
             updatedAt: now,
-          };
+          }) as MessageRevision;
           const inserted = d
             .insert(schema.conversationLedger)
             .values({
@@ -686,7 +788,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
               senderMemberId: run.agentMemberId,
               addressedTo: "[]",
               kind: "message",
-              content: serializeMessageRevision(terminalRevision),
+              content: serializeMessageRevision(revision),
               ts: now,
               agentRunId: runId,
             })
@@ -721,7 +823,9 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             )
             .get();
           if (existingRef) {
-            leafEntryId = existingRef.entryId;
+            // The ref already exists (commit replay after a crash between
+            // the ledger insert and the branch update): the leaf is already
+            // advanced - nothing to do.
           } else {
             const entryId = deps.idGen.ulid();
             d.insert(schema.agentContextEntry)
@@ -735,8 +839,6 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
                 createdAt: now,
               })
               .run();
-            newRevision = branch.revision + 1;
-            leafEntryId = entryId;
             // CAS the branch revision: a concurrent history_retain (late MCP
             // call, timeout recovery, cross-process retry) must not clobber
             // or be clobbered by this commit's leaf/revision update. On
@@ -745,9 +847,9 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             const cas = d
               .update(schema.agentContextBranch)
               .set({
-                leafEntryId,
+                leafEntryId: entryId,
                 ledgerCursor: seq,
-                revision: newRevision,
+                revision: branch.revision + 1,
               })
               .where(
                 and(
@@ -763,33 +865,8 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           }
         }
 
-        // Sync the Backend Session Binding to the new leaf.
-        d.insert(schema.backendSessionBinding)
-          .values({
-            branchId: run.branchId,
-            backendSessionId,
-            backendKind: branch.backendKind,
-            syncedEntryId: leafEntryId,
-            syncedRevision: newRevision,
-            state: "active",
-            updatedAt: now,
-          })
-          .onConflictDoUpdate({
-            target: schema.backendSessionBinding.branchId,
-            set: {
-              backendSessionId,
-              backendKind: branch.backendKind,
-              syncedEntryId: leafEntryId,
-              syncedRevision: newRevision,
-              state: "active",
-              updatedAt: now,
-            },
-          })
-          .run();
-
         // Test-only fault injection point: a throw here must roll back the
-        // ledger insert, the context ref, the branch update, and the binding
-        // sync together.
+        // ledger insert, the context ref, and the branch update together.
         deps.commitTestHook?.();
 
         // Mark the Run completed (CAS on the active statuses so a racing
@@ -843,10 +920,6 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           .returning()
           .get();
         if (!updated) throw new AgentRunConflictError(runId);
-        d.update(schema.backendSessionBinding)
-          .set({ state: "stale", updatedAt: now })
-          .where(eq(schema.backendSessionBinding.branchId, row.branchId))
-          .run();
         return parseRun(updated);
       })();
     },

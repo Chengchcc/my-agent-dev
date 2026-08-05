@@ -97,7 +97,7 @@ export function createLoopStateStore(db: Database): LoopStateStore {
       attempt: row.attempt,
       priority: row.priority,
       result,
-      generatorSpanId: row.generator_run_id ?? undefined,
+      generatorRunId: row.generator_run_id ?? undefined,
       evaluatorRunId: row.evaluator_run_id ?? undefined,
     };
   }
@@ -145,7 +145,7 @@ export function createLoopStateStore(db: Database): LoopStateStore {
             item.attempt,
             item.priority,
             item.result ? JSON.stringify(item.result) : null,
-            item.generatorSpanId ?? null,
+            item.generatorRunId ?? null,
             item.evaluatorRunId ?? null,
             now,
           );
@@ -161,7 +161,7 @@ export function createLoopStateStore(db: Database): LoopStateStore {
             item.attempt,
             item.priority,
             item.result ? JSON.stringify(item.result) : null,
-            item.generatorSpanId ?? null,
+            item.generatorRunId ?? null,
             item.evaluatorRunId ?? null,
             now,
           );

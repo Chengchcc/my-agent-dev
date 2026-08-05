@@ -1,6 +1,7 @@
 import type { BackendModelRef } from "@my-agent-team/agent-backend";
+import type { Message } from "@my-agent-team/message";
 import { ulid } from "../../infra/ids.js";
-import type { AgentService } from "../agent/index.js";
+import { type AgentService, agentModelRef } from "../agent/index.js";
 import type { RelationshipService } from "../agent/relationship-service.js";
 import type { AgentContextService } from "../agent-context/service.js";
 import type { AgentRunService } from "../agent-run/service.js";
@@ -27,10 +28,20 @@ export function createConversationFeature(input: {
   /** Break the execution<->cascade cycle: features.ts wires this to
    *  AgentRunExecutionService.dispatch once that service exists. */
   dispatchRun: (runId: string) => Promise<void>;
+  /** Steer injection into the live run (features.ts wires it the same way). */
+  injectSteer: (branchId: string, input: { inputId: string; message: Message }) => Promise<void>;
   contextService: AgentContextService;
 }): ConversationFeature {
-  const { convPort, agentSvc, settingsSvc, relSvc, agentRunService, dispatchRun, contextService } =
-    input;
+  const {
+    convPort,
+    agentSvc,
+    settingsSvc,
+    relSvc,
+    agentRunService,
+    dispatchRun,
+    injectSteer,
+    contextService,
+  } = input;
 
   const goalStore = createGoalStateStore(settingsSvc);
 
@@ -38,13 +49,12 @@ export function createConversationFeature(input: {
     port: convPort,
     agentRunService,
     dispatchRun,
+    injectSteer,
     contextService,
     maxConsecutiveAgentHops: () => settingsSvc.get<number>("conversation.maxHops") ?? 8,
     idGen: ulid,
     resolveDefaultModel: async (agentId): Promise<BackendModelRef> => {
-      const agent = await agentSvc.getById(agentId);
-      // Coding Agent catalog keys models as `<provider>/<model>`.
-      return { backendKind: "coding_agent", modelId: `${agent.modelProvider}/${agent.modelName}` };
+      return agentModelRef(await agentSvc.getById(agentId));
     },
     getRelationshipEdges: (agentIds) => relSvc.getEdges(agentIds),
   });

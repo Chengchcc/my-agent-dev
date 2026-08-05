@@ -41,6 +41,9 @@ export interface ConversationServiceDeps {
   /** Phase 4 execution entry point (dispatch acquired runs). Injected as a
    *  function so composition can break the execution<->cascade cycle. */
   dispatchRun: (runId: string) => Promise<void>;
+  /** Best-effort steer injection into the branch's LIVE run (used when the
+   *  enqueue queued behind an active run with mode=steer). */
+  injectSteer: (branchId: string, input: { inputId: string; message: Message }) => Promise<void>;
   /** Product Context branch resolution (mode decisions; no scope service -
    *  scope IS the Conversation/Member/Branch trio). */
   contextService: AgentContextService;
@@ -134,6 +137,7 @@ class ConversationServiceImpl implements ConversationService {
   readonly port: ConversationPort;
   #agentRuns: AgentRunService;
   #dispatchRun: (runId: string) => Promise<void>;
+  #injectSteer: ConversationServiceDeps["injectSteer"];
   #contextService: AgentContextService;
   #resolveDefaultModel: (agentId: string) => Promise<BackendModelRef>;
   #maxHops: () => number;
@@ -150,6 +154,7 @@ class ConversationServiceImpl implements ConversationService {
     this.port = deps.port;
     this.#agentRuns = deps.agentRunService;
     this.#dispatchRun = deps.dispatchRun;
+    this.#injectSteer = deps.injectSteer;
     this.#contextService = deps.contextService;
     this.#resolveDefaultModel = deps.resolveDefaultModel;
     this.#maxHops = deps.maxConsecutiveAgentHops;
@@ -249,7 +254,7 @@ class ConversationServiceImpl implements ConversationService {
     const active = await this.#agentRuns.getActiveRun(branch.branchId);
     const mode = input.mode ?? (active ? "steer" : "normal");
     const defaultModel = await this.#resolveDefaultModel(member.agentId);
-    const { acquired, queued, run } = await this.#agentRuns.enqueueAndAcquire({
+    const { acquired, queued, cancelled, run, inputId } = await this.#agentRuns.enqueueAndAcquire({
       conversationId: input.conversationId,
       agentMemberId: input.memberId,
       backendKind: BACKEND_KIND,
@@ -263,6 +268,24 @@ class ConversationServiceImpl implements ConversationService {
       void this.#dispatchRun(run.runId).catch((err) => {
         console.error(`[conversation] dispatch failed for ${run.runId}:`, err);
       });
+    } else if (queued && mode === "steer") {
+      // Steer belongs to the CURRENT active run: inject it into the live
+      // loop right away (one Run / one loop - it never starts a new
+      // segment). If the run has already settled, injection fails and the
+      // input is cancelled - a steer is never replayed as a normal input.
+      void this.#injectSteer(branch.branchId, {
+        inputId,
+        message: input.message,
+      }).catch((err) => {
+        console.error(`[conversation] steer injection failed for ${input.memberId}:`, err);
+      });
+    } else if (cancelled) {
+      // A steer with no active Run (race between the active check above and
+      // the enqueue): the input was cancelled at enqueue - surface it as an
+      // explicit error, never a silent drop.
+      throw new Error(
+        `steer rejected: no active run on branch ${branch.branchId} for ${input.memberId}`,
+      );
     }
     return { agentMemberId: input.memberId, runId: run?.runId ?? "", queued };
   }

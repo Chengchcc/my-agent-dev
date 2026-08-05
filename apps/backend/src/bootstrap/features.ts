@@ -8,21 +8,13 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Elysia } from "elysia";
 import type { FeatureSet } from "../app.js";
 
-function staticModelsRoutes() {
-  return new Elysia().get("/api/models", () => ({
-    providers: [
-      {
-        id: "coding_agent",
-        name: "Coding Agent",
-        models: [{ id: "claude-sonnet-4-20250514", name: "claude-sonnet-4-20250514" }],
-      },
-    ],
-  }));
+function createModelCatalog(client: CodingAgentClient) {
+  return new CodingAgentModelCatalog(client);
 }
 
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
-import { AgentBusyError, agentRoutes } from "../features/agent/index.js";
+import { AgentBusyError, agentModelRef, agentRoutes } from "../features/agent/index.js";
 import { createRelationshipService } from "../features/agent/relationship-service.js";
 import {
   createAgentContextService,
@@ -45,8 +37,6 @@ import {
 } from "../features/cron/index.js";
 import { CliSetupProvisioner, LarkSetupManager } from "../features/lark-bot/index.js";
 import { loopRoutes } from "../features/loop/http.js";
-import { resolveRepoPath } from "../features/loop/loop-step.js";
-import { resolveLoopPaths } from "../features/loop/resolve-paths.js";
 import { createMcpService, mcpRoutes, sqliteMcpServerAdapter } from "../features/mcp/index.js";
 import {
   createProductToolsMcpServer,
@@ -210,6 +200,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   });
 
   const dispatchRun: { fn: (runId: string) => Promise<void> } = { fn: async () => {} };
+  const injectSteer: {
+    fn: (branchId: string, input: { inputId: string; message: Message }) => Promise<void>;
+  } = { fn: async () => {} };
   const conv = createConversationFeature({
     convPort,
     agentSvc,
@@ -217,6 +210,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     relSvc,
     agentRunService,
     dispatchRun: (runId: string) => dispatchRun.fn(runId),
+    injectSteer: (branchId, input) => injectSteer.fn(branchId, input),
     contextService: contextSvc,
   });
 
@@ -258,36 +252,23 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       });
     })().catch((err) => console.error(`[bootstrap] mention cascade failed for ${runId}:`, err));
   };
+  let modelCatalog: ReturnType<typeof createModelCatalog>;
   if (config.codingAgentUrl && config.codingAgentServiceToken) {
     const client = new CodingAgentClient({
       baseUrl: config.codingAgentUrl,
       authToken: config.codingAgentServiceToken,
     });
+    modelCatalog = createModelCatalog(client);
     agentRunExecution = createAgentRunExecutionService({
       runPort: agentRunPort,
       contextPort,
       ledgerResolver,
       backend: new CodingAgentBackend(client),
-      modelCatalog: new CodingAgentModelCatalog(client),
+      modelCatalog,
       idGen: { ulid },
       resolveWorkspace: async ({ conversationId, agentMemberId }) => {
-        // Loop Generator/Evaluator scopes run in the loop's CLONED repo
-        // (${dataDir}/repos/<projectId>), not the loop-agent workspace.
-        // The scope's deterministic conversationId carries the loopId.
-        if (conversationId.startsWith("loop:")) {
-          const loopId = conversationId.slice("loop:".length).split(":")[0]!;
-          const job = cronSvc.port.getCronJob(loopId);
-          if (job?.loopConfigPath) {
-            const repo = await resolveRepoPath(
-              resolveLoopPaths(job, config.dataDir).loopConfigPath,
-              projectPort,
-              config.dataDir,
-            );
-            if (repo) return { root: repo, access: "read_write" };
-          }
-        }
-        // Workspace comes from the agent member's Agent record; the
-        // permission mode maps to the binding (auto -> read_write).
+        // Default workspace comes from the agent member's Agent record;
+        // Loop scopes pin their workspace as a Run fact at enqueue time.
         const members = conv.convPort.getMembers(conversationId);
         const member = members.find((m) => m.memberId === agentMemberId);
         const agent = member?.agentId ? await agentSvc.getById(member.agentId) : null;
@@ -309,7 +290,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       backend: new CodingAgentBackend(
         new CodingAgentClient({ baseUrl: "http://127.0.0.1:1", authToken: "unconfigured" }),
       ),
-      modelCatalog: new CodingAgentModelCatalog(
+      modelCatalog: createModelCatalog(
         new CodingAgentClient({ baseUrl: "http://127.0.0.1:1", authToken: "unconfigured" }),
       ),
       idGen: { ulid },
@@ -323,6 +304,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   }
 
   dispatchRun.fn = (runId: string) => agentRunExecution.dispatch(runId);
+  injectSteer.fn = (branchId: string, input: { inputId: string; message: Message }) =>
+    agentRunExecution.injectSteer(branchId, input);
 
   // ─── Identity store + Lark setup ────────────────────────────
 
@@ -400,10 +383,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     agentRunService,
     agentRunExecution,
     resolveDefaultModel: async (agentId: string) => {
-      const agent = await agentSvc.getById(agentId);
-      // The Coding Agent catalog keys models as `<provider>/<model>`; the
-      // agent record stores the bare model name.
-      return { backendKind: "coding_agent", modelId: `${agent.modelProvider}/${agent.modelName}` };
+      return agentModelRef(await agentSvc.getById(agentId));
     },
     store: loopStore,
     projectPort,
@@ -442,11 +422,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       convPort,
       agentRunService,
       agentRunExecution,
-      resolveModel: async (modelName: string) => ({
+      // LOOP.md stores the full canonical model ID; pass it through.
+      resolveModel: async (modelId: string) => ({
         backendKind: "coding_agent",
-        // LOOP.md stores bare model names; the daemon catalog is
-        // `<provider>/<model>` (anthropic is the only provider today).
-        modelId: `anthropic/${modelName}`,
+        modelId,
       }),
       settingsSvc,
     }),
@@ -454,7 +433,30 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     skillPacks: skillPackRoutes(skillPackSvc, config.dataDir),
     settings: settingsRoutes(settingsSvc),
     mcp: mcpRoutes(mcpSvc),
-    models: staticModelsRoutes(),
+    models: new Elysia().get("/api/models", async () => {
+      // The daemon catalog is the source of truth; group its canonical
+      // `<provider>/<model>` ids into the Web provider DTO shape.
+      const catalog = await modelCatalog.list();
+      const byProvider = new Map<
+        string,
+        Array<{ id: string; name: string; available?: boolean }>
+      >();
+      for (const m of catalog.models) {
+        const slash = m.id.indexOf("/");
+        const provider = slash > 0 ? m.id.slice(0, slash) : m.id;
+        const modelId = slash > 0 ? m.id.slice(slash + 1) : m.id;
+        const list = byProvider.get(provider) ?? [];
+        list.push({ id: modelId, name: m.displayName ?? modelId, available: m.available });
+        byProvider.set(provider, list);
+      }
+      return {
+        providers: [...byProvider.entries()].map(([provider, models]) => ({
+          id: provider,
+          name: provider,
+          models,
+        })),
+      };
+    }),
   };
 
   // ─── Lifecycle ──────────────────────────────────────────────

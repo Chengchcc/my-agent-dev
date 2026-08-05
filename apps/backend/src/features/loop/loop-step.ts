@@ -350,6 +350,9 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       defaultModel: await params.resolveModel(genModel),
       configRevision: 1,
       idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}`,
+      // Workspace is a Run execution fact: the Generator MUST run in the
+      // cloned repo, not the loop-agent's own workspace.
+      workspace: { root: cwd, access: "read_write" },
     });
     if (
       genAcquire.replayed &&
@@ -372,6 +375,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         defaultModel: await params.resolveModel(genModel),
         configRevision: 1,
         idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}:retry`,
+        workspace: { root: cwd, access: "read_write" },
       });
       if (retry.acquired && retry.run) {
         genAcquire = { ...retry, replayed: false };
@@ -403,7 +407,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       type: "GENERATOR_DONE",
       itemId: item.id,
       // the item's run identity is now an Agent Run id
-      generatorSpanId: generatorRunId,
+      generatorRunId: generatorRunId,
     });
 
     const changedFiles = filesChanged ? filesChanged.split("\n").filter(Boolean) : [];
@@ -446,6 +450,9 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       defaultModel: await params.resolveModel(evalModel),
       configRevision: 1,
       idempotencyKey: `loop-eval:${params.loopId}:${item.id}:${baseSha}`,
+      // The Evaluator writes VERDICT.md into the same clone; read_write is
+      // honest until the verdict moves out-of-band.
+      workspace: { root: workDir, access: "read_write" },
     });
     if (
       evalAcquire.replayed &&
@@ -462,6 +469,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         defaultModel: await params.resolveModel(evalModel),
         configRevision: 1,
         idempotencyKey: `loop-eval:${params.loopId}:${item.id}:${baseSha}:retry`,
+        workspace: { root: workDir, access: "read_write" },
       });
       if (retry.acquired && retry.run) {
         evalAcquire = { ...retry, replayed: false };

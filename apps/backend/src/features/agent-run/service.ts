@@ -2,6 +2,7 @@ import type {
   BackendModelRef,
   BackendRunOutcome,
   PendingActionResponse,
+  WorkspaceBinding,
 } from "@my-agent-team/agent-backend";
 import type { Message } from "@my-agent-team/message";
 import type { IdGenerator, LedgerMessageResolver } from "../agent-context/ports.js";
@@ -31,15 +32,19 @@ export interface AgentRunService {
     defaultModel: BackendModelRef;
     configRevision: number;
     idempotencyKey: string;
+    /** Optional run-level workspace snapshot (e.g. Loop's cloned repo). */
+    workspace?: WorkspaceBinding;
   }): Promise<{
     acquired: boolean;
     queued: boolean;
     replayed: boolean;
+    /** True when the input was cancelled at enqueue (steer with no active
+     *  Run). No run was created. */
+    cancelled?: boolean;
     run?: AgentRun;
     inputId: string;
   }>;
 
-  claimNextInput(branchId: string): Promise<{ input: BranchInput; runId: string } | null>;
   markInputAccepted(inputId: string): Promise<BranchInput>;
   createPendingAction(
     runId: string,
@@ -83,11 +88,8 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
         defaultModel: input.defaultModel,
         configRevision: input.configRevision,
         expectedRevision: branch.revision,
+        workspace: input.workspace,
       });
-    },
-
-    async claimNextInput(branchId) {
-      return port.claimNextInput(branchId);
     },
 
     async markInputAccepted(inputId) {

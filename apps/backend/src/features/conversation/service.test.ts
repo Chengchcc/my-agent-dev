@@ -72,9 +72,6 @@ function makeRunService(): AgentRunService {
         inputId: `in-${runId}`,
       };
     },
-    async claimNextInput() {
-      return null;
-    },
     async markInputAccepted(inputId) {
       return { inputId } as never;
     },
@@ -106,11 +103,15 @@ function makeRunService(): AgentRunService {
 }
 
 const runSvc = makeRunService();
+const injectSteerCalls: Array<{ branchId: string; inputId: string }> = [];
 const svc = createConversationService({
   port,
   agentRunService: runSvc,
   dispatchRun: async (runId) => {
     dispatchCalls.push(runId);
+  },
+  injectSteer: async (branchId, input) => {
+    injectSteerCalls.push({ branchId, inputId: input.inputId });
   },
   contextService: contextSvc,
   resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "fake/echo" }),
@@ -232,7 +233,11 @@ describe("conversation service (Agent Run cutover)", () => {
     expect(enqueueCalls).toHaveLength(1);
     expect(enqueueCalls[0]!.mode).toBe("steer");
     expect(result.triggeredRuns).toEqual([{ agentMemberId, runId: "", queued: true }]);
+    // steer belongs to the CURRENT run: injected into the live Worker, and
+    // NO new run is dispatched (one Run / one Worker).
     expect(dispatchCalls).toHaveLength(0);
+    expect(injectSteerCalls).toHaveLength(1);
+    expect(injectSteerCalls[0]!.inputId).toBeTruthy();
   });
 
   test("explicit follow_up mode is honored even when idle", async () => {

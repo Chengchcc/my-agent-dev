@@ -125,18 +125,8 @@ describe("Agent Run: atomic acquire", () => {
     expect(active).toBeTruthy();
   });
 
-  test("acquire with new ledger refs marks existing binding stale", async () => {
+  test("acquire with new ledger refs appends context refs", async () => {
     const { conversationId, agentMemberId, branch } = await setupBranch("acq4");
-    // Existing backend session binding claims to be active + synced at rev 1
-    await ctxPort.upsertBinding({
-      backendSessionId: "bs-acq4",
-      branchId: branch.branchId,
-      backendKind: "coding_agent",
-      syncedEntryId: null,
-      syncedRevision: 1,
-      state: "active",
-      updatedAt: Date.now(),
-    });
 
     // A user message lands in the ledger
     conv.appendLedgerEntry({
@@ -163,9 +153,9 @@ describe("Agent Run: atomic acquire", () => {
     });
     expect(result.acquired).toBe(true);
 
-    // The binding must no longer claim synced state: context changed underneath it
-    const binding = await ctxPort.getBinding(branch.branchId);
-    expect(binding?.state).toBe("stale");
+    // The new ledger message became a ledger_message ref in the branch.
+    const entries = await ctxPort.listEntriesToLeaf(branch.branchId);
+    expect(entries.filter((e) => e.type === "ledger_message").length).toBeGreaterThan(0);
   });
 
   test("duplicate input idempotency key returns queued", async () => {
@@ -204,7 +194,7 @@ describe("Agent Run: atomic acquire", () => {
 });
 
 describe("Agent Run: queue delivery", () => {
-  test("claimNextInput returns delivering row before pending", async () => {
+  test("claimInputForRun returns the run's delivering row", async () => {
     const { conversationId, agentMemberId, branch } = await setupBranch("q1");
     await runPort.enqueueAndAcquire({
       conversationId,
@@ -220,10 +210,12 @@ describe("Agent Run: queue delivery", () => {
       expectedRevision: branch.revision,
     });
 
-    // The acquired input is in "delivering" state
-    const claimed = await runPort.claimNextInput(branch.branchId);
+    // The acquired input is in "delivering" state, bound to the run
+    const active = await runPort.getActiveRun(branch.branchId);
+    const claimed = await runPort.claimInputForRun(active!.runId);
     expect(claimed).toBeTruthy();
     expect(claimed?.input.status).toBe("delivering");
+    expect(claimed?.runId).toBe(active!.runId);
   });
 
   test("markInputAccepted moves delivering to delivered", async () => {
@@ -310,8 +302,9 @@ describe("Agent Run: queue delivery", () => {
       expectedRevision: branch.revision,
     });
 
-    // Simulate restart: claimNextInput should return the delivering item
-    const claimed = await runPort.claimNextInput(branch.branchId);
+    // Simulate restart: claimInputForRun should return the delivering item
+    const active = await runPort.getActiveRun(branch.branchId);
+    const claimed = await runPort.claimInputForRun(active!.runId);
     expect(claimed?.input.inputId).toBe(r1.inputId);
     expect(claimed?.input.status).toBe("delivering");
   });

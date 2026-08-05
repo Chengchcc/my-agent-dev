@@ -2,16 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { Message } from "@my-agent-team/message";
 import type {
   AgentBackend,
-  AgentBackendCapabilities,
   BackendEvent,
   BackendInputMessage,
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
-  BackendSessionRef,
-  BackendSessionRun,
-  BackendStartInput,
-  PendingActionResponse,
   ProjectedHistoryItem,
 } from "./index.js";
 
@@ -28,62 +23,21 @@ function completedSegment(output?: Message): BackendRunSegment<"fake"> {
   };
 }
 
-/** Adapter-private session ref subtype carrying live state the public protocol
- *  never reads. Demonstrates the TRef extension point without leaking. */
-interface FakeRef extends BackendSessionRef<"fake"> {
-  readonly liveClient: unknown;
-}
-
-const SESSION: FakeRef = {
-  backendSessionId: "session-1",
-  backendKind: "fake",
-  liveClient: {},
-};
-
-/** FakeBackend implements all six AgentBackend methods with deterministic
- *  completed segments. No adapter base class. */
-class FakeBackend implements AgentBackend<"fake", FakeRef> {
+/** FakeBackend implements the three Run-centric AgentBackend methods with
+ *  deterministic completed segments. No adapter base class. */
+class FakeBackend implements AgentBackend<"fake"> {
   readonly kind = "fake" as const;
-  readonly capabilities: AgentBackendCapabilities = {
-    persistentSession: true,
-    nativeResume: true,
-    nativeSteer: true,
-    thinkingStream: false,
-    productTools: "mcp",
-    pendingActionResponse: false,
-  };
 
-  async start(input: BackendStartInput<"fake">): Promise<BackendSessionRun<"fake", FakeRef>> {
+  async execute(input: BackendRunInput<"fake">): Promise<BackendRunSegment<"fake">> {
     expect(input.run.runId).toBe("run-1");
-    return { session: SESSION, segment: completedSegment() };
-  }
-
-  async send(
-    _session: FakeRef,
-    input: BackendRunInput<"fake">,
-  ): Promise<BackendRunSegment<"fake">> {
-    expect(input.run.runId).toBe("run-1");
+    expect(input.workspace.root).toBe("/tmp");
+    expect(input.metadata.branchId).toBe("b1");
     return completedSegment();
   }
 
-  async resume(
-    _backendSessionId: string,
-    input: BackendStartInput<"fake">,
-  ): Promise<BackendSessionRun<"fake", FakeRef>> {
-    expect(input.run.runId).toBe("run-1");
-    return { session: SESSION, segment: completedSegment() };
-  }
+  async steer(_runId: string, _input: BackendInputMessage): Promise<void> {}
 
-  async respond(
-    _session: FakeRef,
-    _action: PendingActionResponse,
-  ): Promise<BackendRunSegment<"fake">> {
-    return completedSegment();
-  }
-
-  async stop(_session: FakeRef): Promise<void> {}
-
-  async close(_session: FakeRef): Promise<void> {}
+  async stop(_runId: string): Promise<void> {}
 }
 
 const RUN_SNAPSHOT = {
@@ -101,32 +55,26 @@ const INPUT: BackendInputMessage = {
   message: { role: "user", text: "do the thing" },
 };
 
-const START_INPUT: BackendStartInput<"fake"> = {
+const RUN_INPUT: BackendRunInput<"fake"> = {
   history: HISTORY,
   input: INPUT,
   run: RUN_SNAPSHOT,
   workspace: { root: "/tmp", access: "read_write" },
-  metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1", productRevision: 1 },
+  metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1" },
 };
 
 describe("agent-backend contracts", () => {
-  test("FakeBackend implements all six methods", () => {
-    const backend: AgentBackend<"fake", FakeRef> = new FakeBackend();
+  test("FakeBackend implements the three Run-centric methods", () => {
+    const backend: AgentBackend<"fake"> = new FakeBackend();
     expect(backend.kind).toBe("fake");
-    expect(backend.capabilities.pendingActionResponse).toBe(false);
-    expect(typeof backend.start).toBe("function");
-    expect(typeof backend.send).toBe("function");
-    expect(typeof backend.resume).toBe("function");
-    expect(typeof backend.respond).toBe("function");
+    expect(typeof backend.execute).toBe("function");
+    expect(typeof backend.steer).toBe("function");
     expect(typeof backend.stop).toBe("function");
-    expect(typeof backend.close).toBe("function");
   });
 
-  test("barrel-only consumer consumes events and outcome from start()", async () => {
-    const backend: AgentBackend<"fake", FakeRef> = new FakeBackend();
-    const { session, segment } = await backend.start(START_INPUT);
-    expect(session.backendSessionId).toBe("session-1");
-
+  test("barrel-only consumer consumes events and outcome from execute()", async () => {
+    const backend: AgentBackend<"fake"> = new FakeBackend();
+    const segment = await backend.execute(RUN_INPUT);
     for await (const _event of segment.events) {
       // no events emitted
     }
@@ -134,58 +82,33 @@ describe("agent-backend contracts", () => {
     expect(outcome.status).toBe("completed");
   });
 
-  test("send() continues an open session and resolves completed", async () => {
-    const backend: AgentBackend<"fake", FakeRef> = new FakeBackend();
-    const segment = await backend.send(SESSION, {
-      history: [{ productEntryId: "e2", message: { role: "user", text: "ctx" } }],
-      input: INPUT,
-      run: RUN_SNAPSHOT,
-      mode: "normal",
-      metadata: { branchId: "b1", productRevision: 1 },
-    });
-    expect((await segment.outcome).status).toBe("completed");
-  });
-
-  test("BackendInputMessage carries blocks and inputId round-trip", () => {
-    const rich: BackendInputMessage = {
-      inputId: "in-2",
-      message: {
-        role: "user",
-        blocks: [{ type: "text", text: "multi" }],
-      },
-      productEntryId: "e3",
-    };
-    expect(rich.inputId).toBe("in-2");
-    expect(rich.message.blocks?.[0]?.type).toBe("text");
-    expect(rich.productEntryId).toBe("e3");
+  test("BackendRunInput carries the full Run facts (history/input/run/workspace/metadata)", () => {
+    expect(RUN_INPUT.history).toBe(HISTORY);
+    expect(RUN_INPUT.input.message).toBe(INPUT.message);
+    expect(RUN_INPUT.run.runId).toBe("run-1");
+    expect(RUN_INPUT.workspace.access).toBe("read_write");
+    expect(RUN_INPUT.metadata.conversationId).toBe("c1");
+    expect(RUN_INPUT.metadata.agentMemberId).toBe("m1");
   });
 
   test("history and input are distinct; input is never inferred from history", () => {
     // The contract has no path from history to input: a Backend must read
     // `input.message` explicitly. Confirm the field is required, not optional.
-    const hist: readonly ProjectedHistoryItem[] = [
-      { productEntryId: "e1", message: { role: "user", text: "past" } },
-    ];
-    const turn: BackendStartInput<"fake"> = {
-      history: hist,
+    const turn: BackendRunInput<"fake"> = {
+      history: HISTORY,
       input: INPUT,
       run: RUN_SNAPSHOT,
       workspace: { root: "/tmp", access: "read_write" },
-      metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1", productRevision: 1 },
+      metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1" },
     };
     expect(turn.input.message).toBe(INPUT.message);
     expect(turn.history).not.toBe(turn.input);
   });
 
-  test("suspended outcome carries a PendingAction", () => {
-    const outcome: BackendRunOutcome = {
-      status: "suspended",
-      pendingAction: { actionId: "a1", kind: "approval", payload: {} },
-    };
-    expect(outcome.status).toBe("suspended");
-    if (outcome.status === "suspended") {
-      expect(outcome.pendingAction.actionId).toBe("a1");
-    }
+  test("steer/stop are control-plane: no outcome of their own", () => {
+    const backend: AgentBackend<"fake"> = new FakeBackend();
+    expect(async () => await backend.steer("run-1", INPUT)).not.toThrow();
+    expect(async () => await backend.stop("run-1")).not.toThrow();
   });
 
   test("package manifest allows only @my-agent-team/message and zod", async () => {
@@ -203,7 +126,7 @@ describe("agent-backend contracts", () => {
   test("package runtime entry imports without missing exports", async () => {
     const module = await import("./index.js");
     // The barrel exports the transport wire contract next to the types.
-    expect(module.startSessionRequestSchema).toBeDefined();
+    expect(module.createRunRequestSchema).toBeDefined();
     expect(module.runOutcomeResponseSchema).toBeDefined();
   });
 
@@ -224,30 +147,21 @@ describe("agent-backend contracts", () => {
 // BackendRunInput without `run` is invalid. The error is on the declaration
 // line (TS2741), so the directive sits directly above it.
 // @ts-expect-error - missing required `run` field
-const _noRun: BackendRunInput = {
-  history: [],
+const _noRun: BackendRunInput = { history: HISTORY, input: INPUT };
+
+// BackendRunInput without `workspace` is invalid (workspace is a Run fact).
+// @ts-expect-error - missing required `workspace` field
+const _noWorkspace: BackendRunInput = {
+  history: HISTORY,
   input: INPUT,
-  mode: "normal",
-  metadata: { branchId: "b1", productRevision: 1 },
+  run: RUN_SNAPSHOT,
+  metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1" },
 };
 
 // ProjectedHistoryItem without `productEntryId` is invalid.
 // @ts-expect-error - missing required `productEntryId` field
 const _noProductEntryId: ProjectedHistoryItem = {
   message: { role: "user", text: "hello" },
-};
-
-// Capabilities with `nativeFork` is invalid (excess property). The error is
-// reported on the offending property line, so the directive sits above it.
-const _nativeFork: AgentBackendCapabilities = {
-  persistentSession: true,
-  nativeResume: true,
-  nativeSteer: true,
-  thinkingStream: false,
-  productTools: "mcp",
-  pendingActionResponse: false,
-  // @ts-expect-error - nativeFork is not a valid capability
-  nativeFork: true,
 };
 
 // Extension event without an event segment (backend.coding_agent) is invalid:
@@ -265,16 +179,11 @@ const _wrongKind: BackendEvent<"fake"> =
 // A Backend of kind "fake" cannot receive a "claude-code" run input: the
 // model ref's backendKind must match the Backend's K. Pure type-level check:
 const claudeInput: BackendRunInput<"claude-code"> = {
-  history: [],
+  history: HISTORY,
   input: INPUT,
-  run: {
-    runId: "r2",
-    model: { backendKind: "claude-code", modelId: "claude-sonnet" },
-    productTools: [],
-    configRevision: 1,
-  },
-  mode: "normal",
-  metadata: { branchId: "b1", productRevision: 1 },
+  run: { ...RUN_SNAPSHOT, model: { backendKind: "claude-code", modelId: "x" } },
+  workspace: { root: "/tmp", access: "read_write" },
+  metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1" },
 };
 // @ts-expect-error - BackendRunInput<"claude-code"> is not assignable to BackendRunInput<"fake">
 const _crossKind: BackendRunInput<"fake"> = claudeInput;
@@ -283,51 +192,47 @@ const _crossKind: BackendRunInput<"fake"> = claudeInput;
 // its own non-contiguous statement (separated by a no-op binding) so Biome's
 // import-organize assist cannot merge them; @ts-expect-error proves each name
 // is absent from the public API.
-// @ts-expect-error - ProductTurn is not exported
-import type { ProductTurn } from "./index.js";
+// @ts-expect-error - BackendSessionRef is not exported
+import type { BackendSessionRef } from "./index.js";
 
 const _sep1 = 0;
 
-// @ts-expect-error - RuntimeBinding is not exported
-import type { RuntimeBinding } from "./index.js";
+// @ts-expect-error - BackendSessionRun is not exported
+import type { BackendSessionRun } from "./index.js";
 
 const _sep2 = 0;
 
-// @ts-expect-error - runtimeSessionId is not exported
-import type { runtimeSessionId } from "./index.js";
+// @ts-expect-error - BackendStartInput is not exported
+import type { BackendStartInput } from "./index.js";
 
 const _sep3 = 0;
+
+// @ts-expect-error - ProductTurn is not exported
+import type { ProductTurn } from "./index.js";
+
+const _sep4 = 0;
 
 // @ts-expect-error - AgentSessionPool is not exported
 import type { AgentSessionPool } from "./index.js";
 
-const _sep4 = 0;
+const _sep5 = 0;
 
 // @ts-expect-error - AgentLoop is not exported
 import type { AgentLoop } from "./index.js";
 
-const _sep5 = 0;
-
-// @ts-expect-error - SpanResult is not exported
-import type { SpanResult } from "./index.js";
-
 const _sep6 = 0;
-
-// @ts-expect-error - ExecutionId is not exported
-import type { ExecutionId } from "./index.js";
 
 // Reference the unused bindings so they are not flagged as dead code.
 type _Unused = [
+  BackendSessionRef,
+  BackendSessionRun,
+  BackendStartInput,
   ProductTurn,
-  RuntimeBinding,
-  runtimeSessionId,
   AgentSessionPool,
   AgentLoop,
-  SpanResult,
-  ExecutionId,
   typeof _noRun,
+  typeof _noWorkspace,
   typeof _noProductEntryId,
-  typeof _nativeFork,
   typeof _noEventSegment,
   typeof _wrongKind,
   typeof _crossKind,

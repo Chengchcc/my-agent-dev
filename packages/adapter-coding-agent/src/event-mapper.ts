@@ -32,7 +32,7 @@ export function mapRunEvent(event: TransportRunEvent): BackendEvent<"coding_agen
       const toolName = String(event.data.toolName ?? "unknown");
       const callId = String(event.data.callId ?? `call-${event.id}`);
       // Product Tools map to product_tool_started; native tools to
-      // native_tool_started. The worker's resolved Product Tools carry
+      // native_tool_started. The run runtime's resolved Product Tools carry
       // kind="product", surfaced on the runtime event.
       if (event.data.kind === "product") {
         return { type: "product_tool_started", toolName, callId };
@@ -52,11 +52,16 @@ export function mapRunEvent(event: TransportRunEvent): BackendEvent<"coding_agen
     case "turn_start":
     case "turn_end":
       return { type: "status", status: event.type };
-    case "agent_end":
-      // The daemon emits agent_end ONLY for completed runs; map it onto the
-      // core terminal vocabulary so surfaces can rely on `status: completed`
-      // instead of parsing daemon-private event names.
+    case "agent_end": {
+      // agent_end carries the ACTUAL terminal status from the loop
+      // (completed | failed | stopped): map it onto the core terminal
+      // vocabulary - completed stays completed, failed stays failed, stopped
+      // becomes aborted. Never a bare "agent_end" status.
+      const status = String(event.data.status ?? "completed");
+      if (status === "failed") return { type: "status", status: "failed" };
+      if (status === "stopped") return { type: "status", status: "aborted" };
       return { type: "status", status: "completed" };
+    }
     default:
       return {
         type: `backend.coding_agent.${event.type}`,
@@ -65,8 +70,9 @@ export function mapRunEvent(event: TransportRunEvent): BackendEvent<"coding_agen
   }
 }
 
-/** Map a transport outcome to the Backend terminal outcome. `suspended` is
- *  rejected because this backend declares pendingActionResponse=false. */
+/** Map a transport outcome to the Backend terminal outcome. The daemon only
+ *  produces completed/failed/aborted (timeout is reserved for future
+ *  backends). */
 export function mapRunOutcome(outcome: {
   status: string;
   output?: unknown;
@@ -85,9 +91,6 @@ export function mapRunOutcome(outcome: {
   }
   if (outcome.status === "timeout") {
     return { status: "timeout", error: outcome.error };
-  }
-  if (outcome.status === "suspended") {
-    throw new Error("coding_agent backend does not support suspended outcomes");
   }
   return { status: "failed", error: outcome.error ?? "run failed" };
 }

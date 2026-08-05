@@ -3,7 +3,6 @@ export type {
   AgentContextEntry,
   AgentContextEntryType,
   AgentContextTree,
-  BackendSessionBinding,
   ContextBranch,
   LedgerMessageEntry,
   ModelChangeEntry,

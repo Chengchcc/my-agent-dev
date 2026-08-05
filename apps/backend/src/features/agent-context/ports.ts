@@ -1,10 +1,5 @@
 import type { Message } from "@my-agent-team/message";
-import type {
-  AgentContextEntry,
-  AgentContextTree,
-  BackendSessionBinding,
-  ContextBranch,
-} from "./domain.js";
+import type { AgentContextEntry, AgentContextTree, ContextBranch } from "./domain.js";
 
 /** Append input for a new entry on a branch leaf. */
 export interface AppendEntryInput {
@@ -53,12 +48,6 @@ export interface AgentContextPort {
     expectedRevision: number,
     newLeafEntryId: string,
   ): Promise<ContextBranch>;
-
-  markBindingStale(branchId: string): Promise<void>;
-
-  upsertBinding(binding: BackendSessionBinding): Promise<BackendSessionBinding>;
-
-  getBinding(branchId: string): Promise<BackendSessionBinding | null>;
 }
 
 /** ID generator port; implementations use ulid. */

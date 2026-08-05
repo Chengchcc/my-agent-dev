@@ -14,14 +14,14 @@ export interface ProjectionDeps {
 
 export interface ProjectionInput {
   readonly branchId: string;
-  readonly throughEntryId?: string;
 }
 
 /** Project a Context Branch's root-to-leaf entries into a linear
  *  `ProjectedHistoryItem[]` with stable `productEntryId`. Applies the latest
  *  applicable Summary by replacing entries through its
  *  `coversThroughEntryId`. Resolves Ledger Message refs through the narrow
- *  Conversation port query. */
+ *  Conversation port query. Every Agent Run rebuilds from this FULL
+ *  projection - there is no incremental resume branch. */
 export async function projectAgentContext(
   deps: ProjectionDeps,
   input: ProjectionInput,
@@ -34,13 +34,6 @@ export async function projectAgentContext(
   const conversationId = tree.conversationId;
   const entries = await deps.port.listEntriesToLeaf(input.branchId);
   let working: AgentContextEntry[] = entries;
-  if (input.throughEntryId) {
-    const idx = entries.findIndex((e) => e.entryId === input.throughEntryId);
-    if (idx === -1) {
-      throw new Error(`throughEntryId ${input.throughEntryId} is not on the selected branch path`);
-    }
-    working = entries.slice(0, idx + 1);
-  }
 
   // Find the latest applicable Summary
   let summary: ProductSummaryEntry | null = null;

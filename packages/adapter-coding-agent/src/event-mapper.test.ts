@@ -21,9 +21,23 @@ describe("event mapper", () => {
     expect(mapped.type).toBe("backend.coding_agent.compaction_start");
   });
 
-  test("agent_end maps to status", () => {
-    const mapped = mapRunEvent({ id: 4, type: "agent_end", data: { status: "completed" } });
-    expect(mapped).toEqual({ type: "status", status: "completed" });
+  test("agent_end maps the ACTUAL terminal status (never a bare agent_end)", () => {
+    expect(mapRunEvent({ id: 4, type: "agent_end", data: { status: "completed" } })).toEqual({
+      type: "status",
+      status: "completed",
+    });
+    expect(mapRunEvent({ id: 5, type: "agent_end", data: { status: "failed" } })).toEqual({
+      type: "status",
+      status: "failed",
+    });
+    expect(mapRunEvent({ id: 6, type: "agent_end", data: { status: "stopped" } })).toEqual({
+      type: "status",
+      status: "aborted",
+    });
+    expect(mapRunEvent({ id: 7, type: "agent_end", data: {} })).toEqual({
+      type: "status",
+      status: "completed",
+    });
   });
 
   test("all extension names start with backend.coding_agent.", () => {
@@ -46,7 +60,7 @@ describe("event mapper", () => {
     expect(mapRunOutcome({ status: "timeout" }).status).toBe("timeout");
   });
 
-  test("suspended outcome rejected", () => {
-    expect(() => mapRunOutcome({ status: "suspended" } as never)).toThrow(/suspended/);
+  test("unknown outcome status maps to failed", () => {
+    expect(mapRunOutcome({ status: "suspended" } as never).status).toBe("failed");
   });
 });

@@ -12,7 +12,6 @@ describe("app lifecycle", () => {
   test("health responds before shutdown", async () => {
     const config = loadConfig({
       CODING_AGENT_AUTH_TOKEN: "t",
-      CODING_AGENT_DATA_DIR: tmp,
       CODING_AGENT_WORKSPACE_ROOTS: ws,
     });
     const app = createCodingAgentApp({ config, modelRuntime: createModelRuntime() });
@@ -26,7 +25,6 @@ describe("app lifecycle", () => {
   test("shutdown is idempotent", async () => {
     const config = loadConfig({
       CODING_AGENT_AUTH_TOKEN: "t",
-      CODING_AGENT_DATA_DIR: tmp,
       CODING_AGENT_WORKSPACE_ROOTS: ws,
     });
     const app = createCodingAgentApp({ config, modelRuntime: createModelRuntime() });
@@ -39,7 +37,6 @@ describe("app lifecycle", () => {
     expect(() =>
       loadConfig({
         CODING_AGENT_AUTH_TOKEN: "",
-        CODING_AGENT_DATA_DIR: tmp,
         CODING_AGENT_WORKSPACE_ROOTS: ws,
       }),
     ).toThrow(/AUTH_TOKEN/);

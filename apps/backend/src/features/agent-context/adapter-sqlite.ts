@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import * as schema from "../../infra/db/schema.js";
 import { ulid } from "../../infra/ids.js";
-import type { AgentContextEntry, BackendSessionBinding, ContextBranch } from "./domain.js";
+import type { AgentContextEntry, ContextBranch } from "./domain.js";
 import { ContextBranchNotFoundError, ContextRevisionConflictError } from "./domain.js";
 import type {
   AgentContextPort,
@@ -335,12 +335,6 @@ export function sqliteAgentContextAdapter(
         if (!updatedBranch) {
           throw new ContextRevisionConflictError(input.branchId, input.expectedRevision);
         }
-        // 6. Mark execution session binding stale: Context advanced while
-        //    the backend was not running, so the cached session is out of date.
-        d.update(schema.backendSessionBinding)
-          .set({ state: "stale", updatedAt: Date.now() })
-          .where(eq(schema.backendSessionBinding.branchId, input.branchId))
-          .run();
 
         return {
           branch: parseBranch(updatedBranch),
@@ -460,81 +454,8 @@ export function sqliteAgentContextAdapter(
           throw new ContextRevisionConflictError(branchId, expectedRevision);
         }
 
-        // Mark binding stale
-        d.update(schema.backendSessionBinding)
-          .set({ state: "stale", updatedAt: Date.now() })
-          .where(eq(schema.backendSessionBinding.branchId, branchId))
-          .run();
-
         return parseBranch(result);
       })();
-    },
-
-    async markBindingStale(branchId) {
-      d.update(schema.backendSessionBinding)
-        .set({ state: "stale", updatedAt: Date.now() })
-        .where(eq(schema.backendSessionBinding.branchId, branchId))
-        .run();
-    },
-
-    async upsertBinding(binding: BackendSessionBinding) {
-      const now = Date.now();
-      d.insert(schema.backendSessionBinding)
-        .values({
-          branchId: binding.branchId,
-          backendSessionId: binding.backendSessionId,
-          backendKind: binding.backendKind,
-          syncedEntryId: binding.syncedEntryId,
-          syncedRevision: binding.syncedRevision,
-          state: binding.state,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: schema.backendSessionBinding.branchId,
-          set: {
-            backendSessionId: binding.backendSessionId,
-            backendKind: binding.backendKind,
-            syncedEntryId: binding.syncedEntryId,
-            syncedRevision: binding.syncedRevision,
-            state: binding.state,
-            updatedAt: now,
-          },
-        })
-        .run();
-
-      const row = d
-        .select()
-        .from(schema.backendSessionBinding)
-        .where(eq(schema.backendSessionBinding.branchId, binding.branchId))
-        .get();
-      if (!row) throw new Error("Binding not found after upsert");
-      return {
-        branchId: row.branchId,
-        backendSessionId: row.backendSessionId,
-        backendKind: row.backendKind,
-        syncedEntryId: row.syncedEntryId,
-        syncedRevision: row.syncedRevision,
-        state: row.state as "active" | "stale" | "detached",
-        updatedAt: row.updatedAt,
-      };
-    },
-
-    async getBinding(branchId) {
-      const row = d
-        .select()
-        .from(schema.backendSessionBinding)
-        .where(eq(schema.backendSessionBinding.branchId, branchId))
-        .get();
-      if (!row) return null;
-      return {
-        branchId: row.branchId,
-        backendSessionId: row.backendSessionId,
-        backendKind: row.backendKind,
-        syncedEntryId: row.syncedEntryId,
-        syncedRevision: row.syncedRevision,
-        state: row.state as "active" | "stale" | "detached",
-        updatedAt: row.updatedAt,
-      };
     },
   };
 }

@@ -9,7 +9,6 @@ import { ProviderError } from "@my-agent-team/ai";
 import type { AIMessageChunk } from "@my-agent-team/core";
 import { createInMemorySessionStore } from "../persistence/in-memory-session-store.js";
 import type { SessionStore } from "../persistence/session-store.js";
-import { createSqliteSessionStore } from "../persistence/sqlite-session-store.js";
 import { createCodingAgentSession } from "./agent-loop.js";
 import type { CodingLoopInput } from "./loop-input.js";
 import type { Plugin } from "./plugin.js";
@@ -1443,7 +1442,8 @@ function testHarness(
 }
 
 // InMemory: one store per session; reopen returns the same live instance
-// (in-memory has no persistence boundary to cross).
+// (in-memory has no persistence boundary to cross). The SQLite store was
+// removed with the cross-Run session path; in-memory is the only store.
 const memoryStores = new Map<string, SessionStore>();
 testHarness(
   "InMemory",
@@ -1453,29 +1453,4 @@ testHarness(
     return store;
   },
   (sid) => memoryStores.get(sid)!,
-);
-
-// SQLite: one file per session so reopen works against the same file
-const sqliteDirs = new Map<string, string>();
-testHarness(
-  "SQLite",
-  (sid) => {
-    const dir = `/tmp/harness-sqlite-${sid}-${Math.random().toString(36).slice(2, 8)}`;
-    sqliteDirs.set(sid, dir);
-    mkdirSync(dir, { recursive: true });
-    return createSqliteSessionStore(`${dir}/${sid}.db`);
-  },
-  (sid) => {
-    const dir = sqliteDirs.get(sid)!;
-    return createSqliteSessionStore(`${dir}/${sid}.db`);
-  },
-  () => {
-    for (const dir of sqliteDirs.values()) {
-      try {
-        rmSync(dir, { recursive: true, force: true });
-      } catch {
-        /* */
-      }
-    }
-  },
 );

@@ -160,6 +160,7 @@ function makeFakeRuns(script: RunScript, workDir: string = TMP) {
       terminalResult: null,
       configRevision: 1,
       productTools: null,
+      workspace: null,
       createdAt: 0,
       terminalAt: null,
     };
@@ -196,9 +197,6 @@ function makeFakeRuns(script: RunScript, workDir: string = TMP) {
       }
       const run = makeRun(input.agentMemberId, input.conversationId, input.idempotencyKey);
       return { acquired: true, queued: false, replayed: false, run, inputId: `in-${run.runId}` };
-    },
-    async claimNextInput() {
-      return null;
     },
     async markInputAccepted(inputId) {
       return { inputId } as never;
@@ -251,6 +249,7 @@ function makeFakeRuns(script: RunScript, workDir: string = TMP) {
       }
     },
     async recover() {},
+    async injectSteer() {},
     async retryTerminalCommit() {},
     async stop() {},
     subscribe() {
@@ -351,10 +350,10 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     const saved = store.load("test");
     const item = Object.values(saved.items)[0]!;
     expect(item.step).toBe("awaiting_review");
-    // generatorSpanId field now carries the Agent Run id
-    expect(item.generatorSpanId).toMatch(/^run-\d+$/);
+    // generatorRunId field now carries the Agent Run id
+    expect(item.generatorRunId).toMatch(/^run-\d+$/);
     expect(item.evaluatorRunId).toMatch(/^run-\d+$/);
-    expect(item.evaluatorRunId).not.toBe(item.generatorSpanId);
+    expect(item.evaluatorRunId).not.toBe(item.generatorRunId);
     expect(item.result?.verdict).toBe("PASS");
     void gen;
     void eva;
@@ -419,7 +418,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     expect(genKeys[1]).toContain(":retry");
     const saved = store.load("test");
     const item = Object.values(saved.items)[0]!;
-    expect(item.generatorSpanId).toMatch(/^run-\d+$/);
+    expect(item.generatorRunId).toMatch(/^run-\d+$/);
   });
 
   test("generator commit_failed → loopStep throws, evaluator never created", async () => {

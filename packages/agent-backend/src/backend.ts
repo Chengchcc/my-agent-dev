@@ -1,55 +1,30 @@
-import type {
-  BackendRunInput,
-  BackendRunSegment,
-  BackendSessionRef,
-  BackendSessionRun,
-  BackendStartInput,
-  PendingActionResponse,
-} from "./run.js";
+import type { BackendInputMessage, BackendRunInput, BackendRunSegment } from "./run.js";
 
-/** Declared capabilities. A missing capability must be explicitly handled -
- *  never faked. Branching belongs to Product Context, not the Backend. */
-export interface AgentBackendCapabilities {
-  readonly persistentSession: boolean;
-  readonly nativeResume: boolean;
-  readonly nativeSteer: boolean;
-  readonly thinkingStream: boolean;
-  readonly productTools: "mcp" | "native" | "unsupported";
-  readonly pendingActionResponse: boolean;
-}
-
-/** The only execution protocol Product Backend depends on.
+/** The only execution protocol Product Backend depends on. Run-centric: one
+ *  non-steer input maps to exactly one `execute()` call, one loop, one
+ *  `BackendRunOutcome`. There is no session lifecycle - `runId` is the only
+ *  execution identity and every Run rebuilds its input from the full Product
+ *  Context projection. `steer` injects into the CURRENT live Run only; `stop`
+ *  terminates the target Run.
  *
- *  `K` is the Backend's kind string (e.g. `"claude_code"`, `"coding_agent"`).
- *  It locks extension events to `backend.<K>.*`, brands session refs, and
- *  constrains every input's model ref to the same `K` - so a Backend of one
- *  kind cannot receive another kind's model, events, or session ref.
- *
- *  `TRef` is the adapter's session ref subtype, extending
- *  `BackendSessionRef<K>` with whatever live state (client, process,
- *  connection) the adapter needs. Product Backend never constructs `TRef`
- *  directly; it only passes refs the adapter previously returned. The base
- *  `BackendSessionRef` is a plain identity; the adapter looks up live state by
- *  `backendSessionId` in its own registry. */
-export interface AgentBackend<
-  K extends string = string,
-  TRef extends BackendSessionRef<K> = BackendSessionRef<K>,
-> {
+ *  `K` is the Backend's kind string (e.g. `"coding_agent"`). It locks
+ *  extension events to `backend.<K>.*` and constrains every input's model ref
+ *  to the same `K`. */
+export interface AgentBackend<K extends string = string> {
   readonly kind: K;
-  readonly capabilities: AgentBackendCapabilities;
 
-  start(input: BackendStartInput<K>): Promise<BackendSessionRun<K, TRef>>;
+  /** Start a fresh Run: full history + input + run snapshot + workspace.
+   *  The segment's outcome is the run's ONLY terminal result. Same runId +
+   *  same payload is idempotent (replays the accepted result); same runId +
+   *  different payload conflicts. */
+  execute(input: BackendRunInput<K>): Promise<BackendRunSegment<K>>;
 
-  send(session: TRef, input: BackendRunInput<K>): Promise<BackendRunSegment<K>>;
+  /** Inject a steer input into the live Run `runId`. No new Run, no new
+   *  outcome. Fails explicitly when the Run is not live - never silently
+   *  converted into a normal input. */
+  steer(runId: string, input: BackendInputMessage): Promise<void>;
 
-  resume(
-    backendSessionId: string,
-    input: BackendStartInput<K>,
-  ): Promise<BackendSessionRun<K, TRef>>;
-
-  respond(session: TRef, action: PendingActionResponse): Promise<BackendRunSegment<K>>;
-
-  stop(session: TRef): Promise<void>;
-
-  close(session: TRef): Promise<void>;
+  /** Request cancellation of the live Run `runId`. The segment's outcome
+   *  still resolves (aborted). */
+  stop(runId: string): Promise<void>;
 }

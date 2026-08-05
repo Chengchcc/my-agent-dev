@@ -4,38 +4,28 @@ import { createModelRuntime } from "@my-agent-team/ai";
 import { createCodingAgentApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createRunEventBuffer } from "./event-buffer.js";
-import type { CodingSessionSupervisor } from "./session-supervisor.js";
+import type { CodingRunRegistry } from "./run-registry.js";
 
 const tmp = `/tmp/coding-sse-${Math.random().toString(36).slice(2, 8)}`;
 mkdirSync(tmp, { recursive: true });
 
-/** Fake supervisor with a pre-seeded run event buffer. */
+/** Fake registry with a pre-seeded run event buffer. */
 function makeApp(seed: Array<{ type: string; data: Record<string, unknown> }>) {
   const config = loadConfig({
     CODING_AGENT_AUTH_TOKEN: "token-123",
-    CODING_AGENT_DATA_DIR: tmp,
     CODING_AGENT_WORKSPACE_ROOTS: tmp,
   });
   const buf = createRunEventBuffer(100);
   for (const e of seed) buf.append(e);
-  const fake: CodingSessionSupervisor = {
-    async startSession() {
+  const fake: CodingRunRegistry = {
+    async execute() {
       throw new Error("not implemented");
     },
-    async resumeSession() {
-      throw new Error("not implemented");
-    },
-    async send() {
+    async steer() {
       throw new Error("not implemented");
     },
     async stop() {
-      return { stopped: true };
-    },
-    async compact() {
-      return { compacted: true };
-    },
-    async close() {
-      return { closed: true };
+      /* no-op */
     },
     getEvents(runId) {
       if (runId !== "r1") {
@@ -51,14 +41,11 @@ function makeApp(seed: Array<{ type: string; data: Record<string, unknown> }>) {
     getOutcome() {
       return null;
     },
-    listSessions() {
-      return [];
-    },
     async shutdown() {
       /* no-op */
     },
   };
-  return createCodingAgentApp({ config, modelRuntime: createModelRuntime(), supervisor: fake });
+  return createCodingAgentApp({ config, modelRuntime: createModelRuntime(), registry: fake });
 }
 
 async function sseRead(
@@ -177,27 +164,17 @@ describe("daemon SSE routes", () => {
     buf.append({ type: "message_update", data: { text: "a" } });
     const config = loadConfig({
       CODING_AGENT_AUTH_TOKEN: "token-123",
-      CODING_AGENT_DATA_DIR: tmp,
       CODING_AGENT_WORKSPACE_ROOTS: tmp,
     });
-    const fake: CodingSessionSupervisor = {
-      async startSession() {
+    const fake: CodingRunRegistry = {
+      async execute() {
         throw new Error("ni");
       },
-      async resumeSession() {
-        throw new Error("ni");
-      },
-      async send() {
+      async steer() {
         throw new Error("ni");
       },
       async stop() {
-        return { stopped: true };
-      },
-      async compact() {
-        return { compacted: true };
-      },
-      async close() {
-        return { closed: true };
+        /* no-op */
       },
       getEvents() {
         return buf;
@@ -208,9 +185,6 @@ describe("daemon SSE routes", () => {
       getOutcome() {
         return null;
       },
-      listSessions() {
-        return [];
-      },
       async shutdown() {
         /* */
       },
@@ -218,7 +192,7 @@ describe("daemon SSE routes", () => {
     const app = createCodingAgentApp({
       config,
       modelRuntime: createModelRuntime(),
-      supervisor: fake,
+      registry: fake,
     });
     const res = await app.fetch(
       new Request("http://localhost/v1/runs/r1/events", {

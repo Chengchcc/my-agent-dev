@@ -5,14 +5,7 @@ import { z } from "zod";
  *  neither side imports the other's implementation: the daemon consumes it
  *  directly, the adapter re-exports it for its client. */
 
-export const backendSessionIdSchema = z
-  .string()
-  .min(1)
-  .max(128)
-  .regex(/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/, "invalid session id");
 export const runIdSchema = z.string().min(1).max(128);
-export const commandIdSchema = z.string().min(1).max(128);
-export const idempotencyKeySchema = z.string().min(1).max(256);
 export const branchIdSchema = z.string().min(1).max(256);
 export const productEntryIdSchema = z.string().min(1).max(256);
 export const conversationIdSchema = z.string().min(1).max(256);
@@ -49,8 +42,7 @@ const inputMessageSchema = z.object({
 
 // ─── Requests ─────────────────────────────────────────────────────────
 
-export const startSessionRequestSchema = z.object({
-  idempotencyKey: idempotencyKeySchema,
+export const createRunRequestSchema = z.object({
   history: projectedHistorySchema,
   input: inputMessageSchema,
   run: runSnapshotSchema,
@@ -59,70 +51,28 @@ export const startSessionRequestSchema = z.object({
     conversationId: conversationIdSchema,
     agentMemberId: agentMemberIdSchema,
     branchId: branchIdSchema,
-    productRevision: z.number(),
   }),
 });
-export type StartSessionRequest = z.infer<typeof startSessionRequestSchema>;
+export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
 
-export const sendRunRequestSchema = z.object({
-  idempotencyKey: idempotencyKeySchema,
-  commandId: commandIdSchema,
-  history: projectedHistorySchema,
+export const steerRunRequestSchema = z.object({
   input: inputMessageSchema,
-  run: runSnapshotSchema,
-  mode: z.enum(["normal", "steer", "follow_up"]),
-  workspaceRoot: z.string().optional(),
-  metadata: z.object({
-    branchId: branchIdSchema,
-    throughEntryId: z.string().optional(),
-    productRevision: z.number(),
-  }),
 });
-export type SendRunRequest = z.infer<typeof sendRunRequestSchema>;
+export type SteerRunRequest = z.infer<typeof steerRunRequestSchema>;
 
-export const resumeSessionRequestSchema = startSessionRequestSchema;
-export type ResumeSessionRequest = StartSessionRequest;
-
-export const compactSessionRequestSchema = z.object({
-  idempotencyKey: idempotencyKeySchema,
-  commandId: commandIdSchema,
-  runId: runIdSchema.optional(),
-});
-export type CompactSessionRequest = z.infer<typeof compactSessionRequestSchema>;
-
-export const stopSessionRequestSchema = z.object({
-  idempotencyKey: idempotencyKeySchema,
-  commandId: commandIdSchema,
-  runId: runIdSchema.optional(),
-});
-export type StopSessionRequest = z.infer<typeof stopSessionRequestSchema>;
-
-export const closeSessionRequestSchema = z.object({
-  idempotencyKey: idempotencyKeySchema,
-  commandId: commandIdSchema,
-  deleteData: z.boolean().optional(),
-});
-export type CloseSessionRequest = z.infer<typeof closeSessionRequestSchema>;
+export const stopRunRequestSchema = z.object({});
+export type StopRunRequest = z.infer<typeof stopRunRequestSchema>;
 
 // ─── Responses ────────────────────────────────────────────────────────
 
-export const sessionResponseSchema = z.object({
-  backendSessionId: backendSessionIdSchema,
+export const createRunResponseSchema = z.object({
   runId: runIdSchema,
-});
-export type SessionResponse = z.infer<typeof sessionResponseSchema>;
-
-export const sendRunResponseSchema = z.object({
-  backendSessionId: backendSessionIdSchema,
-  runId: runIdSchema,
-  commandId: commandIdSchema,
   accepted: z.boolean(),
 });
-export type SendRunResponse = z.infer<typeof sendRunResponseSchema>;
+export type CreateRunResponse = z.infer<typeof createRunResponseSchema>;
 
-export const stopSessionResponseSchema = z.object({ stopped: z.boolean() });
-export const closeSessionResponseSchema = z.object({ closed: z.boolean() });
-export const compactSessionResponseSchema = z.object({ compacted: z.boolean() });
+export const steerRunResponseSchema = z.object({ accepted: z.boolean() });
+export const stopRunResponseSchema = z.object({ stopped: z.boolean() });
 
 // ─── Events / outcome ─────────────────────────────────────────────────
 

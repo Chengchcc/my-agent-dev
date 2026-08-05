@@ -1,4 +1,9 @@
-import type { BackendRunOutcome, PendingActionResponse } from "@my-agent-team/agent-backend";
+import type {
+  BackendModelRef,
+  BackendRunOutcome,
+  PendingActionResponse,
+  WorkspaceBinding,
+} from "@my-agent-team/agent-backend";
 import type { Message } from "@my-agent-team/message";
 import type {
   AcquireAgentRunCommand,
@@ -16,13 +21,31 @@ export interface AgentRunPort {
    *  mutation occurs. */
   enqueueAndAcquire(command: AcquireAgentRunCommand): Promise<AcquireAgentRunResult>;
 
-  /** Claim the next input to deliver. Returns an existing `delivering` row
-   *  first (crash recovery), then the oldest `pending` row. */
-  claimNextInput(branchId: string): Promise<ClaimedBranchInput | null>;
+  /** Claim the input already bound to a run (run_id = ?). One Run / one
+   *  input: a run NEVER claims inputs bound to another run. */
+  claimInputForRun(runId: string): Promise<ClaimedBranchInput | null>;
+
+  /** One Run / one input: after a run settles, promote the oldest still-
+   *  queued NON-STEER input (run_id IS NULL) into a FRESH Run on the same
+   *  branch when the branch is idle. Steer inputs are excluded: they belong
+   *  to the run they were injected into and cannot be replayed as a new
+   *  run's input. Returns null when nothing qualifies. */
+  acquireNextRun(
+    branchId: string,
+    from: { modelRef: BackendModelRef; configRevision: number; workspace: WorkspaceBinding | null },
+  ): Promise<AgentRun | null>;
 
   /** CAS an input from `delivering` to `delivered`. Duplicate acceptance
    *  returns the already-delivered row. */
   markInputAccepted(inputId: string): Promise<BranchInput>;
+
+  /** CAS a specific queued input into `delivering` for a run (steer
+   *  injection path). Returns null when the input is not pending. */
+  deliverSteerInput(inputId: string, runId: string): Promise<BranchInput | null>;
+
+  /** CAS a pending/delivering input to `cancelled` (a steer that lost its
+   *  live Worker cannot be delivered later). */
+  cancelInput(inputId: string): Promise<void>;
 
   /** Create a PendingAction and set the Run to `waiting`. */
   createPendingAction(
@@ -45,14 +68,13 @@ export interface AgentRunPort {
   /** Atomically commit a COMPLETED run: verify the run is running/commit_failed
    *  and branch ownership, insert the final assistant Message into
    *  Conversation History, append its ledger_message ref to Agent Context,
-   *  advance the branch leaf/revision/ledger cursor, sync the Backend Session
-   *  Binding, and mark the Run completed - one backend.db transaction. Same
-   *  runId replay returns the completed Run without rewriting anything. */
+   *  advance the branch leaf/revision/ledger cursor, and mark the Run
+   *  completed - one backend.db transaction. Same runId replay returns the
+   *  completed Run without rewriting anything. */
   commitCompletedRun(input: {
     runId: string;
     outcome: BackendRunOutcome;
     output: Message | undefined;
-    backendSessionId: string;
   }): Promise<AgentRun>;
 
   /** Mark a run commit_failed (Backend outcome arrived, Product transaction

@@ -17,7 +17,6 @@ export type {
   MessageEntry,
   TodoStateEntry,
 } from "./persistence/session-tree.js";
-export { createSqliteSessionStore } from "./persistence/sqlite-session-store.js";
 
 // Runtime
 export type { AgentLoopListener, CodingAgentLoopEvent } from "./runtime/agent-event.js";

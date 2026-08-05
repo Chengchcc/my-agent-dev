@@ -44,6 +44,7 @@ const deps: ConversationServiceDeps = {
   port,
   contextService: contextSvc,
   dispatchRun: async () => {},
+  injectSteer: async () => {},
   resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
   maxConsecutiveAgentHops: () => 8,
   idGen,
@@ -76,8 +77,14 @@ const deps: ConversationServiceDeps = {
         inputId: `in-${runId}`,
       };
     },
-    async claimNextInput(_branchId: string) {
+    async claimInputForRun() {
       return null;
+    },
+    async acquireNextRun() {
+      return null;
+    },
+    async cancelInput() {
+      return;
     },
     async markInputAccepted(inputId: string) {
       return { inputId } as never;

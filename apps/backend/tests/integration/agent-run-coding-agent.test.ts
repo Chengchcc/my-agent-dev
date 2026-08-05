@@ -1,4 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
+// The daemon resume path has known flakiness on a second Worker for the
+// same session; the Product layer MUST fall back to a rebuild. Make the
+// bound short so the fallback is exercised in-test instead of stalling.
+process.env.AGENT_RUN_RESUME_TIMEOUT_MS = "2000";
+
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,9 +13,11 @@ import {
   CodingAgentClient,
   CodingAgentModelCatalog,
 } from "@my-agent-team/adapter-coding-agent";
-import { parseMessageRevision } from "@my-agent-team/message";
+import type { Message } from "@my-agent-team/message";
+import { assistantMessageId, parseMessageRevision } from "@my-agent-team/message";
 import {
   createAgentContextService,
+  projectAgentContext,
   sqliteAgentContextAdapter,
 } from "../../src/features/agent-context/index.js";
 import { sqliteAgentRunAdapter } from "../../src/features/agent-run/adapter-sqlite.js";
@@ -21,16 +29,16 @@ import { createProductToolsMcpServer } from "../../src/features/product-tools/mc
 import { createProductToolsService } from "../../src/features/product-tools/service.js";
 import { openDb } from "../../src/infra/sqlite/db.js";
 
-/** THE Phase 4 acceptance chain, all real:
+/** THE Phase 5 acceptance chain, all real:
  *
  *  Product Backend (this process)
  *    → CodingAgentBackend over HTTP/SSE
  *    → real Coding Agent daemon (createCodingAgentApp + Bun.serve)
- *    → real one-shot Worker (worker-main.ts)
+ *    → direct per-Run loop (no Worker, no session, fresh in-memory store)
  *    → real CodingAgentSession with the scripted fake provider
  *    → production resolveTools → real Product Tools MCP (SSE + Bearer token)
  *    → BackendRunOutcome
- *    → backend.db terminal commit (ledger + context + branch + binding + run)
+ *    → backend.db terminal commit (ledger + context + branch + run)
  *
  *  No fake/in-process Backend anywhere in the chain. */
 
@@ -43,6 +51,7 @@ let db: ReturnType<typeof openDb>;
 let convPort: ReturnType<typeof sqliteConversationAdapter>;
 let contextPort: ReturnType<typeof sqliteAgentContextAdapter>;
 let runPort: ReturnType<typeof sqliteAgentRunAdapter>;
+let ledgerResolver: { resolveMessage(cid: string, seq: number): Promise<Message | null> };
 let backend: ReturnType<typeof createAgentRunService>;
 let execution: ReturnType<typeof createAgentRunExecutionService>;
 let mcp: Awaited<ReturnType<typeof createProductToolsMcpServer>>;
@@ -56,7 +65,7 @@ beforeAll(async () => {
   contextPort = sqliteAgentContextAdapter(db, {
     ulid: () => `c-${Math.random().toString(36).slice(2, 8)}`,
   });
-  const ledgerResolver = {
+  ledgerResolver = {
     async resolveMessage(cid: string, seq: number) {
       const hit = convPort.getLedgerEntries(cid).find((e) => e.seq === seq);
       return hit ? (hit.content as never) : null;
@@ -107,9 +116,12 @@ beforeAll(async () => {
       CODING_AGENT_DATA_DIR: daemonTmp,
       CODING_AGENT_WORKSPACE_ROOTS: daemonWs,
       CODING_AGENT_FAKE_PROVIDER: "1",
-      CODING_AGENT_ACCEPT_TIMEOUT_MS: "10000",
+      CODING_AGENT_ACCEPT_TIMEOUT_MS: "3000",
       // the worker's model calls history_recent ONCE, then produces text
       CODING_AGENT_FAKE_TOOL: JSON.stringify([{ name: "history_recent", input: { limit: 5 } }]),
+      // bound a hanging MCP call so a stuck tool fails fast and the run
+      // still completes (tool error -> model fallback text)
+      CODING_AGENT_PRODUCT_TOOL_TIMEOUT_MS: "2000",
       // service token the worker attaches to its Product Tools MCP transport
       CODING_AGENT_PRODUCT_TOOL_TOKEN: TOKEN,
       CODING_AGENT_HOST: "127.0.0.1",
@@ -188,7 +200,7 @@ async function waitForTerminal(runId: string): Promise<Awaited<ReturnType<typeof
   throw new Error(`run ${runId} never reached terminal`);
 }
 
-describe("Phase 4 acceptance: Product Backend -> Coding Agent -> Product Tools MCP", () => {
+describe("Phase 5 acceptance: Product Backend -> Coding Agent -> Product Tools MCP", () => {
   test("a dispatched run completes end to end and commits exactly once", async () => {
     // seed a conversation message the worker's history_recent call will read
     convPort.appendLedgerEntry({
@@ -242,25 +254,96 @@ describe("Phase 4 acceptance: Product Backend -> Coding Agent -> Product Tools M
     // MessageRevision (messageId/state/updatedAt) - Web reducer and Lark
     // watcher skip entries that fail parseMessageRevision.
     const revision = parseMessageRevision(assistant!.content);
-    expect(revision.role).toBe("assistant");
-    expect(revision.state).toBe("done");
-    expect(revision.messageId).toBeTruthy();
+    expect(revision).toMatchObject({
+      messageId: assistantMessageId(runId, 0),
+      role: "assistant",
+      state: "done",
+      conversationId: CONV,
+    });
     expect(revision.updatedAt).toBeGreaterThan(0);
-    expect(revision.conversationId).toBe(CONV);
 
     // Agent Context: the ledger_message ref for the final message exists.
     const entries = await contextPort.listEntriesToLeaf(branchId);
     const refs = entries.filter((e) => e.type === "ledger_message");
     expect(refs.length).toBeGreaterThanOrEqual(1);
 
-    // Binding synced to the new leaf with the daemon session id.
-    const binding = await contextPort.getBinding(branchId);
-    expect(binding?.state).toBe("active");
-    expect(binding?.backendSessionId).toBeTruthy();
-
     // Replay the SAME dispatch: no second commit, no duplicate ledger row.
     await execution.dispatch(runId);
     const ledgerAfter = convPort.getLedgerEntries(CONV).filter((e) => e.kind === "message");
     expect(ledgerAfter).toHaveLength(2);
+  }, 60_000);
+
+  test("a follow-up input chains into a SECOND real run (one Run / one loop)", async () => {
+    const first = await backend.enqueueAndAcquire({
+      conversationId: CONV,
+      agentMemberId: MEMBER,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "chain first" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "e2e-chain-1",
+    });
+    expect(first.acquired).toBe(true);
+    const followUp = await backend.enqueueAndAcquire({
+      conversationId: CONV,
+      agentMemberId: MEMBER,
+      backendKind: "coding_agent",
+      mode: "follow_up",
+      message: { role: "user", text: "chain second" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "e2e-chain-2",
+    });
+    expect(followUp.queued).toBe(true);
+
+    await execution.dispatch(first.run!.runId);
+    await waitForTerminal(first.run!.runId);
+
+    // The queued follow_up became a FRESH run with its own Worker.
+    const inputs = await runPort.listInputs(first.run!.branchId);
+    const followUpInput = inputs.find((i) => i.inputIdempotencyKey === "e2e-chain-2");
+    expect(followUpInput).toBeDefined();
+    const secondRunId = followUpInput!.runId!;
+    expect(secondRunId).not.toBe(first.run!.runId);
+    const secondRun = await waitForTerminal(secondRunId);
+    expect(secondRun?.status).toBe("completed");
+
+    // BOTH runs committed their own final assistant Message - the daemon
+    // never accepted a second segment for the first runId. Filter by the
+    // run-derived messageIds (shared conversation also carries the first
+    // test's assistant message).
+    const ledger = convPort.getLedgerEntries(CONV).filter((e) => e.kind === "message");
+    const ourMessageIds = new Set([
+      assistantMessageId(first.run!.runId, 0),
+      assistantMessageId(secondRunId, 0),
+    ]);
+    const assistantCount = ledger.filter((e) => {
+      if (e.senderMemberId !== MEMBER) return false;
+      try {
+        return ourMessageIds.has(parseMessageRevision(e.content).messageId);
+      } catch {
+        return false;
+      }
+    }).length;
+    expect(assistantCount).toBe(2);
+
+    // Run 2 was built from a FULL projection of the SAME Product Context
+    // Branch: the exact projection function the execution service feeds the
+    // daemon must include Run 1's canonical final Message. No SQLite
+    // session, no resume - the branch IS the continuity.
+    const projection = await projectAgentContext(
+      { port: contextPort, ledgerResolver },
+      { branchId },
+    );
+    const run1Message = projection.find(
+      (item) =>
+        item.message.role === "assistant" &&
+        item.message.text === "done" &&
+        item.productEntryId !== undefined,
+    );
+    expect(run1Message).toBeDefined();
+    // Run 1's final Message also resolves through the ledger refs.
+    expect(projection.some((item) => item.message.role === "assistant")).toBe(true);
   }, 60_000);
 });

@@ -1,24 +1,22 @@
 import type {
-  CompactSessionRequest,
+  CreateRunRequest,
   ModelCatalogResponse,
-  ResumeSessionRequest,
   RunEventEnvelope,
   RunOutcomeResponse,
-  SendRunRequest,
-  SessionResponse,
-  StartSessionRequest,
   TransportError,
 } from "./transport.js";
 import {
+  createRunResponseSchema,
   modelCatalogResponseSchema,
+  parseTransportError,
   runEventEnvelopeSchema,
   runOutcomeResponseSchema,
-  sessionResponseSchema,
-  transportErrorSchema,
 } from "./transport.js";
 
 /** Authenticated HTTP/SSE transport client for the Coding Agent daemon.
- *  No automatic mutation retry: idempotency replay is the caller's choice. */
+ *  Run-centric: POST /v1/runs creates/accepts a Run, steer/stop target the
+ *  runId, outcome/events poll/stream by runId. No automatic mutation retry:
+ *  idempotency replay is the caller's choice. */
 
 export interface CodingAgentClientOptions {
   baseUrl: string;
@@ -47,86 +45,60 @@ export class CodingAgentClient {
     body?: unknown,
     signal?: AbortSignal,
   ): Promise<T> {
-    const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
-      method,
-      headers: this.headers(),
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal,
-    });
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.baseUrl}${path}`, {
+        method,
+        headers: this.headers(),
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal,
+      });
+    } catch (err) {
+      throw new Error(`coding-agent request failed: ${String(err)}`, { cause: err });
+    }
     if (!res.ok) {
-      const raw = await res.text().catch(() => "");
-      let parsed: unknown;
+      let raw: unknown = null;
       try {
-        parsed = JSON.parse(raw);
+        raw = await res.json();
       } catch {
-        parsed = { code: "internal", message: raw.slice(0, 200) };
+        /* non-JSON error body */
       }
-      const err = transportErrorSchema.safeParse(parsed);
-      throw new (await import("./transport.js")).TransportError(
-        err.success ? err.data.code : "internal",
-        err.success ? err.data.message : String(parsed),
-      );
+      throw parseTransportError(raw);
     }
     return (await res.json()) as T;
   }
 
-  async startSession(input: StartSessionRequest): Promise<SessionResponse> {
-    return sessionResponseSchema.parse(await this.request("POST", "/v1/sessions/start", input));
+  /** Accept a new Run. Idempotent for same runId + same payload; same runId +
+   *  different payload conflicts (409). */
+  async execute(input: CreateRunRequest): Promise<{ runId: string; accepted: boolean }> {
+    return createRunResponseSchema.parse(await this.request("POST", "/v1/runs", input));
   }
 
-  async resumeSession(
-    backendSessionId: string,
-    input: ResumeSessionRequest,
-  ): Promise<SessionResponse> {
-    return sessionResponseSchema.parse(
-      await this.request("POST", `/v1/sessions/${backendSessionId}/resume`, input),
-    );
+  /** Inject a steer input into the live Run. Fails (409) when the run is not
+   *  live - never silently converted into a normal input. */
+  async steer(runId: string, input: CreateRunRequest["input"]): Promise<void> {
+    await this.request("POST", `/v1/runs/${runId}/steer`, { input });
   }
 
-  async sendRun(backendSessionId: string, input: SendRunRequest): Promise<{ accepted: boolean }> {
-    return (await this.request("POST", `/v1/sessions/${backendSessionId}/send`, input)) as {
-      accepted: boolean;
-    };
-  }
-
-  async stopSession(backendSessionId: string, runId?: string): Promise<{ stopped: boolean }> {
-    return (await this.request("POST", `/v1/sessions/${backendSessionId}/stop`, {
-      // Stable idempotency: keyed by the active run when known.
-      idempotencyKey: runId ? `stop-${runId}` : `stop-${backendSessionId}`,
-      commandId: runId ? `stop-${runId}` : `stop-${backendSessionId}`,
-      runId,
-    })) as { stopped: boolean };
-  }
-
-  async closeSession(backendSessionId: string, deleteData = true): Promise<{ closed: boolean }> {
-    return (await this.request("DELETE", `/v1/sessions/${backendSessionId}`, {
-      idempotencyKey: `close-${backendSessionId}`,
-      commandId: `close-${backendSessionId}`,
-      deleteData,
-    })) as { closed: boolean };
-  }
-
-  async compactSession(
-    backendSessionId: string,
-    input: CompactSessionRequest,
-  ): Promise<{ compacted: boolean }> {
-    return (await this.request("POST", `/v1/sessions/${backendSessionId}/compact`, input)) as {
-      compacted: boolean;
-    };
+  /** Request cancellation of a Run. Idempotent. */
+  async stop(runId: string): Promise<void> {
+    await this.request("POST", `/v1/runs/${runId}/stop`, {});
   }
 
   async getOutcome(runId: string): Promise<RunOutcomeResponse | null> {
     const res = await this.fetchImpl(`${this.baseUrl}/v1/runs/${runId}/outcome`, {
       method: "GET",
-      headers: this.headers(),
+      headers: { Authorization: `Bearer ${this.authToken}` },
     });
-    if (res.status === 202) return null; // still running
+    if (res.status === 202) return null;
     if (!res.ok) {
-      const { TransportError } = await import("./transport.js");
-      throw new TransportError(
-        res.status === 404 ? "not_found" : "internal",
-        `outcome fetch failed: ${res.status} for ${runId}`,
-      );
+      let raw: unknown = null;
+      try {
+        raw = await res.json();
+      } catch {
+        /* non-JSON error body */
+      }
+      throw parseTransportError(raw);
     }
     return runOutcomeResponseSchema.parse(await res.json());
   }
@@ -136,82 +108,89 @@ export class CodingAgentClient {
   }
 
   /** Incrementally parse SSE events. Reconnect by passing the last delivered
-   *  event id; heartbeat comments are ignored. */
+   *  event id; heartbeat comments are ignored. The stream ends when the
+   *  daemon closes the run's buffer (outcome settled); callers decide whether
+   *  to reconnect. */
   async *streamEvents(
     runId: string,
     lastEventId?: number,
     signal?: AbortSignal,
   ): AsyncIterable<RunEventEnvelope> {
-    const res = await this.fetchImpl(`${this.baseUrl}/v1/runs/${runId}/events`, {
-      method: "GET",
-      headers: {
-        ...this.headers(),
-        ...(lastEventId !== undefined ? { "Last-Event-ID": String(lastEventId) } : {}),
-      },
-      signal,
-    });
-    if (!res.ok || !res.body) {
-      const raw = await res.text().catch(() => "");
-      const { TransportError, transportErrorSchema } = await import("./transport.js");
-      const parsed = transportErrorSchema.safeParse(raw ? JSON.parse(raw) : null);
-      if (parsed.success) {
-        throw new TransportError(parsed.data.code, parsed.data.message);
-      }
-      throw new TransportError("internal", `SSE failed: ${res.status} ${raw.slice(0, 200)}`);
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.authToken}`,
+      Accept: "text/event-stream",
+    };
+    if (lastEventId !== undefined) headers["Last-Event-ID"] = String(lastEventId);
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.baseUrl}/v1/runs/${runId}/events`, {
+        method: "GET",
+        headers,
+        signal,
+      });
+    } catch (err) {
+      if (signal?.aborted) return;
+      throw new Error(`coding-agent SSE failed: ${String(err)}`, { cause: err });
     }
-
+    if (!res.ok) {
+      let raw: unknown = null;
+      try {
+        raw = await res.json();
+      } catch {
+        /* non-JSON error body */
+      }
+      throw parseTransportError(raw);
+    }
+    if (!res.body) throw new Error("coding-agent SSE: empty body");
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
-    let buf = "";
-    let currentId: number | undefined;
-    let currentEvent: string | undefined;
-    let dataLines: string[] = [];
-
-    const flush = (): RunEventEnvelope | null => {
-      if (dataLines.length === 0) return null;
-      const envelope = runEventEnvelopeSchema.parse({
-        id: currentId ?? -1,
-        type: currentEvent ?? "event",
-        data: JSON.parse(dataLines.join("\n")),
-      });
-      dataLines = [];
-      return envelope;
-    };
-
+    let buffer = "";
     try {
-      while (true) {
+      for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() ?? "";
-        for (const rawLine of lines) {
-          const line = rawLine.trim();
-          if (line === "") {
-            const flushed = flush();
-            if (flushed) yield flushed;
-            currentId = undefined;
-            currentEvent = undefined;
-            continue;
-          }
-          if (line.startsWith(":")) continue; // heartbeat comment
-          if (line.startsWith("id: ")) {
-            const flushed = flush();
-            if (flushed) yield flushed;
-            currentId = Number(line.slice(4));
-          } else if (line.startsWith("event: ")) {
-            currentEvent = line.slice(7);
-          } else if (line.startsWith("data: ")) {
-            dataLines.push(line.slice(6));
-          }
+        buffer += decoder.decode(value, { stream: true });
+        for (;;) {
+          const idx = buffer.indexOf("\n\n");
+          if (idx < 0) break;
+          const frame = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          const event = parseSseFrame(frame);
+          if (!event) continue;
+          yield event;
         }
       }
-      const flushed = flush();
-      if (flushed) yield flushed;
+    } catch (err) {
+      if (signal?.aborted) return;
+      throw err;
     } finally {
       reader.releaseLock();
     }
   }
+}
+
+function parseSseFrame(frame: string): RunEventEnvelope | null {
+  let id: number | null = null;
+  let eventType = "message";
+  const dataLines: string[] = [];
+  for (const line of frame.split("\n")) {
+    if (line.startsWith(":")) continue; // comment / heartbeat
+    const colon = line.indexOf(":");
+    if (colon < 0) continue;
+    const field = line.slice(0, colon).trim();
+    const value = line.slice(colon + 1).trimStart();
+    if (field === "id") id = Number(value);
+    else if (field === "event") eventType = value;
+    else if (field === "data") dataLines.push(value);
+  }
+  if (id === null || dataLines.length === 0) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(dataLines.join("\n"));
+  } catch {
+    return null;
+  }
+  return runEventEnvelopeSchema.parse({ id, type: eventType, data });
 }
 
 export type { TransportError };

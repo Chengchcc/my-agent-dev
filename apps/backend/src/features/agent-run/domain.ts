@@ -1,4 +1,8 @@
-import type { BackendModelRef, BackendRunOutcome } from "@my-agent-team/agent-backend";
+import type {
+  BackendModelRef,
+  BackendRunOutcome,
+  WorkspaceBinding,
+} from "@my-agent-team/agent-backend";
 import type { Message } from "@my-agent-team/message";
 
 // ─── Agent Run status ────────────────────────────────────────────
@@ -38,6 +42,9 @@ export interface AgentRun {
   readonly idempotencyKey: string;
   readonly terminalResult: BackendRunOutcome | null;
   readonly configRevision: number;
+  /** Run-level workspace snapshot (set by callers that bind a specific
+   *  workspace, e.g. Loop's cloned repo); null = agent-record default. */
+  readonly workspace: { root: string; access: "read_only" | "read_write" } | null;
   /** Product Tool manifest (ProductToolDescriptor[]), persisted at first
    *  dispatch; Product Tools MCP validates calls against it. */
   readonly productTools:
@@ -98,12 +105,17 @@ export interface AcquireAgentRunCommand {
   readonly defaultModel: BackendModelRef;
   readonly configRevision: number;
   readonly expectedRevision: number;
+  /** Optional run-level workspace snapshot; null = agent-record default. */
+  readonly workspace?: WorkspaceBinding;
 }
 
 export interface AcquireAgentRunResult {
   readonly acquired: boolean;
   readonly queued: boolean;
   readonly replayed: boolean;
+  /** True when the input was cancelled at enqueue (a steer with no active
+   *  Run). No run was created; the caller surfaces the explicit failure. */
+  readonly cancelled?: boolean;
   readonly run?: AgentRun;
   readonly inputId: string;
 }

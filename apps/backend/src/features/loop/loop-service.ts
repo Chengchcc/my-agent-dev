@@ -128,7 +128,7 @@ export function getLoopDetail(
     attempt: item.attempt,
     priority: item.priority,
     result: item.result,
-    generatorRunId: item.generatorSpanId,
+    generatorRunId: item.generatorRunId,
     evaluatorRunId: item.evaluatorRunId,
   }));
   return {
@@ -367,8 +367,12 @@ async function writeDefaultLoopMd(
   projectId: string | undefined,
   settingsSvc?: SettingsService,
 ): Promise<void> {
-  const genModel = settingsSvc?.get<string>("loop.generatorModel") ?? "claude-sonnet-4";
-  const evalModel = settingsSvc?.get<string>("loop.evaluatorModel") ?? "claude-opus-4";
+  // LOOP.md stores the FULL canonical model ID (<provider>/<model>) - the
+  // same key the Coding Agent catalog validates.
+  const genModel =
+    settingsSvc?.get<string>("loop.generatorModel") ?? "anthropic/claude-sonnet-4-20250514";
+  const evalModel =
+    settingsSvc?.get<string>("loop.evaluatorModel") ?? "anthropic/claude-opus-4-20250514";
   const acceptance = settingsSvc?.get<string>("loop.defaultAcceptance") ?? "";
   const dailyCap = settingsSvc?.get<number>("loop.defaultDailyCap") ?? 200000;
   const denylist = settingsSvc?.get<string[]>("loop.defaultDenylist") ?? [

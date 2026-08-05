@@ -61,14 +61,12 @@ function makeRunsFakes(script: {
         terminalResult: null,
         configRevision: 1,
         productTools: null,
+        workspace: null,
         createdAt: 0,
         terminalAt: null,
       };
       runs.set(runId, run);
       return { acquired: true, queued: false, replayed: false, run, inputId: `in-${runId}` };
-    },
-    async claimNextInput() {
-      return null;
     },
     async markInputAccepted(inputId) {
       return { inputId } as never;
@@ -111,6 +109,7 @@ function makeRunsFakes(script: {
       if (run) (run as { status: AgentRun["status"] }).status = script.status ?? "completed";
     },
     async recover() {},
+    async injectSteer() {},
     async retryTerminalCommit() {},
     async stop(runId) {
       stops.push(runId);

@@ -117,18 +117,6 @@ export interface ContextBranch {
   readonly createdAt: number;
 }
 
-// ─── Backend Session Binding ─────────────────────────────────────
-
-export interface BackendSessionBinding {
-  readonly branchId: string;
-  readonly backendSessionId: string | null;
-  readonly backendKind: string;
-  readonly syncedEntryId: string | null;
-  readonly syncedRevision: number | null;
-  readonly state: "active" | "stale" | "detached";
-  readonly updatedAt: number;
-}
-
 // ─── Validation helpers ──────────────────────────────────────────
 
 /** Validate that only ledger_message has ledgerSeq, summary has
