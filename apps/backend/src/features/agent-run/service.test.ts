@@ -53,6 +53,65 @@ function freshFixture(prefix: string) {
 
 afterAll(() => db.close());
 
+describe("Agent Run service: frozen Run config", () => {
+  test("resolveRunConfig supplies systemPrompt + skillRoots when the caller omits them", async () => {
+    const resolved: string[] = [];
+    const svc = createAgentRunService({
+      port: runPort,
+      contextService: ctxService,
+      idGen,
+      ledgerResolver,
+      resolveRunConfig: async ({ conversationId, agentMemberId }) => {
+        resolved.push(`${conversationId}|${agentMemberId}`);
+        return { systemPrompt: "soul\n\nUser context:\nuser", skillRoots: ["/packs/a"] };
+      },
+    });
+    const { conversationId, agentMemberId } = freshFixture("cfg1");
+    const result = await svc.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "run" },
+      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      configRevision: 1,
+      idempotencyKey: `key-cfg1`,
+    });
+    expect(result.acquired).toBe(true);
+    expect(resolved).toEqual([`${conversationId}|${agentMemberId}`]);
+    expect(result.run?.systemPrompt).toBe("soul\n\nUser context:\nuser");
+    expect(result.run?.skillRoots).toEqual(["/packs/a"]);
+  });
+
+  test("explicit caller values beat the resolver", async () => {
+    const svc = createAgentRunService({
+      port: runPort,
+      contextService: ctxService,
+      idGen,
+      ledgerResolver,
+      resolveRunConfig: async () => {
+        throw new Error("must not be called");
+      },
+    });
+    const { conversationId, agentMemberId } = freshFixture("cfg2");
+    const result = await svc.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "run" },
+      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      configRevision: 1,
+      idempotencyKey: `key-cfg2`,
+      systemPrompt: "explicit",
+      skillRoots: [],
+    });
+    expect(result.acquired).toBe(true);
+    expect(result.run?.systemPrompt).toBe("explicit");
+    expect(result.run?.skillRoots).toEqual([]);
+  });
+});
+
 describe("Agent Run service", () => {
   test("lazy existing-member acquisition creates branch and run", async () => {
     const { conversationId, agentMemberId } = freshFixture("s1");

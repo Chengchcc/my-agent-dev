@@ -541,3 +541,175 @@ describe("Agent Run: terminal CAS", () => {
     expect(active?.terminalResult?.status).toBe("completed");
   });
 });
+
+describe("Agent Run: Phase 5 config snapshot", () => {
+  test("the Run persists systemPrompt + skillRoots frozen at creation", async () => {
+    const { conversationId, agentMemberId, branch } = await setupBranch("snap1");
+    const result = await runPort.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      branchId: branch.branchId,
+      mode: "normal",
+      message: { role: "user", text: "go" },
+      inputIdempotencyKey: "ikey-snap1",
+      runIdempotencyKey: "rkey-snap1",
+      deliveryIdempotencyKey: "dkey-snap1",
+      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      configRevision: 1,
+      expectedRevision: branch.revision,
+      systemPrompt: "frozen prompt",
+      skillRoots: ["/skills/a", "/skills/b"],
+    });
+    expect(result.acquired).toBe(true);
+    const run = result.run!;
+    expect(run.systemPrompt).toBe("frozen prompt");
+    expect(run.skillRoots).toEqual(["/skills/a", "/skills/b"]);
+    // Recovery path re-reads the persisted snapshot.
+    const reloaded = await runPort.getRun(run.runId);
+    expect(reloaded?.systemPrompt).toBe("frozen prompt");
+    expect(reloaded?.skillRoots).toEqual(["/skills/a", "/skills/b"]);
+  });
+
+  test("a queued input keeps its OWN config snapshot; acquireNextRun promotes with IT, never the previous run's config", async () => {
+    const { conversationId, agentMemberId, branch } = await setupBranch("snap2");
+    // First run: model-a config.
+    const first = await runPort.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      branchId: branch.branchId,
+      mode: "normal",
+      message: { role: "user", text: "first" },
+      inputIdempotencyKey: "ikey-snap2-1",
+      runIdempotencyKey: "rkey-snap2-1",
+      deliveryIdempotencyKey: "dkey-snap2-1",
+      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      configRevision: 1,
+      expectedRevision: branch.revision,
+      systemPrompt: "first prompt",
+    });
+    expect(first.acquired).toBe(true);
+
+    // Queued input with a DIFFERENT request-time config.
+    const queued = await runPort.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      branchId: branch.branchId,
+      mode: "follow_up",
+      message: { role: "user", text: "second" },
+      inputIdempotencyKey: "ikey-snap2-2",
+      runIdempotencyKey: "rkey-snap2-2",
+      deliveryIdempotencyKey: "dkey-snap2-2",
+      defaultModel: { backendKind: "coding_agent", modelId: "model-b" },
+      configRevision: 7,
+      workspace: { root: "/pinned-other", access: "read_only" },
+      systemPrompt: "second prompt",
+      skillRoots: ["/skills/loop"],
+      expectedRevision: branch.revision + 1,
+    });
+    expect(queued.queued).toBe(true);
+
+    // Settle the first run, then promote: the new run must use the QUEUED
+    // input's snapshot (model-b / revision 7 / pinned workspace), NOT the
+    // first run's (model-a / 1 / null).
+    await runPort.finalizeRun(first.run!.runId, { status: "completed" });
+    const second = await runPort.acquireNextRun(branch.branchId);
+    expect(second).not.toBeNull();
+    expect(second!.modelRef).toEqual({ backendKind: "coding_agent", modelId: "model-b" });
+    expect(second!.configRevision).toBe(7);
+    expect(second!.workspace).toEqual({ root: "/pinned-other", access: "read_only" });
+    expect(second!.systemPrompt).toBe("second prompt");
+    expect(second!.skillRoots).toEqual(["/skills/loop"]);
+  });
+
+  test("listIdleBranchesWithPendingInputs returns FIFO branches whose pending input never became a Run", async () => {
+    const a = await setupBranch("idle-a");
+    const b = await setupBranch("idle-b");
+    // Branch b: first input acquires a run, second queues (pending, older).
+    const bFirst = await runPort.enqueueAndAcquire({
+      conversationId: b.conversationId,
+      agentMemberId: b.agentMemberId,
+      branchId: b.branch.branchId,
+      mode: "normal",
+      message: { role: "user", text: "b-first" },
+      inputIdempotencyKey: "ikey-idle-b1",
+      runIdempotencyKey: "rkey-idle-b1",
+      deliveryIdempotencyKey: "dkey-idle-b1",
+      defaultModel: { backendKind: "coding_agent", modelId: "m" },
+      configRevision: 1,
+      expectedRevision: b.branch.revision,
+    });
+    expect(bFirst.acquired).toBe(true);
+    await runPort.enqueueAndAcquire({
+      conversationId: b.conversationId,
+      agentMemberId: b.agentMemberId,
+      branchId: b.branch.branchId,
+      mode: "follow_up",
+      message: { role: "user", text: "b-pending" },
+      inputIdempotencyKey: "ikey-idle-b2",
+      runIdempotencyKey: "rkey-idle-b2",
+      deliveryIdempotencyKey: "dkey-idle-b2",
+      defaultModel: { backendKind: "coding_agent", modelId: "m" },
+      configRevision: 1,
+      expectedRevision: b.branch.revision + 1,
+    });
+    // Branch a: first input acquires a run, second queues (pending, newer).
+    const aFirst = await runPort.enqueueAndAcquire({
+      conversationId: a.conversationId,
+      agentMemberId: a.agentMemberId,
+      branchId: a.branch.branchId,
+      mode: "normal",
+      message: { role: "user", text: "a-first" },
+      inputIdempotencyKey: "ikey-idle-a1",
+      runIdempotencyKey: "rkey-idle-a1",
+      deliveryIdempotencyKey: "dkey-idle-a1",
+      defaultModel: { backendKind: "coding_agent", modelId: "m" },
+      configRevision: 1,
+      expectedRevision: a.branch.revision,
+    });
+    expect(aFirst.acquired).toBe(true);
+    await runPort.enqueueAndAcquire({
+      conversationId: a.conversationId,
+      agentMemberId: a.agentMemberId,
+      branchId: a.branch.branchId,
+      mode: "normal",
+      message: { role: "user", text: "a-pending" },
+      inputIdempotencyKey: "ikey-idle-a2",
+      runIdempotencyKey: "rkey-idle-a2",
+      deliveryIdempotencyKey: "dkey-idle-a2",
+      defaultModel: { backendKind: "coding_agent", modelId: "m" },
+      configRevision: 1,
+      expectedRevision: a.branch.revision + 1,
+    });
+    // A steer input never counts as a pending promotable input.
+    await runPort.enqueueAndAcquire({
+      conversationId: a.conversationId,
+      agentMemberId: a.agentMemberId,
+      branchId: a.branch.branchId,
+      mode: "steer",
+      message: { role: "user", text: "steer" },
+      inputIdempotencyKey: "ikey-idle-a3",
+      runIdempotencyKey: "rkey-idle-a3",
+      deliveryIdempotencyKey: "dkey-idle-a3",
+      defaultModel: { backendKind: "coding_agent", modelId: "m" },
+      configRevision: 1,
+      expectedRevision: a.branch.revision + 1,
+    });
+
+    // Both branches have pending inputs; FIFO order by oldest pending seq
+    // (older foreign branches from earlier tests may precede them).
+    const idle = await runPort.listIdleBranchesWithPendingInputs();
+    expect(idle).toContain(b.branch.branchId);
+    expect(idle).toContain(a.branch.branchId);
+    expect(idle.indexOf(b.branch.branchId)).toBeLessThan(idle.indexOf(a.branch.branchId));
+
+    // The busy branch's pending input is NOT promoted while its run is live.
+    expect(await runPort.acquireNextRun(a.branch.branchId)).toBeNull();
+    // Settle b's run: b's pending input (its OWN snapshot) promotes now.
+    await runPort.finalizeRun(bFirst.run!.runId, { status: "completed" });
+    const promoted = await runPort.acquireNextRun(b.branch.branchId);
+    expect(promoted).not.toBeNull();
+    const after = await runPort.listIdleBranchesWithPendingInputs();
+    expect(after).not.toContain(b.branch.branchId);
+    expect(after).toContain(a.branch.branchId);
+  });
+});

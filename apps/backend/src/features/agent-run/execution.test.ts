@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   CodingAgentBackend,
-  CodingAgentClient,
+  type CodingAgentCommandConfig,
   CodingAgentModelCatalog,
 } from "@my-agent-team/adapter-coding-agent";
-import type { RunEventEnvelope } from "@my-agent-team/agent-backend";
 import { assistantMessageId, parseMessageRevision } from "@my-agent-team/message";
 import { openDb } from "../../infra/sqlite/db.js";
 import { createAgentContextService, sqliteAgentContextAdapter } from "../agent-context/index.js";
@@ -17,122 +16,70 @@ import type { AgentRun } from "./domain.js";
 import { createAgentRunExecutionService } from "./execution.js";
 import { createAgentRunService } from "./service.js";
 
-// ─── Fake Coding Agent daemon on the Run-centric protocol ─────────────
+// ─── Real RPC child (fixture) harness ─────────────────────────────────
+// Every execute() spawns the fixture child (packages/adapter-coding-agent/
+// src/__fixtures__/rpc-fixture.ts) speaking the stdio JSONL protocol. The
+// fixture records every command to a shared record file; the harness reads
+// it back for assertions. This is the REAL child-process transport - no
+// in-process fetch, no SSE, no polling.
+
+const FIXTURE = new URL(
+  "../../../../../packages/adapter-coding-agent/src/__fixtures__/rpc-fixture.ts",
+  import.meta.url,
+).pathname;
 
 interface FakeDaemonOptions {
-  /** Fail the first execute (acceptance-before crash simulation). */
+  /** Reject the first execute across all children (acceptance-failure
+   *  simulation); later executes accept. */
   failFirstExecute?: boolean;
   outcomeDelayMs?: number;
-  /** Fail steer with this error code. */
-  steerError?: { code: string; message: string };
-}
-
-function encodeSSE(events: readonly RunEventEnvelope[]): string {
-  return events
-    .map((e) => `id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e.data)}\n\n`)
-    .join("");
+  /** Fail steer with this message. */
+  steerError?: boolean;
 }
 
 function createFakeDaemon(opts: FakeDaemonOptions = {}) {
-  const executeCalls: Array<{ runId: string; workspaceRoot: string }> = [];
-  const steerCalls: string[] = [];
-  const stopCalls: string[] = [];
-  const readyAt = new Map<string, number>();
-  const eventsByRun = new Map<string, RunEventEnvelope[]>();
-  let executeAttempts = 0;
-  let verifyManifestAtAccept: ((runId: string) => void) | null = null;
-
-  const eventsFor = (): RunEventEnvelope[] => [
-    { id: 1, type: "agent_start", data: {} },
-    { id: 2, type: "message_update", data: { text: "working" } },
-    { id: 3, type: "agent_end", data: { status: "completed" } },
-  ];
-
-  const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
-    const path = String(url).replace(/^https?:\/\/[^/]+/, "");
-    const method = init?.method ?? "GET";
-    const body = init?.body
-      ? (JSON.parse(String(init.body)) as Record<string, unknown>)
-      : undefined;
-
-    if (method === "POST" && path === "/v1/runs") {
-      executeAttempts++;
-      const runId = String((body?.run as { runId?: string })?.runId);
-      const workspaceRoot = String((body?.workspace as { root?: string })?.root ?? "");
-      executeCalls.push({ runId, workspaceRoot });
-      verifyManifestAtAccept?.(runId);
-      if (opts.failFirstExecute && executeAttempts === 1) {
-        return Response.json(
-          { code: "internal", message: "simulated execute failure" },
-          { status: 500 },
-        );
-      }
-      readyAt.set(runId, Date.now() + (opts.outcomeDelayMs ?? 60));
-      eventsByRun.set(runId, eventsFor());
-      return Response.json({ runId, accepted: true });
-    }
-    if (method === "POST" && path.endsWith("/steer")) {
-      const runId = path.split("/")[3]!;
-      steerCalls.push(runId);
-      if (opts.steerError) {
-        return Response.json(opts.steerError, { status: 409 });
-      }
-      return Response.json({ accepted: true });
-    }
-    if (method === "POST" && path.endsWith("/stop")) {
-      stopCalls.push(path.split("/")[3]!);
-      return Response.json({ stopped: true });
-    }
-    if (method === "GET" && path.includes("/events")) {
-      const runId = path.split("/")[3]!;
-      const lastId = Number((init?.headers as Record<string, string>)?.["Last-Event-ID"] ?? -1);
-      const evs = (eventsByRun.get(runId) ?? []).filter((e) => e.id > lastId);
-      return new Response(encodeSSE(evs), {
-        status: 200,
-        headers: { "content-type": "text/event-stream" },
-      });
-    }
-    if (method === "GET" && path.includes("/outcome")) {
-      const runId = path.split("/")[3]!;
-      const ready = readyAt.get(runId) ?? 0;
-      if (Date.now() < ready) {
-        return new Response(null, { status: 202 });
-      }
-      return Response.json({
-        runId,
-        status: "completed",
-        output: { role: "assistant", text: "done" },
-      });
-    }
-    if (method === "GET" && path === "/v1/models") {
-      return Response.json({
-        backendKind: "coding_agent",
-        models: [
-          {
-            id: "fake/echo",
-            displayName: "Fake Echo",
-            reasoning: false,
-            inputModalities: ["text"],
-            contextWindow: 200_000,
-            maxOutputTokens: 8192,
-            available: true,
-          },
-        ],
-      });
-    }
-    return Response.json({ code: "not_found", message: path }, { status: 404 });
+  const record = `${dataDir}/daemon-${daemonSeq++}.log`;
+  const scenario = opts.failFirstExecute
+    ? "reject-first-execute"
+    : opts.steerError
+      ? "steer-error"
+      : "normal";
+  const config: CodingAgentCommandConfig = {
+    executable: process.execPath,
+    args: [FIXTURE, "--mode", "rpc"],
+    env: {
+      RPC_FIXTURE_SCENARIO: scenario,
+      RPC_FIXTURE_RECORD: record,
+      RPC_FIXTURE_OUTCOME_DELAY_MS: String(opts.outcomeDelayMs ?? 60),
+    },
   };
-
+  const readCalls = (kind: string): string[] => {
+    if (!existsSync(record)) return [];
+    return readFileSync(record, "utf-8")
+      .trim()
+      .split("\n")
+      .filter((l) => l.startsWith(`${kind} `))
+      .map((l) => l.slice(kind.length + 1));
+  };
   return {
-    fetchImpl: fetchImpl as typeof fetch,
-    executeCalls,
-    steerCalls,
-    stopCalls,
-    setVerifyManifest: (fn: (runId: string) => void) => {
-      verifyManifestAtAccept = fn;
+    backend: new CodingAgentBackend(config),
+    modelCatalog: new CodingAgentModelCatalog(config),
+    get executeCalls(): Array<{ runId: string; workspaceRoot: string }> {
+      return readCalls("execute").map((line) => {
+        const [runId, ...rest] = line.split(" ");
+        return { runId: runId!, workspaceRoot: rest.join(" ") };
+      });
+    },
+    get steerCalls(): string[] {
+      return readCalls("steer").map((l) => l.split(" ")[0]!);
+    },
+    get stopCalls(): string[] {
+      return readCalls("abort").map((l) => l.split(" ")[0]!);
     },
   };
 }
+
+let daemonSeq = 0;
 
 // ─── Test harness ──────────────────────────────────────────────────────
 
@@ -159,17 +106,12 @@ function makeExecution(
       return hit ? (hit.content as never) : null;
     },
   };
-  const realClient = new CodingAgentClient({
-    baseUrl: "http://fake",
-    authToken: "t",
-    fetchImpl: fakeDaemon.fetchImpl,
-  });
   return createAgentRunExecutionService({
     runPort: activeRunPort,
     contextPort,
     ledgerResolver,
-    backend: new CodingAgentBackend(realClient),
-    modelCatalog: new CodingAgentModelCatalog(realClient),
+    backend: fakeDaemon.backend,
+    modelCatalog: fakeDaemon.modelCatalog,
     idGen: { ulid: () => `id-${Math.random().toString(36).slice(2, 12)}` },
     resolveWorkspace: async () => ({ root: dataDir, access: "read_write" }),
     productToolsEntrypoint: "sse:http://127.0.0.1:1/mcp",
@@ -380,6 +322,7 @@ describe("agent run execution (Run-centric)", () => {
     const execution = makeExecution(fake);
 
     const pinnedWorkspace = `${dataDir}/pinned-ws`;
+    mkdirSync(pinnedWorkspace, { recursive: true });
     const acquired = await backend.enqueueAndAcquire({
       conversationId,
       agentMemberId,
@@ -441,7 +384,7 @@ describe("agent run execution (Run-centric)", () => {
   test("steer is cancelled (never delivered) when Backend acceptance fails", async () => {
     const fake = createFakeDaemon({
       outcomeDelayMs: 1500,
-      steerError: { code: "conflict", message: "steer requires a live run" },
+      steerError: true,
     });
     const execution = makeExecution(fake);
 
@@ -534,9 +477,11 @@ describe("agent run execution (Run-centric)", () => {
     const acquired = await enqueue("normal", "stop-1", "hello");
     const runId = acquired.run!.runId;
     const dispatchPromise = execution.dispatch(runId);
-    // Wait for the live handle to exist.
-    for (let i = 0; i < 50; i++) {
-      if (fake.executeCalls.length > 0) break;
+    // Wait until the run is delivered (Backend acceptance complete): the
+    // live handle exists and stop() targets the child.
+    for (let i = 0; i < 100; i++) {
+      const inputs = await runPort.listInputs(acquired.run!.branchId);
+      if (inputs[0]?.status === "delivered") break;
       await new Promise((r) => setTimeout(r, 20));
     }
     await execution.stop(runId);

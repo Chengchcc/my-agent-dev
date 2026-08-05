@@ -125,9 +125,10 @@ describe("agent-backend contracts", () => {
 
   test("package runtime entry imports without missing exports", async () => {
     const module = await import("./index.js");
-    // The barrel exports the transport wire contract next to the types.
-    expect(module.createRunRequestSchema).toBeDefined();
-    expect(module.runOutcomeResponseSchema).toBeDefined();
+    // The barrel exports the stdio JSONL wire contract next to the types.
+    expect(module.executeCommandSchema).toBeDefined();
+    expect(module.codingAgentOutputSchema).toBeDefined();
+    expect(module.modelCatalogResponseSchema).toBeDefined();
   });
 
   test("extension events are namespaced to the backend kind", () => {

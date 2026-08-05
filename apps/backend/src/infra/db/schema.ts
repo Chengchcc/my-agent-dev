@@ -487,6 +487,11 @@ export const agentRun = sqliteTable(
     /** JSON: the run's Product Tool manifest (ProductToolDescriptor[]),
      *  written at first dispatch; Product Tools MCP validates against it. */
     productTools: text("product_tools"),
+    /** Frozen system prompt (Agent identity for Conversation/Cron runs;
+     *  LOOP.md generator/evaluator prompt for Loop runs). Null = none. */
+    systemPrompt: text("system_prompt"),
+    /** JSON: frozen skill pack roots (absolute dirs scanned for SKILL.md). */
+    skillRoots: text("skill_roots"),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     terminalAt: integer("terminal_at", { mode: "number" }),
   },
@@ -518,6 +523,15 @@ export const branchInputQueue = sqliteTable(
     deliveryIdempotencyKey: text("delivery_idempotency_key").notNull(),
     inputIdempotencyKey: text("input_idempotency_key").notNull(),
     runId: text("run_id"), // set when acquired
+    /** Request-time Run config snapshot (JSON BackendModelRef). Persisted on
+     *  the queue row so a later promote (acquireNextRun) uses THIS input's
+     *  snapshot, never the previous Run's config. */
+    modelRef: text("model_ref"),
+    configRevision: integer("config_revision"),
+    workspaceRoot: text("workspace_root"),
+    workspaceAccess: text("workspace_access"),
+    systemPrompt: text("system_prompt"),
+    skillRoots: text("skill_roots"), // JSON: readonly string[]
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     deliveredAt: integer("delivered_at", { mode: "number" }),
   },

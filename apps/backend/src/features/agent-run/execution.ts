@@ -87,17 +87,15 @@ export interface AgentRunExecutionDeps {
   readonly backend: CodingAgentBackend;
   readonly modelCatalog: CodingAgentModelCatalog;
   readonly idGen: IdGenerator;
-  /** Workspace binding for a run's agent member (from the Agent's workspace
-   *  path + permission mode; injected so tests and callers can vary it). Used
-   *  ONLY when the Run itself did not pin a workspace snapshot. */
+  /** Resolve the workspace binding for a run's agent member (from the
+   *  Agent's workspace path + permission mode; injected so tests and callers
+   *  can vary it). Used ONLY when the Run itself did not pin a workspace
+   *  snapshot. */
   readonly resolveWorkspace: (input: {
     conversationId: string;
     agentMemberId: string;
   }) => Promise<WorkspaceBinding>;
-  /** Build the system prompt for a run. The default returns undefined (no
-   *  system prompt) and the integration test injects a minimal one. */
-  readonly resolveSystemPrompt?: (run: AgentRun) => Promise<string | undefined>;
-  /** Product Tools MCP endpoint the Coding Agent daemon connects to
+  /** Product Tools MCP endpoint the Coding Agent child connects to
    *  (`sse:<url>`), from PRODUCT_TOOLS_MCP_URL. */
   readonly productToolsEntrypoint: string;
   /** Called after a completed run's Product commit (History Message +
@@ -186,13 +184,14 @@ export function createAgentRunExecutionService(
     );
   }
 
-  /** Assemble the BackendRunInput for a run's single input. */
+  /** Assemble the BackendRunInput for a run's single input. The run's
+   *  systemPrompt + skillRoots are the frozen snapshot persisted at Run
+   *  creation - never re-resolved at dispatch (recovery reuses them). */
   function buildRunInput(
     run: AgentRun,
     history: readonly ProjectedHistoryItem[],
     input: BranchInput,
     workspace: WorkspaceBinding,
-    systemPrompt: string | undefined,
   ): Parameters<CodingAgentBackend["execute"]>[0] {
     return {
       history,
@@ -200,7 +199,8 @@ export function createAgentRunExecutionService(
       run: {
         runId: run.runId,
         model: run.modelRef as BackendModelRef<"coding_agent">,
-        ...(systemPrompt ? { systemPrompt } : {}),
+        ...(run.systemPrompt ? { systemPrompt: run.systemPrompt } : {}),
+        ...(run.skillRoots && run.skillRoots.length > 0 ? { skillRoots: run.skillRoots } : {}),
         productTools: buildHistoryTools(deps.productToolsEntrypoint),
         configRevision: run.configRevision,
       },
@@ -243,18 +243,14 @@ export function createAgentRunExecutionService(
       return { outcome: null, segment: live.segment, drain: Promise.resolve() };
     }
 
-    const systemPrompt = deps.resolveSystemPrompt ? await deps.resolveSystemPrompt(run) : undefined;
-
     // The run's Product Tool manifest MUST be durable BEFORE the Backend is
-    // called: the daemon can invoke a Product Tool the moment it accepts, and
+    // called: the child can invoke a Product Tool the moment it accepts, and
     // MCP authorization validates against the stored manifest - a
     // fire-and-forget write would race that first call.
     await runPort.setRunProductTools(runId, [...buildHistoryTools(deps.productToolsEntrypoint)]);
 
     const history = await projectHistory(run.branchId);
-    const segment = await backend.execute(
-      buildRunInput(run, history, input, workspace, systemPrompt),
-    );
+    const segment = await backend.execute(buildRunInput(run, history, input, workspace));
     liveRuns.set(runId, { segment });
 
     await runPort.markInputAccepted(input.inputId);
@@ -321,12 +317,9 @@ export function createAgentRunExecutionService(
 
     // Follow-up semantics: the oldest queued non-steer input becomes a
     // FRESH Run now that this one settled (one Run / one input / one loop,
-    // never a second segment).
-    const next = await runPort.acquireNextRun(run.branchId, {
-      modelRef: run.modelRef,
-      configRevision: run.configRevision,
-      workspace: run.workspace,
-    });
+    // never a second segment). The new Run is built from the queued input's
+    // OWN config snapshot - never from this settled run's config.
+    const next = await runPort.acquireNextRun(run.branchId);
     if (next) {
       void dispatchFn(next.runId).catch((err) => {
         console.error(`[agent-run] chain dispatch failed for ${next.runId}:`, err);
@@ -385,13 +378,26 @@ export function createAgentRunExecutionService(
     },
 
     /** Startup recovery: redeliver every durable `delivering` input (same
-     *  runId/inputId/idempotency - the Backend dedupes) and surface
-     *  commit_failed runs for retryTerminalCommit. Called once at boot. */
+     *  runId/inputId/idempotency - the Backend dedupes), promote every
+     *  branch with a pending non-steer input that never became a Run
+     *  (crash gap), and surface commit_failed runs for retryTerminalCommit.
+     *  Called once at boot. */
     async recover() {
       const delivering = await runPort.listDeliveringInputs();
       for (const claimed of delivering) {
         await dispatchFn(claimed.runId).catch((err) => {
           console.error(`[agent-run] recover dispatch failed for ${claimed.runId}:`, err);
+        });
+      }
+      // Crash gap: pending input with run_id IS NULL on an idle branch. Each
+      // branch promotes its oldest input into a fresh Run from the input's
+      // OWN snapshot (FIFO); acquireNextRun no-ops on busy branches.
+      const idleBranches = await runPort.listIdleBranchesWithPendingInputs();
+      for (const branchId of idleBranches) {
+        const promoted = await runPort.acquireNextRun(branchId);
+        if (!promoted) continue;
+        await dispatchFn(promoted.runId).catch((err) => {
+          console.error(`[agent-run] recover promote dispatch failed for ${promoted.runId}:`, err);
         });
       }
       const failed = await runPort.listCommitFailedRuns();
@@ -451,7 +457,12 @@ export function createAgentRunExecutionService(
         }
         set.add(fn);
         try {
-          while (subscribers.has(runId)) {
+          // Drain `pending` even after closeSubscribers: a yield suspends
+          // this generator, so the subscriber set can close while buffered
+          // events are still unyielded. All broadcasts happen before the
+          // close (the dispatch drain race orders them), so pending is
+          // complete by then - never drop the tail.
+          while (pending.length > 0 || subscribers.has(runId)) {
             if (signal?.aborted) break;
             if (pending.length > 0) {
               yield pending.shift()!;

@@ -15,6 +15,14 @@ export interface AgentRunServiceDeps {
   readonly contextService: AgentContextService;
   readonly idGen: IdGenerator;
   readonly ledgerResolver: LedgerMessageResolver;
+  /** Resolve the frozen Run config (systemPrompt + skillRoots) from the
+   *  target Agent (identity + assigned ready skill packs). Called when the
+   *  caller did not pass explicit values - Loop scopes pass their own
+   *  LOOP.md config instead. */
+  readonly resolveRunConfig?: (input: {
+    conversationId: string;
+    agentMemberId: string;
+  }) => Promise<{ systemPrompt?: string; skillRoots?: readonly string[] }>;
 }
 
 /** Product-facing Agent Run service. Manages durable Run creation, queue,
@@ -34,6 +42,10 @@ export interface AgentRunService {
     idempotencyKey: string;
     /** Optional run-level workspace snapshot (e.g. Loop's cloned repo). */
     workspace?: WorkspaceBinding;
+    /** Optional frozen system prompt / skill roots; when omitted the
+     *  service's resolveRunConfig resolves them from the target Agent. */
+    systemPrompt?: string;
+    skillRoots?: readonly string[];
   }): Promise<{
     acquired: boolean;
     queued: boolean;
@@ -76,6 +88,19 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
       const deliveryIdempotencyKey = `${input.idempotencyKey}:delivery`;
       const runIdempotencyKey = `${input.idempotencyKey}:run`;
 
+      // Frozen at enqueue: explicit caller values win; otherwise the target
+      // Agent's identity + assigned skill packs.
+      let systemPrompt = input.systemPrompt;
+      let skillRoots = input.skillRoots;
+      if ((systemPrompt === undefined || skillRoots === undefined) && deps.resolveRunConfig) {
+        const resolved = await deps.resolveRunConfig({
+          conversationId: input.conversationId,
+          agentMemberId: input.agentMemberId,
+        });
+        systemPrompt ??= resolved.systemPrompt;
+        skillRoots ??= resolved.skillRoots;
+      }
+
       return port.enqueueAndAcquire({
         conversationId: input.conversationId,
         agentMemberId: input.agentMemberId,
@@ -89,6 +114,8 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
         configRevision: input.configRevision,
         expectedRevision: branch.revision,
         workspace: input.workspace,
+        systemPrompt,
+        skillRoots,
       });
     },
 

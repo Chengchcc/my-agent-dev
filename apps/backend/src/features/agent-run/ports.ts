@@ -1,9 +1,4 @@
-import type {
-  BackendModelRef,
-  BackendRunOutcome,
-  PendingActionResponse,
-  WorkspaceBinding,
-} from "@my-agent-team/agent-backend";
+import type { BackendRunOutcome, PendingActionResponse } from "@my-agent-team/agent-backend";
 import type { Message } from "@my-agent-team/message";
 import type {
   AcquireAgentRunCommand,
@@ -27,13 +22,12 @@ export interface AgentRunPort {
 
   /** One Run / one input: after a run settles, promote the oldest still-
    *  queued NON-STEER input (run_id IS NULL) into a FRESH Run on the same
-   *  branch when the branch is idle. Steer inputs are excluded: they belong
-   *  to the run they were injected into and cannot be replayed as a new
-   *  run's input. Returns null when nothing qualifies. */
-  acquireNextRun(
-    branchId: string,
-    from: { modelRef: BackendModelRef; configRevision: number; workspace: WorkspaceBinding | null },
-  ): Promise<AgentRun | null>;
+   *  branch when the branch is idle. The new Run is built from the queued
+   *  input's OWN config snapshot - never from the settled run's config.
+   *  Steer inputs are excluded: they belong to the run they were injected
+   *  into and cannot be replayed as a new run's input. Returns null when
+   *  nothing qualifies. */
+  acquireNextRun(branchId: string): Promise<AgentRun | null>;
 
   /** CAS an input from `delivering` to `delivered`. Duplicate acceptance
    *  returns the already-delivered row. */
@@ -87,6 +81,12 @@ export interface AgentRunPort {
 
   /** All durable `delivering` inputs across branches (crash recovery). */
   listDeliveringInputs(): Promise<ClaimedBranchInput[]>;
+
+  /** Branch ids with a pending non-steer input (run_id IS NULL), ordered by
+   *  oldest pending input (FIFO). Crash-gap recovery: after a restart these
+   *  inputs never became Runs; each branch is promoted via acquireNextRun.
+   *  The active-run check happens inside acquireNextRun's transaction. */
+  listIdleBranchesWithPendingInputs(): Promise<string[]>;
 
   /** All commit_failed runs awaiting retryTerminalCommit. */
   listCommitFailedRuns(): Promise<AgentRun[]>;

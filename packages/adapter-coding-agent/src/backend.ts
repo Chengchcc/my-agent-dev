@@ -5,118 +5,409 @@ import type {
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
+  CodingAgentOutput,
+  RunEventEnvelope,
 } from "@my-agent-team/agent-backend";
-import type { CodingAgentClient } from "./client.js";
 import { mapRunEvent, mapRunOutcome } from "./event-mapper.js";
-import { type RunEventEnvelope, TransportError } from "./transport.js";
+import {
+  type CodingAgentCommandConfig,
+  type SpawnedCodingAgentProcess,
+  spawnCodingAgentProcess,
+} from "./process.js";
+import { codingAgentOutputSchema } from "./protocol.js";
 
-interface ActiveRun {
-  readonly runId: string;
-  readonly segment: BackendRunSegment<"coding_agent">;
-  stop(): Promise<void>;
+/** One execute() = one spawned `coding-agent --mode rpc` child = one Run =
+ *  one outcome, then the child exits. No polling, no SSE, no reconnect, no
+ *  session cache: the child handle IS the run. stdout is consumed by ONE
+ *  routing task per handle; command responses are matched by command id. */
+
+export type CodingAgentProcessErrorCode =
+  | "spawn_failed"
+  | "invalid_request"
+  | "conflict"
+  | "not_found"
+  | "process_failed";
+
+export class CodingAgentProcessError extends Error {
+  readonly code: CodingAgentProcessErrorCode;
+  constructor(code: CodingAgentProcessErrorCode, message: string) {
+    super(message);
+    this.name = "CodingAgentProcessError";
+    this.code = code;
+  }
 }
 
-/** The Coding Agent adapter: one `execute()` = one daemon Run = one loop =
- *  one outcome. No session lifecycle, no resume; steer/stop target the
- *  runId directly. */
+export interface CodingAgentBackendOptions {
+  /** Bounded grace for the child to exit after outcome/abort before kill. */
+  abortGraceMs?: number;
+}
+
+interface CommandWaiter {
+  resolve(result: { success: boolean; error?: string }): void;
+}
+
+interface ActiveHandle {
+  readonly runId: string;
+  readonly proc: SpawnedCodingAgentProcess;
+  readonly executeCommandId: string;
+  accepted: boolean;
+  /** One-shot acceptance: null = accepted, string = rejection. */
+  readonly acceptance: Promise<string | null>;
+  settleAcceptance: ((err: string | null) => void) | null;
+  /** The child's outcome envelope arrived (terminal authority). */
+  outcomeReceived: boolean;
+  settled: boolean;
+  settle(outcome: BackendRunOutcome): void;
+  readonly outcome: Promise<BackendRunOutcome>;
+  pushEvent(envelope: RunEventEnvelope): void;
+  readonly events: AsyncIterable<BackendEvent<"coding_agent">>;
+}
+
+/** Race a promise against a timeout; the timer is cleared so a settled race
+ *  never holds the event loop. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const raced = Promise.race([
+    promise,
+    new Promise<null>((r) => {
+      timer = setTimeout(() => r(null), ms);
+    }),
+  ]);
+  void raced.finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+  return raced;
+}
+
 export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
   readonly kind = "coding_agent" as const;
-  private readonly client: CodingAgentClient;
-  private readonly activeRuns = new Map<string, ActiveRun>();
+  private readonly command: CodingAgentCommandConfig;
+  private readonly abortGraceMs: number;
+  private readonly active = new Map<string, ActiveHandle>();
+  /** Per-run command response waiters (steer/abort), matched by command id. */
+  readonly pendingResponses = new Map<string, Map<string, CommandWaiter>>();
 
-  constructor(client: CodingAgentClient) {
-    this.client = client;
+  constructor(command: CodingAgentCommandConfig, opts: CodingAgentBackendOptions = {}) {
+    this.command = command;
+    this.abortGraceMs = opts.abortGraceMs ?? 3_000;
   }
 
+  /** Spawn a fresh child for the Run, send execute, and return the segment
+   *  ONLY after the child accepted (runtime assembled, steer/abort routable).
+   *  On rejection the child is reaped and the input stays unaccepted. */
   async execute(
     input: BackendRunInput<"coding_agent">,
   ): Promise<BackendRunSegment<"coding_agent">> {
-    const resp = await this.client.execute(input as never);
-    return buildSegment(this.client, this.activeRuns, resp.runId);
+    const runId = input.run.runId;
+    if (this.active.has(runId)) {
+      throw new CodingAgentProcessError(
+        "conflict",
+        `runId ${runId} already has a live child process`,
+      );
+    }
+
+    let proc: SpawnedCodingAgentProcess;
+    try {
+      proc = spawnCodingAgentProcess(this.command, { cwd: input.workspace.root });
+    } catch (err) {
+      throw new CodingAgentProcessError(
+        "spawn_failed",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+
+    // Register the handle BEFORE acceptance so steer/stop route the moment
+    // the caller sees the segment.
+    const handle = createActiveHandle(runId, proc);
+    this.active.set(runId, handle);
+
+    // Exit watcher: a child that dies before acceptance or before outcome is
+    // a process failure - the outcome must settle, never hang. Pending
+    // command responses for THIS run fail too (other runs are untouched).
+    void proc.exit.then((code) => {
+      const detail = describeProcessFailure(proc, `process exited (code ${code})`);
+      const waiters = this.pendingResponses.get(runId);
+      if (waiters) {
+        for (const waiter of waiters.values()) {
+          waiter.resolve({ success: false, error: detail });
+        }
+        this.pendingResponses.delete(runId);
+      }
+      // The outcome envelope is the ONLY terminal authority: an exit right
+      // after the outcome (normal shutdown) never rewrites it.
+      if (!handle.settled && !handle.outcomeReceived) {
+        handle.settleAcceptance?.(detail);
+        handle.settle({ status: "failed", error: detail });
+        void this.reap(handle);
+      }
+    });
+
+    // Single stdout routing task per handle.
+    void consumeStdout(handle, this);
+
+    proc.writeLine(JSON.stringify({ id: handle.executeCommandId, type: "execute", input }));
+
+    const acceptanceError = await handle.acceptance;
+    if (acceptanceError !== null) {
+      await this.reap(handle);
+      throw new CodingAgentProcessError(
+        "invalid_request",
+        `coding-agent rejected execute: ${acceptanceError}`,
+      );
+    }
+    return buildSegment(handle, this);
   }
 
+  /** Inject a steer into the live child. No live child = explicit conflict. */
   async steer(runId: string, input: BackendInputMessage): Promise<void> {
-    // Steer is an in-flight injection into the LIVE daemon run: the daemon
-    // rejects it when the run is not live, so no local activeRuns lookup is
-    // needed - the runId IS the target.
-    await this.client.steer(runId, input as never);
+    const handle = this.active.get(runId);
+    if (!handle || handle.settled) {
+      throw new CodingAgentProcessError("not_found", `no live child for run: ${runId}`);
+    }
+    const id = `steer-${runId}`;
+    const response = await this.sendCommand(handle, id, {
+      id,
+      type: "steer",
+      runId,
+      input,
+    });
+    if (!response.success) {
+      throw new CodingAgentProcessError("conflict", `steer rejected by child: ${response.error}`);
+    }
   }
 
+  /** Abort the live child: send abort, wait a bounded grace for the outcome,
+   *  kill on timeout. The segment's outcome always resolves. */
   async stop(runId: string): Promise<void> {
-    const active = this.activeRuns.get(runId);
-    if (active) await active.stop();
-    else await this.client.stop(runId);
+    const handle = this.active.get(runId);
+    if (!handle) return; // no live child: nothing to stop
+    const sendAbort = (): void => {
+      if (handle.settled) return;
+      void this.sendCommand(handle, `abort-${runId}`, {
+        id: `abort-${runId}`,
+        type: "abort",
+        runId,
+      }).catch(() => {});
+    };
+    if (handle.accepted) {
+      sendAbort();
+    } else {
+      // Abort landed before acceptance: send it the moment the run is live.
+      await handle.acceptance.then((err) => {
+        if (err === null) sendAbort();
+      });
+    }
+    const outcome = await withTimeout(
+      handle.outcome.catch(() => null),
+      this.abortGraceMs,
+    );
+    if (outcome === null) {
+      // Grace exhausted: kill and settle - never hang.
+      handle.proc.kill();
+      handle.settle({
+        status: "aborted",
+        error: "coding-agent process did not stop within the abort grace period",
+      });
+      await this.reap(handle);
+    }
   }
+
+  /** Write a command and await its response envelope (id-matched). */
+  private async sendCommand(
+    handle: ActiveHandle,
+    id: string,
+    command: { id: string; type: "steer" | "abort"; runId: string; input?: BackendInputMessage },
+  ): Promise<{ success: boolean; error?: string }> {
+    const response = new Promise<{ success: boolean; error?: string }>((resolve) => {
+      let waiters = this.pendingResponses.get(handle.runId);
+      if (!waiters) {
+        waiters = new Map();
+        this.pendingResponses.set(handle.runId, waiters);
+      }
+      waiters.set(id, { resolve });
+    });
+    handle.proc.writeLine(JSON.stringify(command));
+    const result = await response;
+    this.pendingResponses.get(handle.runId)?.delete(id);
+    return result;
+  }
+
+  /** Post-outcome cleanup: close stdin, bounded wait for exit, kill if
+   *  needed, drop the active handle. */
+  async reap(handle: ActiveHandle): Promise<void> {
+    try {
+      handle.proc.closeStdin();
+    } catch {
+      /* already closed */
+    }
+    const exited = await withTimeout(
+      handle.proc.exit.catch(() => null),
+      this.abortGraceMs,
+    );
+    if (exited === null) handle.proc.kill();
+    if (this.active.get(handle.runId) === handle) {
+      this.active.delete(handle.runId);
+    }
+  }
+
+  /** Protocol violation: settle failed, drop the handle, kill the child. */
+  failProtocol(handle: ActiveHandle, reason: string): void {
+    if (handle.settled) return;
+    const detail = `${reason}: ${handle.proc.stderrTail.text()}`.slice(0, 2000);
+    handle.settleAcceptance?.(detail);
+    handle.settle({ status: "failed", error: detail });
+    handle.proc.kill();
+    void this.reap(handle);
+  }
+}
+
+// ─── Handle / segment plumbing ────────────────────────────────────────
+
+function createActiveHandle(runId: string, proc: SpawnedCodingAgentProcess): ActiveHandle {
+  let settleOutcome: ((o: BackendRunOutcome) => void) | null = null;
+  let settled = false;
+  let accepted = false;
+  let settleAcceptance: ((err: string | null) => void) | null = null;
+  const queue: BackendEvent<"coding_agent">[] = [];
+  const waiters: Array<() => void> = [];
+  let eventsClosed = false;
+
+  const outcome = new Promise<BackendRunOutcome>((resolve) => {
+    settleOutcome = resolve;
+  });
+  const acceptance = new Promise<string | null>((resolve) => {
+    settleAcceptance = resolve;
+  });
+
+  const handle: ActiveHandle = {
+    runId,
+    proc,
+    executeCommandId: `execute-${runId}`,
+    accepted: false,
+    acceptance,
+    settleAcceptance: null as never,
+    outcomeReceived: false,
+    settled: false,
+    settle(o) {
+      if (settled) return;
+      settled = true;
+      settleOutcome?.(o);
+      eventsClosed = true;
+      for (const w of waiters.splice(0)) w();
+    },
+    outcome,
+    pushEvent(envelope) {
+      if (eventsClosed) return;
+      queue.push(mapRunEvent(envelope));
+      for (const w of waiters.splice(0)) w();
+    },
+    events: (async function* () {
+      while (!eventsClosed || queue.length > 0) {
+        if (queue.length > 0) {
+          yield queue.shift()!;
+          continue;
+        }
+        if (eventsClosed) return;
+        await new Promise<void>((resolve) => waiters.push(resolve));
+      }
+    })(),
+  };
+  // Wire the acceptance setter after construction (self-reference).
+  handle.settleAcceptance = (err) => {
+    if (settleAcceptance) {
+      settleAcceptance(err);
+      settleAcceptance = null;
+    }
+    if (err === null) accepted = true;
+    handle.accepted = accepted;
+  };
+  return handle;
 }
 
 function buildSegment(
-  client: CodingAgentClient,
-  activeRuns: Map<string, ActiveRun>,
-  runId: string,
+  handle: ActiveHandle,
+  backend: CodingAgentBackend,
 ): BackendRunSegment<"coding_agent"> {
-  let lastEventId: number | undefined;
-  let stopped = false;
-  let settled = false;
-
-  const doStop = async (): Promise<void> => {
-    if (stopped) return;
-    stopped = true;
-    await client.stop(runId);
+  return {
+    events: handle.events,
+    outcome: handle.outcome,
+    stop: () => backend.stop(handle.runId),
   };
-
-  async function* eventStream(): AsyncIterable<BackendEvent<"coding_agent">> {
-    // Reconnect by lastEventId if the SSE connection drops before the run
-    // settles. A replay_window_exceeded error is unrecoverable (events lost);
-    // a normal end-of-stream mid-run means the connection dropped, so resume.
-    for (;;) {
-      try {
-        for await (const envelope of client.streamEvents(runId, lastEventId)) {
-          lastEventId = envelope.id;
-          yield mapRunEvent(envelope as unknown as RunEventEnvelope);
-        }
-        if (settled) return;
-        await new Promise((r) => setTimeout(r, 200));
-      } catch (err) {
-        const code = (err as { code?: string })?.code;
-        if (code === "replay_window_exceeded") throw err;
-        if (code === "not_found") return; // run closed: stream is over
-        await new Promise((r) => setTimeout(r, 200));
-      }
-    }
-  }
-
-  const outcomePromise = (async (): Promise<BackendRunOutcome> => {
-    for (;;) {
-      try {
-        const outcome = await client.getOutcome(runId);
-        if (outcome) return mapRunOutcome(outcome);
-      } catch (err) {
-        // 404 = the run is unknown (daemon restart or closed). The run is
-        // gone: settle as failed instead of polling a phantom forever (and
-        // never leak an unhandled rejection to concurrent consumers).
-        if (err instanceof TransportError && err.code === "not_found") {
-          return { status: "failed", error: "run closed before outcome" };
-        }
-        throw err;
-      }
-      await new Promise((r) => setTimeout(r, 200));
-    }
-  })().finally(() => {
-    settled = true;
-    if (activeRuns.get(runId) === active) {
-      activeRuns.delete(runId);
-    }
-  });
-
-  const segment: BackendRunSegment<"coding_agent"> = {
-    events: eventStream(),
-    outcome: outcomePromise,
-    stop: doStop,
-  };
-  const active: ActiveRun = { runId, segment, stop: doStop };
-  activeRuns.set(runId, active);
-  return segment;
 }
 
-// Re-export so callers can construct the input message type explicitly.
-export type { BackendInputMessage };
+/** Single stdout routing task: response → acceptance/command waiter, event →
+ *  segment stream, outcome → terminal settle + reap. Malformed output is a
+ *  protocol failure that settles the Run failed (never pollutes a state
+ *  machine). */
+async function consumeStdout(handle: ActiveHandle, backend: CodingAgentBackend): Promise<void> {
+  try {
+    for await (const line of handle.proc.stdout) {
+      if (handle.settled) break;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        backend.failProtocol(handle, "malformed stdout: line is not JSON");
+        break;
+      }
+      const out = codingAgentOutputSchema.safeParse(parsed);
+      if (!out.success) {
+        backend.failProtocol(handle, `malformed stdout envelope: ${out.error.message}`);
+        break;
+      }
+      const output = out.data as CodingAgentOutput;
+      if (output.type === "response") {
+        const waiter = backend.pendingResponses.get(handle.runId)?.get(output.id);
+        if (waiter) {
+          waiter.resolve({ success: output.success, error: output.error });
+          continue;
+        }
+        if (output.id === handle.executeCommandId) {
+          handle.settleAcceptance?.(output.success ? null : (output.error ?? "execute rejected"));
+          continue;
+        }
+        backend.failProtocol(handle, `unexpected response for unknown command id ${output.id}`);
+        break;
+      }
+      if (output.type === "event") {
+        if (output.runId !== handle.runId) {
+          backend.failProtocol(handle, `event for unknown runId ${output.runId}`);
+          break;
+        }
+        handle.pushEvent(output.event);
+        continue;
+      }
+      // outcome
+      if (output.runId !== handle.runId) {
+        backend.failProtocol(handle, `outcome for unknown runId ${output.runId}`);
+        break;
+      }
+      // Reap FIRST: when the outcome resolves, the child is gone and the
+      // active handle is removed (one Run = one child, fully recycled).
+      handle.outcomeReceived = true;
+      await backend.reap(handle);
+      handle.settle(mapRunOutcome(output.outcome));
+      break;
+    }
+  } catch {
+    /* reader teardown */
+  }
+  if (!handle.settled) {
+    // stdout closed without an outcome: the child is gone. The exit code is
+    // authoritative for the failure detail (the process exit resolves by the
+    // time its stdout EOFs).
+    const code = await handle.proc.exit.catch(() => null);
+    const detail = describeProcessFailure(
+      handle.proc,
+      `process exited (code ${code}) before outcome`,
+    );
+    handle.settleAcceptance?.(detail);
+    await backend.reap(handle);
+    handle.settle({ status: "failed", error: detail });
+  }
+}
+
+function describeProcessFailure(proc: SpawnedCodingAgentProcess, what: string): string {
+  const tail = proc.stderrTail.text();
+  return tail ? `${what}: ${tail}`.slice(0, 2000) : what;
+}

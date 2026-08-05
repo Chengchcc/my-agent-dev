@@ -1,16 +1,12 @@
 import {
   CodingAgentBackend,
-  CodingAgentClient,
+  type CodingAgentCommandConfig,
   CodingAgentModelCatalog,
 } from "@my-agent-team/adapter-coding-agent";
 import type { Message } from "@my-agent-team/message";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Elysia } from "elysia";
 import type { FeatureSet } from "../app.js";
-
-function createModelCatalog(client: CodingAgentClient) {
-  return new CodingAgentModelCatalog(client);
-}
 
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
@@ -53,6 +49,7 @@ import { settingsRoutes } from "../features/settings/index.js";
 import type { SkillPackRow } from "../features/skill-pack/index.js";
 import {
   createSkillPackService as createSkillPackServiceFn,
+  installPath,
   runInstall,
   runSync,
   seedSkillPacks,
@@ -65,6 +62,18 @@ import { ulid } from "../infra/ids.js";
 import type { BackendServices } from "./services.js";
 
 // ─── Helper ───────────────────────────────────────────────────
+
+/** Frozen system prompt from the Agent's editable identity files:
+ *  SOUL.md as the identity, USER.md as the user context. */
+export function buildAgentSystemPrompt(
+  soul: string | null,
+  user: string | null,
+): string | undefined {
+  const parts: string[] = [];
+  if (soul) parts.push(soul);
+  if (user) parts.push(`User context:\n${user}`);
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
+}
 
 // ─── Installer ────────────────────────────────────────────────
 
@@ -192,11 +201,36 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       .get(agentId);
     if (row) throw new AgentBusyError(agentId);
   };
+  // Agent identity (SOUL.md/USER.md) is read at Run creation and FROZEN into
+  // the Run snapshot; dispatch never re-resolves it.
+  const identityStore = createAgentIdentityStore({
+    dataDir: config.dataDir,
+    getAgent: (id: string) => agentSvc.getById(id),
+  });
   const agentRunService = createAgentRunService({
     port: agentRunPort,
     contextService: contextSvc,
     idGen: { ulid },
     ledgerResolver,
+    // Default frozen Run config: the target Agent's identity (SOUL.md +
+    // USER.md) and its assigned READY skill packs. Loop scopes pass their
+    // own LOOP.md config explicitly and skip this resolver.
+    resolveRunConfig: async ({ conversationId, agentMemberId }) => {
+      const members = conv.convPort.getMembers(conversationId);
+      const member = members.find((m) => m.memberId === agentMemberId);
+      const agentId = member?.agentId;
+      if (!agentId) return {};
+      const identity = await identityStore.getIdentity(agentId);
+      const systemPrompt = buildAgentSystemPrompt(identity.soul, identity.user);
+      const packs = await skillPackPort.listForAgent(agentId);
+      const skillRoots = packs
+        .filter((p) => p.status === "ready")
+        .map((p) => installPath(config.dataDir, p.id));
+      return {
+        ...(systemPrompt ? { systemPrompt } : {}),
+        ...(skillRoots.length > 0 ? { skillRoots } : {}),
+      };
+    },
   });
 
   const dispatchRun: { fn: (runId: string) => Promise<void> } = { fn: async () => {} };
@@ -236,10 +270,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     console.log(`[bootstrap] product tools MCP listening at ${productToolsMcp.url}`);
   }
 
-  // The execution service exists only when the Coding Agent daemon is
-  // configured; without it recover() is a no-op and Phase 5 callers still
-  // have the service handle for enqueue/query.
-  let agentRunExecution: ReturnType<typeof createAgentRunExecutionService>;
+  // The execution service exists unconditionally: the Coding Agent is a
+  // child process (one Run = one spawn). When the executable is missing,
+  // startup continues - /api/models errors and Run dispatch keeps the input
+  // unaccepted until the executable exists.
   const onRunCommitted = (runId: string, output: Message | undefined): void => {
     void (async () => {
       const run = await agentRunPort.getRun(runId);
@@ -252,68 +286,48 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       });
     })().catch((err) => console.error(`[bootstrap] mention cascade failed for ${runId}:`, err));
   };
-  let modelCatalog: ReturnType<typeof createModelCatalog>;
-  if (config.codingAgentUrl && config.codingAgentServiceToken) {
-    const client = new CodingAgentClient({
-      baseUrl: config.codingAgentUrl,
-      authToken: config.codingAgentServiceToken,
-    });
-    modelCatalog = createModelCatalog(client);
-    agentRunExecution = createAgentRunExecutionService({
-      runPort: agentRunPort,
-      contextPort,
-      ledgerResolver,
-      backend: new CodingAgentBackend(client),
-      modelCatalog,
-      idGen: { ulid },
-      resolveWorkspace: async ({ conversationId, agentMemberId }) => {
-        // Default workspace comes from the agent member's Agent record;
-        // Loop scopes pin their workspace as a Run fact at enqueue time.
-        const members = conv.convPort.getMembers(conversationId);
-        const member = members.find((m) => m.memberId === agentMemberId);
-        const agent = member?.agentId ? await agentSvc.getById(member.agentId) : null;
-        return {
-          root: agent?.workspacePath ?? config.workspaceRoot,
-          access: agent?.permissionMode === "ask" ? "read_only" : "read_write",
-        };
-      },
-      productToolsEntrypoint: config.productToolsMcpUrl
-        ? `sse:${config.productToolsMcpUrl}`
-        : "stdio:/nonexistent",
-      onRunCommitted,
-    });
-  } else {
-    agentRunExecution = createAgentRunExecutionService({
-      runPort: agentRunPort,
-      contextPort,
-      ledgerResolver,
-      backend: new CodingAgentBackend(
-        new CodingAgentClient({ baseUrl: "http://127.0.0.1:1", authToken: "unconfigured" }),
-      ),
-      modelCatalog: createModelCatalog(
-        new CodingAgentClient({ baseUrl: "http://127.0.0.1:1", authToken: "unconfigured" }),
-      ),
-      idGen: { ulid },
-      resolveWorkspace: async () => ({ root: config.workspaceRoot, access: "read_write" }),
-      productToolsEntrypoint: "stdio:/nonexistent",
-      onRunCommitted,
-    });
-    console.warn(
-      "[bootstrap] CODING_AGENT_URL not configured - Agent Run execution is inert until Phase 5 wiring",
-    );
-  }
+  const codingAgentCommand: CodingAgentCommandConfig = {
+    executable: config.codingAgentBin ?? "coding-agent",
+    env: {
+      ...(config.anthropicApiKey ? { ANTHROPIC_API_KEY: config.anthropicApiKey } : {}),
+      ...(config.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: config.anthropicBaseUrl } : {}),
+      // The Product Tools service token reaches the child ONLY via env -
+      // never through command args, run input, entrypoint URL or logs.
+      ...(config.productToolsServiceToken
+        ? { CODING_AGENT_PRODUCT_TOOL_TOKEN: config.productToolsServiceToken }
+        : {}),
+    },
+  };
+  const modelCatalog = new CodingAgentModelCatalog(codingAgentCommand);
+  const agentRunExecution = createAgentRunExecutionService({
+    runPort: agentRunPort,
+    contextPort,
+    ledgerResolver,
+    backend: new CodingAgentBackend(codingAgentCommand),
+    modelCatalog,
+    idGen: { ulid },
+    resolveWorkspace: async ({ conversationId, agentMemberId }) => {
+      // Default workspace comes from the agent member's Agent record;
+      // Loop scopes pin their workspace as a Run fact at enqueue time.
+      const members = conv.convPort.getMembers(conversationId);
+      const member = members.find((m) => m.memberId === agentMemberId);
+      const agent = member?.agentId ? await agentSvc.getById(member.agentId) : null;
+      return {
+        root: agent?.workspacePath ?? config.workspaceRoot,
+        access: agent?.permissionMode === "ask" ? "read_only" : "read_write",
+      };
+    },
+    productToolsEntrypoint: config.productToolsMcpUrl
+      ? `sse:${config.productToolsMcpUrl}`
+      : "stdio:/nonexistent",
+    onRunCommitted,
+  });
 
   dispatchRun.fn = (runId: string) => agentRunExecution.dispatch(runId);
   injectSteer.fn = (branchId: string, input: { inputId: string; message: Message }) =>
     agentRunExecution.injectSteer(branchId, input);
 
-  // ─── Identity store + Lark setup ────────────────────────────
-
-  const identityStore = createAgentIdentityStore({
-    dataDir: config.dataDir,
-    getAgent: (id: string) => agentSvc.getById(id),
-  });
-
+  // ─── Lark setup ────────────────────────────────────────────
   let setupManager: LarkSetupManager | undefined;
   function getSetupManager(provisioner = new CliSetupProvisioner()): LarkSetupManager {
     if (!setupManager) {

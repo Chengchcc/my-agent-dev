@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { BackendModelRef, BackendRunOutcome } from "@my-agent-team/agent-backend";
+import type { BackendRunOutcome } from "@my-agent-team/agent-backend";
 import {
   assistantMessageId,
   type MessageRevision,
@@ -52,6 +52,8 @@ function parseRun(row: typeof schema.agentRun.$inferSelect): AgentRun {
     productTools: row.productTools
       ? (JSON.parse(row.productTools) as AgentRun["productTools"])
       : null,
+    systemPrompt: row.systemPrompt,
+    skillRoots: row.skillRoots ? (JSON.parse(row.skillRoots) as string[]) : null,
     createdAt: row.createdAt,
     terminalAt: row.terminalAt,
   };
@@ -68,6 +70,18 @@ function parseInput(row: typeof schema.branchInputQueue.$inferSelect): BranchInp
     deliveryIdempotencyKey: row.deliveryIdempotencyKey,
     inputIdempotencyKey: row.inputIdempotencyKey,
     runId: row.runId,
+    configSnapshot: {
+      modelRef: row.modelRef
+        ? (JSON.parse(row.modelRef) as { backendKind: string; modelId: string })
+        : { backendKind: "coding_agent", modelId: "" },
+      configRevision: row.configRevision ?? 0,
+      workspace:
+        row.workspaceRoot && row.workspaceAccess
+          ? { root: row.workspaceRoot, access: row.workspaceAccess as "read_only" | "read_write" }
+          : null,
+      systemPrompt: row.systemPrompt,
+      skillRoots: row.skillRoots ? (JSON.parse(row.skillRoots) as string[]) : null,
+    },
     createdAt: row.createdAt,
     deliveredAt: row.deliveredAt,
   };
@@ -120,6 +134,14 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
               status: "pending",
               deliveryIdempotencyKey: command.deliveryIdempotencyKey,
               inputIdempotencyKey: command.inputIdempotencyKey,
+              // Request-time config snapshot: the promoted Run uses THIS,
+              // never the previous Run's config.
+              modelRef: JSON.stringify(command.defaultModel),
+              configRevision: command.configRevision,
+              workspaceRoot: command.workspace?.root ?? null,
+              workspaceAccess: command.workspace?.access ?? null,
+              systemPrompt: command.systemPrompt ?? null,
+              skillRoots: command.skillRoots ? JSON.stringify(command.skillRoots) : null,
               createdAt: now,
             })
             .run();
@@ -352,6 +374,8 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             configRevision: command.configRevision,
             workspaceRoot: command.workspace?.root ?? null,
             workspaceAccess: command.workspace?.access ?? null,
+            systemPrompt: command.systemPrompt ?? null,
+            skillRoots: command.skillRoots ? JSON.stringify(command.skillRoots) : null,
             createdAt: now,
           })
           .run();
@@ -407,17 +431,13 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
     },
 
     /** One Run / one input: promote the oldest still-unowned queued input
-     *  (run_id IS NULL) into a FRESH Run when the branch is idle. Never
-     *  reuses the settled run's id - the daemon rejects a second segment
-     *  for an already-settled runId. */
-    async acquireNextRun(
-      branchId: string,
-      from: {
-        modelRef: BackendModelRef;
-        configRevision: number;
-        workspace: { root: string; access: "read_only" | "read_write" } | null;
-      },
-    ): Promise<AgentRun | null> {
+     *  (run_id IS NULL) into a FRESH Run when the branch is idle. The new
+     *  Run is built from the queued input's OWN config snapshot - never
+     *  reuses the settled run's config (model/workspace/systemPrompt/
+     *  skillRoots are request-time facts of the input). Never reuses the
+     *  settled run's id - the daemon rejects a second segment for an
+     *  already-settled runId. */
+    async acquireNextRun(branchId: string): Promise<AgentRun | null> {
       const txn = db.transaction(() => {
         const now = Date.now();
         // Branch must be idle: an active run (or commit_failed) still owns it.
@@ -476,6 +496,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           .from(schema.agentContextTree)
           .where(eq(schema.agentContextTree.treeId, branch.treeId))
           .get();
+        const snapshot = parseInput(input).configSnapshot;
         const runId = deps.idGen.ulid();
         d.insert(schema.agentRun)
           .values({
@@ -483,12 +504,14 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             branchId,
             conversationId: tree?.conversationId ?? "",
             agentMemberId: tree?.agentMemberId ?? "",
-            modelRef: JSON.stringify(from.modelRef),
+            modelRef: JSON.stringify(snapshot.modelRef),
             status: "running",
             idempotencyKey: `${input.inputIdempotencyKey}:run`,
-            configRevision: from.configRevision,
-            workspaceRoot: from.workspace?.root ?? null,
-            workspaceAccess: from.workspace?.access ?? null,
+            configRevision: snapshot.configRevision,
+            workspaceRoot: snapshot.workspace?.root ?? null,
+            workspaceAccess: snapshot.workspace?.access ?? null,
+            systemPrompt: snapshot.systemPrompt ?? null,
+            skillRoots: snapshot.skillRoots ? JSON.stringify(snapshot.skillRoots) : null,
             createdAt: now,
           })
           .run();
@@ -959,6 +982,30 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
       return rows
         .filter((r) => r.runId != null)
         .map((r) => ({ input: parseInput(r), runId: r.runId! }));
+    },
+
+    /** Crash-gap recovery: branches whose pending non-steer input never
+     *  became a Run (crash between enqueue and acquire, or after a run
+     *  settled without chaining). Ordered by the oldest pending input (FIFO);
+     *  the per-branch active-run guard lives inside acquireNextRun. */
+    async listIdleBranchesWithPendingInputs() {
+      const rows = d
+        .select({
+          branchId: schema.branchInputQueue.branchId,
+          firstSeq: sql<number>`MIN(${schema.branchInputQueue.seq})`,
+        })
+        .from(schema.branchInputQueue)
+        .where(
+          and(
+            eq(schema.branchInputQueue.status, "pending"),
+            isNull(schema.branchInputQueue.runId),
+            not(eq(schema.branchInputQueue.mode, "steer")),
+          ),
+        )
+        .groupBy(schema.branchInputQueue.branchId)
+        .orderBy(sql`MIN(${schema.branchInputQueue.seq})`)
+        .all();
+      return rows.map((r) => r.branchId);
     },
 
     async listCommitFailedRuns() {

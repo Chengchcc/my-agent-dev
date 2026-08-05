@@ -50,6 +50,11 @@ export interface AgentRun {
   readonly productTools:
     | readonly { name: string; description: string; inputSchema: unknown; entrypoint: string }[]
     | null;
+  /** Frozen system prompt (Agent identity / LOOP.md prompt), persisted at
+   *  Run creation; dispatch never re-resolves it. */
+  readonly systemPrompt: string | null;
+  /** Frozen skill pack roots, persisted at Run creation. */
+  readonly skillRoots: readonly string[] | null;
   readonly createdAt: number;
   readonly terminalAt: number | null;
 }
@@ -71,6 +76,16 @@ export interface BranchInput {
   readonly deliveryIdempotencyKey: string;
   readonly inputIdempotencyKey: string;
   readonly runId: string | null;
+  /** Request-time Run config snapshot: what THIS input asked for. Used by
+   *  acquireNextRun to promote the input into a Run with its OWN config
+   *  (model/workspace/systemPrompt/skillRoots), never the previous Run's. */
+  readonly configSnapshot: {
+    readonly modelRef: { backendKind: string; modelId: string };
+    readonly configRevision: number;
+    readonly workspace: { root: string; access: "read_only" | "read_write" } | null;
+    readonly systemPrompt: string | null;
+    readonly skillRoots: readonly string[] | null;
+  };
   readonly createdAt: number;
   readonly deliveredAt: number | null;
 }
@@ -107,6 +122,13 @@ export interface AcquireAgentRunCommand {
   readonly expectedRevision: number;
   /** Optional run-level workspace snapshot; null = agent-record default. */
   readonly workspace?: WorkspaceBinding;
+  /** Frozen system prompt for the Run (Agent identity for Conversation/Cron;
+   *  LOOP.md prompt for Loop scopes). Default: resolved by the service's
+   *  resolveRunConfig when provided. */
+  readonly systemPrompt?: string;
+  /** Frozen skill pack roots for the Run. Default: resolved by the service's
+   *  resolveRunConfig when provided. */
+  readonly skillRoots?: readonly string[];
 }
 
 export interface AcquireAgentRunResult {

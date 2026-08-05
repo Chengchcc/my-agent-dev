@@ -11,6 +11,8 @@ export type {
   ProjectedHistoryItem,
   WorkspaceBinding,
 } from "./history.js";
+export type { TransportRunEvent } from "./mapping.js";
+export { mapRunEvent, mapRunOutcome } from "./mapping.js";
 export type { BackendModel, BackendModelCatalog, BackendModelRef } from "./model.js";
 export type {
   BackendInputMessage,
@@ -21,29 +23,35 @@ export type {
   PendingActionResponse,
 } from "./run.js";
 export type {
-  CreateRunRequest,
-  CreateRunResponse,
+  AbortCommand,
+  CodingAgentCommand,
+  CodingAgentOutput,
+  EventOutput,
+  ExecuteCommand,
+  ExecuteRunInput,
   ModelCatalogResponse,
+  OutcomeOutput,
+  ResponseOutput,
   RunEventEnvelope,
-  RunOutcomeResponse,
-  SteerRunRequest,
-  StopRunRequest,
-  TransportErrorCode,
+  SteerCommand,
+  SteerRunInput,
 } from "./transport.js";
 export {
+  abortCommandSchema,
   agentMemberIdSchema,
   branchIdSchema,
+  codingAgentCommandSchema,
+  codingAgentOutputSchema,
   conversationIdSchema,
-  createRunRequestSchema,
-  createRunResponseSchema,
+  eventOutputSchema,
+  executeCommandSchema,
+  executeRunInputSchema,
   modelCatalogResponseSchema,
+  outcomeOutputSchema,
   productEntryIdSchema,
+  responseOutputSchema,
   runEventEnvelopeSchema,
   runIdSchema,
-  runOutcomeResponseSchema,
-  steerRunRequestSchema,
-  steerRunResponseSchema,
-  stopRunRequestSchema,
-  stopRunResponseSchema,
-  transportErrorSchema,
+  steerCommandSchema,
+  steerRunInputSchema,
 } from "./transport.js";

@@ -22,7 +22,6 @@
     "@my-agent-team/plugin-progressive-skill": "workspace:*",
     "@my-agent-team/plugin-todo": "workspace:*",
     "@my-agent-team/tools-common": "workspace:*",
-    "elysia": "^1.0.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {

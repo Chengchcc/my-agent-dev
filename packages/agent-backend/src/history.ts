@@ -32,6 +32,9 @@ export interface AgentRunSnapshot<K extends string = string> {
   readonly runId: string;
   readonly model: BackendModelRef<K>;
   readonly systemPrompt?: string;
+  /** Skill pack roots (absolute dirs scanned for SKILL.md), frozen at Run
+   *  creation. The Runtime loads them via the progressive skill plugin. */
+  readonly skillRoots?: readonly string[];
   readonly productTools: readonly ProductToolDescriptor[];
   readonly configRevision: number;
 }

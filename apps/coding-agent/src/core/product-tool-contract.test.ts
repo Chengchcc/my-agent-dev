@@ -1,11 +1,11 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CodingAgentBackend, CodingAgentClient } from "@my-agent-team/adapter-coding-agent";
+import {
+  CodingAgentBackend,
+  type CodingAgentCommandConfig,
+} from "@my-agent-team/adapter-coding-agent";
 import type { BackendEvent } from "@my-agent-team/agent-backend";
-import { createModelRuntime } from "@my-agent-team/ai";
-import { createCodingAgentApp } from "./app.js";
-import { loadConfig } from "./config.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { buildProductTools } from "./product-tool-transport.js";
 
@@ -134,29 +134,25 @@ mkdirSync(ws, { recursive: true });
 writeFileSync(wrapper, `#!/bin/sh\nexec ${process.execPath} ${serverPath}\n`, { mode: 0o755 });
 const entrypoint = `stdio:${wrapper}`;
 
-/** One daemon running the REAL per-Run loop (no Worker) with a scripted fake
- *  provider + a real stdio MCP echo server reachable via the wrapper. */
+/** A REAL coding-agent child process (apps/coding-agent/src/main.ts --mode
+ *  rpc) with a scripted fake provider + a real stdio MCP echo server
+ *  reachable via the wrapper. The adapter spawns the child per execute. */
 function startDaemon(
   toolScript: Array<{ name: string; input: Record<string, unknown> }>,
   extraEnv: Record<string, string> = {},
 ) {
   const tmp = `${fullStackTmp}-${Math.random().toString(36).slice(2, 6)}`;
   mkdirSync(tmp, { recursive: true });
-  const config = loadConfig({
-    CODING_AGENT_AUTH_TOKEN: "token-123",
-    CODING_AGENT_WORKSPACE_ROOTS: ws,
-    CODING_AGENT_FAKE_PROVIDER: "1",
-    CODING_AGENT_FAKE_TOOL: JSON.stringify(toolScript),
-    ...extraEnv,
-  });
-  const runtime = createModelRuntime();
-  const app = createCodingAgentApp({ config, modelRuntime: runtime });
-  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", idleTimeout: 0, fetch: app.fetch });
-  const client = new CodingAgentClient({
-    baseUrl: `http://127.0.0.1:${server.port}`,
-    authToken: "token-123",
-  });
-  return { tmp, backend: new CodingAgentBackend(client), app, server };
+  const command: CodingAgentCommandConfig = {
+    executable: process.execPath,
+    args: [new URL("../main.ts", import.meta.url).pathname, "--mode", "rpc"],
+    env: {
+      CODING_AGENT_FAKE_PROVIDER: "1",
+      CODING_AGENT_FAKE_TOOL: JSON.stringify(toolScript),
+      ...extraEnv,
+    },
+  };
+  return { tmp, backend: new CodingAgentBackend(command) };
 }
 
 function runInput(runId: string) {
@@ -222,8 +218,6 @@ describe("full-stack product tool acceptance (real daemon loop -> production cal
         expect(identity?.idempotencyKey).toBe(`run-fs-1:${startedEvent?.callId}`);
       }
     } finally {
-      d.server.stop();
-      await d.app.stop();
       rmSync(d.tmp, { recursive: true, force: true });
     }
   }, 30_000);
@@ -242,8 +236,6 @@ describe("full-stack product tool acceptance (real daemon loop -> production cal
         expect((completed.result as { isError?: boolean })?.isError).toBe(true);
       }
     } finally {
-      d.server.stop();
-      await d.app.stop();
       rmSync(d.tmp, { recursive: true, force: true });
     }
   }, 30_000);
@@ -265,8 +257,6 @@ describe("full-stack product tool acceptance (real daemon loop -> production cal
       expect(["aborted", "failed"]).toContain(outcome.status);
     } finally {
       delete process.env.MCP_ECHO_SLOW_MS;
-      d.server.stop();
-      await d.app.stop();
       rmSync(d.tmp, { recursive: true, force: true });
     }
   }, 30_000);
@@ -299,8 +289,6 @@ describe("full-stack product tool acceptance (real daemon loop -> production cal
       }
     } finally {
       delete process.env.CODING_AGENT_PRODUCT_TOOL_TIMEOUT_MS;
-      d.server.stop();
-      await d.app.stop();
       rmSync(d.tmp, { recursive: true, force: true });
     }
   }, 30_000);

@@ -41,7 +41,8 @@ export interface RunRuntimeDeps {
   workspaceAccess: "read_only" | "read_write";
   runId: string;
   modelRuntime: ModelRuntime;
-  skillRoots?: readonly string[];
+  /** Skill pack roots (absolute dirs scanned for SKILL.md). Frozen per Run. */
+  skillRoots: readonly string[];
   webSearch?: WebSearchPort;
   webFetch?: WebFetchPort;
 }
@@ -58,10 +59,9 @@ export interface RunRuntime {
   close(): Promise<void>;
 }
 
-/** Single provider assembly shared by the daemon catalog and Run loops:
- *  register built-in providers from the daemon-injected env. The fake
- *  deterministic provider is available for integration tests. Synchronous so
- *  the catalog is populated before any /v1/models request. */
+/** Single provider assembly shared by the CLI catalog (--list-models) and
+ *  Run loops: register built-in providers from the process env. The fake
+ *  deterministic provider is available for tests. */
 export function registerBuiltinProviders(
   runtime: ModelRuntime,
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -101,7 +101,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   const plugins: Plugin[] = [
     nativeToolsPlugin,
     createTodoPlugin({ sessionId: deps.runId, store }),
-    createProgressiveSkillPlugin({ roots: deps.skillRoots ?? [] }),
+    createProgressiveSkillPlugin({ roots: deps.skillRoots }),
   ];
 
   // Product Tools are resolved PER RUN from the AgentRunSnapshot manifest:

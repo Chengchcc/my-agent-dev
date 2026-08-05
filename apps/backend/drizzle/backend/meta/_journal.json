@@ -127,6 +127,13 @@
       "when": 1754600000000,
       "tag": "0018_drop_backend_session_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1785000000000,
+      "tag": "0019_phase5_run_snapshot",
+      "breakpoints": true
     }
   ]
 }

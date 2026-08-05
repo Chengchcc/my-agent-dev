@@ -1,7 +1,29 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { BackendRunInput } from "@my-agent-team/agent-backend";
-import { CodingAgentBackend } from "./backend.js";
-import { CodingAgentClient } from "./client.js";
+import { CodingAgentBackend, CodingAgentProcessError } from "./backend.js";
+import { CodingAgentModelCatalog } from "./model-catalog.js";
+import type { CodingAgentCommandConfig } from "./process.js";
+
+/** Adapter tests drive the REAL RPC protocol through a scripted fixture
+ *  child (packages/adapter-coding-agent/src/__fixtures__/rpc-fixture.ts):
+ *  spawn → stdin/stdout JSONL → responses/events/outcome → exit. */
+
+const FIXTURE = new URL("./__fixtures__/rpc-fixture.ts", import.meta.url).pathname;
+const tmp = mkdtempSync(join(tmpdir(), "adapter-test-"));
+
+function makeConfig(
+  scenario: string,
+  extra: Record<string, string> = {},
+): CodingAgentCommandConfig {
+  return {
+    executable: process.execPath,
+    args: [FIXTURE, "--mode", "rpc"],
+    env: { RPC_FIXTURE_SCENARIO: scenario, ...extra },
+  };
+}
 
 const INPUT: BackendRunInput<"coding_agent"> = {
   history: [{ productEntryId: "e1", message: { role: "user", text: "hi" } }],
@@ -12,125 +34,195 @@ const INPUT: BackendRunInput<"coding_agent"> = {
     productTools: [],
     configRevision: 1,
   },
-  workspace: { root: "/tmp", access: "read_write" },
+  workspace: { root: tmp, access: "read_write" },
   metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1" },
 };
 
-describe("CodingAgentBackend", () => {
-  test("method set is exactly execute/steer/stop", () => {
-    const client = new CodingAgentClient({ baseUrl: "http://x", authToken: "t" });
-    const backend = new CodingAgentBackend(client);
-    const keys = Object.getOwnPropertyNames(Object.getPrototypeOf(backend)).filter(
-      (k) => k !== "constructor" && typeof (backend as Record<string, unknown>)[k] === "function",
-    );
-    expect(keys.sort()).toEqual(["execute", "steer", "stop"].sort());
-  });
+function inputWith(runId: string): BackendRunInput<"coding_agent"> {
+  return { ...INPUT, run: { ...INPUT.run, runId } };
+}
 
-  test("execute posts to /v1/runs and returns a segment keyed by runId", async () => {
-    const calls: Array<{ path: string; body: unknown }> = [];
-    const fetchImpl = (async (url: string, init?: RequestInit) => {
-      const path = new URL(String(url)).pathname;
-      calls.push({ path, body: init?.body });
-      if (path === "/v1/runs") {
-        return new Response(JSON.stringify({ runId: "run-1", accepted: true }), { status: 200 });
-      }
-      if (path === "/v1/runs/run-1/outcome") {
-        return new Response(JSON.stringify({ runId: "run-1", status: "completed" }), {
-          status: 200,
-        });
-      }
-      if (path === "/v1/runs/run-1/events") {
-        const stream = new ReadableStream<Uint8Array>({
-          start(c) {
-            c.enqueue(
-              new TextEncoder().encode(
-                `id: 0\nevent: agent_end\ndata: ${JSON.stringify({ type: "agent_end", status: "completed" })}\n\n`,
-              ),
-            );
-            c.close();
-          },
-        });
-        return new Response(stream, { status: 200 });
-      }
-      return new Response(JSON.stringify({ code: "not_found" }), { status: 404 });
-    }) as typeof fetch;
-    const client = new CodingAgentClient({ baseUrl: "http://x", authToken: "t", fetchImpl });
-    const backend = new CodingAgentBackend(client);
-    const segment = await backend.execute(INPUT);
+afterAll(() => {
+  rmSync(tmp, { recursive: true, force: true });
+});
+
+describe("CodingAgentBackend (child process)", () => {
+  test("execute spawns a child and returns a segment only after acceptance", async () => {
+    const record = join(tmp, "rec-execute.txt");
+    const backend = new CodingAgentBackend(makeConfig("normal", { RPC_FIXTURE_RECORD: record }));
+    const segment = await backend.execute(inputWith("r-exec"));
     expect(segment).toBeDefined();
+    // The child recorded the execute BEFORE responding success: acceptance
+    // implies the spawn + command round trip happened. (The record carries
+    // the spawn cwd after the runId.)
+    expect(readFileSync(record, "utf-8").trim().startsWith("execute r-exec ")).toBe(true);
+    const outcome = await segment.outcome;
+    expect(outcome.status).toBe("completed");
+    expect((outcome as { output?: { text?: string } }).output?.text).toBe("done");
+  }, 10_000);
+
+  test("cwd equals the Run workspace root", async () => {
+    const marker = join(tmp, "cwd-marker.txt");
+    const ws = join(tmp, "ws-root");
+    mkdirSync(ws, { recursive: true });
+    const backend = new CodingAgentBackend(
+      makeConfig("normal", { RPC_FIXTURE_CWD_MARKER: marker }),
+    );
+    const segment = await backend.execute({
+      ...inputWith("r-cwd"),
+      workspace: { root: ws, access: "read_write" },
+    });
+    await segment.outcome;
+    expect(readFileSync(marker, "utf-8")).toBe(ws);
+  }, 10_000);
+
+  test("events map through the shared mapper", async () => {
+    const backend = new CodingAgentBackend(makeConfig("normal"));
+    const segment = await backend.execute(inputWith("r-events"));
     const events: string[] = [];
     const collect = (async () => {
       for await (const ev of segment.events) events.push(ev.type);
     })();
-    const outcome = await segment.outcome;
+    await segment.outcome;
     await collect;
-    expect(outcome.status).toBe("completed");
+    expect(events).toContain("text_delta");
     expect(events).toContain("status");
-    expect(calls.some((c) => c.path === "/v1/runs")).toBe(true);
-  });
+  }, 10_000);
 
-  test("steer posts to /v1/runs/:runId/steer", async () => {
-    const calls: string[] = [];
-    const fetchImpl = (async (url: string, init?: RequestInit) => {
-      const path = new URL(String(url)).pathname;
-      calls.push(path);
-      void init;
-      if (path.endsWith("/steer")) {
-        return new Response(JSON.stringify({ accepted: true }), { status: 200 });
-      }
-      return new Response(JSON.stringify({ code: "not_found" }), { status: 404 });
-    }) as typeof fetch;
-    const client = new CodingAgentClient({ baseUrl: "http://x", authToken: "t", fetchImpl });
-    const backend = new CodingAgentBackend(client);
-    await backend.steer("run-1", { inputId: "in-s", message: { role: "user", text: "steer" } });
-    expect(calls).toEqual(["/v1/runs/run-1/steer"]);
-  });
+  test("outcome resolves exactly once", async () => {
+    const backend = new CodingAgentBackend(makeConfig("normal"));
+    const segment = await backend.execute(inputWith("r-once"));
+    const first = await segment.outcome;
+    const second = await segment.outcome;
+    expect(first).toBe(second);
+    expect(first.status).toBe("completed");
+  }, 10_000);
 
-  test("stop posts to /v1/runs/:runId/stop", async () => {
-    const calls: string[] = [];
-    const fetchImpl = (async (url: string, init?: RequestInit) => {
-      const path = new URL(String(url)).pathname;
-      calls.push(path);
-      void init;
-      if (path.endsWith("/stop")) {
-        return new Response(JSON.stringify({ stopped: true }), { status: 200 });
-      }
-      return new Response(JSON.stringify({ code: "not_found" }), { status: 404 });
-    }) as typeof fetch;
-    const client = new CodingAgentClient({ baseUrl: "http://x", authToken: "t", fetchImpl });
-    const backend = new CodingAgentBackend(client);
-    await backend.stop("run-1");
-    expect(calls).toEqual(["/v1/runs/run-1/stop"]);
-  });
+  test("steer writes to the same child stdin", async () => {
+    const record = join(tmp, "rec-steer.txt");
+    const backend = new CodingAgentBackend(
+      makeConfig("normal", {
+        RPC_FIXTURE_RECORD: record,
+        RPC_FIXTURE_OUTCOME_DELAY_MS: "1500",
+      }),
+    );
+    const segment = await backend.execute(inputWith("r-steer"));
+    await backend.steer("r-steer", { inputId: "steer-1", message: { role: "user", text: "s" } });
+    const lines = readFileSync(record, "utf-8").trim().split("\n");
+    expect(lines).toContain("steer r-steer");
+    await segment.outcome;
+  }, 10_000);
 
-  test("segment stop uses the tracked active run", async () => {
-    const calls: string[] = [];
-    const fetchImpl = (async (url: string, init?: RequestInit) => {
-      const path = new URL(String(url)).pathname;
-      calls.push(path);
-      void init;
-      if (path === "/v1/runs") {
-        return new Response(JSON.stringify({ runId: "run-1", accepted: true }), { status: 200 });
-      }
-      if (path.endsWith("/stop")) {
-        return new Response(JSON.stringify({ stopped: true }), { status: 200 });
-      }
-      if (path.endsWith("/outcome")) {
-        return new Response(
-          JSON.stringify({ runId: "run-1", status: "aborted", error: "stopped" }),
-          {
-            status: 200,
-          },
-        );
-      }
-      return new Response(JSON.stringify({ code: "not_found" }), { status: 404 });
-    }) as typeof fetch;
-    const client = new CodingAgentClient({ baseUrl: "http://x", authToken: "t", fetchImpl });
-    const backend = new CodingAgentBackend(client);
-    const segment = await backend.execute(INPUT);
-    await segment.stop();
+  test("steer on a run with no live child fails explicitly", async () => {
+    const backend = new CodingAgentBackend(makeConfig("normal"));
+    await expect(
+      backend.steer("ghost-run", { inputId: "s", message: { role: "user", text: "x" } }),
+    ).rejects.toThrow(/no live child/);
+  }, 10_000);
+
+  test("steer rejection surfaces as an explicit conflict", async () => {
+    const backend = new CodingAgentBackend(makeConfig("steer-error"));
+    const segment = await backend.execute(inputWith("r-steer-rej"));
+    await expect(
+      backend.steer("r-steer-rej", { inputId: "s", message: { role: "user", text: "x" } }),
+    ).rejects.toThrow(/steer requires a live run/);
+    await segment.outcome;
+  }, 10_000);
+
+  test("stop sends abort and the outcome settles aborted", async () => {
+    const record = join(tmp, "rec-stop.txt");
+    const backend = new CodingAgentBackend(
+      makeConfig("normal", {
+        RPC_FIXTURE_RECORD: record,
+        RPC_FIXTURE_OUTCOME_DELAY_MS: "5000",
+      }),
+    );
+    const segment = await backend.execute(inputWith("r-stop"));
+    await backend.stop("r-stop");
+    const lines = readFileSync(record, "utf-8").trim().split("\n");
+    expect(lines).toContain("abort r-stop");
+    expect((await segment.outcome).status).toBe("aborted");
+  }, 10_000);
+
+  test("stop with a no-outcome child settles via bounded grace (never hangs)", async () => {
+    const backend = new CodingAgentBackend(makeConfig("no-events"), { abortGraceMs: 400 });
+    const segment = await backend.execute(inputWith("r-grace"));
+    await backend.stop("r-grace");
     const outcome = await segment.outcome;
     expect(outcome.status).toBe("aborted");
-    expect(calls).toContain("/v1/runs/run-1/stop");
-  });
+    expect(outcome.error).toContain("abort grace");
+  }, 10_000);
+
+  test("unexpected exit before acceptance settles failed and rejects execute", async () => {
+    const backend = new CodingAgentBackend(makeConfig("exit-before-acceptance"));
+    await expect(backend.execute(inputWith("r-pre"))).rejects.toThrow(CodingAgentProcessError);
+    await expect(backend.execute(inputWith("r-pre"))).rejects.toThrow(/exited/);
+  }, 10_000);
+
+  test("unexpected exit before outcome settles failed with the stderr tail", async () => {
+    const backend = new CodingAgentBackend(makeConfig("exit-before-outcome"));
+    const segment = await backend.execute(inputWith("r-mid"));
+    const outcome = await segment.outcome;
+    expect(outcome.status).toBe("failed");
+    expect(outcome.error).toMatch(/exited/);
+  }, 10_000);
+
+  test("malformed stdout settles failed (protocol violation)", async () => {
+    const backend = new CodingAgentBackend(makeConfig("malformed-stdout"));
+    const segment = await backend.execute(inputWith("r-malformed"));
+    const outcome = await segment.outcome;
+    expect(outcome.status).toBe("failed");
+    expect(outcome.error).toMatch(/malformed stdout/);
+  }, 10_000);
+
+  test("stderr tail is bounded and secrets are redacted", async () => {
+    const secret = "super-secret-token-abc123";
+    const backend = new CodingAgentBackend(
+      makeConfig("stderr-flood", {
+        RPC_FIXTURE_SECRET: secret,
+        TEST_SECRET_TOKEN: secret,
+      }),
+    );
+    const segment = await backend.execute(inputWith("r-flood"));
+    const outcome = await segment.outcome;
+    expect(outcome.status).toBe("failed");
+    expect(outcome.error).not.toContain(secret);
+    expect(outcome.error!.length).toBeLessThan(4_000);
+  }, 10_000);
+
+  test("executable missing surfaces spawn_failed (no fake backend)", async () => {
+    const backend = new CodingAgentBackend({
+      executable: "/nonexistent/coding-agent-binary",
+    });
+    await expect(backend.execute(inputWith("r-spawn"))).rejects.toThrow(/spawn/);
+  }, 10_000);
+
+  test("the child is reaped after the outcome", async () => {
+    const backend = new CodingAgentBackend(makeConfig("normal"));
+    const segment = await backend.execute(inputWith("r-reap"));
+    await segment.outcome;
+    // The handle is removed: a steer now fails with no live child.
+    await expect(
+      backend.steer("r-reap", { inputId: "s", message: { role: "user", text: "x" } }),
+    ).rejects.toThrow(/no live child/);
+  }, 10_000);
+});
+
+describe("CodingAgentModelCatalog", () => {
+  test("list spawns --list-models --json and returns the canonical catalog", async () => {
+    const catalog = new CodingAgentModelCatalog(makeConfig("normal"));
+    const result = await catalog.list();
+    expect(result.backendKind).toBe("coding_agent");
+    expect(result.models[0]).toMatchObject({ id: "fake/echo", available: true });
+    // cached: a second list is served from the instance cache
+    const again = await catalog.list();
+    expect(again).toBe(result);
+  }, 10_000);
+
+  test("missing executable surfaces an explicit error", async () => {
+    const catalog = new CodingAgentModelCatalog({
+      executable: "/nonexistent/coding-agent-binary",
+    });
+    await expect(catalog.list()).rejects.toThrow(/spawn/);
+  }, 10_000);
 });

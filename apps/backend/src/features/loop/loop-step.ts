@@ -171,6 +171,10 @@ function buildGeneratorPrompt(
   template: string,
   context?: { repoPath?: string; gitLog?: string },
 ): string {
+  // The user prompt ALWAYS carries the item facts: summary, source,
+  // rejection note and project context. The LOOP.md systemPrompt is only an
+  // extra behavioral constraint (frozen into the Run as systemPrompt), so a
+  // template that omits placeholders can never starve the agent of the item.
   let note = "";
   if (item.result && "reasons" in item.result) {
     note = `- 上次被拒原因: ${item.result.reasons.join("; ")}`;
@@ -178,11 +182,13 @@ function buildGeneratorPrompt(
   const ctx = context?.repoPath
     ? `\n\n## Project Context\n- Repo: ${context.repoPath}\n${context.gitLog ? `- Recent changes:\n${context.gitLog}\n` : ""}`
     : "";
-  return template
-    .replace("{summary}", item.summary)
-    .replace("{source}", item.source)
-    .replace("{rejectionNote}", note)
-    .concat(ctx);
+  const core = [
+    `# Task\n${item.summary}`,
+    `# Source\n${item.source}`,
+    ...(note ? [note] : []),
+  ].join("\n\n");
+  const extra = template.trim();
+  return `${core}${extra ? `\n\n# Additional Instructions\n${extra}` : ""}${ctx}`;
 }
 
 export async function loopStep(params: LoopStepParams): Promise<LoopState> {
@@ -350,6 +356,10 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       defaultModel: await params.resolveModel(genModel),
       configRevision: 1,
       idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}`,
+      // LOOP.md generator systemPrompt is the frozen Run system prompt;
+      // skills live in the loop config's skills/ dir.
+      systemPrompt: genPrompt || undefined,
+      skillRoots: [`${params.loopConfigPath}/skills`],
       // Workspace is a Run execution fact: the Generator MUST run in the
       // cloned repo, not the loop-agent's own workspace.
       workspace: { root: cwd, access: "read_write" },
@@ -375,6 +385,8 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         defaultModel: await params.resolveModel(genModel),
         configRevision: 1,
         idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}:retry`,
+        systemPrompt: genPrompt || undefined,
+        skillRoots: [`${params.loopConfigPath}/skills`],
         workspace: { root: cwd, access: "read_write" },
       });
       if (retry.acquired && retry.run) {
@@ -427,9 +439,17 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     }
 
     // ── Evaluator: separate stable scope, only after deterministic prep ──
-    const evaluatorPrompt = evalPrompt
-      .replace("{acceptance}", acceptance)
-      .replace("{filesChanged}", filesChanged || "none");
+    // The user prompt ALWAYS carries acceptance criteria, the changed files
+    // and the VERDICT.md requirement; the LOOP.md systemPrompt is only an
+    // extra behavioral constraint (frozen into the Run as systemPrompt).
+    const evaluatorPrompt = [
+      `# Acceptance Criteria\n${acceptance}`,
+      `# Files Changed\n${filesChanged || "none"}`,
+      `# Task\nReview the changes in the workspace against the acceptance criteria. ` +
+        `Write your verdict to VERDICT.md in the workspace root. The file must contain YAML with: ` +
+        `verdict: PASS | REJECT | ESCALATE, reasons: [...], evidence: "..."`,
+      ...(evalPrompt.trim() ? [`# Additional Instructions\n${evalPrompt.trim()}`] : []),
+    ].join("\n\n");
     const evalConversationId = loopEvaluatorConversationId(params.loopId);
     const evalMemberId = loopEvaluatorMemberId(params.loopId);
     await ensureLoopScope(params.convPort, evalConversationId, evalMemberId, "loop-agent");
@@ -450,6 +470,9 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       defaultModel: await params.resolveModel(evalModel),
       configRevision: 1,
       idempotencyKey: `loop-eval:${params.loopId}:${item.id}:${baseSha}`,
+      // Evaluator systemPrompt from LOOP.md; skills from the loop config.
+      systemPrompt: evalPrompt || undefined,
+      skillRoots: [`${params.loopConfigPath}/skills`],
       // The Evaluator writes VERDICT.md into the same clone; read_write is
       // honest until the verdict moves out-of-band.
       workspace: { root: workDir, access: "read_write" },
@@ -469,6 +492,8 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         defaultModel: await params.resolveModel(evalModel),
         configRevision: 1,
         idempotencyKey: `loop-eval:${params.loopId}:${item.id}:${baseSha}:retry`,
+        systemPrompt: evalPrompt || undefined,
+        skillRoots: [`${params.loopConfigPath}/skills`],
         workspace: { root: workDir, access: "read_write" },
       });
       if (retry.acquired && retry.run) {

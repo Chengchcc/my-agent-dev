@@ -46,12 +46,11 @@ export const envSchema = z.object({
     .optional()
     .describe("'dev' | 'prod' — selects lark-bot registry implementation"),
 
-  // ── Phase 4: Coding Agent backend + Product Tools MCP ──
-  CODING_AGENT_URL: z.string().optional().describe("Coding Agent daemon base URL"),
-  CODING_AGENT_SERVICE_TOKEN: z
+  // ── Phase 5: Coding Agent process + Product Tools MCP ──
+  CODING_AGENT_BIN: z
     .string()
     .optional()
-    .describe("Service token for the Coding Agent daemon (x-auth-token)"),
+    .describe("Coding Agent executable spawned per Run (default: coding-agent on PATH)"),
   PRODUCT_TOOLS_MCP_URL: z
     .string()
     .optional()
@@ -59,7 +58,7 @@ export const envSchema = z.object({
   PRODUCT_TOOLS_SERVICE_TOKEN: z
     .string()
     .optional()
-    .describe("Service token the Coding Agent Worker sends to Product Tools MCP"),
+    .describe("Service token the Coding Agent child sends to Product Tools MCP"),
 });
 
 export type Env = z.infer<typeof envSchema>;

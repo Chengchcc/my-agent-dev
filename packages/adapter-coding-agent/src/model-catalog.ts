@@ -1,20 +1,89 @@
 import type { BackendModelCatalog } from "@my-agent-team/agent-backend";
-import type { CodingAgentClient } from "./client.js";
+import { CodingAgentProcessError } from "./backend.js";
+import {
+  type CodingAgentCommandConfig,
+  type SpawnedCodingAgentProcess,
+  spawnCodingAgentProcess,
+} from "./process.js";
+import { modelCatalogResponseSchema } from "./protocol.js";
 
-/** Thin model catalog adapter over the daemon's /v1/models. Independent of the
- *  AgentBackend method set (which has no model-listing method). */
+/** Model catalog over the Coding Agent CLI: spawns
+ *  `coding-agent --list-models --json` and parses the canonical catalog.
+ *  The Product Backend never maintains its own Provider Registry. Successful
+ *  results are cached per instance; no catalog service exists. */
+
+const LIST_MODELS_TIMEOUT_MS = 15_000;
+const MAX_OUTPUT_BYTES = 1 * 1024 * 1024;
+
 export class CodingAgentModelCatalog {
-  private readonly client: CodingAgentClient;
+  private readonly command: CodingAgentCommandConfig;
+  private cached: BackendModelCatalog | null = null;
 
-  constructor(client: CodingAgentClient) {
-    this.client = client;
+  constructor(command: CodingAgentCommandConfig) {
+    this.command = command;
   }
 
   async list(): Promise<BackendModelCatalog> {
-    const resp = await this.client.getModels();
-    return {
-      backendKind: resp.backendKind,
-      models: resp.models,
+    if (this.cached) return this.cached;
+    const listCommand: CodingAgentCommandConfig = {
+      executable: this.command.executable,
+      args: [...(this.command.args ?? []), "--list-models", "--json"],
+      env: this.command.env,
     };
+    let proc: SpawnedCodingAgentProcess;
+    try {
+      proc = spawnCodingAgentProcess(listCommand, { cwd: process.cwd() });
+    } catch (err) {
+      throw new CodingAgentProcessError(
+        "spawn_failed",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+    const lines: string[] = [];
+    let bytes = 0;
+    let overflow = false;
+    for await (const line of proc.stdout) {
+      bytes += line.length;
+      if (bytes > MAX_OUTPUT_BYTES) {
+        overflow = true;
+        break;
+      }
+      lines.push(line);
+    }
+    if (overflow) {
+      proc.kill();
+      throw new CodingAgentProcessError(
+        "process_failed",
+        "coding-agent --list-models output exceeded the 1 MiB bound",
+      );
+    }
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const code = await Promise.race([
+      proc.exit,
+      new Promise<null>((r) => {
+        timer = setTimeout(() => r(null), LIST_MODELS_TIMEOUT_MS);
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
+    if (code !== 0) {
+      if (code === null) proc.kill();
+      throw new CodingAgentProcessError(
+        "process_failed",
+        `coding-agent --list-models exited with code ${code}: ${proc.stderrTail.text()}`.slice(
+          0,
+          2000,
+        ),
+      );
+    }
+    try {
+      const parsed = modelCatalogResponseSchema.parse(JSON.parse(lines.join("\n")));
+      this.cached = parsed;
+      return parsed;
+    } catch (err) {
+      throw new CodingAgentProcessError(
+        "process_failed",
+        `malformed --list-models output: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

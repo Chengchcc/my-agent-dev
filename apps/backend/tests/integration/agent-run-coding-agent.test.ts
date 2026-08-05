@@ -1,16 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-// The daemon resume path has known flakiness on a second Worker for the
-// same session; the Product layer MUST fall back to a rebuild. Make the
-// bound short so the fallback is exercised in-test instead of stalling.
-process.env.AGENT_RUN_RESUME_TIMEOUT_MS = "2000";
-
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   CodingAgentBackend,
-  CodingAgentClient,
+  type CodingAgentCommandConfig,
   CodingAgentModelCatalog,
 } from "@my-agent-team/adapter-coding-agent";
 import type { Message } from "@my-agent-team/message";
@@ -32,9 +27,10 @@ import { openDb } from "../../src/infra/sqlite/db.js";
 /** THE Phase 5 acceptance chain, all real:
  *
  *  Product Backend (this process)
- *    → CodingAgentBackend over HTTP/SSE
- *    → real Coding Agent daemon (createCodingAgentApp + Bun.serve)
- *    → direct per-Run loop (no Worker, no session, fresh in-memory store)
+ *    → CodingAgentBackend (adapter) spawns a REAL child process
+ *    → apps/coding-agent/src/main.ts --mode rpc (stdin/stdout JSONL)
+ *    → per-Run Coding Agent Runtime (fresh in-memory store, no Worker,
+ *      no session, no HTTP)
  *    → real CodingAgentSession with the scripted fake provider
  *    → production resolveTools → real Product Tools MCP (SSE + Bearer token)
  *    → BackendRunOutcome
@@ -46,6 +42,9 @@ const TOKEN = "product-tools-token";
 const CONV = "conv-e2e";
 const MEMBER = "mem-e2e";
 
+const CODING_AGENT_ENTRY = new URL("../../../../apps/coding-agent/src/main.ts", import.meta.url)
+  .pathname;
+
 let dataDir: string;
 let db: ReturnType<typeof openDb>;
 let convPort: ReturnType<typeof sqliteConversationAdapter>;
@@ -55,11 +54,10 @@ let ledgerResolver: { resolveMessage(cid: string, seq: number): Promise<Message 
 let backend: ReturnType<typeof createAgentRunService>;
 let execution: ReturnType<typeof createAgentRunExecutionService>;
 let mcp: Awaited<ReturnType<typeof createProductToolsMcpServer>>;
-let daemonProc: ReturnType<typeof Bun.spawn> | null = null;
 let branchId: string;
 
 beforeAll(async () => {
-  dataDir = mkdtempSync(join(tmpdir(), "phase4-e2e-"));
+  dataDir = mkdtempSync(join(tmpdir(), "phase5-e2e-"));
   db = openDb(`${dataDir}/backend.db`);
   convPort = sqliteConversationAdapter(db);
   contextPort = sqliteAgentContextAdapter(db, {
@@ -98,73 +96,33 @@ beforeAll(async () => {
   });
   mcp = await createProductToolsMcpServer({ service: productTools, serviceToken: TOKEN });
 
-  // Real Coding Agent daemon as a SEPARATE PROCESS (deployment-shaped):
-  // spawned from apps/coding-agent/src/main.ts, reached over real HTTP/SSE.
-  const daemonTmp = mkdtempSync(join(tmpdir(), "phase4-daemon-"));
-  const daemonWs = mkdtempSync(join(tmpdir(), "phase4-ws-"));
-  const { createServer: createNetServer } = await import("node:net");
-  const portProbe = createNetServer();
-  await new Promise<void>((resolve) => portProbe.listen(0, "127.0.0.1", resolve));
-  const daemonPort = (portProbe.address() as { port: number }).port;
-  await new Promise<void>((resolve) => portProbe.close(() => resolve()));
-  const mainPath = new URL("../../../../apps/coding-agent/src/main.ts", import.meta.url).pathname;
-  daemonProc = Bun.spawn({
-    cmd: [process.execPath, mainPath],
+  // Real Coding Agent as a SEPARATE PROCESS per Run (deployment-shaped):
+  // the adapter spawns `bun apps/coding-agent/src/main.ts --mode rpc` and
+  // speaks stdin/stdout JSONL. cwd = the Run workspace; the Product Tools
+  // service token reaches the child ONLY through the process env.
+  const ws = mkdtempSync(join(tmpdir(), "phase5-ws-"));
+  const codingAgentCommand: CodingAgentCommandConfig = {
+    executable: process.execPath,
+    args: [CODING_AGENT_ENTRY, "--mode", "rpc"],
     env: {
-      ...process.env,
-      CODING_AGENT_AUTH_TOKEN: "daemon-token",
-      CODING_AGENT_DATA_DIR: daemonTmp,
-      CODING_AGENT_WORKSPACE_ROOTS: daemonWs,
       CODING_AGENT_FAKE_PROVIDER: "1",
-      CODING_AGENT_ACCEPT_TIMEOUT_MS: "3000",
-      // the worker's model calls history_recent ONCE, then produces text
+      // the child's model calls history_recent ONCE, then produces text
       CODING_AGENT_FAKE_TOOL: JSON.stringify([{ name: "history_recent", input: { limit: 5 } }]),
       // bound a hanging MCP call so a stuck tool fails fast and the run
       // still completes (tool error -> model fallback text)
       CODING_AGENT_PRODUCT_TOOL_TIMEOUT_MS: "2000",
-      // service token the worker attaches to its Product Tools MCP transport
+      // service token the child attaches to its Product Tools MCP transport
       CODING_AGENT_PRODUCT_TOOL_TOKEN: TOKEN,
-      CODING_AGENT_HOST: "127.0.0.1",
-      CODING_AGENT_PORT: String(daemonPort),
     },
-    cwd: import.meta.dir,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  void (async () => {
-    const reader = (daemonProc.stderr as ReadableStream<Uint8Array>).getReader();
-    const dec = new TextDecoder();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      process.stderr.write(`[coding-agent-daemon] ${dec.decode(value)}`);
-    }
-  })();
-  // wait for readiness
-  let ready = false;
-  for (let i = 0; i < 200 && !ready; i++) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${daemonPort}/health`);
-      ready = res.ok;
-    } catch {
-      /* not up yet */
-    }
-    if (!ready) await new Promise((r) => setTimeout(r, 50));
-  }
-  if (!ready) throw new Error("coding agent daemon did not become ready");
-
-  const client = new CodingAgentClient({
-    baseUrl: `http://127.0.0.1:${daemonPort}`,
-    authToken: "daemon-token",
-  });
+  };
   execution = createAgentRunExecutionService({
     runPort,
     contextPort,
     ledgerResolver,
-    backend: new CodingAgentBackend(client),
-    modelCatalog: new CodingAgentModelCatalog(client),
+    backend: new CodingAgentBackend(codingAgentCommand),
+    modelCatalog: new CodingAgentModelCatalog(codingAgentCommand),
     idGen: { ulid: () => `z-${Math.random().toString(36).slice(2, 8)}` },
-    resolveWorkspace: async () => ({ root: daemonWs, access: "read_write" }),
+    resolveWorkspace: async () => ({ root: ws, access: "read_write" }),
     productToolsEntrypoint: `sse:${mcp.url}`,
   });
 
@@ -182,10 +140,6 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (daemonProc) {
-    daemonProc.kill();
-    await daemonProc.exited;
-  }
   await mcp.close();
   db.close();
   rmSync(dataDir, { recursive: true, force: true });
@@ -200,9 +154,9 @@ async function waitForTerminal(runId: string): Promise<Awaited<ReturnType<typeof
   throw new Error(`run ${runId} never reached terminal`);
 }
 
-describe("Phase 5 acceptance: Product Backend -> Coding Agent -> Product Tools MCP", () => {
+describe("Phase 5 acceptance: Product Backend -> Coding Agent child -> Product Tools MCP", () => {
   test("a dispatched run completes end to end and commits exactly once", async () => {
-    // seed a conversation message the worker's history_recent call will read
+    // seed a conversation message the child's history_recent call will read
     convPort.appendLedgerEntry({
       conversationId: CONV,
       senderMemberId: "human-1",
@@ -238,13 +192,13 @@ describe("Phase 5 acceptance: Product Backend -> Coding Agent -> Product Tools M
     expect(run?.status).toBe("completed");
     // Live updates flowed transiently (adapter-mapped events).
     expect(events).toContain("text_delta");
-    // The Product Tool call went through the REAL MCP chain (the worker's
+    // The Product Tool call went through the REAL MCP chain (the child's
     // scripted model called history_recent once).
     expect(events).toContain("product_tool_started");
     expect(events).toContain("product_tool_completed");
 
     // Conversation History: exactly ONE final assistant message
-    // (the worker's last assistant output; the product tool call itself
+    // (the child's last assistant output; the product tool call itself
     // produced no ledger message).
     const ledgerMessages = convPort.getLedgerEntries(CONV).filter((e) => e.kind === "message");
     expect(ledgerMessages).toHaveLength(2); // seed user + final assistant
@@ -273,7 +227,7 @@ describe("Phase 5 acceptance: Product Backend -> Coding Agent -> Product Tools M
     expect(ledgerAfter).toHaveLength(2);
   }, 60_000);
 
-  test("a follow-up input chains into a SECOND real run (one Run / one loop)", async () => {
+  test("a follow-up input chains into a SECOND real child run (one Run / one loop)", async () => {
     const first = await backend.enqueueAndAcquire({
       conversationId: CONV,
       agentMemberId: MEMBER,
@@ -300,7 +254,7 @@ describe("Phase 5 acceptance: Product Backend -> Coding Agent -> Product Tools M
     await execution.dispatch(first.run!.runId);
     await waitForTerminal(first.run!.runId);
 
-    // The queued follow_up became a FRESH run with its own Worker.
+    // The queued follow_up became a FRESH run with its OWN child process.
     const inputs = await runPort.listInputs(first.run!.branchId);
     const followUpInput = inputs.find((i) => i.inputIdempotencyKey === "e2e-chain-2");
     expect(followUpInput).toBeDefined();
@@ -309,7 +263,7 @@ describe("Phase 5 acceptance: Product Backend -> Coding Agent -> Product Tools M
     const secondRun = await waitForTerminal(secondRunId);
     expect(secondRun?.status).toBe("completed");
 
-    // BOTH runs committed their own final assistant Message - the daemon
+    // BOTH runs committed their own final assistant Message - the child
     // never accepted a second segment for the first runId. Filter by the
     // run-derived messageIds (shared conversation also carries the first
     // test's assistant message).
@@ -330,7 +284,7 @@ describe("Phase 5 acceptance: Product Backend -> Coding Agent -> Product Tools M
 
     // Run 2 was built from a FULL projection of the SAME Product Context
     // Branch: the exact projection function the execution service feeds the
-    // daemon must include Run 1's canonical final Message. No SQLite
+    // child must include Run 1's canonical final Message. No SQLite
     // session, no resume - the branch IS the continuity.
     const projection = await projectAgentContext(
       { port: contextPort, ledgerResolver },

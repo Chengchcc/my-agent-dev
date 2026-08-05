@@ -160,6 +160,8 @@ function makeFakeRuns(script: RunScript, workDir: string = TMP) {
       terminalResult: null,
       configRevision: 1,
       productTools: null,
+      systemPrompt: null,
+      skillRoots: null,
       workspace: null,
       createdAt: 0,
       terminalAt: null,
