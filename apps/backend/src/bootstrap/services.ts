@@ -1,11 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { McpClientManager } from "@my-agent-team/adapter-mcp";
 import { createMcpClientManager } from "@my-agent-team/adapter-mcp";
-import type { RuntimeTracer } from "@my-agent-team/runtime-observability";
-import {
-  createRuntimeTracer,
-  resolveObservabilityConfig,
-} from "@my-agent-team/runtime-observability";
 import type { BackendConfig } from "../config.js";
 import { loadConfig } from "../config.js";
 import type { LarkBotRegistry } from "../features/lark-bot/index.js";
@@ -22,7 +17,6 @@ export interface BackendServices {
   db: Database;
   settingsSvc: SettingsService;
   mcpClientManager: McpClientManager;
-  tracer: RuntimeTracer;
   opsStore: RuntimeOpsStore;
   loopStore: LoopStateStore;
   larkBotRegistry: LarkBotRegistry;
@@ -39,9 +33,6 @@ export function createBackendServices(config?: BackendConfig): BackendServices {
   });
 
   const mcpClientManager = createMcpClientManager();
-
-  const obsConfig = resolveObservabilityConfig({ serviceName: "backend" });
-  const tracer = createRuntimeTracer(obsConfig);
   const opsStore = new RuntimeOpsStore(db);
 
   const larkBotRegistry = createLarkBotRegistry(cfg);
@@ -51,7 +42,6 @@ export function createBackendServices(config?: BackendConfig): BackendServices {
     db,
     settingsSvc,
     mcpClientManager,
-    tracer,
     opsStore,
     loopStore,
     larkBotRegistry,

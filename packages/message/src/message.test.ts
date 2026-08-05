@@ -20,7 +20,6 @@ describe("Message (type-level)", () => {
       text: "Hello world",
       blocks: [{ type: "text", text: "Hello world" }],
       tools: [{ id: "t1", name: "read", state: "done" }],
-      spanId: "r1",
       conversationId: "c1",
       visibility: "conversation",
       createdAt: 1700000000000,

@@ -1,7 +1,7 @@
-// Phase 5: Agent Run is the ONLY Product execution identity and terminal
-// authority. Spans/attempts/control-plane rows remain as audit data but
-// never decide run state; the session/run/recover/insights Ops APIs are
-// replaced by /api/agent-runs (see features/agent-run/http.ts).
+// Phase 5/6: Agent Run is the ONLY Product execution identity and terminal
+// authority. The legacy span/attempt/control-plane audit tables are deleted;
+// the Ops API exposes only surface health. Run execution state lives under
+// /api/agent-runs (see features/agent-run/http.ts).
 
 import type { RuntimeOpsStore } from "./store.js";
 

@@ -40,11 +40,9 @@
         "@my-agent-team/api-contract": "workspace:*",
         "@my-agent-team/config": "workspace:*",
         "@my-agent-team/conversation": "workspace:*",
-        "@my-agent-team/core": "workspace:*",
         "@my-agent-team/loop": "workspace:*",
         "@my-agent-team/message": "workspace:*",
         "@my-agent-team/plugin-progressive-skill": "workspace:*",
-        "@my-agent-team/runtime-observability": "workspace:*",
         "@my-agent-team/tools-common": "workspace:*",
         "drizzle-orm": "^0.44.0",
         "elysia": "^1.0.0",
@@ -69,7 +67,6 @@
         "@my-agent-team/plugin-progressive-skill": "workspace:*",
         "@my-agent-team/plugin-todo": "workspace:*",
         "@my-agent-team/tools-common": "workspace:*",
-        "elysia": "^1.0.0",
         "zod": "^3.23.0",
       },
       "devDependencies": {
@@ -254,16 +251,6 @@
         "@my-agent-team/agent": "workspace:*",
         "@my-agent-team/core": "workspace:*",
         "@my-agent-team/message": "workspace:*",
-      },
-    },
-    "packages/runtime-observability": {
-      "name": "@my-agent-team/runtime-observability",
-      "version": "0.1.0",
-      "dependencies": {
-        "@opentelemetry/api": "^1.9.0",
-      },
-      "devDependencies": {
-        "@opentelemetry/sdk-trace-base": "^1.30.0",
       },
     },
     "packages/test-helpers": {
@@ -649,8 +636,6 @@
 
     "@my-agent-team/plugin-todo": ["@my-agent-team/plugin-todo@workspace:packages/plugin-todo"],
 
-    "@my-agent-team/runtime-observability": ["@my-agent-team/runtime-observability@workspace:packages/runtime-observability"],
-
     "@my-agent-team/test-helpers": ["@my-agent-team/test-helpers@workspace:packages/test-helpers"],
 
     "@my-agent-team/tools-common": ["@my-agent-team/tools-common@workspace:packages/tools-common"],
@@ -688,14 +673,6 @@
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "https://registry.npmmirror.com/@nodelib/fs.walk/-/fs.walk-1.2.8.tgz", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.1", "https://registry.npmmirror.com/@opentelemetry/api/-/api-1.9.1.tgz", {}, "sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q=="],
-
-    "@opentelemetry/core": ["@opentelemetry/core@1.30.1", "https://registry.npmmirror.com/@opentelemetry/core/-/core-1.30.1.tgz", { "dependencies": { "@opentelemetry/semantic-conventions": "1.28.0" }, "peerDependencies": { "@opentelemetry/api": ">=1.0.0 <1.10.0" } }, "sha512-OOCM2C/QIURhJMuKaekP3TRBxBKxG/TWWA0TL2J6nXUtDnuCtccy49LUJF8xPFXMX+0LMcxFpCo8M9cGY1W6rQ=="],
-
-    "@opentelemetry/resources": ["@opentelemetry/resources@1.30.1", "https://registry.npmmirror.com/@opentelemetry/resources/-/resources-1.30.1.tgz", { "dependencies": { "@opentelemetry/core": "1.30.1", "@opentelemetry/semantic-conventions": "1.28.0" }, "peerDependencies": { "@opentelemetry/api": ">=1.0.0 <1.10.0" } }, "sha512-5UxZqiAgLYGFjS4s9qm5mBVo433u+dSPUFWVWXmLAD4wB65oMCoXaJP1KJa9DIYYMeHu3z4BZcStG3LC593cWA=="],
-
-    "@opentelemetry/sdk-trace-base": ["@opentelemetry/sdk-trace-base@1.30.1", "https://registry.npmmirror.com/@opentelemetry/sdk-trace-base/-/sdk-trace-base-1.30.1.tgz", { "dependencies": { "@opentelemetry/core": "1.30.1", "@opentelemetry/resources": "1.30.1", "@opentelemetry/semantic-conventions": "1.28.0" }, "peerDependencies": { "@opentelemetry/api": ">=1.0.0 <1.10.0" } }, "sha512-jVPgBbH1gCy2Lb7X0AVQ8XAfgg0pJ4nvl8/IiQA6nxOsPvS+0zMJaFSs2ltXe0J6C8dqjcnpyqINDJmU30+uOg=="],
-
-    "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.28.0", "https://registry.npmmirror.com/@opentelemetry/semantic-conventions/-/semantic-conventions-1.28.0.tgz", {}, "sha512-lp4qAiMTD4sNWW4DbKLBkfiMZ4jbAboJIGOQr5DvciMRI494OapieI9qiODpOt0XBr1LjIDy1xAGAnVs5supTA=="],
 
     "@pnpm/config.env-replace": ["@pnpm/config.env-replace@1.1.0", "https://registry.npmmirror.com/@pnpm/config.env-replace/-/config.env-replace-1.1.0.tgz", {}, "sha512-htyl8TWnKL7K/ESFa1oW2UB5lVDxuF5DpM7tBi6Hu2LNL3mWkIzNLG6N4zoCUP1lCKNxWy/3iu8mS8MvToGd6w=="],
 

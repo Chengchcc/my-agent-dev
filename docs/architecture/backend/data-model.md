@@ -1,9 +1,9 @@
 ---
 id: backend.data-model
-title: 目标数据模型
-status: design
+title: 数据模型
+status: current
 owners: architecture
-summary: "目标数据模型以 Conversation History 和 Agent Context 为两类产品事实，并将 Agent Backend binding、Agent Run 和运行审计作为控制面数据。Runtime 私有 session 只以 opaque ID 绑定，不存为产品 transcript。"
+summary: "当前持久化模型：conversation_ledger 与 agent_context_tree/entry/branch 是两类产品事实，agent_run + branch_input_queue + product_tool_call 是执行控制面数据。无 span/attempt/control_plane_event/span_origin —— Agent Run 是唯一执行身份。"
 depends_on:
   - foundations.facts-and-projections
   - agents.context
@@ -12,211 +12,137 @@ used_by:
   - runs.output-and-live-updates
 ---
 
-# 目标数据模型
+# 数据模型
 
-本页描述目标架构需要持久化的概念，不锁定具体 SQL 命名。实现迁移时可以复用现有表或增加新表，但字段语义必须符合本页不变量。
+本页描述当前 backend.db 的持久化模型（drizzle schema 是唯一真源，见 `apps/backend/src/infra/db/schema.ts`；字段名以 snake_case 为准）。
 
-## 产品事实保存在哪里
+## 产品事实
 
 ### Conversation History
 
 ```text
 conversation_ledger
-  seq
-  conversation_id
+  seq PK autoincrement
+  conversation_id FK -> conversation
   sender_member_id
   addressed_to
-  kind
-  content
-  run_id nullable
-  created_at
+  kind            message | member.joined | member.left | todo | surface.control | undo
+  content         JSON（message 行为 serializeMessageRevision）
+  ts
+  agent_run_id    terminal-commit 身份：final assistant Message 的唯一提交标记（partial unique）
+  undone
 ```
 
-Ledger 是多人共享 Conversation 历史。
+Ledger 是多人共享 Conversation 历史。`agent_run_id` 是唯一 Run 提交身份；**没有 span_id**。
 
 ### Agent Context
 
 ```text
 agent_context_tree
-  tree_id
-  conversation_id
+  tree_id PK
+  conversation_id FK
   agent_member_id
   created_at
-  updated_at
-```
 
-```text
 agent_context_entry
-  entry_id
-  tree_id
-  parent_entry_id nullable
-  type
-  ledger_seq nullable
-  payload
+  entry_id PK
+  tree_id FK
+  parent_id nullable（自引用）
+  type            ledger_message | private_message | product_tool_exchange | summary | model_change
+  payload         JSON
+  ledger_seq nullable（仅 ledger_message）
   created_at
-```
 
-Entry type：
-
-```text
-ledger_message
-private_message
-product_tool_exchange
-summary
-model_change
-```
-
-`model_change` payload 保存 `BackendModelRef`。Active branch 最后一个 `model_change` 决定下一个 Agent Run 的 effective model；不存在时使用 Product Agent 的 default model。共享 Message 使用 `ledger_seq` 引用 Ledger，不复制内容。
-
-### Context Branch
-
-```text
 agent_context_branch
-  branch_id
-  tree_id
+  branch_id PK
+  tree_id FK
   leaf_entry_id nullable
   ledger_cursor
-  backend_kind
+  backend_kind    "coding_agent"
+  is_default
   revision
   created_at
-  updated_at
 ```
 
-Branch 固定 `backend_kind`。Fork 新 branch 时默认继承，也可以显式选择另一个 backend。
-## Execution session 绑定保存什么
+共享 Message 用 `ledger_seq` 引用 Ledger，不复制内容。`model_change` payload 保存 `BackendModelRef`；active branch 最后一个 `model_change` 决定下一个 Agent Run 的 effective model。
 
-```text
-backend_session_binding
-  branch_id PK
-  backend_kind
-  backend_session_id nullable
-  synced_through_entry_id nullable
-  product_revision
-  status
-  updated_at
-```
+## 执行控制面
 
-`backend_session_id` 是 Claude/Codex/OpenCode/Coding Agent 的 opaque ID。Binding 可删除和重建，不属于 canonical history。
-## Agent Run 如何持久化
+### Agent Run（唯一执行身份）
 
 ```text
 agent_run
-  run_id
-  branch_id
-  status running|waiting|commit_failed|completed|failed|aborted|timeout
-  pending_action_id nullable
-  terminal_result nullable
-  idempotency_key
-  started_at
-  ended_at nullable
-  error nullable
-  backend_kind
-  model_ref
-  system_prompt_hash nullable
-  tool_manifest_hash nullable
+  run_id PK
+  branch_id FK
+  conversation_id
+  agent_member_id
+  model_ref       JSON: BackendModelRef
+  status          running|waiting|commit_failed|completed|failed|aborted|timeout
+  idempotency_key unique
+  terminal_result JSON: serialized BackendRunOutcome（terminal 时写入）
   config_revision
+  workspace_root / workspace_access     Run 级 workspace 快照
+  product_tools   JSON: ProductToolDescriptor[]（首次 dispatch 时冻结）
+  system_prompt / skill_roots           Run 级配置快照（创建时冻结）
+  created_at / terminal_at
 ```
 
-同一 branch 只允许一个 active run。`running`、`waiting` 和 `commit_failed` 都属于 active：waiting 仍等待用户响应，commit_failed 仍等待 canonical commit 重放。数据库可使用 partial unique constraint 或 service-level CAS 保证：
+同一 branch 只允许一个 active run（partial unique index on `status IN ('running','waiting','commit_failed')`）。
 
-```text
-UNIQUE active run per branch
-WHERE status IN (running, waiting, commit_failed)
-```
-
-Retry、provider request、run segment 和 sub-agent 是 Agent Backend 内部细节；如果 Product Backend 需要诊断，可以写审计表，但不改变 Agent Run 的单一终态。
-
-## 输入队列如何持久化
-
-Normal、steer 和 follow-up 都先写持久队列，再由 Agent Runs 投递：
+### Branch Input Queue
 
 ```text
 branch_input_queue
-  id
-  branch_id
-  mode normal|steer|follow_up
-  message
-  status pending|delivering|delivered|cancelled
-  created_at
-  delivered_at nullable
+  seq PK autoincrement（单调队列顺序）
+  input_id unique
+  branch_id FK
+  mode            normal | steer | follow_up
+  message         JSON: serialized Message
+  status          pending | delivering | delivered | cancelled
+  delivery_idempotency_key unique
+  input_idempotency_key
+  run_id          acquired 时写入
+  model_ref / config_revision / workspace_root / workspace_access
+  system_prompt / skill_roots           request-time 配置快照（promote 时用输入自己的）
+  created_at / delivered_at
 ```
 
-Product Backend crash 后按同一 branch 内的创建顺序恢复 pending/delivering 项。Adapter 明确接收后才标记 delivered，因此需要 adapter/run idempotency key 防止重投产生重复语义。
+Product Backend crash 后按同一 branch 内的 seq 顺序恢复 pending 项并重新 promote。
 
-## PendingAction 如何持久化
-
-产品级审批或问题可建模为：
+### Product Tool Calls
 
 ```text
-pending_action
-  action_id
-  run_id
-  branch_id
-  kind
-  payload
-  status pending|resolved|cancelled
-  response nullable
-  created_at
-  resolved_at nullable
+product_tool_call
+  run_id FK, call_id
+  tool_name
+  input_hash
+  status      completed | failed
+  result / error
+  created_at / completed_at
+  PK(run_id, call_id)
 ```
 
-Agent Backend 通过 MCP 或 Adapter fallback 请求产品能力；Product Backend 拥有审批事实。
+语义变更类 Product Tool（如 history_retain）的幂等与审计。replay 返回存储结果，冲突输入失败。
 
-## Product Summary 保存什么
+### PendingAction / Loop / 其余
 
-Summary 是 `agent_context_entry(type=summary)`：
+- `pending_action`：审批/问答等待响应（Product-side 记录，Run 协议本身只有四个终态）。
+- `loop_item` / `loop_budget`：Loop 状态机持久化。
+- `skill_pack` / `agent_skill_pack`：Skill Pack 与 Agent 分配。
+- `surface_health`：Lark 心跳等 audit（RuntimeOpsStore 唯一职责）。
+- `settings`、`cron_job`、`project`、`mcp_server`、`agent_relationship`：各自领域。
 
-```ts
-interface ProductSummaryPayload {
-  summary: string;
-  coversThroughEntryId: string;
-  generator: string;
-  usage?: Usage;
-}
-```
-
-原始 entries 不删除。
-
-## Product Tool exchange 保存什么
-
-语义相关 Product Tool exchange 写入 Tree entry payload：
-
-```ts
-interface ProductToolExchangePayload {
-  tool: string;
-  callId: string;
-  input: unknown;
-  output: unknown;
-  isError: boolean;
-}
-```
-
-产品工具本身的业务事实仍写各自领域表，例如 Task 更新写 Task 表；Tree entry 保存的是 Agent context 所需语义记录。
-
-## 运行审计保存什么
-
-运行审计可以保留现有 span/attempt/control-plane/event 结构，也可以演进为统一 ops store。它保存：
-
-```text
-adapter/runtime raw diagnostics
-model/tool timing
-usage
-process crash
-capability/fallback decision
-```
-
-审计不参与 Agent Context context build，也不能替代 Terminal BackendRunOutcome。
+**已删除**（Phase 6，迁移 0020）：`span`、`attempt`、`control_plane_event`、`span_origin`。旧 audit 行直接丢弃，不转换。Agent Run 与 Product Tool Call 已提供当前事实；没有新的 audit 表。
 
 ## 哪些写入必须在同一事务
 
 Agent terminal completed 时必须在同一事务完成：
 
 ```text
-insert conversation_ledger
+insert conversation_ledger（final assistant Message，agent_run_id）
 insert agent_context_entry ledger ref
 update agent_context_branch leaf/revision
-update backend_session_binding sync point
-update agent_run terminal status
+update agent_run terminal status + terminal_result
 ```
 
 这个事务是 Agent Run 从执行结果变成产品事实的唯一 commit point。
@@ -224,13 +150,12 @@ update agent_run terminal status
 ## 不变量
 
 1. Ledger 与 Tree 是两类产品事实。
-2. execution session state 是可重建 cache metadata。
-3. Agent Run 是 branch 上的一次产品执行，只有一个 terminal status。
-4. 同一 branch 最多一个 active run。
-5. 共享 Message 不在 Tree 中复制。
-6. Summary 不删除原始 entries。
-7. Agent Backend 私有 transcript 不进入产品数据模型。
-8. 审计数据不作为语义恢复来源。
+2. Agent Run 是 branch 上的一次产品执行，只有一个 terminal status。
+3. 同一 branch 最多一个 active run。
+4. 共享 Message 不在 Tree 中复制。
+5. Summary 不删除原始 entries。
+6. child 私有 transcript 不进入产品数据模型。
+7. 无 span/attempt/session 概念；`runId` 是唯一执行身份。
 
 ## 关联页面
 

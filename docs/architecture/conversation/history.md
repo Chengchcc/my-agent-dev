@@ -27,7 +27,7 @@ Conversation History 回答一个问题：
 - 人类 Message；
 - Agent 最终可见 Message；
 - member joined/left；
-- todo、recap、artifact 等共享产品条目；
+- todo、artifact 等共享产品条目；
 - 明确影响 Conversation 的控制事件。
 
 History 不保存：

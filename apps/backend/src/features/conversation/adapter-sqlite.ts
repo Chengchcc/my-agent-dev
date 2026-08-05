@@ -203,7 +203,6 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
           kind: input.kind,
           content: input.content,
           ts: input.ts,
-          spanId: input.spanId ?? null,
         })
         .returning({ seq: schema.conversationLedger.seq })
         .get();
@@ -235,7 +234,6 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
           kind: r.kind as LedgerEntry["kind"],
           content: r.content,
           ts: r.ts,
-          spanId: r.spanId,
           undone: r.undone === 1,
         } as LedgerEntry;
       });

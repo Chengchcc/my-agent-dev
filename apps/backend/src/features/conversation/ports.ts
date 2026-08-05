@@ -29,7 +29,7 @@ export interface MemberRow {
 }
 
 // M17.5: LedgerEntry is imported from the canonical @my-agent-team/conversation
-// package (single ontology). spanId was added to the canonical LedgerEntry schema.
+// package (single ontology).
 export type { LedgerEntry };
 
 export interface CreateConversationInput {
@@ -60,8 +60,6 @@ export interface AppendLedgerInput {
   kind: LedgerKind;
   content: string; // JSON-encoded
   ts: number;
-  /** Optional: run ID for dedup (incremental projection). */
-  spanId?: string;
 }
 
 export interface ConversationWithMembers {

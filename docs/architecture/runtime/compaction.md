@@ -9,7 +9,8 @@ Compaction 是长对话保持上下文可用性的核心机制。当对话 token
 - `packages/agent/src/context/compaction/cut-point.ts` - Token 感知的合法切点查找
 - `packages/agent/src/context/compaction/prompts.ts` - 摘要 prompt 模板（8 段 markdown）
 - `packages/agent/src/persistence/session.ts` - `CompactionEntry` 持久化 + `buildContext()` 重建
-- `apps/backend/src/features/span/agent-helpers.ts` - `defaultContextManager()` 生产管线
+
+> Compaction 是 Coding Agent 子进程内部的 Run-local 机制（`packages/agent`），随子进程销毁。Product Backend 不做 compaction；产品侧对应概念是 Agent Context 的 Product Summary。
 
 ## Session 条目模型
 
@@ -114,20 +115,9 @@ Session Tree 支持可逆压缩：
 - `buildContext()` 从树中重建消息，按最晚 CompactionEntry 的边界过滤
 - 回退只需 `moveTo(compactionEntry之前的entryId)`，原始消息完整保留
 
-## 生产管线
+## 生产装配
 
-```typescript
-// apps/backend/src/features/span/agent-helpers.ts
-export function defaultContextManager(settings?: SettingsService): ContextPipeline {
-  return pipeContextManagers(
-    toolResultTruncator({ maxCharsPerResult: 50_000 }),  // 单条结果截断
-    autoSummarize({                                       // 整体压缩
-      triggerAt: settings?.get<number>("context.summarizeTriggerAt") ?? 100_000,
-      keepRecent: settings?.get<number>("context.summarizeKeepRecent") ?? 10,
-    }),
-  );
-}
-```
+Coding Agent Runtime 装配 compaction 为默认管线（`packages/agent`），按 token 预算触发；Provider context overflow 时自动压缩后最多 retry 一次。Product Backend 不参与装配。
 
 ## 不做
 

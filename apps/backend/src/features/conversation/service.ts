@@ -760,7 +760,6 @@ class ConversationServiceImpl implements ConversationService {
         kind: entry.kind,
         content: typeof entry.content === "string" ? entry.content : JSON.stringify(entry.content),
         ts: entry.ts,
-        spanId: entry.spanId ?? undefined,
       });
     }
 

@@ -1,4 +1,4 @@
-import { desc, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -77,7 +77,6 @@ export const conversationLedger = sqliteTable(
     kind: text().notNull(),
     content: text().notNull(),
     ts: integer({ mode: "number" }).notNull(),
-    spanId: text("span_id"),
     /** Terminal-commit identity: set on the final assistant Message of a
      *  completed Agent Run. UNIQUE - the commit for a runId can never be
      *  written twice, even across connections/restarts. */
@@ -86,13 +85,9 @@ export const conversationLedger = sqliteTable(
   },
   (table) => [
     index("idx_ledger_conv").on(table.conversationId, table.seq),
-    index("idx_ledger_run").on(table.spanId).where(sql`span_id IS NOT NULL`),
     uniqueIndex("idx_ledger_agent_run").on(table.agentRunId).where(sql`agent_run_id IS NOT NULL`),
   ],
 );
-
-// projection_messages table removed — redundant third copy of messages.
-// Canonical stores: conversation_ledger (product truth) + checkpoint_messages (framework working state).
 
 // ─── project ───────────────────────────────────────────────────────
 export const project = sqliteTable(
@@ -129,79 +124,8 @@ export const cronJob = sqliteTable(
 );
 
 // ── Execution-related tables (merged into single-db under S1 storage convergence) ──
-
-export const span = sqliteTable(
-  "span",
-  {
-    spanId: text().primaryKey(),
-    sessionId: text().notNull(),
-    status: text().notNull().default("running"),
-    kind: text().notNull().default("main"),
-    parentSpanId: text("parent_span_id"),
-    agentId: text().notNull().default(""),
-    degradedReason: text(),
-    startedAt: integer({ mode: "number" }).notNull(),
-    endedAt: integer({ mode: "number" }),
-  },
-  (table) => [index("idx_span_session").on(table.sessionId, desc(table.startedAt))],
-);
-
-export const attempt = sqliteTable(
-  "attempt",
-  {
-    spanId: text()
-      .notNull()
-      .references(() => span.spanId, { onDelete: "cascade" }),
-    seq: integer().notNull(),
-    startedAt: integer({ mode: "number" }).notNull(),
-    endedAt: integer({ mode: "number" }),
-  },
-  (table) => [
-    primaryKey({ columns: [table.spanId, table.seq] }),
-    index("idx_attempt_span").on(table.spanId, table.startedAt),
-  ],
-);
-
-// S4: run_ops_event → control_plane_event rename
-export const controlPlaneEvent = sqliteTable(
-  "control_plane_event",
-  {
-    seq: integer().primaryKey({ autoIncrement: true }),
-    spanId: text().notNull(),
-    attemptSeq: integer(),
-    kind: text().notNull(),
-    payload: text().notNull().default("{}"),
-    traceId: text(),
-    ts: integer({ mode: "number" }).notNull(),
-  },
-  (table) => [
-    index("idx_control_plane_event_span").on(table.spanId, table.seq),
-    index("idx_control_plane_event_trace").on(table.traceId, table.seq),
-    index("idx_control_plane_event_kind").on(table.kind, desc(table.ts)),
-  ],
-);
-
-export const spanOrigin = sqliteTable(
-  "span_origin",
-  {
-    spanId: text().primaryKey(),
-    conversationId: text().notNull(),
-    sourceLedgerSeq: integer().notNull(),
-    agentMemberId: text().notNull(),
-    surface: text().notNull().default("web"),
-    idempotencyKey: text().notNull(),
-    issueId: text(),
-    cronJobId: text(),
-    fromStatus: text().notNull().default(""),
-    originKind: text().notNull().default("manual"),
-    createdAt: integer({ mode: "number" }).notNull(),
-  },
-  (table) => [
-    uniqueIndex("idx_span_origin_idem").on(table.idempotencyKey),
-    index("idx_span_origin_issue").on(table.issueId),
-    index("idx_span_origin_cron").on(table.cronJobId),
-  ],
-);
+// Phase 6: span/attempt/control_plane_event/span_origin dropped — Agent Run is
+// the only Product execution identity (agent_run + product_tool_call hold the facts).
 
 export const surfaceHealth = sqliteTable(
   "surface_health",
@@ -334,7 +258,6 @@ import { createSelectSchema } from "drizzle-zod";
 
 // ── Simple tables (drizzle-zod auto-generate) ──
 
-export const spanOriginSelectSchema = createSelectSchema(spanOrigin);
 export const agentsSelectSchema = createSelectSchema(agents, {
   larkEnabled: (s) => s.transform((v: number) => v !== 0),
   permissionMode: (s) => s.transform((v) => v as "ask" | "auto" | "deny"),
@@ -352,10 +275,6 @@ export const agentRelationshipSelectSchema = createSelectSchema(agentRelationshi
 
 // ── Tables with JSON/bool columns — drizzle-zod refine callback pattern ──
 // callback (schema) => schema.transform(...) adds transforms while preserving drizzle-zod types
-
-export const controlPlaneEventSelectSchema = createSelectSchema(controlPlaneEvent, {
-  payload: (s) => s.transform((v: string) => JSON.parse(v) as Record<string, unknown>),
-});
 
 export const surfaceHealthSelectSchema = createSelectSchema(surfaceHealth, {
   payload: (s) => s.transform((v: string) => JSON.parse(v) as Record<string, unknown>),

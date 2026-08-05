@@ -86,7 +86,7 @@ sequenceDiagram
 ### Evaluator 为什么是独立 Agent，而不是 Stop 钩子或 subagent
 
 - **不能放进 Stop 钩子**：Stop 钩子与生成者同进程、同上下文，等于让写代码的人自己判自己的活——违反 maker-checker。验证必须换一条独立线。
-- **比 subagent 更隔离**：Claude Code 的 subagent 仍活在父 run 的生命周期里、结果以 `tool_result` 回灌父上下文；本设计的 Evaluator 是一条**平级的独立 Agent**（不同 sessionId `loop:<loopId>:eval:<itemId>:<attempt>`、可绑不同更小模型），不 fork 生成者上下文，结果落成结构化 verdict 供 loopReducer 转移 step。两者都避免自评，但本设计隔离更彻底——评审者看不到生成者的思维链，只对照产出与 `acceptance`。
+- **比 subagent 更隔离**：Claude Code 的 subagent 仍活在父 run 的生命周期里、结果以 `tool_result` 回灌父上下文；本设计的 Evaluator 是一条**平级的独立 Agent Run**（idempotency key `loop:<loopId>:eval:<itemId>:<attempt>`、独立子进程、可绑不同更小模型），不 fork 生成者上下文，结果落成结构化 verdict 供 loopReducer 转移 step。两者都避免自评，但本设计隔离更彻底——评审者看不到生成者的思维链，只对照产出与 `acceptance`。
 
 ## 返工回路怎么闭合
 
@@ -105,7 +105,7 @@ sequenceDiagram
 | **S1** | **Escalation Failure（升级失灵）** | budget_exceeded 或 verdict 缺失后回路默默停住，没人知道 | 熔断必须留一扇门：暂停调度 + 追加 run-log + 给人开 review / 发通知，绝不静默死掉 |
 | **S2** | **State Rot（状态腐烂）** | STATE.md 堆满已 resolved/inbox 的陈旧 item，新一轮据此误判 | 每轮写回前 prune 已终结 item；投影层（看板/review queue）按 step 过滤 |
 | **S2** | **verdict 缺失** | evaluator run 成功但没吐出可解析 verdict | 视为「未裁决」，item 停在 `verifying` 等人，不盲目转 step |
-| **S3** | **同 item 重入撞键** | 返工重入同一 item | sessionId 带 `:<attempt>` 序号做幂等键，不撞 |
+| **S3** | **同 item 重入撞键** | 返工重入同一 item | run idempotency key 带 `:<attempt>` 序号，不撞 |
 
 ## 关联页面
 

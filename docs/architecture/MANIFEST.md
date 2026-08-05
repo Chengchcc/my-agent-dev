@@ -10,7 +10,7 @@
 - `docs/architecture/README.md`
 - `docs/architecture/runs/output-and-live-updates.md`
 - `docs/architecture/backend/data-model.md`
-- `docs/architecture/backend/event-log.md`
+- `docs/architecture/backend/event-log.md`（tombstone）
 - `docs/architecture/backend/overview.md`
 - `docs/architecture/backend/loop-runner.md`
 - `docs/architecture/concepts.json`
@@ -27,7 +27,7 @@
 - `docs/architecture/foundations/loop.md`
 - `docs/architecture/foundations/loop-pattern.md`
 - `docs/architecture/foundations/loop-engineering.md`
-- `docs/architecture/harness/harness.md`
+- `docs/architecture/harness/harness.md`（tombstone）
 - `docs/architecture/index.llm.md`
 - `docs/architecture/map.md`
 - `docs/architecture/operations/troubleshooting.md`
@@ -35,9 +35,15 @@
 - `docs/architecture/plugins/progressive-skill.md`
 - `docs/architecture/plugins/task-guard.md`
 - `docs/architecture/roadmap/future-work.md`
-- `docs/architecture/runtime/framework.md`
-- `docs/architecture/runtime/plugin.md`
-- `docs/architecture/runtime/context-manager.md`
+- `docs/architecture/runtime/framework.md`（tombstone）
+- `docs/architecture/runtime/plugin.md`（tombstone）
+- `docs/architecture/runtime/context-manager.md`（tombstone）
+- `docs/architecture/runtime/coding-agent.md`
+- `docs/architecture/runtime/coding-agent-session.md`
+- `docs/architecture/runtime/coding-agent-prompt.md`
+- `docs/architecture/runtime/coding-agent-models.md`
+- `docs/architecture/runtime/compaction.md`
+- `docs/architecture/runtime/memory.md`
 - `docs/architecture/security/overview.md`
 - `docs/architecture/surfaces/lark.md`
 - `docs/architecture/surfaces/overview.md`

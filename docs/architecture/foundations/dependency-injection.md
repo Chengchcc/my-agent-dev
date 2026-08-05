@@ -94,13 +94,13 @@ export function pipeContextManagers(...managers: ContextPipeline[]): ContextPipe
 
 ### 4. 构造函数注入（端口聚合 + 合理缺省）
 
-`Agent`（`packages/agent/src/agent.ts`）通过一个 config 对象聚合所有协作者，每一项都是接口而非具体类：
+`CodingAgentSession`（`packages/agent/src/runtime/agent-loop.ts`）通过一个 config 对象聚合所有协作者，每一项都是接口而非具体类：
 
 ```ts
-new Agent({ model, sessionId, plugins, tools, messageStore, eventLog, interruptStore, contextManager })
+createCodingAgentSession({ model, workspaceRoot, plugins, tools, store, ... })
 ```
 
-构造里对 `maxSteps / retry / compaction` 给默认值再 `...config` 覆盖--**注入但有合理缺省**，调用方只在需要时覆写。见[Agent](../harness/harness.md)。
+构造里对 retry / compaction / maxSteps 给默认值再覆盖——**注入但有合理缺省**，调用方只在需要时覆写。见 [Coding Agent](../runtime/coding-agent.md)。
 
 ### 5. 组合根（Composition Root）
 
@@ -138,11 +138,9 @@ new Agent({ model, sessionId, plugins, tools, messageStore, eventLog, interruptS
 
 ### 其余 bad case
 
-- **`SpanSupervisor`**（`span/supervisor.ts`）：一个类同时管生命周期、直接 SQL、reaper 定时器、三组监听器。SRP + DIP 双踩。**S1 已修复**：不再管理独立 events.db 连接及迁移（统一由 `openDb` 注入）。
-- **`RunSupervisorOptions`**（`supervisor.ts:11`）：6 字段 fat options，其中 `eventLog` 重构后类内**从不 `.append()`**——声明了依赖却不用。
-- **`RuntimeOpsService`**（`runtime-ops/service.ts:104` 起）：12 方法上帝对象，运行管理 / 监控 / 诊断 / 报表四类关注点挤一处；`listRuns` 内 if 链拼 SQL 过滤（OCP）。
-- **`getSetupManager`**（`main.ts:203`）：函数体内 `new CliSetupProvisioner()`（`:205`），焊死具体 provisioner。
-- **`createCronScheduler`**（`cron/scheduler.ts:164`）：直接 `Bun.cron(...)`，绑死运行时，无法注入假调度器做时间相关测试。
+- **`RuntimeOpsService`**（`runtime-ops/service.ts`）：surface-health 审计与执行状态曾挤一处；Phase 6 后只保留 surface_health（4 个 store 方法），执行状态归 agent-run feature。
+- **`getSetupManager`**（`main.ts`）：函数体内 `new CliSetupProvisioner()`，焊死具体 provisioner。
+- **`createCronScheduler`**（`cron/scheduler.ts`）：直接 `Bun.cron(...)`，绑死运行时，无法注入假调度器做时间相关测试。
 
 ## 红旗信号
 

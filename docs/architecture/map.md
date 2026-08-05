@@ -1,6 +1,6 @@
 # 跨页架构地图
 
-本图展示目标 Product Backend 架构的核心页面关系。
+本图展示当前 Product Backend 架构的核心页面关系。
 
 ## 核心关系
 
@@ -12,6 +12,7 @@ flowchart LR
   Automation[Task / Cron / Loop] --> Run
   Tools[Product Tools] --> Run
   Run --> Backend[Agent Backend]
+  Backend --> Child[coding-agent child]
   Backend --> Updates[Live Updates]
   Backend --> Message[Final Message]
   Message --> History
@@ -28,7 +29,7 @@ Web/Lark input
 → trigger + visibility
 → Agent Context refs
 → Agent Run
-→ Agent Backend
+→ Agent Backend spawn child
 → Live Updates
 → terminal outcome
 → atomic History + Context commit
@@ -41,7 +42,7 @@ Web/Lark input
 - `conversation/history`
 - `agents/context`
 
-## Context Branch 与 Agent Backend
+## Context Branch 与 Agent Run
 
 ```mermaid
 flowchart LR
@@ -52,17 +53,16 @@ flowchart LR
   Backend --> Message[Final Message]
 ```
 
-Execution session、projection、transport、MCP、Worker 和 ModelRuntime 都是具体 Backend 的内部实现，不进入公共架构地图。
+子进程内部的 loop、compaction、todo、ModelRuntime 都是具体执行引擎的实现，不进入公共架构地图。
 
 ## 自动化
 
 ```mermaid
 flowchart LR
-  Task[Task] --> Run[Agent Run]
-  Cron[Cron] --> Run
+  Cron[Cron] --> Run[Agent Run]
   Loop[Loop] --> Run
   Run --> Branch[Context Branch]
   Run --> Backend[Agent Backend]
 ```
 
-Task、Cron、Loop 选择 Agent 与 Context Branch，但不依赖某个具体执行引擎。
+Cron、Loop 选择 Agent 与 Context Branch，但不依赖子进程内部实现。

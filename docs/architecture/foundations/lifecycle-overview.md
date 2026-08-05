@@ -1,62 +1,69 @@
 ---
 id: foundations.lifecycle-overview
-title: 一次运行的生命周期
+title: 生命周期总览
 status: current
 owners: architecture
-last_verified_against_code: 2026-07-28
-summary: "一次 Agent 运行的完整时间线：从 Backend 创建 Agent，经 agent runtime (span-loop) 执行，到事件固化写账本，最后收尾释放。"
+summary: "一次 Agent Run 的生命周期：Product Backend 写入并投影 Product Context → 创建 Agent Run → Adapter spawn 一次性 coding-agent 子进程 → child 产出 BackendRunOutcome → terminal commit 原子写 Ledger + Context。"
 depends_on:
   - foundations.facts-and-projections
-  - runs.output-and-live-updates
-  - runtime.framework
-  - harness.harness
 used_by:
+  - backend.overview
+  - flows.e2e-web-message
 ---
 
-# 一次运行的生命周期
+# 生命周期总览
 
-一次 Agent 运行从被触发到结束的生命周期。
-
-## 时间线
+## 一次 Agent Run 的主流程
 
 ```mermaid
 sequenceDiagram
-  participant B as Backend
-  participant AG as Agent
-  participant EL as EventLog
-  participant L as Conversation History
+  participant U as 用户
+  participant P as Product Backend
+  participant L as conversation_ledger
+  participant C as Agent Context
+  participant A as Adapter
+  participant K as coding-agent child
 
-  B->>AG: startAgentRun(input) -> 创建 Agent
-  AG runs: span-loop
-  AG emits AgentEvent
-  AG-->>B: onEvent("message")
-  B->>L: appendAssistantMessage -> 写入 MessageRevision
-  AG runs: tool_call -> 执行 -> tool_result -> 继续
-  AG emits AgentEvent（更多轮 -> 同 messageId）
-  AG-->>B: onEvent("message")
-  B->>L: 同 messageId 更新 revision
-  AG->>EL: eventLog.appendEvent（非消息执行事件, 按 spanId）
-  AG emits agent_end
-  AG-->>B: onEvent("agent_end", willRetry: false)
-  B->>L: terminal revision（state: done/error）
-  B->>B: 释放 ConversationLock + fire-and-forget reflection
+  U->>P: 发送消息 / cron 到点 / Loop 触发
+  P->>L: appendLedgerEntry（人类 Message）
+  P->>P: 创建 Agent Run（冻结 systemPrompt/skillRoots/modelRef）
+  P->>C: 同事务同步 History refs + 推进 ledgerCursor
+  P->>A: execute(full projection + input + run snapshot)
+  A->>K: spawn --mode rpc + execute command
+  K-->>A: event envelopes → Live Updates
+  K-->>A: outcome envelope
+  A-->>P: BackendRunOutcome
+  P->>L: final assistant Message（agent_run_id 提交标记）
+  P->>C: 同事务追加 Message ref + 更新 branch
+  P->>P: 标记 Agent Run terminal（terminal_result）
+  A->>K: child 自行退出
 ```
 
 ## 分阶段说明
 
-**1. 发起**　Backend 收到触发信号（人发消息 / orchestrator 推进 Issue / cron 到点），创建 Agent，调用 `agent.prompt(input)`。
+**1. 发起**　Product Backend 收到触发信号（人发消息 / cron 到点 / Loop Generator/Evaluator），写入输入与 Run 快照。
 
-**2. 执行**　Agent 经 agent runtime (span-loop) 按步骤推进（受 maxSteps 约束）。每步可能调模型或调工具。过程拆成 AgentEvent 流。
+**2. 排队与 acquire**　输入进入 `branch_input_queue`。同一 branch 最多一个 active Run：空闲则立即 acquire，忙则排队（steer 可注入 live Run，follow_up 等 terminal）。
 
-**3. 固化事实**　Agent 的内部订阅者将事件通知给 Backend 注册的 listener，消息事件直接 `appendAssistantMessage` 写 conversation ledger。非消息执行事件（tool_call 等）不走这条回调，而由 agent runtime (span-loop) 经 `eventLog.appendEvent` 写入 EventLog 的执行事实流（`checkpoint_events`，按 spanId 切）。
+**3. 执行**　Adapter 为 Run spawn 一次性 `coding-agent --mode rpc` 子进程，stdin 发 `execute` command，stdout 收 event/outcome envelopes。子进程内 per-Run Runtime 跑模型/工具循环（retry、compaction、todo、skill 加载）。
 
-**4. 收尾**　Run 结束时（`agent_end`），Backend 的 listener 写入 terminal revision 关闭消息，释放 ConversationLock。若被中断（InterruptSignal），Agent 保持存活，等待 `resume()` 调用后继续。
+**4. 固化事实**　terminal `BackendRunOutcome` 到达后，Product Backend 在同一事务写 final assistant Message（`agent_run_id`）到 Ledger、追加 Context ref、更新 branch、标记 Run terminal。事务失败 → commit_failed，幂等重试。
+
+**5. 收尾**　child 在 outcome 后自行退出（one Run → one outcome → exit）；Adapter 回收 spawn slot。follow_up 输入在 terminal commit 后开始下一个 Run。
+
+## 关键状态
+
+| 阶段 | 状态 | 说明 |
+|---|---|---|
+| 输入已入队 | queue `pending` | 等待 acquire |
+| Run 已创建 | `running` / `waiting` | waiting = 等待审批/问答（Product Tools MCP 同步等待） |
+| 执行完成 | outcome 到达 | 还未提交产品事实 |
+| 提交中 | `commit_failed` | terminal 事务失败，幂等重试 |
+| 终态 | `completed` / `failed` / `aborted` / `timeout` | 唯一终态；completed 才有 final Message |
 
 ## 关联页面
 
 - [事实与投影](facts-and-projections.md)
-- [会话消息流](../runs/output-and-live-updates.md)
-- [Agent](../runtime/plugin.md)
-- [Framework 运行循环](../runtime/framework.md)
+- [Agent Run 输出与实时更新](../runs/output-and-live-updates.md)
+- [Agent Backend](../execution/agent-backend.md)
 - [Web 消息端到端](../flows/e2e-web-message.md)
-- [飞书消息端到端](../flows/e2e-lark-message.md)

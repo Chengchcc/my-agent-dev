@@ -17,9 +17,12 @@ test("openDb creates database file and runs drizzle-kit migrations", () => {
   const names = tables.map((t) => t.name);
   expect(names).toContain("agents");
   expect(names).not.toContain("threads");
-  // S1: events.db merged — run/attempt are now in backend.db
-  expect(names).toContain("span");
-  expect(names).toContain("attempt");
+  // Phase 6: legacy execution audit tables are gone — Agent Run is the only
+  // execution identity (agent_run + product_tool_call hold the facts).
+  expect(names).not.toContain("span");
+  expect(names).not.toContain("attempt");
+  expect(names).not.toContain("control_plane_event");
+  expect(names).not.toContain("span_origin");
   // S2: projection_messages deleted (redundant third copy of messages)
   expect(names).not.toContain("projection_messages");
   // M20: checkpoint_* tables are in checkpointer.sqlite, NOT backend.db
@@ -316,7 +319,228 @@ test("Phase 1: existing product facts survive 0012 migration, no Context backfil
   }
 });
 
-// ─── Phase 1 constraints ───────────────────────────────────────
+// ─── Phase 6: legacy execution audit deletion ─────────────────
+
+/** Build a pre-0020 fixture (all migrations 0000-0019 applied) with the full
+ *  Product fact set PLUS the legacy audit rows that 0020 must delete:
+ *  span/attempt/control_plane_event/span_origin rows and ledger span_id. */
+function buildPhase6PreMigrationFixture(dbPath: string): void {
+  const db = new Database(dbPath);
+  db.exec("PRAGMA foreign_keys = ON");
+  const migrationsDir =
+    ["drizzle/backend", "apps/backend/drizzle/backend"].find((p) => existsSync(p)) ??
+    "drizzle/backend";
+  const files = readdirSync(migrationsDir)
+    .filter((f) => f.endsWith(".sql") && f < "0020_")
+    .sort();
+  for (const f of files) {
+    const sql = readFileSync(`${migrationsDir}/${f}`, "utf8");
+    const stmts = sql
+      .split("--> statement-breakpoint")
+      .map((s) => s.replace(/^--.*$/gm, "").trim())
+      .filter((s) => s);
+    for (const s of stmts) {
+      try {
+        db.exec(s);
+      } catch {
+        /* may already exist */
+      }
+    }
+  }
+
+  // ── Product facts (the set 0020 must preserve untouched) ──
+  db.exec(
+    "INSERT INTO agents (id, name, template, workspace_path, model_provider, model_name, permission_mode, max_steps, created_at, updated_at, lark_enabled) VALUES ('ag-p6', 'P6Agent', NULL, '/tmp/p6', 'anthropic', 'claude-sonnet-4-6', 'ask', 10, 1000, 1000, 0)",
+  );
+  db.exec(
+    "INSERT INTO conversation (conversation_id, trigger_mode, hop_count, title, origin, created_at) VALUES ('c-p6', 'mention', 1, 'P6 Conv', 'user', 1000)",
+  );
+  db.exec(
+    "INSERT INTO member (member_id, conversation_id, kind, agent_id, user_ref, display_name, joined_at) VALUES ('m-human', 'c-p6', 'human', NULL, 'u1', 'H', 1000), ('m-agent', 'c-p6', 'agent', 'ag-p6', NULL, 'P6Agent', 1000)",
+  );
+  // Canonical Conversation History: two ledger messages, one carrying the
+  // legacy span_id and the other the terminal-commit agent_run_id.
+  db.exec(
+    "INSERT INTO conversation_ledger (conversation_id, sender_member_id, addressed_to, kind, content, ts, span_id, agent_run_id, undone) VALUES ('c-p6', 'm-human', '[]', 'message', '{\"text\":\"hello\"}', 1000, 'sp-legacy-1', NULL, 0)",
+  );
+  db.exec(
+    "INSERT INTO conversation_ledger (conversation_id, sender_member_id, addressed_to, kind, content, ts, span_id, agent_run_id, undone) VALUES ('c-p6', 'm-agent', '[]', 'message', '{\"text\":\"done\"}', 2000, 'sp-legacy-2', 'run-p6-1', 0)",
+  );
+  // Agent Context tree/branch/entries
+  db.exec(
+    "INSERT INTO agent_context_tree (tree_id, conversation_id, agent_member_id, created_at) VALUES ('tree-p6', 'c-p6', 'm-agent', 1000)",
+  );
+  db.exec(
+    "INSERT INTO agent_context_branch (branch_id, tree_id, leaf_entry_id, ledger_cursor, backend_kind, is_default, revision, created_at) VALUES ('branch-p6', 'tree-p6', NULL, 2, 'coding_agent', 1, 1, 1000)",
+  );
+  db.exec(
+    "INSERT INTO agent_context_entry (entry_id, tree_id, parent_id, type, payload, ledger_seq, created_at) VALUES ('entry-p6-1', 'tree-p6', NULL, 'private_message', '{\"note\":\"first\"}', NULL, 1000), ('entry-p6-2', 'tree-p6', 'entry-p6-1', 'ledger_message', '{\"seq\":1}', 1, 1000)",
+  );
+  // Agent Run + branch input queue
+  db.exec(
+    "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, terminal_result, config_revision, system_prompt, skill_roots, created_at, terminal_at) VALUES ('run-p6-1', 'branch-p6', 'c-p6', 'm-agent', '{\"backendKind\":\"coding_agent\",\"modelId\":\"claude-sonnet-4-6\"}', 'completed', 'ik-p6-1', '{\"status\":\"completed\"}', 1, 'sys-p6', '[\"/p6/skills\"]', 1000, 2000)",
+  );
+  db.exec(
+    "INSERT INTO branch_input_queue (input_id, branch_id, mode, message, status, delivery_idempotency_key, input_idempotency_key, run_id, model_ref, config_revision, created_at) VALUES ('in-p6', 'branch-p6', 'normal', '{\"text\":\"next\"}', 'delivered', 'del-p6', 'iid-p6', 'run-p6-1', '{\"backendKind\":\"coding_agent\",\"modelId\":\"claude-sonnet-4-6\"}', 1, 1000)",
+  );
+  db.exec(
+    "INSERT INTO product_tool_call (run_id, call_id, tool_name, input_hash, status, result, created_at, completed_at) VALUES ('run-p6-1', 'call-p6', 'history_retain', 'h1', 'completed', '{\"ok\":true}', 1000, 1500)",
+  );
+  // Loop items/budget
+  db.exec(
+    "INSERT INTO loop_item (loop_id, item_id, source, summary, step, attempt, priority, result, updated_at) VALUES ('loop-p6', 'item-p6', 'issue', 'fix', 'fixing', 1, 3, NULL, 1000)",
+  );
+  db.exec("INSERT INTO loop_budget (loop_id, day, spent) VALUES ('loop-p6', '2026-08-05', 500)");
+  // Skill Packs + assignment
+  db.exec(
+    "INSERT INTO skill_pack (id, name, description, source_kind, status, created_at, updated_at) VALUES ('pack-p6', 'loop-engine', 'Loop skill', 'builtin', 'ready', 1000, 1000)",
+  );
+  db.exec(
+    "INSERT INTO agent_skill_pack (agent_id, pack_id, created_at) VALUES ('ag-p6', 'pack-p6', 1000)",
+  );
+  // Cron Jobs / Projects / Settings / Surface Health
+  db.exec(
+    "INSERT INTO cron_job (cron_job_id, name, agent_id, cron_expr, prompt, enabled, timeout_ms, max_retries, created_at, updated_at) VALUES ('cron-p6', 'daily', 'ag-p6', '0 9 * * *', 'do', 1, 30000, 1, 1000, 1000)",
+  );
+  db.exec(
+    "INSERT INTO project (project_id, name, auto_orchestrate, created_at, updated_at) VALUES ('proj-p6', 'p6', 0, 1000, 1000)",
+  );
+  db.exec("INSERT INTO settings (key, value, updated_at) VALUES ('p6.key', 'false', 1000)");
+  db.exec(
+    "INSERT INTO surface_health (agent_id, surface, status, last_seen_at, payload, updated_at) VALUES ('ag-p6', 'lark', 'running', 1000, '{}', 1000)",
+  );
+
+  // ── Legacy audit rows (0020 must DELETE these, no conversion) ──
+  db.exec(
+    "INSERT INTO span (span_id, session_id, status, kind, agent_id, started_at) VALUES ('sp-legacy-1', 'sess-legacy', 'succeeded', 'main', 'ag-p6', 1000), ('sp-legacy-2', 'sess-legacy', 'succeeded', 'main', 'ag-p6', 2000)",
+  );
+  db.exec(
+    "INSERT INTO attempt (span_id, seq, started_at, ended_at) VALUES ('sp-legacy-1', 0, 1000, 2000)",
+  );
+  db.exec(
+    "INSERT INTO control_plane_event (span_id, attempt_seq, kind, payload, ts) VALUES ('sp-legacy-1', 0, 'retry_requested', '{}', 1000)",
+  );
+  db.exec(
+    "INSERT INTO span_origin (span_id, conversation_id, source_ledger_seq, agent_member_id, surface, idempotency_key, created_at) VALUES ('sp-legacy-1', 'c-p6', 1, 'm-agent', 'web', 'ik-sp', 1000)",
+  );
+  db.close();
+}
+
+test("Phase 6: product facts survive 0020 migration, legacy audit deleted, no Context backfill", () => {
+  const tmpPath = `/tmp/test-backend-db-p6-upgrade-${Math.random().toString(36).slice(2, 8)}.db`;
+  buildPhase6PreMigrationFixture(tmpPath);
+
+  const db = new Database(tmpPath);
+  db.exec("PRAGMA foreign_keys = ON");
+  const migrationsDir =
+    ["drizzle/backend", "apps/backend/drizzle/backend"].find((p) => existsSync(p)) ??
+    "drizzle/backend";
+  const sql0020 = readFileSync(`${migrationsDir}/0020_phase6_drop_legacy_execution.sql`, "utf8");
+  for (const s of sql0020
+    .split("--> statement-breakpoint")
+    .map((s: string) => s.replace(/^--.*$/gm, "").trim())
+    .filter((s: string) => s)) {
+    db.exec(s);
+  }
+
+  // 1. Legacy audit tables are gone, rows discarded (not converted).
+  const names = (
+    db.query("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[]
+  ).map((t) => t.name);
+  expect(names).not.toContain("span");
+  expect(names).not.toContain("attempt");
+  expect(names).not.toContain("control_plane_event");
+  expect(names).not.toContain("span_origin");
+
+  // 2. conversation_ledger lost span_id + idx_ledger_run; agent_run_id kept.
+  const ledgerCols = (
+    db.query("PRAGMA table_info('conversation_ledger')").all() as { name: string }[]
+  ).map((c) => c.name);
+  expect(ledgerCols).not.toContain("span_id");
+  expect(ledgerCols).toContain("agent_run_id");
+  const idx = (
+    db.query("SELECT name FROM sqlite_master WHERE type='index'").all() as { name: string }[]
+  ).map((i) => i.name);
+  expect(idx).not.toContain("idx_ledger_run");
+  expect(idx).toContain("idx_ledger_agent_run");
+
+  // 3. Product facts: rows + PKs preserved per table.
+  const expectRows = (table: string, n: number) => {
+    const count = (db.query(`SELECT COUNT(*) AS n FROM "${table}"`).get() as { n: number }).n;
+    expect(count, `${table} row count`).toBe(n);
+  };
+  expectRows("agents", 1);
+  expectRows("conversation", 1);
+  expectRows("member", 2);
+  expectRows("conversation_ledger", 2);
+  expectRows("agent_context_tree", 1);
+  expectRows("agent_context_branch", 1);
+  expectRows("agent_context_entry", 2);
+  expectRows("agent_run", 1);
+  expectRows("branch_input_queue", 1);
+  expectRows("product_tool_call", 1);
+  expectRows("loop_item", 1);
+  expectRows("loop_budget", 1);
+  expectRows("skill_pack", 1);
+  expectRows("agent_skill_pack", 1);
+  expectRows("cron_job", 1);
+  expectRows("project", 1);
+  expectRows("settings", 1);
+  expectRows("surface_health", 1);
+
+  const run = db.query("SELECT * FROM agent_run WHERE run_id='run-p6-1'").get() as {
+    run_id: string;
+    status: string;
+    system_prompt: string;
+    idempotency_key: string;
+  };
+  expect(run.run_id).toBe("run-p6-1");
+  expect(run.status).toBe("completed");
+  expect(run.system_prompt).toBe("sys-p6");
+  expect(run.idempotency_key).toBe("ik-p6-1");
+
+  // 4. Conversation replay unchanged: same seq/content, agent_run_id kept.
+  const ledger = db
+    .query("SELECT * FROM conversation_ledger WHERE conversation_id='c-p6' ORDER BY seq")
+    .all() as Array<{ seq: number; content: string; agent_run_id: string | null }>;
+  expect(ledger).toHaveLength(2);
+  expect(ledger[0]!.seq).toBe(1);
+  expect(ledger[0]!.content).toBe('{"text":"hello"}');
+  expect(ledger[0]!.agent_run_id).toBeNull();
+  expect(ledger[1]!.seq).toBe(2);
+  expect(ledger[1]!.content).toBe('{"text":"done"}');
+  expect(ledger[1]!.agent_run_id).toBe("run-p6-1");
+
+  // 5. No checkpoint/span data copied into Agent Context: entry set unchanged.
+  const entries = db
+    .query("SELECT * FROM agent_context_entry WHERE tree_id='tree-p6' ORDER BY entry_id")
+    .all() as Array<{ entry_id: string; payload: string }>;
+  expect(entries).toHaveLength(2);
+  expect(entries[0]!.payload).toBe('{"note":"first"}');
+  expect(entries[1]!.payload).toBe('{"seq":1}');
+
+  // 6. Next Agent Run still buildable: queue row + branch + context intact.
+  const queue = db.query("SELECT * FROM branch_input_queue WHERE input_id='in-p6'").get() as {
+    branch_id: string;
+    run_id: string | null;
+    message: string;
+  };
+  expect(queue.branch_id).toBe("branch-p6");
+  expect(queue.run_id).toBe("run-p6-1");
+  expect(queue.message).toBe('{"text":"next"}');
+  const branch = db
+    .query("SELECT * FROM agent_context_branch WHERE branch_id='branch-p6'")
+    .get() as { ledger_cursor: number; backend_kind: string };
+  expect(branch.ledger_cursor).toBe(2);
+  expect(branch.backend_kind).toBe("coding_agent");
+
+  db.close();
+  try {
+    unlinkSync(tmpPath);
+  } catch {
+    /* best-effort cleanup */
+  }
+});
 
 describe("Phase 1 constraints", () => {
   test("duplicate (conversation_id, agent_member_id) tree fails", () => {

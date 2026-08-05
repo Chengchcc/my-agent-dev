@@ -119,7 +119,7 @@ export function sqliteAgentAdapter(db: Database): AgentPort {
         const deletedAgent = agentResult.changes > 0;
 
         // projection_messages table removed (S2) — it was a redundant third copy of messages.
-        // Canonical stores: conversation_ledger + checkpoint_messages.
+        // Canonical store: conversation_ledger (Product truth). Agent Context holds refs, not copies.
 
         return { deletedAgent, deletedThreads: 0, deletedMembers };
       });

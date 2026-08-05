@@ -105,11 +105,11 @@ interface ContextBranch {
 
 `backendKind` 在 branch 创建时固定。branch 内禁止切换 Agent Backend。Fork 默认继承父 branch 的 backend，也允许创建新 branch 时显式选择另一个 backend。
 
-### Execution session state（内部 metadata）
+### Run-time 状态（子进程内，非 Context 语义）
 
-Branch 可以保存当前 Agent Backend execution session 的 opaque ID、同步 entry、revision 和 active/stale/detached 状态。这些字段只是可重建 cache metadata，不是 Agent Context 语义。
+Agent Run 没有持久 execution session：每次执行由 Adapter spawn 一次性 coding-agent 子进程，子进程内的 in-memory SessionStore 是该 Run 的私有缓存（`sessionId = runId`），Run 结束即销毁。没有 binding、没有同步点、没有原生 resume —— 下一个 Run 永远从当前 Context Branch 的 full projection 重建。
 
-只有 backend kind、branch、同步 entry、revision 全部匹配时才允许原生 resume；否则从当前 Context Branch 重建 execution session。
+> 历史版本（daemon/session 架构）曾允许「binding 匹配则 resume」；Phase 5/6 已删除该路径，`backend_session_binding` 表与 resume 语义不复存在。
 
 ## 启动 Agent Run 时如何避免并发写入
 

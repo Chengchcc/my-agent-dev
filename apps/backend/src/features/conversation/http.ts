@@ -189,7 +189,6 @@ export function conversationRoutes(
               ...entry,
               content:
                 typeof entry.content === "string" ? entry.content : JSON.stringify(entry.content),
-              spanId: entry.spanId ?? undefined,
             };
             return encodeConv(
               entry.kind as keyof typeof conversationEvents,

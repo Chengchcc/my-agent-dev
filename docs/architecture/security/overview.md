@@ -18,27 +18,13 @@ used_by:
 
 后端入口用鉴权中间件校验请求头里的 `x-auth-token`，比较采用常量时间比较以避免时序侧信道（apps/backend/src/infra/auth.ts）。这是「谁能调后端」这一层的闸门。
 
-## 对话层：线程隔离
+## 对话层：账本可见性
 
-对话可见性的基本单位是**会话**，约定 `sessionId = conversationId:memberId`。同一个共享对话里，每个成员有自己的一条消息投影记录（直接从 conversation_ledger 按 senderMemberId 读取）。这条约定决定了「账本是共享的事实，但每个成员看到的投影是按自己的 session 切出来的」——成员之间不会串台。
-
-在 Agent runtime 内部，未显式指定时线程标识可退化为随机 UUID，保证每次运行至少有一个隔离的线程身份。
-
-## 文件层：域隔离
-
-AgentFS 用「域」把文件访问切成互不越界的几块（packages/agent-fs/src/agent-fs.ts）：
-
-| 域 | 边界含义 |
-|------|----------|
-| `shared` | 跨运行/成员共享（如 `/memory`） |
-| `private` | Agent 私有（如 `/skills` → `/private/skills`） |
-| `external` | 外部资源 |
-
-每次文件访问先按路径前缀匹配挂载项，再落到对应域的后端。Agent 看到的是友好路径，真实存储被域和挂载表挡在后面——它没法用一个 `/memory` 的句柄去读另一个域的数据。
+对话可见性的基本单位是 **Conversation**。所有成员共用一个 `conversation_ledger`；消息带 `senderMemberId` 与 `addressedTo`，端按成员身份渲染自己可见的部分。账本是共享事实，成员之间不会串台——没有 per-member session 投影。
 
 ## 执行层：工作区沙箱
 
-`bash` / `glob` / `grep` 这类能触碰文件系统的工具，在 Agent 装配时被包进工作区根目录（workspace root）。这意味着 Agent 执行命令的可见范围被钉在沙箱内，碰不到沙箱之外的真实文件系统。
+`bash` / `glob` / `grep` 这类能触碰文件系统的工具，在 Coding Agent 装配时被包进 Run 的 workspace root（`WorkspaceBinding { root, access: read_only | read_write }`，由 Product Backend 在 Run 快照中冻结）。Coding Agent 子进程执行命令的可见范围被钉在沙箱内，碰不到沙箱之外的真实文件系统；Loop Run 使用 clone 出的独立 repo 作为 workspace root。
 
 ## 边界各管各的
 

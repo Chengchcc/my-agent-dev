@@ -9,12 +9,12 @@ import type { Message } from "./message.js";
 import type { MessageRevision } from "./revision.js";
 
 describe("assistantMessageId", () => {
-  test("generates id from spanId and ordinal", () => {
-    expect(assistantMessageId("r1", 0)).toBe("span:r1:assistant:0");
-    expect(assistantMessageId("r1", 1)).toBe("span:r1:assistant:1");
+  test("generates id from runId and ordinal", () => {
+    expect(assistantMessageId("r1", 0)).toBe("run:r1:assistant:0");
+    expect(assistantMessageId("r1", 1)).toBe("run:r1:assistant:1");
   });
 
-  test("same spanId + same ordinal is idempotent", () => {
+  test("same runId + same ordinal is idempotent", () => {
     expect(assistantMessageId("r1", 0)).toBe(assistantMessageId("r1", 0));
   });
 
@@ -95,7 +95,6 @@ describe("mergeMessageRevision", () => {
       state: "streaming",
       text: "partial",
       author: { kind: "agent", id: "a1" },
-      spanId: "r1",
       createdAt: 1000,
     };
     const rev: MessageRevision = {
@@ -106,7 +105,6 @@ describe("mergeMessageRevision", () => {
     };
     const msg = mergeMessageRevision(existing, rev);
     expect(msg.author).toEqual({ kind: "agent", id: "a1" });
-    expect(msg.spanId).toBe("r1");
     expect(msg.text).toBe("partial");
   });
 });

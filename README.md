@@ -10,17 +10,18 @@
 
 ---
 
-my-agent-team 是一个**团队级 Agent 运行时**。把多个 AI Agent 拉进同一个对话里，和人类一样 `@mention`、分工、并行干活。对话在 Web 控制台和飞书群里实时同步，Agent 在服务端进程内执行——不掉消息、不重复、所有端看到的状态一致。
+my-agent-team 是一个**团队级 Agent 运行时**。把多个 AI Agent 拉进同一个对话里，和人类一样 `@mention`、分工、干活。对话在 Web 控制台和飞书群里实时同步，Agent 由 Product Backend 按 Run 调度执行——不掉消息、不重复、所有端看到的状态一致。
 
 ## ✨ Highlights
 
-- **多 Agent 协作** — 人和多个 Agent 在同一对话里 `@mention` 交互，每个 Agent 有独立身份、记忆和工具白名单
+- **多 Agent 协作** — 人和多个 Agent 在同一对话里 `@mention` 交互，每个 Agent 有独立身份、记忆、Skill Pack 和工具白名单
 - **双端同步** — Web 控制台 + 飞书（Lark IM）Bot，同一条对话两边实时可见
-- **对话账本** — canonical conversation store，所有消息（人 + Agent）经单一入口写入，端只做渲染
+- **对话账本** — canonical conversation store（conversation_ledger），所有消息（人 + Agent）经单一入口写入，端只做渲染
+- **Agent Run 执行链** — 每个 Run 由 Agent Backend spawn 一次性 coding-agent 子进程（stdin/stdout JSONL RPC），BackendRunOutcome 是唯一终态，terminal commit 原子写入 History + Context
+- **Agent Context / Branch** — 每个 Agent 实际消费的语义历史，支持 fork/rollback，是跨 Run 恢复的唯一真源
 - **Loop 自动化** — 定时触发的 Agent 流水线：Generator → Evaluator → Human Gate，自动 triage、review、cleanup
-- **插件体系** — 身份注入、渐进式技能加载、文件记忆、对话上下文、任务防早停，6 个生命周期 hook
-- **进程内编排** - Agent 直管运行循环 + 持久化端口 + Plugin + ContextPipeline，无额外服务依赖
-- **SQLite 单文件存储** — backend.db（业务） + checkpointer.db（执行），零运维部署
+- **Product Tools** — History 读写、审批等产品能力由 Product Backend 统一执行（幂等 + 审计）
+- **SQLite 单文件存储** — backend.db，零运维部署
 
 ## 🚀 快速开始
 
@@ -35,24 +36,28 @@ bun run dev
 
 | 服务 | 地址 |
 |---|---|
-| Web 控制台 | `http://localhost:3000` |
-| Backend API | `http://localhost:3001` |
+| Web 控制台 | `http://localhost:3001` |
+| Backend API | `http://localhost:3000` |
 
 ## 🧱 架构
 
 ```
-┌─────────────────────────────────┐
-│ Surfaces       Web 控制台  飞书 Bot │
-├─────────────────────────────────┤
-│ Backend        HTTP/SSE · Agent 编排 · Loop 调度 │
-├─────────────────────────────────┤
-│ Agent Runtime  createAgentSession() · 插件 · 持久化端口 · ContextPipeline │
-├─────────────────────────────────┤
-│ Storage        backend.db + checkpointer.db（SQLite）      │
-└─────────────────────────────────┘
+┌────────────────────────────────────────────────────┐
+│ Surfaces       Web 控制台  飞书 Bot                  │
+├────────────────────────────────────────────────────┤
+│ Product Backend  HTTP/SSE · 账本 · Agent Context    │
+│                  Agent Run · 输入队列 · Product Tools│
+│                  Loop 调度                          │
+├────────────────────────────────────────────────────┤
+│ Agent Backend   spawn 一次性 coding-agent 子进程     │
+│ (adapter)       stdin/stdout JSONL · steer/abort    │
+├────────────────────────────────────────────────────┤
+│ Coding Agent    per-Run Runtime：model/tool loop、   │
+│ (child process) retry、compaction、todo、skills     │
+└────────────────────────────────────────────────────┘
 ```
 
-一次对话的完整链路：**人发消息 -> 端 POST -> Backend 写账本 -> Agent 拉起运行循环 -> assistant 消息直写账本 -> SSE 推到所有端**。
+一次对话的完整链路：**人发消息 -> 端 POST -> Backend 写账本 -> 创建 Agent Run -> spawn coding-agent 子进程 -> assistant 消息流式推送（SSE）-> terminal outcome -> 原子提交最终 Message**。
 
 详细架构见 [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)。
 
@@ -60,26 +65,25 @@ bun run dev
 
 ```
 apps/
-  backend/    Team Runtime — HTTP/SSE 服务、对话、运行、Loop 调度
-  web/        Web 控制台 — Next.js 15 + shadcn/ui + React Query
-  lark-bot/   飞书 Bot 适配器
+  backend/       Product Backend — HTTP/SSE、账本、Agent Context、Agent Run、Loop、Product Tools
+  coding-agent/  Coding Agent CLI — print/json/rpc 模式，被 backend 按 Run spawn
+  web/           Web 控制台 — Next.js 15 + shadcn/ui + React Query
+  lark-bot/      飞书 Bot 适配器
 
 packages/
-  core/                    运行时原语：Message、Tool、ChatModel、run()
-  agent/                   Agent 生命周期、createAgentSession()、插件、ContextPipeline、持久化端口
+  core/                    协议层：Message 类型、ChatModel、Tool、stream-utils（无 run loop）
+  agent/                   Coding Agent Runtime — 唯一真实 model/tool loop、插件、in-memory SessionStore
+  agent-backend/           Agent Backend 契约：BackendRunInput/Outcome/Event + JSONL 协议 schema
+  adapter-coding-agent/    Adapter — spawn child、JSONL 读写、steer/abort、并发上限
+  ai/                      Provider 注册制 + Model 元数据 + AnthropicChatModel + ModelRuntime
   loop/                    Loop 状态机（纯 reducer）
-  ai/                      Provider 注册制 + Model 元数据 + AnthropicChatModel
-  message/                 消息类型与 MessageRevision
+  message/                 消息类型与 MessageRevision（assistantMessageId = run:<runId>:assistant:<n>）
   conversation/            成员、@提及、LedgerEntry codec
   tools-common/            通用工具：read/write/edit/bash/grep/glob
-  api-contract/            跨进程类型契约（Eden Treaty）
+  api-contract/            跨进程类型契约（SSE 事件、Eden Treaty）
   config/                  配置加载
-  plugin-identity/         Agent 身份（SOUL/USER/记忆）
-  plugin-fs-memory/        文件型长期记忆
-  plugin-progressive-skill/ 渐进式技能加载
-  plugin-task-guard/       任务规划与防早停
-  plugin-conversation-context/ 对话上下文注入
-  runtime-observability/   运行可观测性
+  plugin-todo/             Run-local todo 跟踪（Coding Agent 加载）
+  plugin-progressive-skill/ 渐进式技能加载（Coding Agent 加载）
   test-helpers/            测试工具（echoModel）
 ```
 
@@ -88,8 +92,9 @@ packages/
 | 文档 | 说明 |
 |---|---|
 | [架构 Wiki](docs/architecture/README.md) | 入口，按「你想干什么」组织阅读路线 |
-| [系统总览](docs/architecture/system-overview.md) | 容器视图 + 运行时序 + 不变量 |
+| [系统总览](docs/architecture/system-overview.md) | 执行链 + 容器视图 + 不变量 |
 | [事实与投影](docs/architecture/foundations/facts-and-projections.md) | 数据模型的核心设计原则 |
+| [Agent Backend](docs/architecture/execution/agent-backend.md) | Agent Backend 协议与 child-process transport |
 | [未来工作](docs/architecture/roadmap/future-work.md) | 已知缺口和演进方向 |
 
 ## 🛠 开发

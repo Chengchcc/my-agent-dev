@@ -9,7 +9,7 @@ depends_on:
   - plugins.progressive-skill
   - backend.data-model
 used_by:
-  - span.session-factory
+  - backend.overview
 ---
 
 # 技能包管理
@@ -100,16 +100,16 @@ sequenceDiagram
 
 ## 运行时装配
 
-`span-executor.ts` 的 `executeAgentRun` 通过 singleton registry（`setSkillPackPort` / `getSkillPackPort`）调用 `buildSkillRoots`：
+Agent Run 创建时（`features/agent-run`）通过 singleton registry（`setSkillPackPort` / `getSkillPackPort`）调用 `buildSkillRoots`，把 Agent 分配的 Skill Packs 物化为 `skillRoots` 并**冻结进 Run 快照**：
 
 ```typescript
-// span-executor.ts（实际代码）
+// agent-run 创建路径（实际代码）
 const port = getSkillPackPort();
 const skillRoots = port ? await buildSkillRoots(agentId, port, config.dataDir) : undefined;
-const spec = buildSessionSpec({ ..., skillRoots });
+// run.skillRoots = skillRoots —— Run 创建时冻结；队列输入携带自己的快照
 ```
 
-无 port 注入时走原有 `progressiveSkillPlugin({ cwd })` 路径--向后兼容。分配变更只对**新建 Agent** 生效，活 Agent 不热更。
+无 port 注入时走原有 `progressiveSkillPlugin({ cwd })` 路径——向后兼容。分配变更只对**新建 Agent Run** 生效，活 Run 不热更。
 
 ## Bootstrap
 
@@ -137,7 +137,7 @@ const spec = buildSessionSpec({ ..., skillRoots });
 |------|------|
 | `entities.ts` | `SkillPackRow` / 状态机 / `applyInstallTransition` / 路径推导 |
 | `fs-adapter.ts` | 全仓唯一 `nodeFsAdapter`——路径段校验代替 `startsWith` 前缀误判 |
-| `registry.ts` | 模块级 singleton 存放 `SkillPackPort`，`span-executor.ts` 无需依赖注入链 |
+| `registry.ts` | 模块级 singleton 存放 `SkillPackPort`，agent-run 创建路径无需依赖注入链 |
 | `install-session.ts` | `runInstall` / `runSync` 临时 Agent 编排 + 故障兜底 |
 | `tools.ts` | 6 个原子工具 + `validateExtractedEntries` |
 | `http.ts` | 10 个 HTTP 端点 |

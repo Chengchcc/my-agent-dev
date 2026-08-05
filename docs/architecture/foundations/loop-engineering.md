@@ -114,8 +114,8 @@ flowchart TB
 验证是五动作里最难的一个--生成者会夸自己的活。修法是**独立的怀疑者**：不同（通常更小）模型、默认「坏的直到证明能跑」、靠**动手**（跑测试、点按钮）而非读代码验证。这就是 maker-checker，在本设计里落成 **Generator 与 Evaluator 是两条独立的 Agent**：
 
 ```
-generator session:  sessionId "loop:<loopId>:gen:<itemId>:<attempt>"   model = config.generator.model
-evaluator session:  sessionId "loop:<loopId>:eval:<itemId>:<attempt>"  model = config.evaluator.model  ← 必须 ≠ generator
+generator run:  idempotency "loop:<loopId>:gen:<itemId>:<attempt>"   model = config.generator.model
+evaluator run:  idempotency "loop:<loopId>:eval:<itemId>:<attempt>"  model = config.evaluator.model  ← 必须 ≠ generator
 ```
 
 Evaluator 产出**结构化 verdict**（`PASS` / `REJECT: reasons...` + 证据）。[loopStep()](../backend/loop-runner.md) 解析它后喂给 `loopReducer`：`PASS` → item.step 进 `awaiting_review` 等人拍板；`REJECT` 且还有 attempt → 回 `fixing`（带拒绝理由）；attempt 耗尽 → `inbox`。

@@ -1,9 +1,9 @@
 ---
 id: flows.e2e-web-message
 title: Web 消息端到端
-status: design
+status: current
 owners: architecture
-summary: "目标 Web 消息流从 Conversation History 写入开始，在 Agent 实际触发时同步 Agent Context，通过 Agent Runs 调用可替换 Agent Backend；streaming 只做实时投影，terminal outcome 后原子提交 Ledger 与 Tree。"
+summary: "Web 消息流：写入 Conversation History → 触发 Agent Run → Adapter spawn 一次性 coding-agent 子进程 → streaming 只做实时投影 → terminal outcome 后原子提交 Ledger 与 Tree。"
 depends_on:
   - surfaces.web
   - runs.output-and-live-updates
@@ -27,7 +27,7 @@ sequenceDiagram
   participant T as Agent Context
   participant S as Agent Runs
   participant A as Agent Backend
-  participant R as Agent Runtime
+  participant K as coding-agent child
 
   U->>W: 发送消息 / @Agent
   W->>P: POST Conversation Message
@@ -36,17 +36,17 @@ sequenceDiagram
   P->>P: trigger / visibility / branch 选择
   P->>S: CAS 获取 branch run ownership
   P->>T: 同事务同步 Ledger refs + 创建 Agent Run
-  S->>A: resume/start + AgentRunSnapshot
-  A->>R: runtime-native input
-  R-->>A: stream events
+  S->>A: execute(full projection + input + run snapshot)
+  A->>K: spawn --mode rpc + execute command
+  K-->>A: stream events
   A-->>P: core BackendEvents
   P-->>W: transient SSE delta/status
-  R-->>A: terminal outcome
+  K-->>A: terminal outcome
   A-->>P: BackendRunOutcome
   P->>P: 原子 Product commit
-  P->>L: 最终 assistant Message
+  P->>L: 最终 assistant Message（agent_run_id）
   P->>T: ledgerSeq ref + branch leaf/revision
-  P->>S: binding sync point + release lock
+  P->>S: 标记 Run terminal + 释放 branch lock
   L-->>W: canonical Ledger SSE
 ```
 
@@ -64,48 +64,43 @@ Backend 根据 trigger mode、mention、addressedTo、权限和 branch 选择目
 
 ## 3. Agent Runs
 
-Pool 使用 branch scope key 查找 live execution session。若 binding 的 backend、branch、同步 entry 和 product revision 完全匹配，则优先调用 Adapter 原生 resume/send；否则从 Agent Context 当前 branch 投影线性 `ProjectedHistoryItem[]`，启动新 execution session。
+同一 branch 同时最多一个 active run。空闲则立即 acquire；否则输入进入 normal、steer 或 follow-up 持久队列（`branch_input_queue`），每个 Run 都是**全量投影**——不存在 execution session 查找或 resume。
 
-同一 branch 同时最多一个 active run。其他输入进入 normal、steer 或 follow-up 队列。
-
-获取 branch run ownership、同步 Ledger refs、推进 cursor 和创建 Agent Run 是同一事务。无法获得 ownership 的输入进入持久 normal/steer/follow-up queue，不能并发修改 Tree。
+获取 branch run ownership、同步 Ledger refs、推进 cursor 和创建 Agent Run 是同一事务。无法获得 ownership 的输入进入队列，不能并发修改 Tree。
 
 ## 4. Streaming
 
-Adapter 把 Runtime 原生 stream 映射为 Product Backend 核心事件。Web 可以实时显示 text、thinking、tool 和 status，但这些更新是 transient projection，不写 canonical Tree。
-
-Backend-specific 事件可以显示在诊断 UI，但产品逻辑不依赖它。
+Adapter 把子进程事件映射为 Product Backend 核心事件（`mapRunEvent`）。Web 实时显示 text、thinking、tool 和 status，但这是 transient projection，不写 canonical Tree。`backend.coding_agent.*` 事件可以显示在诊断 UI，但产品逻辑不依赖它。
 
 ## 5. Terminal commit
 
 只有 terminal `BackendRunOutcome` 决定 Agent Run 终态。Completed 时，Backend 在同一事务完成：
 
 ```text
-Ledger final Message
+Ledger final Message（agent_run_id 唯一提交标记）
 Tree ledger_message ref
 branch leaf/revision
-execution session binding sync point
-Agent Run completed
+Agent Run completed（terminal_result）
 ```
 
-事务成功后 Web 从 Ledger SSE 收到 canonical Message，branch lock 才释放。
+事务成功后 Web 从 Ledger SSE 收到 canonical Message，branch lock 才释放。事务失败 → Run 停在 commit_failed，幂等重试。
 
 ## 6. Steer 与 follow-up
 
 - normal、steer、follow-up 都先进入持久产品队列；
-- steer 在 Adapter 支持 native steer 时立即转发，否则在安全 run boundary 发送；
-- follow-up 始终等待当前 Agent Run terminal 后发送；
-- Runtime 内部 sub-agent 不创建额外 Agent Run。
+- steer 由 Adapter 立即转发给 live child（`steer` command）；
+- follow-up 始终等待当前 Agent Run terminal 后开启新 Run（新子进程）；
+- 子进程内部 sub-agent 不创建额外 Agent Run。
 
 ## 7. 失败与恢复
 
 | 场景 | 恢复方式 |
 |---|---|
 | Web 断线 | 从 Ledger 重放已提交历史，从 Agent Run 状态恢复执行 UI |
-| Runtime process crash | 原生 resume；同步点不匹配或 resume 失败则从 Agent Context 重建 |
+| child crash / malformed output | 当前 Run failed（保留诊断）；下一个输入 = 新 Run = 从 Agent Context 重建 |
 | Streaming delta 丢失 | 不影响 canonical history |
-| Product commit 失败 | Agent Run 进入 commit_failed，保存 terminal outcome，binding 标 stale；幂等重试 commit，成功前不释放 branch，失败到底则 detach execution session |
-| Branch rollback | execution session binding stale，下次从新 branch 投影重建 |
+| Product commit 失败 | Agent Run 进入 commit_failed，保存 terminal outcome；幂等重试 commit，成功前不释放 branch |
+| Branch rollback | 下一个 Run 从新 branch 投影，无需"重建 session" |
 
 ## 不变量
 
@@ -114,8 +109,7 @@ Agent Run completed
 3. Streaming 不是 canonical history。
 4. Terminal outcome 是完成依据。
 5. Ledger 与 Tree terminal commit 原子。
-6. Branch 内 Agent Backend 固定。
-7. Execution session 可丢失，Agent Context 不可丢失。
+6. Agent Run 是唯一执行身份；child 状态可丢失，Agent Context 不可丢失。
 
 ## 关联页面
 

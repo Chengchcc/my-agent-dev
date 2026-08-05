@@ -64,17 +64,17 @@ CronJob fires → `loopStep()` → 推进到 `awaiting_review` → 返回。几�
 
 ## Generator 和 Evaluator 分离
 
-同一个 item 的 generator 和 evaluator 是不同的 Agent 实例：
+同一个 item 的 generator 和 evaluator 是不同的 Agent Run（各自 spawn 独立 coding-agent 子进程）：
 
 ```
-generator session:
+generator run:
   model:        config.generator.model
-  sessionId:    "loop:<loopId>:gen:<itemId>:<attempt>"
+  idempotency:  "loop:<loopId>:gen:<itemId>:<attempt>"
   systemPrompt: config.generator.prompt
 
-evaluator session:
+evaluator run:
   model:        config.evaluator.model     ← 必须 ≠ generator.model
-  sessionId:    "loop:<loopId>:eval:<itemId>:<attempt>"
+  idempotency:  "loop:<loopId>:eval:<itemId>:<attempt>"
   systemPrompt: config.evaluator.prompt    ← 默认怀疑立场
 ```
 
@@ -98,4 +98,4 @@ Evaluator 产出结构化 verdict——`loopStep()` 解析 "PASS" 或 "REJECT: r
 
 - [Loop](../foundations/loop.md) — 本页编排的实体
 - [CronJob](../foundations/cron-job.md) — 调用 loopStep 的调度者
-- [Agent](../harness/harness.md) - generator/evaluator 的运行时
+- [Agent Backend](../execution/agent-backend.md) — generator/evaluator 的执行链
