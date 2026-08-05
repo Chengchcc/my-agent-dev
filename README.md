@@ -59,6 +59,8 @@ bun run dev
 
 一次对话的完整链路：**人发消息 -> 端 POST -> Backend 写账本 -> 创建 Agent Run -> spawn coding-agent 子进程 -> assistant 消息流式推送（SSE）-> terminal outcome -> 原子提交最终 Message**。
 
+> **Coding Agent 启动方式**：开发环境 `bun run dev` 开箱即用——Backend 自动用 Bun 运行 `apps/coding-agent/src/cli.ts`，无需全局安装或 `bun link`。生产环境通过 `CODING_AGENT_BIN` 指向构建后的 `apps/coding-agent/dist/cli.js` 绝对路径（详见 `apps/backend/.env.example`）。
+
 详细架构见 [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)。
 
 ## 📦 仓库结构

@@ -2,6 +2,7 @@ import type {
   CodingAgentBackend,
   CodingAgentModelCatalog,
 } from "@my-agent-team/adapter-coding-agent";
+import { CodingAgentProcessError } from "@my-agent-team/adapter-coding-agent";
 import type {
   BackendEvent,
   BackendModelRef,
@@ -118,6 +119,15 @@ export interface AgentRunExecutionService {
   retryTerminalCommit(runId: string): Promise<void>;
   stop(runId: string): Promise<void>;
   subscribe(runId: string, signal?: AbortSignal): AsyncIterable<BackendEvent>;
+}
+
+/** Backend configuration failures that retry can never fix: the executable
+ *  is missing/unspawnable. Such a Run is finalized failed and its delivering
+ *  input cancelled at dispatch time. Everything else - including the child
+ *  rejecting execute acceptance (invalid_request) - is recoverable and keeps
+ *  the Run active + input delivering for boot/manual recovery to retry. */
+export function isPermanentBackendError(err: unknown): boolean {
+  return err instanceof CodingAgentProcessError && err.code === "spawn_failed";
 }
 
 export function createAgentRunExecutionService(
@@ -312,8 +322,9 @@ export function createAgentRunExecutionService(
       if (segment) await Promise.race([drain, sleep(500)]);
       break;
     }
-    liveRuns.delete(runId);
-    closeSubscribers(runId);
+    // liveRuns.delete + closeSubscribers happen in dispatchFn's finally so
+    // EVERY exit path (normal outcome, preflight failure, child crash)
+    // terminates the run's SSE subscriber stream.
 
     // Follow-up semantics: the oldest queued non-steer input becomes a
     // FRESH Run now that this one settled (one Run / one input / one loop,
@@ -332,8 +343,25 @@ export function createAgentRunExecutionService(
     inflight.add(runId);
     try {
       await dispatchInner(runId);
+    } catch (err) {
+      // Permanent backend configuration failures (missing executable,
+      // child rejects the run input) can never succeed on retry: terminal
+      // the Run and cancel its delivering input so the failure is visible
+      // instead of lingering as a phantom delivering row. Transient
+      // failures (child crash, acceptance race) keep the Run active and
+      // the input delivering for boot/manual recovery to retry.
+      if (isPermanentBackendError(err)) {
+        const detail = err instanceof Error ? err.message : String(err);
+        await runPort
+          .finalizeRun(runId, { status: "failed", error: detail })
+          .catch((e) => console.error(`[agent-run] finalize failed for ${runId}:`, e));
+        await runPort.cancelRunInput(runId).catch(() => {});
+      }
+      throw err;
     } finally {
       inflight.delete(runId);
+      liveRuns.delete(runId);
+      closeSubscribers(runId);
     }
   };
 

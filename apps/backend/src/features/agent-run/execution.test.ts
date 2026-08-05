@@ -97,6 +97,9 @@ let branchId: string;
 function makeExecution(
   fakeDaemon: ReturnType<typeof createFakeDaemon>,
   runPortOverride?: ReturnType<typeof sqliteAgentRunAdapter>,
+  modelCatalogOverride?: {
+    list: () => Promise<{ models: Array<{ id: string; available: boolean }> }>;
+  },
 ) {
   const activeRunPort = runPortOverride ?? runPort;
   const ledgerResolver = {
@@ -111,7 +114,7 @@ function makeExecution(
     contextPort,
     ledgerResolver,
     backend: fakeDaemon.backend,
-    modelCatalog: fakeDaemon.modelCatalog,
+    modelCatalog: (modelCatalogOverride ?? fakeDaemon.modelCatalog) as never,
     idGen: { ulid: () => `id-${Math.random().toString(36).slice(2, 12)}` },
     resolveWorkspace: async () => ({ root: dataDir, access: "read_write" }),
     productToolsEntrypoint: "sse:http://127.0.0.1:1/mcp",
@@ -253,6 +256,93 @@ describe("agent run execution (Run-centric)", () => {
       .getLedgerEntries(conversationId)
       .filter((e) => e.kind === "message");
     expect(ledgerAfter).toHaveLength(1);
+  }, 15_000);
+
+  test("preflight failure closes subscribers (no SSE hang)", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeExecution(fake, undefined, {
+      list: async () => {
+        throw new Error("catalog down");
+      },
+    });
+
+    const acquired = await enqueue("normal", "close-1", "hello");
+    const runId = acquired.run!.runId;
+
+    const collector = (async () => {
+      const events: string[] = [];
+      for await (const ev of execution.subscribe(runId)) events.push(ev.type);
+      return events;
+    })();
+
+    await expect(execution.dispatch(runId)).rejects.toThrow("catalog down");
+
+    // The subscriber stream must END after the failed dispatch, not hang
+    // until the HTTP layer's headers timeout.
+    await expect(
+      Promise.race([
+        collector,
+        Bun.sleep(500).then(() => {
+          throw new Error("subscriber did not close");
+        }),
+      ]),
+    ).resolves.toEqual([]);
+  }, 15_000);
+
+  test("spawn failure is permanent: run finalized failed, delivering input cancelled, subscribers closed", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeExecution({
+      backend: new CodingAgentBackend({
+        executable: "/nonexistent/definitely-missing-bin",
+        env: {},
+      }),
+      modelCatalog: fake.modelCatalog,
+    } as ReturnType<typeof createFakeDaemon>);
+
+    const acquired = await enqueue("normal", "perm-1", "hello");
+    const runId = acquired.run!.runId;
+
+    const collector = (async () => {
+      const events: string[] = [];
+      for await (const ev of execution.subscribe(runId)) events.push(ev.type);
+      return events;
+    })();
+
+    await expect(execution.dispatch(runId)).rejects.toThrow();
+
+    const run = await waitForTerminal(runId);
+    expect(run.status).toBe("failed");
+    if (run.terminalResult?.status === "failed") {
+      expect(run.terminalResult.error).toContain("ENOENT");
+    }
+
+    const inputs = await runPort.listInputs(run.branchId);
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]!.status).toBe("cancelled");
+
+    await expect(
+      Promise.race([
+        collector,
+        Bun.sleep(500).then(() => {
+          throw new Error("subscriber did not close");
+        }),
+      ]),
+    ).resolves.toEqual([]);
+  }, 15_000);
+
+  test("execute rejection is TEMPORARY: run stays running, input stays delivering for retry", async () => {
+    const fake = createFakeDaemon({ failFirstExecute: true });
+    const execution = makeExecution(fake);
+
+    const acquired = await enqueue("normal", "perm-2", "hello");
+    const runId = acquired.run!.runId;
+
+    await expect(execution.dispatch(runId)).rejects.toThrow(/rejected execute/);
+
+    const run = await runPort.getRun(runId);
+    expect(run?.status).toBe("running");
+    const inputs = await runPort.listInputs(run!.branchId);
+    expect(inputs[0]!.status).toBe("delivering");
   }, 15_000);
 
   test("branch busy: a second normal/follow_up input creates a QUEUED run; the oldest promotes after the first settles", async () => {

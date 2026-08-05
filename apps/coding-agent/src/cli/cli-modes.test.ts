@@ -5,11 +5,11 @@ import { join } from "node:path";
 import type { CodingAgentOutput } from "@my-agent-team/agent-backend";
 
 /** Spawned-process CLI tests: print mode, json mode, rpc mode and
- *  --list-models through the REAL entry (main.ts) with the fake provider.
- *  These are the process-level guarantees: stdout purity, one outcome,
- *  exit after outcome. */
+ *  --list-models through the REAL executable entry (cli.ts → runCli) with
+ *  the fake provider. These are the process-level guarantees: stdout
+ *  purity, one outcome, exit after outcome. */
 
-const MAIN = new URL("../main.ts", import.meta.url).pathname;
+const MAIN = new URL("../cli.ts", import.meta.url).pathname;
 const tmp = mkdtempSync(join(tmpdir(), "cli-modes-"));
 
 interface SpawnResult {

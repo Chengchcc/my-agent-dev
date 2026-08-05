@@ -86,6 +86,9 @@ const deps: ConversationServiceDeps = {
     async cancelInput() {
       return;
     },
+    async cancelRunInput() {
+      return;
+    },
     async markInputAccepted(inputId: string) {
       return { inputId } as never;
     },

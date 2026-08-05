@@ -32,20 +32,28 @@ Runtime 内部由 `packages/agent` 提供：CodingAgentSession（model/tool loop
 ## 运行
 
 ```bash
-bun run dev -- --mode print --prompt "hello"     # 本地试跑
-bun run --cwd apps/coding-agent test             # 单测（print/json/rpc 模式）
+bun run --cwd apps/coding-agent dev -- -p "hello"    # source CLI (dev)
+bun apps/coding-agent/src/cli.ts -p "hello"          # source CLI, direct
+
+bun run --cwd apps/coding-agent build                # → dist/cli.js (executable)
+apps/coding-agent/dist/cli.js -p "hello"             # built binary
+
+cd apps/coding-agent && bun link                     # optional local install
+coding-agent -p "hello"                              # then run from anywhere
 ```
 
-正常由 Backend 通过 `CODING_AGENT_BIN` 环境变量定位二进制并 spawn；开发调试也可直接 `bun src/main.ts --help`。
+- 正常由 Backend 通过 `CODING_AGENT_BIN` spawn（生产：构建后的 `dist/cli.js` 绝对路径；未配置时 Backend 自动用 Bun + 源码入口，dev 无需全局安装或 `bun link`）。
+- `dist/cli.js` 带 `#!/usr/bin/env bun` shebang，构建脚本会设置可执行位。
 
 ## 目录
 
 ```
 src/
-  main.ts                CLI 入口（模式分发）
-  cli/                   print/json 模式、初始输入构建
-  modes/                 print-mode / json-mode / rpc-mode
-  core/                  create-runtime.ts（per-Run Runtime 装配）、fake-provider（测试）
+  cli.ts                可执行入口（shebang + runCli()）
+  main.ts               main()/runCli()：参数解析、模式分发、退出码（无 process.exit）
+  cli/                  print/json 模式、初始输入构建、CLI 测试
+  modes/                print-mode / json-mode / rpc-mode
+  core/                 create-runtime.ts（per-Run Runtime 装配）、fake-provider（测试）
 ```
 
 ## 相关文档

@@ -35,7 +35,7 @@ import { openDb } from "../../src/infra/sqlite/db.js";
  *  Deterministic: the fake provider's scripted tool calls drive real bash
  *  tool execution in the clone - no remote model. */
 
-const CODING_AGENT_ENTRY = new URL("../../../../apps/coding-agent/src/main.ts", import.meta.url)
+const CODING_AGENT_ENTRY = new URL("../../../../apps/coding-agent/src/cli.ts", import.meta.url)
   .pathname;
 
 const LOOP_ID = "loop-e2e";

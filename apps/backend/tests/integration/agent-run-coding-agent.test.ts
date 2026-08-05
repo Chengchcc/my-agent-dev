@@ -28,7 +28,7 @@ import { openDb } from "../../src/infra/sqlite/db.js";
  *
  *  Product Backend (this process)
  *    → CodingAgentBackend (adapter) spawns a REAL child process
- *    → apps/coding-agent/src/main.ts --mode rpc (stdin/stdout JSONL)
+ *    → apps/coding-agent/src/cli.ts --mode rpc (stdin/stdout JSONL)
  *    → per-Run Coding Agent Runtime (fresh in-memory store, no Worker,
  *      no session, no HTTP)
  *    → real CodingAgentSession with the scripted fake provider
@@ -42,7 +42,7 @@ const TOKEN = "product-tools-token";
 const CONV = "conv-e2e";
 const MEMBER = "mem-e2e";
 
-const CODING_AGENT_ENTRY = new URL("../../../../apps/coding-agent/src/main.ts", import.meta.url)
+const CODING_AGENT_ENTRY = new URL("../../../../apps/coding-agent/src/cli.ts", import.meta.url)
   .pathname;
 
 let dataDir: string;
@@ -97,7 +97,7 @@ beforeAll(async () => {
   mcp = await createProductToolsMcpServer({ service: productTools, serviceToken: TOKEN });
 
   // Real Coding Agent as a SEPARATE PROCESS per Run (deployment-shaped):
-  // the adapter spawns `bun apps/coding-agent/src/main.ts --mode rpc` and
+  // the adapter spawns `bun apps/coding-agent/src/cli.ts --mode rpc` and
   // speaks stdin/stdout JSONL. cwd = the Run workspace; the Product Tools
   // service token reaches the child ONLY through the process env.
   const ws = mkdtempSync(join(tmpdir(), "phase5-ws-"));

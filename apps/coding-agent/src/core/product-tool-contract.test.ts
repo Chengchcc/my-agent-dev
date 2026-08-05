@@ -134,7 +134,7 @@ mkdirSync(ws, { recursive: true });
 writeFileSync(wrapper, `#!/bin/sh\nexec ${process.execPath} ${serverPath}\n`, { mode: 0o755 });
 const entrypoint = `stdio:${wrapper}`;
 
-/** A REAL coding-agent child process (apps/coding-agent/src/main.ts --mode
+/** A REAL coding-agent child process (apps/coding-agent/src/cli.ts --mode
  *  rpc) with a scripted fake provider + a real stdio MCP echo server
  *  reachable via the wrapper. The adapter spawns the child per execute. */
 function startDaemon(
@@ -145,7 +145,7 @@ function startDaemon(
   mkdirSync(tmp, { recursive: true });
   const command: CodingAgentCommandConfig = {
     executable: process.execPath,
-    args: [new URL("../main.ts", import.meta.url).pathname, "--mode", "rpc"],
+    args: [new URL("../cli.ts", import.meta.url).pathname, "--mode", "rpc"],
     env: {
       CODING_AGENT_FAKE_PROVIDER: "1",
       CODING_AGENT_FAKE_TOOL: JSON.stringify(toolScript),

@@ -41,6 +41,11 @@ export interface AgentRunPort {
    *  live Worker cannot be delivered later). */
   cancelInput(inputId: string): Promise<void>;
 
+  /** Cancel every pending/delivering input bound to a Run (permanent
+   *  dispatch failure path: the Run is finalized failed, its input must
+   *  not linger as a phantom delivering row). */
+  cancelRunInput(runId: string): Promise<void>;
+
   /** Create a PendingAction and set the Run to `waiting`. */
   createPendingAction(
     runId: string,

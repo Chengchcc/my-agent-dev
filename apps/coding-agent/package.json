@@ -3,9 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "coding-agent": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "bun src/main.ts",
+    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "dev": "bun src/cli.ts",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "test": "bun test",
     "lint": "biome check . && eslint ."

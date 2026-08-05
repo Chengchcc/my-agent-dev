@@ -430,6 +430,18 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
         .run();
     },
 
+    async cancelRunInput(runId: string): Promise<void> {
+      d.update(schema.branchInputQueue)
+        .set({ status: "cancelled" })
+        .where(
+          and(
+            eq(schema.branchInputQueue.runId, runId),
+            inArray(schema.branchInputQueue.status, ["pending", "delivering"]),
+          ),
+        )
+        .run();
+    },
+
     /** One Run / one input: promote the oldest still-unowned queued input
      *  (run_id IS NULL) into a FRESH Run when the branch is idle. The new
      *  Run is built from the queued input's OWN config snapshot - never

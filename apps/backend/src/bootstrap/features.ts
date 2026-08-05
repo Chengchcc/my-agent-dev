@@ -1,13 +1,8 @@
-import {
-  CodingAgentBackend,
-  type CodingAgentCommandConfig,
-  CodingAgentModelCatalog,
-} from "@my-agent-team/adapter-coding-agent";
+import { CodingAgentBackend, CodingAgentModelCatalog } from "@my-agent-team/adapter-coding-agent";
 import type { Message } from "@my-agent-team/message";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Elysia } from "elysia";
 import type { FeatureSet } from "../app.js";
-
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
 import { AgentBusyError, agentModelRef, agentRoutes } from "../features/agent/index.js";
@@ -57,6 +52,7 @@ import {
   skillPackRoutes,
   sqliteSkillPackAdapter,
 } from "../features/skill-pack/index.js";
+import { resolveCodingAgentCommand } from "../infra/coding-agent-command.js";
 import * as backendSchema from "../infra/db/schema.js";
 import { ulid } from "../infra/ids.js";
 import type { BackendServices } from "./services.js";
@@ -286,18 +282,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       });
     })().catch((err) => console.error(`[bootstrap] mention cascade failed for ${runId}:`, err));
   };
-  const codingAgentCommand: CodingAgentCommandConfig = {
-    executable: config.codingAgentBin ?? "coding-agent",
-    env: {
-      ...(config.anthropicApiKey ? { ANTHROPIC_API_KEY: config.anthropicApiKey } : {}),
-      ...(config.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: config.anthropicBaseUrl } : {}),
-      // The Product Tools service token reaches the child ONLY via env -
-      // never through command args, run input, entrypoint URL or logs.
-      ...(config.productToolsServiceToken
-        ? { CODING_AGENT_PRODUCT_TOOL_TOKEN: config.productToolsServiceToken }
-        : {}),
-    },
-  };
+  const codingAgentCommand = resolveCodingAgentCommand(config);
   const modelCatalog = new CodingAgentModelCatalog(codingAgentCommand);
   const agentRunExecution = createAgentRunExecutionService({
     runPort: agentRunPort,
