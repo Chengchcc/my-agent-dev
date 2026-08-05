@@ -47,15 +47,26 @@ export function mergeInitialInput(input: { prompt?: string; piped?: string }): s
 }
 
 /** Build the BackendRunInput for a one-shot CLI run: current cwd as the
- *  workspace, empty Product history, the first available model as the model
- *  ref, no Product Tools, no system prompt. */
+ *  workspace, empty Product history, the requested model (canonical
+ *  `<provider>/<model>` id) or the first available model, no Product Tools,
+ *  no system prompt. */
 export async function buildCliRunInput(opts: {
   prompt: string;
   workspaceRoot: string;
   modelRuntime: ModelRuntime;
+  /** Canonical `<provider>/<model>` id; undefined = first available. */
+  modelId?: string;
 }): Promise<BackendRunInput<"coding_agent">> {
   const catalog = await opts.modelRuntime.getCatalog();
-  const model = catalog.models.find((m) => m.available !== false);
+  const model = opts.modelId
+    ? catalog.models.find((m) => `${m.providerId}/${m.modelId}` === opts.modelId)
+    : catalog.models.find((m) => m.available !== false);
+  if (opts.modelId && !model) {
+    throw new Error(`model not found in catalog: ${opts.modelId}`);
+  }
+  if (opts.modelId && model && model.available === false) {
+    throw new Error(`model unavailable: ${opts.modelId}`);
+  }
   if (!model) {
     throw new Error("no available model in the catalog (check provider credentials)");
   }

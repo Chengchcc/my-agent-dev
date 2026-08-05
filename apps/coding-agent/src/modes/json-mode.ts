@@ -13,6 +13,7 @@ export async function runJsonMode(opts: CliRunOptions): Promise<number> {
   });
   const runtime = await createCodingAgentRuntime({
     runId: built.run.runId,
+    modelId: built.run.model.modelId,
     workspaceRoot: built.workspace.root,
     workspaceAccess: built.workspace.access,
     modelRuntime: opts.modelRuntime,

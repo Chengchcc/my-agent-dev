@@ -78,6 +78,11 @@ describe("coding-agent CLI (spawned)", () => {
     const res = await spawnCli(["-p", "fix this"]);
     expect(res.exitCode).toBe(0);
     expect(res.stdout).toBe("done\n");
+    // ... and --model selects the second catalog model (fake provider yields
+    // "done2" for echo2), observable end to end.
+    const res2 = await spawnCli(["--model", "fake/echo2", "-p", "x"]);
+    expect(res2.exitCode).toBe(0);
+    expect(res2.stdout).toBe("done2\n");
     // failures and logs go to stderr, never stdout
     expect(res.stdout.split("\n").length).toBe(2);
   }, 15_000);

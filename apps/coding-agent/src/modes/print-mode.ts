@@ -7,6 +7,8 @@ export interface CliRunOptions {
   prompt: string;
   workspaceRoot: string;
   modelRuntime: ModelRuntime;
+  /** Canonical `<provider>/<model>` id; undefined = first available. */
+  model?: string;
 }
 
 /** Final assistant text of an outcome Message: the plain `text` field, or the
@@ -30,9 +32,11 @@ export async function runPrintMode(opts: CliRunOptions): Promise<number> {
     prompt: opts.prompt,
     workspaceRoot: opts.workspaceRoot,
     modelRuntime: opts.modelRuntime,
+    modelId: opts.model,
   });
   const runtime = await createCodingAgentRuntime({
     runId: built.run.runId,
+    modelId: built.run.model.modelId,
     workspaceRoot: built.workspace.root,
     workspaceAccess: built.workspace.access,
     modelRuntime: opts.modelRuntime,

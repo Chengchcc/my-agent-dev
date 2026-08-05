@@ -48,7 +48,7 @@ export function fakeProvider(
     id: "fake",
     name: "Fake",
     getModels: () => [FAKE_MODEL, FAKE_MODEL_2],
-    async *stream(_model: Model, _messages: readonly Message[]): AsyncIterable<AIMessageChunk> {
+    async *stream(model: Model, _messages: readonly Message[]): AsyncIterable<AIMessageChunk> {
       const next = script.shift();
       if (next) {
         const id = `toolu-fake-${++toolUseSeq}`;
@@ -60,7 +60,8 @@ export function fakeProvider(
         yield { stopReason: "tool_use" };
         return;
       }
-      yield { delta: { type: "text", text: "done" } };
+      // Model-dependent text makes `--model` observable end to end.
+      yield { delta: { type: "text", text: model.id === "echo2" ? "done2" : "done" } };
       yield { usage: { input: 10, output: 3, cacheRead: 1, cacheCreate: 0 } };
       yield { stopReason: "end_turn" };
     },

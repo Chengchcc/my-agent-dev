@@ -43,7 +43,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     throw new UsageError("no prompt or piped stdin given");
   }
 
-  const opts = { prompt, workspaceRoot: process.cwd(), modelRuntime };
+  const opts = { prompt, workspaceRoot: process.cwd(), modelRuntime, model: args.model };
   return args.mode === "json" ? runJsonMode(opts) : runPrintMode(opts);
 }
 

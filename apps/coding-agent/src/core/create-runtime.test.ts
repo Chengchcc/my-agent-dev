@@ -79,6 +79,7 @@ describe("createCodingAgentRuntime", () => {
     const record: Message[][] = [];
     const runtime = await createCodingAgentRuntime({
       runId: "r-1",
+      modelId: "fake/echo",
       workspaceRoot: tmp,
       workspaceAccess: "read_write",
       modelRuntime: makeModelRuntime(record),
@@ -94,6 +95,7 @@ describe("createCodingAgentRuntime", () => {
     const record: Message[][] = [];
     const runtime = await createCodingAgentRuntime({
       runId: "r-sp",
+      modelId: "fake/echo",
       workspaceRoot: tmp,
       workspaceAccess: "read_write",
       modelRuntime: makeModelRuntime(record),
@@ -125,6 +127,7 @@ describe("createCodingAgentRuntime", () => {
     const record: Message[][] = [];
     const runtime = await createCodingAgentRuntime({
       runId: "r-sk",
+      modelId: "fake/echo",
       workspaceRoot: tmp,
       workspaceAccess: "read_write",
       modelRuntime: makeModelRuntime(record),
@@ -158,6 +161,7 @@ describe("createCodingAgentRuntime", () => {
     });
     const rt = await createCodingAgentRuntime({
       runId: "r-steer",
+      modelId: "fake/echo",
       workspaceRoot: tmp,
       workspaceAccess: "read_write",
       modelRuntime: runtime,
@@ -177,6 +181,7 @@ describe("createCodingAgentRuntime", () => {
     const record: Message[][] = [];
     const runtime = await createCodingAgentRuntime({
       runId: "r-stop",
+      modelId: "fake/echo",
       workspaceRoot: tmp,
       workspaceAccess: "read_write",
       modelRuntime: makeModelRuntime(record),
@@ -194,6 +199,7 @@ describe("createCodingAgentRuntime", () => {
     const record: Message[][] = [];
     const runtime = await createCodingAgentRuntime({
       runId: "r-close",
+      modelId: "fake/echo",
       workspaceRoot: tmp,
       workspaceAccess: "read_write",
       modelRuntime: makeModelRuntime(record),
@@ -203,5 +209,116 @@ describe("createCodingAgentRuntime", () => {
     await segment.outcome;
     await runtime.close();
     await runtime.close();
+  });
+
+  test("context budget and summarizer bind to the RUN model, never catalog[0]", async () => {
+    interface Batch {
+      model: Model;
+      messages: Message[];
+    }
+    const batches: Batch[] = [];
+    const BIG: Model = { ...FAKE_MODEL, id: "big", contextWindow: 200_000 };
+    const SMALL: Model = { ...FAKE_MODEL, id: "small", contextWindow: 4_000 };
+    // catalog order: big FIRST - the run uses small.
+    const runtime = createModelRuntime();
+    runtime.registerProvider({
+      id: "fake",
+      name: "Fake",
+      getModels: () => [BIG, SMALL],
+      async *stream(model: Model, messages: readonly Message[]): AsyncIterable<AIMessageChunk> {
+        batches.push({ model, messages: [...messages] });
+        yield { delta: { type: "text", text: "done" } };
+        yield { usage: { input: 10, output: 3, cacheRead: 1, cacheCreate: 0 } };
+        yield { stopReason: "end_turn" };
+      },
+    });
+    const rt = await createCodingAgentRuntime({
+      runId: "r-budget",
+      modelId: "fake/small",
+      workspaceRoot: tmp,
+      workspaceAccess: "read_write",
+      modelRuntime: runtime,
+      skillRoots: [],
+    });
+    // ~30K chars of history (two messages, 4+ branch entries): ~7.5K
+    // estimated tokens - over small(4K)*0.7, far under big(200K)*0.7.
+    // Compaction fires ONLY if the budget uses the run model.
+    const segment = await rt.run({
+      history: [
+        { productEntryId: "e1", message: { role: "user", text: "x".repeat(15_000) } },
+        { productEntryId: "e2", message: { role: "user", text: "x".repeat(15_000) } },
+      ],
+      input: { inputId: "in-budget", message: { role: "user", text: "go" } },
+      run: {
+        runId: "r-budget",
+        model: { backendKind: "coding_agent", modelId: "fake/small" },
+        productTools: [],
+        configRevision: 1,
+      },
+      workspace: { root: tmp, access: "read_write" },
+      metadata: { conversationId: "c", agentMemberId: "m", branchId: "b" },
+    });
+    const outcome = await segment.outcome;
+    expect(outcome.status).toBe("completed");
+    // The summarizer ran (proactive compaction) => the budget used the SMALL
+    // window, not catalog[0]'s 200K.
+    expect(batches.some((b) => b.messages[0]?.role === "system")).toBe(true);
+    // BOTH the model stream and the summarizer used the run model.
+    expect(batches.length).toBeGreaterThanOrEqual(2);
+    for (const b of batches) expect(b.model.id).toBe("small");
+    await rt.close();
+  });
+
+  test("a run model with a huge window compacts at ITS threshold, not catalog[0]'s small one", async () => {
+    interface Batch {
+      model: Model;
+      messages: Message[];
+    }
+    const batches: Batch[] = [];
+    const SMALL: Model = { ...FAKE_MODEL, id: "small", contextWindow: 4_000 };
+    const BIG: Model = { ...FAKE_MODEL, id: "big", contextWindow: 200_000 };
+    // catalog order: small FIRST - the run uses big.
+    const runtime = createModelRuntime();
+    runtime.registerProvider({
+      id: "fake",
+      name: "Fake",
+      getModels: () => [SMALL, BIG],
+      async *stream(model: Model, messages: readonly Message[]): AsyncIterable<AIMessageChunk> {
+        batches.push({ model, messages: [...messages] });
+        yield { delta: { type: "text", text: "done" } };
+        yield { usage: { input: 10, output: 3, cacheRead: 1, cacheCreate: 0 } };
+        yield { stopReason: "end_turn" };
+      },
+    });
+    const rt = await createCodingAgentRuntime({
+      runId: "r-budget2",
+      modelId: "fake/big",
+      workspaceRoot: tmp,
+      workspaceAccess: "read_write",
+      modelRuntime: runtime,
+      skillRoots: [],
+    });
+    // Same ~30K chars (~7.5K tokens): over small(4K)*0.7 - the WRONG budget
+    // would compact; the run model's 200K window must not.
+    const segment = await rt.run({
+      history: [
+        { productEntryId: "e1", message: { role: "user", text: "x".repeat(15_000) } },
+        { productEntryId: "e2", message: { role: "user", text: "x".repeat(15_000) } },
+      ],
+      input: { inputId: "in-budget2", message: { role: "user", text: "go" } },
+      run: {
+        runId: "r-budget2",
+        model: { backendKind: "coding_agent", modelId: "fake/big" },
+        productTools: [],
+        configRevision: 1,
+      },
+      workspace: { root: tmp, access: "read_write" },
+      metadata: { conversationId: "c", agentMemberId: "m", branchId: "b" },
+    });
+    await segment.outcome;
+    // No summarizer call: no premature compaction.
+    expect(batches.some((b) => b.messages[0]?.role === "system")).toBe(false);
+    expect(batches[0]!.model.id).toBe("big");
+    await rt.close();
   });
 });

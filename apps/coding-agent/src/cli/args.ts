@@ -4,6 +4,8 @@ export interface CliArgs {
   mode: CliMode;
   prompt: string;
   listModels: boolean;
+  /** Canonical `<provider>/<model>` id; undefined = first available model. */
+  model?: string;
 }
 
 export class UsageError extends Error {}
@@ -16,6 +18,9 @@ Usage:
   coding-agent --mode json "<prompt>"     json mode: all events + one outcome as JSONL
   coding-agent --mode rpc                 rpc mode: stdin/stdout JSONL protocol
   coding-agent --list-models              print the model catalog as JSON
+  coding-agent --model <provider/model> -p "<prompt>"
+                                          pick a model by canonical id
+                                          (default: first available model)
 
 Piped stdin (print/json modes):
   cat file | coding-agent -p "Review"
@@ -49,6 +54,17 @@ export function parseArgs(argv: readonly string[]): CliArgs {
       modeFlag = value;
     } else if (arg === "--list-models") {
       args.listModels = true;
+    } else if (arg === "--model") {
+      const value = argv[i + 1];
+      if (!value || value.startsWith("-")) {
+        throw new UsageError("--model requires a canonical <provider>/<model> id");
+      }
+      args.model = value;
+      i++;
+    } else if (arg.startsWith("--model=")) {
+      const value = arg.slice("--model=".length);
+      if (!value) throw new UsageError("--model requires a canonical <provider>/<model> id");
+      args.model = value;
     } else if (arg === "--help" || arg === "-h") {
       throw new UsageError(USAGE);
     } else if (arg.startsWith("-")) {

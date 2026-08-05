@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { createModelRuntime } from "@my-agent-team/ai";
+import { fakeProvider } from "../core/fake-provider.js";
 import { parseArgs, UsageError } from "./args.js";
-import { mergeInitialInput, readPipedStdin } from "./initial-input.js";
+import { buildCliRunInput, mergeInitialInput, readPipedStdin } from "./initial-input.js";
 
 describe("parseArgs (syntax only)", () => {
   test("-p sets print mode with the positional prompt", () => {
@@ -32,7 +34,21 @@ describe("parseArgs (syntax only)", () => {
       mode: "print",
       prompt: "",
       listModels: true,
+      model: undefined,
     });
+  });
+
+  test("--model picks a canonical provider/model id", () => {
+    expect(parseArgs(["--model", "anthropic/claude-sonnet-4", "-p", "x"])).toMatchObject({
+      model: "anthropic/claude-sonnet-4",
+      prompt: "x",
+    });
+    expect(parseArgs(["--model=fake/echo", "x"])).toMatchObject({ model: "fake/echo" });
+  });
+
+  test("--model without a value is a usage error", () => {
+    expect(() => parseArgs(["--model"])).toThrow(/--model requires/);
+    expect(() => parseArgs(["--model="])).toThrow(/--model requires/);
   });
 
   test("empty argv is syntactically valid (input validation lives in main)", () => {
@@ -68,6 +84,44 @@ describe("mergeInitialInput", () => {
 
   test("parts are trimmed", () => {
     expect(mergeInitialInput({ piped: "  diff  ", prompt: "  review  " })).toBe("diff\n\nreview");
+  });
+});
+
+describe("buildCliRunInput model selection", () => {
+  function runtime() {
+    const rt = createModelRuntime();
+    rt.registerProvider(fakeProvider({}));
+    return rt;
+  }
+
+  test("defaults to the first available model", async () => {
+    const input = await buildCliRunInput({
+      prompt: "x",
+      workspaceRoot: "/tmp",
+      modelRuntime: runtime(),
+    });
+    expect(input.run.model.modelId).toBe("fake/echo");
+  });
+
+  test("--model selects the SECOND catalog model by canonical id", async () => {
+    const input = await buildCliRunInput({
+      prompt: "x",
+      workspaceRoot: "/tmp",
+      modelRuntime: runtime(),
+      modelId: "fake/echo2",
+    });
+    expect(input.run.model.modelId).toBe("fake/echo2");
+  });
+
+  test("an unknown --model id is rejected", async () => {
+    await expect(
+      buildCliRunInput({
+        prompt: "x",
+        workspaceRoot: "/tmp",
+        modelRuntime: runtime(),
+        modelId: "nope/does-not-exist",
+      }),
+    ).rejects.toThrow(/model not found/);
   });
 });
 

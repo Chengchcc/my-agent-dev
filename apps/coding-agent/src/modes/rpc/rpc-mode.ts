@@ -175,6 +175,7 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     try {
       runtime = await createCodingAgentRuntime({
         runId,
+        modelId: input.run.model.modelId,
         workspaceRoot: input.workspace.root,
         workspaceAccess: input.workspace.access,
         modelRuntime: opts.modelRuntime,

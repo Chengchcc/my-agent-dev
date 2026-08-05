@@ -41,6 +41,10 @@ export interface RunRuntimeDeps {
   workspaceAccess: "read_only" | "read_write";
   runId: string;
   modelRuntime: ModelRuntime;
+  /** Canonical `<provider>/<model>` id of the Run's model. The context
+   *  budget and the summarizer bind to THIS model - never the catalog's
+   *  first entry (which may be a different window or a different provider). */
+  modelId: string;
   /** Skill pack roots (absolute dirs scanned for SKILL.md). Frozen per Run. */
   skillRoots: readonly string[];
   webSearch?: WebSearchPort;
@@ -78,6 +82,14 @@ export function registerBuiltinProviders(
  *  the model is resolved per run from the AgentRunSnapshot. */
 export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRuntime> {
   const store = createInMemorySessionStore();
+  const catalog = await deps.modelRuntime.getCatalog();
+  // The Run's model is the ONLY budget/summarizer authority. A catalog-first
+  // model with a different window would compact at the wrong threshold or
+  // overflow the real context.
+  const currentModel = catalog.models.find((m) => `${m.providerId}/${m.modelId}` === deps.modelId);
+  if (!currentModel) {
+    throw new Error(`model not found in catalog: ${deps.modelId}`);
+  }
   const tools: PluginTool[] = [
     createReadTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
     createLsTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
@@ -214,12 +226,11 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     return { provider: model.providerId, id: model.modelId };
   };
 
-  // Summarizer: call the summary model through ModelRuntime with full
-  // Message[] input and AbortSignal support. No placeholder summaries.
+  // Summarizer: call the RUN's model through ModelRuntime with full Message[]
+  // input and AbortSignal support. Same provider/credentials as the run -
+  // no surprise provider switch, no catalog-first cost surprises. No
+  // summaryModel config until real cost data demands one.
   const summarize: ContextSummarizer = async (messages, signal) => {
-    const catalog = await deps.modelRuntime.getCatalog();
-    const model = catalog.models[0];
-    if (!model) throw new Error("no models available for summarization");
     const summaryMessages: Message[] = [
       {
         role: "system",
@@ -229,8 +240,8 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     ];
     let text = "";
     for await (const chunk of deps.modelRuntime.stream(
-      model.providerId,
-      model.modelId,
+      currentModel.providerId,
+      currentModel.modelId,
       summaryMessages,
       { signal },
     )) {
@@ -241,19 +252,14 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     return text || "[empty summary]";
   };
 
-  // ContextBudget from the model catalog's context window.
-  // ponytail: budget is fixed at run assembly from the catalog's first
-  // model; switching models on later runs keeps the first window. A per-run
-  // budget would need a session API to update ContextBudget - add when
-  // multi-model runs actually run.
-  const primaryModel = (await deps.modelRuntime.getCatalog()).models[0];
-  const contextBudget: ContextBudget | undefined = primaryModel
-    ? {
-        estimate: (m) => Math.ceil(JSON.stringify(m).length / 4),
-        limit: primaryModel.contextWindow,
-        triggerRatio: 0.7,
-      }
-    : undefined;
+  // ContextBudget from the RUN model's context window: compaction triggers
+  // at the same threshold the real model would overflow, neither premature
+  // nor too late.
+  const contextBudget: ContextBudget = {
+    estimate: (m) => Math.ceil(JSON.stringify(m).length / 4),
+    limit: currentModel.contextWindow,
+    triggerRatio: 0.7,
+  };
 
   const session = createCodingAgentSession({
     sessionId: deps.runId,

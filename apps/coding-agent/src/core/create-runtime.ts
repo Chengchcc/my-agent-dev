@@ -16,6 +16,9 @@ import { assembleRunRuntime, type RunRuntime } from "./run-runtime.js";
  *  across Runtimes except the process-level Provider/ModelRuntime. */
 export interface CreateCodingAgentRuntimeOptions {
   runId: string;
+  /** Canonical `<provider>/<model>` id of the Run's model: the context
+   *  budget and summarizer bind to it. */
+  modelId: string;
   workspaceRoot: string;
   workspaceAccess: "read_only" | "read_write";
   modelRuntime: ModelRuntime;
@@ -66,6 +69,7 @@ export async function createCodingAgentRuntime(
     workspaceAccess: options.workspaceAccess,
     runId: options.runId,
     modelRuntime: options.modelRuntime,
+    modelId: options.modelId,
     skillRoots: options.skillRoots,
   });
 
