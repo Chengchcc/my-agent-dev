@@ -8,9 +8,9 @@
 Product Backend
 → durable Agent Run
 → AgentRunExecutionService
-→ CodingAgentBackend
-→ independent Coding Agent daemon
-→ one Run / one Worker
+→ CodingAgentBackend（process adapter）
+→ spawn coding-agent --mode rpc（stdin/stdout JSONL child）
+→ one Run / one child process / one loop
 → BackendRunOutcome
 → backend.db atomic terminal commit
 ```
@@ -59,7 +59,6 @@ AgentRunExecutionService
 
 AgentContextService / AgentContextPort
 ConversationService / ConversationPort
-BackendSessionBinding
 ProductToolsService
 ```
 
@@ -357,7 +356,7 @@ POST /api/agent-runs/:runId/cancel
 GET  /api/agent-runs/:runId/events
 ```
 
-数据源：`agent_run`、`branch_input_queue`、`BackendSessionBinding`、`AgentRunExecutionService.subscribe`。
+数据源：`agent_run`、`branch_input_queue`、`AgentRunExecutionService.subscribe`。
 
 状态：`running` / `waiting` / `commit_failed` / `completed` / `failed` / `aborted` / `timeout`。
 
@@ -401,7 +400,7 @@ Web hook 内部暴露简单视图：
 
 Lark final delivery 只依赖 Conversation History canonical Message。Transient updates 可选：可临时编辑"正在思考"消息；断线不影响 final 交付；不把 transient 内容标记为已完成；不按 span/session 做 final 幂等。
 
-Final delivery 幂等使用 canonical Message 身份。Worker crash / Run failed 可显示状态提示，但不能伪造 assistant final Message。
+Final delivery 幂等使用 canonical Message 身份。执行进程崩溃 / Run failed 可显示状态提示，但不能伪造 assistant final Message。
 
 ## Wave 11 — 删除旧 Span/Runtime 路径
 
@@ -560,3 +559,74 @@ Phase 5 已实施完毕，所有验收标准通过：
 - `apps/backend` 零 `@my-agent-team/agent` 依赖，无 SessionManager/createAgentSession/ConversationLock/checkpointer.db。
 - 删除的旧 Runtime 文件与包见实施记录；无兼容层、fallback 或双写。
 - 全仓 build / typecheck / test / lint 恢复绿色。
+
+## Phase 5 续：Run-centric Rewrite（2026-08-05）
+
+上一条完成记录之后，执行传输层再次收敛：**Coding Agent HTTP daemon 被删除**，改为与 Pi 类似的独立产品 CLI + 每 Run 一个 child process。Product 侧（Agent Run、queue、terminal commit、frozen snapshot）不变。
+
+### 新执行链
+
+```text
+Product Backend
+→ AgentRunExecutionService
+→ adapter-coding-agent（process adapter）
+→ spawn coding-agent --mode rpc
+→ stdin/stdout JSONL protocol
+→ per-Run Coding Agent Runtime（fresh in-memory Store）
+→ BackendRunOutcome
+→ process 自行退出（不依赖父进程关 stdin）
+```
+
+### 边界
+
+- `apps/coding-agent` = Coding Agent 产品本体：单一 Runtime 工厂（`createCodingAgentRuntime`）+ print/json/rpc 三种 mode + `--list-models`。未来 TUI 复用同一 Runtime 工厂。无 HTTP、无 TUI scaffold、无 JSONL session（YAGNI）。
+- `packages/adapter-coding-agent` = Product Backend 的 process adapter：spawn、stdin/stdout 协议、runId → live child、steer/stop、event 映射、bounded/redacted stderr tail、`--list-models` catalog。无 HTTP client、无 SSE、无 outcome polling、无 RunRegistry。
+- `packages/agent-backend/src/transport.ts` = stdio JSONL wire contract（execute/steer/abort commands；response/event/outcome outputs），事件映射（`mapRunEvent`/`mapRunOutcome`）也在 contract package，两侧共用。
+
+### 新增不可变式
+
+```text
+one Product Run → one child process → one loop → one outcome → process exit
+execute success ⟹ Runtime 组装完成 + event forwarding 注册 + loop 已到安全 steer 边界
+第二个 execute = protocol error（每个进程最多一次 execute）
+steer/abort 校验 runId == 当前进程的 Run
+stdout 只允许 JSONL；日志只走 stderr；单行 16 MiB 上限
+live child 数量受 BACKEND_MAX_CONCURRENT_RUNS 限制（FIFO spawn slot；stop 取消排队等待）
+```
+
+### 删除
+
+```text
+apps/coding-agent: app.ts / server.ts / routes.ts / auth.ts / run-registry.ts / event-buffer.ts / config.ts + HTTP/SSE 测试；Elysia 依赖
+adapter: client.ts / transport.ts（HTTP client、SSE parser、outcome polling、TransportError）
+env: CODING_AGENT_URL / CODING_AGENT_SERVICE_TOKEN / CODING_AGENT_HOST / CODING_AGENT_PORT / CODING_AGENT_EVENT_BUFFER_SIZE / CODING_AGENT_AUTH_TOKEN
+新增 env: CODING_AGENT_BIN（executable，默认 "coding-agent"；测试用 bun + entry source）
+Product Tools service token 只经 child env（CODING_AGENT_PRODUCT_TOOL_TOKEN）传递
+```
+
+### Frozen Run snapshot（migration 0019）
+
+- `agent_run` 持久化 `system_prompt` + `skill_roots`（Run 创建时冻结；dispatch/recovery 不再动态解析）。
+- `branch_input_queue` 持久化请求时完整 config snapshot（model_ref / config_revision / workspace / system_prompt / skill_roots）；`acquireNextRun()` 用 queued input 自己的 snapshot 建新 Run，绝不继承前一个 Run 的 config。
+- Conversation/Cron：`resolveRunConfig` 在 enqueue 时读 Agent SOUL.md/USER.md → frozen systemPrompt，ready skill packs → `<dataDir>/skill-packs/<packId>` roots。
+- Loop：LOOP.md generator/evaluator systemPrompt → frozen systemPrompt，`<loopConfigPath>/skills` → skillRoots；user prompt 恒含 item facts / acceptance / files changed / VERDICT.md 要求。
+
+### Recovery
+
+启动恢复覆盖三类：`delivering` input、idle branch 上 `run_id IS NULL` 的 pending input（`listIdleBranchesWithPendingInputs` → `acquireNextRun` → dispatch，FIFO）、`commit_failed` Run（retryTerminalCommit，不重新 spawn child）。
+
+### 验收补充（评审驱动）
+
+- RPC mode 在 outcome 写完后主动退出（`reader.cancel()`，不依赖父进程关 stdin）。
+- `maxConcurrentRuns` 通过 adapter 的 FIFO spawn-slot limit 生效；排队期间 input 保持 delivering；stop 取消排队中的 execute（不 spawn）。
+- execute acceptance 等到 loop 的第一个安全 steer 边界（`message_start`，`acceptingSteer=true` 之后），steer 无竞态窗口。
+- macOS realpath（/tmp → /private/tmp）由测试断言 canonicalize 后比较，child cwd 行为不变。
+- 真实 Loop child integration：real child 在 clone 中 commit、加载 `<loopConfigPath>/skills`（skill_load 结果在 run events 中可断言）、evaluator 写 VERDICT.md、reducer 转 PASS。
+- CLI：print/json mode 合并 piped stdin（stdin 在前 + 空行 + prompt，16 MiB 上限）；RPC mode 绝不预读 stdin；`--list-models` 固定输出 JSON（删除假 `--json` 参数）。
+
+### 完成记录（2026-08-05）
+
+- HTTP daemon/client/SSE/polling 全删；clean gates 3/3 通过。
+- full gates 全绿：build / typecheck / lint / test（35/35 turbo tasks）；coding-agent 61 tests、adapter 19、backend 310。
+- 关键 commit：`f6b93e31`（run-centric rewrite）→ `2db4699a`（评审修复：self-exit / maxConcurrent / realpath / loop e2e / acceptance⟹live）→ `18a68638`（CLI piped stdin + --list-models 语义）。
+- 明确 ceiling：单进程单 Run 后 stdin EOF 驱动退出（adapter 保证 close，child 侧无超时自退）；`--list-models` 成功结果仅实例内缓存；TUI / JSONL session / resume / fork / SDK 未实现（结构允许未来接入同一 Runtime 工厂）。

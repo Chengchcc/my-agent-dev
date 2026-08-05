@@ -15,7 +15,7 @@
 | 2 | [Complete Coding Agent](./phase-2-complete-coding-agent.md) | New loop/session/model/tool runtime | See plan |
 | 3 | [Coding Agent Runs Independently](./phase-3-coding-agent-runs-independently.md) | Independent service + Worker + Adapter | See plan |
 | 4 | [Product Backend Executes Agent Runs](./phase-4-product-backend-executes-agent-runs.md) | Run execution, Product Tools, atomic commit | See plan |
-| 5 | [All Product Flows Use Agent Runs](./phase-5-all-product-flows-use-agent-runs.md) | Conversation/Cron/Loop/Skill Pack cutover | See plan |
+| 5 | [All Product Flows Use Agent Runs](./phase-5-all-product-flows-use-agent-runs.md) | Conversation/Cron/Loop/Skill Pack cutover; 续：Run-centric rewrite（child-process CLI） | See plan |
 | 6 | [Only New Execution Remains](./phase-6-only-new-execution-remains.md) | Old Agent/checkpoint path deleted | See plan |
 
 ## Dependency graph

@@ -15,7 +15,7 @@
 | 2 | [A Complete Coding Agent](./phase-2-coding-agent-core.md) | Coding Agent 独立完成模型、工具、session 和 prompt 循环 |
 | 3 | [Coding Agent Runs Independently](./phase-3-coding-agent-service.md) | Coding Agent 成为独立进程中的 Agent Backend |
 | 4 | [Product Backend Executes Agent Runs](./phase-4-agent-run-execution.md) | Run 执行、原子 commit、Product Tools 全部闭环 |
-| 5 | [All Product Flows Use Agent Runs](./phase-5-product-caller-cutover.md) | Conversation/Cron/Loop/Skill Pack 全部切流 |
+| 5 | [All Product Flows Use Agent Runs](./phase-5-product-caller-cutover.md) | Conversation/Cron/Loop/Skill Pack 全部切流；续：Run-centric rewrite（HTTP daemon → child-process CLI） |
 | 6 | [Only the New Execution Model Remains](./phase-6-remove-old-execution.md) | 删除旧 Agent/checkpoint/API/docs |
 
 ## 依赖关系

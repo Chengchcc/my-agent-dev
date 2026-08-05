@@ -131,7 +131,7 @@ Expected: pass with zero model/Agent Run calls.
 1. Delete SqliteSessionManager / SessionManager / checkpointer.db / ModelRegistry / ProviderAuth-for-execution / createDefaultModelRegistry / defaultTools/defaultPlugins/defaultContextManager / supervisor→sessionManager disposal / old resume route.
 2. Compose conversation/cron/loop with Phase 4 handles (`agentRunService`, `agentRunExecution`, `productTools`); conversation gets terminal-commit mention-cascade callback wired to the execution service.
 3. `AgentService.hardDelete()` busy guard → query active Agent Run by agentId; remove session-id-based guards and checkpoint purge hooks.
-4. Shutdown: stop accepting → drain/cancel runs → close adapters/daemon client/MCP/db (existing order, minus session manager).
+4. Shutdown: stop accepting → drain/cancel runs（每 Run 的 child 由 adapter abort + bounded grace reap）→ close Product Tools MCP/db（existing order, minus session manager）。
 
 **Check:**
 ```bash
@@ -247,3 +247,29 @@ Phase 5 is complete only when all of the following are simultaneously true:
 ## 实施完成记录（2026-08-04）
 
 所有 Step 已按本 plan 执行完毕；最终 phase gate 全部成立（见 spec 完成记录）。关键 commit：`fd0e4da8`（Wave 1）→ `48c78b8a`（Waves 2–4）→ `80612df3`（Wave 5）→ `17e0b1eb`（Waves 6+7+11）→ `c3b3fb01`（Wave 8）→ `0f2467c2`（Wave 9）→ `61a0070f`（清理与门禁恢复）。实施中按依赖关系合并了 Wave 11（span 目录删除）到 Wave 6/7，并将死 plugin 包（无消费者、无法编译）删除以恢复全仓 build。
+
+## Phase 5 续：Run-centric Rewrite 实施记录（2026-08-05）
+
+主 plan 完成后执行传输层再次收敛（与 spec 同章节一致）：Coding Agent HTTP daemon → 独立产品 CLI + 每 Run 一个 child process。严格顺序实施：
+
+1. `agent-backend/transport.ts` 破坏性改为 stdio JSONL wire contract（execute/steer/abort；response/event/outcome；`skillRoots` 加入 run snapshot；事件映射移入 contract package）。
+2. `apps/coding-agent` 建立唯一 Runtime 工厂（`core/create-runtime.ts`），吸收 run-registry 的 per-Run 编排；`run()` 在 loop 到达安全 steer 边界（`message_start`）后才 resolve。
+3. print mode（`-p`）：stdout 只输出最终 assistant text，失败 stderr + exit 非 0。
+4. json mode（`--mode json`）：events + 一个 outcome，JSONL 输出，outcome 后退出。
+5. minimal RPC mode：stdin/stdout JSONL，一个进程最多一个 execute，steer/abort 校验 runId，outcome 后主动退出（`reader.cancel()`，不依赖父进程关 stdin），第二个 execute 明确拒绝。
+6. `--list-models`：CLI 固定输出 canonical JSON（删除假 `--json` 参数）。
+7. adapter 改为 child-process transport（`process.ts` / `backend.ts` / `protocol.ts` / `stderr-tail.ts` / `model-catalog.ts`）；严格 LF framing、16 MiB 单行上限、64 KiB redacted stderr tail、outcome exactly-once、bounded grace kill。
+8. composition root 改为 executable config（`CODING_AGENT_BIN`），删除 inert fake wiring；Product Tools token 只经 child env 传递。
+9. 删除 HTTP daemon/client/SSE/polling 及全部相关测试与 env。
+10. frozen Run snapshot：`agent_run.system_prompt/skill_roots` + `branch_input_queue` 请求时 config snapshot（migration 0019）；`acquireNextRun()` 用 input 自身 snapshot。
+11. 接入 Agent identity（SOUL.md/USER.md）与 ready skill packs（`resolveRunConfig`，Run 创建时冻结）。
+12. 接入 Loop：LOOP.md prompt → frozen systemPrompt，`<loopConfigPath>/skills` → skillRoots；generator/evaluator user prompt 恒含 item facts / acceptance / files changed / VERDICT.md 要求。
+13. crash-gap recovery：`listIdleBranchesWithPendingInputs()`（FIFO）→ `acquireNextRun()` → dispatch。
+14. 测试更新：adapter 用 real fixture child；execution tests 用 real child；新增真实 Loop child integration（commit clone / skill_load / VERDICT.md）。
+15. 评审修复：RPC self-exit、`maxConcurrentRuns` FIFO spawn-slot（stop 取消排队）、realpath canonical 比较、acceptance ⟹ live、CLI piped stdin 合并（16 MiB 上限，RPC 不预读）。
+
+### 完成记录
+
+- clean gates 3/3；full gates 全绿（build/typecheck/lint/test 35/35；coding-agent 61、adapter 19、backend 310 tests）。
+- 关键 commit：`f6b93e31` → `2db4699a`（评审修复）→ `18a68638`（CLI piped stdin）。
+- 明确 ceiling：child 无超时自退（依赖 adapter 关 stdin）；catalog 仅实例内缓存；TUI/JSONL session/resume/fork/SDK 未实现。
