@@ -121,7 +121,7 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
 
     .get(
       "/api/skill-packs/:id/files",
-      async ({ params: { id }, query: { path: subpath } }) => {
+      async ({ params: { id }, query: { path: subpath }, set }) => {
         try {
           const ws = nodeFsAdapter(posixSkillRoot(dataDir));
           const basePath = subpath ? `${id}/${subpath}` : id;
@@ -131,7 +131,10 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
           for (const seg of segments) assertSafeEntry(seg);
 
           const st = await ws.stat(basePath);
-          if (!st) return { error: "Not found" };
+          if (!st) {
+            set.status = 404;
+            return { error: "Not found" };
+          }
 
           const full = resolve(posixSkillRoot(dataDir), basePath);
           const s = statSync(full);
@@ -156,8 +159,10 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
             return { type: "dir", path: subpath ?? "", entries };
           }
 
+          set.status = 400;
           return { error: "Not a file or directory" };
         } catch (err) {
+          set.status = 400;
           return { error: (err as Error).message };
         }
       },

@@ -51,9 +51,11 @@ function FileTree({
   if (data.type === "file") {
     return <div className="text-sm text-muted-foreground py-1 px-2">{path.split("/").pop()}</div>;
   }
+  // Error responses arrive as { error } without a type — render nothing
+  // instead of crashing on a missing entries array.
+  if (data.type !== "dir") return null;
 
-  const entries = (data as { type: string; entries: Array<{ name: string; type: string }> })
-    .entries;
+  const entries = data.entries ?? [];
   return (
     <ul className="pl-2 space-y-0.5">
       {entries.map((e) => (
