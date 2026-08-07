@@ -234,14 +234,14 @@ export function reducer(s: ConvState, a: Action): ConvState {
       };
       const roster = { ...s.roster };
       for (const m of payload.members ?? []) roster[m.memberId] = { ...m };
-      const verb = a.kind === "member.joined" ? "加入" : "离开";
+      const verb = a.kind === "member.joined" ? "joined" : "left";
       const present = (payload.members ?? [])
         .map((m) => roster[m.memberId]?.displayName ?? m.memberId)
         .join(", ");
       const id = `notice-${a.seq}`;
       const items: UiItem[] = [
         ...s.items,
-        { kind: "notice", id, text: `[系统] 成员变化：${verb}。当前在场：${present}` },
+        { kind: "notice", id, text: `[system] Members ${verb}. Present: ${present}` },
       ];
       return { ...s, roster, items };
     }

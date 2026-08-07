@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Page, PageBody, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -149,7 +150,10 @@ function SettingsSection({
       </CardHeader>
       <CardContent className="space-y-4">
         {section.fields.map((f) => (
-          <div key={f.key} className="grid grid-cols-[180px_1fr] items-center gap-3">
+          <div
+            key={f.key}
+            className="grid gap-2 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center"
+          >
             <Label htmlFor={f.key} className="text-sm text-muted-foreground">
               {f.label}
             </Label>
@@ -189,67 +193,83 @@ function SettingsSection({
                 placeholder="Acceptance criteria..."
               />
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full">
                 <Input
                   id={f.key}
                   type={f.type === "number" ? "number" : "text"}
                   value={getDraft(f.key)}
                   onChange={(e) => setDrafts((d) => ({ ...d, [f.key]: e.target.value }))}
-                  className="max-w-[200px]"
+                  className="w-full sm:max-w-sm"
                 />
                 {"unit" in f && f.unit && (
-                  <span className="text-xs text-muted-foreground">{f.unit}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{f.unit}</span>
                 )}
               </div>
             )}
           </div>
         ))}
-        {hasChanges && (
-          <div className="flex justify-end pt-2">
-            <Button size="sm" onClick={handleSave} disabled={saving}>
-              Save {section.title}
-            </Button>
-          </div>
-        )}
+        {/* Always-reserved row: no layout shift when edits appear. */}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button size="sm" variant="ghost" disabled={!hasChanges} onClick={() => setDrafts({})}>
+            Reset
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={!hasChanges || saving}>
+            Save changes
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-// ── System info section (read-only) ──
+// ── System info section (read-only, collapsed by default) ──
 
 function SystemInfoSection({ info }: { info: SystemInfo | undefined }) {
+  const [open, setOpen] = useState(false);
   if (!info) return null;
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>System Info</CardTitle>
-        <CardDescription>Environment variables and paths (read-only).</CardDescription>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <div>
+          <CardTitle>System Info</CardTitle>
+          <CardDescription>Environment variables and paths (read-only).</CardDescription>
+        </div>
+        <Button size="sm" variant="ghost" onClick={() => setOpen((v) => !v)}>
+          {open ? "Hide" : "Show"}
+        </Button>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">Environment</h4>
-          <div className="space-y-1">
-            {Object.entries(info.env).map(([k, v]) => (
-              <div key={k} className="grid grid-cols-[240px_1fr] gap-2 font-mono text-xs">
-                <span className="text-muted-foreground">{k}</span>
-                <span className="break-all">{v}</span>
-              </div>
-            ))}
+      {open && (
+        <CardContent className="space-y-4">
+          <div>
+            <h4 className="mb-2 text-sm font-medium text-muted-foreground">Environment</h4>
+            <dl className="space-y-1">
+              {Object.entries(info.env).map(([k, v]) => (
+                <div
+                  key={k}
+                  className="grid gap-0.5 sm:grid-cols-[240px_1fr] sm:gap-2 font-mono text-xs"
+                >
+                  <dt className="text-muted-foreground break-all">{k}</dt>
+                  <dd className="break-all">{v}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
-        </div>
-        <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">Paths</h4>
-          <div className="space-y-1">
-            {Object.entries(info.paths).map(([k, v]) => (
-              <div key={k} className="grid grid-cols-[240px_1fr] gap-2 font-mono text-xs">
-                <span className="text-muted-foreground">{k}</span>
-                <span className="break-all">{v}</span>
-              </div>
-            ))}
+          <div>
+            <h4 className="mb-2 text-sm font-medium text-muted-foreground">Paths</h4>
+            <dl className="space-y-1">
+              {Object.entries(info.paths).map(([k, v]) => (
+                <div
+                  key={k}
+                  className="grid gap-0.5 sm:grid-cols-[240px_1fr] sm:gap-2 font-mono text-xs"
+                >
+                  <dt className="text-muted-foreground break-all">{k}</dt>
+                  <dd className="break-all">{v}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
-        </div>
-      </CardContent>
+        </CardContent>
+      )}
     </Card>
   );
 }
@@ -272,25 +292,25 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="container mx-auto max-w-3xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Runtime configuration and system information.
-        </p>
-      </div>
+    <Page>
+      <PageHeader
+        breadcrumb="System / Settings"
+        title="Settings"
+        description="Runtime defaults and deployment information."
+      />
+      <PageBody size="reading" className="space-y-6">
+        {SECTIONS.map((section) => (
+          <SettingsSection
+            key={section.id}
+            section={section}
+            settings={settingsQuery.data?.settings}
+            onSave={handleSave}
+            saving={updateMu.isPending}
+          />
+        ))}
 
-      {SECTIONS.map((section) => (
-        <SettingsSection
-          key={section.id}
-          section={section}
-          settings={settingsQuery.data?.settings}
-          onSave={handleSave}
-          saving={updateMu.isPending}
-        />
-      ))}
-
-      <SystemInfoSection info={systemQuery.data} />
-    </div>
+        <SystemInfoSection info={systemQuery.data} />
+      </PageBody>
+    </Page>
   );
 }

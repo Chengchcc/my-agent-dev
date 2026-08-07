@@ -1,13 +1,9 @@
 "use client";
 
+import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
+import { Page, PageBody, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/badge";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-} from "@/components/ui/breadcrumb";
 import { ReviewQueueCard } from "@/components/work/ReviewQueueCard";
 import { useLoopList } from "@/features/loop/hooks";
 import { useAgentRuns } from "@/features/ops/hooks";
@@ -58,25 +54,9 @@ export default function WorkTodayPage() {
   });
 
   return (
-    <div className="h-full bg-[var(--canvas)]">
-      <div className="border-b border-[var(--hairline)]">
-        <div className="container mx-auto px-8 py-5">
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbPage>Work Today</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </div>
-      </div>
-
-      <div className="container mx-auto px-8 py-10 max-w-2xl">
-        <div className="mb-6">
-          <h1 className="text-lg font-medium">Work Today</h1>
-          <p className="text-xs text-[var(--mute)]">{today}</p>
-        </div>
-
+    <Page>
+      <PageHeader breadcrumb="Work Today" title="Work Today" description={today} />
+      <PageBody size="reading" className="space-y-8">
         <div>
           <h2 className="text-sm font-medium mb-3">
             Review Queue {queue.length > 0 && `(${queue.length})`}
@@ -84,7 +64,8 @@ export default function WorkTodayPage() {
           {isLoading ? (
             <p className="text-sm text-[var(--mute)]">Loading...</p>
           ) : queue.length === 0 ? (
-            <div className="text-center py-16">
+            <div className="flex items-center gap-2 rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-3">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-hidden />
               <p className="text-sm text-[var(--mute)]">Nothing waiting for review</p>
             </div>
           ) : (
@@ -97,7 +78,7 @@ export default function WorkTodayPage() {
         </div>
 
         {draftLoops.length > 0 && (
-          <div className="mt-10">
+          <div>
             <h2 className="text-sm font-medium mb-3">Draft Loops ({draftLoops.length})</h2>
             <div className="grid gap-3">
               {draftLoops.map((loop) => (
@@ -112,7 +93,7 @@ export default function WorkTodayPage() {
                         <span className="truncate">{loop.name}</span>
                         {loop.pendingCount > 0 && (
                           <Badge variant="default" className="text-xs">
-                            {loop.pendingCount} 待审
+                            {loop.pendingCount} pending
                           </Badge>
                         )}
                       </div>
@@ -130,30 +111,32 @@ export default function WorkTodayPage() {
           </div>
         )}
 
-        <div className="mt-10">
+        <div>
           <h2 className="text-sm font-medium mb-3">Today&apos;s Runs</h2>
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-4">
-              <div className="text-2xl font-semibold text-[var(--ink)]">{succeeded}</div>
+              <div className="text-2xl font-semibold text-emerald-600 tabular-nums">
+                {succeeded}
+              </div>
               <div className="text-xs text-[var(--mute)]">Succeeded</div>
             </div>
             <div className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-4">
-              <div className="text-2xl font-semibold text-[var(--ink)]">{failed}</div>
+              <div className="text-2xl font-semibold text-red-600 tabular-nums">{failed}</div>
               <div className="text-xs text-[var(--mute)]">Failed</div>
             </div>
             <div className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-4">
-              <div className="text-2xl font-semibold text-[var(--ink)]">{running}</div>
+              <div className="text-2xl font-semibold text-amber-600 tabular-nums">{running}</div>
               <div className="text-xs text-[var(--mute)]">Running</div>
             </div>
           </div>
           <div className="mt-3 rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-4 text-center">
-            <div className="text-2xl font-semibold text-[var(--ink)]">
+            <div className="text-2xl font-semibold text-[var(--ink)] tabular-nums">
               {tokensUnavailable ? "Token data unavailable" : totalTokens.toLocaleString()}
             </div>
             <div className="text-xs text-[var(--mute)]">Total Tokens</div>
           </div>
         </div>
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   );
 }

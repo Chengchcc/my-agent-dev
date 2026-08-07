@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import { GlobalSearchTrigger } from "@/components/GlobalSearchTrigger";
 import { cn } from "@/lib/utils";
 import { QueryProvider } from "@/providers/QueryProvider";
 import "./globals.css";
@@ -25,15 +24,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
-      lang="zh-CN"
+      lang="en"
       className={cn("font-sans", inter.variable, jetbrainsMono.variable)}
       suppressHydrationWarning
     >
       <body className="min-h-screen bg-background text-foreground">
-        <QueryProvider>
-          <GlobalSearchTrigger />
-          {children}
-        </QueryProvider>
+        <QueryProvider>{children}</QueryProvider>
       </body>
     </html>
   );

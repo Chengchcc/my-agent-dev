@@ -53,7 +53,8 @@ export function ReasoningTrace({
           >
             <span className="text-[var(--primary)]">{open ? "▼" : "▶"}</span>
             <span>
-              推理轨迹 · {stepCount} 步{toolNames.length ? ` · ${toolNames.join(", ")}` : ""}
+              Reasoning trace · {stepCount} steps
+              {toolNames.length ? ` · ${toolNames.join(", ")}` : ""}
             </span>
           </CollapsibleTrigger>
           <CollapsibleContent>

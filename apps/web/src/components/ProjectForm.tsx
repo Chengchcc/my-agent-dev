@@ -26,7 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useCreateProject, useUpdateProject } from "@/features/projects/hooks";
 import type { ProjectRow } from "@/lib/api";
-import { fieldClass, labelClass } from "@/lib/form-styles";
+import { fieldClass, overlineClass } from "@/lib/form-styles";
 
 const formSchema = z.object({
   name: z.string().trim().min(1, "Project name is required"),
@@ -137,11 +137,7 @@ export function ProjectForm({ editProject, onSuccess }: ProjectFormProps) {
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
       {/* Edit mode: dialog opens via useEffect — no trigger button needed */}
-      {!isEdit && (
-        <DialogTrigger className="bg-[var(--primary)] text-[var(--on-primary)] rounded-md px-5 py-2 text-sm font-semibold hover:opacity-90 transition-opacity duration-200">
-          + New Project
-        </DialogTrigger>
-      )}
+      {!isEdit && <DialogTrigger render={<Button size="sm">+ New Project</Button>} />}
 
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -155,7 +151,7 @@ export function ProjectForm({ editProject, onSuccess }: ProjectFormProps) {
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className={labelClass}>Name *</FormLabel>
+                  <FormLabel className={overlineClass}>Name *</FormLabel>
                   <FormControl>
                     <Input {...field} placeholder="e.g. my-agent-team" className={fieldClass} />
                   </FormControl>
@@ -169,7 +165,7 @@ export function ProjectForm({ editProject, onSuccess }: ProjectFormProps) {
               name="repoUrl"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className={labelClass}>Repository URL</FormLabel>
+                  <FormLabel className={overlineClass}>Repository URL</FormLabel>
                   <FormControl>
                     <Input
                       {...field}
@@ -190,7 +186,7 @@ export function ProjectForm({ editProject, onSuccess }: ProjectFormProps) {
               name="defaultBranch"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className={labelClass}>Default Branch</FormLabel>
+                  <FormLabel className={overlineClass}>Default Branch</FormLabel>
                   <FormControl>
                     <Input {...field} placeholder="main" className={fieldClass} />
                   </FormControl>
@@ -208,10 +204,11 @@ export function ProjectForm({ editProject, onSuccess }: ProjectFormProps) {
                     <FormControl>
                       <Checkbox checked={field.value} onCheckedChange={field.onChange} />
                     </FormControl>
-                    <FormLabel className={labelClass}>自动推进开关</FormLabel>
+                    <FormLabel className={overlineClass}>Auto-advance</FormLabel>
                   </div>
                   <p className={hintClass}>
-                    开启后，Issue 交付完成会按列配置自动推进到下一状态；关闭则每步都需人工推进
+                    When enabled, completed issues advance to the next column automatically; when
+                    disabled every step needs manual approval.
                   </p>
                   <FormMessage />
                 </FormItem>

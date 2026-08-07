@@ -160,7 +160,7 @@ describe("member", () => {
     expect(s.roster["human-2"]?.displayName).toBe("User2");
     expect(s.items).toHaveLength(1);
     expect(s.items[0]!.kind).toBe("notice");
-    if (s.items[0]!.kind === "notice") expect(s.items[0]!.text).toInclude("加入");
+    if (s.items[0]!.kind === "notice") expect(s.items[0]!.text).toInclude("joined");
   });
 });
 

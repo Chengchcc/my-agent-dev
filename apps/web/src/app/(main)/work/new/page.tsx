@@ -95,16 +95,16 @@ export default function NewLoopPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm text-[var(--muted)]">
-                  描述你想自动化的事，我会帮你配好定时和步骤
+                  Describe what you want to automate; I will configure the schedule and steps.
                 </p>
                 <Textarea
                   value={intent}
                   onChange={(e) => setIntent(e.target.value)}
-                  placeholder="e.g. 每天早上汇总 GitHub PR 状态发到 Lark"
+                  placeholder="e.g. Summarize GitHub PR status to Lark every morning"
                   rows={6}
                 />
                 <Button onClick={handleCreate} disabled={!intent.trim() || createLoop.isPending}>
-                  {createLoop.isPending ? "生成中…" : "下一步"}
+                  {createLoop.isPending ? "Generating…" : "Next"}
                 </Button>
               </CardContent>
             </Card>
@@ -113,11 +113,11 @@ export default function NewLoopPage() {
           {stage === "preview" && (
             <Card>
               <CardHeader>
-                <CardTitle>预览 LOOP.md</CardTitle>
+                <CardTitle>Preview LOOP.md</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Loop 名称</label>
+                  <label className="text-sm font-medium">Loop name</label>
                   <Input value={loopName} onChange={(e) => setLoopName(e.target.value)} />
                 </div>
                 {note && (
@@ -126,14 +126,14 @@ export default function NewLoopPage() {
                   </div>
                 )}
                 <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md border border-[var(--hairline)] bg-[var(--canvas)] p-4 text-sm">
-                  {preview || "（无预览内容）"}
+                  {preview || "(no preview)"}
                 </pre>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={reset}>
-                    重新生成
+                    Regenerate
                   </Button>
                   <Button onClick={handleActivate} disabled={activateLoop.isPending}>
-                    {activateLoop.isPending ? "启用中…" : "确认启用"}
+                    {activateLoop.isPending ? "Activating…" : "Confirm and enable"}
                   </Button>
                 </div>
               </CardContent>

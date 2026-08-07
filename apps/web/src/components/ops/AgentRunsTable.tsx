@@ -14,15 +14,29 @@ export interface AgentRunRow {
   usage: { inputTokens?: number; outputTokens?: number } | null;
 }
 
+// 400-family colors stay readable on both light and dark surfaces; badges
+// get a border so status is never communicated by color alone.
 const STATUS_STYLES: Record<string, string> = {
-  running: "bg-blue-500/10 text-blue-600",
-  waiting: "bg-amber-500/10 text-amber-600",
-  commit_failed: "bg-orange-500/10 text-orange-600",
-  completed: "bg-green-500/10 text-green-600",
-  failed: "bg-red-500/10 text-red-600",
-  aborted: "bg-zinc-500/10 text-zinc-600",
-  timeout: "bg-zinc-500/10 text-zinc-600",
+  running: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+  waiting: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+  commit_failed: "bg-orange-500/10 text-orange-400 border-orange-500/30",
+  completed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+  failed: "bg-red-500/10 text-red-400 border-red-500/30",
+  aborted: "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
+  timeout: "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
 };
+
+function tokens(r: AgentRunRow): string {
+  return r.usage ? `${(r.usage.inputTokens ?? 0) + (r.usage.outputTokens ?? 0)} tok` : "—";
+}
+
+function startedAt(r: AgentRunRow): string {
+  return new Date(r.createdAt).toLocaleString();
+}
+
+function canCancel(status: string): boolean {
+  return ["running", "waiting", "commit_failed"].includes(status);
+}
 
 export function AgentRunsTable({
   runs,
@@ -34,55 +48,89 @@ export function AgentRunsTable({
   if (runs.length === 0) {
     return <p className="text-sm text-[var(--mute)]">No Agent Runs yet.</p>;
   }
+
   return (
-    <div className="overflow-x-auto rounded-lg border border-[var(--hairline)]">
-      <table className="w-full text-sm">
-        <thead className="bg-[var(--panel)] text-left text-xs text-[var(--mute)]">
-          <tr>
-            <th className="p-2">Run</th>
-            <th className="p-2">Status</th>
-            <th className="p-2">Agent</th>
-            <th className="p-2">Model</th>
-            <th className="p-2">Started</th>
-            <th className="p-2">Usage</th>
-            <th className="p-2" />
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((r) => (
-            <tr key={r.runId} className="border-t border-[var(--hairline)]">
-              <td className="p-2">
-                <Link href={`/system/runs/${r.runId}`} className="underline">
-                  {r.runId.slice(0, 12)}
-                </Link>
-              </td>
-              <td className="p-2">
-                <Badge className={STATUS_STYLES[r.status] ?? ""}>{r.status}</Badge>
-              </td>
-              <td className="p-2">{r.agentId}</td>
-              <td className="p-2">{r.model}</td>
-              <td className="p-2 text-xs text-[var(--mute)]">
-                {new Date(r.createdAt).toLocaleString()}
-              </td>
-              <td className="p-2 text-xs text-[var(--mute)]">
-                {r.usage ? `${(r.usage.inputTokens ?? 0) + (r.usage.outputTokens ?? 0)} tok` : "—"}
-              </td>
-              <td className="p-2 text-right">
-                {["running", "waiting", "commit_failed"].includes(r.status) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs text-destructive"
-                    onClick={() => onCancel(r.runId)}
-                  >
-                    Cancel
-                  </Button>
-                )}
-              </td>
+    <>
+      {/* Mobile: card list (no horizontal scroll of a desktop table). */}
+      <div className="space-y-2 md:hidden">
+        {runs.map((r) => (
+          <div
+            key={r.runId}
+            className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas)] p-3"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <Link href={`/system/runs/${r.runId}`} className="font-mono text-xs underline">
+                {r.runId.slice(0, 12)}
+              </Link>
+              <Badge className={STATUS_STYLES[r.status] ?? ""}>{r.status}</Badge>
+            </div>
+            <p className="mt-1.5 text-sm text-[var(--ink)] truncate">{r.model}</p>
+            <p className="text-xs text-[var(--mute)]">
+              {r.agentId || "default"} · {startedAt(r)}
+            </p>
+            <div className="mt-1 flex items-center justify-between">
+              <span className="text-xs text-[var(--mute)]">{tokens(r)}</span>
+              {canCancel(r.status) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-destructive"
+                  onClick={() => onCancel(r.runId)}
+                >
+                  Cancel
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop: full table. */}
+      <div className="hidden overflow-x-auto rounded-lg border border-[var(--hairline)] md:block">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--canvas-soft)] text-left text-xs text-[var(--mute)]">
+            <tr>
+              <th className="p-2">Run</th>
+              <th className="p-2">Status</th>
+              <th className="p-2">Agent</th>
+              <th className="p-2">Model</th>
+              <th className="p-2">Started</th>
+              <th className="p-2">Usage</th>
+              <th className="p-2" />
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {runs.map((r) => (
+              <tr key={r.runId} className="border-t border-[var(--hairline)]">
+                <td className="p-2">
+                  <Link href={`/system/runs/${r.runId}`} className="underline">
+                    {r.runId.slice(0, 12)}
+                  </Link>
+                </td>
+                <td className="p-2">
+                  <Badge className={STATUS_STYLES[r.status] ?? ""}>{r.status}</Badge>
+                </td>
+                <td className="p-2">{r.agentId}</td>
+                <td className="p-2">{r.model}</td>
+                <td className="p-2 text-xs text-[var(--mute)]">{startedAt(r)}</td>
+                <td className="p-2 text-xs text-[var(--mute)]">{tokens(r)}</td>
+                <td className="p-2 text-right">
+                  {canCancel(r.status) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-destructive"
+                      onClick={() => onCancel(r.runId)}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }

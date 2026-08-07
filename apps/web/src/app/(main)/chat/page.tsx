@@ -5,12 +5,7 @@ import { ChevronRight, MessageSquareIcon, Search, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-} from "@/components/ui/breadcrumb";
+import { Page, PageBody, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -93,24 +88,15 @@ export default function ChatOverviewPage() {
   );
 
   return (
-    <div className="h-full bg-[var(--canvas)]">
-      {/* Top bar */}
-      <div className="border-b border-[var(--hairline)]">
-        <div className="container mx-auto px-8 py-5">
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbPage>Chat</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="container mx-auto px-8 py-10 max-w-3xl">
-        {/* New chat composer */}
-        <div className="border-2 border-[var(--primary)] rounded-xl bg-[var(--canvas)] p-4 mb-8 shadow-sm">
+    <Page>
+      <PageHeader
+        breadcrumb="Chat"
+        title="Chat"
+        description="Start a conversation or open a recent one."
+      />
+      <PageBody size="reading" className="space-y-6">
+        {/* New chat composer: hairline border, focus ring only. */}
+        <div className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas)] p-4 focus-within:border-[var(--primary)] transition-colors">
           <div className="flex items-center gap-2 mb-3">
             <div className="flex items-center justify-center h-7 w-7 rounded-full bg-[var(--primary)] text-[var(--canvas)]">
               <Send size={13} />
@@ -126,7 +112,7 @@ export default function ChatOverviewPage() {
                 handleCreate();
               }
             }}
-            placeholder="Send a message to start a new conversation…"
+            placeholder="What do you want to work on?"
             className="min-h-24 resize-none border-0 bg-transparent text-sm text-[var(--ink-strong)] placeholder:text-[var(--mute)] focus-visible:ring-0"
           />
           <div className="flex items-center justify-between mt-2">
@@ -140,13 +126,13 @@ export default function ChatOverviewPage() {
               className="min-w-20"
             >
               <Send size={14} />
-              Send
+              Start
             </Button>
           </div>
         </div>
 
-        {/* Search */}
-        <div className="mb-8">
+        {/* Filter conversations (ledger search results live in Cmd+K). */}
+        <div>
           <div className="relative">
             <Search
               size={14}
@@ -155,7 +141,7 @@ export default function ChatOverviewPage() {
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search messages…"
+              placeholder="Filter conversations…"
               className="pl-9"
             />
           </div>
@@ -168,10 +154,10 @@ export default function ChatOverviewPage() {
                   onClick={() => router.push(`/chat/${r.conversationId}`)}
                   className="w-full text-left border border-[var(--hairline)] rounded-lg
                              hover:border-[var(--primary)] transition-colors duration-200
-                             bg-[var(--canvas)] cursor-pointer p-3"
+                             bg-[var(--canvas-soft)/40] cursor-pointer p-3"
                 >
                   <p className="text-xs text-[var(--mute)] mb-1">{r.conversationId.slice(0, 8)}</p>
-                  <p className="text-sm text-[var(--ink-strong)] line-clamp-2">{r.snippet}</p>
+                  <p className="text-sm text-[var(--ink)] line-clamp-2">{r.snippet}</p>
                 </button>
               ))}
             </div>
@@ -179,7 +165,7 @@ export default function ChatOverviewPage() {
         </div>
 
         {/* Recent conversations */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between">
           <p className="text-xs text-[var(--mute)]">
             {conversations.length} conversation{conversations.length !== 1 ? "s" : ""}
           </p>
@@ -200,8 +186,8 @@ export default function ChatOverviewPage() {
             <p className="text-sm text-[var(--mute)]">No conversations yet</p>
           </div>
         ) : (
-          <div className="space-y-0.5">
-            {conversations.map((conv, i) => (
+          <div className="space-y-1">
+            {conversations.map((conv) => (
               <div
                 key={conv.conversationId}
                 role="button"
@@ -215,11 +201,11 @@ export default function ChatOverviewPage() {
                 }}
                 className="w-full text-left border border-[var(--hairline)] rounded-lg
                            hover:border-[var(--primary)] transition-colors duration-200
-                           animate-fade-in bg-[var(--canvas)] cursor-pointer p-3 flex items-center justify-between"
-                style={{ animationDelay: `${i * 0.06}s`, animationFillMode: "both" }}
+                           bg-[var(--canvas-soft)/40] active:bg-[var(--canvas-soft)]
+                           cursor-pointer p-3 flex items-center justify-between"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-[var(--ink-strong)] truncate">
+                  <p className="text-sm font-medium text-[var(--ink)] truncate">
                     {conv.title ?? `Conversation ${conv.conversationId.slice(0, 8)}`}
                   </p>
                   <div className="flex items-center gap-2 mt-1">
@@ -255,7 +241,7 @@ export default function ChatOverviewPage() {
             ))}
           </div>
         )}
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   );
 }
