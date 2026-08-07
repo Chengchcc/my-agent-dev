@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { initialState, isBusy, reducer, type SenderRef } from "@/lib/conversation-reducer";
+import {
+  initialState,
+  isBusy,
+  isTurnStart,
+  reducer,
+  type SenderRef,
+} from "@/lib/conversation-reducer";
 
 function bootstrap(overrides: { viewerMemberId?: string; members?: SenderRef[] } = {}) {
   const a: SenderRef = { memberId: "agent-1", kind: "agent", displayName: "Bot" };
@@ -181,5 +187,48 @@ describe("groupTurns", () => {
       content: rev({ messageId: "m2", text: "msg2", state: "done" }),
     });
     expect(s.items).toHaveLength(2);
+  });
+});
+
+describe("isTurnStart", () => {
+  const human = {
+    kind: "single" as const,
+    item: {
+      id: "h1",
+      sender: { kind: "human" as const, memberId: "u" },
+      seq: 1,
+      content: { text: "hi", blocks: [] },
+      addressedTo: [],
+    },
+  };
+  const agent = {
+    kind: "single" as const,
+    item: {
+      id: "a1",
+      sender: { kind: "agent" as const, memberId: "ag" },
+      seq: 2,
+      content: { text: "yo", blocks: [] },
+      addressedTo: [],
+    },
+  };
+  const notice = { kind: "notice" as const, id: "n1", text: "joined" };
+
+  test("member-joined notices never start turns (1 anchor in human-led chat)", () => {
+    // notices + user + assistant → only the user message starts a turn
+    const segments = [notice, notice, human, agent];
+    expect(isTurnStart(segments, 0)).toBe(false);
+    expect(isTurnStart(segments, 1)).toBe(false);
+    expect(isTurnStart(segments, 2)).toBe(true);
+    expect(isTurnStart(segments, 3)).toBe(false);
+  });
+
+  test("pure agent conversations still use sender-change fallback", () => {
+    const a2 = {
+      ...agent,
+      item: { ...agent.item, id: "a2", sender: { ...agent.item.sender, memberId: "ag2" } },
+    };
+    const segments = [agent, a2];
+    expect(isTurnStart(segments, 0)).toBe(true);
+    expect(isTurnStart(segments, 1)).toBe(true);
   });
 });

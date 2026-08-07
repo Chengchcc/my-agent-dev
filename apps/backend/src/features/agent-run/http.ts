@@ -35,7 +35,9 @@ export function agentRunRoutes(input: {
                             ar.model_ref, ar.created_at, ar.terminal_at, ar.terminal_result,
                             m.agent_id
                        FROM agent_run ar
-                       LEFT JOIN member m ON m.member_id = ar.agent_member_id
+                       LEFT JOIN member m
+                         ON m.member_id = ar.agent_member_id
+                        AND m.conversation_id = ar.conversation_id
                        ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
                        ORDER BY ar.created_at DESC
                        LIMIT ?`;
@@ -88,7 +90,9 @@ export function agentRunRoutes(input: {
         set.status = 404;
         return { error: "Run not found" };
       }
-      const inputs = await agentRunService.listInputs(run.branchId);
+      const inputs = (await agentRunService.listInputs(run.branchId)).filter(
+        (i) => i.runId === runId,
+      );
       return {
         run: {
           runId: run.runId,

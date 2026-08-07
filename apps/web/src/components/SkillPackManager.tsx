@@ -271,66 +271,81 @@ export function SkillPackManager() {
             </SheetTitle>
           </SheetHeader>
 
-          <div className="mt-4 space-y-4">
-            {/* Skills list */}
-            <div>
-              <h3 className="text-sm font-semibold mb-2">Skills</h3>
-              {skills ? (
-                <div className="space-y-1">
-                  {skills.map((s: SkillSummary) => (
-                    <Card
-                      key={s.dir}
-                      className={`cursor-pointer p-3 ${selectedSkill?.dir === s.dir ? "border-primary" : ""}`}
-                      onClick={() => {
-                        setSelectedSkill(s);
-                        setSelectedFile(null);
-                      }}
-                    >
-                      <div className="font-medium text-sm">{s.name}</div>
-                      <div className="text-xs text-muted-foreground">{s.description}</div>
-                    </Card>
-                  ))}
+          <div className="mt-4 flex flex-col md:flex-row gap-4">
+            {/* Left pane: skills + pack files */}
+            <div className="md:w-[240px] md:shrink-0 space-y-4">
+              <details open className="group">
+                <summary className="flex items-center justify-between text-sm font-semibold cursor-pointer select-none">
+                  Skills
+                  <span className="text-[10px] text-[var(--mute)] group-open:hidden">expand</span>
+                </summary>
+                <div className="mt-2">
+                  {skills ? (
+                    <div className="space-y-1">
+                      {skills.map((s: SkillSummary) => (
+                        <Card
+                          key={s.dir}
+                          className={`cursor-pointer p-2.5 ${selectedSkill?.dir === s.dir ? "border-primary" : ""}`}
+                          onClick={() => {
+                            setSelectedSkill(s);
+                            setSelectedFile(null);
+                          }}
+                        >
+                          <div className="font-medium text-sm truncate">{s.name}</div>
+                          <div className="text-xs text-muted-foreground line-clamp-2">
+                            {s.description}
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Skeleton className="h-12 w-full" />
+                      <Skeleton className="h-12 w-full" />
+                    </div>
+                  )}
+                </div>
+              </details>
+
+              {/* Pack files — roots at the pack; selecting a skill jumps to its
+                  directory (SKILL.md lives one level under the skill dir). */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold">
+                    {selectedSkill ? selectedSkill.name : "Pack files"}
+                  </h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-[10px]"
+                    onClick={() => setSelectedSkill(null)}
+                  >
+                    All pack files
+                  </Button>
+                </div>
+                <Card className="p-3">
+                  <FileTree
+                    packId={selectedPack!}
+                    path={selectedSkill ? dirname(selectedSkill.dir) : ""}
+                    onSelectFile={(p) => setSelectedFile(p)}
+                  />
+                </Card>
+              </div>
+            </div>
+
+            {/* Right pane: viewer */}
+            <div className="flex-1 min-w-0">
+              {selectedFile && selectedPack ? (
+                <div>
+                  <h3 className="text-sm font-semibold mb-2 truncate">{selectedFile}</h3>
+                  <FileContent packId={selectedPack} path={selectedFile} />
                 </div>
               ) : (
-                <div className="flex gap-2">
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-12 w-full" />
+                <div className="rounded-lg border border-dashed border-[var(--hairline)] p-8 text-center">
+                  <p className="text-sm text-[var(--mute)]">Select a file to view its contents.</p>
                 </div>
               )}
             </div>
-
-            {/* Pack files — roots at the pack; selecting a skill jumps to its
-                directory (SKILL.md lives one level under the skill dir). */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold">
-                  {selectedSkill ? selectedSkill.name : "Pack files"}
-                </h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-[10px]"
-                  onClick={() => setSelectedSkill(null)}
-                >
-                  All pack files
-                </Button>
-              </div>
-              <Card className="p-3">
-                <FileTree
-                  packId={selectedPack!}
-                  path={selectedSkill ? dirname(selectedSkill.dir) : ""}
-                  onSelectFile={(p) => setSelectedFile(p)}
-                />
-              </Card>
-            </div>
-
-            {/* File content */}
-            {selectedFile && selectedPack && (
-              <div>
-                <h3 className="text-sm font-semibold mb-2">{selectedFile}</h3>
-                <FileContent packId={selectedPack} path={selectedFile} />
-              </div>
-            )}
           </div>
         </SheetContent>
       </Sheet>

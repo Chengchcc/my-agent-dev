@@ -1,6 +1,7 @@
 "use client";
 
-import { useParams, useSearchParams } from "next/navigation";
+import { MoreHorizontal, Trash2 } from "lucide-react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Page, PageBody, PageHeader } from "@/components/page";
@@ -14,6 +15,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -31,6 +38,7 @@ import {
   useActivateLoop,
   useAddLoopItem,
   useDeactivateLoop,
+  useDeleteLoop,
   useLoopDetail,
   useRunLoop,
 } from "@/features/loop/hooks";
@@ -45,11 +53,13 @@ const STEP_BADGE: Record<string, "default" | "secondary" | "outline" | "destruct
 
 export default function LoopDetailPage() {
   const { loopId } = useParams<{ loopId: string }>();
+  const router = useRouter();
   const { data, isLoading } = useLoopDetail(loopId);
   const runMu = useRunLoop();
   const activateMu = useActivateLoop();
   const deactivateMu = useDeactivateLoop();
   const addItemMu = useAddLoopItem(loopId);
+  const deleteLoopMu = useDeleteLoop();
 
   const loop = data?.loop;
   const searchParams = useSearchParams();
@@ -98,7 +108,7 @@ export default function LoopDetailPage() {
           loop.lastRun ? ` · Last run: ${new Date(loop.lastRun).toLocaleString()}` : ""
         }${loop.pendingCount > 0 ? ` · ${loop.pendingCount} awaiting review` : ""}`}
         action={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {loop.enabled === false ? (
               <>
                 <Badge variant="outline">Draft</Badge>
@@ -153,6 +163,35 @@ export default function LoopDetailPage() {
             <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
               Add Item
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    aria-label="More actions"
+                  />
+                }
+              >
+                <MoreHorizontal size={14} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => {
+                    if (!confirm(`Delete loop "${loop.name}"? This cannot be undone.`)) return;
+                    deleteLoopMu.mutate(loopId, {
+                      onSuccess: () => router.push("/work"),
+                      onError: (e) => toast.error(`Delete failed: ${String(e)}`),
+                    });
+                  }}
+                >
+                  <Trash2 size={14} />
+                  Delete Loop
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         }
       />
@@ -246,7 +285,9 @@ export default function LoopDetailPage() {
                   priority: priority ? Number(priority) : undefined,
                 },
                 {
-                  onSuccess: () => {
+                  onSuccess: (data) => {
+                    const itemId = data?.item?.id;
+                    if (itemId) setSelectedId(itemId);
                     setAddOpen(false);
                     setSummary("");
                     setPriority("");

@@ -208,7 +208,7 @@ export default function ChatOverviewPage() {
                   <p className="text-sm font-medium text-[var(--ink)] truncate">
                     {conv.title ?? `Conversation ${conv.conversationId.slice(0, 8)}`}
                   </p>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
                     {/* Member avatars */}
                     <div className="flex -space-x-1.5">
                       {conv.members.slice(0, 4).map((m) => (
@@ -229,13 +229,13 @@ export default function ChatOverviewPage() {
                         <span className="ml-1">· {relativeTime(conv.lastActivityAt)}</span>
                       )}
                     </p>
+                    {(() => {
+                      const fid = getForkSourceId(conv);
+                      if (!fid) return null;
+                      return <ForkSourceMarker sourceId={fid} createdAt={conv.createdAt} />;
+                    })()}
                   </div>
                 </div>
-                {(() => {
-                  const fid = getForkSourceId(conv);
-                  if (!fid) return null;
-                  return <ForkSourceMarker sourceId={fid} createdAt={conv.createdAt} />;
-                })()}
                 <ChevronRight size={14} className="text-[var(--hairline)] shrink-0 ml-3" />
               </div>
             ))}

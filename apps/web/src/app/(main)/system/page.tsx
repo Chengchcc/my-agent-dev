@@ -77,7 +77,7 @@ export default function SystemPage() {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <SummaryCard
             icon={CheckCircle2}
-            label="Healthy surfaces"
+            label="Lark surfaces"
             value={`${healthySurfaces} / ${surfaces.length}`}
             tone={surfaces.length > 0 && healthySurfaces === surfaces.length ? "ok" : "warn"}
           />
@@ -112,8 +112,8 @@ export default function SystemPage() {
             <QueryState
               query={surfacesQuery}
               empty={(d) => d.length === 0}
-              emptyTitle="No surfaces reporting"
-              emptyDescription="Surface health appears after an agent connects through Web or Lark."
+              emptyTitle="No Lark surfaces reporting"
+              emptyDescription="Lark surface health appears after a Lark bot agent connects."
               emptyIcon={XCircle}
             >
               {(data) => (

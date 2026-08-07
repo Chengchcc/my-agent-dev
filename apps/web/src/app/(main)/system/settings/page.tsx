@@ -1,16 +1,59 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { useModelList } from "@/features/models/hooks";
 import { useSettings, useSystemInfo, useUpdateSetting } from "@/features/settings/hooks";
 import type { SettingsMap, SystemInfo } from "@/lib/api";
+
+/** Model picker backed by the runtime catalog. The current value is kept as
+ *  an option even if it drifts from the catalog, so stored settings never
+ *  become uneditable. */
+function ModelSelectField({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const { data } = useModelList();
+  const options = useMemo(() => {
+    const groups = (data?.providers ?? []).flatMap((p) =>
+      p.models.map((m) => ({ id: `${p.id}/${m.id}`, label: `${p.name} / ${m.name ?? m.id}` })),
+    );
+    return groups.some((g) => g.id === value) ? groups : [{ id: value, label: value }, ...groups];
+  }, [data, value]);
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v ?? value)}>
+      <SelectTrigger id={id} className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((o) => (
+          <SelectItem key={o.id} value={o.id}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
 
 // ── Field definitions ──
 // Only keys with real Product Backend readers are surfaced (verified against
@@ -72,8 +115,10 @@ const SECTIONS: Section[] = [
 
 const DEFAULTS: Record<string, unknown> = {
   "conversation.maxHops": 8,
-  "loop.generatorModel": "claude-sonnet-4",
-  "loop.evaluatorModel": "claude-opus-4",
+  // Canonical provider/model IDs matching the backend runtime defaults
+  // (loop-service.ts); the model fields render as catalog selects.
+  "loop.generatorModel": "anthropic/claude-sonnet-4-20250514",
+  "loop.evaluatorModel": "anthropic/claude-opus-4-20250514",
   "loop.defaultAcceptance": "",
   "loop.defaultDailyCap": 200000,
   "loop.defaultDenylist": [".env", "auth/", "payments/", "secrets/"],
@@ -191,6 +236,13 @@ function SettingsSection({
                 onChange={(e) => setDrafts((d) => ({ ...d, [f.key]: e.target.value }))}
                 className="min-h-[60px]"
                 placeholder="Acceptance criteria..."
+              />
+            ) : f.type === "string" &&
+              (f.key === "loop.generatorModel" || f.key === "loop.evaluatorModel") ? (
+              <ModelSelectField
+                id={f.key}
+                value={getDraft(f.key)}
+                onChange={(v) => setDrafts((d) => ({ ...d, [f.key]: v }))}
               />
             ) : (
               <div className="flex items-center gap-2 w-full">

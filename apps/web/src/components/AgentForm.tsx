@@ -87,7 +87,9 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: editAgent?.name ?? "",
-      model: editAgent?.modelName ?? "anthropic/claude-sonnet-4-6",
+      // Empty until the catalog loads (see effect below): never hard-code a
+      // provider model that may not exist in the runtime catalog.
+      model: editAgent?.modelName ?? "",
       baseURL: editAgent?.modelBaseUrl ?? "",
       permissionMode: editAgent?.permissionMode ?? "ask",
       maxSteps: editAgent?.maxSteps?.toString() ?? "",
@@ -115,6 +117,16 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
       setSetupSession(null);
     }
   }, [editAgent, form]);
+
+  // New agents: default the model to the first catalog entry once loaded.
+  // Keeps the current value if it is already a valid catalog id.
+  useEffect(() => {
+    if (isEdit || modelGroups.length === 0) return;
+    const current = form.getValues("model");
+    if (current && modelGroups.some((m) => m.id === current)) return;
+    const first = modelGroups[0];
+    if (first) form.setValue("model", first.id, { shouldValidate: true });
+  }, [isEdit, modelGroups, form]);
 
   // Poll setup session when pending
   useEffect(() => {

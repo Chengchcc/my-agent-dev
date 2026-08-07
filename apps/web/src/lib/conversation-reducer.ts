@@ -208,6 +208,28 @@ export function groupTurns(items: UiItem[]): TurnSegment[] {
   return out;
 }
 
+/** Whether segment `i` starts a new turn. System notices never start turns;
+ *  in human-led conversations only human messages do. The sender-change
+ *  fallback applies ONLY to pure agent conversations (no human segment),
+ *  so member-joined notices can't fabricate turn numbers. */
+export function isTurnStart(segments: TurnSegment[], i: number): boolean {
+  const seg = segments[i]!;
+  if (seg.kind === "notice") return false;
+  const sender = segmentSenderOf(seg);
+  if (sender.kind === "human") return true;
+  const hasHuman = segments.some((s) => s.kind !== "notice" && segmentSenderOf(s).kind === "human");
+  if (hasHuman) return false;
+  if (i === 0) return true;
+  const prevSender = segmentSenderOf(segments[i - 1]!);
+  return prevSender.memberId !== sender.memberId;
+}
+
+function segmentSenderOf(seg: TurnSegment): SenderRef {
+  if (seg.kind === "turn") return seg.sender;
+  if (seg.kind === "single") return seg.item.sender;
+  return { kind: "agent", memberId: "" }; // notice (never queried: filtered above)
+}
+
 // ─── Reducer ───────────────────────────────────────────────
 
 export function reducer(s: ConvState, a: Action): ConvState {

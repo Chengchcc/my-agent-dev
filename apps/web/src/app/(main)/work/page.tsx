@@ -2,6 +2,7 @@
 
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
+import { QueryState } from "@/components/ops/QueryState";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/badge";
 import { ReviewQueueCard } from "@/components/work/ReviewQueueCard";
@@ -25,7 +26,8 @@ function isToday(ts: number | string | undefined) {
 }
 
 export default function WorkTodayPage() {
-  const { data, isLoading } = useWorkToday();
+  const useWorkTodayResult = useWorkToday();
+  const { data } = useWorkTodayResult;
   const queue = data?.reviewQueue ?? [];
   const { data: loopsData } = useLoopList();
   const { data: runs } = useAgentRuns();
@@ -61,20 +63,21 @@ export default function WorkTodayPage() {
           <h2 className="text-sm font-medium mb-3">
             Review Queue {queue.length > 0 && `(${queue.length})`}
           </h2>
-          {isLoading ? (
-            <p className="text-sm text-[var(--mute)]">Loading...</p>
-          ) : queue.length === 0 ? (
-            <div className="flex items-center gap-2 rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-3">
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-hidden />
-              <p className="text-sm text-[var(--mute)]">Nothing waiting for review</p>
-            </div>
-          ) : (
-            <div className="grid gap-3">
-              {queue.map((item) => (
-                <ReviewQueueCard key={item.id} item={item} />
-              ))}
-            </div>
-          )}
+          <QueryState
+            query={useWorkTodayResult}
+            empty={(d) => d.reviewQueue.length === 0}
+            emptyTitle="Nothing waiting for review"
+            emptyDescription="Completed Loop steps that need your review will appear here."
+            emptyIcon={CheckCircle2}
+          >
+            {(d) => (
+              <div className="grid gap-3">
+                {d.reviewQueue.map((item) => (
+                  <ReviewQueueCard key={item.id} item={item} />
+                ))}
+              </div>
+            )}
+          </QueryState>
         </div>
 
         {draftLoops.length > 0 && (

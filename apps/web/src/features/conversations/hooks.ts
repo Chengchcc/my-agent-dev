@@ -27,9 +27,13 @@ export function useDeleteConversation() {
 }
 
 export function useCreateConversation() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: Parameters<typeof api.createConversation>[0]) =>
       api.createConversation(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: conversationKeys.all });
+    },
   });
 }
 
@@ -82,7 +86,7 @@ export function useForkConversation() {
     mutationFn: (params: { id: string; fromSeq: number; title?: string }) =>
       api.forkConversation(params.id, params.fromSeq, params.title),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: conversationKeys.recent() });
+      qc.invalidateQueries({ queryKey: conversationKeys.all });
     },
   });
 }
@@ -116,7 +120,7 @@ export function useReplayFromMessage() {
         params.addressedTo,
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: conversationKeys.recent() });
+      qc.invalidateQueries({ queryKey: conversationKeys.all });
     },
   });
 }

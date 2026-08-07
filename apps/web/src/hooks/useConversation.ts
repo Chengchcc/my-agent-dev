@@ -46,26 +46,30 @@ export function useConversation(
    *  Runs are removed when their terminal state is observed on the run
    *  event stream OR when the canonical final Message lands in History. */
   const [activeRuns, setActiveRuns] = useState<Set<string>>(new Set());
-  /** Transient streaming output of the most recent active run. Rendered as a
-   *  temporary assistant bubble inside the Timeline; cleared when the
-   *  canonical final Message (id `run:<runId>:assistant:0`) lands in the
-   *  conversation ledger — never persisted, never written to history. */
-  const [transient, setTransient] = useState<{ runId: string; text: string } | null>(null);
-  const transientRef = useRef(transient);
-  const updateTransient = useCallback(
-    (
-      next:
-        | { runId: string; text: string }
-        | null
-        | ((
-            prev: { runId: string; text: string } | null,
-          ) => { runId: string; text: string } | null),
-    ) => {
-      transientRef.current = typeof next === "function" ? next(transientRef.current) : next;
-      setTransient(transientRef.current);
-    },
-    [],
-  );
+  /** Transient streaming output per active run (one bubble per run in the
+   *  Timeline). Never persisted; each entry is replaced by the canonical
+   *  final Message (`run:<runId>:assistant:0`) or dropped on failure. */
+  const [transients, setTransients] = useState<
+    Record<string, { text: string; agentMemberId: string }>
+  >({});
+  const transientsRef = useRef(transients);
+  const upsertTransient = useCallback((runId: string, agentMemberId: string, text: string) => {
+    setTransients((prev) => {
+      const next = { ...prev };
+      next[runId] = { text: `${prev[runId]?.text ?? ""}${text}`, agentMemberId };
+      transientsRef.current = next;
+      return next;
+    });
+  }, []);
+  const dropTransient = useCallback((runId: string) => {
+    setTransients((prev) => {
+      if (!(runId in prev)) return prev;
+      const next = { ...prev };
+      delete next[runId];
+      transientsRef.current = next;
+      return next;
+    });
+  }, []);
 
   // 1) Snapshot bootstrap (roster + viewerMemberId)
   const snap = useConversationSnapshot(conversationId, preFetchedSnapshot);
@@ -154,16 +158,16 @@ export function useConversation(
       } else {
         // The canonical final Message for a transient run replaces the
         // temporary bubble — match by messageId prefix `run:<runId>:`.
-        const t = transientRef.current;
         if (
-          t &&
           content &&
           typeof content === "object" &&
           "messageId" in content &&
-          typeof content.messageId === "string" &&
-          content.messageId.startsWith(`run:${t.runId}:`)
+          typeof content.messageId === "string"
         ) {
-          updateTransient(null);
+          const match = /^run:([^:]+):/.exec(content.messageId);
+          if (match?.[1] && match[1] in transientsRef.current) {
+            dropTransient(match[1]);
+          }
         }
         dispatch({
           type: "message",
@@ -214,44 +218,42 @@ export function useConversation(
     });
 
     return () => ts.close();
-  }, [conversationId, updateTransient]);
+  }, [conversationId, dropTransient]);
 
   // 3) Send: optimistic dispatch + POST /conversations/:id/messages.
   //    The conversation SSE delivers the authoritative ledger revision which
   //    upserts the optimistic message by messageId. No run EventSource needed.
   const sendMut = usePostConversationMessage(conversationId);
 
-  /** Follow one run through its Live Update stream. Transient only: when
-   *  the run's terminal state is observed the run is dropped from activeRuns
-   *  but the transient bubble is KEPT — it is replaced by the canonical
-   *  final Message when that lands in the conversation ledger (messageId
-   *  `run:<runId>:assistant:0`), avoiding a blank frame between stream end
-   *  and history commit. The stream is best-effort - losing it never affects
-   *  the final Message. */
+  /** Follow one run through its Live Update stream. Transient only: the
+   *  bubble is kept on `completed` until the canonical final Message
+   *  replaces it (no blank frame between stream end and history commit);
+   *  failed/aborted/timeout drops it immediately — those runs have no
+   *  canonical assistant Message to swap in. */
   const watchRun = useCallback(
-    (runId: string) => {
+    (runId: string, agentMemberId: string) => {
       setActiveRuns((prev) => new Set(prev).add(runId));
       const es = new EventSource(`/api/bff/api/agent-runs/${runId}/events`);
-      const done = () => {
+      const done = (dropBubble: boolean) => {
         es.close();
         setActiveRuns((prev) => {
           const next = new Set(prev);
           next.delete(runId);
           return next;
         });
+        if (dropBubble) dropTransient(runId);
       };
-      es.onerror = done;
+      es.onerror = () => done(false);
       es.addEventListener("status", (e) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as {
             type?: string;
             status?: string;
           };
-          if (
-            ev.type === "status" &&
-            ["completed", "failed", "aborted", "timeout"].includes(ev.status ?? "")
-          ) {
-            done();
+          if (ev.type !== "status") return;
+          if (ev.status === "completed") done(false);
+          else if (["failed", "aborted", "timeout"].includes(ev.status ?? "")) {
+            done(true);
           }
         } catch {
           /* malformed - ignore */
@@ -260,18 +262,13 @@ export function useConversation(
       es.addEventListener("text_delta", (e) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as { text?: string };
-          if (ev.text) {
-            updateTransient((prev) => ({
-              runId,
-              text: `${prev?.text ?? ""}${ev.text}`,
-            }));
-          }
+          if (ev.text) upsertTransient(runId, agentMemberId, ev.text);
         } catch {
           /* malformed - ignore */
         }
       });
     },
-    [updateTransient],
+    [dropTransient, upsertTransient],
   );
 
   const send = useCallback(
@@ -293,7 +290,7 @@ export function useConversation(
         {
           onSuccess: (result) => {
             for (const run of result.triggeredRuns ?? []) {
-              if (!run.queued && run.runId) watchRun(run.runId);
+              if (!run.queued && run.runId) watchRun(run.runId, run.agentMemberId);
             }
           },
           // POST pending is decremented when the HTTP request settles (both
@@ -323,6 +320,6 @@ export function useConversation(
     send,
     toggleTriggerMode,
     activeRuns,
-    transient,
+    transients,
   };
 }

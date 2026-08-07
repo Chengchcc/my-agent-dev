@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { useConversation } from "@/hooks/useConversation";
 import type { ConversationSnapshot } from "@/lib/api";
 import { api } from "@/lib/api";
+import type { SenderRef } from "@/lib/conversation-reducer";
 import type { CommandContext } from "@/lib/slash-commands";
 import { findCommand, parseArgs } from "@/lib/slash-commands";
 import { extractText } from "@/lib/timeline";
@@ -32,7 +33,7 @@ export function ConversationCanvas({
 }: ConversationCanvasProps) {
   const router = useRouter();
   const qc = useQueryClient();
-  const { state, busy, send, toggleTriggerMode, transient, activeRuns } = useConversation(
+  const { state, busy, send, toggleTriggerMode, transients, activeRuns } = useConversation(
     conversationId,
     snapshot,
   );
@@ -74,6 +75,10 @@ export function ConversationCanvas({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLen = useRef(items.length);
+  const transientTextLen = useMemo(
+    () => Object.values(transients).reduce((n, t) => n + t.text.length, 0),
+    [transients],
+  );
   const [scrolledUp, setScrolledUp] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(false);
   const initialSent = useRef(false);
@@ -94,10 +99,21 @@ export function ConversationCanvas({
     }
     prevLen.current = items.length;
     // Streaming bubbles grow without changing items.length — follow them.
-    if (transient?.text && !scrolledUp && scrollRef.current) {
+    if (transientTextLen > 0 && !scrolledUp && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [items.length, transient?.text, scrolledUp]);
+  }, [items.length, transientTextLen, scrolledUp]);
+
+  // One timeline bubble per active run, addressed via its agent member.
+  const transientBubbles = useMemo(() => {
+    return Object.entries(transients)
+      .map(([runId, t]) => ({
+        runId,
+        text: t.text,
+        sender: Object.values(roster).find((m) => m.memberId === t.agentMemberId) ?? null,
+      }))
+      .filter((b): b is { runId: string; text: string; sender: SenderRef } => b.sender !== null);
+  }, [transients, roster]);
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
@@ -304,9 +320,7 @@ export function ConversationCanvas({
                   viewerMemberId={viewerMemberId}
                   conversationId={conversationId}
                   scrollContainerRef={scrollRef}
-                  transient={
-                    transient && primaryAgent ? { ...transient, sender: primaryAgent } : undefined
-                  }
+                  transients={transientBubbles}
                 />
               </div>
             )}

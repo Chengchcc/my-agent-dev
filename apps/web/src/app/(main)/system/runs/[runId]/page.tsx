@@ -44,7 +44,11 @@ export default function SystemRunDetailPage() {
                 <div>
                   <span className="text-xs text-[var(--mute)]">Model</span>
                   <div>
-                    {run.model.backendKind}/{run.model.modelId}
+                    {run.model.modelId}
+                    <span className="text-[10px] text-[var(--mute)]">
+                      {" "}
+                      ({run.model.backendKind})
+                    </span>
                   </div>
                 </div>
                 <div>

@@ -202,7 +202,9 @@ async function main(): Promise<void> {
           throw new Error(`tool ${expected} not advertised to the model (saw: ${seen.join(",")})`);
         }
       }
-      console.log(`SMOKE PASS [clean] run=${round.runId} status=${round.status} tools=${seen.length}`);
+      console.log(
+        `SMOKE PASS [clean] run=${round.runId} status=${round.status} tools=${seen.length}`,
+      );
       return;
     }
 
