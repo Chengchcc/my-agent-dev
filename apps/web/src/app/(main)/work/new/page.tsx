@@ -72,7 +72,7 @@ export default function NewLoopPage() {
       <PageHeader
         breadcrumb="Work / New"
         title="New Loop"
-        description="Describe what you want to automate."
+        description="Define the automation goal. You can configure its schedule and items after creation."
       />
       <PageBody size="reading">
         {stage === "intent" && (
@@ -82,7 +82,8 @@ export default function NewLoopPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-[var(--muted)]">
-                Describe what you want to automate; I will configure the schedule and steps.
+                Loops are created as manual drafts: the goal becomes the loop name and a starting
+                LOOP.md. You set the schedule and items after creation.
               </p>
               <Textarea
                 value={intent}
@@ -91,7 +92,7 @@ export default function NewLoopPage() {
                 rows={6}
               />
               <Button onClick={handleCreate} disabled={!intent.trim() || createLoop.isPending}>
-                {createLoop.isPending ? "Generating…" : "Next"}
+                {createLoop.isPending ? "Creating draft…" : "Create draft"}
               </Button>
             </CardContent>
           </Card>
