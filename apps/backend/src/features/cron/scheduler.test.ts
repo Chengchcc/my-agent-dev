@@ -116,6 +116,10 @@ function makeRunsFakes(script: {
     async stop(runId) {
       stops.push(runId);
     },
+    isLive() {
+      return false;
+    },
+    async abortStaleRun() {},
     subscribe() {
       return (async function* () {})();
     },

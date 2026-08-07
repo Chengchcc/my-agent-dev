@@ -137,6 +137,46 @@ describe("Ledger CRUD", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]?.seq).toBe(2);
   });
+
+  test("getLedgerEntry returns the exact record by (conversationId, seq)", () => {
+    const entry = adapter.getLedgerEntry("conv-1", 1);
+    expect(entry).not.toBeNull();
+    expect(entry!.seq).toBe(1);
+    expect(entry!.conversationId).toBe("conv-1");
+    expect(entry!.kind).toBe("message");
+    expect(entry!.content as unknown).toEqual({ text: "hello" }); // parsed, not raw string
+
+    const second = adapter.getLedgerEntry("conv-1", 2);
+    expect(second?.seq).toBe(2);
+  });
+
+  test("getLedgerEntry returns null for unknown seq or conversation", () => {
+    expect(adapter.getLedgerEntry("conv-1", 999)).toBeNull();
+    expect(adapter.getLedgerEntry("conv-unknown", 1)).toBeNull();
+  });
+
+  test("getLedgerEntry is exact per conversation", () => {
+    adapter.createConversation({
+      conversationId: "conv-2",
+      triggerMode: "mention",
+      createdAt: Date.now(),
+    });
+    const seq2 = adapter.appendLedgerEntry({
+      conversationId: "conv-2",
+      senderMemberId: "mem-y",
+      addressedTo: [],
+      kind: "message",
+      content: JSON.stringify({ text: "other conv" }),
+      ts: Date.now(),
+    });
+    // conv-2's row carries a NEW global seq; it must not resolve for conv-1.
+    expect(adapter.getLedgerEntry("conv-1", seq2)).toBeNull();
+    expect(adapter.getLedgerEntry("conv-2", seq2)?.content as unknown).toEqual({
+      text: "other conv",
+    });
+    // conv-1's own rows still resolve to conv-1's records.
+    expect(adapter.getLedgerEntry("conv-1", 1)?.content as unknown).toEqual({ text: "hello" });
+  });
 });
 
 describe("lastActivityAt", () => {

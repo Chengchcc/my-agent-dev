@@ -65,7 +65,7 @@ beforeAll(async () => {
   });
   ledgerResolver = {
     async resolveMessage(cid: string, seq: number) {
-      const hit = convPort.getLedgerEntries(cid).find((e) => e.seq === seq);
+      const hit = convPort.getLedgerEntry(cid, seq);
       return hit ? (hit.content as never) : null;
     },
   };

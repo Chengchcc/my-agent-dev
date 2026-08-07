@@ -32,6 +32,7 @@ export default {
         "web",
         "lark-bot",
         // Features
+        "agent-run",
         "cron",
         "mcp",
         "conversation",

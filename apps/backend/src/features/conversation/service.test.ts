@@ -13,8 +13,7 @@ const contextPort = sqliteAgentContextAdapter(db, {
 });
 const ledgerResolver = {
   async resolveMessage(conversationId: string, ledgerSeq: number) {
-    const entries = port.getLedgerEntries(conversationId, { sinceSeq: ledgerSeq });
-    const hit = entries.find((e) => e.seq === ledgerSeq);
+    const hit = port.getLedgerEntry(conversationId, ledgerSeq);
     return hit?.kind === "message" ? (hit.content as never) : null;
   },
 };
@@ -104,6 +103,9 @@ function makeRunService(): AgentRunService {
 
 const runSvc = makeRunService();
 const injectSteerCalls: Array<{ branchId: string; inputId: string }> = [];
+const abortStaleCalls: string[] = [];
+/** RunIds considered "live" (in-process child). DB-active alone is not live. */
+let liveRunIds = new Set<string>();
 const svc = createConversationService({
   port,
   agentRunService: runSvc,
@@ -112,6 +114,10 @@ const svc = createConversationService({
   },
   injectSteer: async (branchId, input) => {
     injectSteerCalls.push({ branchId, inputId: input.inputId });
+  },
+  isLive: (runId) => liveRunIds.has(runId),
+  abortStaleRun: async (runId) => {
+    abortStaleCalls.push(runId);
   },
   contextService: contextSvc,
   resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "fake/echo" }),
@@ -215,13 +221,15 @@ describe("conversation service (Agent Run cutover)", () => {
     void agentMemberId;
   });
 
-  test("busy branch -> steer mode, queued, no dispatch of a new run", async () => {
+  test("busy branch with LIVE child -> steer mode, queued, no dispatch of a new run", async () => {
     const id = "cid-c";
     const { humanMemberId, agentMemberId } = setupConv(id);
     nextAcquired = false;
     activeRunId = "run-active";
+    liveRunIds = new Set(["run-active"]);
     enqueueCalls.length = 0;
     dispatchCalls.length = 0;
+    abortStaleCalls.length = 0;
 
     const result = await svc.postMessage({
       conversationId: id,
@@ -233,11 +241,40 @@ describe("conversation service (Agent Run cutover)", () => {
     expect(enqueueCalls).toHaveLength(1);
     expect(enqueueCalls[0]!.mode).toBe("steer");
     expect(result.triggeredRuns).toEqual([{ agentMemberId, runId: "", queued: true }]);
-    // steer belongs to the CURRENT run: injected into the live Worker, and
-    // NO new run is dispatched (one Run / one Worker).
+    // steer belongs to the CURRENT run: injected into the live child, and
+    // NO new run is dispatched (one Run / one child).
     expect(dispatchCalls).toHaveLength(0);
     expect(injectSteerCalls).toHaveLength(1);
     expect(injectSteerCalls[0]!.inputId).toBeTruthy();
+    expect(abortStaleCalls).toHaveLength(0);
+  });
+
+  test("zombie active run (DB active, no live child) -> abortStaleRun + fresh NORMAL run", async () => {
+    const id = "cid-z";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    nextAcquired = true;
+    activeRunId = "run-zombie";
+    liveRunIds = new Set(); // DB-active but NOT live: a zombie
+    enqueueCalls.length = 0;
+    dispatchCalls.length = 0;
+    abortStaleCalls.length = 0;
+    injectSteerCalls.length = 0;
+
+    const result = await svc.postMessage({
+      conversationId: id,
+      senderMemberId: humanMemberId,
+      addressedTo: [agentMemberId],
+      content: "hello again",
+    });
+
+    // The zombie is terminalized first, then the message becomes a NEW
+    // normal Run - never silently dropped as a steer.
+    expect(abortStaleCalls).toEqual(["run-zombie"]);
+    expect(enqueueCalls).toHaveLength(1);
+    expect(enqueueCalls[0]!.mode).toBe("normal");
+    expect(dispatchCalls).toHaveLength(1);
+    expect(injectSteerCalls).toHaveLength(0);
+    expect(result.triggeredRuns[0]!.queued).toBe(false);
   });
 
   test("explicit follow_up mode is honored even when idle", async () => {

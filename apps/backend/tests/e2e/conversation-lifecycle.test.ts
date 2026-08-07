@@ -23,8 +23,7 @@ const contextPort = sqliteAgentContextAdapter(db, {
 });
 const ledgerResolver = {
   async resolveMessage(conversationId: string, ledgerSeq: number) {
-    const entries = port.getLedgerEntries(conversationId, { sinceSeq: ledgerSeq });
-    const hit = entries.find((e) => e.seq === ledgerSeq);
+    const hit = port.getLedgerEntry(conversationId, ledgerSeq);
     return hit?.kind === "message" ? (hit.content as never) : null;
   },
 };
@@ -45,6 +44,8 @@ const deps: ConversationServiceDeps = {
   contextService: contextSvc,
   dispatchRun: async () => {},
   injectSteer: async () => {},
+  isLive: () => false,
+  abortStaleRun: async () => {},
   resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
   maxConsecutiveAgentHops: () => 8,
   idGen,

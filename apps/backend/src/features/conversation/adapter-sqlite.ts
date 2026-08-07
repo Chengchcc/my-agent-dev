@@ -238,6 +238,32 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
         } as LedgerEntry;
       });
     },
+
+    getLedgerEntry(conversationId: string, seq: number): LedgerEntry | null {
+      const row = d
+        .select()
+        .from(schema.conversationLedger)
+        .where(
+          and(
+            eq(schema.conversationLedger.conversationId, conversationId),
+            eq(schema.conversationLedger.seq, seq),
+          ),
+        )
+        .get();
+      if (!row) return null;
+      const result = schema.conversationLedgerSelectSchema.safeParse(row);
+      if (result.success) return result.data as LedgerEntry;
+      return {
+        seq: row.seq,
+        conversationId: row.conversationId,
+        senderMemberId: row.senderMemberId,
+        addressedTo: [] as string[],
+        kind: row.kind as LedgerEntry["kind"],
+        content: row.content,
+        ts: row.ts,
+        undone: row.undone === 1,
+      } as LedgerEntry;
+    },
     searchLedger(keyword: string, limit = 20) {
       const rows = d
         .select({

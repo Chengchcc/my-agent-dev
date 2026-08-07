@@ -172,11 +172,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   const ledgerResolver: LedgerMessageResolver = {
     async resolveMessage(conversationId, ledgerSeq) {
-      const entries = convPort.getLedgerEntries(conversationId, { sinceSeq: ledgerSeq });
-      const hit = entries.find((e) => e.seq === ledgerSeq);
-      if (hit?.kind !== "message") return null;
-      // getLedgerEntries returns content already parsed (port type lies).
-      return (hit.content as unknown as Message) ?? null;
+      const entry = convPort.getLedgerEntry(conversationId, ledgerSeq);
+      if (entry?.kind !== "message") return null;
+      // getLedgerEntry returns content already parsed (port type lies).
+      return (entry.content as unknown as Message) ?? null;
     },
   };
 
@@ -233,6 +232,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const injectSteer: {
     fn: (branchId: string, input: { inputId: string; message: Message }) => Promise<void>;
   } = { fn: async () => {} };
+  const isLive: { fn: (runId: string) => boolean } = { fn: () => false };
+  const abortStaleRun: { fn: (runId: string) => Promise<void> } = { fn: async () => {} };
   const conv = createConversationFeature({
     convPort,
     agentSvc,
@@ -241,6 +242,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     agentRunService,
     dispatchRun: (runId: string) => dispatchRun.fn(runId),
     injectSteer: (branchId, input) => injectSteer.fn(branchId, input),
+    isLive: (runId: string) => isLive.fn(runId),
+    abortStaleRun: (runId: string) => abortStaleRun.fn(runId),
     contextService: contextSvc,
   });
 
@@ -313,6 +316,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   dispatchRun.fn = (runId: string) => agentRunExecution.dispatch(runId);
   injectSteer.fn = (branchId: string, input: { inputId: string; message: Message }) =>
     agentRunExecution.injectSteer(branchId, input);
+  isLive.fn = (runId: string) => agentRunExecution.isLive(runId);
+  abortStaleRun.fn = (runId: string) => agentRunExecution.abortStaleRun(runId);
 
   // ─── Lark setup ────────────────────────────────────────────
   let setupManager: LarkSetupManager | undefined;

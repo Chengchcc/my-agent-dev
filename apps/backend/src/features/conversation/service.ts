@@ -44,6 +44,13 @@ export interface ConversationServiceDeps {
   /** Best-effort steer injection into the branch's LIVE run (used when the
    *  enqueue queued behind an active run with mode=steer). */
   injectSteer: (branchId: string, input: { inputId: string; message: Message }) => Promise<void>;
+  /** Live-child probe: true when the run has an in-process child. DB-active
+   *  alone is NOT enough (restart / pre-acceptance failure leaves a zombie
+   *  active run with no live child). */
+  isLive: (runId: string) => boolean;
+  /** Terminal a zombie run (DB active, no live child): aborted + input
+   *  cancelled + branch released, before enqueueing a fresh normal Run. */
+  abortStaleRun: (runId: string) => Promise<void>;
   /** Product Context branch resolution (mode decisions; no scope service -
    *  scope IS the Conversation/Member/Branch trio). */
   contextService: AgentContextService;
@@ -138,6 +145,8 @@ class ConversationServiceImpl implements ConversationService {
   #agentRuns: AgentRunService;
   #dispatchRun: (runId: string) => Promise<void>;
   #injectSteer: ConversationServiceDeps["injectSteer"];
+  #isLive: ConversationServiceDeps["isLive"];
+  #abortStaleRun: ConversationServiceDeps["abortStaleRun"];
   #contextService: AgentContextService;
   #resolveDefaultModel: (agentId: string) => Promise<BackendModelRef>;
   #maxHops: () => number;
@@ -155,6 +164,8 @@ class ConversationServiceImpl implements ConversationService {
     this.#agentRuns = deps.agentRunService;
     this.#dispatchRun = deps.dispatchRun;
     this.#injectSteer = deps.injectSteer;
+    this.#isLive = deps.isLive;
+    this.#abortStaleRun = deps.abortStaleRun;
     this.#contextService = deps.contextService;
     this.#resolveDefaultModel = deps.resolveDefaultModel;
     this.#maxHops = deps.maxConsecutiveAgentHops;
@@ -252,7 +263,19 @@ class ConversationServiceImpl implements ConversationService {
       BACKEND_KIND,
     );
     const active = await this.#agentRuns.getActiveRun(branch.branchId);
-    const mode = input.mode ?? (active ? "steer" : "normal");
+    // Auto-inferred steer requires BOTH a DB-active Run AND a live child:
+    // a DB-active run without a live child (restart / pre-acceptance
+    // failure) is a zombie - abort it and start a fresh normal Run. An
+    // EXPLICIT input.mode is never silently converted.
+    let mode: BranchInputMode;
+    if (input.mode) {
+      mode = input.mode;
+    } else if (active && this.#isLive(active.runId)) {
+      mode = "steer";
+    } else {
+      if (active) await this.#abortStaleRun(active.runId);
+      mode = "normal";
+    }
     const defaultModel = await this.#resolveDefaultModel(member.agentId);
     const { acquired, queued, cancelled, run, inputId } = await this.#agentRuns.enqueueAndAcquire({
       conversationId: input.conversationId,

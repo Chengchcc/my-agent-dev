@@ -256,6 +256,10 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
     async injectSteer() {},
     async retryTerminalCommit() {},
     async stop() {},
+    isLive() {
+      return false;
+    },
+    async abortStaleRun() {},
     subscribe() {
       return (async function* () {})();
     },

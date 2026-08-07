@@ -17,8 +17,7 @@ const ctxPort: AgentContextPort = sqliteAgentContextAdapter(db);
 const idGen: IdGenerator = { ulid: () => crypto.randomUUID().replace(/-/g, "").slice(0, 26) };
 const ledgerResolver: LedgerMessageResolver = {
   async resolveMessage(conversationId, ledgerSeq) {
-    const entries = conv.getLedgerEntries(conversationId, { sinceSeq: ledgerSeq - 1 });
-    const entry = entries.find((e) => e.seq === ledgerSeq);
+    const entry = conv.getLedgerEntry(conversationId, ledgerSeq);
     if (!entry) return null;
     return entry.content as never;
   },

@@ -30,6 +30,12 @@ export function createConversationFeature(input: {
   dispatchRun: (runId: string) => Promise<void>;
   /** Steer injection into the live run (features.ts wires it the same way). */
   injectSteer: (branchId: string, input: { inputId: string; message: Message }) => Promise<void>;
+  /** Live-child probe for the auto-steer fallback (features.ts wires it to
+   *  AgentRunExecutionService.isLive). */
+  isLive: (runId: string) => boolean;
+  /** Zombie-run terminalizer for the auto-steer fallback (features.ts wires
+   *  it to AgentRunExecutionService.abortStaleRun). */
+  abortStaleRun: (runId: string) => Promise<void>;
   contextService: AgentContextService;
 }): ConversationFeature {
   const {
@@ -40,6 +46,8 @@ export function createConversationFeature(input: {
     agentRunService,
     dispatchRun,
     injectSteer,
+    isLive,
+    abortStaleRun,
     contextService,
   } = input;
 
@@ -50,6 +58,8 @@ export function createConversationFeature(input: {
     agentRunService,
     dispatchRun,
     injectSteer,
+    isLive,
+    abortStaleRun,
     contextService,
     maxConsecutiveAgentHops: () => settingsSvc.get<number>("conversation.maxHops") ?? 8,
     idGen: ulid,

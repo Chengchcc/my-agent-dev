@@ -93,6 +93,9 @@ export interface ConversationPort {
 
   appendLedgerEntry(input: AppendLedgerInput): number; // returns seq
   getLedgerEntries(conversationId: string, opts?: { sinceSeq?: number }): LedgerEntry[];
+  /** Exact ledger lookup by (conversationId, seq) — the precise-reference
+   *  path for LedgerMessageResolver; never a cursor scan. */
+  getLedgerEntry(conversationId: string, seq: number): LedgerEntry | null;
   /** Mark a ledger entry as undone (soft delete). */
   markLedgerEntryUndone?(conversationId: string, seq: number): void;
   /** Get fork source metadata for a conversation. */

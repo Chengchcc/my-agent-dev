@@ -10,8 +10,7 @@ const conv = sqliteConversationAdapter(db);
 const port: AgentContextPort = sqliteAgentContextAdapter(db);
 const ledgerResolver: LedgerMessageResolver = {
   async resolveMessage(conversationId, ledgerSeq) {
-    const entries = conv.getLedgerEntries(conversationId, { sinceSeq: ledgerSeq - 1 });
-    const entry = entries.find((e) => e.seq === ledgerSeq);
+    const entry = conv.getLedgerEntry(conversationId, ledgerSeq);
     if (!entry) return null;
     return entry.content as never;
   },
@@ -234,8 +233,7 @@ describe("Agent Context projection", () => {
     // that returns a distinguishable message per conversation.
     const customResolver: LedgerMessageResolver = {
       async resolveMessage(conversationId, ledgerSeq) {
-        const entries = conv.getLedgerEntries(conversationId, { sinceSeq: 0 });
-        const entry = entries.find((e) => e.seq === ledgerSeq);
+        const entry = conv.getLedgerEntry(conversationId, ledgerSeq);
         if (!entry) return null;
         return entry.content as never;
       },

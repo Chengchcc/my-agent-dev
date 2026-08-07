@@ -100,18 +100,18 @@ function makeExecution(
   modelCatalogOverride?: {
     list: () => Promise<{ models: Array<{ id: string; available: boolean }> }>;
   },
+  contextPortOverride?: Partial<typeof contextPort>,
 ) {
   const activeRunPort = runPortOverride ?? runPort;
   const ledgerResolver = {
     async resolveMessage(cid: string, seq: number) {
-      const entries = convPort.getLedgerEntries(cid);
-      const hit = entries.find((e) => e.seq === seq);
+      const hit = convPort.getLedgerEntry(cid, seq);
       return hit ? (hit.content as never) : null;
     },
   };
   return createAgentRunExecutionService({
     runPort: activeRunPort,
-    contextPort,
+    contextPort: { ...contextPort, ...contextPortOverride } as never,
     ledgerResolver,
     backend: fakeDaemon.backend,
     modelCatalog: (modelCatalogOverride ?? fakeDaemon.modelCatalog) as never,
@@ -147,8 +147,7 @@ beforeEach(async () => {
   });
   const ledgerResolver = {
     async resolveMessage(cid: string, seq: number) {
-      const entries = convPort.getLedgerEntries(cid);
-      const hit = entries.find((e) => e.seq === seq);
+      const hit = convPort.getLedgerEntry(cid, seq);
       return hit ? (hit.content as never) : null;
     },
   };
@@ -330,7 +329,7 @@ describe("agent run execution (Run-centric)", () => {
     ).resolves.toEqual([]);
   }, 15_000);
 
-  test("execute rejection is TEMPORARY: run stays running, input stays delivering for retry", async () => {
+  test("execute rejection is a pre-acceptance failure: run failed + input cancelled", async () => {
     const fake = createFakeDaemon({ failFirstExecute: true });
     const execution = makeExecution(fake);
 
@@ -339,13 +338,85 @@ describe("agent run execution (Run-centric)", () => {
 
     await expect(execution.dispatch(runId)).rejects.toThrow(/rejected execute/);
 
-    const run = await runPort.getRun(runId);
-    expect(run?.status).toBe("running");
-    const inputs = await runPort.listInputs(run!.branchId);
-    expect(inputs[0]!.status).toBe("delivering");
+    const run = await waitForTerminal(runId);
+    expect(run.status).toBe("failed");
+    const inputs = await runPort.listInputs(run.branchId);
+    expect(inputs[0]!.status).toBe("cancelled");
   }, 15_000);
 
-  test("branch busy: a second normal/follow_up input creates a QUEUED run; the oldest promotes after the first settles", async () => {
+  test("Context projection failure: run failed, input cancelled, subscriber closed", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeExecution(fake, undefined, undefined, {
+      listEntriesToLeaf: async () => {
+        throw new Error("projection boom");
+      },
+    });
+
+    const acquired = await enqueue("normal", "proj-1", "hello");
+    const runId = acquired.run!.runId;
+
+    const collector = (async () => {
+      const events: string[] = [];
+      for await (const ev of execution.subscribe(runId)) events.push(ev.type);
+      return events;
+    })();
+
+    await expect(execution.dispatch(runId)).rejects.toThrow("projection boom");
+
+    const run = await waitForTerminal(runId);
+    expect(run.status).toBe("failed");
+    const inputs = await runPort.listInputs(run.branchId);
+    expect(inputs[0]!.status).toBe("cancelled");
+
+    await expect(
+      Promise.race([
+        collector,
+        Bun.sleep(500).then(() => {
+          throw new Error("subscriber did not close");
+        }),
+      ]),
+    ).resolves.toEqual([]);
+  }, 15_000);
+
+  test("no-live cancel releases the branch and promotes the next queued input", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeExecution(fake);
+
+    const first = await enqueue("normal", "cancel-1", "first");
+    expect(first.acquired).toBe(true);
+    const second = await enqueue("normal", "cancel-2", "second");
+    expect(second.queued).toBe(true);
+
+    // Simulate a zombie: the first run is active in the DB but was never
+    // dispatched on this process (no live child). stop() must terminal it,
+    // cancel its input, and promote the queued input into a FRESH run.
+    await execution.stop(first.run!.runId);
+
+    const aborted = await waitForTerminal(first.run!.runId);
+    expect(aborted.status).toBe("aborted");
+    const inputs = await runPort.listInputs(first.run!.branchId);
+    const firstInput = inputs.find((i) => i.inputId === first.inputId)!;
+    expect(firstInput.status).toBe("cancelled");
+
+    // The queued input became a new run that actually executed. The chain
+    // dispatch is fire-and-forget: poll until the child accepted it.
+    const secondInput = inputs.find((i) => i.inputId === second.inputId)!;
+    expect(secondInput.runId).not.toBe(first.run!.runId);
+    for (let i = 0; i < 100; i++) {
+      const rows = await runPort.listInputs(first.run!.branchId);
+      const row = rows.find((r) => r.inputId === second.inputId)!;
+      if (row.status === "delivered") break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    const delivered = (await runPort.listInputs(first.run!.branchId)).find(
+      (r) => r.inputId === second.inputId,
+    )!;
+    expect(delivered.status).toBe("delivered");
+    await waitForTerminal(delivered.runId!);
+    expect(fake.executeCalls.map((c) => c.runId)).toEqual([delivered.runId!]);
+  }, 15_000);
+
+  test("steer is injected into the live run after persistence; accepted only after Backend acceptance", async () => {
     const fake = createFakeDaemon({ outcomeDelayMs: 120 });
     const execution = makeExecution(fake);
 
@@ -379,35 +450,29 @@ describe("agent run execution (Run-centric)", () => {
     ]);
   }, 20_000);
 
-  test("a Run never calls Backend execute twice (acceptance failure keeps input delivering; retry re-executes once)", async () => {
+  test("acceptance failure terminates the run + cancels the input; recover() never re-executes", async () => {
     const fake = createFakeDaemon({ failFirstExecute: true });
     const execution = makeExecution(fake);
 
     const acquired = await enqueue("normal", "retry-1", "hello");
     const runId = acquired.run!.runId;
 
-    // First dispatch: the daemon rejects acceptance - the input stays
-    // delivering, the run stays running. The acceptance error is surfaced.
+    // First dispatch: the daemon rejects acceptance - a pre-acceptance
+    // failure must terminal the run, never leave a running zombie.
     await expect(execution.dispatch(runId)).rejects.toThrow(/simulated execute failure/);
-    const run = await runPort.getRun(runId);
-    expect(run?.status).toBe("running");
-    const inputs = await runPort.listInputs(run!.branchId);
-    expect(inputs[0]!.status).toBe("delivering");
+    const run = await waitForTerminal(runId);
+    expect(run.status).toBe("failed");
+    const inputs = await runPort.listInputs(run.branchId);
+    expect(inputs[0]!.status).toBe("cancelled");
 
-    // A fresh execution service (process restart) recovers the same input
-    // with the same runId: the daemon dedupes by runId + payload.
+    // A fresh execution service (process restart) must NOT re-deliver the
+    // cancelled input: a running Run is not a retry queue.
     const execution2 = makeExecution(fake);
     await execution2.recover();
-    const settled = await waitForTerminal(runId);
-    expect(settled.status).toBe("completed");
-    expect(fake.executeCalls.map((c) => c.runId)).toEqual([runId, runId]);
-    // Same runId delivered twice to the daemon (retry), but the run only
-    // ever produced ONE ledger message.
-    const ledger = convPort.getLedgerEntries(conversationId).filter((e) => e.kind === "message");
-    expect(ledger).toHaveLength(1);
+    expect(fake.executeCalls).toHaveLength(1);
   }, 15_000);
 
-  test("recovery uses the workspace snapshot persisted on the Run", async () => {
+  test("pinned workspace reaches the child; recover() is a no-op after terminal failure", async () => {
     const fake = createFakeDaemon({ failFirstExecute: true });
     const execution = makeExecution(fake);
 
@@ -429,12 +494,12 @@ describe("agent run execution (Run-centric)", () => {
     // The child records its cwd (canonicalized on macOS): compare realpaths.
     expect(realpathSync(fake.executeCalls[0]!.workspaceRoot)).toBe(realpathSync(pinnedWorkspace));
 
-    // Restart: a NEW execution service recovers - it must NOT re-resolve the
-    // workspace from the conversation; it re-uses the persisted snapshot.
+    // The run is terminal (failed); a restart recovers nothing.
+    const run = await waitForTerminal(runId);
+    expect(run.status).toBe("failed");
     const execution2 = makeExecution(fake);
     await execution2.recover();
-    await waitForTerminal(runId);
-    expect(realpathSync(fake.executeCalls[1]!.workspaceRoot)).toBe(realpathSync(pinnedWorkspace));
+    expect(fake.executeCalls).toHaveLength(1);
   }, 15_000);
 
   test("steer is injected into the live run after persistence; accepted only after Backend acceptance", async () => {

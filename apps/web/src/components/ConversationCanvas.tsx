@@ -414,7 +414,6 @@ function GoalStatusBar({ conversationId }: { conversationId: string }) {
   const { data: goal } = useQuery({
     queryKey: ["goal", conversationId],
     queryFn: () => api.getGoal(conversationId),
-    refetchInterval: 5000,
   });
 
   if (!goal?.condition) return null;

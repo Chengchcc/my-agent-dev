@@ -2,7 +2,6 @@ import type {
   CodingAgentBackend,
   CodingAgentModelCatalog,
 } from "@my-agent-team/adapter-coding-agent";
-import { CodingAgentProcessError } from "@my-agent-team/adapter-coding-agent";
 import type {
   BackendEvent,
   BackendModelRef,
@@ -115,19 +114,18 @@ export interface AgentRunExecutionService {
   /** Steer injection into the live run of a branch. Explicit failure (input
    *  cancelled) when no live run exists - never a silent conversion. */
   injectSteer(branchId: string, input: { inputId: string; message: Message }): Promise<void>;
+  /** True when the run has a live in-process child (steer/abort routable).
+   *  DB-active is NOT sufficient: after a restart or a pre-acceptance
+   *  failure the Run row can be active with no live child (a zombie). */
+  isLive(runId: string): boolean;
+  /** Terminal a DB-active run that has NO live child (zombie): Run aborted,
+   *  bound input cancelled, branch released. Only used by the auto-steer
+   *  fallback; explicit steer never silently converts. */
+  abortStaleRun(runId: string): Promise<void>;
   recover(): Promise<void>;
   retryTerminalCommit(runId: string): Promise<void>;
   stop(runId: string): Promise<void>;
   subscribe(runId: string, signal?: AbortSignal): AsyncIterable<BackendEvent>;
-}
-
-/** Backend configuration failures that retry can never fix: the executable
- *  is missing/unspawnable. Such a Run is finalized failed and its delivering
- *  input cancelled at dispatch time. Everything else - including the child
- *  rejecting execute acceptance (invalid_request) - is recoverable and keeps
- *  the Run active + input delivering for boot/manual recovery to retry. */
-export function isPermanentBackendError(err: unknown): boolean {
-  return err instanceof CodingAgentProcessError && err.code === "spawn_failed";
 }
 
 export function createAgentRunExecutionService(
@@ -343,21 +341,22 @@ export function createAgentRunExecutionService(
     inflight.add(runId);
     try {
       await dispatchInner(runId);
-    } catch (err) {
-      // Permanent backend configuration failures (missing executable,
-      // child rejects the run input) can never succeed on retry: terminal
-      // the Run and cancel its delivering input so the failure is visible
-      // instead of lingering as a phantom delivering row. Transient
-      // failures (child crash, acceptance race) keep the Run active and
-      // the input delivering for boot/manual recovery to retry.
-      if (isPermanentBackendError(err)) {
-        const detail = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      // Any failure BEFORE the child accepted (model catalog, Context
+      // projection, workspace resolution, child spawn, execute acceptance)
+      // leaves the Run active with NO live child - a zombie. Terminal it:
+      // Run failed, bound input cancelled, branch released, subscribers
+      // closed. A running Run is never a retry queue; if automatic retry is
+      // ever wanted it must be a NEW Run or an explicit retry state.
+      const run = await runPort.getRun(runId);
+      if (run && isActiveStatus(run.status) && !liveRuns.has(runId)) {
+        const detail = error instanceof Error ? error.message : String(error);
         await runPort
           .finalizeRun(runId, { status: "failed", error: detail })
           .catch((e) => console.error(`[agent-run] finalize failed for ${runId}:`, e));
         await runPort.cancelRunInput(runId).catch(() => {});
       }
-      throw err;
+      throw error;
     } finally {
       inflight.delete(runId);
       liveRuns.delete(runId);
@@ -465,11 +464,35 @@ export function createAgentRunExecutionService(
       }
       const run = await runPort.getRun(runId);
       if (run && isActiveStatus(run.status)) {
+        // Zombie: active in DB, no live child. Terminal it, cancel its
+        // input, and promote the next queued input so the branch does not
+        // stay blocked by a run nobody can drive.
         await runPort.finalizeRun(runId, {
           status: "aborted",
-          error: "stopped before backend acceptance",
+          error: "stale run without live child",
         });
+        await runPort.cancelRunInput(runId);
+        const next = await runPort.acquireNextRun(run.branchId);
+        if (next) {
+          void dispatchFn(next.runId).catch((err) => {
+            console.error(`[agent-run] chain dispatch failed for ${next.runId}:`, err);
+          });
+        }
       }
+    },
+
+    isLive(runId) {
+      return liveRuns.has(runId);
+    },
+
+    async abortStaleRun(runId) {
+      const run = await runPort.getRun(runId);
+      if (!run || !isActiveStatus(run.status)) return;
+      await runPort.finalizeRun(runId, {
+        status: "aborted",
+        error: "stale run without live child",
+      });
+      await runPort.cancelRunInput(runId);
     },
 
     subscribe(runId, signal) {
