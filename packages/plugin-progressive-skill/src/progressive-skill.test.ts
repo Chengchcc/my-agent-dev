@@ -89,4 +89,43 @@ describe("progressive skill index", () => {
     rmSync(first, { recursive: true, force: true });
     rmSync(second, { recursive: true, force: true });
   });
+
+  test("buildSkillIndex finds nested skills and keeps full relative path", () => {
+    const root = tmpDir("nested");
+    mkdirSync(join(root, "loop-engine", "loop-generator"), { recursive: true });
+    writeFileSync(
+      join(root, "loop-engine", "loop-generator", "SKILL.md"),
+      "---\nname: loop-generator\n---\n\nGenerate.",
+    );
+    const entries = buildSkillIndex([root]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.name).toBe("loop-generator");
+    expect(entries[0]?.relativePath).toBe("loop-engine/loop-generator/SKILL.md");
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("folded description (> block) is joined into one line", () => {
+    const root = tmpDir("folded");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(
+      join(root, "SKILL.md"),
+      "---\nname: folded-skill\ndescription: >\n  first line\n  second line\n---\n\nBody.",
+    );
+    const entries = buildSkillIndex([root]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.description).toBe("first line second line");
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("plain single-line description is unchanged", () => {
+    const root = tmpDir("plain");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(
+      join(root, "SKILL.md"),
+      "---\nname: plain-skill\ndescription: One line.\n---\n\nBody.",
+    );
+    const entries = buildSkillIndex([root]);
+    expect(entries[0]?.description).toBe("One line.");
+    rmSync(root, { recursive: true, force: true });
+  });
 });

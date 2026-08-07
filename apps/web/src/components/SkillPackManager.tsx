@@ -19,6 +19,15 @@ import { InstallPackForm } from "./InstallPackForm";
 
 type PackStatus = "pending" | "installing" | "ready" | "failed" | "syncing";
 
+/** Skill summary as returned by GET /api/skill-packs/:id/skills. */
+type SkillSummary = { name: string; description: string; dir: string };
+
+/** Parent directory of a relative path ("" for top-level files). */
+function dirname(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash < 0 ? "" : path.slice(0, slash);
+}
+
 function statusVariant(status: PackStatus): "default" | "destructive" | "secondary" | "outline" {
   if (status === "ready") return "default";
   if (status === "failed") return "destructive";
@@ -50,7 +59,15 @@ function FileTree({
   if (!data) return null;
 
   if (data.type === "file") {
-    return <div className="text-sm text-muted-foreground py-1 px-2">{path.split("/").pop()}</div>;
+    return (
+      <button
+        type="button"
+        className="text-sm hover:text-primary text-left w-full py-1 px-2"
+        onClick={() => onSelectFile(path)}
+      >
+        📄 {path.split("/").pop()}
+      </button>
+    );
   }
   // Error responses arrive as { error } without a type — render nothing
   // instead of crashing on a missing entries array.
@@ -59,29 +76,28 @@ function FileTree({
   const entries = data.entries ?? [];
   return (
     <ul className="pl-2 space-y-0.5">
-      {entries.map((e) => (
-        <li key={e.name}>
-          {e.type === "dir" ? (
-            <details>
-              <summary className="cursor-pointer text-sm hover:text-primary py-1">
-                📁 {e.name}
-              </summary>
-              <FileTree
-                packId={packId}
-                path={path ? `${path}/${e.name}` : e.name}
-                onSelectFile={onSelectFile}
-              />
-            </details>
-          ) : (
-            <button
-              className="text-sm hover:text-primary text-left w-full py-1 px-2"
-              onClick={() => onSelectFile(path ? `${path}/${e.name}` : e.name)}
-            >
-              📄 {e.name}
-            </button>
-          )}
-        </li>
-      ))}
+      {entries.map((e) => {
+        const entryPath = path ? `${path}/${e.name}` : e.name;
+        return (
+          <li key={entryPath}>
+            {e.type === "dir" ? (
+              <details>
+                <summary className="cursor-pointer text-sm hover:text-primary py-1">
+                  📁 {e.name}
+                </summary>
+                <FileTree packId={packId} path={entryPath} onSelectFile={onSelectFile} />
+              </details>
+            ) : (
+              <button
+                className="text-sm hover:text-primary text-left w-full py-1 px-2"
+                onClick={() => onSelectFile(entryPath)}
+              >
+                📄 {e.name}
+              </button>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -107,7 +123,7 @@ export function SkillPackManager() {
   // treaty can't derive skill-packs types due to Elysia intersection type limits
   const { data: packs, isLoading, refetch } = useSkillPackList();
   const [selectedPack, setSelectedPack] = useState<string | null>(null);
-  const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
+  const [selectedSkill, setSelectedSkill] = useState<SkillSummary | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [showInstall, setShowInstall] = useState(false);
 
@@ -261,12 +277,12 @@ export function SkillPackManager() {
               <h3 className="text-sm font-semibold mb-2">Skills</h3>
               {skills ? (
                 <div className="space-y-1">
-                  {skills.map((s: { name: string; description: string; dir: string }) => (
+                  {skills.map((s: SkillSummary) => (
                     <Card
-                      key={s.name}
-                      className={`cursor-pointer p-3 ${selectedSkill === s.name ? "border-primary" : ""}`}
+                      key={s.dir}
+                      className={`cursor-pointer p-3 ${selectedSkill?.dir === s.dir ? "border-primary" : ""}`}
                       onClick={() => {
-                        setSelectedSkill(s.name);
+                        setSelectedSkill(s);
                         setSelectedFile(null);
                       }}
                     >
@@ -283,19 +299,30 @@ export function SkillPackManager() {
               )}
             </div>
 
-            {/* File tree for selected skill */}
-            {selectedSkill && (
-              <div>
-                <h3 className="text-sm font-semibold mb-2">Files</h3>
-                <Card className="p-3">
-                  <FileTree
-                    packId={selectedPack!}
-                    path={selectedSkill}
-                    onSelectFile={(p) => setSelectedFile(p)}
-                  />
-                </Card>
+            {/* Pack files — roots at the pack; selecting a skill jumps to its
+                directory (SKILL.md lives one level under the skill dir). */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold">
+                  {selectedSkill ? selectedSkill.name : "Pack files"}
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-[10px]"
+                  onClick={() => setSelectedSkill(null)}
+                >
+                  All pack files
+                </Button>
               </div>
-            )}
+              <Card className="p-3">
+                <FileTree
+                  packId={selectedPack!}
+                  path={selectedSkill ? dirname(selectedSkill.dir) : ""}
+                  onSelectFile={(p) => setSelectedFile(p)}
+                />
+              </Card>
+            </div>
 
             {/* File content */}
             {selectedFile && selectedPack && (

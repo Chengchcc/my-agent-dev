@@ -99,12 +99,28 @@ function parseFrontmatter(path: string): { name: string; description: string } |
     if (!match) return null;
     const frontmatter = match[1] ?? "";
     const name = frontmatter.match(/name:\s*(.+)/)?.[1]?.trim();
-    const description = frontmatter.match(/description:\s*(.+)/)?.[1]?.trim();
     if (!name) return null;
-    return { name, description: description ?? "" };
+    return { name, description: parseDescription(frontmatter) };
   } catch {
     return null;
   }
+}
+
+/** Minimal YAML folded-block support for `description: >` / `description: |`:
+ *  join the following indented lines. Plain single-line descriptions are
+ *  returned unchanged. (No YAML parser dependency for two fields.) */
+function parseDescription(frontmatter: string): string {
+  const line = frontmatter.match(/^description:\s*(.*)$/m)?.[1] ?? "";
+  const trimmed = line.trim();
+  if (trimmed !== ">" && trimmed !== "|") return trimmed;
+  const lines = frontmatter.split("\n");
+  const index = lines.findIndex((l) => l.startsWith("description:"));
+  const body: string[] = [];
+  for (const l of lines.slice(index + 1)) {
+    if (!/^\s+/.test(l)) break;
+    body.push(l.trim());
+  }
+  return body.join(" ");
 }
 
 /** Create the progressive-skill Plugin: Meta index + skill_load tool. */
