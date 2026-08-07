@@ -390,4 +390,45 @@ describe("Provider contract", () => {
       { type: "tool_result", tool_use_id: "t1", content: "ok" },
     ]);
   });
+
+  test("anthropic serializes advertised tool schemas into the request body", async () => {
+    const provider = anthropicProvider({ apiKey: "test-key" });
+    const model = provider.getModels()[0]!;
+    let sentBody: Record<string, unknown> | null = null;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      sentBody = JSON.parse(String(init?.body));
+      return new Response("data: [DONE]\n", {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }) as unknown as typeof fetch;
+    try {
+      await drain(
+        provider.stream(model, [{ role: "user", text: "list files" }], {
+          apiKey: "test-key",
+          tools: [
+            { name: "ls", description: "List a directory", inputSchema: { type: "object" } },
+            { name: "read", description: "Read a file" },
+          ],
+        }),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const body = (sentBody ?? {}) as {
+      tools?: Array<{ name: string; description: string; input_schema: unknown }>;
+    };
+    expect(body.tools).toContainEqual({
+      name: "ls",
+      description: "List a directory",
+      input_schema: { type: "object" },
+    });
+    // inputSchema is optional: providers must default it, not drop the tool.
+    expect(body.tools).toContainEqual({
+      name: "read",
+      description: "Read a file",
+      input_schema: {},
+    });
+  });
 });

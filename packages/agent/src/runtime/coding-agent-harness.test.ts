@@ -58,6 +58,18 @@ function echoTool(name = "echo") {
 const fakeSummarize = async <T>(messages: readonly T[]): Promise<string> => {
   return `[Summary of ${messages.length} messages]`;
 };
+
+/** PluginTool-shaped static tool. */
+function staticTool(name: string) {
+  return {
+    name,
+    description: `${name} tool`,
+    inputSchema: { type: "object", properties: {} },
+    async execute() {
+      return { ok: true };
+    },
+  };
+}
 const LOOP_RUN: AgentRunSnapshot<"coding_agent"> = {
   runId: "loop-run",
   model: { backendKind: "coding_agent", modelId: "test-1" },
@@ -1435,6 +1447,33 @@ function testHarness(
       expect(storeSerialized).not.toContain(SENTINEL);
       expect(eventPayloads.join("")).not.toContain(SENTINEL);
       expect(loop.status).toBe("failed");
+    });
+
+    test("17. modelStream receives static + per-run tool schemas each turn", async () => {
+      const store = storeFactory("h17");
+      await createSession(store, "h17");
+      let seenTools: ReadonlyArray<{ name: string }> = [];
+
+      const loop = createCodingAgentSession({
+        sessionId: "h17",
+        store,
+        plugins: [{ name: "native", tools: [staticTool("ls"), staticTool("read")] }],
+        maxSteps: 1,
+        maxForceContinues: 0,
+        summarize: fakeSummarize,
+        resolveTools: async () => [staticTool("history_recent")],
+        modelStream: async function* (_messages, _signal, tools) {
+          seenTools = tools ?? [];
+          yield { delta: { type: "text", text: "done" } };
+          yield { stopReason: "end_turn" };
+        },
+      });
+      await loop.startLoop(loopInput({ message: "go" }));
+
+      const names = seenTools.map((t) => t.name);
+      expect(names).toContain("ls");
+      expect(names).toContain("read");
+      expect(names).toContain("history_recent"); // per-run resolved
     });
 
     afterAll(() => cleanup?.());

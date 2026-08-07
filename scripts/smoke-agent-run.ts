@@ -29,6 +29,7 @@ process.env.BACKEND_DATA_DIR = dataDir;
 process.env.ANTHROPIC_API_KEY = "sk-fake";
 process.env.BACKEND_AUTH_TOKEN = TOKEN;
 process.env.CODING_AGENT_FAKE_PROVIDER = "1";
+process.env.CODING_AGENT_FAKE_TOOLS_RECORD = `${dataDir}/tools-record.json`;
 
 const { createApp } = await import("../apps/backend/src/app.js");
 const { installFeatures } = await import("../apps/backend/src/bootstrap/features.js");
@@ -188,7 +189,20 @@ async function main(): Promise<void> {
       if (round.status !== "completed") {
         throw new Error(`clean round ended ${round.status}, expected completed`);
       }
-      console.log(`SMOKE PASS [clean] run=${round.runId} status=${round.status}`);
+      // The provider must have seen the advertised tool schemas (this was
+      // the bug: tools registered in the loop but never sent to the model).
+      const { readFileSync, existsSync } = await import("node:fs");
+      const toolsRecord = `${dataDir}/tools-record.json`;
+      if (!existsSync(toolsRecord)) {
+        throw new Error("tools-record.json missing: model request carried no tools?");
+      }
+      const seen = JSON.parse(readFileSync(toolsRecord, "utf-8")) as string[];
+      for (const expected of ["ls", "read", "todo_write"]) {
+        if (!seen.includes(expected)) {
+          throw new Error(`tool ${expected} not advertised to the model (saw: ${seen.join(",")})`);
+        }
+      }
+      console.log(`SMOKE PASS [clean] run=${round.runId} status=${round.status} tools=${seen.length}`);
       return;
     }
 

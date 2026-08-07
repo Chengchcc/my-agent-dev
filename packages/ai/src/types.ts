@@ -1,4 +1,4 @@
-import type { AIMessageChunk, Tool } from "@my-agent-team/core";
+import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 
 /** 模型输入模态 */
@@ -47,13 +47,22 @@ export interface Provider {
   ): AsyncIterable<AIMessageChunk>;
 }
 
+/** Tool schema advertised to a model. Providers only read the schema fields
+ *  (name/description/inputSchema) — execution stays in the agent loop, so
+ *  the full Tool interface (with execute) is not required here. */
+export interface ProviderToolSchema {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema?: Readonly<Record<string, unknown>>;
+}
+
 /** Per-request provider stream options. Credentials are resolved per request. */
 export interface ProviderStreamOptions {
   apiKey?: string;
   baseUrl?: string;
   headers?: Record<string, string>;
   signal?: AbortSignal;
-  tools?: readonly Tool[];
+  tools?: readonly ProviderToolSchema[];
 }
 
 /** API 类型标识（模型元数据，仅用于 catalog 标记）。 */
@@ -184,6 +193,6 @@ export interface ModelRuntime {
     providerId: string,
     modelId: string,
     messages: readonly Message[],
-    opts?: { signal?: AbortSignal; tools?: readonly Tool[] },
+    opts?: { signal?: AbortSignal; tools?: readonly ProviderToolSchema[] },
   ): AsyncIterable<AIMessageChunk>;
 }

@@ -44,11 +44,28 @@ export function fakeProvider(
   } catch {
     script = [];
   }
+  // CODING_AGENT_FAKE_TOOLS_RECORD=<path>: write the tool names the provider
+  // actually received per request (first request only) — lets integration
+  // tests assert the loop advertised tool schemas to the model.
+  const toolsRecord = env.CODING_AGENT_FAKE_TOOLS_RECORD;
+  let recorded = false;
   return {
     id: "fake",
     name: "Fake",
     getModels: () => [FAKE_MODEL, FAKE_MODEL_2],
-    async *stream(model: Model, _messages: readonly Message[]): AsyncIterable<AIMessageChunk> {
+    async *stream(
+      model: Model,
+      _messages: readonly Message[],
+      opts?: { tools?: ReadonlyArray<{ name: string }> },
+    ): AsyncIterable<AIMessageChunk> {
+      if (toolsRecord && !recorded) {
+        recorded = true;
+        try {
+          await Bun.write(toolsRecord, JSON.stringify((opts?.tools ?? []).map((t) => t.name)));
+        } catch {
+          /* record is best-effort */
+        }
+      }
       const next = script.shift();
       if (next) {
         const id = `toolu-fake-${++toolUseSeq}`;

@@ -48,6 +48,9 @@ export interface CodingAgentSessionOptions {
   readonly modelStream: (
     messages: readonly Message[],
     signal?: AbortSignal,
+    /** Current tool table (static plugins + per-Run resolved tools), so the
+     *  provider can advertise the schemas to the model. */
+    tools?: readonly PluginTool[],
   ) => AsyncIterable<AIMessageChunk>;
   readonly summarize: ContextSummarizer;
   /** Resolve the model display identity for a run's model ref, used to render
@@ -436,7 +439,9 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
 
     await emit({ type: "message_start" });
     const stream = retryStream(
-      (signal) => opts.modelStream(messages, signal),
+      // The tool table is re-read each turn so per-Run tools (Product
+      // Tools) from the latest resolveTools() are advertised to the model.
+      (signal) => opts.modelStream(messages, signal, [...toolMap.values()]),
       {
         maxAttempts: opts.maxRetries ?? 3,
         baseDelayMs: 1000,

@@ -25,6 +25,7 @@ export type {
   Provider,
   ProviderAuth,
   ProviderStreamOptions,
+  ProviderToolSchema,
   ResolvedCredential,
 } from "./types.js";
 export { ProviderError, ProviderErrorKind } from "./types.js";

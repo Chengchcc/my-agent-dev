@@ -318,7 +318,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     plugins,
     maxSteps: 32,
     maxForceContinues: 4,
-    modelStream: async function* (messages, signal) {
+    modelStream: async function* (messages, signal, tools) {
       const run = activeRun;
       if (!run) throw new Error("no active run: model unresolved");
       const catalog = await deps.modelRuntime.getCatalog();
@@ -330,6 +330,14 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
       const stream = deps.modelRuntime.stream(model.providerId, model.modelId, messages, {
         signal: combined,
+        // Providers only consume the schema fields; execution happens in
+        // the loop via toolMap. Explicit mapping keeps PluginTool's
+        // richer execute contract out of the provider boundary.
+        tools: tools?.map((t) => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema,
+        })),
       });
       const iter = stream[Symbol.asyncIterator]();
       try {
