@@ -49,7 +49,7 @@ export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
     cancelGraceMs: env.BACKEND_CANCEL_GRACE_MS,
     reaperIntervalMs: env.BACKEND_REAPER_INTERVAL_MS,
     stepStallTimeoutMs: env.BACKEND_STEP_STALL_TIMEOUT_MS,
-    builtinSkillsDir: process.env.BUILTIN_SKILLS_DIR ?? resolve(import.meta.dir, "../../skills"),
+    builtinSkillsDir: process.env.BUILTIN_SKILLS_DIR ?? resolve(import.meta.dir, "../../../skills"),
     codingAgentBin: env.CODING_AGENT_BIN,
     productToolsMcpUrl: env.PRODUCT_TOOLS_MCP_URL,
     productToolsServiceToken: env.PRODUCT_TOOLS_SERVICE_TOKEN,
