@@ -43,9 +43,10 @@ export interface ConvState {
   triggerMode: TriggerMode;
   /** M14.6: Task todo progress — full snapshot from todo_update events. */
   todos: Array<{ step: string; status: "pending" | "in_progress" | "done" }>;
-  /** Number of sends that have been dispatched locally but not yet
-   *  confirmed by the backend (POST in-flight). Cleared when the first
-   *  authoritative agent revision arrives or on send error. */
+  /** Number of sends that have been dispatched locally but not yet settled
+   *  by the backend (HTTP POST in-flight). Decremented on mutation
+   *  onSettled (success OR error) - never tied to an agent reply; Run
+   *  activity is tracked separately in the hook's activeRuns set. */
   pendingSendCount: number;
   /** W7: Monotonic sequence number for client-generated message IDs. */
   optimisticSeq: number;
@@ -54,6 +55,8 @@ export interface ConvState {
 export type Action =
   | { type: "bootstrap"; viewerMemberId: string; members: SenderRef[] }
   | { type: "send"; text: string; viewer: SenderRef }
+  /** POST settled (success OR error): decrement the in-flight counter. */
+  | { type: "send/settled" }
   | { type: "conn"; status: StreamConn }
   | { type: "toggleTriggerMode" }
   | { type: "send/error"; message: string }
@@ -274,8 +277,9 @@ export function reducer(s: ConvState, a: Action): ConvState {
         a.addressedTo ?? [],
         a.undone,
       );
-      const cleared = sender.kind === "agent" && s.pendingSendCount > 0 ? 0 : s.pendingSendCount;
-      return { ...s, items, pendingSendCount: cleared };
+      // pendingSendCount tracks ONLY the HTTP POST in flight (see
+      // send/settled); an agent reply must not fake-clear it.
+      return { ...s, items };
     }
 
     case "undo": {
@@ -310,11 +314,16 @@ export function reducer(s: ConvState, a: Action): ConvState {
     case "conn":
       return { ...s, streamConn: a.status };
 
+    case "send/settled":
+      return {
+        ...s,
+        pendingSendCount: Math.max(0, s.pendingSendCount - 1),
+      };
+
     case "send/error":
       return {
         ...s,
         error: a.message,
-        pendingSendCount: Math.max(0, s.pendingSendCount - 1),
       };
 
     case "toggleTriggerMode":

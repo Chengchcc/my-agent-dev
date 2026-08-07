@@ -119,7 +119,11 @@ function makeRunsFakes(script: {
     isLive() {
       return false;
     },
+    isInflight() {
+      return false;
+    },
     async abortStaleRun() {},
+    async dispose() {},
     subscribe() {
       return (async function* () {})();
     },

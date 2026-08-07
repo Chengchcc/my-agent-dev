@@ -20,7 +20,7 @@ import type {
 } from "../agent-context/ports.js";
 import { projectAgentContext } from "../agent-context/projection.js";
 import type { AgentRun, BranchInput, ClaimedBranchInput } from "./domain.js";
-import { isActiveStatus } from "./domain.js";
+import { isActiveStatus, isTerminalStatus } from "./domain.js";
 import type { AgentRunPort } from "./ports.js";
 
 // ─── Product History Tools (the only canonical tool set) ─────────────
@@ -119,14 +119,54 @@ export interface AgentRunExecutionService {
    *  DB-active is NOT sufficient: after a restart or a pre-acceptance
    *  failure the Run row can be active with no live child (a zombie). */
   isLive(runId: string): boolean;
+  /** True while the run's dispatch is in flight (pre-acceptance phases or
+   *  settling) even without a live child yet. "owned" = isLive || isInflight;
+   *  only a run that is neither is a true zombie. */
+  isInflight(runId: string): boolean;
   /** Terminal a DB-active run that has NO live child (zombie): Run aborted,
    *  bound input cancelled, branch released. Only used by the auto-steer
    *  fallback; explicit steer never silently converts. */
   abortStaleRun(runId: string): Promise<void>;
+  /** Shutdown: reject new dispatches, dispose the Backend (abort/SIGTERM/
+   *  SIGKILL every child, awaiting their exit), then drain every in-flight
+   *  dispatch so the DB is only closed after all terminal settles. */
+  dispose(): Promise<void>;
   recover(): Promise<void>;
   retryTerminalCommit(runId: string): Promise<void>;
   stop(runId: string): Promise<void>;
   subscribe(runId: string, signal?: AbortSignal): AsyncIterable<BackendEvent>;
+}
+
+/** Late-subscription handling for GET /agent-runs/:runId/events.
+ *  - settled/unknown run: one terminal status event, then close (never a
+ *    permanently open SSE for a run nothing will close);
+ *  - active + live child: subscribe to transient events;
+ *  - active, no live child (zombie): terminalize first, then a terminal
+ *    status + close so the UI never shows a permanent Running state. */
+export function runEventStreamFor(
+  run: Pick<AgentRun, "status"> | null,
+  execution: {
+    isLive(runId: string): boolean;
+    abortStaleRun(runId: string): Promise<void>;
+    subscribe(runId: string, signal?: AbortSignal): AsyncIterable<BackendEvent>;
+  },
+  runId: string,
+  signal?: AbortSignal,
+): AsyncIterable<BackendEvent> {
+  const terminal = (status: string): AsyncIterable<BackendEvent> =>
+    (async function* () {
+      yield { type: "status", status };
+    })();
+  if (!run || isTerminalStatus(run.status)) {
+    return terminal(run?.status ?? "failed");
+  }
+  if (execution.isLive(runId)) {
+    return execution.subscribe(runId, signal);
+  }
+  return (async function* () {
+    await execution.abortStaleRun(runId);
+    yield { type: "status", status: "aborted" };
+  })();
 }
 
 export function createAgentRunExecutionService(
@@ -138,6 +178,10 @@ export function createAgentRunExecutionService(
    *  subscription. Removed when the run reaches a terminal state. */
   const liveRuns = new Map<string, LiveRun>();
   const inflight = new Set<string>();
+  /** Dispatch promises by runId: dispose() drains them AFTER the children
+   *  are dead so the DB is never closed mid-finalize. */
+  const inflightPromises = new Map<string, Promise<void>>();
+  let disposed = false;
   const subscribers = new Map<string, Set<(e: BackendEvent) => void>>();
 
   function broadcast(runId: string, event: BackendEvent): void {
@@ -374,33 +418,38 @@ export function createAgentRunExecutionService(
   }
 
   const dispatchFn = async (runId: string): Promise<void> => {
-    if (inflight.has(runId)) return;
+    if (disposed || inflight.has(runId)) return;
     inflight.add(runId);
     debugLog("agent-run", `dispatch_start runId=${runId}`);
-    try {
-      await dispatchInner(runId);
-    } catch (error) {
-      // Any failure BEFORE the child accepted (model catalog, Context
-      // projection, workspace resolution, child spawn, execute acceptance)
-      // leaves the Run active with NO live child - a zombie. Terminal it:
-      // Run failed, bound input cancelled, branch released, subscribers
-      // closed. A running Run is never a retry queue; if automatic retry is
-      // ever wanted it must be a NEW Run or an explicit retry state.
-      const run = await runPort.getRun(runId);
-      if (run && isActiveStatus(run.status) && !liveRuns.has(runId)) {
-        const detail = error instanceof Error ? error.message : String(error);
-        await runPort
-          .finalizeRun(runId, { status: "failed", error: detail })
-          .catch((e) => console.error(`[agent-run] finalize failed for ${runId}:`, e));
-        await runPort.cancelRunInput(runId).catch(() => {});
+    const promise = (async () => {
+      try {
+        await dispatchInner(runId);
+      } catch (error) {
+        // Any failure BEFORE the child accepted (model catalog, Context
+        // projection, workspace resolution, child spawn, execute acceptance)
+        // leaves the Run active with NO live child - a zombie. Terminal it:
+        // Run failed, bound input cancelled, branch released, subscribers
+        // closed. A running Run is never a retry queue; if automatic retry is
+        // ever wanted it must be a NEW Run or an explicit retry state.
+        const run = await runPort.getRun(runId);
+        if (run && isActiveStatus(run.status) && !liveRuns.has(runId)) {
+          const detail = error instanceof Error ? error.message : String(error);
+          await runPort
+            .finalizeRun(runId, { status: "failed", error: detail })
+            .catch((e) => console.error(`[agent-run] finalize failed for ${runId}:`, e));
+          await runPort.cancelRunInput(runId).catch(() => {});
+        }
+        throw error;
+      } finally {
+        inflight.delete(runId);
+        inflightPromises.delete(runId);
+        liveRuns.delete(runId);
+        closeSubscribers(runId);
+        debugLog("agent-run", `dispatch_end runId=${runId}`);
       }
-      throw error;
-    } finally {
-      inflight.delete(runId);
-      liveRuns.delete(runId);
-      closeSubscribers(runId);
-      debugLog("agent-run", `dispatch_end runId=${runId}`);
-    }
+    })();
+    inflightPromises.set(runId, promise);
+    await promise;
   };
 
   return {
@@ -472,6 +521,31 @@ export function createAgentRunExecutionService(
           console.error(`[agent-run] recover commit retry failed for ${run.runId}:`, err);
         });
       }
+      // Restart orphans: a run whose input was DELIVERED (child accepted)
+      // has no live child after a restart and cannot be resumed (one-shot
+      // child architecture). Terminal it, cancel nothing (already
+      // delivered), release the branch, and promote the next queued input.
+      const orphans = await runPort.listActiveRunsWithDeliveredInputs();
+      for (const orphan of orphans) {
+        if (liveRuns.has(orphan.runId)) continue;
+        debugLog(
+          "agent-run",
+          `recover_orphan runId=${orphan.runId} status=${orphan.status} branchId=${orphan.branchId}`,
+        );
+        await runPort
+          .finalizeRun(orphan.runId, {
+            status: "aborted",
+            error: "stale run without live child after restart",
+          })
+          .catch((err) => {
+            console.error(`[agent-run] recover orphan finalize failed for ${orphan.runId}:`, err);
+          });
+        const promoted = await runPort.acquireNextRun(orphan.branchId);
+        if (!promoted) continue;
+        await dispatchFn(promoted.runId).catch((err) => {
+          console.error(`[agent-run] recover orphan promote failed for ${promoted.runId}:`, err);
+        });
+      }
     },
 
     /** Retry the Product commit of a commit_failed run from the STORED
@@ -522,6 +596,19 @@ export function createAgentRunExecutionService(
 
     isLive(runId) {
       return liveRuns.has(runId);
+    },
+
+    isInflight(runId) {
+      return inflight.has(runId);
+    },
+
+    async dispose() {
+      disposed = true;
+      // Children first: their exit settles every pending outcome/acceptance,
+      // which unblocks the in-flight dispatches below.
+      await backend.dispose();
+      await Promise.allSettled([...inflightPromises.values()]);
+      inflightPromises.clear();
     },
 
     async abortStaleRun(runId) {

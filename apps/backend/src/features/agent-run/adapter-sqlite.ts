@@ -1028,6 +1028,22 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
       return rows.map(parseRun);
     },
 
+    async listActiveRunsWithDeliveredInputs() {
+      const rows = d
+        .selectDistinct({ run: schema.agentRun })
+        .from(schema.agentRun)
+        .innerJoin(
+          schema.branchInputQueue,
+          and(
+            eq(schema.branchInputQueue.runId, schema.agentRun.runId),
+            eq(schema.branchInputQueue.status, "delivered"),
+          ),
+        )
+        .where(inArray(schema.agentRun.status, ["running", "waiting", "commit_failed"]))
+        .all();
+      return rows.map((r) => parseRun(r.run));
+    },
+
     async getActiveRun(branchId) {
       const row = d
         .select()

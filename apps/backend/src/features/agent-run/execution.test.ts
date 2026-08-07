@@ -13,7 +13,7 @@ import { createAgentContextService, sqliteAgentContextAdapter } from "../agent-c
 import { sqliteConversationAdapter } from "../conversation/adapter-sqlite.js";
 import { sqliteAgentRunAdapter } from "./adapter-sqlite.js";
 import type { AgentRun } from "./domain.js";
-import { createAgentRunExecutionService } from "./execution.js";
+import { createAgentRunExecutionService, runEventStreamFor } from "./execution.js";
 import { createAgentRunService } from "./service.js";
 
 // ─── Real RPC child (fixture) harness ─────────────────────────────────
@@ -414,6 +414,74 @@ describe("agent run execution (Run-centric)", () => {
     expect(delivered.status).toBe("delivered");
     await waitForTerminal(delivered.runId!);
     expect(fake.executeCalls.map((c) => c.runId)).toEqual([delivered.runId!]);
+  }, 15_000);
+
+  test("late subscription to a settled run closes immediately with a terminal status", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeExecution(fake);
+    const acquired = await enqueue("normal", "late-1", "hello");
+    const runId = acquired.run!.runId;
+    await execution.dispatch(runId);
+    await waitForTerminal(runId);
+
+    // The run settled BEFORE the UI connected: the stream must yield one
+    // terminal status and end, not hang until an HTTP timeout.
+    const events: string[] = [];
+    for await (const ev of runEventStreamFor({ status: "completed" }, execution, runId)) {
+      events.push(ev.type);
+    }
+    expect(events).toEqual(["status"]);
+  }, 15_000);
+
+  test("late subscription to a zombie run terminalizes it and reports aborted", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeExecution(fake);
+    const acquired = await enqueue("normal", "late-2", "hello");
+    const runId = acquired.run!.runId;
+    // Never dispatched: active in DB, no live child, not in flight.
+    const events: string[] = [];
+    for await (const ev of runEventStreamFor({ status: "running" }, execution, runId)) {
+      events.push(ev.type);
+    }
+    expect(events).toEqual(["status"]);
+    const run = await waitForTerminal(runId);
+    expect(run.status).toBe("aborted");
+    const inputs = await runPort.listInputs(run.branchId);
+    expect(inputs[0]!.status).toBe("cancelled");
+  }, 15_000);
+
+  test("recovery terminalizes a delivered-active orphan run and promotes the next input", async () => {
+    const fake = createFakeDaemon();
+    void makeExecution(fake);
+
+    const first = await enqueue("normal", "orphan-1", "first");
+    expect(first.acquired).toBe(true);
+    const second = await enqueue("normal", "orphan-2", "second");
+    expect(second.queued).toBe(true);
+
+    // Simulate "child accepted, then the process died": the input is
+    // delivered, the run is still active, and there is no live child.
+    await runPort.markInputAccepted(first.inputId);
+
+    // A fresh execution service = a restarted process. recover() must
+    // terminalize the orphan and promote the queued input.
+    const execution2 = makeExecution(fake);
+    await execution2.recover();
+
+    const aborted = await waitForTerminal(first.run!.runId);
+    expect(aborted.status).toBe("aborted");
+    for (let i = 0; i < 100; i++) {
+      const rows = await runPort.listInputs(first.run!.branchId);
+      const row = rows.find((r) => r.inputId === second.inputId)!;
+      if (row.status === "delivered") break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    const promoted = (await runPort.listInputs(first.run!.branchId)).find(
+      (r) => r.inputId === second.inputId,
+    )!;
+    expect(promoted.status).toBe("delivered");
+    await waitForTerminal(promoted.runId!);
+    expect(fake.executeCalls.map((c) => c.runId)).toEqual([promoted.runId!]);
   }, 15_000);
 
   test("steer is injected into the live run after persistence; accepted only after Backend acceptance", async () => {

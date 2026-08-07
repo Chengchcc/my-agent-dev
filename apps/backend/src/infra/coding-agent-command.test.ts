@@ -22,23 +22,28 @@ const baseConfig: BackendConfig = {
 };
 
 describe("resolveCodingAgentCommand", () => {
-  test("uses Bun + monorepo source CLI when CODING_AGENT_BIN is absent", () => {
+  test("uses Bun + monorepo source CLI with --mode rpc when CODING_AGENT_BIN is absent", () => {
     const result = resolveCodingAgentCommand(baseConfig);
 
     expect(result.executable).toBe(process.execPath);
-    expect(result.args).toHaveLength(1);
-    expect(result.args![0]).toEndWith("/apps/coding-agent/src/cli.ts");
+    expect(result.args).toEqual([
+      expect.stringMatching(/\/apps\/coding-agent\/src\/cli\.ts$/),
+      "--mode",
+      "rpc",
+    ]);
     expect(existsSync(result.args![0]!)).toBe(true);
   });
 
-  test("uses explicit production executable when CODING_AGENT_BIN is set", () => {
+  test("uses explicit production executable with --mode rpc when CODING_AGENT_BIN is set", () => {
     const result = resolveCodingAgentCommand({
       ...baseConfig,
       codingAgentBin: "/app/bin/coding-agent",
     });
 
     expect(result.executable).toBe("/app/bin/coding-agent");
-    expect(result.args).toBeUndefined();
+    // RPC mode is mandatory: without it the child blocks on piped stdin
+    // (print mode) while the adapter keeps stdin open - a deadlock.
+    expect(result.args).toEqual(["--mode", "rpc"]);
   });
 
   test("throws when the source fallback entry is missing", () => {

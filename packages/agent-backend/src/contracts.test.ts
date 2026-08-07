@@ -38,6 +38,8 @@ class FakeBackend implements AgentBackend<"fake"> {
   async steer(_runId: string, _input: BackendInputMessage): Promise<void> {}
 
   async stop(_runId: string): Promise<void> {}
+
+  async dispose(): Promise<void> {}
 }
 
 const RUN_SNAPSHOT = {

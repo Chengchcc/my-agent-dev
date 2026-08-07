@@ -106,6 +106,8 @@ const injectSteerCalls: Array<{ branchId: string; inputId: string }> = [];
 const abortStaleCalls: string[] = [];
 /** RunIds considered "live" (in-process child). DB-active alone is not live. */
 let liveRunIds = new Set<string>();
+/** RunIds with a dispatch in flight (pre-acceptance) on this process. */
+let inflightRunIds = new Set<string>();
 const svc = createConversationService({
   port,
   agentRunService: runSvc,
@@ -116,6 +118,7 @@ const svc = createConversationService({
     injectSteerCalls.push({ branchId, inputId: input.inputId });
   },
   isLive: (runId) => liveRunIds.has(runId),
+  isInflight: (runId) => inflightRunIds.has(runId),
   abortStaleRun: async (runId) => {
     abortStaleCalls.push(runId);
   },
@@ -255,6 +258,7 @@ describe("conversation service (Agent Run cutover)", () => {
     nextAcquired = true;
     activeRunId = "run-zombie";
     liveRunIds = new Set(); // DB-active but NOT live: a zombie
+    inflightRunIds = new Set();
     enqueueCalls.length = 0;
     dispatchCalls.length = 0;
     abortStaleCalls.length = 0;
@@ -275,6 +279,34 @@ describe("conversation service (Agent Run cutover)", () => {
     expect(dispatchCalls).toHaveLength(1);
     expect(injectSteerCalls).toHaveLength(0);
     expect(result.triggeredRuns[0]!.queued).toBe(false);
+  });
+
+  test("inflight run (pre-acceptance dispatch) is queued as follow_up, never aborted", async () => {
+    const id = "cid-i";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    nextAcquired = false;
+    activeRunId = "run-inflight";
+    liveRunIds = new Set(); // no live child YET (pre-acceptance window)
+    inflightRunIds = new Set(["run-inflight"]); // dispatch is in flight
+    enqueueCalls.length = 0;
+    dispatchCalls.length = 0;
+    abortStaleCalls.length = 0;
+    injectSteerCalls.length = 0;
+
+    const result = await svc.postMessage({
+      conversationId: id,
+      senderMemberId: humanMemberId,
+      addressedTo: [agentMemberId],
+      content: "wait for it",
+    });
+
+    // The in-flight run is owned: queue the message as follow-up instead of
+    // aborting it and racing a second child.
+    expect(abortStaleCalls).toHaveLength(0);
+    expect(enqueueCalls).toHaveLength(1);
+    expect(enqueueCalls[0]!.mode).toBe("follow_up");
+    expect(injectSteerCalls).toHaveLength(0);
+    expect(result.triggeredRuns[0]!.queued).toBe(true);
   });
 
   test("explicit follow_up mode is honored even when idle", async () => {

@@ -99,6 +99,8 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
     resolve(release: (() => void) | null): void;
   }> = [];
   private liveSlots = 0;
+  /** Set by dispose(): rejects new executes and cancels queued spawns. */
+  private disposed = false;
 
   constructor(command: CodingAgentCommandConfig, opts: CodingAgentBackendOptions = {}) {
     this.command = command;
@@ -149,6 +151,9 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
     input: BackendRunInput<"coding_agent">,
   ): Promise<BackendRunSegment<"coding_agent">> {
     const runId = input.run.runId;
+    if (this.disposed) {
+      throw new CodingAgentProcessError("conflict", "backend is shutting down");
+    }
     if (this.active.has(runId)) {
       throw new CodingAgentProcessError(
         "conflict",
@@ -343,6 +348,47 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
     handle.settle({ status: "failed", error: detail });
     handle.proc.kill();
     void this.reap(handle);
+  }
+
+  /** Shut down EVERY child deterministically:
+   *  1. reject new executes + cancel queued spawn-slot waiters;
+   *  2. accepted children get a best-effort RPC abort;
+   *  3. pre-acceptance children (acceptance may NEVER resolve, e.g. the
+   *     child fell into the wrong mode) are SIGTERM'd directly;
+   *  4. wait up to abortGraceMs for exit, then SIGKILL;
+   *  5. reap every handle so `active` and the slot count drain.
+   *  Never awaits `handle.acceptance` - a stuck child cannot block shutdown. */
+  async dispose(): Promise<void> {
+    this.disposed = true;
+
+    for (const waiter of this.slotQueue.splice(0)) {
+      waiter.resolve(null);
+    }
+
+    const handles = [...this.active.values()];
+    for (const handle of handles) {
+      if (handle.accepted) {
+        void this.sendCommand(handle, `abort-${handle.runId}`, {
+          id: `abort-${handle.runId}`,
+          type: "abort",
+          runId: handle.runId,
+        }).catch(() => {});
+      } else {
+        // Pre-acceptance: no RPC is routable; terminate directly.
+        handle.proc.kill("SIGTERM");
+      }
+    }
+
+    await Promise.allSettled(
+      handles.map(async (handle) => {
+        const exited = await withTimeout(handle.proc.exit, this.abortGraceMs);
+        if (exited === null) {
+          handle.proc.kill("SIGKILL");
+          await handle.proc.exit.catch(() => null);
+        }
+        await this.reap(handle);
+      }),
+    );
   }
 }
 

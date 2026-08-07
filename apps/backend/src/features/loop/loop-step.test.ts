@@ -259,7 +259,11 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
     isLive() {
       return false;
     },
+    isInflight() {
+      return false;
+    },
     async abortStaleRun() {},
+    async dispose() {},
     subscribe() {
       return (async function* () {})();
     },

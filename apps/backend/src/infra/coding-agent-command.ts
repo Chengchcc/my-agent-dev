@@ -5,13 +5,16 @@ import type { BackendConfig } from "../config.js";
 
 /** Resolve the Coding Agent process command for a Backend deployment.
  *
- *  - `CODING_AGENT_BIN` configured (production): use the absolute path to the
- *    built `dist/cli.js` (or a deployment wrapper) as-is, no args.
+ *  - `CODING_AGENT_BIN` configured (production): run the built `dist/cli.js`
+ *    (or a deployment wrapper) with `--mode rpc`.
  *  - Not configured (monorepo dev/test): run the SOURCE CLI entry with the
  *    same Bun executable as the Backend — no global install required.
  *
- *  Never a shell string: `executable` + explicit `args` only (no argument
- *  injection). Secrets travel exclusively via env. */
+ *  BOTH paths pass `--mode rpc` explicitly: without it the child falls into
+ *  print mode and blocks reading piped stdin until EOF, while the adapter
+ *  keeps stdin open for JSONL — a permanent deadlock. Never a shell string:
+ *  `executable` + explicit `args` only (no argument injection). Secrets
+ *  travel exclusively via env. */
 export function resolveCodingAgentCommand(
   config: BackendConfig,
   opts: {
@@ -31,7 +34,7 @@ export function resolveCodingAgentCommand(
   };
 
   if (config.codingAgentBin) {
-    return { executable: config.codingAgentBin, env };
+    return { executable: config.codingAgentBin, args: ["--mode", "rpc"], env };
   }
 
   // Monorepo dev/test fallback: same Bun executable as the Backend, running
@@ -44,7 +47,7 @@ export function resolveCodingAgentCommand(
 
   return {
     executable: process.execPath,
-    args: [appEntry],
+    args: [appEntry, "--mode", "rpc"],
     env,
   };
 }

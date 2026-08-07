@@ -233,6 +233,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     fn: (branchId: string, input: { inputId: string; message: Message }) => Promise<void>;
   } = { fn: async () => {} };
   const isLive: { fn: (runId: string) => boolean } = { fn: () => false };
+  const isInflight: { fn: (runId: string) => boolean } = { fn: () => false };
   const abortStaleRun: { fn: (runId: string) => Promise<void> } = { fn: async () => {} };
   const conv = createConversationFeature({
     convPort,
@@ -243,6 +244,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     dispatchRun: (runId: string) => dispatchRun.fn(runId),
     injectSteer: (branchId, input) => injectSteer.fn(branchId, input),
     isLive: (runId: string) => isLive.fn(runId),
+    isInflight: (runId: string) => isInflight.fn(runId),
     abortStaleRun: (runId: string) => abortStaleRun.fn(runId),
     contextService: contextSvc,
   });
@@ -287,13 +289,14 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   };
   const codingAgentCommand = resolveCodingAgentCommand(config);
   const modelCatalog = new CodingAgentModelCatalog(codingAgentCommand);
+  const codingAgentBackend = new CodingAgentBackend(codingAgentCommand, {
+    maxConcurrent: config.maxConcurrentRuns,
+  });
   const agentRunExecution = createAgentRunExecutionService({
     runPort: agentRunPort,
     contextPort,
     ledgerResolver,
-    backend: new CodingAgentBackend(codingAgentCommand, {
-      maxConcurrent: config.maxConcurrentRuns,
-    }),
+    backend: codingAgentBackend,
     modelCatalog,
     idGen: { ulid },
     resolveWorkspace: async ({ conversationId, agentMemberId }) => {
@@ -317,6 +320,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   injectSteer.fn = (branchId: string, input: { inputId: string; message: Message }) =>
     agentRunExecution.injectSteer(branchId, input);
   isLive.fn = (runId: string) => agentRunExecution.isLive(runId);
+  isInflight.fn = (runId: string) => agentRunExecution.isInflight(runId);
   abortStaleRun.fn = (runId: string) => agentRunExecution.abortStaleRun(runId);
 
   // ─── Lark setup ────────────────────────────────────────────
@@ -485,11 +489,14 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   }
 
   async function dispose(): Promise<void> {
-    cronScheduler.dispose();
+    // Order matters: stop producing Runs first, then kill every Coding
+    // Agent child and drain in-flight dispatches (the DB must not close
+    // mid-finalize), THEN close surfaces that children may still call
+    // (Product Tools MCP) and finally Lark/setup.
+    cronScheduler.dispose(); // no new Runs
+    await agentRunExecution.dispose(); // abort/SIGTERM/SIGKILL children + drain
     await larkBotRegistry.dispose();
     setupManager?.dispose();
-    // Phase 5: close the Product Tools MCP server (each Run is a one-shot
-    // coding-agent child that exits on its own after its outcome).
     await productToolsMcp?.close();
   }
 

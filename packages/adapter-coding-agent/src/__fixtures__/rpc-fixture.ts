@@ -15,6 +15,8 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
  *    stderr-flood            success, 200 KiB stderr incl. RPC_FIXTURE_SECRET,
  *                            outcome failed, exit(1)
  *    no-events               success, then wait for abort, respond, exit(0)
+ *    silent                  never respond to execute (stuck pre-acceptance;
+ *                            dispose() must SIGTERM without awaiting acceptance)
  *                            WITHOUT any outcome (abort-grace path)
  *    steer-error             steer responds success:false
  *
@@ -104,6 +106,12 @@ async function main(): Promise<void> {
         // can assert the adapter's spawn cwd contract.
         note("execute", `${runId} ${process.cwd()}`);
         if (cwdMarker) writeFileSync(cwdMarker, process.cwd());
+        if (scenario === "silent") {
+          // Never respond to execute: models a child stuck pre-acceptance
+          // (e.g. it fell into the wrong CLI mode). dispose() must SIGTERM
+          // it without ever waiting on the acceptance promise.
+          continue;
+        }
         if (scenario === "reject-execute") {
           out({
             id: cmd.id,

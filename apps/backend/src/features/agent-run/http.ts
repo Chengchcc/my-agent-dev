@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
-import type { AgentRunExecutionService } from "./execution.js";
+import { type AgentRunExecutionService, runEventStreamFor } from "./execution.js";
 import type { AgentRunService } from "./service.js";
 
 const ACTIVE_STATUSES = ["running", "waiting", "commit_failed"];
@@ -129,8 +129,9 @@ export function agentRunRoutes(input: {
       await agentRunExecution.stop(runId);
       return { ok: true, state: "abort_sent", runId };
     })
-    .get("/api/agent-runs/:runId/events", ({ request, params: { runId } }) => {
-      const stream = agentRunExecution.subscribe(runId, request.signal);
+    .get("/api/agent-runs/:runId/events", async ({ request, params: { runId } }) => {
+      const run = await agentRunService.getRun(runId);
+      const stream = runEventStreamFor(run, agentRunExecution, runId, request.signal);
       return sseResponse(
         stream,
         (ev) => ({

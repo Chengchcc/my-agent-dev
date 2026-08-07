@@ -27,4 +27,10 @@ export interface AgentBackend<K extends string = string> {
   /** Request cancellation of the live Run `runId`. The segment's outcome
    *  still resolves (aborted). */
   stop(runId: string): Promise<void>;
+
+  /** Shut down ALL children deterministically (Backend shutdown path):
+   *  reject new executes, cancel queued spawns, abort accepted children,
+   *  SIGTERM pre-acceptance children, SIGKILL after a bounded grace, and
+   *  await every child's exit. Never blocks on a stuck acceptance. */
+  dispose(): Promise<void>;
 }

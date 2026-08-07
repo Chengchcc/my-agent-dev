@@ -210,6 +210,57 @@ describe("CodingAgentBackend (child process)", () => {
   }, 10_000);
 });
 
+describe("CodingAgentBackend.dispose (deterministic shutdown)", () => {
+  /** execute() yields at its first await BEFORE the handle is registered;
+   *  dispose() must see the registered child, so wait for it. */
+  async function waitForActive(backend: CodingAgentBackend, size: number): Promise<void> {
+    const active = (backend as unknown as { active: Map<string, unknown> }).active;
+    for (let i = 0; i < 200 && active.size < size; i++) {
+      await Bun.sleep(10);
+    }
+  }
+
+  test("SIGTERMs a pre-acceptance child (silent) without awaiting acceptance", async () => {
+    const backend = new CodingAgentBackend(makeConfig("silent"), { abortGraceMs: 300 });
+    // execute() blocks on acceptance forever for a silent child - never
+    // await it; dispose must not wait on that promise either.
+    const executeP = backend.execute(inputWith("r-silent")).catch(() => null);
+    await waitForActive(backend, 1);
+
+    const started = Date.now();
+    await backend.dispose();
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(await executeP).toBeNull(); // execute rejected (process exited)
+  }, 10_000);
+
+  test("aborts accepted children and awaits their exit; active drains", async () => {
+    const backend = new CodingAgentBackend(makeConfig("no-events"), { abortGraceMs: 200 });
+    const segment = await backend.execute(inputWith("r-abort-1"));
+    // no-events child accepts, then never emits an outcome - only an abort
+    // (then SIGKILL after the grace) can end it.
+    await backend.dispose();
+    const outcome = await segment.outcome.catch(() => null);
+    expect(outcome === null || outcome.status === "failed" || outcome.status === "aborted").toBe(
+      true,
+    );
+  }, 10_000);
+
+  test("cancels queued spawn-slot waiters and rejects new executes", async () => {
+    const backend = new CodingAgentBackend(makeConfig("silent"), { maxConcurrent: 1 });
+    const first = backend.execute(inputWith("r-slot-1")).catch(() => null);
+    // Second execute waits in the slot queue (only one slot, first holds it).
+    const second = backend.execute(inputWith("r-slot-2")).catch((err) => err);
+    await waitForActive(backend, 1);
+
+    await backend.dispose();
+
+    const firstResult = await first;
+    expect(firstResult).toBeNull(); // SIGTERM'd pre-acceptance
+    const secondResult = await second;
+    expect(secondResult).toBeInstanceOf(Error); // slot wait cancelled
+  }, 10_000);
+});
+
 describe("CodingAgentModelCatalog", () => {
   test("list spawns --list-models --json and returns the canonical catalog", async () => {
     const catalog = new CodingAgentModelCatalog(makeConfig("normal"));

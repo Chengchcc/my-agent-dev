@@ -31,8 +31,9 @@ async function shutdown(signal: string) {
   console.log(`[backend] ${signal} received, shutting down...`);
 
   server.stop();
-  await Bun.sleep(config.cancelGraceMs);
 
+  // The grace period lives INSIDE the child shutdown (abortGraceMs, real
+  // child exit), not as a blind sleep before it.
   await installed.dispose();
   await services.mcpClientManager.disconnectAll();
   services.db.close();

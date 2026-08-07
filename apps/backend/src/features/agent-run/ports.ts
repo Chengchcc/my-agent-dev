@@ -96,6 +96,12 @@ export interface AgentRunPort {
   /** All commit_failed runs awaiting retryTerminalCommit. */
   listCommitFailedRuns(): Promise<AgentRun[]>;
 
+  /** Active runs whose bound input was DELIVERED (the child accepted) but
+   *  whose live child no longer exists (Backend restart). One-shot-child
+   *  architecture cannot resume them: boot recovery terminalizes them and
+   *  releases the branch. */
+  listActiveRunsWithDeliveredInputs(): Promise<AgentRun[]>;
+
   // ── Getters ───────────────────────────────────────────────────
 
   getRun(runId: string): Promise<AgentRun | null>;

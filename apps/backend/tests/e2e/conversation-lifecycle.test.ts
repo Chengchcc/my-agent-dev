@@ -45,6 +45,7 @@ const deps: ConversationServiceDeps = {
   dispatchRun: async () => {},
   injectSteer: async () => {},
   isLive: () => false,
+  isInflight: () => false,
   abortStaleRun: async () => {},
   resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
   maxConsecutiveAgentHops: () => 8,

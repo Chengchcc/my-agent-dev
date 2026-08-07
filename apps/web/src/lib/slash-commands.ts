@@ -7,6 +7,8 @@ export interface CommandContext {
   toggleTriggerMode: () => void;
   currentRunId: string | null;
   router: { push: (path: string) => void };
+  /** Invalidate the GoalStatusBar query after a goal mutation. */
+  refreshGoal: () => void;
 }
 
 export interface CommandResult {
@@ -115,6 +117,7 @@ export const slashCommands: SlashCommand[] = [
       // /goal clear|stop|cancel
       if (args === "clear" || args === "stop" || args === "cancel") {
         await api.setGoal(ctx.conversationId, { action: "clear" });
+        ctx.refreshGoal();
         ctx.toast("Goal cleared", "success");
         return { handled: true };
       }
@@ -122,6 +125,7 @@ export const slashCommands: SlashCommand[] = [
       // /goal pause
       if (args === "pause") {
         await api.setGoal(ctx.conversationId, { action: "pause" });
+        ctx.refreshGoal();
         ctx.toast("Goal paused", "info");
         return { handled: true };
       }
@@ -129,12 +133,14 @@ export const slashCommands: SlashCommand[] = [
       // /goal resume
       if (args === "resume") {
         await api.setGoal(ctx.conversationId, { action: "resume" });
+        ctx.refreshGoal();
         ctx.toast("Goal resumed", "success");
         return { handled: true };
       }
 
       // /goal <condition> -> set
       await api.setGoal(ctx.conversationId, { action: "set", condition: args });
+      ctx.refreshGoal();
       ctx.toast(`Goal set: ${args}`, "success");
       return { handled: true };
     },

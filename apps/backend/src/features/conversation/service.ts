@@ -49,8 +49,13 @@ export interface ConversationServiceDeps {
    *  alone is NOT enough (restart / pre-acceptance failure leaves a zombie
    *  active run with no live child). */
   isLive: (runId: string) => boolean;
-  /** Terminal a zombie run (DB active, no live child): aborted + input
-   *  cancelled + branch released, before enqueueing a fresh normal Run. */
+  /** Dispatch-in-flight probe: the run is being dispatched (pre-acceptance)
+   *  on this process. Auto-routing queues such runs as follow-up and never
+   *  aborts them. */
+  isInflight: (runId: string) => boolean;
+  /** Terminal a zombie run (DB active, no live child, not in flight):
+   *  aborted + input cancelled + branch released, before enqueueing a fresh
+   *  normal Run. */
   abortStaleRun: (runId: string) => Promise<void>;
   /** Product Context branch resolution (mode decisions; no scope service -
    *  scope IS the Conversation/Member/Branch trio). */
@@ -147,6 +152,7 @@ class ConversationServiceImpl implements ConversationService {
   #dispatchRun: (runId: string) => Promise<void>;
   #injectSteer: ConversationServiceDeps["injectSteer"];
   #isLive: ConversationServiceDeps["isLive"];
+  #isInflight: ConversationServiceDeps["isInflight"];
   #abortStaleRun: ConversationServiceDeps["abortStaleRun"];
   #contextService: AgentContextService;
   #resolveDefaultModel: (agentId: string) => Promise<BackendModelRef>;
@@ -166,6 +172,7 @@ class ConversationServiceImpl implements ConversationService {
     this.#dispatchRun = deps.dispatchRun;
     this.#injectSteer = deps.injectSteer;
     this.#isLive = deps.isLive;
+    this.#isInflight = deps.isInflight;
     this.#abortStaleRun = deps.abortStaleRun;
     this.#contextService = deps.contextService;
     this.#resolveDefaultModel = deps.resolveDefaultModel;
@@ -264,15 +271,18 @@ class ConversationServiceImpl implements ConversationService {
       BACKEND_KIND,
     );
     const active = await this.#agentRuns.getActiveRun(branch.branchId);
-    // Auto-inferred steer requires BOTH a DB-active Run AND a live child:
-    // a DB-active run without a live child (restart / pre-acceptance
-    // failure) is a zombie - abort it and start a fresh normal Run. An
-    // EXPLICIT input.mode is never silently converted.
+    // Auto-inferred routing needs three states, not two:
+    //   live child      -> steer (routable now)
+    //   dispatch in flight (pre-acceptance) -> follow_up (queued, NEVER aborted)
+    //   DB active, neither live nor inflight -> zombie: abort + fresh normal Run
+    // An EXPLICIT input.mode is never silently converted.
     let mode: BranchInputMode;
     if (input.mode) {
       mode = input.mode;
     } else if (active && this.#isLive(active.runId)) {
       mode = "steer";
+    } else if (active && this.#isInflight(active.runId)) {
+      mode = "follow_up";
     } else {
       if (active) await this.#abortStaleRun(active.runId);
       mode = "normal";

@@ -22,7 +22,7 @@ export interface SpawnedCodingAgentProcess {
   readonly exit: Promise<number | null>;
   writeLine(line: string): void;
   closeStdin(): void;
-  kill(): void;
+  kill(signal?: "SIGTERM" | "SIGKILL"): void;
 }
 
 /** Strict LF-framed line reader (only \n splits frames; byte-buffered for
@@ -158,9 +158,9 @@ export function spawnCodingAgentProcess(
         /* already closed */
       }
     },
-    kill() {
+    kill(signal: "SIGTERM" | "SIGKILL" = "SIGTERM") {
       try {
-        child.kill();
+        child.kill(signal);
       } catch {
         /* already dead */
       }

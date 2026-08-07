@@ -66,14 +66,13 @@ export function useConversation(
   //    No more run EventSource; all message output arrives via the conversation SSE.
   useEffect(() => {
     if (!conversationId) return;
-    // Resume from last known seq on page refresh (sessionStorage survives refresh).
-    const storageKey = `conv-last-seq-${conversationId}`;
-    const afterSeq =
-      typeof window !== "undefined"
-        ? parseInt(sessionStorage.getItem(storageKey) ?? "0", 10) || 0
-        : 0;
+    // Full replay on every mount: afterSeq=0 re-delivers the whole ledger,
+    // so a page refresh shows the complete history. Reconnects resume via
+    // Last-Event-ID (server ids), and the guard dedupes replays. No
+    // sessionStorage cursor: a cursor that outlives the page would make
+    // refresh look like "the agent never replied".
     const ts = typedSource(
-      `/api/bff/api/conversations/${conversationId}/events?afterSeq=${afterSeq}`,
+      `/api/bff/api/conversations/${conversationId}/events?afterSeq=0`,
       conversationEvents,
       {
         onError: (_event, _err) => {
@@ -114,14 +113,6 @@ export function useConversation(
         for (const s of sorted) if (s <= cutoff) seen.delete(s);
       }
       lastAppliedSeq = Math.max(lastAppliedSeq, seq);
-      // Persist across page refresh so SSE can resume from this point
-      if (typeof window !== "undefined") {
-        try {
-          sessionStorage.setItem(storageKey, String(lastAppliedSeq));
-        } catch {
-          /* quota */
-        }
-      }
       if (pendingGap) {
         // Hole detected on reconnect — notify user
         toast.success("Reconnected — syncing missed messages");
@@ -262,6 +253,12 @@ export function useConversation(
             for (const run of result.triggeredRuns ?? []) {
               if (!run.queued && run.runId) watchRun(run.runId);
             }
+          },
+          // POST pending is decremented when the HTTP request settles (both
+          // success and error) - it is NOT tied to an agent reply. Run
+          // activity is tracked separately via activeRuns.
+          onSettled: () => {
+            dispatch({ type: "send/settled" });
           },
           onError: () => {
             dispatch({ type: "send/error", message: "Send failed — retry" });

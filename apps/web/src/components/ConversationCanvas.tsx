@@ -31,6 +31,7 @@ export function ConversationCanvas({
   initialMessage,
 }: ConversationCanvasProps) {
   const router = useRouter();
+  const qc = useQueryClient();
   const { state, busy, send, toggleTriggerMode, transientText, activeRuns } = useConversation(
     conversationId,
     snapshot,
@@ -149,10 +150,11 @@ export function ConversationCanvas({
         toggleTriggerMode,
         currentRunId,
         router: { push: router.push },
+        refreshGoal: () => qc.invalidateQueries({ queryKey: ["goal", conversationId] }),
       };
       await cmd.execute(ctx);
     },
-    [conversationId, send, toggleTriggerMode, currentRunId, router],
+    [conversationId, send, toggleTriggerMode, currentRunId, router, qc],
   );
 
   return (
