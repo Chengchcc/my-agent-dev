@@ -70,6 +70,7 @@ export interface AgentRunService {
   finalizeRun(runId: string, outcome: BackendRunOutcome): Promise<AgentRun>;
   getRun(runId: string): Promise<AgentRun | null>;
   getActiveRun(branchId: string): Promise<AgentRun | null>;
+  hasActiveRunForConversations(conversationIds: readonly string[]): Promise<boolean>;
   listInputs(branchId: string): Promise<BranchInput[]>;
 }
 
@@ -142,6 +143,9 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
 
     async getActiveRun(branchId) {
       return port.getActiveRun(branchId);
+    },
+    async hasActiveRunForConversations(conversationIds) {
+      return port.hasActiveRunForConversations(conversationIds);
     },
 
     async listInputs(branchId) {

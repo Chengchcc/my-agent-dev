@@ -328,6 +328,7 @@ export const api = {
           cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
           contextWindow: number;
           maxTokens: number;
+          available?: boolean;
         }>;
       }>;
     };

@@ -1,7 +1,8 @@
-import { rm } from "node:fs/promises";
+import { rename, rm } from "node:fs/promises";
 import type { BackendModelRef } from "@my-agent-team/agent-backend";
 import { loopReducer } from "@my-agent-team/loop";
 import { Elysia, t } from "elysia";
+import { ConflictError } from "../../infra/domain-errors.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";
@@ -20,6 +21,7 @@ import {
   runLoop,
 } from "./loop-service.js";
 import type { LoopStateStore } from "./loop-state-store.js";
+import { loopEvaluatorConversationId, loopGeneratorConversationId } from "./loop-step.js";
 
 export function loopRoutes(input: {
   cronSvc: CronJobService;
@@ -205,9 +207,37 @@ export function loopRoutes(input: {
         set.status = 404;
         return { error: "Not found" };
       }
+      // Reject while a generator/evaluator Run is live: deleting the
+      // cron row + LOOP dir under a running child would orphan the Run
+      // and its terminal commit.
+      const active = await agentRunService.hasActiveRunForConversations([
+        loopGeneratorConversationId(id),
+        loopEvaluatorConversationId(id),
+      ]);
+      if (active) {
+        throw new ConflictError("Loop has an active run; stop it before deleting.");
+      }
       scheduler.unregister(id);
-      cronSvc.remove(id);
-      await rm(resolveLoopPaths(job, dataDir).loopConfigPath, { recursive: true, force: true });
+      const paths = resolveLoopPaths(job, dataDir);
+      // Tombstone rename first: if the DB transaction below fails, the
+      // directory is restored instead of being half-deleted.
+      const tombstone = `${paths.loopConfigPath}.deleting-${Date.now()}`;
+      let renamed = false;
+      try {
+        await rename(paths.loopConfigPath, tombstone);
+        renamed = true;
+      } catch {
+        // Directory may already be missing (partial prior cleanup) — the
+        // DB state is the authority.
+      }
+      try {
+        store.delete(id);
+        cronSvc.remove(id);
+      } catch (err) {
+        if (renamed) await rename(tombstone, paths.loopConfigPath).catch(() => {});
+        throw err;
+      }
+      if (renamed) await rm(tombstone, { recursive: true, force: true }).catch(() => {});
       set.status = 204;
       return;
     });

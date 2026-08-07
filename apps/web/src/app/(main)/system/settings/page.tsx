@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Page, PageBody, PageHeader } from "@/components/page";
@@ -17,8 +18,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useModelList } from "@/features/models/hooks";
-import { useSettings, useSystemInfo, useUpdateSetting } from "@/features/settings/hooks";
-import type { SettingsMap, SystemInfo } from "@/lib/api";
+import { settingsKeys, useSettings, useSystemInfo } from "@/features/settings/hooks";
+import { api, type SettingsMap, type SystemInfo } from "@/lib/api";
 
 /** Model picker backed by the runtime catalog. The current value is kept as
  *  an option even if it drifts from the catalog, so stored settings never
@@ -35,9 +36,18 @@ function ModelSelectField({
   const { data } = useModelList();
   const options = useMemo(() => {
     const groups = (data?.providers ?? []).flatMap((p) =>
-      p.models.map((m) => ({ id: `${p.id}/${m.id}`, label: `${p.name} / ${m.name ?? m.id}` })),
+      p.models.map((m) => ({
+        id: `${p.id}/${m.id}`,
+        label: `${p.name} / ${m.name ?? m.id}`,
+        available: m.available !== false,
+      })),
     );
-    return groups.some((g) => g.id === value) ? groups : [{ id: value, label: value }, ...groups];
+    // A stored value that drifted out of the catalog stays visible (marked
+    // unavailable) so the user can see what is configured and replace it —
+    // never silently swapped.
+    return groups.some((g) => g.id === value)
+      ? groups
+      : [{ id: value, label: `${value} — unavailable`, available: false }, ...groups];
   }, [data, value]);
   return (
     <Select value={value} onValueChange={(v) => onChange(v ?? value)}>
@@ -46,7 +56,7 @@ function ModelSelectField({
       </SelectTrigger>
       <SelectContent>
         {options.map((o) => (
-          <SelectItem key={o.id} value={o.id}>
+          <SelectItem key={o.id} value={o.id} disabled={!o.available}>
             {o.label}
           </SelectItem>
         ))}
@@ -153,14 +163,13 @@ function SettingsSection({
   section,
   settings,
   onSave,
-  saving,
 }: {
   section: Section;
   settings: SettingsMap | undefined;
-  onSave: (key: string, value: unknown) => void;
-  saving: boolean;
+  onSave: (changes: Record<string, unknown>) => Promise<boolean>;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
   // Reset drafts when settings query refetches (e.g. after save).
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset on settings change
@@ -179,11 +188,20 @@ function SettingsSection({
     return draft !== current;
   });
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    const changes: Record<string, unknown> = {};
     for (const f of section.fields) {
       const draft = drafts[f.key];
       if (draft === undefined) continue;
-      onSave(f.key, parseValue(draft, f.type));
+      changes[f.key] = parseValue(draft, f.type);
+    }
+    if (Object.keys(changes).length === 0) return;
+    setSaving(true);
+    try {
+      const ok = await onSave(changes);
+      if (ok) setDrafts({});
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -331,16 +349,21 @@ function SystemInfoSection({ info }: { info: SystemInfo | undefined }) {
 export default function SettingsPage() {
   const settingsQuery = useSettings();
   const systemQuery = useSystemInfo();
-  const updateMu = useUpdateSetting();
+  const qc = useQueryClient();
 
-  const handleSave = (key: string, value: unknown) => {
-    updateMu.mutate(
-      { key, value },
-      {
-        onSuccess: () => toast.success(`Saved ${key}`),
-        onError: (e) => toast.error(`Failed to save: ${String(e)}`),
-      },
-    );
+  const handleSave = async (changes: Record<string, unknown>): Promise<boolean> => {
+    // One batch: all fields settle before any toast or draft clearing.
+    try {
+      await Promise.all(
+        Object.entries(changes).map(([key, value]) => api.updateSetting(key, value)),
+      );
+      await qc.invalidateQueries({ queryKey: settingsKeys.all });
+      toast.success("Settings saved");
+      return true;
+    } catch (e) {
+      toast.error(`Failed to save settings: ${String(e)}`);
+      return false;
+    }
   };
 
   return (
@@ -357,7 +380,6 @@ export default function SettingsPage() {
             section={section}
             settings={settingsQuery.data?.settings}
             onSave={handleSave}
-            saving={updateMu.isPending}
           />
         ))}
 

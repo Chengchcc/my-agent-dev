@@ -104,6 +104,9 @@ function makeRunsFakes(script: {
     async listInputs() {
       return [];
     },
+    async hasActiveRunForConversations() {
+      return false;
+    },
   };
   const execution: AgentRunExecutionService = {
     async dispatch(runId) {

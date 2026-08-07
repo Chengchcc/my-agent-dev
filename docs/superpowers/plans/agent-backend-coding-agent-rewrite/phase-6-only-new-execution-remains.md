@@ -54,7 +54,7 @@ Active source, schema, routes, config, packages, scripts, operations, and curren
 ! grep -RInE '@my-agent-team/agent|createAgentSession|SessionManager|ConversationLock|activeSessions|member\.sessionId|checkpointer\.db' apps/backend/src
 bun test apps/backend/src/infra/sqlite/db.test.ts
 bun run scripts/smoke-agent-run.ts --mode clean
-bun run scripts/smoke-agent-run.ts --mode upgraded-fixture
+bun run scripts/smoke-agent-run.ts --mode restart
 ```
 Expected: search is zero; Product-fact baseline test and both smoke modes pass.
 
@@ -801,7 +801,7 @@ Expected: all five pass sequentially.
 
 ```bash
 bun run scripts/smoke-agent-run.ts --mode clean
-bun run scripts/smoke-agent-run.ts --mode upgraded-fixture
+bun run scripts/smoke-agent-run.ts --mode restart
 ```
 
 Expected: both modes print the complete Message → Run → Backend → Worker → outcome → atomic commit → next-run recovery sequence and exit 0.

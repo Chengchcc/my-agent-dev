@@ -98,6 +98,9 @@ function makeRunService(): AgentRunService {
     async listInputs() {
       return [];
     },
+    async hasActiveRunForConversations() {
+      return false;
+    },
   };
 }
 

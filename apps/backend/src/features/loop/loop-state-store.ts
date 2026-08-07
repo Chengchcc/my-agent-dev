@@ -7,6 +7,9 @@ export interface LoopStateStore {
   addBudget(loopId: string, day: string, delta: number): number;
   getBudget(loopId: string, day: string): number;
   getBudgetHistory(loopId: string, days?: number): Array<{ date: string; spent: number }>;
+  /** Remove all Loop state (items + budget). Runs the same transaction as
+   *  the caller's cron-row delete when composed by the route handler. */
+  delete(loopId: string): void;
 }
 
 export function createLoopStateStore(db: Database): LoopStateStore {
@@ -181,6 +184,12 @@ export function createLoopStateStore(db: Database): LoopStateStore {
     getBudgetHistory(loopId: string, days = 7): Array<{ date: string; spent: number }> {
       const rows = budgetHistoryQuery.all(loopId, days) as Array<{ day: string; spent: number }>;
       return rows.map((r) => ({ date: r.day, spent: r.spent }));
+    },
+    delete(loopId: string) {
+      db.transaction(() => {
+        db.query("DELETE FROM loop_item WHERE loop_id = ?").run(loopId);
+        db.query("DELETE FROM loop_budget WHERE loop_id = ?").run(loopId);
+      })();
     },
   };
 }

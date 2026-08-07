@@ -1044,6 +1044,22 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
       return rows.map((r) => parseRun(r.run));
     },
 
+    async hasActiveRunForConversations(conversationIds) {
+      if (conversationIds.length === 0) return false;
+      const rows = d
+        .select({ runId: schema.agentRun.runId })
+        .from(schema.agentRun)
+        .where(
+          and(
+            inArray(schema.agentRun.conversationId, [...conversationIds]),
+            inArray(schema.agentRun.status, ["running", "waiting", "commit_failed"]),
+          ),
+        )
+        .limit(1)
+        .all();
+      return rows.length > 0;
+    },
+
     async getActiveRun(branchId) {
       const row = d
         .select()

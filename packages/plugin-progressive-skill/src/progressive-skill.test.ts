@@ -104,6 +104,19 @@ describe("progressive skill index", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
+  test("skills deeper than 3 levels are still indexed (no depth cap)", () => {
+    const root = tmpDir("deep");
+    mkdirSync(join(root, "a", "b", "c", "d", "e"), { recursive: true });
+    writeFileSync(
+      join(root, "a", "b", "c", "d", "e", "SKILL.md"),
+      "---\nname: deep-skill\n---\n\nDeep.",
+    );
+    const entries = buildSkillIndex([root]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.relativePath).toBe("a/b/c/d/e/SKILL.md");
+    rmSync(root, { recursive: true, force: true });
+  });
+
   test("folded description (> block) is joined into one line", () => {
     const root = tmpDir("folded");
     mkdirSync(root, { recursive: true });

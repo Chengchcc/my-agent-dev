@@ -75,6 +75,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
         id: `${p.id}/${m.id}`,
         name: `${p.name} / ${m.name ?? m.id}`,
         provider: p.id,
+        available: m.available !== false,
       })),
     );
   }, [providers]);
@@ -124,7 +125,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
     if (isEdit || modelGroups.length === 0) return;
     const current = form.getValues("model");
     if (current && modelGroups.some((m) => m.id === current)) return;
-    const first = modelGroups[0];
+    const first = modelGroups.find((m) => m.available);
     if (first) form.setValue("model", first.id, { shouldValidate: true });
   }, [isEdit, modelGroups, form]);
 
@@ -302,8 +303,15 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                           onValueChange={(v) => {
                             const vv = v ?? "";
                             setSelProvider(vv);
-                            const modelId = field.value.split("/").slice(1).join("/");
-                            field.onChange(`${vv}/${modelId}`);
+                            // Never carry a model across providers: pick the
+                            // first available model of the new provider.
+                            const current = field.value;
+                            const stillValid = modelGroups.some(
+                              (m) => m.id === current && m.provider === vv && m.available,
+                            );
+                            if (stillValid) return;
+                            const first = modelGroups.find((m) => m.provider === vv && m.available);
+                            field.onChange(first?.id ?? "");
                           }}
                         >
                           <SelectTrigger className={fieldClass}>
@@ -337,8 +345,9 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                             </SelectTrigger>
                             <SelectContent>
                               {filteredModels.map((m) => (
-                                <SelectItem key={m.id} value={m.id}>
+                                <SelectItem key={m.id} value={m.id} disabled={!m.available}>
                                   {m.name}
+                                  {!m.available ? " — unavailable" : ""}
                                 </SelectItem>
                               ))}
                             </SelectContent>

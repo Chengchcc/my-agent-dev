@@ -106,6 +106,14 @@ export interface AgentRunPort {
 
   getRun(runId: string): Promise<AgentRun | null>;
   getActiveRun(branchId: string): Promise<AgentRun | null>;
+  /** Whether any conversation in the set has an active Run (running /
+   *  waiting / commit_failed). Loop delete uses it to reject deletion
+   *  while its generator/evaluator scopes are live. */
+  hasActiveRunForConversations(conversationIds: readonly string[]): Promise<boolean>;
+  /** Whether any conversation in the set has an active Run (running /
+   *  waiting / commit_failed). Used by Loop delete to reject deletion
+   *  while its generator/evaluator scopes are live. */
+  hasActiveRunForConversations(conversationIds: readonly string[]): Promise<boolean>;
   listInputs(branchId: string): Promise<BranchInput[]>;
   getPendingAction(actionId: string): Promise<PendingActionRecord | null>;
 }

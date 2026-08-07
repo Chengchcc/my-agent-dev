@@ -15,6 +15,7 @@ import {
   reducer,
   type SenderRef,
 } from "@/lib/conversation-reducer";
+import { appendTransient, removeTransient } from "@/lib/transient-reducer";
 import { typedSource } from "@/lib/typed-source";
 
 function safeParse(raw: string): unknown {
@@ -52,20 +53,33 @@ export function useConversation(
   const [transients, setTransients] = useState<
     Record<string, { text: string; agentMemberId: string }>
   >({});
+  const runStreamsRef = useRef(new Map<string, EventSource>());
   const transientsRef = useRef(transients);
+
+  // Leaving the conversation closes every run EventSource and clears all
+  // transient state — a switched conversation must never inherit the
+  // previous one's streaming bubbles. Runs on unmount AND conversationId
+  // change; setState calls after unmount are no-ops in React 18+.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: cleanup-only effect keyed on conversationId
+  useEffect(() => {
+    return () => {
+      for (const es of runStreamsRef.current.values()) es.close();
+      runStreamsRef.current.clear();
+      setActiveRuns(new Set());
+      setTransients({});
+      transientsRef.current = {};
+    };
+  }, [conversationId]);
   const upsertTransient = useCallback((runId: string, agentMemberId: string, text: string) => {
     setTransients((prev) => {
-      const next = { ...prev };
-      next[runId] = { text: `${prev[runId]?.text ?? ""}${text}`, agentMemberId };
+      const next = appendTransient(prev, runId, agentMemberId, text);
       transientsRef.current = next;
       return next;
     });
   }, []);
   const dropTransient = useCallback((runId: string) => {
     setTransients((prev) => {
-      if (!(runId in prev)) return prev;
-      const next = { ...prev };
-      delete next[runId];
+      const next = removeTransient(prev, runId);
       transientsRef.current = next;
       return next;
     });
@@ -233,9 +247,14 @@ export function useConversation(
   const watchRun = useCallback(
     (runId: string, agentMemberId: string) => {
       setActiveRuns((prev) => new Set(prev).add(runId));
+      // One stream per run, tracked centrally so unmount can close all.
+      const existing = runStreamsRef.current.get(runId);
+      existing?.close();
       const es = new EventSource(`/api/bff/api/agent-runs/${runId}/events`);
+      runStreamsRef.current.set(runId, es);
       const done = (dropBubble: boolean) => {
-        es.close();
+        runStreamsRef.current.get(runId)?.close();
+        runStreamsRef.current.delete(runId);
         setActiveRuns((prev) => {
           const next = new Set(prev);
           next.delete(runId);
@@ -243,7 +262,10 @@ export function useConversation(
         });
         if (dropBubble) dropTransient(runId);
       };
-      es.onerror = () => done(false);
+      // Transport failure: Live Updates are best-effort; drop the partial
+      // bubble. If the run actually completed, the canonical Message still
+      // arrives via the conversation SSE.
+      es.onerror = () => done(true);
       es.addEventListener("status", (e) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as {

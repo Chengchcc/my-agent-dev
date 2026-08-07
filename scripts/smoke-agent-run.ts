@@ -4,17 +4,18 @@
  * child (fake provider — no network) per Product Run.
  *
  *   bun scripts/smoke-agent-run.ts --mode clean
- *   bun scripts/smoke-agent-run.ts --mode upgraded-fixture
+ *   bun scripts/smoke-agent-run.ts --mode restart
  *
- * clean:            fresh data dir → auth POST message → run completes →
- *                   canonical final Message lands in the ledger.
- * upgraded-fixture: same, then a full in-process rebuild (dispose + reopen
- *                   the SAME data dir) → second round still works and both
- *                   rounds' messages survive the "restart".
+ * clean:   fresh data dir → auth POST message → run completes → canonical
+ *          final Message lands in the ledger.
+ * restart: same, then a full in-process rebuild (dispose + reopen the SAME
+ *          data dir) → second round still works and both rounds' messages
+ *          survive the restart.
  *
- * commit_failed terminal-commit recovery is covered by
- * apps/backend/src/features/agent-run/execution.test.ts (fault-injected
- * commit hook); this script exercises the process-reconstruction path.
+ * Pre-0020 database migration is covered by apps/backend/src/infra/sqlite/
+ * db.test.ts (fixture upgrade); this script exercises process
+ * reconstruction. commit_failed terminal-commit recovery is covered by
+ * execution.test.ts (fault-injected commit hook).
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -177,8 +178,8 @@ async function runConversationRound(
 async function main(): Promise<void> {
   const mode =
     process.argv[2] === "--mode" ? (process.argv[3] ?? "clean") : (process.argv[2] ?? "clean");
-  if (mode !== "clean" && mode !== "upgraded-fixture") {
-    console.error(`usage: bun scripts/smoke-agent-run.ts --mode clean|upgraded-fixture`);
+  if (mode !== "clean" && mode !== "restart") {
+    console.error(`usage: bun scripts/smoke-agent-run.ts --mode clean|restart`);
     process.exit(2);
   }
   try {
@@ -208,9 +209,9 @@ async function main(): Promise<void> {
       return;
     }
 
-    // upgraded-fixture: full in-process rebuild on the same data dir.
+    // restart: full in-process rebuild on the same data dir.
     const first = await boot();
-    const round1 = await runConversationRound(first, "upgraded-first");
+    const round1 = await runConversationRound(first, "restart-first");
     await shutdown(first);
 
     const second = await boot();
@@ -218,17 +219,17 @@ async function main(): Promise<void> {
     const list = await get(second, "/api/conversations");
     const convs = (await list.json()) as Array<{ conversationId: string }>;
     if (!convs.some((c) => c.conversationId === round1.conversationId)) {
-      throw new Error("upgraded-fixture: conversation lost across rebuild");
+      throw new Error("restart: conversation lost across rebuild");
     }
-    const round2 = await runConversationRound(second, "upgraded-second");
+    const round2 = await runConversationRound(second, "restart-second");
     await shutdown(second);
     if (round1.status !== "completed" || round2.status !== "completed") {
       throw new Error(
-        `upgraded-fixture: rounds ended ${round1.status}/${round2.status}, expected completed/completed`,
+        `restart: rounds ended ${round1.status}/${round2.status}, expected completed/completed`,
       );
     }
     console.log(
-      `SMOKE PASS [upgraded-fixture] runs=${round1.runId},${round2.runId} both completed, ledger survived rebuild`,
+      `SMOKE PASS [restart] runs=${round1.runId},${round2.runId} both completed, ledger survived rebuild`,
     );
   } finally {
     rmSync(dataDir, { recursive: true, force: true });

@@ -223,6 +223,9 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
     async listInputs() {
       return [];
     },
+    async hasActiveRunForConversations() {
+      return false;
+    },
   };
 
   const agentRunExecution: AgentRunExecutionService = {

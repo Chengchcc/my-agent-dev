@@ -55,6 +55,10 @@ export function buildSkillIndex(roots: readonly string[]): SkillIndexEntry[] {
   // Deterministic Meta order: sort by name.
   return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
+/** Safety bound: symlink containment + total entry count, not directory
+ *  depth — deep but bounded trees are legitimate skill packs. */
+const MAX_ENTRIES = 1000;
+
 function scanDir(root: string, currentDir: string, entries: SkillIndexEntry[]): void {
   let items: string[];
   try {
@@ -64,6 +68,9 @@ function scanDir(root: string, currentDir: string, entries: SkillIndexEntry[]): 
   }
 
   for (const item of items) {
+    if (entries.length >= MAX_ENTRIES) {
+      throw new Error("skill pack contains too many skills (limit 1000)");
+    }
     const fullPath = join(currentDir, item);
     // Skip symlinks/dirs pointing outside root
     if (!isWithinRoot(root, fullPath)) continue;
@@ -80,14 +87,11 @@ function scanDir(root: string, currentDir: string, entries: SkillIndexEntry[]): 
       }
       continue;
     }
-    // Recurse into subdirectories (max depth 3)
-    const depth = currentDir.split("/").length - root.split("/").length;
-    if (depth < 3) {
-      try {
-        if (statSync(fullPath).isDirectory()) scanDir(root, fullPath, entries);
-      } catch {
-        /* not a dir */
-      }
+    // Recurse into subdirectories (bounded by MAX_ENTRIES, not depth).
+    try {
+      if (statSync(fullPath).isDirectory()) scanDir(root, fullPath, entries);
+    } catch {
+      /* not a dir */
     }
   }
 }
