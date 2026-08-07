@@ -25,9 +25,14 @@ export class CodingAgentModelCatalog {
 
   async list(): Promise<BackendModelCatalog> {
     if (this.cached) return this.cached;
+    // --list-models is mode-independent (the CLI checks it before mode
+    // dispatch), and the run command carries --mode rpc - strip the mode
+    // pair so the child never sees a meaningless `--mode rpc --list-models`.
+    const base = this.command.args ?? [];
+    const listArgs = base.filter((a) => a !== "--mode" && a !== "rpc");
     const listCommand: CodingAgentCommandConfig = {
       executable: this.command.executable,
-      args: [...(this.command.args ?? []), "--list-models"],
+      args: [...listArgs, "--list-models"],
       env: this.command.env,
     };
     let proc: SpawnedCodingAgentProcess;

@@ -60,9 +60,11 @@ interface ActiveHandle {
   /** One-shot acceptance: null = accepted, string = rejection. */
   readonly acceptance: Promise<string | null>;
   settleAcceptance: ((err: string | null) => void) | null;
-  /** The child's outcome envelope arrived (terminal authority). */
+  /** The outcome envelope arrived (terminal authority). */
   outcomeReceived: boolean;
   settled: boolean;
+  /** Reap already ran for this handle (idempotent; dedupes logs). */
+  reaped: boolean;
   settle(outcome: BackendRunOutcome): void;
   readonly outcome: Promise<BackendRunOutcome>;
   pushEvent(envelope: RunEventEnvelope): void;
@@ -334,8 +336,11 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
   }
 
   /** Post-outcome cleanup: close stdin, bounded wait for exit, kill if
-   *  needed, drop the active handle. */
+   *  needed, drop the active handle. Idempotent: outcome, exit-watcher and
+   *  rejection paths may all call it; only the first run logs/acts. */
   async reap(handle: ActiveHandle): Promise<void> {
+    if (handle.reaped) return;
+    handle.reaped = true;
     try {
       handle.proc.closeStdin();
     } catch {
@@ -435,6 +440,7 @@ function createActiveHandle(
     settleAcceptance: null as never,
     outcomeReceived: false,
     settled: false,
+    reaped: false,
     settle(o) {
       if (settled) return;
       settled = true;
