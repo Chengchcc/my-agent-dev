@@ -44,6 +44,39 @@ used_by:
 - **账本是唯一对话事实来源**：任何端（Web/飞书）若和账本不一致，错的是 surface 的 projection，不是账本。
 - **子进程无状态**：child 崩溃 = 当前 Run failed；下一个输入 = 新 Run = 从 Agent Context full projection 重建。没有需要"恢复"的执行状态。
 
+## 诊断日志（CODING_AGENT_DEBUG=1）
+
+设置 `CODING_AGENT_DEBUG=1`（Backend 环境；子进程继承同一开关）后，Backend 终端会输出一条端到端生命周期链，用于定位卡在哪个阶段。日志只含阶段名、id、计数与状态——**不含消息正文、工具输入、prompt 或密钥**；child stderr 也会被脱敏后实时转发。
+
+最短观察链（缺哪一行，故障就在上一行与下一行之间）：
+
+```text
+[conversation] trigger conversationId=... mode=normal runId=... acquired=true
+[agent-run] context_projected runId=... entries=7
+[coding-agent-adapter] spawned runId=... pid=...
+[coding-agent] loop_live runId=...
+[coding-agent] model_start runId=... turn=1 model=...
+[coding-agent-adapter] outcome runId=... status=completed
+[agent-run] terminal_commit runId=... output=true
+```
+
+失败会带阶段：
+
+```text
+[agent-run] dispatch_failed runId=... stage=context_projection Error: ...
+```
+
+tag 含义：`conversation`（触发与入队）、`agent-run`（执行生命周期）、`coding-agent-adapter`（spawn/JSONL/回收）、`coding-agent`（child RPC 与 model/tool loop）。
+
+### 前端需要观察的两个 SSE
+
+浏览器 Network 应同时存在：
+
+- `GET /api/bff/api/conversations/:conversationId/events` —— canonical final Message（terminal commit 后推送）；
+- `GET /api/bff/api/agent-runs/:runId/events` —— 临时 text/tool/status 事件。
+
+定位口诀：只有 `/goal` 没有 Conversation SSE → 前端 hook/BFF 问题；两个 SSE 都在但 Run SSE 无事件 → 查 adapter/child 日志；Run SSE 有 `completed` 但 Conversation SSE 无 assistant Message → 问题在 terminal commit。
+
 ## 关联页面
 
 - [事实与投影](../foundations/facts-and-projections.md)

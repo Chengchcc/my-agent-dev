@@ -8,6 +8,7 @@ import type {
   CodingAgentOutput,
   RunEventEnvelope,
 } from "@my-agent-team/agent-backend";
+import { debugLog } from "@my-agent-team/agent-backend";
 import { mapRunEvent, mapRunOutcome } from "./event-mapper.js";
 import {
   type CodingAgentCommandConfig,
@@ -163,6 +164,7 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
         `run ${runId} was stopped while waiting for a spawn slot`,
       );
     }
+    debugLog("coding-agent-adapter", `slot_acquired runId=${runId}`);
     let released = false;
     const releaseOnce = (): void => {
       if (released) return;
@@ -172,7 +174,12 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
 
     let proc: SpawnedCodingAgentProcess;
     try {
+      debugLog(
+        "coding-agent-adapter",
+        `spawning runId=${runId} executable=${this.command.executable} cwd=${input.workspace.root}`,
+      );
       proc = spawnCodingAgentProcess(this.command, { cwd: input.workspace.root });
+      debugLog("coding-agent-adapter", `spawned runId=${runId} pid=${proc.pid}`);
     } catch (err) {
       releaseOnce();
       throw new CodingAgentProcessError(
@@ -191,6 +198,7 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
     // a process failure - the outcome must settle, never hang. Pending
     // command responses for THIS run fail too (other runs are untouched).
     void proc.exit.then((code) => {
+      debugLog("coding-agent-adapter", `child_exit runId=${runId} code=${code}`);
       const detail = describeProcessFailure(proc, `process exited (code ${code})`);
       const waiters = this.pendingResponses.get(runId);
       if (waiters) {
@@ -212,6 +220,7 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
     void consumeStdout(handle, this);
 
     proc.writeLine(JSON.stringify({ id: handle.executeCommandId, type: "execute", input }));
+    debugLog("coding-agent-adapter", `execute_sent runId=${runId}`);
 
     const acceptanceError = await handle.acceptance;
     if (acceptanceError !== null) {
@@ -224,6 +233,7 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
         `coding-agent rejected execute: ${acceptanceError}`,
       );
     }
+    debugLog("coding-agent-adapter", `execute_accepted runId=${runId}`);
     return buildSegment(handle, this);
   }
 
@@ -322,6 +332,7 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
     if (this.active.get(handle.runId) === handle) {
       this.active.delete(handle.runId);
     }
+    debugLog("coding-agent-adapter", `reaped runId=${handle.runId}`);
   }
 
   /** Protocol violation: settle failed, drop the handle, kill the child. */
@@ -465,6 +476,10 @@ async function consumeStdout(handle: ActiveHandle, backend: CodingAgentBackend):
       // active handle is removed (one Run = one child, fully recycled).
       handle.outcomeReceived = true;
       await backend.reap(handle);
+      debugLog(
+        "coding-agent-adapter",
+        `outcome runId=${handle.runId} status=${output.outcome.status}`,
+      );
       handle.settle(mapRunOutcome(output.outcome));
       break;
     }

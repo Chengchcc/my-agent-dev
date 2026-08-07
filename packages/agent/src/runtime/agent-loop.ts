@@ -1,4 +1,5 @@
 import type { BackendInputMessage, Usage } from "@my-agent-team/agent-backend";
+import { debugLog } from "@my-agent-team/agent-backend";
 import { ProviderError } from "@my-agent-team/ai";
 import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
@@ -109,6 +110,11 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   let controller: AbortController | null = null;
   const steerQueue: BackendInputMessage[] = [];
   let acceptingSteer = false;
+  // Debug diagnostics: which model runs this loop, and the per-turn counter.
+  let debugModelId = "";
+  let debugTurn = 0;
+  let debugRunId = "";
+  const runIdForDebug = (): string => debugRunId;
 
   async function emit(event: CodingAgentLoopEvent): Promise<void> {
     for (const l of listeners) {
@@ -129,6 +135,9 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     status = "running";
     controller = new AbortController();
     steerQueue.length = 0;
+    debugModelId = codingInput.run.model.modelId;
+    debugTurn = 0;
+    debugRunId = codingInput.run.runId;
     // Reset per-run: a Run without usage must not inherit the previous Run's.
     runUsage = undefined;
     let runError: string | undefined;
@@ -419,6 +428,11 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   async function processModelTurn(messages: readonly Message[]): Promise<PendingToolCall[]> {
     let assistantText = "";
     const toolCallBuilders = new Map<string, { id: string; name: string; jsonParts: string[] }>();
+    debugTurn++;
+    debugLog(
+      "coding-agent",
+      `model_start runId=${runIdForDebug()} turn=${debugTurn} model=${debugModelId}`,
+    );
 
     await emit({ type: "message_start" });
     const stream = retryStream(
@@ -432,9 +446,11 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       controller?.signal,
     );
 
+    let stopReason: string | undefined;
     try {
       for await (const chunk of stream) {
         if (controller?.signal.aborted) break;
+        if (chunk.stopReason) stopReason = chunk.stopReason;
         if (chunk.usage) {
           // Accumulate across all model calls in the Run (not last-wins).
           runUsage = {
@@ -463,6 +479,10 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       // message_end always pairs with message_start, even on failure/abort.
       await emit({ type: "message_end" });
     }
+    debugLog(
+      "coding-agent",
+      `model_end runId=${runIdForDebug()} turn=${debugTurn} stopReason=${stopReason ?? "none"}`,
+    );
 
     // Aborted mid-stream: discard partial output — an uncompleted turn must
     // not enter the canonical Coding Session Tree (same as tool cancellation).
@@ -505,6 +525,10 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       call: PendingToolCall,
     ): Promise<{ id: string; result: unknown; isError: boolean; terminate: boolean }> {
       const tool = toolMap.get(call.name);
+      debugLog(
+        "coding-agent",
+        `tool_start runId=${runIdForDebug()} name=${call.name} callId=${call.id}`,
+      );
       await emit({
         type: "tool_execution_start",
         toolName: call.name,
@@ -535,6 +559,10 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         result = { error: `Unknown tool: ${call.name}` };
         isError = true;
       }
+      debugLog(
+        "coding-agent",
+        `tool_end runId=${runIdForDebug()} name=${call.name} callId=${call.id} error=${isError}`,
+      );
       await emit({
         type: "tool_execution_end",
         toolName: call.name,

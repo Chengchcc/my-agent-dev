@@ -1,5 +1,5 @@
 import type { Subprocess } from "bun";
-import { collectSecrets, createStderrTail, type StderrTail } from "./stderr-tail.js";
+import { collectSecrets, createStderrTail, redactText, type StderrTail } from "./stderr-tail.js";
 
 /** Process command configuration. Never a shell string: `executable` +
  *  explicit `args` only, so no argument injection is possible. Production
@@ -12,6 +12,8 @@ export interface CodingAgentCommandConfig {
 }
 
 export interface SpawnedCodingAgentProcess {
+  /** Child OS pid (debug logs only). */
+  readonly pid: number;
   /** Strict LF-framed stdout lines (JSONL). */
   readonly stdout: AsyncIterable<string>;
   /** Redacted, bounded stderr tail (last 64 KiB). */
@@ -77,6 +79,8 @@ export class ProcessSpawnError extends Error {
   }
 }
 
+const DEBUG_ENABLED = process.env.CODING_AGENT_DEBUG === "1";
+
 /** Spawn the coding-agent executable. `cwd` is the Run's workspace root (the
  *  child's tools are rooted there). The child inherits the process env with
  *  the command's env applied on top. */
@@ -102,8 +106,9 @@ export function spawnCodingAgentProcess(
     );
   }
   const stdin = child.stdin as { write(s: string): unknown; end(): void } | null;
+  const secrets = collectSecretsFor(cfg);
   const tail = createStderrTail({
-    secrets: collectSecretsFor(cfg),
+    secrets,
   });
   if (child.stderr) {
     void (async () => {
@@ -113,7 +118,15 @@ export function spawnCodingAgentProcess(
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
-          if (value) tail.push(decoder.decode(value, { stream: true }));
+          if (value) {
+            const text = decoder.decode(value, { stream: true });
+            tail.push(text);
+            // Debug tee: child logs surface on the Backend terminal, ALWAYS
+            // redacted first (secrets never reach stderr).
+            if (DEBUG_ENABLED) {
+              process.stderr.write(`[coding-agent:${child.pid}] ${redactText(text, secrets)}`);
+            }
+          }
         }
       } catch {
         /* stderr stream closing is not an error */
@@ -125,6 +138,7 @@ export function spawnCodingAgentProcess(
   const exit = child.exited.then((code) => code ?? null);
 
   return {
+    pid: child.pid,
     stdout: readLines(child.stdout as ReadableStream<Uint8Array>, () => {
       tail.push("[coding-agent] oversized stdout line dropped\n");
     }),

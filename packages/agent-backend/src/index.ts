@@ -1,4 +1,5 @@
 export type { AgentBackend } from "./backend.js";
+export { debugLog } from "./debug.js";
 export type {
   BackendEvent,
   BackendExtensionEvent,

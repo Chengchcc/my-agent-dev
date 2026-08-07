@@ -11,6 +11,7 @@ import type {
   ProjectedHistoryItem,
   WorkspaceBinding,
 } from "@my-agent-team/agent-backend";
+import { debugLog } from "@my-agent-team/agent-backend";
 import type { Message } from "@my-agent-team/message";
 import type {
   AgentContextPort,
@@ -224,6 +225,7 @@ export function createAgentRunExecutionService(
   async function deliverInput(
     run: AgentRun,
     claimed: ClaimedBranchInput,
+    stage: { name: string },
   ): Promise<{
     outcome: BackendRunOutcome | null;
     segment: BackendRunSegment<"coding_agent"> | null;
@@ -233,12 +235,17 @@ export function createAgentRunExecutionService(
     const { input, runId } = claimed;
     // Workspace is a Run execution fact when the caller pinned it (Loop's
     // cloned repo); otherwise fall back to the agent-record default.
+    stage.name = "resolve_workspace";
     const workspace =
       run.workspace ??
       (await resolveWorkspace({
         conversationId: run.conversationId,
         agentMemberId: run.agentMemberId,
       }));
+    debugLog(
+      "agent-run",
+      `workspace_resolved runId=${runId} root=${workspace.root} access=${workspace.access}`,
+    );
 
     // Steer is a control injection into the LIVE run: no new outcome of its
     // own. dispatchInner cancels steer inputs that lost their live handle
@@ -255,13 +262,21 @@ export function createAgentRunExecutionService(
     // called: the child can invoke a Product Tool the moment it accepts, and
     // MCP authorization validates against the stored manifest - a
     // fire-and-forget write would race that first call.
+    stage.name = "set_product_tools";
     await runPort.setRunProductTools(runId, [...buildHistoryTools(deps.productToolsEntrypoint)]);
 
+    stage.name = "context_projection";
     const history = await projectHistory(run.branchId);
+    debugLog("agent-run", `context_projected runId=${runId} entries=${history.length}`);
+
+    stage.name = "backend_execute";
+    debugLog("agent-run", `backend_execute runId=${runId}`);
     const segment = await backend.execute(buildRunInput(run, history, input, workspace));
     liveRuns.set(runId, { segment });
+    debugLog("agent-run", `backend_accepted runId=${runId}`);
 
     await runPort.markInputAccepted(input.inputId);
+    debugLog("agent-run", `input_delivered runId=${runId} inputId=${input.inputId}`);
     const drain = forwardEvents(runId, segment);
     return { outcome: await segment.outcome, segment, drain };
   }
@@ -276,6 +291,10 @@ export function createAgentRunExecutionService(
           outcome,
           output: outcome.output,
         });
+        debugLog(
+          "agent-run",
+          `terminal_commit runId=${run.runId} output=${outcome.output != null}`,
+        );
         deps.onRunCommitted?.(run.runId, outcome.output);
       } catch (err) {
         // Backend finished but the Product transaction failed: keep the
@@ -297,48 +316,67 @@ export function createAgentRunExecutionService(
    *  steer input whose live run is gone is cancelled (never replayed as a
    *  cold start). */
   async function dispatchInner(runId: string): Promise<void> {
-    const run = await runPort.getRun(runId);
-    if (!run || !isActiveStatus(run.status)) return;
-    await assertModelAvailable(run.modelRef);
+    // Failure diagnostics: which phase threw, so a stuck/dead run is
+    // attributable without message/tool content (CODING_AGENT_DEBUG=1).
+    const stage = { name: "load_run" };
+    try {
+      const run = await runPort.getRun(runId);
+      if (!run || !isActiveStatus(run.status)) return;
+      stage.name = "model_preflight";
+      await assertModelAvailable(run.modelRef);
+      debugLog("agent-run", `model_preflight_ok runId=${runId} model=${run.modelRef.modelId}`);
 
-    for (let i = 0; i < 8; i++) {
-      const claimed = await runPort.claimInputForRun(runId);
-      if (!claimed) break;
-      if (claimed.input.mode === "steer" && !liveRuns.has(runId)) {
-        // Crash residue: the steer was being injected when the process
-        // died. Its live run is gone - cancel it explicitly instead of
-        // silently replaying or converting it.
-        await runPort.cancelInput(claimed.input.inputId);
-        continue;
+      for (let i = 0; i < 8; i++) {
+        stage.name = "claim_input";
+        const claimed = await runPort.claimInputForRun(runId);
+        if (!claimed) break;
+        if (claimed.input.mode === "steer" && !liveRuns.has(runId)) {
+          // Crash residue: the steer was being injected when the process
+          // died. Its live run is gone - cancel it explicitly instead of
+          // silently replaying or converting it.
+          await runPort.cancelInput(claimed.input.inputId);
+          continue;
+        }
+        debugLog(
+          "agent-run",
+          `input_claimed runId=${runId} inputId=${claimed.input.inputId} mode=${claimed.input.mode}`,
+        );
+        const { outcome, segment, drain } = await deliverInput(run, claimed, stage);
+        if (outcome) {
+          stage.name = "settle_outcome";
+          debugLog("agent-run", `outcome runId=${runId} status=${outcome.status}`);
+          await settleOutcome(run, outcome);
+        }
+        // Drain the transient event stream (bounded) so subscribers observe
+        // the final events before the run's subscriber set closes.
+        if (segment) await Promise.race([drain, sleep(500)]);
+        break;
       }
-      const { outcome, segment, drain } = await deliverInput(run, claimed);
-      if (outcome) {
-        await settleOutcome(run, outcome);
-      }
-      // Drain the transient event stream (bounded) so subscribers observe
-      // the final events before the run's subscriber set closes.
-      if (segment) await Promise.race([drain, sleep(500)]);
-      break;
-    }
-    // liveRuns.delete + closeSubscribers happen in dispatchFn's finally so
-    // EVERY exit path (normal outcome, preflight failure, child crash)
-    // terminates the run's SSE subscriber stream.
+      // liveRuns.delete + closeSubscribers happen in dispatchFn's finally so
+      // EVERY exit path (normal outcome, preflight failure, child crash)
+      // terminates the run's SSE subscriber stream.
 
-    // Follow-up semantics: the oldest queued non-steer input becomes a
-    // FRESH Run now that this one settled (one Run / one input / one loop,
-    // never a second segment). The new Run is built from the queued input's
-    // OWN config snapshot - never from this settled run's config.
-    const next = await runPort.acquireNextRun(run.branchId);
-    if (next) {
-      void dispatchFn(next.runId).catch((err) => {
-        console.error(`[agent-run] chain dispatch failed for ${next.runId}:`, err);
-      });
+      // Follow-up semantics: the oldest queued non-steer input becomes a
+      // FRESH Run now that this one settled (one Run / one input / one loop,
+      // never a second segment). The new Run is built from the queued input's
+      // OWN config snapshot - never from this settled run's config.
+      stage.name = "acquire_next";
+      const next = await runPort.acquireNextRun(run.branchId);
+      if (next) {
+        void dispatchFn(next.runId).catch((err) => {
+          console.error(`[agent-run] chain dispatch failed for ${next.runId}:`, err);
+        });
+      }
+    } catch (error) {
+      console.error(`[agent-run] dispatch_failed runId=${runId} stage=${stage.name}`, error);
+      throw error;
     }
   }
 
   const dispatchFn = async (runId: string): Promise<void> => {
     if (inflight.has(runId)) return;
     inflight.add(runId);
+    debugLog("agent-run", `dispatch_start runId=${runId}`);
     try {
       await dispatchInner(runId);
     } catch (error) {
@@ -361,6 +399,7 @@ export function createAgentRunExecutionService(
       inflight.delete(runId);
       liveRuns.delete(runId);
       closeSubscribers(runId);
+      debugLog("agent-run", `dispatch_end runId=${runId}`);
     }
   };
 

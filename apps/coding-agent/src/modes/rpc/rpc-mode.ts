@@ -10,6 +10,7 @@ import type {
 } from "@my-agent-team/agent-backend";
 import {
   codingAgentCommandSchema,
+  debugLog,
   eventOutputSchema,
   outcomeOutputSchema,
   responseOutputSchema,
@@ -165,6 +166,7 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
    *  driveOutcome, keeping steer/abort routable for the whole run. */
   async function acceptExecute(command: ExecuteCommand): Promise<void> {
     const input = command.input;
+    debugLog("coding-agent", `execute_received runId=${input.run.runId}`);
     const err = await validateExecute(input, opts.modelRuntime);
     if (err) {
       emitResponse(command.id, "execute", false, err);
@@ -186,6 +188,10 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
       });
       // run() resolves when the loop is live: acceptance ⟹ routable.
       segment = await runtime.run(input as never);
+      debugLog(
+        "coding-agent",
+        `runtime_assembled runId=${runId} skills=${input.run.skillRoots?.length ?? 0} access=${input.workspace.access}`,
+      );
     } catch (caught) {
       emitResponse(command.id, "execute", false, `runtime assembly failed: ${redactError(caught)}`);
       return;
@@ -194,6 +200,7 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     // Acceptance: the runtime is assembled, event forwarding is registered,
     // the loop is live, and steer/abort route to it.
     currentRunId = runId;
+    debugLog("coding-agent", `loop_live runId=${runId}`);
     emitResponse(command.id, "execute", true, undefined);
     void driveOutcome(runtime, segment, runId);
   }
@@ -214,15 +221,19 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     }
     finished = true;
     await runtime.close().catch(() => {});
+    debugLog("coding-agent", `runtime_closed runId=${runId}`);
     emit(outcomeOutputSchema.parse({ type: "outcome", runId, outcome }));
+    debugLog("coding-agent", `outcome runId=${runId} status=${outcome.status}`);
     await writeChain;
     // Unblock the reader: the pending stdin read resolves done and the main
     // promise returns; main() exits with the code. Never a hard process.exit
     // before the outcome is written and the runtime closed.
     await reader.cancel();
+    debugLog("coding-agent", `rpc_exit runId=${runId}`);
   }
 
   function handleSteer(command: SteerCommand): void {
+    debugLog("coding-agent", `steer_received runId=${command.runId}`);
     if (!executed || command.runId !== currentRunId || !runtime) {
       emitResponse(
         command.id,
@@ -243,6 +254,7 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
   }
 
   function handleAbort(command: AbortCommand): void {
+    debugLog("coding-agent", `abort_received runId=${command.runId}`);
     if (!executed || command.runId !== currentRunId || !runtime) {
       emitResponse(
         command.id,

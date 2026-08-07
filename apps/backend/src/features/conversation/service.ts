@@ -1,4 +1,5 @@
 import type { BackendModelRef } from "@my-agent-team/agent-backend";
+import { debugLog } from "@my-agent-team/agent-backend";
 import {
   type AgentMember,
   Conversation as ConversationSchema,
@@ -287,6 +288,10 @@ class ConversationServiceImpl implements ConversationService {
       configRevision: 1,
       idempotencyKey: input.idempotencyKey,
     });
+    debugLog(
+      "conversation",
+      `trigger conversationId=${input.conversationId} agentMemberId=${input.memberId} branchId=${branch.branchId} mode=${mode} inputId=${inputId} runId=${run?.runId ?? ""} acquired=${acquired} queued=${queued}`,
+    );
     if (acquired && run) {
       void this.#dispatchRun(run.runId).catch((err) => {
         console.error(`[conversation] dispatch failed for ${run.runId}:`, err);
