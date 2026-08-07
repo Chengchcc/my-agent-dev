@@ -1,6 +1,7 @@
 "use client";
 
 import { Download, FolderSync, GitBranch, RefreshCw, Trash2 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,18 +86,21 @@ function FileTree({
   );
 }
 
+const MonacoViewer = dynamic(
+  () => import("@/components/MonacoViewer").then((m) => m.MonacoViewer),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-96 w-full" />,
+  },
+);
+
 function FileContent({ packId, path }: { packId: string; path: string }) {
   const { data, isLoading } = useSkillPackFiles(packId, path);
 
-  if (isLoading) return <Skeleton className="h-40 w-full" />;
+  if (isLoading) return <Skeleton className="h-96 w-full" />;
   if (data?.type !== "file") return null;
 
-  const content = (data as { content: string }).content;
-  return (
-    <pre className="bg-muted rounded-md p-3 text-xs overflow-auto max-h-96 whitespace-pre-wrap">
-      {content}
-    </pre>
-  );
+  return <MonacoViewer value={data.content ?? ""} path={data.path} />;
 }
 
 export function SkillPackManager() {

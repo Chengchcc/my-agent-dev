@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -9,6 +10,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useActivateLoop, useCreateLoop } from "@/features/loop/hooks";
+
+const MonacoViewer = dynamic(
+  () => import("@/components/MonacoViewer").then((m) => m.MonacoViewer),
+  {
+    ssr: false,
+    loading: () => <div className="h-96 animate-pulse rounded-md bg-[var(--canvas-soft)]" />,
+  },
+);
 
 type Stage = "intent" | "preview";
 
@@ -113,9 +122,11 @@ export default function NewLoopPage() {
                   {note}
                 </div>
               )}
-              <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md border border-[var(--hairline)] bg-[var(--canvas)] p-4 text-sm">
-                {preview || "(no preview)"}
-              </pre>
+              {preview ? (
+                <MonacoViewer value={preview} path="LOOP.md" />
+              ) : (
+                <p className="text-sm text-[var(--muted)]">(no preview)</p>
+              )}
               <div className="flex gap-2">
                 <Button variant="outline" onClick={reset}>
                   Regenerate
