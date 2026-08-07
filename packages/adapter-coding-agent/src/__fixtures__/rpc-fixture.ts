@@ -17,6 +17,8 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
  *    no-events               success, then wait for abort, respond, exit(0)
  *    silent                  never respond to execute (stuck pre-acceptance;
  *                            dispose() must SIGTERM without awaiting acceptance)
+ *    slow-accept             delay the acceptance response (accept window for
+ *                            late-subscription / stop() race tests)
  *                            WITHOUT any outcome (abort-grace path)
  *    steer-error             steer responds success:false
  *
@@ -111,6 +113,13 @@ async function main(): Promise<void> {
           // (e.g. it fell into the wrong CLI mode). dispose() must SIGTERM
           // it without ever waiting on the acceptance promise.
           continue;
+        }
+        if (scenario === "slow-accept") {
+          // Delay the acceptance response (RPC_FIXTURE_ACCEPT_DELAY_MS):
+          // keeps the run in the pre-acceptance window so tests can race a
+          // late SSE subscription / stop() against it.
+          const delay = Number(process.env.RPC_FIXTURE_ACCEPT_DELAY_MS ?? 400);
+          await new Promise((r) => setTimeout(r, delay));
         }
         if (scenario === "reject-execute") {
           out({

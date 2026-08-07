@@ -46,6 +46,15 @@ afterAll(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
+/** execute() yields at its first await BEFORE the handle is registered;
+ *  stop()/dispose() must see the registered child, so wait for it. */
+async function waitForActive(backend: CodingAgentBackend, size: number): Promise<void> {
+  const active = (backend as unknown as { active: Map<string, unknown> }).active;
+  for (let i = 0; i < 200 && active.size < size; i++) {
+    await Bun.sleep(10);
+  }
+}
+
 describe("CodingAgentBackend (child process)", () => {
   test("execute spawns a child and returns a segment only after acceptance", async () => {
     const record = join(tmp, "rec-execute.txt");
@@ -211,15 +220,6 @@ describe("CodingAgentBackend (child process)", () => {
 });
 
 describe("CodingAgentBackend.dispose (deterministic shutdown)", () => {
-  /** execute() yields at its first await BEFORE the handle is registered;
-   *  dispose() must see the registered child, so wait for it. */
-  async function waitForActive(backend: CodingAgentBackend, size: number): Promise<void> {
-    const active = (backend as unknown as { active: Map<string, unknown> }).active;
-    for (let i = 0; i < 200 && active.size < size; i++) {
-      await Bun.sleep(10);
-    }
-  }
-
   test("SIGTERMs a pre-acceptance child (silent) without awaiting acceptance", async () => {
     const backend = new CodingAgentBackend(makeConfig("silent"), { abortGraceMs: 300 });
     // execute() blocks on acceptance forever for a silent child - never
@@ -258,6 +258,28 @@ describe("CodingAgentBackend.dispose (deterministic shutdown)", () => {
     expect(firstResult).toBeNull(); // SIGTERM'd pre-acceptance
     const secondResult = await second;
     expect(secondResult).toBeInstanceOf(Error); // slot wait cancelled
+  }, 10_000);
+
+  test("stop() on a pre-acceptance child SIGTERMs it without awaiting acceptance", async () => {
+    const backend = new CodingAgentBackend(makeConfig("silent"), { abortGraceMs: 300 });
+    // execute() blocks on acceptance forever for a silent child; stop()
+    // must never wait on that promise (it may never resolve).
+    const executeP = backend.execute(inputWith("r-stop-pre")).catch((e) => e);
+    await waitForActive(backend, 1);
+
+    const started = Date.now();
+    await backend.stop("r-stop-pre");
+    expect(Date.now() - started).toBeLessThan(5000);
+
+    // The pending execute settles with an error and the child is gone.
+    const err = await executeP;
+    expect(err).toBeInstanceOf(Error);
+    await expect(
+      backend.steer("r-stop-pre", {
+        inputId: "s",
+        message: { role: "user", text: "x" },
+      }),
+    ).rejects.toThrow(/no live child/);
   }, 10_000);
 });
 

@@ -140,13 +140,19 @@ export interface AgentRunExecutionService {
 /** Late-subscription handling for GET /agent-runs/:runId/events.
  *  - settled/unknown run: one terminal status event, then close (never a
  *    permanently open SSE for a run nothing will close);
- *  - active + live child: subscribe to transient events;
- *  - active, no live child (zombie): terminalize first, then a terminal
- *    status + close so the UI never shows a permanent Running state. */
+ *  - commit_failed: the outcome is stored and the child is gone - report a
+ *    terminal status WITHOUT touching the Product Run (retryTerminalCommit
+ *    owns it); aborting here would conflict with the stored outcome;
+ *  - active + live child OR dispatch in flight (pre-acceptance): subscribe
+ *    to transient events - an inflight run must NEVER be aborted;
+ *  - active, neither live nor inflight (true zombie): terminalize first,
+ *    then a terminal status + close so the UI never shows a permanent
+ *    Running state. */
 export function runEventStreamFor(
   run: Pick<AgentRun, "status"> | null,
   execution: {
     isLive(runId: string): boolean;
+    isInflight(runId: string): boolean;
     abortStaleRun(runId: string): Promise<void>;
     subscribe(runId: string, signal?: AbortSignal): AsyncIterable<BackendEvent>;
   },
@@ -157,10 +163,10 @@ export function runEventStreamFor(
     (async function* () {
       yield { type: "status", status };
     })();
-  if (!run || isTerminalStatus(run.status)) {
-    return terminal(run?.status ?? "failed");
-  }
-  if (execution.isLive(runId)) {
+  if (!run) return terminal("failed");
+  if (isTerminalStatus(run.status)) return terminal(run.status);
+  if (run.status === "commit_failed") return terminal("failed");
+  if (execution.isLive(runId) || execution.isInflight(runId)) {
     return execution.subscribe(runId, signal);
   }
   return (async function* () {

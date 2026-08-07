@@ -278,14 +278,26 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
         runId,
       }).catch(() => {});
     };
-    if (handle.accepted) {
-      sendAbort();
-    } else {
-      // Abort landed before acceptance: send it the moment the run is live.
-      await handle.acceptance.then((err) => {
-        if (err === null) sendAbort();
+    if (!handle.accepted) {
+      // Pre-acceptance: the acceptance promise may NEVER resolve (stuck
+      // child, wrong CLI mode, silent protocol). Never wait on it -
+      // terminate directly, exactly like dispose().
+      handle.proc.kill("SIGTERM");
+      const exited = await withTimeout(handle.proc.exit, this.abortGraceMs);
+      if (exited === null) {
+        handle.proc.kill("SIGKILL");
+        await handle.proc.exit.catch(() => null);
+      }
+      // Unblock the pending execute() so the caller's promise settles.
+      handle.settleAcceptance?.("stopped before coding-agent acceptance");
+      handle.settle({
+        status: "aborted",
+        error: "stopped before coding-agent acceptance",
       });
+      await this.reap(handle);
+      return;
     }
+    sendAbort();
     const outcome = await withTimeout(
       handle.outcome.catch(() => null),
       this.abortGraceMs,

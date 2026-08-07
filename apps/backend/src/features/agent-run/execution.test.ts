@@ -450,6 +450,79 @@ describe("agent run execution (Run-centric)", () => {
     expect(inputs[0]!.status).toBe("cancelled");
   }, 15_000);
 
+  test("SSE subscription during pre-acceptance dispatch does NOT abort the run", async () => {
+    // The exact user-visible race: Web connects to /agent-runs/:id/events
+    // right after POST, while the child has NOT accepted yet (isLive=false,
+    // isInflight=true). The stream must subscribe, never abortStaleRun.
+    const fake = createFakeDaemon({ outcomeDelayMs: 80 });
+    const execution = makeExecution(fake);
+
+    const acquired = await enqueue("normal", "inflight-1", "hello");
+    const runId = acquired.run!.runId;
+
+    // Fire dispatch; subscribe BEFORE the (slow) acceptance lands.
+    const dispatchP = execution.dispatch(runId);
+    const events: string[] = [];
+    const collectP = (async () => {
+      for await (const ev of runEventStreamFor({ status: "running" }, execution, runId)) {
+        events.push(ev.type);
+      }
+    })();
+    await dispatchP;
+    await collectP;
+
+    // The run was NOT aborted: it completed and its input was delivered.
+    const run = await waitForTerminal(runId);
+    expect(run.status).toBe("completed");
+    const inputs = await runPort.listInputs(run.branchId);
+    expect(inputs[0]!.status).toBe("delivered");
+  }, 15_000);
+
+  test("runEventStreamFor subscribes for inflight runs without aborting", async () => {
+    const aborted: string[] = [];
+    const events: string[] = [];
+    const stream = runEventStreamFor(
+      { status: "running" },
+      {
+        isLive: () => false,
+        isInflight: () => true,
+        abortStaleRun: async (id) => {
+          aborted.push(id);
+        },
+        subscribe: () =>
+          (async function* () {
+            yield { type: "status", status: "running" };
+          })(),
+      },
+      "r-inflight",
+    );
+    for await (const ev of stream) events.push(ev.type);
+    expect(events).toEqual(["status"]);
+    expect(aborted).toEqual([]);
+  });
+
+  test("commit_failed run: SSE reports failed WITHOUT aborting the Product run", async () => {
+    const aborted: string[] = [];
+    const events: string[] = [];
+    const stream = runEventStreamFor(
+      { status: "commit_failed" },
+      {
+        isLive: () => false,
+        isInflight: () => false,
+        abortStaleRun: async (id) => {
+          aborted.push(id);
+        },
+        subscribe: () => (async function* () {})(),
+      },
+      "r-cf",
+    );
+    for await (const ev of stream) events.push(ev.type);
+    // The stored outcome is the terminal authority; retryTerminalCommit owns
+    // recovery. The SSE must NOT touch the run.
+    expect(events).toEqual(["status"]);
+    expect(aborted).toEqual([]);
+  });
+
   test("recovery terminalizes a delivered-active orphan run and promotes the next input", async () => {
     const fake = createFakeDaemon();
     void makeExecution(fake);
