@@ -1,7 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { appendTransient, removeTransient, type TransientMap } from "@/lib/transient-reducer";
+import {
+  appendTransient,
+  clearRunTodos,
+  clearRunTools,
+  completeTool,
+  type LiveToolMap,
+  type RunTodoMap,
+  removeTransient,
+  setRunTodos,
+  type TransientMap,
+  upsertTool,
+} from "@/lib/transient-reducer";
 
-describe("transient reducer", () => {
+describe("transient reducer — text", () => {
   test("A delta + B delta → two independent bubbles", () => {
     let s: TransientMap = {};
     s = appendTransient(s, "run-a", "member-a", "hello from A");
@@ -41,10 +52,111 @@ describe("transient reducer", () => {
     const s: TransientMap = {};
     expect(removeTransient(s, "nope")).toBe(s);
   });
+});
 
-  test("conversation switch → empty map", () => {
-    appendTransient({}, "run-a", "m-a", "A"); // build state is irrelevant
-    const cleared: TransientMap = {}; // unmount clears the whole map
-    expect(cleared).toEqual({});
+describe("transient reducer — tools", () => {
+  test("tool started → running", () => {
+    let s: LiveToolMap = {};
+    s = upsertTool(s, {
+      runId: "r1",
+      callId: "c1",
+      name: "ls",
+      kind: "native",
+      state: "running",
+    });
+    expect(s["r1:c1"]).toMatchObject({ name: "ls", state: "running" });
+  });
+
+  test("tool completed → done with result", () => {
+    let s: LiveToolMap = {};
+    s = upsertTool(s, { runId: "r1", callId: "c1", name: "ls", kind: "native", state: "running" });
+    s = completeTool(s, "r1", "c1", { entries: [] }, false);
+    expect(s["r1:c1"]?.state).toBe("done");
+    expect(s["r1:c1"]?.result).toEqual({ entries: [] });
+  });
+
+  test("tool error → error state", () => {
+    let s: LiveToolMap = {};
+    s = upsertTool(s, {
+      runId: "r1",
+      callId: "c1",
+      name: "bash",
+      kind: "native",
+      state: "running",
+    });
+    s = completeTool(s, "r1", "c1", { error: "boom" }, true);
+    expect(s["r1:c1"]?.state).toBe("error");
+  });
+
+  test("complete on unknown call is a no-op", () => {
+    expect(completeTool({}, "r1", "ghost", {}, false)).toEqual({});
+  });
+
+  test("run ended clears only that run's tools", () => {
+    let s: LiveToolMap = {};
+    s = upsertTool(s, { runId: "r1", callId: "c1", name: "ls", kind: "native", state: "running" });
+    s = upsertTool(s, {
+      runId: "r2",
+      callId: "c2",
+      name: "read",
+      kind: "native",
+      state: "running",
+    });
+    s = clearRunTools(s, "r1");
+    expect(s["r1:c1"]).toBeUndefined();
+    expect(s["r2:c2"]).toBeDefined();
+  });
+});
+
+describe("transient reducer — todos", () => {
+  test("todo update replaces the full snapshot", () => {
+    let s: RunTodoMap = {};
+    s = setRunTodos(s, "r1", [{ id: "a", text: "step 1", status: "done" }]);
+    s = setRunTodos(s, "r1", [
+      { id: "a", text: "step 1", status: "done" },
+      { id: "b", text: "step 2", status: "pending" },
+    ]);
+    expect(s["r1"]).toHaveLength(2);
+  });
+
+  test("run failed clears text/tools/todo via their per-run removers", () => {
+    let t: TransientMap = {};
+    let tools: LiveToolMap = {};
+    let todos: RunTodoMap = {};
+    t = appendTransient(t, "r1", "m", "partial");
+    tools = upsertTool(tools, {
+      runId: "r1",
+      callId: "c1",
+      name: "ls",
+      kind: "native",
+      state: "running",
+    });
+    todos = setRunTodos(todos, "r1", [{ id: "a", text: "x", status: "pending" }]);
+    t = removeTransient(t, "r1");
+    tools = clearRunTools(tools, "r1");
+    todos = clearRunTodos(todos, "r1");
+    expect(t).toEqual({});
+    expect(tools).toEqual({});
+    expect(todos).toEqual({});
+  });
+
+  test("run completed keeps text but clears tools/todo", () => {
+    let t: TransientMap = {};
+    let tools: LiveToolMap = {};
+    let todos: RunTodoMap = {};
+    t = appendTransient(t, "r1", "m", "final text");
+    tools = upsertTool(tools, {
+      runId: "r1",
+      callId: "c1",
+      name: "ls",
+      kind: "native",
+      state: "done",
+    });
+    todos = setRunTodos(todos, "r1", [{ id: "a", text: "x", status: "done" }]);
+    tools = clearRunTools(tools, "r1");
+    todos = clearRunTodos(todos, "r1");
+    expect(t["r1"]?.text).toBe("final text");
+    expect(tools).toEqual({});
+    expect(todos).toEqual({});
   });
 });

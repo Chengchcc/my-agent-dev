@@ -101,7 +101,6 @@ export interface ConversationService {
     conversationId: string,
     opts?: { afterSeq?: number; signal?: AbortSignal; pollMs?: number },
   ): AsyncIterable<LedgerEntry>;
-  appendTodo(conversationId: string, senderMemberId: string, todos: unknown): Promise<void>;
   /** Mention cascade from a terminal assistant Message: enqueue a run for
    *  every agent member mentioned in the canonical text. Idempotent per
    *  (sourceRunId, targetMemberId) - commit replay cannot double-trigger. */
@@ -593,18 +592,6 @@ class ConversationServiceImpl implements ConversationService {
       subs.delete(onPush);
       if (subs.size === 0) this.#subscribers.delete(conversationId);
     }
-  }
-
-  /** Append a todo snapshot to the conversation ledger (UI-only, not
-   *  projected to agents). */
-  async appendTodo(conversationId: string, senderMemberId: string, todos: unknown): Promise<void> {
-    await this.#appendAndBroadcast({
-      conversationId,
-      senderMemberId,
-      addressedTo: [],
-      kind: "todo",
-      content: { todos },
-    });
   }
 
   /** Mention cascade triggered AFTER a terminal assistant Message is

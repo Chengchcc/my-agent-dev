@@ -1,4 +1,4 @@
-import type { Plugin, PluginTool, SessionStore } from "@my-agent-team/agent";
+import type { Plugin, PluginTool, SessionStore, TodoItem } from "@my-agent-team/agent";
 import { readTodo, writeTodo } from "@my-agent-team/agent";
 
 export interface TodoPluginOptions {
@@ -10,6 +10,16 @@ export function createTodoPlugin(opts: TodoPluginOptions): Plugin {
   return {
     name: "todo",
     tools: [createTodoWriteTool(opts)],
+    hooks: {
+      // Surface the todo snapshot as a UI-transient event right after the
+      // tool runs; never written to canonical conversation history.
+      afterTool(toolName: string, result: unknown) {
+        if (toolName !== "todo_write") return undefined;
+        const items = (result as { items?: readonly TodoItem[] } | null)?.items;
+        if (!items) return undefined;
+        return { type: "todo_update", items };
+      },
+    },
     meta: [
       {
         name: "Todo",

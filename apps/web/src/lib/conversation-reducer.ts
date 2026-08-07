@@ -41,8 +41,6 @@ export interface ConvState {
   streamConn: StreamConn;
   error: string | null;
   triggerMode: TriggerMode;
-  /** M14.6: Task todo progress — full snapshot from todo_update events. */
-  todos: Array<{ step: string; status: "pending" | "in_progress" | "done" }>;
   /** Number of sends that have been dispatched locally but not yet settled
    *  by the backend (HTTP POST in-flight). Decremented on mutation
    *  onSettled (success OR error) - never tied to an agent reply; Run
@@ -60,7 +58,6 @@ export type Action =
   | { type: "conn"; status: StreamConn }
   | { type: "toggleTriggerMode" }
   | { type: "send/error"; message: string }
-  | { type: "todo/update"; todos: ConvState["todos"] }
   | { type: "member"; seq: number; kind: string; payload: unknown }
   | {
       type: "message";
@@ -81,7 +78,6 @@ export function initialState(): ConvState {
     streamConn: "connecting",
     error: null,
     triggerMode: "auto",
-    todos: [],
     pendingSendCount: 0,
     optimisticSeq: 0,
   };
@@ -350,9 +346,6 @@ export function reducer(s: ConvState, a: Action): ConvState {
 
     case "toggleTriggerMode":
       return { ...s, triggerMode: s.triggerMode === "auto" ? "mention" : "auto" };
-
-    case "todo/update":
-      return { ...s, todos: a.todos };
 
     default:
       return s;

@@ -30,4 +30,38 @@ describe("plugin-todo", () => {
     expect(state.items).toHaveLength(1);
     expect(state.items[0]?.id).toBe("t1");
   });
+
+  test("afterTool emits todo_update only for todo_write", async () => {
+    const store = createInMemorySessionStore();
+    const sid = "todo-hook";
+    await store.create({
+      sessionId: sid,
+      backendKind: "coding_agent",
+      workspaceRoot: "/ws",
+      leafEntryId: null,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const plugin = createTodoPlugin({ sessionId: sid, store });
+    const hook = plugin.hooks?.afterTool;
+    expect(hook).toBeDefined();
+
+    const ev = hook!("todo_write", {
+      items: [
+        { id: "a", text: "step 1", status: "done" },
+        { id: "b", text: "step 2", status: "pending" },
+      ],
+    });
+    expect(ev).toEqual({
+      type: "todo_update",
+      items: [
+        { id: "a", text: "step 1", status: "done" },
+        { id: "b", text: "step 2", status: "pending" },
+      ],
+    });
+
+    // Other tools return nothing.
+    expect(hook!("ls", {})).toBeUndefined();
+  });
 });

@@ -15,6 +15,7 @@ import type { SenderRef } from "@/lib/conversation-reducer";
 import type { CommandContext } from "@/lib/slash-commands";
 import { findCommand, parseArgs } from "@/lib/slash-commands";
 import { extractText } from "@/lib/timeline";
+import type { LiveToolCall, TodoItem } from "@/lib/transient-reducer";
 import { Composer } from "./Composer";
 import { RosterList } from "./RosterList";
 import { Timeline } from "./Timeline";
@@ -33,11 +34,9 @@ export function ConversationCanvas({
 }: ConversationCanvasProps) {
   const router = useRouter();
   const qc = useQueryClient();
-  const { state, busy, send, toggleTriggerMode, transients, activeRuns } = useConversation(
-    conversationId,
-    snapshot,
-  );
-  const { viewerMemberId, roster, items, error, todos, triggerMode, streamConn } = state;
+  const { state, busy, send, toggleTriggerMode, transients, transientTools, runTodos, activeRuns } =
+    useConversation(conversationId, snapshot);
+  const { viewerMemberId, roster, items, error, triggerMode, streamConn } = state;
 
   // W3+W5: use the most recent agent run's status, not first-found.
   // Scan from newest to oldest to get the current run's transient state.
@@ -106,14 +105,24 @@ export function ConversationCanvas({
 
   // One timeline bubble per active run, addressed via its agent member.
   const transientBubbles = useMemo(() => {
-    return Object.entries(transients)
-      .map(([runId, t]) => ({
+    const bubbles: Array<{
+      runId: string;
+      text: string;
+      sender: SenderRef;
+      tools: LiveToolCall[];
+    }> = [];
+    for (const [runId, t] of Object.entries(transients)) {
+      const sender = Object.values(roster).find((m) => m.memberId === t.agentMemberId);
+      if (!sender) continue;
+      bubbles.push({
         runId,
         text: t.text,
-        sender: Object.values(roster).find((m) => m.memberId === t.agentMemberId) ?? null,
-      }))
-      .filter((b): b is { runId: string; text: string; sender: SenderRef } => b.sender !== null);
-  }, [transients, roster]);
+        sender,
+        tools: Object.values(transientTools).filter((tool) => tool.runId === runId),
+      });
+    }
+    return bubbles;
+  }, [transients, transientTools, roster]);
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
@@ -274,7 +283,20 @@ export function ConversationCanvas({
       )}
 
       {/* M14.6: Todo progress — pinned above message stream */}
-      <TodoPanel todos={todos} />
+      <TodoPanel
+        runs={Object.entries(runTodos)
+          .map(([runId, items]) => ({
+            runId,
+            agent:
+              Object.values(roster).find((m) => m.memberId === transients[runId]?.agentMemberId) ??
+              null,
+            items,
+          }))
+          .filter(
+            (r): r is { runId: string; agent: SenderRef; items: readonly TodoItem[] } =>
+              r.agent !== null,
+          )}
+      />
 
       {/* Error bar */}
       {error && (

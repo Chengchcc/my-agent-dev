@@ -1,3 +1,5 @@
+import type { TodoItem } from "./todo.js";
+
 /** Pi-style typed lifecycle events per runtime/coding-agent.md. */
 export type CodingAgentLoopEvent =
   | { type: "agent_start" }
@@ -19,6 +21,7 @@ export type CodingAgentLoopEvent =
   | { type: "retry_end" }
   | { type: "compaction_start" }
   | { type: "compaction_end" }
-  | { type: "queue_update" };
+  | { type: "queue_update" }
+  | { type: "todo_update"; items: readonly TodoItem[] };
 
 export type AgentLoopListener = (event: CodingAgentLoopEvent) => void | Promise<void>;

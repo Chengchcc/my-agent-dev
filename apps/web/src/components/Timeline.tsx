@@ -14,6 +14,8 @@ import type { MessageItem, SenderRef, UiItem } from "@/lib/conversation-reducer"
 import { groupTurns, isTurnStart, type TurnSegment } from "@/lib/conversation-reducer";
 import { renderContentBlocks } from "@/lib/render-blocks";
 import { extractText } from "@/lib/timeline";
+import type { LiveToolCall } from "@/lib/transient-reducer";
+import { LiveToolStep } from "./LiveToolStep";
 import { MessageBubble } from "./MessageBubble";
 import { ReasoningTrace } from "./ReasoningTrace";
 
@@ -24,7 +26,14 @@ interface TimelineProps {
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
   /** Transient streaming outputs — one temporary assistant bubble per
    *  active run at the end of the timeline, replaced by canonical Messages. */
-  transients?: Array<{ runId: string; text: string; sender: SenderRef }> | undefined;
+  transients?:
+    | Array<{
+        runId: string;
+        text: string;
+        sender: SenderRef;
+        tools?: readonly LiveToolCall[];
+      }>
+    | undefined;
 }
 
 interface TurnAnchor {
@@ -253,6 +262,9 @@ export function Timeline({
                 content={t.text}
                 isStreaming
               />
+              {t.tools?.map((tool) => (
+                <LiveToolStep key={`${t.runId}:${tool.callId}`} tool={tool} />
+              ))}
             </div>
           ))}
         </div>

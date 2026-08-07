@@ -575,6 +575,12 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         callId: call.id,
         result: (result ?? {}) as Readonly<Record<string, unknown>>,
       });
+      // Plugin hooks may surface UI-transient events (e.g. todo_update);
+      // emitted after the tool result so consumers get the final payload.
+      for (const p of opts.plugins) {
+        const ev = p.hooks?.afterTool?.(call.name, result);
+        if (ev) await emit(ev);
+      }
       return { id: call.id, result, isError, terminate };
     }
 

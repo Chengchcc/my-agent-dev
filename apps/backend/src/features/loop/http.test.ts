@@ -84,7 +84,7 @@ function makeApp(activeRuns = false) {
   return { app, dataDir, db, store, cleanup: () => rm(dataDir, { recursive: true, force: true }) };
 }
 
-async function createLoop(app: Elysia): Promise<string> {
+async function createLoop(app: ReturnType<typeof makeApp>["app"]): Promise<string> {
   const resp = await app.handle(
     new Request("http://localhost/api/loops", {
       method: "POST",

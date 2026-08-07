@@ -15,7 +15,19 @@ import {
   reducer,
   type SenderRef,
 } from "@/lib/conversation-reducer";
-import { appendTransient, removeTransient } from "@/lib/transient-reducer";
+import {
+  appendTransient,
+  clearRunTodos,
+  clearRunTools,
+  completeTool,
+  type LiveToolCall,
+  type LiveToolMap,
+  type RunTodoMap,
+  removeTransient,
+  setRunTodos as setRunTodosMap,
+  type TodoItem,
+  upsertTool,
+} from "@/lib/transient-reducer";
 import { typedSource } from "@/lib/typed-source";
 
 function safeParse(raw: string): unknown {
@@ -55,6 +67,30 @@ export function useConversation(
   >({});
   const runStreamsRef = useRef(new Map<string, EventSource>());
   const transientsRef = useRef(transients);
+  /** Live tool steps per run (`<runId>:<callId>` key). Run-local, transient:
+   *  never written to History, cleared at run terminal. */
+  const [transientTools, setTransientTools] = useState<LiveToolMap>({});
+  /** Latest todo snapshot per run (todo_write replaces the whole list). */
+  const [runTodos, setRunTodos] = useState<RunTodoMap>({});
+
+  const upsertToolState = useCallback((call: LiveToolCall) => {
+    setTransientTools((prev) => upsertTool(prev, call));
+  }, []);
+  const completeToolState = useCallback(
+    (runId: string, callId: string, result: unknown, isError: boolean) => {
+      setTransientTools((prev) => completeTool(prev, runId, callId, result, isError));
+    },
+    [],
+  );
+  const clearRunToolsState = useCallback((runId: string) => {
+    setTransientTools((prev) => clearRunTools(prev, runId));
+  }, []);
+  const setRunTodosState = useCallback((runId: string, items: readonly TodoItem[]) => {
+    setRunTodos((prev) => setRunTodosMap(prev, runId, items));
+  }, []);
+  const clearRunTodosState = useCallback((runId: string) => {
+    setRunTodos((prev) => clearRunTodos(prev, runId));
+  }, []);
 
   // Leaving the conversation closes every run EventSource and clears all
   // transient state — a switched conversation must never inherit the
@@ -68,6 +104,8 @@ export function useConversation(
       setActiveRuns(new Set());
       setTransients({});
       transientsRef.current = {};
+      setTransientTools({});
+      setRunTodos({});
     };
   }, [conversationId]);
   const upsertTransient = useCallback((runId: string, agentMemberId: string, text: string) => {
@@ -208,17 +246,6 @@ export function useConversation(
       dispatch({ type: "member", seq, kind: "member.left", payload });
     });
 
-    ts.on("todo", (entry) => {
-      const payload = typeof entry.content === "string" ? safeParse(entry.content) : entry.content;
-      const todos =
-        payload && typeof payload === "object" && "todos" in payload
-          ? (payload as { todos: ConvState["todos"] }).todos
-          : null;
-      if (Array.isArray(todos)) {
-        dispatch({ type: "todo/update", todos });
-      }
-    });
-
     ts.on("undo", (entry) => {
       const seq = guard(entry);
       if (seq === null) return;
@@ -260,6 +287,11 @@ export function useConversation(
           next.delete(runId);
           return next;
         });
+        // Tools/todos are Run-local and never enter History: clear them at
+        // terminal regardless of outcome. Only the text bubble survives on
+        // completion (replaced by the canonical Message).
+        clearRunToolsState(runId);
+        clearRunTodosState(runId);
         if (dropBubble) dropTransient(runId);
       };
       // Transport failure: Live Updates are best-effort; drop the partial
@@ -289,8 +321,61 @@ export function useConversation(
           /* malformed - ignore */
         }
       });
+      const toolStarted = (kind: "native" | "product") => (e: Event) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as {
+            toolName?: string;
+            callId?: string;
+          };
+          if (!ev.callId) return;
+          upsertToolState({
+            runId,
+            callId: ev.callId,
+            name: ev.toolName ?? "tool",
+            kind,
+            state: "running",
+          });
+        } catch {
+          /* malformed - ignore */
+        }
+      };
+      const toolCompleted = (_kind: "native" | "product") => (e: Event) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as {
+            callId?: string;
+            result?: unknown;
+          };
+          if (!ev.callId) return;
+          completeToolState(runId, ev.callId, ev.result, false);
+        } catch {
+          /* malformed - ignore */
+        }
+      };
+      es.addEventListener("native_tool_started", toolStarted("native"));
+      es.addEventListener("native_tool_completed", toolCompleted("native"));
+      es.addEventListener("product_tool_started", toolStarted("product"));
+      es.addEventListener("product_tool_completed", toolCompleted("product"));
+      es.addEventListener("backend.coding_agent.todo_update", (e) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as {
+            payload?: { items?: readonly TodoItem[] };
+          };
+          const items = ev.payload?.items;
+          if (items) setRunTodosState(runId, items);
+        } catch {
+          /* malformed - ignore */
+        }
+      });
     },
-    [dropTransient, upsertTransient],
+    [
+      clearRunToolsState,
+      clearRunTodosState,
+      completeToolState,
+      dropTransient,
+      setRunTodosState,
+      upsertToolState,
+      upsertTransient,
+    ],
   );
 
   const send = useCallback(
@@ -343,5 +428,7 @@ export function useConversation(
     toggleTriggerMode,
     activeRuns,
     transients,
+    transientTools,
+    runTodos,
   };
 }

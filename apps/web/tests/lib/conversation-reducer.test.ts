@@ -34,7 +34,6 @@ describe("initialState", () => {
     const s = initialState();
     expect(s.items).toEqual([]);
     expect(s.streamConn).toBe("connecting");
-    expect(s.todos).toEqual([]);
     expect(s.optimisticSeq).toBe(0);
   });
 });
@@ -139,19 +138,9 @@ describe("toggleTriggerMode", () => {
 });
 
 describe("todo/update", () => {
-  test("sets todos", () => {
-    let s = bootstrap();
-    const todos = [{ step: "step1", status: "done" as const }];
-    s = reducer(s, { type: "todo/update", todos });
-    expect(s.todos).toEqual(todos);
-  });
-
-  test("clears previous todos", () => {
-    let s = bootstrap();
-    s = reducer(s, { type: "todo/update", todos: [{ step: "old", status: "done" }] });
-    s = reducer(s, { type: "todo/update", todos: [] });
-    expect(s.todos).toEqual([]);
-  });
+  // todo/update was removed with the Conversation-ledger todo path; todos
+  // are Run-local transients delivered over the Run SSE (see transient
+  // reducer tests).
 });
 
 describe("member", () => {

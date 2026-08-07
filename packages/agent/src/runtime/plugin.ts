@@ -1,4 +1,5 @@
 import type { Message } from "@my-agent-team/message";
+import type { CodingAgentLoopEvent } from "./agent-event.js";
 
 export interface PluginTool {
   readonly name: string;
@@ -22,6 +23,10 @@ export interface PluginTool {
 export interface PluginHooks {
   beforeModel?(messages: readonly Message[]): readonly Message[];
   beforeStop?(cancel: () => void): void;
+  /** After a tool executes: a plugin may return a UI-transient event (e.g.
+   *  todo_update) that the loop emits. Events are best-effort and never
+   *  touch the canonical conversation history. */
+  afterTool?(toolName: string, result: unknown): CodingAgentLoopEvent | void;
 }
 
 export interface MetaSectionProvider {
