@@ -240,3 +240,72 @@ describe("no session binding surface", () => {
     expect("updateMemberSessionId" in adapter).toBe(false);
   });
 });
+
+// ─── deleteConversation ────────────────────────────────────
+
+describe("deleteConversation", () => {
+  function makeConversation(): string {
+    const id = `del-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    adapter.createConversation({
+      conversationId: id,
+      triggerMode: "mention",
+      createdAt: Date.now(),
+    });
+    return id;
+  }
+
+  test("deletes a conversation with a multi-entry self-referencing context chain", async () => {
+    const id = makeConversation();
+    const now = Date.now();
+    db.exec(
+      `INSERT INTO agent_context_tree (tree_id, conversation_id, agent_member_id, created_at)
+       VALUES ('tree-${id}', '${id}', 'ag-1', ${now})`,
+    );
+    // Linear chain: entry2.parent_id -> entry1, entry3.parent_id -> entry2.
+    // The self-referencing FK (RESTRICT by default) breaks the naive cascade.
+    db.exec(
+      `INSERT INTO agent_context_entry (entry_id, tree_id, parent_id, type, payload, created_at)
+       VALUES ('e1-${id}', 'tree-${id}', NULL, 'ledger_message', '{}', ${now}),
+              ('e2-${id}', 'tree-${id}', 'e1-${id}', 'ledger_message', '{}', ${now}),
+              ('e3-${id}', 'tree-${id}', 'e2-${id}', 'ledger_message', '{}', ${now})`,
+    );
+
+    expect(await adapter.deleteConversation(id)).toBe(true);
+    expect(adapter.getConversation(id)).toBeNull();
+    const left = (
+      db
+        .query("SELECT COUNT(*) AS c FROM agent_context_entry WHERE tree_id = ?")
+        .get(`tree-${id}`) as {
+        c: number;
+      }
+    ).c;
+    expect(left).toBe(0);
+  });
+
+  test("rejects delete while an active run exists", async () => {
+    const id = makeConversation();
+    const now = Date.now();
+    db.exec(
+      `INSERT INTO agent_context_tree (tree_id, conversation_id, agent_member_id, created_at)
+       VALUES ('tree-run-${id}', '${id}', 'ag-1', ${now})`,
+    );
+    db.exec(
+      `INSERT INTO agent_context_branch (branch_id, tree_id, ledger_cursor, backend_kind, is_default, revision, created_at)
+       VALUES ('br-${id}', 'tree-run-${id}', 0, 'anthropic', 1, 1, ${now})`,
+    );
+    db.exec(
+      `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, created_at)
+       VALUES ('run-${id}', 'br-${id}', '${id}', 'ag-1', '{}', 'running', 'ik-${id}', 1, ${now})`,
+    );
+
+    await expect(adapter.deleteConversation(id)).rejects.toThrow(
+      "Conversation has an active run; stop it before deleting.",
+    );
+    expect(adapter.getConversation(id)).not.toBeNull();
+
+    // Terminal run does not block deletion.
+    db.exec(`UPDATE agent_run SET status = 'completed' WHERE run_id = 'run-${id}'`);
+    expect(await adapter.deleteConversation(id)).toBe(true);
+    expect(adapter.getConversation(id)).toBeNull();
+  });
+});

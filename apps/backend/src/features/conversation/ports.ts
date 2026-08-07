@@ -82,7 +82,7 @@ export interface ConversationPort {
   updateHopCount(conversationId: string, count: number): void;
   listConversations(): ConversationWithMembers[];
   listConversationsByAgent(agentId: string): ConversationWithMembers[];
-  deleteConversation(conversationId: string): boolean;
+  deleteConversation(conversationId: string): Promise<boolean>;
   /** Last ledger entry timestamp for a conversation, or null when empty. */
   getLastActivityAt?(conversationId: string): number | null;
 

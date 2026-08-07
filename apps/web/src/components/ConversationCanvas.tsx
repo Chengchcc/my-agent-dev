@@ -32,7 +32,7 @@ export function ConversationCanvas({
 }: ConversationCanvasProps) {
   const router = useRouter();
   const qc = useQueryClient();
-  const { state, busy, send, toggleTriggerMode, transientText, activeRuns } = useConversation(
+  const { state, busy, send, toggleTriggerMode, transient, activeRuns } = useConversation(
     conversationId,
     snapshot,
   );
@@ -93,7 +93,11 @@ export function ConversationCanvas({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
     prevLen.current = items.length;
-  }, [items.length]);
+    // Streaming bubbles grow without changing items.length — follow them.
+    if (transient?.text && !scrolledUp && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [items.length, transient?.text, scrolledUp]);
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
@@ -300,6 +304,9 @@ export function ConversationCanvas({
                   viewerMemberId={viewerMemberId}
                   conversationId={conversationId}
                   scrollContainerRef={scrollRef}
+                  transient={
+                    transient && primaryAgent ? { ...transient, sender: primaryAgent } : undefined
+                  }
                 />
               </div>
             )}
@@ -339,36 +346,31 @@ export function ConversationCanvas({
         </Button>
 
         {/* Roster — mobile drawer overlay */}
-        {rosterOpen && (
-          <>
-            <div
-              className="md:hidden fixed inset-0 bg-black/40 z-40"
-              onClick={() => setRosterOpen(false)}
-            />
-            <aside
-              id="roster-drawer"
-              className="md:hidden fixed right-0 top-0 bottom-0 w-64 bg-[var(--canvas)] border-l border-[var(--hairline)] z-50 overflow-y-auto p-3 shadow-lg"
-              role="dialog"
-              aria-label="Members"
-            >
-              <RosterList
-                conversationId={conversationId}
-                roster={roster}
-                viewerMemberId={viewerMemberId}
-                onClose={() => setRosterOpen(false)}
-              />
-            </aside>
-          </>
-        )}
-
-        {/* Transient Agent Run output (Live Updates) - never canonical */}
-        {transientText && (
-          <div className="shrink-0 border-t border-[var(--hairline)] px-4 py-2 text-sm text-[var(--mute)] italic">
-            {transientText}
-            <span className="ml-1 animate-pulse">▍</span>
-          </div>
-        )}
       </div>
+
+      {rosterOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 bg-black/40 z-40"
+            onClick={() => setRosterOpen(false)}
+          />
+          <aside
+            id="roster-drawer"
+            className="md:hidden fixed right-0 top-0 bottom-0 w-64 bg-[var(--canvas)] border-l border-[var(--hairline)] z-50 overflow-y-auto p-3 shadow-lg"
+            role="dialog"
+            aria-label="Members"
+          >
+            <RosterList
+              conversationId={conversationId}
+              roster={roster}
+              viewerMemberId={viewerMemberId}
+              onClose={() => setRosterOpen(false)}
+            />
+          </aside>
+        </>
+      )}
+
+      {/* Roster — mobile drawer overlay */}
 
       {/* Composer */}
       <div className="shrink-0 border-t border-[var(--hairline)]">

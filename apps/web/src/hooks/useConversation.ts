@@ -1,7 +1,7 @@
 "use client";
 
 import { conversationEvents } from "@my-agent-team/api-contract";
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   useConversationSnapshot,
@@ -46,7 +46,26 @@ export function useConversation(
    *  Runs are removed when their terminal state is observed on the run
    *  event stream OR when the canonical final Message lands in History. */
   const [activeRuns, setActiveRuns] = useState<Set<string>>(new Set());
-  const [transientText, setTransientText] = useState<string | null>(null);
+  /** Transient streaming output of the most recent active run. Rendered as a
+   *  temporary assistant bubble inside the Timeline; cleared when the
+   *  canonical final Message (id `run:<runId>:assistant:0`) lands in the
+   *  conversation ledger — never persisted, never written to history. */
+  const [transient, setTransient] = useState<{ runId: string; text: string } | null>(null);
+  const transientRef = useRef(transient);
+  const updateTransient = useCallback(
+    (
+      next:
+        | { runId: string; text: string }
+        | null
+        | ((
+            prev: { runId: string; text: string } | null,
+          ) => { runId: string; text: string } | null),
+    ) => {
+      transientRef.current = typeof next === "function" ? next(transientRef.current) : next;
+      setTransient(transientRef.current);
+    },
+    [],
+  );
 
   // 1) Snapshot bootstrap (roster + viewerMemberId)
   const snap = useConversationSnapshot(conversationId, preFetchedSnapshot);
@@ -133,6 +152,19 @@ export function useConversation(
           payload: content,
         });
       } else {
+        // The canonical final Message for a transient run replaces the
+        // temporary bubble — match by messageId prefix `run:<runId>:`.
+        const t = transientRef.current;
+        if (
+          t &&
+          content &&
+          typeof content === "object" &&
+          "messageId" in content &&
+          typeof content.messageId === "string" &&
+          content.messageId.startsWith(`run:${t.runId}:`)
+        ) {
+          updateTransient(null);
+        }
         dispatch({
           type: "message",
           seq,
@@ -182,7 +214,7 @@ export function useConversation(
     });
 
     return () => ts.close();
-  }, [conversationId]);
+  }, [conversationId, updateTransient]);
 
   // 3) Send: optimistic dispatch + POST /conversations/:id/messages.
   //    The conversation SSE delivers the authoritative ledger revision which
@@ -190,47 +222,57 @@ export function useConversation(
   const sendMut = usePostConversationMessage(conversationId);
 
   /** Follow one run through its Live Update stream. Transient only: when
-   *  the run's terminal state is observed the run is dropped; the canonical
-   *  final Message still arrives via the conversation History SSE. The
-   *  stream is best-effort - losing it never affects the final Message. */
-  const watchRun = useCallback((runId: string) => {
-    setActiveRuns((prev) => new Set(prev).add(runId));
-    const es = new EventSource(`/api/bff/api/agent-runs/${runId}/events`);
-    const done = () => {
-      es.close();
-      setActiveRuns((prev) => {
-        const next = new Set(prev);
-        next.delete(runId);
-        return next;
-      });
-      setTransientText(null);
-    };
-    es.onerror = done;
-    es.addEventListener("status", (e) => {
-      try {
-        const ev = JSON.parse((e as MessageEvent).data) as {
-          type?: string;
-          status?: string;
-        };
-        if (
-          ev.type === "status" &&
-          ["completed", "failed", "aborted", "timeout"].includes(ev.status ?? "")
-        ) {
-          done();
+   *  the run's terminal state is observed the run is dropped from activeRuns
+   *  but the transient bubble is KEPT — it is replaced by the canonical
+   *  final Message when that lands in the conversation ledger (messageId
+   *  `run:<runId>:assistant:0`), avoiding a blank frame between stream end
+   *  and history commit. The stream is best-effort - losing it never affects
+   *  the final Message. */
+  const watchRun = useCallback(
+    (runId: string) => {
+      setActiveRuns((prev) => new Set(prev).add(runId));
+      const es = new EventSource(`/api/bff/api/agent-runs/${runId}/events`);
+      const done = () => {
+        es.close();
+        setActiveRuns((prev) => {
+          const next = new Set(prev);
+          next.delete(runId);
+          return next;
+        });
+      };
+      es.onerror = done;
+      es.addEventListener("status", (e) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as {
+            type?: string;
+            status?: string;
+          };
+          if (
+            ev.type === "status" &&
+            ["completed", "failed", "aborted", "timeout"].includes(ev.status ?? "")
+          ) {
+            done();
+          }
+        } catch {
+          /* malformed - ignore */
         }
-      } catch {
-        /* malformed - ignore */
-      }
-    });
-    es.addEventListener("text_delta", (e) => {
-      try {
-        const ev = JSON.parse((e as MessageEvent).data) as { text?: string };
-        if (ev.text) setTransientText((prev) => `${prev ?? ""}${ev.text}`);
-      } catch {
-        /* malformed - ignore */
-      }
-    });
-  }, []);
+      });
+      es.addEventListener("text_delta", (e) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as { text?: string };
+          if (ev.text) {
+            updateTransient((prev) => ({
+              runId,
+              text: `${prev?.text ?? ""}${ev.text}`,
+            }));
+          }
+        } catch {
+          /* malformed - ignore */
+        }
+      });
+    },
+    [updateTransient],
+  );
 
   const send = useCallback(
     (text: string, addressedTo?: string[]) => {
@@ -281,6 +323,6 @@ export function useConversation(
     send,
     toggleTriggerMode,
     activeRuns,
-    transientText,
+    transient,
   };
 }

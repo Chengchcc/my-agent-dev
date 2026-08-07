@@ -22,6 +22,9 @@ interface TimelineProps {
   viewerMemberId: string;
   conversationId: string;
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
+  /** Transient streaming output — rendered as a temporary assistant bubble
+   *  at the end of the timeline, replaced by the canonical Message. */
+  transient?: { runId: string; text: string; sender: SenderRef } | undefined;
 }
 
 interface TurnAnchor {
@@ -88,6 +91,7 @@ export function Timeline({
   viewerMemberId,
   conversationId,
   scrollContainerRef,
+  transient,
 }: TimelineProps) {
   const segments = useMemo(() => groupTurns(messages), [messages]);
   const anchors = useMemo(() => extractAnchors(segments), [segments]);
@@ -256,6 +260,18 @@ export function Timeline({
               </div>
             );
           })}
+          {transient?.text && (
+            <div key={`transient-${transient.runId}`} className="group relative">
+              <MessageBubble
+                align="left"
+                name={transient.sender.displayName ?? transient.sender.memberId}
+                kind="agent"
+                agentId={transient.sender.agentId}
+                content={transient.text}
+                isStreaming
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

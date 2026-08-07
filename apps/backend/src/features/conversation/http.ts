@@ -89,8 +89,8 @@ export function conversationRoutes(
           members,
         };
       })
-      .delete("/api/conversations/:id", ({ params: { id }, set }) => {
-        const deleted = svc.port.deleteConversation(id);
+      .delete("/api/conversations/:id", async ({ params: { id }, set }) => {
+        const deleted = await svc.port.deleteConversation(id);
         if (!deleted) return Response.json({ error: "Not found" }, { status: 404 });
         set.status = 204;
         return "";
