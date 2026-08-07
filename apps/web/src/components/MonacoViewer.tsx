@@ -7,7 +7,6 @@
 // `loader.config({ monaco })` with a locally installed monaco-editor.)
 
 import Editor from "@monaco-editor/react";
-import { useTheme } from "next-themes";
 
 function languageFor(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
@@ -37,14 +36,14 @@ function languageFor(path: string): string {
 }
 
 export function MonacoViewer({ value, path }: { value: string; path: string }) {
-  const { resolvedTheme } = useTheme();
-
+  // The product UI is dark-only (no ThemeProvider mounted), so pin the
+  // editor theme instead of resolving undefined -> light.
   return (
     <div className="overflow-hidden rounded-md border border-[var(--hairline)]">
       <Editor
         height="24rem"
         language={languageFor(path)}
-        theme={resolvedTheme === "dark" ? "vs-dark" : "light"}
+        theme="vs-dark"
         value={value}
         options={{
           readOnly: true,

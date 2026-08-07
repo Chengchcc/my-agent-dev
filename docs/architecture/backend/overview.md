@@ -103,7 +103,7 @@ Product Backend 不允许同一 branch 并行 Agent Run。新输入根据语义�
 | 失败 | Product Backend 行为 |
 |---|---|
 | child 启动失败 / crash / malformed output | 该 Agent Run failed，保留 raw 诊断，不提交 final Message |
-| execute 未被接受 | Run 保持 waiting；按 delivery idempotency 重投 |
+| preflight / projection / spawn / acceptance 失败 | 该 Agent Run failed，input cancelled，branch 释放（不重投、不产生 zombie） |
 | terminal commit 事务失败 | Run 进入 commit_failed；幂等重试，成功前不释放 branch |
 | Live Updates 推送失败 | 不影响事实；客户端从 Conversation History 恢复 |
 | Product Tool 失败 | 返回标准化 tool result；按语义决定是否写 Agent Context |

@@ -211,6 +211,46 @@ describe("createCodingAgentRuntime", () => {
     await runtime.close();
   });
 
+  test("a model call beyond CODING_AGENT_MODEL_TIMEOUT_MS aborts the run", async () => {
+    // Provider that never yields before the timeout fires.
+    const slow: Provider = {
+      id: "fake",
+      name: "Fake",
+      getModels: () => [FAKE_MODEL],
+      async *stream(): AsyncIterable<AIMessageChunk> {
+        await Bun.sleep(500);
+        yield { delta: { type: "text", text: "late" } };
+        yield { stopReason: "end_turn" };
+      },
+    };
+    const modelRuntime = createModelRuntime();
+    modelRuntime.registerProvider(slow);
+
+    const prev = process.env.CODING_AGENT_MODEL_TIMEOUT_MS;
+    process.env.CODING_AGENT_MODEL_TIMEOUT_MS = "50";
+    try {
+      const runtime = await createCodingAgentRuntime({
+        runId: "r-timeout",
+        modelId: "fake/echo",
+        workspaceRoot: tmp,
+        workspaceAccess: "read_write",
+        modelRuntime,
+        skillRoots: [],
+      });
+      const segment = await runtime.run(runInput("r-timeout"));
+      const started = Date.now();
+      const { outcome } = await settle(segment);
+      // The wall-clock timeout must fail the Run — no infinite `running`,
+      // and no waiting for the stuck provider (hard abort, not graceful).
+      expect(outcome.status).toBe("failed");
+      expect(Date.now() - started).toBeLessThan(400);
+      await runtime.close();
+    } finally {
+      if (prev === undefined) delete process.env.CODING_AGENT_MODEL_TIMEOUT_MS;
+      else process.env.CODING_AGENT_MODEL_TIMEOUT_MS = prev;
+    }
+  });
+
   test("context budget and summarizer bind to the RUN model, never catalog[0]", async () => {
     interface Batch {
       model: Model;

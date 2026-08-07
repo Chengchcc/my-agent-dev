@@ -238,17 +238,25 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       },
       ...messages,
     ];
-    let text = "";
-    for await (const chunk of deps.modelRuntime.stream(
+    const timeoutSignal = AbortSignal.timeout(modelTimeoutMs);
+    const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+    const stream = deps.modelRuntime.stream(
       currentModel.providerId,
       currentModel.modelId,
       summaryMessages,
-      { signal },
-    )) {
-      if (signal?.aborted) break;
-      if (chunk.delta?.type === "text") text += chunk.delta.text;
+      { signal: combined },
+    );
+    const iter = stream[Symbol.asyncIterator]();
+    let text = "";
+    try {
+      for (;;) {
+        const next = await nextBounded(iter, combined, timeoutSignal);
+        if (next.done) break;
+        if (next.value.delta?.type === "text") text += next.value.delta.text;
+      }
+    } finally {
+      if (!combined.aborted) await iter.return?.().catch(() => {});
     }
-    if (signal?.aborted) throw new Error("summarizer aborted");
     return text || "[empty summary]";
   };
 
@@ -259,6 +267,49 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     estimate: (m) => Math.ceil(JSON.stringify(m).length / 4),
     limit: currentModel.contextWindow,
     triggerRatio: 0.7,
+  };
+
+  // Wall-clock cap on a single model call: a silent/stuck provider must not
+  // leave the Run in `running` forever. The timeout aborts the call and the
+  // Run fails (no auto-retry). Overridable via env for tests.
+  const modelTimeoutMs = (() => {
+    const raw = process.env.CODING_AGENT_MODEL_TIMEOUT_MS;
+    return raw ? Number(raw) || 300_000 : 300_000;
+  })();
+
+  /** Advance an async iterator, racing each chunk against the combined
+   *  signal. Providers that ignore the signal (e.g. a generator sleeping
+   *  forever) can no longer hold the Run hostage: abort rejects immediately
+   *  instead of waiting for the provider to notice. */
+  const nextBounded = async <T>(
+    iter: AsyncIterator<T>,
+    combined: AbortSignal,
+    timeoutSignal: AbortSignal,
+  ): Promise<IteratorResult<T>> => {
+    if (combined.aborted) {
+      throw new Error(timeoutSignal.aborted ? "model timed out" : "model call aborted");
+    }
+    let settled = false;
+    return new Promise((resolve, reject) => {
+      const onAbort = () => {
+        settled = true;
+        void iter.return?.().catch(() => {});
+        reject(new Error(timeoutSignal.aborted ? "model timed out" : "model call aborted"));
+      };
+      combined.addEventListener("abort", onAbort, { once: true });
+      iter
+        .next()
+        .then(
+          (r) => {
+            if (settled) return; // aborted already; drop the late chunk
+            resolve(r);
+          },
+          (err) => {
+            if (!settled) reject(err);
+          },
+        )
+        .finally(() => combined.removeEventListener("abort", onAbort));
+    });
   };
 
   const session = createCodingAgentSession({
@@ -275,7 +326,21 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
         (m) => `${m.providerId}/${m.modelId}` === run.model.modelId,
       );
       if (!model) throw new Error(`model not found: ${run.model.modelId}`);
-      yield* deps.modelRuntime.stream(model.providerId, model.modelId, messages, { signal });
+      const timeoutSignal = AbortSignal.timeout(modelTimeoutMs);
+      const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+      const stream = deps.modelRuntime.stream(model.providerId, model.modelId, messages, {
+        signal: combined,
+      });
+      const iter = stream[Symbol.asyncIterator]();
+      try {
+        for (;;) {
+          const next = await nextBounded(iter, combined, timeoutSignal);
+          if (next.done) return;
+          yield next.value;
+        }
+      } finally {
+        if (!combined.aborted) await iter.return?.().catch(() => {});
+      }
     },
     summarize,
     contextBudget,

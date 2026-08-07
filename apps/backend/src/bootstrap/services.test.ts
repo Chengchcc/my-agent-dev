@@ -21,9 +21,6 @@ function setup(dir: string) {
     authToken: "test-token",
     cancelGraceMs: 100,
     maxConcurrentRuns: 4,
-    shutdownTimeoutMs: 5000,
-    reaperIntervalMs: 30000,
-    stepStallTimeoutMs: 300000,
     builtinSkillsDir: dir,
   };
 }

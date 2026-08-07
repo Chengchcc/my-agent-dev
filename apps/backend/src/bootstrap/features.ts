@@ -291,6 +291,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const modelCatalog = new CodingAgentModelCatalog(codingAgentCommand);
   const codingAgentBackend = new CodingAgentBackend(codingAgentCommand, {
     maxConcurrent: config.maxConcurrentRuns,
+    abortGraceMs: config.cancelGraceMs,
   });
   const agentRunExecution = createAgentRunExecutionService({
     runPort: agentRunPort,

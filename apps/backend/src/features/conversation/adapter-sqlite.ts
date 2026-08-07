@@ -112,7 +112,7 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
       if (active) {
         throw new ConflictError("Conversation has an active run; stop it before deleting.");
       }
-      return d.transaction(async (tx) => {
+      return d.transaction((tx) => {
         const trees = tx
           .select({ treeId: schema.agentContextTree.treeId })
           .from(schema.agentContextTree)
