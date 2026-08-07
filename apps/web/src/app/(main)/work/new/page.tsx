@@ -3,12 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-} from "@/components/ui/breadcrumb";
+import { Page, PageBody, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -73,74 +68,65 @@ export default function NewLoopPage() {
   }
 
   return (
-    <div className="h-full bg-[var(--canvas)]">
-      <div className="border-b border-[var(--hairline)]">
-        <div className="container mx-auto px-8 py-4 max-w-4xl">
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbPage>New Loop</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-          <p className="mt-1 text-sm text-[var(--muted)]">Describe what you want to automate</p>
-        </div>
-      </div>
-      <div className="flex-1 flex items-start justify-center py-10">
-        <div className="w-full max-w-2xl">
-          {stage === "intent" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>What do you want to automate?</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-sm text-[var(--muted)]">
-                  Describe what you want to automate; I will configure the schedule and steps.
-                </p>
-                <Textarea
-                  value={intent}
-                  onChange={(e) => setIntent(e.target.value)}
-                  placeholder="e.g. Summarize GitHub PR status to Lark every morning"
-                  rows={6}
-                />
-                <Button onClick={handleCreate} disabled={!intent.trim() || createLoop.isPending}>
-                  {createLoop.isPending ? "Generating…" : "Next"}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+    <Page>
+      <PageHeader
+        breadcrumb="Work / New"
+        title="New Loop"
+        description="Describe what you want to automate."
+      />
+      <PageBody size="reading">
+        {stage === "intent" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>What do you want to automate?</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-[var(--muted)]">
+                Describe what you want to automate; I will configure the schedule and steps.
+              </p>
+              <Textarea
+                value={intent}
+                onChange={(e) => setIntent(e.target.value)}
+                placeholder="e.g. Summarize GitHub PR status to Lark every morning"
+                rows={6}
+              />
+              <Button onClick={handleCreate} disabled={!intent.trim() || createLoop.isPending}>
+                {createLoop.isPending ? "Generating…" : "Next"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
-          {stage === "preview" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Preview LOOP.md</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-sm font-medium">Loop name</label>
-                  <Input value={loopName} onChange={(e) => setLoopName(e.target.value)} />
+        {stage === "preview" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Preview LOOP.md</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Loop name</label>
+                <Input value={loopName} onChange={(e) => setLoopName(e.target.value)} />
+              </div>
+              {note && (
+                <div className="text-sm text-[var(--muted)] bg-[var(--canvas-soft)] rounded p-3">
+                  {note}
                 </div>
-                {note && (
-                  <div className="text-sm text-[var(--muted)] bg-[var(--canvas-soft)] rounded p-3">
-                    {note}
-                  </div>
-                )}
-                <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md border border-[var(--hairline)] bg-[var(--canvas)] p-4 text-sm">
-                  {preview || "(no preview)"}
-                </pre>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={reset}>
-                    Regenerate
-                  </Button>
-                  <Button onClick={handleActivate} disabled={activateLoop.isPending}>
-                    {activateLoop.isPending ? "Activating…" : "Confirm and enable"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
-    </div>
+              )}
+              <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md border border-[var(--hairline)] bg-[var(--canvas)] p-4 text-sm">
+                {preview || "(no preview)"}
+              </pre>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={reset}>
+                  Regenerate
+                </Button>
+                <Button onClick={handleActivate} disabled={activateLoop.isPending}>
+                  {activateLoop.isPending ? "Activating…" : "Confirm and enable"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </PageBody>
+    </Page>
   );
 }

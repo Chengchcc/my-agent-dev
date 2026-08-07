@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
  *  PageHeader (border-bottom, title/description/action) + PageBody
  *  (responsive padding; wide = max-w-7xl, reading = max-w-3xl). */
 export function Page({ children }: { children: ReactNode }) {
-  return <div className="h-full">{children}</div>;
+  return <div className="min-h-full">{children}</div>;
 }
 
 export function PageHeader({

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAgentIdentity, useSetIdentity } from "@/features/agents/hooks";
+import { overlineClass } from "@/lib/form-styles";
 
 interface SectionProps {
   title: string;
@@ -33,9 +34,7 @@ function Section({
   return (
     <div className="border border-[var(--hairline)] rounded-lg p-8 bg-[var(--canvas)]">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[10px] tracking-[2.52px] uppercase text-[var(--mute)] font-[family-name:var(--font-sans)] font-semibold">
-          {title}
-        </h3>
+        <h3 className={overlineClass}>{title}</h3>
         {!editing && (
           <Button onClick={onEdit} variant="ghost" size="xs">
             <Pencil size={12} />
@@ -48,7 +47,7 @@ function Section({
           <Textarea
             value={draft}
             onChange={(e) => onChange(e.target.value)}
-            className="w-full bg-[var(--canvas-soft)] border border-[var(--hairline)] rounded-md px-3 py-2 text-sm text-[var(--ink)] font-[family-name:var(--font-mono)] resize-y min-h-[200px] focus:outline-none focus:border-[var(--primary)] transition-colors"
+            className="min-h-[200px] resize-y font-mono"
           />
           <div className="flex gap-2">
             <Button onClick={onSave} disabled={saving} size="sm">

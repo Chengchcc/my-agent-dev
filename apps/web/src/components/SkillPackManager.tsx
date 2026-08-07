@@ -119,8 +119,7 @@ export function SkillPackManager() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Skill Packs</h1>
+      <div className="flex justify-end">
         <Button onClick={() => setShowInstall(true)}>
           <Download className="mr-2 h-4 w-4" />
           Install Pack

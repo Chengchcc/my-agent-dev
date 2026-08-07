@@ -115,17 +115,17 @@ export default function WorkTodayPage() {
           <h2 className="text-sm font-medium mb-3">Today&apos;s Runs</h2>
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-4">
-              <div className="text-2xl font-semibold text-emerald-600 tabular-nums">
+              <div className="text-2xl font-semibold text-emerald-400 tabular-nums">
                 {succeeded}
               </div>
               <div className="text-xs text-[var(--mute)]">Succeeded</div>
             </div>
             <div className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-4">
-              <div className="text-2xl font-semibold text-red-600 tabular-nums">{failed}</div>
+              <div className="text-2xl font-semibold text-red-400 tabular-nums">{failed}</div>
               <div className="text-xs text-[var(--mute)]">Failed</div>
             </div>
             <div className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-4">
-              <div className="text-2xl font-semibold text-amber-600 tabular-nums">{running}</div>
+              <div className="text-2xl font-semibold text-amber-400 tabular-nums">{running}</div>
               <div className="text-xs text-[var(--mute)]">Running</div>
             </div>
           </div>

@@ -3,14 +3,8 @@
 import { useParams, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Page, PageBody, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/badge";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -80,45 +74,30 @@ export default function LoopDetailPage() {
 
   if (isLoading)
     return (
-      <div className="container mx-auto px-8 py-10">
-        <p className="text-sm text-[var(--mute)]">Loading...</p>
-      </div>
+      <Page>
+        <PageBody>
+          <p className="text-sm text-[var(--mute)]">Loading...</p>
+        </PageBody>
+      </Page>
     );
   if (!loop)
     return (
-      <div className="container mx-auto px-8 py-10">
-        <p className="text-sm text-[var(--mute)]">Loop not found.</p>
-      </div>
+      <Page>
+        <PageBody>
+          <p className="text-sm text-[var(--mute)]">Loop not found.</p>
+        </PageBody>
+      </Page>
     );
 
   return (
-    <div className="h-full bg-[var(--canvas)] flex flex-col">
-      <div className="border-b border-[var(--hairline)]">
-        <div className="container mx-auto px-8 py-5">
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <a href="/work">Work</a>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>{loop.name}</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </div>
-      </div>
-
-      <div className="container mx-auto px-8 py-6 flex-1 min-h-0">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-medium">{loop.name}</h2>
-            <p className="text-xs text-[var(--mute)]">
-              {loop.cronExpr || "Manual"}
-              {loop.lastRun ? ` · Last run: ${new Date(loop.lastRun).toLocaleString()}` : ""}
-              {loop.pendingCount > 0 ? ` · ${loop.pendingCount} awaiting review` : ""}
-            </p>
-          </div>
+    <Page>
+      <PageHeader
+        breadcrumb="Work"
+        title={loop.name}
+        description={`${loop.cronExpr || "Manual"}${
+          loop.lastRun ? ` · Last run: ${new Date(loop.lastRun).toLocaleString()}` : ""
+        }${loop.pendingCount > 0 ? ` · ${loop.pendingCount} awaiting review` : ""}`}
+        action={
           <div className="flex items-center gap-3">
             {loop.enabled === false ? (
               <>
@@ -175,10 +154,11 @@ export default function LoopDetailPage() {
               Add Item
             </Button>
           </div>
-        </div>
-
+        }
+      />
+      <PageBody className="space-y-6">
         {view === "list" ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100%-5rem)]">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:h-[calc(100dvh-15rem)]">
             {/* Left: item list grouped by step */}
             <div className="lg:col-span-1 overflow-y-auto border border-[var(--hairline)] rounded-lg bg-background">
               {items.length === 0 ? (
@@ -250,7 +230,7 @@ export default function LoopDetailPage() {
             </CardContent>
           </Card>
         )}
-      </div>
+      </PageBody>
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent>
           <DialogHeader>
@@ -322,6 +302,6 @@ export default function LoopDetailPage() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </Page>
   );
 }

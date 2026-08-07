@@ -9,20 +9,14 @@ import { IdentityPanel } from "@/components/IdentityPanel";
 import { McpServerPanel } from "@/components/McpServerPanel";
 import { AgentRunsTable } from "@/components/ops/AgentRunsTable";
 import { QueryState } from "@/components/ops/QueryState";
+import { Page, PageBody, PageHeader } from "@/components/page";
 import { RelationshipPanel } from "@/components/RelationshipPanel";
 import { Badge } from "@/components/ui/badge";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAgentDetail, useAgentList, useAgentRelationships } from "@/features/agents/hooks";
 import { useAgentRuns } from "@/features/ops/hooks";
 import { useAgentSkillPacks } from "@/features/skill-packs/hooks";
+import { overlineClass } from "@/lib/form-styles";
 
 type Tab = "persona" | "skills" | "activity" | "mcp" | "relationships" | "memory";
 
@@ -53,135 +47,85 @@ export default function AgentDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-8 py-10">
-        <div className="animate-pulse space-y-3">
-          <div className="h-6 w-48 bg-[var(--canvas-soft)]" />
-          <div className="h-4 w-32 bg-[var(--canvas-soft)]" />
-        </div>
-      </div>
+      <Page>
+        <PageBody>
+          <div className="animate-pulse space-y-3">
+            <div className="h-6 w-48 bg-[var(--canvas-soft)]" />
+            <div className="h-4 w-32 bg-[var(--canvas-soft)]" />
+          </div>
+        </PageBody>
+      </Page>
     );
   }
 
   if (!agent) {
     return (
-      <div className="container mx-auto px-8 py-10">
-        <p className="text-sm text-[var(--mute)]">Agent not found</p>
-      </div>
+      <Page>
+        <PageBody>
+          <p className="text-sm text-[var(--mute)]">Agent not found</p>
+        </PageBody>
+      </Page>
     );
   }
 
-  const tabClass = (t: Tab) =>
-    `h-auto rounded-none border-0 border-b bg-transparent px-0 pb-3 text-[10px] tracking-[2.52px] uppercase transition-colors duration-300 font-[family-name:var(--font-sans)] font-semibold hover:bg-transparent ${
-      tab === t
-        ? "border-[var(--primary)] text-[var(--ink)]"
-        : "border-transparent text-[var(--mute)] hover:text-[var(--body)]"
-    }`;
-
   return (
-    <div className="h-full bg-[var(--canvas)] flex flex-col">
-      {/* Header */}
-      <div className="border-b border-[var(--hairline)] shrink-0">
-        <div className="container mx-auto px-8 py-5">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-3 flex-wrap">
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem>
-                    <BreadcrumbLink href="/team">Team</BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>{agent.name}</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
-              <span className="text-[10px] tracking-[2.52px] uppercase text-[var(--mute)] border border-[var(--hairline)] rounded px-2 py-0.5 font-[family-name:var(--font-sans)] font-semibold">
-                {agent.modelProvider}/{agent.modelName}
-              </span>
-              <span className="text-[10px] tracking-[2.52px] uppercase text-[var(--mute)] border border-[var(--hairline)] rounded px-2 py-0.5 font-[family-name:var(--font-sans)] font-semibold">
-                {agent.permissionMode}
-              </span>
-            </div>
+    <Page>
+      <PageHeader
+        breadcrumb="Team / Agents"
+        title={agent.name}
+        action={
+          <div className="flex items-center gap-2">
+            <span
+              className={`${overlineClass} border border-[var(--hairline)] rounded px-2 py-0.5`}
+            >
+              {agent.modelProvider}/{agent.modelName}
+            </span>
+            <span
+              className={`${overlineClass} border border-[var(--hairline)] rounded px-2 py-0.5`}
+            >
+              {agent.permissionMode}
+            </span>
             <AgentForm editAgent={agent} triggerLabel="Edit" />
           </div>
-
-          {/* Tabs */}
-          <div className="flex gap-8 mt-6" role="tablist">
-            <Button
-              variant="ghost"
-              role="tab"
-              aria-selected={tab === "persona"}
-              className={tabClass("persona")}
-              onClick={() => setTab("persona")}
-            >
-              Persona
-            </Button>
-            <Button
-              variant="ghost"
-              role="tab"
-              aria-selected={tab === "skills"}
-              className={tabClass("skills")}
-              onClick={() => setTab("skills")}
-            >
-              Skills
-            </Button>
-            <Button
-              variant="ghost"
-              role="tab"
-              aria-selected={tab === "activity"}
-              className={tabClass("activity")}
-              onClick={() => setTab("activity")}
-            >
-              Activity
-            </Button>
-            <Button
-              variant="ghost"
-              role="tab"
-              aria-selected={tab === "mcp"}
-              className={tabClass("mcp")}
-              onClick={() => setTab("mcp")}
-            >
-              MCP
-            </Button>
-            <Button
-              variant="ghost"
-              role="tab"
-              aria-selected={tab === "relationships"}
-              className={tabClass("relationships")}
-              onClick={() => setTab("relationships")}
-            >
-              Relationships
-            </Button>
-            <Button
-              variant="ghost"
-              role="tab"
-              aria-selected={tab === "memory"}
-              className={tabClass("memory")}
-              onClick={() => setTab("memory")}
-            >
-              Memory
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="container mx-auto px-8 py-10">
-          {tab === "persona" && <IdentityPanel agentId={id} />}
-          {tab === "skills" && <AgentSkillsPanel agentId={id} />}
-          {tab === "activity" && (
+        }
+      />
+      <PageBody>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
+          <TabsList
+            variant="line"
+            className="w-full justify-start overflow-x-auto whitespace-nowrap"
+          >
+            <TabsTrigger value="persona">Persona</TabsTrigger>
+            <TabsTrigger value="skills">Skills</TabsTrigger>
+            <TabsTrigger value="activity">Activity</TabsTrigger>
+            <TabsTrigger value="mcp">MCP</TabsTrigger>
+            <TabsTrigger value="relationships">Relationships</TabsTrigger>
+            <TabsTrigger value="memory">Memory</TabsTrigger>
+          </TabsList>
+          <TabsContent value="persona" className="pt-4">
+            <IdentityPanel agentId={id} />
+          </TabsContent>
+          <TabsContent value="skills" className="pt-4">
+            <AgentSkillsPanel agentId={id} />
+          </TabsContent>
+          <TabsContent value="activity" className="pt-4">
             <div className="space-y-6">
               <ConversationList agentId={id} agentName={agent?.name} />
               <RecentRuns agentId={id} />
             </div>
-          )}
-          {tab === "mcp" && <McpServerPanel agentId={id} />}
-          {tab === "relationships" && <AgentRelationshipsPanel agentId={id} />}
-          {tab === "memory" && <AgentMemoryPanel agentId={id} />}
-        </div>
-      </div>
-    </div>
+          </TabsContent>
+          <TabsContent value="mcp" className="pt-4">
+            <McpServerPanel agentId={id} />
+          </TabsContent>
+          <TabsContent value="relationships" className="pt-4">
+            <AgentRelationshipsPanel agentId={id} />
+          </TabsContent>
+          <TabsContent value="memory" className="pt-4">
+            <AgentMemoryPanel agentId={id} />
+          </TabsContent>
+        </Tabs>
+      </PageBody>
+    </Page>
   );
 }
 
@@ -245,9 +189,7 @@ function RecentRuns({ agentId }: { agentId: string }) {
   const runsQuery = useAgentRuns({ agentId, limit: 50 });
   return (
     <div>
-      <h2 className="text-[10px] tracking-[2.52px] uppercase text-[var(--mute)] font-[family-name:var(--font-sans)] font-semibold mb-3">
-        Recent Runs
-      </h2>
+      <h2 className={`${overlineClass} mb-3`}>Recent Runs</h2>
       <QueryState
         query={runsQuery}
         empty={(data) => data.runs.length === 0}

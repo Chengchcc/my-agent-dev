@@ -29,11 +29,11 @@ function SummaryCard({
 }) {
   const toneColor =
     tone === "ok"
-      ? "text-emerald-600"
+      ? "text-emerald-400"
       : tone === "warn"
-        ? "text-amber-600"
+        ? "text-amber-400"
         : tone === "bad"
-          ? "text-red-600"
+          ? "text-red-400"
           : "text-[var(--ink)]";
   return (
     <div className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas)] p-3">
@@ -185,9 +185,9 @@ export default function SystemPage() {
                   {cronJobs.map((job) => (
                     <div
                       key={job.cronJobId}
-                      className="flex items-center justify-between rounded-lg border border-[var(--hairline)] p-3"
+                      className="flex flex-col gap-3 rounded-lg border border-[var(--hairline)] p-3 sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <Badge variant="outline">{job.cronExpr}</Badge>
                         <span className="text-sm font-medium">{job.name}</span>
                         <span className="text-xs text-[var(--mute)]">agent: {job.agentId}</span>

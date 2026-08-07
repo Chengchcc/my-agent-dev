@@ -35,6 +35,7 @@ import {
   useSkillPackList,
 } from "@/features/skill-packs/hooks";
 import { type AgentRow, api, type LarkSetupSession } from "@/lib/api";
+import { fieldClass, overlineClass } from "@/lib/form-styles";
 
 const formSchema = z.object({
   name: z.string().trim().min(1, "Agent name is required"),
@@ -224,10 +225,6 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
   // non-reactive getValues("name") read leaves the button stuck disabled.
   const nameValue = useWatch({ control: form.control, name: "name" });
 
-  const fieldClass =
-    "w-full bg-[var(--canvas-soft)] border border-[var(--hairline)] rounded-md px-3 py-2.5 text-sm text-[var(--ink)] placeholder:text-[var(--mute)] focus:outline-none focus:border-[var(--primary)] transition-colors duration-200";
-  const labelClass =
-    "text-[10px] tracking-[2.52px] uppercase text-[var(--mute)] block mb-1.5 font-[family-name:var(--font-sans)] font-semibold";
   const hintClass = "text-[10px] text-[var(--mute)] mt-1";
 
   return (
@@ -272,7 +269,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                   name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className={labelClass}>Name *</FormLabel>
+                      <FormLabel className={`${overlineClass} mb-1.5 block`}>Name *</FormLabel>
                       <FormControl>
                         <Input {...field} placeholder="e.g. Archivist" className={fieldClass} />
                       </FormControl>
@@ -287,7 +284,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                     name="model"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={labelClass}>Provider</FormLabel>
+                        <FormLabel className={`${overlineClass} mb-1.5 block`}>Provider</FormLabel>
                         <Select
                           value={field.value.split("/")[0] ?? ""}
                           onValueChange={(v) => {
@@ -317,7 +314,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                     name="model"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={labelClass}>Model *</FormLabel>
+                        <FormLabel className={`${overlineClass} mb-1.5 block`}>Model *</FormLabel>
                         <FormControl>
                           <Select
                             value={field.value}
@@ -346,7 +343,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                   name="baseURL"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className={labelClass}>Base URL</FormLabel>
+                      <FormLabel className={`${overlineClass} mb-1.5 block`}>Base URL</FormLabel>
                       <FormControl>
                         <Input
                           {...field}
@@ -365,7 +362,9 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                     name="permissionMode"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={labelClass}>Permission Mode</FormLabel>
+                        <FormLabel className={`${overlineClass} mb-1.5 block`}>
+                          Permission Mode
+                        </FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger className={fieldClass}>
@@ -387,7 +386,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                     name="maxSteps"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={labelClass}>Max Steps</FormLabel>
+                        <FormLabel className={`${overlineClass} mb-1.5 block`}>Max Steps</FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -415,7 +414,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                             checked={field.value}
                             onCheckedChange={(checked) => field.onChange(checked)}
                           />
-                          <span className={`${labelClass} mb-0`}>Enable Lark Bot</span>
+                          <span className={`${overlineClass} mb-0`}>Enable Lark Bot</span>
                           {editAgent?.lark?.status && (
                             <span
                               className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
@@ -444,7 +443,9 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                         name="botDisplayName"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className={labelClass}>Bot Display Name</FormLabel>
+                            <FormLabel className={`${overlineClass} mb-1.5 block`}>
+                              Bot Display Name
+                            </FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
