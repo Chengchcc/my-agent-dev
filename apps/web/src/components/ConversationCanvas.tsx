@@ -17,6 +17,7 @@ import { findCommand, parseArgs } from "@/lib/slash-commands";
 import { extractText } from "@/lib/timeline";
 import type { LiveToolCall, TodoItem } from "@/lib/transient-reducer";
 import { Composer } from "./Composer";
+import { RecapPanel } from "./RecapPanel";
 import { RosterList } from "./RosterList";
 import { Timeline } from "./Timeline";
 import { TodoPanel } from "./TodoPanel";
@@ -34,8 +35,17 @@ export function ConversationCanvas({
 }: ConversationCanvasProps) {
   const router = useRouter();
   const qc = useQueryClient();
-  const { state, busy, send, toggleTriggerMode, transients, transientTools, runTodos, activeRuns } =
-    useConversation(conversationId, snapshot);
+  const {
+    state,
+    busy,
+    send,
+    toggleTriggerMode,
+    transients,
+    transientTools,
+    runTodos,
+    runRecaps,
+    activeRuns,
+  } = useConversation(conversationId, snapshot);
   const { viewerMemberId, roster, items, error, triggerMode, streamConn } = state;
 
   // W3+W5: use the most recent agent run's status, not first-found.
@@ -294,6 +304,23 @@ export function ConversationCanvas({
           }))
           .filter(
             (r): r is { runId: string; agent: SenderRef; items: readonly TodoItem[] } =>
+              r.agent !== null,
+          )}
+      />
+
+      {/* Per-run recap summaries */}
+      <RecapPanel
+        runs={Object.entries(runRecaps)
+          .map(([runId, recap]) => ({
+            runId,
+            agent:
+              Object.values(roster).find((m) => m.memberId === transients[runId]?.agentMemberId) ??
+              null,
+            text: recap.text,
+            turn: recap.turn,
+          }))
+          .filter(
+            (r): r is { runId: string; agent: SenderRef; text: string; turn: number } =>
               r.agent !== null,
           )}
       />

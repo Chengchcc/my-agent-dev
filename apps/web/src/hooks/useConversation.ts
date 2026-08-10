@@ -17,6 +17,7 @@ import {
 } from "@/lib/conversation-reducer";
 import {
   appendTransient,
+  clearRunRecaps,
   clearRunTodos,
   clearRunTools,
   completeTool,
@@ -72,6 +73,10 @@ export function useConversation(
   const [transientTools, setTransientTools] = useState<LiveToolMap>({});
   /** Latest todo snapshot per run (todo_write replaces the whole list). */
   const [runTodos, setRunTodos] = useState<RunTodoMap>({});
+  /** Latest recap text per run (one-line summary, replaced each turn). */
+  const [runRecaps, setRunRecapsState] = useState<Record<string, { text: string; turn: number }>>(
+    {},
+  );
 
   const upsertToolState = useCallback((call: LiveToolCall) => {
     setTransientTools((prev) => upsertTool(prev, call));
@@ -91,6 +96,12 @@ export function useConversation(
   const clearRunTodosState = useCallback((runId: string) => {
     setRunTodos((prev) => clearRunTodos(prev, runId));
   }, []);
+  const upsertRunRecap = useCallback((runId: string, text: string, turn: number) => {
+    setRunRecapsState((prev) => ({ ...prev, [runId]: { text, turn } }));
+  }, []);
+  const clearRunRecap = useCallback((runId: string) => {
+    setRunRecapsState((prev) => clearRunRecaps(prev, runId));
+  }, []);
 
   // Leaving the conversation closes every run EventSource and clears all
   // transient state — a switched conversation must never inherit the
@@ -106,6 +117,7 @@ export function useConversation(
       transientsRef.current = {};
       setTransientTools({});
       setRunTodos({});
+      setRunRecapsState({});
     };
   }, [conversationId]);
   const upsertTransient = useCallback((runId: string, agentMemberId: string, text: string) => {
@@ -292,6 +304,7 @@ export function useConversation(
         // completion (replaced by the canonical Message).
         clearRunToolsState(runId);
         clearRunTodosState(runId);
+        clearRunRecap(runId);
         if (dropBubble) dropTransient(runId);
       };
       // Transport failure: Live Updates are best-effort; drop the partial
@@ -366,13 +379,27 @@ export function useConversation(
           /* malformed - ignore */
         }
       });
+      es.addEventListener("backend.coding_agent.recap_update", (e) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as {
+            payload?: { text?: string; turn?: number };
+          };
+          if (ev.payload?.text) {
+            upsertRunRecap(runId, ev.payload.text, ev.payload?.turn ?? 0);
+          }
+        } catch {
+          /* malformed - ignore */
+        }
+      });
     },
     [
+      clearRunRecap,
       clearRunToolsState,
       clearRunTodosState,
       completeToolState,
       dropTransient,
       setRunTodosState,
+      upsertRunRecap,
       upsertToolState,
       upsertTransient,
     ],
@@ -430,5 +457,6 @@ export function useConversation(
     transients,
     transientTools,
     runTodos,
+    runRecaps,
   };
 }

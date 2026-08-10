@@ -22,6 +22,7 @@ export type CodingAgentLoopEvent =
   | { type: "compaction_start" }
   | { type: "compaction_end" }
   | { type: "queue_update" }
+  | { type: "recap_update"; text: string; turn: number }
   | { type: "todo_update"; items: readonly TodoItem[] };
 
 export type AgentLoopListener = (event: CodingAgentLoopEvent) => void | Promise<void>;

@@ -107,3 +107,15 @@ export function clearRunTodos(state: RunTodoMap, runId: string): RunTodoMap {
   delete next[runId];
   return next;
 }
+
+// ─── Run-local recaps ────────────────────────────────────────────────────
+
+/** runId -> latest one-line recap (replaced each turn). */
+export type RunRecapMap = Record<string, { text: string; turn: number }>;
+
+export function clearRunRecaps(state: RunRecapMap, runId: string): RunRecapMap {
+  if (!(runId in state)) return state;
+  const next = { ...state };
+  delete next[runId];
+  return next;
+}

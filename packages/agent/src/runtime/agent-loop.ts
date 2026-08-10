@@ -9,8 +9,8 @@ import { type CompactionBudget, compactSession } from "./compaction.js";
 import type { CodingLoopInput } from "./loop-input.js";
 import { buildLoopInput } from "./loop-input.js";
 import type { Plugin, PluginTool } from "./plugin.js";
-import type { PluginRuntime } from "./plugin-runtime.js";
 import { collectTools, validatePlugins } from "./plugin.js";
+import type { PluginRuntime } from "./plugin-runtime.js";
 import { renderLoopMeta } from "./prompt.js";
 import { retryStream } from "./retry.js";
 
@@ -111,7 +111,9 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     store: opts.store,
     sessionId: opts.sessionId,
     workspaceRoot: "",
-    emit: (event) => { void emit(event); },
+    emit: (event) => {
+      void emit(event);
+    },
     signal: new AbortController().signal,
   };
   // Static plugin tools + per-run resolved tools (Product Tool manifest).

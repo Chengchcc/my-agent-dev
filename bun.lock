@@ -54,6 +54,9 @@
     "apps/coding-agent": {
       "name": "@my-agent-team/coding-agent",
       "version": "0.1.0",
+      "bin": {
+        "coding-agent": "./dist/cli.js",
+      },
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.12.1",
         "@my-agent-team/adapter-mcp": "workspace:*",
@@ -64,6 +67,7 @@
         "@my-agent-team/core": "workspace:*",
         "@my-agent-team/message": "workspace:*",
         "@my-agent-team/plugin-progressive-skill": "workspace:*",
+        "@my-agent-team/plugin-recap": "workspace:*",
         "@my-agent-team/plugin-todo": "workspace:*",
         "@my-agent-team/tools-common": "workspace:*",
         "zod": "^3.23.0",
@@ -241,6 +245,15 @@
         "@my-agent-team/message": "workspace:*",
         "@my-agent-team/tools-common": "workspace:*",
         "gray-matter": "^4.0.3",
+      },
+    },
+    "packages/plugin-recap": {
+      "name": "@my-agent-team/plugin-recap",
+      "version": "0.0.0",
+      "dependencies": {
+        "@my-agent-team/agent": "workspace:*",
+        "@my-agent-team/core": "workspace:*",
+        "@my-agent-team/message": "workspace:*",
       },
     },
     "packages/plugin-todo": {
@@ -634,6 +647,8 @@
     "@my-agent-team/message": ["@my-agent-team/message@workspace:packages/message"],
 
     "@my-agent-team/plugin-progressive-skill": ["@my-agent-team/plugin-progressive-skill@workspace:packages/plugin-progressive-skill"],
+
+    "@my-agent-team/plugin-recap": ["@my-agent-team/plugin-recap@workspace:packages/plugin-recap"],
 
     "@my-agent-team/plugin-todo": ["@my-agent-team/plugin-todo@workspace:packages/plugin-todo"],
 

@@ -30,6 +30,7 @@
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@my-agent-team/plugin-progressive-skill": "workspace:*",
     "@my-agent-team/plugin-todo": "workspace:*",
+    "@my-agent-team/plugin-recap": "workspace:*",
     "@my-agent-team/tools-common": "workspace:*",
     "zod": "^3.23.0"
   },

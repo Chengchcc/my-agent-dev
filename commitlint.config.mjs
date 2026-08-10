@@ -26,6 +26,7 @@ export default {
         // Plugins
         "plugin-progressive-skill",
         "plugin-todo",
+        "plugin-recap",
         // Apps
         "backend",
         "coding-agent",
