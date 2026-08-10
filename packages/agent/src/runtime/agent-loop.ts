@@ -422,15 +422,32 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
 
       if (controller?.signal.aborted) {
         status = "stopped";
-        await emit({ type: "agent_end", status });
       } else if (!naturalStop && step >= opts.maxSteps && status === "running") {
         status = "failed";
         runError ??= `max steps exceeded (${opts.maxSteps})`;
-        await emit({ type: "agent_end", status });
       } else if (status === "running") {
         status = "completed";
-        await emit({ type: "agent_end", status });
       }
+
+      // afterRun: one-shot per-Run hook (recap). Fires once with the full
+      // message history + terminal status, before agent_end. Cheaper than
+      // afterModel (once per Run, not per turn). Skipped on early-exit
+      // error paths inside the loop (stop-during-tools, fatal model error).
+      for (const p of opts.plugins) {
+        if (p.hooks?.afterRun) {
+          try {
+            await p.hooks.afterRun(
+              status as "completed" | "failed" | "stopped",
+              messages,
+              rt,
+            );
+          } catch {
+            /* plugin errors never fail the run */
+          }
+        }
+      }
+
+      await emit({ type: "agent_end", status });
       // Canonical output: the last persisted assistant Message (blocks + tool
       // pairs intact), not a reconstruction from text deltas.
       let output: Message | undefined;

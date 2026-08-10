@@ -9,22 +9,23 @@ export interface RecapPluginOptions {
 }
 
 const RECAP_SYSTEM_PROMPT =
-  "Summarize the conversation so far in one sentence. Focus on what was just done and the current state. Be concise and specific. Output ONLY the summary sentence, nothing else.";
+  "Summarize the conversation so far in one sentence. Focus on what was accomplished and the final state. Be concise and specific. Output ONLY the summary sentence, nothing else.";
 
-/** Create a recap plugin that generates a one-sentence per-turn summary
- *  using a cheap model. The summary is emitted as a UI-transient event
- *  (recap_update) — never persisted to conversation history. */
+/** Create a recap plugin that generates a one-sentence summary of the
+ *  entire Run after it completes. Uses afterRun (fires once per Run, not
+ *  per turn) to minimize model cost. The summary is emitted as a
+ *  UI-transient event (recap_update) — never persisted to history. */
 export function createRecapPlugin(opts: RecapPluginOptions): Plugin {
-  let turnCount = 0;
-
   return {
     name: "recap",
     hooks: {
-      afterModel(messages: readonly Message[], rt: PluginRuntime): void {
+      afterRun(status, messages, rt): void {
         if (!opts.enabled) return;
-        turnCount++;
-        // Fire-and-forget: the recap must not block the main loop.
-        void generateRecap(rt, messages, opts.recapModelRef, turnCount);
+        // Skip recap on non-completed runs (no useful summary for failed/
+        // stopped runs).
+        if (status !== "completed") return;
+        // Fire-and-forget: the recap must not block the agent_end emit.
+        void generateRecap(rt, messages, opts.recapModelRef);
       },
     },
   };
@@ -34,7 +35,6 @@ async function generateRecap(
   rt: PluginRuntime,
   messages: readonly Message[],
   modelRef: { readonly providerId: string; readonly modelId: string },
-  turn: number,
 ): Promise<void> {
   try {
     const recapMessages: Message[] = [{ role: "system", text: RECAP_SYSTEM_PROMPT }, ...messages];
@@ -47,7 +47,7 @@ async function generateRecap(
     }
     const trimmed = text.trim();
     if (trimmed) {
-      rt.emit({ type: "recap_update", text: trimmed, turn });
+      rt.emit({ type: "recap_update", text: trimmed, turn: 0 });
     }
   } catch {
     // Recap is best-effort; never fail the run.

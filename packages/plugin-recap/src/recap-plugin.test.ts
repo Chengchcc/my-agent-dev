@@ -10,7 +10,7 @@ function mockRuntime(streamText: string): {
 } {
   const emitted: CodingAgentLoopEvent[] = [];
   const rt: PluginRuntime = {
-    async *streamModel(_p, _m, _messages) {
+    async *streamModel() {
       yield { delta: { type: "text", text: streamText } } as AIMessageChunk;
       yield { stopReason: "end_turn" } as AIMessageChunk;
     },
@@ -26,7 +26,7 @@ function mockRuntime(streamText: string): {
 }
 
 describe("plugin-recap", () => {
-  test("afterModel emits recap_update with one-line summary", async () => {
+  test("afterRun emits recap_update with one-line summary", async () => {
     const plugin = createRecapPlugin({
       recapModelRef: { providerId: "fake", modelId: "echo" },
       enabled: true,
@@ -37,8 +37,7 @@ describe("plugin-recap", () => {
       { role: "assistant", text: "done" },
     ];
 
-    plugin.hooks?.afterModel?.(messages, rt);
-    // Fire-and-forget: wait for the async generateRecap to settle.
+    plugin.hooks?.afterRun?.("completed", messages, rt);
     await new Promise((r) => setTimeout(r, 50));
 
     expect(emitted).toHaveLength(1);
@@ -53,7 +52,21 @@ describe("plugin-recap", () => {
     });
     const { rt, emitted } = mockRuntime("should not appear");
 
-    plugin.hooks?.afterModel?.([], rt);
+    plugin.hooks?.afterRun?.("completed", [], rt);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(emitted).toHaveLength(0);
+  });
+
+  test("skips recap on failed/stopped runs", async () => {
+    const plugin = createRecapPlugin({
+      recapModelRef: { providerId: "fake", modelId: "echo" },
+      enabled: true,
+    });
+    const { rt, emitted } = mockRuntime("should not appear");
+
+    plugin.hooks?.afterRun?.("failed", [], rt);
+    plugin.hooks?.afterRun?.("stopped", [], rt);
     await new Promise((r) => setTimeout(r, 50));
 
     expect(emitted).toHaveLength(0);
@@ -66,7 +79,7 @@ describe("plugin-recap", () => {
     });
     const { rt, emitted } = mockRuntime("  ");
 
-    plugin.hooks?.afterModel?.([], rt);
+    plugin.hooks?.afterRun?.("completed", [], rt);
     await new Promise((r) => setTimeout(r, 50));
 
     expect(emitted).toHaveLength(0);

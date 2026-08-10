@@ -27,6 +27,14 @@ export interface PluginHooks {
    *  executed), before turn_end. Plugins use this for recap/pet - the rt
    *  parameter provides model stream + emit for UI-transient events. */
   afterModel?(messages: readonly Message[], rt: PluginRuntime): void;
+  /** Called ONCE after the entire agent loop ends (all turns done), before
+   *  agent_end. Plugins use this for per-Run summaries (recap) - cheaper
+   *  than afterModel since it fires once, not per turn. */
+  afterRun?(
+    status: "completed" | "failed" | "stopped",
+    messages: readonly Message[],
+    rt: PluginRuntime,
+  ): void;
   beforeStop?(cancel: () => void, rt: PluginRuntime): void;
   afterTool?(
     toolName: string,
