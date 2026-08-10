@@ -29,7 +29,9 @@ export interface PluginRuntime {
    *  Inspired by omp's AgentSession.runEphemeralTurn. Used by recap/title
    *  so plugins don't need to manually construct messages or know the model
    *  ref. One call: `const text = await rt.runEphemeralTurn(prompt);` */
-  readonly runEphemeralTurn: (prompt: string, opts?: { signal?: AbortSignal }) => Promise<string>;
+  /** Set by the loop (not by external code). Optional on the interface
+   *  so run-runtime/tests don't need a stub. */
+  readonly runEphemeralTurn?: (prompt: string, opts?: { signal?: AbortSignal }) => Promise<string>;
 
   /** Session store (read-only for plugins): branch history, todo state. */
   readonly store: SessionStore;

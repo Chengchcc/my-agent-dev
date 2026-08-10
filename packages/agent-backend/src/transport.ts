@@ -140,6 +140,7 @@ export const outcomeOutputSchema = z.object({
         costUsd: z.number().optional(),
       })
       .optional(),
+    title: z.string().optional(),
   }),
 });
 export type OutcomeOutput = z.infer<typeof outcomeOutputSchema>;

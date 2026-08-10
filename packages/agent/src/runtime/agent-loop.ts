@@ -118,7 +118,6 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       void emit(event);
     },
     signal: new AbortController().signal,
-    runEphemeralTurn: async () => "",
   };
   // Static plugin tools + per-run resolved tools (Product Tool manifest).
   // The tool table is rebuilt at each runLoop start so AgentRunSnapshot
@@ -171,7 +170,9 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       runEphemeralTurn: async (promptText, ephemeralOpts) => {
         const branch = await readBranchMessages();
         const ephemeralMessages: Message[] = [
-          ...((codingInput.run.systemPrompt ?? "") ? [{ role: "system" as const, text: codingInput.run.systemPrompt ?? "" }] : []),
+          ...((codingInput.run.systemPrompt ?? "")
+            ? [{ role: "system" as const, text: codingInput.run.systemPrompt ?? "" }]
+            : []),
           ...branch,
           { role: "user" as const, text: promptText },
         ];

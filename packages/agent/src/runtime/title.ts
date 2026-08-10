@@ -75,7 +75,7 @@ export function normalizeGeneratedTitle(raw: string): string | null {
   const firstLine = raw.trim().split(/\r?\n/, 1)[0]?.trim();
   if (!firstLine) return null;
   // Strip XML tags if present
-  let title = firstLine
+  const title = firstLine
     .replace(/^<title>/i, "")
     .replace(/<\/title>$/i, "")
     .replace(/^["'「『]|["'」』]$/g, "")
@@ -105,7 +105,9 @@ export async function generateTitle(rt: PluginRuntime, context: string): Promise
   if (!context || context.length < 4) return null;
   if (isLowSignalTitleInput(context)) return null;
   try {
-    const raw = await rt.runEphemeralTurn(
+    const ephemeral = rt.runEphemeralTurn;
+    if (!ephemeral) return null;
+    const raw = await ephemeral(
       `${TITLE_SYSTEM_PROMPT}\n\n<conversation>\n${context}\n</conversation>`,
       { signal: rt.signal },
     );

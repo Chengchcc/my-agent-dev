@@ -43,7 +43,9 @@ export function createRecapPlugin(opts: RecapPluginOptions): Plugin {
 
 async function generateRecap(rt: PluginRuntime, _messages: readonly Message[]): Promise<void> {
   try {
-    const raw = await rt.runEphemeralTurn(RECAP_PROMPT, { signal: rt.signal });
+    const ephemeral = rt.runEphemeralTurn;
+    if (!ephemeral) return;
+    const raw = await ephemeral(RECAP_PROMPT, { signal: rt.signal });
     console.error(`[recap] runEphemeralTurn done text=${raw.trim().slice(0, 80)}`);
     const trimmed = raw.trim();
     if (trimmed && !/^\(skip\)$/i.test(trimmed)) {
