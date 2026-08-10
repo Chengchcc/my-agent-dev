@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { ContentBlock } from "@/lib/api";
 import type { TurnSegment } from "@/lib/conversation-reducer";
-import { collectToolResults } from "@/lib/render-blocks";
+import { collectToolResults, renderContentBlocks } from "@/lib/render-blocks";
 import { extractText } from "@/lib/timeline";
 import { MessageBubble } from "./MessageBubble";
 import { ToolStep } from "./ToolStep";
@@ -19,22 +18,26 @@ export function ReasoningTrace({
   const [open, setOpen] = useState(defaultOpen);
   const { rounds, conclusion, sender } = segment;
 
-  // Cross-message tool_result aggregation (fixes the "tool results disappear after completion" bug)
+  // Cross-message tool_result aggregation
   const resultMap = new Map<string, { content: string; isError?: boolean }>();
   for (const m of rounds) {
-    if (Array.isArray(m.content)) collectToolResults(m.content as ContentBlock[], resultMap);
+    const blocks = m.content.blocks;
+    if (Array.isArray(blocks)) collectToolResults(blocks, resultMap);
   }
 
   const stepCount = rounds.reduce(
     (n, m) =>
-      n + (Array.isArray(m.content) ? m.content.filter((b) => b.type === "tool_use").length : 0),
+      n +
+      (Array.isArray(m.content.blocks)
+        ? m.content.blocks.filter((b) => b.type === "tool_use").length
+        : 0),
     0,
   );
   const toolNames = [
     ...new Set(
       rounds.flatMap((m) =>
-        Array.isArray(m.content)
-          ? m.content
+        Array.isArray(m.content.blocks)
+          ? m.content.blocks
               .filter((b) => b.type === "tool_use")
               .map((b) => (b as { name?: string }).name ?? "")
           : [],
@@ -60,12 +63,13 @@ export function ReasoningTrace({
           <CollapsibleContent>
             <div className="border-l-2 border-[var(--primary)]/30 ml-1.5 pl-3 py-1 my-1 flex flex-col gap-1.5">
               {rounds.map((m) => {
-                if (!Array.isArray(m.content)) return null;
+                const blocks = m.content.blocks;
+                if (!Array.isArray(blocks)) return null;
                 const text = extractText(m.content);
                 return (
                   <div key={m.id} className="flex flex-col gap-1">
                     {text && <div className="text-[13px] text-[var(--body)]">{text}</div>}
-                    {(m.content as ContentBlock[]).map((b) =>
+                    {blocks.map((b) =>
                       b.type === "tool_use" && b.id ? (
                         <ToolStep
                           key={b.id}
@@ -84,15 +88,18 @@ export function ReasoningTrace({
       )}
       {/* Conclusion: always visible, full-width */}
       {conclusion && (
-        <MessageBubble
-          align="left"
-          name={sender.displayName ?? sender.memberId}
-          kind="agent"
-          content={
-            extractText(conclusion.content) ||
-            (typeof conclusion.content === "string" ? conclusion.content : "")
-          }
-        />
+        <div>
+          <MessageBubble
+            align="left"
+            name={sender.displayName ?? sender.memberId}
+            kind="agent"
+            content={
+              extractText(conclusion.content) ||
+              (typeof conclusion.content === "string" ? conclusion.content : "")
+            }
+          />
+          {renderContentBlocks(conclusion.content)}
+        </div>
       )}
     </div>
   );

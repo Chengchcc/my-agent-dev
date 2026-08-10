@@ -31,6 +31,8 @@ import {
 } from "@/lib/transient-reducer";
 import { typedSource } from "@/lib/typed-source";
 
+const RECAP_STORAGE_PREFIX = "mat:recap:";
+
 function safeParse(raw: string): unknown {
   try {
     return JSON.parse(raw);
@@ -96,12 +98,31 @@ export function useConversation(
   const clearRunTodosState = useCallback((runId: string) => {
     setRunTodos((prev) => clearRunTodos(prev, runId));
   }, []);
-  const upsertRunRecap = useCallback((runId: string, text: string, turn: number) => {
-    setRunRecapsState((prev) => ({ ...prev, [runId]: { text, turn } }));
-  }, []);
-  const clearRunRecap = useCallback((runId: string) => {
-    setRunRecapsState((prev) => clearRunRecaps(prev, runId));
-  }, []);
+  const upsertRunRecap = useCallback(
+    (runId: string, text: string, turn: number) => {
+      setRunRecapsState((prev) => ({ ...prev, [runId]: { text, turn } }));
+      try {
+        localStorage.setItem(
+          `${RECAP_STORAGE_PREFIX}${conversationId}:${runId}`,
+          JSON.stringify({ text, turn, ts: Date.now() }),
+        );
+      } catch {
+        /* localStorage full or disabled — non-critical */
+      }
+    },
+    [conversationId],
+  );
+  const clearRunRecap = useCallback(
+    (runId: string) => {
+      setRunRecapsState((prev) => clearRunRecaps(prev, runId));
+      try {
+        localStorage.removeItem(`${RECAP_STORAGE_PREFIX}${conversationId}:${runId}`);
+      } catch {
+        /* non-critical */
+      }
+    },
+    [conversationId],
+  );
 
   // Leaving the conversation closes every run EventSource and clears all
   // transient state — a switched conversation must never inherit the
@@ -119,6 +140,31 @@ export function useConversation(
       setRunTodos({});
       setRunRecapsState({});
     };
+  }, [conversationId]);
+
+  // Restore recaps from localStorage on conversation load (best-effort:
+  // recap is not persisted server-side, so localStorage is the only way
+  // to survive page refresh).
+  useEffect(() => {
+    if (!conversationId) return;
+    const prefix = `${RECAP_STORAGE_PREFIX}${conversationId}:`;
+    const restored: Record<string, { text: string; turn: number }> = {};
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith(prefix)) continue;
+        const runId = key.slice(prefix.length);
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw) as { text: string; turn: number };
+        restored[runId] = { text: parsed.text, turn: parsed.turn };
+      }
+      if (Object.keys(restored).length > 0) {
+        setRunRecapsState(restored);
+      }
+    } catch {
+      /* localStorage access failed — non-critical, start empty */
+    }
   }, [conversationId]);
   const upsertTransient = useCallback((runId: string, agentMemberId: string, text: string) => {
     setTransients((prev) => {
