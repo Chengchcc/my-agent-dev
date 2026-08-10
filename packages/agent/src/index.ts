@@ -36,6 +36,7 @@ export { buildLoopInput } from "./runtime/loop-input.js";
 // Plugin
 export type { MetaSectionProvider, Plugin, PluginHooks, PluginTool } from "./runtime/plugin.js";
 export { collectTools, renderMeta, validatePlugins } from "./runtime/plugin.js";
+export type { PluginRuntime } from "./runtime/plugin-runtime.js";
 // Prompt
 export type { LoopMetaInput } from "./runtime/prompt.js";
 export { renderLoopMeta } from "./runtime/prompt.js";

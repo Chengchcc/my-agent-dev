@@ -3,9 +3,11 @@ import {
   type CodingLoopInput,
   type ContextBudget,
   type ContextSummarizer,
+  type CodingAgentLoopEvent,
   createCodingAgentSession,
   createInMemorySessionStore,
   type Plugin,
+  type PluginRuntime,
   type PluginTool,
   type SessionStore,
 } from "@my-agent-team/agent";
@@ -312,10 +314,27 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     });
   };
 
+  // PluginRuntime: gives hooks access to model stream, store, workspace,
+  // emit, and abort signal. Plugins capture config in closures; rt provides
+  // runtime capabilities at call time (same pattern as pi's ExtensionAPI).
+  // Two-phase: sessionEmit is bound after session creation (the session's
+  // emit method doesn't exist until createCodingAgentSession returns).
+  let sessionEmit: ((event: CodingAgentLoopEvent) => void) | null = null;
+  const pluginRuntime: PluginRuntime = {
+    streamModel: (providerId, modelId, messages, opts) =>
+      deps.modelRuntime.stream(providerId, modelId, messages, opts),
+    store,
+    sessionId: deps.runId,
+    workspaceRoot: deps.workspaceRoot,
+    emit: (event) => { sessionEmit?.(event); },
+    signal: new AbortController().signal,
+  };
+
   const session = createCodingAgentSession({
     sessionId: deps.runId,
     store,
     plugins,
+    pluginRuntime,
     maxSteps: 32,
     maxForceContinues: 4,
     modelStream: async function* (messages, signal, tools) {
@@ -355,6 +374,9 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     resolveModel,
     resolveTools,
   });
+
+  // Bind the plugin runtime's emit to the session's emit (two-phase init).
+  sessionEmit = (event) => session.emit(event);
 
   return {
     runId: deps.runId,

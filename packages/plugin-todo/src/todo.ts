@@ -13,7 +13,7 @@ export function createTodoPlugin(opts: TodoPluginOptions): Plugin {
     hooks: {
       // Surface the todo snapshot as a UI-transient event right after the
       // tool runs; never written to canonical conversation history.
-      afterTool(toolName: string, result: unknown) {
+      afterTool(toolName: string, result: unknown, _rt: unknown) {
         if (toolName !== "todo_write") return undefined;
         const items = (result as { items?: readonly TodoItem[] } | null)?.items;
         if (!items) return undefined;

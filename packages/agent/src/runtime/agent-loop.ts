@@ -9,6 +9,7 @@ import { type CompactionBudget, compactSession } from "./compaction.js";
 import type { CodingLoopInput } from "./loop-input.js";
 import { buildLoopInput } from "./loop-input.js";
 import type { Plugin, PluginTool } from "./plugin.js";
+import type { PluginRuntime } from "./plugin-runtime.js";
 import { collectTools, validatePlugins } from "./plugin.js";
 import { renderLoopMeta } from "./prompt.js";
 import { retryStream } from "./retry.js";
@@ -60,6 +61,10 @@ export interface CodingAgentSessionOptions {
    *  `input.run.productTools`). Merged into the tool table at each runLoop
    *  start so snapshot changes apply on the next Run without a rebuild. */
   readonly resolveTools?: (input: CodingLoopInput) => Promise<readonly PluginTool[]>;
+  /** Runtime capabilities injected into plugin hooks (model stream, store,
+   *  workspace, emit). Optional: when omitted, hooks receive a stub with
+   *  emit only (backward-compatible with pre-existing plugins). */
+  readonly pluginRuntime?: PluginRuntime;
   readonly maxRetries?: number;
   /** Token-aware proactive compaction budget. When estimated context tokens
    *  exceed limit * triggerRatio before a model turn, compact once. Leave
@@ -92,11 +97,23 @@ export interface CodingAgentSession {
   stop(): void;
   compact(): Promise<void>;
   onEvent(listener: AgentLoopListener): () => void;
+  /** Emit a UI-transient event to all subscribers (for PluginRuntime). */
+  emit(event: CodingAgentLoopEvent): void;
 }
 
 export function createCodingAgentSession(opts: CodingAgentSessionOptions): CodingAgentSession {
   validatePlugins(opts.plugins);
   const listeners = new Set<AgentLoopListener>();
+  // Resolve the plugin runtime: opts.pluginRuntime from run-runtime, or a
+  // minimal stub for tests that only need emit (backward-compatible).
+  const rt: PluginRuntime = opts.pluginRuntime ?? {
+    streamModel: async function* () {},
+    store: opts.store,
+    sessionId: opts.sessionId,
+    workspaceRoot: "",
+    emit: (event) => { void emit(event); },
+    signal: new AbortController().signal,
+  };
   // Static plugin tools + per-run resolved tools (Product Tool manifest).
   // The tool table is rebuilt at each runLoop start so AgentRunSnapshot
   // changes (productTools) take effect on the next Run without a rebuild.
@@ -246,7 +263,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
           const transformed = [...messages];
           for (const p of opts.plugins) {
             if (p.hooks?.beforeModel) {
-              const result = p.hooks.beforeModel(transformed);
+              const result = p.hooks.beforeModel(transformed, rt);
               transformed.length = 0;
               transformed.push(...result);
             }
@@ -334,7 +351,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
                 let vetoed = false;
                 p.hooks.beforeStop(() => {
                   vetoed = true;
-                });
+                }, rt);
                 if (vetoed && forceContinues < opts.maxForceContinues) {
                   forceContinues++;
                   stopped = false;
@@ -385,6 +402,15 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
             await emit({ type: "agent_end", status });
             controller = null;
             return { status, usage: runUsage, error: runError };
+          }
+        }
+
+        // afterModel hook: plugins may stream a cheap model (recap/pet) or
+        // emit UI-transient events. Called after the turn's model output +
+        // tool results are persisted, before turn_end.
+        for (const p of opts.plugins) {
+          if (p.hooks?.afterModel) {
+            await p.hooks.afterModel(messages, rt);
           }
         }
 
@@ -578,7 +604,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       // Plugin hooks may surface UI-transient events (e.g. todo_update);
       // emitted after the tool result so consumers get the final payload.
       for (const p of opts.plugins) {
-        const ev = p.hooks?.afterTool?.(call.name, result);
+        const ev = p.hooks?.afterTool?.(call.name, result, rt);
         if (ev) await emit(ev);
       }
       return { id: call.id, result, isError, terminate };
@@ -695,6 +721,9 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       return () => {
         listeners.delete(listener);
       };
+    },
+    emit(event) {
+      void emit(event);
     },
   };
 }
