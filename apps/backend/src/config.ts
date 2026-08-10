@@ -12,12 +12,14 @@ export interface BackendConfig {
   maxConcurrentRuns: number;
   anthropicApiKey: string;
   anthropicBaseUrl?: string;
-  shutdownTimeoutMs: number;
   cancelGraceMs: number;
-  reaperIntervalMs: number;
-  stepStallTimeoutMs: number;
   /** Absolute path to the repo skills/ directory (source for builtin seed). */
   builtinSkillsDir: string;
+  /** Coding Agent executable (spawned per Run). Defaults to "coding-agent"
+   *  on PATH; tests point it at the Bun runtime + app entry source. */
+  codingAgentBin?: string;
+  productToolsMcpUrl?: string;
+  productToolsServiceToken?: string;
 }
 
 /**
@@ -40,10 +42,10 @@ export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
     maxConcurrentRuns: env.BACKEND_MAX_CONCURRENT,
     anthropicApiKey,
     anthropicBaseUrl: env.ANTHROPIC_BASE_URL,
-    shutdownTimeoutMs: env.BACKEND_SHUTDOWN_TIMEOUT_MS,
     cancelGraceMs: env.BACKEND_CANCEL_GRACE_MS,
-    reaperIntervalMs: env.BACKEND_REAPER_INTERVAL_MS,
-    stepStallTimeoutMs: env.BACKEND_STEP_STALL_TIMEOUT_MS,
-    builtinSkillsDir: process.env.BUILTIN_SKILLS_DIR ?? resolve(import.meta.dir, "../../skills"),
+    builtinSkillsDir: process.env.BUILTIN_SKILLS_DIR ?? resolve(import.meta.dir, "../../../skills"),
+    codingAgentBin: env.CODING_AGENT_BIN,
+    productToolsMcpUrl: env.PRODUCT_TOOLS_MCP_URL,
+    productToolsServiceToken: env.PRODUCT_TOOLS_SERVICE_TOKEN,
   };
 }

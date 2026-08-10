@@ -46,3 +46,16 @@ export interface UpdateAgentInput {
     /** profileRef is server-generated — never accepted from clients (§4.5). */
   };
 }
+
+/** Canonical Backend model reference for an Agent record. The Coding Agent
+ *  catalog keys models as `<provider>/<model>`; the agent stores the bare
+ *  provider and model name separately. */
+export function agentModelRef(agent: Pick<AgentRow, "modelProvider" | "modelName">): {
+  backendKind: "coding_agent";
+  modelId: string;
+} {
+  return {
+    backendKind: "coding_agent",
+    modelId: `${agent.modelProvider}/${agent.modelName}`,
+  };
+}

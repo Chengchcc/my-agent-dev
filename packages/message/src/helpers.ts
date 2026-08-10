@@ -6,8 +6,8 @@ import type { MessageRevision } from "./revision.js";
  *  Ordinal distinguishes multiple assistant messages within the same run
  *  (e.g. pre-tool vs post-tool segments). Most runs produce exactly one
  *  assistant message (ordinal = 0). */
-export function assistantMessageId(spanId: string, ordinal: number): string {
-  return `span:${spanId}:assistant:${ordinal}`;
+export function assistantMessageId(runId: string, ordinal: number): string {
+  return `run:${runId}:assistant:${ordinal}`;
 }
 
 /** Human message id: msg:{conversationId}:{senderMemberId}:{uuid} */
@@ -97,7 +97,6 @@ export function mergeMessageRevision(
     text: revision.text ?? base.text,
     blocks: revision.blocks ?? base.blocks,
     tools: revision.tools ?? base.tools,
-    spanId: revision.spanId ?? base.spanId,
     conversationId: revision.conversationId ?? base.conversationId,
     visibility: revision.visibility ?? base.visibility,
     updatedAt: revision.updatedAt,

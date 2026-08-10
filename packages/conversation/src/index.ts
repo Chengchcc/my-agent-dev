@@ -1,6 +1,5 @@
 // ── Mechanism: ledger codec ──
 
-export type { ConversationFrame } from "./envelope.js";
 export {
   LedgerEntry,
   LedgerKind,
@@ -20,5 +19,3 @@ export {
   resolveTriggerTargets,
   TriggerMode,
 } from "./member.js";
-export type { RunPhase, RunStatus } from "./run-status.js";
-export { TERMINAL_RUN_PHASES } from "./run-status.js";

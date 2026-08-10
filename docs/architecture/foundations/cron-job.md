@@ -114,7 +114,7 @@ spec 的构造按 `agentId` 读 Agent 的 model/permission/maxSteps 拼 schemaVe
 
 所以分两层：
 
-1. **per-job 主动超时（前台）**：scheduler 在 dispatch 出 runId 后，`setTimeout(timeoutMs)` 武装一个看门狗；到点若该 run 仍 active，调 `cancel(runId)`（会向进程内 AgentSession 发 abort 并记 `cancel_requested` / `abort_sent` ops 事件）。run 正常结束则清掉看门狗。
+1. **per-job 主动超时（前台）**：scheduler 在 dispatch 出 runId 后，`setTimeout(timeoutMs)` 武装一个看门狗；到点若该 run 仍 active，调 `cancel(runId)`（会向进程内 Agent 发 abort 并记 `cancel_requested` / `abort_sent` ops 事件）。run 正常结束则清掉看门狗。
 2. **心跳 reaper（兜底）**：进程内执行整个卡死、连 abort 都收不到时，全局 reaper 仍会按 `heartbeatTimeoutMs` 把它标 `interrupted`。这是第二道防线，不替代 per-job 超时。
 
 两层各司其职：per-job 超时回答「这条 job 不该跑超过 timeoutMs」，reaper 回答「执行是不是卡死了」。

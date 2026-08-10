@@ -3,7 +3,6 @@ import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
 import type { GoalStateStore } from "./goal-state.js";
 import type { ConversationService } from "./service.js";
-import { ConversationBusyError } from "./service.js";
 
 export function conversationRoutes(
   svc: ConversationService,
@@ -90,8 +89,8 @@ export function conversationRoutes(
           members,
         };
       })
-      .delete("/api/conversations/:id", ({ params: { id }, set }) => {
-        const deleted = svc.port.deleteConversation(id);
+      .delete("/api/conversations/:id", async ({ params: { id }, set }) => {
+        const deleted = await svc.port.deleteConversation(id);
         if (!deleted) return Response.json({ error: "Not found" }, { status: 404 });
         set.status = 204;
         return "";
@@ -99,20 +98,14 @@ export function conversationRoutes(
       .post(
         "/api/conversations/:id/messages",
         async ({ params: { id: conversationId }, body, set }) => {
-          try {
-            const result = await svc.postMessage({
-              conversationId,
-              senderMemberId: body.senderMemberId,
-              addressedTo: body.addressedTo,
-              content: body.content,
-            });
-            set.status = 202;
-            return result;
-          } catch (err) {
-            if (err instanceof ConversationBusyError)
-              return Response.json({ error: (err as Error).message }, { status: 409 });
-            throw err;
-          }
+          const result = await svc.postMessage({
+            conversationId,
+            senderMemberId: body.senderMemberId,
+            addressedTo: body.addressedTo,
+            content: body.content,
+          });
+          set.status = 202;
+          return result;
         },
         {
           body: t.Object({
@@ -196,7 +189,6 @@ export function conversationRoutes(
               ...entry,
               content:
                 typeof entry.content === "string" ? entry.content : JSON.stringify(entry.content),
-              spanId: entry.spanId ?? undefined,
             };
             return encodeConv(
               entry.kind as keyof typeof conversationEvents,

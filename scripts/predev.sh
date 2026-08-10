@@ -13,7 +13,6 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # ── 1. Drizzle migrations (gitignored, regenerated per machine) ──
 JOURNALS=(
   "$ROOT/apps/backend/drizzle/backend/meta/_journal.json"
-  "$ROOT/packages/framework/drizzle/meta/_journal.json"
   "$ROOT/apps/lark-bot/drizzle/meta/_journal.json"
 )
 

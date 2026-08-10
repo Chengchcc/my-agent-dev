@@ -24,10 +24,7 @@ export const envSchema = z.object({
   BACKEND_WORKSPACE_ROOT: z.string().optional(),
   BACKEND_TEMPLATE_DIR: z.string().optional(),
   BACKEND_MAX_CONCURRENT: z.coerce.number().int().positive().default(8),
-  BACKEND_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   BACKEND_CANCEL_GRACE_MS: z.coerce.number().int().positive().default(5_000),
-  BACKEND_REAPER_INTERVAL_MS: z.coerce.number().int().positive().default(30_000),
-  BACKEND_STEP_STALL_TIMEOUT_MS: z.coerce.number().int().positive().default(300_000),
 
   // ── Anthropic API ──
   ANTHROPIC_API_KEY: z.string().optional(),
@@ -45,6 +42,20 @@ export const envSchema = z.object({
     .string()
     .optional()
     .describe("'dev' | 'prod' — selects lark-bot registry implementation"),
+
+  // ── Phase 5: Coding Agent process + Product Tools MCP ──
+  CODING_AGENT_BIN: z
+    .string()
+    .optional()
+    .describe("Coding Agent executable spawned per Run (default: coding-agent on PATH)"),
+  PRODUCT_TOOLS_MCP_URL: z
+    .string()
+    .optional()
+    .describe("Public URL of the Product Backend Product Tools MCP endpoint"),
+  PRODUCT_TOOLS_SERVICE_TOKEN: z
+    .string()
+    .optional()
+    .describe("Service token the Coding Agent child sends to Product Tools MCP"),
 });
 
 export type Env = z.infer<typeof envSchema>;

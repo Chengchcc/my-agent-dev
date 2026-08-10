@@ -1,6 +1,7 @@
 import { type Dirent, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Tool } from "@my-agent-team/core";
+import { WorkspaceSandbox } from "./workspace-sandbox.js";
 
 const descriptionParam = {
   type: "string" as const,
@@ -44,6 +45,7 @@ function formatSize(bytes: number): string {
 /** ls tool: list directory entries sorted by mtime (newest first). */
 export function createLsTool(opts: { cwd: string }): Tool {
   const { cwd } = opts;
+  const sandbox = new WorkspaceSandbox(cwd);
   return {
     name: "ls",
     description:
@@ -63,7 +65,17 @@ export function createLsTool(opts: { cwd: string }): Tool {
     },
     async execute(input) {
       const rec = input as { path?: string };
-      const dir = join(cwd, rec.path ?? "");
+      let dir = cwd;
+      if (rec.path) {
+        try {
+          dir = sandbox.validate(rec.path);
+        } catch {
+          return {
+            content: `Error: path escapes workspace root: ${String(rec.path)}`,
+            isError: true,
+          };
+        }
+      }
       try {
         const entries = readdirSync(dir, { withFileTypes: true })
           .filter((e) => !isIgnored(e.name))
@@ -96,6 +108,7 @@ export function createLsTool(opts: { cwd: string }): Tool {
 /** tree tool: recursive directory listing with depth control. */
 export function createTreeTool(opts: { cwd: string }): Tool {
   const { cwd } = opts;
+  const sandbox = new WorkspaceSandbox(cwd);
   return {
     name: "tree",
     description:
@@ -118,7 +131,17 @@ export function createTreeTool(opts: { cwd: string }): Tool {
     },
     async execute(input) {
       const rec = input as { path?: string; max_depth?: number };
-      const dir = join(cwd, rec.path ?? "");
+      let dir = cwd;
+      if (rec.path) {
+        try {
+          dir = sandbox.validate(rec.path);
+        } catch {
+          return {
+            content: `Error: path escapes workspace root: ${String(rec.path)}`,
+            isError: true,
+          };
+        }
+      }
       const maxDepth = rec.max_depth ?? 3;
 
       const lines: string[] = [];

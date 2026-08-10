@@ -35,7 +35,7 @@ used_by: []
 
 ## 意图 → 配置翻译
 
-翻译由系统内置 Skill `loop-config-generator/SKILL.md` 完成——它装在 AgentSession 里，输入用户意图 + 7 种模板描述，输出匹配的模板名 + 参数。然后 scaffold `.loop/` 目录：
+翻译由系统内置 Skill `loop-config-generator/SKILL.md` 完成——它装在 Agent 里，输入用户意图 + 7 种模板描述，输出匹配的模板名 + 参数。然后 scaffold `.loop/` 目录：
 
 1. 写 `config.yml`（填入匹配模板的默认值 + 从意图提取的参数）
 2. 从内置模板库复制对应 skill 的 `SKILL.md` 到 `.loop/skills/`

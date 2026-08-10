@@ -6,21 +6,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { PetStatusBar } from "@/components/PetBar";
-import { RecapPanel } from "@/components/RecapPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useConversation } from "@/hooks/useConversation";
 import type { ConversationSnapshot } from "@/lib/api";
 import { api } from "@/lib/api";
+import type { SenderRef } from "@/lib/conversation-reducer";
 import type { CommandContext } from "@/lib/slash-commands";
 import { findCommand, parseArgs } from "@/lib/slash-commands";
 import { extractText } from "@/lib/timeline";
+import type { LiveToolCall, TodoItem } from "@/lib/transient-reducer";
 import { Composer } from "./Composer";
 import { RosterList } from "./RosterList";
 import { Timeline } from "./Timeline";
 import { TodoPanel } from "./TodoPanel";
-import { ToolApprovalCard } from "./ToolApprovalCard";
 
 interface ConversationCanvasProps {
   conversationId: string;
@@ -34,22 +33,10 @@ export function ConversationCanvas({
   initialMessage,
 }: ConversationCanvasProps) {
   const router = useRouter();
-  const {
-    state,
-    busy,
-    send,
-    toggleTriggerMode,
-    approvalTarget,
-    approve,
-    deny,
-    resuming,
-    queuedMessages,
-    queueEdit,
-    queueRemove,
-    petBark,
-    recap,
-  } = useConversation(conversationId, snapshot);
-  const { viewerMemberId, roster, items, error, todos, triggerMode, streamConn } = state;
+  const qc = useQueryClient();
+  const { state, busy, send, toggleTriggerMode, transients, transientTools, runTodos, activeRuns } =
+    useConversation(conversationId, snapshot);
+  const { viewerMemberId, roster, items, error, triggerMode, streamConn } = state;
 
   // W3+W5: use the most recent agent run's status, not first-found.
   // Scan from newest to oldest to get the current run's transient state.
@@ -87,6 +74,10 @@ export function ConversationCanvas({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLen = useRef(items.length);
+  const transientTextLen = useMemo(
+    () => Object.values(transients).reduce((n, t) => n + t.text.length, 0),
+    [transients],
+  );
   const [scrolledUp, setScrolledUp] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(false);
   const initialSent = useRef(false);
@@ -106,7 +97,32 @@ export function ConversationCanvas({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
     prevLen.current = items.length;
-  }, [items.length]);
+    // Streaming bubbles grow without changing items.length — follow them.
+    if (transientTextLen > 0 && !scrolledUp && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [items.length, transientTextLen, scrolledUp]);
+
+  // One timeline bubble per active run, addressed via its agent member.
+  const transientBubbles = useMemo(() => {
+    const bubbles: Array<{
+      runId: string;
+      text: string;
+      sender: SenderRef;
+      tools: LiveToolCall[];
+    }> = [];
+    for (const [runId, t] of Object.entries(transients)) {
+      const sender = Object.values(roster).find((m) => m.memberId === t.agentMemberId);
+      if (!sender) continue;
+      bubbles.push({
+        runId,
+        text: t.text,
+        sender,
+        tools: Object.values(transientTools).filter((tool) => tool.runId === runId),
+      });
+    }
+    return bubbles;
+  }, [transients, transientTools, roster]);
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
@@ -138,23 +154,9 @@ export function ConversationCanvas({
     URL.revokeObjectURL(url);
   }, [conversationId]);
 
-  // Derive the latest active agent run spanId (non-terminal state) for /stop.
-  const currentRunId = (() => {
-    for (let i = state.items.length - 1; i >= 0; i--) {
-      const item = state.items[i]!;
-      if (
-        item.kind === "message" &&
-        item.sender.kind === "agent" &&
-        item.content.spanId &&
-        item.content.state &&
-        item.content.state !== "done" &&
-        item.content.state !== "error"
-      ) {
-        return item.content.spanId;
-      }
-    }
-    return null;
-  })();
+  // Active Agent Run (from the transient Live Update stream) - /stop target.
+  // Never inferred from message state; canonical History has no open runs.
+  const currentRunId = activeRuns.size > 0 ? [...activeRuns][0]! : null;
 
   const handleSlashCommand = useCallback(
     async (input: string) => {
@@ -177,10 +179,11 @@ export function ConversationCanvas({
         toggleTriggerMode,
         currentRunId,
         router: { push: router.push },
+        refreshGoal: () => qc.invalidateQueries({ queryKey: ["goal", conversationId] }),
       };
       await cmd.execute(ctx);
     },
-    [conversationId, send, toggleTriggerMode, currentRunId, router],
+    [conversationId, send, toggleTriggerMode, currentRunId, router, qc],
   );
 
   return (
@@ -232,7 +235,7 @@ export function ConversationCanvas({
                 size="sm"
                 className="h-7 text-xs text-destructive hover:text-destructive"
                 onClick={() => {
-                  api.opsCancelRun(currentRunId).then(() => toast.success("Stopped"));
+                  api.cancelAgentRun(currentRunId).then(() => toast.success("Stopped"));
                 }}
               >
                 Stop
@@ -280,7 +283,20 @@ export function ConversationCanvas({
       )}
 
       {/* M14.6: Todo progress — pinned above message stream */}
-      <TodoPanel todos={todos} />
+      <TodoPanel
+        runs={Object.entries(runTodos)
+          .map(([runId, items]) => ({
+            runId,
+            agent:
+              Object.values(roster).find((m) => m.memberId === transients[runId]?.agentMemberId) ??
+              null,
+            items,
+          }))
+          .filter(
+            (r): r is { runId: string; agent: SenderRef; items: readonly TodoItem[] } =>
+              r.agent !== null,
+          )}
+      />
 
       {/* Error bar */}
       {error && (
@@ -326,6 +342,7 @@ export function ConversationCanvas({
                   viewerMemberId={viewerMemberId}
                   conversationId={conversationId}
                   scrollContainerRef={scrollRef}
+                  transients={transientBubbles}
                 />
               </div>
             )}
@@ -365,75 +382,35 @@ export function ConversationCanvas({
         </Button>
 
         {/* Roster — mobile drawer overlay */}
-        {rosterOpen && (
-          <>
-            <div
-              className="md:hidden fixed inset-0 bg-black/40 z-40"
-              onClick={() => setRosterOpen(false)}
-            />
-            <aside
-              id="roster-drawer"
-              className="md:hidden fixed right-0 top-0 bottom-0 w-64 bg-[var(--canvas)] border-l border-[var(--hairline)] z-50 overflow-y-auto p-3 shadow-lg"
-              role="dialog"
-              aria-label="Members"
-            >
-              <RosterList
-                conversationId={conversationId}
-                roster={roster}
-                viewerMemberId={viewerMemberId}
-                onClose={() => setRosterOpen(false)}
-              />
-            </aside>
-          </>
-        )}
-
-        {/* RecapPanel — right sidebar */}
-        {recap && <RecapPanel recap={recap} />}
       </div>
 
-      {/* M17: Ledger-native approval — data from waiting revision, not run EventSource */}
-      {approvalTarget && (
-        <div className="shrink-0 border-t border-[var(--hairline)]">
-          <ToolApprovalCard
-            tool={{
-              id: approvalTarget.tools[0]?.id ?? "",
-              name: approvalTarget.tools[0]?.name ?? "",
-              input: approvalTarget.tools[0]?.input ?? {},
-            }}
-            onApprove={approve}
-            onDeny={deny}
-            disabled={resuming}
+      {rosterOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 bg-black/40 z-40"
+            onClick={() => setRosterOpen(false)}
           />
-        </div>
+          <aside
+            id="roster-drawer"
+            className="md:hidden fixed right-0 top-0 bottom-0 w-64 bg-[var(--canvas)] border-l border-[var(--hairline)] z-50 overflow-y-auto p-3 shadow-lg"
+            role="dialog"
+            aria-label="Members"
+          >
+            <RosterList
+              conversationId={conversationId}
+              roster={roster}
+              viewerMemberId={viewerMemberId}
+              onClose={() => setRosterOpen(false)}
+            />
+          </aside>
+        </>
       )}
 
-      {/* Queued steer messages */}
-      {queuedMessages.length > 0 && (
-        <div className="shrink-0 border-t border-[var(--hairline)] bg-[var(--canvas-soft)]/50 px-6 py-3">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] text-[var(--mute)] uppercase tracking-wide">
-              Queued ({queuedMessages.length})
-            </span>
-          </div>
-          <div className="space-y-2">
-            {queuedMessages.map((msg, i) => (
-              <QueuedMessageBubble
-                key={i}
-                text={msg}
-                onEdit={(newText) => {
-                  queueEdit(i, newText);
-                  send(newText);
-                }}
-                onRemove={() => queueRemove(i)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Roster — mobile drawer overlay */}
+
       {/* Composer */}
       <div className="shrink-0 border-t border-[var(--hairline)]">
         <div className="flex items-center gap-2 px-6 pt-3">
-          <PetStatusBar bark={petBark} />
           <Button
             onClick={toggleTriggerMode}
             className="text-[10px] tracking-[0.1em] uppercase px-2 py-0.5 rounded border border-[var(--hairline)] text-[var(--mute)] hover:text-[var(--body)] hover:border-[var(--primary)] transition-colors"
@@ -471,70 +448,12 @@ export function ConversationCanvas({
     </div>
   );
 }
-function QueuedMessageBubble({
-  text,
-  onEdit,
-  onRemove,
-}: {
-  text: string;
-  onEdit: (newText: string) => void;
-  onRemove: () => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(text);
-
-  if (editing) {
-    return (
-      <div className="flex items-center gap-2 rounded-md bg-background px-3 py-2">
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          className="flex-1 text-sm bg-transparent outline-none resize-none"
-          rows={2}
-        />
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            onEdit(draft);
-            setEditing(false);
-          }}
-        >
-          Save
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            setDraft(text);
-            setEditing(false);
-          }}
-        >
-          Cancel
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-2 rounded-md bg-background/50 px-3 py-2">
-      <span className="flex-1 text-sm text-[var(--body)] opacity-70">{text}</span>
-      <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => setEditing(true)}>
-        ✏️
-      </Button>
-      <Button size="sm" variant="ghost" className="h-6 px-2" onClick={onRemove}>
-        ✕
-      </Button>
-    </div>
-  );
-}
 
 function GoalStatusBar({ conversationId }: { conversationId: string }) {
   const qc = useQueryClient();
   const { data: goal } = useQuery({
     queryKey: ["goal", conversationId],
     queryFn: () => api.getGoal(conversationId),
-    refetchInterval: 5000,
   });
 
   if (!goal?.condition) return null;

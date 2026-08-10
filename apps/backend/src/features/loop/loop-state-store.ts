@@ -7,6 +7,9 @@ export interface LoopStateStore {
   addBudget(loopId: string, day: string, delta: number): number;
   getBudget(loopId: string, day: string): number;
   getBudgetHistory(loopId: string, days?: number): Array<{ date: string; spent: number }>;
+  /** Remove all Loop state (items + budget). Runs the same transaction as
+   *  the caller's cron-row delete when composed by the route handler. */
+  delete(loopId: string): void;
 }
 
 export function createLoopStateStore(db: Database): LoopStateStore {
@@ -19,22 +22,37 @@ export function createLoopStateStore(db: Database): LoopStateStore {
       attempt: number;
       priority: number;
       result: string | null;
+      generator_run_id: string | null;
+      evaluator_run_id: string | null;
       updated_at: number;
     },
     [string]
   >(
-    "SELECT item_id, source, summary, step, attempt, priority, result, updated_at FROM loop_item WHERE loop_id = ?",
+    "SELECT item_id, source, summary, step, attempt, priority, result, generator_run_id, evaluator_run_id, updated_at FROM loop_item WHERE loop_id = ?",
   );
 
   const upsertItem = db.query<
     void,
-    [string, string, string, string, string, number, number, string | null, number]
+    [
+      string,
+      string,
+      string,
+      string,
+      string,
+      number,
+      number,
+      string | null,
+      string | null,
+      string | null,
+      number,
+    ]
   >(
-    `INSERT INTO loop_item(loop_id, item_id, source, summary, step, attempt, priority, result, updated_at)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO loop_item(loop_id, item_id, source, summary, step, attempt, priority, result, generator_run_id, evaluator_run_id, updated_at)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(loop_id, item_id) DO UPDATE SET
        step=excluded.step, attempt=excluded.attempt, priority=excluded.priority,
-       result=excluded.result, updated_at=excluded.updated_at`,
+       result=excluded.result, generator_run_id=excluded.generator_run_id,
+       evaluator_run_id=excluded.evaluator_run_id, updated_at=excluded.updated_at`,
   );
 
   const deleteItem = db.query<void, [string, string]>(
@@ -63,6 +81,8 @@ export function createLoopStateStore(db: Database): LoopStateStore {
     attempt: number;
     priority: number;
     result: string | null;
+    generator_run_id: string | null;
+    evaluator_run_id: string | null;
   }): ItemState {
     let result: Verdict | null = null;
     if (row.result) {
@@ -80,6 +100,8 @@ export function createLoopStateStore(db: Database): LoopStateStore {
       attempt: row.attempt,
       priority: row.priority,
       result,
+      generatorRunId: row.generator_run_id ?? undefined,
+      evaluatorRunId: row.evaluator_run_id ?? undefined,
     };
   }
 
@@ -126,6 +148,8 @@ export function createLoopStateStore(db: Database): LoopStateStore {
             item.attempt,
             item.priority,
             item.result ? JSON.stringify(item.result) : null,
+            item.generatorRunId ?? null,
+            item.evaluatorRunId ?? null,
             now,
           );
         }
@@ -140,6 +164,8 @@ export function createLoopStateStore(db: Database): LoopStateStore {
             item.attempt,
             item.priority,
             item.result ? JSON.stringify(item.result) : null,
+            item.generatorRunId ?? null,
+            item.evaluatorRunId ?? null,
             now,
           );
         }
@@ -158,6 +184,12 @@ export function createLoopStateStore(db: Database): LoopStateStore {
     getBudgetHistory(loopId: string, days = 7): Array<{ date: string; spent: number }> {
       const rows = budgetHistoryQuery.all(loopId, days) as Array<{ day: string; spent: number }>;
       return rows.map((r) => ({ date: r.day, spent: r.spent }));
+    },
+    delete(loopId: string) {
+      db.transaction(() => {
+        db.query("DELETE FROM loop_item WHERE loop_id = ?").run(loopId);
+        db.query("DELETE FROM loop_budget WHERE loop_id = ?").run(loopId);
+      })();
     },
   };
 }

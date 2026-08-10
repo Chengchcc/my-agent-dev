@@ -8,13 +8,15 @@ import { useAgentList, useArchiveAgent } from "@/features/agents/hooks";
 import { useAgentRuntimes } from "@/features/ops/hooks";
 import type { AgentRuntimeStatus } from "@/lib/api";
 
-/** Derive a dot color + label from an agent's runtime surface health. */
-function runtimeBadge(rt: AgentRuntimeStatus | undefined): {
-  color: string;
-  label: string;
-  lastSeenAt: number | null;
-} {
-  if (!rt) return { color: "bg-[var(--mute)]", label: "Unknown", lastSeenAt: null };
+/** Derive a dot color + label from an agent's runtime surface health.
+ *  `loading` separates the query-in-flight state from a genuinely absent
+ *  runtime — "Unknown" must never be the rendering of a pending request. */
+function runtimeBadge(
+  rt: AgentRuntimeStatus | undefined,
+  loading: boolean,
+): { color: string; label: string; lastSeenAt: number | null } {
+  if (loading) return { color: "bg-[var(--mute)]", label: "Loading", lastSeenAt: null };
+  if (!rt) return { color: "bg-[var(--mute)]", label: "No surface data", lastSeenAt: null };
   const surfaces = Object.values(rt.surfaces);
   if (surfaces.length === 0)
     return { color: "bg-[var(--primary)]", label: "Idle", lastSeenAt: null };
@@ -44,12 +46,14 @@ export function AgentList() {
   const active = (agents ?? []).filter((a) => !a.archivedAt);
   const agentIds = active.map((a) => a.id);
   // ponytail: refetch every 15s keeps the dot fresh without a websocket.
-  const { data: runtimes } = useAgentRuntimes(agentIds, { refetchInterval: 15_000 });
+  const runtimeQueries = useAgentRuntimes(agentIds, { refetchInterval: 15_000 });
   const runtimeById = useMemo(() => {
     const m = new Map<string, AgentRuntimeStatus>();
-    for (const rt of runtimes ?? []) m.set(rt.agentId, rt);
+    for (const q of runtimeQueries) {
+      if (q.data) m.set(q.data.agentId, q.data);
+    }
     return m;
-  }, [runtimes]);
+  }, [runtimeQueries]);
   function handleArchive(id: string) {
     setConfirmingId(id);
     archive.mutate(id, {
@@ -94,17 +98,14 @@ export function AgentList() {
 
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-      {active.map((agent, i) => (
+      {active.map((agent) => (
         <div key={agent.id} className="relative group">
           <Link
             href={`/team/${agent.id}`}
             className="block border border-[var(--hairline)] rounded-lg bg-[var(--canvas)] p-8
                        hover:border-[var(--primary)] transition-colors duration-300
-                       animate-fade-in"
-            style={{
-              animationDelay: `${i * 0.08}s`,
-              animationFillMode: "both",
-            }}
+                       "
+            style={{}}
           >
             <h3
               className="text-xl font-normal text-[var(--ink-strong)] tracking-tight font-[family-name:var(--font-sans)]"
@@ -125,7 +126,8 @@ export function AgentList() {
 
             <div className="mt-3 flex items-center gap-2">
               {(() => {
-                const badge = runtimeBadge(runtimeById.get(agent.id));
+                const q = runtimeQueries.find((r) => r.data?.agentId === agent.id);
+                const badge = runtimeBadge(runtimeById.get(agent.id), !!q?.isLoading && !q?.data);
                 return (
                   <>
                     <span className={`w-1.5 h-1.5 rounded-full ${badge.color}`} />
@@ -187,7 +189,7 @@ export function AgentList() {
                 e.stopPropagation();
                 setConfirmingId(agent.id);
               }}
-              className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+              className="absolute top-3 right-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
             >
               Archive
             </Button>

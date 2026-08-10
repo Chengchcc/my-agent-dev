@@ -1,0 +1,170 @@
+import { z } from "zod";
+
+/** Frozen stdio JSONL wire contract shared by the Coding Agent RPC mode and
+ *  the adapter's child-process transport. Lives in the CONTRACT package
+ *  (agent-backend) so neither side imports the other's implementation: the
+ *  Coding Agent consumes it directly, the adapter re-exports it.
+ *
+ *  Framing: one JSON document per line, LF (`\n`) only. Commands travel on
+ *  stdin, outputs on stdout. stderr is for logs only. */
+
+export const runIdSchema = z.string().min(1).max(128);
+export const branchIdSchema = z.string().min(1).max(256);
+export const productEntryIdSchema = z.string().min(1).max(256);
+export const conversationIdSchema = z.string().min(1).max(256);
+export const agentMemberIdSchema = z.string().min(1).max(256);
+
+const messageSchema = z.record(z.unknown());
+
+const productToolSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  inputSchema: z.record(z.unknown()),
+  entrypoint: z.string(),
+});
+
+const runSnapshotSchema = z.object({
+  runId: runIdSchema,
+  model: z.object({ backendKind: z.literal("coding_agent"), modelId: z.string() }),
+  systemPrompt: z.string().optional(),
+  /** Skill pack roots (absolute dirs scanned for SKILL.md), frozen at Run
+   *  creation. Empty/absent = no skills. */
+  skillRoots: z.array(z.string()).optional(),
+  productTools: z.array(productToolSchema),
+  configRevision: z.number(),
+});
+
+const projectedHistorySchema = z.array(
+  z.object({ productEntryId: productEntryIdSchema, message: messageSchema }),
+);
+
+/** Wire form of BackendInputMessage: the durable input id + canonical Message +
+ *  optional productEntryId. The actual driving input - never inferred. */
+const inputMessageSchema = z.object({
+  inputId: z.string().min(1).max(256),
+  message: messageSchema,
+  productEntryId: productEntryIdSchema.optional(),
+});
+
+// ─── Execute payload (the full Run input crossing the boundary) ───────
+
+export const executeRunInputSchema = z.object({
+  history: projectedHistorySchema,
+  input: inputMessageSchema,
+  run: runSnapshotSchema,
+  workspace: z.object({ root: z.string(), access: z.enum(["read_only", "read_write"]) }),
+  metadata: z.object({
+    conversationId: conversationIdSchema,
+    agentMemberId: agentMemberIdSchema,
+    branchId: branchIdSchema,
+  }),
+});
+export type ExecuteRunInput = z.infer<typeof executeRunInputSchema>;
+
+export const steerRunInputSchema = inputMessageSchema;
+export type SteerRunInput = z.infer<typeof steerRunInputSchema>;
+
+// ─── Commands (stdin, one JSON object per line) ──────────────────────
+
+export const executeCommandSchema = z.object({
+  id: z.string().min(1).max(64),
+  type: z.literal("execute"),
+  input: executeRunInputSchema,
+});
+export type ExecuteCommand = z.infer<typeof executeCommandSchema>;
+
+export const steerCommandSchema = z.object({
+  id: z.string().min(1).max(64),
+  type: z.literal("steer"),
+  runId: runIdSchema,
+  input: steerRunInputSchema,
+});
+export type SteerCommand = z.infer<typeof steerCommandSchema>;
+
+export const abortCommandSchema = z.object({
+  id: z.string().min(1).max(64),
+  type: z.literal("abort"),
+  runId: runIdSchema,
+});
+export type AbortCommand = z.infer<typeof abortCommandSchema>;
+
+export const codingAgentCommandSchema = z.discriminatedUnion("type", [
+  executeCommandSchema,
+  steerCommandSchema,
+  abortCommandSchema,
+]);
+export type CodingAgentCommand = z.infer<typeof codingAgentCommandSchema>;
+
+// ─── Outputs (stdout, one JSON object per line) ──────────────────────
+
+export const responseOutputSchema = z.object({
+  // Empty id is reserved for failure responses to unparseable commands
+  // (no command id exists to echo back).
+  id: z.string().max(64),
+  type: z.literal("response"),
+  command: z.enum(["execute", "steer", "abort"]),
+  success: z.boolean(),
+  data: z.record(z.unknown()).optional(),
+  error: z.string().optional(),
+});
+export type ResponseOutput = z.infer<typeof responseOutputSchema>;
+
+/** Runtime event envelope: `data` is the raw Coding Agent loop event object. */
+export const runEventEnvelopeSchema = z.object({
+  id: z.number().int().nonnegative(),
+  type: z.string(),
+  data: z.record(z.unknown()),
+});
+export type RunEventEnvelope = z.infer<typeof runEventEnvelopeSchema>;
+
+export const eventOutputSchema = z.object({
+  type: z.literal("event"),
+  runId: runIdSchema,
+  event: runEventEnvelopeSchema,
+});
+export type EventOutput = z.infer<typeof eventOutputSchema>;
+
+export const outcomeOutputSchema = z.object({
+  type: z.literal("outcome"),
+  runId: runIdSchema,
+  outcome: z.object({
+    status: z.enum(["completed", "failed", "aborted", "timeout"]),
+    output: messageSchema.optional(),
+    error: z.string().optional(),
+    usage: z
+      .object({
+        inputTokens: z.number().optional(),
+        outputTokens: z.number().optional(),
+        cacheReadTokens: z.number().optional(),
+        cacheWriteTokens: z.number().optional(),
+        costUsd: z.number().optional(),
+      })
+      .optional(),
+  }),
+});
+export type OutcomeOutput = z.infer<typeof outcomeOutputSchema>;
+
+export const codingAgentOutputSchema = z.discriminatedUnion("type", [
+  responseOutputSchema,
+  eventOutputSchema,
+  outcomeOutputSchema,
+]);
+export type CodingAgentOutput = z.infer<typeof codingAgentOutputSchema>;
+
+// ─── Model catalog (CLI --list-models --json) ────────────────────────
+
+export const modelCatalogResponseSchema = z.object({
+  backendKind: z.literal("coding_agent"),
+  models: z.array(
+    z.object({
+      id: z.string(),
+      displayName: z.string(),
+      reasoning: z.boolean(),
+      inputModalities: z.array(z.string()),
+      contextWindow: z.number(),
+      maxOutputTokens: z.number(),
+      available: z.boolean(),
+    }),
+  ),
+});
+export type ModelCatalogResponse = z.infer<typeof modelCatalogResponseSchema>;

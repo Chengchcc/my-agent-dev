@@ -3,110 +3,164 @@ id: backend.data-model
 title: 数据模型
 status: current
 owners: architecture
-last_verified_against_code: 2026-06-17
+summary: "当前持久化模型：conversation_ledger 与 agent_context_tree/entry/branch 是两类产品事实，agent_run + branch_input_queue + product_tool_call 是执行控制面数据。无 span/attempt/control_plane_event/span_origin —— Agent Run 是唯一执行身份。"
 depends_on:
   - foundations.facts-and-projections
+  - agents.context
 used_by:
-  - backend.conversation-projection
-  - operations.troubleshooting
+  - backend.overview
+  - runs.output-and-live-updates
 ---
 
 # 数据模型
 
+本页描述当前 backend.db 的持久化模型（drizzle schema 是唯一真源，见 `apps/backend/src/infra/db/schema.ts`；字段名以 snake_case 为准）。
 
-## conversation_ledger（账本）
+## 产品事实
 
-```ts
-LedgerEntry = {
-  seq: number,                 // 自增
-  conversationId: string,
-  senderMemberId: string,
-  addressedTo: string[],       // 以 JSON 存进 addressed_to TEXT 列
-  kind: LedgerKind,
-  content: string,             // JSON
-  ts: number,
-  runId?: string               // 追溯消息到运行，属domain entity字段（packages/conversation zod）
-}
-LedgerKind = "message" | "member.joined" | "member.left" | "todo" | "surface.control"
-```
-`todo` 是 Agent 任务列表的 ledger 快照条目，`surface.control` 是端侧控制指令（如 Lark 的新对话请求）。详见到 [对话账本](../conversation/ledger.md)。
+### Conversation History
 
-类型已从后端本地手抄 `LedgerRow` 收敛为 `packages/conversation` 的 canonical `LedgerEntry` zod schema（single source of truth）。`runId` 现在是 `LedgerEntry` 的可选字段——assistant 消息写入时携带，人类/系统消息不填。
-
-账本 seq 是对话历史的序，**不要和 checkpoint_events seq 混**。
-
-assistant 消息现在经 `appendAssistantMessage` 直写账本（不再通过增量projection bridge从外部事件流派生）。streaming 修订和 terminal 修订共享同一个 `messageId`，端按 `messageId` upsert。
-
-## member（成员）
-
-`MemberRow.kind` 从 `packages/conversation` 的 canonical `Member["kind"]`（`"agent" | "human"`）派生。系统发送者用哨兵字符串 `"__system__"`。
-
-## conversation（对话）
-
-存触发模式、标题、`hop_count`（连续 Agent 跳数）。触发模式枚举在 `packages/conversation` 是 `["mention","all"]`，默认 `mention`。thread_id 由 `deriveThreadId(conversationId, memberId)` = `` `${conversationId}:${memberId}` `` 推导，不持久化。
-
-## ConversationLock（并发控制）
-
-统一的会话/线程级并发闸门（`apps/backend/src/features/conversation/lock.ts`），替代了两套互不感知的 busy 体系：
-
-- 旧：`threads: Set<string>` + `ThreadBusyError`（HTTP 直发路径）
-- 旧：`activeConversations` + `pendingRuns`（@ 触发路径）
-- 新：`ConversationLock.acquire(cid, n)` / `acquireThread(tid, cid)` / `releaseOne(cid)` / `releaseThread(tid, cid)`
-
-两条入口路径（HTTP 直发、@ 触发）经同一闸门判定 busy，不再各算一套。
-
-## 运行/控制面表（原 events.db，S1 已并入 backend.db）
-
-| 表 | 关键列 |
-|---|---|
-| `run` | `span_id PK, session_id, status DEFAULT 'running', started_at, ended_at`；加 `kind DEFAULT 'main'`、`parent_span_id`、`agent_id DEFAULT ''` |
-| `attempt` | `(span_id, seq) PK, span_id FK→run ON DELETE CASCADE, pid (deprecated), heartbeat_at (deprecated), started_at, ended_at` |
-| `control_plane_event` | `seq PK, span_id, attempt_seq, kind, payload DEFAULT '{}', trace_id, ts`（S4 改名，原 run_ops_event） |
-| `run_origin` | `span_id PK, conversation_id, source_ledger_seq, agent_member_id, surface DEFAULT 'web', trace_id, traceparent, idempotency_key, created_at` |
-| `surface_health` | 复合主键 `(agent_id, surface)`, `status, last_seen_at, payload, last_error, updated_at` |
-| `issue_event` | `seq PK, issue_id, kind, payload DEFAULT '{}', ts` |
-
-> `parent_span_id` 在 reflect span 缺父时存 NULL。
-> 执行事实流在 checkpointer 的 `checkpoint_events`（见下「Checkpointer」与 [EventLog tombstone](./event-log.md)）。
-> 已删除表：`projection_messages`（S2）、`runner_health`（S3）、`event_log`。
-
-
-
-## issue（M18.1 工作单元）
-
-`issue(issue_id, project_id, title, status, thread_id, created_at, updated_at)`。DDL 在 `migrations.ts` 的 `backend_v23_issue`(id:5009)。status 只能经 `applyTransition` 写入（CAS 单写者），CRUD 仅有建/读/列。
-
-## Checkpointer（checkpointer.db）
-
-进程内全局 `checkpointer.db`（`config.dataDir/checkpointer.db`），按 sessionId（现 threadId）分区，**不属于 backend.db**。它持有 session 的完整运行档案：
-
-| 表 | 角色 |
-|---|---|
-| `checkpoint_messages` | 恢复：重建上下文（按 sessionId upsert） |
-| `checkpoint_interrupts` | 恢复：中断 / resume |
-| `checkpoint_events` | 执行事实流 / 观测 / 审计（按 sessionId + spanId 切） |
-
-`checkpoint_events` 承接了原 `event_log` 表的职责——执行事实流本就是 session 运行档案的一部分，runner daemon 时代才被临时剥离出去（见 [EventLog tombstone](./event-log.md)）。它由 framework run-loop 经 `appendEvent(sessionId, spanId, event)` 写入，Ops/排障经 `readEvents` 读。
-
-## 实体关系
-
-```mermaid
-erDiagram
-  AGENT ||--o{ MEMBER : binds
-  CONVERSATION ||--o{ MEMBER : contains
-  CONVERSATION ||--o{ LEDGER_ENTRY : owns
-  AGENT ||--o{ RUN : executes
-  RUN ||--o{ ATTEMPT : has
-  SESSION ||--o{ CHECKPOINT_EVENT : records
-  LEDGER_ENTRY ||--o{ THREAD_PROJECTION : derives
+```text
+conversation_ledger
+  seq PK autoincrement
+  conversation_id FK -> conversation
+  sender_member_id
+  addressed_to
+  kind            message | member.joined | member.left | todo | surface.control | undo
+  content         JSON（message 行为 serializeMessageRevision）
+  ts
+  agent_run_id    terminal-commit 身份：final assistant Message 的唯一提交标记（partial unique）
+  undone
 ```
 
-> RUN 在追踪词汇下即 span（root span），CHECKPOINT_EVENT 按 spanId 归集。
+Ledger 是多人共享 Conversation 历史。`agent_run_id` 是唯一 Run 提交身份；**没有 span_id**。
+
+### Agent Context
+
+```text
+agent_context_tree
+  tree_id PK
+  conversation_id FK
+  agent_member_id
+  created_at
+
+agent_context_entry
+  entry_id PK
+  tree_id FK
+  parent_id nullable（自引用）
+  type            ledger_message | private_message | product_tool_exchange | summary | model_change
+  payload         JSON
+  ledger_seq nullable（仅 ledger_message）
+  created_at
+
+agent_context_branch
+  branch_id PK
+  tree_id FK
+  leaf_entry_id nullable
+  ledger_cursor
+  backend_kind    "coding_agent"
+  is_default
+  revision
+  created_at
+```
+
+共享 Message 用 `ledger_seq` 引用 Ledger，不复制内容。`model_change` payload 保存 `BackendModelRef`；active branch 最后一个 `model_change` 决定下一个 Agent Run 的 effective model。
+
+## 执行控制面
+
+### Agent Run（唯一执行身份）
+
+```text
+agent_run
+  run_id PK
+  branch_id FK
+  conversation_id
+  agent_member_id
+  model_ref       JSON: BackendModelRef
+  status          running|waiting|commit_failed|completed|failed|aborted|timeout
+  idempotency_key unique
+  terminal_result JSON: serialized BackendRunOutcome（terminal 时写入）
+  config_revision
+  workspace_root / workspace_access     Run 级 workspace 快照
+  product_tools   JSON: ProductToolDescriptor[]（首次 dispatch 时冻结）
+  system_prompt / skill_roots           Run 级配置快照（创建时冻结）
+  created_at / terminal_at
+```
+
+同一 branch 只允许一个 active run（partial unique index on `status IN ('running','waiting','commit_failed')`）。
+
+### Branch Input Queue
+
+```text
+branch_input_queue
+  seq PK autoincrement（单调队列顺序）
+  input_id unique
+  branch_id FK
+  mode            normal | steer | follow_up
+  message         JSON: serialized Message
+  status          pending | delivering | delivered | cancelled
+  delivery_idempotency_key unique
+  input_idempotency_key
+  run_id          acquired 时写入
+  model_ref / config_revision / workspace_root / workspace_access
+  system_prompt / skill_roots           request-time 配置快照（promote 时用输入自己的）
+  created_at / delivered_at
+```
+
+Product Backend crash 后按同一 branch 内的 seq 顺序恢复 pending 项并重新 promote。
+
+### Product Tool Calls
+
+```text
+product_tool_call
+  run_id FK, call_id
+  tool_name
+  input_hash
+  status      completed | failed
+  result / error
+  created_at / completed_at
+  PK(run_id, call_id)
+```
+
+语义变更类 Product Tool（如 history_retain）的幂等与审计。replay 返回存储结果，冲突输入失败。
+
+### PendingAction / Loop / 其余
+
+- `pending_action`：审批/问答等待响应（Product-side 记录，Run 协议本身只有四个终态）。
+- `loop_item` / `loop_budget`：Loop 状态机持久化。
+- `skill_pack` / `agent_skill_pack`：Skill Pack 与 Agent 分配。
+- `surface_health`：Lark 心跳等 audit（RuntimeOpsStore 唯一职责）。
+- `settings`、`cron_job`、`project`、`mcp_server`、`agent_relationship`：各自领域。
+
+**已删除**（Phase 6，迁移 0020）：`span`、`attempt`、`control_plane_event`、`span_origin`。旧 audit 行直接丢弃，不转换。Agent Run 与 Product Tool Call 已提供当前事实；没有新的 audit 表。
+
+## 哪些写入必须在同一事务
+
+Agent terminal completed 时必须在同一事务完成：
+
+```text
+insert conversation_ledger（final assistant Message，agent_run_id）
+insert agent_context_entry ledger ref
+update agent_context_branch leaf/revision
+update agent_run terminal status + terminal_result
+```
+
+这个事务是 Agent Run 从执行结果变成产品事实的唯一 commit point。
+
+## 不变量
+
+1. Ledger 与 Tree 是两类产品事实。
+2. Agent Run 是 branch 上的一次产品执行，只有一个 terminal status。
+3. 同一 branch 最多一个 active run。
+4. 共享 Message 不在 Tree 中复制。
+5. Summary 不删除原始 entries。
+6. child 私有 transcript 不进入产品数据模型。
+7. 无 span/attempt/session 概念；`runId` 是唯一执行身份。
 
 ## 关联页面
 
-- [标识符体系](../foundations/identifiers.md)
-- [对话账本](../conversation/ledger.md)
-- [EventLog（已废止）](./event-log.md)
-- [事实与投影](../foundations/facts-and-projections.md)
-- [后端总览](./overview.md)
+- [系统总览](../system-overview.md)
+- [Product Backend 总览](./overview.md)
+- [Agent Context](../agents/context.md)
+- [Agent Backend](../execution/agent-backend.md)
+- [Conversation History](../conversation/history.md)

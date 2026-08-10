@@ -1,58 +1,68 @@
 # 跨页架构地图
 
-这张地图把各页之间的依赖关系画出来，方便从任意一页快速跳到它的上下游。
+本图展示当前 Product Backend 架构的核心页面关系。
 
-## 核心事实图
-
-```mermaid
-flowchart LR
-  SO[system-overview] --> FP[foundations/facts-and-projections]
-  FP --> Ledger[conversation/ledger]
-  FP --> CE[checkpointer/checkpoint_events]
-  AS[harness/harness] -->|onEvent 消息回调| Ledger
-  RL[runtime/framework - run-loop] -->|appendEvent 按 spanId| CE
-  CP[backend/conversation-projection] -.best-effort fan-out.-> Ledger
-  Ledger --> Web[surfaces/web]
-  Ledger --> Lark[surfaces/lark-adapter]
-```
-
-## 执行图
+## 核心关系
 
 ```mermaid
 flowchart LR
-  AS[harness/harness] --> FW[runtime/framework]
-  FW --> CM[runtime/context-manager]
-  FW --> PL[runtime/plugin]
-  PL --> M[plugins/fs-memory]
-  PL --> PS[plugins/progressive-skill]
-  PL --> TG[plugins/task-guard]
-  CM --> AS
-  AS --> CK[runtime/framework - Checkpointer]
+  Conversation[Conversation] --> History[Conversation History]
+  Conversation --> Context[Agent Context]
+  Context --> Run[Agent Run]
+  Automation[Task / Cron / Loop] --> Run
+  Tools[Product Tools] --> Run
+  Run --> Backend[Agent Backend]
+  Backend --> Child[coding-agent child]
+  Backend --> Updates[Live Updates]
+  Backend --> Message[Final Message]
+  Message --> History
+  Message --> Context
+  History --> Web[Web / Lark]
+  Updates --> Web
 ```
 
-## Web 路径
+## 消息路径
 
-`flows/e2e-web-message` → `surfaces/web` → `conversation/ledger` → `harness/harness`（AgentSession 的 onEvent 回调直写账本）；非消息执行事件旁路由 run-loop 写入 checkpointer 的 `checkpoint_events`（按 spanId），`backend/conversation-projection` 仅做 best-effort fan-out。
+```text
+Web/Lark input
+→ Conversation History
+→ trigger + visibility
+→ Agent Context refs
+→ Agent Run
+→ Agent Backend spawn child
+→ Live Updates
+→ terminal outcome
+→ atomic History + Context commit
+```
 
-## 飞书路径
+详见：
 
-`flows/e2e-lark-message` → `surfaces/lark-adapter` → `conversation/conversation-and-members` → `harness/harness`（AgentSession）→ `backend/conversation-projection`。
+- `flows/e2e-web-message`
+- `runs/output-and-live-updates`
+- `conversation/history`
+- `agents/context`
 
-## 排障路径
-
-`operations/troubleshooting` 把症状指回正确的事实层：账本、会话消息流、AgentSession、Web 或飞书投递。
-
-## 协作设计图
+## Context Branch 与 Agent Run
 
 ```mermaid
 flowchart LR
-  Issue[foundations/issue] -->|按 status 分组的视图| Kanban[Kanban 看板]
-  Issue -->|projectId 归属| Project[Project = git 子目录]
-  WF[foundations/issue-workflow] -->|演进设计| Issue
-  WF -->|演进设计| Orch
-  Orch[backend/orchestrator] -->|固定转移表 + status 回填| Issue
-  Orch -->|复用运行| AS[harness/harness]
-  Cron[foundations/cron-job] -.同级触发型实体.-> Issue
-  Cron -->|Bun.cron 到点 dispatch| AS
-  Flow[flows/e2e-issue-lifecycle] -.串起时间线.-> Orch
+  Context[Agent Context] --> Branch[Context Branch]
+  Branch --> Run[Agent Run]
+  Run --> Backend[Agent Backend]
+  Backend --> Updates[Live Updates]
+  Backend --> Message[Final Message]
 ```
+
+子进程内部的 loop、compaction、todo、ModelRuntime 都是具体执行引擎的实现，不进入公共架构地图。
+
+## 自动化
+
+```mermaid
+flowchart LR
+  Cron[Cron] --> Run[Agent Run]
+  Loop[Loop] --> Run
+  Run --> Branch[Context Branch]
+  Run --> Backend[Agent Backend]
+```
+
+Cron、Loop 选择 Agent 与 Context Branch，但不依赖子进程内部实现。

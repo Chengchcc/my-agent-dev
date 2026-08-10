@@ -12,32 +12,29 @@ import { ReviewActionBar } from "./ReviewActionBar";
 
 type LoopItem = NonNullable<NonNullable<LoopDetail>["items"]>[number];
 
-/** Fetch the generator's assistant output for a loop item.
- *  loopId = conversationId; generatorSpanId identifies the Generator run.
- *  Reads the conversation ledger via SSE (afterSeq=0 replays full history),
- *  filters to the last assistant message tagged with that spanId, and returns
- *  its displayable text. Closes the stream once history is drained. */
-function useGeneratorOutput(loopId: string, generatorSpanId: string | null | undefined) {
+/** Fetch the generator's assistant output for a loop item. The Generator
+ *  runs on its own deterministic conversation (`loop:<id>:generator`); the
+ *  canonical final assistant Message there IS the generator output (Agent
+ *  Run terminal commit). Reads that conversation via SSE and takes the last
+ *  assistant message. */
+function useGeneratorOutput(loopId: string, generatorRunId: string | null | undefined) {
   const [text, setText] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!generatorSpanId) {
+    if (!generatorRunId) {
       setText(null);
       return;
     }
     setLoading(true);
     setText(null);
-    // Collect candidate revisions; the last assistant one wins.
     let lastAssistant: string | null = null;
     let done = false;
     const ts = typedSource(
-      `/api/bff/api/conversations/${loopId}/events?afterSeq=0`,
+      `/api/bff/api/conversations/${encodeURIComponent(`loop:${loopId}:generator`)}/events?afterSeq=0`,
       conversationEvents,
       { onError: () => {} },
     );
-    // History arrives as a burst; close after the burst settles so we don't
-    // hold a long-poll open for a one-shot historical read.
     const settle = setTimeout(() => {
       if (!done) {
         done = true;
@@ -47,7 +44,6 @@ function useGeneratorOutput(loopId: string, generatorSpanId: string | null | und
       }
     }, 1500);
     ts.on("message", (entry) => {
-      if (entry.spanId !== generatorSpanId) return;
       const rev = deserializeLedgerContent(entry.content);
       if ("raw" in rev) return;
       if (rev.role !== "assistant") return;
@@ -58,7 +54,7 @@ function useGeneratorOutput(loopId: string, generatorSpanId: string | null | und
       clearTimeout(settle);
       ts.close();
     };
-  }, [loopId, generatorSpanId]);
+  }, [loopId, generatorRunId]);
 
   return { text, loading };
 }
@@ -100,10 +96,7 @@ function VerdictBlock({ result }: { result: NonNullable<LoopItem["result"]> }) {
 }
 
 export function EvidenceChainPanel({ loopId, item }: { loopId: string; item: LoopItem | null }) {
-  const { text: genOutput, loading: genLoading } = useGeneratorOutput(
-    loopId,
-    item?.generatorSpanId,
-  );
+  const { text: genOutput, loading: genLoading } = useGeneratorOutput(loopId, item?.generatorRunId);
 
   if (!item) {
     return (
@@ -113,7 +106,7 @@ export function EvidenceChainPanel({ loopId, item }: { loopId: string; item: Loo
     );
   }
 
-  const genRunHref = item.generatorSpanId ? `/work/${loopId}/runs/${item.generatorSpanId}` : null;
+  const genRunHref = item.generatorRunId ? `/work/${loopId}/runs/${item.generatorRunId}` : null;
 
   return (
     <div className="space-y-4">
@@ -159,20 +152,20 @@ export function EvidenceChainPanel({ loopId, item }: { loopId: string; item: Loo
           )}
         </CardContent>
       </Card>
-      {item.generatorSpanId && (
+      {item.generatorRunId && (
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">Generator Run</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between items-center">
-              <span className="text-[var(--mute)]">Span ID</span>
+              <span className="text-[var(--mute)]">Run ID</span>
               {genRunHref ? (
                 <Link href={genRunHref} className="font-mono text-xs text-blue-600 hover:underline">
-                  {item.generatorSpanId}
+                  {item.generatorRunId}
                 </Link>
               ) : (
-                <span className="font-mono text-xs">{item.generatorSpanId}</span>
+                <span className="font-mono text-xs">{item.generatorRunId}</span>
               )}
             </div>
             <div>

@@ -1,7 +1,8 @@
 import type { Database } from "bun:sqlite";
-import { and, desc, eq, gt, inArray, like, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, like, notInArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import * as schema from "../../infra/db/schema.js";
+import { ConflictError } from "../../infra/domain-errors.js";
 import type {
   AppendLedgerInput,
   ConversationPort,
@@ -90,15 +91,74 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
       }));
     },
 
-    deleteConversation(conversationId: string): boolean {
-      // M20: Threads table was dropped in M14 (backend_v17_drop_threads_legacy).
-      // The old LIKE-prefix DELETE FROM threads is dead code — removed.
-      const rows = d
-        .delete(schema.conversation)
-        .where(eq(schema.conversation.conversationId, conversationId))
-        .returning()
-        .all();
-      return rows.length > 0;
+    async deleteConversation(conversationId: string): Promise<boolean> {
+      // Context entries form a self-referencing chain (parent_id → entry_id
+      // with the default RESTRICT action), so the FK cascade from
+      // conversation → agent_context_tree → agent_context_entry fails
+      // mid-chain once a linear context has 2+ entries. Delete the entries
+      // per-tree first (one DELETE per tree removes the whole chain in a
+      // single statement, which SQLite FK checks atomically), then the
+      // conversation — all inside one transaction.
+      const active = d
+        .select({ runId: schema.agentRun.runId })
+        .from(schema.agentRun)
+        .where(
+          and(
+            eq(schema.agentRun.conversationId, conversationId),
+            inArray(schema.agentRun.status, ["running", "waiting", "commit_failed"]),
+          ),
+        )
+        .get();
+      if (active) {
+        throw new ConflictError("Conversation has an active run; stop it before deleting.");
+      }
+      return d.transaction((tx) => {
+        const trees = tx
+          .select({ treeId: schema.agentContextTree.treeId })
+          .from(schema.agentContextTree)
+          .where(eq(schema.agentContextTree.conversationId, conversationId))
+          .all();
+        for (const { treeId } of trees) {
+          // parent_id → entry_id is ON DELETE RESTRICT (drizzle default), so
+          // SQLite aborts the moment a deleted row still has a child — even
+          // inside a single DELETE covering the whole chain. Remove leaf rows
+          // first, repeatedly, until the chain is empty (one pass per depth).
+          const children = tx
+            .selectDistinct({ parentId: schema.agentContextEntry.parentId })
+            .from(schema.agentContextEntry)
+            .where(
+              and(
+                eq(schema.agentContextEntry.treeId, treeId),
+                isNotNull(schema.agentContextEntry.parentId),
+              ),
+            );
+          // drizzle types run() as void, so terminate the loop by checking
+          // whether any entry remains.
+          for (;;) {
+            tx.delete(schema.agentContextEntry)
+              .where(
+                and(
+                  eq(schema.agentContextEntry.treeId, treeId),
+                  notInArray(schema.agentContextEntry.entryId, children),
+                ),
+              )
+              .run();
+            const left = tx
+              .select({ id: schema.agentContextEntry.entryId })
+              .from(schema.agentContextEntry)
+              .where(eq(schema.agentContextEntry.treeId, treeId))
+              .limit(1)
+              .get();
+            if (!left) break;
+          }
+        }
+        const deleted = tx
+          .delete(schema.conversation)
+          .where(eq(schema.conversation.conversationId, conversationId))
+          .returning()
+          .get();
+        return Boolean(deleted);
+      });
     },
 
     listConversationsByAgent(agentId: string): ConversationWithMembers[] {
@@ -191,32 +251,6 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
         .all();
       return rows.length > 0;
     },
-    getMemberSessionId(conversationId: string, memberId: string): string | null {
-      const row = d
-        .select({ sessionId: schema.member.sessionId })
-        .from(schema.member)
-        .where(
-          and(
-            eq(schema.member.conversationId, conversationId),
-            eq(schema.member.memberId, memberId),
-          ),
-        )
-        .get();
-      return row?.sessionId ?? null;
-    },
-
-    updateMemberSessionId(conversationId: string, memberId: string, sessionId: string): void {
-      d.update(schema.member)
-        .set({ sessionId })
-        .where(
-          and(
-            eq(schema.member.conversationId, conversationId),
-            eq(schema.member.memberId, memberId),
-          ),
-        )
-        .run();
-    },
-
     // ─── Ledger ────────────────────────────────────
 
     appendLedgerEntry(input: AppendLedgerInput): number {
@@ -229,33 +263,10 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
           kind: input.kind,
           content: input.content,
           ts: input.ts,
-          spanId: input.spanId ?? null,
         })
         .returning({ seq: schema.conversationLedger.seq })
         .get();
       return row!.seq;
-    },
-
-    updateLedgerContent(seq: number, content: string, ts: number): void {
-      d.update(schema.conversationLedger)
-        .set({ content, ts })
-        .where(eq(schema.conversationLedger.seq, seq))
-        .run();
-    },
-
-    hasLedgerContent(spanId: string, content: string): boolean {
-      const row = d
-        .select({ one: sql`1` })
-        .from(schema.conversationLedger)
-        .where(
-          and(
-            eq(schema.conversationLedger.spanId, spanId),
-            eq(schema.conversationLedger.content, content),
-          ),
-        )
-        .limit(1)
-        .get();
-      return row !== undefined;
     },
 
     getLedgerEntries(conversationId: string, opts?: { sinceSeq?: number }): LedgerEntry[] {
@@ -283,10 +294,35 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
           kind: r.kind as LedgerEntry["kind"],
           content: r.content,
           ts: r.ts,
-          spanId: r.spanId,
           undone: r.undone === 1,
         } as LedgerEntry;
       });
+    },
+
+    getLedgerEntry(conversationId: string, seq: number): LedgerEntry | null {
+      const row = d
+        .select()
+        .from(schema.conversationLedger)
+        .where(
+          and(
+            eq(schema.conversationLedger.conversationId, conversationId),
+            eq(schema.conversationLedger.seq, seq),
+          ),
+        )
+        .get();
+      if (!row) return null;
+      const result = schema.conversationLedgerSelectSchema.safeParse(row);
+      if (result.success) return result.data as LedgerEntry;
+      return {
+        seq: row.seq,
+        conversationId: row.conversationId,
+        senderMemberId: row.senderMemberId,
+        addressedTo: [] as string[],
+        kind: row.kind as LedgerEntry["kind"],
+        content: row.content,
+        ts: row.ts,
+        undone: row.undone === 1,
+      } as LedgerEntry;
     },
     searchLedger(keyword: string, limit = 20) {
       const rows = d

@@ -1,22 +1,12 @@
-import { join } from "node:path";
-import type { ModelRegistry, ProviderAuth } from "@my-agent-team/ai";
-import type { SessionManager } from "@my-agent-team/harness";
+import type { BackendModelRef } from "@my-agent-team/agent-backend";
 import type { BackendConfig } from "../../config.js";
-import type { AgentService } from "../agent/index.js";
+import type { AgentRunExecutionService } from "../agent-run/execution.js";
+import type { AgentRunService } from "../agent-run/service.js";
+import type { ConversationPort } from "../conversation/ports.js";
 import type { LoopStateStore } from "../loop/loop-state-store.js";
 import { loopStep } from "../loop/loop-step.js";
 import { resolveLoopPaths } from "../loop/resolve-paths.js";
 import type { ProjectPort } from "../project/ports.js";
-import type { RuntimeOpsStore } from "../runtime-ops/store.js";
-import {
-  createModel,
-  defaultContextManager,
-  defaultPlugins,
-  defaultTools,
-  resolveModel,
-} from "../span/agent-helpers.js";
-import type { SkillRoots } from "../span/skill-roots.js";
-import type { SpanSupervisor } from "../span/supervisor.js";
 import type { CronJobRow } from "./domain.js";
 import type { CronJobService } from "./service.js";
 
@@ -29,147 +19,170 @@ type CronHandle = ReturnType<Scheduler["schedule"]>;
 
 export const bunScheduler: Scheduler = {
   schedule: (expr, fn) => {
-    const h = Bun.cron(expr, fn);
-    return { stop: () => h.stop() };
+    const handle = Bun.cron(expr, fn);
+    return { stop: () => handle.stop() };
   },
 };
+
+/** Deterministic headless identities for a cron job's Agent Run scope. */
+export function cronConversationId(cronJobId: string): string {
+  return `cron:${cronJobId}`;
+}
+export function cronAgentMemberId(agentId: string): string {
+  return `cron-agent:${agentId}`;
+}
 
 export function createCronScheduler(deps: {
   cronSvc: CronJobService;
   config: BackendConfig;
-  agentSvc: AgentService;
-  supervisor: SpanSupervisor;
-  opsStore: RuntimeOpsStore;
-  idGen: () => string;
+  convPort: ConversationPort;
+  agentRunService: AgentRunService;
+  agentRunExecution: AgentRunExecutionService;
+  resolveDefaultModel: (agentId: string) => Promise<BackendModelRef>;
   now?: () => number;
   scheduler?: Scheduler;
-  sessionManager: SessionManager;
+  /** Retry backoff between attempts; default exponential capped at 30s. */
+  backoffMs?: (attempt: number) => number;
   projectPort?: ProjectPort;
   store: LoopStateStore;
-  modelRegistry: ModelRegistry;
 }) {
   const sched = deps.scheduler ?? bunScheduler;
   const handles = new Map<string, CronHandle>();
-  /** spanId → { timer, cronJobId } so unregister() can clear in-flight watchdogs. */
-  const watchdogs = new Map<string, { timer: ReturnType<typeof setTimeout>; cronJobId: string }>();
-  /** runIds cancelled by their per-job watchdog — excluded from retry (a job that
-   *  always exceeds timeoutMs would otherwise burn every retry on the same timeout). */
-  const timedOut = new Set<string>();
-  const retryTimers = new Set<ReturnType<typeof setTimeout>>();
-  const retryCounts = new Map<string, number>();
-  /** Single-flight lock per job. Held from a natural Bun.cron trigger until the
-   *  whole fire chain (the run + any retries) settles. A natural trigger that
-   *  arrives while the previous chain is still in flight is skipped, restoring
-   *  the no-overlap guarantee that the decoupled (setTimeout) retry path would
-   *  otherwise break. Retries do NOT re-acquire — they continue the held lock. */
+  /** Single-flight lock per job. Held until the whole fire chain (the run
+   *  + any retries) settles; a natural trigger that arrives meanwhile is
+   *  skipped, preserving the no-overlap guarantee. */
   const inFlight = new Set<string>();
 
-  async function fire(job: CronJobRow, _fireKey?: string): Promise<void> {
+  /** Idempotently ensure the deterministic Conversation + Agent Member
+   *  (branch is lazily created by enqueueAndAcquire). */
+  async function ensureCronScope(
+    conversationId: string,
+    agentMemberId: string,
+    agentId: string,
+  ): Promise<void> {
+    if (!deps.convPort.getConversation(conversationId)) {
+      try {
+        deps.convPort.createConversation({
+          conversationId,
+          triggerMode: "mention",
+          origin: "cron",
+          createdAt: Date.now(),
+        });
+      } catch {
+        /* concurrent create - ignore */
+      }
+    }
+    const members = deps.convPort.getMembers(conversationId);
+    if (!members.some((m) => m.memberId === agentMemberId)) {
+      deps.convPort.addMember({
+        memberId: agentMemberId,
+        conversationId,
+        kind: "agent",
+        agentId,
+        joinedAt: Date.now(),
+      });
+    }
+  }
+
+  /** One Agent Run for one fire attempt. Returns true when the run ended
+   *  via the watchdog (a deterministic timeout must not burn retries). */
+  async function runCronOnce(
+    job: CronJobRow,
+    conversationId: string,
+    agentMemberId: string,
+    fireKey: string,
+    retry: number,
+  ): Promise<boolean> {
+    const { acquired, run } = await deps.agentRunService.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: job.prompt ?? "", conversationId },
+      defaultModel: await deps.resolveDefaultModel(job.agentId),
+      configRevision: 1,
+      idempotencyKey: `${fireKey}:${agentMemberId}:${retry}`,
+    });
+    if (!acquired || !run) return true; // queued: input is persisted; nothing to re-fire
+
+    let wdHit = false;
+    const timer =
+      job.timeoutMs > 0
+        ? setTimeout(() => {
+            wdHit = true;
+            void deps.agentRunExecution.stop(run.runId).catch(() => {});
+          }, job.timeoutMs)
+        : null;
+    try {
+      await deps.agentRunExecution.dispatch(run.runId);
+      const final = await deps.agentRunService.getRun(run.runId);
+      // Only a plain `failed` outcome re-fires. completed and commit_failed
+      // are terminal-no-retry (commit_failed is repaired by
+      // retryTerminalCommit/recover), aborted/timeout are watchdog
+      // outcomes that must not burn retries.
+      return wdHit || final?.status !== "failed";
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  async function fire(job: CronJobRow): Promise<void> {
     if (job.loopConfigPath) {
       return fireLoop(job);
     }
 
-    const spanId = deps.idGen();
-    try {
-      const { modelProvider, modelName } = await deps.agentSvc.getById(job.agentId);
-      const cwd = join(deps.config.dataDir, "agents", job.agentId);
-      const session = deps.sessionManager.create({
-        model: createModel(
-          resolveModel(`${modelProvider}/${modelName}`, deps.modelRegistry),
-          deps.modelRegistry,
-          {
-            apiKey: deps.config.anthropicApiKey,
-            baseUrl: deps.config.anthropicBaseUrl,
-          } as ProviderAuth,
-        ),
-        tools: defaultTools(cwd),
-        plugins: defaultPlugins(cwd, deps.config),
-        contextManager: defaultContextManager(),
-      });
-      void session
-        .prompt(job.prompt ?? "", {
-          origin: { agentMemberId: job.agentId, originKind: "cron", cronJobId: job.cronJobId },
-        })
-        .catch((err: unknown) => {
-          console.error(`[cron] prompt error:`, err);
-        });
-    } catch (err) {
-      inFlight.delete(job.cronJobId);
-      throw err;
-    }
-
-    if (job.timeoutMs > 0) {
-      const timer = setTimeout(() => {
-        timedOut.add(spanId);
-        void deps.supervisor.cancel(spanId);
-      }, job.timeoutMs);
-      watchdogs.set(spanId, { timer, cronJobId: job.cronJobId });
+    const conversationId = cronConversationId(job.cronJobId);
+    const agentMemberId = cronAgentMemberId(job.agentId);
+    await ensureCronScope(conversationId, agentMemberId, job.agentId);
+    const fireKey = `${job.cronJobId}:${deps.now?.() ?? Date.now()}`;
+    const maxRetries = job.maxRetries ?? 0;
+    for (let retries = 0; ; retries++) {
+      const timedOut = await runCronOnce(job, conversationId, agentMemberId, fireKey, retries);
+      if (timedOut || retries >= maxRetries) break;
+      const fresh = deps.cronSvc.port.getCronJob(job.cronJobId);
+      if (!fresh || (fresh.maxRetries ?? 0) <= 0) break;
+      const backoff = deps.backoffMs?.(retries) ?? Math.min(1000 * 2 ** retries, 30_000);
+      await new Promise((r) => setTimeout(r, backoff));
     }
   }
 
-  // M4: Loop-aware fire with inline retry + timeout
+  // Loop jobs execute the Loop step (Generator/Evaluator Agent Runs inside).
   async function fireLoop(job: CronJobRow): Promise<void> {
+    const loopStepParams = {
+      loopConfigPath: resolveLoopPaths(job, deps.config.dataDir).loopConfigPath,
+      projectPort: deps.projectPort,
+      dataDir: deps.config.dataDir,
+      store: deps.store,
+      loopId: job.cronJobId,
+      convPort: deps.convPort,
+      agentRunService: deps.agentRunService,
+      agentRunExecution: deps.agentRunExecution,
+      // LOOP.md stores the full canonical model ID; pass it through.
+      resolveModel: async (modelId: string): Promise<BackendModelRef> => ({
+        backendKind: "coding_agent",
+        modelId,
+      }),
+    };
     let attempt = 0;
     let currentJob = job;
-
-    while (true) {
+    for (;;) {
       try {
         if (currentJob.timeoutMs > 0) {
-          await withTimeout(
-            loopStep({
-              loopConfigPath: resolveLoopPaths(currentJob, deps.config.dataDir).loopConfigPath,
-              sessionManager: deps.sessionManager!,
-              buildConfig,
-              projectPort: deps.projectPort,
-              dataDir: deps.config.dataDir,
-              store: deps.store,
-              loopId: currentJob.cronJobId,
-            }),
-            currentJob.timeoutMs,
-          );
+          await withTimeout(loopStep(loopStepParams), currentJob.timeoutMs);
         } else {
-          await loopStep({
-            loopConfigPath: resolveLoopPaths(currentJob, deps.config.dataDir).loopConfigPath,
-            sessionManager: deps.sessionManager!,
-            buildConfig,
-            projectPort: deps.projectPort,
-            dataDir: deps.config.dataDir,
-            store: deps.store,
-            loopId: currentJob.cronJobId,
-          });
+          await loopStep(loopStepParams);
         }
         return;
       } catch (err) {
         attempt++;
         const maxRetries = currentJob.maxRetries ?? 0;
-        if (attempt > maxRetries) {
-          inFlight.delete(job.cronJobId);
-          throw err;
-        }
-
+        if (attempt > maxRetries) throw err;
         const fresh = deps.cronSvc.port.getCronJob(job.cronJobId);
-        if (!fresh) {
-          inFlight.delete(job.cronJobId);
-          throw err;
-        }
+        if (!fresh) throw err;
         currentJob = fresh;
-
         await new Promise((r) => setTimeout(r, Math.min(1000 * 2 ** (attempt - 1), 30_000)));
       }
     }
-  }
-
-  // buildConfig for loop agent sessions — delegates to agentConfig
-  function buildConfig(params: { modelName: string; cwd: string; skillRoots?: SkillRoots }) {
-    return {
-      model: createModel(resolveModel(params.modelName, deps.modelRegistry), deps.modelRegistry, {
-        apiKey: deps.config.anthropicApiKey,
-        baseUrl: deps.config.anthropicBaseUrl,
-      } as ProviderAuth),
-      tools: defaultTools(params.cwd),
-      plugins: defaultPlugins(params.cwd, deps.config, params.skillRoots),
-      contextManager: defaultContextManager(),
-    };
   }
 
   function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -187,85 +200,6 @@ export function createCronScheduler(deps: {
       );
     });
   }
-
-  // Retry + watchdog cleanup listener.
-  //
-  // CRITICAL: supervisor.#runCompletionListeners awaits each listener
-  // sequentially in a for-of loop.  Blocking here with await sleep(N)
-  // would stall other listeners (ledger terminal write, lock release).
-  //
-  // Strategy: synchronous checks + cleanup run immediately; if a retry
-  // is needed, schedule it via setTimeout so this callback returns
-  // without blocking the listener loop.
-  deps.supervisor.onRunComplete(async (_sessionId, spanId, status, _kind) => {
-    // Clean watchdog timer if present
-    const wd = watchdogs.get(spanId);
-    if (wd) {
-      clearTimeout(wd.timer);
-      watchdogs.delete(spanId);
-    }
-    const wasTimedOut = timedOut.delete(spanId);
-
-    // Only handle cron runs
-    const origin = deps.opsStore.getSpanOrigin(spanId);
-    if (origin?.originKind !== "cron" || !origin.cronJobId) return;
-
-    const fireKey = origin.idempotencyKey.split(":run:")[0]!;
-
-    // No retry on success — clear any retry bookkeeping for this fire and
-    // release the single-flight lock so the next natural trigger can fire.
-    if (status === "succeeded") {
-      retryCounts.delete(fireKey);
-      inFlight.delete(origin.cronJobId);
-      return;
-    }
-
-    // A run killed by its own per-job watchdog will time out again on retry;
-    // don't burn maxRetries on the same deterministic timeout.
-    if (wasTimedOut) {
-      retryCounts.delete(fireKey);
-      inFlight.delete(origin.cronJobId);
-      return;
-    }
-
-    const job = deps.cronSvc.port.getCronJob(origin.cronJobId);
-    if (!job || job.maxRetries <= 0) {
-      inFlight.delete(origin.cronJobId);
-      return;
-    }
-    const attempts = retryCounts.get(fireKey) ?? 0;
-    if (attempts >= job.maxRetries) {
-      retryCounts.delete(fireKey);
-      inFlight.delete(origin.cronJobId);
-      return;
-    }
-
-    retryCounts.set(fireKey, attempts + 1);
-    deps.opsStore.appendControlPlaneEvent({
-      spanId,
-      kind: "retry_requested",
-      payload: { fireKey, attempt: attempts + 1 },
-    });
-
-    // Non-blocking exponential backoff: setTimeout + async IIFE so the
-    // listener returns immediately.  The backoff delay does NOT stall
-    // other onRunComplete listeners.
-    const backoffMs = Math.min(1000 * 2 ** attempts, 30_000);
-    const timer = setTimeout(() => {
-      retryTimers.delete(timer);
-      void (async () => {
-        deps.opsStore.appendControlPlaneEvent({
-          spanId,
-          kind: "retry_started",
-          payload: { fireKey, attempt: attempts + 1 },
-        });
-        await fire(job, fireKey).catch((err) =>
-          console.error(`[cron] retry fire failed for ${job.cronJobId}:`, err),
-        );
-      })();
-    }, backoffMs);
-    retryTimers.add(timer);
-  });
 
   return {
     start() {
@@ -290,7 +224,9 @@ export function createCronScheduler(deps: {
         sched.schedule(job.cronExpr, () => {
           if (inFlight.has(job.cronJobId)) return;
           inFlight.add(job.cronJobId);
-          fire(job).catch((err) => console.error(`[cron] fire failed for ${job.cronJobId}:`, err));
+          void fire(job)
+            .catch((err) => console.error(`[cron] fire failed for ${job.cronJobId}:`, err))
+            .finally(() => inFlight.delete(job.cronJobId));
         }),
       );
     },
@@ -301,14 +237,6 @@ export function createCronScheduler(deps: {
         h.stop();
         handles.delete(cronJobId);
       }
-      // Clear any in-flight watchdog timers owned by this job.
-      for (const [spanId, wd] of watchdogs) {
-        if (wd.cronJobId === cronJobId) {
-          clearTimeout(wd.timer);
-          watchdogs.delete(spanId);
-          timedOut.delete(spanId);
-        }
-      }
       // Drop the single-flight lock so a re-registered job can fire immediately.
       inFlight.delete(cronJobId);
     },
@@ -316,12 +244,6 @@ export function createCronScheduler(deps: {
     dispose() {
       for (const h of handles.values()) h.stop();
       handles.clear();
-      for (const wd of watchdogs.values()) clearTimeout(wd.timer);
-      watchdogs.clear();
-      timedOut.clear();
-      for (const t of retryTimers) clearTimeout(t);
-      retryTimers.clear();
-      retryCounts.clear();
       inFlight.clear();
     },
   };

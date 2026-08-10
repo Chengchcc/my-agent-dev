@@ -1,16 +1,11 @@
 "use client";
 
-import { useParams, useSearchParams } from "next/navigation";
+import { MoreHorizontal, Trash2 } from "lucide-react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Page, PageBody, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/badge";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -20,6 +15,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -37,6 +38,7 @@ import {
   useActivateLoop,
   useAddLoopItem,
   useDeactivateLoop,
+  useDeleteLoop,
   useLoopDetail,
   useRunLoop,
 } from "@/features/loop/hooks";
@@ -51,11 +53,13 @@ const STEP_BADGE: Record<string, "default" | "secondary" | "outline" | "destruct
 
 export default function LoopDetailPage() {
   const { loopId } = useParams<{ loopId: string }>();
+  const router = useRouter();
   const { data, isLoading } = useLoopDetail(loopId);
   const runMu = useRunLoop();
   const activateMu = useActivateLoop();
   const deactivateMu = useDeactivateLoop();
   const addItemMu = useAddLoopItem(loopId);
+  const deleteLoopMu = useDeleteLoop();
 
   const loop = data?.loop;
   const searchParams = useSearchParams();
@@ -80,46 +84,31 @@ export default function LoopDetailPage() {
 
   if (isLoading)
     return (
-      <div className="container mx-auto px-8 py-10">
-        <p className="text-sm text-[var(--mute)]">Loading...</p>
-      </div>
+      <Page>
+        <PageBody>
+          <p className="text-sm text-[var(--mute)]">Loading...</p>
+        </PageBody>
+      </Page>
     );
   if (!loop)
     return (
-      <div className="container mx-auto px-8 py-10">
-        <p className="text-sm text-[var(--mute)]">Loop not found.</p>
-      </div>
+      <Page>
+        <PageBody>
+          <p className="text-sm text-[var(--mute)]">Loop not found.</p>
+        </PageBody>
+      </Page>
     );
 
   return (
-    <div className="h-full bg-[var(--canvas)] flex flex-col">
-      <div className="border-b border-[var(--hairline)]">
-        <div className="container mx-auto px-8 py-5">
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <a href="/work">Work</a>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>{loop.name}</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </div>
-      </div>
-
-      <div className="container mx-auto px-8 py-6 flex-1 min-h-0">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-medium">{loop.name}</h2>
-            <p className="text-xs text-[var(--mute)]">
-              {loop.cronExpr || "Manual"}
-              {loop.lastRun ? ` · Last run: ${new Date(loop.lastRun).toLocaleString()}` : ""}
-              {loop.pendingCount > 0 ? ` · ${loop.pendingCount} awaiting review` : ""}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
+    <Page>
+      <PageHeader
+        breadcrumb="Work"
+        title={loop.name}
+        description={`${loop.cronExpr || "Manual"}${
+          loop.lastRun ? ` · Last run: ${new Date(loop.lastRun).toLocaleString()}` : ""
+        }${loop.pendingCount > 0 ? ` · ${loop.pendingCount} awaiting review` : ""}`}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
             {loop.enabled === false ? (
               <>
                 <Badge variant="outline">Draft</Badge>
@@ -174,11 +163,41 @@ export default function LoopDetailPage() {
             <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
               Add Item
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    aria-label="More actions"
+                  />
+                }
+              >
+                <MoreHorizontal size={14} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => {
+                    if (!confirm(`Delete loop "${loop.name}"? This cannot be undone.`)) return;
+                    deleteLoopMu.mutate(loopId, {
+                      onSuccess: () => router.push("/work"),
+                      onError: (e) => toast.error(`Delete failed: ${String(e)}`),
+                    });
+                  }}
+                >
+                  <Trash2 size={14} />
+                  Delete Loop
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        </div>
-
+        }
+      />
+      <PageBody className="space-y-6">
         {view === "list" ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100%-5rem)]">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:h-[calc(100dvh-15rem)]">
             {/* Left: item list grouped by step */}
             <div className="lg:col-span-1 overflow-y-auto border border-[var(--hairline)] rounded-lg bg-background">
               {items.length === 0 ? (
@@ -250,7 +269,7 @@ export default function LoopDetailPage() {
             </CardContent>
           </Card>
         )}
-      </div>
+      </PageBody>
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent>
           <DialogHeader>
@@ -266,7 +285,9 @@ export default function LoopDetailPage() {
                   priority: priority ? Number(priority) : undefined,
                 },
                 {
-                  onSuccess: () => {
+                  onSuccess: (data) => {
+                    const itemId = data?.item?.id;
+                    if (itemId) setSelectedId(itemId);
                     setAddOpen(false);
                     setSummary("");
                     setPriority("");
@@ -322,6 +343,6 @@ export default function LoopDetailPage() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </Page>
   );
 }

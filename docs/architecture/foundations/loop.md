@@ -3,12 +3,12 @@ id: foundations.loop
 title: Loop
 status: design
 owners: architecture
-last_verified_against_code: 2026-07-01
-summary: "Loop 是统一的工作系统——所有工作（自动发现或手动添加）的入口。Loop 不需要新数据库表：配置在 .loop/ 目录的文件里，运行时 item 状态在 STATE.md 里。CronJob 通过 loop_config_path 调用 Loop。手动工作池是 trigger=manual 的 Loop 特例。/issues Kanban 被 Loop 吸收，/loops 成为和 /conversations 并列的唯一工作入口。"
+last_verified_against_code: 2026-07-28
+summary: "Loop 是统一的工作系统--所有工作（自动发现或手动添加）的入口。Loop 不需要新数据库表：配置在 .loop/ 目录的文件里，运行时 item 状态在 STATE.md 里。CronJob 通过 loop_config_path 调用 Loop。手动工作池是 trigger=manual 的 Loop 特例。/issues Kanban 被 Loop 吸收，/loops 成为和 /conversations 并列的唯一工作入口。"
 depends_on:
   - foundations.issue
   - foundations.cron-job
-  - harness.harness
+  - agent.agent
 used_by:
   - backend.loop-runner
 ---
@@ -63,8 +63,8 @@ triaged → fixing → verifying → awaiting_review
 ```
 
 - `triaged`：discovery 产出或人手添加，等待处理
-- `fixing`：generator AgentSession 在修
-- `verifying`：evaluator AgentSession 在审
+- `fixing`：generator Agent 在修
+- `verifying`：evaluator Agent 在审
 - `awaiting_review`：等人拍板。状态在 STATE.md 里，跨进程重启不丢
 - `resolved`：人通过了
 - `inbox`：人不确定或 evaluator 反复失败，挂起
@@ -72,9 +72,9 @@ triaged → fixing → verifying → awaiting_review
 
 evaluator 拒绝且 attempt < maxRetries → 回 `fixing`（带拒绝理由）。attempt 耗尽 → `inbox`。
 
-## Generator 和 Evaluator 是分离的 AgentSession
+## Generator 和 Evaluator 是分离的 Agent
 
-不同 model、不同 system prompt、不同 sessionId。Evaluator 默认立场："ASSUME broken until proven otherwise"。验证通过执行测试和操作页面（MCP），不只读代码。
+不同 model、不同 system prompt、不同的 Agent Run（各自 spawn 独立 coding-agent 子进程，run idempotency key 区分）。Evaluator 默认立场："ASSUME broken until proven otherwise"。验证通过执行测试和操作页面（MCP），不只读代码。
 
 结构化 verdict（PASS/REJECT + 证据）解析后写入 item 的 result 字段，在 review card 里展示。
 
@@ -90,7 +90,7 @@ CronJob 调度 Loop——不是 Loop 持有 schedule。CronJob 的 `loop_config_
 
 1. Loop 没有自己的数据库表——配置在文件，状态在 STATE.md。
 2. CronJob 是调度者，Loop 是被调度者——Loop 不持有 schedule 字段。
-3. Generator 和 Evaluator 是不同 AgentSession，不同 model。
+3. Generator 和 Evaluator 是不同 Agent，不同 model。
 4. Item 状态在 STATE.md，跨进程重启不丢——human gate 不需要进程存活。
 5. Loop 吸收 Issue/Kanban——手动工作 = trigger=manual 的 Loop。
 
@@ -99,4 +99,4 @@ CronJob 调度 Loop——不是 Loop 持有 schedule。CronJob 的 `loop_config_
 - [LoopRunner](../backend/loop-runner.md) — loopStep() 编排函数
 - [CronJob](./cron-job.md) — Loop 的调度者
 - [Issue](./issue.md) — 被 Loop 吸收的原有工作流实体
-- [AgentSession](../harness/harness.md) — Loop 调用的 Agent 胶水
+- [Agent](../harness/harness.md) - Loop 调用的 Agent 胶水

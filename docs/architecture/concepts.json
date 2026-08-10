@@ -3,10 +3,10 @@
     {
       "id": "architecture.index",
       "title": "架构 Wiki 首页",
-      "status": "current",
+      "status": "design",
       "owners": "architecture",
       "path": "docs/architecture/README.md",
-      "summary": "这是给人看的架构 Wiki 入口。它不是按里程碑流水账排的，而是按「你想干什么」组织阅读路线。先在这里选好路线，再去读具体实现页。",
+      "summary": "当前架构入口：Product Backend → Agent Run → 一次性 coding-agent 子进程 → BackendRunOutcome → terminal commit。",
       "depends_on": [],
       "used_by": []
     },
@@ -16,99 +16,93 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/system-overview.md",
-      "summary": "整个系统是一个「团队 Agent」运行时：端负责输入与渲染，后端持有事实并直接在进程内通过 AgentSession 驱动 Agent。assistant 消息经 onEvent 回调直写 conversation ledger，非消息执行事件经 run-loop 写 checkpointer 的执行事实流（按 spanId）。conversation ledger SSE 是用户可见输出的唯一通道。",
-      "depends_on": ["foundations.facts-and-projections"],
-      "used_by": ["flows.e2e-web-message", "flows.e2e-lark-message"]
-    },
-    {
-      "id": "foundations.facts-and-projections",
-      "title": "事实与投影",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/foundations/facts-and-projections.md",
-      "summary": "系统里有好几个结构都叫「messages」，但它们回答的是不同的问题。conversation ledger 和 checkpointer 的执行事实流（checkpoint_events，按 spanId）是持久的「事实」；SSE 流是从事实推导出来的「投影」；checkpointer 同时还持有执行恢复用的状态。把它们混为一谈，正是重复消息、检查点污染、UI 丢事件这类 bug 的根源。",
+      "summary": "Product Backend 拥有产品事实；Agent Backend 为每个 Run spawn 一次性 coding-agent 子进程；BackendRunOutcome 是唯一终态。",
       "depends_on": [],
       "used_by": [
-        "backend.conversation-projection",
-        "backend.data-model",
-        "operations.troubleshooting"
-      ]
-    },
-    {
-      "id": "backend.conversation-projection",
-      "title": "会话消息流",
-      "status": "current",
-      "owners": "backend-runtime",
-      "path": "docs/architecture/backend/conversation-projection.md",
-      "summary": "会话消息流把 AgentSession 产生的 assistant 消息写入 conversation ledger，然后 fan-out 到 Web 和 Lark Bot。消息不经过 transport——AgentSession 在 Backend 进程内运行，通过 onEvent 回调直接写 ledger。",
-      "depends_on": ["conversation.ledger"],
-      "used_by": [
-        "surfaces.web",
-        "surfaces.lark-adapter",
-        "flows.e2e-web-message",
-        "flows.e2e-lark-message",
-        "operations.troubleshooting"
+        "backend.overview",
+        "execution.agent-backend",
+        "agents.context",
+        "flows.e2e-web-message"
       ]
     },
     {
       "id": "backend.overview",
-      "title": "后端总览",
+      "title": "Product Backend 总览",
       "status": "current",
       "owners": "backend-runtime",
       "path": "docs/architecture/backend/overview.md",
-      "summary": "后端（apps/backend）是整个系统的事实持有者：它拥有 agents、对话、成员、运行、事件、账本。它对外是一组 HTTP/SSE 接口，对内由几个相互独立的 feature 模块组成。",
+      "summary": "Product Backend 拥有 Conversation History、Agent Context、Agent Run、输入队列与 Product Tools；执行由一次性 coding-agent 子进程完成。",
+      "depends_on": ["architecture.system-overview"],
+      "used_by": ["backend.data-model", "execution.agent-backend", "agents.context"]
+    },
+    {
+      "id": "agents.context",
+      "title": "Agent Context",
+      "status": "design",
+      "owners": "architecture",
+      "path": "docs/architecture/agents/context.md",
+      "summary": "每个 Conversation Agent Member 实际知道什么；保存共享 Message 引用、私有语义、Product Tool 结果、summary 和 Context Branch。",
+      "depends_on": ["conversation.history"],
+      "used_by": [
+        "architecture.system-overview",
+        "execution.agent-backend",
+        "flows.e2e-web-message"
+      ]
+    },
+    {
+      "id": "execution.agent-backend",
+      "title": "Agent Backend",
+      "status": "current",
+      "owners": "architecture",
+      "path": "docs/architecture/execution/agent-backend.md",
+      "summary": "AgentBackend 协议（execute/steer/abort）与 CodingAgentBackend 实现：每个 Run spawn 一次性 coding-agent 子进程，stdin/stdout JSONL，BackendRunOutcome 唯一终态。",
+      "depends_on": ["agents.context"],
+      "used_by": ["architecture.system-overview", "backend.overview", "flows.e2e-web-message"]
+    },
+    {
+      "id": "conversation.history",
+      "title": "Conversation History",
+      "status": "design",
+      "owners": "architecture",
+      "path": "docs/architecture/conversation/history.md",
+      "summary": "所有成员共享的 Conversation 事实；人类和 Agent 最终 Message 都进入 History，Agent Context 保存稳定引用。",
       "depends_on": [],
-      "used_by": ["backend.data-model"]
+      "used_by": ["agents.context", "runs.output-and-live-updates", "surfaces.web", "surfaces.lark"]
     },
     {
-      "id": "backend.event-log",
-      "title": "EventLog（已废止）",
-      "status": "deprecated",
-      "owners": "backend-runtime",
-      "path": "docs/architecture/backend/event-log.md",
-      "summary": "EventLog（event_log 表）是 runner daemon 时代从 checkpointer 剥离出去的「执行事实流」临时容身处。daemon 删除后它失去写入方、成为死表。执行事实流职责已归还 checkpointer（checkpoint_events，按 spanId 切）。本页保留为 tombstone，新设计不要再引用 EventLog。",
-      "depends_on": ["foundations.identifiers", "foundations.facts-and-projections"],
-      "used_by": []
-    },
-    {
-      "id": "backend.loop-runner",
-      "title": "LoopRunner — Loop 编排引擎",
+      "id": "runs.output-and-live-updates",
+      "title": "Agent Run 输出与实时更新",
       "status": "design",
       "owners": "backend-runtime",
-      "path": "docs/architecture/backend/loop-runner.md",
-      "summary": "LoopRunner 是 Loop 的编排引擎——按调度唤醒、运行 discovery agent、对每个 finding 启动 generator（写）→ evaluator（审）两棒流水线、写入 STATE.md 持久状态、最终等人审批。Generator 和 Evaluator 是不同 AgentSession 实例，必须用不同 model。",
-      "depends_on": ["foundations.loop", "harness.harness", "runtime.framework"],
-      "used_by": []
+      "path": "docs/architecture/runs/output-and-live-updates.md",
+      "summary": "Agent Backend 产生 Live Updates 与 outcome；只有 terminal outcome 才原子提交 History Message 与 Agent Context。",
+      "depends_on": ["conversation.history", "agents.context", "execution.agent-backend"],
+      "used_by": ["surfaces.web", "surfaces.lark", "flows.e2e-web-message"]
     },
     {
       "id": "backend.data-model",
-      "title": "数据模型",
+      "title": "目标数据模型",
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/backend/data-model.md",
-      "summary": "持久状态分布在三处：backend.db 拥有 agents、对话、成员和账本；events.db 拥有运行、尝试和各类 ops 表；checkpointer.db 拥有 session 的完整运行档案——恢复用的 messages/interrupts，以及执行事实流 checkpoint_events（按 spanId 切）。",
-      "depends_on": ["foundations.facts-and-projections"],
-      "used_by": ["backend.conversation-projection", "operations.troubleshooting"]
+      "summary": "conversation_ledger 与 agent_context_* 是产品事实，agent_run + branch_input_queue + product_tool_call 是执行控制面；无 span/attempt/session。",
+      "depends_on": ["agents.context"],
+      "used_by": ["backend.overview", "runs.output-and-live-updates"]
     },
     {
-      "id": "conversation.ledger",
-      "title": "对话账本",
-      "status": "current",
+      "id": "flows.e2e-web-message",
+      "title": "Web 消息端到端",
+      "status": "design",
       "owners": "architecture",
-      "path": "docs/architecture/conversation/ledger.md",
-      "summary": "对话账本是共享对话历史的持久事实。它记录人的消息、assistant 消息、成员/系统事件和控制条目。端渲染它展示给用户。",
-      "depends_on": ["foundations.facts-and-projections"],
-      "used_by": ["backend.conversation-projection", "surfaces.web", "surfaces.lark-adapter"]
-    },
-    {
-      "id": "conversation.members",
-      "title": "对话与成员",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/conversation/conversation-and-members.md",
-      "summary": "对话是共享协作空间，成员是人/Agent/系统在这个空间里的本地身份。触发模式、跳数上限、活动锁和 @提及解析，共同防止多 Agent 失控地互相触发。",
-      "depends_on": [],
-      "used_by": ["flows.e2e-lark-message", "backend.conversation-projection"]
+      "path": "docs/architecture/flows/e2e-web-message.md",
+      "summary": "Web 消息从 Conversation History、Agent Context、Agent Run 到 final Message commit 的完整路径。",
+      "depends_on": [
+        "surfaces.web",
+        "runs.output-and-live-updates",
+        "agents.context",
+        "execution.agent-backend"
+      ],
+      "used_by": []
     },
     {
       "id": "surfaces.web",
@@ -116,216 +110,18 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/surfaces/web.md",
-      "summary": "Web 端是浏览器里的对话与运行界面。它消费 conversation SSE，在 conversation-reducer 里把乐观消息、实时 revision、todo 合并成一份状态。",
-      "depends_on": ["conversation.ledger", "backend.conversation-projection"],
-      "used_by": ["flows.e2e-web-message", "operations.troubleshooting"]
+      "summary": "浏览器对话与运行界面，消费 Conversation History 与 Live Updates，不拥有持久事实。",
+      "depends_on": ["conversation.history", "runs.output-and-live-updates"],
+      "used_by": ["flows.e2e-web-message"]
     },
     {
-      "id": "surfaces.lark-adapter",
-      "title": "飞书适配器",
+      "id": "surfaces.lark",
+      "title": "飞书",
       "status": "current",
       "owners": "architecture",
-      "path": "docs/architecture/surfaces/lark-adapter.md",
-      "summary": "飞书适配器把飞书的群/用户映射成对话/成员，把入站消息 POST 给后端，通过 conversation SSE 接收 agent 回复，推送去重后的最终文本。",
-      "depends_on": ["conversation.ledger", "backend.conversation-projection"],
-      "used_by": ["flows.e2e-lark-message", "operations.troubleshooting"]
-    },
-    {
-      "id": "surfaces.overview",
-      "title": "端总览",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/surfaces/overview.md",
-      "summary": "端是面向用户的适配器，目前是 Web 和飞书。它们采集输入、渲染账本、把外部身份映射成成员、处理 UX 层的去重；但它们不拥有任何持久事实。",
-      "depends_on": [],
-      "used_by": ["surfaces.web", "surfaces.lark-adapter"]
-    },
-    {
-      "id": "flows.e2e-web-message",
-      "title": "Web 消息端到端",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/flows/e2e-web-message.md",
-      "summary": "这条流追踪一条 Web 用户消息：从乐观 UI，经 conversation ledger、AgentSession 直接执行，到 conversation SSE 按 messageId upsert 对账。AgentSession 在 Backend 进程内驱动 Agent。",
-      "depends_on": ["surfaces.web", "backend.conversation-projection"],
-      "used_by": []
-    },
-    {
-      "id": "flows.e2e-lark-message",
-      "title": "飞书消息端到端",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/flows/e2e-lark-message.md",
-      "summary": "这条流追踪一条飞书消息：从会话绑定、成员映射、conversation ledger 追加、AgentSession 执行，到 sse-watcher 解析 revision 去重推送。",
-      "depends_on": ["surfaces.lark-adapter", "backend.conversation-projection"],
-      "used_by": []
-    },
-    {
-      "id": "flows.e2e-loop-verification",
-      "title": "Loop 验证端到端",
-      "status": "design",
-      "owners": "architecture",
-      "path": "docs/architecture/flows/e2e-loop-verification.md",
-      "summary": "一次触发里 loopStep() 读 STATE.md、对 fixing item 起 Generator 干活、再起独立 Evaluator 动手验证、verdict 经 loopReducer 转移 item.step 的完整时序。核心：不看 run 终态，读 verdict 内容转移 step。",
-      "depends_on": ["foundations.loop-engineering", "foundations.loop", "backend.loop-runner"],
-      "used_by": []
-    },
-    {
-      "id": "runtime.framework",
-      "title": "Framework 运行循环",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/runtime/framework.md",
-      "summary": "Framework 是 Agent 真正「思考—行动」的运行时核心。它的心脏是 runLoop：受 maxSteps 约束的循环，每一步可能调模型、可能调工具，并把过程拆成一串结构化 AgentEvent 往外吐。",
-      "depends_on": [],
-      "used_by": [
-        "runtime.context-manager",
-        "runtime.plugin",
-        "plugins.task-guard",
-        "harness.harness"
-      ]
-    },
-    {
-      "id": "runtime.context-manager",
-      "title": "上下文管理器",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/runtime/context-manager.md",
-      "summary": "上下文管理器（ContextManager）是 runLoop 在每次调模型「之前」对消息历史做整形的那一道关口。框架自带 5 种实现，可用 pipeContextManagers 串联。",
-      "depends_on": ["runtime.framework"],
-      "used_by": ["runtime.plugin", "harness.harness"]
-    },
-    {
-      "id": "runtime.plugin",
-      "title": "运行时插件机制",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/runtime/plugin.md",
-      "summary": "插件是往 Framework 运行循环里挂行为的标准方式。一个插件就是一个带名字、带钩子、可选带工具的对象；createAgent 收下所有插件，在循环的各个节点按顺序触发它们的钩子。",
-      "depends_on": ["runtime.framework"],
-      "used_by": [
-        "runtime.context-manager",
-        "harness.harness",
-        "plugins.fs-memory",
-        "plugins.progressive-skill",
-        "plugins.task-guard"
-      ]
-    },
-    {
-      "id": "harness.harness",
-      "title": "AgentSession — Agent 编排层",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/harness/harness.md",
-      "summary": "AgentSession 把 Framework 的 Agent + Checkpointer + PluginRunner + ContextManager 组成为一个有生命周期管理（prompt/continue/resume/abort）和自动化维护（retry/compaction）的运行时单元。Backend 直接跟 AgentSession 对话。",
-      "depends_on": ["runtime.framework", "runtime.plugin", "runtime.context-manager"],
-      "used_by": ["flows.e2e-web-message", "flows.e2e-lark-message", "backend.overview"]
-    },
-    {
-      "id": "plugins.fs-memory",
-      "title": "文件型记忆插件",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/plugins/fs-memory.md",
-      "summary": "文件型记忆插件（fsMemoryPlugin）让 Agent 拥有跨运行的长期记忆。它把记忆落在 cwd 下的 /memory/ 目录，通过 beforeModel 钩子把相关记忆注入系统提示，并向 Agent 暴露 memory_read/memory_write/memory_search 工具。",
-      "depends_on": ["runtime.plugin"],
-      "used_by": []
-    },
-    {
-      "id": "plugins.progressive-skill",
-      "title": "渐进式技能插件",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/plugins/progressive-skill.md",
-      "summary": "渐进式技能插件（progressiveSkillPlugin）先通过 beforeModel 只注入技能索引，等 Agent 判断需要某个技能时再用 skill_load 工具按需加载正文。技能存在 cwd 下的 /skills/ 目录。",
-      "depends_on": ["runtime.plugin"],
-      "used_by": []
-    },
-    {
-      "id": "plugins.task-guard",
-      "title": "防早停任务守卫",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/plugins/task-guard.md",
-      "summary": "防早停任务守卫（taskGuardPlugin）挂在 beforeStop 钩子上，检查是否还有未解决的工具错误、是否还有未完成的待办步骤，防止 Agent 提前收工。",
-      "depends_on": ["runtime.framework", "runtime.plugin"],
-      "used_by": []
-    },
-    {
-      "id": "foundations.lifecycle-overview",
-      "title": "一次运行的生命周期",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/foundations/lifecycle-overview.md",
-      "summary": "这一页把一次 Agent 运行从「被发起」到「收尾」串成一条时间线，标出每个阶段由谁负责、产出什么事实。",
-      "depends_on": [
-        "foundations.facts-and-projections",
-        "backend.conversation-projection",
-        "runtime.framework",
-        "harness.harness"
-      ],
-      "used_by": []
-    },
-    {
-      "id": "foundations.loop",
-      "title": "Loop",
-      "status": "design",
-      "owners": "architecture",
-      "path": "docs/architecture/foundations/loop.md",
-      "summary": "Loop 是统一工作的文件态本体：配置在 .loop/ 文件、item 状态在 STATE.md、CronJob 退成调度者、loopStep() 无状态推进。Goal 是过渡态，验收标准沉淀为 config.yml 的 acceptance 字段。不新增数据库表。",
-      "depends_on": [
-        "foundations.loop-engineering",
-        "foundations.cron-job",
-        "harness.harness",
-        "runtime.framework"
-      ],
-      "used_by": ["backend.loop-runner", "foundations.loop-pattern"]
-    },
-    {
-      "id": "foundations.loop-pattern",
-      "title": "Loop Pattern",
-      "status": "design",
-      "owners": "architecture",
-      "path": "docs/architecture/foundations/loop-pattern.md",
-      "summary": "Loop Pattern 是 Loop 的预制配置模板。7 种内置 pattern 覆盖最常见的自动化场景。L1/L2/L3 信任层级决定自动化程度。Loop Ready Score（0-100）量化配置完备程度。",
-      "depends_on": ["foundations.loop"],
-      "used_by": []
-    },
-    {
-      "id": "foundations.loop-engineering",
-      "title": "Loop Engineering",
-      "status": "design",
-      "owners": "architecture",
-      "path": "docs/architecture/foundations/loop-engineering.md",
-      "summary": "harness 之上的第四层：不再一遍遍手写 prompt，而是设计出替你 prompt agent 的 loop。内层 loop（一次 run）与外层 loop（跨轮工作）的区别、五个动作、maker-checker 独立 AgentSession。本体不落数据库。",
-      "depends_on": [
-        "foundations.loop",
-        "foundations.loop-pattern",
-        "backend.loop-runner",
-        "foundations.cron-job",
-        "harness.harness",
-        "design-philosophy"
-      ],
-      "used_by": ["flows.e2e-loop-verification", "roadmap.future-work"]
-    },
-    {
-      "id": "security.overview",
-      "title": "隔离与安全模型",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/security/overview.md",
-      "summary": "这个系统的安全性靠几条彼此正交的隔离边界叠加：后端入口的鉴权中间件、对话层的线程隔离、以及 Agent 的工作目录隔离。",
-      "depends_on": ["conversation.members", "harness.harness"],
-      "used_by": []
-    },
-    {
-      "id": "operations.troubleshooting",
-      "title": "排障手册",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/operations/troubleshooting.md",
-      "summary": "把常见故障按「症状 → 该去哪条事实线查 → 根因方向」组织。核心心法：先判断问题落在哪一层——是账本错了，还是 SSE 错了，还是执行错了。",
-      "depends_on": ["foundations.facts-and-projections", "backend.conversation-projection"],
+      "path": "docs/architecture/surfaces/lark.md",
+      "summary": "将飞书身份与消息映射到 Product Backend，并从 Conversation History/事件通道推送 Agent 输出。",
+      "depends_on": ["conversation.history", "runs.output-and-live-updates"],
       "used_by": []
     },
     {
@@ -334,64 +130,63 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/foundations/cron-job.md",
-      "summary": "CronJob 是「一条按时间表反复触发 Agent 运行的定时规则」，是 Issue 之外第二个触发型领域本体。到点经 startAgentRun 起一次 run。",
-      "depends_on": ["harness.harness"],
+      "summary": "定时触发 Agent 工作的产品实体；目标架构中通过 Agent Runs 选择 Context Branch 和 Agent Backend。",
+      "depends_on": [],
       "used_by": []
     },
     {
-      "id": "roadmap.future-work",
-      "title": "未来工作",
-      "status": "future",
+      "id": "foundations.loop",
+      "title": "Loop",
+      "status": "design",
       "owners": "architecture",
-      "path": "docs/architecture/roadmap/future-work.md",
-      "summary": "这一页是唯一谈「还没做 / 想做」的地方——刻意和描述当前状态的所有页面隔离开。",
-      "depends_on": [
-        "backend.conversation-projection",
-        "surfaces.lark-adapter",
-        "runtime.framework",
-        "runtime.context-manager"
-      ],
+      "path": "docs/architecture/foundations/loop.md",
+      "summary": "跨 Agent Run 的自动化控制循环，通过 Context Branch 和 Agent Runs 调用可替换 Agent Backend。",
+      "depends_on": [],
       "used_by": []
     },
     {
-      "id": "adr.0001-loop-prune",
-      "title": "ADR 0001: Prune 是写文件前过滤",
+      "id": "runtime.coding-agent",
+      "title": "Coding Agent",
       "status": "current",
       "owners": "architecture",
-      "path": "docs/adr/0001-loop-prune-is-post-processing.md",
-      "summary": "已终结 item 的清理不是 reducer action——它是 loopStep() 写 STATE.md 前固定后处理。reducer 只管 step 转移。",
-      "depends_on": ["foundations.loop-engineering"],
-      "used_by": ["backend.loop-runner"]
+      "path": "docs/architecture/runtime/coding-agent.md",
+      "summary": "无 UI 的一次性 CLI 执行引擎（print/json/rpc），由 Adapter 按 Run spawn；子进程内 per-Run Runtime（packages/agent）跑完产出 BackendRunOutcome 后退出。",
+      "depends_on": ["execution.agent-backend"],
+      "used_by": [
+        "runtime.coding-agent-session",
+        "runtime.coding-agent-prompt",
+        "runtime.coding-agent-models"
+      ]
     },
     {
-      "id": "adr.0002-config-skill",
-      "title": "ADR 0002: 配置生成是内置 Skill",
+      "id": "runtime.coding-agent-session",
+      "title": "Coding Agent Session",
       "status": "current",
       "owners": "architecture",
-      "path": "docs/adr/0002-config-generation-is-builtin-skill.md",
-      "summary": "自然语言→config.yml 翻译做成内置 Skill `loop-config-generator`，只在创建 Loop 时跑一次。",
-      "depends_on": ["foundations.loop-pattern", "plugins.progressive-skill"],
+      "path": "docs/architecture/runtime/coding-agent-session.md",
+      "summary": "Runtime 的 SessionStore 是 per-Run、in-memory 执行缓存：seed full Product history + meta + input，Run 结束销毁；无 SQLite session、无 worker、无跨 Run 恢复。",
+      "depends_on": ["runtime.coding-agent"],
+      "used_by": ["runtime.coding-agent-prompt"]
+    },
+    {
+      "id": "runtime.coding-agent-prompt",
+      "title": "Coding Agent Prompt 与 Context",
+      "status": "current",
+      "owners": "architecture",
+      "path": "docs/architecture/runtime/coding-agent-prompt.md",
+      "summary": "每个 Run 使用 Run 快照冻结的 systemPrompt + Meta User Message + 真实 Prompt，随 full Product history seed 进 SessionStore。",
+      "depends_on": ["runtime.coding-agent", "runtime.coding-agent-session"],
       "used_by": []
     },
     {
-      "id": "adr.0003-single-writer",
-      "title": "ADR 0003: STATE.md 只有 loopStep() 一个写者",
+      "id": "runtime.coding-agent-models",
+      "title": "Coding Agent Provider 与 ModelRuntime",
       "status": "current",
       "owners": "architecture",
-      "path": "docs/adr/0003-state-md-single-writer.md",
-      "summary": "Discovery/Generator/Evaluator 三个 AgentSession 都不写 STATE.md——只汇报，loopStep() 更新。",
-      "depends_on": ["foundations.loop-engineering", "backend.loop-runner"],
-      "used_by": ["flows.e2e-loop-verification"]
-    },
-    {
-      "id": "adr.0004-discovery-session",
-      "title": "ADR 0004: Discovery 是独立 AgentSession",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/adr/0004-discovery-is-agent-session.md",
-      "summary": "Discovery 是 loopStep() TICK 路径第一步，以独立 AgentSession（装 loop-triage skill）执行，产出 findings 经 ADD_ITEM 写入。",
-      "depends_on": ["foundations.loop-engineering", "backend.loop-runner"],
-      "used_by": []
+      "path": "docs/architecture/runtime/coding-agent-models.md",
+      "summary": "模型系统由 packages/ai（Provider 注册制 + ModelRuntime）提供；Product Backend 只保存 BackendModelRef，子进程内解析并 stream。",
+      "depends_on": ["runtime.coding-agent"],
+      "used_by": ["runtime.coding-agent-prompt"]
     }
   ]
 }

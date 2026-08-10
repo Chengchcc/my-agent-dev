@@ -27,9 +27,13 @@ export function useDeleteConversation() {
 }
 
 export function useCreateConversation() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: Parameters<typeof api.createConversation>[0]) =>
       api.createConversation(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: conversationKeys.all });
+    },
   });
 }
 
@@ -76,20 +80,13 @@ export function usePostConversationMessage(conversationId: string) {
   });
 }
 
-export function useResumeRun() {
-  return useMutation({
-    mutationFn: (params: { runId: string; approved: boolean; message?: string }) =>
-      api.resumeRun(params.runId, params.approved, params.message),
-  });
-}
-
 export function useForkConversation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (params: { id: string; fromSeq: number; title?: string }) =>
       api.forkConversation(params.id, params.fromSeq, params.title),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: conversationKeys.recent() });
+      qc.invalidateQueries({ queryKey: conversationKeys.all });
     },
   });
 }
@@ -123,7 +120,7 @@ export function useReplayFromMessage() {
         params.addressedTo,
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: conversationKeys.recent() });
+      qc.invalidateQueries({ queryKey: conversationKeys.all });
     },
   });
 }

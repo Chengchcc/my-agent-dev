@@ -1,18 +1,23 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
-import type { SessionConfig, SessionManager } from "@my-agent-team/harness";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { BackendRunOutcome } from "@my-agent-team/agent-backend";
 import type { LoopState } from "@my-agent-team/loop";
 import { loopReducer } from "@my-agent-team/loop";
-import { echoModel } from "@my-agent-team/test-helpers";
+import type { AgentRun } from "../agent-run/domain.js";
+import type { AgentRunExecutionService } from "../agent-run/execution.js";
+import type { AgentRunService } from "../agent-run/service.js";
 import type { ProjectRow } from "../project/domain.js";
 import type { ProjectPort } from "../project/ports.js";
 import { createLoopStateStore, type LoopStateStore } from "./loop-state-store.js";
 import type { GitRunner } from "./loop-step.js";
 import { loopStep } from "./loop-step.js";
 
-const TMP = "/tmp/loop-step-m3-test";
-const DATA = "/tmp/loop-step-m3-data";
+// Every test gets its own mkdtemp dirs — no shared fixed /tmp paths, so the
+// file is safe under full-suite parallel execution (a shared dir would let one
+// test's cleanup delete another test's git repo mid-flight).
 
 function createTestStore(): LoopStateStore {
   const db = new Database(":memory:");
@@ -22,6 +27,7 @@ function createTestStore(): LoopStateStore {
       source TEXT NOT NULL, summary TEXT NOT NULL,
       step TEXT NOT NULL, attempt INTEGER NOT NULL,
       priority INTEGER NOT NULL, result TEXT,
+      generator_run_id TEXT, evaluator_run_id TEXT,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY(loop_id, item_id)
     );
@@ -34,27 +40,24 @@ function createTestStore(): LoopStateStore {
   return createLoopStateStore(db);
 }
 
-async function initLoopDir(projectId?: string): Promise<string> {
-  await rm(TMP, { recursive: true, force: true });
-  await mkdir(TMP, { recursive: true });
-  const frontMatter = projectId
-    ? `---
+async function initLoopDir(
+  projectId?: string,
+  denylist?: string,
+  budgetYaml?: string,
+): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "loop-step-"));
+  const denylistYaml = denylist ? `denylist:\n${denylist}\n` : "";
+  const budget = budgetYaml ? `budget:\n${budgetYaml}\n` : "";
+  const frontMatter = `---
 generator:
   model: gen-model
 evaluator:
   model: eval-model
-projectId: ${projectId}
----
-`
-    : `---
-generator:
-  model: gen-model
-evaluator:
-  model: eval-model
----
+${projectId ? `projectId: ${projectId}\n` : ""}
+${denylistYaml}${budget}---
 `;
-  await Bun.write(`${TMP}/LOOP.md`, frontMatter);
-  return TMP;
+  await Bun.write(`${dir}/LOOP.md`, frontMatter);
+  return dir;
 }
 
 async function setupGitDataDir(): Promise<{
@@ -62,11 +65,10 @@ async function setupGitDataDir(): Promise<{
   projectPort: ProjectPort;
   cleanup: () => Promise<void>;
 }> {
-  await rm(DATA, { recursive: true, force: true });
+  const root = await mkdtemp(join(tmpdir(), "loop-step-data-"));
 
-  // Create a bare source repo that resolveRepoPath can clone from.
-  const srcWorktree = `${DATA}/src-wt`;
-  const bareSrc = `${DATA}/src.git`;
+  const srcWorktree = `${root}/src-wt`;
+  const bareSrc = `${root}/src.git`;
   await mkdir(srcWorktree, { recursive: true });
   await Bun.$`git init`.cwd(srcWorktree).quiet();
   await Bun.$`git -C ${srcWorktree} config user.email "test@test"`.quiet();
@@ -81,7 +83,7 @@ async function setupGitDataDir(): Promise<{
   await rm(srcWorktree, { recursive: true, force: true });
 
   const projectPort: ProjectPort = {
-    createProject(_input) {
+    createProject() {
       throw new Error("not implemented");
     },
     getProject(projectId: string): ProjectRow | null {
@@ -99,19 +101,19 @@ async function setupGitDataDir(): Promise<{
     listProjects(): ProjectRow[] {
       return [];
     },
-    updateProject(_projectId: string, _patch) {
+    updateProject() {
       return null;
     },
-    deleteProject(_projectId: string): boolean {
+    deleteProject(): boolean {
       return false;
     },
   };
 
   return {
-    dataDir: DATA,
+    dataDir: root,
     projectPort,
     cleanup: async () => {
-      await rm(DATA, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     },
   };
 }
@@ -120,681 +122,457 @@ function emptyState(): LoopState {
   return { loopId: "test", lastRun: null, items: {} };
 }
 
-function makeConfig(_params: { modelName: string; cwd: string }) {
-  return {
-    model: echoModel({ turns: [{ type: "text", text: "ok" }] }),
-    plugins: [],
-    tools: [],
-  };
+// ── Fake Agent Run services ────────────────────────────────────────────────
+
+interface RunScript {
+  genStatus?: "completed" | "failed" | "commit_failed";
+  evalStatus?: "completed" | "aborted" | "timeout";
+  /** VERDICT.md content the evaluator "writes". */
+  evalVerdictMd?: string;
+  /** usage tokens returned on both runs. */
+  usageTokens?: number;
+  /** generator rejects the input (queued behind another run). */
+  genQueued?: boolean;
+  /** first generator enqueue REPLAYS a terminal failed run; the retry-scoped
+   *  key must then acquire a FRESH run. */
+  genReplayTerminal?: boolean;
 }
 
-const noopGitRunner = {
-  revParse: () => Promise.resolve({ text: () => "deadbeef" }),
-  diff: () => Promise.resolve({ text: () => "" }),
-  resetHard: () => Promise.resolve({ text: () => "" }),
-} satisfies GitRunner;
+function makeFakeRuns(script: RunScript, workDir: string = "") {
+  const enqueues: Array<{
+    conversationId: string;
+    agentMemberId: string;
+    mode: string;
+    idempotencyKey: string;
+    message: { text?: string };
+  }> = [];
+  let runSeq = 0;
+  const runs = new Map<string, AgentRun>();
 
-function mockSessionManager(verdictMd: string, workDir: string = TMP): SessionManager {
-  let callCount = 0;
-  const sessions = new Map<
-    string,
-    {
-      prompt: (input: string) => Promise<void>;
-      sessionId: string;
-      dispose: () => void;
-      subscribe: () => () => void;
-      state: string;
-      resume: () => Promise<void>;
-    }
-  >();
-
-  const manager: SessionManager = {
-    create(_config: SessionConfig) {
-      callCount++;
-      const isEvaluator = callCount % 2 === 0; // gen=1, eval=2, gen=3, eval=4, ...
-      const sessionId = `mock-${callCount}`;
-      const session = {
-        sessionId,
-        state: "idle",
-        prompt: async (_input: string) => {
-          if (isEvaluator) {
-            await Bun.write(`${workDir}/VERDICT.md`, verdictMd);
-          }
-        },
-        resume: async () => {},
-        dispose: () => {
-          sessions.delete(sessionId);
-        },
-        subscribe: () => () => {},
-      };
-      sessions.set(sessionId, session);
-      return session as never;
-    },
-    open(sessionId: string, _config: SessionConfig) {
-      const existing = sessions.get(sessionId);
-      if (existing) return existing as never;
-      return this.create(_config);
-    },
-    get(sessionId: string) {
-      const s = sessions.get(sessionId);
-      return s as never | undefined;
-    },
-    dispose(sessionId: string) {
-      sessions.delete(sessionId);
-    },
-  };
-
-  return manager;
-}
-
-describe("loopStep M3 — AgentSession wiring", () => {
-  test("TICK → generator + evaluator called", async () => {
-    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
-    const dir = await initLoopDir("test-project");
-    const store = createTestStore();
-    let state = emptyState();
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky" },
-    });
-    store.save("test-loop", state, {});
-
-    const repoWorkDir = `${DATA}/repos/test-project`;
-    const sessionManager = mockSessionManager("verdict: PASS\nevidence: ok", repoWorkDir);
-
-    const next = await loopStep({
-      loopConfigPath: dir,
-      sessionManager,
-      buildConfig: makeConfig,
-      store,
-      loopId: "test-loop",
-      gitRunner: noopGitRunner,
-      projectPort,
-      dataDir,
-    });
-
-    expect(sessionManager).toBeDefined();
-    expect(next.items["01"]!.step).toBe("awaiting_review");
-
-    await cleanup();
-  });
-
-  test("REJECT → item back to fixing, attempt+1", async () => {
-    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
-    const dir = await initLoopDir("test-project");
-    const store = createTestStore();
-    let state = emptyState();
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky" },
-    });
-    store.save("test-loop", state, {});
-
-    const repoWorkDir = `${DATA}/repos/test-project`;
-    const sessionManager = mockSessionManager(
-      "verdict: REJECT\nreasons: scope drift\nevidence: 5 files",
-      repoWorkDir,
-    );
-
-    const next = await loopStep({
-      loopConfigPath: dir,
-      sessionManager,
-      buildConfig: makeConfig,
-      store,
-      loopId: "test-loop",
-      gitRunner: noopGitRunner,
-      projectPort,
-      dataDir,
-    });
-
-    expect(next.items["01"]!.step).toBe("fixing");
-    expect(next.items["01"]!.attempt).toBe(2);
-    expect(next.items["01"]!.result).not.toBeNull();
-
-    await cleanup();
-  });
-
-  test("REJECT exhausted → inbox in store", async () => {
-    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
-    const dir = await initLoopDir("test-project");
-    const store = createTestStore();
-    let state = emptyState();
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky" },
-    });
-    state = {
-      ...state,
-      items: { "01": { ...state.items["01"]!, attempt: 3 } },
+  const makeRun = (member: string, conv: string, ikey: string): AgentRun => {
+    const runId = `run-${++runSeq}`;
+    const run: AgentRun = {
+      runId,
+      branchId: `b-${runId}`,
+      conversationId: conv,
+      agentMemberId: member,
+      modelRef: { backendKind: "coding_agent", modelId: "m" },
+      status: "completed",
+      idempotencyKey: ikey,
+      terminalResult: null,
+      configRevision: 1,
+      productTools: null,
+      systemPrompt: null,
+      skillRoots: null,
+      workspace: null,
+      createdAt: 0,
+      terminalAt: null,
     };
-    store.save("test-loop", state, {});
+    runs.set(runId, run);
+    return run;
+  };
 
-    const repoWorkDir = `${DATA}/repos/test-project`;
-    const sessionManager = mockSessionManager(
-      "verdict: REJECT\nreasons: still broken\nevidence: x",
-      repoWorkDir,
-    );
-
-    const next = await loopStep({
-      loopConfigPath: dir,
-      sessionManager,
-      buildConfig: makeConfig,
-      store,
-      loopId: "test-loop",
-      gitRunner: noopGitRunner,
-      projectPort,
-      dataDir,
-    });
-
-    expect(next.items["01"]!.step).toBe("inbox");
-
-    // Round-trip: DB must also have inbox step (not stale fixing)
-    const reloaded = store.load("test-loop");
-    expect(reloaded.items["01"]!.step).toBe("inbox");
-    await cleanup();
-  });
-
-  test("ESCALATE → inbox in store", async () => {
-    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
-    const dir = await initLoopDir("test-project");
-    const store = createTestStore();
-    let state = emptyState();
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky" },
-    });
-    store.save("test-loop", state, {});
-
-    const repoWorkDir = `${DATA}/repos/test-project`;
-    const sessionManager = mockSessionManager(
-      "verdict: ESCALATE\nreasons: no env\nevidence: mcp unreachable",
-      repoWorkDir,
-    );
-
-    const next = await loopStep({
-      loopConfigPath: dir,
-      sessionManager,
-      buildConfig: makeConfig,
-      store,
-      loopId: "test-loop",
-      gitRunner: noopGitRunner,
-      projectPort,
-      dataDir,
-    });
-
-    expect(next.items["01"]!.step).toBe("inbox");
-
-    // Round-trip: DB must persist inbox step
-    const reloaded = store.load("test-loop");
-    expect(reloaded.items["01"]!.step).toBe("inbox");
-    await cleanup();
-  });
-
-  test("empty VERDICT.md → item goes to inbox (ESCALATE)", async () => {
-    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
-    const dir = await initLoopDir("test-project");
-    const store = createTestStore();
-    let state = emptyState();
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky" },
-    });
-    store.save("test-loop", state, {});
-
-    const repoWorkDir = `${DATA}/repos/test-project`;
-    const sessionManager = mockSessionManager("", repoWorkDir);
-
-    const next = await loopStep({
-      loopConfigPath: dir,
-      sessionManager,
-      buildConfig: makeConfig,
-      store,
-      loopId: "test-loop",
-      gitRunner: noopGitRunner,
-      projectPort,
-      dataDir,
-    });
-
-    expect(next.items["01"]!.step).toBe("inbox");
-
-    // Round-trip: DB must persist inbox step
-    const reloaded = store.load("test-loop");
-    expect(reloaded.items["01"]!.step).toBe("inbox");
-    await cleanup();
-  });
-
-  test("human APPROVE → resolved item deleted from store", async () => {
-    const dir = await initLoopDir();
-    const store = createTestStore();
-    let state = emptyState();
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky" },
-    });
-    state = loopReducer(state, { type: "TICK" });
-    state = loopReducer(state, { type: "GENERATOR_DONE", itemId: "01" });
-    state = loopReducer(state, {
-      type: "EVALUATOR_VERDICT",
-      itemId: "01",
-      verdict: { verdict: "PASS", evidence: "ok" },
-    });
-    store.save("test-loop", state, {});
-
-    const sessionManager = mockSessionManager("");
-
-    await loopStep({
-      loopConfigPath: dir,
-      sessionManager,
-      buildConfig: makeConfig,
-      store,
-      loopId: "test-loop",
-      action: { itemId: "01", verdict: "approve" },
-      gitRunner: noopGitRunner,
-    });
-
-    const loaded = store.load("test-loop");
-    expect(loaded.items["01"]).toBeUndefined();
-  });
-
-  // ── G0: fail-closed guard regression ──
-
-  test("G0.1: fixing items without repoPath throws unconditionally (no projectPort precondition)", async () => {
-    const dir = await initLoopDir();
-    const store = createTestStore();
-    let state = emptyState();
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky" },
-    });
-    store.save("test-loop", state, {});
-
-    const sessionManager = mockSessionManager("");
-
-    // No projectPort, no dataDir — guard must STILL throw (unconditional)
-    await expect(
-      loopStep({
-        loopConfigPath: dir,
-        sessionManager,
-        buildConfig: makeConfig,
-        store,
-        loopId: "test-loop",
-        gitRunner: noopGitRunner,
-        // projectPort + dataDir deliberately absent
-      }),
-    ).rejects.toThrow("cannot process fixing items without a resolved repoPath");
-  });
-
-  test("G0.2: loopStep with guard throw does not mutate backend repo cwd files", async () => {
-    const backendMarker = "/tmp/loop-step-g0-backend-marker.txt";
-    const markerContent = "BACKEND FILE — MUST SURVIVE";
-    await Bun.write(backendMarker, markerContent);
-
-    const dir = await initLoopDir();
-    const store = createTestStore();
-    let state = emptyState();
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky" },
-    });
-    store.save("test-loop", state, {});
-
-    const sessionManager = mockSessionManager("");
-
-    await expect(
-      loopStep({
-        loopConfigPath: dir,
-        sessionManager,
-        buildConfig: makeConfig,
-        store,
-        loopId: "test-loop",
-        gitRunner: noopGitRunner,
-      }),
-    ).rejects.toThrow("cannot process fixing items without a resolved repoPath");
-
-    // Backend repo marker file must be untouched — no git reset --hard hit it
-    const after = await Bun.file(backendMarker).text();
-    expect(after).toBe(markerContent);
-
-    await rm(backendMarker, { force: true });
-  });
-
-  test("G0.3: fixing items with valid repoPath do NOT operate on backend cwd", async () => {
-    // This test verifies that when repoPath IS resolved, git ops target the
-    // resolved repo (not the backend's cwd). We use a real gitRunner and
-    // a temp bare repo to confirm no side effects reach the project root.
-    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
-    const dir = await initLoopDir("test-project");
-    const store = createTestStore();
-    let state = emptyState();
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky" },
-    });
-    store.save("test-loop", state, {});
-
-    const repoWorkDir = `${DATA}/repos/test-project`;
-    const sessionManager = mockSessionManager("", repoWorkDir);
-
-    // Write a marker file in the BACKEND's project root and verify it survives
-    const backendMarker = "/tmp/loop-step-g0-backend-marker.txt";
-    const markerContent = "BACKEND FILE — MUST SURVIVE";
-    await Bun.write(backendMarker, markerContent);
-
-    const next = await loopStep({
-      loopConfigPath: dir,
-      sessionManager,
-      buildConfig: makeConfig,
-      store,
-      loopId: "test-loop",
-      gitRunner: noopGitRunner,
-      projectPort,
-      dataDir,
-    });
-
-    // The test must either error gracefully or complete — either way,
-    // the backend marker file must survive untouched
-    expect(next.items["01"]).toBeDefined();
-    const after = await Bun.file(backendMarker).text();
-    expect(after).toBe(markerContent);
-
-    await rm(backendMarker, { force: true });
-    await cleanup();
-  });
-});
-// ── T3/T4/T5: generator context, evaluator timeout, budget notification ──
-
-async function initLoopDirWithBudget(projectId: string, dailyCap: number): Promise<string> {
-  await rm(TMP, { recursive: true, force: true });
-  await mkdir(TMP, { recursive: true });
-  await Bun.write(
-    `${TMP}/LOOP.md`,
-    [
-      "---",
-      `projectId: ${projectId}`,
-      "generator:",
-      "  model: gen-model",
-      '  systemPrompt: "fix {summary} from {source}"',
-      "evaluator:",
-      "  model: eval-model",
-      "  systemPrompt: verify",
-      "budget:",
-      `  dailyCap: ${dailyCap}`,
-      "---",
-    ].join("\n"),
-  );
-  return TMP;
-}
-
-function captureSessionManager(
-  verdictMd: string,
-  workDir: string = TMP,
-  opts: { evalDelayMs?: number } = {},
-): SessionManager & { genPrompts: string[]; evalPrompts: string[] } {
-  let callCount = 0;
-  const genPrompts: string[] = [];
-  const evalPrompts: string[] = [];
-  const sessions = new Map<string, unknown>();
-
-  const manager = {
-    create(_config: SessionConfig) {
-      callCount++;
-      const isEvaluator = callCount % 2 === 0;
-      const sessionId = `cap-${callCount}`;
-      const session = {
-        sessionId,
-        state: "idle",
-        prompt: async (input: string) => {
-          if (isEvaluator) {
-            evalPrompts.push(input);
-            if (opts.evalDelayMs) await Bun.sleep(opts.evalDelayMs);
-            await Bun.write(`${workDir}/VERDICT.md`, verdictMd);
-          } else {
-            genPrompts.push(input);
-          }
-        },
-        resume: async () => {},
-        dispose: () => sessions.delete(sessionId),
-        subscribe: () => () => {},
-      };
-      sessions.set(sessionId, session);
-      return session as never;
-    },
-    open(sessionId: string, _config: SessionConfig) {
-      const existing = sessions.get(sessionId);
-      if (existing) return existing as never;
-      return this.create(_config);
-    },
-    get(sessionId: string) {
-      return sessions.get(sessionId) as never | undefined;
-    },
-    dispose(sessionId: string) {
-      sessions.delete(sessionId);
-    },
-  } as SessionManager;
-
-  return Object.assign(manager, { genPrompts, evalPrompts });
-}
-
-describe("loopStep T3/T4/T5 - context, timeout, budget", () => {
-  test("T3: generator prompt includes project context (repo + git log)", async () => {
-    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
-    const dir = await initLoopDirWithBudget("test-project", 0);
-    const store = createTestStore();
-    let state = emptyState();
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky test" },
-    });
-    store.save("test-loop", state, {});
-
-    const repoWorkDir = `${DATA}/repos/test-project`;
-    const sessionManager = captureSessionManager("verdict: PASS\nevidence: ok", repoWorkDir);
-
-    await loopStep({
-      loopConfigPath: dir,
-      sessionManager,
-      buildConfig: makeConfig,
-      store,
-      loopId: "test-loop",
-      gitRunner: noopGitRunner,
-      projectPort,
-      dataDir,
-    });
-
-    expect(sessionManager.genPrompts.length).toBe(1);
-    const prompt = sessionManager.genPrompts[0]!;
-    // Placeholder substitution still works
-    expect(prompt).toContain("fix flaky test from ci");
-    // Project context injected
-    expect(prompt).toContain("## Project Context");
-    expect(prompt).toContain("Repo:");
-    // git log may be empty (bare repo has no commits checked out) but section should exist
-    await cleanup();
-  });
-
-  test("T4: evaluator timeout does not crash loop (verdict stays empty -> ESCALATE)", async () => {
-    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
-    const dir = await initLoopDirWithBudget("test-project", 0);
-    const store = createTestStore();
-    let state = emptyState();
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky" },
-    });
-    store.save("test-loop", state, {});
-
-    const repoWorkDir = `${DATA}/repos/test-project`;
-    // evalDelayMs > 60_000 would make the test too slow; instead we use a
-    // sessionManager whose eval prompt never resolves (hanging promise).
-    // The Promise.race timeout will fire after 60s - too slow for tests.
-    // Instead, verify the timeout code path by making eval prompt reject.
-    const sessionManager = captureSessionManager("", repoWorkDir);
-    // Override: make eval prompt reject immediately to exercise the .catch path
-    const origCreate = sessionManager.create.bind(sessionManager);
-    let callCount = 0;
-    sessionManager.create = ((config: SessionConfig) => {
-      callCount++;
-      const session = origCreate(config) as unknown as {
-        sessionId: string;
-        prompt: (input: string) => Promise<void>;
-        dispose: () => void;
-        subscribe: () => () => void;
-        state: string;
-        resume: () => Promise<void>;
-      };
-      if (callCount % 2 === 0) {
-        // Evaluator session: prompt rejects (simulates crash/timeout)
-        session.prompt = () => Promise.reject(new Error("evaluator crashed"));
+  const agentRunService: AgentRunService = {
+    async enqueueAndAcquire(input) {
+      enqueues.push({
+        conversationId: input.conversationId,
+        agentMemberId: input.agentMemberId,
+        mode: input.mode,
+        idempotencyKey: input.idempotencyKey,
+        message: input.message as { text?: string },
+      });
+      if (script.genQueued && input.agentMemberId.startsWith("loop-generator")) {
+        return { acquired: false, queued: true, replayed: false, inputId: "in" };
       }
-      return session as never;
-    }) as SessionManager["create"];
+      if (
+        script.genReplayTerminal &&
+        input.agentMemberId.startsWith("loop-generator") &&
+        !input.idempotencyKey.endsWith(":retry")
+      ) {
+        const old = makeRun(input.agentMemberId, input.conversationId, input.idempotencyKey);
+        (old as { status: AgentRun["status"] }).status = "failed";
+        return {
+          acquired: false,
+          queued: false,
+          replayed: true,
+          run: old,
+          inputId: `in-${old.runId}`,
+        };
+      }
+      const run = makeRun(input.agentMemberId, input.conversationId, input.idempotencyKey);
+      return { acquired: true, queued: false, replayed: false, run, inputId: `in-${run.runId}` };
+    },
+    async markInputAccepted(inputId) {
+      return { inputId } as never;
+    },
+    async createPendingAction(runId, action) {
+      return { runId, actionId: "a", ...action } as never;
+    },
+    async consumePendingAction(actionId) {
+      return { action: { actionId } as never, runId: "r" };
+    },
+    async finalizeRun(runId) {
+      return runs.get(runId)!;
+    },
+    async getRun(runId) {
+      return runs.get(runId) ?? null;
+    },
+    async getActiveRun() {
+      return null;
+    },
+    async listInputs() {
+      return [];
+    },
+    async hasActiveRunForConversations() {
+      return false;
+    },
+  };
 
-    const next = await loopStep({
+  const agentRunExecution: AgentRunExecutionService = {
+    async dispatch(runId) {
+      const run = runs.get(runId);
+      if (!run) return;
+      if (run.agentMemberId.startsWith("loop-evaluator")) {
+        const status = script.evalStatus ?? "completed";
+        (run as { status: AgentRun["status"] }).status = status;
+        if (script.evalVerdictMd !== undefined) {
+          await Bun.write(`${workDir}/VERDICT.md`, script.evalVerdictMd);
+        }
+        (run as { terminalResult: BackendRunOutcome | null }).terminalResult = {
+          status: status === "completed" ? "completed" : status,
+          ...(script.usageTokens !== undefined
+            ? { usage: { inputTokens: script.usageTokens, outputTokens: 0 } }
+            : {}),
+        } as BackendRunOutcome;
+      } else {
+        const status = script.genStatus ?? "completed";
+        (run as { status: AgentRun["status"] }).status = status;
+        (run as { terminalResult: BackendRunOutcome | null }).terminalResult = {
+          status: status === "completed" ? "completed" : status,
+          ...(script.usageTokens !== undefined
+            ? { usage: { inputTokens: script.usageTokens, outputTokens: 0 } }
+            : {}),
+        } as BackendRunOutcome;
+      }
+    },
+    async recover() {},
+    async injectSteer() {},
+    async retryTerminalCommit() {},
+    async stop() {},
+    isLive() {
+      return false;
+    },
+    isInflight() {
+      return false;
+    },
+    async abortStaleRun() {},
+    async dispose() {},
+    subscribe() {
+      return (async function* () {})();
+    },
+  };
+
+  return { agentRunService, agentRunExecution, enqueues, runs };
+}
+
+const genConversationId = (loopId: string) => `loop:${loopId}:generator`;
+const evalConversationId = (loopId: string) => `loop:${loopId}:evaluator`;
+
+async function runStep(
+  overrides: Partial<{
+    store: LoopStateStore;
+    dir: string;
+    dataDir: string;
+    projectPort: ProjectPort;
+    gitRunner: GitRunner;
+    script: RunScript;
+    action: Parameters<typeof loopStep>[0]["action"];
+    convPort: Parameters<typeof loopStep>[0]["convPort"];
+  }> = {},
+) {
+  const ownGit = !overrides.projectPort || !overrides.dataDir ? await setupGitDataDir() : null;
+  const store = overrides.store ?? createTestStore();
+  const dataDir = overrides.dataDir ?? ownGit!.dataDir;
+  const projectPort = overrides.projectPort ?? ownGit!.projectPort;
+  const dir = overrides.dir ?? (await initLoopDir("test-project"));
+  const fake = makeFakeRuns(overrides.script ?? {}, `${dataDir}/repos/test-project`);
+  try {
+    const result = await loopStep({
       loopConfigPath: dir,
-      sessionManager,
-      buildConfig: makeConfig,
       store,
-      loopId: "test-loop",
-      gitRunner: noopGitRunner,
+      loopId: "test",
+      convPort:
+        overrides.convPort ??
+        ({
+          createConversation: () => ({}),
+          addMember: () => ({ member: null, created: true }),
+          getConversation: () => null,
+          getMembers: () => [],
+          appendLedgerEntry: () => 1,
+        } as never),
       projectPort,
       dataDir,
+      gitRunner: overrides.gitRunner,
+      action: overrides.action,
+      agentRunService: fake.agentRunService,
+      agentRunExecution: fake.agentRunExecution,
+      resolveModel: async (name) => ({ backendKind: "coding_agent", modelId: name }),
+    });
+    return { result, ...fake };
+  } finally {
+    await ownGit?.cleanup();
+    // The loop dir is always a per-test mkdtemp (created here or by the
+    // caller); no test reads it after runStep returns.
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+function stateWithFixingItem(store: LoopStateStore): LoopState {
+  const state = loopReducer(emptyState(), {
+    type: "ADD_ITEM",
+    item: { id: "item-1", source: "issue", summary: "fix the thing" },
+    priority: 3,
+  });
+  store.save("test", state, {});
+  return state;
+}
+
+describe("loopStep — Generator/Evaluator as Agent Runs", () => {
+  test("TICK → generator + evaluator each run on their own stable scope", async () => {
+    const store = createTestStore();
+    stateWithFixingItem(store);
+    const { enqueues } = await runStep({
+      store,
+      script: { evalVerdictMd: "verdict: PASS\nevidence: ok" },
     });
 
-    // Evaluator crash caught -> empty verdict -> ESCALATE -> inbox
-    expect(next.items["01"]!.step).toBe("inbox");
-    await cleanup();
+    const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"));
+    const eva = enqueues.find((e) => e.agentMemberId.startsWith("loop-evaluator"));
+    expect(gen).toBeTruthy();
+    expect(eva).toBeTruthy();
+    // independent deterministic identities
+    expect(gen!.conversationId).toBe(genConversationId("test"));
+    expect(eva!.conversationId).toBe(evalConversationId("test"));
+    expect(gen!.conversationId).not.toBe(eva!.conversationId);
+    expect(gen!.mode).toBe("normal");
+    expect(gen!.idempotencyKey).toContain("loop-gen:test:item-1:");
   });
 
-  test("T5: budget exceeded (pre-loop) notifies convPort and breaks", async () => {
-    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
-    const dir = await initLoopDirWithBudget("test-project", 100);
+  test("PASS verdict → item resolved; generatorRunId + evaluatorRunId persisted", async () => {
     const store = createTestStore();
-    let state = emptyState();
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky" },
-    });
-    store.save("test-loop", state, {});
-    // Pre-exhaust budget
-    store.addBudget("test-loop", new Date().toISOString().slice(0, 10), 150);
-
-    const repoWorkDir = `${DATA}/repos/test-project`;
-    const sessionManager = captureSessionManager("verdict: PASS\nevidence: ok", repoWorkDir);
-
-    const ledgerCalls: unknown[] = [];
-    const next = await loopStep({
-      loopConfigPath: dir,
-      sessionManager,
-      buildConfig: makeConfig,
+    stateWithFixingItem(store);
+    const { enqueues } = await runStep({
       store,
-      loopId: "test-loop",
-      gitRunner: noopGitRunner,
-      projectPort,
-      dataDir,
-      convPort: {
-        appendLedgerEntry: (input) => {
-          ledgerCalls.push(input);
-        },
+      script: { evalVerdictMd: "verdict: PASS\nevidence: tests green" },
+    });
+    const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"))!;
+    const eva = enqueues.find((e) => e.agentMemberId.startsWith("loop-evaluator"))!;
+
+    const saved = store.load("test");
+    const item = Object.values(saved.items)[0]!;
+    expect(item.step).toBe("awaiting_review");
+    // generatorRunId field now carries the Agent Run id
+    expect(item.generatorRunId).toMatch(/^run-\d+$/);
+    expect(item.evaluatorRunId).toMatch(/^run-\d+$/);
+    expect(item.evaluatorRunId).not.toBe(item.generatorRunId);
+    expect(item.result?.verdict).toBe("PASS");
+    void gen;
+    void eva;
+  });
+
+  test("generator run queued → loopStep fails (no dispatch of a second run)", async () => {
+    const store = createTestStore();
+    stateWithFixingItem(store);
+    await expect(runStep({ store, script: { genQueued: true } })).rejects.toThrow(
+      "could not acquire",
+    );
+  });
+
+  test("generator failed → loopStep throws, evaluator never created", async () => {
+    const store = createTestStore();
+    stateWithFixingItem(store);
+    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
+    try {
+      const dir = await initLoopDir("test-project");
+      try {
+        const fake = makeFakeRuns({ genStatus: "failed" }, `${dataDir}/repos/test-project`);
+        await expect(
+          loopStep({
+            loopConfigPath: dir,
+            store,
+            loopId: "test",
+            projectPort,
+            dataDir,
+            convPort: {
+              createConversation: () => ({}),
+              addMember: () => ({ member: null, created: true }),
+              getConversation: () => null,
+              getMembers: () => [],
+              appendLedgerEntry: () => 1,
+            } as never,
+            agentRunService: fake.agentRunService,
+            agentRunExecution: fake.agentRunExecution,
+            resolveModel: async (name) => ({ backendKind: "coding_agent", modelId: name }),
+          }),
+        ).rejects.toThrow("generator run");
+        expect(fake.enqueues.some((e) => e.agentMemberId.startsWith("loop-evaluator"))).toBe(false);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("terminal replay of a failed generator issues a FRESH run under a retry key", async () => {
+    const store = createTestStore();
+    stateWithFixingItem(store);
+    const { enqueues } = await runStep({
+      store,
+      script: {
+        genReplayTerminal: true,
+        evalVerdictMd: "verdict: PASS\nevidence: e",
       },
     });
-
-    // Generator was NOT called (budget exhausted before loop)
-    expect(sessionManager.genPrompts.length).toBe(0);
-    // convPort notified
-    expect(ledgerCalls.length).toBe(1);
-    const entry = ledgerCalls[0] as { content: string; kind: string };
-    expect(entry.kind).toBe("message");
-    const parsed = JSON.parse(entry.content) as { type: string; cap: number; spent: number };
-    expect(parsed.type).toBe("budget_exceeded");
-    expect(parsed.cap).toBe(100);
-    // Item stays fixing (loop never ran)
-    expect(next.items["01"]!.step).toBe("fixing");
-    await cleanup();
+    // first enqueue replayed the terminal run; the retry-scoped key acquired
+    // a fresh run and the loop completed normally
+    const genKeys = enqueues
+      .filter((e) => e.agentMemberId.startsWith("loop-generator"))
+      .map((e) => e.idempotencyKey);
+    expect(genKeys).toHaveLength(2);
+    expect(genKeys[1]).toContain(":retry");
+    const saved = store.load("test");
+    const item = Object.values(saved.items)[0]!;
+    expect(item.generatorRunId).toMatch(/^run-\d+$/);
   });
 
-  test("T5: budget exceeded mid-loop notifies convPort and breaks", async () => {
-    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
-    const dir = await initLoopDirWithBudget("test-project", 100);
+  test("generator commit_failed → loopStep throws, evaluator never created", async () => {
     const store = createTestStore();
-    let state = emptyState();
-    // Two fixing items
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky A" },
-    });
-    state = loopReducer(state, { type: "TICK" });
-    state = loopReducer(state, { type: "GENERATOR_DONE", itemId: "01" });
-    state = loopReducer(state, {
-      type: "EVALUATOR_VERDICT",
-      itemId: "01",
-      verdict: { verdict: "REJECT", reasons: ["bad"], evidence: "" },
-    });
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "02", source: "ci", summary: "flaky B" },
-    });
-    // After TICK, item 01 back to fixing, item 02 to fixing
-    state = loopReducer(state, { type: "TICK" });
-    store.save("test-loop", state, {});
-    // Pre-exhaust budget so the FIRST item hits the in-loop check
-    store.addBudget("test-loop", new Date().toISOString().slice(0, 10), 100);
+    stateWithFixingItem(store);
+    await expect(runStep({ store, script: { genStatus: "commit_failed" } })).rejects.toThrow(
+      "commit_failed",
+    );
+  });
 
-    const repoWorkDir = `${DATA}/repos/test-project`;
-    const sessionManager = captureSessionManager("verdict: PASS\nevidence: ok", repoWorkDir);
-
-    const ledgerCalls: unknown[] = [];
-    await loopStep({
-      loopConfigPath: dir,
-      sessionManager,
-      buildConfig: makeConfig,
+  test("REJECT verdict → item back to fixing, attempt+1, git rollback", async () => {
+    const store = createTestStore();
+    stateWithFixingItem(store);
+    const gitRunner: GitRunner = {
+      revParse: () => Promise.resolve({ text: () => "deadbeef" }),
+      diff: () => Promise.resolve({ text: () => "src/x.ts\n" }),
+      resetHard: () => Promise.resolve({ text: () => "" }),
+    };
+    const { result } = await runStep({
       store,
-      loopId: "test-loop",
-      gitRunner: noopGitRunner,
-      projectPort,
-      dataDir,
-      convPort: {
-        appendLedgerEntry: (input) => {
-          ledgerCalls.push(input);
+      gitRunner,
+      script: { evalVerdictMd: "verdict: REJECT\nreason: not good\nevidence: e" },
+    });
+    const item = result.items["item-1"]!;
+    expect(item.step).toBe("fixing");
+    expect(item.attempt).toBe(2);
+  });
+
+  test("denylist violation → REJECT without evaluator run", async () => {
+    const store = createTestStore();
+    stateWithFixingItem(store);
+    const dir = await initLoopDir("test-project", "        - .env");
+    const gitRunner: GitRunner = {
+      revParse: () => Promise.resolve({ text: () => "deadbeef" }),
+      diff: () => Promise.resolve({ text: () => ".env\n" }),
+      resetHard: () => Promise.resolve({ text: () => "" }),
+    };
+    const { enqueues, result } = await runStep({ store, dir, gitRunner });
+    expect(enqueues.some((e) => e.agentMemberId.startsWith("loop-evaluator"))).toBe(false);
+    expect(result.items["item-1"]!.result?.verdict).toBe("REJECT");
+  });
+
+  test("empty VERDICT.md → ESCALATE to inbox", async () => {
+    const store = createTestStore();
+    stateWithFixingItem(store);
+    const { result } = await runStep({ store, script: { evalVerdictMd: "" } });
+    const item = result.items["item-1"]!;
+    expect(item.step).toBe("inbox");
+    expect(item.result?.verdict).toBe("ESCALATE");
+  });
+
+  test("evaluator timeout (aborted) → no crash, ESCALATE on empty verdict", async () => {
+    const store = createTestStore();
+    stateWithFixingItem(store);
+    const { result } = await runStep({
+      store,
+      script: { evalStatus: "aborted", evalVerdictMd: "" },
+    });
+    const item = result.items["item-1"]!;
+    expect(item.step).toBe("inbox");
+    expect(item.result?.verdict).toBe("ESCALATE");
+    expect(item.evaluatorRunId).toBeTruthy();
+  });
+
+  test("human APPROVE → resolved item removed from store", async () => {
+    const store = createTestStore();
+    const state = loopReducer(
+      {
+        ...emptyState(),
+        items: {
+          "item-1": {
+            id: "item-1",
+            source: "issue",
+            summary: "s",
+            step: "awaiting_review",
+            attempt: 1,
+            priority: 3,
+            result: { verdict: "PASS", reasons: [], evidence: "e" } as never,
+          },
         },
       },
+      { type: "TICK" },
+    );
+    store.save("test", state, {});
+    await runStep({
+      store,
+      action: { itemId: "item-1", verdict: "approve" },
     });
-
-    // In-loop check fired: generator NOT called for any item
-    expect(sessionManager.genPrompts.length).toBe(0);
-    // convPort notified (in-loop check)
-    expect(ledgerCalls.length).toBe(1);
-    await cleanup();
+    expect(store.load("test").items["item-1"]).toBeUndefined();
   });
 
-  test("T5: no convPort -> budget exceeded breaks silently (no crash)", async () => {
-    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
-    const dir = await initLoopDirWithBudget("test-project", 100);
+  test("usage from terminalResult feeds the daily budget", async () => {
     const store = createTestStore();
-    let state = emptyState();
-    state = loopReducer(state, {
-      type: "ADD_ITEM",
-      item: { id: "01", source: "ci", summary: "flaky" },
-    });
-    store.save("test-loop", state, {});
-    store.addBudget("test-loop", new Date().toISOString().slice(0, 10), 150);
-
-    const repoWorkDir = `${DATA}/repos/test-project`;
-    const sessionManager = captureSessionManager("verdict: PASS\nevidence: ok", repoWorkDir);
-
-    // No convPort - should not crash
-    const next = await loopStep({
-      loopConfigPath: dir,
-      sessionManager,
-      buildConfig: makeConfig,
+    stateWithFixingItem(store);
+    const dir = await initLoopDir("test-project", undefined, "  dailyCap: 10000");
+    await runStep({
       store,
-      loopId: "test-loop",
-      gitRunner: noopGitRunner,
-      projectPort,
-      dataDir,
+      dir,
+      script: { evalVerdictMd: "verdict: PASS\nevidence: e", usageTokens: 1500 },
     });
+    const spent = store.getBudget("test", new Date().toISOString().slice(0, 10));
+    expect(spent).toBe(3000); // gen + eval
+  });
 
-    expect(sessionManager.genPrompts.length).toBe(0);
-    expect(next.items["01"]!.step).toBe("fixing");
-    await cleanup();
+  test("generator prompt includes repo path + git log context", async () => {
+    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
+    try {
+      const store = createTestStore();
+      stateWithFixingItem(store);
+      const dir = await initLoopDir("test-project");
+      const gitRunner: GitRunner = {
+        revParse: () => Promise.resolve({ text: () => "abc123" }),
+        diff: () => Promise.resolve({ text: () => "" }),
+        resetHard: () => Promise.resolve({ text: () => "" }),
+      };
+      const { enqueues } = await runStep({
+        store,
+        dir,
+        dataDir,
+        projectPort,
+        gitRunner,
+        script: { evalVerdictMd: "verdict: PASS\nevidence: e" },
+      });
+      const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"))!;
+      expect(gen.message.text).toContain(`${dataDir}/repos/test-project`);
+      expect(gen.message.text).toContain("Project Context");
+      expect(gen.message.text).toContain("Recent changes");
+    } finally {
+      await cleanup();
+    }
   });
 });

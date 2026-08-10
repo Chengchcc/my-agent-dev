@@ -70,8 +70,6 @@ function makeSvc(overrides?: {
     workspaceRoot: "/tmp/ws",
     materializeWorkspace: async (id) => `/tmp/ws/${id}`,
     purgeWorkspace: overrides?.purgeWorkspace ?? (async () => {}),
-    purgeEventsForSessions: async () => {},
-    listSessionIds: async () => [],
     assertNoActiveRun: overrides?.assertNoActiveRun ?? (() => {}),
   });
   return { svc, port };
@@ -151,8 +149,6 @@ describe("AgentService", () => {
       purgeWorkspace: async (id) => {
         purgeLog.push(id);
       },
-      purgeEventsForSessions: async () => {},
-      listSessionIds: async () => [],
       assertNoActiveRun: () => {},
     });
 
@@ -172,8 +168,6 @@ describe("AgentService", () => {
       workspaceRoot: "/tmp/ws",
       materializeWorkspace: async () => "/tmp/ws/agent-busy",
       purgeWorkspace: async () => {},
-      purgeEventsForSessions: async () => {},
-      listSessionIds: async () => [],
       assertNoActiveRun: () => {
         throw new AgentBusyError("agent-busy");
       },
@@ -190,8 +184,6 @@ describe("AgentService", () => {
       workspaceRoot: "/tmp/ws",
       materializeWorkspace: async () => "/tmp/ws/agent-free",
       purgeWorkspace: async () => {},
-      purgeEventsForSessions: async () => {},
-      listSessionIds: async () => [],
       assertNoActiveRun: () => {},
     });
 

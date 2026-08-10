@@ -20,10 +20,7 @@ describe("parseEnv", () => {
         BACKEND_WORKSPACE_ROOT: "/ws",
         BACKEND_TEMPLATE_DIR: "/tpl",
         BACKEND_MAX_CONCURRENT: "16",
-        BACKEND_SHUTDOWN_TIMEOUT_MS: "10000",
         BACKEND_CANCEL_GRACE_MS: "3000",
-        BACKEND_REAPER_INTERVAL_MS: "60000",
-        BACKEND_STEP_STALL_TIMEOUT_MS: "120000",
         ANTHROPIC_API_KEY: "sk-ant-xxx",
         ANTHROPIC_AUTH_TOKEN: "auth-tok",
         ANTHROPIC_BASE_URL: "https://proxy.example.com",
@@ -42,7 +39,6 @@ describe("parseEnv", () => {
       expect(env.BACKEND_HOST).toBe("0.0.0.0");
       expect(env.BACKEND_DATA_DIR).toBe("/data");
       expect(env.BACKEND_MAX_CONCURRENT).toBe(16);
-      expect(env.BACKEND_SHUTDOWN_TIMEOUT_MS).toBe(10000);
       expect(env.ANTHROPIC_API_KEY).toBe("sk-ant-xxx");
       expect(env.NODE_ENV).toBe("production");
       expect(env.RUNNER_ENV).toBe("prod");
@@ -57,10 +53,7 @@ describe("parseEnv", () => {
       expect(env.BACKEND_PORT).toBe(3000);
       expect(env.BACKEND_HOST).toBe("127.0.0.1");
       expect(env.BACKEND_MAX_CONCURRENT).toBe(8);
-      expect(env.BACKEND_SHUTDOWN_TIMEOUT_MS).toBe(30_000);
       expect(env.BACKEND_CANCEL_GRACE_MS).toBe(5_000);
-      expect(env.BACKEND_REAPER_INTERVAL_MS).toBe(30_000);
-      expect(env.BACKEND_STEP_STALL_TIMEOUT_MS).toBe(300_000);
     });
 
     it("returns undefined for missing .optional() fields", () => {
@@ -114,12 +107,6 @@ describe("parseEnv", () => {
       const env = parseEnv({ ...baseEnv(), BACKEND_MAX_CONCURRENT: "32" });
       expect(env.BACKEND_MAX_CONCURRENT).toBe(32);
       expect(typeof env.BACKEND_MAX_CONCURRENT).toBe("number");
-    });
-
-    it("coerces string BACKEND_SHUTDOWN_TIMEOUT_MS to number", () => {
-      const env = parseEnv({ ...baseEnv(), BACKEND_SHUTDOWN_TIMEOUT_MS: "5000" });
-      expect(env.BACKEND_SHUTDOWN_TIMEOUT_MS).toBe(5000);
-      expect(typeof env.BACKEND_SHUTDOWN_TIMEOUT_MS).toBe("number");
     });
 
     it("rejects non-numeric port", () => {

@@ -1,4 +1,5 @@
 import type { Tool } from "@my-agent-team/core";
+import { WorkspaceSandbox } from "./workspace-sandbox.js";
 
 const descriptionParam = {
   type: "string" as const,
@@ -6,73 +7,92 @@ const descriptionParam = {
     "Must be the first parameter. A short human-readable summary explaining why this command is being run.",
 };
 
-export const bashTool: Tool = {
-  name: "bash",
-  description:
-    "Execute a bash shell command. Returns exit code, stdout, and stderr. Default timeout 30s, max 600s.",
-  inputSchema: {
-    type: "object",
-    properties: {
-      description: descriptionParam,
-      command: {
-        type: "string",
-        description: "The shell command to execute",
+export function createBashTool(opts: { workspaceRoot: string }): Tool {
+  const sandbox = new WorkspaceSandbox(opts.workspaceRoot);
+
+  return {
+    name: "bash",
+    description:
+      "Execute a bash shell command. Returns exit code, stdout, and stderr. Default timeout 30s, max 600s.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        description: descriptionParam,
+        command: {
+          type: "string",
+          description: "The shell command to execute",
+        },
+        timeout: {
+          type: "number",
+          description: "Timeout in milliseconds (default 30000, max 600000)",
+        },
+        cwd: {
+          type: "string",
+          description: "Working directory (relative to workspace root)",
+        },
       },
-      timeout: {
-        type: "number",
-        description: "Timeout in milliseconds (default 30000, max 600000)",
-      },
-      cwd: {
-        type: "string",
-        description: "Working directory for the command (optional)",
-      },
+      required: ["description", "command"],
     },
-    required: ["command"],
-  },
-  async execute(input) {
-    const {
-      command,
-      timeout = 30_000,
-      cwd,
-    } = input as {
-      command: string;
-      timeout?: number;
-      cwd?: string;
-    };
-    const clamped = Math.min(Math.max(timeout, 1), 600_000);
+    async execute(input, signal?: AbortSignal) {
+      const {
+        command,
+        timeout = 30_000,
+        cwd,
+      } = input as {
+        command: string;
+        timeout?: number;
+        cwd?: string;
+      };
 
-    // setsid → new session + process group, so timeout can kill all descendants
-    const proc = Bun.spawn(["setsid", "bash", "-c", command], {
-      stdout: "pipe",
-      stderr: "pipe",
-      cwd,
-    });
+      // Validate cwd against the fixed workspace sandbox. Out-of-bounds cwd
+      // is a tool error, never a silent fallback to process cwd.
+      let validatedCwd = opts.workspaceRoot;
+      if (cwd) {
+        try {
+          validatedCwd = sandbox.validateCwd(cwd);
+        } catch {
+          return {
+            content: `Error: cwd escapes workspace root: ${String(cwd)}`,
+            isError: true,
+          };
+        }
+      }
 
-    const timer = setTimeout(() => {
-      proc.kill();
-      // Kill the entire process group to catch orphaned children
+      const clamped = Math.min(Math.max(timeout, 1), 600_000);
+      const hasSetsid = Bun.which("setsid") !== null;
+      const proc = Bun.spawn(
+        hasSetsid ? ["setsid", "bash", "-c", command] : ["bash", "-c", command],
+        { stdout: "pipe", stderr: "pipe", cwd: validatedCwd },
+      );
+
+      // Kill the process group on timeout OR abort signal.
+      const killGroup = () => {
+        proc.kill();
+        try {
+          process.kill(-proc.pid!, "SIGKILL");
+        } catch {
+          /* */
+        }
+      };
+      const timer = setTimeout(killGroup, clamped);
+      const onAbort = () => killGroup();
+      if (signal?.aborted) killGroup();
+      signal?.addEventListener("abort", onAbort, { once: true });
+
       try {
-        process.kill(-proc.pid, "SIGTERM");
-      } catch {
-        /* already dead */
+        const [stdout, stderr] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+        ]);
+        const exitCode = await proc.exited;
+        return {
+          content: `${stdout}\n[exit: ${exitCode}]${stderr ? `\n${stderr}` : ""}`,
+          isError: exitCode !== 0,
+        };
+      } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
       }
-    }, clamped);
-
-    try {
-      const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(proc.stdout as ReadableStream<Uint8Array>).text(),
-        new Response(proc.stderr as ReadableStream<Uint8Array>).text(),
-        proc.exited,
-      ]);
-
-      const code = exitCode === null ? "killed" : exitCode;
-      const body = `exit=${code}\n--- stdout ---\n${stdout}\n--- stderr ---\n${stderr}\n`;
-      if (exitCode === 0) {
-        return { content: body };
-      }
-      return { content: body, isError: true };
-    } finally {
-      clearTimeout(timer);
-    }
-  },
-};
+    },
+  };
+}

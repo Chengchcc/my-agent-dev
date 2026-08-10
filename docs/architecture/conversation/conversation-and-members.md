@@ -8,7 +8,7 @@ summary: "对话是共享协作空间，成员是人/Agent/系统在这个空间
 depends_on:
 used_by:
   - flows.e2e-lark-message
-  - backend.conversation-projection
+  - runs.output-and-live-updates
 ---
 
 # 对话与成员
@@ -53,7 +53,7 @@ used_by:
 
 ## 关联页面
 
-- [对话账本](./ledger.md)
-- [会话投影](../backend/conversation-projection.md)
+- [对话账本](./history.md)
+- [会话投影](../runs/output-and-live-updates.md)
 - [飞书消息端到端](../flows/e2e-lark-message.md)
 - [排障手册](../operations/troubleshooting.md)

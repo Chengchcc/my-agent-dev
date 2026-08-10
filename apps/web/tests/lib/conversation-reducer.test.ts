@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { initialState, isBusy, reducer, type SenderRef } from "@/lib/conversation-reducer";
+import {
+  initialState,
+  isBusy,
+  isTurnStart,
+  reducer,
+  type SenderRef,
+} from "@/lib/conversation-reducer";
 
 function bootstrap(overrides: { viewerMemberId?: string; members?: SenderRef[] } = {}) {
   const a: SenderRef = { memberId: "agent-1", kind: "agent", displayName: "Bot" };
@@ -28,7 +34,6 @@ describe("initialState", () => {
     const s = initialState();
     expect(s.items).toEqual([]);
     expect(s.streamConn).toBe("connecting");
-    expect(s.todos).toEqual([]);
     expect(s.optimisticSeq).toBe(0);
   });
 });
@@ -97,18 +102,13 @@ describe("message", () => {
 });
 
 describe("isBusy", () => {
-  test("busy when open streaming message exists", () => {
+  test("busy while a send is in flight", () => {
     let s = bootstrap();
-    s = reducer(s, {
-      type: "message",
-      seq: 1,
-      senderMemberId: "agent-1",
-      content: rev({ state: "streaming" }),
-    });
+    s = reducer(s, { type: "send", text: "hi", viewer: { memberId: "h", kind: "human" } });
     expect(isBusy(s)).toBe(true);
   });
 
-  test("not busy when all agent messages are done", () => {
+  test("not busy when idle (canonical done messages only)", () => {
     let s = bootstrap();
     s = reducer(s, {
       type: "message",
@@ -117,17 +117,6 @@ describe("isBusy", () => {
       content: rev({ state: "done" }),
     });
     expect(isBusy(s)).toBe(false);
-  });
-
-  test("busy when waiting on approval", () => {
-    let s = bootstrap();
-    s = reducer(s, {
-      type: "message",
-      seq: 1,
-      senderMemberId: "agent-1",
-      content: rev({ state: "waiting" }),
-    });
-    expect(isBusy(s)).toBe(true);
   });
 });
 
@@ -149,19 +138,9 @@ describe("toggleTriggerMode", () => {
 });
 
 describe("todo/update", () => {
-  test("sets todos", () => {
-    let s = bootstrap();
-    const todos = [{ step: "step1", status: "done" as const }];
-    s = reducer(s, { type: "todo/update", todos });
-    expect(s.todos).toEqual(todos);
-  });
-
-  test("clears previous todos", () => {
-    let s = bootstrap();
-    s = reducer(s, { type: "todo/update", todos: [{ step: "old", status: "done" }] });
-    s = reducer(s, { type: "todo/update", todos: [] });
-    expect(s.todos).toEqual([]);
-  });
+  // todo/update was removed with the Conversation-ledger todo path; todos
+  // are Run-local transients delivered over the Run SSE (see transient
+  // reducer tests).
 });
 
 describe("member", () => {
@@ -176,7 +155,7 @@ describe("member", () => {
     expect(s.roster["human-2"]?.displayName).toBe("User2");
     expect(s.items).toHaveLength(1);
     expect(s.items[0]!.kind).toBe("notice");
-    if (s.items[0]!.kind === "notice") expect(s.items[0]!.text).toInclude("加入");
+    if (s.items[0]!.kind === "notice") expect(s.items[0]!.text).toInclude("joined");
   });
 });
 
@@ -197,5 +176,48 @@ describe("groupTurns", () => {
       content: rev({ messageId: "m2", text: "msg2", state: "done" }),
     });
     expect(s.items).toHaveLength(2);
+  });
+});
+
+describe("isTurnStart", () => {
+  const human = {
+    kind: "single" as const,
+    item: {
+      id: "h1",
+      sender: { kind: "human" as const, memberId: "u" },
+      seq: 1,
+      content: { text: "hi", blocks: [] },
+      addressedTo: [],
+    },
+  };
+  const agent = {
+    kind: "single" as const,
+    item: {
+      id: "a1",
+      sender: { kind: "agent" as const, memberId: "ag" },
+      seq: 2,
+      content: { text: "yo", blocks: [] },
+      addressedTo: [],
+    },
+  };
+  const notice = { kind: "notice" as const, id: "n1", text: "joined" };
+
+  test("member-joined notices never start turns (1 anchor in human-led chat)", () => {
+    // notices + user + assistant → only the user message starts a turn
+    const segments = [notice, notice, human, agent];
+    expect(isTurnStart(segments, 0)).toBe(false);
+    expect(isTurnStart(segments, 1)).toBe(false);
+    expect(isTurnStart(segments, 2)).toBe(true);
+    expect(isTurnStart(segments, 3)).toBe(false);
+  });
+
+  test("pure agent conversations still use sender-change fallback", () => {
+    const a2 = {
+      ...agent,
+      item: { ...agent.item, id: "a2", sender: { ...agent.item.sender, memberId: "ag2" } },
+    };
+    const segments = [agent, a2];
+    expect(isTurnStart(segments, 0)).toBe(true);
+    expect(isTurnStart(segments, 1)).toBe(true);
   });
 });

@@ -1,8 +1,11 @@
 "use client";
 
 import type { UseQueryResult } from "@tanstack/react-query";
+import type { LucideIcon } from "lucide-react";
+import { Inbox } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { classifyError } from "@/lib/api";
 
 interface QueryStateProps<T> {
@@ -14,6 +17,10 @@ interface QueryStateProps<T> {
   };
   empty?: (data: T) => boolean;
   emptyMessage?: string;
+  /** Structured empty state (preferred over the bare emptyMessage). */
+  emptyTitle?: string;
+  emptyDescription?: string;
+  emptyIcon?: LucideIcon;
   children: (data: T) => ReactNode;
 }
 
@@ -27,7 +34,15 @@ function Skeleton() {
   );
 }
 
-export function QueryState<T>({ query, empty, emptyMessage, children }: QueryStateProps<T>) {
+export function QueryState<T>({
+  query,
+  empty,
+  emptyMessage,
+  emptyTitle,
+  emptyDescription,
+  emptyIcon,
+  children,
+}: QueryStateProps<T>) {
   if (query.isLoading) {
     return (
       <div className="p-6">
@@ -72,6 +87,11 @@ export function QueryState<T>({ query, empty, emptyMessage, children }: QuerySta
   }
 
   if (query.data !== undefined && empty?.(query.data)) {
+    if (emptyTitle) {
+      return (
+        <EmptyState icon={emptyIcon ?? Inbox} title={emptyTitle} description={emptyDescription} />
+      );
+    }
     return (
       <div className="p-6">
         <p className="text-muted-foreground text-sm">{emptyMessage ?? "No data available."}</p>

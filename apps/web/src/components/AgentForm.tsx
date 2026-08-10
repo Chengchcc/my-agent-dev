@@ -35,6 +35,7 @@ import {
   useSkillPackList,
 } from "@/features/skill-packs/hooks";
 import { type AgentRow, api, type LarkSetupSession } from "@/lib/api";
+import { fieldClass, overlineClass } from "@/lib/form-styles";
 
 const formSchema = z.object({
   name: z.string().trim().min(1, "Agent name is required"),
@@ -74,6 +75,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
         id: `${p.id}/${m.id}`,
         name: `${p.name} / ${m.name ?? m.id}`,
         provider: p.id,
+        available: m.available !== false,
       })),
     );
   }, [providers]);
@@ -86,7 +88,9 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: editAgent?.name ?? "",
-      model: editAgent?.modelName ?? "anthropic/claude-sonnet-4-6",
+      // Empty until the catalog loads (see effect below): never hard-code a
+      // provider model that may not exist in the runtime catalog.
+      model: editAgent?.modelName ?? "",
       baseURL: editAgent?.modelBaseUrl ?? "",
       permissionMode: editAgent?.permissionMode ?? "ask",
       maxSteps: editAgent?.maxSteps?.toString() ?? "",
@@ -114,6 +118,16 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
       setSetupSession(null);
     }
   }, [editAgent, form]);
+
+  // New agents: default the model to the first catalog entry once loaded.
+  // Keeps the current value if it is already a valid catalog id.
+  useEffect(() => {
+    if (isEdit || modelGroups.length === 0) return;
+    const current = form.getValues("model");
+    if (current && modelGroups.some((m) => m.id === current)) return;
+    const first = modelGroups.find((m) => m.available);
+    if (first) form.setValue("model", first.id, { shouldValidate: true });
+  }, [isEdit, modelGroups, form]);
 
   // Poll setup session when pending
   useEffect(() => {
@@ -224,10 +238,6 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
   // non-reactive getValues("name") read leaves the button stuck disabled.
   const nameValue = useWatch({ control: form.control, name: "name" });
 
-  const fieldClass =
-    "w-full bg-[var(--canvas-soft)] border border-[var(--hairline)] rounded-md px-3 py-2.5 text-sm text-[var(--ink)] placeholder:text-[var(--mute)] focus:outline-none focus:border-[var(--primary)] transition-colors duration-200";
-  const labelClass =
-    "text-[10px] tracking-[2.52px] uppercase text-[var(--mute)] block mb-1.5 font-[family-name:var(--font-sans)] font-semibold";
   const hintClass = "text-[10px] text-[var(--mute)] mt-1";
 
   return (
@@ -272,7 +282,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                   name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className={labelClass}>Name *</FormLabel>
+                      <FormLabel className={`${overlineClass} mb-1.5 block`}>Name *</FormLabel>
                       <FormControl>
                         <Input {...field} placeholder="e.g. Archivist" className={fieldClass} />
                       </FormControl>
@@ -287,14 +297,21 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                     name="model"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={labelClass}>Provider</FormLabel>
+                        <FormLabel className={`${overlineClass} mb-1.5 block`}>Provider</FormLabel>
                         <Select
                           value={field.value.split("/")[0] ?? ""}
                           onValueChange={(v) => {
                             const vv = v ?? "";
                             setSelProvider(vv);
-                            const modelId = field.value.split("/").slice(1).join("/");
-                            field.onChange(`${vv}/${modelId}`);
+                            // Never carry a model across providers: pick the
+                            // first available model of the new provider.
+                            const current = field.value;
+                            const stillValid = modelGroups.some(
+                              (m) => m.id === current && m.provider === vv && m.available,
+                            );
+                            if (stillValid) return;
+                            const first = modelGroups.find((m) => m.provider === vv && m.available);
+                            field.onChange(first?.id ?? "");
                           }}
                         >
                           <SelectTrigger className={fieldClass}>
@@ -317,7 +334,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                     name="model"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={labelClass}>Model *</FormLabel>
+                        <FormLabel className={`${overlineClass} mb-1.5 block`}>Model *</FormLabel>
                         <FormControl>
                           <Select
                             value={field.value}
@@ -328,8 +345,9 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                             </SelectTrigger>
                             <SelectContent>
                               {filteredModels.map((m) => (
-                                <SelectItem key={m.id} value={m.id}>
+                                <SelectItem key={m.id} value={m.id} disabled={!m.available}>
                                   {m.name}
+                                  {!m.available ? " — unavailable" : ""}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -346,7 +364,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                   name="baseURL"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className={labelClass}>Base URL</FormLabel>
+                      <FormLabel className={`${overlineClass} mb-1.5 block`}>Base URL</FormLabel>
                       <FormControl>
                         <Input
                           {...field}
@@ -365,7 +383,9 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                     name="permissionMode"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={labelClass}>Permission Mode</FormLabel>
+                        <FormLabel className={`${overlineClass} mb-1.5 block`}>
+                          Permission Mode
+                        </FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger className={fieldClass}>
@@ -387,7 +407,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                     name="maxSteps"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={labelClass}>Max Steps</FormLabel>
+                        <FormLabel className={`${overlineClass} mb-1.5 block`}>Max Steps</FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -415,7 +435,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                             checked={field.value}
                             onCheckedChange={(checked) => field.onChange(checked)}
                           />
-                          <span className={`${labelClass} mb-0`}>Enable Lark Bot</span>
+                          <span className={`${overlineClass} mb-0`}>Enable Lark Bot</span>
                           {editAgent?.lark?.status && (
                             <span
                               className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
@@ -444,7 +464,9 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                         name="botDisplayName"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className={labelClass}>Bot Display Name</FormLabel>
+                            <FormLabel className={`${overlineClass} mb-1.5 block`}>
+                              Bot Display Name
+                            </FormLabel>
                             <FormControl>
                               <Input
                                 {...field}

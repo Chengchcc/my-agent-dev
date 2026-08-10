@@ -3,12 +3,12 @@ id: backend.loop-runner
 title: LoopRunner — loopStep() 编排函数
 status: design
 owners: backend-runtime
-last_verified_against_code: 2026-07-01
-summary: "loopStep() 是 Loop 的执行入口——一个无状态函数，每次 cron 触发或人 review 时调用一次。读 STATE.md → 判断当前 step → 起 generator/evaluator AgentSession → 写回 STATE.md。不是连续异步生成器——human gate 依赖 STATE.md 跨进程持久，不依赖内存。"
+last_verified_against_code: 2026-07-28
+summary: "loopStep() 是 Loop 的执行入口--一个无状态函数，每次 cron 触发或人 review 时调用一次。读 STATE.md -> 判断当前 step -> 起 generator/evaluator Agent -> 写回 STATE.md。不是连续异步生成器--human gate 依赖 STATE.md 跨进程持久，不依赖内存。"
 depends_on:
   - foundations.loop
   - foundations.cron-job
-  - harness.harness
+  - agent.agent
 used_by: []
 ---
 
@@ -42,12 +42,12 @@ function loopStep(params: {
    → 返回
 
 3. 如果是 cron TICK:
-   a. 启动 Discovery AgentSession（装 loop-triage skill）→ 产出 findings
+   a. 启动 Discovery Agent（装 loop-triage skill）-> 产出 findings
    b. 每个 finding 经 loopReducer(state, { type: ADD_ITEM, ... }) 写入
    c. loopReducer(state, { type: TICK })  — triaged → fixing
-   d. 对每个 fixing item: 启动 generator AgentSession
-      → generator 完成 → loopReducer(state, { type: GENERATOR_DONE, itemId })
-      → 启动 evaluator AgentSession
+   d. 对每个 fixing item: 启动 generator Agent
+      -> generator 完成 -> loopReducer(state, { type: GENERATOR_DONE, itemId })
+      -> 启动 evaluator Agent
       → evaluator 产出 verdict → loopReducer(state, { type: EVALUATOR_VERDICT, itemId, verdict })
       → PASS → item.step = "awaiting_review"
       → REJECT → loopReducer 处理 retry/inbox
@@ -64,17 +64,17 @@ CronJob fires → `loopStep()` → 推进到 `awaiting_review` → 返回。几�
 
 ## Generator 和 Evaluator 分离
 
-同一个 item 的 generator 和 evaluator 是不同的 AgentSession 实例：
+同一个 item 的 generator 和 evaluator 是不同的 Agent Run（各自 spawn 独立 coding-agent 子进程）：
 
 ```
-generator session:
+generator run:
   model:        config.generator.model
-  sessionId:    "loop:<loopId>:gen:<itemId>:<attempt>"
+  idempotency:  "loop:<loopId>:gen:<itemId>:<attempt>"
   systemPrompt: config.generator.prompt
 
-evaluator session:
+evaluator run:
   model:        config.evaluator.model     ← 必须 ≠ generator.model
-  sessionId:    "loop:<loopId>:eval:<itemId>:<attempt>"
+  idempotency:  "loop:<loopId>:eval:<itemId>:<attempt>"
   systemPrompt: config.evaluator.prompt    ← 默认怀疑立场
 ```
 
@@ -90,7 +90,7 @@ Evaluator 产出结构化 verdict——`loopStep()` 解析 "PASS" 或 "REJECT: r
 ## 不变量
 
 1. `loopStep()` 是无状态函数——状态全在 STATE.md。
-2. Generator 和 Evaluator 是不同 AgentSession，不同 model。
+2. Generator 和 Evaluator 是不同 Agent，不同 model。
 3. Human gate 依赖 STATE.md 的文件持久，不依赖进程内存。
 4. Evaluator 的 verdict 结构化解析后写入 item result 字段。
 
@@ -98,4 +98,4 @@ Evaluator 产出结构化 verdict——`loopStep()` 解析 "PASS" 或 "REJECT: r
 
 - [Loop](../foundations/loop.md) — 本页编排的实体
 - [CronJob](../foundations/cron-job.md) — 调用 loopStep 的调度者
-- [AgentSession](../harness/harness.md) — generator/evaluator 的运行时
+- [Agent Backend](../execution/agent-backend.md) — generator/evaluator 的执行链

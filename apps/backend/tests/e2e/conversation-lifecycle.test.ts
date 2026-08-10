@@ -1,10 +1,13 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { unlinkSync } from "node:fs";
 import { Elysia } from "elysia";
+import {
+  createAgentContextService,
+  sqliteAgentContextAdapter,
+} from "../../src/features/agent-context/index.js";
 import { sqliteConversationAdapter } from "../../src/features/conversation/adapter-sqlite.js";
 import { createGoalStateStore } from "../../src/features/conversation/goal-state.js";
 import { conversationRoutes } from "../../src/features/conversation/http.js";
-import { ConversationLock } from "../../src/features/conversation/lock.js";
 import {
   type ConversationServiceDeps,
   createConversationService,
@@ -14,28 +17,105 @@ import { openDb } from "../../src/infra/sqlite/db.js";
 const dbPath = `/tmp/test-e2e-conv-${Date.now()}.db`;
 const db = openDb(dbPath);
 const port = sqliteConversationAdapter(db);
-const lock = new ConversationLock();
-const activeSessions = new Map<
-  string,
-  Map<string, { steer: (t: string) => void; followUp: (t: string) => void }>
->();
+
+const contextPort = sqliteAgentContextAdapter(db, {
+  ulid: () => `c-${Math.random().toString(36).slice(2, 8)}`,
+});
+const ledgerResolver = {
+  async resolveMessage(conversationId: string, ledgerSeq: number) {
+    const hit = port.getLedgerEntry(conversationId, ledgerSeq);
+    return hit?.kind === "message" ? (hit.content as never) : null;
+  },
+};
+const contextSvc = createAgentContextService({
+  port: contextPort,
+  idGen: { ulid: () => `x-${Math.random().toString(36).slice(2, 8)}` },
+  ledgerResolver,
+});
 
 let idCount = 0;
 const idGen = () => `e2e-${idCount++}`;
 
 // Track agent runs triggered by postMessage
-const runLog: Array<{ spanId: string; agentMemberId: string; input?: string }> = [];
+const runLog: Array<{ agentMemberId: string; runId: string }> = [];
 
 const deps: ConversationServiceDeps = {
   port,
-  lock,
+  contextService: contextSvc,
+  dispatchRun: async () => {},
+  injectSteer: async () => {},
+  isLive: () => false,
+  isInflight: () => false,
+  abortStaleRun: async () => {},
+  resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
   maxConsecutiveAgentHops: () => 8,
-  activeSessions,
-  startAgentRun: async (spanId, ctx) => {
-    runLog.push({ spanId, agentMemberId: ctx.agentMemberId, input: ctx.input });
-    return { spanId, attemptSeq: 0 };
-  },
   idGen,
+  agentRunService: {
+    async enqueueAndAcquire(input: {
+      agentMemberId: string;
+      conversationId: string;
+      idempotencyKey: string;
+    }) {
+      const runId = `run-${runLog.length}`;
+      runLog.push({ agentMemberId: input.agentMemberId, runId });
+      return {
+        acquired: true,
+        queued: false,
+        replayed: false,
+        run: {
+          runId,
+          branchId: "b",
+          conversationId: input.conversationId,
+          agentMemberId: input.agentMemberId,
+          modelRef: { backendKind: "coding_agent", modelId: "m" },
+          status: "running",
+          idempotencyKey: input.idempotencyKey,
+          terminalResult: null,
+          configRevision: 1,
+          productTools: null,
+          createdAt: Date.now(),
+          terminalAt: null,
+        },
+        inputId: `in-${runId}`,
+      };
+    },
+    async claimInputForRun() {
+      return null;
+    },
+    async acquireNextRun() {
+      return null;
+    },
+    async cancelInput() {
+      return;
+    },
+    async cancelRunInput() {
+      return;
+    },
+    async markInputAccepted(inputId: string) {
+      return { inputId } as never;
+    },
+    async createPendingAction(
+      runId: string,
+      action: { kind: string; payload: Readonly<Record<string, unknown>> },
+    ) {
+      return { runId, actionId: "a", ...action } as never;
+    },
+    async consumePendingAction(actionId: string) {
+      return { action: { actionId } as never, runId: "r" };
+    },
+    async finalizeRun(runId: string) {
+      return { runId } as never;
+    },
+    async getRun(_runId: string) {
+      return null;
+    },
+    async getActiveRun(_branchId: string) {
+      return null;
+    },
+    async listInputs(_branchId: string) {
+      return [];
+    },
+  } as never,
 };
 
 const svc = createConversationService(deps);
@@ -116,10 +196,10 @@ describe("E2E Conversation lifecycle", () => {
     expect(msgResult.triggeredRuns.length).toBe(1);
     expect(msgResult.triggeredRuns[0]!.agentMemberId).toBe("agent-1");
 
-    // Verify startAgentRun was called with correct input
+    // Verify the Agent Run was enqueued for the addressed member
     expect(runLog.length).toBe(1);
-    expect(runLog[0]!.input).toBe("Hello agent!");
     expect(runLog[0]!.agentMemberId).toBe("agent-1");
+    expect(runLog[0]!.runId).toBeTruthy();
   });
 
   test("delete conversation", async () => {

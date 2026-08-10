@@ -3,14 +3,13 @@ id: plugins.skill-pack
 title: 技能包管理
 status: current
 owners: architecture
-last_verified_against_code: 2026-07-01
-summary: "技能包（Skill Pack）是一等领域实体——有来源、版本、安装生命周期。安装/同步由 builtin 技能 + 原子工具 + 临时 AgentSession 驱动，LLM 自主处理 git 冲突等 corner case。运行时 progressive-skill 经共享 fs adapter 消费分配好的 packs，builtin 恒在最前。"
+last_verified_against_code: 2026-07-28
+summary: "技能包（Skill Pack）是一等领域实体--有来源、版本、安装生命周期。安装/同步由 builtin 技能 + 原子工具 + 临时 Agent 驱动，LLM 自主处理 git 冲突等 corner case。运行时 progressive-skill 经共享 fs adapter 消费分配好的 packs，builtin 恒在最前。"
 depends_on:
   - plugins.progressive-skill
   - backend.data-model
 used_by:
-  - harness.harness
-  - span.session-factory
+  - backend.overview
 ---
 
 # 技能包管理
@@ -73,21 +72,21 @@ stateDiagram-v2
 安装/同步不走硬编码 TypeScript 流水线，而是：
 
 1. Backend 提供 **6 个原子工具**（`tools.ts`）：`pack_git_clone` / `pack_unzip` / `pack_git_sync` / `pack_validate` / `pack_atomic_rename` / `pack_update_status`
-2. Builtin 技能 `skill-pack-installer`（`skills/skill-pack-installer/SKILL.md`）指导临时 AgentSession 调用这些工具
-3. `install-session.ts` 的 `runInstall` / `runSync` 创建临时 session → 投 prompt → 收尾校验（终态非 ready/failed 则强制标记 failed）
+2. Builtin 技能 `skill-pack-installer`（`skills/skill-pack-installer/SKILL.md`）指导临时 Agent 调用这些工具
+3. `install-session.ts` 的 `runInstall` / `runSync` 创建临时 Agent -> 投 prompt -> 收尾校验（终态非 ready/failed 则强制标记 failed）
 
 ```mermaid
 sequenceDiagram
     participant Svc as SkillPackService
     participant IS as install-session.ts
-    participant AS as 安装 AgentSession
+    participant AS as 安装 Agent
     participant Tool as 原子工具
     participant DB as backend.db
     participant Disk as 文件系统
 
     Svc->>DB: register(pending)
     Svc->>IS: triggerInstall(packId, ctx)
-    IS->>AS: 创建临时 session + prompt
+    IS->>AS: 创建临时 Agent + prompt
     AS->>Tool: pack_git_clone / pack_unzip
     AS->>Tool: pack_validate
     AS->>Tool: pack_atomic_rename
@@ -101,16 +100,16 @@ sequenceDiagram
 
 ## 运行时装配
 
-`span-executor.ts` 的 `executeAgentRun` 通过 singleton registry（`setSkillPackPort` / `getSkillPackPort`）调用 `buildSkillRoots`：
+Agent Run 创建时（`features/agent-run`）通过 singleton registry（`setSkillPackPort` / `getSkillPackPort`）调用 `buildSkillRoots`，把 Agent 分配的 Skill Packs 物化为 `skillRoots` 并**冻结进 Run 快照**：
 
 ```typescript
-// span-executor.ts（实际代码）
+// agent-run 创建路径（实际代码）
 const port = getSkillPackPort();
 const skillRoots = port ? await buildSkillRoots(agentId, port, config.dataDir) : undefined;
-const spec = buildSessionSpec({ ..., skillRoots });
+// run.skillRoots = skillRoots —— Run 创建时冻结；队列输入携带自己的快照
 ```
 
-无 port 注入时走原有 `progressiveSkillPlugin({ cwd })` 路径——向后兼容。分配变更只对**新建 session** 生效，活 session 不热更。
+无 port 注入时走原有 `progressiveSkillPlugin({ cwd })` 路径——向后兼容。分配变更只对**新建 Agent Run** 生效，活 Run 不热更。
 
 ## Bootstrap
 
@@ -138,8 +137,8 @@ const spec = buildSessionSpec({ ..., skillRoots });
 |------|------|
 | `entities.ts` | `SkillPackRow` / 状态机 / `applyInstallTransition` / 路径推导 |
 | `fs-adapter.ts` | 全仓唯一 `nodeFsAdapter`——路径段校验代替 `startsWith` 前缀误判 |
-| `registry.ts` | 模块级 singleton 存放 `SkillPackPort`，`span-executor.ts` 无需依赖注入链 |
-| `install-session.ts` | `runInstall` / `runSync` 临时 session 编排 + 故障兜底 |
+| `registry.ts` | 模块级 singleton 存放 `SkillPackPort`，agent-run 创建路径无需依赖注入链 |
+| `install-session.ts` | `runInstall` / `runSync` 临时 Agent 编排 + 故障兜底 |
 | `tools.ts` | 6 个原子工具 + `validateExtractedEntries` |
 | `http.ts` | 10 个 HTTP 端点 |
 
@@ -149,7 +148,6 @@ Elysia 将每条路由拆成独立交叉类型成员。`skill-packs` 有 7 条�
 
 ## 关联页面
 
-- [渐进式技能插件](../plugins/progressive-skill.md) — 消费引擎
-- [会话工厂](../harness/harness.md) — 装配点
-- [数据模型](../backend/data-model.md) — skill_pack + agent_skill_pack 表
-- [CONTEXT.md](../../CONTEXT.md) — 领域词汇
+- [渐进式技能插件](../plugins/progressive-skill.md) - 消费引擎
+- [数据模型](../backend/data-model.md) - skill_pack + agent_skill_pack 表
+- [CONTEXT.md](../../CONTEXT.md) - 领域词汇

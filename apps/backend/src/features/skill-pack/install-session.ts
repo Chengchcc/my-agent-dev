@@ -1,25 +1,22 @@
-import { unlinkSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { ChatModel } from "@my-agent-team/core";
-import type { Checkpointer, ContextManager, Plugin } from "@my-agent-team/framework";
-import { AgentSession } from "@my-agent-team/harness";
-import { progressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
+import { join, resolve } from "node:path";
 import type { SkillPackSource } from "./entities.js";
 import { posixSkillRoot } from "./entities.js";
-import { nodeFsAdapter } from "./fs-adapter.js";
 import type { SkillPackPort } from "./ports.js";
-import { createAllPackTools } from "./tools.js";
+import {
+  assertSafeEntry,
+  computeDirChecksum,
+  validateExtractedEntries,
+  validatePackDir,
+} from "./tools.js";
+
 export interface InstallSessionDeps {
-  model: ChatModel;
   dataDir: string;
   port: SkillPackPort;
-  checkpointer?: Checkpointer;
-  contextManager?: ContextManager;
-  /** Buffer for zip uploads — written to temp file and injected via tool closure. */
+  /** Buffer for zip uploads — staged to a temp file, cleaned up after. */
   zipBuffer?: Buffer;
-  /** Temp file path for zip buffer. Set internally by runInstall. */
-  zipPath?: string;
 }
 
 export interface InstallSource {
@@ -29,107 +26,147 @@ export interface InstallSource {
   versionRef: string | null;
 }
 
-// ─── Helpers ───
-
-function buildInstallPlugins(dataDir: string): Plugin[] {
-  const sharedWs = nodeFsAdapter(posixSkillRoot(dataDir));
-  return [
-    progressiveSkillPlugin({
-      ws: sharedWs,
-      roots: ["builtin"],
-      posixSkillRoot: posixSkillRoot(dataDir),
-    }),
-  ];
-}
-
-function buildPrompt(source: InstallSource, action: "install" | "sync"): string {
-  const ctx = [
-    `Task: ${action === "install" ? "Install" : "Sync"} skill pack.`,
-    `Pack ID: ${source.packId}`,
-    `Source kind: ${source.sourceKind}`,
-  ];
-  if (source.sourceUrl) {
-    if (source.sourceKind === "git") {
-      ctx.push(`Git URL: ${source.sourceUrl}`);
-      if (source.versionRef) ctx.push(`Ref: ${source.versionRef}`);
-    }
-    // zip: buffer is never mentioned in the prompt — it's pre-staged on disk
-    // and injected into the pack_unzip tool via closure (zipPath).
-  }
-  ctx.push("", `Use the ${action} flow from skill-pack-installer to complete this task.`);
-  if (action === "install") {
-    ctx.push(`Target directory must be: ${source.packId}`);
-  }
-  return ctx.join("\n");
-}
-
-// ─── Session creation ───
-
-async function createInstallSession(deps: InstallSessionDeps): Promise<AgentSession> {
-  const sessionId = `install-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  return new AgentSession({
-    sessionId,
-    model: deps.model,
-    plugins: buildInstallPlugins(deps.dataDir),
-    checkpointer: deps.checkpointer,
-    contextManager: deps.contextManager,
-    tools: createAllPackTools({
-      port: deps.port,
-      dataDir: deps.dataDir,
-      zipPath: deps.zipBuffer ? deps.zipPath : undefined,
-    }),
+function git(
+  args: string[],
+  cwd: string,
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve) => {
+    const proc = spawn("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout?.on("data", (d: Buffer) => {
+      stdout += d.toString();
+    });
+    proc.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    proc.on("close", (code) =>
+      resolve({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: code ?? 1 }),
+    );
   });
 }
 
-// ─── Runners ───
+function unzip(zipPath: string, extractDir: string): Promise<{ exitCode: number; stderr: string }> {
+  return new Promise((resolve) => {
+    const proc = spawn("unzip", ["-o", zipPath, "-d", extractDir], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    proc.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    proc.on("close", (code) => resolve({ exitCode: code ?? 1, stderr }));
+  });
+}
 
+/** Deterministic git install: pending → installing → clone/checkout →
+ *  validate → ready; any failure → failed with error persisted. */
 export async function runInstall(source: InstallSource, deps: InstallSessionDeps): Promise<void> {
-  // For zip installs: stage buffer to temp file, inject path via closure
-  if (source.sourceKind === "zip" && deps.zipBuffer) {
-    const tmpZipPath = join(tmpdir(), `pack-${source.packId}.zip`);
-    writeFileSync(tmpZipPath, deps.zipBuffer);
-    deps = { ...deps, zipPath: tmpZipPath };
-    try {
-      return await runInstallInner(source, deps);
-    } finally {
+  const cwd = posixSkillRoot(deps.dataDir);
+  const targetDir = source.packId;
+  const targetFull = resolve(cwd, targetDir);
+  let tmpZip: string | null = null;
+  try {
+    assertSafeEntry(targetDir);
+    await deps.port.applyInstallTransition(source.packId, "installing", { now: Date.now() });
+
+    let installedRef = "";
+    if (source.sourceKind === "git") {
+      if (!source.sourceUrl) throw new Error("git install requires a sourceUrl");
+      const args = ["clone", "--depth", "1"];
+      if (source.versionRef) args.push("--branch", source.versionRef);
+      args.push(source.sourceUrl, targetDir);
+      const result = await git(args, cwd);
+      if (result.exitCode !== 0) throw new Error(`git clone failed: ${result.stderr}`);
+      const rev = await git(["rev-parse", "HEAD"], targetFull);
+      installedRef = rev.exitCode === 0 ? rev.stdout : "unknown";
+    } else {
+      if (!deps.zipBuffer) throw new Error("zip install requires a zipBuffer");
+      tmpZip = join(tmpdir(), `pack-${source.packId}.zip`);
+      writeFileSync(tmpZip, deps.zipBuffer);
+      const tmpDir = mkdtempSync(join(tmpdir(), "pack-unzip-"));
       try {
-        unlinkSync(tmpZipPath);
+        const extractDir = join(tmpDir, "extract");
+        const result = await unzip(tmpZip, extractDir);
+        if (result.exitCode !== 0) throw new Error(`unzip failed: ${result.stderr}`);
+        // safety boundary: no symlinks, no path escape
+        validateExtractedEntries(extractDir, extractDir);
+        if (existsSync(targetFull)) rmSync(targetFull, { recursive: true, force: true });
+        renameSync(extractDir, targetFull);
+        installedRef = computeDirChecksum(cwd, targetDir);
+      } finally {
+        try {
+          rmSync(tmpDir, { recursive: true });
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
+    if (!(await validatePackDir(cwd, targetDir))) {
+      throw new Error("installed pack has no valid SKILL.md");
+    }
+    await deps.port.applyInstallTransition(source.packId, "ready", {
+      installedRef,
+      now: Date.now(),
+    });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.error(`[skill-pack] install failed for ${source.packId}:`, error);
+    try {
+      await deps.port.applyInstallTransition(source.packId, "failed", {
+        error,
+        now: Date.now(),
+      });
+    } catch {
+      /* status already terminal */
+    }
+  } finally {
+    if (tmpZip) {
+      try {
+        unlinkSync(tmpZip);
       } catch {
         /* ok */
       }
     }
   }
-  return runInstallInner(source, deps);
 }
 
-async function runInstallInner(source: InstallSource, deps: InstallSessionDeps): Promise<void> {
-  // Backend deterministically advances pending→installing (like syncGit does ready→syncing).
-  await deps.port.applyInstallTransition(source.packId, "installing", { now: Date.now() });
-  try {
-    const session = await createInstallSession(deps);
-    await session.prompt(buildPrompt(source, "install"));
-  } finally {
-    const row = await deps.port.get(source.packId);
-    if (row && row.status !== "ready" && row.status !== "failed") {
-      await deps.port.applyInstallTransition(source.packId, "failed", {
-        error: "install session ended without terminal status",
-        now: Date.now(),
-      });
-    }
-  }
-}
-
+/** Deterministic git sync: ready → syncing → fetch/update → validate →
+ *  ready; failure → failed. */
 export async function runSync(source: InstallSource, deps: InstallSessionDeps): Promise<void> {
+  const cwd = posixSkillRoot(deps.dataDir);
+  const packDir = resolve(cwd, source.packId);
   try {
-    const session = await createInstallSession(deps);
-    await session.prompt(buildPrompt(source, "sync"));
-  } finally {
-    const row = await deps.port.get(source.packId);
-    if (row && row.status !== "ready" && row.status !== "failed") {
+    assertSafeEntry(source.packId);
+    await deps.port.applyInstallTransition(source.packId, "syncing", { now: Date.now() });
+
+    const fetchArgs = ["fetch", "origin"];
+    if (source.versionRef) fetchArgs.push(source.versionRef);
+    const fetchResult = await git(fetchArgs, packDir);
+    if (fetchResult.exitCode !== 0) throw new Error(`git fetch failed: ${fetchResult.stderr}`);
+    const resetResult = await git(["reset", "--hard", "FETCH_HEAD"], packDir);
+    if (resetResult.exitCode !== 0) throw new Error(`git reset failed: ${resetResult.stderr}`);
+    const revResult = await git(["rev-parse", "HEAD"], packDir);
+    const installedRef = revResult.exitCode === 0 ? revResult.stdout : "unknown";
+
+    if (!(await validatePackDir(cwd, source.packId))) {
+      throw new Error("synced pack has no valid SKILL.md");
+    }
+    await deps.port.applyInstallTransition(source.packId, "ready", {
+      installedRef,
+      now: Date.now(),
+    });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.error(`[skill-pack] sync failed for ${source.packId}:`, error);
+    try {
       await deps.port.applyInstallTransition(source.packId, "failed", {
-        error: "sync session ended without terminal status",
+        error,
         now: Date.now(),
       });
+    } catch {
+      /* status already terminal */
     }
   }
 }

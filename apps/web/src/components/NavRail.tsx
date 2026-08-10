@@ -176,7 +176,8 @@ function NavContent() {
                       <DropdownMenuItem
                         variant="destructive"
                         disabled={deleteConversation.isPending}
-                        onClick={() =>
+                        onClick={() => {
+                          if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
                           deleteConversation.mutate(conv.conversationId, {
                             onSuccess: () => {
                               queryClient.invalidateQueries({ queryKey: conversationKeys.all });
@@ -189,8 +190,8 @@ function NavContent() {
                                 description: err instanceof Error ? err.message : "Unknown error",
                               });
                             },
-                          })
-                        }
+                          });
+                        }}
                       >
                         <Trash2Icon />
                         Delete conversation

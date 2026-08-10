@@ -26,7 +26,8 @@ export type ItemState = {
   attempt: number;
   priority: number;
   result: Verdict | null;
-  generatorSpanId?: string;
+  generatorRunId?: string;
+  evaluatorRunId?: string;
 };
 
 // === Loop state ===
@@ -39,8 +40,8 @@ export type LoopState = {
 // === Actions ===
 export type LoopAction =
   | { type: "TICK" }
-  | { type: "GENERATOR_DONE"; itemId: ItemId; generatorSpanId?: string }
-  | { type: "EVALUATOR_VERDICT"; itemId: ItemId; verdict: Verdict }
+  | { type: "GENERATOR_DONE"; itemId: ItemId; generatorRunId?: string }
+  | { type: "EVALUATOR_VERDICT"; itemId: ItemId; verdict: Verdict; evaluatorRunId?: string }
   | { type: "APPROVE"; itemId: ItemId }
   | { type: "REJECT_HUMAN"; itemId: ItemId; feedback?: string }
   | { type: "PROMOTE"; itemId: ItemId }

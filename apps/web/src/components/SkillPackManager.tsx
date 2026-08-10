@@ -1,6 +1,7 @@
 "use client";
 
 import { Download, FolderSync, GitBranch, RefreshCw, Trash2 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,15 @@ import {
 import { InstallPackForm } from "./InstallPackForm";
 
 type PackStatus = "pending" | "installing" | "ready" | "failed" | "syncing";
+
+/** Skill summary as returned by GET /api/skill-packs/:id/skills. */
+type SkillSummary = { name: string; description: string; dir: string };
+
+/** Parent directory of a relative path ("" for top-level files). */
+function dirname(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash < 0 ? "" : path.slice(0, slash);
+}
 
 function statusVariant(status: PackStatus): "default" | "destructive" | "secondary" | "outline" {
   if (status === "ready") return "default";
@@ -49,59 +59,71 @@ function FileTree({
   if (!data) return null;
 
   if (data.type === "file") {
-    return <div className="text-sm text-muted-foreground py-1 px-2">{path.split("/").pop()}</div>;
+    return (
+      <button
+        type="button"
+        className="text-sm hover:text-primary text-left w-full py-1 px-2"
+        onClick={() => onSelectFile(path)}
+      >
+        📄 {path.split("/").pop()}
+      </button>
+    );
   }
+  // Error responses arrive as { error } without a type — render nothing
+  // instead of crashing on a missing entries array.
+  if (data.type !== "dir") return null;
 
-  const entries = (data as { type: string; entries: Array<{ name: string; type: string }> })
-    .entries;
+  const entries = data.entries ?? [];
   return (
     <ul className="pl-2 space-y-0.5">
-      {entries.map((e) => (
-        <li key={e.name}>
-          {e.type === "dir" ? (
-            <details>
-              <summary className="cursor-pointer text-sm hover:text-primary py-1">
-                📁 {e.name}
-              </summary>
-              <FileTree
-                packId={packId}
-                path={path ? `${path}/${e.name}` : e.name}
-                onSelectFile={onSelectFile}
-              />
-            </details>
-          ) : (
-            <button
-              className="text-sm hover:text-primary text-left w-full py-1 px-2"
-              onClick={() => onSelectFile(path ? `${path}/${e.name}` : e.name)}
-            >
-              📄 {e.name}
-            </button>
-          )}
-        </li>
-      ))}
+      {entries.map((e) => {
+        const entryPath = path ? `${path}/${e.name}` : e.name;
+        return (
+          <li key={entryPath}>
+            {e.type === "dir" ? (
+              <details>
+                <summary className="cursor-pointer text-sm hover:text-primary py-1">
+                  📁 {e.name}
+                </summary>
+                <FileTree packId={packId} path={entryPath} onSelectFile={onSelectFile} />
+              </details>
+            ) : (
+              <button
+                className="text-sm hover:text-primary text-left w-full py-1 px-2"
+                onClick={() => onSelectFile(entryPath)}
+              >
+                📄 {e.name}
+              </button>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
+const MonacoViewer = dynamic(
+  () => import("@/components/MonacoViewer").then((m) => m.MonacoViewer),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-96 w-full" />,
+  },
+);
+
 function FileContent({ packId, path }: { packId: string; path: string }) {
   const { data, isLoading } = useSkillPackFiles(packId, path);
 
-  if (isLoading) return <Skeleton className="h-40 w-full" />;
+  if (isLoading) return <Skeleton className="h-96 w-full" />;
   if (data?.type !== "file") return null;
 
-  const content = (data as { content: string }).content;
-  return (
-    <pre className="bg-muted rounded-md p-3 text-xs overflow-auto max-h-96 whitespace-pre-wrap">
-      {content}
-    </pre>
-  );
+  return <MonacoViewer value={data.content ?? ""} path={data.path} />;
 }
 
 export function SkillPackManager() {
   // treaty can't derive skill-packs types due to Elysia intersection type limits
   const { data: packs, isLoading, refetch } = useSkillPackList();
   const [selectedPack, setSelectedPack] = useState<string | null>(null);
-  const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
+  const [selectedSkill, setSelectedSkill] = useState<SkillSummary | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [showInstall, setShowInstall] = useState(false);
 
@@ -119,8 +141,7 @@ export function SkillPackManager() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Skill Packs</h1>
+      <div className="flex justify-end">
         <Button onClick={() => setShowInstall(true)}>
           <Download className="mr-2 h-4 w-4" />
           Install Pack
@@ -250,55 +271,81 @@ export function SkillPackManager() {
             </SheetTitle>
           </SheetHeader>
 
-          <div className="mt-4 space-y-4">
-            {/* Skills list */}
-            <div>
-              <h3 className="text-sm font-semibold mb-2">Skills</h3>
-              {skills ? (
-                <div className="space-y-1">
-                  {skills.map((s: { name: string; description: string; dir: string }) => (
-                    <Card
-                      key={s.name}
-                      className={`cursor-pointer p-3 ${selectedSkill === s.name ? "border-primary" : ""}`}
-                      onClick={() => {
-                        setSelectedSkill(s.name);
-                        setSelectedFile(null);
-                      }}
-                    >
-                      <div className="font-medium text-sm">{s.name}</div>
-                      <div className="text-xs text-muted-foreground">{s.description}</div>
-                    </Card>
-                  ))}
+          <div className="mt-4 flex flex-col md:flex-row gap-4">
+            {/* Left pane: skills + pack files */}
+            <div className="md:w-[240px] md:shrink-0 space-y-4">
+              <details open className="group">
+                <summary className="flex items-center justify-between text-sm font-semibold cursor-pointer select-none">
+                  Skills
+                  <span className="text-[10px] text-[var(--mute)] group-open:hidden">expand</span>
+                </summary>
+                <div className="mt-2">
+                  {skills ? (
+                    <div className="space-y-1">
+                      {skills.map((s: SkillSummary) => (
+                        <Card
+                          key={s.dir}
+                          className={`cursor-pointer p-2.5 ${selectedSkill?.dir === s.dir ? "border-primary" : ""}`}
+                          onClick={() => {
+                            setSelectedSkill(s);
+                            setSelectedFile(null);
+                          }}
+                        >
+                          <div className="font-medium text-sm truncate">{s.name}</div>
+                          <div className="text-xs text-muted-foreground line-clamp-2">
+                            {s.description}
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Skeleton className="h-12 w-full" />
+                      <Skeleton className="h-12 w-full" />
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="flex gap-2">
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-12 w-full" />
-                </div>
-              )}
-            </div>
+              </details>
 
-            {/* File tree for selected skill */}
-            {selectedSkill && (
+              {/* Pack files — roots at the pack; selecting a skill jumps to its
+                  directory (SKILL.md lives one level under the skill dir). */}
               <div>
-                <h3 className="text-sm font-semibold mb-2">Files</h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold">
+                    {selectedSkill ? selectedSkill.name : "Pack files"}
+                  </h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-[10px]"
+                    onClick={() => setSelectedSkill(null)}
+                  >
+                    All pack files
+                  </Button>
+                </div>
                 <Card className="p-3">
                   <FileTree
                     packId={selectedPack!}
-                    path={selectedSkill}
+                    path={selectedSkill ? dirname(selectedSkill.dir) : ""}
                     onSelectFile={(p) => setSelectedFile(p)}
                   />
                 </Card>
               </div>
-            )}
+            </div>
 
-            {/* File content */}
-            {selectedFile && selectedPack && (
-              <div>
-                <h3 className="text-sm font-semibold mb-2">{selectedFile}</h3>
-                <FileContent packId={selectedPack} path={selectedFile} />
-              </div>
-            )}
+            {/* Right pane: viewer */}
+            <div className="flex-1 min-w-0">
+              {selectedFile && selectedPack ? (
+                <div>
+                  <h3 className="text-sm font-semibold mb-2 truncate">{selectedFile}</h3>
+                  <FileContent packId={selectedPack} path={selectedFile} />
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-[var(--hairline)] p-8 text-center">
+                  <p className="text-sm text-[var(--mute)]">Select a file to view its contents.</p>
+                </div>
+              )}
+            </div>
           </div>
         </SheetContent>
       </Sheet>

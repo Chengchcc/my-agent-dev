@@ -35,7 +35,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAgentList } from "@/features/agents/hooks";
 import { useCreateCronJob, useUpdateCronJob } from "@/features/cron/hooks";
 import type { CronJobRow } from "@/lib/api";
-import { fieldClass, labelClass } from "@/lib/form-styles";
+import { fieldClass, overlineClass } from "@/lib/form-styles";
 
 const formSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -154,11 +154,7 @@ export function CronJobForm({ editCronJob, onSuccess }: CronJobFormProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
-      {!isEdit && (
-        <DialogTrigger className="bg-[var(--primary)] text-[var(--on-primary)] rounded-md px-5 py-2 text-sm font-semibold hover:opacity-90 transition-opacity duration-200">
-          + New Schedule
-        </DialogTrigger>
-      )}
+      {!isEdit && <DialogTrigger render={<Button size="sm">+ New Schedule</Button>} />}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Schedule" : "New Schedule"}</DialogTitle>
@@ -170,7 +166,7 @@ export function CronJobForm({ editCronJob, onSuccess }: CronJobFormProps) {
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className={labelClass}>Name</FormLabel>
+                  <FormLabel className={overlineClass}>Name</FormLabel>
                   <FormControl>
                     <Input {...field} className={fieldClass} placeholder="Daily patrol" />
                   </FormControl>
@@ -183,7 +179,7 @@ export function CronJobForm({ editCronJob, onSuccess }: CronJobFormProps) {
               name="agentId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className={labelClass}>Agent</FormLabel>
+                  <FormLabel className={overlineClass}>Agent</FormLabel>
                   <FormControl>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <SelectTrigger className={fieldClass}>
@@ -207,7 +203,7 @@ export function CronJobForm({ editCronJob, onSuccess }: CronJobFormProps) {
               name="cronExpr"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className={labelClass}>Cron Expression</FormLabel>
+                  <FormLabel className={overlineClass}>Cron Expression</FormLabel>
                   <FormControl>
                     <Input {...field} className={fieldClass} placeholder="0 9 * * *" />
                   </FormControl>
@@ -223,7 +219,7 @@ export function CronJobForm({ editCronJob, onSuccess }: CronJobFormProps) {
               name="prompt"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className={labelClass}>Prompt</FormLabel>
+                  <FormLabel className={overlineClass}>Prompt</FormLabel>
                   <FormControl>
                     <Textarea
                       {...field}
@@ -242,7 +238,7 @@ export function CronJobForm({ editCronJob, onSuccess }: CronJobFormProps) {
                 name="timeoutMs"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className={labelClass}>Timeout (ms)</FormLabel>
+                    <FormLabel className={overlineClass}>Timeout (ms)</FormLabel>
                     <FormControl>
                       <Input {...field} type="number" className={fieldClass} placeholder="0" />
                     </FormControl>
@@ -256,7 +252,7 @@ export function CronJobForm({ editCronJob, onSuccess }: CronJobFormProps) {
                 name="maxRetries"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className={labelClass}>Max Retries</FormLabel>
+                    <FormLabel className={overlineClass}>Max Retries</FormLabel>
                     <FormControl>
                       <Input {...field} type="number" className={fieldClass} placeholder="0" />
                     </FormControl>

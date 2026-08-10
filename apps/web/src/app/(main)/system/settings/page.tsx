@@ -1,18 +1,74 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
+import { Page, PageBody, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { useSettings, useSystemInfo, useUpdateSetting } from "@/features/settings/hooks";
-import type { SettingsMap, SystemInfo } from "@/lib/api";
+import { useModelList } from "@/features/models/hooks";
+import { settingsKeys, useSettings, useSystemInfo } from "@/features/settings/hooks";
+import { api, type SettingsMap, type SystemInfo } from "@/lib/api";
+
+/** Model picker backed by the runtime catalog. The current value is kept as
+ *  an option even if it drifts from the catalog, so stored settings never
+ *  become uneditable. */
+function ModelSelectField({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const { data } = useModelList();
+  const options = useMemo(() => {
+    const groups = (data?.providers ?? []).flatMap((p) =>
+      p.models.map((m) => ({
+        id: `${p.id}/${m.id}`,
+        label: `${p.name} / ${m.name ?? m.id}`,
+        available: m.available !== false,
+      })),
+    );
+    // A stored value that drifted out of the catalog stays visible (marked
+    // unavailable) so the user can see what is configured and replace it —
+    // never silently swapped.
+    return groups.some((g) => g.id === value)
+      ? groups
+      : [{ id: value, label: `${value} — unavailable`, available: false }, ...groups];
+  }, [data, value]);
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v ?? value)}>
+      <SelectTrigger id={id} className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((o) => (
+          <SelectItem key={o.id} value={o.id} disabled={!o.available}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
 
 // ── Field definitions ──
+// Only keys with real Product Backend readers are surfaced (verified against
+// apps/backend/src: conversation.maxHops in conversation-compose.ts, loop.*
+// defaults in loop-service.ts). Keys without a reader are ghost knobs.
 
 interface NumberField {
   key: string;
@@ -41,73 +97,15 @@ interface Section {
   id: string;
   title: string;
   description?: string;
-  needsRestart?: boolean;
   fields: Field[];
 }
 
 const SECTIONS: Section[] = [
   {
-    id: "agent",
-    title: "Agent Session",
-    description: "Per-run execution parameters for agent sessions.",
-    fields: [
-      { key: "agent.maxSteps", label: "Max Steps", type: "number" },
-      { key: "agent.retryMaxAttempts", label: "Retry Max Attempts", type: "number" },
-      { key: "agent.retryBackoffMs", label: "Retry Backoff", type: "number", unit: "ms" },
-      { key: "agent.retryMaxBackoffMs", label: "Retry Max Backoff", type: "number", unit: "ms" },
-      { key: "agent.compactionAutoCompact", label: "Auto Compact", type: "boolean" },
-      { key: "agent.compactionKeepRecent", label: "Keep Recent", type: "number" },
-    ],
-  },
-  {
     id: "conversation",
     title: "Conversation",
     description: "Conversation flow control.",
     fields: [{ key: "conversation.maxHops", label: "Max Agent Hops", type: "number" }],
-  },
-  {
-    id: "context",
-    title: "Context Manager",
-    description: "Context window management and summarization.",
-    fields: [
-      {
-        key: "context.toolResultMaxChars",
-        label: "Tool Result Max",
-        type: "number",
-        unit: "chars",
-      },
-      {
-        key: "context.summarizeTriggerAt",
-        label: "Summarize Trigger",
-        type: "number",
-        unit: "tokens",
-      },
-      { key: "context.summarizeKeepRecent", label: "Keep Recent", type: "number" },
-    ],
-  },
-  {
-    id: "runtime",
-    title: "Runtime",
-    description: "Supervisor and reaper timing parameters.",
-    needsRestart: true,
-    fields: [
-      {
-        key: "runtime.heartbeatIntervalMs",
-        label: "Heartbeat Interval",
-        type: "number",
-        unit: "ms",
-      },
-      { key: "runtime.heartbeatTimeoutMs", label: "Heartbeat Timeout", type: "number", unit: "ms" },
-      { key: "runtime.cancelGraceMs", label: "Cancel Grace", type: "number", unit: "ms" },
-      { key: "runtime.reaperIntervalMs", label: "Reaper Interval", type: "number", unit: "ms" },
-      {
-        key: "runtime.stepStallTimeoutMs",
-        label: "Step Stall Timeout",
-        type: "number",
-        unit: "ms",
-      },
-      { key: "runtime.maxConcurrentRuns", label: "Max Concurrent Runs", type: "number" },
-    ],
   },
   {
     id: "loop",
@@ -121,79 +119,19 @@ const SECTIONS: Section[] = [
       { key: "loop.defaultDenylist", label: "Denylist (comma-separated)", type: "array" },
     ],
   },
-  {
-    id: "pet",
-    title: "Pet",
-    description: "Companion life form that barks advice at the primary agent.",
-    fields: [
-      { key: "pet.enabled", label: "Enabled", type: "boolean" },
-      { key: "pet.provider", label: "Provider", type: "string" },
-      { key: "pet.model", label: "Model", type: "string" },
-    ],
-  },
-  {
-    id: "recap",
-    title: "Recap",
-    description: "Per-turn conversation summary panel on the right side.",
-    fields: [
-      { key: "recap.enabled", label: "Enabled", type: "boolean" },
-      { key: "recap.provider", label: "Provider", type: "string" },
-      { key: "recap.model", label: "Model", type: "string" },
-    ],
-  },
-  {
-    id: "memory",
-    title: "Memory",
-    description: "Autonomous memory extraction and search configuration.",
-    fields: [
-      { key: "memory.autoExtract", label: "Auto Extract", type: "boolean" },
-      { key: "memory.extractProvider", label: "Extract Provider", type: "string" },
-      { key: "memory.extractModel", label: "Extract Model", type: "string" },
-      { key: "memory.consolidateProvider", label: "Consolidate Provider", type: "string" },
-      { key: "memory.consolidateModel", label: "Consolidate Model", type: "string" },
-      { key: "memory.minMessagesForExtraction", label: "Min Msgs for Extract", type: "number" },
-      { key: "memory.consolidateThreshold", label: "Consolidate Threshold", type: "number" },
-    ],
-  },
 ];
 
 // ── Default values (used when settings KV is empty) ──
 
 const DEFAULTS: Record<string, unknown> = {
-  "agent.maxSteps": 50,
-  "agent.retryMaxAttempts": 3,
-  "agent.retryBackoffMs": 2000,
-  "agent.retryMaxBackoffMs": 30000,
-  "agent.compactionAutoCompact": true,
-  "agent.compactionKeepRecent": 10,
   "conversation.maxHops": 8,
-  "context.toolResultMaxChars": 50000,
-  "context.summarizeTriggerAt": 100000,
-  "context.summarizeKeepRecent": 10,
-  "runtime.heartbeatIntervalMs": 5000,
-  "runtime.heartbeatTimeoutMs": 120000,
-  "runtime.cancelGraceMs": 5000,
-  "runtime.reaperIntervalMs": 60000,
-  "runtime.stepStallTimeoutMs": 300000,
-  "runtime.maxConcurrentRuns": 10,
-  "loop.generatorModel": "claude-sonnet-4",
-  "loop.evaluatorModel": "claude-opus-4",
+  // Canonical provider/model IDs matching the backend runtime defaults
+  // (loop-service.ts); the model fields render as catalog selects.
+  "loop.generatorModel": "anthropic/claude-sonnet-4-20250514",
+  "loop.evaluatorModel": "anthropic/claude-opus-4-20250514",
   "loop.defaultAcceptance": "",
   "loop.defaultDailyCap": 200000,
   "loop.defaultDenylist": [".env", "auth/", "payments/", "secrets/"],
-  "pet.enabled": false,
-  "pet.provider": "anthropic",
-  "pet.model": "claude-haiku-3-5",
-  "recap.enabled": true,
-  "recap.provider": "anthropic",
-  "recap.model": "claude-haiku-3-5",
-  "memory.autoExtract": true,
-  "memory.extractProvider": "anthropic",
-  "memory.extractModel": "claude-haiku-3-5",
-  "memory.consolidateProvider": "anthropic",
-  "memory.consolidateModel": "claude-sonnet-4-6",
-  "memory.minMessagesForExtraction": 5,
-  "memory.consolidateThreshold": 10,
 };
 
 // ── Helpers ──
@@ -225,14 +163,13 @@ function SettingsSection({
   section,
   settings,
   onSave,
-  saving,
 }: {
   section: Section;
   settings: SettingsMap | undefined;
-  onSave: (key: string, value: unknown) => void;
-  saving: boolean;
+  onSave: (changes: Record<string, unknown>) => Promise<boolean>;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
   // Reset drafts when settings query refetches (e.g. after save).
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset on settings change
@@ -251,30 +188,35 @@ function SettingsSection({
     return draft !== current;
   });
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    const changes: Record<string, unknown> = {};
     for (const f of section.fields) {
       const draft = drafts[f.key];
       if (draft === undefined) continue;
-      onSave(f.key, parseValue(draft, f.type));
+      changes[f.key] = parseValue(draft, f.type);
+    }
+    if (Object.keys(changes).length === 0) return;
+    setSaving(true);
+    try {
+      const ok = await onSave(changes);
+      if (ok) setDrafts({});
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {section.title}
-          {section.needsRestart && (
-            <Badge variant="secondary" className="text-xs">
-              需重启生效
-            </Badge>
-          )}
-        </CardTitle>
+        <CardTitle>{section.title}</CardTitle>
         {section.description && <CardDescription>{section.description}</CardDescription>}
       </CardHeader>
       <CardContent className="space-y-4">
         {section.fields.map((f) => (
-          <div key={f.key} className="grid grid-cols-[180px_1fr] items-center gap-3">
+          <div
+            key={f.key}
+            className="grid gap-2 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center"
+          >
             <Label htmlFor={f.key} className="text-sm text-muted-foreground">
               {f.label}
             </Label>
@@ -313,68 +255,91 @@ function SettingsSection({
                 className="min-h-[60px]"
                 placeholder="Acceptance criteria..."
               />
+            ) : f.type === "string" &&
+              (f.key === "loop.generatorModel" || f.key === "loop.evaluatorModel") ? (
+              <ModelSelectField
+                id={f.key}
+                value={getDraft(f.key)}
+                onChange={(v) => setDrafts((d) => ({ ...d, [f.key]: v }))}
+              />
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full">
                 <Input
                   id={f.key}
                   type={f.type === "number" ? "number" : "text"}
                   value={getDraft(f.key)}
                   onChange={(e) => setDrafts((d) => ({ ...d, [f.key]: e.target.value }))}
-                  className="max-w-[200px]"
+                  className="w-full sm:max-w-sm"
                 />
                 {"unit" in f && f.unit && (
-                  <span className="text-xs text-muted-foreground">{f.unit}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{f.unit}</span>
                 )}
               </div>
             )}
           </div>
         ))}
-        {hasChanges && (
-          <div className="flex justify-end pt-2">
-            <Button size="sm" onClick={handleSave} disabled={saving}>
-              Save {section.title}
-            </Button>
-          </div>
-        )}
+        {/* Always-reserved row: no layout shift when edits appear. */}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button size="sm" variant="ghost" disabled={!hasChanges} onClick={() => setDrafts({})}>
+            Reset
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={!hasChanges || saving}>
+            Save changes
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-// ── System info section (read-only) ──
+// ── System info section (read-only, collapsed by default) ──
 
 function SystemInfoSection({ info }: { info: SystemInfo | undefined }) {
+  const [open, setOpen] = useState(false);
   if (!info) return null;
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>System Info</CardTitle>
-        <CardDescription>Environment variables and paths (read-only).</CardDescription>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <div>
+          <CardTitle>System Info</CardTitle>
+          <CardDescription>Environment variables and paths (read-only).</CardDescription>
+        </div>
+        <Button size="sm" variant="ghost" onClick={() => setOpen((v) => !v)}>
+          {open ? "Hide" : "Show"}
+        </Button>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">Environment</h4>
-          <div className="space-y-1">
-            {Object.entries(info.env).map(([k, v]) => (
-              <div key={k} className="grid grid-cols-[240px_1fr] gap-2 font-mono text-xs">
-                <span className="text-muted-foreground">{k}</span>
-                <span className="break-all">{v}</span>
-              </div>
-            ))}
+      {open && (
+        <CardContent className="space-y-4">
+          <div>
+            <h4 className="mb-2 text-sm font-medium text-muted-foreground">Environment</h4>
+            <dl className="space-y-1">
+              {Object.entries(info.env).map(([k, v]) => (
+                <div
+                  key={k}
+                  className="grid gap-0.5 sm:grid-cols-[240px_1fr] sm:gap-2 font-mono text-xs"
+                >
+                  <dt className="text-muted-foreground break-all">{k}</dt>
+                  <dd className="break-all">{v}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
-        </div>
-        <div>
-          <h4 className="mb-2 text-sm font-medium text-muted-foreground">Paths</h4>
-          <div className="space-y-1">
-            {Object.entries(info.paths).map(([k, v]) => (
-              <div key={k} className="grid grid-cols-[240px_1fr] gap-2 font-mono text-xs">
-                <span className="text-muted-foreground">{k}</span>
-                <span className="break-all">{v}</span>
-              </div>
-            ))}
+          <div>
+            <h4 className="mb-2 text-sm font-medium text-muted-foreground">Paths</h4>
+            <dl className="space-y-1">
+              {Object.entries(info.paths).map(([k, v]) => (
+                <div
+                  key={k}
+                  className="grid gap-0.5 sm:grid-cols-[240px_1fr] sm:gap-2 font-mono text-xs"
+                >
+                  <dt className="text-muted-foreground break-all">{k}</dt>
+                  <dd className="break-all">{v}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
-        </div>
-      </CardContent>
+        </CardContent>
+      )}
     </Card>
   );
 }
@@ -384,38 +349,42 @@ function SystemInfoSection({ info }: { info: SystemInfo | undefined }) {
 export default function SettingsPage() {
   const settingsQuery = useSettings();
   const systemQuery = useSystemInfo();
-  const updateMu = useUpdateSetting();
+  const qc = useQueryClient();
 
-  const handleSave = (key: string, value: unknown) => {
-    updateMu.mutate(
-      { key, value },
-      {
-        onSuccess: () => toast.success(`Saved ${key}`),
-        onError: (e) => toast.error(`Failed to save: ${String(e)}`),
-      },
-    );
+  const handleSave = async (changes: Record<string, unknown>): Promise<boolean> => {
+    // One batch: all fields settle before any toast or draft clearing.
+    try {
+      await Promise.all(
+        Object.entries(changes).map(([key, value]) => api.updateSetting(key, value)),
+      );
+      await qc.invalidateQueries({ queryKey: settingsKeys.all });
+      toast.success("Settings saved");
+      return true;
+    } catch (e) {
+      toast.error(`Failed to save settings: ${String(e)}`);
+      return false;
+    }
   };
 
   return (
-    <div className="container mx-auto max-w-3xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Runtime configuration and system information.
-        </p>
-      </div>
+    <Page>
+      <PageHeader
+        breadcrumb="System / Settings"
+        title="Settings"
+        description="Runtime defaults and deployment information."
+      />
+      <PageBody size="reading" className="space-y-6">
+        {SECTIONS.map((section) => (
+          <SettingsSection
+            key={section.id}
+            section={section}
+            settings={settingsQuery.data?.settings}
+            onSave={handleSave}
+          />
+        ))}
 
-      {SECTIONS.map((section) => (
-        <SettingsSection
-          key={section.id}
-          section={section}
-          settings={settingsQuery.data?.settings}
-          onSave={handleSave}
-          saving={updateMu.isPending}
-        />
-      ))}
-
-      <SystemInfoSection info={systemQuery.data} />
-    </div>
+        <SystemInfoSection info={systemQuery.data} />
+      </PageBody>
+    </Page>
   );
 }

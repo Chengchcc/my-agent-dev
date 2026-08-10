@@ -1,20 +1,35 @@
 # backend
 
-基于 Bun 的有状态后端服务。暴露 HTTP/SSE API，管理 agent 生命周期、承载多方 conversation、编排 agent 执行（run）。Agent 通过 `AgentSession` 在进程内直接执行，不再需要独立 runner 进程。Web 控制台和 Lark bot 通过它读写状态、发起运行、订阅事件。
+基于 Bun 的有状态后端服务。暴露 HTTP/SSE API，管理 agent 生命周期、承载多方 conversation、编排 Agent Run 执行。Web 控制台和 Lark bot 通过它读写状态、发起运行、订阅事件。
 
 ## 它做什么
 
-- **Agent CRUD 与身份**：创建、查询、更新、归档 agent。管理 model 配置、permission mode、maxSteps，以及 SOUL / USER / memory 等身份内容。
-- **Conversation**：多个 member（人或 agent）共享的 conversation ledger。负责 ledger 追加、成员管理、@mention 触发、conversation 并发锁（ConversationLock）。
-- **Run 编排**：`run-executor.ts` 为三条启动路径（conversation / orchestrator / cron）提供统一执行器 `executeAgentRun`。fire-and-forget 异步执行，完成信号统一经 `supervisor.notifyRunComplete` 分发。
-- **RunSupervisor**：跟踪 run/attempt 行，提供 `onRunMessage` / `onRunEvent` / `onRunComplete` 回调。reaper 回收进程重启后的孤儿 DB 行。
-- **SSE 推送**：conversation 的 ledger SSE 是用户可见输出的唯一通道。assistant 消息经 `session.subscribe` 直写 ledger，前端按 `messageId` upsert。run 执行细节走 EventLog（仅非 message 事件）。
-- **运行时观测（ops）**：run 诊断、健康状态、trace 与 surface 状态，供控制台查询。
+- **Agent CRUD 与身份**：创建、查询、更新、归档 agent。管理 model 配置、permission mode、maxSteps 与 workspace。
+- **Conversation**：多个 member（人或 agent）共享的 conversation ledger。负责 ledger 追加、成员管理、@mention 触发与 hop control。
+- **Agent Run 执行**：所有真实 Agent 执行（Conversation 回复、Cron、Loop Generator/Evaluator）统一走 `AgentRunService.enqueueAndAcquire` → `AgentRunExecutionService.dispatch`。输入先持久化（normal/steer/follow_up 队列），terminal 结果由 Agent Run 与 Conversation History 表达。执行引擎是一次性 coding-agent 子进程（one Run / one child），Product Backend 只依赖统一 Agent Backend 协议（`@my-agent-team/agent-backend`）。
+- **Product Context**：每个 agent member 一份 Agent Context（parent-linked entries 支持 branch/fork）。final assistant Message 只在 terminal commit 时写入 History + Context，原子提交。
+- **Product Tools**：History 只读工具 + `history_retain` 由 Product Backend 统一执行（MCP 是接入方式，不是领域身份）。
+- **SSE 推送**：conversation 的 ledger SSE 是 canonical 输出的唯一通道；Agent Run Live Updates 只供实时展示，断线可丢，不写 History。
+- **运行时观测（ops）**：`/api/agent-runs` 提供 run 列表/详情/cancel/events；surface health 保留为 audit。
 
 ## 代码组织
 
-代码按 feature 分域在 `src/features/` 下。域包括 `agent`、`conversation`、`run`、`runtime-ops`、`issue`、`orchestrator`、`cron`、`lark-bot`。
+代码按 feature 分域在 `src/features/` 下：`agent`、`conversation`、`agent-context`、`agent-run`、`product-tools`、`cron`、`loop`、`skill-pack`、`runtime-ops` 等。
 
-组合根 `src/main.ts` 加载配置、打开 DB、构造各域 adapter 和 service，用闭包把跨域协作接在一起，组装 HTTP 路由。各域之间只通过 interface 和注入的 callback 交互。
+组合根 `src/bootstrap/features.ts` 加载配置、打开 DB、构造各域 adapter 和 service，用闭包把跨域协作接在一起，组装 HTTP 路由。各域之间只通过 interface 和注入的 callback 交互。
 
-Run 执行：`run-executor.ts` 统一驱动 Conversation / Issue / Cron 三条路径。每条路径调用 `supervisor.startMainRun` 建行后，`executeAgentRun` 创建 AgentSession 并 fire-and-forget 执行。完成信号经 `notifyRunComplete` 统一触发投影与锁释放。
+## 执行模型
+
+```text
+Human Message → Conversation History（canonical）
+→ trigger → AgentRunService.enqueueAndAcquire（normal/steer/follow_up 先持久化）
+→ acquired → AgentRunExecutionService.dispatch(runId)
+→ spawn coding-agent --mode rpc 子进程（per-Run Runtime，in-memory SessionStore）
+→ BackendRunOutcome → backend.db 原子 terminal commit（History Message + Context ref + run）
+→ child 自行退出
+```
+
+- 同一 Context Branch 最多一个 active Agent Run。
+- `commit_failed` 保留 branch 占用，`retryTerminalCommit` 幂等重放。
+- child crash → run failed；断线/重启后 busy 队列按原顺序恢复（delivery idempotency 去重）。
+- Agent Run 是唯一执行身份；无 daemon/session/span/checkpoint，不迁移旧执行路径。

@@ -21,8 +21,6 @@ const svc = createAgentService({
     return p;
   },
   purgeWorkspace: async () => {},
-  purgeEventsForSessions: async () => {},
-  listSessionIds: async () => [],
   assertNoActiveRun: () => {},
 });
 

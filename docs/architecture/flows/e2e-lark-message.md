@@ -3,17 +3,17 @@ id: flows.e2e-lark-message
 title: 飞书消息端到端
 status: current
 owners: architecture
-last_verified_against_code: 2026-06-30
-summary: "飞书消息的完整生命周期：飞书用户发消息 → lark-bot 解析绑定、POST 到 Backend → AgentSession 执行 → onEvent 回调写 conversation ledger → sse-watcher 解析 revision → 去重推送到飞书。"
+last_verified_against_code: 2026-07-28
+summary: "飞书消息的完整生命周期：飞书用户发消息 -> lark-bot 解析绑定、POST 到 Backend -> Agent 执行 -> onEvent 回调写 conversation ledger -> sse-watcher 解析 revision -> 去重推送到飞书。"
 depends_on:
-  - surfaces.lark-adapter
-  - backend.conversation-projection
+  - surfaces.lark
+  - runs.output-and-live-updates
 used_by:
 ---
 
 # 飞书消息端到端
 
-飞书用户发消息后，lark-bot 作为中继：解析飞书 chat 绑定，将消息 POST 到 Backend 的 conversation API，Backend 通过 AgentSession 执行 Agent，assistant 消息写入 conversation ledger。lark-bot 的 sse-watcher 监听账本 SSE，解析 MessageRevision，去重后推送到飞书。
+飞书用户发消息后，lark-bot 作为中继：解析飞书 chat 绑定，将消息 POST 到 Backend 的 conversation API，Backend 通过 Agent 执行，assistant 消息写入 conversation ledger。lark-bot 的 sse-watcher 监听账本 SSE，解析 MessageRevision，去重后推送到飞书。
 
 ## 时序图
 
@@ -22,24 +22,24 @@ sequenceDiagram
   participant U as 飞书用户
   participant Bot as 飞书 Bot
   participant B as Backend
-  participant AS as AgentSession
-  participant L as Conversation Ledger
+  participant AG as Agent
+  participant L as Conversation History
 
   U->>Bot: 发消息 / @机器人
   Bot->>B: 解析 chat 绑定（无则新建 Conversation + 成员）
   Bot->>B: POST /api/conversations/:id/messages
   B->>L: 写入人类 MessageRevision
-  B->>AS: executeAgentRun(input, {origin:"conversation", surface:"lark"})
-  AS->>AS: sessionFactory.enqueuePrompt(sessionId, input, {spanId})
-  AS->>AS: runLoop（自动多轮：模型 ↔ 工具执行）
-  AS-->>B: onAssistantMessage("message_update") → appendAssistantMessage
+  B->>AG: executeAgentRun(input, {origin:"conversation", surface:"lark"})
+  AG: create Agent Run + spawn coding-agent child（per-Run Runtime）
+  AG->>AG: model/tool loop（自动多轮：模型 ↔ 工具执行）
+  AG-->>B: onAssistantMessage("message_update") -> appendAssistantMessage
   B->>L: MessageRevision（state: streaming，同 messageId）
   L-->>Bot: 账本 SSE → sse-watcher 解析 revision
   Bot->>Bot: state=streaming → L2 节流（500ms 合并）→ 流式渲染
-  AS-->>B: onAssistantMessage("message_update")（更多轮 → 同 messageId）
+  AG-->>B: onAssistantMessage("message_update")（更多轮 -> 同 messageId）
   B->>L: 同 messageId 更新 revision
   L-->>Bot: 账本 SSE → 同 messageId 更新
-  AS-->>B: onEvent("agent_end")
+  AG-->>B: onEvent("agent_end")
   B->>L: terminal revision（state: done）
   L-->>Bot: 账本 SSE → revision（同 messageId, state: done）
   Bot->>Bot: messageDelivery 表去重（isTerminalMessageState）
@@ -48,7 +48,7 @@ sequenceDiagram
 
 ## 绑定模型
 
-飞书适配器维护四组映射：飞书 chat → conversationId；飞书 user → human member；Bot/Agent 身份 → agent member；飞书消息 ID → 投递状态。
+飞书维护四组映射：飞书 chat → conversationId；飞书 user → human member；Bot/Agent 身份 → agent member；飞书消息 ID → 投递状态。
 
 ## 流式输出
 
@@ -68,13 +68,13 @@ Agent 可调用 `start_new_conversation` 工具请求开启新对话。Backend �
 
 | 症状 | 可能成因 | 接着读 |
 |---|---|---|
-| 最终答案重复 | terminal revision 重放 / 去重未命中 | [飞书适配器](../surfaces/lark-adapter.md) |
-| 流式输出不更新 | conversation SSE 断连 | [会话消息流](../backend/conversation-projection.md) |
+| 最终答案重复 | terminal revision 重放 / 去重未命中 | [飞书](../surfaces/lark.md) |
+| 流式输出不更新 | conversation SSE 断连 | [会话消息流](../runs/output-and-live-updates.md) |
 | Agent 没触发 | 绑定/成员/提及问题 | [对话与成员](../conversation/conversation-and-members.md) |
 
 ## 关联页面
 
-- [飞书适配器](../surfaces/lark-adapter.md)
-- [会话消息流](../backend/conversation-projection.md)
+- [飞书](../surfaces/lark.md)
+- [会话消息流](../runs/output-and-live-updates.md)
 - [对话与成员](../conversation/conversation-and-members.md)
 - [排障手册](../operations/troubleshooting.md)

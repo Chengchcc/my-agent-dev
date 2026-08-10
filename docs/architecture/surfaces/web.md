@@ -6,8 +6,8 @@ owners: architecture
 last_verified_against_code: 2026-06-22
 summary: "Web 端是浏览器里的对话界面。消费 conversation SSE，在 conversation-reducer 里按 messageId upsert 到 items[]。items 是 UiItem 联合（message / notice）。busy 从 open message 的 state 推导。"
 depends_on:
-  - conversation.ledger
-  - backend.conversation-projection
+  - conversation.history
+  - runs.output-and-live-updates
 used_by:
   - flows.e2e-web-message
   - operations.troubleshooting
@@ -15,7 +15,7 @@ used_by:
 
 # Web 端
 
-Web 端是浏览器里的对话界面。它开启一个 SSE 连接到 `/api/bff/conversations/:id/events`，接收 [ledger](../conversation/ledger.md) 推送的条目。reducer 按 `messageId` upsert 到 `items[]`（`UiItem` 联合：`message` 和 `notice` 两种 kind）。busy 从 open message 的 `state` 字段推导——state 为 `streaming` 或 `waiting` 时表示 Agent 仍在运行或等待审批。
+Web 端是浏览器里的对话界面。它开启一个 SSE 连接到 `/api/bff/conversations/:id/events`，接收 [ledger](../conversation/history.md) 推送的条目。reducer 按 `messageId` upsert 到 `items[]`（`UiItem` 联合：`message` 和 `notice` 两种 kind）。busy 从 open message 的 `state` 字段推导——state 为 `streaming` 或 `waiting` 时表示 Agent 仍在运行或等待审批。
 
 ## ConvState
 
@@ -80,7 +80,7 @@ export function isBusy(s: ConvState): boolean {
 
 ## 关联页面
 
-- [对话账本](../conversation/ledger.md)
-- [会话投影](../backend/conversation-projection.md)
+- [对话账本](../conversation/history.md)
+- [会话投影](../runs/output-and-live-updates.md)
 - [Web 消息端到端](../flows/e2e-web-message.md)
 - [排障手册](../operations/troubleshooting.md)

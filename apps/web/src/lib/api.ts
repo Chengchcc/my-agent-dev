@@ -7,18 +7,25 @@ import { client, unwrap } from "./client";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ApiReturn<F extends (...args: any[]) => any> = Awaited<ReturnType<F>>;
 
+export type AgentRunStatus =
+  | "running"
+  | "waiting"
+  | "commit_failed"
+  | "completed"
+  | "failed"
+  | "aborted"
+  | "timeout";
+
 export type ProjectRow = ApiReturn<typeof api.listProjects>["projects"][number];
 export type CronJobRow = ApiReturn<typeof api.listCronJobs>["cronJobs"][number];
 export type LoopRow = ApiReturn<typeof api.listLoops>["loops"][number];
 export type LoopDetail = ApiReturn<typeof api.getLoop>["loop"];
 export type LarkSetupSession = ApiReturn<typeof api.larkSetup>;
 export type AgentRow = ApiReturn<typeof api.listAgents>[number];
-export type RunOpsListItem = ApiReturn<typeof api.listOpsRuns>[number];
-export type RunOpsDetail = ApiReturn<typeof api.getOpsRunDetail>;
+export type AgentRunListItem = ApiReturn<typeof api.listAgentRuns>["runs"][number];
+export type AgentRunDetail = ApiReturn<typeof api.getAgentRun>;
 export type AgentRuntimeStatus = ApiReturn<typeof api.getAgentRuntime>;
 export type SurfaceOpsItem = ApiReturn<typeof api.listSurfaces>[number];
-export type TraceOpsDetail = ApiReturn<typeof api.getTraceOpsDetail>;
-export type RunInsights = ApiReturn<typeof api.getRunInsights>;
 export type ConversationSnapshot = ApiReturn<typeof api.listConversations>[number];
 export type ReviewQueueItem = ApiReturn<typeof api.getWorkToday>["reviewQueue"][number];
 export type CreateLoopResult = ApiReturn<typeof api.createLoop>;
@@ -83,9 +90,6 @@ export const api = {
     unwrap(client.api.agents({ id }).lark.setup({ setupId }).get()),
   larkSetupCancel: (id: string, setupId: string) =>
     unwrap(client.api.agents({ id }).lark.setup({ setupId }).delete()),
-  // Runs (only resume — used by approval card)
-  resumeRun: (spanId: string, approved: boolean, message?: string) =>
-    unwrap(client.api.runs({ id: spanId }).resume.post({ approved, message })),
   // Conversations
   listConversations: (agentId?: string) =>
     unwrap(client.api.conversations.get({ query: agentId ? { agentId } : undefined })),
@@ -126,45 +130,24 @@ export const api = {
     const resp = await fetch(`/api/bff/conversations/${id}/export`, { credentials: "include" });
     return resp.text();
   },
-  // Ops
-  listOpsRuns: (params?: { agentId?: string; status?: string; limit?: number; traceId?: string }) =>
+  // Ops — Agent Run is the only execution identity
+  listAgentRuns: (params?: { status?: AgentRunStatus; agentId?: string; limit?: number }) =>
     unwrap(
-      client.api.ops.runs.get({
+      client.api["agent-runs"].get({
         query: params
-          ? ({
-              ...params,
+          ? {
+              status: params.status,
+              agentId: params.agentId,
               limit: params.limit != null ? String(params.limit) : undefined,
-            } as Record<string, string | undefined>)
+            }
           : undefined,
       }),
     ),
-  getOpsRunDetail: (spanId: string) => unwrap(client.api.ops.runs({ id: spanId }).get()),
-  listOpsSessions: (params?: { agentId?: string; status?: string; limit?: number }) =>
-    unwrap(
-      client.api.ops.sessions.get({
-        query: params
-          ? ({
-              ...params,
-              limit: params.limit != null ? String(params.limit) : undefined,
-            } as Record<string, string | undefined>)
-          : undefined,
-      }),
-    ),
-  getOpsSessionDetail: (sessionId: string) =>
-    unwrap(client.api.ops.sessions({ id: sessionId }).get()),
-  opsCancelRun: (spanId: string) => unwrap(client.api.ops.runs({ id: spanId }).cancel.post()),
-  opsRecoverRun: (spanId: string) => unwrap(client.api.ops.runs({ id: spanId }).recover.post()),
+  getAgentRun: (runId: string) => unwrap(client.api["agent-runs"]({ runId }).get()),
+  cancelAgentRun: (runId: string) => unwrap(client.api["agent-runs"]({ runId }).cancel.post()),
   getAgentRuntime: (agentId: string) =>
     unwrap(client.api.ops.agents({ id: agentId }).runtime.get()),
-  getTraceOpsDetail: (traceId: string) => unwrap(client.api.ops.traces({ id: traceId }).get()),
   listSurfaces: () => unwrap(client.api.ops.surfaces.get()),
-  getRunInsights: (spanId: string) => unwrap(client.api.ops.runs({ id: spanId }).insights.get()),
-  getInsightsSummary: (range: { from: number; to: number }) =>
-    unwrap(
-      client.api.ops.insights.summary.get({
-        query: { from: String(range.from), to: String(range.to) },
-      }),
-    ),
   // Projects
   listProjects: () => unwrap(client.api.projects.get()),
   getProject: (id: string) => unwrap(client.api.projects({ id }).get()),
@@ -345,6 +328,7 @@ export const api = {
           cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
           contextWindow: number;
           maxTokens: number;
+          available?: boolean;
         }>;
       }>;
     };

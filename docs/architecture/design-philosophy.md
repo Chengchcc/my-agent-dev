@@ -317,7 +317,7 @@ Message 或 Conversation control 表达 waiting approval。
 **正例**：
 
 ```text
-执行事实流（checkpoint_events）用于 audit / replay / troubleshooting。
+执行事实（agent_run 终态、product_tool_call 审计）用于 audit / replay / troubleshooting。
 Conversation Messages 用于 surface。
 ```
 
@@ -442,4 +442,4 @@ Agent 做 code review 时，除了找 bug，还要找概念债：
 ## 关联页面
 
 - [依赖注入](foundations/dependency-injection.md) —— DI 是这套哲学在协作关系上的投影
-- [标识符体系](foundations/identifiers.md) —— 两类 id、层归属准则、threadId→sessionId 正名
+- [标识符体系](foundations/identifiers.md) —— 实体主键与 runId 唯一执行身份

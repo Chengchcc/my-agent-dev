@@ -1,42 +1,134 @@
 import { describe, expect, test } from "bun:test";
 import { openDb } from "../../infra/sqlite/db.js";
+import { createAgentContextService, sqliteAgentContextAdapter } from "../agent-context/index.js";
+import type { AgentRunService } from "../agent-run/service.js";
 import { sqliteConversationAdapter } from "./adapter-sqlite.js";
-import { ConversationLock } from "./lock.js";
-import { createConversationService } from "./service.js";
-
-// thread-projection removed — kept as local mock for test assertions that
-// verify projection behavior (these checks now observe the ledger directly)
-const threadProjectionRead = {
-  getMessages: async (_sessionId: string) => [] as { role: string; content: string }[],
-};
+import { createConversationService, type TriggeredRun } from "./service.js";
 
 const db = openDb(":memory:");
 const port = sqliteConversationAdapter(db);
 
-// Track fork calls for @ trigger verification
-const forkLog: Array<{ spanId: string; agentMemberId: string }> = [];
-const _nextRunId = 0;
-const lock = new ConversationLock();
+const contextPort = sqliteAgentContextAdapter(db, {
+  ulid: () => `c-${Math.random().toString(36).slice(2, 8)}`,
+});
+const ledgerResolver = {
+  async resolveMessage(conversationId: string, ledgerSeq: number) {
+    const hit = port.getLedgerEntry(conversationId, ledgerSeq);
+    return hit?.kind === "message" ? (hit.content as never) : null;
+  },
+};
+const contextSvc = createAgentContextService({
+  port: contextPort,
+  idGen: { ulid: () => `x-${Math.random().toString(36).slice(2, 8)}` },
+  ledgerResolver,
+});
 
-let idCount = 0;
-function testIdGen(): string {
-  return `test-id-${idCount++}`;
+// Fake AgentRunService: records enqueues, controllable acquire/active state.
+const enqueueCalls: Array<{
+  conversationId: string;
+  agentMemberId: string;
+  mode: string;
+  idempotencyKey: string;
+  message: { text?: string };
+}> = [];
+const dispatchCalls: string[] = [];
+let nextAcquired = true;
+let activeRunId: string | null = null;
+let runIdCounter = 0;
+let knownRunConvId = "cid-1";
+
+function makeRunService(): AgentRunService {
+  return {
+    async enqueueAndAcquire(input) {
+      enqueueCalls.push({
+        conversationId: input.conversationId,
+        agentMemberId: input.agentMemberId,
+        mode: input.mode,
+        idempotencyKey: input.idempotencyKey,
+        message: input.message as { text?: string },
+      });
+      const runId = `run-${runIdCounter++}`;
+      return {
+        acquired: nextAcquired,
+        queued: !nextAcquired,
+        replayed: false,
+        run: nextAcquired
+          ? ({
+              runId,
+              branchId: "b",
+              conversationId: input.conversationId,
+              agentMemberId: input.agentMemberId,
+              modelRef: { backendKind: "coding_agent", modelId: "m" },
+              status: "running",
+              idempotencyKey: input.idempotencyKey,
+              terminalResult: null,
+              configRevision: 1,
+              productTools: null,
+              createdAt: Date.now(),
+              terminalAt: null,
+            } as never)
+          : undefined,
+        inputId: `in-${runId}`,
+      };
+    },
+    async markInputAccepted(inputId) {
+      return { inputId } as never;
+    },
+    async createPendingAction(runId, action) {
+      return { runId, actionId: "a", ...action } as never;
+    },
+    async consumePendingAction(actionId) {
+      return { action: { actionId } as never, runId: "r" };
+    },
+    async finalizeRun(runId) {
+      return { runId } as never;
+    },
+    async getRun(runId) {
+      if (runId === "run-known") {
+        return { runId, conversationId: knownRunConvId, branchId: "b" } as never;
+      }
+      if (runId === "run-other") {
+        return { runId, conversationId: "cid-other", branchId: "b" } as never;
+      }
+      return null;
+    },
+    async getActiveRun() {
+      return activeRunId ? ({ runId: activeRunId, branchId: "b" } as never) : null;
+    },
+    async listInputs() {
+      return [];
+    },
+    async hasActiveRunForConversations() {
+      return false;
+    },
+  };
 }
 
-const activeSessions = new Map<
-  string,
-  Map<string, { steer: (text: string) => void; followUp: (text: string) => void }>
->();
+const runSvc = makeRunService();
+const injectSteerCalls: Array<{ branchId: string; inputId: string }> = [];
+const abortStaleCalls: string[] = [];
+/** RunIds considered "live" (in-process child). DB-active alone is not live. */
+let liveRunIds = new Set<string>();
+/** RunIds with a dispatch in flight (pre-acceptance) on this process. */
+let inflightRunIds = new Set<string>();
 const svc = createConversationService({
   port,
-  lock,
-  maxConsecutiveAgentHops: () => 3,
-  idGen: testIdGen,
-  activeSessions,
-  startAgentRun: async (spanId, ctx) => {
-    forkLog.push({ spanId, agentMemberId: ctx.agentMemberId });
-    return { spanId, attemptSeq: 1 };
+  agentRunService: runSvc,
+  dispatchRun: async (runId) => {
+    dispatchCalls.push(runId);
   },
+  injectSteer: async (branchId, input) => {
+    injectSteerCalls.push({ branchId, inputId: input.inputId });
+  },
+  isLive: (runId) => liveRunIds.has(runId),
+  isInflight: (runId) => inflightRunIds.has(runId),
+  abortStaleRun: async (runId) => {
+    abortStaleCalls.push(runId);
+  },
+  contextService: contextSvc,
+  resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "fake/echo" }),
+  maxConsecutiveAgentHops: () => 3,
+  idGen: () => `id-${Math.random().toString(36).slice(2, 8)}`,
 });
 
 function setupConv(id: string) {
@@ -63,558 +155,355 @@ function setupConv(id: string) {
   }
   try {
     port.addMember({
-      memberId: `mem-x1-${id}`,
+      memberId: `agent-1-${id}`,
       conversationId: id,
       kind: "agent",
-      agentId: "ag-x",
-      displayName: "XAgent",
+      agentId: "a-1",
+      displayName: "Agent One",
       joinedAt: Date.now(),
     });
   } catch {
     /* already exists */
   }
-  try {
-    port.addMember({
-      memberId: `mem-y1-${id}`,
-      conversationId: id,
-      kind: "agent",
-      agentId: "ag-y",
-      displayName: "YAgent",
-      joinedAt: Date.now(),
-    });
-  } catch {
-    /* already exists */
-  }
-  return { id };
+  return {
+    humanMemberId: `mem-h1-${id}`,
+    agentMemberId: `agent-1-${id}`,
+  };
 }
 
-// ─── postMessage ───────────────────────────────────────────
+function messages(id: string) {
+  return port.getLedgerEntries(id).filter((e) => e.kind === "message");
+}
 
-describe("postMessage", () => {
-  test("appends ledger entry, broadcasts, and triggers addressed agent", async () => {
-    // lock state managed internally by ConversationLock
-    const { id } = setupConv("conv-pm1");
-    forkLog.length = 0;
+describe("conversation service (Agent Run cutover)", () => {
+  test("human message is canonical History FIRST, then an acquired run is dispatched", async () => {
+    const id = "cid-a";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    nextAcquired = true;
+    activeRunId = null;
+    enqueueCalls.length = 0;
+    dispatchCalls.length = 0;
 
     const result = await svc.postMessage({
       conversationId: id,
-      senderMemberId: `mem-h1-${id}`,
-      addressedTo: [`mem-x1-${id}`],
-      content: { text: "hello X" },
+      senderMemberId: humanMemberId,
+      addressedTo: [agentMemberId],
+      content: "hello agent",
     });
 
-    // Ledger entry appended
     expect(result.seq).toBeGreaterThan(0);
-
-    // Ledger contains the message (no longer materialized to thread_projection eagerly)
-    const entries = port.getLedgerEntries(id);
-    expect(entries.length).toBeGreaterThan(0);
-
-    // @ trigger: X's fork was called
-    expect(forkLog).toHaveLength(1);
-    expect(forkLog[0]?.agentMemberId).toBeTruthy();
-  });
-
-  test("does NOT trigger agent not in addressedTo", async () => {
-    const { id } = setupConv("conv-pm2");
-    forkLog.length = 0;
-
-    await svc.postMessage({
+    expect(messages(id)).toHaveLength(1);
+    expect(result.triggeredRuns).toEqual([{ agentMemberId, runId: "run-0", queued: false }]);
+    expect(enqueueCalls).toHaveLength(1);
+    expect(enqueueCalls[0]).toMatchObject({
       conversationId: id,
-      senderMemberId: `mem-h1-${id}`,
-      addressedTo: [`mem-x1-${id}`],
-      content: { text: "only for X" },
+      agentMemberId,
+      mode: "normal",
+      idempotencyKey: `${id}:${result.seq}:${agentMemberId}`,
     });
-
-    // X was triggered
-    expect(forkLog.some((f) => f.agentMemberId === `mem-x1-${id}`)).toBe(true);
-    // Y was NOT triggered
-    expect(forkLog.some((f) => f.agentMemberId === `mem-y1-${id}`)).toBe(false);
+    expect(dispatchCalls).toEqual(["run-0"]);
   });
 
-  test("no trigger for empty addressedTo", async () => {
-    const { id } = setupConv("conv-pm3");
-    forkLog.length = 0;
+  test("no trigger for empty addressedTo / non-mentioned agent", async () => {
+    const id = "cid-b";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    enqueueCalls.length = 0;
 
     await svc.postMessage({
       conversationId: id,
-      senderMemberId: `mem-h1-${id}`,
+      senderMemberId: humanMemberId,
       addressedTo: [],
-      content: { text: "just chatting" },
+      content: "hello",
     });
-
-    // No agents triggered
-    expect(forkLog).toHaveLength(0);
-  });
-
-  test("409 when conversation has active run", async () => {
-    const { id } = setupConv("conv-pm4");
-    lock.acquire(id, 1);
-
-    try {
-      await expect(
-        svc.postMessage({
-          conversationId: id,
-          senderMemberId: `mem-h1-${id}`,
-          addressedTo: [`mem-x1-${id}`],
-          content: { text: "should fail" },
-        }),
-      ).rejects.toThrow();
-    } finally {
-      lock.releaseOne(id);
-    }
-  });
-});
-
-// ─── hop count hard-cap ────────────────────────────────────
-
-describe("hop count", () => {
-  test("resets hop_count on human message", async () => {
-    const { id } = setupConv("conv-hop1");
-    port.updateHopCount(id, 5); // precondition
+    expect(enqueueCalls).toHaveLength(0);
 
     await svc.postMessage({
       conversationId: id,
-      senderMemberId: `mem-h1-${id}`,
-      addressedTo: [`mem-x1-${id}`],
-      content: { text: "human speaks" },
+      senderMemberId: humanMemberId,
+      addressedTo: ["someone-else"],
+      content: "hello",
     });
-
-    const conv = port.getConversation(id);
-    expect(conv?.hopCount).toBe(0);
+    expect(enqueueCalls).toHaveLength(0);
+    void agentMemberId;
   });
 
-  test("increments hop_count on agent message", async () => {
-    const { id } = setupConv("conv-hop2");
-    forkLog.length = 0;
+  test("busy branch with LIVE child -> steer mode, queued, no dispatch of a new run", async () => {
+    const id = "cid-c";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    nextAcquired = false;
+    activeRunId = "run-active";
+    liveRunIds = new Set(["run-active"]);
+    enqueueCalls.length = 0;
+    dispatchCalls.length = 0;
+    abortStaleCalls.length = 0;
 
-    await svc.postMessage({
-      conversationId: id,
-      senderMemberId: `mem-x1-${id}`,
-      addressedTo: [`mem-y1-${id}`],
-      content: { text: "@YAgent check this" },
-    });
-
-    const conv = port.getConversation(id);
-    expect(conv?.hopCount).toBe(1);
-  });
-
-  test.skip("rejects trigger when hop_count exceeds max", async () => {
-    const { id } = setupConv("conv-hop3");
-    forkLog.length = 0;
-    port.updateHopCount(id, 3); // at limit
-
-    // This should append ledger + broadcast but NOT trigger
     const result = await svc.postMessage({
       conversationId: id,
-      senderMemberId: `mem-x1-${id}`,
-      addressedTo: [`mem-y1-${id}`],
-      content: { text: "@YAgent over limit" },
+      senderMemberId: humanMemberId,
+      addressedTo: [agentMemberId],
+      content: "steer me",
     });
 
-    // Ledger still appended
-    expect(result.seq).toBeGreaterThan(0);
-    // But no fork triggered
-    expect(forkLog).toHaveLength(0);
-
-    // System message about hop cap was broadcast
-    const xMsgs = await threadProjectionRead.getMessages(`${id}:mem-x1-${id}`);
-    const last = xMsgs?.[xMsgs?.length - 1] as { role: string; content: string };
-    expect(last.content).toContain("暂停");
+    expect(enqueueCalls).toHaveLength(1);
+    expect(enqueueCalls[0]!.mode).toBe("steer");
+    expect(result.triggeredRuns).toEqual([{ agentMemberId, runId: "", queued: true }]);
+    // steer belongs to the CURRENT run: injected into the live child, and
+    // NO new run is dispatched (one Run / one child).
+    expect(dispatchCalls).toHaveLength(0);
+    expect(injectSteerCalls).toHaveLength(1);
+    expect(injectSteerCalls[0]!.inputId).toBeTruthy();
+    expect(abortStaleCalls).toHaveLength(0);
   });
-});
 
-// ─── member join/leave ─────────────────────────────────────
+  test("zombie active run (DB active, no live child) -> abortStaleRun + fresh NORMAL run", async () => {
+    const id = "cid-z";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    nextAcquired = true;
+    activeRunId = "run-zombie";
+    liveRunIds = new Set(); // DB-active but NOT live: a zombie
+    inflightRunIds = new Set();
+    enqueueCalls.length = 0;
+    dispatchCalls.length = 0;
+    abortStaleCalls.length = 0;
+    injectSteerCalls.length = 0;
 
-describe("member join/leave", () => {
-  test.skip("addMember creates member and broadcasts system message", async () => {
-    const { id } = setupConv("conv-mem1");
-
-    await svc.addMember({
+    const result = await svc.postMessage({
       conversationId: id,
-      memberId: `mem-z1-${id}`,
-      kind: "agent",
-      agentId: "ag-z",
-      displayName: "ZAgent",
+      senderMemberId: humanMemberId,
+      addressedTo: [agentMemberId],
+      content: "hello again",
     });
 
-    // Member exists
-    const members = port.getMembers(id);
-    expect(members.some((m) => m.memberId === `mem-z1-${id}`)).toBe(true);
-
-    // System message broadcast to other agents
-    const xMsgs = await threadProjectionRead.getMessages(`${id}:mem-x1-${id}`);
-    const last = xMsgs?.[xMsgs?.length - 1] as { role: string; content: string };
-    expect(last.content).toContain("系统");
-    expect(last.content).toContain("加入");
+    // The zombie is terminalized first, then the message becomes a NEW
+    // normal Run - never silently dropped as a steer.
+    expect(abortStaleCalls).toEqual(["run-zombie"]);
+    expect(enqueueCalls).toHaveLength(1);
+    expect(enqueueCalls[0]!.mode).toBe("normal");
+    expect(dispatchCalls).toHaveLength(1);
+    expect(injectSteerCalls).toHaveLength(0);
+    expect(result.triggeredRuns[0]!.queued).toBe(false);
   });
 
-  test.skip("removeMember deletes member and broadcasts system message", async () => {
-    const { id } = setupConv("conv-mem2");
+  test("inflight run (pre-acceptance dispatch) is queued as follow_up, never aborted", async () => {
+    const id = "cid-i";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    nextAcquired = false;
+    activeRunId = "run-inflight";
+    liveRunIds = new Set(); // no live child YET (pre-acceptance window)
+    inflightRunIds = new Set(["run-inflight"]); // dispatch is in flight
+    enqueueCalls.length = 0;
+    dispatchCalls.length = 0;
+    abortStaleCalls.length = 0;
+    injectSteerCalls.length = 0;
 
-    await svc.removeMember(id, `mem-x1-${id}`);
-
-    const members = port.getMembers(id);
-    expect(members.some((m) => m.memberId === `mem-x1-${id}`)).toBe(false);
-
-    // System message broadcast
-    const yMsgs = await threadProjectionRead.getMessages(`${id}:mem-y1-${id}`);
-    const last = yMsgs?.[yMsgs?.length - 1] as { role: string; content: string };
-    expect(last.content).toContain("离开");
-  });
-});
-
-// ─── conversation SSE ──────────────────────────────────────
-
-describe("subscribeConversation", () => {
-  test("returns ledger entries as async iterable, newest first", async () => {
-    // lock state managed internally by ConversationLock
-    const { id } = setupConv("conv-sse1");
-
-    // Post two messages, unlocking between each (simulating run completion)
-    await svc.postMessage({
+    const result = await svc.postMessage({
       conversationId: id,
-      senderMemberId: `mem-h1-${id}`,
-      addressedTo: [`mem-x1-${id}`],
-      content: { text: "first" },
+      senderMemberId: humanMemberId,
+      addressedTo: [agentMemberId],
+      content: "wait for it",
     });
-    lock.releaseOne(id);
 
-    await svc.postMessage({
-      conversationId: id,
-      senderMemberId: `mem-h1-${id}`,
-      addressedTo: [`mem-x1-${id}`],
-      content: { text: "second" },
-    });
-    lock.releaseOne(id);
-
-    const stream = svc.subscribeConversation(id, { afterSeq: 0, pollMs: 0 });
-    const entries: unknown[] = [];
-    for await (const entry of stream) {
-      entries.push(entry);
-    }
-
-    expect(entries.length).toBeGreaterThanOrEqual(2);
+    // The in-flight run is owned: queue the message as follow-up instead of
+    // aborting it and racing a second child.
+    expect(abortStaleCalls).toHaveLength(0);
+    expect(enqueueCalls).toHaveLength(1);
+    expect(enqueueCalls[0]!.mode).toBe("follow_up");
+    expect(injectSteerCalls).toHaveLength(0);
+    expect(result.triggeredRuns[0]!.queued).toBe(true);
   });
 
-  test("afterSeq filters out seen entries", async () => {
-    // lock state managed internally by ConversationLock
-    const { id } = setupConv("conv-sse2");
+  test("explicit follow_up mode is honored even when idle", async () => {
+    const id = "cid-d";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    nextAcquired = false;
+    activeRunId = "run-active";
+    enqueueCalls.length = 0;
 
     await svc.postMessage({
       conversationId: id,
-      senderMemberId: `mem-h1-${id}`,
-      addressedTo: [`mem-x1-${id}`],
-      content: { text: "msg1" },
+      senderMemberId: humanMemberId,
+      addressedTo: [agentMemberId],
+      content: "later",
+      mode: "follow_up",
     });
-    lock.releaseOne(id);
-
-    const result2 = await svc.postMessage({
-      conversationId: id,
-      senderMemberId: `mem-h1-${id}`,
-      addressedTo: [`mem-x1-${id}`],
-      content: { text: "msg2" },
-    });
-    lock.releaseOne(id);
-
-    const stream = svc.subscribeConversation(id, { afterSeq: result2.seq, pollMs: 0 });
-    const entries: unknown[] = [];
-    for await (const entry of stream) {
-      entries.push(entry);
-    }
-
-    // No new entries after the last one
-    expect(entries).toHaveLength(0);
-  });
-});
-
-// ─── P0-2 regression: lock release + postMessage unblocks ──
-
-describe("P0-2: lock lifecycle", () => {
-  test("completeRun releases conversation lock so next postMessage succeeds", async () => {
-    // lock state managed internally by ConversationLock
-    forkLog.length = 0;
-    const { id } = setupConv("conv-lock1");
-
-    // First post triggers a fork → conversation locked
-    const r1 = await svc.postMessage({
-      conversationId: id,
-      senderMemberId: `mem-h1-${id}`,
-      addressedTo: [`mem-x1-${id}`],
-      content: { text: "first" },
-    });
-    expect(r1.triggeredRuns).toHaveLength(1);
-    expect(lock.isActive(id)).toBe(true);
-
-    // Simulate run completion (P0-2: this must NOT hang)
-    const start = Date.now();
-    svc.completeRun(id, r1.triggeredRuns[0]!.spanId);
-    const elapsed = Date.now() - start;
-    expect(elapsed).toBeLessThan(1000); // must complete near-instantly, not hang
-    expect(lock.isActive(id)).toBe(false);
-
-    // Second post should succeed (lock released)
-    const r2 = await svc.postMessage({
-      conversationId: id,
-      senderMemberId: `mem-h1-${id}`,
-      addressedTo: [`mem-x1-${id}`],
-      content: { text: "second" },
-    });
-    expect(r2.triggeredRuns).toHaveLength(1);
-  });
-});
-
-// ─── M14.4: agent-to-agent @mention triggering ────────────
-
-describe("M14.4: triggerMentionedAgents", () => {
-  test("triggers @-mentioned agent via startAgentRun", async () => {
-    // lock state managed internally by ConversationLock
-    forkLog.length = 0;
-    const { id } = setupConv("conv-at1");
-
-    const result = await svc.triggerMentionedAgents({
-      conversationId: id,
-      senderMemberId: `mem-x1-${id}`,
-      addressedTo: [`mem-y1-${id}`],
-    });
-
-    expect(result).toHaveLength(1);
-    expect(result[0]?.agentMemberId).toBe(`mem-y1-${id}`);
-    expect(forkLog).toHaveLength(1);
-    expect(forkLog[0]?.agentMemberId).toBeTruthy();
+    expect(enqueueCalls[0]!.mode).toBe("follow_up");
   });
 
-  test("skips when conversation is busy", async () => {
-    forkLog.length = 0;
-    const { id } = setupConv("conv-at2");
-    lock.acquire(id, 1);
+  test("resets hop_count on human message, increments on agent message", async () => {
+    const id = "cid-e";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    nextAcquired = true;
+    activeRunId = null;
+    port.updateHopCount(id, 5);
 
-    const result = await svc.triggerMentionedAgents({
+    await svc.postMessage({
       conversationId: id,
-      senderMemberId: `mem-x1-${id}`,
-      addressedTo: [`mem-y1-${id}`],
-    });
-
-    expect(result).toHaveLength(0);
-    expect(forkLog).toHaveLength(0);
-
-    lock.releaseOne(id);
-  });
-
-  test("returns empty for empty addressedTo", async () => {
-    forkLog.length = 0;
-    const { id } = setupConv("conv-at3");
-
-    const result = await svc.triggerMentionedAgents({
-      conversationId: id,
-      senderMemberId: `mem-x1-${id}`,
+      senderMemberId: humanMemberId,
       addressedTo: [],
+      content: "reset",
     });
+    expect(port.getConversation(id)!.hopCount).toBe(0);
 
-    expect(result).toHaveLength(0);
-    expect(forkLog).toHaveLength(0);
-  });
-
-  test("rejects when hop count exceeds max", async () => {
-    forkLog.length = 0;
-    const { id } = setupConv("conv-at4");
-    port.updateHopCount(id, 3); // at limit — next agent→agent would exceed
-
-    const result = await svc.triggerMentionedAgents({
+    await svc.postMessage({
       conversationId: id,
-      senderMemberId: `mem-x1-${id}`,
-      addressedTo: [`mem-y1-${id}`],
+      senderMemberId: agentMemberId,
+      addressedTo: [humanMemberId],
+      content: "agent msg",
     });
-
-    expect(result).toHaveLength(0);
-    expect(forkLog).toHaveLength(0);
+    expect(port.getConversation(id)!.hopCount).toBe(1);
   });
 
-  test("increments hop count for agent sender", async () => {
-    forkLog.length = 0;
-    const { id } = setupConv("conv-at5");
+  test("hop-capped trigger writes a system message and does not enqueue", async () => {
+    const id = "cid-f";
+    const { agentMemberId } = setupConv(id);
+    enqueueCalls.length = 0;
+    port.updateHopCount(id, 10);
 
-    await svc.triggerMentionedAgents({
+    await svc.postMessage({
       conversationId: id,
-      senderMemberId: `mem-x1-${id}`,
-      addressedTo: [`mem-y1-${id}`],
+      senderMemberId: "agent-2",
+      addressedTo: [agentMemberId],
+      content: "capped",
     });
-
-    const conv = port.getConversation(id);
-    expect(conv?.hopCount).toBe(1);
+    expect(enqueueCalls).toHaveLength(0);
+    expect(messages(id).some((m) => JSON.stringify(m.content).includes("上限"))).toBe(true);
   });
-});
 
-describe("startNewConversationForSurface", () => {
-  test("creates new conversation, copies members, writes surface.control", async () => {
-    const { id: oldId } = setupConv("conv-startnew1");
-    // Add a Lark human member (with lark: userRef) for copy
+  test("mention cascade triggers mentioned agents with sourceRunId idempotency", async () => {
+    const id = "cid-g";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    // add a second agent to be mentioned
     port.addMember({
-      memberId: "human-lark-1",
-      conversationId: oldId,
-      kind: "human",
-      userRef: "lark:ou_user001",
-      displayName: "LarkUser",
+      memberId: "agent-2",
+      conversationId: id,
+      kind: "agent",
+      agentId: "a-2",
+      displayName: "Second",
       joinedAt: Date.now(),
     });
+    enqueueCalls.length = 0;
+    dispatchCalls.length = 0;
+    nextAcquired = true;
+    activeRunId = null;
 
+    const message = { role: "assistant" as const, text: "please check @agent-2 for me" };
+    const first = await svc.cascadeMentionedAgents({
+      conversationId: id,
+      sourceRunId: "run-src",
+      senderMemberId: agentMemberId,
+      message: message as never,
+    });
+    const second = await svc.cascadeMentionedAgents({
+      conversationId: id,
+      sourceRunId: "run-src",
+      senderMemberId: agentMemberId,
+      message: message as never,
+    });
+
+    const cascadeRuns = enqueueCalls.filter((c) => c.idempotencyKey === "run-src:agent-2");
+    // replay of the same sourceRunId must produce the same single idempotent key
+    expect(cascadeRuns).toHaveLength(2); // enqueued twice with the SAME key
+    expect(new Set(cascadeRuns.map((c) => c.idempotencyKey)).size).toBe(1);
+    expect(first.map((r: TriggeredRun) => r.agentMemberId)).toEqual(["agent-2"]);
+    expect(second.map((r: TriggeredRun) => r.agentMemberId)).toEqual(["agent-2"]);
+    void humanMemberId;
+  });
+
+  test("cascade skips the sender and non-mentioned agents", async () => {
+    const id = "cid-h";
+    const { agentMemberId } = setupConv(id);
+    enqueueCalls.length = 0;
+
+    await svc.cascadeMentionedAgents({
+      conversationId: id,
+      sourceRunId: "run-x",
+      senderMemberId: agentMemberId,
+      message: { role: "assistant" as const, text: "no mentions here" } as never,
+    });
+    expect(enqueueCalls).toHaveLength(0);
+  });
+
+  test("startNewConversationForSurface verifies the run owns the conversation", async () => {
+    const id = "cid-i";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    await expect(
+      svc.startNewConversationForSurface({
+        oldConversationId: id,
+        reason: "test",
+        requestedByRunId: "run-missing",
+        idempotencyKey: "k1",
+      }),
+    ).rejects.toThrow("run not found");
+    await expect(
+      svc.startNewConversationForSurface({
+        oldConversationId: id,
+        reason: "test",
+        requestedByRunId: "run-other",
+        idempotencyKey: "k2",
+      }),
+    ).rejects.toThrow("does not belong");
+    void humanMemberId;
+    void agentMemberId;
+  });
+
+  test("startNewConversationForSurface creates the new conversation and control entry", async () => {
+    const id = "cid-j";
+    knownRunConvId = id;
+    const { humanMemberId, agentMemberId } = setupConv(id);
     const result = await svc.startNewConversationForSurface({
-      oldConversationId: oldId,
-      reason: "user requested reset",
-      title: "fresh topic",
-      requestedByRunId: "run_test_1",
-      idempotencyKey: "run_test_1:start_new_conversation",
+      oldConversationId: id,
+      reason: "fresh",
+      title: "New chat",
+      requestedByRunId: "run-known",
+      idempotencyKey: "k3",
     });
-
-    expect(result.oldConversationId).toBe(oldId);
-    expect(result.newConversationId).toStartWith("test-id-");
-    expect(result.controlSeq).toBeGreaterThan(0);
-
-    // New conversation exists
-    const newConv = port.getConversation(result.newConversationId);
-    expect(newConv).not.toBeNull();
-    expect(newConv?.title).toBe("fresh topic");
-
-    // Members copied (agent + human only)
+    expect(result.newConversationId).toBeTruthy();
+    const control = port.getLedgerEntries(id).find((e) => e.kind === "surface.control");
+    expect(control).toBeTruthy();
     const newMembers = port.getMembers(result.newConversationId);
-    const agentMembers = newMembers.filter((m) => m.kind === "agent");
-    const humanMembers = newMembers.filter((m) => m.kind === "human");
-    expect(agentMembers.length).toBeGreaterThan(0);
-    expect(humanMembers.length).toBeGreaterThan(0);
-
-    // Old conversation has surface.control entry
-    const entries = port.getLedgerEntries(oldId);
-    const controlEntries = entries.filter((e) => e.kind === "surface.control");
-    expect(controlEntries.length).toBeGreaterThan(0);
+    expect(newMembers.some((m) => m.memberId === agentMemberId)).toBe(true);
+    // only agent + lark human members are copied to the new conversation
+    expect(newMembers.some((m) => m.memberId === humanMemberId)).toBe(false);
+    expect(port.getConversation(result.newConversationId)!.title).toBe("New chat");
   });
 
-  test("idempotent — same idempotencyKey returns same result", async () => {
-    const { id: oldId } = setupConv("conv-startnew2");
-
-    const first = await svc.startNewConversationForSurface({
-      oldConversationId: oldId,
-      reason: "reset",
-      requestedByRunId: "run_idem_1",
-      idempotencyKey: "run_idem_1:start_new_conversation",
-    });
-
-    const second = await svc.startNewConversationForSurface({
-      oldConversationId: oldId,
-      reason: "reset again",
-      requestedByRunId: "run_idem_1",
-      idempotencyKey: "run_idem_1:start_new_conversation",
-    });
-
-    expect(second.newConversationId).toBe(first.newConversationId);
-    expect(second.controlSeq).toBe(first.controlSeq);
-  });
-});
-
-describe("steer/followUp via activeSessions", () => {
-  test("busy postMessage steers instead of throwing 409", async () => {
-    const cid = "conv-steer-1";
-    setupConv(cid);
-    const steerCalls: string[] = [];
-    const inner = new Map();
-    inner.set(`mem-x1-${cid}`, {
-      steer: (text: string) => steerCalls.push(text),
-      followUp: () => {},
-    });
-    activeSessions.set(cid, inner);
-    lock.acquire(cid, 1);
-
-    const result = await svc.postMessage({
-      conversationId: cid,
-      senderMemberId: `mem-h1-${cid}`,
-      addressedTo: [`mem-x1-${cid}`],
-      content: "steer this",
-    });
-
-    expect(steerCalls).toContain("steer this");
-    expect(result.triggeredRuns).toHaveLength(0);
-
-    lock.releaseOne(cid);
-    activeSessions.delete(cid);
+  test("clear and compact are no-ops (no runtime sessions remain)", async () => {
+    const id = "cid-k";
+    setupConv(id);
+    await svc.clearConversation(id);
+    await svc.compactConversation(id);
+    expect(port.getConversation(id)).toBeTruthy();
   });
 
-  test("idle with active session -> followUp", async () => {
-    const cid = "conv-followup-1";
-    setupConv(cid);
-    const followUpCalls: string[] = [];
-    const inner = new Map();
-    inner.set(`mem-x1-${cid}`, {
-      steer: () => {},
-      followUp: (text: string) => followUpCalls.push(text),
+  test("fork copies members and history up to fromSeq", async () => {
+    const id = "cid-l";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    const { seq } = await svc.postMessage({
+      conversationId: id,
+      senderMemberId: humanMemberId,
+      addressedTo: [],
+      content: "hello",
     });
-    activeSessions.set(cid, inner);
-
-    const result = await svc.postMessage({
-      conversationId: cid,
-      senderMemberId: `mem-h1-${cid}`,
-      addressedTo: [`mem-x1-${cid}`],
-      content: "follow up",
-    });
-
-    expect(followUpCalls).toContain("follow up");
-    expect(result.triggeredRuns).toHaveLength(0);
-
-    activeSessions.delete(cid);
+    const forked = await svc.forkConversation({ conversationId: id, fromSeq: seq });
+    expect(forked.newConversationId).toBeTruthy();
+    const copied = port.getLedgerEntries(forked.newConversationId);
+    expect(copied.filter((e) => e.kind === "message")).toHaveLength(1);
+    expect(
+      port.getMembers(forked.newConversationId).some((m) => m.memberId === agentMemberId),
+    ).toBe(true);
   });
 
-  test("no active session -> normal forkAgentRuns", async () => {
-    const cid = "conv-fork-1";
-    setupConv(cid);
-    const before = forkLog.length;
-
-    const result = await svc.postMessage({
-      conversationId: cid,
-      senderMemberId: `mem-h1-${cid}`,
-      addressedTo: [`mem-x1-${cid}`],
-      content: "normal trigger",
-    });
-
-    expect(result.triggeredRuns.length).toBeGreaterThan(0);
-    expect(forkLog.length).toBe(before + 1);
-  });
-
-  test("multi-agent: steer targets only addressedTo agent", async () => {
-    const cid = "conv-multi-steer";
-    setupConv(cid);
-    // Add second agent
-    port.addMember({
-      memberId: `mem-x2-${cid}`,
-      conversationId: cid,
-      kind: "agent",
-      agentId: "agent-2",
-      displayName: "Agent2",
-      joinedAt: Date.now(),
-    });
-
-    const steerA: string[] = [];
-    const steerB: string[] = [];
-    const inner = new Map();
-    inner.set(`mem-x1-${cid}`, {
-      steer: (text: string) => steerA.push(text),
-      followUp: () => {},
-    });
-    inner.set(`mem-x2-${cid}`, {
-      steer: (text: string) => steerB.push(text),
-      followUp: () => {},
-    });
-    activeSessions.set(cid, inner);
-    lock.acquire(cid, 1);
-
+  test("undo soft-deletes the latest message and broadcasts an undo entry", async () => {
+    const id = "cid-m";
+    const { humanMemberId } = setupConv(id);
     await svc.postMessage({
-      conversationId: cid,
-      senderMemberId: `mem-h1-${cid}`,
-      addressedTo: [`mem-x1-${cid}`],
-      content: "only steer A",
+      conversationId: id,
+      senderMemberId: humanMemberId,
+      addressedTo: [],
+      content: "to undo",
     });
-
-    expect(steerA).toContain("only steer A");
-    expect(steerB).toHaveLength(0);
-
-    lock.releaseOne(cid);
-    activeSessions.delete(cid);
+    const result = await svc.undoMessages({ conversationId: id, count: 1 });
+    expect(result.undoneSeqs).toHaveLength(1);
+    expect(port.getLedgerEntries(id).some((e) => e.kind === "undo")).toBe(true);
   });
 });

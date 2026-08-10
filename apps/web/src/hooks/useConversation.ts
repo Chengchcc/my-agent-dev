@@ -1,22 +1,33 @@
 "use client";
 
 import { conversationEvents } from "@my-agent-team/api-contract";
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   useConversationSnapshot,
   usePostConversationMessage,
-  useResumeRun,
 } from "@/features/conversations/hooks";
 import type { ConversationSnapshot } from "@/lib/api";
 import {
   type ConvState,
-  getApprovalTarget,
   initialState,
   isBusy,
   reducer,
   type SenderRef,
 } from "@/lib/conversation-reducer";
+import {
+  appendTransient,
+  clearRunTodos,
+  clearRunTools,
+  completeTool,
+  type LiveToolCall,
+  type LiveToolMap,
+  type RunTodoMap,
+  removeTransient,
+  setRunTodos as setRunTodosMap,
+  type TodoItem,
+  upsertTool,
+} from "@/lib/transient-reducer";
 import { typedSource } from "@/lib/typed-source";
 
 function safeParse(raw: string): unknown {
@@ -39,23 +50,78 @@ function resolveAddressedTo(s: ConvState): string[] {
   return [];
 }
 
-interface PetBarkData {
-  mood: "happy" | "neutral" | "frustrated" | "excited";
-  text: string;
-  level: number;
-  turn: number;
-}
-const VALID_MOODS = new Set(["happy", "neutral", "frustrated", "excited"]);
-function isPetMood(s: string): s is "happy" | "neutral" | "frustrated" | "excited" {
-  return VALID_MOODS.has(s);
-}
 export function useConversation(
   conversationId: string,
   preFetchedSnapshot?: ConversationSnapshot | null,
 ) {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
-  const [petBark, setPetBark] = useState<PetBarkData | null>(null);
-  const [recap, setRecap] = useState<{ text: string; turn: number } | null>(null);
+  /** Transient Agent Run state (Live Updates): a set of active runIds.
+   *  Runs are removed when their terminal state is observed on the run
+   *  event stream OR when the canonical final Message lands in History. */
+  const [activeRuns, setActiveRuns] = useState<Set<string>>(new Set());
+  /** Transient streaming output per active run (one bubble per run in the
+   *  Timeline). Never persisted; each entry is replaced by the canonical
+   *  final Message (`run:<runId>:assistant:0`) or dropped on failure. */
+  const [transients, setTransients] = useState<
+    Record<string, { text: string; agentMemberId: string }>
+  >({});
+  const runStreamsRef = useRef(new Map<string, EventSource>());
+  const transientsRef = useRef(transients);
+  /** Live tool steps per run (`<runId>:<callId>` key). Run-local, transient:
+   *  never written to History, cleared at run terminal. */
+  const [transientTools, setTransientTools] = useState<LiveToolMap>({});
+  /** Latest todo snapshot per run (todo_write replaces the whole list). */
+  const [runTodos, setRunTodos] = useState<RunTodoMap>({});
+
+  const upsertToolState = useCallback((call: LiveToolCall) => {
+    setTransientTools((prev) => upsertTool(prev, call));
+  }, []);
+  const completeToolState = useCallback(
+    (runId: string, callId: string, result: unknown, isError: boolean) => {
+      setTransientTools((prev) => completeTool(prev, runId, callId, result, isError));
+    },
+    [],
+  );
+  const clearRunToolsState = useCallback((runId: string) => {
+    setTransientTools((prev) => clearRunTools(prev, runId));
+  }, []);
+  const setRunTodosState = useCallback((runId: string, items: readonly TodoItem[]) => {
+    setRunTodos((prev) => setRunTodosMap(prev, runId, items));
+  }, []);
+  const clearRunTodosState = useCallback((runId: string) => {
+    setRunTodos((prev) => clearRunTodos(prev, runId));
+  }, []);
+
+  // Leaving the conversation closes every run EventSource and clears all
+  // transient state — a switched conversation must never inherit the
+  // previous one's streaming bubbles. Runs on unmount AND conversationId
+  // change; setState calls after unmount are no-ops in React 18+.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: cleanup-only effect keyed on conversationId
+  useEffect(() => {
+    return () => {
+      for (const es of runStreamsRef.current.values()) es.close();
+      runStreamsRef.current.clear();
+      setActiveRuns(new Set());
+      setTransients({});
+      transientsRef.current = {};
+      setTransientTools({});
+      setRunTodos({});
+    };
+  }, [conversationId]);
+  const upsertTransient = useCallback((runId: string, agentMemberId: string, text: string) => {
+    setTransients((prev) => {
+      const next = appendTransient(prev, runId, agentMemberId, text);
+      transientsRef.current = next;
+      return next;
+    });
+  }, []);
+  const dropTransient = useCallback((runId: string) => {
+    setTransients((prev) => {
+      const next = removeTransient(prev, runId);
+      transientsRef.current = next;
+      return next;
+    });
+  }, []);
 
   // 1) Snapshot bootstrap (roster + viewerMemberId)
   const snap = useConversationSnapshot(conversationId, preFetchedSnapshot);
@@ -75,14 +141,13 @@ export function useConversation(
   //    No more run EventSource; all message output arrives via the conversation SSE.
   useEffect(() => {
     if (!conversationId) return;
-    // Resume from last known seq on page refresh (sessionStorage survives refresh).
-    const storageKey = `conv-last-seq-${conversationId}`;
-    const afterSeq =
-      typeof window !== "undefined"
-        ? parseInt(sessionStorage.getItem(storageKey) ?? "0", 10) || 0
-        : 0;
+    // Full replay on every mount: afterSeq=0 re-delivers the whole ledger,
+    // so a page refresh shows the complete history. Reconnects resume via
+    // Last-Event-ID (server ids), and the guard dedupes replays. No
+    // sessionStorage cursor: a cursor that outlives the page would make
+    // refresh look like "the agent never replied".
     const ts = typedSource(
-      `/api/bff/api/conversations/${conversationId}/events?afterSeq=${afterSeq}`,
+      `/api/bff/api/conversations/${conversationId}/events?afterSeq=0`,
       conversationEvents,
       {
         onError: (_event, _err) => {
@@ -123,14 +188,6 @@ export function useConversation(
         for (const s of sorted) if (s <= cutoff) seen.delete(s);
       }
       lastAppliedSeq = Math.max(lastAppliedSeq, seq);
-      // Persist across page refresh so SSE can resume from this point
-      if (typeof window !== "undefined") {
-        try {
-          sessionStorage.setItem(storageKey, String(lastAppliedSeq));
-        } catch {
-          /* quota */
-        }
-      }
       if (pendingGap) {
         // Hole detected on reconnect — notify user
         toast.success("Reconnected — syncing missed messages");
@@ -144,32 +201,6 @@ export function useConversation(
       if (seq === null) return;
       const content = typeof entry.content === "string" ? safeParse(entry.content) : entry.content;
       if (entry.senderMemberId === "__system__") {
-        // queue_update arrives as a system message whose content is a
-        // MessageRevision whose `text` is a JSON string
-        // { type: "queue_update", steering: string[], followUp: string[] }.
-        if (content && typeof content === "object" && "text" in content) {
-          const revText = content.text;
-          if (typeof revText === "string") {
-            const parsed = safeParse(revText);
-            if (
-              parsed &&
-              typeof parsed === "object" &&
-              "type" in parsed &&
-              parsed.type === "queue_update"
-            ) {
-              const steering =
-                "steering" in parsed && Array.isArray(parsed.steering)
-                  ? (parsed.steering as string[])
-                  : [];
-              const followUp =
-                "followUp" in parsed && Array.isArray(parsed.followUp)
-                  ? (parsed.followUp as string[])
-                  : [];
-              dispatch({ type: "queue/update", messages: [...steering, ...followUp] });
-              return;
-            }
-          }
-        }
         dispatch({
           type: "member",
           seq,
@@ -177,6 +208,19 @@ export function useConversation(
           payload: content,
         });
       } else {
+        // The canonical final Message for a transient run replaces the
+        // temporary bubble — match by messageId prefix `run:<runId>:`.
+        if (
+          content &&
+          typeof content === "object" &&
+          "messageId" in content &&
+          typeof content.messageId === "string"
+        ) {
+          const match = /^run:([^:]+):/.exec(content.messageId);
+          if (match?.[1] && match[1] in transientsRef.current) {
+            dropTransient(match[1]);
+          }
+        }
         dispatch({
           type: "message",
           seq,
@@ -202,45 +246,6 @@ export function useConversation(
       dispatch({ type: "member", seq, kind: "member.left", payload });
     });
 
-    ts.on("todo", (entry) => {
-      const payload = typeof entry.content === "string" ? safeParse(entry.content) : entry.content;
-      const todos =
-        payload && typeof payload === "object" && "todos" in payload
-          ? (payload as { todos: ConvState["todos"] }).todos
-          : null;
-      if (Array.isArray(todos)) {
-        dispatch({ type: "todo/update", todos });
-      }
-    });
-
-    ts.on("pet_bark", (entry) => {
-      const payload = typeof entry.content === "string" ? safeParse(entry.content) : entry.content;
-      if (payload && typeof payload === "object" && "mood" in payload && "text" in payload) {
-        const mood = String(payload.mood);
-        if (!isPetMood(mood)) return;
-        setPetBark({
-          mood,
-          text: String(payload.text),
-          level:
-            payload && typeof payload === "object" && "level" in payload
-              ? Number(payload.level)
-              : 1,
-          turn:
-            payload && typeof payload === "object" && "turn" in payload ? Number(payload.turn) : 0,
-        });
-      }
-    });
-
-    ts.on("recap", (entry) => {
-      const payload = typeof entry.content === "string" ? safeParse(entry.content) : entry.content;
-      if (payload && typeof payload === "object" && "text" in payload && "turn" in payload) {
-        setRecap({
-          text: String(payload.text),
-          turn: "turn" in payload ? Number(payload.turn) : 0,
-        });
-      }
-    });
-
     ts.on("undo", (entry) => {
       const seq = guard(entry);
       if (seq === null) return;
@@ -254,12 +259,124 @@ export function useConversation(
     });
 
     return () => ts.close();
-  }, [conversationId]);
+  }, [conversationId, dropTransient]);
 
   // 3) Send: optimistic dispatch + POST /conversations/:id/messages.
   //    The conversation SSE delivers the authoritative ledger revision which
   //    upserts the optimistic message by messageId. No run EventSource needed.
   const sendMut = usePostConversationMessage(conversationId);
+
+  /** Follow one run through its Live Update stream. Transient only: the
+   *  bubble is kept on `completed` until the canonical final Message
+   *  replaces it (no blank frame between stream end and history commit);
+   *  failed/aborted/timeout drops it immediately — those runs have no
+   *  canonical assistant Message to swap in. */
+  const watchRun = useCallback(
+    (runId: string, agentMemberId: string) => {
+      setActiveRuns((prev) => new Set(prev).add(runId));
+      // One stream per run, tracked centrally so unmount can close all.
+      const existing = runStreamsRef.current.get(runId);
+      existing?.close();
+      const es = new EventSource(`/api/bff/api/agent-runs/${runId}/events`);
+      runStreamsRef.current.set(runId, es);
+      const done = (dropBubble: boolean) => {
+        runStreamsRef.current.get(runId)?.close();
+        runStreamsRef.current.delete(runId);
+        setActiveRuns((prev) => {
+          const next = new Set(prev);
+          next.delete(runId);
+          return next;
+        });
+        // Tools/todos are Run-local and never enter History: clear them at
+        // terminal regardless of outcome. Only the text bubble survives on
+        // completion (replaced by the canonical Message).
+        clearRunToolsState(runId);
+        clearRunTodosState(runId);
+        if (dropBubble) dropTransient(runId);
+      };
+      // Transport failure: Live Updates are best-effort; drop the partial
+      // bubble. If the run actually completed, the canonical Message still
+      // arrives via the conversation SSE.
+      es.onerror = () => done(true);
+      es.addEventListener("status", (e) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as {
+            type?: string;
+            status?: string;
+          };
+          if (ev.type !== "status") return;
+          if (ev.status === "completed") done(false);
+          else if (["failed", "aborted", "timeout"].includes(ev.status ?? "")) {
+            done(true);
+          }
+        } catch {
+          /* malformed - ignore */
+        }
+      });
+      es.addEventListener("text_delta", (e) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as { text?: string };
+          if (ev.text) upsertTransient(runId, agentMemberId, ev.text);
+        } catch {
+          /* malformed - ignore */
+        }
+      });
+      const toolStarted = (kind: "native" | "product") => (e: Event) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as {
+            toolName?: string;
+            callId?: string;
+          };
+          if (!ev.callId) return;
+          upsertToolState({
+            runId,
+            callId: ev.callId,
+            name: ev.toolName ?? "tool",
+            kind,
+            state: "running",
+          });
+        } catch {
+          /* malformed - ignore */
+        }
+      };
+      const toolCompleted = (_kind: "native" | "product") => (e: Event) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as {
+            callId?: string;
+            result?: unknown;
+          };
+          if (!ev.callId) return;
+          completeToolState(runId, ev.callId, ev.result, false);
+        } catch {
+          /* malformed - ignore */
+        }
+      };
+      es.addEventListener("native_tool_started", toolStarted("native"));
+      es.addEventListener("native_tool_completed", toolCompleted("native"));
+      es.addEventListener("product_tool_started", toolStarted("product"));
+      es.addEventListener("product_tool_completed", toolCompleted("product"));
+      es.addEventListener("backend.coding_agent.todo_update", (e) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as {
+            payload?: { items?: readonly TodoItem[] };
+          };
+          const items = ev.payload?.items;
+          if (items) setRunTodosState(runId, items);
+        } catch {
+          /* malformed - ignore */
+        }
+      });
+    },
+    [
+      clearRunToolsState,
+      clearRunTodosState,
+      completeToolState,
+      dropTransient,
+      setRunTodosState,
+      upsertToolState,
+      upsertTransient,
+    ],
+  );
 
   const send = useCallback(
     (text: string, addressedTo?: string[]) => {
@@ -269,10 +386,8 @@ export function useConversation(
       };
       const resolved = addressedTo ?? [];
       dispatch({ type: "send", text, viewer });
-      // Busy → backend will steer; optimistically queue the message.
-      if (isBusy(state)) {
-        dispatch({ type: "queue/add", text });
-      }
+      // There is no client-side queue: every message is POSTed immediately
+      // and the backend persists it as normal/steer/follow_up.
       sendMut.mutate(
         {
           senderMemberId: state.viewerMemberId,
@@ -280,59 +395,40 @@ export function useConversation(
           addressedTo: resolved.length > 0 ? resolved : resolveAddressedTo(state),
         },
         {
-          onError: (err) => {
-            // 409 = busy → backend already steered, not an error.
-            const msg = err instanceof Error ? err.message : String(err);
-            if (msg.includes("409") || msg.includes("Busy")) return;
+          onSuccess: (result) => {
+            for (const run of result.triggeredRuns ?? []) {
+              if (!run.queued && run.runId) watchRun(run.runId, run.agentMemberId);
+            }
+          },
+          // POST pending is decremented when the HTTP request settles (both
+          // success and error) - it is NOT tied to an agent reply. Run
+          // activity is tracked separately via activeRuns.
+          onSettled: () => {
+            dispatch({ type: "send/settled" });
+          },
+          onError: () => {
             dispatch({ type: "send/error", message: "Send failed — retry" });
           },
         },
       );
     },
-    [sendMut, state.roster, state.viewerMemberId, state],
+    [sendMut, state.roster, state.viewerMemberId, state, watchRun],
   );
 
   const toggleTriggerMode = useCallback(() => {
     dispatch({ type: "toggleTriggerMode" });
   }, []);
-  const queueEdit = useCallback((index: number, newText: string) => {
-    dispatch({ type: "queue/edit", index, text: newText });
-  }, []);
-  const queueRemove = useCallback((index: number) => {
-    dispatch({ type: "queue/remove", index });
-  }, []);
 
-  const busy = isBusy(state);
-  const approvalTarget = getApprovalTarget(state);
-
-  // M17: Ledger-native approval via run resume API (not run EventSource)
-  const approveMut = useResumeRun();
-
-  const approve = useCallback(
-    (message?: string) =>
-      approveMut.mutate({ runId: approvalTarget!.runId, approved: true, message }),
-    [approveMut, approvalTarget],
-  );
-
-  const deny = useCallback(
-    (message?: string) =>
-      approveMut.mutate({ runId: approvalTarget!.runId, approved: false, message }),
-    [approveMut, approvalTarget],
-  );
+  const busy = isBusy(state) || activeRuns.size > 0;
 
   return {
     state,
     busy,
     send,
     toggleTriggerMode,
-    approvalTarget,
-    approve,
-    deny,
-    resuming: approveMut.isPending,
-    queuedMessages: state.queuedMessages,
-    queueEdit,
-    queueRemove,
-    petBark,
-    recap,
+    activeRuns,
+    transients,
+    transientTools,
+    runTodos,
   };
 }

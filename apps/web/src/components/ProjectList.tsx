@@ -47,15 +47,12 @@ export function ProjectList() {
   return (
     <>
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {projects.map((project, i) => (
+        {projects.map((project) => (
           <div key={project.projectId} className="relative group">
             <div
               className="block border border-[var(--hairline)] rounded-lg bg-[var(--canvas)] p-8
-                         animate-fade-in"
-              style={{
-                animationDelay: `${i * 0.08}s`,
-                animationFillMode: "both",
-              }}
+                         "
+              style={{}}
             >
               <h3
                 className="text-xl font-normal text-[var(--ink-strong)] tracking-tight font-[family-name:var(--font-sans)]"
@@ -91,7 +88,7 @@ export function ProjectList() {
             </div>
 
             {/* Edit / Delete controls */}
-            <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity">
+            <div className="absolute top-3 right-3 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity">
               <Button
                 variant="ghost"
                 size="xs"

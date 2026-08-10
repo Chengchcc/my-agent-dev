@@ -1,27 +1,27 @@
+import type { BackendModelRef } from "@my-agent-team/agent-backend";
+import { debugLog } from "@my-agent-team/agent-backend";
 import {
   type AgentMember,
   Conversation as ConversationSchema,
   resolveTriggerTargets,
 } from "@my-agent-team/conversation";
-import type { MessageRevision } from "@my-agent-team/message";
+import type { Message } from "@my-agent-team/message";
 import {
   ContentBlockSchema,
+  extractText,
   humanMessageId,
   MessageRevisionSchema,
   serializeMessageRevision,
   systemMessageId,
 } from "@my-agent-team/message";
-import { BusyError } from "../../infra/domain-errors.js";
 import { selectWakeAgentIDs } from "../agent/relationship-service.js";
-import type { ConversationLock } from "./lock.js";
+import type { AgentContextService } from "../agent-context/service.js";
+import type { BranchInputMode } from "../agent-run/domain.js";
+import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort, LedgerEntry, LedgerKind, MemberRow } from "./ports.js";
 
-export class ConversationBusyError extends BusyError {}
-
 /** Reserved memberId for the conversation owner (the human who owns an
- *  issue-/cron-spawned conversation). It is a member id, NOT an agent id -
- *  sessionIds derived from it (`${conversationId}:${OWNER_MEMBER_ID}`) follow
- *  the standard `${conversationId}:${memberId}` shape, not the agent shape. */
+ *  issue-/cron-spawned conversation). */
 export const OWNER_MEMBER_ID = "owner";
 
 function isHumanMember(members: MemberRow[], memberId: string): boolean {
@@ -32,45 +32,49 @@ function isSystemSender(memberId: string): boolean {
   return memberId === "__system__";
 }
 
+/** The one real Agent Backend in Phase 4/5. */
+const BACKEND_KIND = "coding_agent";
+
 export interface ConversationServiceDeps {
   port: ConversationPort;
-  /** M17.5 P4: ConversationLock replaces ad-hoc activeConversations Set + pendingRuns Map. */
-  lock: ConversationLock;
+  /** Phase 4 durable run creation: enqueue + branch acquire. */
+  agentRunService: AgentRunService;
+  /** Phase 4 execution entry point (dispatch acquired runs). Injected as a
+   *  function so composition can break the execution<->cascade cycle. */
+  dispatchRun: (runId: string) => Promise<void>;
+  /** Best-effort steer injection into the branch's LIVE run (used when the
+   *  enqueue queued behind an active run with mode=steer). */
+  injectSteer: (branchId: string, input: { inputId: string; message: Message }) => Promise<void>;
+  /** Live-child probe: true when the run has an in-process child. DB-active
+   *  alone is NOT enough (restart / pre-acceptance failure leaves a zombie
+   *  active run with no live child). */
+  isLive: (runId: string) => boolean;
+  /** Dispatch-in-flight probe: the run is being dispatched (pre-acceptance)
+   *  on this process. Auto-routing queues such runs as follow-up and never
+   *  aborts them. */
+  isInflight: (runId: string) => boolean;
+  /** Terminal a zombie run (DB active, no live child, not in flight):
+   *  aborted + input cancelled + branch released, before enqueueing a fresh
+   *  normal Run. */
+  abortStaleRun: (runId: string) => Promise<void>;
+  /** Product Context branch resolution (mode decisions; no scope service -
+   *  scope IS the Conversation/Member/Branch trio). */
+  contextService: AgentContextService;
+  /** Effective model for a member's Agent record. */
+  resolveDefaultModel: (agentId: string) => Promise<BackendModelRef>;
   maxConsecutiveAgentHops: () => number;
-  /** Active agent sessions: outer key = conversationId, inner key = agentMemberId.
-   *  Enables steer (during run) and followUp (after run), directed per addressedTo. */
-  activeSessions: Map<
-    string,
-    Map<
-      string,
-      {
-        steer: (text: string) => void;
-        followUp: (text: string) => void;
-      }
-    >
-  >;
-  startAgentRun: (
-    spanId: string,
-    ctx: {
-      conversationId: string;
-      agentMemberId: string;
-      agentId: string;
-      ledgerSeq: number;
-      /** The user's input text - passed through to AgentSession.prompt() so the agent receives the actual message. */
-      input?: string;
-    },
-  ) => Promise<{ spanId: string; attemptSeq: number }>;
   idGen: () => string;
-  /** Verify a spanId belongs to the given conversation. Throws if not. */
-  verifyRunOwnsConversation?: (spanId: string, conversationId: string) => Promise<void>;
-  /** Callback to dispose active sessions and clear bindings (for /clear command). */
-  onClear?: (conversationId: string) => void;
-  /** Callback to compact active sessions (for /compact command). */
-  onCompact?: (conversationId: string) => Promise<void>;
-  /** Wake routing: returns relationship edges for coordinator selection when triggerMode=auto and no @mention. */
+  /** Wake routing: relationship edges for coordinator selection when
+   *  triggerMode=auto and no @mention. */
   getRelationshipEdges?: (
     agentIds: string[],
   ) => Array<{ from: string; to: string; relType: "assigns_to" | "collaborates_with" }>;
+}
+
+export interface TriggeredRun {
+  agentMemberId: string;
+  runId: string;
+  queued: boolean;
 }
 
 export interface ConversationService {
@@ -80,7 +84,10 @@ export interface ConversationService {
     senderMemberId: string;
     addressedTo: string[];
     content: unknown;
-  }): Promise<{ seq: number; triggeredRuns: Array<{ agentMemberId: string; spanId: string }> }>;
+    /** Optional mode override; default: normal when the branch is idle,
+     *  steer when a run is active (the caller wants to influence it). */
+    mode?: BranchInputMode;
+  }): Promise<{ seq: number; triggeredRuns: TriggeredRun[] }>;
   addMember(input: {
     conversationId: string;
     memberId: string;
@@ -94,19 +101,15 @@ export interface ConversationService {
     conversationId: string,
     opts?: { afterSeq?: number; signal?: AbortSignal; pollMs?: number },
   ): AsyncIterable<LedgerEntry>;
-  appendTodo(conversationId: string, senderMemberId: string, todos: unknown): Promise<void>;
-  completeRun(conversationId: string, _spanId: string, agentMemberId?: string): void;
-  appendAssistantMessage(input: {
+  /** Mention cascade from a terminal assistant Message: enqueue a run for
+   *  every agent member mentioned in the canonical text. Idempotent per
+   *  (sourceRunId, targetMemberId) - commit replay cannot double-trigger. */
+  cascadeMentionedAgents(input: {
     conversationId: string;
+    sourceRunId: string;
     senderMemberId: string;
-    spanId: string;
-    revision: MessageRevision;
-  }): Promise<number>;
-  triggerMentionedAgents(input: {
-    conversationId: string;
-    senderMemberId: string;
-    addressedTo: string[];
-  }): Promise<Array<{ agentMemberId: string; spanId: string }>>;
+    message: Message;
+  }): Promise<TriggeredRun[]>;
   startNewConversationForSurface(input: {
     oldConversationId: string;
     reason: string;
@@ -144,36 +147,36 @@ export function createConversationService(deps: ConversationServiceDeps): Conver
 
 class ConversationServiceImpl implements ConversationService {
   readonly port: ConversationPort;
-  #lock: ConversationLock;
+  #agentRuns: AgentRunService;
+  #dispatchRun: (runId: string) => Promise<void>;
+  #injectSteer: ConversationServiceDeps["injectSteer"];
+  #isLive: ConversationServiceDeps["isLive"];
+  #isInflight: ConversationServiceDeps["isInflight"];
+  #abortStaleRun: ConversationServiceDeps["abortStaleRun"];
+  #contextService: AgentContextService;
+  #resolveDefaultModel: (agentId: string) => Promise<BackendModelRef>;
   #maxHops: () => number;
-  #activeSessions: ConversationServiceDeps["activeSessions"];
-  #startAgentRun: ConversationServiceDeps["startAgentRun"];
   #idGen: () => string;
-  #verifyRunOwnsConversation?: (spanId: string, conversationId: string) => Promise<void>;
-  #onClear?: (conversationId: string) => void;
-  #onCompact?: (conversationId: string) => Promise<void>;
   #getRelationshipEdges?: (
     agentIds: string[],
   ) => Array<{ from: string; to: string; relType: "assigns_to" | "collaborates_with" }>;
 
   // Push-based SSE: subscribers are notified immediately when new ledger
-  // entries are appended, so streaming revisions arrive without poll delay.
+  // entries are appended.
   #subscribers = new Map<string, Set<(entry: LedgerEntry) => void>>();
-
-  // Track seq per spanId so streaming revisions UPDATE the same row
-  // instead of INSERTing a new row for every model chunk.
-  #streamingSeq = new Map<string, number>();
 
   constructor(deps: ConversationServiceDeps) {
     this.port = deps.port;
-    this.#lock = deps.lock;
+    this.#agentRuns = deps.agentRunService;
+    this.#dispatchRun = deps.dispatchRun;
+    this.#injectSteer = deps.injectSteer;
+    this.#isLive = deps.isLive;
+    this.#isInflight = deps.isInflight;
+    this.#abortStaleRun = deps.abortStaleRun;
+    this.#contextService = deps.contextService;
+    this.#resolveDefaultModel = deps.resolveDefaultModel;
     this.#maxHops = deps.maxConsecutiveAgentHops;
-    this.#activeSessions = deps.activeSessions;
-    this.#startAgentRun = deps.startAgentRun;
     this.#idGen = deps.idGen;
-    this.#verifyRunOwnsConversation = deps.verifyRunOwnsConversation;
-    this.#onClear = deps.onClear;
-    this.#onCompact = deps.onCompact;
     this.#getRelationshipEdges = deps.getRelationshipEdges;
   }
 
@@ -210,22 +213,19 @@ class ConversationServiceImpl implements ConversationService {
     });
   }
 
-  /** Append a ledger entry and broadcast it to all agent checkpoints. Returns seq.
-   *  For kind:"message", content MUST be a MessageRevision - validated via
-   *  serializeMessageRevision. Other kinds use plain JSON.stringify. */
+  /** Append a ledger entry and broadcast it to subscribers. Returns seq.
+   *  For kind:"message", content MUST be a MessageRevision. */
   async #appendAndBroadcast(input: {
     conversationId: string;
     senderMemberId: string;
     addressedTo: string[];
     kind: LedgerKind;
     content: unknown;
-    /** When false, skip thread_projection write (startAgentRun reads from ledger directly). */
-    broadcast?: boolean;
   }): Promise<number> {
     const ts = Date.now();
     const serialized =
       input.kind === "message"
-        ? serializeMessageRevision(MessageRevisionSchema.parse(input.content) as MessageRevision)
+        ? serializeMessageRevision(MessageRevisionSchema.parse(input.content) as never)
         : JSON.stringify(input.content);
     const seq = this.port.appendLedgerEntry({
       conversationId: input.conversationId,
@@ -248,37 +248,97 @@ class ConversationServiceImpl implements ConversationService {
     return seq;
   }
 
-  /** Shared fork-run loop: lock conversation, fork runs for targets, release when all complete.
-   *  Returns triggered run IDs. Errors for individual targets are logged and skipped. */
-  async #forkAgentRuns(
-    conversationId: string,
-    targets: Array<{ memberId: string; agentId: string }>,
-    ledgerSeq: number,
-    input?: string,
-  ): Promise<Array<{ agentMemberId: string; spanId: string }>> {
-    const triggeredRuns: Array<{ agentMemberId: string; spanId: string }> = [];
-    this.#lock.acquire(conversationId, targets.length);
-    for (const target of targets) {
-      try {
-        const spanId = crypto.randomUUID();
-        const { spanId: rId } = await this.#startAgentRun(spanId, {
-          conversationId,
-          agentMemberId: target.memberId,
-          agentId: target.agentId,
-          ledgerSeq,
-          input,
-        });
-        triggeredRuns.push({ agentMemberId: target.memberId, spanId: rId });
-      } catch (err) {
-        console.error(
-          `[conversation] startAgentRun failed for ${target.memberId}:`,
-          err instanceof Error ? err.message : String(err),
-        );
-        // Decrement pending count for failed fork
-        this.#lock.releaseOne(conversationId);
+  /** Enqueue an input for one agent member and dispatch when acquired.
+   *  All modes persist first (normal/steer/follow_up); never calls an
+   *  in-memory session. The idempotency key makes replay safe: same
+   *  (branch, key) returns the same input/run without duplicates. */
+  async #triggerForMember(input: {
+    conversationId: string;
+    memberId: string;
+    message: Message;
+    idempotencyKey: string;
+    mode?: BranchInputMode;
+  }): Promise<TriggeredRun> {
+    const members = this.port.getMembers(input.conversationId);
+    const member = members.find((m) => m.memberId === input.memberId);
+    if (!member?.agentId) {
+      throw new Error(`no agent member ${input.memberId} in ${input.conversationId}`);
+    }
+    const branch = await this.#contextService.getOrCreateDefaultBranch(
+      input.conversationId,
+      input.memberId,
+      BACKEND_KIND,
+    );
+    const active = await this.#agentRuns.getActiveRun(branch.branchId);
+    // Auto-inferred routing needs three states, not two:
+    //   live child      -> steer (routable now)
+    //   dispatch in flight (pre-acceptance) -> follow_up (queued, NEVER aborted)
+    //   DB active, neither live nor inflight -> zombie: abort + fresh normal Run
+    // An EXPLICIT input.mode is never silently converted.
+    let mode: BranchInputMode;
+    if (input.mode) {
+      mode = input.mode;
+    } else if (active && this.#isLive(active.runId)) {
+      mode = "steer";
+    } else if (active && this.#isInflight(active.runId)) {
+      mode = "follow_up";
+    } else {
+      if (active) await this.#abortStaleRun(active.runId);
+      mode = "normal";
+    }
+    const defaultModel = await this.#resolveDefaultModel(member.agentId);
+    const { acquired, queued, cancelled, run, inputId } = await this.#agentRuns.enqueueAndAcquire({
+      conversationId: input.conversationId,
+      agentMemberId: input.memberId,
+      backendKind: BACKEND_KIND,
+      mode,
+      message: input.message,
+      defaultModel,
+      configRevision: 1,
+      idempotencyKey: input.idempotencyKey,
+    });
+    debugLog(
+      "conversation",
+      `trigger conversationId=${input.conversationId} agentMemberId=${input.memberId} branchId=${branch.branchId} mode=${mode} inputId=${inputId} runId=${run?.runId ?? ""} acquired=${acquired} queued=${queued}`,
+    );
+    if (acquired && run) {
+      void this.#dispatchRun(run.runId).catch((err) => {
+        console.error(`[conversation] dispatch failed for ${run.runId}:`, err);
+      });
+    } else if (queued && mode === "steer") {
+      // Steer belongs to the CURRENT active run: inject it into the live
+      // loop right away (one Run / one loop - it never starts a new
+      // segment). If the run has already settled, injection fails and the
+      // input is cancelled - a steer is never replayed as a normal input.
+      void this.#injectSteer(branch.branchId, {
+        inputId,
+        message: input.message,
+      }).catch((err) => {
+        console.error(`[conversation] steer injection failed for ${input.memberId}:`, err);
+      });
+    } else if (cancelled) {
+      // A steer with no active Run (race between the active check above and
+      // the enqueue): the input was cancelled at enqueue - surface it as an
+      // explicit error, never a silent drop.
+      throw new Error(
+        `steer rejected: no active run on branch ${branch.branchId} for ${input.memberId}`,
+      );
+    }
+    return { agentMemberId: input.memberId, runId: run?.runId ?? "", queued };
+  }
+
+  /** Parse @mentions / display-name mentions out of a canonical message. */
+  #findMentionedAgentMembers(text: string, roster: MemberRow[], excludeMemberId: string): string[] {
+    const mentioned: string[] = [];
+    for (const m of roster) {
+      if (m.kind !== "agent" || m.memberId === excludeMemberId) continue;
+      const label = m.displayName ?? m.memberId;
+      const escaped = label.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+      if (new RegExp(`(^|\\s)@?${escaped}\\b`).test(text) || text.includes(`@${m.memberId}`)) {
+        mentioned.push(m.memberId);
       }
     }
-    return triggeredRuns;
+    return mentioned;
   }
 
   // ─── Public API ─────────────────────────────────────
@@ -288,13 +348,15 @@ class ConversationServiceImpl implements ConversationService {
     senderMemberId: string;
     addressedTo: string[];
     content: unknown;
-  }): Promise<{ seq: number; triggeredRuns: Array<{ agentMemberId: string; spanId: string }> }> {
+    mode?: BranchInputMode;
+  }): Promise<{ seq: number; triggeredRuns: TriggeredRun[] }> {
     const conv = this.#buildConversation(input.conversationId);
     if (!conv) throw new Error(`Conversation not found: ${input.conversationId}`);
 
     const members = this.port.getMembers(input.conversationId);
     let targets = resolveTriggerTargets(conv, input.addressedTo);
-    // Wake routing: when no @mention and triggerMode=auto, select coordinator from relationship graph
+    // Wake routing: when no @mention and triggerMode=auto, select coordinator
+    // from relationship graph
     if (targets.length === 0 && input.addressedTo.length === 0 && conv.triggerMode === "all") {
       const activeAgentIds = members.filter((m) => m.kind === "agent").map((m) => m.memberId);
       const edges = this.#getRelationshipEdges?.(activeAgentIds) ?? [];
@@ -306,7 +368,6 @@ class ConversationServiceImpl implements ConversationService {
         })
         .filter((m): m is AgentMember => m !== undefined);
     }
-    const triggeredRuns: Array<{ agentMemberId: string; spanId: string }> = [];
 
     // ── Hop count: reset on human/external, increment only for known agent members ──
     const convRow = this.port.getConversation(input.conversationId);
@@ -316,73 +377,20 @@ class ConversationServiceImpl implements ConversationService {
     if (isHumanMember(members, input.senderMemberId) || isSystemSender(input.senderMemberId)) {
       this.port.updateHopCount(input.conversationId, 0);
     } else if (senderIsAgent) {
-      // L4: only increment for known agent members (not unknown senders)
       this.port.updateHopCount(input.conversationId, (convRow?.hopCount ?? 0) + 1);
     }
-    // Unknown senders: unchanged hop count
 
-    // ── Guards: check BEFORE writing (C3 fix) ──
-
-    let hopCapped = false;
-    if (targets.length > 0) {
-      // Single-active guard
-      if (this.#lock.isActive(input.conversationId)) {
-        // Busy -> steer to active session instead of rejecting with 409
-        const convSessions = this.#activeSessions.get(input.conversationId);
-        if (convSessions && convSessions.size > 0) {
-          // Find the target agent's session; fall back to first available
-          const targetAgentId = input.addressedTo.find((id) => convSessions.has(id));
-          const target = targetAgentId
-            ? convSessions.get(targetAgentId)
-            : convSessions.values().next().value;
-          if (target) {
-            const userRev: MessageRevision = {
-              messageId: humanMessageId(input.conversationId, input.senderMemberId),
-              role: "user",
-              state: "done",
-              text: typeof input.content === "string" ? input.content : undefined,
-              blocks: Array.isArray(input.content)
-                ? (ContentBlockSchema.array().parse(input.content) as MessageRevision["blocks"])
-                : undefined,
-              conversationId: input.conversationId,
-              visibility: "conversation",
-              updatedAt: Date.now(),
-            };
-            const steerSeq = await this.#appendAndBroadcast({
-              conversationId: input.conversationId,
-              senderMemberId: input.senderMemberId,
-              addressedTo: input.addressedTo,
-              kind: "message",
-              content: userRev,
-              broadcast: true,
-            });
-            const userText = typeof input.content === "string" ? input.content : "";
-            target.steer(userText);
-            return { seq: steerSeq, triggeredRuns: [] };
-          }
-        }
-        throw new ConversationBusyError(input.conversationId);
-      }
-      // Hop hard-cap check (after hop count update, so human reset takes effect)
-      const currentHop = this.port.getConversation(input.conversationId)?.hopCount ?? 0;
-      hopCapped = currentHop > this.#maxHops();
-    }
-
-    // ── Append this message to ledger as a MessageRevision (no broadcast - startAgentRun reads from ledger) ──
-    const userRev: MessageRevision = {
-      // M17.2 fix: use UUID to prevent same-ms collision when
-      // the ledger is folded by messageId. Two posts in the same millisecond
-      // would share an id and the second would silently overwrite the first.
+    // ── The human message becomes canonical History FIRST ──
+    const userRev = {
       messageId: humanMessageId(input.conversationId, input.senderMemberId),
-
-      role: "user",
-      state: "done",
+      role: "user" as const,
+      state: "done" as const,
       text: typeof input.content === "string" ? input.content : undefined,
       blocks: Array.isArray(input.content)
-        ? (ContentBlockSchema.array().parse(input.content) as MessageRevision["blocks"])
+        ? (ContentBlockSchema.array().parse(input.content) as never)
         : undefined,
       conversationId: input.conversationId,
-      visibility: "conversation",
+      visibility: "conversation" as const,
       updatedAt: Date.now(),
     };
     const seq = await this.#appendAndBroadcast({
@@ -391,37 +399,40 @@ class ConversationServiceImpl implements ConversationService {
       addressedTo: input.addressedTo,
       kind: "message",
       content: userRev,
-      broadcast: false,
     });
-    // If session is still alive, followUp reuses its memory (no new fork)
+
+    const triggeredRuns: TriggeredRun[] = [];
+    const currentHop = this.port.getConversation(input.conversationId)?.hopCount ?? 0;
+    const hopCapped = targets.length > 0 && currentHop > this.#maxHops();
+
     if (targets.length > 0 && !hopCapped) {
-      const convSessions = this.#activeSessions.get(input.conversationId);
-      if (convSessions && convSessions.size > 0) {
-        const targetAgentId = input.addressedTo.find((id) => convSessions.has(id));
-        const target = targetAgentId
-          ? convSessions.get(targetAgentId)
-          : convSessions.values().next().value;
-        if (target) {
-          const userText = typeof input.content === "string" ? input.content : "";
-          target.followUp(userText);
-          return { seq, triggeredRuns: [] };
+      const message: Message = { ...userRev, id: userRev.messageId };
+      for (const target of targets) {
+        try {
+          triggeredRuns.push(
+            await this.#triggerForMember({
+              conversationId: input.conversationId,
+              memberId: target.memberId,
+              message,
+              idempotencyKey: `${input.conversationId}:${seq}:${target.memberId}`,
+              mode: input.mode,
+            }),
+          );
+        } catch (err) {
+          console.error(
+            `[conversation] enqueueAndAcquire failed for ${target.memberId}:`,
+            err instanceof Error ? err.message : String(err),
+          );
         }
       }
-    }
-
-    // ── @ trigger: fork agent run for each target (skip if hop-capped) ──
-    if (targets.length > 0 && !hopCapped) {
-      const userText = typeof input.content === "string" ? input.content : "";
-      const runs = await this.#forkAgentRuns(input.conversationId, targets, seq, userText);
-      triggeredRuns.push(...runs);
     } else if (hopCapped) {
-      // Broadcast system message about the cap (no fork)
-      const sysRev: MessageRevision = {
+      // Broadcast system message about the cap (no run)
+      const sysRev = {
         messageId: systemMessageId(input.conversationId, "hopcap"),
-        role: "system",
-        state: "done",
+        role: "system" as const,
+        state: "done" as const,
         text: `[系统] 连续 agent->agent 触发达上限（${this.#maxHops()}），已暂停，等待真人介入。`,
-        visibility: "conversation",
+        visibility: "conversation" as const,
         updatedAt: Date.now(),
       };
       await this.#appendAndBroadcast({
@@ -456,9 +467,8 @@ class ConversationServiceImpl implements ConversationService {
       joinedAt: Date.now(),
     });
 
-    if (!created) return; // Already a member - don't re-broadcast member.joined
+    if (!created) return; // Already a member
 
-    // Broadcast system message
     const members = this.port.getMembers(input.conversationId);
     await this.#appendAndBroadcast({
       conversationId: input.conversationId,
@@ -508,15 +518,8 @@ class ConversationServiceImpl implements ConversationService {
     const pollMs = opts?.pollMs ?? 100;
     let lastSeq = since;
     let silentPolls = 0;
-    // Heartbeat: every 3rd 5s fallback cycle (~15s) so sseResponse can emit
-    // an SSE comment to keep the connection alive.
     const heartbeatInterval = 3;
 
-    // Push buffer - drained before each poll so streaming revisions
-    // delivered via notify() are yielded instantly via push, not after a
-    // poll cycle. When the buffer is empty, we wait for a push OR a 5s
-    // poll timeout (fallback for missed pushes), then drain + do one DB
-    // poll to catch anything notify() missed.
     const pushBuffer: LedgerEntry[] = [];
     let pushResolver: (() => void) | null = null;
     const onPush = (entry: LedgerEntry) => {
@@ -535,15 +538,9 @@ class ConversationServiceImpl implements ConversationService {
         lastSeq = entry.seq;
       }
 
-      // Then loop: push-first, poll-fallback. No idle timeout.
-      // pollMs=0 means one-shot (tests); otherwise stay alive indefinitely.
       while (true) {
         if (opts?.signal?.aborted) break;
 
-        // Drain push buffer first (entries delivered via notify).
-        // Push entries are always yielded regardless of seq - streaming
-        // revisions get a real monotonic seq via the streamingSeq map, and
-        // the heartbeat sentinel uses seq:0, so neither hits the >lastSeq guard.
         while (pushBuffer.length > 0) {
           const entry = pushBuffer.shift()!;
           yield entry;
@@ -551,12 +548,8 @@ class ConversationServiceImpl implements ConversationService {
           silentPolls = 0;
         }
 
-        // One-shot (tests): after catch-up + one drain, break.
         if (pollMs === 0) break;
 
-        // Buffer empty: wait for a push OR a 5s poll timeout (fallback).
-        // The push path delivers entries instantly; the 5s timeout catches
-        // any push missed (e.g. a subscriber registered after notify()).
         if (pushBuffer.length === 0) {
           const pushPromise = new Promise<void>((r) => {
             pushResolver = r;
@@ -565,14 +558,12 @@ class ConversationServiceImpl implements ConversationService {
           await Promise.race([pushPromise, pollTimeout]);
           pushResolver = null;
 
-          // Drain whatever push delivered.
           while (pushBuffer.length > 0) {
             const entry = pushBuffer.shift()!;
             yield entry;
             if (entry.seq > lastSeq) lastSeq = entry.seq;
           }
 
-          // Fallback DB poll: catch entries notify() missed.
           const entries = this.port.getLedgerEntries(conversationId, { sinceSeq: lastSeq });
           if (entries.length > 0) {
             for (const entry of entries) {
@@ -582,9 +573,6 @@ class ConversationServiceImpl implements ConversationService {
             silentPolls = 0;
           } else {
             silentPolls++;
-            // Heartbeat: yield a sentinel row every ~15s so sseResponse
-            // can emit an SSE comment to keep the connection alive.
-            // Frontend EventSource ignores SSE comments (not a business event).
             if (silentPolls % heartbeatInterval === 0) {
               yield {
                 seq: 0,
@@ -606,140 +594,44 @@ class ConversationServiceImpl implements ConversationService {
     }
   }
 
-  /** M14.6: Append a todo snapshot to the conversation ledger (UI-only, not projected to agents). */
-  async appendTodo(conversationId: string, senderMemberId: string, todos: unknown): Promise<void> {
-    await this.#appendAndBroadcast({
-      conversationId,
-      senderMemberId,
-      addressedTo: [],
-      kind: "todo",
-      content: { todos },
-    });
-  }
-
-  /** Release the conversation lock when ALL triggered runs complete.
-   *  agentMemberId optional: when provided, only that agent's session is removed
-   *  (other agents in the same conversation keep theirs). Falls back to clearing
-   *  the whole conversation when omitted (legacy callers / unknown origin). */
-  completeRun(conversationId: string, _spanId: string, agentMemberId?: string): void {
-    this.#lock.releaseOne(conversationId);
-    const convSessions = this.#activeSessions.get(conversationId);
-    if (convSessions) {
-      if (agentMemberId) {
-        convSessions.delete(agentMemberId);
-        if (convSessions.size === 0) {
-          this.#activeSessions.delete(conversationId);
-        }
-      } else {
-        this.#activeSessions.delete(conversationId);
-      }
-    }
-  }
-
-  /** M17.5 P7: Write an assistant message revision directly to the ledger.
-   *  This is the SOLE authoritative entry for assistant messages in the conversation.
-   *
-   *  Streaming revisions: first write gets a real seq, subsequent writes for the
-   *  same spanId update the row in-place (same messageId -> same seq). Done state
-   *  always writes a fresh row. */
-  async appendAssistantMessage(input: {
+  /** Mention cascade triggered AFTER a terminal assistant Message is
+   *  committed (explicit callback from the Agent Run execution service).
+   *  Idempotent per (sourceRunId, targetMemberId). */
+  async cascadeMentionedAgents(input: {
     conversationId: string;
+    sourceRunId: string;
     senderMemberId: string;
-    spanId: string;
-    revision: MessageRevision;
-  }): Promise<number> {
-    const stamped: MessageRevision = {
-      ...input.revision,
-      conversationId: input.conversationId,
-      spanId: input.spanId,
-    };
-    const serialized = serializeMessageRevision(stamped);
-    const ts = Date.now();
-    const isStreaming = input.revision.state === "streaming";
-
-    let seq: number;
-    if (isStreaming) {
-      const existing = this.#streamingSeq.get(input.spanId);
-      if (existing !== undefined) {
-        this.port.updateLedgerContent?.(existing, serialized, ts);
-        seq = existing;
-      } else {
-        seq = this.port.appendLedgerEntry({
-          conversationId: input.conversationId,
-          senderMemberId: input.senderMemberId,
-          addressedTo: [],
-          kind: "message",
-          content: serialized,
-          ts,
-          spanId: input.spanId,
-        });
-        this.#streamingSeq.set(input.spanId, seq);
-      }
-    } else {
-      seq = this.port.appendLedgerEntry({
-        conversationId: input.conversationId,
-        senderMemberId: input.senderMemberId,
-        addressedTo: [],
-        kind: "message",
-        content: serialized,
-        ts,
-        spanId: input.spanId,
-      });
-      this.#streamingSeq.delete(input.spanId);
-    }
-
-    this.#notify(input.conversationId, {
-      seq,
-      conversationId: input.conversationId,
-      senderMemberId: input.senderMemberId,
-      addressedTo: [],
-      kind: "message" as const,
-      content: serialized,
-      ts,
-      spanId: input.spanId,
-    });
-    return seq;
-  }
-
-  /** M14.4: Trigger agent runs from agent-to-agent @mentions.
-   *  Only forks runs - does NOT append ledger entries (caller already did).
-   *  Best-effort: silently skips if conversation busy or hop-capped. */
-  async triggerMentionedAgents(input: {
-    conversationId: string;
-    senderMemberId: string;
-    addressedTo: string[];
-  }): Promise<Array<{ agentMemberId: string; spanId: string }>> {
-    const triggeredRuns: Array<{ agentMemberId: string; spanId: string }> = [];
-    if (input.addressedTo.length === 0) return triggeredRuns;
-
-    const members = this.port.getMembers(input.conversationId);
+    message: Message;
+  }): Promise<TriggeredRun[]> {
     const convRow = this.port.getConversation(input.conversationId);
-    if (!convRow) return triggeredRuns;
+    if (!convRow) return [];
+    // Old Runtime behavior: cron-originated conversations do not cascade.
+    if (convRow.origin === "cron") return [];
+    const text = extractText(input.message);
+    if (!text) return [];
 
-    // Build conv for resolveTriggerTargets
-    const conv = this.#buildConversation(input.conversationId);
-    if (!conv) return triggeredRuns;
-
-    const targets = resolveTriggerTargets(conv, input.addressedTo);
-    if (targets.length === 0) return triggeredRuns;
-
-    // Increment hop count for agent sender
-    const senderIsAgent = members.some(
-      (m) => m.memberId === input.senderMemberId && m.kind === "agent",
-    );
-    if (senderIsAgent) {
-      this.port.updateHopCount(input.conversationId, (convRow.hopCount ?? 0) + 1);
+    const roster = this.port.getMembers(input.conversationId);
+    const targets = this.#findMentionedAgentMembers(text, roster, input.senderMemberId);
+    const triggered: TriggeredRun[] = [];
+    for (const memberId of targets) {
+      try {
+        triggered.push(
+          await this.#triggerForMember({
+            conversationId: input.conversationId,
+            memberId,
+            message: input.message,
+            idempotencyKey: `${input.sourceRunId}:${memberId}`,
+            mode: "normal",
+          }),
+        );
+      } catch (err) {
+        console.error(
+          `[conversation] mention cascade failed for ${memberId}:`,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
     }
-
-    // Hop hard-cap check
-    const currentHop = this.port.getConversation(input.conversationId)?.hopCount ?? 0;
-    if (currentHop > this.#maxHops()) return triggeredRuns;
-
-    // Conversation busy guard (best-effort: skip, don't throw)
-    if (this.#lock.isActive(input.conversationId)) return triggeredRuns;
-
-    // Fork runs (shared helper with postMessage)
-    return this.#forkAgentRuns(input.conversationId, targets, 0);
+    return triggered;
   }
 
   /** M15.1: Start a fresh conversation from a surface control tool call.
@@ -777,9 +669,13 @@ class ConversationServiceImpl implements ConversationService {
       }
     }
 
-    // 2. Verify run owns the old conversation
-    if (this.#verifyRunOwnsConversation) {
-      await this.#verifyRunOwnsConversation(requestedByRunId, oldConversationId);
+    // 2. Verify the run owns the old conversation (Agent Run, not span)
+    const run = await this.#agentRuns.getRun(requestedByRunId);
+    if (!run) throw new Error(`run not found: ${requestedByRunId}`);
+    if (run.conversationId !== oldConversationId) {
+      throw new Error(
+        `run ${requestedByRunId} does not belong to conversation ${oldConversationId}`,
+      );
     }
 
     // 3. Create new conversation
@@ -829,14 +725,17 @@ class ConversationServiceImpl implements ConversationService {
     return { oldConversationId, newConversationId, controlSeq };
   }
 
-  async clearConversation(conversationId: string): Promise<void> {
-    this.#onClear?.(conversationId);
-    this.#lock.releaseAll(conversationId);
-    this.#activeSessions.delete(conversationId);
+  /** /clear: no canonical Product Context reset exists (Agent Context is
+   *  durable History). Old Runtime session disposal is gone with Phase 5 -
+   *  nothing in-memory remains to clear. */
+  async clearConversation(_conversationId: string): Promise<void> {
+    return;
   }
 
-  async compactConversation(conversationId: string): Promise<void> {
-    await this.#onCompact?.(conversationId);
+  /** /compact: no canonical Product summary policy exists; Coding Session
+   *  compaction is gone. Explicitly unsupported (no-op). */
+  async compactConversation(_conversationId: string): Promise<void> {
+    return;
   }
 
   // ─── Fork / Undo / Replay ───────────────────────
@@ -863,7 +762,6 @@ class ConversationServiceImpl implements ConversationService {
       input.title ?? `Fork of ${input.conversationId.slice(0, 8)}`,
     );
 
-    // Copy members (preserve memberId so @mentions and session bindings carry over).
     for (const m of this.port.getMembers(input.conversationId)) {
       this.port.addMember({
         conversationId: newId,
@@ -876,7 +774,6 @@ class ConversationServiceImpl implements ConversationService {
       });
     }
 
-    // Copy live (non-undone) ledger entries up to fromSeq, preserving content/kind/ts.
     const entries = this.port
       .getLedgerEntries(input.conversationId)
       .filter((e) => e.seq <= input.fromSeq && !e.undone);
@@ -886,11 +783,8 @@ class ConversationServiceImpl implements ConversationService {
         senderMemberId: entry.senderMemberId,
         addressedTo: entry.addressedTo,
         kind: entry.kind,
-        // getLedgerEntries parses content back to an object (zod transform); re-serialize
-        // so the new row stores the same JSON string as the source.
         content: typeof entry.content === "string" ? entry.content : JSON.stringify(entry.content),
         ts: entry.ts,
-        spanId: entry.spanId ?? undefined,
       });
     }
 
@@ -911,7 +805,6 @@ class ConversationServiceImpl implements ConversationService {
       this.port.markLedgerEntryUndone?.(input.conversationId, entry.seq);
       undoneSeqs.push(entry.seq);
     }
-    // Broadcast an undo ledger entry so subscribers grey out the messages.
     if (undoneSeqs.length > 0) {
       await this.#appendAndBroadcast({
         conversationId: input.conversationId,
@@ -931,8 +824,6 @@ class ConversationServiceImpl implements ConversationService {
     senderMemberId: string;
     addressedTo: string[];
   }): Promise<{ newConversationId: string }> {
-    // Fork everything before the edited message, then post the edited message
-    // which reuses postMessage's trigger logic to start agent runs.
     const { newConversationId } = await this.forkConversation({
       conversationId: input.conversationId,
       fromSeq: input.fromSeq - 1,

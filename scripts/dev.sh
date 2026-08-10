@@ -22,7 +22,7 @@ if [ ! -f "$WEB_ENV" ]; then
   cp "$ROOT/apps/web/.env.example" "$WEB_ENV"
   echo ""
   echo "   ⚠  Edit $WEB_ENV and set:"
-  echo "      - BACKEND_TOKEN   (same as BACKEND_AUTH_TOKEN above)"
+  echo "      - BACKEND_AUTH_TOKEN (same as backend)"
   echo "      - SESSION_SECRET  (any random string, e.g. openssl rand -hex 32)"
   echo ""
 fi
@@ -72,7 +72,7 @@ cleanup() {
   [ -n "${BACKEND_PID:-}" ] && kill -TERM "$BACKEND_PID" 2>/dev/null || true
   [ -n "${WEB_PID:-}" ] && kill -TERM "$WEB_PID" 2>/dev/null || true
 
-  # Give backend time to run DevRunnerRegistry.dispose()
+  # Backend and web are direct children; terminate them in order.
   wait "$BACKEND_PID" 2>/dev/null || true
   wait "$WEB_PID" 2>/dev/null || true
 
@@ -93,7 +93,8 @@ echo "    Default password: admin"
 echo ""
 
 # Start as direct children of this script (no bun run wrapper).
-# Daemon lifecycle is managed by DevRunnerRegistry inside backend.
+# Coding Agent runs are spawned by the backend per Agent Run — nothing else
+# needs to be started separately.
 cd "$ROOT"
 bun run --cwd apps/backend dev &
 BACKEND_PID=$!

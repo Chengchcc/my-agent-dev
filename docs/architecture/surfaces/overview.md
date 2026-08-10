@@ -8,12 +8,12 @@ summary: "端是面向用户的适配器，目前是 Web 和飞书。它们采�
 depends_on:
 used_by:
   - surfaces.web
-  - surfaces.lark-adapter
+  - surfaces.lark
 ---
 
 # 端总览
 
-端是面向用户的适配器，目前是 Web 和飞书。它们采集输入、渲染 conversation ledger SSE 推送的消息、把外部身份映射成成员、处理 UX 层的去重。端不拥有任何持久事实——事实存在于 conversation ledger 和 checkpointer 的执行事实流（checkpoint_events）中。
+端是面向用户的适配器，目前是 Web 和飞书。它们采集输入、渲染 conversation ledger SSE 推送的消息、把外部身份映射成成员、处理 UX 层的去重。端不拥有任何持久事实——事实存在于 conversation ledger 与 Agent Context 中（执行由一次性 coding-agent 子进程完成，端不可见）。
 
 ## 端拥有什么、不拥有什么
 
@@ -46,5 +46,5 @@ flowchart LR
 ## 关联页面
 
 - [Web 端](./web.md)
-- [飞书适配器](./lark-adapter.md)
-- [对话账本](../conversation/ledger.md)
+- [飞书](./lark.md)
+- [对话账本](../conversation/history.md)

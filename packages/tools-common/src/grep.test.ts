@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { grepTool } from "./grep.js";
+import { createGrepTool } from "./grep.js";
 
 const hasRg = (() => {
   try {
@@ -19,15 +19,12 @@ describe("grepTool", () => {
 
   test("returns stdout when matches found", async () => {
     if (!hasRg) return;
-    // Use a temp dir with known content
     const tmpDir = `/tmp/test-grep-${Date.now()}`;
     await Bun.$`mkdir -p ${tmpDir}`.quiet();
     await Bun.write(`${tmpDir}/a.txt`, "hello world\nhello again\n goodbye");
 
-    const result = await grepTool.execute({
-      pattern: "hello",
-      path: tmpDir,
-    });
+    const tool = createGrepTool({ workspaceRoot: tmpDir });
+    const result = await tool.execute({ pattern: "hello" });
 
     expect(result.content).toInclude("hello");
     expect(result.isError).toBeUndefined();
@@ -40,10 +37,8 @@ describe("grepTool", () => {
     await Bun.$`mkdir -p ${tmpDir}`.quiet();
     await Bun.write(`${tmpDir}/a.txt`, "hello world");
 
-    const result = await grepTool.execute({
-      pattern: "nonexistentZZZZ",
-      path: tmpDir,
-    });
+    const tool = createGrepTool({ workspaceRoot: tmpDir });
+    const result = await tool.execute({ pattern: "nonexistentZZZZ" });
 
     expect(result.content).toBe("");
     expect(result.isError).toBeUndefined();
@@ -57,15 +52,21 @@ describe("grepTool", () => {
     await Bun.write(`${tmpDir}/a.ts`, "hello");
     await Bun.write(`${tmpDir}/b.txt`, "hello");
 
-    const result = await grepTool.execute({
-      pattern: "hello",
-      path: tmpDir,
-      glob: "*.ts",
-    });
+    const tool = createGrepTool({ workspaceRoot: tmpDir });
+    const result = await tool.execute({ pattern: "hello", glob: "*.ts" });
 
-    // Should only find in a.ts
     expect(result.content).toInclude("a.ts");
     expect(result.content).not.toInclude("b.txt");
+    await Bun.$`rm -rf ${tmpDir}`.quiet();
+  });
+
+  test("out-of-bounds path returns tool error instead of root fallback", async () => {
+    const tmpDir = `/tmp/test-grep-escape-${Date.now()}`;
+    await Bun.$`mkdir -p ${tmpDir}`.quiet();
+    const tool = createGrepTool({ workspaceRoot: tmpDir });
+    const result = await tool.execute({ pattern: "x", path: "/etc/passwd" });
+    expect(result.isError).toBe(true);
+    expect(result.content).toInclude("escapes workspace");
     await Bun.$`rm -rf ${tmpDir}`.quiet();
   });
 });

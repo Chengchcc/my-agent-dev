@@ -16,8 +16,10 @@ export class CronJobValidationError extends ValidationError {}
  *  "99 99 99 99 99" passes that but makes Bun.cron throw at register time,
  *  which would 500 the request (after the row is already persisted) and,
  *  worse, abort scheduler.start()'s registration loop on reboot. We reject
- *  it up front by asking Bun to parse it. */
+ *  it up front by asking Bun to parse it. An empty expression is legal: it
+ *  means a manual schedule (Loops without cron run on demand). */
 function assertValidCronExpr(expr: string): void {
+  if (!expr) return;
   const parse = (Bun as unknown as { cron?: { parse?: (e: string) => unknown } }).cron?.parse;
   if (typeof parse !== "function") return; // older Bun: fall back to register-time guard
   try {

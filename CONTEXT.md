@@ -1,6 +1,6 @@
 # CONTEXT.md — my-agent-team 项目心智模型
 
-> 给 Agent 的项目记忆。每次进入仓库先读此文件。基于 2026-06-30 HEAD 现状撰写。
+> 给 Agent 的项目记忆。每次进入仓库先读此文件。基于 2026-08-05（Phase 6）HEAD 现状撰写。
 > 行为准则和仓库技术规范另见 [AGENTS.md](./AGENTS.md)。
 
 ## 领域语言（必背词汇）
@@ -10,75 +10,86 @@
 | **Conversation** | 一场多方对话（人+Agent） | 不是 Run 容器 |
 | **Message** | 对话轮次（`@my-agent-team/message`） | 不是 LedgerEntry（后者是存储 wrapper） |
 | **MessageRevision** | 消息的版本化 envelope（同 messageId 多次写入，state 从 streaming→done） | 不是独立消息 |
-| **Ledger（conversation_ledger）** | 对话可见内容的 canonical fact store | 不是执行日志 |
-| **checkpoint_events** | 执行事实流（tool_start/tool_end/llm_call），按 sessionId+spanId 切 | 不是对话内容 |
-| **Session（= trace）** | 「哪个 agent、在哪个上下文里、的那条持久记忆线」— checkpointer 主键 | 不是 span/run |
-| **Span** | backend 的规范术语：session 上的一次 `prompt()` 调用（= root span）。DB 表 `span`、`spanId` 字段 | 不是 run（用户可见层的同义词，ADR 0007） |
-| **Run** | Web UI 用户可见术语：一次 agent 执行。后端等价于 1 Span，但用户不需要知道 span 这个词 | 不是 Span（同义词，层不同，ADR 0007） |
-| **attemptSeq** | span 内的重试序号，span 内单调递增 | 不是独立 id |
-| **Plugin** | 贡献 tools + hooks 的可组合单元，hook 在注册序执行 | 不是 middleware |
-| **ContextManager** | 管道式消息裁剪/摘要/预算，`pipeContextManagers(...)` 链式组合 | 不是 Plugin |
-| **Checkpointer** | session 持久化：消息快照（恢复）+ 中断状态 + 执行事实流 | 不是对话历史库 |
-| **InterruptSignal** | 工具抛出的暂停信号，需 `resume({ approved })` 继续 | 不是错误 |
-| **Compaction** | 旧消息摘要压缩，保留最近 N 条 + 摘要前缀 | 不是普通 summarize |
-| **AgentSession** | harness 层 Agent 生命周期编排（per-span 创建，目标收敛为 per-session） | 不是 backend service |
-| **ConversationLock** | 会话级并发闸门，统一 HTTP 直发和 @ 触发两条路径 | 不是 thread busy |
-| **Skill** | 一个命名的指令集（一个 `SKILL.md`），模型通过 `skill_load` 按需加载 | 不是 Plugin（后者是代码；Skill 是 markdown 内容） |
-| **Skill Pack** | 一个技能集合的分发单元：有来源（git/zip/builtin）、版本、安装生命周期，物化为一个目录 | 不是 Skill Root（root 是它的运行时物化产物） |
-| **Skill Root** | progressive-skill 扫描的目录路径；一个 Pack 贡献一个 Root | 不是 Pack 本体（Pack 是管理实体，Root 是它的磁盘投影） |
-| **CronJob** | 一条按时间表反复触发的定时规则；通过 `loop_config_path` 引用 Loop 配置目录，到点调 `loopStep()` | 不是 Loop 本身（调度者 ≠ 被调度者） |
-| **spanLoop** | 框架 `span-loop.ts` 导出函数：单个 Span 内的 step 迭代（调模型→工具执行→循环直到 terminal）。纯实现机制 | 不是 Loop（多 Span 编排系统）；旧名 `runLoop`（已按 ADR 0007 改名） |
-| **MCP Server（配置实体）** | 一个外部工具源的配置记录：transport（stdio/SSE）、command+args+env 或 url、enabled 状态。per-agent 绑定 | 不是 MCP Client（client 是运行时连接管理器） |
-| **MCP Client** | 进程内常驻的 MCP 连接管理器：按 agentId 缓存连接 + discovery 结果，session 创建时同步读缓存拼 Tool[] | 不是 MCP Server（server 是配置实体；client 是运行时） |
-| **MCP Tool** | 从外部 MCP server 发现的工具，适配为 `Tool` 接口后注入 agent。名字格式 `mcp__{serverName}__{toolName}` | 不是内置 Tool（后者是进程内函数；MCP Tool 的 execute 是一次 RPC） |
+| **Ledger（conversation_ledger）** | 对话可见内容的 canonical fact store；final assistant Message 带 `agent_run_id` 提交标记 | 不是执行日志 |
+| **Agent Context** | 每个 `(conversationId, agentMemberId)` 的语义历史（tree/entry/branch） | 不是 child transcript |
+| **Context Branch** | Agent Context 中一条可 fork/rollback 的历史路径；固定 backendKind | 不是执行 session |
+| **Agent Run** | branch 上的持久产品执行；**唯一执行身份**（agent_run 表） | 不是 span/attempt/session（已删除） |
+| **branch_input_queue** | normal/steer/follow_up 输入的持久队列；每行携带 request-time 配置快照 | 不是内存队列 |
+| **BackendRunOutcome** | child 的唯一终态结果：completed/failed/aborted/timeout | 不是事件流（事件永不决定终态） |
+| **Product Tool** | History 读写、审批等产品能力，由 Product Backend 统一执行（幂等 + 审计） | 不是 native tool（child 自己的文件/Shell 工具） |
+| **Coding Agent** | 无 UI 的一次性 CLI（print/json/rpc），被 Adapter 按 Run spawn | 不是 daemon（无常驻进程） |
+| **Adapter（agent-backend）** | spawn child、stdin/stdout JSONL、steer/abort、并发上限、event/outcome 映射 | 不是执行引擎 |
+| **Plugin** | 贡献 tools + hooks 的可组合单元（packages/agent）；当前真实插件：todo、progressive-skill | 不是 middleware |
+| **Compaction** | child 内 Run-local 摘要压缩，只影响本次 Run 输入 | 不是 Product Summary（后者是 Agent Context entry） |
+| **Skill Pack** | 技能集合的分发单元（git/zip/builtin），物化为目录；Run 冻结 skillRoots | 不是 Skill Root（root 是运行时物化产物） |
+| **CronJob** | 按时间表触发的定时规则；到点创建 Agent Run（或调 `loopStep()`） | 不是 Loop 本身 |
+| **Loop** | 文件态工作系统：STATE.md 状态机 + Generator/Evaluator Agent Runs + VERDICT.md | 不是 Run（Run 是单次执行） |
+| **MCP Server（配置实体）** | 外部工具源配置记录；Product Tools MCP 是 child 调用产品能力的接入方式 | 不是 MCP Client |
 
+## 唯一执行链
 
-## 架构分层（6 层，自底向上）
-
+```text
+Product Backend
+→ durable Agent Run
+→ full Product Context projection
+→ Agent Backend (packages/adapter-coding-agent)
+→ spawn one-shot coding-agent child (--mode rpc, stdin/stdout JSONL)
+→ per-Run Coding Agent Runtime (packages/agent)
+→ BackendRunOutcome
+→ atomic Product terminal commit
 ```
-L6 Surfaces     apps/web, apps/lark-bot — 输入与渲染，不持有事实
-L5 Backend      apps/backend — HTTP/SSE, auth, tenancy, runner pool
-L4 Harness      packages/harness — AgentSession 编排 + compaction
-L3 Framework    packages/framework — createAgent() + runLoop + plugin system
-L2 Runtime      packages/core — run() async generator
-L1 Protocols    packages/core, packages/message — Message/ChatModel/Tool 类型契约
+
+**核心所有权：**
+
+- **Product Backend 拥有**：Conversation History、Agent Context/Branch、Agent Run、输入队列、Product Tools、Agent 身份/配置、final assistant Message、terminal commit。
+- **Coding Agent 拥有**（子进程内，每 Run 新建）：model/tool loop、native tools、retry、compaction、Run-local todo、progressive skill 加载、print/json/rpc 模式。
+- **Adapter 拥有**：spawn child、JSONL、steer/abort、child 并发上限、stderr 尾部/脱敏、event/outcome 映射、child recycle。
+
+## 架构分层
+
+```text
+L5 Surfaces     Web / Lark — HTTP/SSE
+L4 Backend      Product Backend（Elysia）：账本、Agent Context、Agent Run、Loop、Product Tools
+L3 Adapter      packages/adapter-coding-agent — child 进程边界（spawn/JSONL/steer/abort）
+L2 Runtime      packages/agent — Coding Agent 唯一真实 model/tool loop（agent-loop.ts）
+L1 Contracts    packages/message、packages/core、packages/agent-backend — 类型/协议
 ```
 
 ## 包地图与进出口
 
 | 包 | 层级 | 关键导出 |
 |----|------|----------|
-| `@my-agent-team/core` | L1+L2 | `Message`, `ChatModel`, `Tool`, `run()`, `collectStream()` |
-| `@my-agent-team/message` | L1 | `Message`, `MessageRevision`, `ContentBlock`, `MessageAuthor`, `assistantMessageId()` |
+| `@my-agent-team/core` | L1 | `ChatModel`, `Tool`, `AIMessageChunk`, `ContentBlock`, `collectStream`（无 run loop） |
+| `@my-agent-team/message` | L1 | `Message`, `MessageRevision`, `ContentBlock`, `assistantMessageId(runId, ordinal)` → `run:<runId>:assistant:<n>` |
 | `@my-agent-team/conversation` | L1 | `LedgerEntry`, `LedgerKind`, `Member`, `Conversation`, `TriggerMode` |
-| `@my-agent-team/framework` | L3 | `createAgent()`, `definePlugin()`, `pipeContextManagers()`, `InterruptSignal`, checkpointer 实现 |
-| `@my-agent-team/harness` | L4 | `AgentSession`, `compactThread()`, `reflectionGuidance()` |
-| `@my-agent-team/loop` | L4 | `loopReducer()` — Item step 状态转移纯函数, `LoopState`, `LoopAction` 类型 |
+| `@my-agent-team/agent-backend` | L1 | `AgentBackend`, `BackendRunInput/Outcome/Segment`, `BackendEvent`, JSONL 协议 schema + mapping |
+| `@my-agent-team/agent` | L2 | Coding Agent Runtime：`createCodingAgentSession()`, plugin.ts, in-memory SessionStore, compaction, todo |
+| `@my-agent-team/adapter-coding-agent` | L3 | `CodingAgentBackend` — spawn/JSONL/steer/abort/concurrency |
+| `@my-agent-team/loop` | L2 | `loopReducer()` 纯函数, `LoopState`, `LoopAction` |
 | `@my-agent-team/api-contract` | 跨层 | Elysia `App` 类型真源（HTTP/SSE 契约），`SSEEventMap` |
-| `@my-agent-team/config` | 跨层 | `envSchema` + `parseEnv()` — 环境变量单源 |
-| `@my-agent-team/ai` | adapter | `Provider`, `Model`, `ModelRegistry`, `AnthropicChatModel` - 全仓唯一 import 模型 SDK 的地方 |
+| `@my-agent-team/ai` | adapter | `Provider`, `Model`, `ModelRegistry`, `createModelRuntime`, `AnthropicChatModel` |
 | `@my-agent-team/tools-common` | tools | bash/grep/glob/edit/write/read/web 工具工厂 |
-| `@my-agent-team/test-helpers` | test | `echoModel()` — 确定性 ChatModel 测试替身 |
+| `@my-agent-team/plugin-todo` / `plugin-progressive-skill` | plugins | Coding Agent 真实插件 |
+| `@my-agent-team/test-helpers` | test | `echoModel()` 确定性 ChatModel 测试替身 |
 
 ## 三条铁律（设计哲学核心）
 
 1. **统一本体，不复制语义** — 同一领域对象（Message, Run, Conversation）不在每个模块各定义一份
-2. **暴露业务，隐藏机制** — Ledger/EventLog/Projection/Checkpoint 是实现细节，不上浮成主心智
-3. **边界要硬，概念要少** - 业务边界 6 个（Conversation / Run / Message / Agent / CronJob / Loop），机制边界可以多但必须低调
+2. **暴露业务，隐藏机制** — Ledger/Queue/Projection 是实现细节，不上浮成主心智
+3. **边界要硬，概念要少** — 业务边界：Conversation / Agent Run / Message / Agent / CronJob / Loop；执行只有一个：child process
+
 ## 编码规则（每次改代码前必查）
 
 ### 跨进程契约（e2e-contract-rules.md）
 - HTTP 请求/响应类型：backend Elysia `App` → `@my-agent-team/api-contract` → web 通过 `treaty<App>` 推导。**禁止**手抄 interface、`apiFetch<T>`、`as`
 - SSE 事件：`SSEEventMap`（zod schema map）→ 后端 `sseEncoder`、前端 `typedSource`。**禁止**裸 `EventSource` + `JSON.parse` + `as`
-- 环境变量：共享 `envSchema` + `parseEnv()`。**禁止**各进程裸读 `process.env`
+- Agent Backend 协议：`@my-agent-team/agent-backend` 是契约真源（两侧同一 mapping）。**禁止** adapter/child 各写一套 schema
 - react-query：`queryOptions(params)` 单源，组件只调 `useXxx`。**禁止**组件内联 `queryKey`/`queryFn`
 
 ### Backend 内部类型链（db-typesafe-rules.md）
 - drizzle 表定义（`schema.ts`）是**唯一真源**
 - 读类型：`$inferSelect` → `Pick`/`Omit`。**禁止**手写 `interface XxxRow`
 - 运行时校验：`xxxSelectSchema.parse(row)`。**禁止** `row as XxxRow`
-- JSON 列：drizzle-zod transform（`JSON.parse`/`JSON.stringify`）。**禁止**业务层 `JSON.parse(row.x) as T`
-- int bool 列：drizzle-zod transform。**禁止**业务层 `!!row.enabled`
 - 数据流向单向：`schema.ts → types.ts → service.ts → http.ts`。反向依赖违规
 
 ### 通用
@@ -88,37 +99,30 @@ L1 Protocols    packages/core, packages/message — Message/ChatModel/Tool 类�
 
 ## 关键数据流
 
-```
-人发消息 → POST → appendLedgerEntry (conversation_ledger) → broadcastMessage
-         → 触发判定 (mention/all) → startAgentRun → AgentSession.prompt(input)
-         → runLoop: 模型流 → tool 执行 → 循环
-         → onEvent("message") → appendAssistantMessage 直写 ledger (streaming)
-         → 同 messageId 多次写入 → terminal revision (agent_end, state=done)
-         → checkpoint_events 写入执行事实流 (按 spanId)
-         → SSE push 到端 → UI 按 messageId upsert
+```text
+人发消息 → POST → appendLedgerEntry (conversation_ledger)
+         → 触发判定 (mention/all) → 创建 Agent Run（冻结 systemPrompt/skillRoots）
+         → branch_input_queue 入队 → acquire
+         → Adapter spawn coding-agent --mode rpc → execute command
+         → child 事件 → Live Updates → SSE push 到端 → UI 按 messageId upsert
+         → outcome envelope → BackendRunOutcome
+         → terminal commit：final assistant Message（agent_run_id）+ Context ref + branch + Run 终态（同一事务）
+         → child 自行退出
 ```
 
 ## 关键不变量
 
 1. conversation_ledger 是对话消息的唯一 canonical store
-2. checkpoint_events 只含执行 detail，不含对话内容
+2. Agent Run 是唯一执行身份；无 span/attempt/session（Phase 6 已删表删列）
 3. Message 领域类型只在 `@my-agent-team/message` 定义
 4. assistant 消息与人类消息经同一入口 `appendLedgerEntry` 写账本
 5. 端（Web/飞书）可展示，不可成为事实来源
-6. streaming revision 和 terminal revision 共享同一 messageId，端按 messageId collapse
-7. ChatModel 是唯一外部集成点，core 无 LLM 依赖
-8. 依赖只能向下：`core` → `framework` → `harness` → `backend`，不可反向
+6. streaming revision 和 terminal revision 共享同一 messageId（`run:<runId>:assistant:0`），端按 messageId collapse
+7. BackendRunOutcome 是终态唯一依据；事件流永不决定终态
+8. 同一 Context Branch 最多一个 active Agent Run
+9. 每个 Run 是 full Product Context projection；无跨 Run session/resume/daemon
+10. 依赖只能向下：`core` -> `message`/`agent` -> `backend`，不可反向
 
-## 当前技术债务（已知概念债）
-
-| 债项 | 现状 | 目标 |
-|------|------|------|
-| threadId 未正名 | ✅ `threadId`→`sessionId` 全仓重命名（~50 处，26 文件） | 已完成 |
-| run/span 混用 | ✅ ADR 0007 已定。代码 `runLoop`→`spanLoop`，DB 表 `run`→`span` | 已完成 |
-| AgentSession per-span | ✅ `session-registry.ts` 已删除，`SessionFactory` 按 `sessionId` 索引，跨 span 持久 | 已完成 |
-| spanId 不流进 harness | ✅ `prompt/continue/resume` 已透传 `opts.spanId` 到 `agent.run()` | 已完成 |
-| attempt 独立 id | ✅ `att-${runId}` 已删除，改为 `attemptSeq`（span 内整数序号） | 已完成 |
-| 执行事实流未完全回归 ckp | ✅ `event_log` 表已删除，`appendEvent/readEvents` 是 Checkpointer 一等接口 | 已完成 |
 ## 常用命令
 
 ```bash
@@ -129,10 +133,11 @@ bun run typecheck    # tsc --noEmit (turbo)
 bun run test         # 全量测试 (turbo)
 bun run build        # tsc → dist/ (turbo)
 bun run dev          # 启动 backend + web
+cd apps/backend && bun run db:check:backend   # drizzle schema/migration 校验
 ```
 
-单包测试：`cd packages/framework && bun test`
-单文件/模式：`cd packages/framework && bun test --test-name-pattern="createAgent"`
+单包测试：`cd packages/agent && bun test`
+集成测试：`bun test apps/backend/tests/integration/agent-run-coding-agent.test.ts`（真实 child）
 
 ## 工具链
 
@@ -140,23 +145,18 @@ bun run dev          # 启动 backend + web
 - **TypeScript**: 6.0.3, ESM + NodeNext, target ES2023, strict + noUncheckedIndexedAccess
 - **Monorepo**: Turborepo 2.x, workspaces: `apps/*`, `packages/*`
 - **Format/Lint**: Biome 2.x + ESLint 10.x
-- **DB**: SQLite (backend.db + checkpointer.db), drizzle-orm + drizzle-kit
+- **DB**: SQLite（backend.db 单文件），drizzle-orm + drizzle-kit（migrations 在 `apps/backend/drizzle/backend`）
 - **HTTP**: Elysia (backend), treaty (web 类型安全客户端)
 - **Commit**: commitlint + husky（见下方 §提交规范）
 - **Test**: bun:test
 
 ## 提交规范（commitlint 必过项）
 
-**格式**：`type(scope): subject` — scope **必填**，不可为空。
+**格式**：`type(scope): subject` — scope **必填**，不可为空。scope 枚举以 `commitlint.config.mjs` 为准（Phase 6 后已收敛：`core` `message` `agent` `agent-backend` `adapter-coding-agent` `coding-agent` `conversation` `api-contract` `ai` `loop` `tools-common` `plugin-*` `backend` `web` `lark-bot` `cron` `mcp` `settings` `docs` `test` `lint` `build` `deps` `repo`）。
 
 | 规则 | 值 |
 |------|-----|
 | 可用 type | `feat` `fix` `refactor` `perf` `style` `test` `docs` `chore` `ci` `revert` |
-| 可用 scope（包） | `core` `message` `api-contract` `config` `conversation` `framework` `ai` `harness` `agent-fs` `tools-common` `runner-protocol` `runner-daemon` `runtime-observability` `test-helpers` |
-| 可用 scope（插件） | `plugin-fs-memory` `plugin-identity` `plugin-progressive-skill` `plugin-task-guard` `plugin-conversation-context` |
-| 可用 scope（应用） | `backend` `web` `lark-bot` |
-| 可用 scope（功能） | `cron` |
-| 可用 scope（元） | `docs` `test` `lint` `build` `deps` `repo` |
 | subject 最大长度 | 100 字符 |
 | 禁止中文 | CJK 字符检测（commitlint-plugin-no-cjk） |
 | body 前空行 | 必填（`body-leading-blank`） |
@@ -168,17 +168,6 @@ commit-msg  → commitlint --edit
 pre-push    → bun run lint
 ```
 
-## CI 流程（GitHub Actions）
-
-触发条件：PR 或 push 到 `master`/`main`。
-
-```
-checkout → setup Bun 1.3.14 → install deps → gen drizzle
-  → lint → build → typecheck → test → verify dist fresh
-```
-
-最后一步校验所有 `packages/*/dist/` 和 `apps/*/dist/`（或 `.next/`）的新鲜度——任何源文件比构建产物新即标红。
-
 ## 文档导航
 
 - 给人读：`docs/architecture/README.md` → 系统总览 → 按路线选读
@@ -187,5 +176,6 @@ checkout → setup Bun 1.3.14 → install deps → gen drizzle
 - 架构设计哲学：`docs/architecture/design-philosophy.md` — 每次设计/评审/修复前必读
 - 跨进程契约规则：`docs/architecture/e2e-contract-rules.md` — 加字段/调接口前必查
 - DB 类型安全规则：`docs/architecture/db-typesafe-rules.md` — 改表/加列前必查
-- 标识符体系：`docs/architecture/foundations/identifiers.md` — id 归属与收敛方向
+- 标识符体系：`docs/architecture/foundations/identifiers.md` — runId 唯一执行身份
 - 事实与投影：`docs/architecture/foundations/facts-and-projections.md` — 两类事实的边界
+- Tombstones（历史概念，勿引用）：`runtime/framework.md`、`runtime/context-manager.md`、`runtime/plugin.md`、`harness/harness.md`、`backend/event-log.md`

@@ -11,9 +11,11 @@ import {
   useUndoMessages,
 } from "@/features/conversations/hooks";
 import type { MessageItem, SenderRef, UiItem } from "@/lib/conversation-reducer";
-import { groupTurns, type TurnSegment } from "@/lib/conversation-reducer";
+import { groupTurns, isTurnStart, type TurnSegment } from "@/lib/conversation-reducer";
 import { renderContentBlocks } from "@/lib/render-blocks";
 import { extractText } from "@/lib/timeline";
+import type { LiveToolCall } from "@/lib/transient-reducer";
+import { LiveToolStep } from "./LiveToolStep";
 import { MessageBubble } from "./MessageBubble";
 import { ReasoningTrace } from "./ReasoningTrace";
 
@@ -22,6 +24,16 @@ interface TimelineProps {
   viewerMemberId: string;
   conversationId: string;
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
+  /** Transient streaming outputs — one temporary assistant bubble per
+   *  active run at the end of the timeline, replaced by canonical Messages. */
+  transients?:
+    | Array<{
+        runId: string;
+        text: string;
+        sender: SenderRef;
+        tools?: readonly LiveToolCall[];
+      }>
+    | undefined;
 }
 
 interface TurnAnchor {
@@ -42,12 +54,6 @@ function SystemNotice({ text }: { text: string }) {
 
 // ── Segment helpers ──
 
-function segmentSender(seg: TurnSegment): SenderRef {
-  if (seg.kind === "turn") return seg.sender;
-  if (seg.kind === "single") return seg.item.sender;
-  return { kind: "agent", memberId: "" }; // notice
-}
-
 function segmentId(seg: TurnSegment): string {
   if (seg.kind === "turn") return seg.id;
   if (seg.kind === "single") return seg.item.id;
@@ -56,25 +62,14 @@ function segmentId(seg: TurnSegment): string {
 
 /** A turn starts at each user (human) message. A turn spans that user message
  *  plus every following assistant/system segment up to (but not including) the
- *  next user message.
- *
- *  For pure agent-to-agent conversations (no human messages), falls back to
- *  sender-change boundaries so agent chains still have visible turn separators. */
-function isTurnStart(seg: TurnSegment, segments: TurnSegment[], i: number): boolean {
-  const sender = segmentSender(seg);
-  if (sender.kind === "human") return true;
-  // Agent-to-agent fallback: boundary on sender identity change
-  if (i === 0) return true;
-  const prevSender = segmentSender(segments[i - 1]!);
-  return prevSender.memberId !== sender.memberId;
-}
+ *  next user message. System notices never start turns; see isTurnStart. */
 
 function extractAnchors(segments: TurnSegment[]): TurnAnchor[] {
   const anchors: TurnAnchor[] = [];
   let turnNum = 0;
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!;
-    if (isTurnStart(seg, segments, i)) {
+    if (isTurnStart(segments, i)) {
       turnNum++;
       const id = segmentId(seg);
       anchors.push({ id: `turn-${id}`, seq: turnNum, elementId: `turn-${id}` });
@@ -88,6 +83,7 @@ export function Timeline({
   viewerMemberId,
   conversationId,
   scrollContainerRef,
+  transients,
 }: TimelineProps) {
   const segments = useMemo(() => groupTurns(messages), [messages]);
   const anchors = useMemo(() => extractAnchors(segments), [segments]);
@@ -148,7 +144,7 @@ export function Timeline({
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
       // Place a turn divider/anchor before each message that starts a turn.
-      if (isTurnStart(seg, segments, i)) {
+      if (isTurnStart(segments, i)) {
         const id = segmentId(seg);
         items.push({
           seg,
@@ -256,6 +252,21 @@ export function Timeline({
               </div>
             );
           })}
+          {transients?.map((t) => (
+            <div key={`transient-${t.runId}`} className="group relative">
+              <MessageBubble
+                align="left"
+                name={t.sender.displayName ?? t.sender.memberId}
+                kind="agent"
+                agentId={t.sender.agentId}
+                content={t.text}
+                isStreaming
+              />
+              {t.tools?.map((tool) => (
+                <LiveToolStep key={`${t.runId}:${tool.callId}`} tool={tool} />
+              ))}
+            </div>
+          ))}
         </div>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { extname, resolve } from "node:path";
 import type { Tool } from "@my-agent-team/core";
+import { WorkspaceSandbox } from "./workspace-sandbox.js";
 
 type InputRec = Record<string, unknown>;
 
@@ -14,11 +15,30 @@ export function withDefaultCwd(tool: Tool, cwd: string): Tool {
     },
   };
 }
-
 function safePath(cwd: string, userPath: string): string | null {
-  const full = resolve(cwd, userPath);
-  if (!full.startsWith(cwd)) return null;
-  return full;
+  try {
+    const sandbox = new WorkspaceSandbox(cwd);
+    return sandbox.validate(userPath);
+  } catch {
+    return null;
+  }
+}
+
+function safePathNew(cwd: string, userPath: string): string | null {
+  try {
+    const sandbox = new WorkspaceSandbox(cwd);
+    return sandbox.validateNew(userPath);
+  } catch {
+    return null;
+  }
+}
+/** Resolve a path against a fixed workspace root using realpath containment. */
+export function resolveWorkspacePath(root: string, userPath: string): string | null {
+  try {
+    return new WorkspaceSandbox(root).validate(userPath);
+  } catch {
+    return null;
+  }
 }
 
 const IMAGE_EXTENSIONS = new Set([
@@ -144,7 +164,7 @@ export function createWriteTool(opts: { cwd: string }): Tool {
     },
     async execute(input: unknown) {
       const rec = input as InputRec;
-      const full = safePath(cwd, String(rec.path ?? ""));
+      const full = safePathNew(cwd, String(rec.path ?? ""));
       if (!full) return { content: "Error: path escapes workspace", isError: true };
       try {
         mkdirSync(resolve(full, ".."), { recursive: true });

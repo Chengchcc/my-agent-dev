@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
-import { ShellProvider } from "@/components/ShellProvider";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -13,9 +12,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   return (
     <TooltipProvider delay={500}>
       <SidebarProvider>
-        <ShellProvider>
-          <AppShell>{children}</AppShell>
-        </ShellProvider>
+        <AppShell>{children}</AppShell>
       </SidebarProvider>
     </TooltipProvider>
   );

@@ -1,5 +1,6 @@
 import { Elysia } from "elysia";
 import type { agentRoutes } from "./features/agent/http.js";
+import type { agentRunRoutes } from "./features/agent-run/http.js";
 import type { conversationRoutes } from "./features/conversation/http.js";
 import type { cronJobRoutes } from "./features/cron/http.js";
 import type { loopRoutes } from "./features/loop/http.js";
@@ -9,7 +10,6 @@ import type { projectRoutes } from "./features/project/http.js";
 import type { opsRoutes } from "./features/runtime-ops/http.js";
 import type { settingsRoutes } from "./features/settings/http.js";
 import type { skillPackRoutes } from "./features/skill-pack/http.js";
-import type { resumeRoutes } from "./features/span/http.js";
 import { checkAuthToken } from "./infra/auth.js";
 import { DomainError } from "./infra/domain-errors.js";
 import { HttpError } from "./infra/errors.js";
@@ -21,7 +21,7 @@ export interface FeatureSet {
   projects: ReturnType<typeof projectRoutes>;
   cronJobs: ReturnType<typeof cronJobRoutes>;
   loops: ReturnType<typeof loopRoutes>;
-  resumeRun: ReturnType<typeof resumeRoutes>;
+  agentRuns: ReturnType<typeof agentRunRoutes>;
   skillPacks: ReturnType<typeof skillPackRoutes>;
   mcp: ReturnType<typeof mcpRoutes>;
   settings: ReturnType<typeof settingsRoutes>;
@@ -52,12 +52,12 @@ export function createApp(token: string, features: FeatureSet) {
     ops,
     projects,
     cronJobs,
-    resumeRun,
     skillPacks,
     mcp,
     loops,
     settings,
     models,
+    agentRuns,
   } = features;
   const app = new Elysia()
     .get("/health", () => ({ status: "ok" }))
@@ -67,7 +67,7 @@ export function createApp(token: string, features: FeatureSet) {
     .use(ops);
 
   return app
-    .use(resumeRun)
+    .use(agentRuns)
     .use(projects)
     .use(cronJobs)
     .use(loops)

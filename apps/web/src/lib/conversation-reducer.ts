@@ -1,10 +1,5 @@
 import type { Message, MessageRevision } from "@my-agent-team/message";
-import {
-  extractText,
-  isOpenMessageState,
-  mergeMessageRevision,
-  parseMessageRevision,
-} from "@my-agent-team/message";
+import { extractText, mergeMessageRevision, parseMessageRevision } from "@my-agent-team/message";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -46,25 +41,23 @@ export interface ConvState {
   streamConn: StreamConn;
   error: string | null;
   triggerMode: TriggerMode;
-  /** M14.6: Task todo progress — full snapshot from todo_update events. */
-  todos: Array<{ step: string; status: "pending" | "in_progress" | "done" }>;
-  /** Number of sends that have been dispatched locally but not yet
-   *  confirmed by the backend (POST in-flight). Cleared when the first
-   *  authoritative agent revision arrives or on send error. */
+  /** Number of sends that have been dispatched locally but not yet settled
+   *  by the backend (HTTP POST in-flight). Decremented on mutation
+   *  onSettled (success OR error) - never tied to an agent reply; Run
+   *  activity is tracked separately in the hook's activeRuns set. */
   pendingSendCount: number;
   /** W7: Monotonic sequence number for client-generated message IDs. */
   optimisticSeq: number;
-  /** Steer2: queued messages waiting to be sent (busy state). */
-  queuedMessages: string[];
 }
 
 export type Action =
   | { type: "bootstrap"; viewerMemberId: string; members: SenderRef[] }
   | { type: "send"; text: string; viewer: SenderRef }
+  /** POST settled (success OR error): decrement the in-flight counter. */
+  | { type: "send/settled" }
   | { type: "conn"; status: StreamConn }
   | { type: "toggleTriggerMode" }
   | { type: "send/error"; message: string }
-  | { type: "todo/update"; todos: ConvState["todos"] }
   | { type: "member"; seq: number; kind: string; payload: unknown }
   | {
       type: "message";
@@ -75,11 +68,7 @@ export type Action =
       /** Soft-delete flag from ledger entry (absent = live). */
       undone?: boolean;
     }
-  | { type: "undo"; undoneSeqs: number[] }
-  | { type: "queue/update"; messages: string[] }
-  | { type: "queue/add"; text: string }
-  | { type: "queue/edit"; index: number; text: string }
-  | { type: "queue/remove"; index: number };
+  | { type: "undo"; undoneSeqs: number[] };
 
 export function initialState(): ConvState {
   return {
@@ -89,10 +78,8 @@ export function initialState(): ConvState {
     streamConn: "connecting",
     error: null,
     triggerMode: "auto",
-    todos: [],
     pendingSendCount: 0,
     optimisticSeq: 0,
-    queuedMessages: [],
   };
 }
 
@@ -100,51 +87,12 @@ export function initialState(): ConvState {
 
 /** Whether there is an open (not done/error) assistant message
  *  that means the UI should show a busy state. */
+/** Busy = a send is in flight or messages are queued locally. Execution
+ *  state itself comes from Agent Runs (active run set in the hook layer). */
+/** Busy = a send is in flight. Execution state itself comes from Agent
+ *  Runs (active run set in the hook layer). */
 export function isBusy(s: ConvState): boolean {
-  if (s.pendingSendCount > 0) return true;
-  return s.items.some(
-    (item) =>
-      item.kind === "message" &&
-      item.sender.kind === "agent" &&
-      ((item.content.state != null && isOpenMessageState(item.content.state)) ||
-        item.content.runStatus === "retrying" ||
-        item.content.runStatus === "compacting"),
-  );
-}
-
-/** M17: Extract pending approval from a waiting revision for ToolApprovalCard. */
-export function getApprovalTarget(s: ConvState): {
-  messageId: string;
-  runId: string;
-  text: string;
-  tools: Array<{ id: string; name: string; input: unknown }>;
-} | null {
-  for (const item of s.items) {
-    if (item.kind !== "message") continue;
-    if (item.sender.kind === "agent" && item.content.state === "waiting" && item.content.spanId) {
-      // The tool params live ONLY in blocks[] (tool_use blocks carry `input`).
-      // tools[] (MessageToolState) is identity+state only — reading params from
-      // there yields nothing, which is why the card rendered `{}`. Index the
-      // tool_use blocks by id and join them onto the running tool states.
-      const inputById = new Map<string, unknown>();
-      for (const b of item.content.blocks ?? []) {
-        if (b.type === "tool_use") inputById.set(b.id, b.input);
-      }
-      return {
-        messageId: item.content.id ?? "",
-        runId: item.content.spanId,
-        text: item.content.text ?? "",
-        tools: (item.content.tools ?? [])
-          .filter((t: { state: string }) => t.state === "running")
-          .map((t: { id: string; name: string }) => ({
-            id: t.id,
-            name: t.name,
-            input: inputById.get(t.id) ?? {},
-          })),
-      };
-    }
-  }
-  return null;
+  return s.pendingSendCount > 0;
 }
 
 function upsertAuthoritative(
@@ -256,6 +204,28 @@ export function groupTurns(items: UiItem[]): TurnSegment[] {
   return out;
 }
 
+/** Whether segment `i` starts a new turn. System notices never start turns;
+ *  in human-led conversations only human messages do. The sender-change
+ *  fallback applies ONLY to pure agent conversations (no human segment),
+ *  so member-joined notices can't fabricate turn numbers. */
+export function isTurnStart(segments: TurnSegment[], i: number): boolean {
+  const seg = segments[i]!;
+  if (seg.kind === "notice") return false;
+  const sender = segmentSenderOf(seg);
+  if (sender.kind === "human") return true;
+  const hasHuman = segments.some((s) => s.kind !== "notice" && segmentSenderOf(s).kind === "human");
+  if (hasHuman) return false;
+  if (i === 0) return true;
+  const prevSender = segmentSenderOf(segments[i - 1]!);
+  return prevSender.memberId !== sender.memberId;
+}
+
+function segmentSenderOf(seg: TurnSegment): SenderRef {
+  if (seg.kind === "turn") return seg.sender;
+  if (seg.kind === "single") return seg.item.sender;
+  return { kind: "agent", memberId: "" }; // notice (never queried: filtered above)
+}
+
 // ─── Reducer ───────────────────────────────────────────────
 
 export function reducer(s: ConvState, a: Action): ConvState {
@@ -282,14 +252,14 @@ export function reducer(s: ConvState, a: Action): ConvState {
       };
       const roster = { ...s.roster };
       for (const m of payload.members ?? []) roster[m.memberId] = { ...m };
-      const verb = a.kind === "member.joined" ? "加入" : "离开";
+      const verb = a.kind === "member.joined" ? "joined" : "left";
       const present = (payload.members ?? [])
         .map((m) => roster[m.memberId]?.displayName ?? m.memberId)
         .join(", ");
       const id = `notice-${a.seq}`;
       const items: UiItem[] = [
         ...s.items,
-        { kind: "notice", id, text: `[系统] 成员变化：${verb}。当前在场：${present}` },
+        { kind: "notice", id, text: `[system] Members ${verb}. Present: ${present}` },
       ];
       return { ...s, roster, items };
     }
@@ -325,8 +295,9 @@ export function reducer(s: ConvState, a: Action): ConvState {
         a.addressedTo ?? [],
         a.undone,
       );
-      const cleared = sender.kind === "agent" && s.pendingSendCount > 0 ? 0 : s.pendingSendCount;
-      return { ...s, items, pendingSendCount: cleared };
+      // pendingSendCount tracks ONLY the HTTP POST in flight (see
+      // send/settled); an agent reply must not fake-clear it.
+      return { ...s, items };
     }
 
     case "undo": {
@@ -361,36 +332,20 @@ export function reducer(s: ConvState, a: Action): ConvState {
     case "conn":
       return { ...s, streamConn: a.status };
 
+    case "send/settled":
+      return {
+        ...s,
+        pendingSendCount: Math.max(0, s.pendingSendCount - 1),
+      };
+
     case "send/error":
       return {
         ...s,
         error: a.message,
-        pendingSendCount: Math.max(0, s.pendingSendCount - 1),
       };
 
     case "toggleTriggerMode":
       return { ...s, triggerMode: s.triggerMode === "auto" ? "mention" : "auto" };
-
-    case "todo/update":
-      return { ...s, todos: a.todos };
-
-    case "queue/update":
-      return { ...s, queuedMessages: a.messages };
-
-    case "queue/add":
-      return { ...s, queuedMessages: [...s.queuedMessages, a.text] };
-
-    case "queue/edit":
-      return {
-        ...s,
-        queuedMessages: s.queuedMessages.map((m, i) => (i === a.index ? a.text : m)),
-      };
-
-    case "queue/remove":
-      return {
-        ...s,
-        queuedMessages: s.queuedMessages.filter((_, i) => i !== a.index),
-      };
 
     default:
       return s;

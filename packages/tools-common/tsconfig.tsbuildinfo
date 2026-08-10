@@ -1,1 +1,0 @@
-{"root":["./src/agent-fs-like.ts","./src/bash.ts","./src/file-tools.ts","./src/glob.ts","./src/grep.ts","./src/index.ts","./src/ls-tree.ts","./src/url-guard.ts","./src/web-fetch.ts","./src/web-search.ts"],"version":"6.0.3"}

@@ -270,4 +270,35 @@ describe("createCronJobService", () => {
     await svc.createCronJob({ name: "My Job", agentId: "agent-1", cronExpr: "0 9 * * *" });
     expect(calls).toEqual(["conv:cj-conv:My Job:cron", "member:cj-conv:owner:agent:agent-1"]);
   });
+
+  test("createCronJob accepts empty cronExpr for a disabled manual loop", async () => {
+    const svc = createCronJobService({
+      port: mockPort(),
+      idGen: makeIdGen(),
+      agentExists: alwaysExists,
+    });
+
+    const job = await svc.createCronJob({
+      name: "manual loop",
+      agentId: "loop-agent",
+      cronExpr: "",
+      enabled: false,
+      loopConfigPath: "loops/manual-loop",
+    });
+
+    expect(job.cronExpr).toBe("");
+    expect(job.enabled).toBe(false);
+    expect(job.loopConfigPath).toBe("loops/manual-loop");
+  });
+
+  test("createCronJob still rejects invalid non-empty cron", async () => {
+    const svc = createCronJobService({
+      port: mockPort(),
+      idGen: makeIdGen(),
+      agentExists: alwaysExists,
+    });
+    await expect(
+      svc.createCronJob({ name: "bad", agentId: "agent-1", cronExpr: "99 99 99 99 99" }),
+    ).rejects.toThrow(CronJobValidationError);
+  });
 });

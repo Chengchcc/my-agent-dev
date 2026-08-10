@@ -1,11 +1,12 @@
 import { existsSync } from "node:fs";
-import type { SessionConfig, SessionManager } from "@my-agent-team/harness";
+import type { BackendModelRef, BackendRunOutcome } from "@my-agent-team/agent-backend";
 import type { LoopConfig, LoopState } from "@my-agent-team/loop";
 import { loopReducer, parseLoopConfig, parseVerdictMd } from "@my-agent-team/loop";
-import type { AppendLedgerInput } from "../conversation/ports.js";
+import { isTerminalStatus } from "../agent-run/domain.js";
+import type { AgentRunExecutionService } from "../agent-run/execution.js";
+import type { AgentRunService } from "../agent-run/service.js";
+import type { ConversationPort } from "../conversation/ports.js";
 import type { ProjectPort } from "../project/ports.js";
-import { nodeFsAdapter } from "../skill-pack/fs-adapter.js";
-import type { SkillRoots } from "../span/skill-roots.js";
 import type { LoopStateStore } from "./loop-state-store.js";
 
 type ReviewAction = {
@@ -26,12 +27,6 @@ export interface GitRunner {
 }
 export interface LoopStepParams {
   loopConfigPath: string;
-  sessionManager: SessionManager;
-  buildConfig: (params: {
-    modelName: string;
-    cwd: string;
-    skillRoots?: SkillRoots;
-  }) => SessionConfig;
   action?: ReviewAction;
   projectPort?: ProjectPort;
   dataDir?: string;
@@ -39,27 +34,79 @@ export interface LoopStepParams {
   loopId: string;
   /** Inject for tests. Default = real Bun.$ git calls. */
   gitRunner?: GitRunner;
-  /** Optional sink for budget-exceeded notifications into the conversation ledger. */
-  convPort?: {
-    appendLedgerEntry: (input: AppendLedgerInput) => unknown;
-  };
+  /** Canonical scope sink: deterministic Loop conversations/members live in
+   *  the Conversation port (identity/audit containers, NOT a memory system). */
+  convPort: ConversationPort;
+  /** Phase 4 Agent Run services - the only execution path. */
+  agentRunService: AgentRunService;
+  agentRunExecution: AgentRunExecutionService;
+  /** Resolve a LOOP.md model name to a BackendModelRef. */
+  resolveModel: (modelName: string) => Promise<BackendModelRef>;
 }
 
-async function tallyUsage(sessionManager: SessionManager, sessionId: string): Promise<number> {
-  const session = sessionManager.get(sessionId);
-  if (!session) return 0;
-  return session.getUsage();
+/** Stable deterministic identities - Generator and Evaluator are fully
+ *  independent scopes (separate conversations, separate members). */
+export function loopGeneratorConversationId(loopId: string): string {
+  return `loop:${loopId}:generator`;
+}
+export function loopEvaluatorConversationId(loopId: string): string {
+  return `loop:${loopId}:evaluator`;
+}
+export function loopGeneratorMemberId(loopId: string): string {
+  return `loop-generator:${loopId}`;
+}
+export function loopEvaluatorMemberId(loopId: string): string {
+  return `loop-evaluator:${loopId}`;
+}
+
+function usageTokens(usage: BackendRunOutcome["usage"] | null | undefined): number {
+  if (!usage) return 0;
+  return (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+}
+
+/** Idempotently ensure the deterministic Conversation + Agent Member exist.
+ *  The branch is lazily created by enqueueAndAcquire. */
+async function ensureLoopScope(
+  convPort: ConversationPort,
+  conversationId: string,
+  agentMemberId: string,
+  agentId: string,
+): Promise<void> {
+  if (!convPort.getConversation(conversationId)) {
+    try {
+      convPort.createConversation({
+        conversationId,
+        triggerMode: "mention",
+        origin: "loop",
+        createdAt: Date.now(),
+      });
+    } catch {
+      /* concurrent create - ignore */
+    }
+  }
+  const members = convPort.getMembers(conversationId);
+  if (!members.some((m) => m.memberId === agentMemberId)) {
+    convPort.addMember({
+      memberId: agentMemberId,
+      conversationId,
+      kind: "agent",
+      agentId,
+      joinedAt: Date.now(),
+    });
+  }
 }
 
 // === denylist glob matching ===
 function matchesGlob(path: string, pattern: string): boolean {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  const regexBody = escaped
-    .replace(/\*\*/g, "[DBL]")
-    .replace(/\*/g, "[^/]*")
-    .split("[DBL]")
-    .join(".*");
-  return new RegExp(`^${regexBody}$`).test(path);
+  const regex = new RegExp(
+    "^" +
+      pattern
+        .split("*")
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&"))
+        .join(".*") +
+      "$",
+  );
+  return regex.test(path);
 }
 
 function denylistedFiles(files: string[], patterns: string[]): string[] {
@@ -67,7 +114,10 @@ function denylistedFiles(files: string[], patterns: string[]): string[] {
   return files.filter((f) => patterns.some((p) => matchesGlob(f, p)));
 }
 
-async function resolveRepoPath(
+/** Resolve (and materialize) the loop's cloned repo workspace. Exported so
+ *  the composition root can bind Agent Run workspaces for loop scopes to the
+ *  actual clone, not the loop-agent's own workspace. */
+export async function resolveRepoPath(
   loopConfigPath: string,
   projectPort: ProjectPort | undefined,
   dataDir: string | undefined,
@@ -121,6 +171,10 @@ function buildGeneratorPrompt(
   template: string,
   context?: { repoPath?: string; gitLog?: string },
 ): string {
+  // The user prompt ALWAYS carries the item facts: summary, source,
+  // rejection note and project context. The LOOP.md systemPrompt is only an
+  // extra behavioral constraint (frozen into the Run as systemPrompt), so a
+  // template that omits placeholders can never starve the agent of the item.
   let note = "";
   if (item.result && "reasons" in item.result) {
     note = `- 上次被拒原因: ${item.result.reasons.join("; ")}`;
@@ -128,11 +182,13 @@ function buildGeneratorPrompt(
   const ctx = context?.repoPath
     ? `\n\n## Project Context\n- Repo: ${context.repoPath}\n${context.gitLog ? `- Recent changes:\n${context.gitLog}\n` : ""}`
     : "";
-  return template
-    .replace("{summary}", item.summary)
-    .replace("{source}", item.source)
-    .replace("{rejectionNote}", note)
-    .concat(ctx);
+  const core = [
+    `# Task\n${item.summary}`,
+    `# Source\n${item.source}`,
+    ...(note ? [note] : []),
+  ].join("\n\n");
+  const extra = template.trim();
+  return `${core}${extra ? `\n\n# Additional Instructions\n${extra}` : ""}${ctx}`;
 }
 
 export async function loopStep(params: LoopStepParams): Promise<LoopState> {
@@ -142,14 +198,6 @@ export async function loopStep(params: LoopStepParams): Promise<LoopState> {
 async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
   const repoPath = await resolveRepoPath(params.loopConfigPath, params.projectPort, params.dataDir);
   const workDir = repoPath ?? params.loopConfigPath;
-
-  // Construct role-specific skill roots from .loop/skills
-  const skillsDir = `${params.loopConfigPath}/skills`;
-  const skillRootsByRole = (role: string): SkillRoots => ({
-    ws: nodeFsAdapter(skillsDir),
-    roots: [role],
-    posixSkillRoot: skillsDir,
-  });
 
   // 1. Read state from DB
   let state = params.store.load(params.loopId);
@@ -181,7 +229,6 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
 
   const genModel = cfg.generator.model;
   const evalModel = cfg.evaluator.model;
-  // model≠ already checked in parseLoopConfig — this is defensive
   const genPrompt = cfg.generator.systemPrompt;
   const evalPrompt = cfg.evaluator.systemPrompt;
   const acceptance = cfg.acceptance || "被修改的文件相关测试全绿，改动范围合理";
@@ -239,7 +286,6 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     );
   }
 
-  // TS guard: gitCwd is definitely string after the throw above when fixingItems.length > 0
   const cwd = gitCwd!;
 
   const git = params.gitRunner ?? {
@@ -255,7 +301,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
   let budgetNotified = false;
 
   const notifyBudgetExceeded = () => {
-    if (!params.convPort || budgetNotified) return;
+    if (budgetNotified) return;
     budgetNotified = true;
     const ts = Date.now();
     try {
@@ -289,31 +335,80 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
 
     const baseSha = (await git.revParse(cwd)).text().trim();
 
-    // Generator
-    const genConfig = params.buildConfig({
-      modelName: genModel,
-      cwd: workDir,
-      skillRoots: skillRootsByRole("loop-generator"),
-    });
-
-    const genSession = params.sessionManager.create(genConfig);
-    let genSpanId: string | undefined;
-    const unsubGen = genSession.subscribe((e) => {
-      if (e.type === "agent_start") genSpanId = e.spanId;
-    });
+    // ── Generator: one Agent Run on its own stable scope ──
+    const genConversationId = loopGeneratorConversationId(params.loopId);
+    const genMemberId = loopGeneratorMemberId(params.loopId);
+    await ensureLoopScope(params.convPort, genConversationId, genMemberId, "loop-agent");
     const gitLog = await Bun.$`git log --oneline -5`
       .cwd(cwd)
       .quiet()
       .text()
       .catch(() => "");
-    await genSession.prompt(buildGeneratorPrompt(item, genPrompt, { repoPath: cwd, gitLog }));
-    unsubGen();
-    params.sessionManager.dispose(genSession.sessionId ?? "");
+    let genAcquire = await params.agentRunService.enqueueAndAcquire({
+      conversationId: genConversationId,
+      agentMemberId: genMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: {
+        role: "user",
+        text: buildGeneratorPrompt(item, genPrompt, { repoPath: cwd, gitLog }),
+      },
+      defaultModel: await params.resolveModel(genModel),
+      configRevision: 1,
+      idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}`,
+      // LOOP.md generator systemPrompt is the frozen Run system prompt;
+      // skills live in the loop config's skills/ dir.
+      systemPrompt: genPrompt || undefined,
+      skillRoots: [`${params.loopConfigPath}/skills`],
+      // Workspace is a Run execution fact: the Generator MUST run in the
+      // cloned repo, not the loop-agent's own workspace.
+      workspace: { root: cwd, access: "read_write" },
+    });
+    if (
+      genAcquire.replayed &&
+      genAcquire.run &&
+      isTerminalStatus(genAcquire.run.status) &&
+      genAcquire.run.status !== "completed"
+    ) {
+      // The previous attempt for this (item, baseSha) ended terminal without
+      // committing (failed/aborted/timeout) - replaying it would short-
+      // circuit forever. Issue a fresh run for the retry.
+      const retry = await params.agentRunService.enqueueAndAcquire({
+        conversationId: genConversationId,
+        agentMemberId: genMemberId,
+        backendKind: "coding_agent",
+        mode: "normal",
+        message: {
+          role: "user",
+          text: buildGeneratorPrompt(item, genPrompt, { repoPath: cwd, gitLog }),
+        },
+        defaultModel: await params.resolveModel(genModel),
+        configRevision: 1,
+        idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}:retry`,
+        systemPrompt: genPrompt || undefined,
+        skillRoots: [`${params.loopConfigPath}/skills`],
+        workspace: { root: cwd, access: "read_write" },
+      });
+      if (retry.acquired && retry.run) {
+        genAcquire = { ...retry, replayed: false };
+      }
+    }
+    if (!genAcquire.acquired || !genAcquire.run) {
+      throw new Error(
+        `loopStep: generator run for item ${item.id} could not acquire its branch (queued behind an active run)`,
+      );
+    }
+    const generatorRunId = genAcquire.run.runId;
+    await params.agentRunExecution.dispatch(generatorRunId);
+    const genRun = await params.agentRunService.getRun(generatorRunId);
+    if (genRun?.status !== "completed") {
+      throw new Error(`loopStep: generator run ${generatorRunId} ended ${genRun?.status}`);
+    }
     if (dailyCap > 0) {
       spent = params.store.addBudget(
         params.loopId,
         today,
-        await tallyUsage(params.sessionManager, genSession.sessionId ?? ""),
+        usageTokens(genRun.terminalResult?.usage),
       );
     }
 
@@ -323,7 +418,8 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     state = loopReducer(state, {
       type: "GENERATOR_DONE",
       itemId: item.id,
-      generatorSpanId: genSpanId,
+      // the item's run identity is now an Agent Run id
+      generatorRunId: generatorRunId,
     });
 
     const changedFiles = filesChanged ? filesChanged.split("\n").filter(Boolean) : [];
@@ -342,15 +438,21 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       continue;
     }
 
-    // Evaluator
-    const evaluatorPrompt = evalPrompt
-      .replace("{acceptance}", acceptance)
-      .replace("{filesChanged}", filesChanged || "none");
-    const evalConfig = params.buildConfig({
-      modelName: evalModel,
-      cwd: workDir,
-      skillRoots: skillRootsByRole("loop-verifier"),
-    });
+    // ── Evaluator: separate stable scope, only after deterministic prep ──
+    // The user prompt ALWAYS carries acceptance criteria, the changed files
+    // and the VERDICT.md requirement; the LOOP.md systemPrompt is only an
+    // extra behavioral constraint (frozen into the Run as systemPrompt).
+    const evaluatorPrompt = [
+      `# Acceptance Criteria\n${acceptance}`,
+      `# Files Changed\n${filesChanged || "none"}`,
+      `# Task\nReview the changes in the workspace against the acceptance criteria. ` +
+        `Write your verdict to VERDICT.md in the workspace root. The file must contain YAML with: ` +
+        `verdict: PASS | REJECT | ESCALATE, reasons: [...], evidence: "..."`,
+      ...(evalPrompt.trim() ? [`# Additional Instructions\n${evalPrompt.trim()}`] : []),
+    ].join("\n\n");
+    const evalConversationId = loopEvaluatorConversationId(params.loopId);
+    const evalMemberId = loopEvaluatorMemberId(params.loopId);
+    await ensureLoopScope(params.convPort, evalConversationId, evalMemberId, "loop-agent");
 
     const verdictPath = `${workDir}/VERDICT.md`;
     try {
@@ -359,25 +461,70 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       // ignore
     }
 
-    const evalSession = params.sessionManager.create(evalConfig);
-    const EVALUATOR_TIMEOUT_MS = 60_000;
-    await Promise.race([
-      evalSession.prompt(evaluatorPrompt),
-      new Promise<void>((_, reject) =>
-        setTimeout(() => reject(new Error("Evaluator timeout")), EVALUATOR_TIMEOUT_MS),
-      ),
-    ]).catch(() => {
-      console.error(`[loop] evaluator timeout/crash for item ${item.id}`);
+    let evalAcquire = await params.agentRunService.enqueueAndAcquire({
+      conversationId: evalConversationId,
+      agentMemberId: evalMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: evaluatorPrompt },
+      defaultModel: await params.resolveModel(evalModel),
+      configRevision: 1,
+      idempotencyKey: `loop-eval:${params.loopId}:${item.id}:${baseSha}`,
+      // Evaluator systemPrompt from LOOP.md; skills from the loop config.
+      systemPrompt: evalPrompt || undefined,
+      skillRoots: [`${params.loopConfigPath}/skills`],
+      // The Evaluator writes VERDICT.md into the same clone; read_write is
+      // honest until the verdict moves out-of-band.
+      workspace: { root: workDir, access: "read_write" },
     });
-    params.sessionManager.dispose(evalSession.sessionId ?? "");
+    if (
+      evalAcquire.replayed &&
+      evalAcquire.run &&
+      isTerminalStatus(evalAcquire.run.status) &&
+      evalAcquire.run.status !== "completed"
+    ) {
+      const retry = await params.agentRunService.enqueueAndAcquire({
+        conversationId: evalConversationId,
+        agentMemberId: evalMemberId,
+        backendKind: "coding_agent",
+        mode: "normal",
+        message: { role: "user", text: evaluatorPrompt },
+        defaultModel: await params.resolveModel(evalModel),
+        configRevision: 1,
+        idempotencyKey: `loop-eval:${params.loopId}:${item.id}:${baseSha}:retry`,
+        systemPrompt: evalPrompt || undefined,
+        skillRoots: [`${params.loopConfigPath}/skills`],
+        workspace: { root: workDir, access: "read_write" },
+      });
+      if (retry.acquired && retry.run) {
+        evalAcquire = { ...retry, replayed: false };
+      }
+    }
+    if (!evalAcquire.acquired || !evalAcquire.run) {
+      throw new Error(
+        `loopStep: evaluator run for item ${item.id} could not acquire its branch (queued behind an active run)`,
+      );
+    }
+    const evaluatorRunId = evalAcquire.run.runId;
+    const EVALUATOR_TIMEOUT_MS = 60_000;
+    const evalWatchdog = setTimeout(() => {
+      void params.agentRunExecution.stop(evaluatorRunId).catch(() => {});
+    }, EVALUATOR_TIMEOUT_MS);
+    try {
+      await params.agentRunExecution.dispatch(evaluatorRunId);
+    } finally {
+      clearTimeout(evalWatchdog);
+    }
+    const evalRun = await params.agentRunService.getRun(evaluatorRunId);
     if (dailyCap > 0) {
       spent = params.store.addBudget(
         params.loopId,
         today,
-        await tallyUsage(params.sessionManager, evalSession.sessionId ?? ""),
+        usageTokens(evalRun?.terminalResult?.usage),
       );
     }
-    // Read verdict
+    // Read verdict (the file content is the verdict fact; the run outcome
+    // only says whether execution completed)
     const verdictMd = await Bun.file(verdictPath)
       .text()
       .catch(() => "");
@@ -391,6 +538,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         type: "EVALUATOR_VERDICT",
         itemId: item.id,
         verdict,
+        evaluatorRunId,
       });
     }
 

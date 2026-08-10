@@ -37,7 +37,6 @@ export interface Message {
   text?: string;
   blocks?: ContentBlock[];
   tools?: MessageToolState[];
-  spanId?: string;
   conversationId?: string;
   visibility?: "internal" | "conversation";
   createdAt?: number;
