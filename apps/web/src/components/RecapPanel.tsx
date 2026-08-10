@@ -8,7 +8,7 @@ import type { SenderRef } from "@/lib/conversation-reducer";
 export function RecapPanel({
   runs,
 }: {
-  runs: Array<{ runId: string; agent: SenderRef; text: string; turn: number }>;
+  runs: Array<{ runId: string; agent: SenderRef | null; text: string; turn: number }>;
 }) {
   const visible = runs.filter((r) => r.text.trim().length > 0);
   if (visible.length === 0) return null;

@@ -116,7 +116,8 @@ export async function createCodingAgentRuntime(
       let closed = false;
       let seq = 0;
       const unsubscribe = rt.session.onEvent((event) => {
-        if (event.type === "recap_update") console.error("[create-runtime] onEvent received recap_update");
+        if (event.type === "recap_update")
+          console.error("[create-runtime] onEvent received recap_update");
         if (event.type === "message_start" || event.type === "agent_end") settleLive();
         const envelope: RunEventEnvelope = { id: seq++, type: event.type, data: event as never };
         queue.push(envelope);

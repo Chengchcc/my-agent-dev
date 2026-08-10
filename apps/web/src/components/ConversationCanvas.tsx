@@ -310,19 +310,15 @@ export function ConversationCanvas({
 
       {/* Per-run recap summaries */}
       <RecapPanel
-        runs={Object.entries(runRecaps)
-          .map(([runId, recap]) => ({
-            runId,
-            agent:
-              Object.values(roster).find((m) => m.memberId === transients[runId]?.agentMemberId) ??
-              null,
-            text: recap.text,
-            turn: recap.turn,
-          }))
-          .filter(
-            (r): r is { runId: string; agent: SenderRef; text: string; turn: number } =>
-              r.agent !== null,
-          )}
+        runs={Object.entries(runRecaps).map(([runId, recap]) => ({
+          runId,
+          // Resolve agent from roster — NOT from transients (transient is
+          // dropped when the canonical Message arrives, which previously
+          // took the recap with it via the agent !== null filter).
+          agent: Object.values(roster).find((m) => m.kind === "agent") ?? null,
+          text: recap.text,
+          turn: recap.turn,
+        }))}
       />
 
       {/* Error bar */}
