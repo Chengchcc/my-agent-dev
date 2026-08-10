@@ -21,6 +21,8 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
  *                            late-subscription / stop() race tests)
  *                            WITHOUT any outcome (abort-grace path)
  *    steer-error             steer responds success:false
+ *    tool-todo               native tool trace + todo_update events then
+ *                            completed outcome (wire-format coverage)
  *
  *  Observation hooks:
  *    RPC_FIXTURE_RECORD=<file>     append "execute|steer|abort|outcome <runId>"
@@ -154,21 +156,72 @@ async function main(): Promise<void> {
           runId,
           event: { id: 0, type: "agent_start", data: { type: "agent_start" } },
         });
+        if (scenario === "tool-todo") {
+          // Native tool trace + run-local todo snapshot: the adapter must
+          // surface native_tool_* and backend.coding_agent.todo_update on
+          // the Run SSE.
+          out({
+            id: 2,
+            type: "event",
+            runId,
+            event: {
+              id: 1,
+              type: "tool_execution_start",
+              data: { toolName: "ls", kind: "native", callId: "call-1" },
+            },
+          });
+          out({
+            id: 3,
+            type: "event",
+            runId,
+            event: {
+              id: 2,
+              type: "tool_execution_end",
+              data: { toolName: "ls", kind: "native", callId: "call-1", result: { empty: true } },
+            },
+          });
+          out({
+            id: 4,
+            type: "event",
+            runId,
+            event: {
+              id: 3,
+              type: "todo_update",
+              data: {
+                items: [
+                  { id: "t1", text: "step 1", status: "done" },
+                  { id: "t2", text: "step 2", status: "pending" },
+                ],
+              },
+            },
+          });
+          out({
+            id: 5,
+            type: "event",
+            runId,
+            event: {
+              id: 4,
+              type: "message_update",
+              data: { type: "message_update", text: "listed" },
+            },
+          });
+        } else {
+          out({
+            id: 2,
+            type: "event",
+            runId,
+            event: {
+              id: 1,
+              type: "message_update",
+              data: { type: "message_update", text: "working" },
+            },
+          });
+        }
         out({
-          id: 2,
+          id: 6,
           type: "event",
           runId,
-          event: {
-            id: 1,
-            type: "message_update",
-            data: { type: "message_update", text: "working" },
-          },
-        });
-        out({
-          id: 3,
-          type: "event",
-          runId,
-          event: { id: 2, type: "agent_end", data: { type: "agent_end", status: "completed" } },
+          event: { id: 5, type: "agent_end", data: { type: "agent_end", status: "completed" } },
         });
         if (scenario === "no-events") {
           // Wait for abort; respond; exit without an outcome.

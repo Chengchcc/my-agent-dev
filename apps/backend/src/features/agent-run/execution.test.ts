@@ -35,6 +35,8 @@ interface FakeDaemonOptions {
   outcomeDelayMs?: number;
   /** Fail steer with this message. */
   steerError?: boolean;
+  /** Emit native tool trace + todo_update events before the outcome. */
+  toolTodo?: boolean;
 }
 
 function createFakeDaemon(opts: FakeDaemonOptions = {}) {
@@ -43,7 +45,9 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
     ? "reject-first-execute"
     : opts.steerError
       ? "steer-error"
-      : "normal";
+      : opts.toolTodo
+        ? "tool-todo"
+        : "normal";
   const config: CodingAgentCommandConfig = {
     executable: process.execPath,
     args: [FIXTURE, "--mode", "rpc"],
@@ -247,8 +251,66 @@ describe("agent run execution (Run-centric)", () => {
     // subscriber saw the transient events
     expect(events).toContain("text_delta");
     expect(events).toContain("status");
+  });
 
-    // replay of the same dispatch must NOT call the Backend again
+  test("tool trace and todo_update survive the wire onto the Run SSE", async () => {
+    const fake = createFakeDaemon({ toolTodo: true });
+    const execution = makeExecution(fake);
+
+    const acquired = await enqueue("normal", "ikey-tools", "use ls");
+    const runId = acquired.run!.runId;
+
+    const seen: Array<Record<string, unknown>> = [];
+    const sub = execution.subscribe(runId);
+    const collector = (async () => {
+      for await (const ev of sub) seen.push(ev as Record<string, unknown>);
+    })();
+
+    await execution.dispatch(runId);
+    await waitForTerminal(runId);
+    await collector;
+
+    expect(seen).toContainEqual(
+      expect.objectContaining({ type: "native_tool_started", toolName: "ls", callId: "call-1" }),
+    );
+    expect(seen).toContainEqual(
+      expect.objectContaining({
+        type: "native_tool_completed",
+        toolName: "ls",
+        callId: "call-1",
+        result: { empty: true },
+      }),
+    );
+    expect(seen).toContainEqual(
+      expect.objectContaining({
+        type: "backend.coding_agent.todo_update",
+        payload: expect.objectContaining({
+          items: [
+            { id: "t1", text: "step 1", status: "done" },
+            { id: "t2", text: "step 2", status: "pending" },
+          ],
+        }),
+      }),
+    );
+    // The canonical ledger keeps ONLY the final text — no tool/todo entries.
+    const ledger = convPort.getLedgerEntries(conversationId);
+    const messages = ledger.filter((e) => e.kind === "message");
+    expect(messages).toHaveLength(1);
+    const revision = parseMessageRevision(messages[0]!.content);
+    expect(revision.text).toContain("done");
+    expect(JSON.stringify(ledger)).not.toContain("todo_update");
+  });
+
+  test("replay of the same dispatch must NOT call the Backend again", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeExecution(fake);
+
+    const acquired = await enqueue("normal", "ikey-replay", "hello");
+    const runId = acquired.run!.runId;
+    await execution.dispatch(runId);
+    await waitForTerminal(runId);
+    expect(fake.executeCalls).toHaveLength(1);
+    // replay of the same dispatch is idempotent
     await execution.dispatch(runId);
     expect(fake.executeCalls).toHaveLength(1);
     const ledgerAfter = convPort
