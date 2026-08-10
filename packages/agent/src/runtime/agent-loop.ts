@@ -382,7 +382,9 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
               if (p.hooks?.afterStop) {
                 try {
                   p.hooks.afterStop(!stopped, rt);
-                } catch { /* plugin errors never affect the loop */ }
+                } catch {
+                  /* plugin errors never affect the loop */
+                }
               }
             }
             // Accepted-but-late steer: if a steer arrived during this model
@@ -467,12 +469,23 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       }
 
       await emit({ type: "agent_end", status });
-      // Canonical output: the last persisted assistant Message (blocks + tool
-      // pairs intact), not a reconstruction from text deltas.
+      // Canonical output: the last assistant text + ALL tool_use/tool_result
+      // blocks from the Run branch. Without merging tool blocks, only the
+      // final text survives in the ledger — tool steps vanish on refresh.
       let output: Message | undefined;
       if (status === "completed") {
         const branch = await readBranchMessages();
-        output = [...branch].reverse().find((m) => m.role === "assistant");
+        const lastAssistant = [...branch].reverse().find((m) => m.role === "assistant");
+        if (lastAssistant) {
+          const toolBlocks = branch
+            .filter((m) => m.role === "assistant" || m.role === "tool")
+            .flatMap((m) => m.blocks ?? [])
+            .filter((b) => b.type === "tool_use" || b.type === "tool_result");
+          output = {
+            ...lastAssistant,
+            blocks: [...(lastAssistant.blocks ?? []), ...toolBlocks],
+          };
+        }
       }
       return { status, output, usage: runUsage, error: runError };
     } catch (err) {
@@ -613,7 +626,9 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
           if (p.hooks?.beforeTool) {
             try {
               p.hooks.beforeTool(call.name, call.input, rt);
-            } catch { /* plugin errors never block execution */ }
+            } catch {
+              /* plugin errors never block execution */
+            }
           }
         }
         try {
