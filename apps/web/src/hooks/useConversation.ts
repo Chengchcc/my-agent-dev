@@ -304,8 +304,10 @@ export function useConversation(
         // completion (replaced by the canonical Message).
         clearRunToolsState(runId);
         clearRunTodosState(runId);
-        clearRunRecap(runId);
-        if (dropBubble) dropTransient(runId);
+        if (dropBubble) {
+          dropTransient(runId);
+          clearRunRecap(runId);
+        }
       };
       // Transport failure: Live Updates are best-effort; drop the partial
       // bubble. If the run actually completed, the canonical Message still

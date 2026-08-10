@@ -22,6 +22,7 @@ export function createRecapPlugin(opts: RecapPluginOptions): Plugin {
     hooks: {
       async afterRun(status, messages, rt) {
         if (!opts.enabled || status !== "completed") return;
+        console.error("[recap] afterRun triggered, generating recap...");
         await generateRecap(rt, messages, opts.recapModelRef);
       },
     },
@@ -42,11 +43,16 @@ async function generateRecap(
       if (rt.signal.aborted) return;
       if (chunk.delta?.type === "text") text += chunk.delta.text;
     }
+    console.error(`[recap] streamModel done text=${text.trim().slice(0, 80)}`);
     const trimmed = text.trim();
     if (trimmed) {
+      console.error("[recap] emitted recap_update");
       rt.emit({ type: "recap_update", text: trimmed, turn: 0 });
+      console.error("[recap] generateRecap completed");
     }
-  } catch {
-    // Recap is best-effort; never fail the run.
+  } catch (err) {
+    console.error(
+      `[recap] generateRecap failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
