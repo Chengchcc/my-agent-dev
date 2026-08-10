@@ -22,29 +22,43 @@ export interface PluginTool {
 }
 
 export interface PluginHooks {
+  // ── Run lifecycle ──
   /** Called ONCE at Run start (after agent_start, before the first model
-   *  turn). Plugins use it for per-Run setup (load state, reset counters).
-   *  Symmetric with afterRun. */
+   *  turn). Plugins use it for per-Run setup (load state, reset counters). */
   beforeRun?(messages: readonly Message[], rt: PluginRuntime): void;
-  beforeModel?(messages: readonly Message[], rt: PluginRuntime): readonly Message[];
-  /** Called after each model turn completes (assistant text persisted, tools
-   *  executed), before turn_end. Plugins use this for recap/pet - the rt
-   *  parameter provides model stream + emit for UI-transient events. */
-  afterModel?(messages: readonly Message[], rt: PluginRuntime): void;
   /** Called ONCE after the entire agent loop ends (all turns done), before
-   *  agent_end. Plugins use this for per-Run summaries (recap) - cheaper
-   *  than afterModel since it fires once, not per turn. */
+   *  agent_end. Plugins use this for per-Run summaries (recap). */
   afterRun?(
     status: "completed" | "failed" | "stopped",
     messages: readonly Message[],
     rt: PluginRuntime,
   ): void | Promise<void>;
-  beforeStop?(cancel: () => void, rt: PluginRuntime): void;
+
+  // ── Model turn lifecycle ──
+  /** Called before each model request; may transform messages. */
+  beforeModel?(messages: readonly Message[], rt: PluginRuntime): readonly Message[];
+  /** Called after each model turn (assistant text persisted, tools executed),
+   *  before turn_end. */
+  afterModel?(messages: readonly Message[], rt: PluginRuntime): void;
+
+  // ── Tool execution lifecycle ──
+  /** Called before a tool executes. */
+  beforeTool?(toolName: string, input: unknown, rt: PluginRuntime): void;
+  /** Called after a tool executes; may return a UI-transient event. */
   afterTool?(
     toolName: string,
     result: unknown,
     rt: PluginRuntime,
   ): CodingAgentLoopEvent | undefined;
+
+  // ── Stop decision lifecycle ──
+  /** Called when the model naturally stops (no more tool calls). A plugin
+   *  can veto by calling cancel() to force one more turn. */
+  beforeStop?(cancel: () => void, rt: PluginRuntime): void;
+  /** Called after the stop decision is finalized. `vetoed=true` means a
+   *  plugin forced the loop to continue; `vetoed=false` means the loop
+   *  accepted the natural stop (afterRun follows). */
+  afterStop?(vetoed: boolean, rt: PluginRuntime): void;
 }
 
 export interface MetaSectionProvider {

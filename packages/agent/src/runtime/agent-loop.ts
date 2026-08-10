@@ -377,6 +377,14 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
               }
             }
             naturalStop = stopped;
+            // afterStop: notify plugins of the decision (vetoed = forced continue).
+            for (const p of opts.plugins) {
+              if (p.hooks?.afterStop) {
+                try {
+                  p.hooks.afterStop(!stopped, rt);
+                } catch { /* plugin errors never affect the loop */ }
+              }
+            }
             // Accepted-but-late steer: if a steer arrived during this model
             // turn and the model chose to stop naturally, do NOT discard the
             // steer. Force one more safe-boundary turn to drain it.
@@ -600,6 +608,14 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       let isError = false;
       let terminate = false;
       if (tool) {
+        // beforeTool: plugins can observe/log before execution.
+        for (const p of opts.plugins) {
+          if (p.hooks?.beforeTool) {
+            try {
+              p.hooks.beforeTool(call.name, call.input, rt);
+            } catch { /* plugin errors never block execution */ }
+          }
+        }
         try {
           result = await tool.execute(call.input, controller?.signal, { callId: call.id });
           if (result && typeof result === "object") {
