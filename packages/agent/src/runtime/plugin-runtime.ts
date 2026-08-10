@@ -20,6 +20,17 @@ export interface PluginRuntime {
     opts?: { signal?: AbortSignal },
   ) => AsyncIterable<AIMessageChunk>;
 
+  /** Run an ephemeral side-channel model turn: appends `prompt` as a user
+   *  message to the current branch history, streams through the run's model
+   *  (with the same system prompt + tool catalog for prompt cache), collects
+   *  text output, and discards any tool calls. The result is NEVER persisted
+   *  to the session branch — it's a pure side-channel read.
+   *
+   *  Inspired by omp's AgentSession.runEphemeralTurn. Used by recap/title
+   *  so plugins don't need to manually construct messages or know the model
+   *  ref. One call: `const text = await rt.runEphemeralTurn(prompt);` */
+  readonly runEphemeralTurn: (prompt: string, opts?: { signal?: AbortSignal }) => Promise<string>;
+
   /** Session store (read-only for plugins): branch history, todo state. */
   readonly store: SessionStore;
   readonly sessionId: string;

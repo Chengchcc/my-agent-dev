@@ -117,7 +117,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     nativeToolsPlugin,
     createTodoPlugin({ sessionId: deps.runId, store }),
     createRecapPlugin({
-      recapModelRef: resolveRecapModel(deps),
+      recapModelRef: { providerId: "", modelId: "" },
       enabled: process.env.CODING_AGENT_RECAP_ENABLED === "1",
     }),
     createProgressiveSkillPlugin({ roots: deps.skillRoots }),
@@ -417,19 +417,3 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
 }
 
 export type { AgentRunSnapshot, PluginTool, ProjectedHistoryItem };
-
-/** Resolve the recap model from env or default to the run model. */
-function resolveRecapModel(deps: RunRuntimeDeps): { providerId: string; modelId: string } {
-  const envModel = process.env.CODING_AGENT_RECAP_MODEL;
-  if (envModel?.includes("/")) {
-    const [providerId, modelId] = envModel.split("/");
-    if (providerId && modelId) return { providerId, modelId };
-  }
-  // Default: same provider/model as the run (the catalog resolves it).
-  const runModel = deps.modelId;
-  const slash = runModel.indexOf("/");
-  if (slash > 0) {
-    return { providerId: runModel.slice(0, slash), modelId: runModel.slice(slash + 1) };
-  }
-  return { providerId: "fake", modelId: "echo" };
-}

@@ -12,8 +12,8 @@ import type { Plugin, PluginTool } from "./plugin.js";
 import { collectTools, validatePlugins } from "./plugin.js";
 import type { PluginRuntime } from "./plugin-runtime.js";
 import { renderLoopMeta } from "./prompt.js";
-import { buildTitleContext, generateTitle } from "./title.js";
 import { retryStream } from "./retry.js";
+import { buildTitleContext, generateTitle } from "./title.js";
 
 export type { AgentLoopListener, CodingAgentLoopEvent };
 
@@ -118,6 +118,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       void emit(event);
     },
     signal: new AbortController().signal,
+    runEphemeralTurn: async () => "",
   };
   // Static plugin tools + per-run resolved tools (Product Tool manifest).
   // The tool table is rebuilt at each runLoop start so AgentRunSnapshot
@@ -161,7 +162,30 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     controller = new AbortController();
     // Bind rt.signal to THIS run's controller so plugin model calls
     // (recap/pet) honor stop()/abort().
-    rt = { ...rt, signal: controller.signal };
+    rt = {
+      ...rt,
+      signal: controller.signal,
+      // Ephemeral side-channel turn: shares system prompt + branch messages
+      // + tool catalog (for prompt cache) but never persists. Tool calls
+      // from the model are discarded. Inspired by omp's runEphemeralTurn.
+      runEphemeralTurn: async (promptText, ephemeralOpts) => {
+        const branch = await readBranchMessages();
+        const ephemeralMessages: Message[] = [
+          ...((codingInput.run.systemPrompt ?? "") ? [{ role: "system" as const, text: codingInput.run.systemPrompt ?? "" }] : []),
+          ...branch,
+          { role: "user" as const, text: promptText },
+        ];
+        let text = "";
+        for await (const chunk of opts.modelStream(
+          ephemeralMessages,
+          ephemeralOpts?.signal ?? controller?.signal,
+          [...toolMap.values()],
+        )) {
+          if (chunk.delta?.type === "text") text += chunk.delta.text;
+        }
+        return text;
+      },
+    };
     steerQueue.length = 0;
     debugModelId = codingInput.run.model.modelId;
     debugTurn = 0;
@@ -478,11 +502,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         const titleBranch = await readBranchMessages();
         const titleCtx = buildTitleContext(titleBranch);
         if (titleCtx) {
-          const mid = debugModelId;
-          const slash = mid.indexOf("/");
-          const pid = slash > 0 ? mid.slice(0, slash) : "anthropic";
-          const mdl = slash > 0 ? mid.slice(slash + 1) : mid;
-          title = (await generateTitle(rt, pid, mdl, titleCtx, controller?.signal)) ?? undefined;
+          title = (await generateTitle(rt, titleCtx)) ?? undefined;
         }
       }
 

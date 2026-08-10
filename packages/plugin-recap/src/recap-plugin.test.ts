@@ -21,6 +21,7 @@ function mockRuntime(streamText: string): {
       emitted.push(e);
     },
     signal: new AbortController().signal,
+    runEphemeralTurn: async () => streamText,
   };
   return { rt, emitted };
 }
@@ -33,8 +34,8 @@ describe("plugin-recap", () => {
     });
     const { rt, emitted } = mockRuntime("Implemented JWT login.");
     const messages: Message[] = [
-      { role: "user", text: "add auth" },
-      { role: "assistant", text: "done" },
+      { role: "user", text: "Please add JWT authentication with refresh tokens to the login endpoint, including middleware for protected routes." },
+      { role: "assistant", text: "I've implemented JWT authentication with access and refresh tokens, added middleware, and updated the login endpoint." },
     ];
 
     plugin.hooks?.afterRun?.("completed", messages, rt);

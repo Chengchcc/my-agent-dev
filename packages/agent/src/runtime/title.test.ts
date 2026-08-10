@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildTitleContext, sanitizeTitle } from "./title.js";
+import { buildTitleContext, isLowSignalTitleInput, normalizeGeneratedTitle } from "./title.js";
 
 describe("title", () => {
   test("buildTitleContext extracts first N turns", () => {
@@ -17,9 +17,25 @@ describe("title", () => {
     expect(ctx).not.toContain("第五轮");
   });
 
-  test("sanitizeTitle strips quotes and truncates", () => {
-    expect(sanitizeTitle("「登录修复」")).toBe("登录修复");
-    expect(sanitizeTitle('"test"')).toBe("test");
-    expect(sanitizeTitle("a".repeat(80)).length).toBe(60);
+  test("isLowSignalTitleInput filters greetings", () => {
+    expect(isLowSignalTitleInput("hi")).toBe(true);
+    expect(isLowSignalTitleInput("hey hey")).toBe(true);
+    expect(isLowSignalTitleInput("你好")).toBe(true);
+    expect(isLowSignalTitleInput("ok")).toBe(true);
+    expect(isLowSignalTitleInput("fix the login bug")).toBe(false);
+    expect(isLowSignalTitleInput("add JWT authentication")).toBe(false);
+  });
+
+  test("normalizeGeneratedTitle strips XML tags and quotes", () => {
+    expect(normalizeGeneratedTitle("<title>Fix login</title>")).toBe("Fix login");
+    expect(normalizeGeneratedTitle('"Fix login"')).toBe("Fix login");
+    expect(normalizeGeneratedTitle("「登录修复」")).toBe("登录修复");
+  });
+
+  test("normalizeGeneratedTitle rejects none/empty/overlong", () => {
+    expect(normalizeGeneratedTitle("<title>none</title>")).toBeNull();
+    expect(normalizeGeneratedTitle("none")).toBeNull();
+    expect(normalizeGeneratedTitle("")).toBeNull();
+    expect(normalizeGeneratedTitle("a".repeat(81))).toBeNull();
   });
 });

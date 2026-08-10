@@ -1,5 +1,5 @@
 import type { Plugin, PluginRuntime } from "@my-agent-team/agent";
-import type { Message } from "@my-agent-team/message";
+import { extractText, type Message } from "@my-agent-team/message";
 
 export interface RecapPluginOptions {
   /** Model to use for recap generation (provider/model id). */
@@ -8,47 +8,50 @@ export interface RecapPluginOptions {
   readonly enabled: boolean;
 }
 
-const RECAP_SYSTEM_PROMPT =
-  "Summarize the conversation so far in one sentence. Focus on what was accomplished and the final state. Be concise and specific. Output ONLY the summary sentence, nothing else.";
+/** Minimum conversation substance to warrant a recap. */
+const MIN_CONTENT_CHARS = 100;
 
-/** Create a recap plugin that generates a one-sentence summary of the
- *  entire Run after it completes. Uses afterRun (fires once per Run) and
- *  AWAITS the model call — the loop waits for recap to finish before
- *  emitting agent_end, so the recap_update event reaches subscribers
- *  before the Run SSE closes. */
+const RECAP_PROMPT = `You generate a recap for a user coming back to an ongoing conversation.
+
+Rules:
+- Output ONLY the recap text (1-2 plain sentences, under 40 words). No markdown, no labels.
+- Lead with the overall goal, then the current task, then the one next action.
+- Skip root-cause narrative, fix internals, and secondary details.
+- If the conversation was trivial (greetings, simple Q&A, no real task), output exactly: (skip)
+- Never repeat what the user already knows from their last message.`;
+
+/** Create a recap plugin that generates a short summary of the Run after
+ *  it completes. Uses afterRun + runEphemeralTurn (side-channel model call
+ *  that shares the session's prompt cache without persisting). Trivial
+ *  conversations are skipped without a model call. */
 export function createRecapPlugin(opts: RecapPluginOptions): Plugin {
   return {
     name: "recap",
     hooks: {
       async afterRun(status, messages, rt) {
         if (!opts.enabled || status !== "completed") return;
-        console.error("[recap] afterRun triggered, generating recap...");
-        await generateRecap(rt, messages, opts.recapModelRef);
+        const contentChars = messages
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .reduce((n, m) => n + extractText(m).length, 0);
+        if (contentChars < MIN_CONTENT_CHARS) return;
+        console.error(`[recap] afterRun triggered (${contentChars} chars), generating...`);
+        await generateRecap(rt, messages);
       },
     },
   };
 }
 
-async function generateRecap(
-  rt: PluginRuntime,
-  messages: readonly Message[],
-  modelRef: { readonly providerId: string; readonly modelId: string },
-): Promise<void> {
+async function generateRecap(rt: PluginRuntime, _messages: readonly Message[]): Promise<void> {
   try {
-    const recapMessages: Message[] = [{ role: "system", text: RECAP_SYSTEM_PROMPT }, ...messages];
-    let text = "";
-    for await (const chunk of rt.streamModel(modelRef.providerId, modelRef.modelId, recapMessages, {
-      signal: rt.signal,
-    })) {
-      if (rt.signal.aborted) return;
-      if (chunk.delta?.type === "text") text += chunk.delta.text;
-    }
-    console.error(`[recap] streamModel done text=${text.trim().slice(0, 80)}`);
-    const trimmed = text.trim();
-    if (trimmed) {
+    const raw = await rt.runEphemeralTurn(RECAP_PROMPT, { signal: rt.signal });
+    console.error(`[recap] runEphemeralTurn done text=${raw.trim().slice(0, 80)}`);
+    const trimmed = raw.trim();
+    if (trimmed && !/^\(skip\)$/i.test(trimmed)) {
       console.error("[recap] emitted recap_update");
       rt.emit({ type: "recap_update", text: trimmed, turn: 0 });
       console.error("[recap] generateRecap completed");
+    } else {
+      console.error("[recap] model returned (skip), no recap emitted");
     }
   } catch (err) {
     console.error(
