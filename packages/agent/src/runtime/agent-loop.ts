@@ -12,6 +12,7 @@ import type { Plugin, PluginTool } from "./plugin.js";
 import { collectTools, validatePlugins } from "./plugin.js";
 import type { PluginRuntime } from "./plugin-runtime.js";
 import { renderLoopMeta } from "./prompt.js";
+import { buildTitleContext, generateTitle } from "./title.js";
 import { retryStream } from "./retry.js";
 
 export type { AgentLoopListener, CodingAgentLoopEvent };
@@ -84,6 +85,8 @@ export interface CodingAgentLoopResult {
   readonly output?: Message;
   readonly usage?: Usage;
   readonly error?: string;
+  /** Auto-generated conversation title (first Run only; backend guards). */
+  readonly title?: string;
 }
 
 export interface CodingAgentSession {
@@ -468,6 +471,21 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         }
       }
 
+      // Auto-generate conversation title (first Run; backend's !title guard
+      // deduplicates). Uses the Run's model — one cheap call per completed Run.
+      let title: string | undefined;
+      if (status === "completed" && process.env.CODING_AGENT_TITLE_ENABLED !== "0") {
+        const titleBranch = await readBranchMessages();
+        const titleCtx = buildTitleContext(titleBranch);
+        if (titleCtx) {
+          const mid = debugModelId;
+          const slash = mid.indexOf("/");
+          const pid = slash > 0 ? mid.slice(0, slash) : "anthropic";
+          const mdl = slash > 0 ? mid.slice(slash + 1) : mid;
+          title = (await generateTitle(rt, pid, mdl, titleCtx, controller?.signal)) ?? undefined;
+        }
+      }
+
       await emit({ type: "agent_end", status });
       // Canonical output: the last assistant text + ALL tool_use/tool_result
       // blocks from the Run branch. Without merging tool blocks, only the
@@ -487,7 +505,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
           };
         }
       }
-      return { status, output, usage: runUsage, error: runError };
+      return { status, output, usage: runUsage, error: runError, title };
     } catch (err) {
       // Setup/persistence failure: the loop must settle to a terminal state
       // so listeners always receive agent_end and the loop is reusable.

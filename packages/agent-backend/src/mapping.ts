@@ -80,12 +80,14 @@ export function mapRunOutcome(outcome: {
   output?: unknown;
   error?: string;
   usage?: unknown;
+  title?: string;
 }): BackendRunOutcome {
   if (outcome.status === "completed") {
     return {
       status: "completed",
       output: outcome.output as never,
       usage: outcome.usage as never,
+      ...(outcome.title ? { title: outcome.title } : {}),
     };
   }
   if (outcome.status === "aborted") {

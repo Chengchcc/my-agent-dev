@@ -285,7 +285,13 @@ export async function installFeatures(services: BackendServices): Promise<Instal
         senderMemberId: run.agentMemberId,
         message: output,
       });
-    })().catch((err) => console.error(`[bootstrap] mention cascade failed for ${runId}:`, err));
+      // Persist auto-generated title (first Run only; !convRow.title guard).
+      const convRow = conv.convPort.getConversation(run.conversationId);
+      const outcome = run.terminalResult;
+      if (convRow && !convRow.title && outcome?.status === "completed" && outcome.title) {
+        conv.convPort.setConversationTitle(run.conversationId, outcome.title);
+      }
+    })().catch((err) => console.error(`[bootstrap] onRunCommitted failed for ${runId}:`, err));
   };
   const codingAgentCommand = resolveCodingAgentCommand(config);
   const modelCatalog = new CodingAgentModelCatalog(codingAgentCommand);

@@ -152,7 +152,7 @@ export function useConversation(
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (!key || !key.startsWith(prefix)) continue;
+        if (!key?.startsWith(prefix)) continue;
         const runId = key.slice(prefix.length);
         const raw = localStorage.getItem(key);
         if (!raw) continue;

@@ -70,6 +70,9 @@ async function settle(segment: BackendRunSegment<"coding_agent">) {
   return { outcome, events };
 }
 
+// Disable title generation: its extra model call interferes with batch assertions.
+process.env.CODING_AGENT_TITLE_ENABLED = "0";
+
 afterAll(() => {
   rmSync(tmp, { recursive: true, force: true });
 });

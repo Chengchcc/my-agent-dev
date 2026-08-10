@@ -53,6 +53,7 @@ function mapLoopResult(result: CodingAgentLoopResult): BackendRunOutcome {
       status: "completed",
       ...(result.output ? { output: result.output } : {}),
       ...(result.usage ? { usage: result.usage } : {}),
+      ...(result.title ? { title: result.title } : {}),
     };
   }
   if (result.status === "stopped") {

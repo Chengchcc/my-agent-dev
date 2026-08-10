@@ -58,7 +58,7 @@ export interface PendingActionResponse {
  *  are the four terminal states. This is the ONLY terminal authority - event
  *  streams must never be interpreted as terminal. */
 export type BackendRunOutcome =
-  | { readonly status: "completed"; readonly output?: Message; readonly usage?: Usage }
+  | { readonly status: "completed"; readonly output?: Message; readonly usage?: Usage; readonly title?: string }
   | {
       readonly status: "failed" | "aborted" | "timeout";
       readonly error?: string;
