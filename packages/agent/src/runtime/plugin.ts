@@ -22,6 +22,10 @@ export interface PluginTool {
 }
 
 export interface PluginHooks {
+  /** Called ONCE at Run start (after agent_start, before the first model
+   *  turn). Plugins use it for per-Run setup (load state, reset counters).
+   *  Symmetric with afterRun. */
+  beforeRun?(messages: readonly Message[], rt: PluginRuntime): void;
   beforeModel?(messages: readonly Message[], rt: PluginRuntime): readonly Message[];
   /** Called after each model turn completes (assistant text persisted, tools
    *  executed), before turn_end. Plugins use this for recap/pet - the rt

@@ -1476,6 +1476,111 @@ function testHarness(
       expect(names).toContain("history_recent"); // per-run resolved
     });
 
+    test("18. beforeRun fires once before the first model turn", async () => {
+      const store = storeFactory("h18");
+      await createSession(store, "h18");
+      let beforeRunCalls = 0;
+      let beforeRunMsgCount = -1;
+
+      const loop = createCodingAgentSession({
+        sessionId: "h18",
+        store,
+        plugins: [
+          {
+            name: "tracker",
+            hooks: {
+              beforeRun(messages) {
+                beforeRunCalls++;
+                beforeRunMsgCount = messages.length;
+              },
+            },
+          },
+        ],
+        maxSteps: 1,
+        maxForceContinues: 0,
+        summarize: fakeSummarize,
+        modelStream: textModel("done"),
+      });
+      await loop.startLoop(loopInput({ message: "go" }));
+
+      expect(beforeRunCalls).toBe(1);
+      expect(beforeRunMsgCount).toBeGreaterThan(0);
+    });
+
+    test("19. afterRun fires once with completed status and full messages", async () => {
+      const store = storeFactory("h19");
+      await createSession(store, "h19");
+      let afterRunCalls = 0;
+      let afterRunStatus = "";
+      let afterRunMsgCount = -1;
+
+      const loop = createCodingAgentSession({
+        sessionId: "h19",
+        store,
+        plugins: [
+          {
+            name: "tracker",
+            hooks: {
+              afterRun(status, messages) {
+                afterRunCalls++;
+                afterRunStatus = status;
+                afterRunMsgCount = messages.length;
+              },
+            },
+          },
+        ],
+        maxSteps: 1,
+        maxForceContinues: 0,
+        summarize: fakeSummarize,
+        modelStream: textModel("done"),
+      });
+      await loop.startLoop(loopInput({ message: "go" }));
+
+      expect(afterRunCalls).toBe(1);
+      expect(afterRunStatus).toBe("completed");
+      expect(afterRunMsgCount).toBeGreaterThan(0);
+    });
+
+    test("20. beforeRun/afterRun fire once each on multi-turn runs", async () => {
+      const store = storeFactory("h20");
+      await createSession(store, "h20");
+      let beforeRunCalls = 0;
+      let afterRunCalls = 0;
+      let modelCalls = 0;
+
+      const loop = createCodingAgentSession({
+        sessionId: "h20",
+        store,
+        plugins: [
+          {
+            name: "tracker",
+            hooks: {
+              beforeRun() { beforeRunCalls++; },
+              afterRun() { afterRunCalls++; },
+            },
+          },
+        ],
+        maxSteps: 5,
+        maxForceContinues: 0,
+        summarize: fakeSummarize,
+        modelStream: async function* () {
+          modelCalls++;
+          if (modelCalls === 1) {
+            yield { delta: { type: "tool_use", id: "tc1", name: "echo" } };
+            yield { stopReason: "tool_use" };
+          } else {
+            yield { delta: { type: "text", text: "done" } };
+            yield { stopReason: "end_turn" };
+          }
+        },
+      });
+      await loop.startLoop(loopInput({ message: "go" }));
+
+      expect(modelCalls).toBeGreaterThanOrEqual(2);
+      expect(beforeRunCalls).toBe(1);
+      expect(afterRunCalls).toBe(1);
+    });
+
     afterAll(() => cleanup?.());
   });
 }

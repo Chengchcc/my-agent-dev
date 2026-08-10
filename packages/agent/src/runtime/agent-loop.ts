@@ -204,6 +204,18 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       let thresholdCompacted = false;
       let naturalStop = false;
 
+      // beforeRun: one-shot per-Run hook. Fires after agent_start + messages
+      // are loaded, before the first model turn. Symmetric with afterRun.
+      for (const p of opts.plugins) {
+        if (p.hooks?.beforeRun) {
+          try {
+            await p.hooks.beforeRun(messages, rt);
+          } catch {
+            /* plugin setup errors never fail the run */
+          }
+        }
+      }
+
       while (step < opts.maxSteps && !naturalStop) {
         if (controller?.signal.aborted) break;
         step++;
@@ -436,11 +448,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       for (const p of opts.plugins) {
         if (p.hooks?.afterRun) {
           try {
-            await p.hooks.afterRun(
-              status as "completed" | "failed" | "stopped",
-              messages,
-              rt,
-            );
+            await p.hooks.afterRun(status as "completed" | "failed" | "stopped", messages, rt);
           } catch {
             /* plugin errors never fail the run */
           }
