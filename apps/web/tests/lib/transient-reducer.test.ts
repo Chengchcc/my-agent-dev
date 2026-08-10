@@ -116,7 +116,7 @@ describe("transient reducer — todos", () => {
       { id: "a", text: "step 1", status: "done" },
       { id: "b", text: "step 2", status: "pending" },
     ]);
-    expect(s["r1"]).toHaveLength(2);
+    expect(s.r1).toHaveLength(2);
   });
 
   test("run failed clears text/tools/todo via their per-run removers", () => {
@@ -155,7 +155,7 @@ describe("transient reducer — todos", () => {
     todos = setRunTodos(todos, "r1", [{ id: "a", text: "x", status: "done" }]);
     tools = clearRunTools(tools, "r1");
     todos = clearRunTodos(todos, "r1");
-    expect(t["r1"]?.text).toBe("final text");
+    expect(t.r1?.text).toBe("final text");
     expect(tools).toEqual({});
     expect(todos).toEqual({});
   });

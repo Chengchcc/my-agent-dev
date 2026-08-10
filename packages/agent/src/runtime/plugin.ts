@@ -26,7 +26,7 @@ export interface PluginHooks {
   /** After a tool executes: a plugin may return a UI-transient event (e.g.
    *  todo_update) that the loop emits. Events are best-effort and never
    *  touch the canonical conversation history. */
-  afterTool?(toolName: string, result: unknown): CodingAgentLoopEvent | void;
+  afterTool?(toolName: string, result: unknown): CodingAgentLoopEvent | undefined;
 }
 
 export interface MetaSectionProvider {
