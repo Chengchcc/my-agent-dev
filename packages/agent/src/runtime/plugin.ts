@@ -38,7 +38,7 @@ export interface PluginHooks {
     status: "completed" | "failed" | "stopped",
     messages: readonly Message[],
     rt: PluginRuntime,
-  ): void;
+  ): void | Promise<void>;
   beforeStop?(cancel: () => void, rt: PluginRuntime): void;
   afterTool?(
     toolName: string,

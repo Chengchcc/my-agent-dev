@@ -47,12 +47,16 @@ describe("plugin-todo", () => {
     const hook = plugin.hooks?.afterTool;
     expect(hook).toBeDefined();
 
-    const ev = hook!("todo_write", {
-      items: [
-        { id: "a", text: "step 1", status: "done" },
-        { id: "b", text: "step 2", status: "pending" },
-      ],
-    });
+    const ev = hook!(
+      "todo_write",
+      {
+        items: [
+          { id: "a", text: "step 1", status: "done" },
+          { id: "b", text: "step 2", status: "pending" },
+        ],
+      },
+      undefined as never,
+    );
     expect(ev).toEqual({
       type: "todo_update",
       items: [
@@ -62,6 +66,6 @@ describe("plugin-todo", () => {
     });
 
     // Other tools return nothing.
-    expect(hook!("ls", {})).toBeUndefined();
+    expect(hook!("ls", {}, undefined as never)).toBeUndefined();
   });
 });

@@ -12,20 +12,17 @@ const RECAP_SYSTEM_PROMPT =
   "Summarize the conversation so far in one sentence. Focus on what was accomplished and the final state. Be concise and specific. Output ONLY the summary sentence, nothing else.";
 
 /** Create a recap plugin that generates a one-sentence summary of the
- *  entire Run after it completes. Uses afterRun (fires once per Run, not
- *  per turn) to minimize model cost. The summary is emitted as a
- *  UI-transient event (recap_update) — never persisted to history. */
+ *  entire Run after it completes. Uses afterRun (fires once per Run) and
+ *  AWAITS the model call — the loop waits for recap to finish before
+ *  emitting agent_end, so the recap_update event reaches subscribers
+ *  before the Run SSE closes. */
 export function createRecapPlugin(opts: RecapPluginOptions): Plugin {
   return {
     name: "recap",
     hooks: {
-      afterRun(status, messages, rt): void {
-        if (!opts.enabled) return;
-        // Skip recap on non-completed runs (no useful summary for failed/
-        // stopped runs).
-        if (status !== "completed") return;
-        // Fire-and-forget: the recap must not block the agent_end emit.
-        void generateRecap(rt, messages, opts.recapModelRef);
+      async afterRun(status, messages, rt) {
+        if (!opts.enabled || status !== "completed") return;
+        await generateRecap(rt, messages, opts.recapModelRef);
       },
     },
   };

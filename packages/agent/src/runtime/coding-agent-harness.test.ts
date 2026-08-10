@@ -1555,8 +1555,12 @@ function testHarness(
           {
             name: "tracker",
             hooks: {
-              beforeRun() { beforeRunCalls++; },
-              afterRun() { afterRunCalls++; },
+              beforeRun() {
+                beforeRunCalls++;
+              },
+              afterRun() {
+                afterRunCalls++;
+              },
             },
           },
         ],

@@ -106,7 +106,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   const listeners = new Set<AgentLoopListener>();
   // Resolve the plugin runtime: opts.pluginRuntime from run-runtime, or a
   // minimal stub for tests that only need emit (backward-compatible).
-  const rt: PluginRuntime = opts.pluginRuntime ?? {
+  let rt: PluginRuntime = opts.pluginRuntime ?? {
     streamModel: async function* () {},
     store: opts.store,
     sessionId: opts.sessionId,
@@ -156,6 +156,9 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     active = true;
     status = "running";
     controller = new AbortController();
+    // Bind rt.signal to THIS run's controller so plugin model calls
+    // (recap/pet) honor stop()/abort().
+    rt = { ...rt, signal: controller.signal };
     steerQueue.length = 0;
     debugModelId = codingInput.run.model.modelId;
     debugTurn = 0;
