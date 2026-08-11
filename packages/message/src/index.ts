@@ -2,6 +2,7 @@ export { normalizeCanonicalMessages } from "./canonical.js";
 export type {
   ContentBlock,
   TextBlock,
+  ThinkingBlock,
   ToolResultBlock,
   ToolUseBlock,
 } from "./content-block.js";
@@ -38,6 +39,7 @@ export {
   safeParseMessageRevision,
   serializeMessageRevision,
   TextBlockSchema,
+  ThinkingBlockSchema,
   ToolResultBlockSchema,
   ToolUseBlockSchema,
 } from "./parser.js";

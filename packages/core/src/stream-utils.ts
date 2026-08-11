@@ -48,7 +48,7 @@ export function mergeChunkIntoBlocks(
   }
 
   // Reasoning is ephemeral (UI-only streaming); never persisted as a content block.
-  if (chunk.delta.type === "reasoning") {
+  if (chunk.delta.type === "reasoning" || chunk.delta.type === "reasoning_signature") {
     return;
   }
 

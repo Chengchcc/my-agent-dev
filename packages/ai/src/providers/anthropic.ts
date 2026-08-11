@@ -1,7 +1,29 @@
 import type { AIMessageChunk } from "@my-agent-team/core";
-import { normalizeProviderError, type Provider, type ProviderAuth } from "../types.js";
+import {
+  normalizeProviderError,
+  type Provider,
+  type ProviderAuth,
+  type ProviderStreamOptions,
+} from "../types.js";
 import { ANTHROPIC_MODELS } from "./anthropic-models.js";
 
+/**
+ * Anthropic Messages provider.
+ *
+ * Architecture follows pi's anthropic-messages layer: request assembly,
+ * message conversion, and SSE decoding are three separate pure functions
+ * (buildRequest / convertMessages / convertChunks). The wire contract:
+ *
+ * - Canonical input (ADR 0017): assistant messages never carry tool_result —
+ *   results arrive as separate `role:"tool"` messages and are buffered into
+ *   one `user(tool_result*)` message (strict validators require all results
+ *   right after the assistant tool_use batch).
+ * - Thinking (Anthropic protocol): thinking blocks are replayed back
+ *   unchanged with their `signature` (required in tool-use turns); redacted
+ *   thinking replays as `redacted_thinking`; endpoints that emit no
+ *   signature (DeepSeek) accept a signature-less block.
+ * - Messages that map to empty content are skipped — the API rejects them.
+ */
 export function anthropicProvider(auth: ProviderAuth = {}): Provider {
   const baseUrl = auth.baseUrl ?? "https://api.anthropic.com/v1";
 
@@ -28,75 +50,7 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
         if (opts?.headers) Object.assign(headers, opts.headers);
         else if (auth.headers) Object.assign(headers, auth.headers);
 
-        const systemMsg = messages.find((m) => m.role === "system");
-
-        // Convert messages to Anthropic wire format.
-        // Pattern from pi (packages/ai/src/api/anthropic-messages.ts):
-        // look-ahead to merge consecutive `role: "tool"` messages into a
-        // single `user(tool_result*)` message so strict validators (z.ai,
-        // deepseek) that require all results in the message right after the
-        // assistant(tool_use) batch accept the request.
-        const wireMessages: Array<{ role: string; content: unknown }> = [];
-        for (let i = 0; i < messages.length; i++) {
-          const m = messages[i]!;
-          if (m.role === "system") continue;
-
-          if (m.role === "tool") {
-            // Collect all consecutive tool messages into one user message.
-            const toolResults: Array<Record<string, unknown>> = [];
-            let j = i;
-            for (; j < messages.length; j++) {
-              const tm = messages[j]!;
-              if (tm.role !== "tool") break;
-              for (const b of tm.blocks ?? []) {
-                if (b.type === "tool_result") {
-                  toolResults.push({
-                    type: "tool_result",
-                    tool_use_id: b.tool_use_id,
-                    content: b.content,
-                  });
-                }
-              }
-            }
-            i = j - 1; // skip processed
-            wireMessages.push({ role: "user", content: toolResults });
-            continue;
-          }
-
-          // user / assistant: map blocks to wire content. The input is
-          // canonical (ADR 0017): assistant never carries tool_result —
-          // results arrive as separate `role:"tool"` messages merged above.
-          if (m.blocks && m.blocks.length > 0) {
-            const toWireBlock = (b: (typeof m.blocks)[number]) => {
-              if (b.type === "text") return { type: "text", text: b.text };
-              if (b.type === "tool_use")
-                return { type: "tool_use", id: b.id, name: b.name, input: b.input };
-              if (b.type === "tool_result")
-                return {
-                  type: "tool_result",
-                  tool_use_id: b.tool_use_id,
-                  content: b.content,
-                };
-              return { type: "text", text: "" };
-            };
-            wireMessages.push({ role: m.role, content: m.blocks.map(toWireBlock) });
-          } else {
-            wireMessages.push({ role: m.role, content: m.text ?? "" });
-          }
-        }
-
-        const body = {
-          model: model.id,
-          max_tokens: model.maxTokens,
-          messages: wireMessages,
-          system: systemMsg?.text,
-          stream: true,
-          tools: opts?.tools?.map((t) => ({
-            name: t.name,
-            description: t.description,
-            input_schema: t.inputSchema ?? {},
-          })),
-        };
+        const body = buildRequest(model.id, model.maxTokens, messages, opts);
 
         const res = await fetch(`${url}/messages`, {
           method: "POST",
@@ -140,6 +94,128 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
   };
 }
 
+// ── Request assembly ──────────────────────────────────────────────
+
+function buildRequest(
+  modelId: string,
+  maxTokens: number,
+  messages: readonly { role: string; text?: string; blocks?: unknown[] }[],
+  opts?: ProviderStreamOptions,
+): Record<string, unknown> {
+  const systemMsg = messages.find((m) => m.role === "system");
+  const request: Record<string, unknown> = {
+    model: modelId,
+    max_tokens: maxTokens,
+    messages: convertMessages(messages, opts),
+    system: systemMsg?.text,
+    stream: true,
+    tools: opts?.tools?.map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.inputSchema ?? {},
+    })),
+  };
+  // Thinking control (Anthropic protocol): adaptive lets the model decide,
+  // enabled uses a budget, disabled turns thinking off. display governs
+  // whether thinking text is returned ("summarized") or omitted.
+  if (opts?.thinking) {
+    const thinking: Record<string, unknown> = { type: opts.thinking.type };
+    if (opts.thinking.display) thinking.display = opts.thinking.display;
+    if (opts.thinking.budgetTokens) thinking.budget_tokens = opts.thinking.budgetTokens;
+    request.thinking = thinking;
+  }
+  // Effort scales the whole response (thinking included); per the Messages
+  // API it travels in output_config.
+  if (opts?.effort) {
+    request.output_config = { effort: opts.effort };
+  }
+  return request;
+}
+
+// ── Message conversion (canonical → wire) ────────────────────────
+
+type WireBlock = Record<string, unknown>;
+
+function toWireBlock(b: unknown): WireBlock | null {
+  const block = b as { type?: string };
+  if (block.type === "text") {
+    const text = (block as { text?: string }).text ?? "";
+    return text.trim().length > 0 ? { type: "text", text } : null;
+  }
+  if (block.type === "thinking") {
+    const tb = block as { text?: string; signature?: string; redacted?: boolean };
+    if (tb.redacted) {
+      // Safety-redacted reasoning: replay the opaque payload unchanged.
+      return { type: "redacted_thinking", data: tb.signature ?? "" };
+    }
+    const text = tb.text ?? "";
+    if (text.trim().length === 0 && !tb.signature) return null;
+    return { type: "thinking", thinking: text, signature: tb.signature ?? "" };
+  }
+  if (block.type === "tool_use") {
+    const tu = block as { id?: string; name?: string; input?: unknown };
+    return { type: "tool_use", id: tu.id, name: tu.name, input: tu.input };
+  }
+  if (block.type === "tool_result") {
+    const tr = block as { tool_use_id?: string; content?: unknown; is_error?: boolean };
+    return {
+      type: "tool_result",
+      tool_use_id: tr.tool_use_id,
+      content: tr.content,
+      ...(tr.is_error ? { is_error: true } : {}),
+    };
+  }
+  return null;
+}
+
+/** Canonical messages → Anthropic wire messages. Consecutive `role:"tool"`
+ *  messages merge into one `user(tool_result*)` message (strict validators
+ *  want all results directly after the assistant tool_use batch). Messages
+ *  that would carry empty content are skipped — the API rejects them. */
+function convertMessages(
+  messages: readonly { role: string; text?: string; blocks?: unknown[] }[],
+  _opts?: ProviderStreamOptions,
+): Array<{ role: string; content: unknown }> {
+  const wire: Array<{ role: string; content: unknown }> = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i]!;
+    if (m.role === "system") continue;
+
+    if (m.role === "tool") {
+      // Buffer consecutive tool messages into one user(tool_result*) message.
+      const results: WireBlock[] = [];
+      let j = i;
+      for (; j < messages.length; j++) {
+        const tm = messages[j]!;
+        if (tm.role !== "tool") break;
+        for (const b of tm.blocks ?? []) {
+          const wb = toWireBlock(b);
+          if (wb?.type === "tool_result") results.push(wb);
+        }
+      }
+      i = j - 1;
+      if (results.length > 0) wire.push({ role: "user", content: results });
+      continue;
+    }
+
+    if (m.blocks && m.blocks.length > 0) {
+      const blocks = m.blocks.map(toWireBlock).filter((b): b is WireBlock => b !== null);
+      if (blocks.length > 0) {
+        wire.push({ role: m.role, content: blocks });
+      } else if ((m.text ?? "").trim().length > 0) {
+        wire.push({ role: m.role, content: m.text });
+      }
+      // else: nothing replayable — skip (no empty content).
+    } else {
+      wire.push({ role: m.role, content: m.text ?? "" });
+    }
+  }
+  return wire;
+}
+
+// ── SSE decoding ──────────────────────────────────────────────────
+
 function* convertChunks(
   raw: Record<string, unknown>,
   blockIdByIndex: Map<number, string>,
@@ -154,6 +230,16 @@ function* convertChunks(
       blockIdByIndex.set(index, id);
       yield { delta: { type: "tool_use", id, name: (block.name as string) ?? "" } };
     }
+    if (block?.type === "redacted_thinking") {
+      // The encrypted payload arrives in `data`; replay it unchanged.
+      yield {
+        delta: {
+          type: "reasoning_signature",
+          signature: (block.data as string) ?? "",
+          redacted: true,
+        },
+      };
+    }
     return;
   }
 
@@ -161,6 +247,14 @@ function* convertChunks(
     const d = raw.delta as Record<string, unknown>;
     if (d?.type === "text_delta") {
       yield { delta: { type: "text", text: (d.text as string) ?? "" } };
+      return;
+    }
+    if (d?.type === "thinking_delta") {
+      yield { delta: { type: "reasoning", text: (d.thinking as string) ?? "" } };
+      return;
+    }
+    if (d?.type === "signature_delta") {
+      yield { delta: { type: "reasoning_signature", signature: (d.signature as string) ?? "" } };
       return;
     }
     if (d?.type === "input_json_delta") {

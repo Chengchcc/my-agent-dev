@@ -8,6 +8,13 @@ export const TextBlockSchema = z.object({
   text: z.string(),
 });
 
+export const ThinkingBlockSchema = z.object({
+  type: z.literal("thinking"),
+  text: z.string(),
+  signature: z.string().optional(),
+  redacted: z.boolean().optional(),
+});
+
 export const ToolUseBlockSchema = z.object({
   type: z.literal("tool_use"),
   id: z.string().min(1),
@@ -26,7 +33,12 @@ export const ToolResultBlockSchema = z.object({
 // block variants don't cause parse failures. The discriminatedUnion covers known
 // types; the passthrough fallback keeps the rest.
 export const ContentBlockSchema = z
-  .discriminatedUnion("type", [TextBlockSchema, ToolUseBlockSchema, ToolResultBlockSchema])
+  .discriminatedUnion("type", [
+    TextBlockSchema,
+    ThinkingBlockSchema,
+    ToolUseBlockSchema,
+    ToolResultBlockSchema,
+  ])
   .or(z.object({ type: z.string() }).passthrough());
 
 // ─── Message sub-type schemas ─────────────────────────────────

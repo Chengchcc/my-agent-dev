@@ -63,6 +63,18 @@ export interface ProviderStreamOptions {
   headers?: Record<string, string>;
   signal?: AbortSignal;
   tools?: readonly ProviderToolSchema[];
+  /** Thinking-mode control (Anthropic `thinking` param): adaptive lets the
+   *  model decide, enabled uses a budget, disabled turns it off. `display`
+   *  controls whether thinking text is returned ("summarized") or omitted
+   *  (signature only). */
+  thinking?: {
+    type: "adaptive" | "enabled" | "disabled";
+    display?: "summarized" | "omitted";
+    budgetTokens?: number;
+  };
+  /** Response effort (Anthropic `effort` param): scales how much work the
+   *  model puts in, thinking included. */
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
 }
 
 /** API 类型标识（模型元数据，仅用于 catalog 标记）。 */
