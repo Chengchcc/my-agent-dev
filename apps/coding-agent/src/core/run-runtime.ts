@@ -354,8 +354,22 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       if (!model) throw new Error(`model not found: ${run.model.modelId}`);
       const timeoutSignal = AbortSignal.timeout(modelTimeoutMs);
       const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+      // Reasoning effort (Anthropic protocol): none disables thinking;
+      // low/high/max use adaptive thinking with the matching effort. When
+      // unset the provider default applies (thinking on for DeepSeek).
+      const reasoningEffort = (run.model as { reasoningEffort?: string }).reasoningEffort;
+      const reasoningOpts =
+        reasoningEffort === "none"
+          ? { thinking: { type: "disabled" as const } }
+          : reasoningEffort === "low" || reasoningEffort === "high" || reasoningEffort === "max"
+            ? {
+                thinking: { type: "adaptive" as const, display: "summarized" as const },
+                effort: reasoningEffort,
+              }
+            : {};
       const stream = deps.modelRuntime.stream(model.providerId, model.modelId, messages, {
         signal: combined,
+        ...reasoningOpts,
         // Providers only consume the schema fields; execution happens in
         // the loop via toolMap. Explicit mapping keeps PluginTool's
         // richer execute contract out of the provider boundary.

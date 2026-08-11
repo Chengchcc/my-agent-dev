@@ -4,6 +4,9 @@
 export interface BackendModelRef<K extends string = string> {
   readonly backendKind: K;
   readonly modelId: string;
+  /** Thinking-mode effort (Anthropic-format `reasoning` param): none/low/
+   *  high/max. Undefined = provider default. */
+  readonly reasoningEffort?: "none" | "low" | "high" | "max";
 }
 
 /** Backend-exposed model metadata. Aggregated by Product Backend across backends. */

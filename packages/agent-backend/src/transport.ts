@@ -25,7 +25,11 @@ const productToolSchema = z.object({
 
 const runSnapshotSchema = z.object({
   runId: runIdSchema,
-  model: z.object({ backendKind: z.literal("coding_agent"), modelId: z.string() }),
+  model: z.object({
+    backendKind: z.literal("coding_agent"),
+    modelId: z.string(),
+    reasoningEffort: z.enum(["none", "low", "high", "max"]).optional(),
+  }),
   systemPrompt: z.string().optional(),
   /** Skill pack roots (absolute dirs scanned for SKILL.md), frozen at Run
    *  creation. Empty/absent = no skills. */

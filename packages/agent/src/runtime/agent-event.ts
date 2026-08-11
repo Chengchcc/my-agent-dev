@@ -8,6 +8,7 @@ export type CodingAgentLoopEvent =
   | { type: "turn_end"; turn: number }
   | { type: "message_start" }
   | { type: "message_update"; text: string }
+  | { type: "thinking_update"; text: string }
   | { type: "message_end" }
   | { type: "tool_execution_start"; toolName: string; kind?: "native" | "product"; callId: string }
   | {

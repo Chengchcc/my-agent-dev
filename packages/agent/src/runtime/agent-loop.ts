@@ -320,7 +320,12 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
             const modelMessages = systemPrompt
               ? [{ role: "system", text: systemPrompt } as Message, ...transformed]
               : transformed;
-            const toolCalls = await processModelTurn(modelMessages);
+            const {
+              calls: toolCalls,
+              thinking,
+              thinkingSignature,
+              thinkingRedacted,
+            } = await processModelTurn(modelMessages);
             if (toolCalls.length > 0) {
               // Tool calls: execute and continue to the next turn
               const toolResults = await executeTools(toolCalls);
@@ -334,7 +339,19 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
                 return { status, usage: runUsage, error: "stopped by user" };
               }
 
-              // Persist assistant tool_use message
+              // Persist assistant tool_use message (thinking first, then the
+              // tool calls — chronological order within the turn).
+              const thinkingBlocks =
+                thinking.length > 0
+                  ? [
+                      {
+                        type: "thinking" as const,
+                        text: thinkingRedacted ? "[reasoning redacted]" : thinking,
+                        ...(thinkingSignature ? { signature: thinkingSignature } : {}),
+                        ...(thinkingRedacted ? { redacted: true } : {}),
+                      },
+                    ]
+                  : [];
               await opts.store.appendBatch(opts.sessionId, {
                 entries: [
                   {
@@ -344,12 +361,15 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
                     message: {
                       role: "assistant",
                       text: "",
-                      blocks: toolCalls.map((tc) => ({
-                        type: "tool_use",
-                        id: tc.id,
-                        name: tc.name,
-                        input: tc.input,
-                      })),
+                      blocks: [
+                        ...thinkingBlocks,
+                        ...toolCalls.map((tc) => ({
+                          type: "tool_use" as const,
+                          id: tc.id,
+                          name: tc.name,
+                          input: tc.input,
+                        })),
+                      ],
                     },
                     createdAt: Date.now(),
                   },
@@ -543,8 +563,16 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     }
   }
 
-  async function processModelTurn(messages: readonly Message[]): Promise<PendingToolCall[]> {
+  async function processModelTurn(messages: readonly Message[]): Promise<{
+    calls: PendingToolCall[];
+    thinking: string;
+    thinkingSignature?: string;
+    thinkingRedacted?: boolean;
+  }> {
     let assistantText = "";
+    let assistantThinking = "";
+    let thinkingSignature: string | undefined;
+    let thinkingRedacted = false;
     const toolCallBuilders = new Map<string, { id: string; name: string; jsonParts: string[] }>();
     debugTurn++;
     debugLog(
@@ -584,6 +612,14 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
           assistantText += chunk.delta.text;
           await emit({ type: "message_update", text: chunk.delta.text });
         }
+        if (chunk.delta?.type === "reasoning") {
+          assistantThinking += chunk.delta.text;
+          await emit({ type: "thinking_update", text: chunk.delta.text });
+        }
+        if (chunk.delta?.type === "reasoning_signature") {
+          thinkingSignature = chunk.delta.signature;
+          thinkingRedacted = chunk.delta.redacted === true;
+        }
         if (chunk.delta?.type === "tool_use") {
           const id = chunk.delta.id;
           if (!toolCallBuilders.has(id)) {
@@ -607,18 +643,37 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     // Aborted mid-stream: discard partial output — an uncompleted turn must
     // not enter the canonical Coding Session Tree (same as tool cancellation).
     if (controller?.signal.aborted) {
-      return [];
+      return { calls: [], thinking: "" };
     }
 
-    // Persist assistant text if any
+    // Persist assistant text if any. Thinking alone is not a message — a
+    // thinking-only turn with no text and no tool calls contributed nothing
+    // replayable, and an empty-content message breaks strict model APIs
+    // (pi drops such messages on the wire too). Thinking blocks attach to
+    // the message when present so the reasoning trace keeps them in order.
     if (assistantText) {
+      const thinkingBlocks =
+        assistantThinking.length > 0
+          ? [
+              {
+                type: "thinking" as const,
+                text: thinkingRedacted ? "[reasoning redacted]" : assistantThinking,
+                ...(thinkingSignature ? { signature: thinkingSignature } : {}),
+                ...(thinkingRedacted ? { redacted: true } : {}),
+              },
+            ]
+          : [];
       await opts.store.appendBatch(opts.sessionId, {
         entries: [
           {
             type: "message",
             role: "assistant",
             source: "assistant",
-            message: { role: "assistant", text: assistantText },
+            message: {
+              role: "assistant",
+              text: assistantText,
+              blocks: thinkingBlocks.length > 0 ? thinkingBlocks : undefined,
+            },
             createdAt: Date.now(),
           },
         ],
@@ -626,11 +681,16 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     }
 
     // Build pending tool calls with parsed input
-    return Array.from(toolCallBuilders.values()).map((b) => ({
-      id: b.id,
-      name: b.name,
-      input: b.jsonParts.length > 0 ? safeParseJson(b.jsonParts.join("")) : {},
-    }));
+    return {
+      calls: Array.from(toolCallBuilders.values()).map((b) => ({
+        id: b.id,
+        name: b.name,
+        input: b.jsonParts.length > 0 ? safeParseJson(b.jsonParts.join("")) : {},
+      })),
+      thinking: assistantThinking,
+      ...(thinkingSignature ? { thinkingSignature } : {}),
+      ...(thinkingRedacted ? { thinkingRedacted: true } : {}),
+    };
   }
 
   async function executeTools(

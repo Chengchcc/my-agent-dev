@@ -18,6 +18,10 @@ export function mapRunEvent(event: TransportRunEvent): BackendEvent<"coding_agen
       const text = String(event.data.text ?? "");
       return { type: "text_delta", text };
     }
+    case "thinking_update": {
+      const text = String(event.data.text ?? "");
+      return { type: "thinking_delta", text };
+    }
     case "message_start":
     case "message_end":
     case "retry_start":
