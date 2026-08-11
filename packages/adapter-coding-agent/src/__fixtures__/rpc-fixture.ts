@@ -232,7 +232,10 @@ async function main(): Promise<void> {
           out({
             type: "outcome",
             runId,
-            outcome: { status: "completed", output: { role: "assistant", text: "done" } },
+            outcome: {
+              status: "completed",
+              messages: [{ role: "assistant", text: "done" }],
+            },
           });
           setTimeout(() => process.exit(0), 20);
         }, outcomeDelayMs);

@@ -14,6 +14,11 @@ import type { CodingLoopInput } from "./loop-input.js";
 import type { Plugin } from "./plugin.js";
 import { readTodo, writeTodo } from "./todo.js";
 
+// Title generation (agent-loop) performs an extra ephemeral model call on
+// completed runs; these loop tests count model attempts and must be
+// deterministic, so disable it.
+process.env.CODING_AGENT_TITLE_ENABLED = "0";
+
 type StoreFactory = (sid: string) => SessionStore;
 type ReopenFactory = (sid: string) => SessionStore;
 

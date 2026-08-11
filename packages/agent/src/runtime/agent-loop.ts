@@ -4,6 +4,7 @@ import { ProviderError } from "@my-agent-team/ai";
 import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 import type { SessionStore } from "../persistence/session-store.js";
+import type { MessageEntry } from "../persistence/session-tree.js";
 import type { AgentLoopListener, CodingAgentLoopEvent } from "./agent-event.js";
 import { type CompactionBudget, compactSession } from "./compaction.js";
 import type { CodingLoopInput } from "./loop-input.js";
@@ -76,13 +77,14 @@ export interface CodingAgentSessionOptions {
 /** A Coding Agent Session owns the store, plugins, listeners, and lifecycle.
  *  Each call to startLoop/startFollowUp creates a one-shot internal loop; the
  *  session itself is the long-lived controller. */
-/** Terminal result of a loop. `output` is the canonical persisted assistant
- *  Message (blocks + tool pairs), not a reconstruction from deltas; `usage` is
- *  the last usage chunk from the model stream; `error` is a redacted reason
- *  for failed/stopped outcomes. */
+/** Terminal result of a loop. `messages` is the canonical message sequence
+ *  this Run produced (ADR 0017): assistant(tool_use) / tool(tool_result) /
+ *  assistant(text) as separate messages in branch order — never merged into
+ *  an assistant message. `usage` is the last usage chunk from the model
+ *  stream; `error` is a redacted reason for failed/stopped outcomes. */
 export interface CodingAgentLoopResult {
   readonly status: "completed" | "failed" | "stopped";
-  readonly output?: Message;
+  readonly messages?: readonly Message[];
   readonly usage?: Usage;
   readonly error?: string;
   /** Auto-generated conversation title (first Run only; backend guards). */
@@ -508,25 +510,22 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       }
 
       await emit({ type: "agent_end", status });
-      // Canonical output: the last assistant text + ALL tool_use/tool_result
-      // blocks from the Run branch. Without merging tool blocks, only the
-      // final text survives in the ledger — tool steps vanish on refresh.
-      let output: Message | undefined;
+      // Canonical output (ADR 0017): the full message sequence this Run
+      // produced — assistant(text/tool_use) and tool(tool_result) messages
+      // in branch order. The ledger persists them as separate canonical
+      // messages; nothing is ever merged into an assistant message. The
+      // final answer is the last assistant message with text.
+      let runMessages: readonly Message[] | undefined;
       if (status === "completed") {
-        const branch = await readBranchMessages();
-        const lastAssistant = [...branch].reverse().find((m) => m.role === "assistant");
-        if (lastAssistant) {
-          const toolBlocks = branch
-            .filter((m) => m.role === "assistant" || m.role === "tool")
-            .flatMap((m) => m.blocks ?? [])
-            .filter((b) => b.type === "tool_use" || b.type === "tool_result");
-          output = {
-            ...lastAssistant,
-            blocks: [...(lastAssistant.blocks ?? []), ...toolBlocks],
-          };
-        }
+        const entries = await opts.store.readBranch(opts.sessionId);
+        runMessages = entries
+          .filter(
+            (e): e is MessageEntry =>
+              e.type === "message" && (e.source === "assistant" || e.source === "tool_result"),
+          )
+          .map((e) => e.message);
       }
-      return { status, output, usage: runUsage, error: runError, title };
+      return { status, messages: runMessages, usage: runUsage, error: runError, title };
     } catch (err) {
       // Setup/persistence failure: the loop must settle to a terminal state
       // so listeners always receive agent_end and the loop is reusable.

@@ -47,11 +47,11 @@ export interface CodingAgentRuntime {
 
 function mapLoopResult(result: CodingAgentLoopResult): BackendRunOutcome {
   if (result.status === "completed") {
-    // No fabricated output: when the loop persisted no canonical assistant
-    // Message, omit it rather than inventing an empty one.
+    // No fabricated output: when the loop persisted no canonical messages,
+    // omit them rather than inventing an empty sequence.
     return {
       status: "completed",
-      ...(result.output ? { output: result.output } : {}),
+      ...(result.messages && result.messages.length > 0 ? { messages: result.messages } : {}),
       ...(result.usage ? { usage: result.usage } : {}),
       ...(result.title ? { title: result.title } : {}),
     };

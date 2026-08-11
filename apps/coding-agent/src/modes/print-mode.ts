@@ -46,7 +46,12 @@ export async function runPrintMode(opts: CliRunOptions): Promise<number> {
     const segment = await runtime.run(built);
     const outcome = await segment.outcome;
     if (outcome.status === "completed") {
-      const text = assistantText(outcome.output);
+      // Final answer = the last assistant message with text in the
+      // canonical sequence (ADR 0017).
+      const finalAnswer = [...(outcome.messages ?? [])]
+        .reverse()
+        .find((m) => m.role === "assistant" && (m.text?.trim() ?? "") !== "");
+      const text = assistantText(finalAnswer);
       if (text) process.stdout.write(`${text}\n`);
       return 0;
     }

@@ -67,7 +67,7 @@ describe("CodingAgentBackend (child process)", () => {
     expect(readFileSync(record, "utf-8").trim().startsWith("execute r-exec ")).toBe(true);
     const outcome = await segment.outcome;
     expect(outcome.status).toBe("completed");
-    expect((outcome as { output?: { text?: string } }).output?.text).toBe("done");
+    expect((outcome as { messages?: Array<{ text?: string }> }).messages?.[0]?.text).toBe("done");
   }, 10_000);
 
   test("cwd equals the Run workspace root", async () => {
