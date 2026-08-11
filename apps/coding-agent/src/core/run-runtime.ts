@@ -34,6 +34,27 @@ import {
 import { fakeProvider } from "./fake-provider.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
 
+/** Token estimation via content char/4 (≈1 token per 4 chars of English/code).
+ *  More accurate than JSON.stringify char/4 which includes ~30% syntax
+ *  overhead from key names, quotes, braces. Counts actual text + block
+ *  content, adds a fixed overhead per message for role/structure framing.
+ *  Swap for a real tokenizer (tiktoken, provider SDK) by replacing this
+ *  function — the ContextBudget.estimate interface is the extension point. */
+function estimateMessageTokens(message: Message): number {
+  let chars = message.text?.length ?? 0;
+  if (message.blocks) {
+    for (const b of message.blocks) {
+      if (b.type === "text") chars += b.text.length;
+      else if (b.type === "tool_use") chars += JSON.stringify(b.input).length;
+      else if (b.type === "tool_result" && typeof b.content === "string") chars += b.content.length;
+      else if (b.type === "thinking" && typeof b.text === "string") chars += b.text.length;
+    }
+  }
+  // ~4 chars/token for content + 4 tokens framing overhead per message
+  // (role tag, separators — matches Anthropic's documented overhead).
+  return Math.ceil(chars / 4) + 4;
+}
+
 /** Dependencies for ONE Run's runtime assembly. The runtime is per-Run: a
  *  fresh in-memory SessionStore and a fresh CodingAgentSession are created
  *  for every execute() - no state is shared across Runs except the
@@ -271,7 +292,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   // at the same threshold the real model would overflow, neither premature
   // nor too late.
   const contextBudget: ContextBudget = {
-    estimate: (m) => Math.ceil(JSON.stringify(m).length / 4),
+    estimate: (m) => estimateMessageTokens(m),
     limit: currentModel.contextWindow,
     triggerRatio: 0.7,
   };

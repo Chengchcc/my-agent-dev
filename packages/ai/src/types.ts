@@ -24,6 +24,26 @@ export interface Model {
   cost: ModelCost;
   contextWindow: number;
   maxTokens: number;
+  /** Per-model capability flags. When undefined, all features are assumed
+   *  supported (backward-compatible default). */
+  readonly compat?: ModelCompat;
+}
+
+/** Provider-specific compatibility metadata. Allows the runtime to adapt
+ *  behavior per-model without hardcoded if/else chains. */
+export interface ModelCompat {
+  /** Whether temperature/topP can be passed to this model. Some models
+   *  (o1, o3-preview) reject sampling parameters. Default: true. */
+  readonly supportsTemperature?: boolean;
+  /** Maps our ThinkingLevel values to provider-specific config keys.
+   *  When undefined, the standard mapping is used. */
+  readonly thinkingLevelMap?: Readonly<Record<string, unknown>>;
+  /** Whether the model accepts a separate system prompt field or needs
+   *  it inlined as the first user message. Default: true (separate). */
+  readonly supportsSystemPrompt?: boolean;
+  /** Max tokens per output (may differ from maxTokens which is the
+   *  model's absolute ceiling). Used for force-continue logic. */
+  readonly maxOutputTokens?: number;
 }
 
 /** Provider 认证配置 */
