@@ -96,8 +96,8 @@ export function ReasoningTrace({
         <Collapsible open={open} onOpenChange={setOpen}>
           <CollapsibleTrigger
             className="flex w-full items-center gap-1.5 px-1 py-0.5 text-left
-              text-[11px] font-mono text-[var(--mute)]
-              transition-colors hover:text-[var(--ink)]"
+              text-[11px] font-mono text-(--mute)
+              transition-colors hover:text-(--ink)"
           >
             <span className="shrink-0 text-(--primary)">{open ? "▼" : "▶"}</span>
             <span>
@@ -105,11 +105,11 @@ export function ReasoningTrace({
             </span>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="my-0.5 ml-1.5 flex flex-col gap-0.5 border-l border-[var(--hairline)] py-1 pl-2">
+            <div className="my-0.5 ml-1.5 flex flex-col gap-0.5 border-l border-(--hairline) py-1 pl-2">
               {rounds.map((m) => {
                 const text = extractText(m.content);
                 return text ? (
-                  <div key={m.id} className="px-1 py-0.5 text-[12px] text-[var(--body)]">
+                  <div key={m.id} className="px-1 py-0.5 text-[12px] text-(--body)">
                     {text}
                   </div>
                 ) : null;
@@ -120,8 +120,8 @@ export function ReasoningTrace({
                     type="button"
                     onClick={() => toggleGroup(g.name)}
                     className="flex w-full items-center gap-1.5 px-1 py-0.5 text-left
-                      text-[11px] font-mono text-[var(--mute)]
-                      transition-colors hover:text-[var(--ink)]"
+                      text-[11px] font-mono text-(--mute)
+                      transition-colors hover:text-(--ink)"
                   >
                     <span className="shrink-0 text-(--primary)">
                       {openGroups.has(g.name) ? "▼" : "▶"}

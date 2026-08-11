@@ -47,7 +47,7 @@ interface TurnAnchor {
 function SystemNotice({ text }: { text: string }) {
   return (
     <div className="flex justify-center py-2">
-      <span className="text-[11px] text-[var(--mute)] bg-[var(--bg-muted)] px-3 py-1 rounded-full">
+      <span className="text-[11px] text-(--mute) bg-(--bg-muted) px-3 py-1 rounded-full">
         {text}
       </span>
     </div>
@@ -103,8 +103,8 @@ function TransientTrace({ msgCount, groups }: { msgCount: number; groups: ToolGr
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger
           className="flex w-full items-center gap-1.5 px-1 py-0.5 text-left
-            text-[11px] font-mono text-[var(--mute)]
-            transition-colors hover:text-[var(--ink)]"
+            text-[11px] font-mono text-(--mute)
+            transition-colors hover:text-(--ink)"
         >
           <span className="shrink-0 text-(--primary)">{open ? "▼" : "▶"}</span>
           <span>
@@ -112,15 +112,15 @@ function TransientTrace({ msgCount, groups }: { msgCount: number; groups: ToolGr
           </span>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="my-0.5 ml-1.5 flex flex-col gap-0.5 border-l border-[var(--hairline)] py-1 pl-2">
+          <div className="my-0.5 ml-1.5 flex flex-col gap-0.5 border-l border-(--hairline) py-1 pl-2">
             {groups.map((g) => (
               <div key={g.name}>
                 <button
                   type="button"
                   onClick={() => toggleGroup(g.name)}
                   className="flex w-full items-center gap-1.5 px-1 py-0.5 text-left
-                    text-[11px] font-mono text-[var(--mute)]
-                    transition-colors hover:text-[var(--ink)]"
+                    text-[11px] font-mono text-(--mute)
+                    transition-colors hover:text-(--ink)"
                 >
                   <span className="shrink-0 text-(--primary)">
                     {openGroups.has(g.name) ? "▼" : "▶"}
@@ -138,7 +138,7 @@ function TransientTrace({ msgCount, groups }: { msgCount: number; groups: ToolGr
                       tool.state === "running" && tool.result === undefined ? (
                         <div
                           key={tool.callId}
-                          className="px-2 py-0.5 font-mono text-[11px] text-[var(--mute)]"
+                          className="px-2 py-0.5 font-mono text-[11px] text-(--mute)"
                         >
                           executing tool…
                         </div>
@@ -287,9 +287,9 @@ export function Timeline({
                 onClick={() => scrollToAnchor(a.elementId)}
                 className={cn(
                   "pointer-events-auto rounded-sm p-0 font-mono text-[10px]",
-                  "text-[var(--mute)] hover:bg-[var(--canvas-soft)] hover:text-[var(--ink)]",
+                  "text-(--mute) hover:bg-(--canvas-soft) hover:text-(--ink)",
                   a.elementId === activeAnchor &&
-                    "bg-[var(--primary)] text-[var(--ink-strong)] hover:bg-[var(--primary)]",
+                    "bg-(--primary) text-(--ink-strong) hover:bg-(--primary)",
                 )}
                 title={`Turn ${a.seq}`}
               >
@@ -335,11 +335,11 @@ export function Timeline({
               <div key={m.id} id={anchorId} className={anchorId ? "scroll-mt-16" : undefined}>
                 {anchorId && turnNum !== undefined && !isFirst && (
                   <div className="flex items-center gap-3 py-3">
-                    <div className="flex-1 h-px bg-[var(--hairline)]" />
-                    <div className="flex items-center gap-1 text-[10px] text-[var(--mute)] shrink-0">
+                    <div className="flex-1 h-px bg-(--hairline)" />
+                    <div className="flex items-center gap-1 text-[10px] text-(--mute) shrink-0">
                       <span>#{turnNum}</span>
                     </div>
-                    <div className="flex-1 h-px bg-[var(--hairline)]" />
+                    <div className="flex-1 h-px bg-(--hairline)" />
                   </div>
                 )}
                 <div
@@ -364,7 +364,7 @@ export function Timeline({
                     })}
                   </MessageActions>
                   {isUndone && (
-                    <div className="text-[10px] text-[var(--mute)] italic mt-0.5">↳ undone</div>
+                    <div className="text-[10px] text-(--mute) italic mt-0.5">↳ undone</div>
                   )}
                 </div>
               </div>
@@ -386,7 +386,7 @@ export function Timeline({
                     isStreaming
                   />
                 ) : groups.length === 0 ? (
-                  <div className="px-1 py-0.5 text-[11px] italic text-[var(--mute)]">thinking…</div>
+                  <div className="px-1 py-0.5 text-[11px] italic text-(--mute)">thinking…</div>
                 ) : null}
               </div>
             );
@@ -488,7 +488,7 @@ function MessageActions({
             <Button
               size="sm"
               variant="ghost"
-              className="h-6 text-[10px] text-[var(--mute)] hover:text-[var(--body)]"
+              className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
               onClick={handleStartEdit}
             >
               Edit &amp; Replay
@@ -497,7 +497,7 @@ function MessageActions({
             <Button
               size="sm"
               variant="ghost"
-              className="h-6 text-[10px] text-[var(--mute)] hover:text-[var(--body)]"
+              className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
               onClick={() =>
                 undoMut.mutate(
                   { id: conversationId, count: 1 },
@@ -518,7 +518,7 @@ function MessageActions({
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 text-[10px] text-[var(--mute)] hover:text-[var(--body)]"
+            className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
             onClick={() =>
               forkMut.mutate(
                 { id: conversationId, fromSeq: item.seq },

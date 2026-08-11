@@ -27,7 +27,7 @@ export function ToolStep({
             variant="ghost"
             type="button"
             onClick={() => setInputOpen((v) => !v)}
-            className="h-auto px-1.5 py-0 text-[10px] text-[var(--mute)] hover:bg-transparent hover:text-[var(--ink)]"
+            className="h-auto px-1.5 py-0 text-[10px] text-(--mute) hover:bg-transparent hover:text-(--ink)"
           >
             {inputOpen ? "▲ input" : "▼ input"}
           </Button>
@@ -36,7 +36,7 @@ export function ToolStep({
               variant="ghost"
               type="button"
               onClick={() => setResultOpen((v) => !v)}
-              className="h-auto px-1.5 py-0 text-[10px] text-[var(--mute)] hover:bg-transparent hover:text-[var(--ink)]"
+              className="h-auto px-1.5 py-0 text-[10px] text-(--mute) hover:bg-transparent hover:text-(--ink)"
             >
               {resultOpen ? "▲ result" : "▼ result"}
             </Button>
@@ -44,14 +44,14 @@ export function ToolStep({
         </span>
       </div>
       {inputOpen && (
-        <pre className="max-h-40 overflow-x-auto whitespace-pre-wrap rounded bg-[var(--canvas-soft)] p-2 text-[12px] leading-relaxed text-[var(--canvas-text-soft)]">
+        <pre className="max-h-40 overflow-x-auto whitespace-pre-wrap rounded bg-(--canvas-soft) p-2 text-[12px] leading-relaxed text-(--canvas-text-soft)">
           {JSON.stringify(input, null, 2)}
         </pre>
       )}
       {resultOpen && result && (
         <pre
-          className={`max-h-40 overflow-x-auto whitespace-pre-wrap rounded bg-[var(--canvas-soft)] p-2 text-[12px] leading-relaxed ${
-            result.isError ? "text-red-400" : "text-[var(--canvas-text-soft)]"
+          className={`max-h-40 overflow-x-auto whitespace-pre-wrap rounded bg-(--canvas-soft) p-2 text-[12px] leading-relaxed ${
+            result.isError ? "text-red-400" : "text-(--canvas-text-soft)"
           }`}
         >
           {"⤷ "}
