@@ -56,11 +56,16 @@ export interface PendingActionResponse {
 
 /** Terminal outcome of a Run. `completed`, `failed`, `aborted` and `timeout`
  *  are the four terminal states. This is the ONLY terminal authority - event
- *  streams must never be interpreted as terminal. */
+ *  streams must never be interpreted as terminal.
+ *
+ *  A completed Run carries the full canonical message sequence it produced
+ *  (ADR 0017): assistant(tool_use) / tool(tool_result) / assistant(text) as
+ *  separate messages, in order, ready to be persisted and replayed. The
+ *  final answer is the last assistant message with text. */
 export type BackendRunOutcome =
   | {
       readonly status: "completed";
-      readonly output?: Message;
+      readonly messages?: readonly Message[];
       readonly usage?: Usage;
       readonly title?: string;
     }

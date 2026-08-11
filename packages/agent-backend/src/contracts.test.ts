@@ -14,7 +14,7 @@ async function* noEvents(): AsyncIterable<BackendEvent<"fake">> {}
 
 function completedSegment(output?: Message): BackendRunSegment<"fake"> {
   const outcome: BackendRunOutcome = output
-    ? { status: "completed", output }
+    ? { status: "completed", messages: [output] }
     : { status: "completed" };
   return {
     events: noEvents(),

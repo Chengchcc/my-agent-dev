@@ -77,7 +77,7 @@ export function mapRunEvent(event: TransportRunEvent): BackendEvent<"coding_agen
  *  backends). */
 export function mapRunOutcome(outcome: {
   status: string;
-  output?: unknown;
+  messages?: unknown;
   error?: string;
   usage?: unknown;
   title?: string;
@@ -85,7 +85,7 @@ export function mapRunOutcome(outcome: {
   if (outcome.status === "completed") {
     return {
       status: "completed",
-      output: outcome.output as never,
+      messages: outcome.messages as never,
       usage: outcome.usage as never,
       ...(outcome.title ? { title: outcome.title } : {}),
     };

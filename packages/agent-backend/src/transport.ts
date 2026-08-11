@@ -129,7 +129,7 @@ export const outcomeOutputSchema = z.object({
   runId: runIdSchema,
   outcome: z.object({
     status: z.enum(["completed", "failed", "aborted", "timeout"]),
-    output: messageSchema.optional(),
+    messages: z.array(messageSchema).optional(),
     error: z.string().optional(),
     usage: z
       .object({
