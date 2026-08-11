@@ -276,6 +276,9 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       let thresholdCompacted = false;
       let naturalStop = false;
 
+      // Restore the last persisted thinking level (resume across runs). Walks
+      // the session tree backward for the latest thinking_level_change entry.
+      nextThinkingLevel = await restoreLastThinkingLevel();
       // beforeRun: one-shot per-Run hook.
       for (const p of opts.plugins) {
         if (p.hooks?.beforeRun) {
@@ -528,8 +531,19 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         }
 
         // Per-turn state (pi's prepareNextTurn): let the session adjust the
-        // thinking level for the next turn before afterModel/turn_end.
-        nextThinkingLevel = opts.prepareNextTurn?.({ step })?.thinkingLevel;
+        // thinking level for the next turn. Persist the change so it
+        // survives resume (pi's ThinkingLevelChangeEntry).
+        const turnLevel = opts.prepareNextTurn?.({ step })?.thinkingLevel;
+        if (turnLevel !== undefined) {
+          await persist([
+            {
+              type: "thinking_level_change",
+              thinkingLevel: turnLevel,
+              createdAt: Date.now(),
+            },
+          ]);
+        }
+        nextThinkingLevel = turnLevel;
 
         // afterModel hook (recap/pet): after the turn's output + tool
         // results are persisted, before turn_end.
@@ -874,6 +888,19 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         }
         return [msg];
       });
+  }
+
+  /** Walk the session tree backward for the latest thinking_level_change
+   *  entry. Returns its thinkingLevel, or undefined when none exists. */
+  async function restoreLastThinkingLevel(): Promise<ThinkingLevel | undefined> {
+    const entries = await opts.store.readBranch(opts.sessionId);
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i]!;
+      if (e.type === "thinking_level_change") {
+        return (e.thinkingLevel ?? undefined) as ThinkingLevel | undefined;
+      }
+    }
+    return undefined;
   }
 
   return {

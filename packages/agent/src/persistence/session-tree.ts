@@ -39,8 +39,29 @@ export interface TodoStateEntry {
   readonly state: Readonly<Record<string, unknown>>;
   readonly createdAt: number;
 }
+export interface ThinkingLevelChangeEntry {
+  readonly type: "thinking_level_change";
+  readonly entryId: string;
+  readonly parentId: string | null;
+  readonly thinkingLevel: string | null;
+  readonly createdAt: number;
+}
 
-export type CodingSessionEntry = MessageEntry | CompactionEntry | TodoStateEntry;
+export interface ModelChangeEntry {
+  readonly type: "model_change";
+  readonly entryId: string;
+  readonly parentId: string | null;
+  /** Model in "provider/modelId" format. */
+  readonly model: string;
+  readonly createdAt: number;
+}
+
+export type CodingSessionEntry =
+  | MessageEntry
+  | CompactionEntry
+  | TodoStateEntry
+  | ThinkingLevelChangeEntry
+  | ModelChangeEntry;
 
 export type CodingSessionOperation = {
   readonly type: "leaf_moved";
