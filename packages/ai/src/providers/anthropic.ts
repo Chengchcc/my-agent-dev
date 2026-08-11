@@ -1,7 +1,6 @@
 import type { AIMessageChunk } from "@my-agent-team/core";
 import { normalizeProviderError, type Provider, type ProviderAuth } from "../types.js";
 import { ANTHROPIC_MODELS } from "./anthropic-models.js";
-import type { Message } from "@my-agent-team/message";
 
 export function anthropicProvider(auth: ProviderAuth = {}): Provider {
   const baseUrl = auth.baseUrl ?? "https://api.anthropic.com/v1";
