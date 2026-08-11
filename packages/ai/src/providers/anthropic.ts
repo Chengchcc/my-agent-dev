@@ -65,25 +65,48 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
 
           // user / assistant: map blocks to wire content.
           if (m.blocks && m.blocks.length > 0) {
-            const wireRole =
-              m.role === "assistant" && m.blocks.some((b) => b.type === "tool_result")
-                ? "assistant"
-                : m.role;
-            wireMessages.push({
-              role: wireRole,
-              content: m.blocks.map((b) => {
-                if (b.type === "text") return { type: "text", text: b.text };
-                if (b.type === "tool_use")
-                  return { type: "tool_use", id: b.id, name: b.name, input: b.input };
-                if (b.type === "tool_result")
-                  return {
-                    type: "tool_result",
-                    tool_use_id: b.tool_use_id,
-                    content: b.content,
-                  };
-                return { type: "text", text: "" };
-              }),
-            });
+            const toWireBlock = (b: (typeof m.blocks)[number]) => {
+              if (b.type === "text") return { type: "text", text: b.text };
+              if (b.type === "tool_use")
+                return { type: "tool_use", id: b.id, name: b.name, input: b.input };
+              if (b.type === "tool_result")
+                return {
+                  type: "tool_result",
+                  tool_use_id: b.tool_use_id,
+                  content: b.content,
+                };
+              return { type: "text", text: "" };
+            };
+            // Assistant messages may carry tool_result blocks (run-history
+            // shape). Strict APIs (deepseek, z.ai) reject tool_result inside
+            // an assistant message — split them into the following user
+            // message, mirroring the role:"tool" merge above. Results whose
+            // tool_use_id has no matching tool_use in this batch are dropped:
+            // they have no valid wire position.
+            if (m.role === "assistant" && m.blocks.some((b) => b.type === "tool_result")) {
+              const toolUseIds = new Set(
+                m.blocks.filter((b) => b.type === "tool_use").map((b) => b.id),
+              );
+              const toolResults = m.blocks
+                .filter(
+                  (b) =>
+                    b.type === "tool_result" &&
+                    b.tool_use_id !== undefined &&
+                    toolUseIds.has(b.tool_use_id),
+                )
+                .map(toWireBlock);
+              const assistantBlocks = m.blocks
+                .filter((b) => b.type !== "tool_result")
+                .map(toWireBlock);
+              if (assistantBlocks.length > 0) {
+                wireMessages.push({ role: "assistant", content: assistantBlocks });
+              }
+              if (toolResults.length > 0) {
+                wireMessages.push({ role: "user", content: toolResults });
+              }
+            } else {
+              wireMessages.push({ role: m.role, content: m.blocks.map(toWireBlock) });
+            }
           } else {
             wireMessages.push({ role: m.role, content: m.text ?? "" });
           }

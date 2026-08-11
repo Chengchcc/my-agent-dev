@@ -431,4 +431,110 @@ describe("Provider contract", () => {
       input_schema: {},
     });
   });
+
+  test("anthropic moves assistant tool_result blocks into a user role message", async () => {
+    const provider = anthropicProvider({ apiKey: "test-key" });
+    const model = provider.getModels()[0]!;
+    let sentBody: Record<string, unknown> | null = null;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      sentBody = JSON.parse(String(init?.body));
+      return new Response("data: [DONE]\n", {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }) as unknown as typeof fetch;
+    try {
+      await drain(
+        provider.stream(
+          model,
+          [
+            { role: "user", text: "prior request" },
+            {
+              role: "assistant",
+              text: "final answer",
+              blocks: [
+                { type: "tool_use", id: "t1", name: "read", input: { path: "a.ts" } },
+                { type: "tool_result", tool_use_id: "t1", content: "ok" },
+              ],
+            },
+            { role: "user", text: "new request" },
+          ],
+          { apiKey: "test-key" },
+        ),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const messages = (sentBody ?? {}) as {
+      messages: Array<{
+        role: string;
+        content: Array<{
+          type: string;
+          text?: string;
+          tool_use_id?: string;
+          content?: string;
+          id?: string;
+          name?: string;
+          input?: unknown;
+        }>;
+      }>;
+    };
+    expect(messages.messages).toHaveLength(4);
+    expect(messages.messages[1]?.role).toBe("assistant");
+    expect(messages.messages[1]?.content).toEqual([
+      { type: "tool_use", id: "t1", name: "read", input: { path: "a.ts" } },
+    ]);
+    expect(messages.messages[2]?.role).toBe("user");
+    expect(messages.messages[2]?.content).toEqual([
+      { type: "tool_result", tool_use_id: "t1", content: "ok" },
+    ]);
+    expect(messages.messages[3]?.role).toBe("user");
+  });
+
+  test("anthropic drops tool_result blocks with no matching tool_use id", async () => {
+    const provider = anthropicProvider({ apiKey: "test-key" });
+    const model = provider.getModels()[0]!;
+    let sentBody: Record<string, unknown> | null = null;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      sentBody = JSON.parse(String(init?.body));
+      return new Response("data: [DONE]\n", {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }) as unknown as typeof fetch;
+    try {
+      await drain(
+        provider.stream(
+          model,
+          [
+            {
+              role: "assistant",
+              text: "answer",
+              blocks: [
+                { type: "tool_use", id: "t1", name: "read", input: { path: "a.ts" } },
+                { type: "tool_result", tool_use_id: "t1", content: "ok" },
+                { type: "tool_result", tool_use_id: "t2", content: "orphan" },
+              ],
+            },
+          ],
+          { apiKey: "test-key" },
+        ),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const messages = (sentBody ?? {}) as {
+      messages: Array<{
+        role: string;
+        content: Array<{ type: string; tool_use_id?: string; content?: string }>;
+      }>;
+    };
+    expect(messages.messages).toHaveLength(2);
+    expect(messages.messages[1]?.role).toBe("user");
+    expect(messages.messages[1]?.content).toEqual([
+      { type: "tool_result", tool_use_id: "t1", content: "ok" },
+    ]);
+  });
 });
