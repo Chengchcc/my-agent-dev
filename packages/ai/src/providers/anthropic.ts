@@ -63,7 +63,9 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
             continue;
           }
 
-          // user / assistant: map blocks to wire content.
+          // user / assistant: map blocks to wire content. The input is
+          // canonical (ADR 0017): assistant never carries tool_result —
+          // results arrive as separate `role:"tool"` messages merged above.
           if (m.blocks && m.blocks.length > 0) {
             const toWireBlock = (b: (typeof m.blocks)[number]) => {
               if (b.type === "text") return { type: "text", text: b.text };
@@ -77,36 +79,7 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
                 };
               return { type: "text", text: "" };
             };
-            // Assistant messages may carry tool_result blocks (run-history
-            // shape). Strict APIs (deepseek, z.ai) reject tool_result inside
-            // an assistant message — split them into the following user
-            // message, mirroring the role:"tool" merge above. Results whose
-            // tool_use_id has no matching tool_use in this batch are dropped:
-            // they have no valid wire position.
-            if (m.role === "assistant" && m.blocks.some((b) => b.type === "tool_result")) {
-              const toolUseIds = new Set(
-                m.blocks.filter((b) => b.type === "tool_use").map((b) => b.id),
-              );
-              const toolResults = m.blocks
-                .filter(
-                  (b) =>
-                    b.type === "tool_result" &&
-                    b.tool_use_id !== undefined &&
-                    toolUseIds.has(b.tool_use_id),
-                )
-                .map(toWireBlock);
-              const assistantBlocks = m.blocks
-                .filter((b) => b.type !== "tool_result")
-                .map(toWireBlock);
-              if (assistantBlocks.length > 0) {
-                wireMessages.push({ role: "assistant", content: assistantBlocks });
-              }
-              if (toolResults.length > 0) {
-                wireMessages.push({ role: "user", content: toolResults });
-              }
-            } else {
-              wireMessages.push({ role: m.role, content: m.blocks.map(toWireBlock) });
-            }
+            wireMessages.push({ role: m.role, content: m.blocks.map(toWireBlock) });
           } else {
             wireMessages.push({ role: m.role, content: m.text ?? "" });
           }
