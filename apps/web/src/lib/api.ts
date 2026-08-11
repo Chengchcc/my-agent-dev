@@ -267,9 +267,7 @@ export const api = {
     unwrap(client.api.agents({ id: agentId })["mcp-servers"]({ serverId }).delete()),
   // Memory
   getAgentMemory: (agentId: string) =>
-    fetch(`/api/bff/agents/${agentId}/memory`, { credentials: "include" }).then((r) =>
-      r.json(),
-    ),
+    fetch(`/api/bff/agents/${agentId}/memory`, { credentials: "include" }).then((r) => r.json()),
   // Relationships (direct fetch - conditional routes not visible to Eden)
   listAgentRelationships: async (agentId: string) => {
     const resp = await fetch(`/api/bff/agents/${agentId}/relationships`, {

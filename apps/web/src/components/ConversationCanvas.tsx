@@ -165,7 +165,7 @@ export function ConversationCanvas({
       }, 2000);
       return () => clearTimeout(timeout);
     }
-  }, [anchorSeq, items.length]);
+  }, [anchorSeq]);
 
   // Resolve the primary agent for header display (first agent in roster)
   const primaryAgent = useMemo(() => {

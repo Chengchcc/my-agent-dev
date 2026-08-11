@@ -1,5 +1,6 @@
 "use client";
-
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIcon,
@@ -65,6 +66,13 @@ function NavContent() {
   );
   const deleteConversation = useDeleteConversation();
   const createConversation = useCreateConversation();
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: chatConversations.length,
+    getScrollElement: () => chatScrollRef.current,
+    estimateSize: () => 36,
+    overscan: 5,
+  });
 
   function closeMobile() {
     setOpenMobile(false);
@@ -147,61 +155,83 @@ function NavContent() {
           </Button>
         </SidebarGroupLabel>
         <SidebarGroupContent>
-          <SidebarMenu>
-            {chatConversations.length === 0 && (
-              <p className="text-xs text-muted-foreground px-2">No conversations yet</p>
-            )}
-            {chatConversations.map((conv) => {
-              const title = conv.title ?? `Conversation ${conv.conversationId.slice(0, 8)}`;
-              return (
-                <SidebarMenuItem key={conv.conversationId}>
-                  <SidebarMenuButton
-                    isActive={pathname === `/chat/${conv.conversationId}`}
-                    tooltip={title}
-                    onClick={() => {
-                      closeMobile();
-                      router.push(`/chat/${conv.conversationId}`);
-                    }}
-                  >
-                    <MessageSquareIcon />
-                    <span className="truncate">{title}</span>
-                  </SidebarMenuButton>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={<SidebarMenuAction showOnHover aria-label="Conversation actions" />}
+          {chatConversations.length === 0 ? (
+            <p className="text-xs text-muted-foreground px-2">No conversations yet</p>
+          ) : (
+            <div ref={chatScrollRef} className="max-h-[min(44vh,600px)] overflow-y-auto">
+              <div
+                style={{ height: virtualizer.getTotalSize(), position: "relative", width: "100%" }}
+              >
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const conv = chatConversations[virtualRow.index]!;
+                  const title = conv.title ?? `Conversation ${conv.conversationId.slice(0, 8)}`;
+                  return (
+                    <div
+                      key={conv.conversationId}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
                     >
-                      <MoreHorizontalIcon />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent side="right" align="start" className="w-44">
-                      <DropdownMenuItem
-                        variant="destructive"
-                        disabled={deleteConversation.isPending}
-                        onClick={() => {
-                          if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
-                          deleteConversation.mutate(conv.conversationId, {
-                            onSuccess: () => {
-                              queryClient.invalidateQueries({ queryKey: conversationKeys.all });
-                              if (pathname === `/chat/${conv.conversationId}`) {
-                                router.push("/work");
-                              }
-                            },
-                            onError: (err) => {
-                              toast.error("Failed to delete conversation", {
-                                description: err instanceof Error ? err.message : "Unknown error",
-                              });
-                            },
-                          });
-                        }}
-                      >
-                        <Trash2Icon />
-                        Delete conversation
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          isActive={pathname === `/chat/${conv.conversationId}`}
+                          tooltip={title}
+                          onClick={() => {
+                            closeMobile();
+                            router.push(`/chat/${conv.conversationId}`);
+                          }}
+                        >
+                          <MessageSquareIcon />
+                          <span className="truncate">{title}</span>
+                        </SidebarMenuButton>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <SidebarMenuAction showOnHover aria-label="Conversation actions" />
+                            }
+                          >
+                            <MoreHorizontalIcon />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent side="right" align="start" className="w-44">
+                            <DropdownMenuItem
+                              variant="destructive"
+                              disabled={deleteConversation.isPending}
+                              onClick={() => {
+                                if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+                                deleteConversation.mutate(conv.conversationId, {
+                                  onSuccess: () => {
+                                    queryClient.invalidateQueries({
+                                      queryKey: conversationKeys.all,
+                                    });
+                                    if (pathname === `/chat/${conv.conversationId}`) {
+                                      router.push("/work");
+                                    }
+                                  },
+                                  onError: (err) => {
+                                    toast.error("Failed to delete conversation", {
+                                      description:
+                                        err instanceof Error ? err.message : "Unknown error",
+                                    });
+                                  },
+                                });
+                              }}
+                            >
+                              <Trash2Icon />
+                              Delete conversation
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </SidebarMenuItem>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </SidebarGroupContent>
       </SidebarGroup>
 

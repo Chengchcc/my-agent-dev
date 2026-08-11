@@ -1,0 +1,12 @@
+import { conversationEvents, createSseEncoder } from "@my-agent-team/api-contract";
+import { extractText } from "@my-agent-team/message";
+import { Elysia, t } from "elysia";
+import { sseResponse } from "../../http/response.js";
+import type { GoalStateStore } from "./goal-state.js";
+import type { ConversationService } from "./service.js";
+
+export function conversationRoutes(
+  svc: ConversationService,
+  idGen: () => string,
+  goalStore: GoalStateStore,
+) {

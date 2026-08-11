@@ -3,8 +3,8 @@
 import { Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
 import { useRecentConversations } from "@/features/conversations/hooks";
+import { api } from "@/lib/api";
 
 interface SearchResult {
   conversationId: string;

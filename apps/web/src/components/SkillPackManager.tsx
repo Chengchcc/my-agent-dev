@@ -148,26 +148,19 @@ export function SkillPackManager() {
         </Button>
       </div>
 
-      {showInstall && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex justify-between items-center">
-              Install New Pack
-              <Button variant="ghost" size="sm" onClick={() => setShowInstall(false)}>
-                ✕
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <InstallPackForm
-              onDone={() => {
-                setShowInstall(false);
-                refetch();
-              }}
-            />
-          </CardContent>
-        </Card>
-      )}
+      <Sheet open={showInstall} onOpenChange={setShowInstall}>
+        <SheetContent className="w-[500px] sm:max-w-[600px] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Install Skill Pack</SheetTitle>
+          </SheetHeader>
+          <InstallPackForm
+            onDone={() => {
+              setShowInstall(false);
+              refetch();
+            }}
+          />
+        </SheetContent>
+      </Sheet>
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
