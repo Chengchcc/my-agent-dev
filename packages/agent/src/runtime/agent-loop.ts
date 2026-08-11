@@ -16,6 +16,7 @@ import type { PluginRuntime } from "./plugin-runtime.js";
 import { renderLoopMeta } from "./prompt.js";
 import { retryStream } from "./retry.js";
 import { buildTitleContext, generateTitle } from "./title.js";
+import { type PruneConfig, pruneOldToolResults } from "./tool-pruning.js";
 
 export type { AgentLoopListener, CodingAgentLoopEvent };
 
@@ -85,6 +86,11 @@ export interface CodingAgentSessionOptions {
    *  exceed limit * triggerRatio before a model turn, compact once. Leave
    *  undefined to disable proactive compaction. */
   readonly contextBudget?: ContextBudget;
+  /** Tool-output pruning config (pi's pruneToolOutputs). When set, old tool
+   *  results outside the protect window are truncated to a summary before
+   *  each model call — a lighter touch than full compaction. Protected
+   *  tools (skills, plans) are never pruned. */
+  readonly pruneConfig?: Partial<PruneConfig>;
 }
 
 /** Terminal result of a loop. `messages` is the canonical message sequence
@@ -345,8 +351,15 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
             }
           }
 
+          // Prune old tool-result content (pi's pruneToolOutputs): a lighter
+          // pass than compaction. Old results outside the protect window are
+          // truncated to a summary; protected tools are never pruned.
+          const modelMessages0 = opts.pruneConfig
+            ? pruneOldToolResults(messages, opts.pruneConfig).messages
+            : messages;
+
           // beforeModel hook.
-          const transformed = [...messages];
+          const transformed = [...modelMessages0];
           for (const p of opts.plugins) {
             if (p.hooks?.beforeModel) {
               const result = p.hooks.beforeModel(transformed, rt);
