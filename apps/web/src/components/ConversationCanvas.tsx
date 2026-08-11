@@ -128,7 +128,9 @@ export function ConversationCanvas({
         runId,
         text: t.text,
         sender,
-        tools: Object.values(transientTools).filter((tool) => tool.runId === runId),
+        tools: Object.values(transientTools).filter(
+          (tool) => tool.runId === runId && tool.name !== "todo_write",
+        ),
       });
     }
     return bubbles;
@@ -435,15 +437,34 @@ export function ConversationCanvas({
       <div className="shrink-0 border-t border-[var(--hairline)]">
         <div className="flex items-center gap-2 px-6 pt-3">
           <Button
+            type="button"
+            variant="ghost"
+            size="sm"
             onClick={toggleTriggerMode}
-            className="text-[10px] tracking-[0.1em] uppercase px-2 py-0.5 rounded border border-[var(--hairline)] text-[var(--mute)] hover:text-[var(--body)] hover:border-[var(--primary)] transition-colors"
+            aria-pressed={triggerMode === "auto"}
+            className="
+              h-7 shrink-0 gap-1.5 rounded-md px-2
+              border border-[var(--hairline)]
+              bg-transparent
+              text-[10px] font-medium tracking-[0.08em]
+              text-[var(--mute)]
+              hover:bg-[var(--canvas-soft)]
+              hover:text-[var(--ink)]
+              aria-pressed:bg-[var(--canvas-soft)]
+              aria-pressed:text-[var(--primary)]
+            "
             title={
               triggerMode === "auto"
                 ? "Auto: messages sent to all agents"
                 : "Mention: use @ to address specific agents"
             }
           >
-            {triggerMode === "auto" ? "Auto" : "@ Mention"}
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                triggerMode === "auto" ? "bg-[var(--primary)]" : "bg-[var(--hairline-soft)]"
+              }`}
+            />
+            {triggerMode === "auto" ? "AUTO" : "@ MENTION"}
           </Button>
           {/* Connection status */}
           {streamConn !== "open" && (

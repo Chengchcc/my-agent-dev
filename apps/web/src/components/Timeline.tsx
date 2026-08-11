@@ -15,6 +15,7 @@ import { groupTurns, isTurnStart, type TurnSegment } from "@/lib/conversation-re
 import { renderContentBlocks } from "@/lib/render-blocks";
 import { extractText } from "@/lib/timeline";
 import type { LiveToolCall } from "@/lib/transient-reducer";
+import { cn } from "@/lib/utils";
 import { LiveToolStep } from "./LiveToolStep";
 import { MessageBubble } from "./MessageBubble";
 import { ReasoningTrace } from "./ReasoningTrace";
@@ -122,13 +123,21 @@ export function Timeline({
 
   const scrollToAnchor = useCallback(
     (elementId: string) => {
-      const container = scrollContainerRef?.current;
       const el = document.getElementById(elementId);
-      if (!container || !el) return;
-      const containerRect = container.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      const offset = elRect.top - containerRect.top + container.scrollTop - 60;
-      container.scrollTo({ top: offset, behavior: "smooth" });
+      if (!el) return;
+      const container = scrollContainerRef?.current;
+      if (container) {
+        const containerRect = container.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const HEADER_OFFSET = 72;
+        const offset = Math.max(
+          0,
+          elRect.top - containerRect.top + container.scrollTop - HEADER_OFFSET,
+        );
+        container.scrollTo({ top: offset, behavior: "smooth" });
+      } else {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     },
     [scrollContainerRef],
   );
@@ -163,18 +172,21 @@ export function Timeline({
     <div className="flex gap-0">
       {/* Anchor nav — right side, subtle */}
       {anchors.length > 0 && (
-        <div className="shrink-0 w-7 relative order-2">
-          <div className="sticky top-20 flex flex-col items-center gap-0.5 py-2">
+        <div className="relative z-10 order-2 w-8 shrink-0">
+          <div className="sticky top-20 z-10 flex flex-col items-center gap-1 py-2">
             {anchors.map((a) => (
               <Button
                 key={a.id}
+                type="button"
+                variant="ghost"
+                size="icon-xs"
                 onClick={() => scrollToAnchor(a.elementId)}
-                className={`text-[10px] leading-none w-6 h-5 flex items-center justify-center rounded-sm transition-colors font-mono bg-transparent
-                  ${
-                    a.elementId === activeAnchor
-                      ? "text-[var(--ink-strong)] bg-[var(--primary)]"
-                      : "text-[var(--hairline)] hover:text-[var(--mute)] hover:bg-[var(--canvas-soft)]"
-                  }`}
+                className={cn(
+                  "pointer-events-auto rounded-sm p-0 font-mono text-[10px]",
+                  "text-[var(--mute)] hover:bg-[var(--canvas-soft)] hover:text-[var(--ink)]",
+                  a.elementId === activeAnchor &&
+                    "bg-[var(--primary)] text-[var(--ink-strong)] hover:bg-[var(--primary)]",
+                )}
                 title={`Turn ${a.seq}`}
               >
                 {a.seq}
@@ -216,20 +228,16 @@ export function Timeline({
             const canAct = m.seq >= 0 && !isUndone;
 
             return (
-              <div key={m.id}>
-                {anchorId &&
-                  turnNum !== undefined &&
-                  (isFirst ? (
-                    <div id={anchorId} className="scroll-mt-16" />
-                  ) : (
-                    <div id={anchorId} className="flex items-center gap-3 py-3">
-                      <div className="flex-1 h-px bg-[var(--hairline)]" />
-                      <div className="flex items-center gap-1 text-[10px] text-[var(--mute)] shrink-0">
-                        <span>#{turnNum}</span>
-                      </div>
-                      <div className="flex-1 h-px bg-[var(--hairline)]" />
+              <div key={m.id} id={anchorId} className={anchorId ? "scroll-mt-16" : undefined}>
+                {anchorId && turnNum !== undefined && !isFirst && (
+                  <div className="flex items-center gap-3 py-3">
+                    <div className="flex-1 h-px bg-[var(--hairline)]" />
+                    <div className="flex items-center gap-1 text-[10px] text-[var(--mute)] shrink-0">
+                      <span>#{turnNum}</span>
                     </div>
-                  ))}
+                    <div className="flex-1 h-px bg-[var(--hairline)]" />
+                  </div>
+                )}
                 <div style={virt} className={`group relative ${isUndone ? "opacity-50" : ""}`}>
                   <MessageActions conversationId={conversationId} item={m} canAct={canAct}>
                     {extractText(m.content) && (
@@ -243,7 +251,9 @@ export function Timeline({
                         runStatus={m.content.runStatus}
                       />
                     )}
-                    {renderContentBlocks(m.content)}
+                    {renderContentBlocks(m.content, {
+                      hiddenToolNames: new Set(["todo_write"]),
+                    })}
                   </MessageActions>
                   {isUndone && (
                     <div className="text-[10px] text-[var(--mute)] italic mt-0.5">↳ undone</div>

@@ -19,7 +19,7 @@ export function LiveToolStep({ tool }: { tool: LiveToolCall }) {
     tool.state === "running" ? "running" : tool.state === "error" ? "error" : "done";
 
   return (
-    <div className="mt-1.5 rounded-md border border-[var(--hairline)] bg-[var(--canvas-soft)] px-2 py-1.5">
+    <div className="mt-1 rounded-md border border-[var(--hairline)] bg-[var(--canvas-soft)] px-2 py-1">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

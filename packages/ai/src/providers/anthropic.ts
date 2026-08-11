@@ -1,6 +1,7 @@
 import type { AIMessageChunk } from "@my-agent-team/core";
 import { normalizeProviderError, type Provider, type ProviderAuth } from "../types.js";
 import { ANTHROPIC_MODELS } from "./anthropic-models.js";
+import type { Message } from "@my-agent-team/message";
 
 export function anthropicProvider(auth: ProviderAuth = {}): Provider {
   const baseUrl = auth.baseUrl ?? "https://api.anthropic.com/v1";
@@ -11,7 +12,6 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
     baseUrl,
     getModels: () => ANTHROPIC_MODELS,
     async *stream(model, messages, opts) {
-      // Credentials resolved per request: opts override provider defaults.
       const apiKey =
         opts?.apiKey ??
         auth.apiKey ??
@@ -30,37 +30,70 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
         else if (auth.headers) Object.assign(headers, auth.headers);
 
         const systemMsg = messages.find((m) => m.role === "system");
+
+        // Convert messages to Anthropic wire format.
+        // Pattern from pi (packages/ai/src/api/anthropic-messages.ts):
+        // look-ahead to merge consecutive `role: "tool"` messages into a
+        // single `user(tool_result*)` message so strict validators (z.ai,
+        // deepseek) that require all results in the message right after the
+        // assistant(tool_use) batch accept the request.
+        const wireMessages: Array<{ role: string; content: unknown }> = [];
+        for (let i = 0; i < messages.length; i++) {
+          const m = messages[i]!;
+          if (m.role === "system") continue;
+
+          if (m.role === "tool") {
+            // Collect all consecutive tool messages into one user message.
+            const toolResults: Array<Record<string, unknown>> = [];
+            let j = i;
+            for (; j < messages.length; j++) {
+              const tm = messages[j]!;
+              if (tm.role !== "tool") break;
+              for (const b of tm.blocks ?? []) {
+                if (b.type === "tool_result") {
+                  toolResults.push({
+                    type: "tool_result",
+                    tool_use_id: b.tool_use_id,
+                    content: b.content,
+                  });
+                }
+              }
+            }
+            i = j - 1; // skip processed
+            wireMessages.push({ role: "user", content: toolResults });
+            continue;
+          }
+
+          // user / assistant: map blocks to wire content.
+          if (m.blocks && m.blocks.length > 0) {
+            const wireRole =
+              m.role === "assistant" && m.blocks.some((b) => b.type === "tool_result")
+                ? "assistant"
+                : m.role;
+            wireMessages.push({
+              role: wireRole,
+              content: m.blocks.map((b) => {
+                if (b.type === "text") return { type: "text", text: b.text };
+                if (b.type === "tool_use")
+                  return { type: "tool_use", id: b.id, name: b.name, input: b.input };
+                if (b.type === "tool_result")
+                  return {
+                    type: "tool_result",
+                    tool_use_id: b.tool_use_id,
+                    content: b.content,
+                  };
+                return { type: "text", text: "" };
+              }),
+            });
+          } else {
+            wireMessages.push({ role: m.role, content: m.text ?? "" });
+          }
+        }
+
         const body = {
           model: model.id,
           max_tokens: model.maxTokens,
-          messages: messages
-            .filter((m) => m.role !== "system")
-            .map((m) => {
-              if (m.blocks && m.blocks.length > 0) {
-                // Anthropic Messages API accepts only user/assistant top-level
-                // roles; tool_result blocks live inside a user message.
-                const wireRole =
-                  m.role === "tool" && m.blocks.some((b) => b.type === "tool_result")
-                    ? "user"
-                    : m.role;
-                return {
-                  role: wireRole,
-                  content: m.blocks.map((b) => {
-                    if (b.type === "text") return { type: "text", text: b.text };
-                    if (b.type === "tool_use")
-                      return { type: "tool_use", id: b.id, name: b.name, input: b.input };
-                    if (b.type === "tool_result")
-                      return {
-                        type: "tool_result",
-                        tool_use_id: b.tool_use_id,
-                        content: b.content,
-                      };
-                    return { type: "text", text: "" };
-                  }),
-                };
-              }
-              return { role: m.role, content: m.text ?? "" };
-            }),
+          messages: wireMessages,
           system: systemMsg?.text,
           stream: true,
           tools: opts?.tools?.map((t) => ({
@@ -85,7 +118,6 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
         const reader = res.body.getReader();
         const dec = new TextDecoder();
         let buf = "";
-        // Track content block index → tool_use ID for input_json_delta pairing
         const blockIdByIndex = new Map<number, string>();
         while (true) {
           const { done, value } = await reader.read();

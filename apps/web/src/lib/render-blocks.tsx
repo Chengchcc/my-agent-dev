@@ -44,7 +44,10 @@ export function collectToolResults(
   return into;
 }
 
-export function renderContentBlocks(blocks: unknown[] | undefined | Message) {
+export function renderContentBlocks(
+  blocks: unknown[] | undefined | Message,
+  opts?: { hiddenToolNames?: ReadonlySet<string> },
+) {
   // Unwrap Message object to its blocks array
   const resolved: unknown[] | undefined = Array.isArray(blocks)
     ? blocks
@@ -53,11 +56,17 @@ export function renderContentBlocks(blocks: unknown[] | undefined | Message) {
       : undefined;
   if (!Array.isArray(resolved)) return null;
   const typed = resolved as BlockLike[];
+  const hidden = opts?.hiddenToolNames;
 
   const toolResults = collectToolResults(typed);
 
   return typed.map((block) => {
-    if (block.type === "tool_use" && block.id && typeof block.name === "string") {
+    if (
+      block.type === "tool_use" &&
+      block.id &&
+      typeof block.name === "string" &&
+      !hidden?.has(block.name)
+    ) {
       const result = toolResults.get(block.id);
       return (
         <div key={block.id}>

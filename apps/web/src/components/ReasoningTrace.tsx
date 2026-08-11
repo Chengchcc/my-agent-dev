@@ -8,6 +8,13 @@ import { MessageBubble } from "./MessageBubble";
 import { ToolStep } from "./ToolStep";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 
+/** todo_write has its own TodoPanel — never repeat it in the tool trace. */
+const HIDDEN_TOOLS = new Set(["todo_write"]);
+
+function isVisibleToolBlock(b: { type?: string; name?: string }): boolean {
+  return b.type === "tool_use" && !HIDDEN_TOOLS.has(b.name ?? "");
+}
+
 export function ReasoningTrace({
   segment,
   defaultOpen = false,
@@ -29,7 +36,7 @@ export function ReasoningTrace({
     (n, m) =>
       n +
       (Array.isArray(m.content.blocks)
-        ? m.content.blocks.filter((b) => b.type === "tool_use").length
+        ? m.content.blocks.filter((b) => isVisibleToolBlock(b)).length
         : 0),
     0,
   );
@@ -38,7 +45,7 @@ export function ReasoningTrace({
       rounds.flatMap((m) =>
         Array.isArray(m.content.blocks)
           ? m.content.blocks
-              .filter((b) => b.type === "tool_use")
+              .filter((b) => isVisibleToolBlock(b))
               .map((b) => (b as { name?: string }).name ?? "")
           : [],
       ),
@@ -70,7 +77,7 @@ export function ReasoningTrace({
                   <div key={m.id} className="flex flex-col gap-1">
                     {text && <div className="text-[13px] text-[var(--body)]">{text}</div>}
                     {blocks.map((b) =>
-                      b.type === "tool_use" && b.id ? (
+                      b.type === "tool_use" && b.id && !HIDDEN_TOOLS.has(b.name ?? "") ? (
                         <ToolStep
                           key={b.id}
                           name={b.name ?? ""}
@@ -98,7 +105,7 @@ export function ReasoningTrace({
               (typeof conclusion.content === "string" ? conclusion.content : "")
             }
           />
-          {renderContentBlocks(conclusion.content)}
+          {renderContentBlocks(conclusion.content, { hiddenToolNames: HIDDEN_TOOLS })}
         </div>
       )}
     </div>

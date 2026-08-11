@@ -20,23 +20,32 @@ export function ToolStep({
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger
           render={
-            <Button className="flex items-center gap-1.5 text-left hover:text-[var(--ink)] transition-colors text-[var(--mute)]" />
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 px-2 py-1 h-auto
+                text-left text-[var(--mute)]
+                hover:bg-[var(--canvas-soft)]
+                hover:text-[var(--ink)]
+                transition-colors"
+            />
           }
         >
-          <span className="text-[var(--primary)]">→</span>
-          <span className="text-[var(--primary)]">{name}</span>
-          <span className="text-[var(--hairline-soft)]">{open ? "▲" : "▼"}</span>
+          <span className="shrink-0 text-[var(--primary)]">→</span>
+          <span className="truncate text-[var(--primary)]">{name}</span>
+          <span className="ml-auto shrink-0 text-[10px] text-[var(--mute)]">
+            {open ? "▲ collapse" : "▼ expand"}
+          </span>
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="pl-4 mt-1 flex flex-col gap-1">
-            <pre className="text-[var(--canvas-text-soft)] bg-[var(--canvas-soft)] rounded p-2 overflow-x-auto max-h-40">
+            <pre className="max-h-40 overflow-x-auto whitespace-pre-wrap rounded bg-[var(--canvas-soft)] p-2 text-[12px] leading-relaxed text-[var(--canvas-text-soft)]">
               {JSON.stringify(input, null, 2)}
             </pre>
             {result && (
               <pre
-                className={`rounded p-2 overflow-x-auto max-h-40 ${
-                  result.isError ? "text-red-400" : "text-[var(--body)]"
-                } bg-[var(--canvas-soft)]`}
+                className={`max-h-40 overflow-x-auto whitespace-pre-wrap rounded bg-[var(--canvas-soft)] p-2 text-[12px] leading-relaxed ${
+                  result.isError ? "text-red-400" : "text-[var(--canvas-text-soft)]"
+                }`}
               >
                 {"⤷ "}
                 {normalizeToolResultContent(result.content)}
