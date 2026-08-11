@@ -120,6 +120,7 @@ export function ConversationCanvas({
     const bubbles: Array<{
       runId: string;
       text: string;
+      thinking: string;
       sender: SenderRef;
       tools: LiveToolCall[];
     }> = [];
@@ -129,6 +130,7 @@ export function ConversationCanvas({
       bubbles.push({
         runId,
         text: t.text,
+        thinking: t.thinking,
         sender,
         tools: Object.values(transientTools).filter(
           (tool) => tool.runId === runId && tool.name !== "todo_write",

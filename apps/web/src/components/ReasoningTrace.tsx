@@ -75,16 +75,29 @@ export function ReasoningTrace({
                 return (
                   <div key={m.id} className="flex flex-col gap-0.5">
                     {text && <div className="px-1 py-0.5 text-[12px] text-(--body)">{text}</div>}
-                    {blocks.map((b) =>
-                      b.type === "tool_use" && b.id && !HIDDEN_TOOLS.has(b.name ?? "") ? (
-                        <ToolStep
-                          key={b.id}
-                          name={b.name ?? ""}
-                          input={b.input}
-                          result={resultMap.get(b.id)}
-                        />
-                      ) : null,
-                    )}
+                    {blocks.map((b, bi) => {
+                      if (b.type === "thinking") {
+                        return (
+                          <div
+                            key={`${m.id}:think:${bi}`}
+                            className="px-1 py-0.5 text-[12px] italic text-(--mute)"
+                          >
+                            {b.text}
+                          </div>
+                        );
+                      }
+                      if (b.type === "tool_use" && b.id && !HIDDEN_TOOLS.has(b.name ?? "")) {
+                        return (
+                          <ToolStep
+                            key={b.id}
+                            name={b.name ?? ""}
+                            input={b.input}
+                            result={resultMap.get(b.id)}
+                          />
+                        );
+                      }
+                      return null;
+                    })}
                   </div>
                 );
               })}

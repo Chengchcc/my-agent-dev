@@ -16,6 +16,7 @@ import {
   type SenderRef,
 } from "@/lib/conversation-reducer";
 import {
+  appendThinking,
   appendTransient,
   clearRunRecaps,
   clearRunTodos,
@@ -66,7 +67,7 @@ export function useConversation(
    *  Timeline). Never persisted; each entry is replaced by the canonical
    *  final Message (`run:<runId>:assistant:0`) or dropped on failure. */
   const [transients, setTransients] = useState<
-    Record<string, { text: string; agentMemberId: string }>
+    Record<string, { text: string; thinking: string; agentMemberId: string }>
   >({});
   const runStreamsRef = useRef(new Map<string, EventSource>());
   const transientsRef = useRef(transients);
@@ -169,6 +170,13 @@ export function useConversation(
   const upsertTransient = useCallback((runId: string, agentMemberId: string, text: string) => {
     setTransients((prev) => {
       const next = appendTransient(prev, runId, agentMemberId, text);
+      transientsRef.current = next;
+      return next;
+    });
+  }, []);
+  const upsertThinking = useCallback((runId: string, agentMemberId: string, text: string) => {
+    setTransients((prev) => {
+      const next = appendThinking(prev, runId, agentMemberId, text);
       transientsRef.current = next;
       return next;
     });
@@ -382,6 +390,14 @@ export function useConversation(
           /* malformed - ignore */
         }
       });
+      es.addEventListener("thinking_delta", (e) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as { text?: string };
+          if (ev.text) upsertThinking(runId, agentMemberId, ev.text);
+        } catch {
+          /* malformed - ignore */
+        }
+      });
       const toolStarted = (kind: "native" | "product") => (e: Event) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as {
@@ -450,6 +466,7 @@ export function useConversation(
       upsertRunRecap,
       upsertToolState,
       upsertTransient,
+      upsertThinking,
     ],
   );
 

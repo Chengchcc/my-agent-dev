@@ -4,6 +4,9 @@
 
 export interface TransientRun {
   text: string;
+  /** Streaming model thinking (internal monologue), accumulated per run.
+   *  Rendered inside the running trace; never part of the text bubble. */
+  thinking: string;
   agentMemberId: string;
 }
 
@@ -18,7 +21,27 @@ export function appendTransient(
   delta: string,
 ): TransientMap {
   const next = { ...state };
-  next[runId] = { text: `${state[runId]?.text ?? ""}${delta}`, agentMemberId };
+  next[runId] = {
+    text: `${state[runId]?.text ?? ""}${delta}`,
+    thinking: state[runId]?.thinking ?? "",
+    agentMemberId,
+  };
+  return next;
+}
+
+/** Append a thinking delta to runId (creating the entry on first chunk). */
+export function appendThinking(
+  state: TransientMap,
+  runId: string,
+  agentMemberId: string,
+  delta: string,
+): TransientMap {
+  const next = { ...state };
+  next[runId] = {
+    text: state[runId]?.text ?? "",
+    thinking: `${state[runId]?.thinking ?? ""}${delta}`,
+    agentMemberId,
+  };
   return next;
 }
 

@@ -41,6 +41,7 @@ const formSchema = z.object({
   name: z.string().trim().min(1, "Agent name is required"),
   model: z.string().trim().min(1, "Model is required"),
   baseURL: z.string().trim().default(""),
+  reasoningEffort: z.enum(["", "none", "low", "high", "max"]).default(""),
   permissionMode: z.enum(["ask", "auto", "deny"]).default("ask"),
   maxSteps: z.string().trim().default(""),
   enableLark: z.boolean().default(false),
@@ -92,6 +93,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
       // provider model that may not exist in the runtime catalog.
       model: editAgent?.modelName ?? "",
       baseURL: editAgent?.modelBaseUrl ?? "",
+      reasoningEffort: editAgent?.reasoningEffort ?? "",
       permissionMode: editAgent?.permissionMode ?? "ask",
       maxSteps: editAgent?.maxSteps?.toString() ?? "",
       enableLark: editAgent?.lark?.enabled ?? false,
@@ -110,6 +112,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
           ? editAgent.modelName
           : `anthropic/${editAgent.modelName}`,
         baseURL: editAgent.modelBaseUrl ?? "",
+        reasoningEffort: editAgent.reasoningEffort ?? "",
         permissionMode: editAgent.permissionMode,
         maxSteps: editAgent.maxSteps?.toString() ?? "",
         enableLark: editAgent.lark?.enabled ?? false,
@@ -173,6 +176,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
       },
       permissionMode: values.permissionMode,
       ...(values.maxSteps ? { maxSteps: parseInt(values.maxSteps, 10) } : {}),
+      ...(values.reasoningEffort ? { reasoningEffort: values.reasoningEffort } : {}),
     };
     if (values.enableLark)
       body.lark = {
@@ -396,6 +400,32 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                             <SelectItem value="ask">Ask (approval)</SelectItem>
                             <SelectItem value="auto">Auto</SelectItem>
                             <SelectItem value="deny">Deny</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="reasoningEffort"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className={`${overlineClass} mb-1.5 block`}>
+                          Reasoning Effort
+                        </FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger className={fieldClass}>
+                              <SelectValue placeholder="Provider default" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="">Provider default</SelectItem>
+                            <SelectItem value="none">None (thinking off)</SelectItem>
+                            <SelectItem value="low">Low</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="max">Max</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />

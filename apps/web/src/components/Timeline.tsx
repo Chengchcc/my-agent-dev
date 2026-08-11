@@ -32,6 +32,7 @@ interface TimelineProps {
     | Array<{
         runId: string;
         text: string;
+        thinking: string;
         sender: SenderRef;
         tools?: readonly LiveToolCall[];
       }>
@@ -57,11 +58,19 @@ function SystemNotice({ text }: { text: string }) {
 // ── Transient live trace ──
 
 /** Live trace for a streaming run: one `X messages · Y commands` summary
- *  row above the bubble, expanding into the live tool steps in appearance
- *  order. The transient data has no fine-grained text/tool interleaving, so
- *  no interleaving is fabricated — summary on top, tools in order, streaming
- *  text below. */
-function TransientTrace({ msgCount, tools }: { msgCount: number; tools: readonly LiveToolCall[] }) {
+ *  row above the bubble, expanding into the streaming thinking (if any) and
+ *  the live tool steps in appearance order. The transient data has no
+ *  fine-grained text/tool interleaving, so no interleaving is fabricated —
+ *  summary on top, thinking, tools in order, streaming text below. */
+function TransientTrace({
+  msgCount,
+  thinking,
+  tools,
+}: {
+  msgCount: number;
+  thinking: string;
+  tools: readonly LiveToolCall[];
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -79,6 +88,9 @@ function TransientTrace({ msgCount, tools }: { msgCount: number; tools: readonly
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="my-0.5 ml-1.5 flex flex-col gap-0.5 border-l border-(--hairline) py-1 pl-2">
+            {thinking.trim() && (
+              <div className="px-1 py-0.5 text-[12px] italic text-(--mute)">{thinking}</div>
+            )}
             {tools.map((tool) => (
               <LiveToolStep key={tool.callId} tool={tool} />
             ))}
@@ -307,7 +319,9 @@ export function Timeline({
             const text = t.text.trim();
             return (
               <div key={`transient-${t.runId}`} className="group relative">
-                {tools.length > 0 && <TransientTrace msgCount={text ? 1 : 0} tools={tools} />}
+                {tools.length > 0 && (
+                  <TransientTrace msgCount={text ? 1 : 0} thinking={t.thinking} tools={tools} />
+                )}
                 {text ? (
                   <MessageBubble
                     align="left"

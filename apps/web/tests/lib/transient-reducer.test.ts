@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  appendThinking,
   appendTransient,
   clearRunTodos,
   clearRunTools,
@@ -17,8 +18,16 @@ describe("transient reducer — text", () => {
     let s: TransientMap = {};
     s = appendTransient(s, "run-a", "member-a", "hello from A");
     s = appendTransient(s, "run-b", "member-b", "hello from B");
-    expect(s["run-a"]).toEqual({ text: "hello from A", agentMemberId: "member-a" });
-    expect(s["run-b"]).toEqual({ text: "hello from B", agentMemberId: "member-b" });
+    expect(s["run-a"]).toEqual({
+      text: "hello from A",
+      thinking: "",
+      agentMemberId: "member-a",
+    });
+    expect(s["run-b"]).toEqual({
+      text: "hello from B",
+      thinking: "",
+      agentMemberId: "member-b",
+    });
   });
 
   test("A delta + A delta → concatenated into A only", () => {
@@ -37,6 +46,15 @@ describe("transient reducer — text", () => {
     s = removeTransient(s, "run-a");
     expect(s["run-a"]).toBeUndefined();
     expect(s["run-b"]?.text).toBe("B");
+  });
+
+  test("thinking accumulates independently of text", () => {
+    let s: TransientMap = {};
+    s = appendThinking(s, "run-a", "m-a", "think one ");
+    s = appendThinking(s, "run-a", "m-a", "think two");
+    s = appendTransient(s, "run-a", "m-a", "text");
+    expect(s["run-a"]?.thinking).toBe("think one think two");
+    expect(s["run-a"]?.text).toBe("text");
   });
 
   test("failed B removes only B", () => {
