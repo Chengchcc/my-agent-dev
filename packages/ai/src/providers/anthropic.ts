@@ -1,4 +1,5 @@
 import type { AIMessageChunk } from "@my-agent-team/core";
+import type { ContentBlock, Message } from "@my-agent-team/message";
 import {
   normalizeProviderError,
   type Provider,
@@ -22,7 +23,11 @@ import { ANTHROPIC_MODELS } from "./anthropic-models.js";
  *   unchanged with their `signature` (required in tool-use turns); redacted
  *   thinking replays as `redacted_thinking`; endpoints that emit no
  *   signature (DeepSeek) accept a signature-less block.
- * - Messages that map to empty content are skipped — the API rejects them.
+ * - Text is surrogate-sanitized on the way in (pi: lone surrogates in a
+ *   partial message break strict validators); messages that would map to
+ *   empty content are skipped entirely.
+ * - All stop reasons are surfaced (end_turn/tool_use/max_tokens/
+ *   stop_sequence/pause_turn/refusal) so the loop can react to truncation.
  */
 export function anthropicProvider(auth: ProviderAuth = {}): Provider {
   const baseUrl = auth.baseUrl ?? "https://api.anthropic.com/v1";
@@ -71,6 +76,8 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          // TextDecoder with { stream: true } keeps multi-byte sequences
+          // intact across network chunks; the SSE lines below are complete.
           buf += dec.decode(value, { stream: true });
           const lines = buf.split("\n");
           buf = lines.pop() ?? "";
@@ -83,7 +90,7 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
               const p = JSON.parse(data);
               for (const chunk of convertChunks(p, blockIdByIndex)) yield chunk;
             } catch {
-              /* skip */
+              /* skip malformed frames */
             }
           }
         }
@@ -99,7 +106,7 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
 function buildRequest(
   modelId: string,
   maxTokens: number,
-  messages: readonly { role: string; text?: string; blocks?: unknown[] }[],
+  messages: readonly Message[],
   opts?: ProviderStreamOptions,
 ): Record<string, unknown> {
   const systemMsg = messages.find((m) => m.role === "system");
@@ -136,33 +143,35 @@ function buildRequest(
 
 type WireBlock = Record<string, unknown>;
 
-function toWireBlock(b: unknown): WireBlock | null {
-  const block = b as { type?: string };
-  if (block.type === "text") {
-    const text = (block as { text?: string }).text ?? "";
+/** pi: replace lone surrogates so partially-decoded text never breaks
+ *  strict validators. */
+function sanitizeSurrogates(text: string): string {
+  return text.replace(/[\uD800-\uDFFF]/g, "\uFFFD");
+}
+
+function toWireBlock(b: ContentBlock): WireBlock | null {
+  if (b.type === "text") {
+    const text = sanitizeSurrogates(b.text);
     return text.trim().length > 0 ? { type: "text", text } : null;
   }
-  if (block.type === "thinking") {
-    const tb = block as { text?: string; signature?: string; redacted?: boolean };
-    if (tb.redacted) {
+  if (b.type === "thinking") {
+    if (b.redacted) {
       // Safety-redacted reasoning: replay the opaque payload unchanged.
-      return { type: "redacted_thinking", data: tb.signature ?? "" };
+      return { type: "redacted_thinking", data: b.signature ?? "" };
     }
-    const text = tb.text ?? "";
-    if (text.trim().length === 0 && !tb.signature) return null;
-    return { type: "thinking", thinking: text, signature: tb.signature ?? "" };
+    const text = sanitizeSurrogates(b.text);
+    if (text.trim().length === 0 && !b.signature) return null;
+    return { type: "thinking", thinking: text, signature: b.signature ?? "" };
   }
-  if (block.type === "tool_use") {
-    const tu = block as { id?: string; name?: string; input?: unknown };
-    return { type: "tool_use", id: tu.id, name: tu.name, input: tu.input };
+  if (b.type === "tool_use") {
+    return { type: "tool_use", id: b.id, name: b.name, input: b.input };
   }
-  if (block.type === "tool_result") {
-    const tr = block as { tool_use_id?: string; content?: unknown; is_error?: boolean };
+  if (b.type === "tool_result") {
     return {
       type: "tool_result",
-      tool_use_id: tr.tool_use_id,
-      content: tr.content,
-      ...(tr.is_error ? { is_error: true } : {}),
+      tool_use_id: b.tool_use_id,
+      content: b.content,
+      ...(b.is_error ? { is_error: true } : {}),
     };
   }
   return null;
@@ -173,7 +182,7 @@ function toWireBlock(b: unknown): WireBlock | null {
  *  want all results directly after the assistant tool_use batch). Messages
  *  that would carry empty content are skipped — the API rejects them. */
 function convertMessages(
-  messages: readonly { role: string; text?: string; blocks?: unknown[] }[],
+  messages: readonly Message[],
   _opts?: ProviderStreamOptions,
 ): Array<{ role: string; content: unknown }> {
   const wire: Array<{ role: string; content: unknown }> = [];
@@ -204,17 +213,36 @@ function convertMessages(
       if (blocks.length > 0) {
         wire.push({ role: m.role, content: blocks });
       } else if ((m.text ?? "").trim().length > 0) {
-        wire.push({ role: m.role, content: m.text });
+        wire.push({ role: m.role, content: sanitizeSurrogates(m.text ?? "") });
       }
       // else: nothing replayable — skip (no empty content).
     } else {
-      wire.push({ role: m.role, content: m.text ?? "" });
+      wire.push({ role: m.role, content: sanitizeSurrogates(m.text ?? "") });
     }
   }
   return wire;
 }
 
 // ── SSE decoding ──────────────────────────────────────────────────
+
+/** Full stop-reason mapping (pi's mapStopReason): the loop reacts to
+ *  truncation (max_tokens) and refusal differently from a clean end. */
+function mapStopReason(reason: string | undefined): AIMessageChunk["stopReason"] {
+  switch (reason) {
+    case "tool_use":
+      return "tool_use";
+    case "max_tokens":
+      return "max_tokens";
+    case "stop_sequence":
+      return "stop_sequence";
+    case "pause_turn":
+      return "pause_turn";
+    case "refusal":
+      return "refusal";
+    default:
+      return "end_turn";
+  }
+}
 
 function* convertChunks(
   raw: Record<string, unknown>,
@@ -246,11 +274,13 @@ function* convertChunks(
   if (type === "content_block_delta") {
     const d = raw.delta as Record<string, unknown>;
     if (d?.type === "text_delta") {
-      yield { delta: { type: "text", text: (d.text as string) ?? "" } };
+      yield { delta: { type: "text", text: sanitizeSurrogates((d.text as string) ?? "") } };
       return;
     }
     if (d?.type === "thinking_delta") {
-      yield { delta: { type: "reasoning", text: (d.thinking as string) ?? "" } };
+      yield {
+        delta: { type: "reasoning", text: sanitizeSurrogates((d.thinking as string) ?? "") },
+      };
       return;
     }
     if (d?.type === "signature_delta") {
@@ -269,12 +299,9 @@ function* convertChunks(
 
   if (type === "message_delta") {
     const d = raw.delta as Record<string, unknown>;
-    if ((d as { stop_reason?: string }).stop_reason === "tool_use") {
-      yield { stopReason: "tool_use" };
-      return;
-    }
-    if ((d as { stop_reason?: string }).stop_reason === "end_turn") {
-      yield { stopReason: "end_turn" };
+    const reason = (d as { stop_reason?: string }).stop_reason;
+    if (reason) {
+      yield { stopReason: mapStopReason(reason) };
       return;
     }
   }
