@@ -154,6 +154,11 @@ export type TurnSegment =
     };
 
 export function isConclusionMessage(m: MessageItem): boolean {
+  // Tool results are working rounds, never conclusions (ADR 0017): the
+  // canonical ledger keeps them as separate `tool` messages carrying a
+  // JSON text payload — without this guard they'd be classified as a
+  // final conclusion and rendered as a bubble.
+  if (m.content.role === "tool") return false;
   const text = extractText({ text: m.content.text, blocks: m.content.blocks });
   if (text.trim().length > 0) return true;
   const blocks = m.content.blocks;

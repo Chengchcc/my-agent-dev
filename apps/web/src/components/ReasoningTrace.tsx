@@ -107,6 +107,10 @@ export function ReasoningTrace({
           <CollapsibleContent>
             <div className="my-0.5 ml-1.5 flex flex-col gap-0.5 border-l border-(--hairline) py-1 pl-2">
               {rounds.map((m) => {
+                // Tool results render inside their ToolStep result toggle,
+                // never as a standalone round-text line (their text field is
+                // the raw JSON payload).
+                if (m.content.role === "tool") return null;
                 const text = extractText(m.content);
                 return text ? (
                   <div key={m.id} className="px-1 py-0.5 text-[12px] text-(--body)">

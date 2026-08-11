@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  groupTurns,
   initialState,
   isBusy,
+  isConclusionMessage,
   isTurnStart,
   reducer,
   type SenderRef,
@@ -219,5 +221,91 @@ describe("isTurnStart", () => {
     const segments = [agent, a2];
     expect(isTurnStart(segments, 0)).toBe(true);
     expect(isTurnStart(segments, 1)).toBe(true);
+  });
+});
+
+describe("groupTurns with canonical tool messages (ADR 0017)", () => {
+  const agentSender: SenderRef = { memberId: "agent-1", kind: "agent", displayName: "Bot" };
+  const toolUseMsg = {
+    kind: "message" as const,
+    id: "m-tu",
+    sender: agentSender,
+    seq: 2,
+    addressedTo: [],
+    content: {
+      messageId: "run:r1:assistant:1",
+      role: "assistant" as const,
+      text: "",
+      blocks: [{ type: "tool_use" as const, id: "t1", name: "read", input: {} }],
+      state: "done" as const,
+      updatedAt: 1,
+    },
+  };
+  const toolMsg = {
+    kind: "message" as const,
+    id: "m-tr",
+    sender: agentSender,
+    seq: 3,
+    addressedTo: [],
+    content: {
+      messageId: "run:r1:tool:1",
+      role: "tool" as const,
+      text: "{}",
+      blocks: [{ type: "tool_result" as const, tool_use_id: "t1", content: "ok" }],
+      state: "done" as const,
+      updatedAt: 1,
+    },
+  };
+  const finalMsg = {
+    kind: "message" as const,
+    id: "m-final",
+    sender: agentSender,
+    seq: 4,
+    addressedTo: [],
+    content: {
+      messageId: "run:r1:assistant:0",
+      role: "assistant" as const,
+      text: "done",
+      state: "done" as const,
+      updatedAt: 1,
+    },
+  };
+
+  test("tool result message is never a conclusion", () => {
+    expect(isConclusionMessage(toolMsg)).toBe(false);
+    expect(isConclusionMessage(toolUseMsg)).toBe(false);
+    expect(isConclusionMessage(finalMsg)).toBe(true);
+  });
+
+  test("agent turn groups tool messages into rounds, text into conclusion", () => {
+    const segments = groupTurns([toolUseMsg, toolMsg, finalMsg]);
+    expect(segments).toHaveLength(1);
+    const turn = segments[0]!;
+    expect(turn.kind).toBe("turn");
+    if (turn.kind === "turn") {
+      expect(turn.rounds.map((r) => r.content.role)).toEqual(["assistant", "tool"]);
+      expect(turn.rounds[1]?.content.blocks?.[0]?.type).toBe("tool_result");
+      expect(turn.conclusion?.id).toBe("m-final");
+    }
+  });
+
+  test("human + agent sequence keeps tool messages in the same turn", () => {
+    const human: SenderRef = { memberId: "human-1", kind: "human" };
+    const userMsg = {
+      kind: "message" as const,
+      id: "m-user",
+      sender: human,
+      seq: 1,
+      addressedTo: [],
+      content: {
+        messageId: "u1",
+        role: "user" as const,
+        text: "hi",
+        state: "done" as const,
+        updatedAt: 1,
+      },
+    };
+    const segments = groupTurns([userMsg, toolUseMsg, toolMsg, finalMsg]);
+    expect(segments.map((s) => s.kind)).toEqual(["single", "turn"]);
   });
 });

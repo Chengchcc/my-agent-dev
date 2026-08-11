@@ -72,43 +72,7 @@ export async function projectAgentContext(
       if (!message) {
         throw new Error(`Ledger ref not found: ledgerSeq=${ledgerEntry.ledgerSeq}`);
       }
-      // The ledger can hold display-shaped assistant messages whose blocks
-      // merge tool_use AND tool_result (canonical output merge in the agent
-      // runtime keeps the tool trace visible to the UI after refresh). Strict
-      // model APIs (deepseek, z.ai) reject tool_result inside an assistant
-      // message — split here, at the ledger→context boundary, so projected
-      // history is model-valid. Results whose tool_use_id has no matching
-      // tool_use in the same message are dropped.
-      if (
-        message.role === "assistant" &&
-        Array.isArray(message.blocks) &&
-        message.blocks.some((b) => b.type === "tool_result")
-      ) {
-        const toolUseIds = new Set(
-          message.blocks.filter((b) => b.type === "tool_use").map((b) => b.id),
-        );
-        const results = message.blocks.filter(
-          (b) =>
-            b.type === "tool_result" &&
-            b.tool_use_id !== undefined &&
-            toolUseIds.has(b.tool_use_id),
-        );
-        const kept = message.blocks.filter((b) => b.type !== "tool_result");
-        if (kept.length > 0) {
-          items.push({
-            productEntryId: ledgerEntry.entryId,
-            message: { ...message, blocks: kept },
-          });
-        }
-        if (results.length > 0) {
-          items.push({
-            productEntryId: `${ledgerEntry.entryId}:tool_result`,
-            message: { role: "user", blocks: results },
-          });
-        }
-        continue;
-      }
-      items.push({ productEntryId: ledgerEntry.entryId, message });
+      items.push({ productEntryId: entry.entryId, message });
     } else if (entry.type === "private_message") {
       const privateEntry = entry as PrivateMessageEntry;
       items.push({ productEntryId: entry.entryId, message: privateEntry.message });
