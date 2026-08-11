@@ -2,7 +2,7 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["bun-types"]
+    "types": ["bun"]
   },
   "include": ["_template/**/*.ts", "apps/**/*.ts", "packages/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["**/dist/**", "**/node_modules/**"]
