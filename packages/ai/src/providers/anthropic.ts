@@ -65,7 +65,16 @@ export function anthropicProvider(auth: ProviderAuth = {}): Provider {
         });
         if (!res.ok) {
           const errBody = await res.text().catch(() => "");
-          throw new Error(`Anthropic error status=${res.status} ${errBody}`);
+          // Extract server-requested retry delay (pi's retryDelayFromHeaders):
+          // `retry-after-ms` (Anthropic) or `retry-after` (HTTP standard,
+          // seconds or HTTP date). Attached to the error so retryStream can
+          // respect it instead of using its own backoff.
+          const retryAfterMs = extractRetryAfter(res.headers);
+          const err = new Error(`Anthropic error status=${res.status} ${errBody}`);
+          if (retryAfterMs !== undefined) {
+            (err as Error & { retryAfterMs?: number }).retryAfterMs = retryAfterMs;
+          }
+          throw err;
         }
         if (!res.body) throw new Error("No response body");
 
@@ -169,6 +178,26 @@ function sanitizeSurrogates(text: string): string {
   return text.replace(/[\uD800-\uDFFF]/g, "\uFFFD");
 }
 
+/** Extract server-requested retry delay from response headers (pi's
+ *  retryDelayFromHeaders): `retry-after-ms` (Anthropic, milliseconds) or
+ *  `retry-after` (HTTP standard, seconds or HTTP date). Returns ms or
+ *  undefined when no hint is present. */
+function extractRetryAfter(headers: Headers): number | undefined {
+  const retryAfterMs = headers.get("retry-after-ms");
+  if (retryAfterMs) {
+    const ms = Number.parseFloat(retryAfterMs);
+    if (Number.isFinite(ms) && ms >= 0) return ms;
+  }
+  const retryAfter = headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number.parseFloat(retryAfter);
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+    const dateMs = Date.parse(retryAfter) - Date.now();
+    if (Number.isFinite(dateMs) && dateMs >= 0) return dateMs;
+  }
+  return undefined;
+}
+
 function toWireBlock(b: ContentBlock): WireBlock | null {
   if (b.type === "text") {
     const text = sanitizeSurrogates(b.text);
@@ -252,12 +281,18 @@ function mapStopReason(reason: string | undefined): AIMessageChunk["stopReason"]
     case "tool_use":
       return "tool_use";
     case "max_tokens":
+    case "model_context_window_exceeded":
+      // Newer Claude models use this instead of max_tokens when the context
+      // window is exceeded. The streamed content is valid but truncated —
+      // treat it the same as max_tokens so the loop can force-continue.
       return "max_tokens";
     case "stop_sequence":
       return "stop_sequence";
     case "pause_turn":
       return "pause_turn";
     case "refusal":
+    case "sensitive":
+      // Safety filters / refusal: the turn is terminal but not a clean end.
       return "refusal";
     default:
       return "end_turn";

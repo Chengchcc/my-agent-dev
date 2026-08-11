@@ -92,8 +92,7 @@ export function createModelRuntime(opts: ModelRuntimeOptions = {}): ModelRuntime
         apiKey: credential.apiKey,
         baseUrl: credential.baseUrl,
         headers: credential.headers,
-        signal: opts?.signal,
-        tools: opts?.tools,
+        ...opts,
       });
     },
   };

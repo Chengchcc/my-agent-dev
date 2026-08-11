@@ -105,6 +105,10 @@ export class ProviderError extends Error {
   readonly kind: ProviderErrorKind;
   readonly statusCode?: number;
   readonly retryable: boolean;
+  /** Server-requested retry delay in ms (from `retry-after-ms` / `retry-after`
+   *  response headers). When present, retryStream respects it instead of its
+   *  own backoff (pi's retryDelayFromHeaders). */
+  readonly retryAfterMs?: number;
   /** Redacted diagnostic message; never the raw error object (which may carry
    *  credential material). */
   readonly detail?: string;
@@ -112,12 +116,13 @@ export class ProviderError extends Error {
   constructor(
     message: string,
     kind: ProviderErrorKind,
-    opts?: { statusCode?: number; detail?: string },
+    opts?: { statusCode?: number; detail?: string; retryAfterMs?: number },
   ) {
     super(message);
     this.name = "ProviderError";
     this.kind = kind;
     this.statusCode = opts?.statusCode;
+    this.retryAfterMs = opts?.retryAfterMs;
     this.detail = opts?.detail;
     this.retryable = kind === "transient" || kind === "overload";
   }
@@ -137,30 +142,34 @@ export function normalizeProviderError(
     if (secret) msg = msg.replaceAll(secret, "[REDACTED]");
   }
   const detail = msg;
+  // Extract server-requested retry delay attached by the provider (pi's
+  // retryDelayFromHeaders). Survives normalization so retryStream can
+  // respect it.
+  const retryAfterMs = (err as Error & { retryAfterMs?: number }).retryAfterMs;
+  const retryOpts = retryAfterMs !== undefined ? { retryAfterMs } : {};
   const s = msg.match(/status[= ](\d+)/);
   const code = s ? Number(s[1]) : undefined;
   // Context-length errors (400/422 with body mentioning limits) are overflow,
   // a distinct retryable-after-compaction category from invalid_request.
   if (code === 400 || code === 422) {
     if (OVERFLOW_RE.test(msg)) {
-      return new ProviderError(msg, "overflow", { statusCode: code, detail });
+      return new ProviderError(msg, "overflow", { statusCode: code, detail, ...retryOpts });
     }
-    return new ProviderError(msg, "invalid_request", { statusCode: code, detail });
+    return new ProviderError(msg, "invalid_request", { statusCode: code, detail, ...retryOpts });
   }
   if (code === 401 || code === 403)
-    return new ProviderError(msg, "auth", { statusCode: code, detail });
-  if (code === 429) return new ProviderError(msg, "overload", { statusCode: code, detail });
+    return new ProviderError(msg, "auth", { statusCode: code, detail, ...retryOpts });
+  if (code === 429)
+    return new ProviderError(msg, "overload", { statusCode: code, detail, ...retryOpts });
   if (code !== undefined && code >= 500)
-    return new ProviderError(msg, "transient", { statusCode: code, detail });
+    return new ProviderError(msg, "transient", { statusCode: code, detail, ...retryOpts });
   if (
     msg.includes("fetch") ||
     msg.includes("network") ||
     msg.includes("ECONN") ||
     msg.includes("timeout")
   )
-    return new ProviderError(msg, "transient", { detail });
-  if (err instanceof DOMException && err.name === "AbortError")
-    return new ProviderError(msg, "aborted", { detail });
+    return new ProviderError(msg, "transient", { detail, ...retryOpts });
   return new ProviderError(msg, "fatal", { detail });
 }
 
@@ -211,6 +220,6 @@ export interface ModelRuntime {
     providerId: string,
     modelId: string,
     messages: readonly Message[],
-    opts?: { signal?: AbortSignal; tools?: readonly ProviderToolSchema[] },
+    opts?: ProviderStreamOptions,
   ): AsyncIterable<AIMessageChunk>;
 }

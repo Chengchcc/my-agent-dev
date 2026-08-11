@@ -371,11 +371,15 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
           : reasoningEffort === "low" || reasoningEffort === "high" || reasoningEffort === "max"
             ? {
                 thinking: { type: "adaptive" as const, display: "summarized" as const },
-                effort: reasoningEffort,
+                effort: reasoningEffort as "low" | "high" | "max",
               }
             : {};
       const stream = deps.modelRuntime.stream(model.providerId, model.modelId, messages, {
         signal: combined,
+        // Prompt caching: ephemeral cache breakpoints on the system prompt
+        // and the last tool definition. Endpoints that don't support
+        // caching silently ignore the breakpoint.
+        cacheControl: true,
         ...reasoningOpts,
         // Providers only consume the schema fields; execution happens in
         // the loop via toolMap. Explicit mapping keeps PluginTool's
