@@ -46,8 +46,14 @@ export async function* retryStream(
       const canRetry =
         !committed && err instanceof ProviderError && err.retryable && attempt < opts.maxAttempts;
       if (canRetry) {
+        // Exponential backoff with full jitter (pi pattern): randomize
+        // within [0, baseDelay * 2^(attempt-1)] so concurrent retries
+        // don't synchronize, and cap at 60s to avoid pathological waits.
+        const backoff = opts.baseDelayMs * 2 ** (attempt - 1);
+        const cappedBackoff = Math.min(backoff, 60_000);
+        const jitteredDelay = Math.random() * cappedBackoff;
         const { promise, resolve } = Promise.withResolvers<void>();
-        const timer = setTimeout(resolve, opts.baseDelayMs * 2 ** (attempt - 1));
+        const timer = setTimeout(resolve, jitteredDelay);
         const onAbort = () => resolve();
         if (signal?.aborted) resolve();
         signal?.addEventListener("abort", onAbort, { once: true });

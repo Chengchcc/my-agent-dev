@@ -42,15 +42,29 @@ export interface PluginHooks {
   afterModel?(messages: readonly Message[], rt: PluginRuntime): void;
 
   // ── Tool execution lifecycle ──
-  /** Called before a tool executes. */
-  beforeTool?(toolName: string, input: unknown, rt: PluginRuntime): void;
-  /** Called after a tool executes; may return a UI-transient event. */
+  /** Called before a tool executes. May return `{ block: true, reason }` to
+   *  prevent execution — an error tool result is emitted instead (pi's
+   *  beforeToolCall block). Returning void/undefined = observe only. */
+  beforeTool?(
+    toolName: string,
+    input: unknown,
+    rt: PluginRuntime,
+  ): void | { block?: boolean; reason?: string };
+  /** Called after a tool executes. May return a UI-transient event OR a
+   *  patch object `{ content?, isError?, terminate? }` that overrides the
+   *  executed result field-by-field (pi's afterToolCall patch). */
   afterTool?(
     toolName: string,
     result: unknown,
     rt: PluginRuntime,
-  ): CodingAgentLoopEvent | undefined;
-
+  ):
+    | CodingAgentLoopEvent
+    | { content?: unknown; isError?: boolean; terminate?: boolean }
+    | undefined;
+  /** Rewrite tool call arguments before execution (pi's
+   *  transformToolCallArguments). Use for deobfuscation, normalization,
+   *  or injecting context. */
+  transformToolArgs?(toolName: string, input: unknown, rt: PluginRuntime): unknown;
   // ── Stop decision lifecycle ──
   /** Called when the model naturally stops (no more tool calls). A plugin
    *  can veto by calling cancel() to force one more turn. */

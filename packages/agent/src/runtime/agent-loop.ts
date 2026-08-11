@@ -7,9 +7,9 @@ import type { SessionStore } from "../persistence/session-store.js";
 import type { MessageEntry } from "../persistence/session-tree.js";
 import type { AgentLoopListener, CodingAgentLoopEvent } from "./agent-event.js";
 import { type CompactionBudget, compactSession } from "./compaction.js";
-import { TokenEstimateCache } from "./message-cache.js";
 import type { CodingLoopInput } from "./loop-input.js";
 import { buildLoopInput } from "./loop-input.js";
+import { TokenEstimateCache } from "./message-cache.js";
 import type { Plugin, PluginTool } from "./plugin.js";
 import { collectTools, validatePlugins } from "./plugin.js";
 import type { PluginRuntime } from "./plugin-runtime.js";
@@ -715,32 +715,58 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       let result: unknown;
       let isError = false;
       let terminate = false;
+      let input = call.input;
       if (tool) {
-        // beforeTool: plugins can observe/log before execution.
+        // transformToolArgs: rewrite call args before execution (pi's
+        // transformToolCallArguments).
+        for (const p of opts.plugins) {
+          if (p.hooks?.transformToolArgs) {
+            try {
+              const transformed = p.hooks.transformToolArgs(call.name, input, rt);
+              if (transformed && typeof transformed === "object") {
+                input = transformed as Record<string, unknown>;
+              }
+            } catch {
+              /* plugin transform errors never block execution */
+            }
+          }
+        }
+        // beforeTool: observe or block (pi's beforeToolCall). A block
+        // result emits an error tool result instead of executing.
+        let blocked = false;
+        let blockReason = `Blocked by plugin`;
         for (const p of opts.plugins) {
           if (p.hooks?.beforeTool) {
             try {
-              p.hooks.beforeTool(call.name, call.input, rt);
+              const ret = p.hooks.beforeTool(call.name, input, rt);
+              if (ret?.block) {
+                blocked = true;
+                if (ret.reason) blockReason = ret.reason;
+                break;
+              }
             } catch {
               /* plugin errors never block execution */
             }
           }
         }
-        try {
-          result = await tool.execute(call.input, controller?.signal, { callId: call.id });
-          if (result && typeof result === "object") {
-            if ("isError" in result) {
-              isError = Boolean((result as { isError?: unknown }).isError);
-            }
-            // Tool terminate hint: the tool asks the loop to stop after this
-            // turn's results are persisted (no further model turns).
-            if ("terminate" in result) {
-              terminate = Boolean((result as { terminate?: unknown }).terminate);
-            }
-          }
-        } catch (err) {
-          result = { error: err instanceof Error ? err.message : String(err) };
+        if (blocked) {
+          result = { error: blockReason };
           isError = true;
+        } else {
+          try {
+            result = await tool.execute(input, controller?.signal, { callId: call.id });
+            if (result && typeof result === "object") {
+              if ("isError" in result) {
+                isError = Boolean((result as { isError?: unknown }).isError);
+              }
+              if ("terminate" in result) {
+                terminate = Boolean((result as { terminate?: unknown }).terminate);
+              }
+            }
+          } catch (err) {
+            result = { error: err instanceof Error ? err.message : String(err) };
+            isError = true;
+          }
         }
       } else {
         result = { error: `Unknown tool: ${call.name}` };
@@ -757,11 +783,24 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         callId: call.id,
         result: (result ?? {}) as Readonly<Record<string, unknown>>,
       });
-      // Plugin hooks may surface UI-transient events (e.g. todo_update);
-      // emitted after the tool result so consumers get the final payload.
+      // afterTool: observe (emit event) or patch (override result fields).
       for (const p of opts.plugins) {
-        const ev = p.hooks?.afterTool?.(call.name, result, rt);
-        if (ev) await emit(ev);
+        try {
+          const ret = p.hooks?.afterTool?.(call.name, result, rt);
+          if (ret) {
+            // CodingAgentLoopEvent (has `type`) → emit; patch object →
+            // override result fields field-by-field (pi afterToolCall).
+            if ("type" in ret) {
+              await emit(ret);
+            } else {
+              if (ret.content !== undefined) result = ret.content;
+              if (ret.isError !== undefined) isError = ret.isError;
+              if (ret.terminate !== undefined) terminate = ret.terminate;
+            }
+          }
+        } catch {
+          /* plugin errors never affect the loop */
+        }
       }
       return { id: call.id, result, isError, terminate };
     }
