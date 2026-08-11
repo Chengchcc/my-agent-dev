@@ -1,4 +1,5 @@
 import { conversationEvents, createSseEncoder } from "@my-agent-team/api-contract";
+import { extractText } from "@my-agent-team/message";
 import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
 import type { GoalStateStore } from "./goal-state.js";
@@ -210,10 +211,12 @@ export function conversationRoutes(
           const sender = e.senderMemberId === "__system__" ? "System" : e.senderMemberId;
           let text: string;
           try {
-            const parsed = JSON.parse(e.content);
-            text = typeof parsed === "string" ? parsed : parsed.text || JSON.stringify(parsed);
+            // Drizzle's select schema auto-parses content from JSON string to object.
+            const parsed = typeof e.content === "string" ? JSON.parse(e.content) : e.content;
+            text =
+              typeof parsed === "string" ? parsed : extractText(parsed) || JSON.stringify(parsed);
           } catch {
-            text = e.content;
+            text = String(e.content);
           }
           lines.push(`## ${ts}`, `**${sender}**: ${text}`, "");
         }
