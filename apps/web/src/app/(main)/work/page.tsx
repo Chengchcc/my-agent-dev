@@ -88,11 +88,11 @@ export default function WorkTodayPage() {
                 <Link
                   key={loop.cronJobId}
                   href={`/work/${loop.cronJobId}`}
-                  className="block rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-3 hover:border-[var(--primary)] transition-colors"
+                  className="block rounded-lg border border-(--hairline) bg-(--canvas-soft) px-4 py-3 hover:border-(--primary) transition-colors"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-sm font-medium text-[var(--ink)]">
+                      <div className="flex items-center gap-2 text-sm font-medium text-(--ink)">
                         <span className="truncate">{loop.name}</span>
                         {loop.pendingCount > 0 && (
                           <Badge variant="default" className="text-xs">
@@ -100,11 +100,11 @@ export default function WorkTodayPage() {
                           </Badge>
                         )}
                       </div>
-                      <div className="text-xs text-[var(--mute)] font-mono">
+                      <div className="text-xs text-(--mute) font-mono">
                         {loop.cronExpr || "Manual"}
                       </div>
                     </div>
-                    <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--hairline)] text-[var(--mute)] uppercase tracking-[0.15em]">
+                    <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border border-(--hairline) text-(--mute) uppercase tracking-[0.15em]">
                       Draft
                     </span>
                   </div>
@@ -117,26 +117,26 @@ export default function WorkTodayPage() {
         <div>
           <h2 className="text-sm font-medium mb-3">Today&apos;s Runs</h2>
           <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-4">
+            <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4 ">
               <div className="text-2xl font-semibold text-emerald-400 tabular-nums">
                 {succeeded}
               </div>
-              <div className="text-xs text-[var(--mute)]">Succeeded</div>
+              <div className="text-xs text-(--mute)">Succeeded</div>
             </div>
-            <div className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-4">
+            <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4 ">
               <div className="text-2xl font-semibold text-red-400 tabular-nums">{failed}</div>
-              <div className="text-xs text-[var(--mute)]">Failed</div>
+              <div className="text-xs text-(--mute)">Failed</div>
             </div>
-            <div className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-4">
+            <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4 ">
               <div className="text-2xl font-semibold text-amber-400 tabular-nums">{running}</div>
-              <div className="text-xs text-[var(--mute)]">Running</div>
+              <div className="text-xs text-(--mute)">Running</div>
             </div>
           </div>
-          <div className="mt-3 rounded-lg border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-4 text-center">
-            <div className="text-2xl font-semibold text-[var(--ink)] tabular-nums">
+          <div className="mt-3 rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4 text-center">
+            <div className="text-2xl font-semibold text-(--ink) tabular-nums">
               {tokensUnavailable ? "Token data unavailable" : totalTokens.toLocaleString()}
             </div>
-            <div className="text-xs text-[var(--mute)]">Total Tokens</div>
+            <div className="text-xs text-(--mute)">Total Tokens</div>
           </div>
         </div>
       </PageBody>

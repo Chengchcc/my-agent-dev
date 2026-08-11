@@ -50,8 +50,8 @@ export default function AgentDetailPage() {
       <Page>
         <PageBody>
           <div className="animate-pulse space-y-3">
-            <div className="h-6 w-48 bg-[var(--canvas-soft)]" />
-            <div className="h-4 w-32 bg-[var(--canvas-soft)]" />
+            <div className="h-6 w-48 bg-(--canvas-soft)" />
+            <div className="h-4 w-32 bg-(--canvas-soft)" />
           </div>
         </PageBody>
       </Page>
@@ -62,7 +62,7 @@ export default function AgentDetailPage() {
     return (
       <Page>
         <PageBody>
-          <p className="text-sm text-[var(--mute)]">Agent not found</p>
+          <p className="text-sm text-(--mute)">Agent not found</p>
         </PageBody>
       </Page>
     );
@@ -75,14 +75,10 @@ export default function AgentDetailPage() {
         title={agent.name}
         action={
           <div className="flex items-center gap-2">
-            <span
-              className={`${overlineClass} border border-[var(--hairline)] rounded px-2 py-0.5`}
-            >
+            <span className={`${overlineClass} border border-(--hairline) rounded px-2 py-0.5`}>
               {agent.modelProvider}/{agent.modelName}
             </span>
-            <span
-              className={`${overlineClass} border border-[var(--hairline)] rounded px-2 py-0.5`}
-            >
+            <span className={`${overlineClass} border border-(--hairline) rounded px-2 py-0.5`}>
               {agent.permissionMode}
             </span>
             <AgentForm editAgent={agent} triggerLabel="Edit" />
@@ -150,12 +146,12 @@ function AgentSkillsPanel({ agentId }: { agentId: string }) {
             return (
               <li
                 key={pack.id}
-                className="flex items-center justify-between gap-3 border border-[var(--hairline)] rounded px-4 py-3"
+                className="flex items-center justify-between gap-3 border border-(--hairline) rounded px-4 py-3"
               >
                 <div className="min-w-0">
-                  <div className="text-sm text-[var(--ink)] font-medium truncate">{pack.name}</div>
+                  <div className="text-sm text-(--ink) font-medium truncate">{pack.name}</div>
                   {pack.description && (
-                    <div className="text-xs text-[var(--mute)] truncate">{pack.description}</div>
+                    <div className="text-xs text-(--mute) truncate">{pack.description}</div>
                   )}
                   {pack.status === "failed" && pack.error && (
                     <div className="text-xs text-destructive truncate">{pack.error}</div>
@@ -196,7 +192,7 @@ function RecentRuns({ agentId }: { agentId: string }) {
         emptyMessage="No recent runs."
       >
         {(data) => (
-          <div className="rounded-lg border border-[var(--hairline)]">
+          <div className="rounded-lg border border-(--hairline)">
             <AgentRunsTable
               runs={data.runs.map((r) => ({
                 runId: r.runId,

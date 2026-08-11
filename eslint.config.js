@@ -1,4 +1,5 @@
 import js from "@eslint/js";
+import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -30,6 +31,17 @@ export default tseslint.config(
           argsIgnorePattern: "^_",
           varsIgnorePattern: "^_",
         },
+      ],
+    },
+  },
+  {
+    files: ["apps/web/**/*.{ts,tsx}"],
+    plugins: betterTailwindcss.configs.stylistic.plugins,
+    rules: {
+      // entryPoint resolves against the lint cwd (apps/web for the web lint).
+      "better-tailwindcss/enforce-canonical-classes": [
+        "warn",
+        { entryPoint: "src/app/globals.css" },
       ],
     },
   },

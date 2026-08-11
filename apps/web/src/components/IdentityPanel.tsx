@@ -32,7 +32,7 @@ function Section({
   onChange,
 }: SectionProps) {
   return (
-    <div className="border border-[var(--hairline)] rounded-lg p-8 bg-[var(--canvas)]">
+    <div className="border border-(--hairline) rounded-lg p-8 bg-(--canvas)">
       <div className="flex items-center justify-between mb-4">
         <h3 className={overlineClass}>{title}</h3>
         {!editing && (
@@ -59,9 +59,9 @@ function Section({
           </div>
         </div>
       ) : content === null ? (
-        <p className="text-sm text-[var(--mute)]">Not yet configured</p>
+        <p className="text-sm text-(--mute)">Not yet configured</p>
       ) : (
-        <pre className="text-sm leading-relaxed text-[var(--ink)] whitespace-pre-wrap font-[family-name:var(--font-sans)] max-h-80 overflow-y-auto">
+        <pre className="text-sm/relaxed text-(--ink) whitespace-pre-wrap font-sans max-h-80 overflow-y-auto">
           {content}
         </pre>
       )}
@@ -79,15 +79,15 @@ export function IdentityPanel({ agentId }: { agentId: string }) {
   if (isLoading) {
     return (
       <div className="space-y-3 animate-pulse">
-        <div className="h-32 bg-[var(--canvas-soft)] rounded-lg" />
-        <div className="h-32 bg-[var(--canvas-soft)] rounded-lg" />
-        <div className="h-20 bg-[var(--canvas-soft)] rounded-lg" />
+        <div className="h-32 bg-(--canvas-soft) rounded-lg" />
+        <div className="h-32 bg-(--canvas-soft) rounded-lg" />
+        <div className="h-20 bg-(--canvas-soft) rounded-lg" />
       </div>
     );
   }
 
   if (!data) {
-    return <p className="text-sm text-[var(--mute)]">Failed to load identity</p>;
+    return <p className="text-sm text-(--mute)">Failed to load identity</p>;
   }
 
   const startEdit = (field: "soul" | "user") => {

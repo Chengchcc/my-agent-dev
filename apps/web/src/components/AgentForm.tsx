@@ -261,14 +261,14 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
             onClick={() => setOpen(false)}
           />
 
-          <div className="relative w-full max-w-lg bg-[var(--canvas)] border border-[var(--hairline)] rounded-lg animate-reveal">
-            <div className="border-b border-[var(--hairline)] px-8 py-5 flex items-center justify-between">
-              <h2 className="text-lg font-normal text-[var(--ink-strong)] font-[family-name:var(--font-sans)]">
+          <div className="relative w-full max-w-lg bg-(--canvas) border border-(--hairline) rounded-lg animate-reveal">
+            <div className="border-b border-(--hairline) px-8 py-5 flex items-center justify-between">
+              <h2 className="text-lg font-normal text-(--ink-strong) font-sans">
                 {isEdit ? "Edit Agent" : "Create Agent"}
               </h2>
               <Button
                 onClick={() => setOpen(false)}
-                className="text-[var(--mute)] hover:text-[var(--ink)] transition-colors"
+                className="text-(--mute) hover:text-(--ink) transition-colors"
                 aria-label="Close"
               >
                 <X size={18} />
@@ -424,7 +424,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                 </div>
 
                 {/* ─── Lark Bot ─── */}
-                <div className="border-t border-[var(--hairline)] pt-5">
+                <div className="border-t border-(--hairline) pt-5">
                   <FormField
                     control={form.control}
                     name="enableLark"
@@ -444,7 +444,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                                   : editAgent.lark.status === "error"
                                     ? "text-destructive border-destructive/30 bg-destructive/10"
                                     : editAgent.lark.status === "degraded"
-                                      ? "text-[var(--chart-4)] border-[var(--chart-4)]/30 bg-[var(--chart-4)]/10"
+                                      ? "text-(--chart-4) border-(--chart-4)/30 bg-(--chart-4)/10"
                                       : "text-muted-foreground border-border bg-muted/20"
                               }`}
                             >
@@ -458,7 +458,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                   />
 
                   {enableLark && (
-                    <div className="space-y-4 pl-6 border-l-2 border-[var(--hairline)]">
+                    <div className="space-y-4 pl-6 border-l-2 border-(--hairline)">
                       <FormField
                         control={form.control}
                         name="botDisplayName"
@@ -484,7 +484,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
 
                       {/* Setup flow - only available after agent is created */}
                       {!isEdit ? (
-                        <p className="text-xs text-[var(--mute)]">
+                        <p className="text-xs text-(--mute)">
                           Save the agent first, then return to this form to set up the Lark bot.
                         </p>
                       ) : editAgent?.lark?.status === "not_configured" ||
@@ -492,7 +492,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                         <div>
                           {setupSession?.status === "pending" ? (
                             <div className="space-y-2">
-                              <p className="text-xs text-[var(--body)]">
+                              <p className="text-xs text-(--body)">
                                 Setup in progress - open this link to complete:
                               </p>
                               {setupSession.url ? (
@@ -500,7 +500,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                                   href={setupSession.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-xs text-[var(--chart-2)] underline break-all"
+                                  className="text-xs text-(--chart-2) underline break-all"
                                 >
                                   {setupSession.url}
                                 </a>
@@ -553,7 +553,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
 
                 {/* Skill pack assignments */}
                 {isEdit && availablePacks && availablePacks.length > 0 && (
-                  <div className="border-t border-[var(--hairline)] pt-5">
+                  <div className="border-t border-(--hairline) pt-5">
                     <h3 className="text-sm font-medium mb-3">Skill Packs</h3>
                     <div className="space-y-2 max-h-48 overflow-y-auto">
                       {availablePacks.map((pack: { id: string; name: string; status: string }) => (

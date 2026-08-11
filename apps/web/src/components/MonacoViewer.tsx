@@ -39,7 +39,7 @@ export function MonacoViewer({ value, path }: { value: string; path: string }) {
   // The product UI is dark-only (no ThemeProvider mounted), so pin the
   // editor theme instead of resolving undefined -> light.
   return (
-    <div className="overflow-hidden rounded-md border border-[var(--hairline)]">
+    <div className="overflow-hidden rounded-md border border-(--hairline)">
       <Editor
         height="24rem"
         language={languageFor(path)}

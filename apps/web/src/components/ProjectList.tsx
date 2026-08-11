@@ -21,10 +21,10 @@ export function ProjectList() {
         {[1, 2, 3].map((i) => (
           <div
             key={i}
-            className="border border-[var(--hairline)] rounded-lg bg-[var(--canvas)] p-8 animate-pulse"
+            className="border border-(--hairline) rounded-lg bg-(--canvas) p-8 animate-pulse"
           >
-            <div className="h-5 w-32 bg-[var(--canvas-soft)] mb-3" />
-            <div className="h-4 w-24 bg-[var(--canvas-soft)]" />
+            <div className="h-5 w-32 bg-(--canvas-soft) mb-3" />
+            <div className="h-4 w-24 bg-(--canvas-soft)" />
           </div>
         ))}
       </div>
@@ -36,10 +36,8 @@ export function ProjectList() {
   if (projects.length === 0) {
     return (
       <div className="py-24 text-center">
-        <p className="text-lg text-[var(--mute)] mb-2 font-[family-name:var(--font-sans)]">
-          No projects yet
-        </p>
-        <p className="text-sm text-[var(--mute)]">Create a project to start managing issues.</p>
+        <p className="text-lg text-(--mute) mb-2 font-sans">No projects yet</p>
+        <p className="text-sm text-(--mute)">Create a project to start managing issues.</p>
       </div>
     );
   }
@@ -50,21 +48,21 @@ export function ProjectList() {
         {projects.map((project) => (
           <div key={project.projectId} className="relative group">
             <div
-              className="block border border-[var(--hairline)] rounded-lg bg-[var(--canvas)] p-8
+              className="block border border-(--hairline) rounded-lg bg-(--canvas) p-8
                          "
               style={{}}
             >
               <h3
-                className="text-xl font-normal text-[var(--ink-strong)] tracking-tight font-[family-name:var(--font-sans)]"
+                className="text-xl font-normal text-(--ink-strong) tracking-tight font-sans"
                 style={{ letterSpacing: "-0.65px" }}
               >
                 {project.name}
               </h3>
 
               <div className="mt-3 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] opacity-60" />
+                <span className="size-1.5 rounded-full bg-(--primary) opacity-60" />
                 <span
-                  className="text-xs text-[var(--mute)] tracking-wider uppercase font-[family-name:var(--font-sans)] font-semibold"
+                  className="text-xs text-(--mute) tracking-wider uppercase font-sans font-semibold"
                   style={{ letterSpacing: "2.52px" }}
                 >
                   {project.repoUrl ? "repository configured" : "no repository"}
@@ -72,13 +70,13 @@ export function ProjectList() {
               </div>
 
               {project.repoUrl && (
-                <p className="mt-2 text-xs text-[var(--mute)] truncate">
+                <p className="mt-2 text-xs text-(--mute) truncate">
                   {project.repoUrl}
                   {project.defaultBranch ? ` (${project.defaultBranch})` : ""}
                 </p>
               )}
 
-              <div className="mt-4 text-[10px] text-[var(--mute)]">
+              <div className="mt-4 text-[10px] text-(--mute)">
                 Created{" "}
                 {new Date(project.createdAt).toLocaleDateString("en-US", {
                   month: "short",

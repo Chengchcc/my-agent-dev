@@ -49,7 +49,7 @@ export function ConversationList({ agentId, agentName }: { agentId: string; agen
     return (
       <div className="space-y-2">
         {[1, 2, 3].map((i) => (
-          <div key={`sk-${i}`} className="animate-pulse h-12 bg-[var(--canvas-soft)] rounded-lg" />
+          <div key={`sk-${i}`} className="animate-pulse h-12 bg-(--canvas-soft) rounded-lg" />
         ))}
       </div>
     );
@@ -58,7 +58,7 @@ export function ConversationList({ agentId, agentName }: { agentId: string; agen
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-[var(--mute)]">
+        <p className="text-xs text-(--mute)">
           {(conversations ?? []).length} conversation{(conversations ?? []).length !== 1 ? "s" : ""}
         </p>
         <Button
@@ -75,7 +75,7 @@ export function ConversationList({ agentId, agentName }: { agentId: string; agen
 
       {(conversations ?? []).length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-sm text-[var(--mute)] mb-2">No conversations yet</p>
+          <p className="text-sm text-(--mute) mb-2">No conversations yet</p>
           <Button variant="link" size="sm" onClick={() => makeConversation()}>
             Create your first conversation
           </Button>
@@ -94,16 +94,16 @@ export function ConversationList({ agentId, agentName }: { agentId: string; agen
                   router.push(`/chat/${conv.conversationId}`);
                 }
               }}
-              className="group w-full text-left border border-[var(--hairline)] rounded-lg
-                         hover:border-[var(--primary)] transition-colors duration-200
-                         animate-fade-in bg-[var(--canvas)] cursor-pointer p-3 flex items-center justify-between"
+              className="group w-full text-left border border-(--hairline) rounded-lg
+                         hover:border-(--primary) transition-colors duration-200
+                         animate-fade-in bg-(--canvas) cursor-pointer p-3 flex items-center justify-between"
               style={{ animationDelay: `${i * 0.06}s`, animationFillMode: "both" }}
             >
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-[var(--ink-strong)] truncate">
+                <p className="text-sm font-medium text-(--ink-strong) truncate">
                   {conv.title ?? `Conversation ${conv.conversationId.slice(0, 8)}`}
                 </p>
-                <p className="text-[10px] text-[var(--mute)] mt-0.5">
+                <p className="text-[10px] text-(--mute) mt-0.5">
                   {conv.members.length} member{conv.members.length !== 1 ? "s" : ""}
                 </p>
               </div>
@@ -133,7 +133,7 @@ export function ConversationList({ agentId, agentName }: { agentId: string; agen
                 >
                   <Trash2 size={14} />
                 </Button>
-                <ChevronRight size={14} className="text-[var(--hairline)]" />
+                <ChevronRight size={14} className="text-(--hairline)" />
               </div>
             </div>
           ))}

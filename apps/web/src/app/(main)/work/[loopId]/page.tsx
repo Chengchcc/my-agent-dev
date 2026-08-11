@@ -86,7 +86,7 @@ export default function LoopDetailPage() {
     return (
       <Page>
         <PageBody>
-          <p className="text-sm text-[var(--mute)]">Loading...</p>
+          <p className="text-sm text-(--mute)">Loading...</p>
         </PageBody>
       </Page>
     );
@@ -94,7 +94,7 @@ export default function LoopDetailPage() {
     return (
       <Page>
         <PageBody>
-          <p className="text-sm text-[var(--mute)]">Loop not found.</p>
+          <p className="text-sm text-(--mute)">Loop not found.</p>
         </PageBody>
       </Page>
     );
@@ -127,7 +127,7 @@ export default function LoopDetailPage() {
                 </Button>
               </>
             ) : (
-              <label className="flex items-center gap-2 text-xs text-[var(--mute)]">
+              <label className="flex items-center gap-2 text-xs text-(--mute)">
                 <Switch
                   checked
                   onCheckedChange={() =>
@@ -143,7 +143,7 @@ export default function LoopDetailPage() {
             )}
             <a
               href={`/work/${loopId}${view === "list" ? "?view=board" : ""}`}
-              className="text-xs text-[var(--mute)] hover:text-[var(--ink-strong)] border border-[var(--hairline)] rounded px-2 py-1"
+              className="text-xs text-(--mute) hover:text-(--ink-strong) border border-(--hairline) rounded px-2 py-1"
             >
               {view === "list" ? "Board" : "List"}
             </a>
@@ -169,7 +169,7 @@ export default function LoopDetailPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7"
+                    className="size-7 "
                     aria-label="More actions"
                   />
                 }
@@ -199,9 +199,9 @@ export default function LoopDetailPage() {
         {view === "list" ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:h-[calc(100dvh-15rem)]">
             {/* Left: item list grouped by step */}
-            <div className="lg:col-span-1 overflow-y-auto border border-[var(--hairline)] rounded-lg bg-background">
+            <div className="lg:col-span-1 overflow-y-auto border border-(--hairline) rounded-lg bg-background">
               {items.length === 0 ? (
-                <p className="text-sm text-[var(--mute)] p-4">No items.</p>
+                <p className="text-sm text-(--mute) p-4">No items.</p>
               ) : (
                 STEP_ORDER.filter((s) => (grouped[s] ?? []).length > 0).map((step) => (
                   <div key={step} className="p-2">
@@ -209,26 +209,26 @@ export default function LoopDetailPage() {
                       <Badge variant={STEP_BADGE[step]} className="text-[10px]">
                         {step}
                       </Badge>
-                      <span className="text-xs text-[var(--mute)]">{grouped[step]!.length}</span>
+                      <span className="text-xs text-(--mute)">{grouped[step]!.length}</span>
                     </div>
                     <div className="space-y-1">
                       {grouped[step]!.map((item) => (
                         <button
                           key={item.id}
                           onClick={() => setSelectedId(item.id)}
-                          className={`w-full text-left rounded-md px-2 py-2 text-sm transition-colors ${
+                          className={`w-full text-left rounded-md p-2  text-sm transition-colors ${
                             selectedId === item.id
-                              ? "bg-[var(--mute)]/20 ring-1 ring-[var(--hairline)]"
-                              : "hover:bg-[var(--mute)]/10"
+                              ? "bg-(--mute)/20 ring-1 ring-(--hairline)"
+                              : "hover:bg-(--mute)/10"
                           }`}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className="truncate flex-1">{item.summary}</span>
-                            <span className="text-[10px] text-[var(--mute)] shrink-0">
+                            <span className="text-[10px] text-(--mute) shrink-0">
                               att {item.attempt}
                             </span>
                           </div>
-                          <div className="text-[10px] text-[var(--mute)] font-mono truncate">
+                          <div className="text-[10px] text-(--mute) font-mono truncate">
                             {item.source}
                           </div>
                         </button>
@@ -248,7 +248,7 @@ export default function LoopDetailPage() {
           <div className="h-[calc(100%-5rem)] flex flex-col">
             <LoopBoard items={items} selectedId={selectedId} onSelect={setSelectedId} />
             {selected && (
-              <div className="mt-4 border border-[var(--hairline)] rounded-lg p-4 overflow-y-auto max-h-[40%]">
+              <div className="mt-4 border border-(--hairline) rounded-lg p-4 overflow-y-auto max-h-[40%]">
                 <EvidenceChainPanel loopId={loopId} item={selected} />
               </div>
             )}

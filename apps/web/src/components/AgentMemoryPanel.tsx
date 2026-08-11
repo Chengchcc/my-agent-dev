@@ -10,6 +10,6 @@ export function AgentMemoryPanel({ agentId }: { agentId: string }) {
     queryFn: () => api.getAgentMemory(agentId),
   });
 
-  if (isLoading) return <div className="text-sm text-[var(--mute)]">Loading memories...</div>;
+  if (isLoading) return <div className="text-sm text-(--mute)">Loading memories...</div>;
   return <MemoryPanel memory={data} />;
 }

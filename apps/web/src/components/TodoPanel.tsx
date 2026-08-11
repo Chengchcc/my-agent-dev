@@ -15,17 +15,17 @@ export function TodoPanel({
   if (visible.length === 0) return null;
 
   return (
-    <div className="shrink-0 px-6 py-2 border-b border-[var(--hairline)] bg-[var(--canvas-soft)]">
+    <div className="shrink-0 px-6 py-2 border-b border-(--hairline) bg-(--canvas-soft)">
       {visible.map((r) => {
         const done = r.items.filter((t) => t.status === "done").length;
         return (
           <div key={r.runId} className={visible.length > 1 ? "mb-2 last:mb-0" : ""}>
             {visible.length > 1 && (
-              <p className="text-[10px] text-[var(--mute)] mb-0.5">
+              <p className="text-[10px] text-(--mute) mb-0.5">
                 {r.agent.displayName ?? r.agent.memberId}
               </p>
             )}
-            <p className="text-[10px] tracking-[0.1em] uppercase text-[var(--mute)] font-semibold mb-1">
+            <p className="text-[10px] tracking-widest uppercase text-(--mute) font-semibold mb-1">
               Plan &middot; {done}/{r.items.length}
             </p>
             <ul className="space-y-0.5">
@@ -37,12 +37,12 @@ export function TodoPanel({
                   <span
                     className={
                       t.status === "done"
-                        ? "line-through text-[var(--mute)]"
+                        ? "line-through text-(--mute)"
                         : t.status === "in_progress"
-                          ? "text-[var(--primary)]"
+                          ? "text-(--primary)"
                           : t.status === "cancelled"
-                            ? "line-through opacity-50 text-[var(--mute)]"
-                            : "text-[var(--body)]"
+                            ? "line-through opacity-50 text-(--mute)"
+                            : "text-(--body)"
                     }
                   >
                     {t.text}

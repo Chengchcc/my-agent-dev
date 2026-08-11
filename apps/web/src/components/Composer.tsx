@@ -277,7 +277,7 @@ export function Composer({
     agentMembers.length === 1 ? placeholder : "@agent to address…  Ctrl+Enter to send";
 
   return (
-    <div className="bg-[var(--canvas)] px-6 py-4">
+    <div className="bg-(--canvas) px-6 py-4">
       <div className="mx-auto flex gap-2 items-end relative" style={{ maxWidth: "72ch" }}>
         <div className="flex-1 relative">
           <Textarea
@@ -288,10 +288,10 @@ export function Composer({
             placeholder={disabled ? "Agent is responding…" : effectivePlaceholder}
             rows={1}
             disabled={disabled}
-            className="w-full resize-none bg-[var(--canvas-soft)] border border-[var(--hairline)]
-                       rounded-md px-3 py-3 text-sm text-[var(--ink)]
-                       placeholder:text-[var(--mute)]
-                       focus:outline-none focus:border-[var(--primary)]
+            className="w-full resize-none bg-(--canvas-soft) border border-(--hairline)
+                       rounded-md p-3  text-sm text-(--ink)
+                       placeholder:text-(--mute)
+                       focus:outline-none focus:border-(--primary)
                        disabled:opacity-40 disabled:cursor-not-allowed
                        transition-colors duration-200"
             style={{ minHeight: "44px", maxHeight: "200px" }}
@@ -301,19 +301,19 @@ export function Composer({
           {showMentions && (
             <div
               ref={popoverRef}
-              className="absolute bottom-full left-0 mb-1 w-72 bg-[var(--canvas)] border border-[var(--hairline)] rounded-lg z-50 overflow-hidden"
+              className="absolute bottom-full left-0 mb-1 w-72 bg-(--canvas) border border-(--hairline) rounded-lg z-50 overflow-hidden"
             >
-              <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--hairline)] bg-[var(--canvas-soft)]">
-                <span className="text-[10px] tracking-[0.1em] uppercase text-[var(--mute)] font-semibold">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-(--hairline) bg-(--canvas-soft)">
+                <span className="text-[10px] tracking-widest uppercase text-(--mute) font-semibold">
                   Mention an agent
                 </span>
-                <span className="text-[10px] text-[var(--mute)] flex items-center gap-1">
+                <span className="text-[10px] text-(--mute) flex items-center gap-1">
                   <CornerDownLeft size={10} /> to select
                 </span>
               </div>
               <div className="max-h-48 overflow-y-auto">
                 {filteredMentions.length === 0 ? (
-                  <p className="text-xs text-[var(--mute)] px-3 py-3">No matching agents</p>
+                  <p className="text-xs text-(--mute) p-3 ">No matching agents</p>
                 ) : (
                   filteredMentions.map((m, i) => (
                     <Button
@@ -321,18 +321,14 @@ export function Composer({
                       onClick={() => insertMention(m)}
                       onMouseEnter={() => setMentionIndex(i)}
                       className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors ${
-                        i === mentionIndex
-                          ? "bg-[var(--primary)]/10"
-                          : "hover:bg-[var(--canvas-soft)]"
+                        i === mentionIndex ? "bg-(--primary)/10" : "hover:bg-(--canvas-soft)"
                       }`}
                     >
-                      <Bot size={15} className="text-[var(--primary)] shrink-0" />
-                      <span className="text-sm text-[var(--body)] truncate flex-1">
+                      <Bot size={15} className="text-(--primary) shrink-0" />
+                      <span className="text-sm text-(--body) truncate flex-1">
                         {m.displayName ?? m.memberId}
                       </span>
-                      <span className="text-[10px] font-mono text-[var(--mute)] shrink-0">
-                        agent
-                      </span>
+                      <span className="text-[10px] font-mono text-(--mute) shrink-0">agent</span>
                     </Button>
                   ))
                 )}
@@ -342,18 +338,18 @@ export function Composer({
 
           {/* Slash command popover */}
           {showSlash && (
-            <div className="absolute bottom-full left-0 mb-1 w-80 bg-[var(--canvas)] border border-[var(--hairline)] rounded-lg z-50 overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--hairline)] bg-[var(--canvas-soft)]">
-                <span className="text-[10px] tracking-[0.1em] uppercase text-[var(--mute)] font-semibold">
+            <div className="absolute bottom-full left-0 mb-1 w-80 bg-(--canvas) border border-(--hairline) rounded-lg z-50 overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-(--hairline) bg-(--canvas-soft)">
+                <span className="text-[10px] tracking-widest uppercase text-(--mute) font-semibold">
                   Commands
                 </span>
-                <span className="text-[10px] text-[var(--mute)] flex items-center gap-1">
+                <span className="text-[10px] text-(--mute) flex items-center gap-1">
                   <CornerDownLeft size={10} /> to complete
                 </span>
               </div>
               <div className="max-h-56 overflow-y-auto">
                 {filteredSlash.length === 0 ? (
-                  <p className="text-xs text-[var(--mute)] px-3 py-3">No matching commands</p>
+                  <p className="text-xs text-(--mute) p-3 ">No matching commands</p>
                 ) : (
                   filteredSlash.map((c, i) => (
                     <Button
@@ -361,22 +357,18 @@ export function Composer({
                       onClick={completeSlash}
                       onMouseEnter={() => setSlashIndex(i)}
                       className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors ${
-                        i === slashIndex
-                          ? "bg-[var(--primary)]/10"
-                          : "hover:bg-[var(--canvas-soft)]"
+                        i === slashIndex ? "bg-(--primary)/10" : "hover:bg-(--canvas-soft)"
                       }`}
                     >
-                      <Terminal size={15} className="text-[var(--primary)] shrink-0" />
+                      <Terminal size={15} className="text-(--primary) shrink-0" />
                       <div className="flex flex-col min-w-0 flex-1">
-                        <span className="text-sm text-[var(--body)] truncate font-mono">
+                        <span className="text-sm text-(--body) truncate font-mono">
                           {c.command}{" "}
                           {c.argsHint && (
-                            <span className="text-[var(--mute)] font-sans">{c.argsHint}</span>
+                            <span className="text-(--mute) font-sans">{c.argsHint}</span>
                           )}
                         </span>
-                        <span className="text-[11px] text-[var(--mute)] truncate">
-                          {c.description}
-                        </span>
+                        <span className="text-[11px] text-(--mute) truncate">{c.description}</span>
                       </div>
                     </Button>
                   ))
@@ -396,7 +388,7 @@ export function Composer({
                     setMentionFilter("");
                     setMentionIndex(0);
                   }}
-                  className="shrink-0 p-2 text-[var(--mute)] hover:text-[var(--body)] transition-colors mb-0.5"
+                  className="shrink-0 p-2 text-(--mute) hover:text-(--body) transition-colors mb-0.5"
                 >
                   <AtSign size={16} />
                 </Button>

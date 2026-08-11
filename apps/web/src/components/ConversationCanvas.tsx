@@ -217,21 +217,21 @@ export function ConversationCanvas({
   );
 
   return (
-    <div className="h-full flex flex-col bg-[var(--canvas)]">
+    <div className="h-full flex flex-col bg-(--canvas)">
       {/* Header */}
-      <div className="shrink-0 border-b border-[var(--hairline)] px-6 py-3">
+      <div className="shrink-0 border-b border-(--hairline) px-6 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
             <Link
               href="/team"
-              className="text-[10px] text-[var(--mute)] hover:text-[var(--body)] transition-colors shrink-0"
+              className="text-[10px] text-(--mute) hover:text-(--body) transition-colors shrink-0"
             >
               Team
             </Link>
             {primaryAgent && (
               <>
-                <span className="text-[var(--hairline)]">/</span>
-                <span className="text-[10px] text-[var(--body)] truncate">
+                <span className="text-(--hairline)">/</span>
+                <span className="text-[10px] text-(--body) truncate">
                   {primaryAgent.displayName ?? primaryAgent.memberId}
                 </span>
               </>
@@ -241,7 +241,7 @@ export function ConversationCanvas({
             {label && (
               <>
                 <span
-                  className={`w-1.5 h-1.5 rounded-full transition-colors duration-500 ${
+                  className={`size-1.5  rounded-full transition-colors duration-500 ${
                     busy ? "animate-dot-pulse" : ""
                   }`}
                   style={{
@@ -258,7 +258,7 @@ export function ConversationCanvas({
                 </span>
               </>
             )}
-            {!label && <span className="text-xs text-[var(--mute)]">Idle</span>}
+            {!label && <span className="text-xs text-(--mute)">Idle</span>}
             {busy && currentRunId && (
               <Button
                 variant="ghost"
@@ -274,7 +274,7 @@ export function ConversationCanvas({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="size-7 "
               onClick={handleExport}
               title="Export conversation"
             >
@@ -284,7 +284,7 @@ export function ConversationCanvas({
         </div>
         {primaryAgent && (
           <div className="flex items-center gap-2 mt-2">
-            <span className="text-sm font-medium text-[var(--ink-strong)]">
+            <span className="text-sm font-medium text-(--ink-strong)">
               {primaryAgent.displayName ?? primaryAgent.memberId}
             </span>
           </div>
@@ -302,7 +302,7 @@ export function ConversationCanvas({
           }`}
         >
           <span
-            className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+            className={`size-1.5  rounded-full animate-pulse ${
               streamConn === "closed" ? "bg-red-500" : "bg-amber-500"
             }`}
           />
@@ -343,15 +343,15 @@ export function ConversationCanvas({
 
       {/* Error bar */}
       {error && (
-        <div className="shrink-0 border-b border-[var(--hairline)] bg-[var(--canvas-soft)] px-6 py-2 flex items-center justify-between">
+        <div className="shrink-0 border-b border-(--hairline) bg-(--canvas-soft) px-6 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="w-1 h-4 bg-[var(--primary)]/60 shrink-0 rounded-full" />
-            <p className="text-xs text-[var(--ink)]">{error}</p>
+            <span className="w-1 h-4 bg-(--primary)/60 shrink-0 rounded-full" />
+            <p className="text-xs text-(--ink)">{error}</p>
           </div>
           {lastUserMessage && (
             <Button
               onClick={() => send(lastUserMessage)}
-              className="text-xs text-[var(--primary)] hover:text-[var(--primary-soft)] transition-colors shrink-0 ml-4"
+              className="text-xs text-(--primary) hover:text-(--primary-soft) transition-colors shrink-0 ml-4"
             >
               Retry
             </Button>
@@ -367,16 +367,14 @@ export function ConversationCanvas({
               <div className="flex flex-col items-start justify-center py-24">
                 {primaryAgent && (
                   <h1
-                    className="font-[family-name:var(--font-sans)] text-2xl font-normal text-[var(--ink-strong)] mb-3"
+                    className="font-sans text-2xl font-normal text-(--ink-strong) mb-3"
                     style={{ letterSpacing: "-0.65px" }}
                   >
                     {primaryAgent.displayName ?? primaryAgent.memberId}
                   </h1>
                 )}
-                <p className="text-sm text-[var(--mute)] mb-6">Send a message to begin.</p>
-                <p className="font-[family-name:var(--font-mono)] text-[13px] text-[var(--primary)]">
-                  &#x25B8; type to start
-                </p>
+                <p className="text-sm text-(--mute) mb-6">Send a message to begin.</p>
+                <p className="font-mono text-[13px] text-(--primary)">&#x25B8; type to start</p>
               </div>
             ) : (
               <div className="py-4">
@@ -396,15 +394,15 @@ export function ConversationCanvas({
         {scrolledUp && (
           <Button
             onClick={scrollToBottom}
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-[var(--canvas)] border border-[var(--hairline)] rounded-full p-2 hover:border-[var(--primary)] transition-colors"
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-(--canvas) border border-(--hairline) rounded-full p-2 hover:border-(--primary) transition-colors"
             title="Scroll to bottom"
           >
-            <ArrowDown size={14} className="text-[var(--body)]" />
+            <ArrowDown size={14} className="text-(--body)" />
           </Button>
         )}
 
         {/* Roster — desktop sidebar */}
-        <aside className="hidden md:block shrink-0 w-56 border-l border-[var(--hairline)] overflow-y-auto p-3">
+        <aside className="hidden md:block shrink-0 w-56 border-l border-(--hairline) overflow-y-auto p-3">
           <RosterList
             conversationId={conversationId}
             roster={roster}
@@ -435,7 +433,7 @@ export function ConversationCanvas({
           />
           <aside
             id="roster-drawer"
-            className="md:hidden fixed right-0 top-0 bottom-0 w-64 bg-[var(--canvas)] border-l border-[var(--hairline)] z-50 overflow-y-auto p-3 shadow-lg"
+            className="md:hidden fixed right-0 inset-y-0 w-64 bg-(--canvas) border-l border-(--hairline) z-50 overflow-y-auto p-3 shadow-lg"
             role="dialog"
             aria-label="Members"
           >
@@ -452,7 +450,7 @@ export function ConversationCanvas({
       {/* Roster — mobile drawer overlay */}
 
       {/* Composer */}
-      <div className="shrink-0 border-t border-[var(--hairline)]">
+      <div className="shrink-0 border-t border-(--hairline)">
         <div className="flex items-center gap-2 px-6 pt-3">
           <Button
             type="button"
@@ -462,14 +460,14 @@ export function ConversationCanvas({
             aria-pressed={triggerMode === "auto"}
             className="
               h-7 shrink-0 gap-1.5 rounded-md px-2
-              border border-[var(--hairline)]
+              border border-(--hairline)
               bg-transparent
               text-[10px] font-medium tracking-[0.08em]
-              text-[var(--mute)]
-              hover:bg-[var(--canvas-soft)]
-              hover:text-[var(--ink)]
-              aria-pressed:bg-[var(--canvas-soft)]
-              aria-pressed:text-[var(--primary)]
+              text-(--mute)
+              hover:bg-(--canvas-soft)
+              hover:text-(--ink)
+              aria-pressed:bg-(--canvas-soft)
+              aria-pressed:text-(--primary)
             "
             title={
               triggerMode === "auto"
@@ -478,8 +476,8 @@ export function ConversationCanvas({
             }
           >
             <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                triggerMode === "auto" ? "bg-[var(--primary)]" : "bg-[var(--hairline-soft)]"
+              className={`size-1.5  rounded-full ${
+                triggerMode === "auto" ? "bg-(--primary)" : "bg-(--hairline-soft)"
               }`}
             />
             {triggerMode === "auto" ? "AUTO" : "@ MENTION"}
@@ -521,17 +519,17 @@ function GoalStatusBar({ conversationId }: { conversationId: string }) {
   if (!goal?.condition) return null;
 
   return (
-    <div className="flex items-center gap-2 mt-2 px-3 py-1.5 rounded-md bg-[var(--canvas-soft)] border border-[var(--hairline)]">
-      <span className="text-[10px] font-semibold tracking-[2px] uppercase text-[var(--primary)] shrink-0">
+    <div className="flex items-center gap-2 mt-2 px-3 py-1.5 rounded-md bg-(--canvas-soft) border border-(--hairline)">
+      <span className="text-[10px] font-semibold tracking-[2px] uppercase text-(--primary) shrink-0">
         Goal
       </span>
-      <span className="text-xs text-[var(--ink-strong)] truncate flex-1">{goal.condition}</span>
-      <span className="text-[10px] text-[var(--mute)] shrink-0">
+      <span className="text-xs text-(--ink-strong) truncate flex-1">{goal.condition}</span>
+      <span className="text-[10px] text-(--mute) shrink-0">
         {goal.turns} turn{goal.turns !== 1 ? "s" : ""}
       </span>
       {goal.lastReason && (
         <span
-          className="text-[10px] text-[var(--mute)] shrink-0 max-w-[200px] truncate"
+          className="text-[10px] text-(--mute) shrink-0 max-w-[200px] truncate"
           title={goal.lastReason}
         >
           · {goal.lastReason}

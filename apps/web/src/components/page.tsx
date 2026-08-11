@@ -26,7 +26,7 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="border-b border-[var(--hairline)] px-4 sm:px-6 lg:px-8 py-4">
+    <div className="border-b border-(--hairline) p-4 sm:px-6 lg:px-8 ">
       {breadcrumb && (
         <Breadcrumb className="mb-1">
           <BreadcrumbList>
@@ -38,7 +38,7 @@ export function PageHeader({
       )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--ink)]">{title}</h1>
+          <h1 className="text-xl font-semibold text-(--ink)">{title}</h1>
           {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
         </div>
         {action}
@@ -59,7 +59,7 @@ export function PageBody({
   return (
     <div
       className={cn(
-        "px-4 sm:px-6 lg:px-8 py-6 lg:py-8",
+        "px-4 sm:px-6 lg:p-8 py-6 ",
         size === "wide" ? "mx-auto max-w-7xl" : "mx-auto max-w-3xl",
         className,
       )}

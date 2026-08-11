@@ -19,21 +19,21 @@ export function LiveToolStep({ tool }: { tool: LiveToolCall }) {
     tool.state === "running" ? "running" : tool.state === "error" ? "error" : "done";
 
   return (
-    <div className="mt-1 rounded-md border border-[var(--hairline)] bg-[var(--canvas-soft)] px-2 py-1">
+    <div className="mt-1 rounded-md border border-(--hairline) bg-(--canvas-soft) px-2 py-1">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-2 text-left"
       >
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${stateDot}`} />
-        <span className="font-mono text-xs text-[var(--ink)]">{tool.name}</span>
-        <span className="text-[10px] text-[var(--mute)]">{stateLabel}</span>
+        <span className={`size-1.5  shrink-0 rounded-full ${stateDot}`} />
+        <span className="font-mono text-xs text-(--ink)">{tool.name}</span>
+        <span className="text-[10px] text-(--mute)">{stateLabel}</span>
         {tool.result !== undefined && (
-          <span className="ml-auto text-[10px] text-[var(--mute)]">{open ? "hide" : "result"}</span>
+          <span className="ml-auto text-[10px] text-(--mute)">{open ? "hide" : "result"}</span>
         )}
       </button>
       {open && tool.result !== undefined && (
-        <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-[var(--canvas)] p-2 font-mono text-[10px] text-[var(--mute)]">
+        <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-(--canvas) p-2 font-mono text-[10px] text-(--mute)">
           {typeof tool.result === "string" ? tool.result : JSON.stringify(tool.result, null, 2)}
         </pre>
       )}

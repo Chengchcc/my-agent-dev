@@ -204,7 +204,7 @@ export function InstallPackForm({ onDone }: { onDone: () => void }) {
                     onClick={openFileDialog}
                     className="flex flex-col items-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/25 p-6 text-center transition-colors hover:border-muted-foreground/50 hover:bg-muted/50"
                   >
-                    <Upload className="h-8 w-8 text-muted-foreground" />
+                    <Upload className="size-8 text-muted-foreground" />
                     <div className="text-sm text-muted-foreground">
                       <span className="font-medium text-primary">Click to upload</span> or drag and
                       drop
@@ -214,8 +214,8 @@ export function InstallPackForm({ onDone }: { onDone: () => void }) {
                 ) : (
                   <div className="flex items-center justify-between rounded-lg border p-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex-shrink-0 rounded bg-muted p-2">
-                        <Upload className="h-4 w-4 text-muted-foreground" />
+                      <div className="shrink-0 rounded bg-muted p-2">
+                        <Upload className="size-4 text-muted-foreground" />
                       </div>
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium">{files[0]!.file.name}</div>

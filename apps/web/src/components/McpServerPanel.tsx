@@ -256,13 +256,13 @@ export function McpServerPanel({ agentId }: { agentId: string }) {
 
       {isLoading && (
         <div className="animate-pulse space-y-3">
-          <div className="h-16 rounded-xl bg-[var(--canvas-soft)]" />
-          <div className="h-16 rounded-xl bg-[var(--canvas-soft)]" />
+          <div className="h-16 rounded-xl bg-(--canvas-soft)" />
+          <div className="h-16 rounded-xl bg-(--canvas-soft)" />
         </div>
       )}
 
       {!isLoading && servers.length === 0 && (
-        <p className="text-sm text-[var(--mute)]">
+        <p className="text-sm text-(--mute)">
           No MCP servers configured. Add one to extend this agent&apos;s capabilities.
         </p>
       )}

@@ -40,7 +40,7 @@ export function ReviewActionBar({ loopId, item }: { loopId: string; item: LoopIt
   };
 
   return (
-    <div className="space-y-3 border-t border-[var(--hairline)] pt-4">
+    <div className="space-y-3 border-t border-(--hairline) pt-4">
       <div className="flex flex-wrap gap-2">
         {ACTIONS.map((a) => (
           <Button

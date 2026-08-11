@@ -54,14 +54,12 @@ export function AddMemberButton({ conversationId, roster }: AddMemberButtonProps
       </DialogTrigger>
 
       <DialogContent className="w-80 max-h-96 flex flex-col p-0 gap-0">
-        <DialogHeader className="px-4 py-3 border-b border-[var(--hairline)]">
-          <DialogTitle className="text-sm font-semibold text-[var(--ink-strong)]">
-            Add Agent
-          </DialogTitle>
+        <DialogHeader className="px-4 py-3 border-b border-(--hairline)">
+          <DialogTitle className="text-sm font-semibold text-(--ink-strong)">Add Agent</DialogTitle>
         </DialogHeader>
         <div className="flex-1 overflow-y-auto p-2">
           {sorted.length === 0 ? (
-            <p className="text-xs text-[var(--mute)] p-2">No agents available.</p>
+            <p className="text-xs text-(--mute) p-2">No agents available.</p>
           ) : (
             <ul className="space-y-1">
               {sorted.map((a) => {
@@ -80,9 +78,9 @@ export function AddMemberButton({ conversationId, roster }: AddMemberButtonProps
                       className="w-full flex items-center justify-start gap-2 px-2 py-1.5 h-auto rounded text-xs font-normal disabled:opacity-30 text-left"
                       title={isPresent ? "Already in this conversation" : undefined}
                     >
-                      <Bot size={14} className="text-[var(--primary)] shrink-0" />
-                      <span className="text-[var(--body)] truncate flex-1">{a.name}</span>
-                      {isPresent && <Check size={12} className="text-[var(--mute)] shrink-0" />}
+                      <Bot size={14} className="text-(--primary) shrink-0" />
+                      <span className="text-(--body) truncate flex-1">{a.name}</span>
+                      {isPresent && <Check size={12} className="text-(--mute) shrink-0" />}
                     </Button>
                   </li>
                 );

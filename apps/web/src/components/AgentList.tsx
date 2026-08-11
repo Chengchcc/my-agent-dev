@@ -75,10 +75,10 @@ export function AgentList() {
         {[1, 2, 3].map((i) => (
           <div
             key={i}
-            className="border border-[var(--hairline)] rounded-lg bg-[var(--canvas)] p-8 animate-pulse"
+            className="border border-(--hairline) rounded-lg bg-(--canvas) p-8 animate-pulse"
           >
-            <div className="h-5 w-32 bg-[var(--canvas-soft)] mb-3" />
-            <div className="h-4 w-24 bg-[var(--canvas-soft)]" />
+            <div className="h-5 w-32 bg-(--canvas-soft) mb-3" />
+            <div className="h-4 w-24 bg-(--canvas-soft)" />
           </div>
         ))}
       </div>
@@ -88,10 +88,8 @@ export function AgentList() {
   if (active.length === 0) {
     return (
       <div className="py-24 text-center">
-        <p className="text-lg text-[var(--mute)] mb-2 font-[family-name:var(--font-sans)]">
-          No agents yet
-        </p>
-        <p className="text-sm text-[var(--mute)]">Create your first agent to begin.</p>
+        <p className="text-lg text-(--mute) mb-2 font-sans">No agents yet</p>
+        <p className="text-sm text-(--mute)">Create your first agent to begin.</p>
       </div>
     );
   }
@@ -102,22 +100,22 @@ export function AgentList() {
         <div key={agent.id} className="relative group">
           <Link
             href={`/team/${agent.id}`}
-            className="block border border-[var(--hairline)] rounded-lg bg-[var(--canvas)] p-8
-                       hover:border-[var(--primary)] transition-colors duration-300
+            className="block border border-(--hairline) rounded-lg bg-(--canvas) p-8
+                       hover:border-(--primary) transition-colors duration-300
                        "
             style={{}}
           >
             <h3
-              className="text-xl font-normal text-[var(--ink-strong)] tracking-tight font-[family-name:var(--font-sans)]"
+              className="text-xl font-normal text-(--ink-strong) tracking-tight font-sans"
               style={{ letterSpacing: "-0.65px" }}
             >
               {agent.name}
             </h3>
 
             <div className="mt-3 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] opacity-60" />
+              <span className="size-1.5 rounded-full bg-(--primary) opacity-60" />
               <span
-                className="text-xs text-[var(--mute)] tracking-wider uppercase font-[family-name:var(--font-sans)] font-semibold"
+                className="text-xs text-(--mute) tracking-wider uppercase font-sans font-semibold"
                 style={{ letterSpacing: "2.52px" }}
               >
                 {agent.modelProvider}/{agent.modelName}
@@ -130,8 +128,8 @@ export function AgentList() {
                 const badge = runtimeBadge(runtimeById.get(agent.id), !!q?.isLoading && !q?.data);
                 return (
                   <>
-                    <span className={`w-1.5 h-1.5 rounded-full ${badge.color}`} />
-                    <span className="text-[10px] text-[var(--mute)] tracking-wider uppercase font-[family-name:var(--font-sans)] font-semibold">
+                    <span className={`size-1.5  rounded-full ${badge.color}`} />
+                    <span className="text-[10px] text-(--mute) tracking-wider uppercase font-sans font-semibold">
                       {badge.label}
                       {ago(badge.lastSeenAt) ? ` · ${ago(badge.lastSeenAt)}` : ""}
                     </span>
@@ -140,8 +138,8 @@ export function AgentList() {
               })()}
             </div>
 
-            <div className="mt-4 flex items-center gap-3 text-[10px] text-[var(--mute)]">
-              <span className="border border-[var(--hairline)] rounded-sm px-1.5 py-0.5 uppercase tracking-[0.15em] font-[family-name:var(--font-sans)] font-semibold">
+            <div className="mt-4 flex items-center gap-3 text-[10px] text-(--mute)">
+              <span className="border border-(--hairline) rounded-sm px-1.5 py-0.5 uppercase tracking-[0.15em] font-sans font-semibold">
                 {agent.permissionMode}
               </span>
               <span>

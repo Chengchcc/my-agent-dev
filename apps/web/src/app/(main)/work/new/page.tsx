@@ -15,7 +15,7 @@ const MonacoViewer = dynamic(
   () => import("@/components/MonacoViewer").then((m) => m.MonacoViewer),
   {
     ssr: false,
-    loading: () => <div className="h-96 animate-pulse rounded-md bg-[var(--canvas-soft)]" />,
+    loading: () => <div className="h-96 animate-pulse rounded-md bg-(--canvas-soft)" />,
   },
 );
 
@@ -90,7 +90,7 @@ export default function NewLoopPage() {
               <CardTitle>What do you want to automate?</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-[var(--muted)]">
+              <p className="text-sm text-(--muted)">
                 Loops are created as manual drafts: the goal becomes the loop name and a starting
                 LOOP.md. You set the schedule and items after creation.
               </p>
@@ -118,14 +118,12 @@ export default function NewLoopPage() {
                 <Input value={loopName} onChange={(e) => setLoopName(e.target.value)} />
               </div>
               {note && (
-                <div className="text-sm text-[var(--muted)] bg-[var(--canvas-soft)] rounded p-3">
-                  {note}
-                </div>
+                <div className="text-sm text-(--muted) bg-(--canvas-soft) rounded p-3">{note}</div>
               )}
               {preview ? (
                 <MonacoViewer value={preview} path="LOOP.md" />
               ) : (
-                <p className="text-sm text-[var(--muted)]">(no preview)</p>
+                <p className="text-sm text-(--muted)">(no preview)</p>
               )}
               <div className="flex gap-2">
                 <Button variant="outline" onClick={reset}>

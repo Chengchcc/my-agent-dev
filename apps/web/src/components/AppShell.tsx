@@ -36,10 +36,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="ml-auto flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className="ml-auto flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
             aria-label="Search conversations"
           >
-            <Search className="h-4 w-4" />
+            <Search className="size-4 " />
           </button>
         </div>
         {children}

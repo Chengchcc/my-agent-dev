@@ -207,7 +207,7 @@ export function CronJobForm({ editCronJob, onSuccess }: CronJobFormProps) {
                   <FormControl>
                     <Input {...field} className={fieldClass} placeholder="0 9 * * *" />
                   </FormControl>
-                  <p className="text-[10px] text-[var(--mute)] mt-1">
+                  <p className="text-[10px] text-(--mute) mt-1">
                     5-field expression, interpreted in UTC
                   </p>
                   <FormMessage />
@@ -242,7 +242,7 @@ export function CronJobForm({ editCronJob, onSuccess }: CronJobFormProps) {
                     <FormControl>
                       <Input {...field} type="number" className={fieldClass} placeholder="0" />
                     </FormControl>
-                    <p className="text-[10px] text-[var(--mute)] mt-1">0 = no per-job watchdog</p>
+                    <p className="text-[10px] text-(--mute) mt-1">0 = no per-job watchdog</p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -256,7 +256,7 @@ export function CronJobForm({ editCronJob, onSuccess }: CronJobFormProps) {
                     <FormControl>
                       <Input {...field} type="number" className={fieldClass} placeholder="0" />
                     </FormControl>
-                    <p className="text-[10px] text-[var(--mute)] mt-1">0 = no retry</p>
+                    <p className="text-[10px] text-(--mute) mt-1">0 = no retry</p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -282,7 +282,7 @@ export function CronJobForm({ editCronJob, onSuccess }: CronJobFormProps) {
             >
               {isEdit ? "Save Changes" : "Create Schedule"}{" "}
               {(createMu.isPending || updateMu.isPending) && (
-                <ArrowRight className="ml-2 h-4 w-4 animate-pulse" />
+                <ArrowRight className="ml-2 size-4 animate-pulse" />
               )}
             </Button>
           </form>

@@ -28,11 +28,11 @@ export function RecapPanel({
   if (visible.length === 0) return null;
 
   return (
-    <div className="shrink-0 px-6 py-1.5 border-b border-[var(--hairline)] bg-[var(--canvas-soft)]">
+    <div className="shrink-0 px-6 py-1.5 border-b border-(--hairline) bg-(--canvas-soft)">
       {visible.map((r) => (
         <div key={r.runId} className="flex items-start gap-2 text-xs">
-          <span className="shrink-0 text-[var(--mute)]">Recap</span>
-          <span className="text-[var(--body)] line-clamp-2">{sanitizeForDisplay(r.text)}</span>
+          <span className="shrink-0 text-(--mute)">Recap</span>
+          <span className="text-(--body) line-clamp-2">{sanitizeForDisplay(r.text)}</span>
         </div>
       ))}
     </div>

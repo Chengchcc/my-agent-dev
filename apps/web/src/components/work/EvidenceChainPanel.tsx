@@ -75,7 +75,7 @@ function VerdictBlock({ result }: { result: NonNullable<LoopItem["result"]> }) {
       </div>
       {"reasons" in result && result.reasons.length > 0 && (
         <div>
-          <p className="text-xs text-[var(--mute)] mb-1">Reasons</p>
+          <p className="text-xs text-(--mute) mb-1">Reasons</p>
           <ul className="text-sm space-y-1 list-disc list-inside">
             {result.reasons.map((r: string, i: number) => (
               <li key={i}>{r}</li>
@@ -85,8 +85,8 @@ function VerdictBlock({ result }: { result: NonNullable<LoopItem["result"]> }) {
       )}
       {result.evidence && (
         <div>
-          <p className="text-xs text-[var(--mute)] mb-1">Evidence</p>
-          <pre className="text-sm whitespace-pre-wrap font-sans bg-[var(--canvas)] rounded p-2 border border-[var(--hairline)]">
+          <p className="text-xs text-(--mute) mb-1">Evidence</p>
+          <pre className="text-sm whitespace-pre-wrap font-sans bg-(--canvas) rounded p-2 border border-(--hairline)">
             {result.evidence}
           </pre>
         </div>
@@ -101,7 +101,7 @@ export function EvidenceChainPanel({ loopId, item }: { loopId: string; item: Loo
   if (!item) {
     return (
       <div className="h-full flex items-center justify-center">
-        <p className="text-sm text-[var(--mute)]">Select an item to view its evidence chain.</p>
+        <p className="text-sm text-(--mute)">Select an item to view its evidence chain.</p>
       </div>
     );
   }
@@ -116,25 +116,25 @@ export function EvidenceChainPanel({ loopId, item }: { loopId: string; item: Loo
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-[var(--mute)]">Source</span>
+            <span className="text-(--mute)">Source</span>
             <span className="font-mono text-xs">{item.source}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-[var(--mute)]">Step</span>
+            <span className="text-(--mute)">Step</span>
             <Badge variant="outline" className="text-xs">
               {item.step}
             </Badge>
           </div>
           <div className="flex justify-between">
-            <span className="text-[var(--mute)]">Attempt</span>
+            <span className="text-(--mute)">Attempt</span>
             <span>{item.attempt}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-[var(--mute)]">Priority</span>
+            <span className="text-(--mute)">Priority</span>
             <span>{item.priority}</span>
           </div>
           <div>
-            <p className="text-[var(--mute)] mb-1">Summary</p>
+            <p className="text-(--mute) mb-1">Summary</p>
             <p>{item.summary}</p>
           </div>
         </CardContent>
@@ -148,7 +148,7 @@ export function EvidenceChainPanel({ loopId, item }: { loopId: string; item: Loo
           {item.result ? (
             <VerdictBlock result={item.result} />
           ) : (
-            <p className="text-sm text-[var(--mute)]">No verdict yet.</p>
+            <p className="text-sm text-(--mute)">No verdict yet.</p>
           )}
         </CardContent>
       </Card>
@@ -159,7 +159,7 @@ export function EvidenceChainPanel({ loopId, item }: { loopId: string; item: Loo
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between items-center">
-              <span className="text-[var(--mute)]">Run ID</span>
+              <span className="text-(--mute)">Run ID</span>
               {genRunHref ? (
                 <Link href={genRunHref} className="font-mono text-xs text-blue-600 hover:underline">
                   {item.generatorRunId}
@@ -169,17 +169,15 @@ export function EvidenceChainPanel({ loopId, item }: { loopId: string; item: Loo
               )}
             </div>
             <div>
-              <p className="text-[var(--mute)] mb-1">Agent Output</p>
+              <p className="text-(--mute) mb-1">Agent Output</p>
               {genLoading ? (
-                <p className="text-xs text-[var(--mute)] animate-pulse">Loading…</p>
+                <p className="text-xs text-(--mute) animate-pulse">Loading…</p>
               ) : genOutput ? (
-                <pre className="text-sm whitespace-pre-wrap font-sans bg-[var(--canvas)] rounded p-2 border border-[var(--hairline)] max-h-64 overflow-y-auto">
+                <pre className="text-sm whitespace-pre-wrap font-sans bg-(--canvas) rounded p-2 border border-(--hairline) max-h-64 overflow-y-auto">
                   {genOutput}
                 </pre>
               ) : (
-                <p className="text-xs text-[var(--mute)]">
-                  No assistant output recorded for this run.
-                </p>
+                <p className="text-xs text-(--mute)">No assistant output recorded for this run.</p>
               )}
             </div>
           </CardContent>

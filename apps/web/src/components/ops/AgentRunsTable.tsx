@@ -46,7 +46,7 @@ export function AgentRunsTable({
   onCancel: (runId: string) => void;
 }) {
   if (runs.length === 0) {
-    return <p className="text-sm text-[var(--mute)]">No Agent Runs yet.</p>;
+    return <p className="text-sm text-(--mute)">No Agent Runs yet.</p>;
   }
 
   return (
@@ -54,22 +54,19 @@ export function AgentRunsTable({
       {/* Mobile: card list (no horizontal scroll of a desktop table). */}
       <div className="space-y-2 md:hidden">
         {runs.map((r) => (
-          <div
-            key={r.runId}
-            className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas)] p-3"
-          >
+          <div key={r.runId} className="rounded-lg border border-(--hairline) bg-(--canvas) p-3">
             <div className="flex items-center justify-between gap-2">
               <Link href={`/system/runs/${r.runId}`} className="font-mono text-xs underline">
                 {r.runId.slice(0, 12)}
               </Link>
               <Badge className={STATUS_STYLES[r.status] ?? ""}>{r.status}</Badge>
             </div>
-            <p className="mt-1.5 text-sm text-[var(--ink)] truncate">{r.model}</p>
-            <p className="text-xs text-[var(--mute)]">
+            <p className="mt-1.5 text-sm text-(--ink) truncate">{r.model}</p>
+            <p className="text-xs text-(--mute)">
               {r.agentId || "default"} · {startedAt(r)}
             </p>
             <div className="mt-1 flex items-center justify-between">
-              <span className="text-xs text-[var(--mute)]">{tokens(r)}</span>
+              <span className="text-xs text-(--mute)">{tokens(r)}</span>
               {canCancel(r.status) && (
                 <Button
                   variant="ghost"
@@ -86,9 +83,9 @@ export function AgentRunsTable({
       </div>
 
       {/* Desktop: full table. */}
-      <div className="hidden overflow-x-auto rounded-lg border border-[var(--hairline)] md:block">
+      <div className="hidden overflow-x-auto rounded-lg border border-(--hairline) md:block">
         <table className="w-full text-sm table-fixed">
-          <thead className="bg-[var(--canvas-soft)] text-left text-xs text-[var(--mute)]">
+          <thead className="bg-(--canvas-soft) text-left text-xs text-(--mute)">
             <tr>
               <th className="p-2 w-[120px]">Run</th>
               <th className="p-2 w-[100px]">Status</th>
@@ -101,7 +98,7 @@ export function AgentRunsTable({
           </thead>
           <tbody>
             {runs.map((r) => (
-              <tr key={r.runId} className="border-t border-[var(--hairline)]">
+              <tr key={r.runId} className="border-t border-(--hairline)">
                 <td className="p-2">
                   <Link href={`/system/runs/${r.runId}`} className="underline">
                     {r.runId.slice(0, 12)}
@@ -114,8 +111,8 @@ export function AgentRunsTable({
                 <td className="p-2 max-w-0 truncate" title={r.model}>
                   {r.model}
                 </td>
-                <td className="p-2 text-xs text-[var(--mute)]">{startedAt(r)}</td>
-                <td className="p-2 text-xs text-[var(--mute)]">{tokens(r)}</td>
+                <td className="p-2 text-xs text-(--mute)">{startedAt(r)}</td>
+                <td className="p-2 text-xs text-(--mute)">{tokens(r)}</td>
                 <td className="p-2 text-right">
                   {canCancel(r.status) && (
                     <Button

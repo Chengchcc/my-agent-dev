@@ -36,9 +36,9 @@ function SummaryCard({
           ? "text-red-400"
           : "text-[var(--ink)]";
   return (
-    <div className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas)] p-3">
-      <div className="flex items-center gap-1.5 text-xs text-[var(--mute)]">
-        <Icon className="h-3.5 w-3.5" aria-hidden />
+    <div className="rounded-lg border border-(--hairline) bg-(--canvas) p-3">
+      <div className="flex items-center gap-1.5 text-xs text-(--mute)">
+        <Icon className="size-3.5 " aria-hidden />
         <span className="truncate">{label}</span>
       </div>
       <p className={`mt-1 text-2xl font-semibold tabular-nums ${toneColor}`}>{value}</p>
@@ -172,7 +172,7 @@ export default function SystemPage() {
 
           <TabsContent value="cron" className="w-full min-w-0 pt-4">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-medium text-[var(--ink)]">Schedules</h2>
+              <h2 className="text-sm font-medium text-(--ink)">Schedules</h2>
               {/* The primary action lives with its tab content, not the tab row. */}
               <CronJobForm />
             </div>
@@ -188,12 +188,12 @@ export default function SystemPage() {
                   {cronJobs.map((job) => (
                     <div
                       key={job.cronJobId}
-                      className="flex flex-col gap-3 rounded-lg border border-[var(--hairline)] p-3 sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-3 rounded-lg border border-(--hairline) p-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <Badge variant="outline">{job.cronExpr}</Badge>
                         <span className="text-sm font-medium">{job.name}</span>
-                        <span className="text-xs text-[var(--mute)]">agent: {job.agentId}</span>
+                        <span className="text-xs text-(--mute)">agent: {job.agentId}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Switch
@@ -229,10 +229,10 @@ export default function SystemPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-destructive"
+                            className="size-7 text-destructive"
                             onClick={() => setConfirmingJobId(job.cronJobId)}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="size-4 " />
                           </Button>
                         )}
                       </div>

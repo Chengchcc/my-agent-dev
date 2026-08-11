@@ -143,7 +143,7 @@ export function SkillPackManager() {
     <div className="space-y-6">
       <div className="flex justify-end">
         <Button onClick={() => setShowInstall(true)}>
-          <Download className="mr-2 h-4 w-4" />
+          <Download className="mr-2 size-4 " />
           Install Pack
         </Button>
       </div>
@@ -198,9 +198,9 @@ export function SkillPackManager() {
                   <p className="text-sm text-muted-foreground line-clamp-2">{p.description}</p>
                   <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
                     {p.sourceKind === "git" ? (
-                      <GitBranch className="h-3 w-3" />
+                      <GitBranch className="size-3 " />
                     ) : p.sourceKind === "builtin" ? (
-                      <FolderSync className="h-3 w-3" />
+                      <FolderSync className="size-3 " />
                     ) : null}
                     <span>{p.sourceKind}</span>
                     {p.installedRef && (
@@ -221,7 +221,7 @@ export function SkillPackManager() {
                       disabled={syncMutation.isPending}
                     >
                       <RefreshCw
-                        className={`h-3 w-3 mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`}
+                        className={`size-3  mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`}
                       />
                       Sync
                     </Button>
@@ -235,7 +235,7 @@ export function SkillPackManager() {
                         if (confirm(`Delete pack "${p.name}"?`)) deleteMutation.mutate(p.id);
                       }}
                     >
-                      <Trash2 className="h-3 w-3 mr-1" />
+                      <Trash2 className="size-3 mr-1" />
                       Delete
                     </Button>
                   )}
@@ -270,7 +270,7 @@ export function SkillPackManager() {
               <details open className="group">
                 <summary className="flex items-center justify-between text-sm font-semibold cursor-pointer select-none">
                   Skills
-                  <span className="text-[10px] text-[var(--mute)] group-open:hidden">expand</span>
+                  <span className="text-[10px] text-(--mute) group-open:hidden">expand</span>
                 </summary>
                 <div className="mt-2">
                   {skills ? (
@@ -334,8 +334,8 @@ export function SkillPackManager() {
                   <FileContent packId={selectedPack} path={selectedFile} />
                 </div>
               ) : (
-                <div className="rounded-lg border border-dashed border-[var(--hairline)] p-8 text-center">
-                  <p className="text-sm text-[var(--mute)]">Select a file to view its contents.</p>
+                <div className="rounded-lg border border-dashed border-(--hairline) p-8 text-center">
+                  <p className="text-sm text-(--mute)">Select a file to view its contents.</p>
                 </div>
               )}
             </div>

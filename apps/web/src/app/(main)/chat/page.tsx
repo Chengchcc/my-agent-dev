@@ -30,7 +30,7 @@ function ForkSourceMarker({ sourceId, createdAt }: { sourceId: string; createdAt
   });
   const sourceTitle = sourceConv?.title ?? `Conversation ${sourceId.slice(0, 8)}`;
   return (
-    <p className="text-[10px] text-[var(--mute)] flex items-center gap-1">
+    <p className="text-[10px] text-(--mute) flex items-center gap-1">
       <span>↳</span>
       <span className="truncate">forked from {sourceTitle}</span>
       {relativeTime(createdAt) && <span>· {relativeTime(createdAt)}</span>}
@@ -96,12 +96,12 @@ export default function ChatOverviewPage() {
       />
       <PageBody size="reading" className="space-y-6">
         {/* New chat composer: hairline border, focus ring only. */}
-        <div className="rounded-lg border border-[var(--hairline)] bg-[var(--canvas)] p-4 focus-within:border-[var(--primary)] transition-colors">
+        <div className="rounded-lg border border-(--hairline) bg-(--canvas) p-4 focus-within:border-(--primary) transition-colors">
           <div className="flex items-center gap-2 mb-3">
-            <div className="flex items-center justify-center h-7 w-7 rounded-full bg-[var(--primary)] text-[var(--canvas)]">
+            <div className="flex items-center justify-center size-7 rounded-full bg-(--primary) text-(--canvas)">
               <Send size={13} />
             </div>
-            <span className="text-sm font-semibold text-[var(--ink-strong)]">New Chat</span>
+            <span className="text-sm font-semibold text-(--ink-strong)">New Chat</span>
           </div>
           <Textarea
             value={input}
@@ -113,10 +113,10 @@ export default function ChatOverviewPage() {
               }
             }}
             placeholder="What do you want to work on?"
-            className="min-h-24 resize-none border-0 bg-transparent text-sm text-[var(--ink-strong)] placeholder:text-[var(--mute)] focus-visible:ring-0"
+            className="min-h-24 resize-none border-0 bg-transparent text-sm text-(--ink-strong) placeholder:text-(--mute) focus-visible:ring-0"
           />
           <div className="flex items-center justify-between mt-2">
-            <span className="text-[10px] text-[var(--mute)]">
+            <span className="text-[10px] text-(--mute)">
               Enter to send · Shift+Enter for newline
             </span>
             <Button
@@ -136,7 +136,7 @@ export default function ChatOverviewPage() {
           <div className="relative">
             <Search
               size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mute)] pointer-events-none"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-(--mute) pointer-events-none"
             />
             <Input
               value={searchQuery}
@@ -152,12 +152,12 @@ export default function ChatOverviewPage() {
                   key={`${r.conversationId}-${r.seq}`}
                   type="button"
                   onClick={() => router.push(`/chat/${r.conversationId}`)}
-                  className="w-full text-left border border-[var(--hairline)] rounded-lg
-                             hover:border-[var(--primary)] transition-colors duration-200
+                  className="w-full text-left border border-(--hairline) rounded-lg
+                             hover:border-(--primary) transition-colors duration-200
                              bg-[var(--canvas-soft)/40] cursor-pointer p-3"
                 >
-                  <p className="text-xs text-[var(--mute)] mb-1">{r.conversationId.slice(0, 8)}</p>
-                  <p className="text-sm text-[var(--ink)] line-clamp-2">{r.snippet}</p>
+                  <p className="text-xs text-(--mute) mb-1">{r.conversationId.slice(0, 8)}</p>
+                  <p className="text-sm text-(--ink) line-clamp-2">{r.snippet}</p>
                 </button>
               ))}
             </div>
@@ -166,7 +166,7 @@ export default function ChatOverviewPage() {
 
         {/* Recent conversations */}
         <div className="flex items-center justify-between">
-          <p className="text-xs text-[var(--mute)]">
+          <p className="text-xs text-(--mute)">
             {conversations.length} conversation{conversations.length !== 1 ? "s" : ""}
           </p>
         </div>
@@ -174,16 +174,13 @@ export default function ChatOverviewPage() {
         {isLoading ? (
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
-              <div
-                key={`sk-${i}`}
-                className="animate-pulse h-16 bg-[var(--canvas-soft)] rounded-lg"
-              />
+              <div key={`sk-${i}`} className="animate-pulse h-16 bg-(--canvas-soft) rounded-lg" />
             ))}
           </div>
         ) : conversations.length === 0 ? (
           <div className="text-center py-12">
-            <MessageSquareIcon size={28} className="text-[var(--mute)] mx-auto mb-2" />
-            <p className="text-sm text-[var(--mute)]">No conversations yet</p>
+            <MessageSquareIcon size={28} className="text-(--mute) mx-auto mb-2" />
+            <p className="text-sm text-(--mute)">No conversations yet</p>
           </div>
         ) : (
           <div className="space-y-1">
@@ -199,13 +196,13 @@ export default function ChatOverviewPage() {
                     router.push(`/chat/${conv.conversationId}`);
                   }
                 }}
-                className="w-full text-left border border-[var(--hairline)] rounded-lg
-                           hover:border-[var(--primary)] transition-colors duration-200
-                           bg-[var(--canvas-soft)/40] active:bg-[var(--canvas-soft)]
+                className="w-full text-left border border-(--hairline) rounded-lg
+                           hover:border-(--primary) transition-colors duration-200
+                           bg-[var(--canvas-soft)/40] active:bg-(--canvas-soft)
                            cursor-pointer p-3 flex items-center justify-between"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-[var(--ink)] truncate">
+                  <p className="text-sm font-medium text-(--ink) truncate">
                     {conv.title ?? `Conversation ${conv.conversationId.slice(0, 8)}`}
                   </p>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
@@ -214,16 +211,16 @@ export default function ChatOverviewPage() {
                       {conv.members.slice(0, 4).map((m) => (
                         <span
                           key={m.memberId}
-                          className="inline-flex items-center justify-center h-5 w-5 rounded-full
-                                     border border-[var(--canvas)] bg-[var(--canvas-soft)]
-                                     text-[9px] font-medium text-[var(--mute)]"
+                          className="inline-flex items-center justify-center size-5  rounded-full
+                                     border border-(--canvas) bg-(--canvas-soft)
+                                     text-[9px] font-medium text-(--mute)"
                           title={m.displayName ?? m.memberId}
                         >
                           {(m.displayName ?? m.memberId).charAt(0).toUpperCase()}
                         </span>
                       ))}
                     </div>
-                    <p className="text-[10px] text-[var(--mute)]">
+                    <p className="text-[10px] text-(--mute)">
                       {new Date(conv.createdAt).toLocaleString()}
                       {relativeTime(conv.lastActivityAt) && (
                         <span className="ml-1">· {relativeTime(conv.lastActivityAt)}</span>
@@ -236,7 +233,7 @@ export default function ChatOverviewPage() {
                     })()}
                   </div>
                 </div>
-                <ChevronRight size={14} className="text-[var(--hairline)] shrink-0 ml-3" />
+                <ChevronRight size={14} className="text-(--hairline) shrink-0 ml-3" />
               </div>
             ))}
           </div>

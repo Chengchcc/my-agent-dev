@@ -71,7 +71,7 @@ export function RelationshipPanel({ agentId, relationships, agents }: Relationsh
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-[var(--mute)]">
+        <p className="text-sm text-(--mute)">
           {relationships.length} relationship{relationships.length !== 1 ? "s" : ""}
         </p>
         <Button size="sm" variant="outline" onClick={() => setShowAdd(!showAdd)}>
@@ -80,7 +80,7 @@ export function RelationshipPanel({ agentId, relationships, agents }: Relationsh
       </div>
 
       {showAdd && (
-        <div className="border border-[var(--hairline)] rounded-lg p-4 space-y-3">
+        <div className="border border-(--hairline) rounded-lg p-4 space-y-3">
           <Select value={toAgentId} onValueChange={(v) => setToAgentId(v ?? "")}>
             <SelectTrigger className="text-sm">
               <SelectValue placeholder="Select agent…" />
@@ -130,24 +130,22 @@ export function RelationshipPanel({ agentId, relationships, agents }: Relationsh
           return (
             <div
               key={rel.id}
-              className="border border-[var(--hairline)] rounded-lg p-3 flex items-center justify-between"
+              className="border border-(--hairline) rounded-lg p-3 flex items-center justify-between"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-[var(--ink-strong)]">
+                  <span className="text-sm font-medium text-(--ink-strong)">
                     {otherAgent?.name ?? otherId.slice(0, 8)}
                   </span>
                   <Badge variant="outline" className="text-xs">
                     {direction} {REL_LABEL[rel.relType] ?? rel.relType}
                   </Badge>
                   {rel.weight !== 1.0 && (
-                    <span className="text-[10px] text-[var(--mute)]">
-                      w={rel.weight.toFixed(1)}
-                    </span>
+                    <span className="text-[10px] text-(--mute)">w={rel.weight.toFixed(1)}</span>
                   )}
                 </div>
                 {rel.instruction && (
-                  <p className="text-xs text-[var(--mute)] mt-1 truncate">{rel.instruction}</p>
+                  <p className="text-xs text-(--mute) mt-1 truncate">{rel.instruction}</p>
                 )}
               </div>
               <Button
@@ -163,7 +161,7 @@ export function RelationshipPanel({ agentId, relationships, agents }: Relationsh
         })}
         {relationships.length === 0 && !showAdd && (
           <div className="text-center py-8">
-            <p className="text-sm text-[var(--mute)]">No relationships yet</p>
+            <p className="text-sm text-(--mute)">No relationships yet</p>
           </div>
         )}
       </div>

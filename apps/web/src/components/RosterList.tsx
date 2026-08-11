@@ -25,7 +25,7 @@ export function RosterList({ conversationId, roster, viewerMemberId, onClose }: 
     <>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] tracking-[0.15em] uppercase text-[var(--mute)] font-semibold">
+          <span className="text-[10px] tracking-[0.15em] uppercase text-(--mute) font-semibold">
             Members ({memberCount})
           </span>
         </div>
@@ -49,11 +49,11 @@ export function RosterList({ conversationId, roster, viewerMemberId, onClose }: 
           return (
             <li key={m.memberId} className="flex items-center gap-2 text-xs py-1 group">
               {m.kind === "agent" ? (
-                <Bot size={14} className="text-[var(--primary)] shrink-0" />
+                <Bot size={14} className="text-(--primary) shrink-0" />
               ) : (
-                <UserCircle size={14} className="text-[var(--mute)] shrink-0" />
+                <UserCircle size={14} className="text-(--mute) shrink-0" />
               )}
-              <span className="truncate text-[var(--body)] flex-1">
+              <span className="truncate text-(--body) flex-1">
                 {m.displayName ?? m.memberId}
                 {isViewer ? " (you)" : ""}
               </span>
@@ -76,7 +76,7 @@ export function RosterList({ conversationId, roster, viewerMemberId, onClose }: 
                   className="opacity-0 group-hover:opacity-100 transition-all disabled:opacity-0 shrink-0"
                   title={`Remove ${m.displayName ?? m.memberId}`}
                 >
-                  <X size={12} className="text-[var(--mute)]" />
+                  <X size={12} className="text-(--mute)" />
                 </Button>
               )}
             </li>

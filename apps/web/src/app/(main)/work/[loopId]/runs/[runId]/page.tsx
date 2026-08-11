@@ -41,30 +41,27 @@ export default function RunDetailPage() {
               </CardHeader>
               <CardContent className="grid grid-cols-2 gap-2 text-sm">
                 <div>
-                  <span className="text-xs text-[var(--mute)]">Conversation</span>
+                  <span className="text-xs text-(--mute)">Conversation</span>
                   <div className="font-mono text-xs">{run.conversationId}</div>
                 </div>
                 <div>
-                  <span className="text-xs text-[var(--mute)]">Member</span>
+                  <span className="text-xs text-(--mute)">Member</span>
                   <div className="font-mono text-xs">{run.agentMemberId}</div>
                 </div>
                 <div>
-                  <span className="text-xs text-[var(--mute)]">Model</span>
+                  <span className="text-xs text-(--mute)">Model</span>
                   <div>
                     {run.model.modelId}
-                    <span className="text-[10px] text-[var(--mute)]">
-                      {" "}
-                      ({run.model.backendKind})
-                    </span>
+                    <span className="text-[10px] text-(--mute)"> ({run.model.backendKind})</span>
                   </div>
                 </div>
                 <div>
-                  <span className="text-xs text-[var(--mute)]">Created</span>
+                  <span className="text-xs text-(--mute)">Created</span>
                   <div>{new Date(run.createdAt).toLocaleString()}</div>
                 </div>
                 {run.usage && (
                   <div>
-                    <span className="text-xs text-[var(--mute)]">Usage</span>
+                    <span className="text-xs text-(--mute)">Usage</span>
                     <div>
                       {formatToken((run.usage.inputTokens ?? 0) + (run.usage.outputTokens ?? 0))}{" "}
                       tok
@@ -80,18 +77,18 @@ export default function RunDetailPage() {
               </CardHeader>
               <CardContent>
                 {inputs.length === 0 ? (
-                  <p className="text-sm text-[var(--mute)]">No queued inputs.</p>
+                  <p className="text-sm text-(--mute)">No queued inputs.</p>
                 ) : (
                   <div className="space-y-1">
                     {inputs.map((i) => (
                       <div
                         key={i.inputId}
-                        className="flex items-center justify-between text-sm border-b border-[var(--hairline)] py-1"
+                        className="flex items-center justify-between text-sm border-b border-(--hairline) py-1"
                       >
                         <span>
                           {i.mode} · {i.status}
                         </span>
-                        <span className="text-xs text-[var(--mute)]">
+                        <span className="text-xs text-(--mute)">
                           {new Date(i.createdAt).toLocaleString()}
                         </span>
                       </div>

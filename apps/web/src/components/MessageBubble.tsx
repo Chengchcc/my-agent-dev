@@ -35,12 +35,12 @@ export function MessageShell({
       <div className={`max-w-[85%] ${isSelf ? "order-2" : ""}`}>
         {!isSelf && name && (
           <span
-            className="text-[10px] tracking-[0.15em] uppercase mb-1.5 block font-[family-name:var(--font-sans)] font-semibold flex items-center gap-1.5"
+            className="text-[10px] tracking-[0.15em] uppercase mb-1.5 block font-sans font-semibold flex items-center gap-1.5"
             style={accent ? { color: accent } : undefined}
           >
             {accent && (
               <span
-                className="inline-block w-2 h-2 rounded-full shrink-0"
+                className="inline-block size-2 rounded-full shrink-0"
                 style={{ backgroundColor: accent }}
                 aria-hidden
               />
@@ -49,7 +49,7 @@ export function MessageShell({
           </span>
         )}
         <div
-          className={`text-sm leading-relaxed ${isStreaming ? "border-l-2 pl-4" : ""}`}
+          className={`text-sm/relaxed  ${isStreaming ? "border-l-2 pl-4" : ""}`}
           style={isStreaming && accent ? { borderColor: accent } : undefined}
         >
           {children}
@@ -80,7 +80,7 @@ export function MessageBubble({
   return (
     <MessageShell align={align} name={name} kind={kind} agentId={agentId} isStreaming={isStreaming}>
       {isSelf ? (
-        <p className="whitespace-pre-wrap break-words text-[var(--ink)]">{content}</p>
+        <p className="whitespace-pre-wrap wrap-break-word text-(--ink)">{content}</p>
       ) : (
         <>
           <StreamingMarkdown text={content} streaming={isStreaming ?? false} />

@@ -40,7 +40,7 @@ export function ReviewQueueCard({ item }: { item: ReviewQueueItem }) {
         <div className="flex items-start justify-between gap-3">
           <Link href={`/work/${item.loopId}`} className="flex-1 min-w-0 hover:underline">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs text-[var(--mute)] truncate">{item.loopName}</span>
+              <span className="text-xs text-(--mute) truncate">{item.loopName}</span>
               {result && (
                 <Badge
                   variant="secondary"
@@ -49,11 +49,11 @@ export function ReviewQueueCard({ item }: { item: ReviewQueueItem }) {
                   {result.verdict}
                 </Badge>
               )}
-              <span className="text-[10px] text-[var(--mute)]">attempt {item.attempt}</span>
+              <span className="text-[10px] text-(--mute)">attempt {item.attempt}</span>
             </div>
             <p className="text-sm truncate">{item.summary}</p>
             {evidence && (
-              <p className="text-xs text-[var(--mute)] mt-1 line-clamp-2">{truncate(evidence)}</p>
+              <p className="text-xs text-(--mute) mt-1 line-clamp-2">{truncate(evidence)}</p>
             )}
             {reasons && (
               <p className="text-xs text-rose-600/80 mt-0.5 line-clamp-1">

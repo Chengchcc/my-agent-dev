@@ -37,18 +37,18 @@ export function NetworkStatus() {
   return (
     <div
       role="alert"
-      className={`fixed left-0 right-0 top-0 z-50 flex items-center justify-center gap-2 py-2 text-sm font-medium transition-transform duration-100 ${
+      className={`fixed inset-x-0  top-0 z-50 flex items-center justify-center gap-2 py-2 text-sm font-medium transition-transform duration-100 ${
         isOnline ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
       }`}
     >
       {isOnline ? (
         <>
-          <Wifi className="h-4 w-4" />
+          <Wifi className="size-4 " />
           <span>Network restored</span>
         </>
       ) : (
         <>
-          <WifiOff className="h-4 w-4" />
+          <WifiOff className="size-4 " />
           <span>Connection lost. Some features may be unavailable.</span>
         </>
       )}

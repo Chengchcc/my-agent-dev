@@ -39,11 +39,11 @@ export function LoopBoard({ items, selectedId, onSelect }: LoopBoardProps) {
         const colItems = grouped[step] ?? [];
         return (
           <div key={step} className="shrink-0 w-64 flex flex-col">
-            <div className="flex items-center gap-2 px-2 py-2 mb-1">
+            <div className="flex items-center gap-2 p-2 mb-1">
               <Badge variant={STEP_BADGE[step]} className="text-[10px]">
                 {step}
               </Badge>
-              <span className="text-xs text-[var(--mute)]">{colItems.length}</span>
+              <span className="text-xs text-(--mute)">{colItems.length}</span>
             </div>
             <div className="flex-1 space-y-2 overflow-y-auto">
               {colItems.map((item) => (
@@ -52,14 +52,14 @@ export function LoopBoard({ items, selectedId, onSelect }: LoopBoardProps) {
                   onClick={() => onSelect(item.id)}
                   className={`w-full text-left rounded-md border p-3 text-sm transition-colors ${
                     selectedId === item.id
-                      ? "border-[var(--primary)] bg-[var(--primary)]/5 ring-1 ring-[var(--primary)]/30"
-                      : "border-[var(--hairline)] hover:border-[var(--primary)]/50"
+                      ? "border-(--primary) bg-(--primary)/5 ring-1 ring-(--primary)/30"
+                      : "border-(--hairline) hover:border-(--primary)/50"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="truncate flex-1 font-medium">{item.summary}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] text-[var(--mute)]">
+                  <div className="flex items-center gap-2 text-[10px] text-(--mute)">
                     <span className="font-mono">{item.source}</span>
                     <span>· att {item.attempt}</span>
                     {item.priority > 0 && (
@@ -80,7 +80,7 @@ export function LoopBoard({ items, selectedId, onSelect }: LoopBoardProps) {
               ))}
               {colItems.length === 0 && (
                 <div className="text-center py-4">
-                  <span className="text-[10px] text-[var(--mute)]">-</span>
+                  <span className="text-[10px] text-(--mute)">-</span>
                 </div>
               )}
             </div>

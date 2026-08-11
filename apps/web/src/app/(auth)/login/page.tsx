@@ -20,9 +20,7 @@ type FormValues = z.infer<typeof formSchema>;
 export default function LoginPage() {
   return (
     <Suspense
-      fallback={
-        <div className="flex min-h-screen items-center justify-center bg-[var(--canvas)]" />
-      }
+      fallback={<div className="flex min-h-screen items-center justify-center bg-(--canvas)" />}
     >
       <LoginForm />
     </Suspense>
@@ -71,16 +69,16 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--canvas)]">
-      <div className="fixed top-0 left-0 right-0 h-0.5 bg-[var(--primary)]" />
+    <div className="flex min-h-screen items-center justify-center bg-(--canvas)">
+      <div className="fixed top-0 inset-x-0 h-0.5 bg-(--primary)" />
 
       <div className="w-full max-w-sm px-8 animate-fade-in">
-        <p className="text-xs tracking-[2.52px] uppercase text-[var(--mute)] mb-8 font-[family-name:var(--font-sans)] font-semibold">
+        <p className="text-xs tracking-[2.52px] uppercase text-(--mute) mb-8 font-sans font-semibold">
           Observatory
         </p>
 
         <h1
-          className="text-3xl font-normal text-[var(--ink-strong)] leading-tight mb-2 font-[family-name:var(--font-sans)]"
+          className="text-3xl/tight font-normal text-(--ink-strong) mb-2 font-sans"
           style={{ letterSpacing: "-0.65px" }}
         >
           Agent
@@ -88,7 +86,7 @@ function LoginForm() {
           Workspace
         </h1>
 
-        <p className="text-sm text-[var(--body)] mb-6">A terminal for working with agents</p>
+        <p className="text-sm text-(--body) mb-6">A terminal for working with agents</p>
 
         {serverError && (
           <div className="mb-6 p-3 rounded border border-destructive/30 bg-destructive/10 text-sm text-destructive">
@@ -103,7 +101,7 @@ function LoginForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <label className="text-[10px] tracking-[2.52px] uppercase text-[var(--mute)] block mb-2 font-[family-name:var(--font-sans)] font-semibold">
+                  <label className="text-[10px] tracking-[2.52px] uppercase text-(--mute) block mb-2 font-sans font-semibold">
                     Password
                   </label>
                   <FormControl>
@@ -112,10 +110,10 @@ function LoginForm() {
                       type="password"
                       autoComplete="current-password"
                       placeholder="••••••••"
-                      className="w-full bg-transparent border-0 border-b border-[var(--hairline)]
-                                 px-0 py-3 text-[var(--ink)] text-base
-                                 placeholder:text-[var(--mute)]
-                                 focus:outline-none focus:border-[var(--primary)] focus-visible:ring-0
+                      className="w-full bg-transparent border-0 border-b border-(--hairline)
+                                 px-0 py-3 text-(--ink) text-base
+                                 placeholder:text-(--mute)
+                                 focus:outline-none focus:border-(--primary) focus-visible:ring-0
                                  transition-colors duration-200"
                     />
                   </FormControl>
@@ -130,8 +128,8 @@ function LoginForm() {
           </form>
         </Form>
 
-        <div className="mt-12 pt-6 border-t border-[var(--hairline)]">
-          <p className="text-[10px] tracking-[0.15em] text-[var(--mute)]">
+        <div className="mt-12 pt-6 border-t border-(--hairline)">
+          <p className="text-[10px] tracking-[0.15em] text-(--mute)">
             my-agent-team &copy; {new Date().getFullYear()}
           </p>
         </div>
