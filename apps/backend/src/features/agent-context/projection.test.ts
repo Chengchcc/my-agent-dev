@@ -205,6 +205,53 @@ describe("Agent Context projection", () => {
     expect(items[1]?.message.text).toBe("retained-msg");
   });
 
+  test("projection splits mixed assistant tool_result blocks into a user message", async () => {
+    const { conversationId, agentMemberId } = freshFixture("split");
+    const seq = conv.appendLedgerEntry({
+      conversationId,
+      senderMemberId: agentMemberId,
+      addressedTo: [],
+      kind: "message",
+      content: JSON.stringify({
+        role: "assistant",
+        text: "final answer",
+        blocks: [
+          { type: "tool_use", id: "t1", name: "read", input: { path: "a.ts" } },
+          { type: "tool_result", tool_use_id: "t1", content: "ok" },
+          { type: "tool_result", tool_use_id: "t2", content: "orphan" },
+        ],
+      }),
+      ts: Date.now(),
+    });
+
+    const tree = await port.getOrCreateTree(conversationId, agentMemberId);
+    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    await port.appendEntry({
+      branchId: branch.branchId,
+      expectedRevision: 1,
+      type: "ledger_message",
+      parentId: null,
+      payload: {},
+      ledgerSeq: seq,
+    });
+
+    const items = await projectAgentContext(
+      { port, ledgerResolver },
+      { branchId: branch.branchId },
+    );
+    // The model must never see tool_result inside an assistant message:
+    // split into assistant(tool_use) + user(tool_result), drop orphans.
+    expect(items).toHaveLength(2);
+    expect(items[0]?.message.role).toBe("assistant");
+    expect(items[0]?.message.blocks).toEqual([
+      { type: "tool_use", id: "t1", name: "read", input: { path: "a.ts" } },
+    ]);
+    expect(items[1]?.message.role).toBe("user");
+    expect(items[1]?.message.blocks).toEqual([
+      { type: "tool_result", tool_use_id: "t1", content: "ok" },
+    ]);
+  });
+
   test("projection resolves messages from the branch's own conversation", async () => {
     // Conversation A and B both hold a ledger entry with the same seq.
     // The branch lives in A; projection must resolve A's message even though
