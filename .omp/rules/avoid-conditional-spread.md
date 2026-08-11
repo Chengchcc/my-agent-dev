@@ -2,10 +2,9 @@
 description: Avoid conditional object spread `...(cond ? { ... } : {})` — build the object explicitly
 condition: "\\.\\.\\([^)]*\\?[^)]*:\\s*\\{\\}"
 scope: "tool:edit(**/*.{ts,tsx}), tool:write(**/*.{ts,tsx})"
-interruptMode: never
 ---
 
-Conditional object spreads like `...(opts?.effort ? { output_config: { effort: opts.effort } } : {})` bury the condition inside a spread and are hard to read and to debug. Build the object explicitly instead:
+Conditional object spreads like `...(opts?.effort ? { output_config: { effort: opts.effort } } : {})` bury the condition inside a spread of a ternary and are hard to read and to debug. Build the object explicitly instead:
 
 ```typescript
 // Hard to read: the condition is hidden inside a spread of a ternary.
