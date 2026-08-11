@@ -103,10 +103,10 @@ function TransientTrace({ msgCount, groups }: { msgCount: number; groups: ToolGr
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger
           className="flex w-full items-center gap-1.5 px-1 py-0.5 text-left
-            text-[11px] font-[family-name:var(--font-mono)] text-[var(--mute)]
+            text-[11px] font-mono text-[var(--mute)]
             transition-colors hover:text-[var(--ink)]"
         >
-          <span className="shrink-0 text-[var(--primary)]">{open ? "▼" : "▶"}</span>
+          <span className="shrink-0 text-(--primary)">{open ? "▼" : "▶"}</span>
           <span>
             {msgCount} messages · {cmdCount} commands
           </span>
@@ -119,17 +119,17 @@ function TransientTrace({ msgCount, groups }: { msgCount: number; groups: ToolGr
                   type="button"
                   onClick={() => toggleGroup(g.name)}
                   className="flex w-full items-center gap-1.5 px-1 py-0.5 text-left
-                    text-[11px] font-[family-name:var(--font-mono)] text-[var(--mute)]
+                    text-[11px] font-mono text-[var(--mute)]
                     transition-colors hover:text-[var(--ink)]"
                 >
-                  <span className="shrink-0 text-[var(--primary)]">
+                  <span className="shrink-0 text-(--primary)">
                     {openGroups.has(g.name) ? "▼" : "▶"}
                   </span>
                   <span>
                     {g.count} commands · {g.name} ×{g.count}
                   </span>
                   {g.hasRunning && (
-                    <span className="shrink-0 text-[10px] text-[var(--primary)]">running</span>
+                    <span className="shrink-0 text-[10px] text-(--primary)">running</span>
                   )}
                 </button>
                 {openGroups.has(g.name) && (
@@ -138,7 +138,7 @@ function TransientTrace({ msgCount, groups }: { msgCount: number; groups: ToolGr
                       tool.state === "running" && tool.result === undefined ? (
                         <div
                           key={tool.callId}
-                          className="px-2 py-0.5 font-[family-name:var(--font-mono)] text-[11px] text-[var(--mute)]"
+                          className="px-2 py-0.5 font-mono text-[11px] text-[var(--mute)]"
                         >
                           executing tool…
                         </div>

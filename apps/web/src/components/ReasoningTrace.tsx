@@ -96,10 +96,10 @@ export function ReasoningTrace({
         <Collapsible open={open} onOpenChange={setOpen}>
           <CollapsibleTrigger
             className="flex w-full items-center gap-1.5 px-1 py-0.5 text-left
-              text-[11px] font-[family-name:var(--font-mono)] text-[var(--mute)]
+              text-[11px] font-mono text-[var(--mute)]
               transition-colors hover:text-[var(--ink)]"
           >
-            <span className="shrink-0 text-[var(--primary)]">{open ? "▼" : "▶"}</span>
+            <span className="shrink-0 text-(--primary)">{open ? "▼" : "▶"}</span>
             <span>
               {msgCount} messages · {toolCalls.length} commands
             </span>
@@ -120,10 +120,10 @@ export function ReasoningTrace({
                     type="button"
                     onClick={() => toggleGroup(g.name)}
                     className="flex w-full items-center gap-1.5 px-1 py-0.5 text-left
-                      text-[11px] font-[family-name:var(--font-mono)] text-[var(--mute)]
+                      text-[11px] font-mono text-[var(--mute)]
                       transition-colors hover:text-[var(--ink)]"
                   >
-                    <span className="shrink-0 text-[var(--primary)]">
+                    <span className="shrink-0 text-(--primary)">
                       {openGroups.has(g.name) ? "▼" : "▶"}
                     </span>
                     <span>

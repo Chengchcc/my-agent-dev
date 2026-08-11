@@ -18,10 +18,10 @@ export function ToolStep({
   const [inputOpen, setInputOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
   return (
-    <div className="font-[family-name:var(--font-mono)] text-[12px]">
+    <div className="font-mono text-[12px]">
       <div className="flex items-center gap-2 px-2 py-1">
-        <span className="shrink-0 text-[var(--primary)]">→</span>
-        <span className="truncate text-[var(--primary)]">{name}</span>
+        <span className="shrink-0 text-(--primary)">→</span>
+        <span className="truncate text-(--primary)">{name}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1">
           <Button
             variant="ghost"
