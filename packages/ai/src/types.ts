@@ -75,6 +75,12 @@ export interface ProviderStreamOptions {
   /** Response effort (Anthropic `effort` param): scales how much work the
    *  model puts in, thinking included. */
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
+  /** Prompt caching (Anthropic `cache_control`): when true, adds ephemeral
+   *  cache breakpoints on the system prompt and the last tool definition.
+   *  Multi-turn sessions read the stable prefix from cache instead of
+   *  re-processing every turn. Opt in per request; endpoints that don't
+   *  support caching silently ignore the breakpoint. */
+  cacheControl?: boolean;
 }
 
 /** API 类型标识（模型元数据，仅用于 catalog 标记）。 */

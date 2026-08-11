@@ -110,18 +110,38 @@ function buildRequest(
   opts?: ProviderStreamOptions,
 ): Record<string, unknown> {
   const systemMsg = messages.find((m) => m.role === "system");
+  const cacheControl = { type: "ephemeral" } as const;
   const request: Record<string, unknown> = {
     model: modelId,
     max_tokens: maxTokens,
     messages: convertMessages(messages, opts),
-    system: systemMsg?.text,
     stream: true,
-    tools: opts?.tools?.map((t) => ({
+  };
+  // System prompt: when cacheControl is enabled and a system prompt exists,
+  // send it as a content-block array with an ephemeral cache breakpoint on
+  // the last block. This turns multi-turn re-processing of the stable system
+  // prompt into cache reads (pi: getCacheControl).
+  if (systemMsg?.text) {
+    if (opts?.cacheControl) {
+      request.system = [{ type: "text", text: systemMsg.text, cache_control: cacheControl }];
+    } else {
+      request.system = systemMsg.text;
+    }
+  }
+  // Tools: when cacheControl is enabled, put an ephemeral breakpoint on the
+  // last tool definition — the tool catalog is stable across turns.
+  const tools = opts?.tools?.map((t, i, arr) => {
+    const tool: Record<string, unknown> = {
       name: t.name,
       description: t.description,
       input_schema: t.inputSchema ?? {},
-    })),
-  };
+    };
+    if (opts?.cacheControl && i === arr.length - 1) {
+      tool.cache_control = cacheControl;
+    }
+    return tool;
+  });
+  if (tools) request.tools = tools;
   // Thinking control (Anthropic protocol): adaptive lets the model decide,
   // enabled uses a budget, disabled turns thinking off. display governs
   // whether thinking text is returned ("summarized") or omitted.

@@ -7,6 +7,7 @@ import type { SessionStore } from "../persistence/session-store.js";
 import type { MessageEntry } from "../persistence/session-tree.js";
 import type { AgentLoopListener, CodingAgentLoopEvent } from "./agent-event.js";
 import { type CompactionBudget, compactSession } from "./compaction.js";
+import { TokenEstimateCache } from "./message-cache.js";
 import type { CodingLoopInput } from "./loop-input.js";
 import { buildLoopInput } from "./loop-input.js";
 import type { Plugin, PluginTool } from "./plugin.js";
@@ -156,6 +157,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   let debugTurn = 0;
   let debugRunId = "";
   const runIdForDebug = (): string => debugRunId;
+  const tokenEstimateCache = new TokenEstimateCache();
 
   async function emit(event: CodingAgentLoopEvent): Promise<void> {
     for (const l of listeners) {
@@ -312,17 +314,21 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         // this step and never consumes an extra maxStep.
         while (true) {
           // Proactive (threshold) compaction.
+          // Proactive (threshold) compaction. Token estimation is cached
+          // per entry (pi's message-cache): settled messages aren't
+          // re-estimated every turn.
           if (opts.contextBudget && !thresholdCompacted) {
             const branch = await opts.store.readBranch(opts.sessionId);
-            const msgEntries = branch.filter((e) => e.type === "message") as Array<{
-              message: Message;
-            }>;
+            const msgEntries = branch.filter((e): e is MessageEntry => e.type === "message");
             const totalTokens = msgEntries.reduce(
-              (sum, e) => sum + opts.contextBudget!.estimate(e.message),
+              (sum, e) =>
+                sum +
+                tokenEstimateCache.estimate(e.entryId, e.message, opts.contextBudget!.estimate),
               0,
             );
             if (totalTokens > opts.contextBudget.limit * opts.contextBudget.triggerRatio) {
               thresholdCompacted = true;
+              tokenEstimateCache.clear();
               await emit({ type: "compaction_start" });
               await compactSession(
                 opts.store,
@@ -498,6 +504,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
             // Overflow: one-shot compaction recovery inside the same turn.
             if (err instanceof ProviderError && err.kind === "overflow" && !overflowCompacted) {
               overflowCompacted = true;
+              tokenEstimateCache.clear();
               await emit({ type: "compaction_start" });
               await compactSession(
                 opts.store,
