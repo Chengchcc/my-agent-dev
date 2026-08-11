@@ -20,24 +20,30 @@ interface GlobalSearchProps {
   onClose: () => void;
 }
 
-/** Parse the raw content JSON (a MessageRevision) and extract readable text. */
-function extractSnippet(content: string): string {
+/** Extract readable text from search result snippet. Handles string JSON,
+ *  already-parsed objects, and plain text. Never returns raw JSON. */
+function extractSnippet(input: unknown): string {
+  if (typeof input !== "string") return "";
   try {
-    const parsed = JSON.parse(content) as {
+    const parsed = JSON.parse(input) as {
       text?: string;
       blocks?: Array<{ type: string; text?: string }>;
     };
-    if (parsed.text) return parsed.text;
+    if (typeof parsed.text === "string" && parsed.text.trim()) return parsed.text;
     if (Array.isArray(parsed.blocks)) {
-      return parsed.blocks
+      const text = parsed.blocks
         .filter((b) => b.type === "text")
         .map((b) => b.text ?? "")
         .join(" ")
         .trim();
+      if (text) return text;
     }
-    return content.slice(0, 200);
+    // Object but no text — don't show raw JSON, return empty
+    if (typeof parsed === "object" && parsed !== null) return "";
+    return input.slice(0, 200);
   } catch {
-    return content.slice(0, 200);
+    // Not JSON — return as-is if it looks like text
+    return input.startsWith("{") ? "" : input.slice(0, 200);
   }
 }
 

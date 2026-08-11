@@ -127,7 +127,7 @@ export const api = {
   ) => unwrap(client.api.conversations({ id: conversationId }).goal.post(body)),
   searchConversations: (q: string) => unwrap(client.api.conversations.search.get({ query: { q } })),
   exportConversation: async (id: string) => {
-    const resp = await fetch(`/api/bff/conversations/${id}/export`, { credentials: "include" });
+    const resp = await fetch(`/api/bff/api/conversations/${id}/export`, { credentials: "include" });
     if (!resp.ok) throw new Error(`Export failed: ${resp.status}`);
     return resp.text();
   },

@@ -1,7 +1,6 @@
 "use client";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ActivityIcon,
   BotIcon,
@@ -16,6 +15,7 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
+import { useRef } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -168,6 +168,9 @@ function NavContent() {
                   return (
                     <div
                       key={conv.conversationId}
+                      ref={virtualizer.measureElement}
+                      data-index={virtualRow.index}
+                      className="h-9"
                       style={{
                         position: "absolute",
                         top: 0,
