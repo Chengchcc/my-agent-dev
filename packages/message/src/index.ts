@@ -1,3 +1,4 @@
+export { normalizeCanonicalMessages } from "./canonical.js";
 export type {
   ContentBlock,
   TextBlock,
