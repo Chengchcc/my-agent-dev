@@ -148,6 +148,13 @@
       "when": 1786000000000,
       "tag": "0021_canonical_message_sequence",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1786100000000,
+      "tag": "0022_agent_reasoning_effort",
+      "breakpoints": true
     }
   ]
 }

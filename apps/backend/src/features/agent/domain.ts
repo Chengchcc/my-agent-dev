@@ -6,6 +6,7 @@ export interface AgentRow {
   modelProvider: string;
   modelName: string;
   modelBaseUrl: string | null;
+  reasoningEffort: "none" | "low" | "high" | "max" | null;
   permissionMode: "ask" | "auto" | "deny";
   maxSteps: number | null;
   createdAt: number;
@@ -24,6 +25,7 @@ export interface CreateAgentInput {
   name: string;
   template?: string;
   model: { provider: string; model: string; baseURL?: string };
+  reasoningEffort?: "none" | "low" | "high" | "max";
   permissionMode?: "ask" | "auto" | "deny";
   maxSteps?: number;
   lark?: {
@@ -36,6 +38,7 @@ export interface CreateAgentInput {
 
 export interface UpdateAgentInput {
   name?: string;
+  reasoningEffort?: "none" | "low" | "high" | "max" | null;
   permissionMode?: "ask" | "auto" | "deny";
   maxSteps?: number;
   lark?: {
@@ -50,12 +53,16 @@ export interface UpdateAgentInput {
 /** Canonical Backend model reference for an Agent record. The Coding Agent
  *  catalog keys models as `<provider>/<model>`; the agent stores the bare
  *  provider and model name separately. */
-export function agentModelRef(agent: Pick<AgentRow, "modelProvider" | "modelName">): {
+export function agentModelRef(
+  agent: Pick<AgentRow, "modelProvider" | "modelName" | "reasoningEffort">,
+): {
   backendKind: "coding_agent";
   modelId: string;
+  reasoningEffort?: "none" | "low" | "high" | "max";
 } {
   return {
     backendKind: "coding_agent",
     modelId: `${agent.modelProvider}/${agent.modelName}`,
+    ...(agent.reasoningEffort ? { reasoningEffort: agent.reasoningEffort } : {}),
   };
 }

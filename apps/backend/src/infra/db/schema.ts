@@ -19,6 +19,8 @@ export const agents = sqliteTable(
     modelProvider: text().notNull(),
     modelName: text().notNull(),
     modelBaseUrl: text(),
+    /** Thinking-mode effort (none/low/high/max); null = provider default. */
+    reasoningEffort: text(),
     permissionMode: text().notNull().default("ask"),
     maxSteps: integer(),
     createdAt: integer({ mode: "number" }).notNull(),
@@ -266,6 +268,7 @@ import { createSelectSchema } from "drizzle-zod";
 export const agentsSelectSchema = createSelectSchema(agents, {
   larkEnabled: (s) => s.transform((v: number) => v !== 0),
   permissionMode: (s) => s.transform((v) => v as "ask" | "auto" | "deny"),
+  reasoningEffort: (s) => s.transform((v) => v as "none" | "low" | "high" | "max" | null),
 });
 export const conversationSelectSchema = createSelectSchema(conversation);
 export const memberSelectSchema = createSelectSchema(member);
