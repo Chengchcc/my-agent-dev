@@ -18,6 +18,9 @@ import { buildTitleContext, generateTitle } from "./title.js";
 
 export type { AgentLoopListener, CodingAgentLoopEvent };
 
+/** Thinking-mode effort, aligned with the provider's Anthropic config. */
+export type ThinkingLevel = "off" | "low" | "high" | "max";
+
 interface PendingToolCall {
   id: string;
   name: string;
@@ -48,12 +51,15 @@ export interface CodingAgentSessionOptions {
   readonly plugins: readonly Plugin[];
   readonly maxSteps: number;
   readonly maxForceContinues: number;
+  /** The model call for one turn. The optional 4th argument carries the
+   *  current thinking level (from prepareNextTurn), which the caller may
+   *  map onto provider options. */
   readonly modelStream: (
     messages: readonly Message[],
     signal?: AbortSignal,
-    /** Current tool table (static plugins + per-Run resolved tools), so the
-     *  provider can advertise the schemas to the model. */
+    /** Current tool table (static plugins + per-Run resolved tools). */
     tools?: readonly PluginTool[],
+    opts?: { thinkingLevel?: ThinkingLevel },
   ) => AsyncIterable<AIMessageChunk>;
   readonly summarize: ContextSummarizer;
   /** Resolve the model display identity for a run's model ref, used to render
@@ -63,6 +69,12 @@ export interface CodingAgentSessionOptions {
    *  `input.run.productTools`). Merged into the tool table at each runLoop
    *  start so snapshot changes apply on the next Run without a rebuild. */
   readonly resolveTools?: (input: CodingLoopInput) => Promise<readonly PluginTool[]>;
+  /** Per-turn state hook (pi's prepareNextTurn): called after each turn's
+   *  messages are persisted, before the next model call. May return a new
+   *  thinking level that applies to the NEXT turn only. */
+  readonly prepareNextTurn?: (ctx: {
+    step: number;
+  }) => { thinkingLevel?: ThinkingLevel } | undefined;
   /** Runtime capabilities injected into plugin hooks (model stream, store,
    *  workspace, emit). Optional: when omitted, hooks receive a stub with
    *  emit only (backward-compatible with pre-existing plugins). */
@@ -74,9 +86,6 @@ export interface CodingAgentSessionOptions {
   readonly contextBudget?: ContextBudget;
 }
 
-/** A Coding Agent Session owns the store, plugins, listeners, and lifecycle.
- *  Each call to startLoop/startFollowUp creates a one-shot internal loop; the
- *  session itself is the long-lived controller. */
 /** Terminal result of a loop. `messages` is the canonical message sequence
  *  this Run produced (ADR 0017): assistant(tool_use) / tool(tool_result) /
  *  assistant(text) as separate messages in branch order — never merged into
@@ -106,6 +115,17 @@ export interface CodingAgentSession {
   emit(event: CodingAgentLoopEvent): void;
 }
 
+/** One model turn, accumulated purely from the stream (pi's
+ *  streamAssistantResponse shape): raw outputs before any persistence. */
+interface ModelTurn {
+  readonly text: string;
+  readonly thinking: string;
+  readonly thinkingSignature?: string;
+  readonly thinkingRedacted?: boolean;
+  readonly toolCalls: readonly PendingToolCall[];
+  readonly stopReason?: string;
+}
+
 export function createCodingAgentSession(opts: CodingAgentSessionOptions): CodingAgentSession {
   validatePlugins(opts.plugins);
   const listeners = new Set<AgentLoopListener>();
@@ -122,22 +142,16 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     signal: new AbortController().signal,
   };
   // Static plugin tools + per-run resolved tools (Product Tool manifest).
-  // The tool table is rebuilt at each runLoop start so AgentRunSnapshot
-  // changes (productTools) take effect on the next Run without a rebuild.
   const baseTools = collectTools(opts.plugins);
   let toolMap = new Map(baseTools.map((t) => [t.name, t]));
   let status: "idle" | "running" | "completed" | "failed" | "stopped" = "idle";
-  // Per-run usage accumulated from model chunks (session scope so both runLoop
-  // and processModelTurn can read/write it).
   let runUsage: Usage | undefined;
-  // Active-loop ownership is separate from terminal status: the loop is
-  // "active" from startLoop until listeners settle in finally. This prevents
-  // a concurrent startFollowUp from racing with agent_end listeners.
   let active = false;
   let controller: AbortController | null = null;
   const steerQueue: BackendInputMessage[] = [];
   let acceptingSteer = false;
-  // Debug diagnostics: which model runs this loop, and the per-turn counter.
+  // Per-turn thinking level (from prepareNextTurn), applied to the NEXT turn.
+  let nextThinkingLevel: ThinkingLevel | undefined;
   let debugModelId = "";
   let debugTurn = 0;
   let debugRunId = "";
@@ -153,6 +167,36 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     }
   }
 
+  function persist(entries: readonly Record<string, unknown>[]): Promise<unknown> {
+    return opts.store.appendBatch(opts.sessionId, { entries });
+  }
+
+  /** One thinking block from a turn's raw thinking (single assembly point:
+   *  both the text turn and the tool turn persist through here). An empty
+   *  thinking text with a signature (display: "omitted") still persists —
+   *  the signature must be replayed unchanged in tool-use turns. */
+  function buildThinkingBlock(
+    turn: ModelTurn,
+  ): Array<{ type: "thinking"; text: string; signature?: string; redacted?: boolean }> {
+    if (!turn.thinking && !turn.thinkingSignature) return [];
+    return [
+      {
+        type: "thinking",
+        text: turn.thinkingRedacted ? "[reasoning redacted]" : turn.thinking,
+        ...(turn.thinkingSignature ? { signature: turn.thinkingSignature } : {}),
+        ...(turn.thinkingRedacted ? { redacted: true } : {}),
+      },
+    ];
+  }
+
+  /**
+   * pi-style runLoop: outer loop drains follow-up inputs after the agent
+   * would stop; inner loop runs model turns and tool calls until the model
+   * stops. Each model turn is accumulated purely (streamModelTurn) and then
+   * persisted as canonical messages — persistence is a turn-level decision,
+   * never inside the stream accumulation. Steer inputs drain at safe
+   * boundaries; runEphemeralTurn is a side channel that never persists.
+   */
   async function runLoop(
     codingInput: CodingLoopInput,
     mode: "normal" | "follow_up",
@@ -161,6 +205,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     active = true;
     status = "running";
     controller = new AbortController();
+    nextThinkingLevel = undefined;
     // Bind rt.signal to THIS run's controller so plugin model calls
     // (recap/pet) honor stop()/abort().
     rt = {
@@ -193,21 +238,15 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     debugModelId = codingInput.run.model.modelId;
     debugTurn = 0;
     debugRunId = codingInput.run.runId;
-    // Reset per-run: a Run without usage must not inherit the previous Run's.
     runUsage = undefined;
     let runError: string | undefined;
 
-    // Per-Run tool resolution: static plugins + this run's resolved tools
-    // (Product Tool manifest). Snapshot changes take effect on the next Run.
     const runTools = opts.resolveTools ? await opts.resolveTools(codingInput) : [];
     toolMap = new Map([...baseTools, ...runTools].map((t) => [t.name, t]));
 
     await emit({ type: "agent_start" });
 
     try {
-      // The Session is the sole Meta owner: it renders the per-loop Meta
-      // Message from run/workspace/plugin state (never passed across the
-      // Backend boundary). systemPrompt comes from the run snapshot.
       const model = opts.resolveModel
         ? await opts.resolveModel(codingInput.run.model.modelId)
         : undefined;
@@ -228,17 +267,14 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       );
       await opts.store.appendBatch(opts.sessionId, built.batch);
 
-      // Read branch for model messages
       let messages = await readBranchMessages();
-
       let step = 0;
       let forceContinues = 0;
       let overflowCompacted = false;
       let thresholdCompacted = false;
       let naturalStop = false;
 
-      // beforeRun: one-shot per-Run hook. Fires after agent_start + messages
-      // are loaded, before the first model turn. Symmetric with afterRun.
+      // beforeRun: one-shot per-Run hook.
       for (const p of opts.plugins) {
         if (p.hooks?.beforeRun) {
           try {
@@ -252,16 +288,14 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       while (step < opts.maxSteps && !naturalStop) {
         if (controller?.signal.aborted) break;
         step++;
-        // Steer is accepted only when there's capacity for at least one more
-        // safe-boundary turn after the current one.
         acceptingSteer = step < opts.maxSteps;
 
-        // Drain steer queue at safe boundary. Steer appends only the input
-        // message (source=steer) - no Meta, no new Loop.
+        // Drain steer queue at safe boundary (steer appends only the input
+        // message — no Meta, no new Loop).
         if (steerQueue.length > 0) {
           const steers = steerQueue.splice(0);
-          await opts.store.appendBatch(opts.sessionId, {
-            entries: steers.map((s) => ({
+          await persist(
+            steers.map((s) => ({
               type: "message",
               productEntryId: s.productEntryId ?? null,
               role: s.message.role as "user" | "assistant" | "system",
@@ -269,20 +303,15 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
               message: s.message,
               createdAt: Date.now(),
             })),
-          });
+          );
           messages = await readBranchMessages();
           await emit({ type: "queue_update" });
         }
 
-        // One turn = one model call. Overflow recovery (compact + retry) stays
-        // INSIDE this turn and never consumes an extra maxStep. Provider
-        // retry is owned solely by retryStream with its bounded policy; any
-        // error escaping it (retries exhausted, auth, invalid, fatal, aborted)
-        // is terminal here.
+        // One step = at most one model call. Overflow recovery stays INSIDE
+        // this step and never consumes an extra maxStep.
         while (true) {
-          // Proactive (threshold) compaction: if the branch grew past the
-          // configured threshold, compact once before the model turn. Shares
-          // the one compaction implementation with manual/overflow triggers.
+          // Proactive (threshold) compaction.
           if (opts.contextBudget && !thresholdCompacted) {
             const branch = await opts.store.readBranch(opts.sessionId);
             const msgEntries = branch.filter((e) => e.type === "message") as Array<{
@@ -306,7 +335,8 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
               messages = await readBranchMessages();
             }
           }
-          // beforeModel hook
+
+          // beforeModel hook.
           const transformed = [...messages];
           for (const p of opts.plugins) {
             if (p.hooks?.beforeModel) {
@@ -320,18 +350,39 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
             const modelMessages = systemPrompt
               ? [{ role: "system", text: systemPrompt } as Message, ...transformed]
               : transformed;
-            const {
-              calls: toolCalls,
-              thinking,
-              thinkingSignature,
-              thinkingRedacted,
-            } = await processModelTurn(modelMessages);
-            if (toolCalls.length > 0) {
-              // Tool calls: execute and continue to the next turn
-              const toolResults = await executeTools(toolCalls);
+            const thinkingLevel = nextThinkingLevel;
+            nextThinkingLevel = undefined;
+            const turn = await streamModelTurn(modelMessages, thinkingLevel);
+            const thinkingBlocks = buildThinkingBlock(turn);
 
-              // stop() during tool execution: do not persist partial results,
-              // transition straight to the stopped terminal state.
+            if (turn.toolCalls.length > 0) {
+              // Tool turn: persist assistant(tool_use) + thinking, execute,
+              // persist results, then continue unless a tool asks to stop.
+              await persist([
+                {
+                  type: "message",
+                  role: "assistant",
+                  source: "assistant",
+                  message: {
+                    role: "assistant",
+                    text: "",
+                    blocks: [
+                      ...thinkingBlocks,
+                      ...turn.toolCalls.map((tc) => ({
+                        type: "tool_use" as const,
+                        id: tc.id,
+                        name: tc.name,
+                        input: tc.input,
+                      })),
+                    ],
+                  },
+                  createdAt: Date.now(),
+                },
+              ]);
+
+              const toolResults = await executeTools(turn.toolCalls);
+
+              // stop() during tool execution: do not persist partial results.
               if (controller?.signal.aborted) {
                 status = "stopped";
                 await emit({ type: "agent_end", status });
@@ -339,79 +390,59 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
                 return { status, usage: runUsage, error: "stopped by user" };
               }
 
-              // Persist assistant tool_use message (thinking first, then the
-              // tool calls — chronological order within the turn).
-              const thinkingBlocks =
-                thinking.length > 0
-                  ? [
-                      {
-                        type: "thinking" as const,
-                        text: thinkingRedacted ? "[reasoning redacted]" : thinking,
-                        ...(thinkingSignature ? { signature: thinkingSignature } : {}),
-                        ...(thinkingRedacted ? { redacted: true } : {}),
-                      },
-                    ]
-                  : [];
-              await opts.store.appendBatch(opts.sessionId, {
-                entries: [
+              for (const result of toolResults) {
+                await persist([
                   {
                     type: "message",
-                    role: "assistant",
-                    source: "assistant",
+                    role: "tool",
+                    source: "tool_result",
                     message: {
-                      role: "assistant",
-                      text: "",
+                      role: "tool",
+                      text: JSON.stringify(result.result),
                       blocks: [
-                        ...thinkingBlocks,
-                        ...toolCalls.map((tc) => ({
-                          type: "tool_use" as const,
-                          id: tc.id,
-                          name: tc.name,
-                          input: tc.input,
-                        })),
+                        {
+                          type: "tool_result",
+                          tool_use_id: result.id,
+                          content: JSON.stringify(result.result),
+                          ...(result.isError ? { is_error: true } : {}),
+                        },
                       ],
                     },
                     createdAt: Date.now(),
                   },
-                ],
-              });
-
-              // Persist tool results
-              for (const result of toolResults) {
-                await opts.store.appendBatch(opts.sessionId, {
-                  entries: [
-                    {
-                      type: "message",
-                      role: "tool",
-                      source: "tool_result",
-                      message: {
-                        role: "tool",
-                        text: JSON.stringify(result.result),
-                        blocks: [
-                          {
-                            type: "tool_result",
-                            tool_use_id: result.id,
-                            content: JSON.stringify(result.result),
-                            ...(result.isError ? { is_error: true } : {}),
-                          },
-                        ],
-                      },
-                      createdAt: Date.now(),
-                    },
-                  ],
-                });
+                ]);
               }
 
               messages = await readBranchMessages();
-              // Tool terminate hint: any tool may ask the loop to stop after
-              // this turn's results are persisted (no further model turns).
               if (toolResults.some((r) => r.terminate) && steerQueue.length === 0) {
                 naturalStop = true;
               }
               break; // tool turn complete -> next step
             }
 
-            // Natural stop: let plugins veto
+            // Text turn: persist assistant(text) + thinking. Thinking alone
+            // is not a message — a thinking-only turn with no text and no
+            // tool calls contributed nothing replayable, and empty content
+            // breaks strict model APIs (pi drops such messages on the wire).
+            // An abort during the stream discards the partial output: an
+            // uncompleted turn never enters the canonical tree.
+            if (turn.text && !controller?.signal.aborted) {
+              await persist([
+                {
+                  type: "message",
+                  role: "assistant",
+                  source: "assistant",
+                  message: {
+                    role: "assistant",
+                    text: turn.text,
+                    blocks: thinkingBlocks.length > 0 ? thinkingBlocks : undefined,
+                  },
+                  createdAt: Date.now(),
+                },
+              ]);
+            }
+
+            // Natural stop: let plugins veto.
             let stopped = true;
             for (const p of opts.plugins) {
               if (p.hooks?.beforeStop) {
@@ -426,8 +457,18 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
                 }
               }
             }
+            // max_tokens truncation (pi's stop-reason semantics): the model
+            // ran out of output budget mid-answer — force one continuation
+            // when capacity remains, bounded by maxForceContinues.
+            if (
+              stopped &&
+              turn.stopReason === "max_tokens" &&
+              forceContinues < opts.maxForceContinues
+            ) {
+              forceContinues++;
+              stopped = false;
+            }
             naturalStop = stopped;
-            // afterStop: notify plugins of the decision (vetoed = forced continue).
             for (const p of opts.plugins) {
               if (p.hooks?.afterStop) {
                 try {
@@ -437,15 +478,13 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
                 }
               }
             }
-            // Accepted-but-late steer: if a steer arrived during this model
-            // turn and the model chose to stop naturally, do NOT discard the
-            // steer. Force one more safe-boundary turn to drain it.
+            // Accepted-but-late steer: force one more turn to drain it.
             if (naturalStop && steerQueue.length > 0) {
               naturalStop = false;
             }
             break;
           } catch (err) {
-            // Explicit stop/abort is a distinct terminal state
+            // Explicit stop/abort is a distinct terminal state.
             if (
               controller?.signal.aborted ||
               (err instanceof ProviderError && err.kind === "aborted")
@@ -456,7 +495,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
               controller = null;
               return { status, usage: runUsage, error: runError };
             }
-            // Overflow: one-shot compaction recovery inside the same turn
+            // Overflow: one-shot compaction recovery inside the same turn.
             if (err instanceof ProviderError && err.kind === "overflow" && !overflowCompacted) {
               overflowCompacted = true;
               await emit({ type: "compaction_start" });
@@ -471,9 +510,8 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
               messages = await readBranchMessages();
               continue; // retry model call in the SAME turn, no extra step
             }
-            // Anything else (retries exhausted, auth, invalid_request, fatal)
-            // is terminal: the loop is the only retry owner and retryStream
-            // already applied its bounded policy.
+            // Anything else is terminal: retryStream already applied its
+            // bounded policy.
             runError ??= err instanceof Error ? err.message : String(err);
             status = "failed";
             await emit({ type: "agent_end", status });
@@ -482,9 +520,12 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
           }
         }
 
-        // afterModel hook: plugins may stream a cheap model (recap/pet) or
-        // emit UI-transient events. Called after the turn's model output +
-        // tool results are persisted, before turn_end.
+        // Per-turn state (pi's prepareNextTurn): let the session adjust the
+        // thinking level for the next turn before afterModel/turn_end.
+        nextThinkingLevel = opts.prepareNextTurn?.({ step })?.thinkingLevel;
+
+        // afterModel hook (recap/pet): after the turn's output + tool
+        // results are persisted, before turn_end.
         for (const p of opts.plugins) {
           if (p.hooks?.afterModel) {
             await p.hooks.afterModel(messages, rt);
@@ -504,10 +545,6 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         status = "completed";
       }
 
-      // afterRun: one-shot per-Run hook (recap). Fires once with the full
-      // message history + terminal status, before agent_end. Cheaper than
-      // afterModel (once per Run, not per turn). Skipped on early-exit
-      // error paths inside the loop (stop-during-tools, fatal model error).
       for (const p of opts.plugins) {
         if (p.hooks?.afterRun) {
           try {
@@ -518,8 +555,6 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         }
       }
 
-      // Auto-generate conversation title (first Run; backend's !title guard
-      // deduplicates). Uses the Run's model — one cheap call per completed Run.
       let title: string | undefined;
       if (status === "completed" && process.env.CODING_AGENT_TITLE_ENABLED !== "0") {
         const titleBranch = await readBranchMessages();
@@ -530,11 +565,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       }
 
       await emit({ type: "agent_end", status });
-      // Canonical output (ADR 0017): the full message sequence this Run
-      // produced — assistant(text/tool_use) and tool(tool_result) messages
-      // in branch order. The ledger persists them as separate canonical
-      // messages; nothing is ever merged into an assistant message. The
-      // final answer is the last assistant message with text.
+      // Canonical output (ADR 0017): the run's full message sequence.
       let runMessages: readonly Message[] | undefined;
       if (status === "completed") {
         const entries = await opts.store.readBranch(opts.sessionId);
@@ -547,15 +578,13 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       }
       return { status, messages: runMessages, usage: runUsage, error: runError, title };
     } catch (err) {
-      // Setup/persistence failure: the loop must settle to a terminal state
-      // so listeners always receive agent_end and the loop is reusable.
+      // Setup/persistence failure: settle to a terminal state so listeners
+      // always receive agent_end and the loop is reusable.
       runError ??= err instanceof Error ? err.message : String(err);
       status = controller?.signal.aborted ? "stopped" : "failed";
       await emit({ type: "agent_end", status });
       return { status, usage: runUsage, error: runError };
     } finally {
-      // Active-loop ownership must be released on EVERY exit path (normal,
-      // early return, throw) so the session is reusable.
       active = false;
       controller = null;
       steerQueue.length = 0;
@@ -563,14 +592,14 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     }
   }
 
-  async function processModelTurn(messages: readonly Message[]): Promise<{
-    calls: PendingToolCall[];
-    thinking: string;
-    thinkingSignature?: string;
-    thinkingRedacted?: boolean;
-  }> {
-    let assistantText = "";
-    let assistantThinking = "";
+  /** Accumulate one model turn from the stream — pure, no persistence
+   *  (pi's streamAssistantResponse). The caller decides what to persist. */
+  async function streamModelTurn(
+    messages: readonly Message[],
+    thinkingLevel?: ThinkingLevel,
+  ): Promise<ModelTurn> {
+    let text = "";
+    let thinking = "";
     let thinkingSignature: string | undefined;
     let thinkingRedacted = false;
     const toolCallBuilders = new Map<string, { id: string; name: string; jsonParts: string[] }>();
@@ -584,7 +613,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     const stream = retryStream(
       // The tool table is re-read each turn so per-Run tools (Product
       // Tools) from the latest resolveTools() are advertised to the model.
-      (signal) => opts.modelStream(messages, signal, [...toolMap.values()]),
+      (signal) => opts.modelStream(messages, signal, [...toolMap.values()], { thinkingLevel }),
       {
         maxAttempts: opts.maxRetries ?? 3,
         baseDelayMs: 1000,
@@ -609,11 +638,11 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
           };
         }
         if (chunk.delta?.type === "text") {
-          assistantText += chunk.delta.text;
+          text += chunk.delta.text;
           await emit({ type: "message_update", text: chunk.delta.text });
         }
         if (chunk.delta?.type === "reasoning") {
-          assistantThinking += chunk.delta.text;
+          thinking += chunk.delta.text;
           await emit({ type: "thinking_update", text: chunk.delta.text });
         }
         if (chunk.delta?.type === "reasoning_signature") {
@@ -640,56 +669,17 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       `model_end runId=${runIdForDebug()} turn=${debugTurn} stopReason=${stopReason ?? "none"}`,
     );
 
-    // Aborted mid-stream: discard partial output — an uncompleted turn must
-    // not enter the canonical Coding Session Tree (same as tool cancellation).
-    if (controller?.signal.aborted) {
-      return { calls: [], thinking: "" };
-    }
-
-    // Persist assistant text if any. Thinking alone is not a message — a
-    // thinking-only turn with no text and no tool calls contributed nothing
-    // replayable, and an empty-content message breaks strict model APIs
-    // (pi drops such messages on the wire too). Thinking blocks attach to
-    // the message when present so the reasoning trace keeps them in order.
-    if (assistantText) {
-      const thinkingBlocks =
-        assistantThinking.length > 0
-          ? [
-              {
-                type: "thinking" as const,
-                text: thinkingRedacted ? "[reasoning redacted]" : assistantThinking,
-                ...(thinkingSignature ? { signature: thinkingSignature } : {}),
-                ...(thinkingRedacted ? { redacted: true } : {}),
-              },
-            ]
-          : [];
-      await opts.store.appendBatch(opts.sessionId, {
-        entries: [
-          {
-            type: "message",
-            role: "assistant",
-            source: "assistant",
-            message: {
-              role: "assistant",
-              text: assistantText,
-              blocks: thinkingBlocks.length > 0 ? thinkingBlocks : undefined,
-            },
-            createdAt: Date.now(),
-          },
-        ],
-      });
-    }
-
-    // Build pending tool calls with parsed input
     return {
-      calls: Array.from(toolCallBuilders.values()).map((b) => ({
+      text,
+      thinking,
+      ...(thinkingSignature ? { thinkingSignature } : {}),
+      ...(thinkingRedacted ? { thinkingRedacted: true } : {}),
+      toolCalls: Array.from(toolCallBuilders.values()).map((b) => ({
         id: b.id,
         name: b.name,
         input: b.jsonParts.length > 0 ? safeParseJson(b.jsonParts.join("")) : {},
       })),
-      thinking: assistantThinking,
-      ...(thinkingSignature ? { thinkingSignature } : {}),
-      ...(thinkingRedacted ? { thinkingRedacted: true } : {}),
+      stopReason,
     };
   }
 
