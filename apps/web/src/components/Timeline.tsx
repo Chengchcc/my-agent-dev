@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { LiveToolStep } from "./LiveToolStep";
 import { MessageBubble } from "./MessageBubble";
 import { ReasoningTrace } from "./ReasoningTrace";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 
 interface TimelineProps {
   messages: UiItem[];
@@ -49,6 +50,109 @@ function SystemNotice({ text }: { text: string }) {
       <span className="text-[11px] text-[var(--mute)] bg-[var(--bg-muted)] px-3 py-1 rounded-full">
         {text}
       </span>
+    </div>
+  );
+}
+
+// ── Transient live trace ──
+
+type ToolGroup = {
+  name: string;
+  items: LiveToolCall[];
+  count: number;
+  hasRunning: boolean;
+};
+
+/** Group live tool calls by tool name, keeping first-appearance order. */
+function groupTools(tools: readonly LiveToolCall[] | undefined): ToolGroup[] {
+  const groups: ToolGroup[] = [];
+  const index = new Map<string, number>();
+  for (const tool of tools ?? []) {
+    let i = index.get(tool.name);
+    if (i === undefined) {
+      i = groups.length;
+      index.set(tool.name, i);
+      groups.push({ name: tool.name, items: [], count: 0, hasRunning: false });
+    }
+    const g = groups[i]!;
+    g.items.push(tool);
+    g.count += 1;
+    if (tool.state === "running") g.hasRunning = true;
+  }
+  return groups;
+}
+
+/** Live trace for a streaming run: one `X messages · Y commands` summary
+ *  row above the bubble, expanding into per-tool-name groups. */
+function TransientTrace({ msgCount, groups }: { msgCount: number; groups: ToolGroup[] }) {
+  const [open, setOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
+  const cmdCount = groups.reduce((n, g) => n + g.count, 0);
+
+  const toggleGroup = (name: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  return (
+    <div className="mb-0.5">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger
+          className="flex w-full items-center gap-1.5 px-1 py-0.5 text-left
+            text-[11px] font-[family-name:var(--font-mono)] text-[var(--mute)]
+            transition-colors hover:text-[var(--ink)]"
+        >
+          <span className="shrink-0 text-[var(--primary)]">{open ? "▼" : "▶"}</span>
+          <span>
+            {msgCount} messages · {cmdCount} commands
+          </span>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="my-0.5 ml-1.5 flex flex-col gap-0.5 border-l border-[var(--hairline)] py-1 pl-2">
+            {groups.map((g) => (
+              <div key={g.name}>
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(g.name)}
+                  className="flex w-full items-center gap-1.5 px-1 py-0.5 text-left
+                    text-[11px] font-[family-name:var(--font-mono)] text-[var(--mute)]
+                    transition-colors hover:text-[var(--ink)]"
+                >
+                  <span className="shrink-0 text-[var(--primary)]">
+                    {openGroups.has(g.name) ? "▼" : "▶"}
+                  </span>
+                  <span>
+                    {g.count} commands · {g.name} ×{g.count}
+                  </span>
+                  {g.hasRunning && (
+                    <span className="shrink-0 text-[10px] text-[var(--primary)]">running</span>
+                  )}
+                </button>
+                {openGroups.has(g.name) && (
+                  <div className="ml-2 flex flex-col">
+                    {g.items.map((tool) =>
+                      tool.state === "running" && tool.result === undefined ? (
+                        <div
+                          key={tool.callId}
+                          className="px-2 py-0.5 font-[family-name:var(--font-mono)] text-[11px] text-[var(--mute)]"
+                        >
+                          executing tool…
+                        </div>
+                      ) : (
+                        <LiveToolStep key={tool.callId} tool={tool} />
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
@@ -266,21 +370,27 @@ export function Timeline({
               </div>
             );
           })}
-          {transients?.map((t) => (
-            <div key={`transient-${t.runId}`} className="group relative">
-              <MessageBubble
-                align="left"
-                name={t.sender.displayName ?? t.sender.memberId}
-                kind="agent"
-                agentId={t.sender.agentId}
-                content={t.text}
-                isStreaming
-              />
-              {t.tools?.map((tool) => (
-                <LiveToolStep key={`${t.runId}:${tool.callId}`} tool={tool} />
-              ))}
-            </div>
-          ))}
+          {transients?.map((t) => {
+            const groups = groupTools(t.tools);
+            const text = t.text.trim();
+            return (
+              <div key={`transient-${t.runId}`} className="group relative">
+                {groups.length > 0 && <TransientTrace msgCount={text ? 1 : 0} groups={groups} />}
+                {text ? (
+                  <MessageBubble
+                    align="left"
+                    name={t.sender.displayName ?? t.sender.memberId}
+                    kind="agent"
+                    agentId={t.sender.agentId}
+                    content={t.text}
+                    isStreaming
+                  />
+                ) : groups.length === 0 ? (
+                  <div className="px-1 py-0.5 text-[11px] italic text-[var(--mute)]">thinking…</div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
