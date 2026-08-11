@@ -238,7 +238,11 @@ export function Timeline({
                     <div className="flex-1 h-px bg-[var(--hairline)]" />
                   </div>
                 )}
-                <div style={virt} className={`group relative ${isUndone ? "opacity-50" : ""}`}>
+                <div
+                  style={virt}
+                  data-seq={m.seq}
+                  className={`group relative ${isUndone ? "opacity-50" : ""}`}
+                >
                   <MessageActions conversationId={conversationId} item={m} canAct={canAct}>
                     {extractText(m.content) && (
                       <MessageBubble

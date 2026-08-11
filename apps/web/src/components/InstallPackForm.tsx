@@ -101,7 +101,7 @@ export function InstallPackForm({ onDone }: { onDone: () => void }) {
         <TabsTrigger value="zip">Upload ZIP</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="git">
+      <TabsContent value="git" className="w-full min-w-0">
         <Form {...gitForm}>
           <form onSubmit={gitForm.handleSubmit(onSubmitGit)} className="space-y-3">
             <FormField
@@ -163,7 +163,7 @@ export function InstallPackForm({ onDone }: { onDone: () => void }) {
         </Form>
       </TabsContent>
 
-      <TabsContent value="zip">
+      <TabsContent value="zip" className="w-full min-w-0">
         <Form {...zipForm}>
           <form onSubmit={zipForm.handleSubmit(onSubmitZip)} className="space-y-3">
             <FormField

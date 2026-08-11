@@ -76,7 +76,10 @@ export async function proxyRequest(
   const BACKEND_TOKEN = getBackendToken();
 
   const url = new URL(req.url);
-  const upstreamUrl = `${BACKEND_URL}/${pathSegments.join("/")}${url.search}`;
+  // Normalize: backend routes are under /api/; Treaty generates /api/bff/api/...
+  // while manual fetch may use /api/bff/conversations/... — accept both.
+  const segments = pathSegments[0] === "api" ? pathSegments.slice(1) : pathSegments;
+  const upstreamUrl = `${BACKEND_URL}/api/${segments.join("/")}${url.search}`;
 
   const upstreamHeaders = stripHopByHop(req.headers);
   upstreamHeaders.set("x-auth-token", BACKEND_TOKEN);

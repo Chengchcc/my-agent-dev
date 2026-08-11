@@ -102,25 +102,25 @@ export default function AgentDetailPage() {
             <TabsTrigger value="relationships">Relationships</TabsTrigger>
             <TabsTrigger value="memory">Memory</TabsTrigger>
           </TabsList>
-          <TabsContent value="persona" className="pt-4">
+          <TabsContent value="persona" className="w-full min-w-0 pt-4">
             <IdentityPanel agentId={id} />
           </TabsContent>
-          <TabsContent value="skills" className="pt-4">
+          <TabsContent value="skills" className="w-full min-w-0 pt-4">
             <AgentSkillsPanel agentId={id} />
           </TabsContent>
-          <TabsContent value="activity" className="pt-4">
+          <TabsContent value="activity" className="w-full min-w-0 pt-4">
             <div className="space-y-6">
               <ConversationList agentId={id} agentName={agent?.name} />
               <RecentRuns agentId={id} />
             </div>
           </TabsContent>
-          <TabsContent value="mcp" className="pt-4">
+          <TabsContent value="mcp" className="w-full min-w-0 pt-4">
             <McpServerPanel agentId={id} />
           </TabsContent>
-          <TabsContent value="relationships" className="pt-4">
+          <TabsContent value="relationships" className="w-full min-w-0 pt-4">
             <AgentRelationshipsPanel agentId={id} />
           </TabsContent>
-          <TabsContent value="memory" className="pt-4">
+          <TabsContent value="memory" className="w-full min-w-0 pt-4">
             <AgentMemoryPanel agentId={id} />
           </TabsContent>
         </Tabs>

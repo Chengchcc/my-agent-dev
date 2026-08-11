@@ -54,6 +54,7 @@ export default function SystemPage() {
   const deleteCron = useDeleteCronJob();
   const setCronEnabled = useSetCronEnabled();
   const cancelRun = useCancelAgentRun();
+  const [confirmingJobId, setConfirmingJobId] = useState<string | null>(null);
 
   const surfaces = surfacesQuery.data ?? [];
   const runs = runsQuery.data?.runs ?? [];
@@ -78,7 +79,9 @@ export default function SystemPage() {
           <SummaryCard
             icon={CheckCircle2}
             label="Lark surfaces"
-            value={`${healthySurfaces} / ${surfaces.length}`}
+            value={
+              surfaces.length === 0 ? "No surfaces" : `${healthySurfaces} / ${surfaces.length}`
+            }
             tone={surfaces.length > 0 && healthySurfaces === surfaces.length ? "ok" : "warn"}
           />
           <SummaryCard
@@ -108,7 +111,7 @@ export default function SystemPage() {
             <TabsTrigger value="cron">Schedules</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="surfaces" className="pt-4">
+          <TabsContent value="surfaces" className="w-full min-w-0 pt-4">
             <QueryState
               query={surfacesQuery}
               empty={(d) => d.length === 0}
@@ -137,7 +140,7 @@ export default function SystemPage() {
             </QueryState>
           </TabsContent>
 
-          <TabsContent value="runs" className="pt-4">
+          <TabsContent value="runs" className="w-full min-w-0 pt-4">
             <QueryState
               query={runsQuery}
               empty={(d) => d.runs.length === 0}
@@ -167,7 +170,7 @@ export default function SystemPage() {
             </QueryState>
           </TabsContent>
 
-          <TabsContent value="cron" className="pt-4">
+          <TabsContent value="cron" className="w-full min-w-0 pt-4">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-sm font-medium text-[var(--ink)]">Schedules</h2>
               {/* The primary action lives with its tab content, not the tab row. */}
@@ -199,14 +202,39 @@ export default function SystemPage() {
                             setCronEnabled.mutate({ id: job.cronJobId, enabled: checked })
                           }
                         />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive"
-                          onClick={() => deleteCron.mutate(job.cronJobId)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {confirmingJobId === job.cronJobId ? (
+                          <>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="h-7"
+                              onClick={() => {
+                                deleteCron.mutate(job.cronJobId, {
+                                  onSuccess: () => setConfirmingJobId(null),
+                                });
+                              }}
+                            >
+                              Confirm
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7"
+                              onClick={() => setConfirmingJobId(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive"
+                            onClick={() => setConfirmingJobId(job.cronJobId)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))}

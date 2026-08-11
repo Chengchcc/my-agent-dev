@@ -31,7 +31,7 @@ function useGeneratorOutput(loopId: string, generatorRunId: string | null | unde
     let lastAssistant: string | null = null;
     let done = false;
     const ts = typedSource(
-      `/api/bff/api/conversations/${encodeURIComponent(`loop:${loopId}:generator`)}/events?afterSeq=0`,
+      `/api/bff/conversations/${encodeURIComponent(`loop:${loopId}:generator`)}/events?afterSeq=0`,
       conversationEvents,
       { onError: () => {} },
     );

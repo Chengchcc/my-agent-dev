@@ -87,16 +87,16 @@ export function AgentRunsTable({
 
       {/* Desktop: full table. */}
       <div className="hidden overflow-x-auto rounded-lg border border-[var(--hairline)] md:block">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm table-fixed">
           <thead className="bg-[var(--canvas-soft)] text-left text-xs text-[var(--mute)]">
             <tr>
-              <th className="p-2">Run</th>
-              <th className="p-2">Status</th>
-              <th className="p-2">Agent</th>
+              <th className="p-2 w-[120px]">Run</th>
+              <th className="p-2 w-[100px]">Status</th>
+              <th className="p-2 w-[100px]">Agent</th>
               <th className="p-2">Model</th>
-              <th className="p-2">Started</th>
-              <th className="p-2">Usage</th>
-              <th className="p-2" />
+              <th className="p-2 w-[160px]">Started</th>
+              <th className="p-2 w-[80px] text-right">Usage</th>
+              <th className="p-2 w-[80px]" />
             </tr>
           </thead>
           <tbody>
@@ -111,7 +111,9 @@ export function AgentRunsTable({
                   <Badge className={STATUS_STYLES[r.status] ?? ""}>{r.status}</Badge>
                 </td>
                 <td className="p-2">{r.agentId}</td>
-                <td className="p-2">{r.model}</td>
+                <td className="p-2 max-w-0 truncate" title={r.model}>
+                  {r.model}
+                </td>
                 <td className="p-2 text-xs text-[var(--mute)]">{startedAt(r)}</td>
                 <td className="p-2 text-xs text-[var(--mute)]">{tokens(r)}</td>
                 <td className="p-2 text-right">

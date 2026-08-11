@@ -26,12 +26,14 @@ interface ConversationCanvasProps {
   conversationId: string;
   snapshot?: ConversationSnapshot | null;
   initialMessage?: string;
+  anchorSeq?: number | null;
 }
 
 export function ConversationCanvas({
   conversationId,
   snapshot,
   initialMessage,
+  anchorSeq,
 }: ConversationCanvasProps) {
   const router = useRouter();
   const qc = useQueryClient();
@@ -148,6 +150,22 @@ export function ConversationCanvas({
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
     setScrolledUp(!atBottom);
   }, []);
+
+  // Cmd+K ?at=seq: scroll to the message and flash-highlight it.
+  useEffect(() => {
+    if (anchorSeq == null || !scrollRef.current) return;
+    // Messages render with data-seq attributes via Timeline's MessageActions.
+    // Try a few selectors to find the target element.
+    const el = document.querySelector(`[data-seq="${anchorSeq}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-[var(--primary)]/50", "rounded-lg");
+      const timeout = setTimeout(() => {
+        el.classList.remove("ring-2", "ring-[var(--primary)]/50", "rounded-lg");
+      }, 2000);
+      return () => clearTimeout(timeout);
+    }
+  }, [anchorSeq, items.length]);
 
   // Resolve the primary agent for header display (first agent in roster)
   const primaryAgent = useMemo(() => {

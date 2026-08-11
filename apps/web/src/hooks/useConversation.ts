@@ -205,7 +205,7 @@ export function useConversation(
     // sessionStorage cursor: a cursor that outlives the page would make
     // refresh look like "the agent never replied".
     const ts = typedSource(
-      `/api/bff/api/conversations/${conversationId}/events?afterSeq=0`,
+      `/api/bff/conversations/${conversationId}/events?afterSeq=0`,
       conversationEvents,
       {
         onError: (_event, _err) => {
@@ -335,7 +335,7 @@ export function useConversation(
       // One stream per run, tracked centrally so unmount can close all.
       const existing = runStreamsRef.current.get(runId);
       existing?.close();
-      const es = new EventSource(`/api/bff/api/agent-runs/${runId}/events`);
+      const es = new EventSource(`/api/bff/agent-runs/${runId}/events`);
       runStreamsRef.current.set(runId, es);
       const done = (dropBubble: boolean) => {
         runStreamsRef.current.get(runId)?.close();

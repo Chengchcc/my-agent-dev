@@ -128,6 +128,7 @@ export const api = {
   searchConversations: (q: string) => unwrap(client.api.conversations.search.get({ query: { q } })),
   exportConversation: async (id: string) => {
     const resp = await fetch(`/api/bff/conversations/${id}/export`, { credentials: "include" });
+    if (!resp.ok) throw new Error(`Export failed: ${resp.status}`);
     return resp.text();
   },
   // Ops — Agent Run is the only execution identity
@@ -266,12 +267,12 @@ export const api = {
     unwrap(client.api.agents({ id: agentId })["mcp-servers"]({ serverId }).delete()),
   // Memory
   getAgentMemory: (agentId: string) =>
-    fetch(`/api/bff/api/agents/${agentId}/memory`, { credentials: "include" }).then((r) =>
+    fetch(`/api/bff/agents/${agentId}/memory`, { credentials: "include" }).then((r) =>
       r.json(),
     ),
   // Relationships (direct fetch - conditional routes not visible to Eden)
   listAgentRelationships: async (agentId: string) => {
-    const resp = await fetch(`/api/bff/api/agents/${agentId}/relationships`, {
+    const resp = await fetch(`/api/bff/agents/${agentId}/relationships`, {
       credentials: "include",
     });
     return (await resp.json()) as { relationships: RelationshipRow[] };
@@ -285,7 +286,7 @@ export const api = {
       instruction?: string;
     },
   ) => {
-    const resp = await fetch(`/api/bff/api/agents/${agentId}/relationships`, {
+    const resp = await fetch(`/api/bff/agents/${agentId}/relationships`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -298,7 +299,7 @@ export const api = {
     relId: string,
     body: { weight?: number; instruction?: string },
   ) => {
-    const resp = await fetch(`/api/bff/api/agents/${agentId}/relationships/${relId}`, {
+    const resp = await fetch(`/api/bff/agents/${agentId}/relationships/${relId}`, {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -307,13 +308,13 @@ export const api = {
     return (await resp.json()) as { relationship: RelationshipRow };
   },
   deleteRelationship: (agentId: string, relId: string) =>
-    fetch(`/api/bff/api/agents/${agentId}/relationships/${relId}`, {
+    fetch(`/api/bff/agents/${agentId}/relationships/${relId}`, {
       method: "DELETE",
       credentials: "include",
     }).then((r) => r.ok),
   // Models (direct fetch - route not visible to Eden treaty)
   listModels: async () => {
-    const resp = await fetch("/api/bff/api/models", { credentials: "include" });
+    const resp = await fetch("/api/bff/models", { credentials: "include" });
     return (await resp.json()) as {
       providers: Array<{
         id: string;
@@ -335,7 +336,7 @@ export const api = {
   },
   // Conversation fork/undo/replay (direct fetch - new routes)
   forkConversation: async (id: string, fromSeq: number, title?: string) => {
-    const resp = await fetch(`/api/bff/api/conversations/${id}/fork`, {
+    const resp = await fetch(`/api/bff/conversations/${id}/fork`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -344,7 +345,7 @@ export const api = {
     return (await resp.json()) as { newConversationId: string };
   },
   undoMessages: async (id: string, count = 1) => {
-    const resp = await fetch(`/api/bff/api/conversations/${id}/undo`, {
+    const resp = await fetch(`/api/bff/conversations/${id}/undo`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -359,7 +360,7 @@ export const api = {
     senderMemberId: string,
     addressedTo: string[],
   ) => {
-    const resp = await fetch(`/api/bff/api/conversations/${id}/replay`, {
+    const resp = await fetch(`/api/bff/conversations/${id}/replay`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },

@@ -94,7 +94,7 @@ export function ConversationList({ agentId, agentName }: { agentId: string; agen
                   router.push(`/chat/${conv.conversationId}`);
                 }
               }}
-              className="w-full text-left border border-[var(--hairline)] rounded-lg
+              className="group w-full text-left border border-[var(--hairline)] rounded-lg
                          hover:border-[var(--primary)] transition-colors duration-200
                          animate-fade-in bg-[var(--canvas)] cursor-pointer p-3 flex items-center justify-between"
               style={{ animationDelay: `${i * 0.06}s`, animationFillMode: "both" }}
@@ -107,7 +107,7 @@ export function ConversationList({ agentId, agentName }: { agentId: string; agen
                   {conv.members.length} member{conv.members.length !== 1 ? "s" : ""}
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0 ml-3">
+              <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Button
                   variant="ghost"
                   size="icon-xs"

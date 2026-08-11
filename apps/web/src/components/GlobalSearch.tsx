@@ -4,6 +4,7 @@ import { Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { useRecentConversations } from "@/features/conversations/hooks";
 
 interface SearchResult {
   conversationId: string;
@@ -19,9 +20,51 @@ interface GlobalSearchProps {
   onClose: () => void;
 }
 
+/** Parse the raw content JSON (a MessageRevision) and extract readable text. */
+function extractSnippet(content: string): string {
+  try {
+    const parsed = JSON.parse(content) as {
+      text?: string;
+      blocks?: Array<{ type: string; text?: string }>;
+    };
+    if (parsed.text) return parsed.text;
+    if (Array.isArray(parsed.blocks)) {
+      return parsed.blocks
+        .filter((b) => b.type === "text")
+        .map((b) => b.text ?? "")
+        .join(" ")
+        .trim();
+    }
+    return content.slice(0, 200);
+  } catch {
+    return content.slice(0, 200);
+  }
+}
+
 function formatTime(ts: number): string {
+  const now = Date.now();
+  const diffDays = Math.floor((now - ts) / 86_400_000);
   const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (diffDays === 0) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return d.toLocaleDateString([], { weekday: "short" });
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function highlight(text: string, query: string): React.ReactNode {
+  const q = query.trim();
+  if (!q) return text;
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = text.split(new RegExp(`(${escaped})`, "ig"));
+  return parts.map((p, i) =>
+    i % 2 === 1 ? (
+      <mark key={i} className="bg-[var(--primary)]/30 text-[var(--ink)] rounded-sm">
+        {p}
+      </mark>
+    ) : (
+      p
+    ),
+  );
 }
 
 export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
@@ -33,6 +76,9 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+
+  const { data: conversationsData } = useRecentConversations();
+  const recent = (conversationsData ?? []).slice(0, 5);
 
   useEffect(() => {
     if (open) {
@@ -88,7 +134,7 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
           if (activeIndex >= 0 && activeIndex < results.length) {
             const r = results[activeIndex]!;
             onClose();
-            router.push(`/chat/${r.conversationId}`);
+            router.push(`/chat/${r.conversationId}?at=${r.seq}`);
           }
           break;
       }
@@ -133,7 +179,7 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
           </button>
         </div>
 
-        {/* Results */}
+        {/* Results / Empty / Recent */}
         <div className="max-h-80 overflow-y-auto">
           {isLoading && (
             <div className="flex items-center justify-center py-12 text-sm text-[var(--mute)]">
@@ -141,17 +187,45 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
             </div>
           )}
 
-          {!isLoading && query.trim() === "" && (
+          {/* Empty query: show recent conversations */}
+          {!isLoading && query.trim() === "" && recent.length > 0 && (
+            <div className="px-2 py-2">
+              <p className="px-2 pb-1 text-[10px] uppercase tracking-wider text-[var(--mute)]">
+                Recent
+              </p>
+              {recent.map((c) => (
+                <button
+                  key={c.conversationId}
+                  onClick={() => {
+                    onClose();
+                    router.push(`/chat/${c.conversationId}`);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-[var(--canvas-soft)] text-[var(--ink)]"
+                >
+                  <span className="truncate">
+                    {c.title ?? `Conversation ${c.conversationId.slice(0, 8)}`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Empty query, no recents */}
+          {!isLoading && query.trim() === "" && recent.length === 0 && (
             <div className="flex flex-col items-center py-12 text-[var(--mute)]">
               <Search className="mb-3 h-8 w-8 opacity-30" />
               <p className="text-sm">Type to search across all conversations</p>
             </div>
           )}
 
+          {/* No results */}
           {!isLoading && query.trim() !== "" && results.length === 0 && (
-            <div className="py-12 text-center text-sm text-[var(--mute)]">No results found.</div>
+            <div className="py-12 text-center text-sm text-[var(--mute)]">
+              No results for &ldquo;{query}&rdquo;
+            </div>
           )}
 
+          {/* Results */}
           {!isLoading &&
             results.map((r, i) => (
               <button
@@ -159,28 +233,42 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
                 type="button"
                 onClick={() => {
                   onClose();
-                  router.push(`/chat/${r.conversationId}`);
+                  router.push(`/chat/${r.conversationId}?at=${r.seq}`);
                 }}
                 onMouseEnter={() => setActiveIndex(i)}
                 className={`flex w-full flex-col gap-1 border-b border-[var(--hairline)] px-4 py-3 text-left transition-colors last:border-b-0 ${i === activeIndex ? "bg-[var(--canvas-soft)]" : "hover:bg-[var(--canvas-soft)]"}`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-[var(--ink-strong)] truncate max-w-[200px]">
-                    {r.conversationTitle ?? r.conversationId.slice(0, 8)}
+                  <span className="text-xs font-medium text-[var(--ink-strong)] truncate max-w-[260px]">
+                    {r.conversationTitle ?? `Conversation ${r.conversationId.slice(0, 8)}`}
                   </span>
-                  <span className="text-xs text-[var(--mute)]">· {r.senderName}</span>
-                  <span className="ml-auto text-xs text-[var(--mute)]">{formatTime(r.ts)}</span>
+                  <span className="text-xs text-[var(--mute)] shrink-0">· {r.senderName}</span>
+                  <span className="ml-auto text-xs text-[var(--mute)] shrink-0">
+                    {formatTime(r.ts)}
+                  </span>
                 </div>
-                <p className="line-clamp-2 text-sm text-[var(--ink-strong)]">{r.snippet}</p>
+                <p className="line-clamp-2 text-sm text-[var(--ink)]">
+                  {highlight(extractSnippet(r.snippet), query)}
+                </p>
               </button>
             ))}
         </div>
 
-        {!isLoading && results.length > 0 && (
-          <div className="border-t border-[var(--hairline)] px-4 py-2">
-            <p className="text-xs text-[var(--mute)]">{results.length} results</p>
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-2 text-[10px] text-[var(--mute)]">
+          <span>{results.length > 0 ? `${results.length} results` : "Type to search"}</span>
+          <div className="flex items-center gap-3">
+            <span>
+              <kbd className="rounded bg-[var(--canvas)] px-1.5 py-0.5 font-mono">↑↓</kbd> navigate
+            </span>
+            <span>
+              <kbd className="rounded bg-[var(--canvas)] px-1.5 py-0.5 font-mono">↵</kbd> open
+            </span>
+            <span>
+              <kbd className="rounded bg-[var(--canvas)] px-1.5 py-0.5 font-mono">esc</kbd> close
+            </span>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
