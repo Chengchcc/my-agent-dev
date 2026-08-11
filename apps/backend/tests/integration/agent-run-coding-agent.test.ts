@@ -197,17 +197,18 @@ describe("Phase 5 acceptance: Product Backend -> Coding Agent child -> Product T
     expect(events).toContain("product_tool_started");
     expect(events).toContain("product_tool_completed");
 
-    // Conversation History: exactly ONE final assistant message
-    // (the child's last assistant output; the product tool call itself
-    // produced no ledger message).
+    // Conversation History: the Run's full canonical sequence (ADR 0017) —
+    // assistant(tool_use) + tool(tool_result) + assistant(text) — committed
+    // as separate ledger messages, in order.
     const ledgerMessages = convPort.getLedgerEntries(CONV).filter((e) => e.kind === "message");
-    expect(ledgerMessages).toHaveLength(2); // seed user + final assistant
-    const assistant = ledgerMessages.find((e) => e.senderMemberId === MEMBER);
-    expect(assistant).toBeDefined();
+    expect(ledgerMessages).toHaveLength(4); // seed user + 3 run messages
+    const runMessages = ledgerMessages.filter((e) => e.senderMemberId === MEMBER);
+    expect(runMessages).toHaveLength(3);
     // SURFACE CONTRACT: the canonical assistant Message must parse as a full
     // MessageRevision (messageId/state/updatedAt) - Web reducer and Lark
-    // watcher skip entries that fail parseMessageRevision.
-    const revision = parseMessageRevision(assistant!.content);
+    // watcher skip entries that fail parseMessageRevision. The final answer
+    // keeps the `run:<runId>:assistant:0` id the web waits on.
+    const revision = parseMessageRevision(runMessages.at(-1)!.content);
     expect(revision).toMatchObject({
       messageId: assistantMessageId(runId, 0),
       role: "assistant",
@@ -224,7 +225,7 @@ describe("Phase 5 acceptance: Product Backend -> Coding Agent child -> Product T
     // Replay the SAME dispatch: no second commit, no duplicate ledger row.
     await execution.dispatch(runId);
     const ledgerAfter = convPort.getLedgerEntries(CONV).filter((e) => e.kind === "message");
-    expect(ledgerAfter).toHaveLength(2);
+    expect(ledgerAfter).toHaveLength(4);
   }, 60_000);
 
   test("a follow-up input chains into a SECOND real child run (one Run / one loop)", async () => {

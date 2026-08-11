@@ -77,15 +77,20 @@ export const conversationLedger = sqliteTable(
     kind: text().notNull(),
     content: text().notNull(),
     ts: integer({ mode: "number" }).notNull(),
-    /** Terminal-commit identity: set on the final assistant Message of a
-     *  completed Agent Run. UNIQUE - the commit for a runId can never be
-     *  written twice, even across connections/restarts. */
+    /** Terminal-commit identity: set on the messages of a completed Agent
+     *  Run. Unique per (agent_run_id, message_index) - a run's commit can
+     *  never be written twice, even across connections/restarts. */
     agentRunId: text("agent_run_id"),
+    /** Ordinal of a committed message within its Run (0-based, canonical
+     *  sequence order, ADR 0017). */
+    messageIndex: integer({ mode: "number" }).notNull().default(0),
     undone: integer({ mode: "number" }).notNull().default(0),
   },
   (table) => [
     index("idx_ledger_conv").on(table.conversationId, table.seq),
-    uniqueIndex("idx_ledger_agent_run").on(table.agentRunId).where(sql`agent_run_id IS NOT NULL`),
+    uniqueIndex("idx_ledger_agent_run_message")
+      .on(table.agentRunId, table.messageIndex)
+      .where(sql`agent_run_id IS NOT NULL`),
   ],
 );
 

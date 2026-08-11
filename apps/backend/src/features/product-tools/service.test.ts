@@ -175,7 +175,7 @@ describe("product tools service", () => {
     const runId = await createRun("hi");
     await runPort.finalizeRun(runId, {
       status: "completed",
-      output: { role: "assistant", text: "x" },
+      messages: [{ role: "assistant", text: "x" }],
     });
     await expect(
       service.call({

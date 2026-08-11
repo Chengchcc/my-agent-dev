@@ -450,7 +450,7 @@ describe("Agent Run: terminal CAS", () => {
 
     const finalized = await runPort.finalizeRun(runId, {
       status: "completed",
-      output: { role: "assistant", text: "done" },
+      messages: [{ role: "assistant", text: "done" }],
     });
     expect(finalized.status).toBe("completed");
     expect(finalized.terminalResult?.status).toBe("completed");

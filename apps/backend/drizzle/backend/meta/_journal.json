@@ -141,6 +141,13 @@
       "when": 1785930899335,
       "tag": "0020_phase6_drop_legacy_execution",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1786000000000,
+      "tag": "0021_canonical_message_sequence",
+      "breakpoints": true
     }
   ]
 }

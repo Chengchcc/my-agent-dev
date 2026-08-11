@@ -23,6 +23,15 @@ import type { AgentRun, BranchInput, ClaimedBranchInput } from "./domain.js";
 import { isActiveStatus, isTerminalStatus } from "./domain.js";
 import type { AgentRunPort } from "./ports.js";
 
+/** The final answer of a canonical run sequence (ADR 0017): the last
+ *  assistant message carrying text. Used for mention cascade and surface
+ *  display; returns undefined when the run produced no final text. */
+function finalAnswerMessage(messages: readonly Message[] | undefined): Message | undefined {
+  return [...(messages ?? [])]
+    .reverse()
+    .find((m) => m.role === "assistant" && (m.text?.trim() ?? "") !== "");
+}
+
 // ─── Product History Tools (the only canonical tool set) ─────────────
 
 /** The Product Tool manifest: history read tools plus one semantic mutation
@@ -339,13 +348,13 @@ export function createAgentRunExecutionService(
         await runPort.commitCompletedRun({
           runId: run.runId,
           outcome,
-          output: outcome.output,
+          messages: outcome.messages ?? [],
         });
         debugLog(
           "agent-run",
-          `terminal_commit runId=${run.runId} output=${outcome.output != null}`,
+          `terminal_commit runId=${run.runId} messages=${outcome.messages?.length ?? 0}`,
         );
-        deps.onRunCommitted?.(run.runId, outcome.output);
+        deps.onRunCommitted?.(run.runId, finalAnswerMessage(outcome.messages));
       } catch (err) {
         // Backend finished but the Product transaction failed: keep the
         // branch occupied, store the outcome for retryTerminalCommit. The
@@ -568,9 +577,9 @@ export function createAgentRunExecutionService(
       await runPort.commitCompletedRun({
         runId,
         outcome,
-        output: outcome.output,
+        messages: outcome.messages ?? [],
       });
-      deps.onRunCommitted?.(runId, outcome.output);
+      deps.onRunCommitted?.(runId, finalAnswerMessage(outcome.messages));
       liveRuns.delete(runId);
       closeSubscribers(runId);
     },

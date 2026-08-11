@@ -4,6 +4,7 @@ import {
   assistantMessageId,
   type MessageRevision,
   MessageRevisionSchema,
+  normalizeCanonicalMessages,
   serializeMessageRevision,
 } from "@my-agent-team/message";
 import { and, eq, gt, inArray, isNull, not, sql } from "drizzle-orm";
@@ -750,7 +751,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
       return row ? parseRun(row) : null;
     },
 
-    async commitCompletedRun({ runId, outcome, output }) {
+    async commitCompletedRun({ runId, outcome, messages }) {
       if (outcome.status !== "completed") {
         throw new Error(`commitCompletedRun requires a completed outcome, got ${outcome.status}`);
       }
@@ -788,32 +789,50 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           throw new AgentRunConflictError(runId);
         }
 
-        // Insert the final assistant Message into Conversation History and
-        // append its ledger_message ref to Agent Context. A completed run
-        // without an output Message commits nothing to the ledger.
-        //
-        // The ledger row carries the runId as its COMMIT IDENTITY:
-        // conversation_ledger.agent_run_id is UNIQUE, so concurrent commits
-        // (parallel retries, restart, second instance) can never write the
-        // final Message twice - the second writer reuses the first seq.
-        if (output) {
-          // The canonical assistant Message MUST satisfy the
-          // MessageRevision contract (messageId/state/updatedAt) that every
-          // surface parser (Web reducer, Lark watcher) enforces. The raw
-          // Backend output is a plain Message; stamp the terminal fields
-          // here - the single place a final assistant Message is written.
-          // The messageId derives from the runId (the Product Run identity),
-          // NOT from the Coding Agent output - it has no obligation to
-          // produce Product Message IDs.
+        // Boundary enforcement (ADR 0017): the Run's output must be a
+        // canonical message sequence — assistant never carries tool_result.
+        // normalizeCanonicalMessages is the single normalization point for
+        // any coding agent type; a completed run with no messages commits
+        // nothing to the ledger.
+        const canonical = normalizeCanonicalMessages(messages ?? []);
+
+        // Commit each canonical message as its own ledger row, keyed by
+        // (agent_run_id, message_index). The pair is the COMMIT IDENTITY:
+        // concurrent commits (parallel retries, restart, second instance)
+        // can never write a message twice — the second writer reuses the
+        // first seq. The whole batch is one atomic transaction with one
+        // branch revision bump; a crash mid-batch either left no CAS (replay
+        // appends the missing refs and CASes) or completed the CAS (replay
+        // finds every ref and skips).
+        let parentId = branch.leafEntryId;
+        let lastSeq: number | null = null;
+        // Assistant ordinals run in REVERSE: the final assistant message is
+        // `run:<runId>:assistant:0` — the web's transient bubble waits for
+        // exactly that id to be replaced by the canonical final answer.
+        const assistantCount = canonical.filter((m) => m.role === "assistant").length;
+        let assistantSeen = 0;
+        let appendedRefs = 0;
+        for (let index = 0; index < canonical.length; index++) {
+          const message = canonical[index]!;
+          // The canonical assistant Message MUST satisfy the MessageRevision
+          // contract (messageId/state/updatedAt) that every surface parser
+          // (Web reducer, Lark watcher) enforces. The raw output message is
+          // stamped with the terminal fields here — the single place a Run's
+          // messages are written. messageId derives from the runId (Product
+          // Run identity), NOT from the agent output.
+          const messageId =
+            message.role === "assistant"
+              ? assistantMessageId(runId, assistantCount - 1 - assistantSeen++)
+              : `run:${runId}:tool:${index}`;
           const revision = MessageRevisionSchema.parse({
-            messageId: assistantMessageId(runId, 0),
-            role: output.role,
+            messageId,
+            role: message.role,
             state: "done",
-            text: output.text ?? undefined,
-            blocks: output.blocks,
-            tools: output.tools,
+            text: message.text ?? undefined,
+            blocks: message.blocks,
+            tools: message.tools,
             conversationId: run.conversationId,
-            visibility: output.visibility ?? "conversation",
+            visibility: message.visibility ?? "conversation",
             updatedAt: now,
           }) as MessageRevision;
           const inserted = d
@@ -826,11 +845,12 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
               content: serializeMessageRevision(revision),
               ts: now,
               agentRunId: runId,
+              messageIndex: index,
             })
             // ON CONFLICT DO NOTHING (no target): the identity is the
-            // partial UNIQUE index on agent_run_id, which SQLite cannot use
-            // as an UPSERT target - a conflicting insert is simply a no-op
-            // and the seq below is re-read from the existing row.
+            // partial UNIQUE index on (agent_run_id, message_index), which
+            // SQLite cannot use as an UPSERT target - a conflicting insert
+            // is simply a no-op and the seq below is re-read.
             .onConflictDoNothing()
             .returning({ seq: schema.conversationLedger.seq })
             .get();
@@ -839,13 +859,20 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             d
               .select({ seq: schema.conversationLedger.seq })
               .from(schema.conversationLedger)
-              .where(eq(schema.conversationLedger.agentRunId, runId))
+              .where(
+                and(
+                  eq(schema.conversationLedger.agentRunId, runId),
+                  eq(schema.conversationLedger.messageIndex, index),
+                ),
+              )
               .get()?.seq;
           if (!seq) throw new Error("ledger insert returned no seq");
+          lastSeq = seq;
 
           // Context ref is deduped by (treeId, ledgerSeq): a crash between
           // the ledger insert and the ref append leaves no duplicate ref on
-          // retry.
+          // retry. The ref chain continues from the previous committed
+          // message's ref (or the branch leaf on a fresh commit).
           const existingRef = d
             .select()
             .from(schema.agentContextEntry)
@@ -858,50 +885,54 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             )
             .get();
           if (existingRef) {
-            // The ref already exists (commit replay after a crash between
-            // the ledger insert and the branch update): the leaf is already
-            // advanced - nothing to do.
+            parentId = existingRef.entryId;
           } else {
             const entryId = deps.idGen.ulid();
             d.insert(schema.agentContextEntry)
               .values({
                 entryId,
                 treeId: branch.treeId,
-                parentId: branch.leafEntryId,
+                parentId,
                 type: "ledger_message",
                 payload: "{}",
                 ledgerSeq: seq,
                 createdAt: now,
               })
               .run();
-            // CAS the branch revision: a concurrent history_retain (late MCP
-            // call, timeout recovery, cross-process retry) must not clobber
-            // or be clobbered by this commit's leaf/revision update. On
-            // conflict the WHOLE transaction rolls back and the commit retry
-            // re-reads the branch.
-            const cas = d
-              .update(schema.agentContextBranch)
-              .set({
-                leafEntryId: entryId,
-                ledgerCursor: seq,
-                revision: branch.revision + 1,
-              })
-              .where(
-                and(
-                  eq(schema.agentContextBranch.branchId, run.branchId),
-                  eq(schema.agentContextBranch.revision, branch.revision),
-                ),
-              )
-              .returning({ branchId: schema.agentContextBranch.branchId })
-              .get();
-            if (!cas) {
-              throw new Error(`branch ${run.branchId} revision conflict during terminal commit`);
-            }
+            parentId = entryId;
+            appendedRefs++;
+          }
+        }
+
+        // CAS the branch revision ONCE for the whole batch: a concurrent
+        // history_retain (late MCP call, timeout recovery, cross-process
+        // retry) must not clobber or be clobbered by this commit's
+        // leaf/revision update. On conflict the WHOLE transaction rolls back
+        // and the commit retry re-reads the branch. A replay that appended
+        // no refs skips the CAS (the first attempt already advanced it).
+        if (appendedRefs > 0 && lastSeq !== null) {
+          const cas = d
+            .update(schema.agentContextBranch)
+            .set({
+              leafEntryId: parentId,
+              ledgerCursor: lastSeq,
+              revision: branch.revision + 1,
+            })
+            .where(
+              and(
+                eq(schema.agentContextBranch.branchId, run.branchId),
+                eq(schema.agentContextBranch.revision, branch.revision),
+              ),
+            )
+            .returning({ branchId: schema.agentContextBranch.branchId })
+            .get();
+          if (!cas) {
+            throw new Error(`branch ${run.branchId} revision conflict during terminal commit`);
           }
         }
 
         // Test-only fault injection point: a throw here must roll back the
-        // ledger insert, the context ref, and the branch update together.
+        // ledger inserts, the context refs, and the branch update together.
         deps.commitTestHook?.();
 
         // Mark the Run completed (CAS on the active statuses so a racing

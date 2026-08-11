@@ -65,15 +65,16 @@ export interface AgentRunPort {
   finalizeRun(runId: string, outcome: BackendRunOutcome): Promise<AgentRun>;
 
   /** Atomically commit a COMPLETED run: verify the run is running/commit_failed
-   *  and branch ownership, insert the final assistant Message into
-   *  Conversation History, append its ledger_message ref to Agent Context,
-   *  advance the branch leaf/revision/ledger cursor, and mark the Run
-   *  completed - one backend.db transaction. Same runId replay returns the
-   *  completed Run without rewriting anything. */
+   *  and branch ownership, insert the Run's canonical message sequence into
+   *  Conversation History (one ledger row per message, keyed by
+   *  (agent_run_id, message_index)), append their ledger_message refs to
+   *  Agent Context, advance the branch leaf/revision/ledger cursor, and mark
+   *  the Run completed - one backend.db transaction. Same (runId,
+   *  message_index) replay returns the completed Run without rewriting. */
   commitCompletedRun(input: {
     runId: string;
     outcome: BackendRunOutcome;
-    output: Message | undefined;
+    messages: readonly Message[];
   }): Promise<AgentRun>;
 
   /** Mark a run commit_failed (Backend outcome arrived, Product transaction
