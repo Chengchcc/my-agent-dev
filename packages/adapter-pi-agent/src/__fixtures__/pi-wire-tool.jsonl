@@ -1,0 +1,7 @@
+{"type":"agent_start"}
+{"type":"turn_start","turnIndex":0,"timestamp":1786500000000}
+{"type":"message_start","message":{"role":"user","content":[{"type":"text","text":"Create a file using bash"}]}}
+{"type":"tool_execution_start","toolCallId":"call_abc123","toolName":"bash","args":{"command":"printf hello > /tmp/pi-tool-test.txt"}}
+{"type":"tool_execution_end","toolCallId":"call_abc123","toolName":"bash","result":"(no output)","isError":false}
+{"type":"turn_end","turnIndex":0,"message":{"role":"assistant","content":[{"type":"toolCall","id":"call_abc123","name":"bash"},{"type":"text","text":"Done. File created."}],"model":"deepseek/deepseek-v4-flash","usage":{"input":500,"output":40,"cacheRead":0,"cacheWrite":0,"totalTokens":540}},"toolResults":[{"toolCallId":"call_abc123","toolName":"bash","content":[{"type":"text","text":"(no output)"}],"isError":false}]}
+{"type":"agent_end","messages":[{"role":"assistant","content":[{"type":"toolCall","id":"call_abc123","name":"bash"},{"type":"text","text":"Done. File created."}],"model":"deepseek/deepseek-v4-flash"}],"isTerminal":true}

@@ -1,5 +1,7 @@
 import { CodingAgentBackend, CodingAgentModelCatalog } from "@my-agent-team/adapter-coding-agent";
 import { OmpBackend, OmpModelCatalog } from "@my-agent-team/adapter-omp-agent";
+import { PiBackend, PiModelCatalog } from "@my-agent-team/adapter-pi-agent";
+import { ClaudeBackend, ClaudeModelCatalog } from "@my-agent-team/adapter-claude-agent";
 import type {
   BackendKind,
   BackendRegistry,
@@ -338,9 +340,25 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     executable: process.env.OMP_BIN ?? "omp",
     productToolsToken: config.productToolsServiceToken,
   });
+  const piBackend = new PiBackend({
+    executable: process.env.PI_BIN ?? "pi",
+    // `pi install npm:pi-mcp-adapter` registers the adapter; an explicit
+    // path overrides it for per-run spawns (D3 全量对齐).
+    mcpAdapterPath: process.env.PI_MCP_ADAPTER_PATH,
+    productToolsToken: config.productToolsServiceToken,
+  });
+  const claudeBackend = new ClaudeBackend({
+    executable: process.env.CLAUDE_BIN ?? "claude",
+    // bypassPermissions is refused under root; set CLAUDE_PERMISSION_MODE
+    // on non-root deployments (Gate 0).
+    permissionMode: process.env.CLAUDE_PERMISSION_MODE,
+    productToolsToken: config.productToolsServiceToken,
+  });
   const backends: BackendRegistry = {
     coding_agent: { backend: codingAgentBackend, catalog: codingAgentCatalog },
     omp: { backend: ompBackend, catalog: new OmpModelCatalog() },
+    pi: { backend: piBackend, catalog: new PiModelCatalog() },
+    claude_code: { backend: claudeBackend, catalog: new ClaudeModelCatalog() },
   };
   const agentRunExecution = createAgentRunExecutionService({
     runPort: agentRunPort,

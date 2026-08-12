@@ -1,0 +1,7 @@
+{"type":"agent_start"}
+{"type":"turn_start","turnIndex":0,"timestamp":1786500000000}
+{"type":"message_start","message":{"role":"user","content":[{"type":"text","text":"Reply with exactly: OK"}]}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"Simple."}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":1,"delta":"OK"}}
+{"type":"turn_end","turnIndex":0,"message":{"role":"assistant","content":[{"type":"text","text":"OK"}],"model":"deepseek/deepseek-v4-flash","usage":{"input":1200,"output":30,"cacheRead":0,"cacheWrite":0,"totalTokens":1230}},"toolResults":[]}
+{"type":"agent_end","messages":[{"role":"user","content":[{"type":"text","text":"Reply with exactly: OK"}]},{"role":"assistant","content":[{"type":"text","text":"OK"}],"model":"deepseek/deepseek-v4-flash","usage":{"input":1200,"output":30,"cacheRead":0,"cacheWrite":0,"totalTokens":1230}}],"isTerminal":true}

@@ -1,0 +1,27 @@
+{
+  "name": "@my-agent-team/adapter-pi-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "test": "bun test",
+    "lint": "biome check . && eslint ."
+  },
+  "dependencies": {
+    "@my-agent-team/agent-backend": "workspace:*",
+    "@my-agent-team/message": "workspace:*"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.7.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts"
+}
