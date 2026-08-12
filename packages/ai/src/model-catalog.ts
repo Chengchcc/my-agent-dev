@@ -229,7 +229,11 @@ export const BUILTIN_CATALOG: CatalogSpec = {
           contextWindow: 1_000_000,
           maxTokens: 384_000,
           cost: { input: 0.14, output: 0.28, cacheRead: 0.0028, cacheWrite: 0 },
-          thinking: { mode: "effort", efforts: ["off", "low", "high", "xhigh"], defaultLevel: "off" },
+          thinking: {
+            mode: "effort",
+            efforts: ["off", "low", "high", "xhigh"],
+            defaultLevel: "off",
+          },
           compat: { thinkingFormat: "deepseek", maxTokensField: "max_tokens" },
         },
         {
@@ -240,7 +244,11 @@ export const BUILTIN_CATALOG: CatalogSpec = {
           contextWindow: 1_000_000,
           maxTokens: 384_000,
           cost: { input: 1, output: 2.5, cacheRead: 0.02, cacheWrite: 0 },
-          thinking: { mode: "effort", efforts: ["off", "low", "high", "xhigh"], defaultLevel: "off" },
+          thinking: {
+            mode: "effort",
+            efforts: ["off", "low", "high", "xhigh"],
+            defaultLevel: "off",
+          },
           compat: { thinkingFormat: "deepseek", maxTokensField: "max_tokens" },
         },
       ],

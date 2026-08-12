@@ -64,16 +64,44 @@ export function registerProvidersFromCatalog(
 ): void {
   const built = buildAllModels(catalog);
   for (const [pid, entry] of Object.entries(built)) {
-    const apiKey = env[entry.spec.apiKeyEnv];
+    const apiKey = resolveApiKey(pid, entry.spec.apiKeyEnv, env);
     if (!apiKey) continue;
+    const baseUrl = resolveBaseUrl(pid, entry.spec.baseUrl, env);
     runtime.registerProvider(
       createProvider({
         id: pid,
         name: pid,
-        baseUrl: entry.spec.baseUrl,
+        baseUrl,
         auth: { apiKey },
         models: entry.models,
       }),
     );
   }
+}
+
+/** Resolve API key with provider-specific fallbacks (ANTHROPIC_AUTH_TOKEN
+ *  as a fallback for ANTHROPIC_API_KEY — proxy users depend on it). */
+function resolveApiKey(
+  pid: string,
+  primaryEnv: string,
+  env: Record<string, string | undefined>,
+): string | undefined {
+  const key = env[primaryEnv];
+  if (key) return key;
+  // ponytail: anthropic-specific fallback, delete when ProviderSpec gets
+  // a generic fallbackEnv field.
+  if (pid === "anthropic") return env.ANTHROPIC_AUTH_TOKEN;
+  return undefined;
+}
+
+/** Resolve baseUrl with env override (ANTHROPIC_BASE_URL for proxy setups). */
+function resolveBaseUrl(
+  pid: string,
+  specBaseUrl: string,
+  env: Record<string, string | undefined>,
+): string {
+  // ponytail: anthropic-specific override, delete when ProviderSpec gets
+  // a generic baseUrlEnv field.
+  if (pid === "anthropic" && env.ANTHROPIC_BASE_URL) return env.ANTHROPIC_BASE_URL;
+  return specBaseUrl;
 }

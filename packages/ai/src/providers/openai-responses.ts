@@ -2,7 +2,7 @@ import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 import { registerApi } from "../api-registry.js";
 import { resolveOpenAICompat } from "../compat.js";
-import type { Model, ProviderStreamOptions, ThinkingLevel } from "../types.js";
+import type { Model, ProviderStreamOptions } from "../types.js";
 
 // ── Request assembly ──────────────────────────────────────────────
 
