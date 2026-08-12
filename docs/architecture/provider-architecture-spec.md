@@ -25,8 +25,7 @@ packages/ai/src/
   types.ts              Model, ModelSpec, compat interfaces, StreamOptions
   compat.ts             resolveAnthropicCompat, resolveOpenAICompat
   api-registry.ts       ApiImplementation interface + registry
-  model-catalog.ts      loadCatalog (models.yml), buildModel
-  models.yml            declarative provider+model catalog
+  model-catalog.ts      parseCatalogYAML, BUILTIN_CATALOG, buildModel (no bundled file)
   model-runtime.ts      ModelRuntime (unchanged interface)
   providers/
     shared-sse.ts       fetchSSE transport
@@ -113,7 +112,7 @@ Each API module exports its functions and self-registers:
 registerApi("anthropic-messages", { buildRequest, createChunkConverter });
 ```
 
-## Model Catalog (models.yml)
+## Model Catalog (runtime config)
 
 ```yaml
 providers:

@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -96,7 +96,10 @@ providers:
 ### 5. Shared StreamTransport (DIP)
 
 `fetchSSE(opts)` handles HTTP fetch + SSE line splitting. Never inspects event
-content — that's `ApiImplementation`'s job. Tests can inject a mock transport.
+content — that's `ApiImplementation`'s job. NOTE: `createProvider` currently
+imports `fetchSSE` directly rather than accepting it as an injectable parameter.
+Tests mock `globalThis.fetch` instead. Adding a transport injection point is
+a future enhancement when a second transport (e.g. WebSocket) is needed.
 
 ## Consequences
 
