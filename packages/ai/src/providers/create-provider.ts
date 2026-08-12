@@ -34,7 +34,8 @@ export function createProvider(config: CreateProviderConfig): Provider {
       };
       // Fill apiKey into the API's auth header template if it has a placeholder.
       for (const [k, v] of Object.entries(headers)) {
-        if (v === "{apiKey}") headers[k] = apiKey;
+        if (typeof v === "string" && v.includes("{apiKey}"))
+          headers[k] = v.replaceAll("{apiKey}", apiKey);
       }
       // Secrets redaction covers ALL header sources actually merged into
       // the request — not just one set — so error echoes can't leak.
