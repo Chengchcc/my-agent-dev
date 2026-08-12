@@ -74,9 +74,15 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
     return providers.flatMap((p) =>
       p.models.map((m) => ({
         id: `${p.id}/${m.id}`,
-        name: `${p.name} / ${m.name ?? m.id}`,
+        name: m.name ?? m.id,
         provider: p.id,
+        providerName: p.name,
         available: m.available !== false,
+        reasoning: m.reasoning,
+        contextWindow: m.contextWindow,
+        maxTokens: m.maxTokens,
+        inputModalities: m.input,
+        cost: m.cost,
       })),
     );
   }, [providers]);
@@ -102,6 +108,11 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
   });
 
   const enableLark = useWatch({ control: form.control, name: "enableLark" });
+  const modelValue = useWatch({ control: form.control, name: "model" });
+  const selectedModelMeta = useMemo(
+    () => modelGroups.find((m) => m.id === modelValue),
+    [modelGroups, modelValue],
+  );
 
   // Reset form when editAgent changes
   useEffect(() => {
@@ -350,13 +361,40 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                             <SelectContent>
                               {filteredModels.map((m) => (
                                 <SelectItem key={m.id} value={m.id} disabled={!m.available}>
-                                  {m.name}
-                                  {!m.available ? " — unavailable" : ""}
+                                  <span className="flex items-center gap-2">
+                                    {m.reasoning && (
+                                      <span className="text-[10px] px-1 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 font-medium">
+                                        reasoning
+                                      </span>
+                                    )}
+                                    <span>{m.name}</span>
+                                    <span className="text-[10px] text-[var(--mute)]">
+                                      {(m.contextWindow / 1000).toFixed(0)}K ctx
+                                    </span>
+                                    {!m.available && (
+                                      <span className="text-[var(--mute)]">— unavailable</span>
+                                    )}
+                                  </span>
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                         </FormControl>
+                        {selectedModelMeta && (
+                          <div className={`${hintClass} flex flex-wrap gap-x-3 gap-y-0.5`}>
+                            {selectedModelMeta.reasoning && (
+                              <span className="text-blue-500">🧠 reasoning</span>
+                            )}
+                            <span>ctx: {(selectedModelMeta.contextWindow / 1000).toFixed(0)}K</span>
+                            <span>out: {(selectedModelMeta.maxTokens / 1000).toFixed(0)}K</span>
+                            <span>
+                              ${selectedModelMeta.cost.input}/${selectedModelMeta.cost.output}/M
+                            </span>
+                            {selectedModelMeta.inputModalities.includes("image") && (
+                              <span>📷 image</span>
+                            )}
+                          </div>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
