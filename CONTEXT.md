@@ -12,7 +12,8 @@
 | **MessageRevision** | 消息的版本化 envelope（同 messageId 多次写入，state 从 streaming→done） | 不是独立消息 |
 | **Ledger（conversation_ledger）** | 对话可见内容的 canonical fact store；final assistant Message 带 `agent_run_id` 提交标记 | 不是执行日志 |
 | **Agent Context** | 每个 `(conversationId, agentMemberId)` 的语义历史（tree/entry/branch） | 不是 child transcript |
-| **Context Branch** | Agent Context 中一条可 fork/rollback 的历史路径；固定 backendKind | 不是执行 session |
+| **Context Branch** | Agent Context 中一条可 fork/rollback 的历史路径;固定 backendKind | 不是执行 session |
+| **CLI Session** | CLI 后端(claude/pi/omp)的运行态会话真理:claude `session_id` / pi·omp 会话文件路径;分支经 `cliSessionRef` 引用 | 不是 Context Branch(后者是产品态历史,可 fork/rollback;CLI session 不可回滚) |
 | **Agent Run** | branch 上的持久产品执行；**唯一执行身份**（agent_run 表） | 不是 span/attempt/session（已删除） |
 | **branch_input_queue** | normal/steer/follow_up 输入的持久队列；每行携带 request-time 配置快照 | 不是内存队列 |
 | **BackendRunOutcome** | child 的唯一终态结果：completed/failed/aborted/timeout | 不是事件流（事件永不决定终态） |
@@ -32,7 +33,7 @@
 Product Backend
 → durable Agent Run
 → full Product Context projection
-→ Agent Backend (packages/adapter-coding-agent)
+→ Agent Backend (按 backendKind 选: adapter-coding-agent / adapter-claude-agent / adapter-pi-agent / adapter-omp-agent)
 → spawn one-shot coding-agent child (--mode rpc, stdin/stdout JSONL)
 → per-Run Coding Agent Runtime (packages/agent)
 → BackendRunOutcome
@@ -50,7 +51,7 @@ Product Backend
 ```text
 L5 Surfaces     Web / Lark — HTTP/SSE
 L4 Backend      Product Backend（Elysia）：账本、Agent Context、Agent Run、Loop、Product Tools
-L3 Adapter      packages/adapter-coding-agent — child 进程边界（spawn/JSONL/steer/abort）
+L3 Adapter      packages/adapter-* — child 进程边界（spawn/JSONL/steer/abort）
 L2 Runtime      packages/agent — Coding Agent 唯一真实 model/tool loop（agent-loop.ts）
 L1 Contracts    packages/message、packages/core、packages/agent-backend — 类型/协议
 ```
@@ -120,7 +121,7 @@ L1 Contracts    packages/message、packages/core、packages/agent-backend — �
 6. streaming revision 和 terminal revision 共享同一 messageId（`run:<runId>:assistant:0`），端按 messageId collapse
 7. BackendRunOutcome 是终态唯一依据；事件流永不决定终态
 8. 同一 Context Branch 最多一个 active Agent Run
-9. 每个 Run 是 full Product Context projection；无跨 Run session/resume/daemon
+9. 每个 Run 以产品投影为输入;coding_agent 是全量投影重建,CLI backends(claude/pi/omp)的上下文续接依赖 CLI 自身 session(`cliSessionRef`)——双轨真理,见 ADR 0002;CLI session 不可回滚,重放=以最新输入重开 turn
 10. 依赖只能向下：`core` -> `message`/`agent` -> `backend`，不可反向
 
 ## 常用命令
