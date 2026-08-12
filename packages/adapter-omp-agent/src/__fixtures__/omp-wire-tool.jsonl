@@ -1,0 +1,130 @@
+{"type":"session","version":3,"id":"019ff55f-f912-7000-ad9e-269bf62c840f","timestamp":"2026-08-12T09:48:55.442Z","cwd":"/tmp"}
+{"type":"agent_start"}
+{"type":"turn_start"}
+{"type":"message_start","message":{"role":"user","content":[{"type":"text","text":"Create a file named /tmp/pi-tool-test.txt containing the word hello. Use the bash tool."}],"attribution":"user","timestamp":1786528136077}}
+{"type":"message_end","message":{"role":"user","content":[{"type":"text","text":"Create a file named /tmp/pi-tool-test.txt containing the word hello. Use the bash tool."}],"attribution":"user","timestamp":1786528136077}}
+{"type":"message_start","message":{"role":"assistant","content":[{"type":"thinking","thinking":"User","thinkingSignature":"reasoning_content"}],"api":"openai-completions","provider":"deepseek","model":"deepseek-v4-flash","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":1786528136195,"responseId":"eefdfb55-d20d-4f2d-9759-6cb2e8d1cd66"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_start","contentIndex":0}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"User"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" wants"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" a"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" file"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" created"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" via"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" bash"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"."}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":" Simple"}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"."}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_end","contentIndex":0,"content":"User wants a file created via bash. Simple."}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_start","contentIndex":1}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"{"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"command"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":": "}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"printf"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":" '"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"hello"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"'"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":" >"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":" /"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"tmp"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"/"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"pi"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"-t"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"ool"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"-test"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":".txt"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":", "}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"i"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":": "}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"Writing"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":" hello"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":" to"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":" file"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"}"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_end","contentIndex":1,"toolCall":{"type":"toolCall","id":"call_00_PqYC0IJaAM1xVcBEZ9FV5252","name":"bash","arguments":{"command":"printf 'hello' > /tmp/pi-tool-test.txt","i":"Writing hello to file"},"partialArgs":"{\"command\": \"printf 'hello' > /tmp/pi-tool-test.txt\", \"i\": \"Writing hello to file\"}","streamIndex":0}}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"thinking","thinking":"User wants a file created via bash. Simple.","thinkingSignature":"reasoning_content"},{"type":"toolCall","id":"call_00_PqYC0IJaAM1xVcBEZ9FV5252","name":"bash","arguments":{"command":"printf 'hello' > /tmp/pi-tool-test.txt","i":"Writing hello to file"},"partialArgs":"{\"command\": \"printf 'hello' > /tmp/pi-tool-test.txt\", \"i\": \"Writing hello to file\"}","streamIndex":0,"intent":"Writing hello to file"}],"api":"openai-completions","provider":"deepseek","model":"deepseek-v4-flash","usage":{"input":66,"output":84,"cacheRead":21120,"cacheWrite":0,"totalTokens":21270,"reasoningTokens":10,"cost":{"input":0.000009240000000000001,"output":0.000023520000000000002,"cacheRead":0.000059136,"cacheWrite":0,"total":0.000091896}},"stopReason":"toolUse","timestamp":1786528136195,"responseId":"eefdfb55-d20d-4f2d-9759-6cb2e8d1cd66","duration":1406.123592,"ttft":902.3983759999996}}
+{"type":"tool_execution_start","toolCallId":"call_00_PqYC0IJaAM1xVcBEZ9FV5252","toolName":"bash","args":{"command":"printf 'hello' > /tmp/pi-tool-test.txt"},"intent":"Writing hello to file"}
+{"type":"tool_execution_end","toolCallId":"call_00_PqYC0IJaAM1xVcBEZ9FV5252","toolName":"bash","result":{"content":[{"type":"text","text":"(no output)\n\nWall time: 1.31 seconds"}],"details":{"timeoutSeconds":300,"wallTimeMs":1307.105588}},"isError":false}
+{"type":"message_start","message":{"role":"toolResult","toolCallId":"call_00_PqYC0IJaAM1xVcBEZ9FV5252","toolName":"bash","content":[{"type":"text","text":"(no output)\n\nWall time: 1.31 seconds"}],"details":{"timeoutSeconds":300,"wallTimeMs":1307.105588},"isError":false,"timestamp":1786528138931}}
+{"type":"message_end","message":{"role":"toolResult","toolCallId":"call_00_PqYC0IJaAM1xVcBEZ9FV5252","toolName":"bash","content":[{"type":"text","text":"(no output)\n\nWall time: 1.31 seconds"}],"details":{"timeoutSeconds":300,"wallTimeMs":1307.105588},"isError":false,"timestamp":1786528138931}}
+{"type":"turn_end","message":{"role":"assistant","content":[{"type":"thinking","thinking":"User wants a file created via bash. Simple.","thinkingSignature":"reasoning_content"},{"type":"toolCall","id":"call_00_PqYC0IJaAM1xVcBEZ9FV5252","name":"bash","arguments":{"command":"printf 'hello' > /tmp/pi-tool-test.txt","i":"Writing hello to file"},"partialArgs":"{\"command\": \"printf 'hello' > /tmp/pi-tool-test.txt\", \"i\": \"Writing hello to file\"}","streamIndex":0,"intent":"Writing hello to file"}],"api":"openai-completions","provider":"deepseek","model":"deepseek-v4-flash","usage":{"input":66,"output":84,"cacheRead":21120,"cacheWrite":0,"totalTokens":21270,"reasoningTokens":10,"cost":{"input":0.000009240000000000001,"output":0.000023520000000000002,"cacheRead":0.000059136,"cacheWrite":0,"total":0.000091896}},"stopReason":"toolUse","timestamp":1786528136195,"responseId":"eefdfb55-d20d-4f2d-9759-6cb2e8d1cd66","duration":1406.123592,"ttft":902.3983759999996},"toolResults":[{"role":"toolResult","toolCallId":"call_00_PqYC0IJaAM1xVcBEZ9FV5252","toolName":"bash","content":[{"type":"text","text":"(no output)\n\nWall time: 1.31 seconds"}],"details":{"timeoutSeconds":300,"wallTimeMs":1307.105588},"isError":false,"timestamp":1786528138931}]}
+{"type":"turn_start"}
+{"type":"message_start","message":{"role":"assistant","content":[{"type":"text","text":"."}],"api":"openai-completions","provider":"deepseek","model":"deepseek-v4-flash","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":1786528138967,"responseId":"a3e1389a-15d3-4875-84fe-1d87a87d36fc"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_start","contentIndex":0}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"."}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_end","contentIndex":0,"content":"."}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_start","contentIndex":1}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"{"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"command"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":": "}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"cat"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":" /"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"tmp"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"/"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"pi"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"-t"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"ool"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"-test"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":".txt"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":", "}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"i"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":": "}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"Ver"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"ifying"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":" file"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":" contents"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"}"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_end","contentIndex":1,"toolCall":{"type":"toolCall","id":"call_00_ET_ocshGlbSdZgSNjbLbtfo7333","name":"bash","arguments":{"command":"cat /tmp/pi-tool-test.txt","i":"Verifying file contents"},"partialArgs":"{\"command\": \"cat /tmp/pi-tool-test.txt\", \"i\": \"Verifying file contents\"}","streamIndex":0}}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"."},{"type":"toolCall","id":"call_00_ET_ocshGlbSdZgSNjbLbtfo7333","name":"bash","arguments":{"command":"cat /tmp/pi-tool-test.txt","i":"Verifying file contents"},"partialArgs":"{\"command\": \"cat /tmp/pi-tool-test.txt\", \"i\": \"Verifying file contents\"}","streamIndex":0,"intent":"Verifying file contents"}],"api":"openai-completions","provider":"deepseek","model":"deepseek-v4-flash","usage":{"input":173,"output":70,"cacheRead":21120,"cacheWrite":0,"totalTokens":21363,"cost":{"input":0.000024220000000000002,"output":0.000019600000000000002,"cacheRead":0.000059136,"cacheWrite":0,"total":0.000102956}},"stopReason":"toolUse","timestamp":1786528138967,"responseId":"a3e1389a-15d3-4875-84fe-1d87a87d36fc","duration":1242.8585050000002,"ttft":1013.5040570000001}}
+{"type":"tool_execution_start","toolCallId":"call_00_ET_ocshGlbSdZgSNjbLbtfo7333","toolName":"bash","args":{"command":"cat /tmp/pi-tool-test.txt"},"intent":"Verifying file contents"}
+{"type":"tool_execution_update","toolCallId":"call_00_ET_ocshGlbSdZgSNjbLbtfo7333","toolName":"bash","args":{"command":"cat /tmp/pi-tool-test.txt"},"partialResult":{"content":[{"type":"text","text":"hello"}],"details":{}}}
+{"type":"tool_execution_end","toolCallId":"call_00_ET_ocshGlbSdZgSNjbLbtfo7333","toolName":"bash","result":{"content":[{"type":"text","text":"hello\n\nWall time: 0.01 seconds"}],"details":{"timeoutSeconds":300,"wallTimeMs":6.597179999999753}},"isError":false}
+{"type":"message_start","message":{"role":"toolResult","toolCallId":"call_00_ET_ocshGlbSdZgSNjbLbtfo7333","toolName":"bash","content":[{"type":"text","text":"hello\n\nWall time: 0.01 seconds"}],"details":{"timeoutSeconds":300,"wallTimeMs":6.597179999999753},"isError":false,"timestamp":1786528140219}}
+{"type":"message_end","message":{"role":"toolResult","toolCallId":"call_00_ET_ocshGlbSdZgSNjbLbtfo7333","toolName":"bash","content":[{"type":"text","text":"hello\n\nWall time: 0.01 seconds"}],"details":{"timeoutSeconds":300,"wallTimeMs":6.597179999999753},"isError":false,"timestamp":1786528140219}}
+{"type":"turn_end","message":{"role":"assistant","content":[{"type":"text","text":"."},{"type":"toolCall","id":"call_00_ET_ocshGlbSdZgSNjbLbtfo7333","name":"bash","arguments":{"command":"cat /tmp/pi-tool-test.txt","i":"Verifying file contents"},"partialArgs":"{\"command\": \"cat /tmp/pi-tool-test.txt\", \"i\": \"Verifying file contents\"}","streamIndex":0,"intent":"Verifying file contents"}],"api":"openai-completions","provider":"deepseek","model":"deepseek-v4-flash","usage":{"input":173,"output":70,"cacheRead":21120,"cacheWrite":0,"totalTokens":21363,"cost":{"input":0.000024220000000000002,"output":0.000019600000000000002,"cacheRead":0.000059136,"cacheWrite":0,"total":0.000102956}},"stopReason":"toolUse","timestamp":1786528138967,"responseId":"a3e1389a-15d3-4875-84fe-1d87a87d36fc","duration":1242.8585050000002,"ttft":1013.5040570000001},"toolResults":[{"role":"toolResult","toolCallId":"call_00_ET_ocshGlbSdZgSNjbLbtfo7333","toolName":"bash","content":[{"type":"text","text":"hello\n\nWall time: 0.01 seconds"}],"details":{"timeoutSeconds":300,"wallTimeMs":6.597179999999753},"isError":false,"timestamp":1786528140219}]}
+{"type":"turn_start"}
+{"type":"message_start","message":{"role":"assistant","content":[{"type":"text","text":"Done. `/tmp/pi-tool-test.txt` contains `hello` (verified)."}],"api":"openai-completions","provider":"deepseek","model":"deepseek-v4-flash","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":1786528140249,"responseId":"0f5f3236-a6c1-48a5-a321-97655551a748"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_start","contentIndex":0}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Done"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"."}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":" "}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"`"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"/"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"tmp"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"/"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"pi"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"-t"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"ool"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"-test"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":".txt"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"`"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":" contains"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":" "}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"`"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"hello"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"`"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":" ("}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"verified"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":")."}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_end","contentIndex":0,"content":"Done. `/tmp/pi-tool-test.txt` contains `hello` (verified)."}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"Done. `/tmp/pi-tool-test.txt` contains `hello` (verified)."}],"api":"openai-completions","provider":"deepseek","model":"deepseek-v4-flash","usage":{"input":137,"output":19,"cacheRead":21248,"cacheWrite":0,"totalTokens":21404,"cost":{"input":0.000019180000000000003,"output":0.000005320000000000001,"cacheRead":0.0000594944,"cacheWrite":0,"total":0.0000839944}},"stopReason":"stop","timestamp":1786528140249,"responseId":"0f5f3236-a6c1-48a5-a321-97655551a748","duration":850.1048599999995,"ttft":817.3774729999996}}
+{"type":"turn_end","message":{"role":"assistant","content":[{"type":"text","text":"Done. `/tmp/pi-tool-test.txt` contains `hello` (verified)."}],"api":"openai-completions","provider":"deepseek","model":"deepseek-v4-flash","usage":{"input":137,"output":19,"cacheRead":21248,"cacheWrite":0,"totalTokens":21404,"cost":{"input":0.000019180000000000003,"output":0.000005320000000000001,"cacheRead":0.0000594944,"cacheWrite":0,"total":0.0000839944}},"stopReason":"stop","timestamp":1786528140249,"responseId":"0f5f3236-a6c1-48a5-a321-97655551a748","duration":850.1048599999995,"ttft":817.3774729999996},"toolResults":[]}
+{"type":"agent_end","messages":[{"role":"user","content":[{"type":"text","text":"Create a file named /tmp/pi-tool-test.txt containing the word hello. Use the bash tool."}],"attribution":"user","timestamp":1786528136077},{"role":"assistant","content":[{"type":"thinking","thinking":"User wants a file created via bash. Simple.","thinkingSignature":"reasoning_content"},{"type":"toolCall","id":"call_00_PqYC0IJaAM1xVcBEZ9FV5252","name":"bash","arguments":{"command":"printf 'hello' > /tmp/pi-tool-test.txt","i":"Writing hello to file"},"partialArgs":"{\"command\": \"printf 'hello' > /tmp/pi-tool-test.txt\", \"i\": \"Writing hello to file\"}","streamIndex":0,"intent":"Writing hello to file"}],"api":"openai-completions","provider":"deepseek","model":"deepseek-v4-flash","usage":{"input":66,"output":84,"cacheRead":21120,"cacheWrite":0,"totalTokens":21270,"reasoningTokens":10,"cost":{"input":0.000009240000000000001,"output":0.000023520000000000002,"cacheRead":0.000059136,"cacheWrite":0,"total":0.000091896}},"stopReason":"toolUse","timestamp":1786528136195,"responseId":"eefdfb55-d20d-4f2d-9759-6cb2e8d1cd66","duration":1406.123592,"ttft":902.3983759999996},{"role":"toolResult","toolCallId":"call_00_PqYC0IJaAM1xVcBEZ9FV5252","toolName":"bash","content":[{"type":"text","text":"(no output)\n\nWall time: 1.31 seconds"}],"details":{"timeoutSeconds":300,"wallTimeMs":1307.105588},"isError":false,"timestamp":1786528138931},{"role":"assistant","content":[{"type":"text","text":"."},{"type":"toolCall","id":"call_00_ET_ocshGlbSdZgSNjbLbtfo7333","name":"bash","arguments":{"command":"cat /tmp/pi-tool-test.txt","i":"Verifying file contents"},"partialArgs":"{\"command\": \"cat /tmp/pi-tool-test.txt\", \"i\": \"Verifying file contents\"}","streamIndex":0,"intent":"Verifying file contents"}],"api":"openai-completions","provider":"deepseek","model":"deepseek-v4-flash","usage":{"input":173,"output":70,"cacheRead":21120,"cacheWrite":0,"totalTokens":21363,"cost":{"input":0.000024220000000000002,"output":0.000019600000000000002,"cacheRead":0.000059136,"cacheWrite":0,"total":0.000102956}},"stopReason":"toolUse","timestamp":1786528138967,"responseId":"a3e1389a-15d3-4875-84fe-1d87a87d36fc","duration":1242.8585050000002,"ttft":1013.5040570000001},{"role":"toolResult","toolCallId":"call_00_ET_ocshGlbSdZgSNjbLbtfo7333","toolName":"bash","content":[{"type":"text","text":"hello\n\nWall time: 0.01 seconds"}],"details":{"timeoutSeconds":300,"wallTimeMs":6.597179999999753},"isError":false,"timestamp":1786528140219},{"role":"assistant","content":[{"type":"text","text":"Done. `/tmp/pi-tool-test.txt` contains `hello` (verified)."}],"api":"openai-completions","provider":"deepseek","model":"deepseek-v4-flash","usage":{"input":137,"output":19,"cacheRead":21248,"cacheWrite":0,"totalTokens":21404,"cost":{"input":0.000019180000000000003,"output":0.000005320000000000001,"cacheRead":0.0000594944,"cacheWrite":0,"total":0.0000839944}},"stopReason":"stop","timestamp":1786528140249,"responseId":"0f5f3236-a6c1-48a5-a321-97655551a748","duration":850.1048599999995,"ttft":817.3774729999996}],"isTerminal":true}

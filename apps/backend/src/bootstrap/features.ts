@@ -1,4 +1,5 @@
 import { CodingAgentBackend, CodingAgentModelCatalog } from "@my-agent-team/adapter-coding-agent";
+import { OmpBackend, OmpModelCatalog } from "@my-agent-team/adapter-omp-agent";
 import type {
   BackendKind,
   BackendRegistry,
@@ -333,8 +334,13 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   // Per-kind dispatch registry (ADR 0002). New kinds (claude_code/pi/omp)
   // register their adapter here as they land; unknown kinds get a clear
   // preflight error from the execution service, never a silent fallback.
+  const ompBackend = new OmpBackend({
+    executable: process.env.OMP_BIN ?? "omp",
+    productToolsToken: config.productToolsServiceToken,
+  });
   const backends: BackendRegistry = {
     coding_agent: { backend: codingAgentBackend, catalog: codingAgentCatalog },
+    omp: { backend: ompBackend, catalog: new OmpModelCatalog() },
   };
   const agentRunExecution = createAgentRunExecutionService({
     runPort: agentRunPort,
