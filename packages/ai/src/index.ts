@@ -35,10 +35,9 @@ export type { ModelRuntimeOptions } from "./model-runtime.js";
 
 // ─── Model runtime ───
 export { createModelRuntime } from "./model-runtime.js";
-
+export type { CreateProviderConfig } from "./providers/create-provider.js";
 // ─── Provider factory ───
 export { createProvider } from "./providers/create-provider.js";
-export type { CreateProviderConfig } from "./providers/create-provider.js";
 export type { SSEFetchOpts } from "./providers/shared-sse.js";
 // ─── Transport ───
 export { fetchSSE } from "./providers/shared-sse.js";
