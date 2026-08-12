@@ -23,6 +23,7 @@ export {
   type RunRuntimeDeps,
   registerBuiltinProviders,
 } from "./core/run-runtime.js";
+export { registerProvidersFromCatalog } from "./core/runtime-catalog.js";
 export { runJsonMode } from "./modes/json-mode.js";
 export { assistantText, type CliRunOptions, runPrintMode } from "./modes/print-mode.js";
 export { createJsonlReader, type JsonlReaderOptions } from "./modes/rpc/jsonl.js";

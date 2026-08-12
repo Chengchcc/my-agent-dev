@@ -25,7 +25,6 @@ export function createProvider(config: CreateProviderConfig): Provider {
 
       const apiKey = opts?.apiKey ?? config.auth.apiKey ?? "";
       const baseUrl = opts?.baseUrl ?? config.baseUrl;
-      const secrets = [apiKey, ...Object.values(opts?.headers ?? config.auth.headers ?? {})];
 
       // Merge: API-specific headers (auth scheme, version) ← provider defaults ← per-request overrides.
       const headers: Record<string, string> = {
@@ -37,6 +36,9 @@ export function createProvider(config: CreateProviderConfig): Provider {
       for (const [k, v] of Object.entries(headers)) {
         if (v === "{apiKey}") headers[k] = apiKey;
       }
+      // Secrets redaction covers ALL header sources actually merged into
+      // the request — not just one set — so error echoes can't leak.
+      const secrets = [apiKey, ...Object.values(headers)].filter(Boolean);
 
       const convertChunk = impl.createChunkConverter();
       try {

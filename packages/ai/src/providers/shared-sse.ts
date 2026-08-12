@@ -18,12 +18,25 @@ export async function* fetchSSE(opts: SSEFetchOpts): AsyncIterable<Record<string
   if (!res.ok) {
     const errBody = await res.text().catch(() => "");
     const err = new Error(`status=${res.status} ${errBody}`);
+    // Parse retry delay: prefer Anthropic's retry-after-ms (milliseconds),
+    // fall back to standard Retry-After (seconds or HTTP-date). Both OpenAI
+    // and most gateways use the standard header (pi: getRetryAfterDelayMs).
     const retryAfterMs = res.headers.get("retry-after-ms");
+    const retryAfter = res.headers.get("retry-after");
+    let delay: number | undefined;
     if (retryAfterMs) {
       const ms = Number.parseFloat(retryAfterMs);
-      if (Number.isFinite(ms) && ms >= 0)
-        (err as Error & { retryAfterMs?: number }).retryAfterMs = ms;
+      if (Number.isFinite(ms) && ms >= 0) delay = ms;
     }
+    if (delay === undefined && retryAfter) {
+      const secs = Number.parseFloat(retryAfter);
+      if (Number.isFinite(secs) && secs >= 0) delay = secs * 1000;
+      else {
+        const date = Date.parse(retryAfter);
+        if (!Number.isNaN(date)) delay = Math.max(0, date - Date.now());
+      }
+    }
+    if (delay !== undefined) (err as Error & { retryAfterMs?: number }).retryAfterMs = delay;
     throw err;
   }
   if (!res.body) throw new Error("No response body");

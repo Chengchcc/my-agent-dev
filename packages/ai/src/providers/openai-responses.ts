@@ -62,14 +62,19 @@ function convertInput(messages: readonly Message[], systemRole: string): unknown
         });
       }
     } else if (m.role === "tool") {
-      const result = m.blocks?.find(
-        (b): b is Extract<typeof b, { type: "tool_result" }> => b.type === "tool_result",
-      );
-      input.push({
-        type: "function_call_output",
-        call_id: result?.tool_use_id ?? "",
-        output: result?.content ?? m.text ?? "",
-      });
+      const results =
+        m.blocks?.filter(
+          (b): b is Extract<typeof b, { type: "tool_result" }> => b.type === "tool_result",
+        ) ?? [];
+      for (const result of results)
+        input.push({
+          type: "function_call_output",
+          call_id: result.tool_use_id ?? "",
+          output: result.content ?? m.text ?? "",
+        });
+      // ponytail: keep the legacy single-output fallback for bare-text tool turns.
+      if (!results.length && m.text)
+        input.push({ type: "function_call_output", call_id: "", output: m.text });
     }
   }
   return input;
@@ -96,6 +101,7 @@ function buildRequest(
     model: model.id,
     input: convertInput(messages, systemRole),
     stream: true,
+    store: false, // do not persist conversations server-side
     max_output_tokens: model.maxTokens,
   };
 
@@ -195,6 +201,11 @@ function createChunkConverter(): (raw: Record<string, unknown>) => Generator<AIM
       return;
     }
 
+    if (type === "response.failed" || type === "response.cancelled" || type === "error") {
+      const resp = raw.response as Record<string, unknown> | undefined;
+      const err = (raw.error ?? resp?.error) as Record<string, unknown> | undefined;
+      throw new Error(`OpenAI Responses error: ${(err?.message as string) ?? type}`);
+    }
     if (type === "response.completed" || type === "response.incomplete") {
       const response = raw.response as Record<string, unknown> | undefined;
       const chunk: AIMessageChunk = { done: true };

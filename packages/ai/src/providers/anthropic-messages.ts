@@ -17,7 +17,7 @@ function buildRequest(
   const request: Record<string, unknown> = {
     model: model.id,
     max_tokens: model.maxTokens,
-    messages: convertMessages(messages, opts),
+    messages: convertMessages(messages, opts, { allowEmptySignature: compat.allowEmptySignature }),
     stream: true,
   };
   // System prompt: when cacheControl is enabled and a system prompt exists,
@@ -46,13 +46,15 @@ function buildRequest(
     return tool;
   });
   if (tools) request.tools = tools;
-  // Thinking control (Anthropic protocol): adaptive lets the model decide,
-  // enabled uses a budget, disabled turns thinking off. display governs
-  // whether thinking text is returned ("summarized") or omitted.
+  // Thinking control: forceAdaptiveThinking (Sonnet 4.6+) overrides
+  // caller's type to "adaptive" — the model requires it (pi: L953).
   if (opts?.thinking) {
-    const thinking: Record<string, unknown> = { type: opts.thinking.type };
-    if (opts.thinking.display) thinking.display = opts.thinking.display;
-    if (opts.thinking.budgetTokens) thinking.budget_tokens = opts.thinking.budgetTokens;
+    const type = compat.forceAdaptiveThinking ? "adaptive" : opts.thinking.type;
+    const thinking: Record<string, unknown> = { type };
+    if (opts.thinking.display ?? compat.forceAdaptiveThinking)
+      thinking.display = opts.thinking.display ?? "summarized";
+    if (!compat.forceAdaptiveThinking && opts.thinking.budgetTokens)
+      thinking.budget_tokens = opts.thinking.budgetTokens;
     request.thinking = thinking;
   }
   // Effort scales the whole response (thinking included); per the Messages
@@ -87,17 +89,24 @@ function sanitizeSurrogates(text: string): string {
   );
 }
 
-function toWireBlock(b: ContentBlock): WireBlock | null {
+function toWireBlock(
+  b: ContentBlock,
+  compat?: { allowEmptySignature?: boolean },
+): WireBlock | null {
   if (b.type === "text") {
     const text = sanitizeSurrogates(b.text);
     return text.trim().length > 0 ? { type: "text", text } : null;
   }
   if (b.type === "thinking") {
     if (b.redacted) {
-      // Safety-redacted reasoning: replay the opaque payload unchanged.
       return { type: "redacted_thinking", data: b.signature ?? "" };
     }
     const text = sanitizeSurrogates(b.text);
+    // No signature: degrade to text block (pi: L1077-1089) unless the
+    // model accepts empty signatures (DeepSeek).
+    if (!b.signature && !compat?.allowEmptySignature) {
+      return text.trim().length > 0 ? { type: "text", text } : null;
+    }
     if (text.trim().length === 0 && !b.signature) return null;
     return { type: "thinking", thinking: text, signature: b.signature ?? "" };
   }
@@ -122,22 +131,23 @@ function toWireBlock(b: ContentBlock): WireBlock | null {
 function convertMessages(
   messages: readonly Message[],
   opts?: ProviderStreamOptions,
+  compat?: { allowEmptySignature?: boolean },
 ): Array<{ role: string; content: unknown }> {
   const wire: Array<{ role: string; content: unknown }> = [];
+  const wireCompat = { allowEmptySignature: compat?.allowEmptySignature };
 
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i]!;
     if (m.role === "system") continue;
 
     if (m.role === "tool") {
-      // Buffer consecutive tool messages into one user(tool_result*) message.
       const results: WireBlock[] = [];
       let j = i;
       for (; j < messages.length; j++) {
         const tm = messages[j]!;
         if (tm.role !== "tool") break;
         for (const b of tm.blocks ?? []) {
-          const wb = toWireBlock(b);
+          const wb = toWireBlock(b, wireCompat);
           if (wb?.type === "tool_result") results.push(wb);
         }
       }
@@ -147,16 +157,18 @@ function convertMessages(
     }
 
     if (m.blocks && m.blocks.length > 0) {
-      const blocks = m.blocks.map(toWireBlock).filter((b): b is WireBlock => b !== null);
+      const blocks = m.blocks
+        .map((b) => toWireBlock(b, wireCompat))
+        .filter((b): b is WireBlock => b !== null);
       if (blocks.length > 0) {
         wire.push({ role: m.role, content: blocks });
       } else if ((m.text ?? "").trim().length > 0) {
         wire.push({ role: m.role, content: sanitizeSurrogates(m.text ?? "") });
       }
-      // else: nothing replayable — skip (no empty content).
-    } else {
+    } else if ((m.text ?? "").trim().length > 0) {
       wire.push({ role: m.role, content: sanitizeSurrogates(m.text ?? "") });
     }
+    // else: empty message — skip (API rejects empty content).
   }
 
   // Cache conversation history: when cacheControl is enabled, put an

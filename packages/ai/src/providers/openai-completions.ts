@@ -18,11 +18,15 @@ function convertMessages(
   const role = (r: string): string =>
     r === "system" && compat.supportsDeveloperRole ? "developer" : r;
 
-  return messages.map((m) => {
+  return messages.flatMap((m): Record<string, unknown>[] => {
     if (m.blocks && m.blocks.length > 0) {
-      const result = m.blocks.find((b): b is ToolResultBlock => b.type === "tool_result");
-      if (result) {
-        return { role: "tool", tool_call_id: result.tool_use_id, content: result.content };
+      const toolResults = m.blocks.filter((b): b is ToolResultBlock => b.type === "tool_result");
+      if (toolResults.length > 0) {
+        return toolResults.map((result) => ({
+          role: "tool",
+          tool_call_id: result.tool_use_id,
+          content: result.content,
+        }));
       }
       const toolCalls = m.blocks
         .filter((b): b is ToolUseBlock => b.type === "tool_use")
@@ -36,20 +40,24 @@ function convertMessages(
         .map((b) => b.text)
         .join("");
       if (toolCalls.length > 0) {
-        return { role: role(m.role), content: text || null, tool_calls: toolCalls };
+        return [{ role: role(m.role), content: text || null, tool_calls: toolCalls }];
       }
-      return { role: role(m.role), content: (text || m.text) ?? "" };
+      return [{ role: role(m.role), content: (text || m.text) ?? "" }];
     }
-    return { role: role(m.role), content: m.text ?? "" };
+    return [{ role: role(m.role), content: m.text ?? "" }];
   });
 }
 
 // ─── Finish reason ───
 
-function mapFinishReason(fr: string): "tool_use" | "end_turn" | "max_tokens" | undefined {
+function mapFinishReason(
+  fr: string,
+): "tool_use" | "end_turn" | "max_tokens" | "refusal" | undefined {
   if (fr === "tool_calls") return "tool_use";
   if (fr === "stop") return "end_turn";
   if (fr === "length") return "max_tokens";
+  // OpenAI returns content_filter when safety refusal blocks the response.
+  if (fr === "content_filter") return "refusal";
   return undefined;
 }
 
@@ -70,9 +78,26 @@ function buildRequest(
     stream_options: { include_usage: true },
   };
 
-  // DeepSeek-style thinking toggle, gated on an effort being requested.
-  if (compat.thinkingFormat === "deepseek" && opts?.effort) {
-    body.thinking = { type: "enabled" };
+  // Reasoning/thinking wire shape varies by provider dialect.
+  switch (compat.thinkingFormat) {
+    case "deepseek":
+      if (opts?.effort) body.thinking = { type: "enabled" };
+      break;
+    case "qwen":
+      body.enable_thinking = !!opts?.effort;
+      break;
+    case "zai":
+      body.thinking = { type: opts?.effort ? "enabled" : "disabled" };
+      break;
+    case "openrouter":
+      body.reasoning = { effort: opts?.effort };
+      break;
+    default:
+      break;
+  }
+  // o1/o3-style reasoning_effort (also wires into zai alongside `thinking`).
+  if (compat.supportsReasoningEffort && opts?.effort) {
+    body.reasoning_effort = opts.effort;
   }
 
   if (opts?.tools) {
@@ -146,12 +171,18 @@ function createChunkConverter(): (raw: Record<string, unknown>) => Generator<AIM
         if (stopReason) yield { stopReason };
       }
     }
-    const usage = raw.usage as Record<string, number> | undefined;
+    const usage = raw.usage as Record<string, unknown> | undefined;
     if (usage) {
+      // OpenAI folds cached prompt tokens into prompt_tokens; pull them out so
+      // input reflects the uncached count and cacheRead tracks the cache hit.
+      const details = usage.prompt_tokens_details as { cached_tokens?: number } | undefined;
+      const cached = details?.cached_tokens ?? 0;
+      const prompt = (usage.prompt_tokens as number) ?? 0;
       yield {
         usage: {
-          input: usage.prompt_tokens ?? 0,
-          output: usage.completion_tokens ?? 0,
+          input: Math.max(0, prompt - cached),
+          output: (usage.completion_tokens as number) ?? 0,
+          cacheRead: cached,
         },
       };
     }
