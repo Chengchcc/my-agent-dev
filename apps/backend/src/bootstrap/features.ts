@@ -452,23 +452,19 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     mcp: mcpRoutes(mcpSvc),
     models: modelRoutes({
       list: async () => {
-        // The Coding Agent catalog is the source of truth; group its canonical
-        // `<provider>/<model>` ids into the Web provider DTO shape.
+        // Catalog returns composite `<provider>/<model>` ids; grouping and
+        // prefix-stripping happen once in modelRoutes.groupByProvider.
         const catalog = await modelCatalog.list();
-        return catalog.models.map((m) => {
-          const slash = m.id.indexOf("/");
-          const modelId = slash > 0 ? m.id.slice(slash + 1) : m.id;
-          return {
-            id: modelId,
-            name: m.displayName ?? modelId,
-            available: m.available,
-            reasoning: m.reasoning,
-            input: m.inputModalities,
-            cost: m.cost,
-            contextWindow: m.contextWindow,
-            maxTokens: m.maxOutputTokens,
-          };
-        });
+        return catalog.models.map((m) => ({
+          id: m.id,
+          name: m.displayName ?? m.id,
+          available: m.available,
+          reasoning: m.reasoning,
+          input: m.inputModalities,
+          cost: m.cost,
+          contextWindow: m.contextWindow,
+          maxTokens: m.maxOutputTokens,
+        }));
       },
     }),
   };
