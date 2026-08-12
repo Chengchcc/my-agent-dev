@@ -129,8 +129,21 @@ function buildRequest(
  *  fragment emits as input_json_delta paired to the initial tool. */
 function createChunkConverter(): (raw: Record<string, unknown>) => Generator<AIMessageChunk> {
   const toolCallsByIndex = new Map<number, { id: string; name: string }>();
+  // Some compat gateways omit tool_calls[].index. With the old `?? 0` every
+  // such call collided on index 0, so parallel calls clobbered each other.
+  // Assign a per-stream counter keyed by id so each new call gets a distinct
+  // slot; argument fragments with neither id nor index assume the most recent.
+  const indexById = new Map<string, number>();
+  let nextMissingIndex = 0;
+  let lastMissingIndex = 0;
 
   return function* convertChunk(raw: Record<string, unknown>): Generator<AIMessageChunk> {
+    // Mid-stream error frame: throw so the consumer isn't left waiting for a
+    // done signal that never arrives (matches anthropic's `error` handling).
+    if (raw.error) {
+      const e = raw.error as Record<string, unknown>;
+      throw new Error(`OpenAI stream error: ${(e.message as string) ?? JSON.stringify(e)}`);
+    }
     const choices = raw.choices as Array<Record<string, unknown>> | undefined;
     if (choices?.[0]) {
       const delta = choices[0].delta as Record<string, unknown> | undefined;
@@ -142,10 +155,27 @@ function createChunkConverter(): (raw: Record<string, unknown>) => Generator<AIM
       }
       if (delta?.tool_calls) {
         for (const tc of delta.tool_calls as Array<Record<string, unknown>>) {
-          const index = (tc.index as number) ?? 0;
-          const fn = (tc.function as Record<string, unknown> | undefined) ?? {};
           const id = (tc.id as string | undefined) ?? "";
+          const fn = (tc.function as Record<string, unknown> | undefined) ?? {};
           const name = (fn.name as string | undefined) ?? "";
+          // Resolve the index: explicit if present, else counter keyed by id,
+          // else assume the most recent tool call (single-stream fallback).
+          let index: number;
+          const rawIndex = tc.index as number | undefined;
+          if (rawIndex !== undefined) {
+            index = rawIndex;
+          } else if (id) {
+            const known = indexById.get(id);
+            if (known !== undefined) {
+              index = known;
+            } else {
+              index = nextMissingIndex++;
+              lastMissingIndex = index;
+              indexById.set(id, index);
+            }
+          } else {
+            index = lastMissingIndex;
+          }
           const existing = toolCallsByIndex.get(index);
           // Register the tool call on the chunk that announces id/name.
           if (id && !existing) {
@@ -169,6 +199,9 @@ function createChunkConverter(): (raw: Record<string, unknown>) => Generator<AIM
       if (choices[0].finish_reason) {
         const stopReason = mapFinishReason(choices[0].finish_reason as string);
         if (stopReason) yield { stopReason };
+        // Clean end: signal done so consumers don't wait on a [DONE]
+        // sentinel some gateways omit (matches anthropic/responses providers).
+        yield { done: true };
       }
     }
     const usage = raw.usage as Record<string, unknown> | undefined;

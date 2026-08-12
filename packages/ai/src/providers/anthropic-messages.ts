@@ -1,5 +1,5 @@
 import type { AIMessageChunk } from "@my-agent-team/core";
-import type { ContentBlock, Message } from "@my-agent-team/message";
+import type { ContentBlock, Message, TextBlock } from "@my-agent-team/message";
 import { registerApi } from "../api-registry.js";
 import { resolveAnthropicCompat } from "../compat.js";
 import type { Model, ProviderStreamOptions } from "../types.js";
@@ -20,15 +20,27 @@ function buildRequest(
     messages: convertMessages(messages, opts, { allowEmptySignature: compat.allowEmptySignature }),
     stream: true,
   };
-  // System prompt: when cacheControl is enabled and a system prompt exists,
-  // send it as a content-block array with an ephemeral cache breakpoint on
-  // the last block. This turns multi-turn re-processing of the stable system
-  // prompt into cache reads (pi: getCacheControl).
-  if (systemMsg?.text) {
+  // System prompt: read text from both m.text and text blocks — some
+  // callers populate only blocks. When cacheControl is enabled and a
+  // system prompt exists, send it as a content-block array with an
+  // ephemeral cache breakpoint on the last block. This turns multi-turn
+  // re-processing of the stable system prompt into cache reads
+  // (pi: getCacheControl).
+  const systemText = systemMsg
+    ? [
+        systemMsg.text,
+        ...(systemMsg.blocks ?? [])
+          .filter((b): b is TextBlock => b.type === "text")
+          .map((b) => b.text),
+      ]
+        .filter((t): t is string => typeof t === "string" && t.length > 0)
+        .join("\n")
+    : undefined;
+  if (systemText) {
     if (opts?.cacheControl) {
-      request.system = [{ type: "text", text: systemMsg.text, cache_control: cacheControl }];
+      request.system = [{ type: "text", text: systemText, cache_control: cacheControl }];
     } else {
-      request.system = systemMsg.text;
+      request.system = systemText;
     }
   }
   // Tools: when cacheControl is enabled AND the API supports cache_control on
@@ -306,14 +318,10 @@ function* convertChunks(
     // Don't early-return on stop_reason — both can arrive in the same event.
     const du = raw.usage as Record<string, number> | undefined;
     if (du) {
-      yield {
-        usage: {
-          input: du.input_tokens ?? 0,
-          output: du.output_tokens ?? 0,
-          cacheCreate: du.cache_creation_input_tokens,
-          cacheRead: du.cache_read_input_tokens,
-        },
-      };
+      // message_delta only carries cumulative output_tokens; emitting input
+      // (or cache fields) here would clobber the correct values captured in
+      // message_start for last-wins consumers. Emit output alone.
+      yield { usage: { output: du.output_tokens ?? 0 } };
     }
     return;
   }

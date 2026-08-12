@@ -10,7 +10,7 @@ export interface AIMessageChunk {
     | { type: "input_json_delta"; id: string; partial_json: string };
   done?: boolean;
   stopReason?: "end_turn" | "tool_use" | "max_tokens" | "stop_sequence" | "pause_turn" | "refusal";
-  usage?: { input: number; output: number; cacheCreate?: number; cacheRead?: number };
+  usage?: { input?: number; output: number; cacheCreate?: number; cacheRead?: number };
 }
 
 export interface ChatModelOptions {

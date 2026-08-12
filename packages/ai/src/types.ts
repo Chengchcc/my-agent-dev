@@ -150,7 +150,8 @@ export class ProviderError extends Error {
   }
 }
 
-const OVERFLOW_RE = /context|too long|maximum|overflow|token limit/i;
+const OVERFLOW_RE =
+  /context.{0,20}(length|window|too long)|maximum.{0,20}token|overflow|token limit|too long/i;
 
 export function normalizeProviderError(
   err: unknown,

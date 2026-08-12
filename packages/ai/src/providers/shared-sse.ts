@@ -44,22 +44,29 @@ export async function* fetchSSE(opts: SSEFetchOpts): AsyncIterable<Record<string
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop() ?? "";
-    for (const line of lines) {
-      const t = line.trim();
-      if (!t.startsWith("data: ")) continue;
-      const data = t.slice(6);
-      if (data === "[DONE]") return;
-      try {
-        yield JSON.parse(data);
-      } catch {
-        /* skip malformed */
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
+        const t = line.trim();
+        // Accept "data:" with zero or one trailing space (SSE allows both).
+        const m = t.match(/^data: ?(.*)$/);
+        if (!m) continue;
+        const data = m[1] ?? "";
+        if (data === "[DONE]") return;
+        try {
+          yield JSON.parse(data);
+        } catch {
+          /* skip malformed */
+        }
       }
     }
+  } finally {
+    // Release the HTTP connection on normal end, [DONE] early-return, or throw.
+    await reader.cancel().catch(() => {});
   }
 }
