@@ -169,6 +169,12 @@ export const modelCatalogResponseSchema = z.object({
       contextWindow: z.number(),
       maxOutputTokens: z.number(),
       available: z.boolean(),
+      cost: z.object({
+        input: z.number(),
+        output: z.number(),
+        cacheRead: z.number(),
+        cacheWrite: z.number(),
+      }),
     }),
   ),
 });

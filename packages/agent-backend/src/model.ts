@@ -18,6 +18,7 @@ export interface BackendModel {
   readonly contextWindow: number;
   readonly maxOutputTokens: number;
   readonly available: boolean;
+  readonly cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
 }
 
 /** A backend's model listing. ModelRef must match the catalog's backendKind. */

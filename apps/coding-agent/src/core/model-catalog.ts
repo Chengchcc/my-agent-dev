@@ -21,6 +21,7 @@ export async function buildBackendModelCatalog(
     contextWindow: entry.contextWindow,
     maxOutputTokens: entry.maxOutputTokens,
     available: entry.available,
+    cost: entry.cost,
   }));
   return { backendKind: "coding_agent", models };
 }

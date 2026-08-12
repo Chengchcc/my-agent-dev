@@ -29,6 +29,7 @@ import {
 import { CliSetupProvisioner, LarkSetupManager } from "../features/lark-bot/index.js";
 import { loopRoutes } from "../features/loop/http.js";
 import { createMcpService, mcpRoutes, sqliteMcpServerAdapter } from "../features/mcp/index.js";
+import { modelRoutes } from "../features/models/index.js";
 import {
   createProductToolsMcpServer,
   createProductToolsService,
@@ -450,29 +451,26 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     skillPacks: skillPackRoutes(skillPackSvc, config.dataDir),
     settings: settingsRoutes(settingsSvc),
     mcp: mcpRoutes(mcpSvc),
-    models: new Elysia().get("/api/models", async () => {
-      // The Coding Agent catalog is the source of truth; group its canonical
-      // `<provider>/<model>` ids into the Web provider DTO shape.
-      const catalog = await modelCatalog.list();
-      const byProvider = new Map<
-        string,
-        Array<{ id: string; name: string; available?: boolean }>
-      >();
-      for (const m of catalog.models) {
-        const slash = m.id.indexOf("/");
-        const provider = slash > 0 ? m.id.slice(0, slash) : m.id;
-        const modelId = slash > 0 ? m.id.slice(slash + 1) : m.id;
-        const list = byProvider.get(provider) ?? [];
-        list.push({ id: modelId, name: m.displayName ?? modelId, available: m.available });
-        byProvider.set(provider, list);
-      }
-      return {
-        providers: [...byProvider.entries()].map(([provider, models]) => ({
-          id: provider,
-          name: provider,
-          models,
-        })),
-      };
+    models: modelRoutes({
+      list: async () => {
+        // The Coding Agent catalog is the source of truth; group its canonical
+        // `<provider>/<model>` ids into the Web provider DTO shape.
+        const catalog = await modelCatalog.list();
+        return catalog.models.map((m) => {
+          const slash = m.id.indexOf("/");
+          const modelId = slash > 0 ? m.id.slice(slash + 1) : m.id;
+          return {
+            id: modelId,
+            name: m.displayName ?? modelId,
+            available: m.available,
+            reasoning: m.reasoning,
+            input: m.inputModalities,
+            cost: m.cost,
+            contextWindow: m.contextWindow,
+            maxTokens: m.maxOutputTokens,
+          };
+        });
+      },
     }),
   };
 

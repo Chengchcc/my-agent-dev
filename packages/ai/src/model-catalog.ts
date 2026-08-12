@@ -308,7 +308,17 @@ export const MODEL_ALIASES: Readonly<Record<string, string>> = {
 /** Resolve a model id through the alias table. Returns the canonical
  *  id if an alias exists, otherwise the original id. */
 export function resolveModelAlias(modelId: string): string {
-  return MODEL_ALIASES[modelId] ?? modelId;
+  // Direct match first.
+  const direct = MODEL_ALIASES[modelId];
+  if (direct) return direct;
+  // Try stripping provider prefix: "anthropic/claude-sonnet-4-6" -> check "claude-sonnet-4-6".
+  const slash = modelId.indexOf("/");
+  if (slash > 0) {
+    const bare = modelId.slice(slash + 1);
+    const mapped = MODEL_ALIASES[bare];
+    if (mapped) return `${modelId.slice(0, slash)}/${mapped}`;
+  }
+  return modelId;
 }
 
 // ── Minimal YAML parser (for runtime models.yml loading by the caller) ──

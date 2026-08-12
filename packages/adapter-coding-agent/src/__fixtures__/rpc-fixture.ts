@@ -44,6 +44,7 @@ if (argv.includes("--list-models")) {
           contextWindow: 200_000,
           maxOutputTokens: 8192,
           available: true,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         },
       ],
     })}\n`,

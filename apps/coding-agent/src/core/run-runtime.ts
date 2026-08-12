@@ -12,7 +12,7 @@ import {
   type SessionStore,
 } from "@my-agent-team/agent";
 import type { AgentRunSnapshot, ProjectedHistoryItem } from "@my-agent-team/agent-backend";
-import type { ModelRuntime } from "@my-agent-team/ai";
+import { type ModelRuntime, resolveModelAlias } from "@my-agent-team/ai";
 import type { Message } from "@my-agent-team/message";
 import { createProgressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
 import { createRecapPlugin } from "@my-agent-team/plugin-recap";
@@ -112,7 +112,9 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   // The Run's model is the ONLY budget/summarizer authority. A catalog-first
   // model with a different window would compact at the wrong threshold or
   // overflow the real context.
-  const currentModel = catalog.models.find((m) => `${m.providerId}/${m.modelId}` === deps.modelId);
+  const currentModel = catalog.models.find(
+    (m) => `${m.providerId}/${m.modelId}` === resolveModelAlias(deps.modelId),
+  );
   if (!currentModel) {
     throw new Error(`model not found in catalog: ${deps.modelId}`);
   }
@@ -251,7 +253,9 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   // the sole Meta owner; the Run runtime never passes a meta string.
   const resolveModel = async (modelId: string): Promise<{ provider: string; id: string }> => {
     const catalog = await deps.modelRuntime.getCatalog();
-    const model = catalog.models.find((m) => `${m.providerId}/${m.modelId}` === modelId);
+    const model = catalog.models.find(
+      (m) => `${m.providerId}/${m.modelId}` === resolveModelAlias(modelId),
+    );
     if (!model) throw new Error(`model not found: ${modelId}`);
     return { provider: model.providerId, id: model.modelId };
   };
@@ -372,7 +376,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       if (!run) throw new Error("no active run: model unresolved");
       const catalog = await deps.modelRuntime.getCatalog();
       const model = catalog.models.find(
-        (m) => `${m.providerId}/${m.modelId}` === run.model.modelId,
+        (m) => `${m.providerId}/${m.modelId}` === resolveModelAlias(run.model.modelId),
       );
       if (!model) throw new Error(`model not found: ${run.model.modelId}`);
       const timeoutSignal = AbortSignal.timeout(modelTimeoutMs);
