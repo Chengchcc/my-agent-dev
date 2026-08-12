@@ -24,8 +24,8 @@ describe("pi wire → CoreBackendEvent (synthetic fixtures per pi source)", () =
       .map((e) => (e as { text: string }).text)
       .join("");
     expect(text).toBe("OK");
-    expect(acc.usage.inputTokens).toBe(1200);
-    expect(acc.usage.outputTokens).toBe(30);
+    expect(acc.usage.inputTokens).toBe(3618);
+    expect(acc.usage.outputTokens).toBe(2);
     expect(acc.assistantTexts.at(-1)).toBe("OK");
     expect(acc.error).toBeNull();
   });
@@ -42,7 +42,7 @@ describe("pi wire → CoreBackendEvent (synthetic fixtures per pi source)", () =
     expect(started).toHaveLength(1);
     expect(completed).toHaveLength(1);
     expect((started[0] as { toolName: string }).toolName).toBe("bash");
-    expect(acc.assistantTexts.at(-1)).toContain("Done");
+    expect(acc.assistantTexts.at(-1)).toContain("DONE");
   });
 
   test("malformed lines are skipped, not fatal", () => {

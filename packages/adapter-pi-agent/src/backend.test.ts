@@ -46,7 +46,7 @@ describe("PiBackend", () => {
     expect(outcome.status).toBe("completed");
     if (outcome.status === "completed") {
       expect(outcome.messages?.at(-1)).toEqual({ role: "assistant", text: "OK" });
-      expect(outcome.usage?.inputTokens).toBe(1200);
+      expect(outcome.usage?.inputTokens).toBe(3618);
     }
   });
 

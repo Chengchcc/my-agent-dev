@@ -8,7 +8,7 @@
 | 项 | 结果 |
 |---|---|
 | `claude` | `/usr/bin/claude`(npm 全局 @anthropic-ai/claude-code),**2.1.165 → 2.1.228**(2026-08-12 经 npmmirror 升级)。**API 面零变化**: stream-json 全套 flag、wire 事件型录(init/assistant/result/thinking_tokens)与 2.1.165 同构 |
-| `pi` | **不存在**。源码在 `/root/pi`(@earendil-works/pi-coding-agent,bin=`pi`),`bun src/cli.ts` 缺 highlight.js → 需先 `bun install` 才能真机验证。**无 MCP 支持**(全库检索无 mcp 实现;仅 ai 包一处无关 OAuth 命中);扩展面有 `registerTool`(extensions/types.ts:1178,loader.ts:226) |
+| `pi` | **已装** `@earendil-works/pi-coding-agent@0.84.1`(全局 bun,bin=`pi`)。真机 wire 已抓(2026-08-13): 事件型录与源码/solo parser 一致,另有 `agent_settled`(忽略即可);`--session <path>` 写+续实锤(第二轮 cacheRead 载入、上下文答对);bash 工具调用 ✓。产品栈 E2E(对话→工具→session 续接→stop→aborted)全绿 |
 | `omp` | **已装** `@oh-my-pi/pi-coding-agent@17.2.15`,bin=`omp`(注意:与 `pi` 是两个产品) |
 | 模型通路 | `DEEPSEEK_API_KEY` 已设;omp 走 `deepseek/deepseek-v4-flash`(api=openai-completions)实测通;claude 本机自带 deepseek-v4-pro 凭据实测通 |
 
