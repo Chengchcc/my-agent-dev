@@ -97,7 +97,8 @@ export function registerBuiltinProviders(
   if (env.CODING_AGENT_FAKE_PROVIDER === "1") {
     runtime.registerProvider(fakeProvider(env));
   } else if (env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN) {
-    runtime.registerProvider(anthropicProvider({ baseUrl: env.ANTHROPIC_BASE_URL ?? undefined }));
+    const provider = anthropicProvider({ baseUrl: env.ANTHROPIC_BASE_URL ?? undefined });
+    if (provider) runtime.registerProvider(provider);
   }
 }
 

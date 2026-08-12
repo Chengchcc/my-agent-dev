@@ -1,0 +1,161 @@
+import type { AIMessageChunk } from "@my-agent-team/core";
+import type { Message, TextBlock, ToolResultBlock, ToolUseBlock } from "@my-agent-team/message";
+import { registerApi } from "../api-registry.js";
+import { type ResolvedOpenAICompat, resolveOpenAICompat } from "../compat.js";
+import type { Model, ProviderStreamOptions } from "../types.js";
+
+// ─── Message conversion ───
+
+/** Convert internal Message[] → OpenAI Chat Completions wire messages.
+ *  - tool_result block → `{ role: "tool", tool_call_id, content }`
+ *  - tool_use blocks   → `tool_calls` array (id + name + JSON-stringified args)
+ *  - otherwise         → `{ role, content }` (text blocks joined, fallback to m.text)
+ *  With `supportsDeveloperRole`, a "system" role is remapped to "developer". */
+function convertMessages(
+  messages: readonly Message[],
+  compat: ResolvedOpenAICompat,
+): Record<string, unknown>[] {
+  const role = (r: string): string =>
+    r === "system" && compat.supportsDeveloperRole ? "developer" : r;
+
+  return messages.map((m) => {
+    if (m.blocks && m.blocks.length > 0) {
+      const result = m.blocks.find((b): b is ToolResultBlock => b.type === "tool_result");
+      if (result) {
+        return { role: "tool", tool_call_id: result.tool_use_id, content: result.content };
+      }
+      const toolCalls = m.blocks
+        .filter((b): b is ToolUseBlock => b.type === "tool_use")
+        .map((b) => ({
+          id: b.id,
+          type: "function" as const,
+          function: { name: b.name, arguments: JSON.stringify(b.input) },
+        }));
+      const text = m.blocks
+        .filter((b): b is TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("");
+      if (toolCalls.length > 0) {
+        return { role: role(m.role), content: text || null, tool_calls: toolCalls };
+      }
+      return { role: role(m.role), content: (text || m.text) ?? "" };
+    }
+    return { role: role(m.role), content: m.text ?? "" };
+  });
+}
+
+// ─── Finish reason ───
+
+function mapFinishReason(fr: string): "tool_use" | "end_turn" | "max_tokens" | undefined {
+  if (fr === "tool_calls") return "tool_use";
+  if (fr === "stop") return "end_turn";
+  if (fr === "length") return "max_tokens";
+  return undefined;
+}
+
+// ─── buildRequest ───
+
+function buildRequest(
+  model: Model,
+  messages: readonly Message[],
+  opts?: ProviderStreamOptions,
+): { url: string; headers: Record<string, string>; body: Record<string, unknown> } {
+  const compat = resolveOpenAICompat(model);
+
+  const body: Record<string, unknown> = {
+    model: model.id,
+    messages: convertMessages(messages, compat),
+    [compat.maxTokensField]: model.maxTokens,
+    stream: true,
+    stream_options: { include_usage: true },
+  };
+
+  // DeepSeek-style thinking toggle, gated on an effort being requested.
+  if (compat.thinkingFormat === "deepseek" && opts?.effort) {
+    body.thinking = { type: "enabled" };
+  }
+
+  if (opts?.tools) {
+    body.tools = opts.tools.map((t) => ({
+      type: "function",
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.inputSchema ?? {},
+      },
+    }));
+  }
+
+  return {
+    url: "/chat/completions",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer {apiKey}",
+    },
+    body,
+  };
+}
+
+// ─── createChunkConverter ───
+
+/** Streaming converter for OpenAI Chat Completions SSE. Tool calls arrive as
+ *  fragments: first chunk carries id+name, later chunks carry only index +
+ *  function.arguments deltas. Maintains index → (id, name) so every argument
+ *  fragment emits as input_json_delta paired to the initial tool. */
+function createChunkConverter(): (raw: Record<string, unknown>) => Generator<AIMessageChunk> {
+  const toolCallsByIndex = new Map<number, { id: string; name: string }>();
+
+  return function* convertChunk(raw: Record<string, unknown>): Generator<AIMessageChunk> {
+    const choices = raw.choices as Array<Record<string, unknown>> | undefined;
+    if (choices?.[0]) {
+      const delta = choices[0].delta as Record<string, unknown> | undefined;
+      if (delta?.content) {
+        yield { delta: { type: "text", text: delta.content as string } };
+      }
+      if (delta?.reasoning_content) {
+        yield { delta: { type: "reasoning", text: delta.reasoning_content as string } };
+      }
+      if (delta?.tool_calls) {
+        for (const tc of delta.tool_calls as Array<Record<string, unknown>>) {
+          const index = (tc.index as number) ?? 0;
+          const fn = (tc.function as Record<string, unknown> | undefined) ?? {};
+          const id = (tc.id as string | undefined) ?? "";
+          const name = (fn.name as string | undefined) ?? "";
+          const existing = toolCallsByIndex.get(index);
+          // Register the tool call on the chunk that announces id/name.
+          if (id && !existing) {
+            toolCallsByIndex.set(index, { id, name });
+            yield { delta: { type: "tool_use", id, name } };
+          } else if (name && existing && !existing.name) {
+            // Name arrived in a later chunk; keep the id stable.
+            toolCallsByIndex.set(index, { ...existing, name });
+          }
+          // Argument fragments are always deltas paired to the stored id.
+          if (typeof fn.arguments === "string" && fn.arguments.length > 0) {
+            const slot = existing ?? toolCallsByIndex.get(index);
+            if (slot) {
+              yield {
+                delta: { type: "input_json_delta", id: slot.id, partial_json: fn.arguments },
+              };
+            }
+          }
+        }
+      }
+      if (choices[0].finish_reason) {
+        const stopReason = mapFinishReason(choices[0].finish_reason as string);
+        if (stopReason) yield { stopReason };
+      }
+    }
+    const usage = raw.usage as Record<string, number> | undefined;
+    if (usage) {
+      yield {
+        usage: {
+          input: usage.prompt_tokens ?? 0,
+          output: usage.completion_tokens ?? 0,
+        },
+      };
+    }
+  };
+}
+
+registerApi("openai-completions", { buildRequest, createChunkConverter });

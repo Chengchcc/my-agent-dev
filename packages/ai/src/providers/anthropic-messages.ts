@@ -1,128 +1,22 @@
 import type { AIMessageChunk } from "@my-agent-team/core";
 import type { ContentBlock, Message } from "@my-agent-team/message";
-import {
-  normalizeProviderError,
-  type Provider,
-  type ProviderAuth,
-  type ProviderStreamOptions,
-} from "../types.js";
-import { ANTHROPIC_MODELS } from "./anthropic-models.js";
-
-/**
- * Anthropic Messages provider.
- *
- * Architecture follows pi's anthropic-messages layer: request assembly,
- * message conversion, and SSE decoding are three separate pure functions
- * (buildRequest / convertMessages / convertChunks). The wire contract:
- *
- * - Canonical input (ADR 0017): assistant messages never carry tool_result —
- *   results arrive as separate `role:"tool"` messages and are buffered into
- *   one `user(tool_result*)` message (strict validators require all results
- *   right after the assistant tool_use batch).
- * - Thinking (Anthropic protocol): thinking blocks are replayed back
- *   unchanged with their `signature` (required in tool-use turns); redacted
- *   thinking replays as `redacted_thinking`; endpoints that emit no
- *   signature (DeepSeek) accept a signature-less block.
- * - Text is surrogate-sanitized on the way in (pi: lone surrogates in a
- *   partial message break strict validators); messages that would map to
- *   empty content are skipped entirely.
- * - All stop reasons are surfaced (end_turn/tool_use/max_tokens/
- *   stop_sequence/pause_turn/refusal) so the loop can react to truncation.
- */
-export function anthropicProvider(auth: ProviderAuth = {}): Provider {
-  const baseUrl = auth.baseUrl ?? "https://api.anthropic.com/v1";
-
-  return {
-    id: "anthropic",
-    name: "Anthropic",
-    baseUrl,
-    getModels: () => ANTHROPIC_MODELS,
-    async *stream(model, messages, opts) {
-      const apiKey =
-        opts?.apiKey ??
-        auth.apiKey ??
-        process.env.ANTHROPIC_API_KEY ??
-        process.env.ANTHROPIC_AUTH_TOKEN ??
-        "";
-      const url = opts?.baseUrl ?? baseUrl;
-      const secrets = [apiKey, ...Object.values(opts?.headers ?? auth.headers ?? {})];
-      try {
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        };
-        if (opts?.headers) Object.assign(headers, opts.headers);
-        else if (auth.headers) Object.assign(headers, auth.headers);
-
-        const body = buildRequest(model.id, model.maxTokens, messages, opts);
-
-        const res = await fetch(`${url}/messages`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-          signal: opts?.signal,
-        });
-        if (!res.ok) {
-          const errBody = await res.text().catch(() => "");
-          // Extract server-requested retry delay (pi's retryDelayFromHeaders):
-          // `retry-after-ms` (Anthropic) or `retry-after` (HTTP standard,
-          // seconds or HTTP date). Attached to the error so retryStream can
-          // respect it instead of using its own backoff.
-          const retryAfterMs = extractRetryAfter(res.headers);
-          const err = new Error(`Anthropic error status=${res.status} ${errBody}`);
-          if (retryAfterMs !== undefined) {
-            (err as Error & { retryAfterMs?: number }).retryAfterMs = retryAfterMs;
-          }
-          throw err;
-        }
-        if (!res.body) throw new Error("No response body");
-
-        const reader = res.body.getReader();
-        const dec = new TextDecoder();
-        let buf = "";
-        const blockIdByIndex = new Map<number, string>();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          // TextDecoder with { stream: true } keeps multi-byte sequences
-          // intact across network chunks; the SSE lines below are complete.
-          buf += dec.decode(value, { stream: true });
-          const lines = buf.split("\n");
-          buf = lines.pop() ?? "";
-          for (const line of lines) {
-            const t = line.trim();
-            if (!t.startsWith("data: ")) continue;
-            const data = t.slice(6);
-            if (data === "[DONE]") return;
-            try {
-              const p = JSON.parse(data);
-              for (const chunk of convertChunks(p, blockIdByIndex)) yield chunk;
-            } catch {
-              /* skip malformed frames */
-            }
-          }
-        }
-      } catch (err) {
-        throw normalizeProviderError(err, secrets);
-      }
-    },
-  };
-}
+import { registerApi } from "../api-registry.js";
+import { resolveAnthropicCompat } from "../compat.js";
+import type { Model, ProviderStreamOptions } from "../types.js";
 
 // ── Request assembly ──────────────────────────────────────────────
 
 function buildRequest(
-  modelId: string,
-  maxTokens: number,
+  model: Model,
   messages: readonly Message[],
   opts?: ProviderStreamOptions,
-): Record<string, unknown> {
+): { url: string; headers: Record<string, string>; body: Record<string, unknown> } {
+  const compat = resolveAnthropicCompat(model);
   const systemMsg = messages.find((m) => m.role === "system");
   const cacheControl = { type: "ephemeral" } as const;
   const request: Record<string, unknown> = {
-    model: modelId,
-    max_tokens: maxTokens,
+    model: model.id,
+    max_tokens: model.maxTokens,
     messages: convertMessages(messages, opts),
     stream: true,
   };
@@ -137,15 +31,16 @@ function buildRequest(
       request.system = systemMsg.text;
     }
   }
-  // Tools: when cacheControl is enabled, put an ephemeral breakpoint on the
-  // last tool definition — the tool catalog is stable across turns.
+  // Tools: when cacheControl is enabled AND the API supports cache_control on
+  // tool definitions, put an ephemeral breakpoint on the last tool — the tool
+  // catalog is stable across turns.
   const tools = opts?.tools?.map((t, i, arr) => {
     const tool: Record<string, unknown> = {
       name: t.name,
       description: t.description,
       input_schema: t.inputSchema ?? {},
     };
-    if (opts?.cacheControl && i === arr.length - 1) {
+    if (opts?.cacheControl && compat.supportsCacheControlOnTools && i === arr.length - 1) {
       tool.cache_control = cacheControl;
     }
     return tool;
@@ -165,7 +60,15 @@ function buildRequest(
   if (opts?.effort) {
     request.output_config = { effort: opts.effort };
   }
-  return request;
+  return {
+    url: "/messages",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": "{apiKey}",
+      "anthropic-version": "2023-06-01",
+    },
+    body: request,
+  };
 }
 
 // ── Message conversion (canonical → wire) ────────────────────────
@@ -182,26 +85,6 @@ function sanitizeSurrogates(text: string): string {
     /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
     "\uFFFD",
   );
-}
-
-/** Extract server-requested retry delay from response headers (pi's
- *  retryDelayFromHeaders): `retry-after-ms` (Anthropic, milliseconds) or
- *  `retry-after` (HTTP standard, seconds or HTTP date). Returns ms or
- *  undefined when no hint is present. */
-function extractRetryAfter(headers: Headers): number | undefined {
-  const retryAfterMs = headers.get("retry-after-ms");
-  if (retryAfterMs) {
-    const ms = Number.parseFloat(retryAfterMs);
-    if (Number.isFinite(ms) && ms >= 0) return ms;
-  }
-  const retryAfter = headers.get("retry-after");
-  if (retryAfter) {
-    const seconds = Number.parseFloat(retryAfter);
-    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
-    const dateMs = Date.parse(retryAfter) - Date.now();
-    if (Number.isFinite(dateMs) && dateMs >= 0) return dateMs;
-  }
-  return undefined;
 }
 
 function toWireBlock(b: ContentBlock): WireBlock | null {
@@ -428,3 +311,13 @@ function* convertChunks(
     return;
   }
 }
+
+/** Per-stream chunk converter: owns a blockIdByIndex Map so tool-use index→id
+ *  correlation persists across chunks in the same stream. create-provider.ts
+ *  calls this once per stream and feeds it each raw SSE frame. */
+function createChunkConverter(): (raw: Record<string, unknown>) => Generator<AIMessageChunk> {
+  const blockIdByIndex = new Map<number, string>();
+  return (raw: Record<string, unknown>) => convertChunks(raw, blockIdByIndex);
+}
+
+registerApi("anthropic-messages", { buildRequest, createChunkConverter });

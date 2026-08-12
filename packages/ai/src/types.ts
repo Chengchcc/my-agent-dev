@@ -1,10 +1,10 @@
 import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 
-/** 模型输入模态 */
+// ─── Modalities + Cost ───
+
 export type InputModality = "text" | "image";
 
-/** 模型成本（$/million tokens） */
 export interface ModelCost {
   input: number;
   output: number;
@@ -12,7 +12,47 @@ export interface ModelCost {
   cacheWrite: number;
 }
 
-/** Model 元数据对象 - 替代裸字符串。 */
+// ─── Thinking levels (pi/omp aligned) ───
+
+export type ThinkingLevel = "off" | "low" | "medium" | "high" | "xhigh";
+
+/** Per-model thinking-level support (pi: ThinkingLevelMap).
+ *  Missing keys use provider defaults. `null` = unsupported level. */
+export type ThinkingLevelMap = Partial<Record<ThinkingLevel, string | null>>;
+
+// ─── Per-API compat flags (pi/omp pattern: sparse overrides) ───
+
+/** Anthropic Messages API compatibility (pi: AnthropicMessagesCompat). */
+export interface AnthropicCompat {
+  readonly supportsTemperature?: boolean;
+  readonly supportsCacheControlOnTools?: boolean;
+  readonly supportsLongCacheRetention?: boolean;
+  readonly forceAdaptiveThinking?: boolean;
+  readonly allowEmptySignature?: boolean;
+  readonly supportsEagerToolInputStreaming?: boolean;
+}
+
+/** OpenAI Chat Completions + Responses API compatibility. */
+export interface OpenAICompat {
+  /** How reasoning/thinking is sent on the wire.
+   *  - "none": no reasoning param (standard GPT-4o etc.)
+   *  - "deepseek": `thinking: { type: "enabled"|"disabled" }`
+   *  - "qwen": `enable_thinking: boolean`
+   *  - "zai": `thinking: {type}` + `reasoning_effort`
+   *  - "openrouter": `reasoning: { effort }`  */
+  readonly thinkingFormat?: "none" | "deepseek" | "qwen" | "zai" | "openrouter";
+  /** "max_tokens" (legacy) or "max_completion_tokens" (newer OpenAI). */
+  readonly maxTokensField?: "max_tokens" | "max_completion_tokens";
+  /** Whether `reasoning_effort` param is accepted (o1/o3 models). */
+  readonly supportsReasoningEffort?: boolean;
+  /** Whether `developer` role is accepted instead of `system`. */
+  readonly supportsDeveloperRole?: boolean;
+}
+
+export type ModelCompat = AnthropicCompat | OpenAICompat;
+
+// ─── Model ───
+
 export interface Model {
   id: string;
   name: string;
@@ -20,41 +60,25 @@ export interface Model {
   api: Api;
   baseUrl?: string;
   reasoning: boolean;
+  readonly thinkingLevelMap?: ThinkingLevelMap;
   input: readonly InputModality[];
   cost: ModelCost;
   contextWindow: number;
   maxTokens: number;
-  /** Per-model capability flags. When undefined, all features are assumed
-   *  supported (backward-compatible default). */
   readonly compat?: ModelCompat;
 }
 
-/** Provider-specific compatibility metadata. Allows the runtime to adapt
- *  behavior per-model without hardcoded if/else chains. */
-export interface ModelCompat {
-  /** Whether temperature/topP can be passed to this model. Some models
-   *  (o1, o3-preview) reject sampling parameters. Default: true. */
-  readonly supportsTemperature?: boolean;
-  /** Maps our ThinkingLevel values to provider-specific config keys.
-   *  When undefined, the standard mapping is used. */
-  readonly thinkingLevelMap?: Readonly<Record<string, unknown>>;
-  /** Whether the model accepts a separate system prompt field or needs
-   *  it inlined as the first user message. Default: true (separate). */
-  readonly supportsSystemPrompt?: boolean;
-  /** Max tokens per output (may differ from maxTokens which is the
-   *  model's absolute ceiling). Used for force-continue logic. */
-  readonly maxOutputTokens?: number;
-}
+// ─── Provider + stream options ───
 
-/** Provider 认证配置 */
+export type KnownApi = "anthropic-messages" | "openai-completions" | "openai-responses";
+export type Api = KnownApi | (string & {});
+
 export interface ProviderAuth {
   apiKey?: string;
   baseUrl?: string;
   headers?: Record<string, string>;
 }
 
-/** 一个 LLM 提供商的运行时定义。Provider 不缓存 credential-bearing ChatModel；
- *  credential 由 ModelRuntime 每次 request resolve 后传入 stream。 */
 export interface Provider {
   readonly id: string;
   readonly name: string;
@@ -67,49 +91,32 @@ export interface Provider {
   ): AsyncIterable<AIMessageChunk>;
 }
 
-/** Tool schema advertised to a model. Providers only read the schema fields
- *  (name/description/inputSchema) — execution stays in the agent loop, so
- *  the full Tool interface (with execute) is not required here. */
 export interface ProviderToolSchema {
   readonly name: string;
   readonly description: string;
   readonly inputSchema?: Readonly<Record<string, unknown>>;
 }
 
-/** Per-request provider stream options. Credentials are resolved per request. */
 export interface ProviderStreamOptions {
   apiKey?: string;
   baseUrl?: string;
   headers?: Record<string, string>;
   signal?: AbortSignal;
   tools?: readonly ProviderToolSchema[];
-  /** Thinking-mode control (Anthropic `thinking` param): adaptive lets the
-   *  model decide, enabled uses a budget, disabled turns it off. `display`
-   *  controls whether thinking text is returned ("summarized") or omitted
-   *  (signature only). */
   thinking?: {
     type: "adaptive" | "enabled" | "disabled";
     display?: "summarized" | "omitted";
     budgetTokens?: number;
   };
-  /** Response effort (Anthropic `effort` param): scales how much work the
-   *  model puts in, thinking included. */
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
-  /** Prompt caching (Anthropic `cache_control`): when true, adds ephemeral
-   *  cache breakpoints on the system prompt and the last tool definition.
-   *  Multi-turn sessions read the stable prefix from cache instead of
-   *  re-processing every turn. Opt in per request; endpoints that don't
-   *  support caching silently ignore the breakpoint. */
   cacheControl?: boolean;
+  maxRetries?: number;
+  maxRetryDelayMs?: number;
+  timeoutMs?: number;
 }
 
-/** API 类型标识（模型元数据，仅用于 catalog 标记）。 */
-export type KnownApi = "anthropic-messages" | "openai-completions";
-export type Api = KnownApi | (string & {});
+// ─── Error normalization ───
 
-// ─── Phase 2: ModelRuntime (provider registry + credential store) ───
-
-/** Normalised provider error categories for retry/no-retry decisions. */
 export const ProviderErrorKind = {
   Transient: "transient",
   Overload: "overload",
@@ -124,14 +131,9 @@ export type ProviderErrorKind = (typeof ProviderErrorKind)[keyof typeof Provider
 export class ProviderError extends Error {
   readonly kind: ProviderErrorKind;
   readonly statusCode?: number;
-  readonly retryable: boolean;
-  /** Server-requested retry delay in ms (from `retry-after-ms` / `retry-after`
-   *  response headers). When present, retryStream respects it instead of its
-   *  own backoff (pi's retryDelayFromHeaders). */
   readonly retryAfterMs?: number;
-  /** Redacted diagnostic message; never the raw error object (which may carry
-   *  credential material). */
   readonly detail?: string;
+  readonly retryable: boolean;
 
   constructor(
     message: string,
@@ -150,9 +152,6 @@ export class ProviderError extends Error {
 
 const OVERFLOW_RE = /context|too long|maximum|overflow|token limit/i;
 
-/** Normalize a raw provider error into a ProviderError, redacting credential
- *  material from the message. The raw error object is never retained; only the
- *  redacted message survives. Shared by all providers. */
 export function normalizeProviderError(
   err: unknown,
   redactSecrets: readonly string[] = [],
@@ -162,21 +161,13 @@ export function normalizeProviderError(
     if (secret) msg = msg.replaceAll(secret, "[REDACTED]");
   }
   const detail = msg;
-  // Extract server-requested retry delay attached by the provider (pi's
-  // retryDelayFromHeaders). Survives normalization so retryStream can
-  // respect it.
   const retryAfterMs = (err as Error & { retryAfterMs?: number }).retryAfterMs;
   const retryOpts = retryAfterMs !== undefined ? { retryAfterMs } : {};
-  // AbortError from fetch: not an error, but a user/caller cancellation.
-  // Must be classified as `aborted`, not `fatal` (pi has no equivalent —
-  // our taxonomy is richer). Check before the generic fatal fallback.
   if (err instanceof Error && err.name === "AbortError") {
     return new ProviderError(msg, "aborted", { detail });
   }
   const s = msg.match(/status[= ](\d+)/);
   const code = s ? Number(s[1]) : undefined;
-  // Context-length errors (400/422 with body mentioning limits) are overflow,
-  // a distinct retryable-after-compaction category from invalid_request.
   if (code === 400 || code === 422) {
     if (OVERFLOW_RE.test(msg)) {
       return new ProviderError(msg, "overflow", { statusCode: code, detail, ...retryOpts });
@@ -199,20 +190,18 @@ export function normalizeProviderError(
   return new ProviderError(msg, "fatal", { detail });
 }
 
-/** Resolved credential for a model request. */
+// ─── Credential + ModelRuntime ───
+
 export interface ResolvedCredential {
   apiKey?: string;
   baseUrl?: string;
   headers?: Record<string, string>;
 }
 
-/** Stores and resolves provider credentials. Implementations may read
- *  from env, Vault, or a Product Backend config service. */
 export interface CredentialStore {
   resolve(providerId: string): Promise<ResolvedCredential | null>;
 }
 
-/** Result of refreshing the model catalog from all registered providers. */
 export interface CatalogRefreshResult {
   readonly models: readonly ModelRuntimeEntry[];
   readonly timestamp: number;
@@ -228,10 +217,7 @@ export interface ModelRuntimeEntry {
   readonly maxOutputTokens: number;
   readonly available: boolean;
 }
-/** Callback that converts a model into a streaming ChatModel. */
 
-/** Phase 2 ModelRuntime: provider registry, credential resolution, catalog,
- *  availability filtering, refresh, and stream dispatch. */
 export interface ModelRuntime {
   registerProvider(provider: Provider): void;
   setProvider(provider: Provider): void;
