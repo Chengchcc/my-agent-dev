@@ -5,7 +5,6 @@ export interface AgentRow {
   workspacePath: string;
   modelProvider: string;
   modelName: string;
-  modelBaseUrl: string | null;
   reasoningEffort: "none" | "low" | "high" | "max" | null;
   permissionMode: "ask" | "auto" | "deny";
   maxSteps: number | null;
@@ -24,7 +23,7 @@ export interface CreateAgentInput {
   id?: string;
   name: string;
   template?: string;
-  model: { provider: string; model: string; baseURL?: string };
+  model: { provider: string; model: string };
   reasoningEffort?: "none" | "low" | "high" | "max";
   permissionMode?: "ask" | "auto" | "deny";
   maxSteps?: number;
@@ -38,6 +37,7 @@ export interface CreateAgentInput {
 
 export interface UpdateAgentInput {
   name?: string;
+  model?: { provider: string; model: string };
   reasoningEffort?: "none" | "low" | "high" | "max" | null;
   permissionMode?: "ask" | "auto" | "deny";
   maxSteps?: number;

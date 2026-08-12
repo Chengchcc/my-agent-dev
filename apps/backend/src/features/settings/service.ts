@@ -66,7 +66,12 @@ export function createSettingsService(deps: {
         "BACKEND_WORKSPACE_ROOT",
         "BACKEND_TEMPLATE_DIR",
         "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
         "ANTHROPIC_BASE_URL",
+        "OPENAI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "GROQ_API_KEY",
+        "OPENROUTER_API_KEY",
         "NODE_ENV",
         "RUNNER_ENV",
       ];

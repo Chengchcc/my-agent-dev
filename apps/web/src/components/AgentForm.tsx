@@ -40,7 +40,6 @@ import { fieldClass, overlineClass } from "@/lib/form-styles";
 const formSchema = z.object({
   name: z.string().trim().min(1, "Agent name is required"),
   model: z.string().trim().min(1, "Model is required"),
-  baseURL: z.string().trim().default(""),
   reasoningEffort: z.enum(["", "none", "low", "high", "max"]).default(""),
   permissionMode: z.enum(["ask", "auto", "deny"]).default("ask"),
   maxSteps: z.string().trim().default(""),
@@ -98,7 +97,6 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
       // Empty until the catalog loads (see effect below): never hard-code a
       // provider model that may not exist in the runtime catalog.
       model: editAgent?.modelName ?? "",
-      baseURL: editAgent?.modelBaseUrl ?? "",
       reasoningEffort: editAgent?.reasoningEffort ?? "",
       permissionMode: editAgent?.permissionMode ?? "ask",
       maxSteps: editAgent?.maxSteps?.toString() ?? "",
@@ -122,7 +120,6 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
         model: editAgent.modelName.includes("/")
           ? editAgent.modelName
           : `anthropic/${editAgent.modelName}`,
-        baseURL: editAgent.modelBaseUrl ?? "",
         reasoningEffort: editAgent.reasoningEffort ?? "",
         permissionMode: editAgent.permissionMode,
         maxSteps: editAgent.maxSteps?.toString() ?? "",
@@ -183,7 +180,6 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
       model: {
         provider: values.model.split("/")[0] ?? "anthropic",
         model: values.model.split("/").slice(1).join("/") || values.model,
-        ...(values.baseURL ? { baseURL: values.baseURL } : {}),
       },
       permissionMode: values.permissionMode,
       ...(values.maxSteps ? { maxSteps: parseInt(values.maxSteps, 10) } : {}),
@@ -400,24 +396,6 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                     )}
                   />
                 </div>
-
-                <FormField
-                  control={form.control}
-                  name="baseURL"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className={`${overlineClass} mb-1.5 block`}>Base URL</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          placeholder="https://api.anthropic.com/v1"
-                          className={fieldClass}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <FormField

@@ -28,7 +28,6 @@ export function sqliteAgentAdapter(db: Database): AgentPort {
           workspacePath: input.workspacePath,
           modelProvider: input.model.provider,
           modelName: input.model.model,
-          modelBaseUrl: input.model.baseURL ?? null,
           reasoningEffort: input.reasoningEffort ?? null,
           permissionMode: input.permissionMode ?? "ask",
           maxSteps: input.maxSteps ?? null,
@@ -67,6 +66,10 @@ export function sqliteAgentAdapter(db: Database): AgentPort {
     ): Promise<AgentRow | null> {
       const sets: Partial<typeof schema.agents.$inferInsert> = { updatedAt: input.now };
       if (input.name !== undefined) sets.name = input.name;
+      if (input.model !== undefined) {
+        sets.modelProvider = input.model.provider;
+        sets.modelName = input.model.model;
+      }
       if (input.reasoningEffort !== undefined) sets.reasoningEffort = input.reasoningEffort;
       if (input.permissionMode !== undefined) sets.permissionMode = input.permissionMode;
       if (input.maxSteps !== undefined) sets.maxSteps = input.maxSteps;

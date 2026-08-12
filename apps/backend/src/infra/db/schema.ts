@@ -18,7 +18,6 @@ export const agents = sqliteTable(
     workspacePath: text().notNull().unique(),
     modelProvider: text().notNull(),
     modelName: text().notNull(),
-    modelBaseUrl: text(),
     /** Thinking-mode effort (none/low/high/max); null = provider default. */
     reasoningEffort: text(),
     permissionMode: text().notNull().default("ask"),

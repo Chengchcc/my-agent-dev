@@ -18,7 +18,6 @@ function toAgentResponse(row: AgentRow, status: string) {
     workspacePath: row.workspacePath,
     modelProvider: row.modelProvider,
     modelName: row.modelName,
-    modelBaseUrl: row.modelBaseUrl,
     reasoningEffort: row.reasoningEffort,
     permissionMode: row.permissionMode,
     maxSteps: row.maxSteps,
@@ -78,7 +77,6 @@ export function agentRoutes(
           model: t.Object({
             provider: t.String({ minLength: 1 }),
             model: t.String({ minLength: 1 }),
-            baseURL: t.Optional(t.String()),
           }),
           reasoningEffort: t.Optional(
             t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),
@@ -137,6 +135,12 @@ export function agentRoutes(
       {
         body: t.Object({
           name: t.Optional(t.String({ minLength: 1 })),
+          model: t.Optional(
+            t.Object({
+              provider: t.String({ minLength: 1 }),
+              model: t.String({ minLength: 1 }),
+            }),
+          ),
           reasoningEffort: t.Optional(
             t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),
           ),

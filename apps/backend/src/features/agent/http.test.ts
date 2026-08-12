@@ -16,7 +16,6 @@ function makeSvc() {
         workspacePath: input.workspacePath,
         modelProvider: input.model.provider,
         modelName: input.model.model,
-        modelBaseUrl: input.model.baseURL ?? null,
         reasoningEffort: input.reasoningEffort ?? null,
         permissionMode: input.permissionMode ?? "ask",
         maxSteps: input.maxSteps ?? null,

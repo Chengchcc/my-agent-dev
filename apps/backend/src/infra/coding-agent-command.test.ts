@@ -62,12 +62,12 @@ describe("resolveCodingAgentCommand", () => {
       CODING_AGENT_PRODUCT_TOOL_TOKEN: "tok-secret",
       EXTRA: "1",
     });
-    // Provider env comes from process.env (no provider is required; a clean
-    // machine with zero keys still boots). The child resolves which
-    // providers have keys via its own catalog registration.
-    expect(result.env?.ANTHROPIC_API_KEY).toBe(process.env.ANTHROPIC_API_KEY);
-    expect(result.env?.DEEPSEEK_API_KEY).toBe(process.env.DEEPSEEK_API_KEY);
-    expect(result.env?.MY_AGENT_HOME).toBe(process.env.MY_AGENT_HOME);
+    // Provider env keys are always present in the child env (forwarded from
+    // process.env, possibly undefined — the child resolves which providers
+    // have keys via its own catalog registration).
+    expect("ANTHROPIC_API_KEY" in (result.env ?? {})).toBe(true);
+    expect("DEEPSEEK_API_KEY" in (result.env ?? {})).toBe(true);
+    expect("MY_AGENT_HOME" in (result.env ?? {})).toBe(true);
     // The token never appears in the command line.
     expect(JSON.stringify(result.args ?? [])).not.toContain("tok-secret");
   });

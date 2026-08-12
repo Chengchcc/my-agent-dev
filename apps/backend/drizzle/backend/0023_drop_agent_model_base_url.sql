@@ -1,0 +1,1 @@
+ALTER TABLE `agents` DROP COLUMN `model_base_url`;
