@@ -14,6 +14,7 @@ function makeInMemoryPort(): AgentPort {
         workspacePath: input.workspacePath,
         modelProvider: input.model.provider,
         modelName: input.model.model,
+        backendKind: input.backendKind ?? "coding_agent",
         reasoningEffort: input.reasoningEffort ?? null,
         permissionMode: input.permissionMode ?? "ask",
         maxSteps: input.maxSteps ?? null,

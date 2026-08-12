@@ -1,11 +1,7 @@
-export type { AgentBackend } from "./backend.js";
 export { debugLog } from "./debug.js";
-export type {
-  BackendEvent,
-  BackendExtensionEvent,
-  CoreBackendEvent,
-  Usage,
-} from "./event.js";
+export type { BackendEvent, BackendExtensionEvent, CoreBackendEvent, Usage } from "./event.js";
+export { BACKEND_KINDS, backendKindSchema } from "./kinds.js";
+export type { BackendKind } from "./kinds.js";
 export type {
   AgentRunSnapshot,
   ProductToolDescriptor,
@@ -14,7 +10,13 @@ export type {
 } from "./history.js";
 export type { TransportRunEvent } from "./mapping.js";
 export { mapRunEvent, mapRunOutcome } from "./mapping.js";
-export type { BackendModel, BackendModelCatalog, BackendModelRef } from "./model.js";
+export type {
+  BackendModel,
+  BackendModelCatalog,
+  BackendCatalog,
+  BackendModelRef,
+} from "./model.js";
+export type { AgentBackend, BackendRegistry, BackendRegistryEntry } from "./backend.js";
 export type {
   BackendInputMessage,
   BackendRunInput,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { backendKindSchema } from "./kinds.js";
 
 /** Frozen stdio JSONL wire contract shared by the Coding Agent RPC mode and
  *  the adapter's child-process transport. Lives in the CONTRACT package
@@ -26,7 +27,7 @@ const productToolSchema = z.object({
 const runSnapshotSchema = z.object({
   runId: runIdSchema,
   model: z.object({
-    backendKind: z.literal("coding_agent"),
+    backendKind: backendKindSchema,
     modelId: z.string(),
     reasoningEffort: z.enum(["none", "low", "high", "max"]).optional(),
   }),
@@ -159,7 +160,7 @@ export type CodingAgentOutput = z.infer<typeof codingAgentOutputSchema>;
 // ─── Model catalog (CLI --list-models --json) ────────────────────────
 
 export const modelCatalogResponseSchema = z.object({
-  backendKind: z.literal("coding_agent"),
+  backendKind: backendKindSchema,
   models: z.array(
     z.object({
       id: z.string(),

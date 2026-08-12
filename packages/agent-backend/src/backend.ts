@@ -1,4 +1,18 @@
 import type { BackendInputMessage, BackendRunInput, BackendRunSegment } from "./run.js";
+import type { BackendKind } from "./kinds.js";
+import type { BackendCatalog } from "./model.js";
+
+/** One registered backend kind: the AgentBackend plus its model catalog.
+ *  The registry is the Product Backend's single dispatch table; execution
+ *  resolves `modelRef.backendKind` against it and reports a clear error for
+ *  unknown/unregistered kinds. */
+export interface BackendRegistryEntry {
+  readonly backend: AgentBackend<BackendKind>;
+  readonly catalog: BackendCatalog;
+}
+
+/** Partial: a deployment may omit kinds (e.g. pi not installed). */
+export type BackendRegistry = Partial<Record<BackendKind, BackendRegistryEntry>>;
 
 /** The only execution protocol Product Backend depends on. Run-centric: one
  *  non-steer input maps to exactly one `execute()` call, one loop, one

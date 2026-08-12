@@ -119,8 +119,12 @@ beforeAll(async () => {
     runPort,
     contextPort,
     ledgerResolver,
-    backend: new CodingAgentBackend(codingAgentCommand),
-    modelCatalog: new CodingAgentModelCatalog(codingAgentCommand),
+    backends: {
+      coding_agent: {
+        backend: new CodingAgentBackend(codingAgentCommand),
+        catalog: new CodingAgentModelCatalog(codingAgentCommand),
+      },
+    },
     idGen: { ulid: () => `z-${Math.random().toString(36).slice(2, 8)}` },
     resolveWorkspace: async () => ({ root: ws, access: "read_write" }),
     productToolsEntrypoint: `sse:${mcp.url}`,

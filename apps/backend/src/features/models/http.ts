@@ -11,6 +11,10 @@ export interface WebModel {
   cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
   contextWindow: number;
   maxTokens: number;
+  /** Producing backend kind (coding_agent / claude_code / pi / omp). The
+   *  same provider/model id may exist under several kinds — the UI groups
+   *  by kind first (D3). */
+  backendKind: string;
 }
 
 export interface ModelsCatalog {

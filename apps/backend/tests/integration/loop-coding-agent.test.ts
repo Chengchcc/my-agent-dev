@@ -161,8 +161,12 @@ beforeAll(async () => {
     runPort,
     contextPort,
     ledgerResolver,
-    backend: new CodingAgentBackend(codingAgentCommand, { maxConcurrent: 1 }),
-    modelCatalog: new CodingAgentModelCatalog(codingAgentCommand),
+    backends: {
+      coding_agent: {
+        backend: new CodingAgentBackend(codingAgentCommand, { maxConcurrent: 1 }),
+        catalog: new CodingAgentModelCatalog(codingAgentCommand),
+      },
+    },
     idGen: { ulid: () => `z-${Math.random().toString(36).slice(2, 8)}` },
     resolveWorkspace: async () => ({ root: dataDir, access: "read_write" }),
     productToolsEntrypoint: "stdio:/nonexistent",

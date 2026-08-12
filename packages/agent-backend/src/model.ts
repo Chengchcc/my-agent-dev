@@ -26,3 +26,10 @@ export interface BackendModelCatalog {
   readonly backendKind: string;
   readonly models: readonly BackendModel[];
 }
+
+/** Uniform per-kind catalog facade consumed by execution preflight and the
+ *  /api/models aggregation. The registry key carries the kind; the catalog's
+ *  own list() result keeps its backendKind for the wire. */
+export interface BackendCatalog {
+  list(): Promise<{ readonly models: readonly BackendModel[] }>;
+}

@@ -18,6 +18,10 @@ export const agents = sqliteTable(
     workspacePath: text().notNull().unique(),
     modelProvider: text().notNull(),
     modelName: text().notNull(),
+    /** Execution backend kind (ADR 0002): coding_agent / claude_code /
+     *  pi / omp. Defaults to the coding agent; switching auto-forks the
+     *  branch (old history stays read-only). */
+    backendKind: text().notNull().default("coding_agent"),
     /** Thinking-mode effort (none/low/high/max); null = provider default. */
     reasoningEffort: text(),
     permissionMode: text().notNull().default("ask"),
@@ -379,6 +383,10 @@ export const agentContextBranch = sqliteTable(
     leafEntryId: text("leaf_entry_id"),
     ledgerCursor: integer("ledger_cursor").notNull().default(0),
     backendKind: text("backend_kind").notNull(),
+    /** CLI session reference (ADR 0002): claude session_id or pi/omp
+     *  session file path — the CLI-side runtime truth for context
+     *  continuation. Null until the first CLI-backed run on the branch. */
+    cliSessionRef: text("cli_session_ref"),
     isDefault: integer("is_default", { mode: "number" }).notNull().default(0),
     revision: integer().notNull().default(1),
     createdAt: integer("created_at", { mode: "number" }).notNull(),

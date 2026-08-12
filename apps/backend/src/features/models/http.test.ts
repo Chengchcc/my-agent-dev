@@ -10,6 +10,7 @@ function model(id: string, name = id): WebModel {
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 1000,
     maxTokens: 1000,
+    backendKind: "coding_agent",
   };
 }
 

@@ -28,6 +28,7 @@ export function sqliteAgentAdapter(db: Database): AgentPort {
           workspacePath: input.workspacePath,
           modelProvider: input.model.provider,
           modelName: input.model.model,
+          backendKind: input.backendKind ?? "coding_agent",
           reasoningEffort: input.reasoningEffort ?? null,
           permissionMode: input.permissionMode ?? "ask",
           maxSteps: input.maxSteps ?? null,
@@ -70,6 +71,7 @@ export function sqliteAgentAdapter(db: Database): AgentPort {
         sets.modelProvider = input.model.provider;
         sets.modelName = input.model.model;
       }
+      if (input.backendKind !== undefined) sets.backendKind = input.backendKind;
       if (input.reasoningEffort !== undefined) sets.reasoningEffort = input.reasoningEffort;
       if (input.permissionMode !== undefined) sets.permissionMode = input.permissionMode;
       if (input.maxSteps !== undefined) sets.maxSteps = input.maxSteps;

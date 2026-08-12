@@ -1,17 +1,17 @@
 import type {
-  CodingAgentBackend,
-  CodingAgentModelCatalog,
-} from "@my-agent-team/adapter-coding-agent";
-import type {
+  AgentBackend,
+  BackendCatalog,
   BackendEvent,
   BackendModelRef,
+  BackendRegistry,
+  BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
   ProductToolDescriptor,
   ProjectedHistoryItem,
   WorkspaceBinding,
 } from "@my-agent-team/agent-backend";
-import { debugLog } from "@my-agent-team/agent-backend";
+import { BACKEND_KINDS, debugLog, type BackendKind } from "@my-agent-team/agent-backend";
 import { resolveModelAlias } from "@my-agent-team/ai";
 import type { Message } from "@my-agent-team/message";
 import type {
@@ -94,9 +94,10 @@ export interface AgentRunExecutionDeps {
   readonly runPort: AgentRunPort;
   readonly contextPort: AgentContextPort;
   readonly ledgerResolver: LedgerMessageResolver;
-  /** The one Backend. No registry: only backendKind=coding_agent. */
-  readonly backend: CodingAgentBackend;
-  readonly modelCatalog: CodingAgentModelCatalog;
+  /** Per-kind dispatch table: `modelRef.backendKind` resolves the Backend
+   *  and its catalog. Partial — a kind a deployment does not register gets
+   *  a clear preflight error, never a silent fallback. */
+  readonly backends: BackendRegistry;
   readonly idGen: IdGenerator;
   /** Resolve the workspace binding for a run's agent member (from the
    *  Agent's workspace path + permission mode; injected so tests and callers
@@ -117,7 +118,7 @@ export interface AgentRunExecutionDeps {
 }
 
 interface LiveRun {
-  readonly segment: BackendRunSegment<"coding_agent">;
+  readonly segment: BackendRunSegment;
 }
 
 export interface AgentRunExecutionService {
@@ -188,7 +189,7 @@ export function runEventStreamFor(
 export function createAgentRunExecutionService(
   deps: AgentRunExecutionDeps,
 ): AgentRunExecutionService {
-  const { runPort, contextPort, backend, modelCatalog, resolveWorkspace } = deps;
+  const { runPort, contextPort, backends, resolveWorkspace } = deps;
 
   /** Process-lifetime live refs, only for steer/stop/current-event
    *  subscription. Removed when the run reaches a terminal state. */
@@ -222,7 +223,7 @@ export function createAgentRunExecutionService(
    *  the run's event buffer (outcome). Returns a promise that resolves when
    *  the segment stream has been fully drained (used by dispatch to close
    *  subscribers only AFTER the last event broadcast). */
-  function forwardEvents(runId: string, segment: BackendRunSegment<"coding_agent">): Promise<void> {
+  function forwardEvents(runId: string, segment: BackendRunSegment): Promise<void> {
     return (async () => {
       try {
         for await (const ev of segment.events) broadcast(runId, ev);
@@ -234,14 +235,31 @@ export function createAgentRunExecutionService(
 
   const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-  async function assertModelAvailable(modelRef: AgentRun["modelRef"]): Promise<void> {
-    const catalog = await modelCatalog.list();
+  /** Registry lookup with an explicit unknown-kind error. `modelRef.backendKind`
+   *  is a plain string at runtime; kinds are compile-time labels, so the only
+   *  honest check is against BACKEND_KINDS. */
+  function entryFor(kind: string) {
+    if (BACKEND_KINDS.includes(kind as BackendKind)) {
+      return deps.backends[kind as BackendKind];
+    }
+    return undefined;
+  }
+
+  async function assertModelAvailable(modelRef: BackendModelRef): Promise<void> {
+    const entry = entryFor(modelRef.backendKind);
+    if (!entry) {
+      throw new Error(
+        `unknown or unregistered backend kind "${modelRef.backendKind}" ` +
+          `(known: ${BACKEND_KINDS.join(", ")})`,
+      );
+    }
+    const catalog = await entry.catalog.list();
     // Legacy model ids in DB rows resolve through the alias table
     // (e.g. claude-sonnet-4-20250514 → claude-sonnet-5).
     const model = catalog.models.find((m) => m.id === resolveModelAlias(modelRef.modelId));
     if (!model || model.available === false) {
       throw new Error(
-        `model ${modelRef.backendKind}/${modelRef.modelId} not available in Coding Agent catalog`,
+        `model ${modelRef.backendKind}/${modelRef.modelId} not available in ${modelRef.backendKind} catalog`,
       );
     }
   }
@@ -263,13 +281,13 @@ export function createAgentRunExecutionService(
     history: readonly ProjectedHistoryItem[],
     input: BranchInput,
     workspace: WorkspaceBinding,
-  ): Parameters<CodingAgentBackend["execute"]>[0] {
+  ): BackendRunInput {
     return {
       history,
       input: { inputId: input.inputId, message: input.message },
       run: {
         runId: run.runId,
-        model: run.modelRef as BackendModelRef<"coding_agent">,
+        model: run.modelRef,
         ...(run.systemPrompt ? { systemPrompt: run.systemPrompt } : {}),
         ...(run.skillRoots && run.skillRoots.length > 0 ? { skillRoots: run.skillRoots } : {}),
         productTools: buildHistoryTools(deps.productToolsEntrypoint),
@@ -290,11 +308,21 @@ export function createAgentRunExecutionService(
     stage: { name: string },
   ): Promise<{
     outcome: BackendRunOutcome | null;
-    segment: BackendRunSegment<"coding_agent"> | null;
+    segment: BackendRunSegment | null;
     /** Resolves when the segment's event stream has been fully drained. */
     drain: Promise<void>;
   }> {
     const { input, runId } = claimed;
+    const entry = entryFor(run.modelRef.backendKind);
+    if (!entry) {
+      throw new Error(
+        `unknown or unregistered backend kind "${run.modelRef.backendKind}" ` +
+          `(known: ${BACKEND_KINDS.join(", ")})`,
+      );
+    }
+    // Runtime dispatch is kind-agnostic: K is a compile-time label and the
+    // registry is Partial<Record<kind, entry>>, so narrow once here.
+    const backend = entry.backend as AgentBackend;
     // Workspace is a Run execution fact when the caller pinned it (Loop's
     // cloned repo); otherwise fall back to the agent-record default.
     stage.name = "resolve_workspace";
@@ -499,8 +527,19 @@ export function createAgentRunExecutionService(
       }
       const claimed = await runPort.deliverSteerInput(input.inputId, active.runId);
       if (!claimed) return; // already delivering/delivered or gone
+      const entry = entryFor(active.modelRef.backendKind);
+      if (!entry) {
+        await runPort.cancelInput(input.inputId).catch(() => {});
+        throw new Error(
+          `steer rejected: unknown or unregistered backend kind "${active.modelRef.backendKind}" ` +
+            `(known: ${BACKEND_KINDS.join(", ")})`,
+        );
+      }
       try {
-        await backend.steer(active.runId, { inputId: input.inputId, message: input.message });
+        await (entry.backend as AgentBackend).steer(active.runId, {
+          inputId: input.inputId,
+          message: input.message,
+        });
       } catch (err) {
         // The child rejected the steer (run settled in between): the input
         // must not linger as a phantom delivering row.
@@ -624,7 +663,7 @@ export function createAgentRunExecutionService(
       disposed = true;
       // Children first: their exit settles every pending outcome/acceptance,
       // which unblocks the in-flight dispatches below.
-      await backend.dispose();
+      await Promise.all(Object.values(backends).map((entry) => entry.backend.dispose()));
       await Promise.allSettled([...inflightPromises.values()]);
       inflightPromises.clear();
     },

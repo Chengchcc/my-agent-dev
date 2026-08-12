@@ -1,4 +1,9 @@
 import { CodingAgentBackend, CodingAgentModelCatalog } from "@my-agent-team/adapter-coding-agent";
+import type {
+  BackendKind,
+  BackendRegistry,
+  BackendRegistryEntry,
+} from "@my-agent-team/agent-backend";
 import type { Message } from "@my-agent-team/message";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { FeatureSet } from "../app.js";
@@ -167,7 +172,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
    *  and get configured later in the UI. */
   async function defaultSeedModel(): Promise<{ provider: string; model: string }> {
     try {
-      const catalog = await modelCatalog.list();
+      const catalog = await codingAgentCatalog.list();
       const first = catalog.models.find((m) => m.available !== false);
       if (first) {
         const slash = first.id.indexOf("/");
@@ -320,17 +325,22 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     })().catch((err) => console.error(`[bootstrap] onRunCommitted failed for ${runId}:`, err));
   };
   const codingAgentCommand = resolveCodingAgentCommand(config);
-  const modelCatalog = new CodingAgentModelCatalog(codingAgentCommand);
+  const codingAgentCatalog = new CodingAgentModelCatalog(codingAgentCommand);
   const codingAgentBackend = new CodingAgentBackend(codingAgentCommand, {
     maxConcurrent: config.maxConcurrentRuns,
     abortGraceMs: config.cancelGraceMs,
   });
+  // Per-kind dispatch registry (ADR 0002). New kinds (claude_code/pi/omp)
+  // register their adapter here as they land; unknown kinds get a clear
+  // preflight error from the execution service, never a silent fallback.
+  const backends: BackendRegistry = {
+    coding_agent: { backend: codingAgentBackend, catalog: codingAgentCatalog },
+  };
   const agentRunExecution = createAgentRunExecutionService({
     runPort: agentRunPort,
     contextPort,
     ledgerResolver,
-    backend: codingAgentBackend,
-    modelCatalog,
+    backends,
     idGen: { ulid },
     resolveWorkspace: async ({ conversationId, agentMemberId }) => {
       // Default workspace comes from the agent member's Agent record;
@@ -465,7 +475,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       convPort,
       agentRunService,
       agentRunExecution,
-      // LOOP.md stores the full canonical model ID; pass it through.
+      // LOOP.md stores the full canonical model ID; pass it through. Loop
+      // generator/evaluator runs are always coding_agent-scoped (the loop
+      // domain has no agent row to carry a kind — D2 applies to agents).
       resolveModel: async (modelId: string) => ({
         backendKind: "coding_agent",
         modelId,
@@ -478,10 +490,18 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     mcp: mcpRoutes(mcpSvc),
     models: modelRoutes({
       list: async () => {
-        // Catalog returns composite `<provider>/<model>` ids; grouping and
-        // prefix-stripping happen once in modelRoutes.groupByProvider.
-        const catalog = await modelCatalog.list();
-        return catalog.models.map((m) => ({
+        // Aggregate every registered backend's catalog, tagging each model
+        // with its kind. Each returns composite `<provider>/<model>` ids;
+        // grouping and prefix-stripping happen once in
+        // modelRoutes.groupByProvider. WebModel carries backendKind so the
+        // UI can group by kind first (D3).
+        const lists = await Promise.all(
+          (Object.entries(backends) as Array<[BackendKind, BackendRegistryEntry]>).map(
+            async ([kind, entry]) =>
+              (await entry.catalog.list()).models.map((m) => ({ ...m, backendKind: kind })),
+          ),
+        );
+        return lists.flat().map((m) => ({
           id: m.id,
           name: m.displayName ?? m.id,
           available: m.available,
@@ -490,6 +510,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
           cost: m.cost,
           contextWindow: m.contextWindow,
           maxTokens: m.maxOutputTokens,
+          backendKind: m.backendKind,
         }));
       },
     }),

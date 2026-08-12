@@ -157,7 +157,8 @@ export function createCronScheduler(deps: {
       convPort: deps.convPort,
       agentRunService: deps.agentRunService,
       agentRunExecution: deps.agentRunExecution,
-      // LOOP.md stores the full canonical model ID; pass it through.
+      // LOOP.md stores the full canonical model ID; pass it through. Loop
+      // runs are coding_agent-scoped (no agent row carries the kind).
       resolveModel: async (modelId: string): Promise<BackendModelRef> => ({
         backendKind: "coding_agent",
         modelId,

@@ -18,6 +18,7 @@ function toAgentResponse(row: AgentRow, status: string) {
     workspacePath: row.workspacePath,
     modelProvider: row.modelProvider,
     modelName: row.modelName,
+    backendKind: row.backendKind,
     reasoningEffort: row.reasoningEffort,
     permissionMode: row.permissionMode,
     maxSteps: row.maxSteps,
@@ -78,6 +79,14 @@ export function agentRoutes(
             provider: t.String({ minLength: 1 }),
             model: t.String({ minLength: 1 }),
           }),
+          backendKind: t.Optional(
+            t.Union([
+              t.Literal("coding_agent"),
+              t.Literal("claude_code"),
+              t.Literal("pi"),
+              t.Literal("omp"),
+            ]),
+          ),
           reasoningEffort: t.Optional(
             t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),
           ),
@@ -140,6 +149,14 @@ export function agentRoutes(
               provider: t.String({ minLength: 1 }),
               model: t.String({ minLength: 1 }),
             }),
+          ),
+          backendKind: t.Optional(
+            t.Union([
+              t.Literal("coding_agent"),
+              t.Literal("claude_code"),
+              t.Literal("pi"),
+              t.Literal("omp"),
+            ]),
           ),
           reasoningEffort: t.Optional(
             t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),

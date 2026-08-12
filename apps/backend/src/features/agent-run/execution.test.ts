@@ -117,8 +117,12 @@ function makeExecution(
     runPort: activeRunPort,
     contextPort: { ...contextPort, ...contextPortOverride } as never,
     ledgerResolver,
-    backend: fakeDaemon.backend,
-    modelCatalog: (modelCatalogOverride ?? fakeDaemon.modelCatalog) as never,
+    backends: {
+      coding_agent: {
+        backend: fakeDaemon.backend,
+        catalog: (modelCatalogOverride ?? fakeDaemon.modelCatalog) as never,
+      },
+    },
     idGen: { ulid: () => `id-${Math.random().toString(36).slice(2, 12)}` },
     resolveWorkspace: async () => ({ root: dataDir, access: "read_write" }),
     productToolsEntrypoint: "sse:http://127.0.0.1:1/mcp",
