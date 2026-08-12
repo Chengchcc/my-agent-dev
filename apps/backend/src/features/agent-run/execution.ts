@@ -12,6 +12,7 @@ import type {
   WorkspaceBinding,
 } from "@my-agent-team/agent-backend";
 import { debugLog } from "@my-agent-team/agent-backend";
+import { resolveModelAlias } from "@my-agent-team/ai";
 import type { Message } from "@my-agent-team/message";
 import type {
   AgentContextPort,
@@ -235,7 +236,9 @@ export function createAgentRunExecutionService(
 
   async function assertModelAvailable(modelRef: AgentRun["modelRef"]): Promise<void> {
     const catalog = await modelCatalog.list();
-    const model = catalog.models.find((m) => m.id === modelRef.modelId);
+    // Legacy model ids in DB rows resolve through the alias table
+    // (e.g. claude-sonnet-4-20250514 → claude-sonnet-5).
+    const model = catalog.models.find((m) => m.id === resolveModelAlias(modelRef.modelId));
     if (!model || model.available === false) {
       throw new Error(
         `model ${modelRef.backendKind}/${modelRef.modelId} not available in Coding Agent catalog`,

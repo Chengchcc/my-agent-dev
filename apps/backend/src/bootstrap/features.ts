@@ -1,4 +1,5 @@
 import { CodingAgentBackend, CodingAgentModelCatalog } from "@my-agent-team/adapter-coding-agent";
+import { resolveModelAlias } from "@my-agent-team/ai";
 import type { Message } from "@my-agent-team/message";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { FeatureSet } from "../app.js";
@@ -159,8 +160,25 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     }
   }
 
-  await ensureAgent("default", "Assistant", "claude-sonnet-4-20250514");
-  await ensureAgent("loop-agent", "Loop Agent", "claude-sonnet-4-20250514");
+  /** Default seed model derives from the live catalog (single source of
+   *  truth) — catalog evolution changes the default without touching this
+   *  file. Falls back to the legacy id (alias-resolved) when the catalog
+   *  is unreachable at bootstrap. */
+  async function defaultSeedModel(): Promise<string> {
+    try {
+      const catalog = await modelCatalog.list();
+      const first = catalog.models.find((m) => m.id.startsWith("anthropic/"));
+      if (first) return first.id.slice("anthropic/".length);
+    } catch {
+      /* catalog spawn unavailable at bootstrap — fall through */
+    }
+    // ponytail: legacy fallback, delete once seed derives solely from catalog.
+    return resolveModelAlias("claude-sonnet-4-20250514");
+  }
+
+  const seedModel = await defaultSeedModel();
+  await ensureAgent("default", "Assistant", seedModel);
+  await ensureAgent("loop-agent", "Loop Agent", seedModel);
 
   const relSvc = createRelationshipService(db, config);
 
