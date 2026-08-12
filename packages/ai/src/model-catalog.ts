@@ -1,6 +1,6 @@
 import type { Model, ModelCompat, ThinkingLevel } from "./types.js";
 
-// ── Catalog spec types (sparse input — omp ModelSpec pattern) ──
+// ── Catalog spec types (sparse input) ──
 
 export type ThinkingMode = "effort" | "budget" | "adaptive";
 

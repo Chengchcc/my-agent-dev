@@ -12,17 +12,17 @@ export interface ModelCost {
   cacheWrite: number;
 }
 
-// ─── Thinking levels (pi/omp aligned) ───
+// ─── Thinking levels (standardized) ───
 
 export type ThinkingLevel = "off" | "low" | "medium" | "high" | "xhigh";
 
-/** Per-model thinking-level support (pi: ThinkingLevelMap).
+/** Per-model thinking-level support.
  *  Missing keys use provider defaults. `null` = unsupported level. */
 export type ThinkingLevelMap = Partial<Record<ThinkingLevel, string | null>>;
 
-// ─── Per-API compat flags (pi/omp pattern: sparse overrides) ───
+// ─── Per-API compat flags (sparse overrides) ───
 
-/** Anthropic Messages API compatibility (pi: AnthropicMessagesCompat). */
+/** Anthropic Messages API compatibility. */
 export interface AnthropicCompat {
   readonly supportsTemperature?: boolean;
   readonly supportsCacheControlOnTools?: boolean;

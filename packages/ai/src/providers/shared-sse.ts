@@ -20,7 +20,7 @@ export async function* fetchSSE(opts: SSEFetchOpts): AsyncIterable<Record<string
     const err = new Error(`status=${res.status} ${errBody}`);
     // Parse retry delay: prefer Anthropic's retry-after-ms (milliseconds),
     // fall back to standard Retry-After (seconds or HTTP-date). Both OpenAI
-    // and most gateways use the standard header (pi: getRetryAfterDelayMs).
+    // and most gateways use the standard header.
     const retryAfterMs = res.headers.get("retry-after-ms");
     const retryAfter = res.headers.get("retry-after");
     let delay: number | undefined;

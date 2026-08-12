@@ -25,7 +25,7 @@ function buildRequest(
   // system prompt exists, send it as a content-block array with an
   // ephemeral cache breakpoint on the last block. This turns multi-turn
   // re-processing of the stable system prompt into cache reads
-  // (pi: getCacheControl).
+  //.
   const systemText = systemMsg
     ? [
         systemMsg.text,
@@ -59,7 +59,7 @@ function buildRequest(
   });
   if (tools) request.tools = tools;
   // Thinking control: forceAdaptiveThinking (Sonnet 4.6+) overrides
-  // caller's type to "adaptive" — the model requires it (pi: L953).
+  // caller's type to "adaptive" — the model requires it.
   if (opts?.thinking) {
     const type = compat.forceAdaptiveThinking ? "adaptive" : opts.thinking.type;
     const thinking: Record<string, unknown> = { type };
@@ -89,10 +89,10 @@ function buildRequest(
 
 type WireBlock = Record<string, unknown>;
 
-/** pi: replace lone surrogates so partially-decoded text never breaks
+/** replace lone surrogates so partially-decoded text never breaks
  *  strict validators. */
 function sanitizeSurrogates(text: string): string {
-  // Replace only UNPAIRED surrogates (pi's sanitize-unicode.ts pattern):
+  // Replace only UNPAIRED surrogates ( pattern):
   // high surrogate not followed by low, or low surrogate not preceded by
   // high. Valid surrogate pairs (emoji, CJK ext B) are preserved.
   return text.replace(
@@ -114,7 +114,7 @@ function toWireBlock(
       return { type: "redacted_thinking", data: b.signature ?? "" };
     }
     const text = sanitizeSurrogates(b.text);
-    // No signature: degrade to text block (pi: L1077-1089) unless the
+    // No signature: degrade to text block unless the
     // model accepts empty signatures (DeepSeek).
     if (!b.signature && !compat?.allowEmptySignature) {
       return text.trim().length > 0 ? { type: "text", text } : null;
@@ -186,7 +186,7 @@ function convertMessages(
   // Cache conversation history: when cacheControl is enabled, put an
   // ephemeral breakpoint on the LAST user message's last content block.
   // This is the highest-value cache win — multi-turn re-processing of
-  // the rolling conversation prefix turns into cache reads (pi: L1147-1169).
+  // the rolling conversation prefix turns into cache reads.
   if (opts?.cacheControl && wire.length > 0) {
     const last = wire[wire.length - 1]!;
     if (last.role === "user") {
@@ -204,7 +204,7 @@ function convertMessages(
 
 // ── SSE decoding ──────────────────────────────────────────────────
 
-/** Full stop-reason mapping (pi's mapStopReason): the loop reacts to
+/** Full stop-reason mapping (): the loop reacts to
  *  truncation (max_tokens) and refusal differently from a clean end. */
 function mapStopReason(reason: string | undefined): AIMessageChunk["stopReason"] {
   switch (reason) {
@@ -213,7 +213,7 @@ function mapStopReason(reason: string | undefined): AIMessageChunk["stopReason"]
     case "max_tokens":
     case "model_context_window_exceeded":
       // Newer Claude models use this instead of max_tokens when the context
-      // window is exceeded. The streamed content is valid but truncated —
+      // window is exceeded. The streamed content is valid but truncated
       // treat it the same as max_tokens so the loop can force-continue.
       return "max_tokens";
     case "stop_sequence":
@@ -283,13 +283,13 @@ function* convertChunks(
   }
   // Mid-stream error events (Anthropic sends `event: error` on
   // server-side failures). Must throw — silently swallowing leaves the
-  // consumer waiting for a done signal that never arrives (pi: L439-441).
+  // consumer waiting for a done signal that never arrives.
   if (type === "error") {
     const err = raw.error as Record<string, unknown>;
     throw new Error(`Anthropic stream error: ${(err?.message as string) ?? JSON.stringify(err)}`);
   }
 
-  // message_start: capture input usage (pi: L547-559). Anthropic nests
+  // message_start: capture input usage. Anthropic nests
   // usage inside raw.message.usage — a top-level read misses it entirely.
   // Cache tokens (cache_read_input_tokens, cache_creation_input_tokens)
   // are emitted here so cost accounting reflects cache hits.
@@ -314,7 +314,7 @@ function* convertChunks(
     if (reason) {
       yield { stopReason: mapStopReason(reason) };
     }
-    // message_delta also carries cumulative output usage (pi: L690-705).
+    // message_delta also carries cumulative output usage.
     // Don't early-return on stop_reason — both can arrive in the same event.
     const du = raw.usage as Record<string, number> | undefined;
     if (du) {

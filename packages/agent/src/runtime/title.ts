@@ -2,7 +2,7 @@ import { extractText, type Message } from "@my-agent-team/message";
 import type { PluginRuntime } from "./plugin-runtime.js";
 
 // ── Low-signal pre-filter (deterministic, no model call) ──────────────────
-// Absorbed from omp's isLowSignalTitleInput: greetings, single words, and
+// Absorbed from : greetings, single words, and
 // pure filler are skipped without wasting a model call.
 
 const TITLE_WORD = /\p{L}[\p{L}\p{N}_'-]*/gu;
@@ -47,7 +47,7 @@ export function isLowSignalTitleInput(message: string): boolean {
   return tokens.every((t) => FILLER_TOKENS.has(t) || /^\d+$/.test(t));
 }
 
-// ── Prompt (omp-inspired XML tag format + few-shot) ───────────────────────
+// ── Prompt XML tag format + few-shot ───────────────────────
 
 const TITLE_SYSTEM_PROMPT = `Write a 3-7 word title for the task.
 
@@ -65,7 +65,7 @@ User: refactor error handling in the API client
 User: hey
 <title>none</title>`;
 
-// ── Normalization (omp-inspired robust extraction) ────────────────────────
+// ── Normalization robust extraction ────────────────────────
 
 const MAX_TITLE_CHARS = 80;
 const MAX_TITLE_WORDS = 12;

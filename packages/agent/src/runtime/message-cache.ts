@@ -1,6 +1,6 @@
 import type { Message } from "@my-agent-team/message";
 
-/** Per-entry token-estimate memoization (pi's message-cache pattern).
+/** Per-entry token-estimate memoization ( pattern).
  *
  *  Long sessions re-walk the settled branch every turn to compute total
  *  tokens for threshold-compaction checks. Settled messages (append-only,

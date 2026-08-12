@@ -47,7 +47,7 @@ export async function* retryStream(
         !committed && err instanceof ProviderError && err.retryable && attempt < opts.maxAttempts;
       if (canRetry) {
         // Server-requested delay (Retry-After header) takes precedence over
-        // our own backoff (pi pattern). Fall back to full-jitter exponential
+        // our own backoff. Fall back to full-jitter exponential
         // backoff capped at 60s when the server doesn't suggest a delay.
         const serverDelay = err.retryAfterMs;
         const backoff = opts.baseDelayMs * 2 ** (attempt - 1);

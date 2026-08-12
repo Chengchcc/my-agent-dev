@@ -344,7 +344,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
 
   // PluginRuntime: gives hooks access to model stream, store, workspace,
   // emit, and abort signal. Plugins capture config in closures; rt provides
-  // runtime capabilities at call time (same pattern as pi's ExtensionAPI).
+  // runtime capabilities at call time (same pattern as ).
   // Two-phase: sessionEmit is bound after session creation (the session's
   // emit method doesn't exist until createCodingAgentSession returns).
   let sessionEmit: ((event: CodingAgentLoopEvent) => void) | null = null;

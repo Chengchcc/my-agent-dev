@@ -65,7 +65,7 @@ export function resolveOpenAICompat(model: Model): ResolvedOpenAICompat {
 
 // ─── Thinking level clamp ───
 
-/** Check if a thinking level is supported by a model (pi: clampThinking). */
+/** Check if a thinking level is supported by a model. */
 export function clampThinkingLevel(model: Model, level: ThinkingLevel): ThinkingLevel {
   const map = model.thinkingLevelMap;
   if (!map) return level;

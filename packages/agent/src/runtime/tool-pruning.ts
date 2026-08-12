@@ -8,7 +8,7 @@ export interface PruneConfig {
   /** Only prune if total savings meets this threshold (avoids churning small
    *  prunes that barely reduce context). */
   readonly minimumSavings: number;
-  /** Tool names whose results are NEVER pruned (pi's tool-protection). Use
+  /** Tool names whose results are NEVER pruned (). Use
    *  for tools whose output must remain visible: skill reads, plan files,
    *  config snapshots. */
   readonly protectedTools: ReadonlySet<string>;
@@ -48,7 +48,7 @@ function estimateTokens(message: Message): number {
   return Math.ceil((message.text?.length ?? 0) / 4);
 }
 
-/** Prune old tool-result content from a message list (omp's pruneToolOutputs).
+/** Prune old tool-result content from a message list ().
  *
  *  Walks backward from the newest message, accumulating tool-result tokens.
  *  Once the protect window is exceeded, tool results outside the window are
