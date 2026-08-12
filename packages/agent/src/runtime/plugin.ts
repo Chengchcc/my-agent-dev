@@ -43,8 +43,8 @@ export interface PluginHooks {
 
   // ── Tool execution lifecycle ──
   /** Called before a tool executes. May return `{ block: true, reason }` to
-   *  prevent execution — an error tool result is emitted instead
-   *  beforeToolCall block). Returning void/undefined = observe only. */
+   *  prevent execution — an error tool result is emitted instead.
+   *  Returning void/undefined = observe only. */
   beforeTool?(
     toolName: string,
     input: unknown,
@@ -52,7 +52,7 @@ export interface PluginHooks {
   ): undefined | { block?: boolean; reason?: string };
   /** Called after a tool executes. May return a UI-transient event OR a
    *  patch object `{ content?, isError?, terminate? }` that overrides the
-   *  executed result field-by-field ( patch). */
+   *  executed result field-by-field. */
   afterTool?(
     toolName: string,
     result: unknown,
@@ -61,9 +61,8 @@ export interface PluginHooks {
     | CodingAgentLoopEvent
     | { content?: unknown; isError?: boolean; terminate?: boolean }
     | undefined;
-  /** Rewrite tool call arguments before execution
-   *  transformToolCallArguments). Use for deobfuscation, normalization,
-   *  or injecting context. */
+  /** Rewrite tool call arguments before execution.
+   *  Use for deobfuscation, normalization, or injecting context. */
   transformToolArgs?(toolName: string, input: unknown, rt: PluginRuntime): unknown;
   // ── Stop decision lifecycle ──
   /** Called when the model naturally stops (no more tool calls). A plugin

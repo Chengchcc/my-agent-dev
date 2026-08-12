@@ -56,7 +56,7 @@ function thinkingConfigToMap(tc: ThinkingConfig): Partial<Record<ThinkingLevel, 
   return map;
 }
 
-/** Build a full Model from a sparse spec (omp: buildModel). */
+/** Build a full Model from a sparse spec. */
 export function buildModel(
   providerId: string,
   api: string,

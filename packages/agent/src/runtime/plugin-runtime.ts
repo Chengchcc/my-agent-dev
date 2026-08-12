@@ -4,12 +4,11 @@ import type { SessionStore } from "../persistence/session-store.js";
 import type { CodingAgentLoopEvent } from "./agent-event.js";
 
 /** Runtime capabilities injected into plugin hooks. Mirrors a subset of
- *  : model stream, store, workspace, event emit.
+ *  model stream, store, workspace, event emit.
  *
  *  Plugins receive this as the last parameter of each hook, so factory
  *  closures capture configuration (modelRef, enabled) while runtime
- *  capabilities come from the `rt` argument - same pattern as pi's
- *  `ExtensionAPI` parameter, without jiti or dynamic loading. */
+ *  capabilities come from the `rt` argument. */
 export interface PluginRuntime {
   /** Stream a model call (bounded by the same modelTimeoutMs as the main
    *  loop). Plugins use this for recap/pet - never for the main agent turn. */
@@ -26,7 +25,7 @@ export interface PluginRuntime {
    *  text output, and discards any tool calls. The result is NEVER persisted
    *  to the session branch — it's a pure side-channel read.
    *
-   *  Inspired by  Used by recap/title
+   *  An ephemeral side-channel turn. Used by recap/title
    *  so plugins don't need to manually construct messages or know the model
    *  ref. One call: `const text = await rt.runEphemeralTurn(prompt);` */
   /** Set by the loop (not by external code). Optional on the interface

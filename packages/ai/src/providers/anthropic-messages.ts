@@ -25,7 +25,7 @@ function buildRequest(
   // system prompt exists, send it as a content-block array with an
   // ephemeral cache breakpoint on the last block. This turns multi-turn
   // re-processing of the stable system prompt into cache reads
-  //.
+  //
   const systemText = systemMsg
     ? [
         systemMsg.text,
@@ -89,10 +89,10 @@ function buildRequest(
 
 type WireBlock = Record<string, unknown>;
 
-/** replace lone surrogates so partially-decoded text never breaks
+/** Replace lone surrogates so partially-decoded text never breaks
  *  strict validators. */
 function sanitizeSurrogates(text: string): string {
-  // Replace only UNPAIRED surrogates ( pattern):
+  // Replace only UNPAIRED surrogates:
   // high surrogate not followed by low, or low surrogate not preceded by
   // high. Valid surrogate pairs (emoji, CJK ext B) are preserved.
   return text.replace(
@@ -204,7 +204,7 @@ function convertMessages(
 
 // ── SSE decoding ──────────────────────────────────────────────────
 
-/** Full stop-reason mapping (): the loop reacts to
+/** Full stop-reason mapping: the loop reacts to
  *  truncation (max_tokens) and refusal differently from a clean end. */
 function mapStopReason(reason: string | undefined): AIMessageChunk["stopReason"] {
   switch (reason) {

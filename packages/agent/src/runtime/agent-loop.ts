@@ -76,7 +76,7 @@ export interface CodingAgentSessionOptions {
    *  exceed limit * triggerRatio before a model turn, compact once. Leave
    *  undefined to disable proactive compaction. */
   readonly contextBudget?: ContextBudget;
-  /** Tool-output pruning config (). When set, old tool
+  /** Tool-output pruning config. When set, old tool
    *  results outside the protect window are truncated to a summary before
    *  each model call — a lighter touch than full compaction. Protected
    *  tools (skills, plans) are never pruned. */
@@ -112,8 +112,8 @@ export interface CodingAgentSession {
   emit(event: CodingAgentLoopEvent): void;
 }
 
-/** One model turn, accumulated purely from the stream
- *  streamAssistantResponse shape): raw outputs before any persistence. */
+/** One model turn, accumulated purely from the stream: raw outputs
+ *  before any persistence. */
 interface ModelTurn {
   readonly text: string;
   readonly thinking: string;
@@ -209,7 +209,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       signal: controller.signal,
       // Ephemeral side-channel turn: shares system prompt + branch messages
       // + tool catalog (for prompt cache) but never persists. Tool calls
-      // from the model are discarded. Inspired by
+      // from the model are discarded — an ephemeral side channel.
       runEphemeralTurn: async (promptText, ephemeralOpts) => {
         const branch = await readBranchMessages();
         const ephemeralMessages: Message[] = [
@@ -305,7 +305,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
 
         // One step = at most one model call. Overflow recovery stays INSIDE
         while (true) {
-          // Prune old tool-result content (): a lighter
+          // Prune old tool-result content: a lighter
           // pass that runs BEFORE compaction checks. Old results outside the
           // protect window are truncated to a summary; protected tools are
           // never pruned. May reduce context enough to avoid compaction
@@ -479,7 +479,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
                 }
               }
             }
-            // max_tokens truncation ( semantics): the model
+            // max_tokens truncation semantics: the model
             // ran out of output budget mid-answer — force one continuation
             // when capacity remains, bounded by maxForceContinues.
             if (
@@ -616,7 +616,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   }
 
   /** Accumulate one model turn from the stream — pure, no persistence
-   *  (). The caller decides what to persist. */
+   *  The caller decides what to persist. */
   async function streamModelTurn(messages: readonly Message[]): Promise<ModelTurn> {
     let text = "";
     let thinking = "";
@@ -728,7 +728,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       let terminate = false;
       let input = call.input;
       if (tool) {
-        // transformToolArgs: rewrite call args before execution
+        // transformToolArgs: rewrite call args before execution.
         // transformToolCallArguments).
         for (const p of opts.plugins) {
           if (p.hooks?.transformToolArgs) {
@@ -742,7 +742,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
             }
           }
         }
-        // beforeTool: observe or block (). A block
+        // beforeTool: observe or block. A block
         // result emits an error tool result instead of executing.
         let blocked = false;
         let blockReason = `Blocked by plugin`;
