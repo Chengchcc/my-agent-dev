@@ -66,6 +66,9 @@ L1 Contracts    packages/message、packages/core、packages/agent-backend — �
 | `@my-agent-team/agent-backend` | L1 | `AgentBackend`, `BackendRunInput/Outcome/Segment`, `BackendEvent`, JSONL 协议 schema + mapping |
 | `@my-agent-team/agent` | L2 | Coding Agent Runtime：`createCodingAgentSession()`, plugin.ts, in-memory SessionStore, compaction, todo |
 | `@my-agent-team/adapter-coding-agent` | L3 | `CodingAgentBackend` — spawn/JSONL/steer/abort/concurrency |
+| `@my-agent-team/adapter-omp-agent` | L3 | `OmpBackend` — `omp -p --mode json` 每 turn 短进程;分支钉 session 文件续接 |
+| `@my-agent-team/adapter-pi-agent` | L3 | `PiBackend` — `pi -p --mode json`;`--session` 写+续;pi-mcp-adapter 挂产品工具 |
+| `@my-agent-team/adapter-claude-agent` | L3 | `ClaudeBackend` — stream-json per-turn + `--resume`;result.modelUsage 提取 |
 | `@my-agent-team/loop` | L2 | `loopReducer()` 纯函数, `LoopState`, `LoopAction` |
 | `@my-agent-team/api-contract` | 跨层 | Elysia `App` 类型真源（HTTP/SSE 契约），`SSEEventMap` |
 | `@my-agent-team/ai` | adapter | `Provider`, `Model`, `ModelRegistry`, `createModelRuntime`, `AnthropicChatModel` |

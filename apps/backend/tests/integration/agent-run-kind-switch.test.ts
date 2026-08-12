@@ -6,11 +6,9 @@ import { join } from "node:path";
 import {
   CodingAgentBackend,
   type CodingAgentCommandConfig,
-  CodingAgentModelCatalog,
 } from "@my-agent-team/adapter-coding-agent";
-import { OmpBackend, OmpModelCatalog } from "@my-agent-team/adapter-omp-agent";
+import { OmpBackend } from "@my-agent-team/adapter-omp-agent";
 import type { Message } from "@my-agent-team/message";
-import { agentModelRef } from "../../src/features/agent/domain.js";
 import {
   createAgentContextService,
   sqliteAgentContextAdapter,
@@ -18,8 +16,8 @@ import {
 import { sqliteAgentRunAdapter } from "../../src/features/agent-run/adapter-sqlite.js";
 import { createAgentRunExecutionService } from "../../src/features/agent-run/execution.js";
 import { createAgentRunService } from "../../src/features/agent-run/service.js";
-import { createConversationFeature } from "../../src/features/conversation/conversation-compose.js";
 import { sqliteConversationAdapter } from "../../src/features/conversation/adapter-sqlite.js";
+import { createConversationFeature } from "../../src/features/conversation/conversation-compose.js";
 import { openDb } from "../../src/infra/sqlite/db.js";
 
 /** D2 acceptance: switching an agent's backend kind auto-forks a new

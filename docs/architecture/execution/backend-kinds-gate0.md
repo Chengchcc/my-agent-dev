@@ -1,6 +1,6 @@
 # Backend Kinds — Gate 0 协议面核实记录
 
-> 状态: **事实记录,决策未定**(grill 后更新)。日期 2026-08-12。
+> 状态: **已完成**(2026-08-12)。决策见 §7;四个 kind(coding_agent / claude_code / pi / omp)均已实现并接线,见 ADR 0002 与各 adapter 包。本文件保留协议事实与 wire 证据。
 > 目标: 多 coding-agent backend(claude / pi / omp)切换前的协议面核实。本文件只记实测事实与映射点,不产码。
 
 ## 0. 本机环境实测
