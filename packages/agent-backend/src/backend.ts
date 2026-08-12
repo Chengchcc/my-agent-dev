@@ -1,6 +1,6 @@
-import type { BackendInputMessage, BackendRunInput, BackendRunSegment } from "./run.js";
 import type { BackendKind } from "./kinds.js";
 import type { BackendCatalog } from "./model.js";
+import type { BackendInputMessage, BackendRunInput, BackendRunSegment } from "./run.js";
 
 /** One registered backend kind: the AgentBackend plus its model catalog.
  *  The registry is the Product Backend's single dispatch table; execution

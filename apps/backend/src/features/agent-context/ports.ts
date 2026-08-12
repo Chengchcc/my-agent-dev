@@ -43,6 +43,16 @@ export interface AgentContextPort {
 
   forkBranch(input: ForkBranchInput): Promise<{ branch: ContextBranch }>;
 
+  /** Atomically repin the tree's default branch to `branchId` and set its
+   *  backendKind (D2): demotes the previous default, updates the target's
+   *  kind, promotes it. Used when an agent's backend kind changes — the
+   *  forked branch (or the empty default) becomes the new default. */
+  setDefaultBranchKind(
+    treeId: string,
+    branchId: string,
+    backendKind: string,
+  ): Promise<ContextBranch>;
+
   moveBranchLeaf(
     branchId: string,
     expectedRevision: number,

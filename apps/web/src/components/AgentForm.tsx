@@ -39,6 +39,7 @@ import { fieldClass, overlineClass } from "@/lib/form-styles";
 
 const formSchema = z.object({
   name: z.string().trim().min(1, "Agent name is required"),
+  backendKind: z.string().trim().min(1, "Backend is required"),
   model: z.string().trim().min(1, "Model is required"),
   reasoningEffort: z.enum(["", "none", "low", "high", "max"]).default(""),
   permissionMode: z.enum(["ask", "auto", "deny"]).default("ask"),
@@ -66,6 +67,16 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
   const [selectedPackIds, setSelectedPackIds] = useState<string[]>([]);
   const { data: modelData } = useModelList();
   const providers = useMemo(() => modelData?.providers ?? [], [modelData]);
+  // Backend kinds present in the aggregated catalog, canonical order.
+  const backendKinds = useMemo(() => {
+    const order = ["coding_agent", "claude_code", "pi", "omp"];
+    const seen = new Set<string>();
+    for (const p of providers) for (const m of p.models) if (m.backendKind) seen.add(m.backendKind);
+    return order.filter((k) => seen.has(k));
+  }, [providers]);
+  const [selBackendKind, setSelBackendKind] = useState<string>(
+    editAgent?.backendKind ?? "coding_agent",
+  );
   const [selProvider, setSelProvider] = useState<string>(
     (editAgent?.modelName ?? "").includes("/") ? (editAgent?.modelName ?? "").split("/")[0]! : "",
   );
@@ -76,6 +87,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
         name: m.name ?? m.id,
         provider: p.id,
         providerName: p.name,
+        backendKind: m.backendKind ?? "coding_agent",
         available: m.available !== false,
         reasoning: m.reasoning,
         contextWindow: m.contextWindow,
@@ -85,15 +97,24 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
       })),
     );
   }, [providers]);
+  // Providers that actually expose models of the selected backend kind.
+  const kindProviders = useMemo(() => {
+    const ids = new Set(
+      modelGroups.filter((m) => m.backendKind === selBackendKind).map((m) => m.provider),
+    );
+    return providers.filter((p) => ids.has(p.id));
+  }, [providers, modelGroups, selBackendKind]);
   const filteredModels = useMemo(() => {
-    if (!selProvider) return modelGroups;
-    return modelGroups.filter((m) => m.provider === selProvider);
-  }, [modelGroups, selProvider]);
+    return modelGroups.filter(
+      (m) => m.backendKind === selBackendKind && (!selProvider || m.provider === selProvider),
+    );
+  }, [modelGroups, selBackendKind, selProvider]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: editAgent?.name ?? "",
+      backendKind: editAgent?.backendKind ?? "coding_agent",
       // Empty until the catalog loads (see effect below): never hard-code a
       // provider model that may not exist in the runtime catalog.
       model: editAgent?.modelName ?? "",
@@ -117,6 +138,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
     if (editAgent) {
       form.reset({
         name: editAgent.name,
+        backendKind: editAgent.backendKind ?? "coding_agent",
         model: editAgent.modelName.includes("/")
           ? editAgent.modelName
           : `anthropic/${editAgent.modelName}`,
@@ -126,17 +148,26 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
         enableLark: editAgent.lark?.enabled ?? false,
         botDisplayName: editAgent.lark?.botDisplayName ?? "",
       });
+      setSelBackendKind(editAgent.backendKind ?? "coding_agent");
       setSetupSession(null);
     }
   }, [editAgent, form]);
 
-  // New agents: default the model to the first catalog entry once loaded.
-  // Keeps the current value if it is already a valid catalog id.
+  // New agents: default the model to the first catalog entry of the
+  // selected backend kind once loaded. Keeps the current value if it is
+  // already a valid catalog id.
   useEffect(() => {
     if (isEdit || modelGroups.length === 0) return;
     const current = form.getValues("model");
-    if (current && modelGroups.some((m) => m.id === current)) return;
-    const first = modelGroups.find((m) => m.available);
+    if (
+      current &&
+      modelGroups.some((m) => m.id === current && m.backendKind === form.getValues("backendKind"))
+    ) {
+      return;
+    }
+    const first = modelGroups.find(
+      (m) => m.backendKind === form.getValues("backendKind") && m.available,
+    );
     if (first) form.setValue("model", first.id, { shouldValidate: true });
   }, [isEdit, modelGroups, form]);
 
@@ -177,6 +208,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
   function buildBody(values: FormValues): Parameters<typeof api.createAgent>[0] {
     const body: Record<string, unknown> = {
       name: values.name,
+      backendKind: values.backendKind,
       model: {
         provider: values.model.split("/")[0] ?? "anthropic",
         model: values.model.split("/").slice(1).join("/") || values.model,
@@ -305,6 +337,50 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <FormField
                     control={form.control}
+                    name="backendKind"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className={`${overlineClass} mb-1.5 block`}>Backend</FormLabel>
+                        <Select
+                          value={field.value}
+                          onValueChange={(v) => {
+                            const vv = v ?? "";
+                            field.onChange(vv);
+                            setSelBackendKind(vv);
+                            // Switching backend resets provider/model: the
+                            // two catalogs are disjoint (D3). Pick the first
+                            // available model of the new kind.
+                            const current = form.getValues("model");
+                            const stillValid = modelGroups.some(
+                              (m) => m.id === current && m.backendKind === vv && m.available,
+                            );
+                            if (stillValid) return;
+                            setSelProvider("");
+                            const first = modelGroups.find(
+                              (m) => m.backendKind === vv && m.available,
+                            );
+                            form.setValue("model", first?.id ?? "", {
+                              shouldValidate: true,
+                            });
+                          }}
+                        >
+                          <SelectTrigger className={fieldClass}>
+                            <SelectValue placeholder="Select backend…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {backendKinds.map((k) => (
+                              <SelectItem key={k} value={k}>
+                                {k}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
                     name="model"
                     render={({ field }) => (
                       <FormItem>
@@ -318,10 +394,19 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                             // first available model of the new provider.
                             const current = field.value;
                             const stillValid = modelGroups.some(
-                              (m) => m.id === current && m.provider === vv && m.available,
+                              (m) =>
+                                m.id === current &&
+                                m.provider === vv &&
+                                m.backendKind === selBackendKind &&
+                                m.available,
                             );
                             if (stillValid) return;
-                            const first = modelGroups.find((m) => m.provider === vv && m.available);
+                            const first = modelGroups.find(
+                              (m) =>
+                                m.provider === vv &&
+                                m.backendKind === selBackendKind &&
+                                m.available,
+                            );
                             field.onChange(first?.id ?? "");
                           }}
                         >
@@ -329,7 +414,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                             <SelectValue placeholder="Select provider…" />
                           </SelectTrigger>
                           <SelectContent>
-                            {providers.map((p) => (
+                            {kindProviders.map((p) => (
                               <SelectItem key={p.id} value={p.id}>
                                 {p.name}
                               </SelectItem>

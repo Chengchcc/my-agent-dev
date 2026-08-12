@@ -1,7 +1,7 @@
+import { ClaudeBackend, ClaudeModelCatalog } from "@my-agent-team/adapter-claude-agent";
 import { CodingAgentBackend, CodingAgentModelCatalog } from "@my-agent-team/adapter-coding-agent";
 import { OmpBackend, OmpModelCatalog } from "@my-agent-team/adapter-omp-agent";
 import { PiBackend, PiModelCatalog } from "@my-agent-team/adapter-pi-agent";
-import { ClaudeBackend, ClaudeModelCatalog } from "@my-agent-team/adapter-claude-agent";
 import type {
   BackendKind,
   BackendRegistry,

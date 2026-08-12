@@ -328,6 +328,7 @@ export const api = {
           contextWindow: number;
           maxTokens: number;
           available?: boolean;
+          backendKind: string;
         }>;
       }>;
     };

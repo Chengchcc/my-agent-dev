@@ -32,9 +32,6 @@ function isSystemSender(memberId: string): boolean {
   return memberId === "__system__";
 }
 
-/** The one real Agent Backend in Phase 4/5. */
-const BACKEND_KIND = "coding_agent";
-
 export interface ConversationServiceDeps {
   port: ConversationPort;
   /** Phase 4 durable run creation: enqueue + branch acquire. */
@@ -264,11 +261,38 @@ class ConversationServiceImpl implements ConversationService {
     if (!member?.agentId) {
       throw new Error(`no agent member ${input.memberId} in ${input.conversationId}`);
     }
-    const branch = await this.#contextService.getOrCreateDefaultBranch(
+    const defaultModel = await this.#resolveDefaultModel(member.agentId);
+    const kind = defaultModel.backendKind;
+    let branch = await this.#contextService.getOrCreateDefaultBranch(
       input.conversationId,
       input.memberId,
-      BACKEND_KIND,
+      kind,
     );
+    // D2: the agent's backend kind changed since this branch was created.
+    // Fork a new default branch pinned to the new kind; the old branch's
+    // history stays read-only (ADR 0002). An empty default (no entries)
+    // is repinned in place instead — nothing to preserve.
+    if (branch.backendKind !== kind) {
+      if (branch.leafEntryId) {
+        const forked = await this.#contextService.forkBranch(
+          branch.branchId,
+          branch.revision,
+          branch.leafEntryId,
+          kind,
+        );
+        branch = forked.branch;
+      }
+      branch = await this.#contextService.setDefaultBranchKind(
+        branch.treeId,
+        branch.branchId,
+        kind,
+      );
+      debugLog(
+        "conversation",
+        `kind_switch conversationId=${input.conversationId} agentMemberId=${input.memberId} ` +
+          `oldKind=${branch.backendKind} -> newKind=${kind} branchId=${branch.branchId}`,
+      );
+    }
     const active = await this.#agentRuns.getActiveRun(branch.branchId);
     // Auto-inferred routing needs three states, not two:
     //   live child      -> steer (routable now)
@@ -286,11 +310,10 @@ class ConversationServiceImpl implements ConversationService {
       if (active) await this.#abortStaleRun(active.runId);
       mode = "normal";
     }
-    const defaultModel = await this.#resolveDefaultModel(member.agentId);
     const { acquired, queued, cancelled, run, inputId } = await this.#agentRuns.enqueueAndAcquire({
       conversationId: input.conversationId,
       agentMemberId: input.memberId,
-      backendKind: BACKEND_KIND,
+      backendKind: kind,
       mode,
       message: input.message,
       defaultModel,

@@ -57,6 +57,13 @@ export interface AgentContextService {
     backendKind?: string,
   ): Promise<{ branch: ContextBranch }>;
 
+  /** Repin the tree's default branch (D2 kind switch). */
+  setDefaultBranchKind(
+    treeId: string,
+    branchId: string,
+    backendKind: string,
+  ): Promise<ContextBranch>;
+
   moveBranchLeaf(
     branchId: string,
     expectedRevision: number,
@@ -151,6 +158,10 @@ export function createAgentContextService(deps: AgentContextServiceDeps): AgentC
         fromEntryId,
         backendKind,
       });
+    },
+
+    async setDefaultBranchKind(treeId, branchId, backendKind) {
+      return port.setDefaultBranchKind(treeId, branchId, backendKind);
     },
 
     async moveBranchLeaf(branchId, expectedRevision, newLeafEntryId) {

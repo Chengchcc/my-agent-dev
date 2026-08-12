@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useAgentList } from "@/features/agents/hooks";
 import { useConversation } from "@/hooks/useConversation";
 import type { ConversationSnapshot } from "@/lib/api";
 import { api } from "@/lib/api";
@@ -175,6 +176,16 @@ export function ConversationCanvas({
     return agent ?? null;
   }, [roster]);
 
+  // Backend kind badge: agentId → agents.backendKind (D2/D3). Drives the
+  // header badge; CLI backends (claude/pi/omp) run with CLI-session
+  // context continuity (ADR 0002).
+  const { data: agents } = useAgentList();
+  const primaryKind = useMemo(() => {
+    const id = primaryAgent?.agentId;
+    if (!id) return undefined;
+    return agents?.find((a) => a.id === id)?.backendKind;
+  }, [agents, primaryAgent]);
+
   const handleExport = useCallback(async () => {
     const md = await api.exportConversation(conversationId);
     const blob = new Blob([md], { type: "text/markdown" });
@@ -289,6 +300,14 @@ export function ConversationCanvas({
             <span className="text-sm font-medium text-(--ink-strong)">
               {primaryAgent.displayName ?? primaryAgent.memberId}
             </span>
+            {primaryKind && (
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 h-4 font-mono text-(--mute)"
+              >
+                {primaryKind}
+              </Badge>
+            )}
           </div>
         )}
 

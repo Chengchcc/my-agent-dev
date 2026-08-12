@@ -1,6 +1,5 @@
 import type {
   AgentBackend,
-  BackendCatalog,
   BackendEvent,
   BackendModelRef,
   BackendRegistry,
@@ -11,7 +10,7 @@ import type {
   ProjectedHistoryItem,
   WorkspaceBinding,
 } from "@my-agent-team/agent-backend";
-import { BACKEND_KINDS, debugLog, type BackendKind } from "@my-agent-team/agent-backend";
+import { BACKEND_KINDS, type BackendKind, debugLog } from "@my-agent-team/agent-backend";
 import { resolveModelAlias } from "@my-agent-team/ai";
 import type { Message } from "@my-agent-team/message";
 import type {

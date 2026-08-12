@@ -457,5 +457,36 @@ export function sqliteAgentContextAdapter(
         return parseBranch(result);
       })();
     },
+
+    async setDefaultBranchKind(treeId, branchId, backendKind) {
+      return db.transaction(() => {
+        const target = d
+          .select()
+          .from(schema.agentContextBranch)
+          .where(eq(schema.agentContextBranch.branchId, branchId))
+          .get();
+        if (!target || target.treeId !== treeId) {
+          throw new ContextBranchNotFoundError(branchId);
+        }
+        // Demote every other branch in the tree, then repin the target.
+        d.update(schema.agentContextBranch)
+          .set({ isDefault: 0 })
+          .where(eq(schema.agentContextBranch.treeId, treeId))
+          .run();
+        const result = d
+          .update(schema.agentContextBranch)
+          .set({ isDefault: 1, backendKind })
+          .where(
+            and(
+              eq(schema.agentContextBranch.branchId, branchId),
+              eq(schema.agentContextBranch.treeId, treeId),
+            ),
+          )
+          .returning()
+          .get();
+        if (!result) throw new ContextBranchNotFoundError(branchId);
+        return parseBranch(result);
+      })();
+    },
   };
 }
