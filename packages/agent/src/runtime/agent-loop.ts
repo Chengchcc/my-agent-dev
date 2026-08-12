@@ -21,7 +21,6 @@ import { type PruneConfig, pruneOldToolResults } from "./tool-pruning.js";
 export type { AgentLoopListener, CodingAgentLoopEvent };
 
 /** Thinking-mode effort, aligned with the provider's Anthropic config. */
-export type ThinkingLevel = "off" | "low" | "high" | "max";
 
 interface PendingToolCall {
   id: string;
@@ -53,15 +52,12 @@ export interface CodingAgentSessionOptions {
   readonly plugins: readonly Plugin[];
   readonly maxSteps: number;
   readonly maxForceContinues: number;
-  /** The model call for one turn. The optional 4th argument carries the
-   *  current thinking level (from prepareNextTurn), which the caller may
-   *  map onto provider options. */
+  /** The model call for one turn. */
   readonly modelStream: (
     messages: readonly Message[],
     signal?: AbortSignal,
     /** Current tool table (static plugins + per-Run resolved tools). */
     tools?: readonly PluginTool[],
-    opts?: { thinkingLevel?: ThinkingLevel },
   ) => AsyncIterable<AIMessageChunk>;
   readonly summarize: ContextSummarizer;
   /** Resolve the model display identity for a run's model ref, used to render
@@ -71,12 +67,6 @@ export interface CodingAgentSessionOptions {
    *  `input.run.productTools`). Merged into the tool table at each runLoop
    *  start so snapshot changes apply on the next Run without a rebuild. */
   readonly resolveTools?: (input: CodingLoopInput) => Promise<readonly PluginTool[]>;
-  /** Per-turn state hook (pi's prepareNextTurn): called after each turn's
-   *  messages are persisted, before the next model call. May return a new
-   *  thinking level that applies to the NEXT turn only. */
-  readonly prepareNextTurn?: (ctx: {
-    step: number;
-  }) => { thinkingLevel?: ThinkingLevel } | undefined;
   /** Runtime capabilities injected into plugin hooks (model stream, store,
    *  workspace, emit). Optional: when omitted, hooks receive a stub with
    *  emit only (backward-compatible with pre-existing plugins). */
@@ -157,8 +147,6 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   let controller: AbortController | null = null;
   const steerQueue: BackendInputMessage[] = [];
   let acceptingSteer = false;
-  // Per-turn thinking level (from prepareNextTurn), applied to the NEXT turn.
-  let nextThinkingLevel: ThinkingLevel | undefined;
   let debugModelId = "";
   let debugTurn = 0;
   let debugRunId = "";
@@ -214,7 +202,6 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     active = true;
     status = "running";
     controller = new AbortController();
-    nextThinkingLevel = undefined;
     // Bind rt.signal to THIS run's controller so plugin model calls
     // (recap/pet) honor stop()/abort().
     rt = {
@@ -283,10 +270,6 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       let thresholdCompacted = false;
       let naturalStop = false;
 
-      // Restore the last persisted thinking level (resume across runs). Walks
-      // the session tree backward for the latest thinking_level_change entry.
-      nextThinkingLevel = await restoreLastThinkingLevel();
-      let lastPersistedThinkingLevel = nextThinkingLevel;
       for (const p of opts.plugins) {
         if (p.hooks?.beforeRun) {
           try {
@@ -373,9 +356,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
             const modelMessages = systemPrompt
               ? [{ role: "system", text: systemPrompt } as Message, ...transformed]
               : transformed;
-            const thinkingLevel = nextThinkingLevel;
-            nextThinkingLevel = undefined;
-            const turn = await streamModelTurn(modelMessages, thinkingLevel);
+            const turn = await streamModelTurn(modelMessages);
             const thinkingBlocks = buildThinkingBlock(turn);
 
             if (turn.toolCalls.length > 0) {
@@ -562,25 +543,6 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
           }
         }
 
-        // Per-turn state (pi's prepareNextTurn): let the session adjust the
-        // thinking level for the next turn. Persist the change so it
-        // survives resume (pi's ThinkingLevelChangeEntry).
-        const turnLevel = opts.prepareNextTurn?.({ step })?.thinkingLevel;
-        // Idempotency guard (pi #1118): only persist when the level
-        // actually changes — avoids bloating the session log with
-        // duplicate entries every turn.
-        if (turnLevel !== undefined && turnLevel !== lastPersistedThinkingLevel) {
-          lastPersistedThinkingLevel = turnLevel;
-          await persist([
-            {
-              type: "thinking_level_change",
-              thinkingLevel: turnLevel,
-              createdAt: Date.now(),
-            },
-          ]);
-        }
-        nextThinkingLevel = turnLevel;
-
         // afterModel hook (recap/pet): after the turn's output + tool
         // results are persisted, before turn_end.
         for (const p of opts.plugins) {
@@ -655,10 +617,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
 
   /** Accumulate one model turn from the stream — pure, no persistence
    *  (pi's streamAssistantResponse). The caller decides what to persist. */
-  async function streamModelTurn(
-    messages: readonly Message[],
-    thinkingLevel?: ThinkingLevel,
-  ): Promise<ModelTurn> {
+  async function streamModelTurn(messages: readonly Message[]): Promise<ModelTurn> {
     let text = "";
     let thinking = "";
     let thinkingSignature: string | undefined;
@@ -672,9 +631,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
 
     await emit({ type: "message_start" });
     const stream = retryStream(
-      // The tool table is re-read each turn so per-Run tools (Product
-      // Tools) from the latest resolveTools() are advertised to the model.
-      (signal) => opts.modelStream(messages, signal, [...toolMap.values()], { thinkingLevel }),
+      (signal) => opts.modelStream(messages, signal, [...toolMap.values()]),
       {
         maxAttempts: opts.maxRetries ?? 3,
         baseDelayMs: 1000,
@@ -928,19 +885,6 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         }
         return [msg];
       });
-  }
-
-  /** Walk the session tree backward for the latest thinking_level_change
-   *  entry. Returns its thinkingLevel, or undefined when none exists. */
-  async function restoreLastThinkingLevel(): Promise<ThinkingLevel | undefined> {
-    const entries = await opts.store.readBranch(opts.sessionId);
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const e = entries[i]!;
-      if (e.type === "thinking_level_change") {
-        return (e.thinkingLevel ?? undefined) as ThinkingLevel | undefined;
-      }
-    }
-    return undefined;
   }
 
   return {

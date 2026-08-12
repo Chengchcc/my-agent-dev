@@ -5,9 +5,9 @@ import "./anthropic-messages.js";
 import "./openai-completions.js";
 import "./openai-responses.js";
 
-import { createProvider } from "./create-provider.js";
 import type { AIMessageChunk } from "@my-agent-team/core";
-import { ProviderError, type Model } from "../types.js";
+import { type Model, ProviderError } from "../types.js";
+import { createProvider } from "./create-provider.js";
 
 // ── Test models ──
 
@@ -417,7 +417,11 @@ describe("Provider contract — wire serialization", () => {
     capture.restore();
 
     const body = capture.getBody();
-    const tools = body!.tools as Array<{ name: string; input_schema: unknown }>;
+    const tools = body!.tools as Array<{
+      name: string;
+      description: string;
+      input_schema: unknown;
+    }>;
     expect(tools).toContainEqual({
       name: "ls",
       description: "List a directory",

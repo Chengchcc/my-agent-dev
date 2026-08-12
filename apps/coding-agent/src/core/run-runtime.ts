@@ -367,12 +367,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     pluginRuntime,
     maxSteps: 32,
     maxForceContinues: 4,
-    modelStream: async function* (
-      messages,
-      signal,
-      tools,
-      turnOpts?: { thinkingLevel?: "off" | "low" | "high" | "max" },
-    ) {
+    modelStream: async function* (messages, signal, tools) {
       const run = activeRun;
       if (!run) throw new Error("no active run: model unresolved");
       const catalog = await deps.modelRuntime.getCatalog();
@@ -382,12 +377,9 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       if (!model) throw new Error(`model not found: ${run.model.modelId}`);
       const timeoutSignal = AbortSignal.timeout(modelTimeoutMs);
       const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-      // Reasoning effort (Anthropic protocol): none disables thinking;
-      // low/high/max use adaptive thinking with the matching effort. When
-      // unset the provider default applies (thinking on for DeepSeek). A
-      // per-turn thinkingLevel (prepareNextTurn) overrides the run default.
-      const reasoningEffort =
-        turnOpts?.thinkingLevel ?? (run.model as { reasoningEffort?: string }).reasoningEffort;
+      // Reasoning effort from the run config: none disables thinking;
+      // low/high/max use adaptive thinking with the matching effort.
+      const reasoningEffort = (run.model as { reasoningEffort?: string }).reasoningEffort;
       const reasoningOpts =
         reasoningEffort === "none"
           ? { thinking: { type: "disabled" as const } }

@@ -2,6 +2,7 @@ import type { Message } from "@my-agent-team/message";
 import type {
   CatalogRefreshResult,
   CredentialStore,
+  ModelCost,
   ModelRuntime,
   ModelRuntimeEntry,
   Provider,

@@ -17,13 +17,7 @@ export interface AppendBatchResult {
 export function validateBatch(entries: readonly Record<string, unknown>[]): void {
   for (const entry of entries) {
     const type = entry.type;
-    if (
-      type !== "message" &&
-      type !== "compaction" &&
-      type !== "todo" &&
-      type !== "thinking_level_change" &&
-      type !== "model_change"
-    ) {
+    if (type !== "message" && type !== "compaction" && type !== "todo") {
       throw new Error(`Invalid entry type: ${String(type)}`);
     }
     if (type === "message") {
