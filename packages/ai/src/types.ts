@@ -216,6 +216,7 @@ export interface ModelRuntimeEntry {
   readonly contextWindow: number;
   readonly maxOutputTokens: number;
   readonly available: boolean;
+  readonly cost: ModelCost;
 }
 
 export interface ModelRuntime {

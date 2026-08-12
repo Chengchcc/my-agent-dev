@@ -25,6 +25,7 @@ export function createModelRuntime(opts: ModelRuntimeOptions = {}): ModelRuntime
       input: readonly string[];
       contextWindow: number;
       maxTokens: number;
+      cost: ModelCost;
     },
   ): ModelRuntimeEntry {
     return {
@@ -36,6 +37,7 @@ export function createModelRuntime(opts: ModelRuntimeOptions = {}): ModelRuntime
       contextWindow: m.contextWindow,
       maxOutputTokens: m.maxTokens,
       available: true,
+      cost: m.cost,
     };
   }
 

@@ -379,9 +379,37 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
             const thinkingBlocks = buildThinkingBlock(turn);
 
             if (turn.toolCalls.length > 0) {
-              // Tool turn: persist assistant(tool_use) + thinking, execute,
-              // persist results, then continue unless a tool asks to stop.
-              await persist([
+              // Stop-during-stream: signal aborted before we persist anything.
+              // Do not write a dangling tool_use — it would corrupt the branch
+              // on resume (API 400 for unpaired tool_use).
+              if (controller?.signal.aborted) {
+                status = "stopped";
+                await emit({ type: "agent_end", status });
+                controller = null;
+                return { status, usage: runUsage, error: "stopped by user" };
+              }
+
+              // Execute tools FIRST, then persist assistant + results in ONE
+              // batch. This ensures the tree never has a tool_use without a
+              // matching tool_result — even if stop fires during execution,
+              // the batch either fully writes or doesn't write at all.
+              const toolResults = await executeTools(turn.toolCalls);
+
+              if (controller?.signal.aborted) {
+                status = "stopped";
+                await emit({ type: "agent_end", status });
+                controller = null;
+                return { status, usage: runUsage, error: "stopped by user" };
+              }
+
+              // Persist assistant(tool_use) + all tool_results atomically.
+              const batch: Array<{
+                type: "message";
+                role: "assistant" | "tool";
+                source: string;
+                message: Message;
+                createdAt: number;
+              }> = [
                 {
                   type: "message",
                   role: "assistant",
@@ -398,49 +426,35 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
                         input: tc.input,
                       })),
                     ],
-                  },
+                  } as Message,
                   createdAt: Date.now(),
                 },
-              ]);
-
-              const toolResults = await executeTools(turn.toolCalls);
-
-              // stop() during tool execution: do not persist partial results.
-              if (controller?.signal.aborted) {
-                status = "stopped";
-                await emit({ type: "agent_end", status });
-                controller = null;
-                return { status, usage: runUsage, error: "stopped by user" };
-              }
-
-              for (const result of toolResults) {
-                await persist([
-                  {
-                    type: "message",
+                ...toolResults.map((result) => ({
+                  type: "message" as const,
+                  role: "tool" as const,
+                  source: "tool_result" as const,
+                  message: {
                     role: "tool",
-                    source: "tool_result",
-                    message: {
-                      role: "tool",
-                      text: JSON.stringify(result.result),
-                      blocks: [
-                        {
-                          type: "tool_result",
-                          tool_use_id: result.id,
-                          content: JSON.stringify(result.result),
-                          ...(result.isError ? { is_error: true } : {}),
-                        },
-                      ],
-                    },
-                    createdAt: Date.now(),
-                  },
-                ]);
-              }
+                    text: JSON.stringify(result.result),
+                    blocks: [
+                      {
+                        type: "tool_result" as const,
+                        tool_use_id: result.id,
+                        content: JSON.stringify(result.result),
+                        ...(result.isError ? { is_error: true } : {}),
+                      },
+                    ],
+                  } as Message,
+                  createdAt: Date.now(),
+                })),
+              ];
+              await persist(batch);
 
               messages = await readBranchMessages();
               if (toolResults.some((r) => r.terminate) && steerQueue.length === 0) {
                 naturalStop = true;
               }
-              break; // tool turn complete -> next step
+              break;
             }
 
             // Text turn: persist assistant(text) + thinking. Thinking alone

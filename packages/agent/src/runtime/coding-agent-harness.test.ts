@@ -632,6 +632,63 @@ function testHarness(
       expect(assistantEntries).toHaveLength(0);
     });
 
+    test("7h. stop during tool turn leaves no dangling tool_use in tree", async () => {
+      const store = storeFactory("h7h");
+      await createSession(store, "h7h");
+      const { promise: toolStarted, resolve: signalToolStarted } = Promise.withResolvers<void>();
+      const { promise: allowFinish, resolve: allowFinishResolve } = Promise.withResolvers<void>();
+      const plugin: Plugin = {
+        name: "test",
+        tools: [
+          {
+            name: "block",
+            description: "blocking tool",
+            inputSchema: { type: "object" },
+            async execute() {
+              signalToolStarted();
+              await allowFinish;
+              return { ok: true };
+            },
+          },
+        ],
+      };
+      const loop = createCodingAgentSession({
+        sessionId: "h7h",
+        store,
+        plugins: [plugin],
+        maxSteps: 5,
+        maxForceContinues: 0,
+        summarize: fakeSummarize,
+        modelStream: async function* () {
+          yield { delta: { type: "tool_use", id: "tc-dangling", name: "block" } };
+          yield { stopReason: "tool_use" };
+        },
+      });
+      const started = loop.startLoop(loopInput({ message: "go" }));
+      // Wait for the tool to start executing (loop is blocked in executeTools).
+      await toolStarted;
+      // Stop while tools are running.
+      loop.stop();
+      // Let the tool finish so executeTools returns and the abort check fires.
+      allowFinishResolve();
+      await started;
+      expect(loop.status).toBe("stopped");
+
+      // Dangling invariant: tool_use without tool_result corrupts the
+      // branch on resume (API 400). The tree must not have one.
+      const snap = await store.open("h7h");
+      const msgEntries = snap.entries.filter((e) => e.type === "message");
+      const hasToolUse = msgEntries.some((e) => {
+        const blocks = (e as { message?: { blocks?: Array<{ type: string }> } }).message?.blocks;
+        return blocks?.some((b) => b.type === "tool_use");
+      });
+      const hasToolResult = msgEntries.some((e) => {
+        const blocks = (e as { message?: { blocks?: Array<{ type: string }> } }).message?.blocks;
+        return blocks?.some((b) => b.type === "tool_result");
+      });
+      if (hasToolUse) expect(hasToolResult).toBe(true);
+    });
+
     test("7g. message_start always pairs with message_end, even on failure", async () => {
       const store = storeFactory("h7g");
       await createSession(store, "h7g");
