@@ -14,8 +14,6 @@ function setup(dir: string) {
     dataDir: dir,
     workspaceRoot: dir,
     templateDir: `${dir}/templates`,
-    anthropicApiKey: "sk-test",
-    anthropicBaseUrl: "https://api.anthropic.com",
     host: "0.0.0.0",
     port: 3000,
     authToken: "test-token",

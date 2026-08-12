@@ -8,8 +8,6 @@ const baseConfig: BackendConfig = {
   dataDir: "/tmp",
   workspaceRoot: "/tmp",
   templateDir: "/tmp/templates",
-  anthropicApiKey: "sk-test",
-  anthropicBaseUrl: "https://api.anthropic.com",
   host: "0.0.0.0",
   port: 3000,
   authToken: "test-token",
@@ -51,35 +49,31 @@ describe("resolveCodingAgentCommand", () => {
     ).toThrow(/Coding Agent source entry not found/);
   });
 
-  test("secrets travel only via env, merged with caller env", () => {
+  test("forwards provider env subset + token, merged with caller env", () => {
     const result = resolveCodingAgentCommand(
       {
         ...baseConfig,
-        anthropicApiKey: "sk-abc",
-        anthropicBaseUrl: "https://proxy.example",
         productToolsServiceToken: "tok-secret",
       },
       { env: { EXTRA: "1" } },
     );
 
     expect(result.env).toMatchObject({
-      ANTHROPIC_API_KEY: "sk-abc",
-      ANTHROPIC_BASE_URL: "https://proxy.example",
       CODING_AGENT_PRODUCT_TOOL_TOKEN: "tok-secret",
       EXTRA: "1",
     });
+    // Provider env comes from process.env (no provider is required; a clean
+    // machine with zero keys still boots). The child resolves which
+    // providers have keys via its own catalog registration.
+    expect(result.env?.ANTHROPIC_API_KEY).toBe(process.env.ANTHROPIC_API_KEY);
+    expect(result.env?.DEEPSEEK_API_KEY).toBe(process.env.DEEPSEEK_API_KEY);
+    expect(result.env?.MY_AGENT_HOME).toBe(process.env.MY_AGENT_HOME);
     // The token never appears in the command line.
     expect(JSON.stringify(result.args ?? [])).not.toContain("tok-secret");
   });
 
-  test("omits absent secrets", () => {
-    const result = resolveCodingAgentCommand({
-      ...baseConfig,
-      anthropicApiKey: undefined,
-      productToolsServiceToken: undefined,
-    } as unknown as BackendConfig);
-
-    expect(result.env?.ANTHROPIC_API_KEY).toBeUndefined();
+  test("omits absent product tools token", () => {
+    const result = resolveCodingAgentCommand(baseConfig);
     expect(result.env?.CODING_AGENT_PRODUCT_TOOL_TOKEN).toBeUndefined();
   });
 

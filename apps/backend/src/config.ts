@@ -10,8 +10,6 @@ export interface BackendConfig {
   templateDir: string;
   authToken: string;
   maxConcurrentRuns: number;
-  anthropicApiKey: string;
-  anthropicBaseUrl?: string;
   cancelGraceMs: number;
   /** Absolute path to the repo skills/ directory (source for builtin seed). */
   builtinSkillsDir: string;
@@ -29,9 +27,6 @@ export interface BackendConfig {
 export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
   const dataDir = env.BACKEND_DATA_DIR ?? `${import.meta.dir}/../.backend-data`;
 
-  const anthropicApiKey = env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN;
-  if (!anthropicApiKey) throw new Error("ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN is required");
-
   return {
     port: env.BACKEND_PORT,
     host: env.BACKEND_HOST,
@@ -40,8 +35,6 @@ export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
     templateDir: env.BACKEND_TEMPLATE_DIR ?? `${dataDir}/templates`,
     authToken: env.BACKEND_AUTH_TOKEN,
     maxConcurrentRuns: env.BACKEND_MAX_CONCURRENT,
-    anthropicApiKey,
-    anthropicBaseUrl: env.ANTHROPIC_BASE_URL,
     cancelGraceMs: env.BACKEND_CANCEL_GRACE_MS,
     builtinSkillsDir: process.env.BUILTIN_SKILLS_DIR ?? resolve(import.meta.dir, "../../../skills"),
     codingAgentBin: env.CODING_AGENT_BIN,

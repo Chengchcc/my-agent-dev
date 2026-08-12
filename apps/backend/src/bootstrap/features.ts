@@ -1,5 +1,4 @@
 import { CodingAgentBackend, CodingAgentModelCatalog } from "@my-agent-team/adapter-coding-agent";
-import { resolveModelAlias } from "@my-agent-team/ai";
 import type { Message } from "@my-agent-team/message";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { FeatureSet } from "../app.js";
@@ -147,33 +146,42 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     assertNoActiveRun: (agentId: string) => busyGuard.check?.(agentId),
   });
 
-  async function ensureAgent(id: string, name: string, model: string) {
+  async function ensureAgent(id: string, name: string, model: { provider: string; model: string }) {
     try {
       await agentSvc.getById(id);
     } catch {
       await agentSvc.create({
         id,
         name,
-        model: { provider: "anthropic", model },
+        model,
         permissionMode: "auto",
       });
     }
   }
 
-  /** Default seed model derives from the live catalog (single source of
+  /** Seed model + provider derive from the live catalog (single source of
    *  truth) — catalog evolution changes the default without touching this
-   *  file. Falls back to the legacy id (alias-resolved) when the catalog
-   *  is unreachable at bootstrap. */
-  async function defaultSeedModel(): Promise<string> {
+   *  file. Picks the FIRST available model across all providers (the user's
+   *  configured provider keys determine which appear). When no provider has
+   *  a key yet (clean machine), seeds a placeholder so agents still exist
+   *  and get configured later in the UI. */
+  async function defaultSeedModel(): Promise<{ provider: string; model: string }> {
     try {
       const catalog = await modelCatalog.list();
-      const first = catalog.models.find((m) => m.id.startsWith("anthropic/"));
-      if (first) return first.id.slice("anthropic/".length);
+      const first = catalog.models.find((m) => m.available !== false);
+      if (first) {
+        const slash = first.id.indexOf("/");
+        if (slash > 0) {
+          return { provider: first.id.slice(0, slash), model: first.id.slice(slash + 1) };
+        }
+      }
     } catch {
       /* catalog spawn unavailable at bootstrap — fall through */
     }
-    // ponytail: legacy fallback, delete once seed derives solely from catalog.
-    return resolveModelAlias("claude-sonnet-4-20250514");
+    // ponytail: placeholder until a provider key is configured. Agents
+    // exist with identity/memory/skills; dispatch fails until the user
+    // picks a real model in the UI.
+    return { provider: "unconfigured", model: "none" };
   }
 
   const seedModel = await defaultSeedModel();

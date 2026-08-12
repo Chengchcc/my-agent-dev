@@ -23,8 +23,19 @@ export function resolveCodingAgentCommand(
   } = {},
 ): CodingAgentCommandConfig {
   const env = {
-    ...(config.anthropicApiKey ? { ANTHROPIC_API_KEY: config.anthropicApiKey } : {}),
-    ...(config.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: config.anthropicBaseUrl } : {}),
+    // Provider credentials reach the child via env only (the child's
+    // registerProvidersFromCatalog reads process.env). Forward the
+    // provider env subset + runtime catalog location; the child resolves
+    // which providers have keys. No provider is required — a clean machine
+    // with zero keys still boots; agents get configured later.
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
+    ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    MY_AGENT_HOME: process.env.MY_AGENT_HOME,
     // The Product Tools service token reaches the child ONLY via env —
     // never through command args, run input, entrypoint URL or logs.
     ...(config.productToolsServiceToken
