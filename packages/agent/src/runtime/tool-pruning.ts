@@ -48,7 +48,7 @@ function estimateTokens(message: Message): number {
   return Math.ceil((message.text?.length ?? 0) / 4);
 }
 
-/** Prune old tool-result content from a message list (pi's pruneToolOutputs).
+/** Prune old tool-result content from a message list (omp's pruneToolOutputs).
  *
  *  Walks backward from the newest message, accumulating tool-result tokens.
  *  Once the protect window is exceeded, tool results outside the window are
@@ -78,7 +78,7 @@ export function pruneOldToolResults(
     // from this tool message's position is wrong — the tool_use is in a
     // PRIOR assistant message. We match by tool_use_id.
     const toolResultBlock = msg.blocks.find((b) => b.type === "tool_result");
-    if (!toolResultBlock || toolResultBlock.type !== "tool_result") continue;
+    if (toolResultBlock?.type !== "tool_result") continue;
 
     // Find the associated tool_use to check if the tool is protected.
     let toolName: string | undefined;

@@ -198,12 +198,13 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   }
 
   /**
-   * pi-style runLoop: outer loop drains follow-up inputs after the agent
-   * would stop; inner loop runs model turns and tool calls until the model
-   * stops. Each model turn is accumulated purely (streamModelTurn) and then
-   * persisted as canonical messages — persistence is a turn-level decision,
-   * never inside the stream accumulation. Steer inputs drain at safe
-   * boundaries; runEphemeralTurn is a side channel that never persists.
+   * runLoop: inner loop runs model turns and tool calls until the model
+   * stops. Each model turn is accumulated purely (streamModelTurn) and
+   * then persisted as canonical messages — persistence is a turn-level
+   * decision, never inside the stream accumulation. Steer inputs drain
+   * at safe boundaries; runEphemeralTurn is a side channel that never
+   * persists. Follow-up inputs require a separate startFollowUp() call
+   * (the backend orchestrates follow-ups via branch_input_queue).
    */
   async function runLoop(
     codingInput: CodingLoopInput,
@@ -285,7 +286,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       // Restore the last persisted thinking level (resume across runs). Walks
       // the session tree backward for the latest thinking_level_change entry.
       nextThinkingLevel = await restoreLastThinkingLevel();
-      // beforeRun: one-shot per-Run hook.
+      let lastPersistedThinkingLevel = nextThinkingLevel;
       for (const p of opts.plugins) {
         if (p.hooks?.beforeRun) {
           try {
@@ -320,11 +321,18 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         }
 
         // One step = at most one model call. Overflow recovery stays INSIDE
-        // this step and never consumes an extra maxStep.
         while (true) {
-          // Proactive (threshold) compaction.
+          // Prune old tool-result content (omp's pruneToolOutputs): a lighter
+          // pass that runs BEFORE compaction checks. Old results outside the
+          // protect window are truncated to a summary; protected tools are
+          // never pruned. May reduce context enough to avoid compaction
+          // entirely (omp docs/compaction.md).
+          const modelMessages0 = opts.pruneConfig
+            ? pruneOldToolResults(messages, opts.pruneConfig).messages
+            : messages;
+
           // Proactive (threshold) compaction. Token estimation is cached
-          // per entry (pi's message-cache): settled messages aren't
+          // per entry (our TokenEstimateCache): settled messages aren't
           // re-estimated every turn.
           if (opts.contextBudget && !thresholdCompacted) {
             const branch = await opts.store.readBranch(opts.sessionId);
@@ -350,13 +358,6 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
               messages = await readBranchMessages();
             }
           }
-
-          // Prune old tool-result content (pi's pruneToolOutputs): a lighter
-          // pass than compaction. Old results outside the protect window are
-          // truncated to a summary; protected tools are never pruned.
-          const modelMessages0 = opts.pruneConfig
-            ? pruneOldToolResults(messages, opts.pruneConfig).messages
-            : messages;
 
           // beforeModel hook.
           const transformed = [...modelMessages0];
@@ -469,9 +470,13 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
             for (const p of opts.plugins) {
               if (p.hooks?.beforeStop) {
                 let vetoed = false;
-                p.hooks.beforeStop(() => {
-                  vetoed = true;
-                }, rt);
+                try {
+                  p.hooks.beforeStop(() => {
+                    vetoed = true;
+                  }, rt);
+                } catch {
+                  /* plugin errors never fail the run */
+                }
                 if (vetoed && forceContinues < opts.maxForceContinues) {
                   forceContinues++;
                   stopped = false;
@@ -547,7 +552,11 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         // thinking level for the next turn. Persist the change so it
         // survives resume (pi's ThinkingLevelChangeEntry).
         const turnLevel = opts.prepareNextTurn?.({ step })?.thinkingLevel;
-        if (turnLevel !== undefined) {
+        // Idempotency guard (pi #1118): only persist when the level
+        // actually changes — avoids bloating the session log with
+        // duplicate entries every turn.
+        if (turnLevel !== undefined && turnLevel !== lastPersistedThinkingLevel) {
+          lastPersistedThinkingLevel = turnLevel;
           await persist([
             {
               type: "thinking_level_change",
@@ -562,7 +571,11 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         // results are persisted, before turn_end.
         for (const p of opts.plugins) {
           if (p.hooks?.afterModel) {
-            await p.hooks.afterModel(messages, rt);
+            try {
+              await p.hooks.afterModel(messages, rt);
+            } catch {
+              /* plugin errors never fail the run */
+            }
           }
         }
 

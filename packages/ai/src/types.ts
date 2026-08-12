@@ -167,6 +167,12 @@ export function normalizeProviderError(
   // respect it.
   const retryAfterMs = (err as Error & { retryAfterMs?: number }).retryAfterMs;
   const retryOpts = retryAfterMs !== undefined ? { retryAfterMs } : {};
+  // AbortError from fetch: not an error, but a user/caller cancellation.
+  // Must be classified as `aborted`, not `fatal` (pi has no equivalent —
+  // our taxonomy is richer). Check before the generic fatal fallback.
+  if (err instanceof Error && err.name === "AbortError") {
+    return new ProviderError(msg, "aborted", { detail });
+  }
   const s = msg.match(/status[= ](\d+)/);
   const code = s ? Number(s[1]) : undefined;
   // Context-length errors (400/422 with body mentioning limits) are overflow,

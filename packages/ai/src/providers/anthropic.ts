@@ -175,7 +175,13 @@ type WireBlock = Record<string, unknown>;
 /** pi: replace lone surrogates so partially-decoded text never breaks
  *  strict validators. */
 function sanitizeSurrogates(text: string): string {
-  return text.replace(/[\uD800-\uDFFF]/g, "\uFFFD");
+  // Replace only UNPAIRED surrogates (pi's sanitize-unicode.ts pattern):
+  // high surrogate not followed by low, or low surrogate not preceded by
+  // high. Valid surrogate pairs (emoji, CJK ext B) are preserved.
+  return text.replace(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+    "\uFFFD",
+  );
 }
 
 /** Extract server-requested retry delay from response headers (pi's
@@ -232,7 +238,7 @@ function toWireBlock(b: ContentBlock): WireBlock | null {
  *  that would carry empty content are skipped — the API rejects them. */
 function convertMessages(
   messages: readonly Message[],
-  _opts?: ProviderStreamOptions,
+  opts?: ProviderStreamOptions,
 ): Array<{ role: string; content: unknown }> {
   const wire: Array<{ role: string; content: unknown }> = [];
 
@@ -267,6 +273,23 @@ function convertMessages(
       // else: nothing replayable — skip (no empty content).
     } else {
       wire.push({ role: m.role, content: sanitizeSurrogates(m.text ?? "") });
+    }
+  }
+
+  // Cache conversation history: when cacheControl is enabled, put an
+  // ephemeral breakpoint on the LAST user message's last content block.
+  // This is the highest-value cache win — multi-turn re-processing of
+  // the rolling conversation prefix turns into cache reads (pi: L1147-1169).
+  if (opts?.cacheControl && wire.length > 0) {
+    const last = wire[wire.length - 1]!;
+    if (last.role === "user") {
+      const cc = { type: "ephemeral" } as const;
+      if (Array.isArray(last.content)) {
+        const lastBlock = last.content[last.content.length - 1] as Record<string, unknown>;
+        if (lastBlock) lastBlock.cache_control = cc;
+      } else if (typeof last.content === "string") {
+        last.content = [{ type: "text", text: last.content, cache_control: cc }];
+      }
     }
   }
   return wire;
@@ -351,23 +374,57 @@ function* convertChunks(
       return;
     }
   }
+  // Mid-stream error events (Anthropic sends `event: error` on
+  // server-side failures). Must throw — silently swallowing leaves the
+  // consumer waiting for a done signal that never arrives (pi: L439-441).
+  if (type === "error") {
+    const err = raw.error as Record<string, unknown>;
+    throw new Error(`Anthropic stream error: ${(err?.message as string) ?? JSON.stringify(err)}`);
+  }
+
+  // message_start: capture input usage (pi: L547-559). Anthropic nests
+  // usage inside raw.message.usage — a top-level read misses it entirely.
+  // Cache tokens (cache_read_input_tokens, cache_creation_input_tokens)
+  // are emitted here so cost accounting reflects cache hits.
+  if (type === "message_start") {
+    const u = (raw.message as { usage?: Record<string, number> })?.usage;
+    if (u) {
+      yield {
+        usage: {
+          input: u.input_tokens ?? 0,
+          output: u.output_tokens ?? 0,
+          cacheCreate: u.cache_creation_input_tokens,
+          cacheRead: u.cache_read_input_tokens,
+        },
+      };
+    }
+    return;
+  }
 
   if (type === "message_delta") {
     const d = raw.delta as Record<string, unknown>;
     const reason = (d as { stop_reason?: string }).stop_reason;
     if (reason) {
       yield { stopReason: mapStopReason(reason) };
-      return;
     }
+    // message_delta also carries cumulative output usage (pi: L690-705).
+    // Don't early-return on stop_reason — both can arrive in the same event.
+    const du = raw.usage as Record<string, number> | undefined;
+    if (du) {
+      yield {
+        usage: {
+          input: du.input_tokens ?? 0,
+          output: du.output_tokens ?? 0,
+          cacheCreate: du.cache_creation_input_tokens,
+          cacheRead: du.cache_read_input_tokens,
+        },
+      };
+    }
+    return;
   }
 
   if (type === "message_stop") {
     yield { done: true };
     return;
-  }
-
-  const usage = raw.usage as Record<string, number> | undefined;
-  if (usage) {
-    yield { usage: { input: usage.input_tokens ?? 0, output: usage.output_tokens ?? 0 } };
   }
 }

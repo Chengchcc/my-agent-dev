@@ -12,7 +12,7 @@ function toolMsg(content: string, toolUseId: string): Message {
 }
 
 /** Build an assistant message with tool_use. */
-function assistantWithToolUse(id: string, toolName: string, toolUseId: string): Message {
+function assistantWithToolUse(_id: string, toolName: string, toolUseId: string): Message {
   return {
     role: "assistant",
     blocks: [{ type: "tool_use", id: toolUseId, name: toolName, input: {} }],

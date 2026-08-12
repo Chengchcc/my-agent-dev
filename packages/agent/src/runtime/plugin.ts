@@ -49,7 +49,7 @@ export interface PluginHooks {
     toolName: string,
     input: unknown,
     rt: PluginRuntime,
-  ): void | { block?: boolean; reason?: string };
+  ): undefined | { block?: boolean; reason?: string };
   /** Called after a tool executes. May return a UI-transient event OR a
    *  patch object `{ content?, isError?, terminate? }` that overrides the
    *  executed result field-by-field (pi's afterToolCall patch). */
