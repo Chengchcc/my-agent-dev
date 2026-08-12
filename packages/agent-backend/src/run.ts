@@ -68,11 +68,17 @@ export type BackendRunOutcome =
       readonly messages?: readonly Message[];
       readonly usage?: Usage;
       readonly title?: string;
+      /** CLI-side session reference (ADR 0002): claude session_id or a
+       *  pi/omp session file path. Product Backend persists it on the
+       *  branch (agent_context_branch.cli_session_ref) as the runtime
+       *  truth for context continuation. */
+      readonly cliSessionRef?: string;
     }
   | {
       readonly status: "failed" | "aborted" | "timeout";
       readonly error?: string;
       readonly usage?: Usage;
+      readonly cliSessionRef?: string;
     };
 
 /** A single run segment: an event stream plus a terminal outcome promise.

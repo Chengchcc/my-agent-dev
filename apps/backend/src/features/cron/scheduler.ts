@@ -93,13 +93,14 @@ export function createCronScheduler(deps: {
     fireKey: string,
     retry: number,
   ): Promise<boolean> {
+    const defaultModel = await deps.resolveDefaultModel(job.agentId);
     const { acquired, run } = await deps.agentRunService.enqueueAndAcquire({
       conversationId,
       agentMemberId,
-      backendKind: "coding_agent",
+      backendKind: defaultModel.backendKind,
       mode: "normal",
       message: { role: "user", text: job.prompt ?? "", conversationId },
-      defaultModel: await deps.resolveDefaultModel(job.agentId),
+      defaultModel,
       configRevision: 1,
       idempotencyKey: `${fireKey}:${agentMemberId}:${retry}`,
     });

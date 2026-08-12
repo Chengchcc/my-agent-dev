@@ -337,21 +337,21 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   // register their adapter here as they land; unknown kinds get a clear
   // preflight error from the execution service, never a silent fallback.
   const ompBackend = new OmpBackend({
-    executable: process.env.OMP_BIN ?? "omp",
+    executable: config.ompBin ?? "omp",
     productToolsToken: config.productToolsServiceToken,
   });
   const piBackend = new PiBackend({
-    executable: process.env.PI_BIN ?? "pi",
+    executable: config.piBin ?? "pi",
     // `pi install npm:pi-mcp-adapter` registers the adapter; an explicit
     // path overrides it for per-run spawns (D3 全量对齐).
-    mcpAdapterPath: process.env.PI_MCP_ADAPTER_PATH,
+    mcpAdapterPath: config.piMcpAdapterPath,
     productToolsToken: config.productToolsServiceToken,
   });
   const claudeBackend = new ClaudeBackend({
-    executable: process.env.CLAUDE_BIN ?? "claude",
-    // bypassPermissions is refused under root; set CLAUDE_PERMISSION_MODE
+    executable: config.claudeBin ?? "claude",
+    // bypassPermissions is refused under root; CLAUDE_PERMISSION_MODE
     // on non-root deployments (Gate 0).
-    permissionMode: process.env.CLAUDE_PERMISSION_MODE,
+    permissionMode: config.claudePermissionMode,
     productToolsToken: config.productToolsServiceToken,
   });
   const backends: BackendRegistry = {

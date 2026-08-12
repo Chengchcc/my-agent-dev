@@ -117,7 +117,7 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
 
     const handle = createActiveRun(runId, proc);
     this.active.set(runId, handle);
-    void this.consumeStdout(handle, input, sessionFile);
+    void this.consumeStdout(handle, input, sessionFile, resumeId);
     return {
       events: handle.events,
       outcome: handle.outcome,
@@ -255,10 +255,11 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
     handle: ActiveRun,
     input: BackendRunInput<"claude_code">,
     sessionFile: string,
+    resumeId: string | null,
   ): Promise<void> {
     const acc = createClaudeAccumulator();
     try {
-      handle.proc.writeLine(this.buildStdinInput(input, existsSync(sessionFile)));
+      handle.proc.writeLine(this.buildStdinInput(input, resumeId !== null));
       handle.proc.closeStdin();
     } catch {
       /* stdin closed early — the parse loop still reads stdout */
@@ -294,6 +295,9 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
         status: "completed",
         messages: buildOutcomeMessages(finalText(acc)),
         usage: acc.usage,
+        // The claude session_id is the CLI-side runtime truth (ADR 0002);
+        // the Product Backend records it on the branch.
+        ...(acc.sessionId ? { cliSessionRef: acc.sessionId } : {}),
       });
     }
     // Persist the session id for --resume continuation (ADR 0002).

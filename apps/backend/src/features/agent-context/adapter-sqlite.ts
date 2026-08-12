@@ -63,6 +63,7 @@ function parseBranch(row: typeof schema.agentContextBranch.$inferSelect): Contex
     leafEntryId: row.leafEntryId,
     ledgerCursor: row.ledgerCursor,
     backendKind: row.backendKind,
+    cliSessionRef: row.cliSessionRef,
     isDefault: row.isDefault !== 0,
     revision: row.revision,
     createdAt: row.createdAt,
@@ -223,6 +224,7 @@ export function sqliteAgentContextAdapter(
         leafEntryId: null,
         ledgerCursor: 0,
         backendKind,
+        cliSessionRef: null,
         isDefault: true,
         revision: 1,
         createdAt: now,
@@ -487,6 +489,16 @@ export function sqliteAgentContextAdapter(
         if (!result) throw new ContextBranchNotFoundError(branchId);
         return parseBranch(result);
       })();
+    },
+
+    async updateBranchCliSessionRef(branchId, cliSessionRef) {
+      const result = d
+        .update(schema.agentContextBranch)
+        .set({ cliSessionRef })
+        .where(eq(schema.agentContextBranch.branchId, branchId))
+        .returning()
+        .get();
+      return result ? parseBranch(result) : null;
     },
   };
 }

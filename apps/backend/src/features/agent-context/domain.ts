@@ -112,6 +112,10 @@ export interface ContextBranch {
   readonly leafEntryId: string | null;
   readonly ledgerCursor: number;
   readonly backendKind: string;
+  /** CLI session reference (ADR 0002): claude session_id or pi/omp
+   *  session file path — the CLI-side runtime truth for context
+   *  continuation. Null until the first CLI-backed run. */
+  readonly cliSessionRef: string | null;
   readonly isDefault: boolean;
   readonly revision: number;
   readonly createdAt: number;

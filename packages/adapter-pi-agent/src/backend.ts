@@ -115,7 +115,7 @@ export class PiBackend implements AgentBackend<"pi"> {
 
     const handle = createActiveRun(runId, proc);
     this.active.set(runId, handle);
-    void this.consumeStdout(handle);
+    void this.consumeStdout(handle, sessionPath);
     return {
       events: handle.events,
       outcome: handle.outcome,
@@ -230,7 +230,7 @@ export class PiBackend implements AgentBackend<"pi"> {
 
   /** Single stdout parse loop. The terminal outcome is decided ONLY here
    *  (exit code + error event). */
-  private async consumeStdout(handle: ActiveRun): Promise<void> {
+  private async consumeStdout(handle: ActiveRun, sessionPath: string): Promise<void> {
     const acc = createPiAccumulator();
     for await (const line of handle.proc.stdout) {
       if (line.trim() === "") continue;
@@ -257,6 +257,9 @@ export class PiBackend implements AgentBackend<"pi"> {
         status: "completed",
         messages: buildOutcomeMessages(acc.assistantTexts),
         usage: acc.usage,
+        // The branch-pinned session file is the CLI-side runtime truth
+        // (ADR 0002); the Product Backend records it on the branch.
+        cliSessionRef: sessionPath,
       });
     }
     this.active.delete(handle.runId);

@@ -48,6 +48,18 @@ export const envSchema = z.object({
     .string()
     .optional()
     .describe("Coding Agent executable spawned per Run (default: coding-agent on PATH)"),
+  // ── Backend kinds (ADR 0002): CLI executables + mounts ──
+  OMP_BIN: z.string().optional().describe("omp executable per Run (default: omp on PATH)"),
+  PI_BIN: z.string().optional().describe("pi executable per Run (default: pi on PATH)"),
+  PI_MCP_ADAPTER_PATH: z
+    .string()
+    .optional()
+    .describe("pi-mcp-adapter extension path (default: pi's own install)"),
+  CLAUDE_BIN: z.string().optional().describe("claude executable per Run (default: claude on PATH)"),
+  CLAUDE_PERMISSION_MODE: z
+    .string()
+    .optional()
+    .describe("claude --permission-mode (bypassPermissions refused under root)"),
   PRODUCT_TOOLS_MCP_URL: z
     .string()
     .optional()

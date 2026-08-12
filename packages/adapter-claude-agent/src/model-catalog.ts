@@ -1,4 +1,4 @@
-/** Static model catalog for omp. claude has no model enumeration command
+/** Static model catalog for claude. claude has no model enumeration command
  *  (D3 risk #2): the table lists the models this deployment actually uses,
  *  in the canonical `<provider>/<model>` id format. Update when the
  *  provider/model surface changes. */
@@ -9,7 +9,7 @@ export class ClaudeModelCatalog {
   list(): Promise<BackendModelCatalog> {
     return Promise.resolve({
       backendKind: "claude_code",
-      models: OMP_MODELS,
+      models: CLAUDE_MODELS,
     });
   }
 }
@@ -25,7 +25,7 @@ const deepseek = (id: string, reasoning: boolean): BackendModel => ({
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 });
 
-const OMP_MODELS: readonly BackendModel[] = [
+const CLAUDE_MODELS: readonly BackendModel[] = [
   deepseek("deepseek-v4-flash", false),
   deepseek("deepseek-v4-pro", true),
   deepseek("deepseek-chat", false),

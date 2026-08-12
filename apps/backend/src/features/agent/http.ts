@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join as pathJoin } from "node:path";
+import { BACKEND_KINDS } from "@my-agent-team/agent-backend";
 import { Elysia, t } from "elysia";
 import type { LarkSetupManager } from "../lark-bot/setup-manager.js";
 import type { AgentIdentityStore } from "./agent-identity.js";
@@ -7,6 +8,12 @@ import type { AgentRow } from "./domain.js";
 import type { RelationshipService } from "./relationship-service.js";
 import type { AgentService } from "./service.js";
 import { AgentBusyError, AgentNotFoundError } from "./service.js";
+
+/** Derived from BACKEND_KINDS (single source, e2e-contract-rules): adding
+ *  a kind updates the API validator without touching this file. */
+const backendKindUnion = t.Enum(
+  Object.fromEntries(BACKEND_KINDS.map((k) => [k, k])) as Record<string, string>,
+);
 
 // ── Response types (inferred by Elysia from handler return values) ──
 
@@ -79,14 +86,7 @@ export function agentRoutes(
             provider: t.String({ minLength: 1 }),
             model: t.String({ minLength: 1 }),
           }),
-          backendKind: t.Optional(
-            t.Union([
-              t.Literal("coding_agent"),
-              t.Literal("claude_code"),
-              t.Literal("pi"),
-              t.Literal("omp"),
-            ]),
-          ),
+          backendKind: t.Optional(backendKindUnion),
           reasoningEffort: t.Optional(
             t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),
           ),
@@ -150,14 +150,7 @@ export function agentRoutes(
               model: t.String({ minLength: 1 }),
             }),
           ),
-          backendKind: t.Optional(
-            t.Union([
-              t.Literal("coding_agent"),
-              t.Literal("claude_code"),
-              t.Literal("pi"),
-              t.Literal("omp"),
-            ]),
-          ),
+          backendKind: t.Optional(backendKindUnion),
           reasoningEffort: t.Optional(
             t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),
           ),

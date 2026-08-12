@@ -263,36 +263,14 @@ class ConversationServiceImpl implements ConversationService {
     }
     const defaultModel = await this.#resolveDefaultModel(member.agentId);
     const kind = defaultModel.backendKind;
-    let branch = await this.#contextService.getOrCreateDefaultBranch(
+    // The default branch (with any kind-switch fork, D2) is ensured by
+    // AgentRunService.enqueueAndAcquire — the single run-creation choke
+    // point (conversation, cron and loop all funnel through it).
+    const branch = await this.#contextService.getOrCreateDefaultBranch(
       input.conversationId,
       input.memberId,
       kind,
     );
-    // D2: the agent's backend kind changed since this branch was created.
-    // Fork a new default branch pinned to the new kind; the old branch's
-    // history stays read-only (ADR 0002). An empty default (no entries)
-    // is repinned in place instead — nothing to preserve.
-    if (branch.backendKind !== kind) {
-      if (branch.leafEntryId) {
-        const forked = await this.#contextService.forkBranch(
-          branch.branchId,
-          branch.revision,
-          branch.leafEntryId,
-          kind,
-        );
-        branch = forked.branch;
-      }
-      branch = await this.#contextService.setDefaultBranchKind(
-        branch.treeId,
-        branch.branchId,
-        kind,
-      );
-      debugLog(
-        "conversation",
-        `kind_switch conversationId=${input.conversationId} agentMemberId=${input.memberId} ` +
-          `oldKind=${branch.backendKind} -> newKind=${kind} branchId=${branch.branchId}`,
-      );
-    }
     const active = await this.#agentRuns.getActiveRun(branch.branchId);
     // Auto-inferred routing needs three states, not two:
     //   live child      -> steer (routable now)

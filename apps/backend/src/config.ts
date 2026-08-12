@@ -16,6 +16,12 @@ export interface BackendConfig {
   /** Coding Agent executable (spawned per Run). Defaults to "coding-agent"
    *  on PATH; tests point it at the Bun runtime + app entry source. */
   codingAgentBin?: string;
+  /** CLI backend executables (ADR 0002), default to the binary on PATH. */
+  ompBin?: string;
+  piBin?: string;
+  piMcpAdapterPath?: string;
+  claudeBin?: string;
+  claudePermissionMode?: string;
   productToolsMcpUrl?: string;
   productToolsServiceToken?: string;
 }
@@ -38,6 +44,11 @@ export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
     cancelGraceMs: env.BACKEND_CANCEL_GRACE_MS,
     builtinSkillsDir: process.env.BUILTIN_SKILLS_DIR ?? resolve(import.meta.dir, "../../../skills"),
     codingAgentBin: env.CODING_AGENT_BIN,
+    ompBin: env.OMP_BIN,
+    piBin: env.PI_BIN,
+    piMcpAdapterPath: env.PI_MCP_ADAPTER_PATH,
+    claudeBin: env.CLAUDE_BIN,
+    claudePermissionMode: env.CLAUDE_PERMISSION_MODE,
     productToolsMcpUrl: env.PRODUCT_TOOLS_MCP_URL,
     productToolsServiceToken: env.PRODUCT_TOOLS_SERVICE_TOKEN,
   };

@@ -4,6 +4,7 @@ import type {
   PendingActionResponse,
   WorkspaceBinding,
 } from "@my-agent-team/agent-backend";
+import { debugLog } from "@my-agent-team/agent-backend";
 import type { Message } from "@my-agent-team/message";
 import type { IdGenerator, LedgerMessageResolver } from "../agent-context/ports.js";
 import type { AgentContextService } from "../agent-context/service.js";
@@ -79,12 +80,40 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
 
   return {
     async enqueueAndAcquire(input) {
-      // Lazily get/create the default branch for this agent member
-      const branch = await contextService.getOrCreateDefaultBranch(
+      // Lazily get/create the default branch for this agent member.
+      let branch = await contextService.getOrCreateDefaultBranch(
         input.conversationId,
         input.agentMemberId,
         input.backendKind,
       );
+      // D2: the agent's backend kind changed since this branch was created
+      // (all run-creation paths funnel through here — conversation, cron,
+      // loop). Fork a new default branch pinned to the new kind; the old
+      // branch's history stays read-only (ADR 0002). An empty default (no
+      // entries) is repinned in place instead — nothing to preserve.
+      if (branch.backendKind !== input.backendKind) {
+        const oldKind = branch.backendKind;
+        if (branch.leafEntryId) {
+          const forked = await contextService.forkBranch(
+            branch.branchId,
+            branch.revision,
+            branch.leafEntryId,
+            input.backendKind,
+          );
+          branch = forked.branch;
+        }
+        branch = await contextService.setDefaultBranchKind(
+          branch.treeId,
+          branch.branchId,
+          input.backendKind,
+        );
+        debugLog(
+          "agent-run",
+          `kind_switch conversationId=${input.conversationId} ` +
+            `agentMemberId=${input.agentMemberId} oldKind=${oldKind} ` +
+            `newKind=${input.backendKind} branchId=${branch.branchId}`,
+        );
+      }
 
       const deliveryIdempotencyKey = `${input.idempotencyKey}:delivery`;
       const runIdempotencyKey = `${input.idempotencyKey}:run`;

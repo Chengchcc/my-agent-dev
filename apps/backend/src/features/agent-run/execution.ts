@@ -373,6 +373,13 @@ export function createAgentRunExecutionService(
   /** Terminal handling for one outcome: completed -> atomic Product commit;
    *  failed/aborted/timeout -> terminal Run without an assistant message. */
   async function settleOutcome(run: AgentRun, outcome: BackendRunOutcome): Promise<void> {
+    // CLI session reference (ADR 0002): record the CLI-side runtime truth
+    // on the branch — informational, never blocks the terminal settle.
+    if (outcome.cliSessionRef) {
+      await deps.contextPort
+        .updateBranchCliSessionRef(run.branchId, outcome.cliSessionRef)
+        .catch(() => {});
+    }
     if (outcome.status === "completed") {
       try {
         await runPort.commitCompletedRun({

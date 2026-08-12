@@ -64,6 +64,9 @@ export interface AgentContextService {
     backendKind: string,
   ): Promise<ContextBranch>;
 
+  /** Record the branch's CLI session reference (ADR 0002). */
+  updateBranchCliSessionRef(branchId: string, cliSessionRef: string): Promise<ContextBranch | null>;
+
   moveBranchLeaf(
     branchId: string,
     expectedRevision: number,
@@ -162,6 +165,10 @@ export function createAgentContextService(deps: AgentContextServiceDeps): AgentC
 
     async setDefaultBranchKind(treeId, branchId, backendKind) {
       return port.setDefaultBranchKind(treeId, branchId, backendKind);
+    },
+
+    async updateBranchCliSessionRef(branchId, cliSessionRef) {
+      return port.updateBranchCliSessionRef(branchId, cliSessionRef);
     },
 
     async moveBranchLeaf(branchId, expectedRevision, newLeafEntryId) {
