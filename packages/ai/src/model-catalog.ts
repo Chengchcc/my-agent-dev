@@ -292,13 +292,56 @@ export const BUILTIN_CATALOG: CatalogSpec = {
   },
 };
 
+// ponytail: old model id → canonical id. Delete after DB migration.
+// Existing agent rows may reference model ids from before the catalog
+// refresh; this table bridges them to current catalog entries.
+export const MODEL_ALIASES: Readonly<Record<string, string>> = {
+  "claude-sonnet-4-6": "claude-sonnet-5",
+  "claude-sonnet-4-20250514": "claude-sonnet-5",
+  "claude-opus-4-20250514": "claude-opus-4-8",
+  "claude-haiku-3-5": "claude-haiku-4-5",
+  "gpt-4o": "gpt-5.2",
+  "gpt-4o-mini": "gpt-5-mini",
+  "deepseek-chat": "deepseek-v4-flash",
+};
+
+/** Resolve a model id through the alias table. Returns the canonical
+ *  id if an alias exists, otherwise the original id. */
+export function resolveModelAlias(modelId: string): string {
+  return MODEL_ALIASES[modelId] ?? modelId;
+}
+
 // ── Minimal YAML parser (for runtime models.yml loading by the caller) ──
 
+// ponytail: strip a trailing ` # comment` — first space-hash run outside quotes.
+function stripComment(t: string): string {
+  let quote: string | null = null;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i]!;
+    if (quote) {
+      if (c === quote) quote = null;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+    } else if (c === "#" && i > 0 && t[i - 1] === " ") {
+      return t.slice(0, i).trimEnd();
+    }
+  }
+  return t;
+}
+
 function parseValue(s: string): unknown {
-  const t = s.trim();
-  if (t === "" || t === "null") return "";
+  const t = stripComment(s.trim());
+  if (t === "null") return null;
+  if (t === "") return "";
   if (t === "true") return true;
   if (t === "false") return false;
+  // Quoted scalar: strip the matching surrounding quotes and keep it a string.
+  if (
+    t.length >= 2 &&
+    ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'")))
+  ) {
+    return t.slice(1, -1);
+  }
   if (t.startsWith("{") && t.endsWith("}")) {
     const inner = t.slice(1, -1).trim();
     if (!inner) return {};
@@ -396,5 +439,6 @@ export function parseCatalogYAML(text: string): CatalogSpec {
       frame.obj[key] = parseValue(val);
     }
   }
+  if (!root.providers) throw new Error("models.yml: missing 'providers' key");
   return root as unknown as CatalogSpec;
 }

@@ -23,9 +23,11 @@ export {
   buildAllModels,
   buildModel,
   type CatalogSpec,
+  MODEL_ALIASES,
   type ModelSpec,
   type ProviderSpec,
   parseCatalogYAML,
+  resolveModelAlias,
   type ThinkingConfig,
   type ThinkingMode,
 } from "./model-catalog.js";
@@ -33,17 +35,10 @@ export type { ModelRuntimeOptions } from "./model-runtime.js";
 
 // ─── Model runtime ───
 export { createModelRuntime } from "./model-runtime.js";
-export type { CreateProviderConfig } from "./providers/create-provider.js";
 
 // ─── Provider factory ───
 export { createProvider } from "./providers/create-provider.js";
-// Backward-compat aliases (callers should migrate to createProvider)
-export {
-  anthropicProvider,
-  createOpenAICompatProvider,
-  customProvider,
-  deepseekProvider,
-} from "./providers/index.js";
+export type { CreateProviderConfig } from "./providers/create-provider.js";
 export type { SSEFetchOpts } from "./providers/shared-sse.js";
 // ─── Transport ───
 export { fetchSSE } from "./providers/shared-sse.js";
