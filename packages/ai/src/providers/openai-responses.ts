@@ -106,8 +106,7 @@ function buildRequest(
   };
 
   if (model.reasoning && opts?.effort) {
-    const level = opts.effort === "max" ? "xhigh" : opts.effort;
-    const mapped = model.thinkingLevelMap?.[level as ThinkingLevel];
+    const mapped = model.thinkingLevelMap?.[opts.effort];
     body.reasoning = { effort: mapped ?? EFFORT_CLAMP[opts.effort] ?? "medium", summary: "auto" };
   }
 

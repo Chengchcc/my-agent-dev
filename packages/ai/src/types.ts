@@ -108,7 +108,7 @@ export interface ProviderStreamOptions {
     display?: "summarized" | "omitted";
     budgetTokens?: number;
   };
-  effort?: "low" | "medium" | "high" | "xhigh" | "max";
+  effort?: Exclude<ThinkingLevel, "off">;
   cacheControl?: boolean;
   maxRetries?: number;
   maxRetryDelayMs?: number;

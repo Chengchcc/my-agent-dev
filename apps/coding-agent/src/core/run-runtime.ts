@@ -386,7 +386,12 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
           : reasoningEffort === "low" || reasoningEffort === "high" || reasoningEffort === "max"
             ? {
                 thinking: { type: "adaptive" as const, display: "summarized" as const },
-                effort: reasoningEffort as "low" | "high" | "max",
+                // ponytail: DB may carry "max" from older agent records;
+                // map to "xhigh" (our canonical highest level).
+                effort: (reasoningEffort === "max" ? "xhigh" : reasoningEffort) as
+                  | "low"
+                  | "high"
+                  | "xhigh",
               }
             : {};
       const stream = deps.modelRuntime.stream(model.providerId, model.modelId, messages, {
