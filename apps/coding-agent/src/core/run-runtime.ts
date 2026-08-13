@@ -1,5 +1,3 @@
-import type { AIMessageChunk } from "@my-agent-team/core";
-
 import {
   type CodingAgentLoopEvent,
   type CodingAgentSession,
@@ -15,6 +13,7 @@ import {
 } from "@my-agent-team/agent";
 import type { AgentRunSnapshot, ProjectedHistoryItem } from "@my-agent-team/agent-backend";
 import { type ModelRuntime, resolveModelAlias } from "@my-agent-team/ai";
+import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 import { createProgressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
 import { createRecapPlugin } from "@my-agent-team/plugin-recap";
@@ -34,12 +33,12 @@ import {
   type WebSearchPort,
 } from "@my-agent-team/tools-common";
 import { fakeProvider } from "./fake-provider.js";
-import { mountWorkspaceMcpServers } from "./mcp-mount.js";
-import { createWorkflowExecutor } from "./workflow-executor.js";
-import { createWorkflowTools } from "./workflow-tools.js";
+
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { readProductToolsManifest } from "./product-tools-manifest.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
+import { createWorkflowExecutor } from "./workflow-executor.js";
+import { createWorkflowTools } from "./workflow-tools.js";
 
 /** Token estimation via content char/4 (≈1 token per 4 chars of English/code).
  *  More accurate than JSON.stringify char/4 which includes ~30% syntax

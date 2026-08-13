@@ -1,4 +1,5 @@
 import {
+  type CodingAgentSession,
   type ContextBudget,
   type ContextSummarizer,
   createCodingAgentSession,
@@ -139,7 +140,7 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
       });
       const onAbort = (): void => session.stop();
       signal?.addEventListener("abort", onAbort, { once: true });
-      let result;
+      let result: Awaited<ReturnType<CodingAgentSession["startLoop"]>>;
       try {
         result = await session.startLoop({
           history: [],
