@@ -41,9 +41,10 @@ import { fakeProvider } from "./fake-provider.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { readProductToolsManifest } from "./product-tools-manifest.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
-import { createWorkflowExecutor, type WorkflowAgentResult } from "./workflow-executor.js";
 import { evaluateWorkflowScript } from "./workflow-evaluator.js";
+import { createWorkflowExecutor, type WorkflowAgentResult } from "./workflow-executor.js";
 import { createWorkflowTools } from "./workflow-tools.js";
+
 /** Token estimation via content char/4 (approx 1 token per 4 chars of
  *  English/code). More accurate than JSON.stringify char/4 which includes
  *  ~30% syntax overhead from key names, quotes, braces. Counts actual text +

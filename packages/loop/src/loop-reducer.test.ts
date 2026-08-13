@@ -478,7 +478,15 @@ describe("validateLoopMetaPatch", () => {
     loopId: "l1",
     lastRun: null,
     items: {
-      i1: { id: "i1", source: "src", summary: "s", step: "triaged", attempt: 0, priority: 1, result: null },
+      i1: {
+        id: "i1",
+        source: "src",
+        summary: "s",
+        step: "triaged",
+        attempt: 0,
+        priority: 1,
+        result: null,
+      },
     },
   };
 
@@ -507,7 +515,15 @@ describe("validateLoopMetaPatch", () => {
       ...base,
       items: {
         ...base.items,
-        i2: { id: "i2", source: "src", summary: "n", step: "fixing", attempt: 0, priority: 1, result: null },
+        i2: {
+          id: "i2",
+          source: "src",
+          summary: "n",
+          step: "fixing",
+          attempt: 0,
+          priority: 1,
+          result: null,
+        },
       },
     };
     const result = validateLoopMetaPatch(base, after);
