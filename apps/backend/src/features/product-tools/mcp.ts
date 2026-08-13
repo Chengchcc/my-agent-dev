@@ -127,7 +127,18 @@ export async function createProductToolsMcpServer(
         inputSchema: {
           type: "object",
           properties: {
-            items: { type: "array" },
+            items: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  text: { type: "string" },
+                  status: { type: "string", enum: ["pending", "in_progress", "done"] },
+                },
+                required: ["id", "text", "status"],
+              },
+            },
             identity: identitySchema,
           },
           required: ["items"],

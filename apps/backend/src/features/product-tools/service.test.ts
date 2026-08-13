@@ -474,7 +474,23 @@ describe("product tools service", () => {
         tool: "todo_write",
         args: { items: "not-an-array" },
       }),
-    ).rejects.toThrow(/items array/);
+    ).rejects.toThrow(/items must be/);
+  });
+
+  test("todo_write rejects items with non-conforming fields (model habit)", async () => {
+    const runId = await createRun("hi");
+    await expect(
+      service.call({
+        identity: identity(runId),
+        callId: "toolu-shape",
+        idempotencyKey: `${runId}:toolu-shape`,
+        tool: "todo_write",
+        // deepseek wrote `title` instead of `text` with a loose schema:
+        // the durable snapshot re-enters the next run's prompt, so this
+        // must reject instead of poisoning later runs.
+        args: { items: [{ id: "plan", title: "计划", status: "pending" }] },
+      }),
+    ).rejects.toThrow(/id: string, text: string/);
   });
 
   test("an already-aborted signal rejects the call", async () => {
