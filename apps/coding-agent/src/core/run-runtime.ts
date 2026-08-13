@@ -16,7 +16,7 @@ import { type ModelRuntime, resolveModelAlias } from "@my-agent-team/ai";
 import type { Message } from "@my-agent-team/message";
 import { createProgressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
 import { createRecapPlugin } from "@my-agent-team/plugin-recap";
-import { createTodoPlugin } from "@my-agent-team/plugin-todo";
+
 import {
   createBashTool,
   createEditTool,
@@ -148,7 +148,6 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   const nativeToolsPlugin: Plugin = { name: "native-tools", tools };
   const plugins: Plugin[] = [
     nativeToolsPlugin,
-    createTodoPlugin({ sessionId: deps.runId, store }),
     createRecapPlugin({
       recapModelRef: { providerId: "", modelId: "" },
       enabled: process.env.CODING_AGENT_RECAP_ENABLED === "1",

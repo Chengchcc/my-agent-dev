@@ -58,5 +58,29 @@ export function buildHistoryTools(entrypoint: string): readonly ProductToolDescr
       },
       entrypoint,
     },
+    {
+      name: "todo_write",
+      description:
+        "Replace this run's task list (durable, shown in the product UI). Pass the full desired list as items: [{id: string, text: string, status: pending | in_progress | done}]. The product injects your current list as Current Tasks in the system prompt.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                text: { type: "string" },
+                status: { type: "string", enum: ["pending", "in_progress", "done"] },
+              },
+              required: ["id", "text", "status"],
+            },
+          },
+        },
+        required: ["items"],
+      },
+      entrypoint,
+    },
   ];
 }

@@ -7,7 +7,7 @@ import {
   normalizeCanonicalMessages,
   serializeMessageRevision,
 } from "@my-agent-team/message";
-import { and, eq, gt, inArray, isNull, not, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, not, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import * as schema from "../../infra/db/schema.js";
 import type {
@@ -56,6 +56,7 @@ function parseRun(row: typeof schema.agentRun.$inferSelect): AgentRun {
     systemPrompt: row.systemPrompt,
     skillRoots: row.skillRoots ? (JSON.parse(row.skillRoots) as string[]) : null,
     permissionMode: row.permissionMode,
+    todoSnapshot: row.todoSnapshot,
     createdAt: row.createdAt,
     terminalAt: row.terminalAt,
   };
@@ -1017,6 +1018,31 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           `Product Tool manifest for run ${runId} is frozen; a different manifest is a conflict`,
         );
       }
+    },
+    async setRunTodoSnapshot(runId, snapshot) {
+      const updated = d
+        .update(schema.agentRun)
+        .set({ todoSnapshot: snapshot })
+        .where(eq(schema.agentRun.runId, runId))
+        .returning({ runId: schema.agentRun.runId })
+        .get();
+      if (!updated) throw new Error(`Agent Run not found: ${runId}`);
+    },
+
+    async getLatestRunTodo(branchId) {
+      const row = d
+        .select({ todoSnapshot: schema.agentRun.todoSnapshot })
+        .from(schema.agentRun)
+        .where(
+          and(
+            eq(schema.agentRun.branchId, branchId),
+            sql`${schema.agentRun.todoSnapshot} IS NOT NULL`,
+          ),
+        )
+        .orderBy(desc(schema.agentRun.createdAt))
+        .limit(1)
+        .get();
+      return row?.todoSnapshot ?? null;
     },
 
     async listDeliveringInputs() {

@@ -419,9 +419,31 @@ export function useConversation(
       const toolCompleted = (_kind: "native" | "product") => (e: Event) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as {
+            toolName?: string;
             callId?: string;
             result?: unknown;
           };
+          // todo_write replaces the whole run's todo snapshot — same state
+          // the backend.coding_agent.todo_update event and the panel read.
+          // todo_write arrives as product_tool_completed on the child
+          // backend and native_tool_completed on CLI backends (their MCP
+          // mount); result shapes differ ({content}/{output} json string
+          // or a direct {items}) — normalize all three.
+          if (ev.toolName === "todo_write" || ev.toolName?.endsWith("__todo_write")) {
+            let payload = ev.result;
+            if (payload && typeof payload === "object") {
+              const rec = payload as { content?: unknown; output?: unknown };
+              if (typeof rec.content === "string" || typeof rec.output === "string") {
+                try {
+                  payload = JSON.parse((rec.content ?? rec.output) as string);
+                } catch {
+                  payload = undefined;
+                }
+              }
+            }
+            const items = (payload as { items?: readonly TodoItem[] } | undefined)?.items;
+            if (Array.isArray(items)) setRunTodosState(runId, items);
+          }
           if (!ev.callId) return;
           completeToolState(runId, ev.callId, ev.result, false);
         } catch {

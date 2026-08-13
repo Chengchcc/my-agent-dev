@@ -242,6 +242,37 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
     }
     return { content: result };
   }
+  async function todoWrite(
+    run: AgentRun,
+    input: ProductToolCallInput,
+  ): Promise<ProductToolCallResult> {
+    const items = Array.isArray(input.args.items) ? input.args.items : null;
+    if (!items || items.length > 200) {
+      throw new ProductToolRejectedError("todo_write requires an items array (max 200)");
+    }
+    const inputHash = JSON.stringify({ tool: input.tool, args: input.args });
+    // Same durable idempotency fast path as history_retain.
+    const existing = await callPort.getCall(run.runId, input.callId);
+    if (existing) {
+      if (existing.toolName !== input.tool || existing.inputHash !== inputHash) {
+        throw new ProductToolRejectedError(
+          `call id ${input.callId} reused with a different tool/input`,
+        );
+      }
+      return { content: existing.result ?? "{}" };
+    }
+    const snapshot = JSON.stringify(items);
+    await runPort.setRunTodoSnapshot(run.runId, snapshot);
+    const result = JSON.stringify({ items });
+    await callPort.recordCall({
+      runId: run.runId,
+      callId: input.callId,
+      toolName: input.tool,
+      inputHash,
+      result,
+    });
+    return { content: result };
+  }
 
   return {
     async call(input) {
@@ -280,6 +311,8 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
           return historyAround(run, input.args);
         case "history_retain":
           return historyRetain(run, input);
+        case "todo_write":
+          return todoWrite(run, input);
         default:
           throw new ProductToolRejectedError(`tool ${input.tool} is not supported`);
       }

@@ -233,13 +233,38 @@ export function createAgentRunExecutionService(
   /** Assemble the BackendRunInput for a run's single input. The run's
    *  systemPrompt + skillRoots are the frozen snapshot persisted at Run
    *  creation - never re-resolved at dispatch (recovery reuses them); they
-   *  stay in the contract as the run-scoped override channel (ADR 0003). */
+   *  stay in the contract as the run-scoped override channel (ADR 0003).
+   *  The Product Context (identity + current task list) rides the same
+   *  prompt so CLI backends carry their run identity into product tools. */
+  function renderTodoSection(todoSnapshot: string | null): string {
+    if (!todoSnapshot) {
+      return "## Current Tasks\nNone yet. Use the todo_write product tool to track your task list.";
+    }
+    try {
+      const items = JSON.parse(todoSnapshot) as readonly {
+        id: string;
+        text: string;
+        status: string;
+      }[];
+      const marks = { pending: "- [ ]", in_progress: "- [~]", done: "- [x]" };
+      return `## Current Tasks\n${items
+        .map((t) => {
+          const mark = marks[t.status as keyof typeof marks] ?? "- [ ]";
+          return `${mark} ${t.text} (id: ${t.id})`;
+        })
+        .join("\n")}`;
+    } catch {
+      return "## Current Tasks\nNone yet. Use the todo_write product tool to track your task list.";
+    }
+  }
+
   function buildRunInput(
     run: AgentRun,
     history: readonly ProjectedHistoryItem[],
     input: BranchInput,
     workspace: WorkspaceBinding,
     cliSessionRef: string | undefined,
+    lastTodo: string | null,
   ): BackendRunInput {
     const bridge = !cliSessionRef && history.length > 0 ? renderHistoryBridge(history) : "";
     const inputText = input.message.text ?? "";
@@ -257,7 +282,26 @@ export function createAgentRunExecutionService(
       configRevision: run.configRevision,
     };
 
-    if (run.systemPrompt) runSnapshot.systemPrompt = run.systemPrompt;
+    // CLI backends mount product tools through .mcp.json without the child's
+    // per-call wire identity: the identity + task list ride the system
+    // prompt, and the model passes the identity as a tool argument.
+    const productContext = [
+      "## Product Context",
+      "Product tools (history_recent, history_search, history_around,",
+      "history_retain, todo_write) require your run identity. Always pass it",
+      "as the `identity` argument:",
+      `- runId: ${run.runId}`,
+      `- conversationId: ${run.conversationId}`,
+      `- agentMemberId: ${run.agentMemberId}`,
+      `- branchId: ${run.branchId}`,
+      "",
+      renderTodoSection(lastTodo),
+    ].join("\n");
+    if (run.systemPrompt) {
+      runSnapshot.systemPrompt = `${run.systemPrompt}\n\n${productContext}`;
+    } else {
+      runSnapshot.systemPrompt = productContext;
+    }
     if (run.skillRoots && run.skillRoots.length > 0) runSnapshot.skillRoots = run.skillRoots;
     if (cliSessionRef) runSnapshot.cliSessionRef = cliSessionRef;
     if (run.permissionMode) {
@@ -341,8 +385,19 @@ export function createAgentRunExecutionService(
 
     stage.name = "backend_execute";
     debugLog("agent-run", `backend_execute runId=${runId}`);
+    // The branch's CLI session ref is kind-scoped (`<kind>:<ref>`, ADR 0003
+    // decision 6): a ref written by another backend is junk to this CLI and
+    // must never be forwarded (pi exits empty on a foreign --session id).
+    const kindPrefix = `${run.modelRef.backendKind}:`;
+    const rawRef = branch?.cliSessionRef;
+    // The previous run's task list re-enters the prompt so every backend
+    // continues it without a pull round-trip.
+    const lastTodo = await runPort.getLatestRunTodo(run.branchId);
+    const cliSessionRef = rawRef?.startsWith(kindPrefix)
+      ? rawRef.slice(kindPrefix.length)
+      : undefined;
     const segment = await backend.execute(
-      buildRunInput(run, history, input, workspace, branch?.cliSessionRef ?? undefined),
+      buildRunInput(run, history, input, workspace, cliSessionRef, lastTodo),
     );
     liveRuns.set(runId, { segment });
     debugLog("agent-run", `backend_accepted runId=${runId}`);
@@ -356,12 +411,11 @@ export function createAgentRunExecutionService(
   /** Terminal handling for one outcome: completed -> atomic Product commit;
    *  failed/aborted/timeout -> terminal Run without an assistant message. */
   async function settleOutcome(run: AgentRun, outcome: BackendRunOutcome): Promise<void> {
-    // CLI session reference (ADR 0002): record the CLI-side runtime truth
-    // on the branch — informational, never blocks the terminal settle.
+    // CLI session reference (ADR 0003 decision 6): kind-scoped on the
+    // branch so a backend switch never hands a foreign id to the next CLI.
     if (outcome.cliSessionRef) {
-      await deps.contextPort
-        .updateBranchCliSessionRef(run.branchId, outcome.cliSessionRef)
-        .catch(() => {});
+      const scoped = `${run.modelRef.backendKind}:${outcome.cliSessionRef}`;
+      await deps.contextPort.updateBranchCliSessionRef(run.branchId, scoped).catch(() => {});
     }
     if (outcome.status === "completed") {
       try {

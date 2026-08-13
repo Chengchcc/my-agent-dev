@@ -177,7 +177,10 @@ export class PiBackend implements AgentBackend<"pi"> {
         args.push("--model", modelId);
       }
     }
-    args.push("--tools", "read,bash,edit,write,grep,find,ls");
+    // mcp/mcpScript are the pi-mcp-adapter gateway tools: without them in
+    // the allowlist the extension's tools are disabled and product tools
+    // (mounted from .mcp.json) are invisible to the model.
+    args.push("--tools", "read,bash,edit,write,grep,find,ls,mcp,mcpScript");
     if (input.run.systemPrompt) args.push("--append-system-prompt", input.run.systemPrompt);
     if (this.mcpAdapterPath) args.push("--extension", this.mcpAdapterPath);
     args.push(this.buildPrompt(input));

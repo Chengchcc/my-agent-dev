@@ -46,10 +46,15 @@ async function* readLines(stream: ReadableStream<Uint8Array>): AsyncIterable<str
 
 export function spawnOmpProcess(cfg: OmpCommandConfig, opts: { cwd: string }): SpawnedOmpProcess {
   let stderrTail = "";
+  // Same as the pi adapter: a leaked OMP_DAEMON_* pair from the hosting
+  // harness routes the omp worker at the wrong daemon and hangs the run.
+  const env: Record<string, string | undefined> = { ...process.env, ...cfg.env };
+  delete env.OMP_DAEMON_PROJECT_DIR;
+  delete env.OMP_DAEMON_RUNTIME_DIR;
   const proc: Subprocess = Bun.spawn({
     cmd: [cfg.executable, ...(cfg.args ?? [])],
     cwd: opts.cwd,
-    env: { ...process.env, ...cfg.env },
+    env,
     stdout: "pipe",
     stderr: "pipe",
     stdin: "ignore",

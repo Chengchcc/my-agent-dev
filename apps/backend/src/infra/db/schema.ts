@@ -372,6 +372,9 @@ export const agentRun = sqliteTable(
     /** Frozen permission_mode (ask/auto/deny), mapped per backend at
      *  dispatch (ADR 0020 decision 7; claude --permission-mode). */
     permissionMode: text("permission_mode"),
+    /** JSON: the run's latest task list snapshot (todo_write product tool).
+     *  Re-injected into the next run's prompt as the Current Tasks section. */
+    todoSnapshot: text("todo_snapshot"),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     terminalAt: integer("terminal_at", { mode: "number" }),
   },

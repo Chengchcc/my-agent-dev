@@ -58,6 +58,8 @@ export interface AgentRun {
   /** Frozen permission_mode (ADR 0020 decision 7), mapped per backend at
    *  dispatch. */
   readonly permissionMode: string | null;
+  /** JSON: latest task list snapshot (todo_write product tool). */
+  readonly todoSnapshot: string | null;
   readonly createdAt: number;
   readonly terminalAt: number | null;
 }

@@ -174,6 +174,24 @@ describe("product tools MCP", () => {
     }
   });
 
+  test("CLI backends pass the identity as an argument (no _meta)", async () => {
+    const client = await connectClient(TOKEN);
+    try {
+      const res = await client.callTool({
+        name: "history_recent",
+        arguments: {
+          limit: 10,
+          identity: { runId, conversationId: CONV, agentMemberId: MEMBER, branchId },
+        },
+      });
+      expect(res.isError).not.toBe(true);
+      const items = JSON.parse(res.content[0]?.text ?? "[]") as Array<{ text: string }>;
+      expect(items.map((i) => i.text)).toContain("hello mcp");
+    } finally {
+      await client.close();
+    }
+  });
+
   test("a forged identity is normalized to an isError tool result", async () => {
     const client = await connectClient(TOKEN);
     try {

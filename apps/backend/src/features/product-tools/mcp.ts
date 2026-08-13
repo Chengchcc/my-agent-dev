@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -59,20 +59,36 @@ export async function createProductToolsMcpServer(
     { capabilities: { tools: {} } },
   );
 
+  const identitySchema = {
+    type: "object",
+    properties: {
+      runId: { type: "string" },
+      conversationId: { type: "string" },
+      agentMemberId: { type: "string" },
+      branchId: { type: "string" },
+    },
+  };
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
       {
         name: "history_recent",
         description:
-          "Read the most recent messages visible to this agent member in the conversation.",
-        inputSchema: { type: "object", properties: { limit: { type: "number" } } },
+          "Read the most recent messages visible to this agent member in the conversation. Pass the identity from the system prompt.",
+        inputSchema: {
+          type: "object",
+          properties: { limit: { type: "number" }, identity: identitySchema },
+        },
       },
       {
         name: "history_search",
         description: "Search the conversation ledger for messages matching a keyword.",
         inputSchema: {
           type: "object",
-          properties: { keyword: { type: "string" }, limit: { type: "number" } },
+          properties: {
+            keyword: { type: "string" },
+            limit: { type: "number" },
+            identity: identitySchema,
+          },
           required: ["keyword"],
         },
       },
@@ -85,6 +101,7 @@ export async function createProductToolsMcpServer(
             seq: { type: "number" },
             before: { type: "number" },
             after: { type: "number" },
+            identity: identitySchema,
           },
           required: ["seq"],
         },
@@ -95,8 +112,25 @@ export async function createProductToolsMcpServer(
           "Pin a conversation message into this agent's context branch. Semantic mutation; replay-safe.",
         inputSchema: {
           type: "object",
-          properties: { seq: { type: "number" }, reason: { type: "string" } },
+          properties: {
+            seq: { type: "number" },
+            reason: { type: "string" },
+            identity: identitySchema,
+          },
           required: ["seq"],
+        },
+      },
+      {
+        name: "todo_write",
+        description:
+          "Replace this run's task list (durable, shown in the product UI). Pass the full desired list as items: [{id: string, text: string, status: pending | in_progress | done}]. The product injects your current list as Current Tasks in the system prompt.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            items: { type: "array" },
+            identity: identitySchema,
+          },
+          required: ["items"],
         },
       },
     ],
@@ -106,18 +140,26 @@ export async function createProductToolsMcpServer(
     const name = req.params.name;
     const args = (req.params.arguments ?? {}) as Record<string, unknown>;
     const meta = (req.params as { _meta?: { identity?: WireIdentity } })._meta;
-    const identity = meta?.identity ?? {};
+    // CLI backends cannot attach _meta: the system prompt carries the
+    // identity and the model passes it as the `identity` argument.
+    const argIdentity = (args.identity ?? {}) as Record<string, unknown>;
+    const identity = meta?.identity ?? argIdentity;
     const str = (v: unknown): string => (typeof v === "string" ? v : "");
+    const runId = str(identity.runId);
+    // callId/idempotencyKey: injected by the child's wire caller; generated
+    // here for CLI backends (the service validates the pairing).
+    const callId = str(identity.callId) || randomUUID();
+    const idempotencyKey = str(identity.idempotencyKey) || `${runId}:${callId}`;
     try {
       const result = await service.call({
         identity: {
-          runId: str(identity.runId),
+          runId,
           conversationId: str(identity.conversationId),
           agentMemberId: str(identity.agentMemberId),
           branchId: str(identity.branchId),
         },
-        callId: str(identity.callId),
-        idempotencyKey: str(identity.idempotencyKey),
+        callId,
+        idempotencyKey,
         tool: name,
         args,
       });

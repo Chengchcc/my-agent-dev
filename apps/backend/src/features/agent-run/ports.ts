@@ -84,6 +84,11 @@ export interface AgentRunPort {
 
   /** Persist the run's Product Tool manifest at first dispatch. */
   setRunProductTools(runId: string, manifest: readonly unknown[]): Promise<void>;
+  /** Persist the run's latest task list snapshot (todo_write). */
+  setRunTodoSnapshot(runId: string, snapshot: string): Promise<void>;
+  /** The branch's most recent non-null todo snapshot (re-injected into the
+   *  next run's prompt). Null = the branch never wrote one. */
+  getLatestRunTodo(branchId: string): Promise<string | null>;
 
   /** All durable `delivering` inputs across branches (crash recovery). */
   listDeliveringInputs(): Promise<ClaimedBranchInput[]>;
