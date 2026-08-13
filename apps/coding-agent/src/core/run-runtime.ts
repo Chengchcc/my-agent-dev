@@ -1,3 +1,5 @@
+import type { AIMessageChunk } from "@my-agent-team/core";
+
 import {
   type CodingAgentLoopEvent,
   type CodingAgentSession,
@@ -33,6 +35,8 @@ import {
 } from "@my-agent-team/tools-common";
 import { fakeProvider } from "./fake-provider.js";
 import { mountWorkspaceMcpServers } from "./mcp-mount.js";
+import { createWorkflowExecutor } from "./workflow-executor.js";
+import { createWorkflowTools } from "./workflow-tools.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { readProductToolsManifest } from "./product-tools-manifest.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
@@ -120,7 +124,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   if (!currentModel) {
     throw new Error(`model not found in catalog: ${deps.modelId}`);
   }
-  const tools: PluginTool[] = [
+  const fileTools: PluginTool[] = [
     createReadTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
     createLsTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
     createTreeTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
@@ -128,9 +132,9 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     createGrepTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool,
   ];
   if (deps.workspaceAccess === "read_write") {
-    tools.push(createWriteTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
-    tools.push(createEditTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
-    tools.push(createBashTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool);
+    fileTools.push(createWriteTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
+    fileTools.push(createEditTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
+    fileTools.push(createBashTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool);
   }
   // Generic .mcp.json mounting (ADR 0022): user servers + knowledge.
   // Skips "product-tools" (the manifest path owns it) and names that
@@ -139,13 +143,13 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     ...(await mountWorkspaceMcpServers(deps.workspaceRoot, new Set(tools.map((t) => t.name)))),
   );
   if (deps.webSearch) {
-    tools.push(createPortWebSearchTool(deps.webSearch) as unknown as PluginTool);
+    fileTools.push(createPortWebSearchTool(deps.webSearch) as unknown as PluginTool);
   }
   if (deps.webFetch) {
-    tools.push(createPortWebFetchTool(deps.webFetch) as unknown as PluginTool);
+    fileTools.push(createPortWebFetchTool(deps.webFetch) as unknown as PluginTool);
   }
 
-  const nativeToolsPlugin: Plugin = { name: "native-tools", tools };
+  const nativeToolsPlugin: Plugin = { name: "native-tools", tools: fileTools };
   const plugins: Plugin[] = [
     nativeToolsPlugin,
     createRecapPlugin({
@@ -374,6 +378,56 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     signal: new AbortController().signal,
   };
 
+  // Hoisted so both the main session and workflow subagent sessions share it.
+  async function* streamModel(
+    messages: readonly Message[],
+    signal?: AbortSignal,
+    tools?: readonly PluginTool[],
+  ): AsyncIterable<AIMessageChunk> {
+    const run = activeRun;
+    if (!run) throw new Error("no active run: model unresolved");
+    const catalog = await deps.modelRuntime.getCatalog();
+    const model = catalog.models.find(
+      (m) => `${m.providerId}/${m.modelId}` === resolveModelAlias(run.model.modelId),
+    );
+    if (!model) throw new Error(`model not found: ${run.model.modelId}`);
+    const timeoutSignal = AbortSignal.timeout(modelTimeoutMs);
+    const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+    const reasoningEffort = (run.model as { reasoningEffort?: string }).reasoningEffort;
+    const reasoningOpts =
+      reasoningEffort === "none"
+        ? { thinking: { type: "disabled" as const } }
+        : reasoningEffort === "low" || reasoningEffort === "high" || reasoningEffort === "max"
+          ? {
+              thinking: { type: "adaptive" as const, display: "summarized" as const },
+              effort: (reasoningEffort === "max" ? "xhigh" : reasoningEffort) as
+                | "low"
+                | "high"
+                | "xhigh",
+            }
+          : {};
+    const stream = deps.modelRuntime.stream(model.providerId, model.modelId, messages, {
+      signal: combined,
+      cacheControl: true,
+      ...reasoningOpts,
+      tools: tools?.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+      })),
+    });
+    const iter = stream[Symbol.asyncIterator]();
+    try {
+      for (;;) {
+        const next = await nextBounded(iter, combined, timeoutSignal);
+        if (next.done) return;
+        yield next.value;
+      }
+    } finally {
+      if (!combined.aborted) await iter.return?.().catch(() => {});
+    }
+  }
+
   const session = createCodingAgentSession({
     sessionId: deps.runId,
     store,
@@ -381,60 +435,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     pluginRuntime,
     maxSteps: 32,
     maxForceContinues: 4,
-    modelStream: async function* (messages, signal, tools) {
-      const run = activeRun;
-      if (!run) throw new Error("no active run: model unresolved");
-      const catalog = await deps.modelRuntime.getCatalog();
-      const model = catalog.models.find(
-        (m) => `${m.providerId}/${m.modelId}` === resolveModelAlias(run.model.modelId),
-      );
-      if (!model) throw new Error(`model not found: ${run.model.modelId}`);
-      const timeoutSignal = AbortSignal.timeout(modelTimeoutMs);
-      const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-      // Reasoning effort from the run config: none disables thinking;
-      // low/high/max use adaptive thinking with the matching effort.
-      const reasoningEffort = (run.model as { reasoningEffort?: string }).reasoningEffort;
-      const reasoningOpts =
-        reasoningEffort === "none"
-          ? { thinking: { type: "disabled" as const } }
-          : reasoningEffort === "low" || reasoningEffort === "high" || reasoningEffort === "max"
-            ? {
-                thinking: { type: "adaptive" as const, display: "summarized" as const },
-                // ponytail: DB may carry "max" from older agent records;
-                // map to "xhigh" (our canonical highest level).
-                effort: (reasoningEffort === "max" ? "xhigh" : reasoningEffort) as
-                  | "low"
-                  | "high"
-                  | "xhigh",
-              }
-            : {};
-      const stream = deps.modelRuntime.stream(model.providerId, model.modelId, messages, {
-        signal: combined,
-        // Prompt caching: ephemeral cache breakpoints on the system prompt
-        // and the last tool definition. Endpoints that don't support
-        // caching silently ignore the breakpoint.
-        cacheControl: true,
-        ...reasoningOpts,
-        // Providers only consume the schema fields; execution happens in
-        // the loop via toolMap. Explicit mapping keeps PluginTool's
-        // richer execute contract out of the provider boundary.
-        tools: tools?.map((t) => ({
-          name: t.name,
-          description: t.description,
-          inputSchema: t.inputSchema,
-        })),
-      });
-      const iter = stream[Symbol.asyncIterator]();
-      try {
-        for (;;) {
-          const next = await nextBounded(iter, combined, timeoutSignal);
-          if (next.done) return;
-          yield next.value;
-        }
-      } finally {
-        if (!combined.aborted) await iter.return?.().catch(() => {});
-      }
-    },
+    modelStream: streamModel,
     summarize,
     contextBudget,
     resolveModel,
@@ -443,6 +444,29 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
 
   // Bind the plugin runtime's emit to the session's emit (two-phase init).
   sessionEmit = (event) => session.emit(event);
+  // The workflow executor rides the SAME model stream + summarizer as the
+  // main loop; subagents get the file tools only (no workflow/product tools).
+  const workflowExecutor = createWorkflowExecutor({
+    makeSubagentStream: () => streamModel,
+    modelId: deps.modelId,
+    summarize,
+    contextBudget,
+    tools: fileTools,
+    workspaceRoot: deps.workspaceRoot,
+    workspaceAccess: deps.workspaceAccess,
+    maxConcurrent: 8,
+    maxTotal: 64,
+    emit: (event) => sessionEmit?.(event as never),
+  });
+  plugins.push({
+    name: "workflow-tools",
+    tools: createWorkflowTools({
+      runWorkflow: (input) => workflowExecutor.runWorkflow(input),
+      runScript: async () => {
+        throw new Error("workflow_run arrives in phase 2");
+      },
+    }),
+  });
 
   return {
     runId: deps.runId,
