@@ -190,7 +190,7 @@ beforeAll(async () => {
       getById: async () => stubAgent(),
     } as never,
     settingsSvc: { get: async () => 8 } as never,
-    relSvc: { getEdges: () => [] } as never,
+
     agentRunService,
     dispatchRun: (runId: string) => execution.dispatch(runId),
     injectSteer: (branchId, input) => execution.injectSteer(branchId, input),

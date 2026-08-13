@@ -8,7 +8,7 @@ export default function AgentsPage() {
       <PageHeader
         breadcrumb="Team"
         title="Agents"
-        description="Agent identities, workspaces and relationships."
+        description="Agent identities, workspaces, skills and MCP."
         action={<AgentForm />}
       />
       <PageBody>

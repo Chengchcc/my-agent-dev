@@ -3,7 +3,6 @@ import {
   index,
   integer,
   primaryKey,
-  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -226,31 +225,7 @@ export const mcpServer = sqliteTable(
   (table) => [index("idx_mcp_server_agent").on(table.agentId)],
 );
 
-// ─── agent_relationship ─────────────────────────────────────────────
-export const agentRelationship = sqliteTable(
-  "agent_relationship",
-  {
-    id: text().primaryKey(),
-    fromAgent: text()
-      .notNull()
-      .references(() => agents.id, { onDelete: "cascade" }),
-    toAgent: text()
-      .notNull()
-      .references(() => agents.id, { onDelete: "cascade" }),
-    relType: text().notNull(), // 'assigns_to' | 'collaborates_with'
-    weight: real().notNull().default(1.0),
-    instruction: text(),
-    createdAt: integer({ mode: "number" }).notNull(),
-    updatedAt: integer({ mode: "number" }).notNull(),
-  },
-  (table) => [
-    uniqueIndex("idx_agent_rel_unique").on(table.fromAgent, table.toAgent, table.relType),
-    index("idx_agent_rel_from").on(table.fromAgent),
-    index("idx_agent_rel_to").on(table.toAgent),
-  ],
-);
-
-// ── Zod schemas (type chain: drizzle table → Zod → z.infer → TS type) ──
+// ─── Zod schemas (type chain: drizzle table → Zod → z.infer → TS type) ──
 
 import { createSelectSchema } from "drizzle-zod";
 
@@ -264,9 +239,6 @@ export const skillPackSelectSchema = createSelectSchema(skillPack, {
   status: (s) => s.transform((v) => v as "pending" | "installing" | "ready" | "failed" | "syncing"),
 });
 export const agentSkillPackSelectSchema = createSelectSchema(agentSkillPack);
-export const agentRelationshipSelectSchema = createSelectSchema(agentRelationship, {
-  relType: (s) => s.transform((v) => v as "assigns_to" | "collaborates_with"),
-});
 
 // ── Tables with JSON/bool columns — drizzle-zod refine callback pattern ──
 // callback (schema) => schema.transform(...) adds transforms while preserving drizzle-zod types

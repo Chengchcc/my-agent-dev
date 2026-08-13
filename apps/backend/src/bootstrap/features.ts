@@ -12,7 +12,7 @@ import type { FeatureSet } from "../app.js";
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
 import { AgentBusyError, agentModelRef, agentRoutes } from "../features/agent/index.js";
-import { createRelationshipService } from "../features/agent/relationship-service.js";
+
 import { reconcileAgentResources } from "../features/agent/workspace-bridge.js";
 import {
   createAgentContextService,
@@ -201,8 +201,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const seedModel = await defaultSeedModel();
   await ensureAgent("default", "Assistant", seedModel);
 
-  const relSvc = createRelationshipService(db, config);
-
   // ─── Conversation + Phase 5 Agent Run (conversation first: the ledger
   //      resolver and run services build on its port; the execution service
   //      is wired last through dispatchRun to break the cascade cycle) ──
@@ -276,9 +274,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const abortStaleRun: { fn: (runId: string) => Promise<void> } = { fn: async () => {} };
   const conv = createConversationFeature({
     convPort,
+
     agentSvc,
     settingsSvc,
-    relSvc,
     agentRunService,
     dispatchRun: (runId: string) => dispatchRun.fn(runId),
     injectSteer: (branchId, input) => injectSteer.fn(branchId, input),
@@ -544,7 +542,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       identityStore,
       (id: string) => larkBotRegistry.statusOf(id),
       getSetupManager,
-      relSvc,
     ),
     conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore),
     ops: opsRoutes(opsSvc),

@@ -14,11 +14,11 @@ import {
   serializeMessageRevision,
   systemMessageId,
 } from "@my-agent-team/message";
-import { selectWakeAgentIDs } from "../agent/relationship-service.js";
 import type { AgentContextService } from "../agent-context/service.js";
 import type { BranchInputMode } from "../agent-run/domain.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort, LedgerEntry, LedgerKind, MemberRow } from "./ports.js";
+import { selectWakeAgentIDs } from "./wake-routing.js";
 
 /** Reserved memberId for the conversation owner (the human who owns an
  *  issue-/cron-spawned conversation). */
@@ -60,12 +60,8 @@ export interface ConversationServiceDeps {
   /** Effective model for a member's Agent record. */
   resolveDefaultModel: (agentId: string) => Promise<BackendModelRef>;
   maxConsecutiveAgentHops: () => number;
+
   idGen: () => string;
-  /** Wake routing: relationship edges for coordinator selection when
-   *  triggerMode=auto and no @mention. */
-  getRelationshipEdges?: (
-    agentIds: string[],
-  ) => Array<{ from: string; to: string; relType: "assigns_to" | "collaborates_with" }>;
 }
 
 export interface TriggeredRun {
@@ -153,10 +149,8 @@ class ConversationServiceImpl implements ConversationService {
   #contextService: AgentContextService;
   #resolveDefaultModel: (agentId: string) => Promise<BackendModelRef>;
   #maxHops: () => number;
+
   #idGen: () => string;
-  #getRelationshipEdges?: (
-    agentIds: string[],
-  ) => Array<{ from: string; to: string; relType: "assigns_to" | "collaborates_with" }>;
 
   // Push-based SSE: subscribers are notified immediately when new ledger
   // entries are appended.
@@ -174,7 +168,6 @@ class ConversationServiceImpl implements ConversationService {
     this.#resolveDefaultModel = deps.resolveDefaultModel;
     this.#maxHops = deps.maxConsecutiveAgentHops;
     this.#idGen = deps.idGen;
-    this.#getRelationshipEdges = deps.getRelationshipEdges;
   }
 
   // ─── Private helpers ───────────────────────────────
@@ -364,12 +357,12 @@ class ConversationServiceImpl implements ConversationService {
 
     const members = this.port.getMembers(input.conversationId);
     let targets = resolveTriggerTargets(conv, input.addressedTo);
-    // Wake routing: when no @mention and triggerMode=auto, select coordinator
-    // from relationship graph
+    // Wake routing: when no @mention and triggerMode=all, select the
+    // coordinator with no relationship graph (relationships feature removed).
     if (targets.length === 0 && input.addressedTo.length === 0 && conv.triggerMode === "all") {
       const activeAgentIds = members.filter((m) => m.kind === "agent").map((m) => m.memberId);
-      const edges = this.#getRelationshipEdges?.(activeAgentIds) ?? [];
-      const coordinatorIds = selectWakeAgentIDs(activeAgentIds, [], false, edges);
+      const coordinatorIds = selectWakeAgentIDs(activeAgentIds, [], false);
+
       targets = coordinatorIds
         .map((id): AgentMember | undefined => {
           const m = conv.members.find((m) => m.memberId === id);
