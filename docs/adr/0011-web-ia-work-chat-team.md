@@ -1,8 +1,10 @@
 # ADR 0011: Web 信息架构重组——Work / Chat / Team 三级心智，Issue 于前端退役由 Loop 承接
 
+> ✅ **已实施(2026-08-13)**:Work/Chat/Team IA 已上线(apps/web NavRail 三级结构),Issue 页面退役由 Loop 承接。本文档从提案转为实施记录。
+
 ## 状态
 
-Proposed
+Implemented(was Proposed)
 
 ## 上下文
 

@@ -1,4 +1,4 @@
-# ADR 0003: Agent Workspace 布局 + 资源桥接(bridge)
+# ADR 0020: Agent Workspace 布局 + 资源桥接(bridge)
 
 ## 状态
 
@@ -14,7 +14,7 @@ Accepted
 4. 自研 coding_agent 与 pi/omp 定位一致,skill 也应同构处理(读 `.agent/skills/`)。
 5. 当前 seed 会创建 `default` 与 `loop-agent` 两个 agent,loop 其实不需要独立 agent 行。
 
-Gate 0 与 ADR 0002 已核实:omp/pi/claude 在 cwd 读项目级配置;`--session`/`-r` 续接上下文;fork 是 conversation 级(无 branch 级 fork)。
+Gate 0 与 ADR 0019 已核实:omp/pi/claude 在 cwd 读项目级配置;`--session`/`-r` 续接上下文;fork 是 conversation 级(无 branch 级 fork)。
 
 ## 决策
 
@@ -97,7 +97,7 @@ lark:
 - meta(身份/配置/技能/产品工具/知识库)统一由工作区文件承载(见 §1–§3),所有 agent 从 cwd 原生读——后端不再经 run 输入字段或 CLI flag 注入。
 - 历史也统一:所有 agent 用 **CLI session** 续接 + 分支首轮 flat-text 桥(把产品投影拍平喂进 message);**全量投影退役**。
 - run 输入瘦身:删 `history` / `productTools` 两字段;**保留** `systemPrompt` / `skillRoots` 作为 run 级覆盖通道(2026-08-13 修订:原案删四字段,但这两个字段是 Loop 作用域覆盖的唯一通道,且与 CLI backend 的 `--append-system-prompt` 模式对称——删掉等于拆掉四个 backend 共用的覆盖机制,故保留。默认值仍走 cwd,explicit wins)。
-- **修正 ADR 0002**:取消"coding_agent = 全量投影、CLI = session"的双轨特例,统一为单轨(CLI session 是运行态真理,context tree 是产品态真理,对所有 agent 一致)。
+- **修正 ADR 0019**:取消"coding_agent = 全量投影、CLI = session"的双轨特例,统一为单轨(CLI session 是运行态真理,context tree 是产品态真理,对所有 agent 一致)。
 - 自研 coding_agent 加 session 持久化,**会话格式与 pi/omp 完全一致**(parentId 链式 JSONL 事件日志,Gate 0 已抓真实样例)。
 - **session 不按 kind 建目录、不共享**:每个 coding agent 在**自己的原生存储**里维护自己的 session(omp/pi 各自的 session 存储、claude 的 session_id 库);产品**只存一个不透明引用**(branch.cliSessionRef,`BackendRunInput.run.cliSessionRef` 透传 + `BackendRunOutcome.cliSessionRef` 回写)。切 kind = 新 kind 的新 session,上下文靠首轮文本桥——显式接受,不追求跨 kind 续接。
 
@@ -120,10 +120,10 @@ lark:
 - seed 从"仅 SOUL/USER"扩展为完整布局;materializeWorkspace 幂等 seed。
 - file-first 迁移:agents 表删内容列(迁移 N+1),加 `config` 物化缓存列;agent.yml 解析器 + zod 校验 + 写后 upsert 缓存;所有 `agentModelRef`/`resolveDefaultModel` 读缓存列(消费者不改签名)。
 - coding_agent child 改从 `.agent/skills/` 发现技能;`run.skillRoots` 契约移除,progressive-skill 插件改扫 cwd。
-- 统一上下文:run 输入删 history/systemPrompt/productTools;coding_agent 加 session 持久化;ADR 0002 双轨改单轨,ADR 0017 + CONTEXT.md 不变量 9 重写。
+- 统一上下文:run 输入删 history/systemPrompt/productTools;coding_agent 加 session 持久化;ADR 0019 双轨改单轨,ADR 0017 + CONTEXT.md 不变量 9 重写。
 
 ## 关联
 
-- [ADR 0002: CLI Session 双轨真理](./0002-cli-session-dual-truth.md)
+- [ADR 0019: CLI Session 双轨真理](./0019-cli-session-dual-truth.md)
 - [Gate 0 协议核实](../architecture/execution/backend-kinds-gate0.md)
 - [设计哲学](../architecture/design-philosophy.md) — 单点真理 + 显式边界(资源一份,桥接分发)

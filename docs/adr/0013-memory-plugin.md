@@ -1,7 +1,8 @@
 # ADR: Memory Plugin 重构 + Autonomous Memory
 
+> ✅ **被 workspace 文件模型取代(2026-08-13)**:plugin-fs-memory 与 plugin-memory 包均不存在——记忆功能已吸收进 backend agent feature:workspace `memory/MEMORY.md` + `memory/facts/*.md`(agent-identity.ts 读写,agent 自写 facts)。原"改名+重构"路径未走,功能以文件形态落地。
+
 **日期**: 2026-07-22
-**状态**: design
 **范围**: `packages/plugin-fs-memory` → `packages/plugin-memory`（改名 + 重构 + 新功能）
 
 ---

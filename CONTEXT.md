@@ -126,7 +126,7 @@ L1 Contracts    packages/message、packages/core、packages/agent-backend — �
 6. streaming revision 和 terminal revision 共享同一 messageId（`run:<runId>:assistant:0`），端按 messageId collapse
 7. BackendRunOutcome 是终态唯一依据；事件流永不决定终态
 8. 同一 Context Branch 最多一个 active Agent Run
-9. 每个 Run 以产品投影为输入;coding_agent 是全量投影重建,CLI backends(claude/pi/omp)的上下文续接依赖 CLI 自身 session(`cliSessionRef`)——双轨真理,见 ADR 0002;CLI session 不可回滚,重放=以最新输入重开 turn
+9. 每个 Run 以产品投影为输入;coding_agent 是全量投影重建,CLI backends(claude/pi/omp)的上下文续接依赖 CLI 自身 session(`cliSessionRef`)——双轨真理,见 ADR 0019;CLI session 不可回滚,重放=以最新输入重开 turn
 10. 依赖只能向下：`core` -> `message`/`agent` -> `backend`，不可反向
 
 ## 常用命令

@@ -1,8 +1,10 @@
 # Deferred: MCP server 用于 Loop agent 运行时查询
 
+> ⚠ **状态更新(2026-08-13)**:MCP 已落地(ADR 0012 + workspace 桥接 + product-tools MCP),但 Loop 至今未接入 MCP。原"等 MCP 支持后执行"的前提已消失,deferral 成为长期事实:维持 Loop 不用 MCP。
+
 ## 状态
 
-Deferred — 等项目支持 MCP 后执行
+Deferred(维持;was 等 MCP 支持)
 
 ## 上下文
 

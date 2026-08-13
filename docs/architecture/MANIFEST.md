@@ -1,11 +1,7 @@
 # 打包清单
 
+- `docs/adr/README.md`(索引;0001–0021 全部 ADR 在此目录)
 - `docs/adr/0001-loop-prune-is-post-processing.md`
-- `docs/adr/0002-config-generation-is-builtin-skill.md`
-- `docs/adr/0003-state-md-single-writer.md`
-- `docs/adr/0004-discovery-is-agent-session.md`
-- `docs/adr/0006-loop-lock-deferred.md`
-- `docs/adr/0005-mcp-deferred-for-loop.md`
 - `README.md`
 - `docs/architecture/README.md`
 - `docs/architecture/runs/output-and-live-updates.md`

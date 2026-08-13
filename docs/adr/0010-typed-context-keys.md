@@ -1,8 +1,10 @@
 # ADR 0010: Typed Context Keys — 引擎单态化，per-run 数据靠键类型收窄
 
+> ⚠ **已过期(2026-08-13)**:未采纳——typed context keys 未落地,引擎已按 ADR 0016 整体重建(run-centric),本提案的对象(HookContext/单态化)不再存在。
+
 ## 状态
 
-Proposed
+Superseded(was Proposed,未采纳)
 
 ## 上下文
 
