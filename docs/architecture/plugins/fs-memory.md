@@ -1,72 +1,20 @@
 ---
 id: plugins.memory
-title: 记忆插件
-status: current
+title: 记忆插件（已废止）
+status: deprecated
 owners: architecture
-last_verified_against_code: 2026-07-22
-summary: "记忆插件（memoryPlugin）让 Agent 拥有「跨运行记得住」的长期记忆。它把记忆落在 per-agent workspace 的 memory/ 路径下，通过 beforeModel 钩子注入 memory_summary.md 到系统提示，并向 Agent 暴露 memory_read / memory_retain / memory_search 工具。支持自动提取 pipeline（两阶段 LLM）。"
-depends_on:
-  - runtime.plugin
-used_by:
+last_verified_against_code: 2026-08-13
+summary: "plugin-memory / plugin-fs-memory 均不存在。记忆已吸收进 Agent 工作区文件模型（ADR 0020/0021）:workspace 的 memory/MEMORY.md + memory/facts/*.md 由 agent 自行读写,backend 只做展示(agent-identity + /api/agents/:id/memory)。本页保留为 tombstone。"
+depends_on: []
+used_by: []
 ---
 
-# 记忆插件
+# 记忆插件（已废止）
 
-记忆插件（memoryPlugin）让 Agent 拥有「跨运行记得住」的长期记忆。核心能力：被动注入（beforeRun）+ 主动工具（read/retain/search）+ 自动提取（afterModel pipeline）。
+> **这是一个 tombstone 页。** 记忆不再是插件,而是工作区文件(ADR 0020:Agent 工作区即配置)。现状:
 
-## 记忆放在哪
+- `memory/MEMORY.md` — 汇总/dated memory;`memory/facts/*.md` — agent 自写事实;
+- backend `features/agent/agent-identity.ts` 确保目录存在并读取展示;`GET /api/agents/:id/memory` 供 Web 的 Memory tab;
+- SOUL.md / USER.md 经 cwd meta 注入 Coding Agent(system prompt 通道)。
 
-**Per-agent workspace**（`dataDir/agents/<agentId>/memory/`），不再是 shared workspace。
-
-```text
-memory/
-├── memory_summary.md   ← Phase 2 输出，注入 system prompt
-└── facts/
-    ├── <ISO-TS>-<slug>.md
-    └── ...
-```
-
-facts 文件带 YAML frontmatter（ts/title/tags/context）。
-
-## 怎么用上记忆：beforeRun 注入
-
-`beforeRun` 钩子读 `memory_summary.md`（mtime 缓存），写入 `MemoryKey` context。conversation-compose 的 `metaContext` 读取后以 `<memory>` XML 标签注入 system-reminder。
-
-## 主动读写：三个工具
-
-| 工具 | 作用 |
-|------|------|
-| `memory_read` | 读取记忆（不传 path → 读 memory_summary.md） |
-| `memory_retain` | 批量写入 `{ items: [{ content, context?, tags? }] }` |
-| `memory_search` | 多词 AND 搜索 + 时间过滤（`since: "7d"`） |
-
-## 自动提取 pipeline
-
-`afterModel` 钩子：
-
-```
-新消息 >= minMessagesForExtraction (5)?
-    ↓ yes
-Stage 1: 小模型（Haiku）提取 durable knowledge → facts/<ts>-<slug>.md
-    ↓
-累计 >= consolidateThreshold (10)?
-    ↓ yes
-Phase 2: LLM（Sonnet）合并 → memory_summary.md
-```
-
-| Setting | 默认值 |
-|---------|--------|
-| `memory.autoExtract` | `true` |
-| `memory.extractModel` | `claude-haiku-3-5` |
-| `memory.consolidateModel` | `claude-sonnet-4-6` |
-| `memory.minMessagesForExtraction` | `5` |
-| `memory.consolidateThreshold` | `10` |
-
-## 与 identity 的关系
-
-`agent-identity.ts` 之前负责读取 `memory/` 目录构建 `IdentityData.memories`。所有权已移给 `memoryPlugin`，identity 只负责 `SOUL.md` / `USER.md`。
-
-## 关联页面
-
-- [运行时插件机制](../runtime/plugin.md)
-- [Memory 架构](../runtime/memory.md)
+相关当前页面:[Agent 工作区与多后端](../agents/workspace-and-backends.md)。

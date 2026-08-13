@@ -14,6 +14,7 @@ used_by:
 ---
 
 # Web 端
+> ⚠ **部分过时(2026-08-13)**:roster 多成员 UI 已按 ADR 0021 收编为单 Agent;对话页单 agent 视角,新增 agent 详情 Workspace tab(只读文件浏览)。
 
 Web 端是浏览器里的对话界面。它开启一个 SSE 连接到 `/api/bff/conversations/:id/events`，接收 [ledger](../conversation/history.md) 推送的条目。reducer 按 `messageId` upsert 到 `items[]`（`UiItem` 联合：`message` 和 `notice` 两种 kind）。busy 从 open message 的 `state` 字段推导——state 为 `streaming` 或 `waiting` 时表示 Agent 仍在运行或等待审批。
 

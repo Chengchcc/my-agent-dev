@@ -18,6 +18,7 @@ used_by:
 ---
 
 # Loop Engineering
+> ⚠ **部分过时(2026-08-13)**:五动作中的 Discovery 已从实现移除(ADR 0004 Obsolete),Loop 现为 generator/evaluator 两段;Issue/Orchestrator 页面已不存在(0011 后 Issue 退役)。实现见 `apps/backend/src/features/loop/`。
 
 > 本页 `status: design`：描述一版**grilling 后锁定、尚未进代码**的设计。它是 Loop 这套设计的**第一性原理入口**——讲「为什么要有这层、它靠什么自转」；具体的实体、编排函数、模板分别在 [Loop](./loop.md)、[LoopRunner](../backend/loop-runner.md)、[Loop Pattern](./loop-pattern.md) 三页展开。本页不重复它们的字段定义，只把它们串成一个可解释的整体。若你要看现状代码怎么跑，见 `status: current` 的 [Issue](./issue.md)、[Orchestrator](../backend/orchestrator.md)。
 

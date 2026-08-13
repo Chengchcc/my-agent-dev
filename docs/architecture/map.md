@@ -11,8 +11,11 @@ flowchart LR
   Context --> Run[Agent Run]
   Automation[Task / Cron / Loop] --> Run
   Tools[Product Tools] --> Run
-  Run --> Backend[Agent Backend]
+  Run --> Backend[Agent Backends ×4]
   Backend --> Child[coding-agent child]
+  Backend --> Cli[claude / pi / omp CLI]
+  Workspace[Agent Workspace 文件] --> Child
+  Workspace --> Cli
   Backend --> Updates[Live Updates]
   Backend --> Message[Final Message]
   Message --> History

@@ -13,6 +13,7 @@ used_by:
 ---
 
 # 数据模型
+> ⚠ **部分过时(2026-08-13)**:span/attempt 等旧执行表已删(迁移 0020);`agent_relationship` 表已删(迁移 0026);members 模型按 ADR 0021 收编为单 Agent。schema 以 `apps/backend/src/infra/db/schema.ts` 为准。
 
 本页描述当前 backend.db 的持久化模型（drizzle schema 是唯一真源，见 `apps/backend/src/infra/db/schema.ts`；字段名以 snake_case 为准）。
 

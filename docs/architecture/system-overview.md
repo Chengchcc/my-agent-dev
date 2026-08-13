@@ -14,6 +14,7 @@ used_by:
 ---
 
 # 系统总览
+> ⚠ **部分过时(2026-08-13)**:执行链已扩展为四 Agent Backend(coding-agent / claude / pi / omp,ADR 0019/0020);对话模型改为单 Agent(ADR 0021)。现行结构见 [Agent 工作区与多后端](./agents/workspace-and-backends.md)。
 
 本页描述**当前架构**：Product Backend 拥有用户和产品能够依赖的全部事实；Agent Backend 负责执行 Agent Run，且当前只有一个执行引擎 —— Coding Agent 子进程。
 

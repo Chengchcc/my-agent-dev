@@ -1,6 +1,6 @@
 # LLM 入口索引
 
-本目录主 Wiki 描述当前架构：Product Backend 拥有产品事实，Agent Backend 为每个 Agent Run spawn 一次性 coding-agent 子进程执行。页面可独立阅读；`status: deprecated` 表示 tombstone（历史概念，新设计不要引用）。
+本目录主 Wiki 描述当前架构:Product Backend 拥有产品事实,四 Agent Backend(coding-agent/claude/pi/omp)为每个 Agent Run spawn 一次性子进程执行;Agent 配置与记忆住在工作区文件里。页面可独立阅读;`status: deprecated` 表示 tombstone(历史概念,新设计不要引用);带 ⚠ banner 的页面部分过时。
 
 ## 整体架构
 
@@ -80,8 +80,7 @@ Coding Agent 是无 UI 的一次性 CLI（print/json/rpc），由 Adapter 按 Ru
 
 ## Tombstones（历史概念）
 
-- `runtime/framework.md`、`runtime/context-manager.md`、`runtime/plugin.md`、`harness/harness.md`、`backend/event-log.md` —— 旧 daemon/session/checkpointer 架构的 tombstone，新设计不要引用。
-
+- `runtime/framework.md`、`runtime/context-manager.md`、`runtime/plugin.md`、`runtime/memory.md`、`harness/harness.md`、`backend/event-log.md`、`plugins/task-guard.md`、`plugins/fs-memory.md` —— 旧 daemon/session/plugin 架构的 tombstone,新设计不要引用。
 ## 结构化索引
 
 完整页面图谱见 `concepts.json`。

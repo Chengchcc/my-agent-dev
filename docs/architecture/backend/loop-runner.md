@@ -13,6 +13,7 @@ used_by: []
 ---
 
 # LoopRunner
+> ⚠ **部分过时(2026-08-13)**:`loopStep()` 设计已实现但结构有变(无 discovery 段;无写锁/并发池,ADR 0006)。实现见 `apps/backend/src/features/loop/loop-step.ts`。
 
 > 本页 `status: design`：grilling + prototype 后锁定的设计。核心是 `loopStep()` —— 一个无状态的每次调用跑一步的函数，不是连续异步生成器。
 
