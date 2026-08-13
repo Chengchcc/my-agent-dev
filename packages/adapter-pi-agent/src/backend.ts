@@ -61,7 +61,7 @@ interface ActiveRun {
   readonly events: AsyncIterable<BackendEvent<"pi">>;
 }
 
-const SESSION_REL = join(".my-agent", "pi-session");
+const SESSION_REL = join(".pi", "session");
 
 export class PiBackend implements AgentBackend<"pi"> {
   readonly kind = "pi" as const;

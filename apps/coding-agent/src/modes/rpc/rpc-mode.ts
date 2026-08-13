@@ -17,6 +17,10 @@ import {
 } from "@my-agent-team/agent-backend";
 import type { ModelRuntime } from "@my-agent-team/ai";
 import { type CodingAgentRuntime, createCodingAgentRuntime } from "../../core/create-runtime.js";
+import {
+  readWorkspaceSystemPrompt,
+  scanWorkspaceSkillRoots,
+} from "../../core/workspace-context.js";
 import { createJsonlReader } from "./jsonl.js";
 
 /** Minimal RPC mode: stdin JSONL commands, stdout JSONL outputs only, stderr
@@ -175,22 +179,31 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     const runId = input.run.runId;
     let segment: BackendRunSegment<"coding_agent">;
     try {
+      // cwd-based meta (ADR 0003 decision 6): skills and the system prompt
+      // live in workspace files (.agent/skills + AGENTS.md/SOUL.md/USER.md).
+      // Explicit run-input values (Loop scopes) win over the cwd fallback.
+      const cwdSkills = scanWorkspaceSkillRoots(input.workspace.root);
+      const cwdPrompt = readWorkspaceSystemPrompt(input.workspace.root);
+      const effectiveInput =
+        input.run.systemPrompt || cwdPrompt === undefined
+          ? input
+          : { ...input, run: { ...input.run, systemPrompt: cwdPrompt } };
       runtime = await createCodingAgentRuntime({
         runId,
         modelId: input.run.model.modelId,
         workspaceRoot: input.workspace.root,
         workspaceAccess: input.workspace.access,
         modelRuntime: opts.modelRuntime,
-        skillRoots: input.run.skillRoots ?? [],
+        skillRoots: input.run.skillRoots?.length ? input.run.skillRoots : cwdSkills,
         onEvent: (event) => {
           if (!finished) emit(eventOutputSchema.parse({ type: "event", runId, event }));
         },
       });
       // run() resolves when the loop is live: acceptance ⟹ routable.
-      segment = await runtime.run(input as never);
+      segment = await runtime.run(effectiveInput as never);
       debugLog(
         "coding-agent",
-        `runtime_assembled runId=${runId} skills=${input.run.skillRoots?.length ?? 0} access=${input.workspace.access}`,
+        `runtime_assembled runId=${runId} skills=${(input.run.skillRoots?.length ? input.run.skillRoots : cwdSkills).length} access=${input.workspace.access}`,
       );
     } catch (caught) {
       emitResponse(command.id, "execute", false, `runtime assembly failed: ${redactError(caught)}`);

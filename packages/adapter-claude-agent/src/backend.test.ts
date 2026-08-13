@@ -81,7 +81,7 @@ describe("ClaudeBackend", () => {
     const first = JSON.parse(readFileSync(log, "utf8")) as { argv: string[] };
     expect(first.argv.some((a) => a.includes("--resume"))).toBe(false);
     // session id file written from the fixture's init/result events
-    const sessionFile = join(ws, ".my-agent", "claude-session", "branch-x.json");
+    const sessionFile = join(ws, ".claude", "session", "branch-x.json");
     const stored = JSON.parse(readFileSync(sessionFile, "utf8")) as { sessionId: string };
     expect(stored.sessionId).toBe("0e491d46-b3a8-4e64-999a-400043c30f4e");
     // second run resumes with --resume <sessionId>

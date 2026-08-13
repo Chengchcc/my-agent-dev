@@ -92,7 +92,7 @@ describe("OmpBackend", () => {
     const backend = makeBackend("omp-wire-text.jsonl");
     const input = makeInput("branch-x");
     const withWs = { ...input, workspace: { root: ws, access: "read_write" as const } };
-    const sessionFile = join(ws, ".my-agent", "omp-session", "branch-x.jsonl");
+    const sessionFile = join(ws, ".omp", "session", "branch-x.jsonl");
     await drain(await backend.execute(withWs));
     // First run wrote the branch-pinned session file via `--session`.
     expect(await Bun.file(sessionFile).exists()).toBe(true);

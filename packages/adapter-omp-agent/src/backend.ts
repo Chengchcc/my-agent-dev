@@ -61,7 +61,7 @@ interface ActiveRun {
   readonly events: AsyncIterable<BackendEvent<"omp">>;
 }
 
-const SESSION_REL = join(".my-agent", "omp-session");
+const SESSION_REL = join(".omp", "session");
 
 export class OmpBackend implements AgentBackend<"omp"> {
   readonly kind = "omp" as const;

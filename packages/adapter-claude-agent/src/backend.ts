@@ -66,7 +66,7 @@ interface ActiveRun {
 }
 
 /** Branch-pinned session id file: `{"sessionId": "..."}` (ADR 0002). */
-const SESSION_REL = join(".my-agent", "claude-session");
+const SESSION_REL = join(".claude", "session");
 
 export class ClaudeBackend implements AgentBackend<"claude_code"> {
   readonly kind = "claude_code" as const;
@@ -234,9 +234,9 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
       this.productToolsToken !== undefined
         ? { Authorization: `Bearer ${this.productToolsToken}` }
         : undefined;
-    const dir = join(workspace, ".my-agent");
+    const dir = join(workspace, ".claude");
     mkdirSync(dir, { recursive: true });
-    const path = join(dir, "claude-mcp.json");
+    const path = join(dir, "mcp-product-tools.json");
     writeFileSync(
       path,
       JSON.stringify({

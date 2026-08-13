@@ -69,7 +69,7 @@ describe("PiBackend", () => {
     const backend = makeBackend("pi-wire-text.jsonl");
     const input = makeInput("branch-x");
     const withWs = { ...input, workspace: { root: ws, access: "read_write" as const } };
-    const sessionFile = join(ws, ".my-agent", "pi-session", "branch-x.jsonl");
+    const sessionFile = join(ws, ".pi", "session", "branch-x.jsonl");
     await drain(await backend.execute(withWs));
     expect(await Bun.file(sessionFile).exists()).toBe(true);
     const firstArgs = JSON.parse(await Bun.file(`${sessionFile}.args`).text()) as string[];
