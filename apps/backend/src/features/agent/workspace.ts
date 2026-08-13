@@ -15,14 +15,20 @@ const AGENTS_MD = [
   "",
   "需要本项目使用说明、领域知识或约定时,先读 knowledge/ 目录下相关文件再作答。",
   "",
+  "## 产品账本(对话历史)",
+  "",
+  "本对话的历史经 MCP 的 product-tools server 查询(history_recent / history_search / history_around);需要历史上下文时用它,不要凭记忆猜。",
+  "",
 ].join("\n");
 
 /** Default workspace files seeded on agent creation (agent-hub 预留口).
- *  Each is written ONLY when absent — never clobber a user's edits. */
+ *  Each is written ONLY when absent — never clobber a user's edits.
+ *  CLAUDE.md mirrors AGENTS.md (claude reads CLAUDE.md, not AGENTS.md). */
 const DEFAULT_FILES: Record<string, string> = {
   "agent.yml":
     "# Agent workspace descriptor (agent-hub 预留口).\n# 字段随 agent-hub 演进;当前仅作占位。\n",
   "AGENTS.md": `${AGENTS_MD}\n`,
+  "CLAUDE.md": `${AGENTS_MD}\n`,
   "manifest.json": '{\n  "version": 1\n}\n',
   "SOUL.md": "# SOUL\n\n在此描述此 Agent 的身份、人格与行为准则。\n",
 };

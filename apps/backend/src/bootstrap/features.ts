@@ -468,12 +468,26 @@ export async function installFeatures(services: BackendServices): Promise<Instal
         skillPacks: packs
           .filter((p) => p.status === "ready")
           .map((p) => ({ id: p.id, source: installPath(config.dataDir, p.id) })),
-        mcpServers: mcpSvc.listByAgent(agentId).map((s) => ({
-          name: s.name,
-          transport: s.transport,
-          url: s.url,
-          command: s.command,
-        })),
+        mcpServers: [
+          ...mcpSvc.listByAgent(agentId).map((s) => ({
+            name: s.name,
+            transport: s.transport,
+            url: s.url,
+            command: s.command,
+          })),
+          // The product-tools server (ledger access, ADR 0003) merges into
+          // the SAME workspace .mcp.json — one config, one writer.
+          ...(config.productToolsMcpUrl && config.productToolsServiceToken
+            ? [
+                {
+                  name: "product-tools",
+                  transport: "sse" as const,
+                  url: config.productToolsMcpUrl,
+                  headers: { Authorization: `Bearer ${config.productToolsServiceToken}` },
+                },
+              ]
+            : []),
+        ],
       });
     } catch (err) {
       console.error(`[bridge] reconcile failed for ${agentId}:`, err);

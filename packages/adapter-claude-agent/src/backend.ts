@@ -10,7 +10,7 @@
  *  bypassPermissions` is refused when running as root — the flag is only
  *  passed when explicitly configured. */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AgentBackend,
@@ -97,7 +97,10 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
     // the product forwards the branch's opaque reference only (ADR 0003).
     const resumeId = input.run.cliSessionRef ?? null;
 
-    const mcpConfigPath = this.writeMcpConfig(input, workspace);
+    // The workspace bridge owns the single cwd .mcp.json (user servers +
+    // product-tools, ADR 0003); pass it to claude only when it exists.
+    const mcpPath = join(workspace, ".mcp.json");
+    const mcpConfigPath = existsSync(mcpPath) ? mcpPath : null;
 
     const args = this.buildArgs(input, resumeId, mcpConfigPath);
     let proc: SpawnedClaudeProcess;
@@ -219,32 +222,6 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
         content: [{ type: "text", text: prompt }],
       },
     });
-  }
-
-  /** Product Tools mounting (D3): write the standard mcp.json and pass it
-   *  via --mcp-config. Returns null when the entrypoint is not a real SSE
-   *  url (unconfigured deployment). */
-  private writeMcpConfig(input: BackendRunInput<"claude_code">, workspace: string): string | null {
-    const entrypoint = input.run.productTools[0]?.entrypoint ?? "";
-    if (!entrypoint.startsWith("sse:")) return null;
-    const url = entrypoint.slice(4);
-    const headers =
-      this.productToolsToken !== undefined
-        ? { Authorization: `Bearer ${this.productToolsToken}` }
-        : undefined;
-    const dir = join(workspace, ".claude");
-    mkdirSync(dir, { recursive: true });
-    const path = join(dir, "mcp-product-tools.json");
-    writeFileSync(
-      path,
-      JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
-        mcpServers: {
-          "product-tools": { type: "sse", url, ...(headers ? { headers } : {}) },
-        },
-      }),
-    );
-    return path;
   }
 
   /** Single stdout parse loop + stdin write. The terminal outcome is

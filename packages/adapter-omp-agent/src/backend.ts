@@ -8,8 +8,6 @@
  *  Wire format: omp 17.2.15 `--mode json` stdout lines (see wire.ts),
  *  captured in docs/architecture/execution/backend-kinds-gate0.md. */
 
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
 import type {
   AgentBackend,
   BackendEvent,
@@ -90,8 +88,6 @@ export class OmpBackend implements AgentBackend<"omp"> {
     // The CLI owns its session (native storage); the product forwards the
     // branch's opaque reference only (ADR 0003 decision 6).
     const resumeRef = input.run.cliSessionRef;
-
-    this.writeMcpConfig(input, workspace);
 
     const args = this.buildArgs(input, resumeRef);
     let proc: SpawnedOmpProcess;
@@ -194,29 +190,6 @@ export class OmpBackend implements AgentBackend<"omp"> {
       .join("\n\n");
     return `${historyText}\n\n${inputText}`;
   }
-  /** Product Tools mounting (D3 全量对齐): write the standard `.mcp.json`
-   *  into the workspace root; omp loads it at project level. Skipped when
-   *  the entrypoint is not a real SSE url (unconfigured deployment) or no
-   *  token is available. */
-  private writeMcpConfig(input: BackendRunInput<"omp">, workspace: string): void {
-    const entrypoint = input.run.productTools[0]?.entrypoint ?? "";
-    if (!entrypoint.startsWith("sse:")) return;
-    const url = entrypoint.slice(4);
-    const headers =
-      this.productToolsToken !== undefined
-        ? { Authorization: `Bearer ${this.productToolsToken}` }
-        : undefined;
-    writeFileSync(
-      join(workspace, ".mcp.json"),
-      JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
-        mcpServers: {
-          "product-tools": { type: "sse", url, ...(headers ? { headers } : {}) },
-        },
-      }),
-    );
-  }
-
   /** Single stdout parse loop. The terminal outcome is decided ONLY here
    *  (exit code + error event) — the outcome is the sole terminal authority
    *  (ADR 0017). */

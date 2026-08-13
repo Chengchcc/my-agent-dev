@@ -30,6 +30,9 @@ export interface McpServerEntry {
   transport: "stdio" | "sse";
   url?: string | null;
   command?: string | null;
+  /** Auth headers (e.g. the product-tools bearer token). Written into
+   *  the workspace .mcp.json — same exposure as the adapter's old write. */
+  headers?: Record<string, string>;
 }
 
 /** Reconcile the `<kind>/skills/` symlinks: create missing links to the
@@ -71,18 +74,12 @@ export function reconcileSkillLinks(
   }
 }
 
-/** Write (or remove when empty) the `<kind>/mcp.json` config listing the
- *  agent's MCP servers. `env`/secrets are intentionally NOT written to the
- *  workspace file (they stay DB-side); stdio servers with env-based auth
- *  need a future secret mount (ADR 0003 consequence). */
-export function writeMcpConfig(
-  workspacePath: string,
-  kind: string,
-  servers: readonly McpServerEntry[],
-): void {
-  const dir = join(workspacePath, KIND_DIR[kind] ?? `.${kind}`);
-  mkdirSync(dir, { recursive: true });
-  const path = join(dir, "mcp.json");
+/** Write (or remove when empty) the workspace-level `.mcp.json` (cwd) —
+ *  the ONE config all three CLIs read natively (omp: cwd mcp.json/
+ *  .mcp.json; pi: pi-mcp-adapter reads cwd .mcp.json; claude: passed via
+ *  --mcp-config). User servers + the product-tools server merge here. */
+export function writeMcpConfig(workspacePath: string, servers: readonly McpServerEntry[]): void {
+  const path = join(workspacePath, ".mcp.json");
   if (servers.length === 0) {
     try {
       unlinkSync(path);
@@ -96,6 +93,7 @@ export function writeMcpConfig(
     const entry: Record<string, unknown> = { type: s.transport };
     if (s.transport === "sse" && s.url) entry.url = s.url;
     if (s.transport === "stdio" && s.command) entry.command = s.command;
+    if (s.headers) entry.headers = s.headers;
     mcpServers[s.name] = entry;
   }
   writeFileSync(
@@ -122,5 +120,5 @@ export function reconcileAgentResources(input: {
   mcpServers: readonly McpServerEntry[];
 }): void {
   reconcileSkillLinks(input.workspacePath, input.kind, input.skillPacks);
-  writeMcpConfig(input.workspacePath, input.kind, input.mcpServers);
+  writeMcpConfig(input.workspacePath, input.mcpServers);
 }

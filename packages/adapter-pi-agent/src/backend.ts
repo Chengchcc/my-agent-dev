@@ -11,8 +11,6 @@
  *  NOT yet verified against a real pi CLI (not installed locally —
  *  Gate 0 record). */
 
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
 import type {
   AgentBackend,
   BackendEvent,
@@ -92,8 +90,6 @@ export class PiBackend implements AgentBackend<"pi"> {
     // The CLI owns its session (native storage); the product forwards the
     // branch's opaque reference only (ADR 0003 decision 6).
     const resumeRef = input.run.cliSessionRef;
-
-    this.writeMcpConfig(input, workspace);
 
     const args = this.buildArgs(input, resumeRef);
     let proc: SpawnedPiProcess;
@@ -202,27 +198,6 @@ export class PiBackend implements AgentBackend<"pi"> {
       })
       .join("\n\n");
     return `${historyText}\n\n${inputText}`;
-  }
-
-  /** Product Tools mounting (D3): the standard `.mcp.json` in the workspace
-   *  root — pi-mcp-adapter reads it (cwd or ~/.config/mcp/mcp.json). */
-  private writeMcpConfig(input: BackendRunInput<"pi">, workspace: string): void {
-    const entrypoint = input.run.productTools[0]?.entrypoint ?? "";
-    if (!entrypoint.startsWith("sse:")) return;
-    const url = entrypoint.slice(4);
-    const headers =
-      this.productToolsToken !== undefined
-        ? { Authorization: `Bearer ${this.productToolsToken}` }
-        : undefined;
-    writeFileSync(
-      join(workspace, ".mcp.json"),
-      JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
-        mcpServers: {
-          "product-tools": { type: "sse", url, ...(headers ? { headers } : {}) },
-        },
-      }),
-    );
   }
 
   /** Single stdout parse loop. The terminal outcome is decided ONLY here

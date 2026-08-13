@@ -50,11 +50,11 @@ describe("workspace bridge", () => {
 
   test("writeMcpConfig writes servers and removes the file when empty", () => {
     const ws = tmpWorkspace();
-    writeMcpConfig(ws, "omp", [
+    writeMcpConfig(ws, [
       { name: "sse-srv", transport: "sse", url: "http://127.0.0.1:9/mcp" },
       { name: "stdio-srv", transport: "stdio", command: "my-tool" },
     ]);
-    const path = join(ws, ".omp", "mcp.json");
+    const path = join(ws, ".mcp.json");
     const parsed = JSON.parse(readFileSync(path, "utf-8")) as {
       mcpServers: Record<string, Record<string, string>>;
     };
@@ -64,7 +64,7 @@ describe("workspace bridge", () => {
     });
     expect(parsed.mcpServers["stdio-srv"]).toEqual({ type: "stdio", command: "my-tool" });
 
-    writeMcpConfig(ws, "omp", []);
+    writeMcpConfig(ws, []);
     expect(existsSync(path)).toBe(false);
     rmSync(ws, { recursive: true, force: true });
   });
