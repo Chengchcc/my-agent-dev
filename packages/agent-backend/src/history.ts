@@ -35,6 +35,11 @@ export interface AgentRunSnapshot<K extends string = string> {
   /** Skill pack roots (absolute dirs scanned for SKILL.md), frozen at Run
    *  creation. The Runtime loads them via the progressive skill plugin. */
   readonly skillRoots?: readonly string[];
+  /** The branch's CLI session reference (ADR 0003 decision 6): an opaque
+   *  pointer the coding agent resolves itself (its own native session
+   *  storage). Absent = fresh session. The product stores only this
+   *  reference — never manages the CLI's session files. */
+  readonly cliSessionRef?: string;
   readonly productTools: readonly ProductToolDescriptor[];
   readonly configRevision: number;
 }

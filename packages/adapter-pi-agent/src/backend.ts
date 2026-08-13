@@ -11,8 +11,8 @@
  *  NOT yet verified against a real pi CLI (not installed locally —
  *  Gate 0 record). */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
   AgentBackend,
   BackendEvent,
@@ -61,8 +61,6 @@ interface ActiveRun {
   readonly events: AsyncIterable<BackendEvent<"pi">>;
 }
 
-const SESSION_REL = join(".pi", "session");
-
 export class PiBackend implements AgentBackend<"pi"> {
   readonly kind = "pi" as const;
   private readonly executable: string;
@@ -91,15 +89,13 @@ export class PiBackend implements AgentBackend<"pi"> {
     }
 
     const workspace = input.workspace.root;
-    // pi writes a fresh session file when absent and resumes an existing
-    // one — the same `--session <path>` flag covers both (unlike omp).
-    const sessionPath = join(workspace, SESSION_REL, `${input.metadata.branchId}.jsonl`);
-    const resume = existsSync(sessionPath);
-    if (!resume) mkdirSync(dirname(sessionPath), { recursive: true });
+    // The CLI owns its session (native storage); the product forwards the
+    // branch's opaque reference only (ADR 0003 decision 6).
+    const resumeRef = input.run.cliSessionRef;
 
     this.writeMcpConfig(input, workspace);
 
-    const args = this.buildArgs(input, sessionPath, resume);
+    const args = this.buildArgs(input, resumeRef);
     let proc: SpawnedPiProcess;
     try {
       proc = spawnPiProcess(
@@ -115,7 +111,7 @@ export class PiBackend implements AgentBackend<"pi"> {
 
     const handle = createActiveRun(runId, proc);
     this.active.set(runId, handle);
-    void this.consumeStdout(handle, sessionPath);
+    void this.consumeStdout(handle, resumeRef);
     return {
       events: handle.events,
       outcome: handle.outcome,
@@ -170,9 +166,10 @@ export class PiBackend implements AgentBackend<"pi"> {
 
   // ─── Internals ─────────────────────────────────────────────────────────
 
-  private buildArgs(input: BackendRunInput<"pi">, sessionPath: string, resume: boolean): string[] {
+  private buildArgs(input: BackendRunInput<"pi">, resumeRef: string | undefined): string[] {
     const args = ["-p", "--mode", "json"];
-    args.push("--session", sessionPath);
+    // pi's --session accepts an id (or file path) and resumes when found.
+    if (resumeRef) args.push("--session", resumeRef);
     const modelId = input.run.model.modelId;
     if (modelId) {
       // Canonical `<provider>/<model>` id splits into pi's two flags.
@@ -187,7 +184,7 @@ export class PiBackend implements AgentBackend<"pi"> {
     args.push("--tools", "read,bash,edit,write,grep,find,ls");
     if (input.run.systemPrompt) args.push("--append-system-prompt", input.run.systemPrompt);
     if (this.mcpAdapterPath) args.push("--extension", this.mcpAdapterPath);
-    args.push(this.buildPrompt(input, resume));
+    args.push(this.buildPrompt(input, resumeRef !== undefined));
     return args;
   }
 
@@ -230,7 +227,7 @@ export class PiBackend implements AgentBackend<"pi"> {
 
   /** Single stdout parse loop. The terminal outcome is decided ONLY here
    *  (exit code + error event). */
-  private async consumeStdout(handle: ActiveRun, sessionPath: string): Promise<void> {
+  private async consumeStdout(handle: ActiveRun, resumeRef: string | undefined): Promise<void> {
     const acc = createPiAccumulator();
     for await (const line of handle.proc.stdout) {
       if (line.trim() === "") continue;
@@ -257,9 +254,7 @@ export class PiBackend implements AgentBackend<"pi"> {
         status: "completed",
         messages: buildOutcomeMessages(acc.assistantTexts),
         usage: acc.usage,
-        // The branch-pinned session file is the CLI-side runtime truth
-        // (ADR 0002); the Product Backend records it on the branch.
-        cliSessionRef: sessionPath,
+        ...((acc.sessionId ?? resumeRef) ? { cliSessionRef: acc.sessionId ?? resumeRef } : {}),
       });
     }
     this.active.delete(handle.runId);

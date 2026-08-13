@@ -46,7 +46,7 @@ export interface OmpToolResult {
 }
 
 export type OmpEvent =
-  | { readonly type: "session" }
+  | { readonly type: "session"; readonly id?: string }
   | { readonly type: "agent_start" }
   | {
       readonly type: "agent_end";

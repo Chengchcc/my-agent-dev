@@ -35,6 +35,7 @@ const runSnapshotSchema = z.object({
   /** Skill pack roots (absolute dirs scanned for SKILL.md), frozen at Run
    *  creation. Empty/absent = no skills. */
   skillRoots: z.array(z.string()).optional(),
+  cliSessionRef: z.string().optional(),
   productTools: z.array(productToolSchema),
   configRevision: z.number(),
 });

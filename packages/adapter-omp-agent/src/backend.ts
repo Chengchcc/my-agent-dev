@@ -8,8 +8,8 @@
  *  Wire format: omp 17.2.15 `--mode json` stdout lines (see wire.ts),
  *  captured in docs/architecture/execution/backend-kinds-gate0.md. */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
   AgentBackend,
   BackendEvent,
@@ -61,8 +61,6 @@ interface ActiveRun {
   readonly events: AsyncIterable<BackendEvent<"omp">>;
 }
 
-const SESSION_REL = join(".omp", "session");
-
 export class OmpBackend implements AgentBackend<"omp"> {
   readonly kind = "omp" as const;
   private readonly executable: string;
@@ -89,13 +87,13 @@ export class OmpBackend implements AgentBackend<"omp"> {
     }
 
     const workspace = input.workspace.root;
-    const sessionPath = join(workspace, SESSION_REL, `${input.metadata.branchId}.jsonl`);
-    const resume = existsSync(sessionPath);
-    if (!resume) mkdirSync(dirname(sessionPath), { recursive: true });
+    // The CLI owns its session (native storage); the product forwards the
+    // branch's opaque reference only (ADR 0003 decision 6).
+    const resumeRef = input.run.cliSessionRef;
 
     this.writeMcpConfig(input, workspace);
 
-    const args = this.buildArgs(input, sessionPath, resume);
+    const args = this.buildArgs(input, resumeRef);
     let proc: SpawnedOmpProcess;
     try {
       proc = spawnOmpProcess(
@@ -111,7 +109,7 @@ export class OmpBackend implements AgentBackend<"omp"> {
 
     const handle = createActiveRun(runId, proc);
     this.active.set(runId, handle);
-    void this.consumeStdout(handle, sessionPath);
+    void this.consumeStdout(handle, resumeRef);
     return {
       events: handle.events,
       outcome: handle.outcome,
@@ -167,22 +165,20 @@ export class OmpBackend implements AgentBackend<"omp"> {
 
   // ─── Internals ─────────────────────────────────────────────────────────
 
-  private buildArgs(input: BackendRunInput<"omp">, sessionPath: string, resume: boolean): string[] {
+  private buildArgs(input: BackendRunInput<"omp">, resumeRef: string | undefined): string[] {
     const args = ["-p", "--mode", "json"];
-    if (resume) {
-      args.push("-r", sessionPath);
-    } else {
-      args.push("--session", sessionPath);
-    }
+    // Resume by the product-stored reference (session id from a previous
+    // run's `session` event); no ref = fresh native session.
+    if (resumeRef) args.push("-r", resumeRef);
     const modelId = input.run.model.modelId;
     if (modelId) args.push("--model", modelId);
     args.push("--tools", "read,bash,edit,write,grep,glob");
     if (input.run.systemPrompt) args.push("--append-system-prompt", input.run.systemPrompt);
-    args.push(this.buildPrompt(input, resume));
+    args.push(this.buildPrompt(input, resumeRef !== undefined));
     return args;
   }
 
-  /** The driving input message. When the branch has no omp session yet
+  /** The driving input message. When the branch has no CLI session yet
    *  (fresh branch / first run after a kind switch), the projected product
    *  history is rendered as flat text so the model is not amnesiac — the
    *  CLI session becomes the runtime truth from the second turn on
@@ -198,7 +194,6 @@ export class OmpBackend implements AgentBackend<"omp"> {
       .join("\n\n");
     return `${historyText}\n\n${inputText}`;
   }
-
   /** Product Tools mounting (D3 全量对齐): write the standard `.mcp.json`
    *  into the workspace root; omp loads it at project level. Skipped when
    *  the entrypoint is not a real SSE url (unconfigured deployment) or no
@@ -225,7 +220,7 @@ export class OmpBackend implements AgentBackend<"omp"> {
   /** Single stdout parse loop. The terminal outcome is decided ONLY here
    *  (exit code + error event) — the outcome is the sole terminal authority
    *  (ADR 0017). */
-  private async consumeStdout(handle: ActiveRun, sessionPath: string): Promise<void> {
+  private async consumeStdout(handle: ActiveRun, resumeRef: string | undefined): Promise<void> {
     const acc = createOmpAccumulator();
     for await (const line of handle.proc.stdout) {
       if (line.trim() === "") continue;
@@ -235,6 +230,9 @@ export class OmpBackend implements AgentBackend<"omp"> {
       for (const e of acc.events.splice(0)) handle.pushEvent(e);
     }
     const exitCode = await handle.proc.exit.catch(() => null);
+    // The native session id (when the CLI reported one) is the reference
+    // the product stores; fall back to the resumed ref.
+    const sessionRef = acc.sessionId ?? resumeRef ?? undefined;
 
     if (handle.stopRequested) {
       // stop() already settled aborted (exactly-once guard below).
@@ -252,9 +250,7 @@ export class OmpBackend implements AgentBackend<"omp"> {
         status: "completed",
         messages: buildOutcomeMessages(acc.assistantTexts),
         usage: acc.usage,
-        // The branch-pinned session file is the CLI-side runtime truth
-        // (ADR 0002); the Product Backend records it on the branch.
-        cliSessionRef: sessionPath,
+        ...(sessionRef ? { cliSessionRef: sessionRef } : {}),
       });
     }
     this.active.delete(handle.runId);

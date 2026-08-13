@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -11,11 +11,11 @@ import { OmpBackend, OmpBackendError } from "./backend.js";
 
 const FAKE_ENTRY = join(import.meta.dir, "__fixtures__", "fake-omp.ts");
 
-function makeBackend(fixture: string): OmpBackend {
+function makeBackend(fixture: string, logPath?: string): OmpBackend {
   return new OmpBackend({
     executable: process.execPath,
     args: [FAKE_ENTRY],
-    env: { OMP_FAKE_FIXTURE: fixture },
+    env: { OMP_FAKE_FIXTURE: fixture, ...(logPath ? { OMP_FAKE_LOG: logPath } : {}) },
   });
 }
 
@@ -87,22 +87,30 @@ describe("OmpBackend", () => {
     expect(outcome.status).toBe("aborted");
   });
 
-  test("session file is pinned per branch and resumed", async () => {
+  test("session reference passthrough: fresh run reports id, next run resumes it", async () => {
     const ws = mkdtempSync(join(tmpdir(), "omp-adapter-"));
-    const backend = makeBackend("omp-wire-text.jsonl");
+    const log = join(ws, "log.json");
+    const backend = makeBackend("omp-wire-text.jsonl", log);
     const input = makeInput("branch-x");
     const withWs = { ...input, workspace: { root: ws, access: "read_write" as const } };
-    const sessionFile = join(ws, ".omp", "session", "branch-x.jsonl");
-    await drain(await backend.execute(withWs));
-    // First run wrote the branch-pinned session file via `--session`.
-    expect(await Bun.file(sessionFile).exists()).toBe(true);
-    const firstArgs = JSON.parse(await Bun.file(`${sessionFile}.args`).text()) as string[];
-    expect(firstArgs).toContain("--session");
-    expect(firstArgs.some((a) => a.includes("branch-x.jsonl"))).toBe(true);
-    // Second run on the same branch resumes via `-r`.
-    await drain(await backend.execute(withWs));
-    const secondArgs = JSON.parse(await Bun.file(`${sessionFile}.args`).text()) as string[];
+
+    // Fresh run: no resume flag; the fake's `session` event id is reported.
+    const first = await drain(await backend.execute(withWs));
+    const firstArgs = JSON.parse(readFileSync(log, "utf8")) as string[];
+    expect(firstArgs.some((a) => a === "-r" || a === "--session")).toBe(false);
+    if (first.outcome.status === "completed") {
+      expect(first.outcome.cliSessionRef).toBe("019ff55f-b124-7000-9738-cc57b22c51a8");
+    }
+
+    // Second run with the stored reference resumes via `-r <id>`.
+    const resumed = {
+      ...withWs,
+      run: { ...withWs.run, cliSessionRef: "019ff55f-b124-7000-9738-cc57b22c51a8" },
+    };
+    await drain(await backend.execute(resumed));
+    const secondArgs = JSON.parse(readFileSync(log, "utf8")) as string[];
     expect(secondArgs).toContain("-r");
+    expect(secondArgs).toContain("019ff55f-b124-7000-9738-cc57b22c51a8");
     rmSync(ws, { recursive: true, force: true });
   });
 });

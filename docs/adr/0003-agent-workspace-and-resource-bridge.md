@@ -98,7 +98,8 @@ lark:
 - 历史也统一:所有 agent 用 **CLI session** 续接 + 分支首轮 flat-text 桥(把产品投影拍平喂一次);**全量投影退役**。
 - run 输入瘦身为 `runId / model / workspace / message`;删 `history` / `systemPrompt` / `skillRoots` / `productTools` 四字段。
 - **修正 ADR 0002**:取消"coding_agent = 全量投影、CLI = session"的双轨特例,统一为单轨(CLI session 是运行态真理,context tree 是产品态真理,对所有 agent 一致)。
-- 自研 coding_agent 加 session 持久化,**会话格式与 pi/omp 完全一致**:parentId 链式 JSONL 事件日志(title/session/model_change/message/…,Gate 0 已抓真实样例);会话文件位置统一为 `<workspace>/.<kind>/session/<branchId>.jsonl`(`.my-agent/*-session` 废弃)。child 读 `AGENTS.md`/`SOUL.md` + 扫 `.agent/skills/` + 读 `.agent/mcp.json`。
+- 自研 coding_agent 加 session 持久化,**会话格式与 pi/omp 完全一致**(parentId 链式 JSONL 事件日志,Gate 0 已抓真实样例)。
+- **session 不按 kind 建目录、不共享**:每个 coding agent 在**自己的原生存储**里维护自己的 session(omp/pi 各自的 session 存储、claude 的 session_id 库);产品**只存一个不透明引用**(branch.cliSessionRef,`BackendRunInput.run.cliSessionRef` 透传 + `BackendRunOutcome.cliSessionRef` 回写)。切 kind = 新 kind 的新 session,上下文靠首轮文本桥——显式接受,不追求跨 kind 续接。
 
 **7. 非对称差异的取舍(per-backend,不强行对齐)**
 - **steer/abort**:自研 coding_agent 保留协议内 live steer + abort(adapter 层特例);CLI backend steer=排队下一 turn、stop=杀进程。`AgentBackend.steer/stop` 契约不变,差异收在 conversation 路由 + adapter。

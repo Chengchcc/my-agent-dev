@@ -71,24 +71,28 @@ describe("ClaudeBackend", () => {
     rmSync(ws, { recursive: true, force: true });
   });
 
-  test("session id persisted after first run; --resume on second", async () => {
+  test("session reference passthrough: fresh run reports id, next run resumes it", async () => {
     const ws = mkdtempSync(join(tmpdir(), "claude-adapter-"));
     const log = join(ws, "log.json");
     const backend = makeBackend("claude-wire-text.jsonl", log);
     const input = makeInput("branch-x");
     const withWs = { ...input, workspace: { root: ws, access: "read_write" as const } };
-    await drain(await backend.execute(withWs));
-    const first = JSON.parse(readFileSync(log, "utf8")) as { argv: string[] };
-    expect(first.argv.some((a) => a.includes("--resume"))).toBe(false);
-    // session id file written from the fixture's init/result events
-    const sessionFile = join(ws, ".claude", "session", "branch-x.json");
-    const stored = JSON.parse(readFileSync(sessionFile, "utf8")) as { sessionId: string };
-    expect(stored.sessionId).toBe("0e491d46-b3a8-4e64-999a-400043c30f4e");
-    // second run resumes with --resume <sessionId>
-    await drain(await backend.execute(withWs));
+    // Fresh run: no --resume; the fixture's session id is reported.
+    const first = await drain(await backend.execute(withWs));
+    const firstArgs = JSON.parse(readFileSync(log, "utf8")) as { argv: string[] };
+    expect(firstArgs.argv.some((a) => a.includes("--resume"))).toBe(false);
+    if (first.outcome.status === "completed") {
+      expect(first.outcome.cliSessionRef).toBe("0e491d46-b3a8-4e64-999a-400043c30f4e");
+    }
+    // Second run with the stored reference resumes via --resume <id>.
+    const resumed = {
+      ...withWs,
+      run: { ...withWs.run, cliSessionRef: "0e491d46-b3a8-4e64-999a-400043c30f4e" },
+    };
+    await drain(await backend.execute(resumed));
     const second = JSON.parse(readFileSync(log, "utf8")) as { argv: string[] };
     expect(second.argv).toContain("--resume");
-    expect(second.argv).toContain(stored.sessionId);
+    expect(second.argv).toContain("0e491d46-b3a8-4e64-999a-400043c30f4e");
     rmSync(ws, { recursive: true, force: true });
   });
 

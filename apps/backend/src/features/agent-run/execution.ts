@@ -280,6 +280,7 @@ export function createAgentRunExecutionService(
     history: readonly ProjectedHistoryItem[],
     input: BranchInput,
     workspace: WorkspaceBinding,
+    cliSessionRef: string | undefined,
   ): BackendRunInput {
     return {
       history,
@@ -289,6 +290,7 @@ export function createAgentRunExecutionService(
         model: run.modelRef,
         ...(run.systemPrompt ? { systemPrompt: run.systemPrompt } : {}),
         ...(run.skillRoots && run.skillRoots.length > 0 ? { skillRoots: run.skillRoots } : {}),
+        ...(cliSessionRef ? { cliSessionRef } : {}),
         productTools: buildHistoryTools(deps.productToolsEntrypoint),
         configRevision: run.configRevision,
       },
@@ -356,11 +358,17 @@ export function createAgentRunExecutionService(
 
     stage.name = "context_projection";
     const history = await projectHistory(run.branchId);
+    // The branch's CLI session reference (ADR 0003 decision 6): an opaque
+    // pointer the coding agent resolves natively — the product only
+    // forwards it, never manages the session itself.
+    const branch = await contextPort.getBranch(run.branchId);
     debugLog("agent-run", `context_projected runId=${runId} entries=${history.length}`);
 
     stage.name = "backend_execute";
     debugLog("agent-run", `backend_execute runId=${runId}`);
-    const segment = await backend.execute(buildRunInput(run, history, input, workspace));
+    const segment = await backend.execute(
+      buildRunInput(run, history, input, workspace, branch?.cliSessionRef ?? undefined),
+    );
     liveRuns.set(runId, { segment });
     debugLog("agent-run", `backend_accepted runId=${runId}`);
 

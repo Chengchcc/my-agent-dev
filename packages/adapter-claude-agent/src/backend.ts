@@ -10,8 +10,8 @@
  *  bypassPermissions` is refused when running as root — the flag is only
  *  passed when explicitly configured. */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
   AgentBackend,
   BackendEvent,
@@ -65,9 +65,6 @@ interface ActiveRun {
   readonly events: AsyncIterable<BackendEvent<"claude_code">>;
 }
 
-/** Branch-pinned session id file: `{"sessionId": "..."}` (ADR 0002). */
-const SESSION_REL = join(".claude", "session");
-
 export class ClaudeBackend implements AgentBackend<"claude_code"> {
   readonly kind = "claude_code" as const;
   private readonly executable: string;
@@ -96,8 +93,9 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
     }
 
     const workspace = input.workspace.root;
-    const sessionFile = join(workspace, SESSION_REL, `${input.metadata.branchId}.json`);
-    const resumeId = readSessionId(sessionFile);
+    // The CLI owns its session (claude's own storage keyed by session_id);
+    // the product forwards the branch's opaque reference only (ADR 0003).
+    const resumeId = input.run.cliSessionRef ?? null;
 
     const mcpConfigPath = this.writeMcpConfig(input, workspace);
 
@@ -117,7 +115,7 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
 
     const handle = createActiveRun(runId, proc);
     this.active.set(runId, handle);
-    void this.consumeStdout(handle, input, sessionFile, resumeId);
+    void this.consumeStdout(handle, input, resumeId);
     return {
       events: handle.events,
       outcome: handle.outcome,
@@ -254,7 +252,6 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
   private async consumeStdout(
     handle: ActiveRun,
     input: BackendRunInput<"claude_code">,
-    sessionFile: string,
     resumeId: string | null,
   ): Promise<void> {
     const acc = createClaudeAccumulator();
@@ -300,31 +297,8 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
         ...(acc.sessionId ? { cliSessionRef: acc.sessionId } : {}),
       });
     }
-    // Persist the session id for --resume continuation (ADR 0002).
-    if (acc.sessionId) {
-      try {
-        writeSessionId(sessionFile, acc.sessionId);
-      } catch {
-        /* session persistence failure is not a run failure */
-      }
-    }
     this.active.delete(handle.runId);
   }
-}
-
-function readSessionId(sessionFile: string): string | null {
-  try {
-    if (!existsSync(sessionFile)) return null;
-    const parsed = JSON.parse(readFileSync(sessionFile, "utf8")) as { sessionId?: string };
-    return parsed.sessionId ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function writeSessionId(sessionFile: string, sessionId: string): void {
-  mkdirSync(dirname(sessionFile), { recursive: true });
-  writeFileSync(sessionFile, JSON.stringify({ sessionId }));
 }
 
 function createActiveRun(runId: string, proc: SpawnedClaudeProcess): ActiveRun {
