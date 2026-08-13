@@ -14,6 +14,8 @@
 | **Agent Context** | 每个 `(conversationId, agentMemberId)` 的语义历史（tree/entry/branch） | 不是 child transcript |
 | **Context Branch** | Agent Context 中一条可 fork/rollback 的历史路径;固定 backendKind | 不是执行 session |
 | **CLI Session** | CLI 后端(claude/pi/omp)的运行态会话真理:claude `session_id` / pi·omp 会话文件路径;分支经 `cliSessionRef` 引用 | 不是 Context Branch(后者是产品态历史,可 fork/rollback;CLI session 不可回滚) |
+| **Agent Workspace** | 每个 agent 的可配置运行工作区(绝对路径):`agent.yml` 为唯一真源(identity + runtime_config + lark)、AGENTS.md/CLAUDE.md/SOUL.md/USER.md、knowledge/、`.<kind>/` 配置目录 | 不是 dataDir 里的固定物化目录 |
+| **Workspace Bridge** | 把 dataDir 单点资源(skill/knowledge/mcp)按 agent 分配**桥接**到 workspace 的幂等 reconcile(软链 skills、写 `.mcp.json`) | 不是每种资源一套拷贝逻辑 |
 | **Agent Run** | branch 上的持久产品执行；**唯一执行身份**（agent_run 表） | 不是 span/attempt/session（已删除） |
 | **branch_input_queue** | normal/steer/follow_up 输入的持久队列；每行携带 request-time 配置快照 | 不是内存队列 |
 | **BackendRunOutcome** | child 的唯一终态结果：completed/failed/aborted/timeout | 不是事件流（事件永不决定终态） |
