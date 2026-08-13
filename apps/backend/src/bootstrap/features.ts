@@ -13,6 +13,7 @@ import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
 import { AgentBusyError, agentModelRef, agentRoutes } from "../features/agent/index.js";
 import { createRelationshipService } from "../features/agent/relationship-service.js";
+import { reconcileAgentResources } from "../features/agent/workspace-bridge.js";
 import {
   createAgentContextService,
   sqliteAgentContextAdapter,
@@ -144,11 +145,17 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   });
 
   // ─── Agent service ──────────────────────────────────────────
-
   // Busy guard for hardDelete is wired after the Agent Run adapter exists.
   const busyGuard: { check: ((agentId: string) => void) | undefined } = { check: undefined };
+  // Workspace bridge (ADR 0003 decision 3): reconcile skills/mcp into the
+  // agent workspace. Late-bound (mcpSvc is created further down).
+  const reconcileAgent: { fn: (agentId: string) => Promise<void> } = { fn: async () => {} };
   const agentSvc = createAgentSvc(db, config, larkBotRegistry, {
-    onAgentCreate: (agentId: string) => skillPackSvc.setAgentPacks(agentId, ["builtin"]),
+    onAgentCreate: async (agentId: string) => {
+      await skillPackSvc.setAgentPacks(agentId, ["builtin"]);
+      await reconcileAgent.fn(agentId);
+    },
+    onAgentUpdate: (agentId: string) => reconcileAgent.fn(agentId),
     assertNoActiveRun: (agentId: string) => busyGuard.check?.(agentId),
   });
 
@@ -426,12 +433,52 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   // ─── MCP ────────────────────────────────────────────────────
 
-  const mcpSvc = createMcpService({
+  const mcpSvcRaw = createMcpService({
     port: sqliteMcpServerAdapter(db),
     mcpClientManager,
     agentExists: (id: string) => agentSvc.exists(id),
     idGen: ulid,
   });
+  // Mutations re-reconcile the agent's workspace mcp.json (ADR 0003).
+  const mcpSvc: ReturnType<typeof createMcpService> = {
+    ...mcpSvcRaw,
+    async create(agentId, input) {
+      const row = await mcpSvcRaw.create(agentId, input);
+      await reconcileAgent.fn(agentId);
+      return row;
+    },
+    async update(agentId, serverId, input) {
+      const row = await mcpSvcRaw.update(agentId, serverId, input);
+      await reconcileAgent.fn(agentId);
+      return row;
+    },
+    async delete(agentId, serverId) {
+      await mcpSvcRaw.delete(agentId, serverId);
+      await reconcileAgent.fn(agentId);
+    },
+  };
+
+  reconcileAgent.fn = async (agentId: string): Promise<void> => {
+    try {
+      const agent = await agentSvc.getById(agentId);
+      const packs = await skillPackPort.listForAgent(agentId);
+      reconcileAgentResources({
+        workspacePath: agent.workspacePath,
+        kind: agent.config.runtime_config.runtime,
+        skillPacks: packs
+          .filter((p) => p.status === "ready")
+          .map((p) => ({ id: p.id, source: installPath(config.dataDir, p.id) })),
+        mcpServers: mcpSvc.listByAgent(agentId).map((s) => ({
+          name: s.name,
+          transport: s.transport,
+          url: s.url,
+          command: s.command,
+        })),
+      });
+    } catch (err) {
+      console.error(`[bridge] reconcile failed for ${agentId}:`, err);
+    }
+  };
 
   // ─── Cron ───────────────────────────────────────────────────
 
@@ -471,7 +518,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
             .then((rows: SkillPackRow[]) =>
               rows.map((r) => ({ id: r.id, name: r.name, status: r.status })),
             ),
-        setAgentPacks: (id: string, packIds: string[]) => skillPackSvc.setAgentPacks(id, packIds),
+        setAgentPacks: async (id: string, packIds: string[]) => {
+          await skillPackSvc.setAgentPacks(id, packIds);
+          await reconcileAgent.fn(id);
+        },
       },
       identityStore,
       (id: string) => larkBotRegistry.statusOf(id),

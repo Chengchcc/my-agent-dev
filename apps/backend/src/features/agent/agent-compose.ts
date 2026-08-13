@@ -20,6 +20,8 @@ export function createAgentSvc(
   larkBotRegistry: LarkBotRegistry,
   opts?: {
     onAgentCreate?: (agentId: string) => Promise<void>;
+    /** Called after agent update (workspace-bridge reconcile). */
+    onAgentUpdate?: (agentId: string) => Promise<void>;
     /** Throws when the agent has an active Agent Run. Defaults to no-op. */
     assertNoActiveRun?: (agentId: string) => void;
   },
@@ -31,7 +33,7 @@ export function createAgentSvc(
     port: agentPort,
     idGen: ulid,
     workspaceRoot: config.workspaceRoot,
-    onCreate: opts?.onAgentCreate,
+    onUpdate: opts?.onAgentUpdate,
     materializeWorkspace: async (agentId) => {
       return ensureAgentWorkspace(join(agentsDir, agentId));
     },

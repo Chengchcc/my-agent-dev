@@ -31,8 +31,10 @@ export function createAgentService(opts: {
   assertNoActiveRun: (agentId: string) => void;
   /** Optional hook called after agent creation (e.g. assign builtin skill pack). */
   onCreate?: (agentId: string) => Promise<void>;
+  /** Optional hook called after agent update (e.g. workspace-bridge reconcile). */
+  onUpdate?: (agentId: string) => Promise<void>;
 }): AgentService {
-  const { port, idGen, materializeWorkspace, onCreate } = opts;
+  const { port, idGen, materializeWorkspace, onCreate, onUpdate } = opts;
 
   return {
     async create(input: CreateAgentInput): Promise<AgentRow> {
@@ -121,6 +123,7 @@ export function createAgentService(opts: {
         ...(workspacePath !== existing.workspacePath ? { workspacePath } : {}),
       });
       if (!row) throw new AgentNotFoundError(id);
+      await onUpdate?.(id);
       return row;
     },
 
