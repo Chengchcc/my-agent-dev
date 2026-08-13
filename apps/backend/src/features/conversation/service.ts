@@ -272,16 +272,24 @@ class ConversationServiceImpl implements ConversationService {
       kind,
     );
     const active = await this.#agentRuns.getActiveRun(branch.branchId);
+    // CLI backends run one short-lived process per turn with no mid-turn
+    // steer (ADR 0002): a steer input is queued as the NEXT turn's input
+    // instead of being injected into a live child (and never silently
+    // dropped — the input is durable in branch_input_queue).
+    const cliBackend = kind !== "coding_agent";
     // Auto-inferred routing needs three states, not two:
     //   live child      -> steer (routable now)
     //   dispatch in flight (pre-acceptance) -> follow_up (queued, NEVER aborted)
     //   DB active, neither live nor inflight -> zombie: abort + fresh normal Run
-    // An EXPLICIT input.mode is never silently converted.
+    // An EXPLICIT input.mode is never silently converted — except steer on a
+    // CLI backend, which by design queues as the next turn.
     let mode: BranchInputMode;
-    if (input.mode) {
+    if (input.mode === "steer" && cliBackend) {
+      mode = "normal";
+    } else if (input.mode) {
       mode = input.mode;
     } else if (active && this.#isLive(active.runId)) {
-      mode = "steer";
+      mode = cliBackend ? "normal" : "steer";
     } else if (active && this.#isInflight(active.runId)) {
       mode = "follow_up";
     } else {
