@@ -365,6 +365,31 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   // Two-phase: sessionEmit is bound after session creation (the session's
   // emit method doesn't exist until createCodingAgentSession returns).
   let sessionEmit: ((event: CodingAgentLoopEvent) => void) | null = null;
+  // The workflow executor rides the SAME model stream + summarizer as the
+  // main loop; subagents get the file tools only (no workflow/product tools).
+  // Registered BEFORE createCodingAgentSession: the session snapshots the
+  // plugin tool table at construction time.
+  const workflowExecutor = createWorkflowExecutor({
+    makeSubagentStream: () => streamModel,
+    modelId: deps.modelId,
+    summarize,
+    contextBudget,
+    tools: fileTools,
+    workspaceRoot: deps.workspaceRoot,
+    workspaceAccess: deps.workspaceAccess,
+    maxConcurrent: 8,
+    maxTotal: 64,
+    emit: (event) => sessionEmit?.(event as never),
+  });
+  plugins.push({
+    name: "workflow-tools",
+    tools: createWorkflowTools({
+      runWorkflow: (input) => workflowExecutor.runWorkflow(input),
+      runScript: async () => {
+        throw new Error("workflow_run arrives in phase 2");
+      },
+    }),
+  });
   const pluginRuntime: PluginRuntime = {
     streamModel: (providerId, modelId, messages, opts) =>
       deps.modelRuntime.stream(providerId, modelId, messages, opts),
@@ -443,29 +468,6 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
 
   // Bind the plugin runtime's emit to the session's emit (two-phase init).
   sessionEmit = (event) => session.emit(event);
-  // The workflow executor rides the SAME model stream + summarizer as the
-  // main loop; subagents get the file tools only (no workflow/product tools).
-  const workflowExecutor = createWorkflowExecutor({
-    makeSubagentStream: () => streamModel,
-    modelId: deps.modelId,
-    summarize,
-    contextBudget,
-    tools: fileTools,
-    workspaceRoot: deps.workspaceRoot,
-    workspaceAccess: deps.workspaceAccess,
-    maxConcurrent: 8,
-    maxTotal: 64,
-    emit: (event) => sessionEmit?.(event as never),
-  });
-  plugins.push({
-    name: "workflow-tools",
-    tools: createWorkflowTools({
-      runWorkflow: (input) => workflowExecutor.runWorkflow(input),
-      runScript: async () => {
-        throw new Error("workflow_run arrives in phase 2");
-      },
-    }),
-  });
 
   return {
     runId: deps.runId,
