@@ -32,18 +32,8 @@ export type CreateLoopResult = ApiReturn<typeof api.createLoop>;
 export type RefineLoopResult = ApiReturn<typeof api.refineLoop>;
 export type ActivateLoopResult = ApiReturn<typeof api.activateLoop>;
 export type SettingsMap = ApiReturn<typeof api.getSettings>["settings"];
-// ponytail: relationships routes are conditionally mounted, Eden can't infer types
-export interface RelationshipRow {
-  id: string;
-  fromAgent: string;
-  toAgent: string;
-  relType: "assigns_to" | "collaborates_with";
-  weight: number;
-  instruction: string | null;
-  createdAt: number;
-  updatedAt: number;
-}
 export type McpServerRow = ApiReturn<typeof api.listMcpServers>["mcpServers"][number];
+
 export type SystemInfo = ApiReturn<typeof api.getSystemInfo>;
 
 export type { ContentBlock };
@@ -268,48 +258,15 @@ export const api = {
   // Memory
   getAgentMemory: (agentId: string) =>
     fetch(`/api/bff/agents/${agentId}/memory`, { credentials: "include" }).then((r) => r.json()),
-  // Relationships (direct fetch - conditional routes not visible to Eden)
-  listAgentRelationships: async (agentId: string) => {
-    const resp = await fetch(`/api/bff/agents/${agentId}/relationships`, {
+  // Workspace (read-only file browser, ADR 0003)
+  listWorkspaceEntries: (agentId: string, path: string) =>
+    fetch(`/api/bff/agents/${agentId}/workspace/entries?path=${encodeURIComponent(path)}`, {
       credentials: "include",
-    });
-    return (await resp.json()) as { relationships: RelationshipRow[] };
-  },
-  createRelationship: async (
-    agentId: string,
-    body: {
-      toAgentId: string;
-      relType: "assigns_to" | "collaborates_with";
-      weight?: number;
-      instruction?: string;
-    },
-  ) => {
-    const resp = await fetch(`/api/bff/agents/${agentId}/relationships`, {
-      method: "POST",
+    }).then((r) => r.json()),
+  readWorkspaceFile: (agentId: string, path: string) =>
+    fetch(`/api/bff/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`, {
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return (await resp.json()) as { relationship: RelationshipRow };
-  },
-  updateRelationship: async (
-    agentId: string,
-    relId: string,
-    body: { weight?: number; instruction?: string },
-  ) => {
-    const resp = await fetch(`/api/bff/agents/${agentId}/relationships/${relId}`, {
-      method: "PUT",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return (await resp.json()) as { relationship: RelationshipRow };
-  },
-  deleteRelationship: (agentId: string, relId: string) =>
-    fetch(`/api/bff/agents/${agentId}/relationships/${relId}`, {
-      method: "DELETE",
-      credentials: "include",
-    }).then((r) => r.ok),
+    }).then((r) => r.json()),
   // Models (direct fetch - route not visible to Eden treaty)
   listModels: async () => {
     const resp = await fetch("/api/bff/models", { credentials: "include" });
@@ -321,7 +278,6 @@ export const api = {
         models: Array<{
           id: string;
           name: string;
-          provider: string;
           reasoning: boolean;
           input: string[];
           cost: { input: number; output: number; cacheRead: number; cacheWrite: number };

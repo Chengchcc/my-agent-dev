@@ -1,11 +1,11 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join as pathJoin } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { join as pathJoin, resolve as pathResolve, sep } from "node:path";
 import { BACKEND_KINDS } from "@my-agent-team/agent-backend";
 import { Elysia, t } from "elysia";
 import type { LarkSetupManager } from "../lark-bot/setup-manager.js";
 import type { AgentIdentityStore } from "./agent-identity.js";
 import type { AgentRow } from "./domain.js";
-import type { RelationshipService } from "./relationship-service.js";
+
 import type { AgentService } from "./service.js";
 import { AgentBusyError, AgentNotFoundError } from "./service.js";
 
@@ -53,6 +53,21 @@ function deriveLarkStatus(row: AgentRow, registryStatus?: string): string {
 }
 
 // ── Elysia plugin ──
+/** Resolve `rel` inside `root`; null when the result escapes the root.
+ *  Read-only workspace browsing (the workspace viewer tab). */
+function resolveInWorkspace(root: string, rel: string): string | null {
+  const abs = rel ? pathResolve(root, rel) : root;
+  const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
+  return abs === root || abs.startsWith(prefix) ? abs : null;
+}
+
+function realpathSyncSafe(p: string): string | null {
+  try {
+    return realpathSync(p);
+  } catch {
+    return null;
+  }
+}
 
 export function agentRoutes(
   svc: AgentService,
@@ -63,7 +78,6 @@ export function agentRoutes(
   identityStore?: AgentIdentityStore,
   larkStatusOf?: (agentId: string) => string,
   getSetupManager?: () => LarkSetupManager,
-  relSvc?: RelationshipService,
 ) {
   const statusOf = (row: AgentRow) => deriveLarkStatus(row, larkStatusOf?.(row.id));
 
@@ -222,6 +236,75 @@ export function agentRoutes(
         memoryMd: existsSync(mdPath) ? readFileSync(mdPath, "utf-8") : null,
       };
     })
+    .get(
+      "/api/agents/:id/workspace/entries",
+      async ({ params: { id }, query }) => {
+        const rel = typeof query?.path === "string" ? query.path : "";
+        let root: string;
+        try {
+          root = (await svc.getById(id)).workspacePath;
+        } catch {
+          return { path: rel, entries: [] };
+        }
+        const target = resolveInWorkspace(root, rel);
+        if (target === null)
+          return Response.json({ error: "path escapes workspace" }, { status: 403 });
+        if (!existsSync(target) || !statSync(target).isDirectory()) {
+          return Response.json({ error: "not a directory" }, { status: 400 });
+        }
+        const entries = readdirSync(target, { withFileTypes: true })
+          .map((d) => ({
+            name: d.name,
+            kind: d.isDirectory() ? "dir" : d.isSymbolicLink() ? "symlink" : "file",
+            size: d.isFile() ? statSync(pathJoin(target, d.name)).size : null,
+          }))
+          .sort((a, b) =>
+            a.kind === b.kind
+              ? a.name.localeCompare(b.name)
+              : a.kind === "dir"
+                ? -1
+                : b.kind === "dir"
+                  ? 1
+                  : 0,
+          );
+        return { path: rel, entries };
+      },
+      {
+        query: t.Object({ path: t.Optional(t.String()) }),
+      },
+    )
+    .get(
+      "/api/agents/:id/workspace/file",
+      async ({ params: { id }, query }) => {
+        const rel = typeof query?.path === "string" ? query.path : "";
+        if (!rel) return Response.json({ error: "path required" }, { status: 400 });
+        let root: string;
+        try {
+          root = (await svc.getById(id)).workspacePath;
+        } catch {
+          return Response.json({ error: "agent not found" }, { status: 404 });
+        }
+        const target = resolveInWorkspace(root, rel);
+        if (target === null)
+          return Response.json({ error: "path escapes workspace" }, { status: 403 });
+        // realpath: a symlink inside the workspace must not smuggle reads
+        // outside it (the bridge links pack dirs; those stay inside).
+        const real = realpathSyncSafe(target);
+        if (real === null || real === root || !real.startsWith(`${root}${sep}`)) {
+          return Response.json({ error: "path escapes workspace" }, { status: 403 });
+        }
+        if (!existsSync(real) || !statSync(real).isFile()) {
+          return Response.json({ error: "not a file" }, { status: 400 });
+        }
+        const size = statSync(real).size;
+        const MAX = 256_000;
+        if (size > MAX) return { content: null, size, truncated: true };
+        return { content: readFileSync(real, "utf-8"), size, truncated: false };
+      },
+      {
+        query: t.Object({ path: t.String() }),
+      },
+    )
     .put(
       "/api/agents/:id/identity",
       async ({ params: { id }, body }) => {
@@ -297,8 +380,8 @@ export function agentRoutes(
     });
 
   // Skill pack assignment routes (optional)
-  // Always mounted — skillPackSvc is always provided by main.ts
-  let chain = base
+  const chain = base
+
     .get("/api/agents/:id/skill-packs", async ({ params: { id } }) => {
       const packs = await skillPackSvc.listForAgent(id);
       return packs;
@@ -315,46 +398,6 @@ export function agentRoutes(
         }),
       },
     );
-
-  if (relSvc) {
-    chain = chain
-      .get("/api/agents/:id/relationships", ({ params: { id } }) => {
-        return { relationships: relSvc.listForAgent(id) };
-      })
-      .post(
-        "/api/agents/:id/relationships",
-        async ({ params: { id }, body, set }) => {
-          const rel = await relSvc.create(id, body);
-          set.status = 201;
-          return { relationship: rel };
-        },
-        {
-          body: t.Object({
-            toAgentId: t.String({ minLength: 1 }),
-            relType: t.Union([t.Literal("assigns_to"), t.Literal("collaborates_with")]),
-            weight: t.Optional(t.Number()),
-            instruction: t.Optional(t.String()),
-          }),
-        },
-      )
-      .put(
-        "/api/agents/:id/relationships/:rid",
-        ({ params: { rid }, body }) => {
-          return { relationship: relSvc.update(rid, body) };
-        },
-        {
-          body: t.Object({
-            weight: t.Optional(t.Number()),
-            instruction: t.Optional(t.String()),
-          }),
-        },
-      )
-      .delete("/api/agents/:id/relationships/:rid", ({ params: { rid }, set }) => {
-        relSvc.remove(rid);
-        set.status = 204;
-        return new Response(null, { status: 204 });
-      });
-  }
 
   return chain;
 }

@@ -10,18 +10,16 @@ import { McpServerPanel } from "@/components/McpServerPanel";
 import { AgentRunsTable } from "@/components/ops/AgentRunsTable";
 import { QueryState } from "@/components/ops/QueryState";
 import { Page, PageBody, PageHeader } from "@/components/page";
-import { RelationshipPanel } from "@/components/RelationshipPanel";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAgentDetail, useAgentList, useAgentRelationships } from "@/features/agents/hooks";
+import { WorkspaceExplorer } from "@/components/WorkspaceExplorer";
+import { useAgentDetail } from "@/features/agents/hooks";
 import { useAgentRuns } from "@/features/ops/hooks";
 import { useAgentSkillPacks } from "@/features/skill-packs/hooks";
 import { overlineClass } from "@/lib/form-styles";
 
-type Tab = "persona" | "skills" | "activity" | "mcp" | "relationships" | "memory";
-
+type Tab = "persona" | "skills" | "activity" | "mcp" | "memory" | "workspace";
 type PackStatus = "pending" | "installing" | "ready" | "failed" | "syncing";
-
 function packStatusVariant(
   status: PackStatus,
 ): "default" | "destructive" | "secondary" | "outline" {
@@ -95,8 +93,9 @@ export default function AgentDetailPage() {
             <TabsTrigger value="skills">Skills</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
             <TabsTrigger value="mcp">MCP</TabsTrigger>
-            <TabsTrigger value="relationships">Relationships</TabsTrigger>
+
             <TabsTrigger value="memory">Memory</TabsTrigger>
+            <TabsTrigger value="workspace">Workspace</TabsTrigger>
           </TabsList>
           <TabsContent value="persona" className="w-full min-w-0 pt-4">
             <IdentityPanel agentId={id} />
@@ -113,11 +112,12 @@ export default function AgentDetailPage() {
           <TabsContent value="mcp" className="w-full min-w-0 pt-4">
             <McpServerPanel agentId={id} />
           </TabsContent>
-          <TabsContent value="relationships" className="w-full min-w-0 pt-4">
-            <AgentRelationshipsPanel agentId={id} />
-          </TabsContent>
+
           <TabsContent value="memory" className="w-full min-w-0 pt-4">
             <AgentMemoryPanel agentId={id} />
+          </TabsContent>
+          <TabsContent value="workspace" className="w-full min-w-0 pt-4">
+            <WorkspaceExplorer agentId={id} />
           </TabsContent>
         </Tabs>
       </PageBody>
@@ -166,18 +166,6 @@ function AgentSkillsPanel({ agentId }: { agentId: string }) {
         </ul>
       )}
     </QueryState>
-  );
-}
-
-function AgentRelationshipsPanel({ agentId }: { agentId: string }) {
-  const { data: rels } = useAgentRelationships(agentId);
-  const { data: allAgents } = useAgentList();
-  return (
-    <RelationshipPanel
-      agentId={agentId}
-      relationships={rels?.relationships ?? []}
-      agents={allAgents ?? []}
-    />
   );
 }
 
