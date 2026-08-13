@@ -55,6 +55,9 @@ export interface AgentRun {
   readonly systemPrompt: string | null;
   /** Frozen skill pack roots, persisted at Run creation. */
   readonly skillRoots: readonly string[] | null;
+  /** Frozen permission_mode (ADR 0020 decision 7), mapped per backend at
+   *  dispatch. */
+  readonly permissionMode: string | null;
   readonly createdAt: number;
   readonly terminalAt: number | null;
 }
@@ -85,6 +88,7 @@ export interface BranchInput {
     readonly workspace: { root: string; access: "read_only" | "read_write" } | null;
     readonly systemPrompt: string | null;
     readonly skillRoots: readonly string[] | null;
+    readonly permissionMode: string | null;
   };
   readonly createdAt: number;
   readonly deliveredAt: number | null;
@@ -129,8 +133,9 @@ export interface AcquireAgentRunCommand {
   /** Frozen skill pack roots for the Run. Default: resolved by the service's
    *  resolveRunConfig when provided. */
   readonly skillRoots?: readonly string[];
+  /** Frozen permission_mode (ADR 0020 decision 7). */
+  readonly permissionMode?: string;
 }
-
 export interface AcquireAgentRunResult {
   readonly acquired: boolean;
   readonly queued: boolean;

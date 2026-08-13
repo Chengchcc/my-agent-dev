@@ -95,6 +95,7 @@ export function writeMcpConfig(workspacePath: string, servers: readonly McpServe
     if (s.transport === "sse" && s.url) entry.url = s.url;
     if (s.transport === "stdio" && s.command) entry.command = s.command;
     if (s.transport === "stdio" && s.args && s.args.length > 0) entry.args = s.args;
+    if (s.headers) entry.headers = s.headers;
     mcpServers[s.name] = entry;
   }
   writeFileSync(
@@ -159,9 +160,14 @@ export function reconcileKnowledgeResources(
   for (const p of packs) {
     const slot = join(root, p.id);
     if (!existsSync(p.source)) continue;
-    if (!existsSync(slot) && !lstatSyncSafe(slot)) {
-      symlinkSync(p.source, slot, "dir");
+    let slotExists = false;
+    try {
+      lstatSync(slot);
+      slotExists = true;
+    } catch {
+      /* absent or dangling: link it */
     }
+    if (!slotExists) symlinkSync(p.source, slot, "dir");
     sections.push(
       knowledgePackIndex({ name: p.name, description: p.description, installedRef: p.source }),
     );
@@ -170,16 +176,30 @@ export function reconcileKnowledgeResources(
   writeFileSync(join(root, "index.md"), sections.join("\n"));
 }
 
-function lstatSyncSafe(p: string): boolean {
-  try {
-    return lstatSync(p) !== undefined;
-  } catch {
-    return false;
-  }
+/** Claude workspace settings (ADR 0022): the product's own MCP tools are
+ *  read-only history surface - pre-allowed so unattended -p runs don't
+ *  hit the permission gate. Other tools keep claude's default prompts. */
+export function writeClaudeSettings(workspacePath: string): void {
+  mkdirSync(join(workspacePath, ".claude"), { recursive: true });
+  writeFileSync(
+    join(workspacePath, ".claude", "settings.json"),
+    `${JSON.stringify(
+      {
+        permissions: {
+          allow: [
+            "mcp__product-tools__history_recent",
+            "mcp__product-tools__history_search",
+            "mcp__product-tools__history_around",
+            "mcp__product-tools__history_retain",
+          ],
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
-/** The full bridge reconcile (ADR 0020 decision 3): skills + mcp +
- *  product tools + knowledge for one agent's workspace. */
 export function reconcileAgentResources(input: {
   workspacePath: string;
   kind: string;
@@ -197,4 +217,5 @@ export function reconcileAgentResources(input: {
   writeMcpConfig(input.workspacePath, input.mcpServers);
   writeProductToolsManifest(input.workspacePath, input.productTools);
   reconcileKnowledgeResources(input.workspacePath, input.knowledgePacks);
+  writeClaudeSettings(input.workspacePath);
 }

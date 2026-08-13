@@ -55,6 +55,7 @@ function parseRun(row: typeof schema.agentRun.$inferSelect): AgentRun {
       : null,
     systemPrompt: row.systemPrompt,
     skillRoots: row.skillRoots ? (JSON.parse(row.skillRoots) as string[]) : null,
+    permissionMode: row.permissionMode,
     createdAt: row.createdAt,
     terminalAt: row.terminalAt,
   };
@@ -82,6 +83,7 @@ function parseInput(row: typeof schema.branchInputQueue.$inferSelect): BranchInp
           : null,
       systemPrompt: row.systemPrompt,
       skillRoots: row.skillRoots ? (JSON.parse(row.skillRoots) as string[]) : null,
+      permissionMode: row.permissionMode,
     },
     createdAt: row.createdAt,
     deliveredAt: row.deliveredAt,
@@ -143,6 +145,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
               workspaceAccess: command.workspace?.access ?? null,
               systemPrompt: command.systemPrompt ?? null,
               skillRoots: command.skillRoots ? JSON.stringify(command.skillRoots) : null,
+              permissionMode: command.permissionMode ?? null,
               createdAt: now,
             })
             .run();
@@ -377,6 +380,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             workspaceAccess: command.workspace?.access ?? null,
             systemPrompt: command.systemPrompt ?? null,
             skillRoots: command.skillRoots ? JSON.stringify(command.skillRoots) : null,
+            permissionMode: command.permissionMode ?? null,
             createdAt: now,
           })
           .run();
@@ -525,6 +529,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             workspaceAccess: snapshot.workspace?.access ?? null,
             systemPrompt: snapshot.systemPrompt ?? null,
             skillRoots: snapshot.skillRoots ? JSON.stringify(snapshot.skillRoots) : null,
+            permissionMode: snapshot.permissionMode ?? null,
             createdAt: now,
           })
           .run();

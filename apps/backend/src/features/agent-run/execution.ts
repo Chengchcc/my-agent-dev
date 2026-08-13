@@ -243,19 +243,32 @@ export function createAgentRunExecutionService(
   ): BackendRunInput {
     const bridge = !cliSessionRef && history.length > 0 ? renderHistoryBridge(history) : "";
     const inputText = input.message.text ?? "";
+    const runSnapshot: {
+      runId: string;
+      model: typeof run.modelRef;
+      configRevision: number;
+      systemPrompt?: string;
+      skillRoots?: readonly string[];
+      cliSessionRef?: string;
+      permissionMode?: "ask" | "auto" | "deny";
+    } = {
+      runId: run.runId,
+      model: run.modelRef,
+      configRevision: run.configRevision,
+    };
+
+    if (run.systemPrompt) runSnapshot.systemPrompt = run.systemPrompt;
+    if (run.skillRoots && run.skillRoots.length > 0) runSnapshot.skillRoots = run.skillRoots;
+    if (cliSessionRef) runSnapshot.cliSessionRef = cliSessionRef;
+    if (run.permissionMode) {
+      runSnapshot.permissionMode = run.permissionMode as "ask" | "auto" | "deny";
+    }
     return {
       input: {
         inputId: input.inputId,
         message: bridge ? { ...input.message, text: `${bridge}\n\n${inputText}` } : input.message,
       },
-      run: {
-        runId: run.runId,
-        model: run.modelRef,
-        ...(run.systemPrompt ? { systemPrompt: run.systemPrompt } : {}),
-        ...(run.skillRoots && run.skillRoots.length > 0 ? { skillRoots: run.skillRoots } : {}),
-        ...(cliSessionRef ? { cliSessionRef } : {}),
-        configRevision: run.configRevision,
-      },
+      run: runSnapshot,
       workspace,
       metadata: {
         conversationId: run.conversationId,

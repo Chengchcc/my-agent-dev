@@ -369,6 +369,9 @@ export const agentRun = sqliteTable(
     systemPrompt: text("system_prompt"),
     /** JSON: frozen skill pack roots (absolute dirs scanned for SKILL.md). */
     skillRoots: text("skill_roots"),
+    /** Frozen permission_mode (ask/auto/deny), mapped per backend at
+     *  dispatch (ADR 0020 decision 7; claude --permission-mode). */
+    permissionMode: text("permission_mode"),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     terminalAt: integer("terminal_at", { mode: "number" }),
   },
@@ -409,6 +412,7 @@ export const branchInputQueue = sqliteTable(
     workspaceAccess: text("workspace_access"),
     systemPrompt: text("system_prompt"),
     skillRoots: text("skill_roots"), // JSON: readonly string[]
+    permissionMode: text("permission_mode"),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     deliveredAt: integer("delivered_at", { mode: "number" }),
   },

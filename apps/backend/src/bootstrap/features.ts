@@ -265,13 +265,18 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       const skillRoots = packs
         .filter((p) => p.status === "ready")
         .map((p) => installPath(config.dataDir, p.id));
-      return {
-        ...(systemPrompt ? { systemPrompt } : {}),
-        ...(skillRoots.length > 0 ? { skillRoots } : {}),
-      };
+      const result: {
+        systemPrompt?: string;
+        skillRoots?: readonly string[];
+        permissionMode?: string;
+      } = {};
+      if (systemPrompt) result.systemPrompt = systemPrompt;
+      if (skillRoots.length > 0) result.skillRoots = skillRoots;
+      const agent = await agentSvc.getById(agentId).catch(() => null);
+      if (agent) result.permissionMode = agent.config.runtime_config.permission_mode;
+      return result;
     },
   });
-
   const dispatchRun: { fn: (runId: string) => Promise<void> } = { fn: async () => {} };
   const injectSteer: {
     fn: (branchId: string, input: { inputId: string; message: Message }) => Promise<void>;

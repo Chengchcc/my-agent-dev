@@ -187,13 +187,28 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
       "-p",
     ];
     const modelId = input.run.model.modelId;
-    if (modelId) args.push("--model", modelId);
+    if (modelId) {
+      // The catalog uses canonical `<provider>/<model>` ids; the claude CLI
+      // (and its API proxy) expects the BARE model name.
+      const slash = modelId.indexOf("/");
+      args.push("--model", slash > 0 ? modelId.slice(slash + 1) : modelId);
+    }
     if (input.run.model.reasoningEffort && input.run.model.reasoningEffort !== "none") {
       const effort =
         input.run.model.reasoningEffort === "max" ? "high" : input.run.model.reasoningEffort;
       args.push("--effort", effort);
     }
-    if (this.permissionMode) args.push("--permission-mode", this.permissionMode);
+    // Per-run frozen permission_mode (ADR 0020 decision 7): ask -> default
+    // (prompts), auto -> acceptEdits, deny -> plan. bypassPermissions is
+    // refused by the claude CLI under root/sudo - the workspace settings
+    // (.claude/settings.json) pre-allow the product tools instead.
+    const runPerm = input.run.permissionMode;
+    if (runPerm) {
+      const mode = runPerm === "auto" ? "acceptEdits" : runPerm === "deny" ? "plan" : "default";
+      args.push("--permission-mode", mode);
+    } else if (this.permissionMode) {
+      args.push("--permission-mode", this.permissionMode);
+    }
     if (resumeId) args.push("--resume", resumeId);
     if (mcpConfigPath) args.push("--mcp-config", mcpConfigPath);
     if (input.run.systemPrompt) args.push("--append-system-prompt", input.run.systemPrompt);
