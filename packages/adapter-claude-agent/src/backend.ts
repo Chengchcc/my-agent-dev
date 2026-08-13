@@ -118,7 +118,7 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
 
     const handle = createActiveRun(runId, proc);
     this.active.set(runId, handle);
-    void this.consumeStdout(handle, input, resumeId);
+    void this.consumeStdout(handle, input);
     return {
       events: handle.events,
       outcome: handle.outcome,
@@ -200,26 +200,17 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
     return args;
   }
 
-  /** The driving input as ONE stream-json user message. When the branch
-   *  has no claude session yet, the projected history is rendered as flat
-   *  text inside the same message (ponytail: first-turn-only bridge). */
-  private buildStdinInput(input: BackendRunInput<"claude_code">, resume: boolean): string {
+  /** The driving input as ONE stream-json user message. The first-turn
+   *  history bridge (ADR 0003 decision 6) is already flat text inside the
+   *  message, rendered by the Backend when the branch has no claude session
+   *  reference yet. */
+  private buildStdinInput(input: BackendRunInput<"claude_code">): string {
     const inputText = input.input.message.text ?? "";
-    let prompt = inputText;
-    if (!resume && input.history.length > 0) {
-      const historyText = input.history
-        .map((h) => {
-          const who = h.message.role === "user" ? "User" : "Assistant";
-          return `${who}: ${h.message.text}`;
-        })
-        .join("\n\n");
-      prompt = `${historyText}\n\n${inputText}`;
-    }
     return JSON.stringify({
       type: "user",
       message: {
         role: "user",
-        content: [{ type: "text", text: prompt }],
+        content: [{ type: "text", text: inputText }],
       },
     });
   }
@@ -229,11 +220,10 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
   private async consumeStdout(
     handle: ActiveRun,
     input: BackendRunInput<"claude_code">,
-    resumeId: string | null,
   ): Promise<void> {
     const acc = createClaudeAccumulator();
     try {
-      handle.proc.writeLine(this.buildStdinInput(input, resumeId !== null));
+      handle.proc.writeLine(this.buildStdinInput(input));
       handle.proc.closeStdin();
     } catch {
       /* stdin closed early — the parse loop still reads stdout */
@@ -245,6 +235,7 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
       mapClaudeEvent(acc, evt);
       for (const e of acc.events.splice(0)) handle.pushEvent(e);
     }
+
     const exitCode = await handle.proc.exit.catch(() => null);
 
     if (handle.stopRequested) {

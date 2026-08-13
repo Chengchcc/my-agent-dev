@@ -78,7 +78,7 @@ function staticTool(name: string) {
 const LOOP_RUN: AgentRunSnapshot<"coding_agent"> = {
   runId: "loop-run",
   model: { backendKind: "coding_agent", modelId: "test-1" },
-  productTools: [],
+
   configRevision: 1,
 };
 const LOOP_WS: WorkspaceBinding = { root: "/ws", access: "read_write" };
@@ -1191,10 +1191,11 @@ function testHarness(
       }
     });
 
-    test("9b. resolveTools applies per-run manifest to the tool table", async () => {
+    test("9b. resolveTools merges per-run tools into the table (not frozen)", async () => {
       const store = storeFactory("h9b");
       await createSession(store, "h9b");
       let ptAExecutions = 0;
+      let resolveCalls = 0;
       const loop = createCodingAgentSession({
         sessionId: "h9b",
         store,
@@ -1206,44 +1207,35 @@ function testHarness(
           yield { delta: { type: "tool_use", id: "tc-1", name: "pt-a" } };
           yield { stopReason: "tool_use" };
         },
-        resolveTools: async (input) => {
-          const names = input.run.productTools.map((t) => t.name);
-          return names.map((n) => ({
-            name: n,
-            description: n,
-            inputSchema: { type: "object" },
-            async execute() {
-              if (n === "pt-a") ptAExecutions++;
-              return { ok: true };
+        // The tool manifest is no longer part of the run input (ADR 0003:
+        // workspace files carry it); the seam itself must still be invoked
+        // per runLoop and its tools scoped to that run.
+        resolveTools: async () => {
+          resolveCalls++;
+          const name = resolveCalls === 1 ? "pt-a" : "pt-b";
+          return [
+            {
+              name,
+              description: name,
+              inputSchema: { type: "object" },
+              async execute() {
+                if (name === "pt-a") ptAExecutions++;
+                return { ok: true };
+              },
             },
-          }));
+          ];
         },
       });
-      // Run 1: manifest has pt-a -> it exists and executes.
-      await loop.startLoop(
-        loopInput({
-          message: "first",
-          run: {
-            ...LOOP_RUN,
-            productTools: [{ name: "pt-a", description: "", inputSchema: {}, entrypoint: "x" }],
-          },
-        }),
-      );
+      // Run 1: the seam supplies pt-a -> it exists and executes.
+      await loop.startLoop(loopInput({ message: "first" }));
       expect(ptAExecutions).toBe(2); // one per step in run 1 (maxSteps 2)
-      // Run 2: manifest has only pt-b -> pt-a is gone from the table; the
-      // model's pt-a call resolves to is_error (unknown tool), so pt-a's
+      // Run 2: the seam now supplies pt-b -> pt-a is gone from the table;
+      // the model's pt-a call resolves to is_error (unknown tool), so pt-a's
       // execute is NOT invoked again. Tools are per-Run, not frozen.
-      await loop.startFollowUp(
-        loopInput({
-          message: "second",
-          run: {
-            ...LOOP_RUN,
-            productTools: [{ name: "pt-b", description: "", inputSchema: {}, entrypoint: "y" }],
-          },
-        }),
-      );
+      await loop.startFollowUp(loopInput({ message: "second" }));
       expect(ptAExecutions).toBe(2); // pt-a NOT executed in run 2
       const snap = await store.open("h9b");
+
       const results = snap.entries.filter(
         (e) => e.type === "message" && (e as { source?: string }).source === "tool_result",
       );

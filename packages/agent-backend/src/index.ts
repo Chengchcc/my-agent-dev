@@ -3,7 +3,6 @@ export { debugLog } from "./debug.js";
 export type { BackendEvent, BackendExtensionEvent, CoreBackendEvent, Usage } from "./event.js";
 export type {
   AgentRunSnapshot,
-  ProductToolDescriptor,
   ProjectedHistoryItem,
   WorkspaceBinding,
 } from "./history.js";

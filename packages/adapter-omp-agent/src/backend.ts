@@ -177,25 +177,16 @@ export class OmpBackend implements AgentBackend<"omp"> {
       args.push("--thinking", level);
     }
     if (input.run.systemPrompt) args.push("--append-system-prompt", input.run.systemPrompt);
-    args.push(this.buildPrompt(input, resumeRef !== undefined));
+    args.push(this.buildPrompt(input));
     return args;
   }
 
-  /** The driving input message. When the branch has no CLI session yet
-   *  (fresh branch / first run after a kind switch), the projected product
-   *  history is rendered as flat text so the model is not amnesiac — the
-   *  CLI session becomes the runtime truth from the second turn on
-   *  (ponytail: first-turn-only bridge; flat text loses tool structure). */
-  private buildPrompt(input: BackendRunInput<"omp">, resume: boolean): string {
-    const inputText = input.input.message.text ?? "";
-    if (resume || input.history.length === 0) return inputText;
-    const historyText = input.history
-      .map((h) => {
-        const who = h.message.role === "user" ? "User" : "Assistant";
-        return `${who}: ${h.message.text}`;
-      })
-      .join("\n\n");
-    return `${historyText}\n\n${inputText}`;
+  /** The driving input message. The first-turn history bridge (ADR 0003
+   *  decision 6) is already flat text inside the message, rendered by the
+   *  Backend when the branch has no CLI session reference yet — the CLI
+   *  session is the runtime truth from the second turn on. */
+  private buildPrompt(input: BackendRunInput<"omp">): string {
+    return input.input.message.text ?? "";
   }
   /** Single stdout parse loop. The terminal outcome is decided ONLY here
    *  (exit code + error event) — the outcome is the sole terminal authority

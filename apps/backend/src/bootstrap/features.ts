@@ -21,6 +21,7 @@ import {
 import type { LedgerMessageResolver } from "../features/agent-context/ports.js";
 import {
   agentRunRoutes,
+  buildHistoryTools,
   createAgentRunExecutionService,
   createAgentRunService,
   sqliteAgentRunAdapter,
@@ -488,6 +489,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
               ]
             : []),
         ],
+        productTools: config.productToolsMcpUrl
+          ? [...buildHistoryTools(`sse:${config.productToolsMcpUrl}`)]
+          : [],
       });
     } catch (err) {
       console.error(`[bridge] reconcile failed for ${agentId}:`, err);

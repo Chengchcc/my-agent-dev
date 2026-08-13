@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -20,6 +20,7 @@ import { createAgentRunExecutionService } from "../../src/features/agent-run/exe
 import { createAgentRunService } from "../../src/features/agent-run/service.js";
 import { sqliteConversationAdapter } from "../../src/features/conversation/adapter-sqlite.js";
 import { sqliteProductToolCallAdapter } from "../../src/features/product-tools/adapter-sqlite.js";
+import { buildHistoryTools } from "../../src/features/product-tools/manifest.js";
 import { createProductToolsMcpServer } from "../../src/features/product-tools/mcp.js";
 import { createProductToolsService } from "../../src/features/product-tools/service.js";
 import { openDb } from "../../src/infra/sqlite/db.js";
@@ -101,6 +102,14 @@ beforeAll(async () => {
   // speaks stdin/stdout JSONL. cwd = the Run workspace; the Product Tools
   // service token reaches the child ONLY through the process env.
   const ws = mkdtempSync(join(tmpdir(), "phase5-ws-"));
+  // ADR 0003 decision 6: the child builds its tool table from the cwd
+  // manifest (.agent/product-tools.json) written by the workspace bridge;
+  // seed it directly here — no bridge runs in this harness.
+  mkdirSync(join(ws, ".agent"), { recursive: true });
+  writeFileSync(
+    join(ws, ".agent", "product-tools.json"),
+    JSON.stringify(buildHistoryTools(`sse:${mcp.url}`)),
+  );
   const codingAgentCommand: CodingAgentCommandConfig = {
     executable: process.execPath,
     args: [CODING_AGENT_ENTRY, "--mode", "rpc"],

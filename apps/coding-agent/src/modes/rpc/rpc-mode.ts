@@ -16,6 +16,7 @@ import {
   responseOutputSchema,
 } from "@my-agent-team/agent-backend";
 import type { ModelRuntime } from "@my-agent-team/ai";
+import { type Message, MessageSchema } from "@my-agent-team/message";
 import { type CodingAgentRuntime, createCodingAgentRuntime } from "../../core/create-runtime.js";
 import {
   appendSessionMessages,
@@ -26,9 +27,7 @@ import {
   readWorkspaceSystemPrompt,
   scanWorkspaceSkillRoots,
 } from "../../core/workspace-context.js";
-
 import { createJsonlReader } from "./jsonl.js";
-
 /** Minimal RPC mode: stdin JSONL commands, stdout JSONL outputs only, stderr
  *  for logs. One process = at most one execute = one Run = one outcome, then
  *  the process exits. No Session lifecycle, no HTTP, no registry. */
@@ -185,19 +184,22 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     const runId = input.run.runId;
     // Session (ADR 0003 decision 6): the child owns its session file; the
     // product forwards the branch's opaque reference. Resume loads the
-    // transcript as the run history; fresh runs use the projection.
+    // transcript as the loop's seed history (validated at the file
+    // boundary); a ref whose file is missing/empty degrades to a fresh
+    // session (the first-turn bridge already lives in the input message).
     const resumeId = input.run.cliSessionRef;
     const sessionId = resumeId ?? newSessionId();
-    // A ref whose file is missing/empty (aborted run, deleted file) falls
-    // back to the projection rather than silently dropping context.
-    const loaded = resumeId ? loadSessionMessages(resumeId) : null;
-    const effectiveHistory =
-      loaded && loaded.length > 0
+    const loaded = resumeId ? loadSessionMessages(resumeId) : [];
+    const sessionTranscript =
+      loaded.length > 0
         ? loaded.map((message, i) => ({
             productEntryId: `session:${i}`,
-            message,
+            // Validated at the file boundary; the single-step cast aligns
+            // zod's inferred shape with the Message interface (the session
+            // file holds messages the child itself wrote).
+            message: MessageSchema.parse(message) as Message,
           }))
-        : input.history;
+        : undefined;
     let effectiveInput: typeof input;
 
     let segment: BackendRunSegment<"coding_agent">;
@@ -209,10 +211,9 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
       const cwdPrompt = readWorkspaceSystemPrompt(input.workspace.root);
       effectiveInput =
         input.run.systemPrompt || cwdPrompt === undefined
-          ? { ...input, history: effectiveHistory }
+          ? input
           : {
               ...input,
-              history: effectiveHistory,
               run: { ...input.run, systemPrompt: cwdPrompt },
             };
 
@@ -223,6 +224,7 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
         workspaceAccess: input.workspace.access,
         modelRuntime: opts.modelRuntime,
         skillRoots: input.run.skillRoots?.length ? input.run.skillRoots : cwdSkills,
+        sessionTranscript,
         onEvent: (event) => {
           if (!finished) emit(eventOutputSchema.parse({ type: "event", runId, event }));
         },

@@ -74,6 +74,9 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
         return { runId: runId!, workspaceRoot: rest.join(" ") };
       });
     },
+    get executeMessages(): string[] {
+      return readCalls("execute_msg").map((l) => JSON.parse(l) as string);
+    },
     get steerCalls(): string[] {
       return readCalls("steer").map((l) => l.split(" ")[0]!);
     },
@@ -257,6 +260,30 @@ describe("agent run execution (Run-centric)", () => {
     expect(events).toContain("status");
   });
 
+  test("first-turn bridge: no session ref flattens projected history into the input message", async () => {
+    const fake = createFakeDaemon();
+    const execution = makeExecution(fake);
+
+    // Run 1: fresh branch, empty history -> the message is the raw input.
+    const first = await enqueue("normal", "bridge-1", "hello");
+    await execution.dispatch(first.run!.runId);
+    await waitForTerminal(first.run!.runId);
+    expect(fake.executeMessages[0]).toBe("hello");
+
+    // Run 2: the branch now carries run 1's projection; the fixture reports
+    // no cliSessionRef, so the bridge flattens history into the message.
+    const followUp = await enqueue("follow_up", "bridge-2", "second");
+    // The branch is free after run 1 settles: the follow-up acquires a
+    // fresh run immediately (no promotion chain needed).
+    expect(followUp.acquired).toBe(true);
+    await execution.dispatch(followUp.run!.runId);
+    await waitForTerminal(followUp.run!.runId);
+    // The projected history (run 1's committed assistant message) is flat
+    // text ahead of the new input.
+    expect(fake.executeMessages[1]).toContain("Assistant: done");
+    expect(fake.executeMessages[1]).toContain("second");
+    expect(fake.executeMessages[1]!.trimEnd().endsWith("second")).toBe(true);
+  }, 15_000);
   test("tool trace and todo_update survive the wire onto the Run SSE", async () => {
     const fake = createFakeDaemon({ toolTodo: true });
     const execution = makeExecution(fake);

@@ -90,12 +90,10 @@ const EXECUTE = {
   id: "e1",
   type: "execute",
   input: {
-    history: [],
     input: { inputId: "in-1", message: { role: "user", text: "go" } },
     run: {
       runId: "r-1",
       model: { backendKind: "coding_agent", modelId: "fake/echo" },
-      productTools: [],
       configRevision: 1,
       skillRoots: [],
     },

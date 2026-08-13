@@ -180,24 +180,16 @@ export class PiBackend implements AgentBackend<"pi"> {
     args.push("--tools", "read,bash,edit,write,grep,find,ls");
     if (input.run.systemPrompt) args.push("--append-system-prompt", input.run.systemPrompt);
     if (this.mcpAdapterPath) args.push("--extension", this.mcpAdapterPath);
-    args.push(this.buildPrompt(input, resumeRef !== undefined));
+    args.push(this.buildPrompt(input));
     return args;
   }
 
-  /** The driving input message. When the branch has no pi session yet, the
-   *  projected product history is rendered as flat text so the model is not
-   *  amnesiac (ponytail: first-turn-only bridge; flat text loses tool
-   *  structure). */
-  private buildPrompt(input: BackendRunInput<"pi">, resume: boolean): string {
-    const inputText = input.input.message.text ?? "";
-    if (resume || input.history.length === 0) return inputText;
-    const historyText = input.history
-      .map((h) => {
-        const who = h.message.role === "user" ? "User" : "Assistant";
-        return `${who}: ${h.message.text}`;
-      })
-      .join("\n\n");
-    return `${historyText}\n\n${inputText}`;
+  /** The driving input message. The first-turn history bridge (ADR 0003
+   *  decision 6) is already flat text inside the message, rendered by the
+   *  Backend when the branch has no pi session reference yet — the pi
+   *  session is the runtime truth from the second turn on. */
+  private buildPrompt(input: BackendRunInput<"pi">): string {
+    return input.input.message.text ?? "";
   }
 
   /** Single stdout parse loop. The terminal outcome is decided ONLY here

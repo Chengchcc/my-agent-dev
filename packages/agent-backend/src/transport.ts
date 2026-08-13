@@ -17,13 +17,6 @@ export const agentMemberIdSchema = z.string().min(1).max(256);
 
 const messageSchema = z.record(z.unknown());
 
-const productToolSchema = z.object({
-  name: z.string(),
-  description: z.string(),
-  inputSchema: z.record(z.unknown()),
-  entrypoint: z.string(),
-});
-
 const runSnapshotSchema = z.object({
   runId: runIdSchema,
   model: z.object({
@@ -36,13 +29,8 @@ const runSnapshotSchema = z.object({
    *  creation. Empty/absent = no skills. */
   skillRoots: z.array(z.string()).optional(),
   cliSessionRef: z.string().optional(),
-  productTools: z.array(productToolSchema),
   configRevision: z.number(),
 });
-
-const projectedHistorySchema = z.array(
-  z.object({ productEntryId: productEntryIdSchema, message: messageSchema }),
-);
 
 /** Wire form of BackendInputMessage: the durable input id + canonical Message +
  *  optional productEntryId. The actual driving input - never inferred. */
@@ -55,8 +43,8 @@ const inputMessageSchema = z.object({
 // ─── Execute payload (the full Run input crossing the boundary) ───────
 
 export const executeRunInputSchema = z.object({
-  history: projectedHistorySchema,
   input: inputMessageSchema,
+
   run: runSnapshotSchema,
   workspace: z.object({ root: z.string(), access: z.enum(["read_only", "read_write"]) }),
   metadata: z.object({

@@ -95,18 +95,18 @@ lark:
 
 **6. meta 与历史也对齐:所有 coding agent 统一为「cwd 文件 + session 续接」**
 - meta(身份/配置/技能/产品工具/知识库)统一由工作区文件承载(见 §1–§3),所有 agent 从 cwd 原生读——后端不再经 run 输入字段或 CLI flag 注入。
-- 历史也统一:所有 agent 用 **CLI session** 续接 + 分支首轮 flat-text 桥(把产品投影拍平喂一次);**全量投影退役**。
-- run 输入瘦身为 `runId / model / workspace / message`;删 `history` / `systemPrompt` / `skillRoots` / `productTools` 四字段。
+- 历史也统一:所有 agent 用 **CLI session** 续接 + 分支首轮 flat-text 桥(把产品投影拍平喂进 message);**全量投影退役**。
+- run 输入瘦身:删 `history` / `productTools` 两字段;**保留** `systemPrompt` / `skillRoots` 作为 run 级覆盖通道(2026-08-13 修订:原案删四字段,但这两个字段是 Loop 作用域覆盖的唯一通道,且与 CLI backend 的 `--append-system-prompt` 模式对称——删掉等于拆掉四个 backend 共用的覆盖机制,故保留。默认值仍走 cwd,explicit wins)。
 - **修正 ADR 0002**:取消"coding_agent = 全量投影、CLI = session"的双轨特例,统一为单轨(CLI session 是运行态真理,context tree 是产品态真理,对所有 agent 一致)。
 - 自研 coding_agent 加 session 持久化,**会话格式与 pi/omp 完全一致**(parentId 链式 JSONL 事件日志,Gate 0 已抓真实样例)。
 - **session 不按 kind 建目录、不共享**:每个 coding agent 在**自己的原生存储**里维护自己的 session(omp/pi 各自的 session 存储、claude 的 session_id 库);产品**只存一个不透明引用**(branch.cliSessionRef,`BackendRunInput.run.cliSessionRef` 透传 + `BackendRunOutcome.cliSessionRef` 回写)。切 kind = 新 kind 的新 session,上下文靠首轮文本桥——显式接受,不追求跨 kind 续接。
 
-**实施状态(2026-08-13)**:session 持久化已落地并验证——
-- `apps/coding-agent/src/core/session-file.ts`:自维护 JSONL session(`~/.my-agent/sessions/<id>.jsonl`,可 `CODING_AGENT_SESSION_DIR` 覆盖),`session` 头事件 + parentId 链式 `message` 事件,格式同 pi/omp 族。
-- rpc-mode:无 ref 首轮新 session;有 ref 则加载 transcript 作为 run history(文件缺失/为空时回退产品投影);outcome 完成后把 `[input.message, ...outcome.messages]` 追加写盘;outcome 恒带 `cliSessionRef`。
-- `outcomeOutputSchema` + `mapRunOutcome` 保留 `cliSessionRef`(此前会剥离)→ 回写 `branch.cliSessionRef`。
-- 验证:`rpc-mode.test.ts` session round-trip 测试(首轮建 session → outcome 带 ref → 续接 → transcript 累积、ref 不变),typecheck/lint/test 全绿。
-- **四字段删除未做,待设计**:`productTools` 的工具定义(非 server 配置)尚未有 cwd 承载物(.mcp.json 只写 server 配置,child 的 tool table 仍依赖 `run.productTools` manifest);`history` 需 execution 层 flat-text 桥(现由各 adapter 各自拍平);`systemPrompt`/`skillRoots` 承载 Loop 作用域覆盖,删字段前需定 override 通道。三项各是一个小设计,先不硬删。
+**实施状态(2026-08-13)**:全部落地并验证——
+- session 持久化:`apps/coding-agent/src/core/session-file.ts` 自维护 JSONL session(`~/.my-agent/sessions/<id>.jsonl`,可 `CODING_AGENT_SESSION_DIR` 覆盖),`session` 头事件 + parentId 链式 `message` 事件;rpc-mode 无 ref 首轮新 session、有 ref 加载 transcript(经 `MessageSchema` 边界校验)作为 loop 种子历史,outcome 完成后追加写盘、恒带 `cliSessionRef`;`outcomeOutputSchema` + `mapRunOutcome` 保留 ref → 回写 `branch.cliSessionRef`。
+- flat-text 桥:`execution.buildRunInput` 在**无 cliSessionRef** 时把投影拍平为 `User:/Assistant:` 文本拼进 input message;三个 CLI adapter 删除各自拍平(桥统一收编到 backend);child 的 `BackendRunInput.history` 已删,transcript 经 `CreateCodingAgentRuntimeOptions.sessionTranscript` 进 loop。
+- productTools 入 cwd:bridge 的 `reconcileAgentResources` 写 `.agent/product-tools.json`(manifest 定义移入 `features/product-tools/manifest.ts`);child 的 `readProductToolsManifest` 从 workspace 读 + zod 边界解析;run 输入不再携带 manifest。**DB 的 run-scoped manifest 持久化保留**(product-tools MCP 用它做调用鉴权,不属 wire 契约)。
+- renderLoopMeta 死参数 `productContext`/`todo` 删除(prompt.ts)——runtime 事实归 child,产品上下文走 workspace 文件。
+- 验证:execution.test.ts flat-text 桥测试、rpc-mode session round-trip、product-tool-contract 全栈(cwd manifest 走真实 MCP)、Phase 5 集成;typecheck/lint/test 全绿。
 
 **7. 非对称差异的取舍(per-backend,不强行对齐)**
 - **steer/abort**:自研 coding_agent 保留协议内 live steer + abort(adapter 层特例);CLI backend steer=排队下一 turn、stop=杀进程。`AgentBackend.steer/stop` 契约不变,差异收在 conversation 路由 + adapter。

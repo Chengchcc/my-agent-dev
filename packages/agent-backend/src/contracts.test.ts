@@ -45,12 +45,8 @@ class FakeBackend implements AgentBackend<"fake"> {
 const RUN_SNAPSHOT = {
   runId: "run-1",
   model: { backendKind: "fake", modelId: "fake-1" },
-  productTools: [],
   configRevision: 1,
 } as const;
-const HISTORY: readonly ProjectedHistoryItem[] = [
-  { productEntryId: "e1", message: { role: "user", text: "hello" } },
-];
 
 const INPUT: BackendInputMessage = {
   inputId: "in-1",
@@ -58,7 +54,6 @@ const INPUT: BackendInputMessage = {
 };
 
 const RUN_INPUT: BackendRunInput<"fake"> = {
-  history: HISTORY,
   input: INPUT,
   run: RUN_SNAPSHOT,
   workspace: { root: "/tmp", access: "read_write" },
@@ -84,8 +79,7 @@ describe("agent-backend contracts", () => {
     expect(outcome.status).toBe("completed");
   });
 
-  test("BackendRunInput carries the full Run facts (history/input/run/workspace/metadata)", () => {
-    expect(RUN_INPUT.history).toBe(HISTORY);
+  test("BackendRunInput carries the full Run facts (input/run/workspace/metadata)", () => {
     expect(RUN_INPUT.input.message).toBe(INPUT.message);
     expect(RUN_INPUT.run.runId).toBe("run-1");
     expect(RUN_INPUT.workspace.access).toBe("read_write");
@@ -93,18 +87,11 @@ describe("agent-backend contracts", () => {
     expect(RUN_INPUT.metadata.agentMemberId).toBe("m1");
   });
 
-  test("history and input are distinct; input is never inferred from history", () => {
-    // The contract has no path from history to input: a Backend must read
-    // `input.message` explicitly. Confirm the field is required, not optional.
-    const turn: BackendRunInput<"fake"> = {
-      history: HISTORY,
-      input: INPUT,
-      run: RUN_SNAPSHOT,
-      workspace: { root: "/tmp", access: "read_write" },
-      metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1" },
-    };
-    expect(turn.input.message).toBe(INPUT.message);
-    expect(turn.history).not.toBe(turn.input);
+  test("input is the sole actual prompt; history is NOT part of the contract", () => {
+    // ADR 0003 decision 6: the first-turn bridge is flat text INSIDE
+    // input.message; the Backend must read `input.message` explicitly.
+    expect("history" in RUN_INPUT).toBe(false);
+    expect(RUN_INPUT.input.message).toBe(INPUT.message);
   });
 
   test("steer/stop are control-plane: no outcome of their own", () => {
@@ -150,18 +137,15 @@ describe("agent-backend contracts", () => {
 // BackendRunInput without `run` is invalid. The error is on the declaration
 // line (TS2741), so the directive sits directly above it.
 // @ts-expect-error - missing required `run` field
-const _noRun: BackendRunInput = { history: HISTORY, input: INPUT };
+const _noRun: BackendRunInput = { input: INPUT };
 
 // BackendRunInput without `workspace` is invalid (workspace is a Run fact).
 // @ts-expect-error - missing required `workspace` field
 const _noWorkspace: BackendRunInput = {
-  history: HISTORY,
   input: INPUT,
   run: RUN_SNAPSHOT,
   metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1" },
 };
-
-// ProjectedHistoryItem without `productEntryId` is invalid.
 // @ts-expect-error - missing required `productEntryId` field
 const _noProductEntryId: ProjectedHistoryItem = {
   message: { role: "user", text: "hello" },
@@ -182,7 +166,6 @@ const _wrongKind: BackendEvent<"fake"> =
 // A Backend of kind "fake" cannot receive a "claude-code" run input: the
 // model ref's backendKind must match the Backend's K. Pure type-level check:
 const claudeInput: BackendRunInput<"claude-code"> = {
-  history: HISTORY,
   input: INPUT,
   run: { ...RUN_SNAPSHOT, model: { backendKind: "claude-code", modelId: "x" } },
   workspace: { root: "/tmp", access: "read_write" },

@@ -6,7 +6,6 @@ import type {
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
-  ProductToolDescriptor,
   ProjectedHistoryItem,
   WorkspaceBinding,
 } from "@my-agent-team/agent-backend";
@@ -19,6 +18,7 @@ import type {
   LedgerMessageResolver,
 } from "../agent-context/ports.js";
 import { projectAgentContext } from "../agent-context/projection.js";
+import { buildHistoryTools } from "../product-tools/manifest.js";
 import type { AgentRun, BranchInput, ClaimedBranchInput } from "./domain.js";
 import { isActiveStatus, isTerminalStatus } from "./domain.js";
 import type { AgentRunPort } from "./ports.js";
@@ -30,61 +30,6 @@ function finalAnswerMessage(messages: readonly Message[] | undefined): Message |
   return [...(messages ?? [])]
     .reverse()
     .find((m) => m.role === "assistant" && (m.text?.trim() ?? "") !== "");
-}
-
-// ─── Product History Tools (the only canonical tool set) ─────────────
-
-/** The Product Tool manifest: history read tools plus one semantic mutation
- *  (history_retain) with durable call idempotency. Entrypoint is the
- *  child-reachable Product Tools MCP endpoint (`sse:<url>`); it is injected
- *  per service so tests and deployments can point at a real endpoint. */
-export function buildHistoryTools(entrypoint: string): readonly ProductToolDescriptor[] {
-  return [
-    {
-      name: "history_recent",
-      description:
-        "Read the most recent messages visible to this agent member in the conversation. Returns the last N messages with their ledger seq and role.",
-      inputSchema: { type: "object", properties: { limit: { type: "number" } } },
-      entrypoint,
-    },
-    {
-      name: "history_search",
-      description:
-        "Search the conversation ledger for messages matching a keyword. Scoped to this run's conversation only.",
-      inputSchema: {
-        type: "object",
-        properties: { keyword: { type: "string" }, limit: { type: "number" } },
-        required: ["keyword"],
-      },
-      entrypoint,
-    },
-    {
-      name: "history_around",
-      description:
-        "Read messages around a ledger seq in this conversation (context window before and after).",
-      inputSchema: {
-        type: "object",
-        properties: {
-          seq: { type: "number" },
-          before: { type: "number" },
-          after: { type: "number" },
-        },
-        required: ["seq"],
-      },
-      entrypoint,
-    },
-    {
-      name: "history_retain",
-      description:
-        "Pin a conversation message into this agent's context branch so later runs keep it. Semantic mutation; replay-safe.",
-      inputSchema: {
-        type: "object",
-        properties: { seq: { type: "number" }, reason: { type: "string" } },
-        required: ["seq"],
-      },
-      entrypoint,
-    },
-  ];
 }
 
 // ─── Execution service ───────────────────────────────────────────────
@@ -272,9 +217,23 @@ export function createAgentRunExecutionService(
     );
   }
 
+  /** First-turn bridge (ADR 0003 decision 6): when the branch has no CLI
+   *  session yet, the projected product history is flattened into the input
+   *  message as text — the CLI session becomes the runtime truth from the
+   *  second turn on. Flat text loses tool structure; accepted. */
+  function renderHistoryBridge(history: readonly ProjectedHistoryItem[]): string {
+    return history
+      .map((h) => {
+        const who = h.message.role === "user" ? "User" : "Assistant";
+        return `${who}: ${h.message.text}`;
+      })
+      .join("\n\n");
+  }
+
   /** Assemble the BackendRunInput for a run's single input. The run's
    *  systemPrompt + skillRoots are the frozen snapshot persisted at Run
-   *  creation - never re-resolved at dispatch (recovery reuses them). */
+   *  creation - never re-resolved at dispatch (recovery reuses them); they
+   *  stay in the contract as the run-scoped override channel (ADR 0003). */
   function buildRunInput(
     run: AgentRun,
     history: readonly ProjectedHistoryItem[],
@@ -282,16 +241,19 @@ export function createAgentRunExecutionService(
     workspace: WorkspaceBinding,
     cliSessionRef: string | undefined,
   ): BackendRunInput {
+    const bridge = !cliSessionRef && history.length > 0 ? renderHistoryBridge(history) : "";
+    const inputText = input.message.text ?? "";
     return {
-      history,
-      input: { inputId: input.inputId, message: input.message },
+      input: {
+        inputId: input.inputId,
+        message: bridge ? { ...input.message, text: `${bridge}\n\n${inputText}` } : input.message,
+      },
       run: {
         runId: run.runId,
         model: run.modelRef,
         ...(run.systemPrompt ? { systemPrompt: run.systemPrompt } : {}),
         ...(run.skillRoots && run.skillRoots.length > 0 ? { skillRoots: run.skillRoots } : {}),
         ...(cliSessionRef ? { cliSessionRef } : {}),
-        productTools: buildHistoryTools(deps.productToolsEntrypoint),
         configRevision: run.configRevision,
       },
       workspace,

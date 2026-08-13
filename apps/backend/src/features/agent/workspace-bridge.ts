@@ -109,16 +109,38 @@ export function writeMcpConfig(workspacePath: string, servers: readonly McpServe
   );
 }
 
-/** The full bridge reconcile (ADR 0003 decision 3): skills + mcp for one
- *  agent's workspace, gated by its current kind. Knowledge provisioning is
- *  a future resource type (the knowledge/ dir is seeded + referenced by
- *  AGENTS.md today). */
+/** Write the product-tool manifest (ADR 0003 decision 6): the coding agent
+ *  child builds its tool table from `.agent/product-tools.json` — the
+ *  run input no longer carries the manifest. Empty manifest = remove the
+ *  file (no product tools). */
+export function writeProductToolsManifest(
+  workspacePath: string,
+  manifest: readonly unknown[],
+): void {
+  const path = join(workspacePath, ".agent", "product-tools.json");
+  if (manifest.length === 0) {
+    try {
+      unlinkSync(path);
+    } catch {
+      /* not present */
+    }
+    return;
+  }
+  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+/** The full bridge reconcile (ADR 0003 decision 3): skills + mcp + product
+ *  tools for one agent's workspace, gated by its current kind. Knowledge
+ *  provisioning is a future resource type (the knowledge/ dir is seeded +
+ *  referenced by AGENTS.md today). */
 export function reconcileAgentResources(input: {
   workspacePath: string;
   kind: string;
   skillPacks: readonly SkillLink[];
   mcpServers: readonly McpServerEntry[];
+  productTools: readonly unknown[];
 }): void {
   reconcileSkillLinks(input.workspacePath, input.kind, input.skillPacks);
   writeMcpConfig(input.workspacePath, input.mcpServers);
+  writeProductToolsManifest(input.workspacePath, input.productTools);
 }

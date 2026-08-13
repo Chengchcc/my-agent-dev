@@ -56,12 +56,10 @@ const EXECUTE = {
   id: "e1",
   type: "execute",
   input: {
-    history: [],
     input: { inputId: "in-1", message: { role: "user", text: "go" } },
     run: {
       runId: "r-cli-1",
       model: { backendKind: "coding_agent", modelId: "fake/echo" },
-      productTools: [],
       configRevision: 1,
     },
     workspace: { root: tmp, access: "read_write" },
@@ -234,7 +232,14 @@ describe("coding-agent CLI (spawned)", () => {
   }, 15_000);
 
   test("run failure exits non-zero with the error on stderr (no model provider)", async () => {
-    const res = await spawnCli(["-p", "x"], { CODING_AGENT_FAKE_PROVIDER: "" });
+    // No fake provider AND no real credentials: the catalog registers no
+    // provider regardless of the host shell's env.
+    const res = await spawnCli(["-p", "x"], {
+      CODING_AGENT_FAKE_PROVIDER: "",
+      ANTHROPIC_API_KEY: "",
+      DEEPSEEK_API_KEY: "",
+      OPENAI_API_KEY: "",
+    });
     expect(res.exitCode).not.toBe(0);
     expect(res.stdout).toBe("");
     expect(res.stderr.length).toBeGreaterThan(0);

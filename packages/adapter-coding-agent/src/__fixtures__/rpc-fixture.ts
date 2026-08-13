@@ -81,7 +81,15 @@ async function main(): Promise<void> {
       const line = buffer.slice(0, nl).trim();
       buffer = buffer.slice(nl + 1);
       if (!line) continue;
-      let cmd: { id: string; type: string; runId?: string; input?: { run?: { runId?: string } } };
+      let cmd: {
+        id: string;
+        type: string;
+        runId?: string;
+        input?: {
+          run?: { runId?: string };
+          input?: { message?: { text?: string } };
+        };
+      };
       try {
         cmd = JSON.parse(line);
       } catch {
@@ -110,6 +118,9 @@ async function main(): Promise<void> {
         // The record carries the spawn cwd (= Run workspace root) so tests
         // can assert the adapter's spawn cwd contract.
         note("execute", `${runId} ${process.cwd()}`);
+        // The input message text (JSON-escaped: the first-turn bridge is
+        // flat text with \n\n separators, recorded as ONE log line).
+        note("execute_msg", JSON.stringify(cmd.input?.input?.message?.text ?? ""));
         if (cwdMarker) writeFileSync(cwdMarker, process.cwd());
         if (scenario === "silent") {
           // Never respond to execute: models a child stuck pre-acceptance
