@@ -101,6 +101,13 @@ lark:
 - 自研 coding_agent 加 session 持久化,**会话格式与 pi/omp 完全一致**(parentId 链式 JSONL 事件日志,Gate 0 已抓真实样例)。
 - **session 不按 kind 建目录、不共享**:每个 coding agent 在**自己的原生存储**里维护自己的 session(omp/pi 各自的 session 存储、claude 的 session_id 库);产品**只存一个不透明引用**(branch.cliSessionRef,`BackendRunInput.run.cliSessionRef` 透传 + `BackendRunOutcome.cliSessionRef` 回写)。切 kind = 新 kind 的新 session,上下文靠首轮文本桥——显式接受,不追求跨 kind 续接。
 
+**实施状态(2026-08-13)**:session 持久化已落地并验证——
+- `apps/coding-agent/src/core/session-file.ts`:自维护 JSONL session(`~/.my-agent/sessions/<id>.jsonl`,可 `CODING_AGENT_SESSION_DIR` 覆盖),`session` 头事件 + parentId 链式 `message` 事件,格式同 pi/omp 族。
+- rpc-mode:无 ref 首轮新 session;有 ref 则加载 transcript 作为 run history(文件缺失/为空时回退产品投影);outcome 完成后把 `[input.message, ...outcome.messages]` 追加写盘;outcome 恒带 `cliSessionRef`。
+- `outcomeOutputSchema` + `mapRunOutcome` 保留 `cliSessionRef`(此前会剥离)→ 回写 `branch.cliSessionRef`。
+- 验证:`rpc-mode.test.ts` session round-trip 测试(首轮建 session → outcome 带 ref → 续接 → transcript 累积、ref 不变),typecheck/lint/test 全绿。
+- **四字段删除未做,待设计**:`productTools` 的工具定义(非 server 配置)尚未有 cwd 承载物(.mcp.json 只写 server 配置,child 的 tool table 仍依赖 `run.productTools` manifest);`history` 需 execution 层 flat-text 桥(现由各 adapter 各自拍平);`systemPrompt`/`skillRoots` 承载 Loop 作用域覆盖,删字段前需定 override 通道。三项各是一个小设计,先不硬删。
+
 **7. 非对称差异的取舍(per-backend,不强行对齐)**
 - **steer/abort**:自研 coding_agent 保留协议内 live steer + abort(adapter 层特例);CLI backend steer=排队下一 turn、stop=杀进程。`AgentBackend.steer/stop` 契约不变,差异收在 conversation 路由 + adapter。
 - **权限**:`agent.yml` 保留 `permission_mode`(ask/auto/deny);coding_agent→workspace access(read_only/read_write)、claude→`--permission-mode`、omp/pi→忽略。

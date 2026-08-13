@@ -147,6 +147,7 @@ export const outcomeOutputSchema = z.object({
       })
       .optional(),
     title: z.string().optional(),
+    cliSessionRef: z.string().optional(),
   }),
 });
 export type OutcomeOutput = z.infer<typeof outcomeOutputSchema>;

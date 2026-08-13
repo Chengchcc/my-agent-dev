@@ -18,9 +18,15 @@ import {
 import type { ModelRuntime } from "@my-agent-team/ai";
 import { type CodingAgentRuntime, createCodingAgentRuntime } from "../../core/create-runtime.js";
 import {
+  appendSessionMessages,
+  loadSessionMessages,
+  newSessionId,
+} from "../../core/session-file.js";
+import {
   readWorkspaceSystemPrompt,
   scanWorkspaceSkillRoots,
 } from "../../core/workspace-context.js";
+
 import { createJsonlReader } from "./jsonl.js";
 
 /** Minimal RPC mode: stdin JSONL commands, stdout JSONL outputs only, stderr
@@ -177,6 +183,23 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
       return;
     }
     const runId = input.run.runId;
+    // Session (ADR 0003 decision 6): the child owns its session file; the
+    // product forwards the branch's opaque reference. Resume loads the
+    // transcript as the run history; fresh runs use the projection.
+    const resumeId = input.run.cliSessionRef;
+    const sessionId = resumeId ?? newSessionId();
+    // A ref whose file is missing/empty (aborted run, deleted file) falls
+    // back to the projection rather than silently dropping context.
+    const loaded = resumeId ? loadSessionMessages(resumeId) : null;
+    const effectiveHistory =
+      loaded && loaded.length > 0
+        ? loaded.map((message, i) => ({
+            productEntryId: `session:${i}`,
+            message,
+          }))
+        : input.history;
+    let effectiveInput: typeof input;
+
     let segment: BackendRunSegment<"coding_agent">;
     try {
       // cwd-based meta (ADR 0003 decision 6): skills and the system prompt
@@ -184,10 +207,15 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
       // Explicit run-input values (Loop scopes) win over the cwd fallback.
       const cwdSkills = scanWorkspaceSkillRoots(input.workspace.root);
       const cwdPrompt = readWorkspaceSystemPrompt(input.workspace.root);
-      const effectiveInput =
+      effectiveInput =
         input.run.systemPrompt || cwdPrompt === undefined
-          ? input
-          : { ...input, run: { ...input.run, systemPrompt: cwdPrompt } };
+          ? { ...input, history: effectiveHistory }
+          : {
+              ...input,
+              history: effectiveHistory,
+              run: { ...input.run, systemPrompt: cwdPrompt },
+            };
+
       runtime = await createCodingAgentRuntime({
         runId,
         modelId: input.run.model.modelId,
@@ -215,9 +243,9 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     currentRunId = runId;
     debugLog("coding-agent", `loop_live runId=${runId}`);
     emitResponse(command.id, "execute", true, undefined);
-    void driveOutcome(runtime, segment, runId);
-  }
 
+    void driveOutcome(runtime, segment, runId, sessionId, effectiveInput.input.message);
+  }
   /** Await the outcome, emit the outcome envelope, flush, close the runtime,
    *  then END the reader so the process exits on its own (one Run → one
    *  outcome → exit) - no dependency on the parent closing stdin. */
@@ -225,6 +253,8 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     runtime: CodingAgentRuntime,
     segment: BackendRunSegment<"coding_agent">,
     runId: string,
+    sessionId: string,
+    inputMessage: Record<string, unknown>,
   ): Promise<void> {
     let outcome: BackendRunOutcome;
     try {
@@ -232,10 +262,19 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     } catch (caught) {
       outcome = { status: "failed", error: redactError(caught) };
     }
+    // Persist the turn into the child's session file (user + assistant/tool
+    // messages) so the next run resumes the transcript (ADR 0003).
+    if (outcome.status === "completed" && outcome.messages?.length) {
+      appendSessionMessages(sessionId, process.cwd(), [inputMessage, ...outcome.messages]);
+    }
+    const outcomeWithRef: BackendRunOutcome = {
+      ...outcome,
+      cliSessionRef: sessionId,
+    };
     finished = true;
     await runtime.close().catch(() => {});
     debugLog("coding-agent", `runtime_closed runId=${runId}`);
-    emit(outcomeOutputSchema.parse({ type: "outcome", runId, outcome }));
+    emit(outcomeOutputSchema.parse({ type: "outcome", runId, outcome: outcomeWithRef }));
     debugLog("coding-agent", `outcome runId=${runId} status=${outcome.status}`);
     await writeChain;
     // Unblock the reader: the pending stdin read resolves done and the main
