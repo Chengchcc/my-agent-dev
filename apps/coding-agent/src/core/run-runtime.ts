@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
   type CodingAgentLoopEvent,
   type CodingAgentSession,
@@ -37,15 +41,16 @@ import { fakeProvider } from "./fake-provider.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { readProductToolsManifest } from "./product-tools-manifest.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
-import { createWorkflowExecutor } from "./workflow-executor.js";
+import { createWorkflowExecutor, type WorkflowAgentResult } from "./workflow-executor.js";
+import { evaluateWorkflowScript } from "./workflow-evaluator.js";
 import { createWorkflowTools } from "./workflow-tools.js";
-
-/** Token estimation via content char/4 (≈1 token per 4 chars of English/code).
- *  More accurate than JSON.stringify char/4 which includes ~30% syntax
- *  overhead from key names, quotes, braces. Counts actual text + block
- *  content, adds a fixed overhead per message for role/structure framing.
- *  Swap for a real tokenizer (tiktoken, provider SDK) by replacing this
- *  function — the ContextBudget.estimate interface is the extension point. */
+/** Token estimation via content char/4 (approx 1 token per 4 chars of
+ *  English/code). More accurate than JSON.stringify char/4 which includes
+ *  ~30% syntax overhead from key names, quotes, braces. Counts actual text +
+ *  block content, adds a fixed overhead per message for role/structure
+ *  framing. Swap for a real tokenizer (tiktoken, provider SDK) by replacing
+ *  this function — the ContextBudget.estimate interface is the extension
+ *  point. */
 function estimateMessageTokens(message: Message): number {
   let chars = message.text?.length ?? 0;
   if (message.blocks) {
@@ -381,12 +386,69 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     maxConcurrent: 8,
     maxTotal: 64,
   });
+  // Script runs: one workflowId shared by every agent() the script spawns.
+  // The vm evaluator has no fs/network; the executor enforces caps/budget.
+  const runScript = async ({
+    script,
+    args,
+  }: {
+    script: string;
+    args?: unknown;
+  }): Promise<{ ok: boolean; totalTokens: number; value: unknown }> => {
+    const workflowId = `wf-${Date.now().toString(36)}`;
+    const results: WorkflowAgentResult[] = [];
+    sessionEmit?.({
+      type: "workflow_started",
+      workflowId,
+      label: "script",
+      agentCount: 0,
+    });
+    const { value } = await evaluateWorkflowScript({
+      script,
+      args,
+      primitives: {
+        agent: async (prompt, opts) => {
+          const result = await workflowExecutor.runSubagent({
+            workflowId,
+            agentId: randomUUID(),
+            prompt,
+            ...(opts?.schema ? { schema: opts.schema } : {}),
+            ...(opts?.label ? { label: opts.label } : {}),
+          });
+          results.push(result);
+          return result;
+        },
+        pipeline: (items, fn) => Promise.all(items.map(fn)),
+      },
+    });
+    const totalTokens = results.reduce(
+      (acc, r) =>
+        acc +
+        (r.usage?.inputTokens ?? 0) +
+        (r.usage?.outputTokens ?? 0) +
+        (r.usage?.cacheReadTokens ?? 0) +
+        (r.usage?.cacheWriteTokens ?? 0),
+      0,
+    );
+    const ok = results.every((r) => r.ok);
+    sessionEmit?.({
+      type: "workflow_completed",
+      workflowId,
+      ok,
+      agentCount: results.length,
+      totalTokens,
+    });
+    return { ok, totalTokens, value };
+  };
   plugins.push({
     name: "workflow-tools",
     tools: createWorkflowTools({
       runWorkflow: (input) => workflowExecutor.runWorkflow(input),
-      runScript: async () => {
-        throw new Error("workflow_run arrives in phase 2");
+      runScript,
+      writeScript: (name, content) => {
+        const dir = join(deps.workspaceRoot, ".workflows");
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, `${name}.js`), content);
       },
     }),
   });

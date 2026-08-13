@@ -1,6 +1,12 @@
 import type { PluginTool } from "@my-agent-team/agent";
 import type { WorkflowAgentSpec, WorkflowRunResult } from "./workflow-executor.js";
 
+export interface WorkflowScriptResult {
+  readonly ok: boolean;
+  readonly totalTokens: number;
+  readonly value: unknown;
+}
+
 export interface WorkflowToolDeps {
   readonly runWorkflow: (input: {
     workflowId: string;
@@ -8,9 +14,10 @@ export interface WorkflowToolDeps {
     items: readonly WorkflowAgentSpec[];
     signal?: AbortSignal;
   }) => Promise<WorkflowRunResult>;
-  /** Phase 2 fills this; Phase 1 passes a throwing stub (run_workflow is the
-   *  only tool until the evaluator lands). */
-  readonly runScript: (input: { script: string; args?: unknown }) => Promise<WorkflowRunResult>;
+  /** Executes an orchestration script in the vm sandbox (Phase 2). */
+  readonly runScript: (input: { script: string; args?: unknown }) => Promise<WorkflowScriptResult>;
+  /** Persist a script to `<workspace>/.workflows/<name>.js` for reuse. */
+  readonly writeScript: (name: string, content: string) => void;
 }
 
 /** Boundary narrowing: tool args arrive from the model as unknown-shaped
@@ -71,5 +78,38 @@ export function createWorkflowTools(deps: WorkflowToolDeps): readonly PluginTool
       return { items: result.items, totalTokens: result.totalTokens, ok: result.ok };
     },
   };
-  return [runWorkflow];
+
+  const runScript: PluginTool = {
+    name: "workflow_run",
+    description:
+      "Run an orchestration script (top-level-await JS) that fans out subagents " +
+      "via agent(prompt, {schema?, label?}) and pipeline(items, fn). Scripts have " +
+      "NO fs/network access - agents do the work. Save reusable scripts with the " +
+      "name argument (written to .workflows/<name>.js).",
+    executionMode: "serial",
+    inputSchema: {
+      type: "object",
+      properties: {
+        script: { type: "string", maxLength: 32768 },
+        name: { type: "string" },
+        args: { type: "object" },
+      },
+      required: ["script"],
+    },
+    async execute(args) {
+      const script = typeof args.script === "string" ? args.script : "";
+      if (typeof args.name === "string" && args.name.length > 0) {
+        deps.writeScript(args.name, script);
+      }
+      const result = await deps.runScript({ script, args: args.args });
+      return {
+        ok: result.ok,
+        totalTokens: result.totalTokens,
+        value: result.value,
+        scriptSaved: typeof args.name === "string" && args.name.length > 0,
+      };
+    },
+  };
+
+  return [runWorkflow, runScript];
 }

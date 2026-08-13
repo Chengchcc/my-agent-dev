@@ -9,10 +9,11 @@ export function WorkflowPanel({ workflows }: { workflows: ReadonlyMap<string, Wo
     <div className="space-y-2 rounded-lg border bg-card p-3 text-sm">
       {running.map(([workflowId, w]) => {
         const done = [...w.agents.values()].filter((a) => a.status !== "running").length;
+        const total = w.agentCount > 0 ? w.agentCount : w.agents.size;
         return (
           <div key={workflowId}>
             <div className="font-medium">
-              {w.label} · {done}/{w.agentCount} agents
+              {w.label} · {done}/{total} agents
             </div>
             <ul className="mt-1 space-y-0.5">
               {[...w.agents.entries()].map(([agentId, a]) => {
