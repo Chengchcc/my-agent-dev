@@ -11,7 +11,7 @@ Accepted
 1. 一个**可配置的运行工作区**——omp/pi/claude 这类 coding agent 以工作区为 cwd,读取其中的 `AGENTS.md`/`CLAUDE.md` 才生效;当前 workspace 是自动物化(`<dataDir>/agents/<id>`),用户无法指向自己准备好的目录。
 2. 工作区内**每类 coding agent 的项目级配置目录**(`.agent`/`.pi`/`.omp`/`.claude`)。
 3. 资源供给(skill / knowledge / mcp)以"**后端存一份、按开关桥接到指定 agent 工作区**"的方式分发——即一个可复用的 **bridge** 能力,而非每种资源各写一套拷贝逻辑。
-4. 自研 coding_agent 也要与 CLI backend 保持**布局统一**(哪怕机制暂不改)。
+4. 自研 coding_agent 与 pi/omp 定位一致,skill 也应同构处理(读 `.agent/skills/`)。
 5. 当前 seed 会创建 `default` 与 `loop-agent` 两个 agent,loop 其实不需要独立 agent 行。
 
 Gate 0 与 ADR 0002 已核实:omp/pi/claude 在 cwd 读项目级配置;`--session`/`-r` 续接上下文;fork 是 conversation 级(无 branch 级 fork)。
@@ -52,8 +52,9 @@ Gate 0 与 ADR 0002 已核实:omp/pi/claude 在 cwd 读项目级配置;`--sessio
   - mcp → `<workspace>/.<kind>/mcp.json`(写入配置)
 - **幂等 reconcile**:增补缺失、清理 stale 软链;触发点为 agent 创建/更新(kind/workspace 变更)、pack install/sync/assign、mcp server 增改/分配。
 
-**4. 自研 coding_agent 布局统一,机制不改**
-- 也建 `.agent/skills/`;但 child 仍走现有 `run.skillRoots` 传参(progressive-skill 插件),本次不改 child 契约。
+**4. 自研 coding_agent 与 pi/omp 一致处理 skill**
+- child 从 cwd 读 `.agent/skills/`(软链指向 skill-pack 安装目录),与 pi/omp/claude 读各自配置目录同构;skill 供应完全走 bridge,不再走 `run.skillRoots` 传参。
+- 契约变更:`BackendRunInput.run.skillRoots` 废弃/移除,progressive-skill 插件改为扫 cwd 的 `.agent/skills/`。
 
 **5. 去掉 loop-agent**
 - 只 seed `default`(Assistant);loop generator/evaluator 的 member `agentId` 从 `"loop-agent"` 改为 `"default"`(loop 的 model/workspace 来自 LOOP.md 显式配置,不依赖 agent 行身份)。
@@ -62,8 +63,8 @@ Gate 0 与 ADR 0002 已核实:omp/pi/claude 在 cwd 读项目级配置;`--sessio
 
 - 新 feature:`features/agent/workspace-bridge.ts`(或独立 `workspace-bridge` feature)——skill/knowledge/mcp 三类资源的桥接与 reconcile。
 - seed 从"仅 SOUL/USER"扩展为完整布局;materializeWorkspace 幂等 seed。
+- coding_agent child 改从 `.agent/skills/` 发现技能;`run.skillRoots` 契约移除,progressive-skill 插件改扫 cwd。
 - `loop-agent` 行不再创建;loop 相关 4 处 `"loop-agent"` 引用改 `"default"`。
-- 迁移:无需新迁移(`workspacePath` 列已有);后续 knowledge 若需独立 store,再加表。
 - CONTEXT.md glossary 需补 **Workspace Bridge** / **Agent Workspace** 词条(实施时同步)。
 
 ## 关联
