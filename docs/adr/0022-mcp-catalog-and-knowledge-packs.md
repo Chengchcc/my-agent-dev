@@ -47,8 +47,8 @@ runtime_config:
 ```
 
 - Bridge:agent.yml 列出的 pack **软链**进 workspace `knowledge/<packId>`;并**生成机器索引** `knowledge/index.md`(每 pack 的标题、描述、文件清单,reconcile 时幂等重建——与 manifest.json 同构的桥接产物)。
-- **prompt 注入**:coding agent 的 cwd meta 通道(workspace-context)在 system prompt 中追加 `knowledge/index.md` 内容(有文件才追加)。CLI 后端原生读 cwd 文件,index.md 对它们同样可见。
-- **召回工具**(coding agent 原生工具,非 MCP):`knowledge_search`(对 `knowledge/` 目录做关键词 AND 匹配,返回文件+片段)+ `knowledge_read`(读 pack 内文件,路径约束在 knowledge/ 内)。CLI 后端不需要专属工具——它们的原生 grep/read 已覆盖。
+- **prompt 注入**:coding agent 的 cwd meta 通道(workspace-context)把 `knowledge/index.md` 包成 `<available_knowledge>…</available_knowledge>` 段追加到 system prompt(与 skill 索引同形态;有文件才追加)。CLI 后端原生读 cwd 文件,index.md 对它们同样可见。
+- **召回工具 = MCP(非 child 原生)**:`knowledge_search`(AND 关键词 + 可选 tag 过滤,frontmatter title/tags/summary 服务召回质量)+ `knowledge_read`(路径约束在 knowledge/ 内)实现为 **backend 的 stdio MCP server**(`features/knowledge/mcp-server.ts`),bridge 把它合并进 `.mcp.json`——**四个后端挂载同一套召回面**。child 因此补了通用 `.mcp.json` 挂载(跳过 product-tools,manifest 路径已管它),user 自配的 MCP server 对 coding_agent 也开始生效。
 - 消费语义:knowledge 是**参考**,不是指令——不参与 skill 的加载/执行链路。
 
 ### 3. 边界与降级
