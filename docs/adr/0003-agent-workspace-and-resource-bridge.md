@@ -18,10 +18,11 @@ Gate 0 与 ADR 0002 已核实:omp/pi/claude 在 cwd 读项目级配置;`--sessio
 
 ## 决策
 
-**1. Agent workspace 可配置**
-- `agents.workspacePath`(已有列)变为用户可配:agent 创建/编辑可填绝对路径 `workspacePath`;填了 `mkdir -p` 后原样使用;不填维持默认 `<dataDir>/agents/<id>`。
-- 校验:非空、`resolve()` 归一化绝对路径;`unique` 约束防两 agent 撞同一目录,冲突报明确错。
-- 下游消费 workspace 的代码(identity store 的 SOUL/USER/memory、memory 端点)**改用 `agent.workspacePath`**,删除 `<dataDir>/agents/<id>` 硬编码——否则配置化后必坏。
+**1. agent.yml 为唯一真源(file-first),workspace 可配置**
+- `agent.yml` 承载 agent 全部可移植配置(见 §2 布局):`name`/`title`/`description`/`runtime_config`(runtime/model_id/reasoning_effort/permission_mode/max_steps)/`lark`(enabled/app_id/bot_display_name/profile_ref)。`appSecret` 不持久化(现状)。
+- `agents` 表**删内容列**(name/modelProvider/modelName/backendKind/reasoningEffort/permissionMode/maxSteps/lark*),只留 `id`(FK 锚)、`workspacePath`、`archivedAt`、时间戳 + 一个 `config` 物化缓存(解析后的 agent.yml,运行时读它,不改消费者)。
+- 写路径:API 或用户手改 agent.yml → 后端解析 + zod 校验 → upsert DB 缓存;读路径读缓存(快/可 join/事务)。
+- `workspacePath` 用户可配(绝对路径,`mkdir -p`,默认 `<dataDir>/agents/<id>`);`unique` 防撞目录;下游(identity/memory)改读 `agent.workspacePath`。
 
 **2. workspace 布局**(seed 幂等,不覆盖用户编辑)
 ```
@@ -44,6 +45,39 @@ Gate 0 与 ADR 0002 已核实:omp/pi/claude 在 cwd 读项目级配置;`--sessio
 需要本项目使用说明、领域知识或约定时,先读 knowledge/ 下相关文件再作答。
 ```
 
+**agent.yml schema**(唯一真源,见 §1):
+```yaml
+# agent.yml — agent 便携配置的唯一真源(DB 只存锚点 + 缓存)
+schema_version: "1"
+enabled: true
+id: <agentId>
+name: <机器名,唯一>
+title: <显示名>
+description: ""
+runtime_config:
+  runtime: coding_agent        # coding_agent | claude | pi | omp
+  model_id: provider/model
+  reasoning_effort: ""         # none|low|high|max|""
+  permission_mode: ask         # ask|auto|deny
+  max_steps: 0                 # 0 = 不限
+lark:
+  enabled: false
+  app_id: ""
+  bot_display_name: ""
+  profile_ref: ""              # 服务端生成,后端回写
+```
+
+**manifest.json schema**(bridge reconcile 重写的资源索引,不含身份):
+```json
+{
+  "schema_version": "1",
+  "files": ["agent.yml", "AGENTS.md", "SOUL.md"],
+  "skills": [],
+  "knowledge": [],
+  "mcp": []
+}
+```
+
 **3. Workspace bridge(抽象为一个 feature)**
 - **源(单点真理,在 `dataDir` 下)**:skill `<dataDir>/skill-packs/<packId>`;knowledge `<dataDir>/knowledge/<packId>`;mcp servers 为 DB 记录(现有 mcp feature)。
 - **桥接(按 agent 分配开关)**:资源经软链/写文件落到 agent workspace:
@@ -63,8 +97,8 @@ Gate 0 与 ADR 0002 已核实:omp/pi/claude 在 cwd 读项目级配置;`--sessio
 
 - 新 feature:`features/agent/workspace-bridge.ts`(或独立 `workspace-bridge` feature)——skill/knowledge/mcp 三类资源的桥接与 reconcile。
 - seed 从"仅 SOUL/USER"扩展为完整布局;materializeWorkspace 幂等 seed。
+- file-first 迁移:agents 表删内容列(迁移 N+1),加 `config` 物化缓存列;agent.yml 解析器 + zod 校验 + 写后 upsert 缓存;所有 `agentModelRef`/`resolveDefaultModel` 读缓存列(消费者不改签名)。
 - coding_agent child 改从 `.agent/skills/` 发现技能;`run.skillRoots` 契约移除,progressive-skill 插件改扫 cwd。
-- `loop-agent` 行不再创建;loop 相关 4 处 `"loop-agent"` 引用改 `"default"`。
 - CONTEXT.md glossary 需补 **Workspace Bridge** / **Agent Workspace** 词条(实施时同步)。
 
 ## 关联
