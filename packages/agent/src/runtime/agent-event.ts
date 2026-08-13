@@ -34,7 +34,7 @@ export type CodingAgentLoopEvent =
       label: string;
       ok: boolean;
       error?: string;
-      usage?: Readonly<Record<string, unknown>>;
+      usage?: unknown;
     }
   | {
       type: "workflow_completed";

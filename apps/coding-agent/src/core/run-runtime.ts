@@ -377,9 +377,9 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     tools: fileTools,
     workspaceRoot: deps.workspaceRoot,
     workspaceAccess: deps.workspaceAccess,
+    emit: (event) => sessionEmit?.(event),
     maxConcurrent: 8,
     maxTotal: 64,
-    emit: (event) => sessionEmit?.(event as never),
   });
   plugins.push({
     name: "workflow-tools",

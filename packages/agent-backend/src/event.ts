@@ -49,7 +49,7 @@ export type CoreBackendEvent =
       readonly label: string;
       readonly ok: boolean;
       readonly error?: string;
-      readonly usage?: Readonly<Record<string, unknown>>;
+      readonly usage?: unknown;
     }
   | {
       readonly type: "workflow_completed";

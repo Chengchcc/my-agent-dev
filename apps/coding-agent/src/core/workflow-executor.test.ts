@@ -111,4 +111,25 @@ describe("createWorkflowExecutor", () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain("not valid JSON");
   });
+  test("a rejected spawn releases its concurrency slot (no deadlock)", async () => {
+    let allow = false;
+    const exec = createWorkflowExecutor({
+      ...makeDeps(),
+      maxConcurrent: 1,
+      budgetGate: () =>
+        allow ? { allowed: true } : { allowed: false, reason: "budget exhausted" },
+    });
+    await expect(
+      exec.runWorkflow({ workflowId: "wf6", label: "denied", items: [{ prompt: "p1" }] }),
+    ).rejects.toThrow(/budget exhausted/);
+    // The rejected spawn released its slot; a later allowed run completes
+    // instead of deadlocking on the leaked acquire.
+    allow = true;
+    const result = await exec.runWorkflow({
+      workflowId: "wf7",
+      label: "ok",
+      items: [{ prompt: "p2" }],
+    });
+    expect(result.ok).toBe(true);
+  });
 });

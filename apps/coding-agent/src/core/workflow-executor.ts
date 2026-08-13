@@ -1,9 +1,10 @@
 import {
+  createCodingAgentSession,
+  createInMemorySessionStore,
+  type CodingAgentLoopEvent,
   type CodingAgentSession,
   type ContextBudget,
   type ContextSummarizer,
-  createCodingAgentSession,
-  createInMemorySessionStore,
   type PluginTool,
 } from "@my-agent-team/agent";
 import type { Usage } from "@my-agent-team/agent-backend";
@@ -51,7 +52,7 @@ export interface WorkflowExecutorOptions {
   readonly workspaceAccess: "read_only" | "read_write";
   readonly maxConcurrent: number;
   readonly maxTotal: number;
-  readonly emit: (event: unknown) => void;
+  readonly emit: (event: CodingAgentLoopEvent) => void;
   /** Optional product budget gate: consulted BEFORE each spawn. */
   readonly budgetGate?: () => { allowed: boolean; reason?: string };
 }
@@ -91,13 +92,17 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
     else current--;
   }
 
+  class WorkflowGateError extends Error {}
+
   function gate(): void {
     if (totalSpawned >= opts.maxTotal) {
-      throw new Error(`workflow exceeds the ${opts.maxTotal}-agent cap`);
+      throw new WorkflowGateError(`workflow exceeds the ${opts.maxTotal}-agent cap`);
     }
     if (opts.budgetGate) {
       const decision = opts.budgetGate();
-      if (!decision.allowed) throw new Error(decision.reason ?? "workflow budget exhausted");
+      if (!decision.allowed) {
+        throw new WorkflowGateError(decision.reason ?? "workflow budget exhausted");
+      }
     }
     totalSpawned++;
   }
@@ -107,16 +112,19 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
     signal?: AbortSignal,
   ): Promise<WorkflowAgentResult> {
     await acquire();
-    gate();
-    const label = input.label ?? input.agentId;
-    const sessionId = `wf:${input.workflowId}:${input.agentId}`;
-    opts.emit({
-      type: "workflow_agent_started",
-      workflowId: input.workflowId,
-      agentId: input.agentId,
-      label,
-    });
+    // gate() may throw (cap/budget): it runs inside the try so the acquired
+    // concurrency slot is ALWAYS released - a leak here would deadlock every
+    // later acquire once all slots are gone.
     try {
+      gate();
+      const label = input.label ?? input.agentId;
+      const sessionId = `wf:${input.workflowId}:${input.agentId}`;
+      opts.emit({
+        type: "workflow_agent_started",
+        workflowId: input.workflowId,
+        agentId: input.agentId,
+        label,
+      });
       const store = createInMemorySessionStore();
       // The loop opens the session record on startLoop: seed it first
       // (same contract as the run runtime's create-runtime.ts).
@@ -191,7 +199,11 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
       });
       return agentResult;
     } catch (err) {
+      // Gate failures (cap/budget) are WORKFLOW-level: propagate so the
+      // whole fan-out rejects instead of degrading to a failed agent row.
+      if (err instanceof WorkflowGateError) throw err;
       const message = err instanceof Error ? err.message : String(err);
+      const label = input.label ?? input.agentId;
       opts.emit({
         type: "workflow_agent_completed",
         workflowId: input.workflowId,
