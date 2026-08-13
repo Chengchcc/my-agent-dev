@@ -99,6 +99,13 @@ lark:
 - run 输入瘦身为 `runId / model / workspace / message`;删 `history` / `systemPrompt` / `skillRoots` / `productTools` 四字段。
 - **修正 ADR 0002**:取消"coding_agent = 全量投影、CLI = session"的双轨特例,统一为单轨(CLI session 是运行态真理,context tree 是产品态真理,对所有 agent 一致)。
 - 自研 coding_agent 加 session 持久化(会话文件,同 pi/omp 的 JSONL 或更简),child 读 `AGENTS.md`/`SOUL.md` + 扫 `.agent/skills/` + 读 `.agent/mcp.json`。
+
+**7. 非对称差异的取舍(per-backend,不强行对齐)**
+- **steer/abort**:自研 coding_agent 保留协议内 live steer + abort(adapter 层特例);CLI backend steer=排队下一 turn、stop=杀进程。`AgentBackend.steer/stop` 契约不变,差异收在 conversation 路由 + adapter。
+- **权限**:`agent.yml` 保留 `permission_mode`(ask/auto/deny);coding_agent→workspace access(read_only/read_write)、claude→`--permission-mode`、omp/pi→忽略。
+- **思考强度**:`agent.yml` 存规范枚举 `none/low/high/max`;adapter 映射(claude `--effort` low/medium/high、omp `--thinking`、pi `thinkingLevel`)。
+- **产品工具事件**:CLI backend 产品树不记 `product_tool_exchange`(wire 分不清产品/原生工具),只记 ledger 消息 + 最终 assistant 消息;信息密度降级被接受。
+
 ## 后果
 
 - 新 feature:`features/agent/workspace-bridge.ts`(或独立 `workspace-bridge` feature)——skill/knowledge/mcp 三类资源的桥接与 reconcile。
