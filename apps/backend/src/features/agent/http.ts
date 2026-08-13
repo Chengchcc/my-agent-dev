@@ -62,7 +62,6 @@ export function agentRoutes(
   larkStatusOf?: (agentId: string) => string,
   getSetupManager?: () => LarkSetupManager,
   relSvc?: RelationshipService,
-  dataDir?: string,
 ) {
   const statusOf = (row: AgentRow) => deriveLarkStatus(row, larkStatusOf?.(row.id));
 
@@ -87,6 +86,7 @@ export function agentRoutes(
             model: t.String({ minLength: 1 }),
           }),
           backendKind: t.Optional(backendKindUnion),
+          workspacePath: t.Optional(t.String({ minLength: 1 })),
           reasoningEffort: t.Optional(
             t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),
           ),
@@ -151,6 +151,7 @@ export function agentRoutes(
             }),
           ),
           backendKind: t.Optional(backendKindUnion),
+          workspacePath: t.Optional(t.String({ minLength: 1 })),
           reasoningEffort: t.Optional(
             t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),
           ),
@@ -195,9 +196,14 @@ export function agentRoutes(
         throw err;
       }
     })
-    .get("/api/agents/:id/memory", ({ params: { id } }) => {
-      if (!dataDir) return { memories: [], memSummary: null, memoryMd: null };
-      const memDir = pathJoin(dataDir, "agents", id, "memory");
+    .get("/api/agents/:id/memory", async ({ params: { id } }) => {
+      let root: string;
+      try {
+        root = (await svc.getById(id)).workspacePath;
+      } catch {
+        return { memories: [], memSummary: null, memoryMd: null };
+      }
+      const memDir = pathJoin(root, "memory");
       const factsDir = pathJoin(memDir, "facts");
       const factFiles = existsSync(factsDir)
         ? readdirSync(factsDir).filter((f) => f.endsWith(".md"))

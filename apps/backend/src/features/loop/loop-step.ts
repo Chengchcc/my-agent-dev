@@ -338,7 +338,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     // ── Generator: one Agent Run on its own stable scope ──
     const genConversationId = loopGeneratorConversationId(params.loopId);
     const genMemberId = loopGeneratorMemberId(params.loopId);
-    await ensureLoopScope(params.convPort, genConversationId, genMemberId, "loop-agent");
+    await ensureLoopScope(params.convPort, genConversationId, genMemberId, "default");
     const gitLog = await Bun.$`git log --oneline -5`
       .cwd(cwd)
       .quiet()
@@ -452,7 +452,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     ].join("\n\n");
     const evalConversationId = loopEvaluatorConversationId(params.loopId);
     const evalMemberId = loopEvaluatorMemberId(params.loopId);
-    await ensureLoopScope(params.convPort, evalConversationId, evalMemberId, "loop-agent");
+    await ensureLoopScope(params.convPort, evalConversationId, evalMemberId, "default");
 
     const verdictPath = `${workDir}/VERDICT.md`;
     try {

@@ -1,14 +1,14 @@
 import type { Database } from "bun:sqlite";
-import { mkdir, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { BackendConfig } from "../../config.js";
 import { ulid } from "../../infra/ids.js";
-import type { LarkBotRegistry } from "../lark-bot/index.js";
-import { larkProfileInit } from "../lark-bot/index.js";
+import { type LarkBotRegistry, larkProfileInit } from "../lark-bot/index.js";
 import { sqliteAgentAdapter } from "./adapter-sqlite.js";
 import { withLarkLifecycle } from "./agent-lark.js";
 import type { AgentService } from "./index.js";
 import { createAgentService } from "./index.js";
+import { ensureAgentWorkspace } from "./workspace.js";
 
 /** Create the full agent service with workspace materialization, hard-delete
  *  dependencies, lark-bot orchestration, and optional onCreate hook.
@@ -33,9 +33,7 @@ export function createAgentSvc(
     workspaceRoot: config.workspaceRoot,
     onCreate: opts?.onAgentCreate,
     materializeWorkspace: async (agentId) => {
-      const dir = join(agentsDir, agentId);
-      await mkdir(dir, { recursive: true });
-      return dir;
+      return ensureAgentWorkspace(join(agentsDir, agentId));
     },
 
     purgeWorkspace: async (agentId) => {

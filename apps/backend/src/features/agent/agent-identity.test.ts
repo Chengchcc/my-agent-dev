@@ -28,7 +28,7 @@ function makeStore() {
   return createAgentIdentityStore({
     dataDir,
     getAgent: async (id) => {
-      return { workspacePath: path.join(tmpBase, "legacy", id) };
+      return { workspacePath: agentRoot(id) };
     },
   });
 }

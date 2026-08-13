@@ -194,7 +194,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   const seedModel = await defaultSeedModel();
   await ensureAgent("default", "Assistant", seedModel);
-  await ensureAgent("loop-agent", "Loop Agent", seedModel);
 
   const relSvc = createRelationshipService(db, config);
 
@@ -484,7 +483,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       (id: string) => larkBotRegistry.statusOf(id),
       getSetupManager,
       relSvc,
-      config.dataDir,
     ),
     conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore),
     ops: opsRoutes(opsSvc),

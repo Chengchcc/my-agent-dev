@@ -175,7 +175,7 @@ export async function createLoop(
   // 1. Create cron_job row
   const job = await cronSvc.createCronJob({
     name: input.name,
-    agentId: "loop-agent",
+    agentId: "default",
     cronExpr: input.cronExpr ?? "",
     prompt: input.intent || "",
     loopConfigPath: loopPath,
@@ -193,7 +193,7 @@ export async function createLoop(
       conversationId: job.cronJobId,
       memberId: "owner",
       kind: "agent",
-      agentId: "loop-agent",
+      agentId: "default",
       joinedAt: Date.now(),
     });
   } catch {

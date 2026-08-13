@@ -1,6 +1,8 @@
+import { resolve } from "node:path";
 import { BusyError, NotFoundError } from "../../infra/domain-errors.js";
 import type { AgentRow, CreateAgentInput, UpdateAgentInput } from "./domain.js";
 import type { AgentPort } from "./ports.js";
+import { ensureAgentWorkspace } from "./workspace.js";
 
 export interface AgentService {
   create(input: CreateAgentInput): Promise<AgentRow>;
@@ -33,7 +35,12 @@ export function createAgentService(opts: {
   return {
     async create(input: CreateAgentInput): Promise<AgentRow> {
       const id = input.id ?? idGen();
-      const workspacePath = await materializeWorkspace(id, input.template);
+      // Agent-level workspace override (agent-hub 预留): a configured
+      // absolute path is materialized verbatim (mkdir -p + seeded defaults);
+      // otherwise fall back to the managed <dataDir>/agents/<id> location.
+      const workspacePath = input.workspacePath
+        ? await ensureAgentWorkspace(resolve(input.workspacePath))
+        : await materializeWorkspace(id, input.template);
       const now = Date.now();
       const larkEnabled = input.lark?.enabled ?? false;
       const larkAppId = input.lark?.appId ?? null;
@@ -81,6 +88,9 @@ export function createAgentService(opts: {
           if (!row) throw new AgentNotFoundError(id);
           return row;
         }
+      }
+      if (input.workspacePath !== undefined) {
+        await ensureAgentWorkspace(resolve(input.workspacePath));
       }
       const row = await port.update(id, { ...input, now: Date.now() });
       if (!row) throw new AgentNotFoundError(id);

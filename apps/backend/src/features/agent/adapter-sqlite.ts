@@ -72,6 +72,7 @@ export function sqliteAgentAdapter(db: Database): AgentPort {
         sets.modelName = input.model.model;
       }
       if (input.backendKind !== undefined) sets.backendKind = input.backendKind;
+      if (input.workspacePath !== undefined) sets.workspacePath = input.workspacePath;
       if (input.reasoningEffort !== undefined) sets.reasoningEffort = input.reasoningEffort;
       if (input.permissionMode !== undefined) sets.permissionMode = input.permissionMode;
       if (input.maxSteps !== undefined) sets.maxSteps = input.maxSteps;
