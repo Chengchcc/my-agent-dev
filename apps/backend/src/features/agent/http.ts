@@ -18,32 +18,34 @@ const backendKindUnion = t.Enum(
 // ── Response types (inferred by Elysia from handler return values) ──
 
 function toAgentResponse(row: AgentRow, status: string) {
+  const rc = row.config.runtime_config;
+  const lk = row.config.lark;
+  const slash = rc.model_id.indexOf("/");
   return {
     id: row.id,
-    name: row.name,
-    template: row.template,
+    name: row.config.name,
     workspacePath: row.workspacePath,
-    modelProvider: row.modelProvider,
-    modelName: row.modelName,
-    backendKind: row.backendKind,
-    reasoningEffort: row.reasoningEffort,
-    permissionMode: row.permissionMode,
-    maxSteps: row.maxSteps,
+    modelProvider: slash > 0 ? rc.model_id.slice(0, slash) : "unknown",
+    modelName: slash > 0 ? rc.model_id.slice(slash + 1) : rc.model_id,
+    backendKind: rc.runtime,
+    reasoningEffort: rc.reasoning_effort !== "" ? rc.reasoning_effort : null,
+    permissionMode: rc.permission_mode,
+    maxSteps: rc.max_steps > 0 ? rc.max_steps : null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     archivedAt: row.archivedAt,
     lark: {
-      enabled: row.larkEnabled,
-      appId: row.larkAppId,
-      profileRef: row.larkProfileRef,
-      botDisplayName: row.larkBotDisplayName,
+      enabled: lk.enabled,
+      appId: lk.app_id !== "" ? lk.app_id : null,
+      profileRef: lk.profile_ref !== "" ? lk.profile_ref : null,
+      botDisplayName: lk.bot_display_name !== "" ? lk.bot_display_name : null,
       status,
     },
   };
 }
 
 function deriveLarkStatus(row: AgentRow, registryStatus?: string): string {
-  if (!row.larkEnabled || !row.larkProfileRef) return "not_configured";
+  if (!row.config.lark.enabled || !row.config.lark.profile_ref) return "not_configured";
   if (registryStatus === "running") return "running";
   if (registryStatus === "degraded") return "degraded";
   if (registryStatus === "error") return "error";
@@ -121,7 +123,7 @@ export function agentRoutes(
         try {
           if (body.lark?.enabled === true) {
             const existing = await svc.getById(id);
-            const hasExistingProfile = !!existing.larkProfileRef;
+            const hasExistingProfile = !!existing.config.lark.profile_ref;
             const hasFreshCredentials = !!(body.lark?.appId && body.lark?.appSecret);
             if (!hasExistingProfile && !hasFreshCredentials) {
               return Response.json(
@@ -259,7 +261,7 @@ export function agentRoutes(
             botDisplayName:
               typeof body.botDisplayName === "string"
                 ? body.botDisplayName
-                : (existing.larkBotDisplayName ?? undefined),
+                : existing.config.lark.bot_display_name || undefined,
             brand: body.brand === "lark" ? "lark" : "feishu",
           });
           return session;

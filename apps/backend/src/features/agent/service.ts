@@ -1,5 +1,7 @@
-import { resolve } from "node:path";
+import { writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { BusyError, NotFoundError } from "../../infra/domain-errors.js";
+import { buildAgentConfig, serializeAgentYaml } from "./agent-config.js";
 import type { AgentRow, CreateAgentInput, UpdateAgentInput } from "./domain.js";
 import type { AgentPort } from "./ports.js";
 import { ensureAgentWorkspace } from "./workspace.js";
@@ -35,27 +37,35 @@ export function createAgentService(opts: {
   return {
     async create(input: CreateAgentInput): Promise<AgentRow> {
       const id = input.id ?? idGen();
-      // Agent-level workspace override (agent-hub 预留): a configured
-      // absolute path is materialized verbatim (mkdir -p + seeded defaults);
+      // Agent-level workspace override (ADR 0003): a configured absolute
+      // path is materialized verbatim (mkdir -p + seeded defaults);
       // otherwise fall back to the managed <dataDir>/agents/<id> location.
       const workspacePath = input.workspacePath
         ? await ensureAgentWorkspace(resolve(input.workspacePath))
         : await materializeWorkspace(id, input.template);
-      const now = Date.now();
-      const larkEnabled = input.lark?.enabled ?? false;
-      const larkAppId = input.lark?.appId ?? null;
-      const larkProfileRef = larkEnabled ? `agent:${id}` : null;
-      const larkBotDisplayName = input.lark?.botDisplayName ?? null;
-      const row = await port.create({
-        ...input,
+
+      const config = buildAgentConfig({
         id,
-        workspacePath,
-        now,
-        larkEnabled,
-        larkAppId,
-        larkProfileRef,
-        larkBotDisplayName,
+        name: input.name,
+        model: input.model,
+        backendKind: input.backendKind,
+        reasoningEffort: input.reasoningEffort,
+        permissionMode: input.permissionMode,
+        maxSteps: input.maxSteps,
+        lark: input.lark
+          ? {
+              enabled: input.lark.enabled,
+              appId: input.lark.appId,
+              botDisplayName: input.lark.botDisplayName,
+            }
+          : undefined,
       });
+
+      // agent.yml is the single source (ADR 0003): write it into the
+      // workspace, then cache the parsed form in the DB.
+      await writeFile(join(workspacePath, "agent.yml"), serializeAgentYaml(config), "utf-8");
+
+      const row = await port.create({ id, workspacePath, config, now: Date.now() });
       await onCreate?.(id);
       return row;
     },
@@ -76,23 +86,40 @@ export function createAgentService(opts: {
     },
 
     async update(id: string, input: UpdateAgentInput): Promise<AgentRow> {
-      // Auto-generate larkProfileRef when enabling lark on an agent without one
-      if (input.lark?.enabled) {
-        const existing = await port.findById(id);
-        if (existing && !existing.larkProfileRef) {
-          const updateWithProfile = {
-            ...input,
-            lark: { ...input.lark, profileRef: `agent:${id}` },
-          };
-          const row = await port.update(id, { ...updateWithProfile, now: Date.now() });
-          if (!row) throw new AgentNotFoundError(id);
-          return row;
-        }
+      const existing = await port.findById(id);
+      if (!existing || existing.archivedAt) throw new AgentNotFoundError(id);
+
+      const config = buildAgentConfig({
+        id,
+        name: input.name,
+        model: input.model,
+        backendKind: input.backendKind,
+        reasoningEffort: input.reasoningEffort,
+        permissionMode: input.permissionMode,
+        maxSteps: input.maxSteps,
+        lark: input.lark
+          ? {
+              enabled: input.lark.enabled,
+              appId: input.lark.appId,
+              botDisplayName: input.lark.botDisplayName,
+            }
+          : undefined,
+        prev: existing.config,
+      });
+
+      // Workspace relocation: materialize + seed the new path before the
+      // row points at it; the file write stays at the (new) source.
+      let workspacePath = existing.workspacePath;
+      if (input.workspacePath !== undefined && input.workspacePath !== existing.workspacePath) {
+        workspacePath = await ensureAgentWorkspace(resolve(input.workspacePath));
       }
-      if (input.workspacePath !== undefined) {
-        await ensureAgentWorkspace(resolve(input.workspacePath));
-      }
-      const row = await port.update(id, { ...input, now: Date.now() });
+      await writeFile(join(workspacePath, "agent.yml"), serializeAgentYaml(config), "utf-8");
+
+      const row = await port.update(id, {
+        config,
+        now: Date.now(),
+        ...(workspacePath !== existing.workspacePath ? { workspacePath } : {}),
+      });
       if (!row) throw new AgentNotFoundError(id);
       return row;
     },
@@ -106,14 +133,13 @@ export function createAgentService(opts: {
     // M11: Hard delete across stores — backend.db (transactional), workspace
     async hardDelete(id: string): Promise<void> {
       // 0. Verify agent exists (throws AgentNotFoundError if not)
-      await this.getById(id);
-
-      // 1. Guard: assert no active Agent Runs (throws AgentBusyError if busy)
+      const existing = await port.findById(id);
+      if (!existing || existing.archivedAt) throw new AgentNotFoundError(id);
+      // 1. Guard: no active Agent Run (running/waiting/commit_failed)
       opts.assertNoActiveRun(id);
-
-      // 2. backend.db: single transaction — agent + threads + member
-      await port.hardDelete(id);
-
+      // 2. DB: hard delete the agent row + cascade
+      const result = await port.hardDelete(id);
+      if (!result.deletedAgent) throw new AgentNotFoundError(id);
       // 3. workspace: physical rm -rf (idempotent)
       await opts.purgeWorkspace(id);
     },

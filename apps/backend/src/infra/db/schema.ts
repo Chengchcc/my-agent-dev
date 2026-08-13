@@ -13,26 +13,14 @@ export const agents = sqliteTable(
   "agents",
   {
     id: text().primaryKey(),
-    name: text().notNull(),
-    template: text(),
     workspacePath: text().notNull().unique(),
-    modelProvider: text().notNull(),
-    modelName: text().notNull(),
-    /** Execution backend kind (ADR 0002): coding_agent / claude_code /
-     *  pi / omp. Defaults to the coding agent; switching auto-forks the
-     *  branch (old history stays read-only). */
-    backendKind: text().notNull().default("coding_agent"),
-    /** Thinking-mode effort (none/low/high/max); null = provider default. */
-    reasoningEffort: text(),
-    permissionMode: text().notNull().default("ask"),
-    maxSteps: integer(),
+    /** Materialized cache of the parsed workspace `agent.yml` (ADR 0003
+     *  decision 1: the file is the single source; content columns are
+     *  folded into this JSON). */
+    config: text().notNull().default("{}"),
     createdAt: integer({ mode: "number" }).notNull(),
     updatedAt: integer({ mode: "number" }).notNull(),
     archivedAt: integer({ mode: "number" }),
-    larkEnabled: integer().notNull().default(0),
-    larkAppId: text(),
-    larkProfileRef: text(),
-    larkBotDisplayName: text(),
   },
   (table) => [index("idx_agents_archived").on(table.archivedAt)],
 );
@@ -268,11 +256,7 @@ import { createSelectSchema } from "drizzle-zod";
 
 // ── Simple tables (drizzle-zod auto-generate) ──
 
-export const agentsSelectSchema = createSelectSchema(agents, {
-  larkEnabled: (s) => s.transform((v: number) => v !== 0),
-  permissionMode: (s) => s.transform((v) => v as "ask" | "auto" | "deny"),
-  reasoningEffort: (s) => s.transform((v) => v as "none" | "low" | "high" | "max" | null),
-});
+export const agentsSelectSchema = createSelectSchema(agents);
 export const conversationSelectSchema = createSelectSchema(conversation);
 export const memberSelectSchema = createSelectSchema(member);
 export const skillPackSelectSchema = createSelectSchema(skillPack, {

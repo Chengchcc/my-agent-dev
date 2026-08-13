@@ -9,6 +9,8 @@ import {
 } from "@my-agent-team/adapter-coding-agent";
 import { OmpBackend } from "@my-agent-team/adapter-omp-agent";
 import type { Message } from "@my-agent-team/message";
+import { buildAgentConfig } from "../../src/features/agent/agent-config.js";
+import type { AgentRow } from "../../src/features/agent/domain.js";
 import {
   createAgentContextService,
   sqliteAgentContextAdapter,
@@ -47,25 +49,24 @@ let agentKind = "coding_agent";
 /** branch the coding_agent run committed to (captured in test 1). */
 let codingAgentBranchId = "";
 
-const agentRow = {
-  id: "a1",
-  name: "Switch Agent",
-  template: null,
-  workspacePath: "/tmp",
-  modelProvider: "fake",
-  modelName: "echo",
-  backendKind: "coding_agent" as string,
-  reasoningEffort: null,
-  permissionMode: "auto",
-  maxSteps: null,
-  createdAt: 1,
-  updatedAt: 1,
-  archivedAt: null,
-  larkEnabled: false,
-  larkAppId: null,
-  larkProfileRef: null,
-  larkBotDisplayName: null,
-};
+// Stub agent row (file-first, ADR 0003): the conversation service reads
+// the kind from agentModelRef(config.runtime_config).
+function stubAgent(): AgentRow {
+  return {
+    id: "a1",
+    workspacePath: "/tmp",
+    config: buildAgentConfig({
+      id: "a1",
+      name: "Switch Agent",
+      model: { provider: "fake", model: "echo" },
+      backendKind: agentKind,
+      permissionMode: "auto",
+    }),
+    createdAt: 1,
+    updatedAt: 1,
+    archivedAt: null,
+  };
+}
 
 async function waitForTerminal(runId: string): Promise<string> {
   for (let i = 0; i < 100; i++) {
@@ -186,7 +187,7 @@ beforeAll(async () => {
   feature = createConversationFeature({
     convPort,
     agentSvc: {
-      getById: async () => ({ ...agentRow, backendKind: agentKind }),
+      getById: async () => stubAgent(),
     } as never,
     settingsSvc: { get: async () => 8 } as never,
     relSvc: { getEdges: () => [] } as never,

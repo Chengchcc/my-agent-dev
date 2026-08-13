@@ -24,10 +24,15 @@ export function withLarkLifecycle(deps: LarkLifecycleDeps): AgentService {
 
     async create(input: CreateAgentInput): Promise<AgentRow> {
       const row = await service.create(input);
-      if (input.lark?.enabled && row.larkProfileRef && input.lark.appId && input.lark.appSecret) {
+      if (
+        input.lark?.enabled &&
+        row.config.lark.profile_ref &&
+        input.lark.appId &&
+        input.lark.appSecret
+      ) {
         try {
-          await profileInit(row.larkProfileRef, input.lark.appId, input.lark.appSecret);
-          await ensureBot(row.id, input.lark.botDisplayName, row.larkProfileRef);
+          await profileInit(row.config.lark.profile_ref, input.lark.appId, input.lark.appSecret);
+          await ensureBot(row.id, input.lark.botDisplayName, row.config.lark.profile_ref);
         } catch (err) {
           console.error(
             `[lark] profile/ensure failed for ${row.id}: ${
@@ -43,11 +48,15 @@ export function withLarkLifecycle(deps: LarkLifecycleDeps): AgentService {
     async update(id: string, input: UpdateAgentInput): Promise<AgentRow> {
       const row = await service.update(id, input);
       if (input.lark) {
-        if (input.lark.enabled === true && row.larkProfileRef) {
+        if (input.lark.enabled === true && row.config.lark.profile_ref) {
           // If fresh credentials provided, re-init profile first
           if (input.lark.appId && input.lark.appSecret) {
             try {
-              await profileInit(row.larkProfileRef, input.lark.appId, input.lark.appSecret);
+              await profileInit(
+                row.config.lark.profile_ref,
+                input.lark.appId,
+                input.lark.appSecret,
+              );
             } catch (err) {
               console.error(
                 `[lark] profile init failed for ${id}: ${
@@ -58,7 +67,7 @@ export function withLarkLifecycle(deps: LarkLifecycleDeps): AgentService {
           }
           // Always ensure bot is running when enabled with existing profile
           try {
-            await ensureBot(id, row.larkBotDisplayName, row.larkProfileRef);
+            await ensureBot(id, row.config.lark.bot_display_name, row.config.lark.profile_ref);
           } catch (err) {
             console.error(
               `[lark] ensure bot failed for ${id}: ${

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync } from "node:fs";
 import type { AgentRow } from "./domain.js";
 import type { AgentPort } from "./ports.js";
 import { AgentBusyError, AgentNotFoundError, createAgentService } from "./service.js";
@@ -9,19 +10,8 @@ function makeInMemoryPort(): AgentPort {
     async create(input) {
       const row: AgentRow = {
         id: input.id,
-        name: input.name,
-        template: input.template ?? null,
         workspacePath: input.workspacePath,
-        modelProvider: input.model.provider,
-        modelName: input.model.model,
-        backendKind: input.backendKind ?? "coding_agent",
-        reasoningEffort: input.reasoningEffort ?? null,
-        permissionMode: input.permissionMode ?? "ask",
-        maxSteps: input.maxSteps ?? null,
-        larkEnabled: input.larkEnabled ?? false,
-        larkAppId: input.larkAppId ?? null,
-        larkProfileRef: input.larkProfileRef ?? null,
-        larkBotDisplayName: input.larkBotDisplayName ?? null,
+        config: input.config,
         createdAt: input.now,
         updatedAt: input.now,
         archivedAt: null,
@@ -39,9 +29,8 @@ function makeInMemoryPort(): AgentPort {
     async update(id, input) {
       const existing = rows.get(id);
       if (!existing || existing.archivedAt) return null;
-      if (input.name !== undefined) existing.name = input.name;
-      if (input.permissionMode !== undefined) existing.permissionMode = input.permissionMode;
-      if (input.maxSteps !== undefined) existing.maxSteps = input.maxSteps;
+      existing.config = input.config;
+      if (input.workspacePath !== undefined) existing.workspacePath = input.workspacePath;
       existing.updatedAt = input.now;
       return existing;
     },
@@ -69,7 +58,11 @@ function makeSvc(overrides?: {
     port,
     idGen: () => `agent-${next++}`,
     workspaceRoot: "/tmp/ws",
-    materializeWorkspace: async (id) => `/tmp/ws/${id}`,
+    materializeWorkspace: async (id) => {
+      const dir = `/tmp/ws/${id}`;
+      mkdirSync(dir, { recursive: true });
+      return dir;
+    },
     purgeWorkspace: overrides?.purgeWorkspace ?? (async () => {}),
     assertNoActiveRun: overrides?.assertNoActiveRun ?? (() => {}),
   });
@@ -84,8 +77,8 @@ describe("AgentService", () => {
       model: { provider: "anthropic", model: "claude-sonnet-4-6" },
     });
     expect(agent.id).toStartWith("agent-");
-    expect(agent.name).toBe("test");
-    expect(agent.permissionMode).toBe("ask");
+    expect(agent.config.name).toBe("test");
+    expect(agent.config.runtime_config.permission_mode).toBe("ask");
   });
 
   test("getById throws AgentNotFoundError for unknown id", async () => {
@@ -120,7 +113,7 @@ describe("AgentService", () => {
     const { svc } = makeSvc();
     const a = await svc.create({ name: "old", model: { provider: "anthropic", model: "x" } });
     const updated = await svc.update(a.id, { name: "new" });
-    expect(updated.name).toBe("new");
+    expect(updated.config.name).toBe("new");
   });
 
   test("update throws on archived agent", async () => {
@@ -146,7 +139,11 @@ describe("AgentService", () => {
       port,
       idGen: () => "agent-hd",
       workspaceRoot: "/tmp/ws",
-      materializeWorkspace: async () => "/tmp/ws/agent-hd",
+      materializeWorkspace: async () => {
+        const dir = "/tmp/ws/agent-hd";
+        mkdirSync(dir, { recursive: true });
+        return dir;
+      },
       purgeWorkspace: async (id) => {
         purgeLog.push(id);
       },
@@ -167,7 +164,11 @@ describe("AgentService", () => {
       port: makeInMemoryPort(),
       idGen: () => "agent-busy",
       workspaceRoot: "/tmp/ws",
-      materializeWorkspace: async () => "/tmp/ws/agent-busy",
+      materializeWorkspace: async () => {
+        const dir = "/tmp/ws/agent-busy";
+        mkdirSync(dir, { recursive: true });
+        return dir;
+      },
       purgeWorkspace: async () => {},
       assertNoActiveRun: () => {
         throw new AgentBusyError("agent-busy");
@@ -183,7 +184,11 @@ describe("AgentService", () => {
       port: makeInMemoryPort(),
       idGen: () => "agent-free",
       workspaceRoot: "/tmp/ws",
-      materializeWorkspace: async () => "/tmp/ws/agent-free",
+      materializeWorkspace: async () => {
+        const dir = "/tmp/ws/agent-free";
+        mkdirSync(dir, { recursive: true });
+        return dir;
+      },
       purgeWorkspace: async () => {},
       assertNoActiveRun: () => {},
     });

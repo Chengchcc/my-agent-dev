@@ -1,25 +1,16 @@
 import type { BackendModelRef } from "@my-agent-team/agent-backend";
+import type { AgentConfig } from "./agent-config.js";
 
+/** Agent row (file-first, ADR 0003 decision 1): the DB keeps only the FK
+ *  anchor (id), the workspace location, and a materialized cache of the
+ *  parsed `agent.yml` (`config`). */
 export interface AgentRow {
   id: string;
-  name: string;
-  template: string | null;
   workspacePath: string;
-  modelProvider: string;
-  modelName: string;
-  /** Execution backend kind (coding_agent / claude_code / pi / omp). The
-   *  model ref derives from it; switching forks a new branch (D2). */
-  backendKind: string;
-  reasoningEffort: "none" | "low" | "high" | "max" | null;
-  permissionMode: "ask" | "auto" | "deny";
-  maxSteps: number | null;
+  config: AgentConfig;
   createdAt: number;
   updatedAt: number;
   archivedAt: number | null;
-  larkEnabled: boolean;
-  larkAppId: string | null;
-  larkProfileRef: string | null;
-  larkBotDisplayName: string | null;
 }
 
 export interface CreateAgentInput {
@@ -62,16 +53,14 @@ export interface UpdateAgentInput {
   };
 }
 
-/** Canonical Backend model reference for an Agent record. Catalogs key
- *  models as `<provider>/<model>`; the agent stores the bare provider and
- *  model name separately. The backendKind comes from the agent row (D2) —
- *  the kind the agent's branch is pinned to. */
-export function agentModelRef(
-  agent: Pick<AgentRow, "modelProvider" | "modelName" | "reasoningEffort" | "backendKind">,
-): BackendModelRef {
+/** Canonical Backend model reference for an Agent record. Reads from the
+ *  materialized agent.yml config (runtime_config) — the file is the
+ *  source (ADR 0003). */
+export function agentModelRef(agent: Pick<AgentRow, "config">): BackendModelRef {
+  const rc = agent.config.runtime_config;
   return {
-    backendKind: agent.backendKind,
-    modelId: `${agent.modelProvider}/${agent.modelName}`,
-    ...(agent.reasoningEffort ? { reasoningEffort: agent.reasoningEffort } : {}),
+    backendKind: rc.runtime,
+    modelId: rc.model_id,
+    ...(rc.reasoning_effort !== "" ? { reasoningEffort: rc.reasoning_effort } : {}),
   };
 }

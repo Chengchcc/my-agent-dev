@@ -169,6 +169,13 @@
       "when": 1786528200000,
       "tag": "0024_backend_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1786600000000,
+      "tag": "0025_file_first_agent_yml",
+      "breakpoints": true
     }
   ]
 }

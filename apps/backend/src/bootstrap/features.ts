@@ -8,7 +8,6 @@ import type {
   BackendRegistryEntry,
 } from "@my-agent-team/agent-backend";
 import type { Message } from "@my-agent-team/message";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { FeatureSet } from "../app.js";
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
@@ -61,7 +60,6 @@ import {
   sqliteSkillPackAdapter,
 } from "../features/skill-pack/index.js";
 import { resolveCodingAgentCommand } from "../infra/coding-agent-command.js";
-import * as backendSchema from "../infra/db/schema.js";
 import { ulid } from "../infra/ids.js";
 import type { BackendServices } from "./services.js";
 
@@ -373,7 +371,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       const agent = member?.agentId ? await agentSvc.getById(member.agentId) : null;
       return {
         root: agent?.workspacePath ?? config.workspaceRoot,
-        access: agent?.permissionMode === "ask" ? "read_only" : "read_write",
+        access: agent?.config.runtime_config.permission_mode === "ask" ? "read_only" : "read_write",
       };
     },
     productToolsEntrypoint: config.productToolsMcpUrl
@@ -410,14 +408,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   // ─── Runtime Ops (surface-health audit only) ───────────────
 
-  const backendDrizzle = drizzle(db, { casing: "snake_case", schema: backendSchema });
   const agentNames = new Map<string, string>();
   {
-    const rows = backendDrizzle
-      .select({ id: backendSchema.agents.id, name: backendSchema.agents.name })
-      .from(backendSchema.agents)
-      .all();
-    for (const r of rows) agentNames.set(r.id, r.name);
+    const rows = await agentSvc.list(true);
+    for (const r of rows) agentNames.set(r.id, r.config.name);
   }
 
   const opsSvc = createRuntimeOpsService({
@@ -545,9 +539,13 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
     const allAgents = await agentSvc.list(true);
     for (const agent of allAgents) {
-      if (agent.larkEnabled && agent.larkProfileRef) {
+      if (agent.config.lark.enabled && agent.config.lark.profile_ref) {
         void larkBotRegistry
-          .ensureLarkBot(agent.id, agent.larkBotDisplayName, agent.larkProfileRef)
+          .ensureLarkBot(
+            agent.id,
+            agent.config.lark.bot_display_name,
+            agent.config.lark.profile_ref,
+          )
           .catch((err: Error) => console.error(`[lark] failed to start bot for ${agent.id}:`, err));
       }
     }
