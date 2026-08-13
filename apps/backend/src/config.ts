@@ -16,7 +16,9 @@ export interface BackendConfig {
   /** Coding Agent executable (spawned per Run). Defaults to "coding-agent"
    *  on PATH; tests point it at the Bun runtime + app entry source. */
   codingAgentBin?: string;
-  /** CLI backend executables (ADR 0002), default to the binary on PATH. */
+  /** Knowledge recall MCP server entry (ADR 0022). Optional: exotic
+   *  deployments override; otherwise dev uses source, prod uses dist. */
+  knowledgeMcpServerBin?: string;
   ompBin?: string;
   piBin?: string;
   piMcpAdapterPath?: string;
@@ -44,7 +46,7 @@ export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
     cancelGraceMs: env.BACKEND_CANCEL_GRACE_MS,
     builtinSkillsDir: process.env.BUILTIN_SKILLS_DIR ?? resolve(import.meta.dir, "../../../skills"),
     codingAgentBin: env.CODING_AGENT_BIN,
-    ompBin: env.OMP_BIN,
+    knowledgeMcpServerBin: env.KNOWLEDGE_MCP_SERVER_BIN,
     piBin: env.PI_BIN,
     piMcpAdapterPath: env.PI_MCP_ADAPTER_PATH,
     claudeBin: env.CLAUDE_BIN,

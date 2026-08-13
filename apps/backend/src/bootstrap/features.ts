@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { ClaudeBackend, ClaudeModelCatalog } from "@my-agent-team/adapter-claude-agent";
 import { CodingAgentBackend, CodingAgentModelCatalog } from "@my-agent-team/adapter-coding-agent";
 import { OmpBackend, OmpModelCatalog } from "@my-agent-team/adapter-omp-agent";
@@ -12,7 +13,6 @@ import type { FeatureSet } from "../app.js";
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
 import { AgentBusyError, agentModelRef, agentRoutes } from "../features/agent/index.js";
-
 import { reconcileAgentResources } from "../features/agent/workspace-bridge.js";
 import {
   createAgentContextService,
@@ -34,9 +34,15 @@ import {
   cronJobRoutes,
   sqliteCronJobAdapter,
 } from "../features/cron/index.js";
+import {
+  createKnowledgeService,
+  knowledgeRoutes,
+  sqliteKnowledgePackAdapter,
+} from "../features/knowledge/index.js";
 import { CliSetupProvisioner, LarkSetupManager } from "../features/lark-bot/index.js";
 import { loopRoutes } from "../features/loop/http.js";
-import { createMcpService, mcpRoutes, sqliteMcpServerAdapter } from "../features/mcp/index.js";
+import { backfillLegacyMcpAssignments } from "../features/mcp/backfill.js";
+import { createMcpService, fileMcpServerAdapter, mcpRoutes } from "../features/mcp/index.js";
 import { modelRoutes } from "../features/models/index.js";
 import {
   createProductToolsMcpServer,
@@ -63,6 +69,7 @@ import {
 } from "../features/skill-pack/index.js";
 import { resolveCodingAgentCommand } from "../infra/coding-agent-command.js";
 import { ulid } from "../infra/ids.js";
+import { resolveKnowledgeMcpServerEntry } from "../infra/knowledge-mcp-command.js";
 import type { BackendServices } from "./services.js";
 
 // ─── Helper ───────────────────────────────────────────────────
@@ -433,34 +440,67 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   // ─── MCP ────────────────────────────────────────────────────
 
   const mcpSvcRaw = createMcpService({
-    port: sqliteMcpServerAdapter(db),
+    port: fileMcpServerAdapter(config.dataDir),
     mcpClientManager,
     agentExists: (id: string) => agentSvc.exists(id),
+    getAgentMcpServers: async (agentId) => {
+      const agent = await agentSvc.getById(agentId);
+      return agent.config.runtime_config.mcp_servers.map((s) => ({
+        serverId: s.server_id,
+        enabled: s.enabled,
+      }));
+    },
+    setAgentMcpServers: async (agentId, entries) => {
+      await agentSvc.update(agentId, {
+        mcpServers: entries.map((e) => ({ serverId: e.serverId, enabled: e.enabled })),
+      });
+    },
     idGen: ulid,
   });
-  // Mutations re-reconcile the agent's workspace mcp.json (ADR 0003).
+  // Catalog mutations + assignment changes re-reconcile every affected
+  // agent's workspace mcp.json (ADR 0022).
   const mcpSvc: ReturnType<typeof createMcpService> = {
     ...mcpSvcRaw,
-    async create(agentId, input) {
-      const row = await mcpSvcRaw.create(agentId, input);
-      await reconcileAgent.fn(agentId);
+    async create(input) {
+      const row = await mcpSvcRaw.create(input);
       return row;
     },
-    async update(agentId, serverId, input) {
-      const row = await mcpSvcRaw.update(agentId, serverId, input);
-      await reconcileAgent.fn(agentId);
+    async update(serverId, input) {
+      const row = await mcpSvcRaw.update(serverId, input);
+      for (const agentId of await agentIdsWithMcpServer(serverId)) {
+        await reconcileAgent.fn(agentId);
+      }
       return row;
     },
-    async delete(agentId, serverId) {
-      await mcpSvcRaw.delete(agentId, serverId);
+    async delete(serverId) {
+      const affected = await agentIdsWithMcpServer(serverId);
+      await mcpSvcRaw.delete(serverId);
+      for (const agentId of affected) await reconcileAgent.fn(agentId);
+    },
+    async setAgentServers(agentId, entries) {
+      await mcpSvcRaw.setAgentServers(agentId, entries);
       await reconcileAgent.fn(agentId);
     },
   };
+  async function agentIdsWithMcpServer(serverId: string): Promise<string[]> {
+    // The catalog row exists before delete; agents are whoever assigned it.
+    const all = await agentSvc.list();
+    const ids: string[] = [];
+    for (const agent of all) {
+      if ((await mcpSvcRaw.listAssignments(agent.id)).some((a) => a.serverId === serverId)) {
+        ids.push(agent.id);
+      }
+    }
+    return ids;
+  }
 
   reconcileAgent.fn = async (agentId: string): Promise<void> => {
     try {
       const agent = await agentSvc.getById(agentId);
       const packs = await skillPackPort.listForAgent(agentId);
+      const assignedKnowledge = agent.config.runtime_config.knowledge_packs
+        .map((packId) => knowledgeSvc.getById(packId))
+        .filter((p): p is NonNullable<typeof p> => p !== null && p.status === "ready");
       reconcileAgentResources({
         workspacePath: agent.workspacePath,
         kind: agent.config.runtime_config.runtime,
@@ -468,13 +508,13 @@ export async function installFeatures(services: BackendServices): Promise<Instal
           .filter((p) => p.status === "ready")
           .map((p) => ({ id: p.id, source: installPath(config.dataDir, p.id) })),
         mcpServers: [
-          ...mcpSvc.listByAgent(agentId).map((s) => ({
+          ...(await mcpSvc.listForAgent(agentId)).map((s) => ({
             name: s.name,
             transport: s.transport,
             url: s.url,
             command: s.command,
           })),
-          // The product-tools server (ledger access, ADR 0003) merges into
+          // The product-tools server (ledger access, ADR 0020) merges into
           // the SAME workspace .mcp.json — one config, one writer.
           ...(config.productToolsMcpUrl && config.productToolsServiceToken
             ? [
@@ -486,17 +526,52 @@ export async function installFeatures(services: BackendServices): Promise<Instal
                 },
               ]
             : []),
+          // The knowledge recall server (ADR 0022): merged only when the
+          // agent has ready packs (stdio, scoped to its knowledge dir).
+          ...(assignedKnowledge.length > 0
+            ? [
+                {
+                  name: "knowledge",
+                  transport: "stdio" as const,
+                  command: process.execPath,
+                  args: [
+                    resolveKnowledgeMcpServerEntry(config),
+                    join(agent.workspacePath, "knowledge"),
+                  ],
+                },
+              ]
+            : []),
         ],
         productTools: config.productToolsMcpUrl
           ? [...buildHistoryTools(`sse:${config.productToolsMcpUrl}`)]
           : [],
+        knowledgePacks: assignedKnowledge.map((p) => ({
+          id: p.id,
+          source: p.installedRef ?? "",
+          name: p.name,
+          description: p.description,
+        })),
       });
     } catch (err) {
       console.error(`[bridge] reconcile failed for ${agentId}:`, err);
     }
   };
 
-  // ─── Cron ───────────────────────────────────────────────────
+  // ─── Knowledge packs (ADR 0022) ──────────────────────────────
+  const knowledgeSvc = createKnowledgeService({
+    port: sqliteKnowledgePackAdapter(db),
+    dataDir: config.dataDir,
+    idGen: ulid,
+  });
+
+  // ADR 0022: promote the legacy per-agent MCP subsets into agent.yml
+  // (runs once - drops mcp_server_legacy when done; each update
+  // reconciles the workspace).
+  await backfillLegacyMcpAssignments(db, config.dataDir, {
+    listAgents: () => agentSvc.list(),
+    getAgentMcpServers: mcpSvcRaw.listAssignments,
+    setAgentMcpServers: mcpSvc.setAgentServers,
+  });
 
   const cronSvc = createCronJobService({
     port: sqliteCronJobAdapter(db),
@@ -567,8 +642,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     }),
     cronJobs: cronJobRoutes(cronSvc, cronScheduler),
     skillPacks: skillPackRoutes(skillPackSvc, config.dataDir),
-    settings: settingsRoutes(settingsSvc),
     mcp: mcpRoutes(mcpSvc),
+    knowledge: knowledgeRoutes(knowledgeSvc),
+    settings: settingsRoutes(settingsSvc),
+
     models: modelRoutes({
       list: async () => {
         // Aggregate every registered backend's catalog, tagging each model

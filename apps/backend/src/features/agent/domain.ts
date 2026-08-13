@@ -44,6 +44,8 @@ export interface UpdateAgentInput {
   reasoningEffort?: "none" | "low" | "high" | "max" | null;
   permissionMode?: "ask" | "auto" | "deny";
   maxSteps?: number;
+  mcpServers?: Array<{ serverId: string; enabled: boolean }>;
+  knowledgePacks?: string[];
   lark?: {
     enabled?: boolean;
     appId?: string;

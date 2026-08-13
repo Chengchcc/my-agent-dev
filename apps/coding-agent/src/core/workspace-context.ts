@@ -15,11 +15,17 @@ function readTextOrNull(path: string): string | null {
 }
 
 /** The system prompt = AGENTS.md (instructions) + SOUL.md (identity) +
- *  USER.md (user context), in that order, joined. */
+ *  USER.md (user context) + the knowledge index (ADR 0022: the bridge
+ *  generates knowledge/index.md; it is reference material, appended
+ *  verbatim). */
 export function readWorkspaceSystemPrompt(cwd: string): string | undefined {
   const parts = ["AGENTS.md", "SOUL.md", "USER.md"]
     .map((f) => readTextOrNull(join(cwd, f)))
     .filter((t): t is string => t !== null && t.trim() !== "");
+  const knowledgeIndex = readTextOrNull(join(cwd, "knowledge", "index.md"));
+  if (knowledgeIndex && knowledgeIndex.trim() !== "") {
+    parts.push(`<available_knowledge>\n${knowledgeIndex.trim()}\n</available_knowledge>`);
+  }
   return parts.length > 0 ? parts.join("\n\n") : undefined;
 }
 

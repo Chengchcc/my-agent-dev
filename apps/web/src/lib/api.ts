@@ -21,8 +21,10 @@ export type CronJobRow = ApiReturn<typeof api.listCronJobs>["cronJobs"][number];
 export type LoopRow = ApiReturn<typeof api.listLoops>["loops"][number];
 export type LoopDetail = ApiReturn<typeof api.getLoop>["loop"];
 export type LarkSetupSession = ApiReturn<typeof api.larkSetup>;
-export type AgentRow = ApiReturn<typeof api.listAgents>[number];
-export type AgentRunListItem = ApiReturn<typeof api.listAgentRuns>["runs"][number];
+export type AgentRow = ApiReturn<typeof api.listAgents>[number] & {
+  mcpServers?: Array<{ serverId: string; enabled: boolean }>;
+  knowledgePacks?: string[];
+};
 export type AgentRunDetail = ApiReturn<typeof api.getAgentRun>;
 export type AgentRuntimeStatus = ApiReturn<typeof api.getAgentRuntime>;
 export type SurfaceOpsItem = ApiReturn<typeof api.listSurfaces>[number];
@@ -226,23 +228,24 @@ export const api = {
   getSystemInfo: () => unwrap(client.api.settings.system.get()),
   updateSetting: (key: string, value: unknown) =>
     unwrap(client.api.settings({ key }).put({ value })),
-  // MCP Servers
-  listMcpServers: (agentId: string) =>
-    unwrap(client.api.agents({ id: agentId })["mcp-servers"].get()),
-  createMcpServer: (
-    agentId: string,
-    body: {
-      name: string;
-      transport: "stdio" | "sse";
-      command?: string;
-      args?: string[];
-      env?: Record<string, string>;
-      url?: string;
-      enabled?: boolean;
-    },
-  ) => unwrap(client.api.agents({ id: agentId })["mcp-servers"].post(body)),
+  // MCP catalog (ADR 0022, direct fetch - global routes)
+  listMcpServers: () =>
+    fetch("/api/bff/mcp-servers", { credentials: "include" }).then((r) => r.json()),
+  createMcpServer: (body: {
+    name: string;
+    transport: "stdio" | "sse";
+    command?: string;
+    args?: string[];
+    env?: Record<string, string>;
+    url?: string;
+  }) =>
+    fetch("/api/bff/mcp-servers", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json()),
   updateMcpServer: (
-    agentId: string,
     serverId: string,
     body: {
       name?: string;
@@ -250,11 +253,39 @@ export const api = {
       args?: string[];
       env?: Record<string, string>;
       url?: string;
-      enabled?: boolean;
     },
-  ) => unwrap(client.api.agents({ id: agentId })["mcp-servers"]({ serverId }).put(body)),
-  deleteMcpServer: (agentId: string, serverId: string) =>
-    unwrap(client.api.agents({ id: agentId })["mcp-servers"]({ serverId }).delete()),
+  ) =>
+    fetch(`/api/bff/mcp-servers/${serverId}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json()),
+  deleteMcpServer: (serverId: string) =>
+    fetch(`/api/bff/mcp-servers/${serverId}`, {
+      method: "DELETE",
+      credentials: "include",
+    }).then((r) => r.ok),
+  // Knowledge packs (ADR 0022, direct fetch)
+  listKnowledgePacks: () =>
+    fetch("/api/bff/knowledge-packs", { credentials: "include" }).then((r) => r.json()),
+  installKnowledgePack: (body: {
+    name: string;
+    description?: string;
+    sourceKind: "builtin" | "git" | "zip";
+    sourceUrl?: string;
+  }) =>
+    fetch("/api/bff/knowledge-packs/install", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json()),
+  deleteKnowledgePack: (id: string) =>
+    fetch(`/api/bff/knowledge-packs/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    }).then((r) => r.ok),
   // Memory
   getAgentMemory: (agentId: string) =>
     fetch(`/api/bff/agents/${agentId}/memory`, { credentials: "include" }).then((r) => r.json()),

@@ -1,17 +1,24 @@
+/** MCP server catalog (ADR 0022): a global server pool + per-agent
+ *  assignment switch. The workspace bridge writes assigned+enabled servers
+ *  into each agent's .mcp.json. */
 export interface McpServerRow {
   serverId: string;
-  agentId: string;
   name: string;
   transport: "stdio" | "sse";
   command: string | null;
   args: string[] | null;
   env: Record<string, string> | null;
   url: string | null;
-  enabled: boolean;
   createdAt: number;
   updatedAt: number;
   status?: "pending" | "connected" | "failed";
   toolsCount?: number;
+}
+
+/** One agent's assignment for a catalog server (the per-agent switch). */
+export interface AgentMcpAssignment {
+  serverId: string;
+  enabled: boolean;
 }
 
 export interface CreateMcpServerInput {
@@ -21,7 +28,6 @@ export interface CreateMcpServerInput {
   args?: string[];
   env?: Record<string, string>;
   url?: string;
-  enabled?: boolean;
 }
 
 export interface UpdateMcpServerInput {
@@ -30,5 +36,4 @@ export interface UpdateMcpServerInput {
   args?: string[];
   env?: Record<string, string>;
   url?: string;
-  enabled?: boolean;
 }

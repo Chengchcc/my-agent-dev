@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** Agent portable config — the parsed form of workspace `agent.yml`
- *  (ADR 0003 decision 1: agent.yml is the single source; the DB holds
+ *  (ADR 0020 decision 1: agent.yml is the single source; the DB holds
  *  only the FK anchor + this materialized cache). */
 
 export const agentConfigSchema = z.object({
@@ -18,6 +18,11 @@ export const agentConfigSchema = z.object({
     reasoning_effort: z.union([z.enum(["none", "low", "high", "max"]), z.literal("")]),
     permission_mode: z.enum(["ask", "auto", "deny"]),
     max_steps: z.number().int().nonnegative(),
+    /** Per-agent resource switches (ADR 0022, file-first). */
+    mcp_servers: z
+      .array(z.object({ server_id: z.string().min(1), enabled: z.boolean() }))
+      .default([]),
+    knowledge_packs: z.array(z.string()).default([]),
   }),
   lark: z.object({
     enabled: z.boolean(),
@@ -40,6 +45,8 @@ export function buildAgentConfig(input: {
   reasoningEffort?: string | null;
   permissionMode?: "ask" | "auto" | "deny";
   maxSteps?: number;
+  mcpServers?: Array<{ serverId: string; enabled: boolean }>;
+  knowledgePacks?: string[];
   lark?: {
     enabled?: boolean;
     appId?: string;
@@ -68,6 +75,11 @@ export function buildAgentConfig(input: {
           : (prev?.runtime_config.reasoning_effort ?? ""),
       permission_mode: input.permissionMode ?? prev?.runtime_config.permission_mode ?? "ask",
       max_steps: input.maxSteps ?? prev?.runtime_config.max_steps ?? 0,
+      mcp_servers:
+        input.mcpServers?.map((s) => ({ server_id: s.serverId, enabled: s.enabled })) ??
+        prev?.runtime_config.mcp_servers ??
+        [],
+      knowledge_packs: input.knowledgePacks ?? prev?.runtime_config.knowledge_packs ?? [],
     },
     lark: {
       enabled: input.lark?.enabled ?? prev?.lark.enabled ?? false,
@@ -80,7 +92,7 @@ export function buildAgentConfig(input: {
 
 /** Serialize the config to the workspace `agent.yml` format (fixed shape,
  *  JSON-string-quoted values — valid YAML). The backend is the only writer
- *  today; manual edits are picked up by a future file-watch (ADR 0003). */
+ *  today; manual edits are picked up by a future file-watch (ADR 0020). */
 export function serializeAgentYaml(config: AgentConfig): string {
   const rc = config.runtime_config;
   const lk = config.lark;
@@ -99,6 +111,10 @@ export function serializeAgentYaml(config: AgentConfig): string {
     `  reasoning_effort: ${q(rc.reasoning_effort)}`,
     `  permission_mode: ${q(rc.permission_mode)}`,
     `  max_steps: ${rc.max_steps}`,
+    "  mcp_servers:",
+    ...rc.mcp_servers.map((s) => `    - server_id: ${q(s.server_id)}\n      enabled: ${s.enabled}`),
+    "  knowledge_packs:",
+    ...rc.knowledge_packs.map((p) => `    - ${q(p)}`),
     "lark:",
     `  enabled: ${lk.enabled}`,
     `  app_id: ${q(lk.app_id)}`,

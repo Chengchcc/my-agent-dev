@@ -99,6 +99,8 @@ export function createAgentService(opts: {
         reasoningEffort: input.reasoningEffort,
         permissionMode: input.permissionMode,
         maxSteps: input.maxSteps,
+        mcpServers: input.mcpServers,
+        knowledgePacks: input.knowledgePacks,
         lark: input.lark
           ? {
               enabled: input.lark.enabled,

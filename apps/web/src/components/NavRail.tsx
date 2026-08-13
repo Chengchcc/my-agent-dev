@@ -5,10 +5,12 @@ import {
   ActivityIcon,
   BotIcon,
   FolderKanbanIcon,
+  LibraryIcon,
   LogOutIcon,
   MessageSquareIcon,
   MoreHorizontalIcon,
   Package,
+  PlugIcon,
   PlusIcon,
   RefreshCwIcon,
   SettingsIcon,
@@ -267,6 +269,32 @@ function NavContent() {
               >
                 <Package />
                 <span className="truncate">Skill Packs</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={pathname.startsWith("/team/mcp")}
+                tooltip="MCP Servers"
+                onClick={() => {
+                  closeMobile();
+                  router.push("/team/mcp");
+                }}
+              >
+                <PlugIcon />
+                <span className="truncate">MCP</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={pathname.startsWith("/team/knowledge")}
+                tooltip="Knowledge"
+                onClick={() => {
+                  closeMobile();
+                  router.push("/team/knowledge");
+                }}
+              >
+                <LibraryIcon />
+                <span className="truncate">Knowledge</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>

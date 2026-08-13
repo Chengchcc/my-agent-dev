@@ -6,6 +6,7 @@ import { AgentForm } from "@/components/AgentForm";
 import { AgentMemoryPanel } from "@/components/AgentMemoryPanel";
 import { ConversationList } from "@/components/ConversationList";
 import { IdentityPanel } from "@/components/IdentityPanel";
+import { KnowledgePackPanel } from "@/components/KnowledgePackPanel";
 import { McpServerPanel } from "@/components/McpServerPanel";
 import { AgentRunsTable } from "@/components/ops/AgentRunsTable";
 import { QueryState } from "@/components/ops/QueryState";
@@ -102,6 +103,10 @@ export default function AgentDetailPage() {
           </TabsContent>
           <TabsContent value="skills" className="w-full min-w-0 pt-4">
             <AgentSkillsPanel agentId={id} />
+            <div className="mt-6">
+              <h2 className={`${overlineClass} mb-3`}>Knowledge</h2>
+              <KnowledgePackPanel agentId={id} />
+            </div>
           </TabsContent>
           <TabsContent value="activity" className="w-full min-w-0 pt-4">
             <div className="space-y-6">

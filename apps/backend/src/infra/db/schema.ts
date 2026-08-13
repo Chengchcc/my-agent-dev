@@ -206,24 +206,30 @@ export const settings = sqliteTable("settings", {
   updatedAt: integer({ mode: "number" }).notNull(),
 });
 
-// ─── mcp_server ─────────────────────────────────────────────────────
-export const mcpServer = sqliteTable(
-  "mcp_server",
+// ─── knowledge_pack (ADR 0022: install pool only; per-agent switches
+//     live in agent.yml - file-first, no assignment table) ────────────
+export const knowledgePack = sqliteTable(
+  "knowledge_pack",
   {
-    serverId: text("server_id").primaryKey(),
-    agentId: text("agent_id").notNull(),
+    id: text().primaryKey(),
     name: text().notNull(),
-    transport: text().notNull(),
-    command: text(),
-    args: text(),
-    env: text(),
-    url: text(),
-    enabled: integer({ mode: "number" }).notNull().default(1),
+    description: text().notNull(),
+    sourceKind: text().notNull(),
+    sourceUrl: text(),
+    versionRef: text(),
+    installedRef: text(),
+    status: text().notNull(),
+    error: text(),
     createdAt: integer({ mode: "number" }).notNull(),
     updatedAt: integer({ mode: "number" }).notNull(),
   },
-  (table) => [index("idx_mcp_server_agent").on(table.agentId)],
+  (table) => [index("idx_knowledge_pack_status").on(table.status)],
 );
+
+export const knowledgePackSelectSchema = createSelectSchema(knowledgePack, {
+  sourceKind: (s) => s.transform((v) => v as "builtin" | "git" | "zip"),
+  status: (s) => s.transform((v) => v as "pending" | "installing" | "ready" | "failed" | "syncing"),
+});
 
 // ─── Zod schemas (type chain: drizzle table → Zod → z.infer → TS type) ──
 
@@ -261,28 +267,9 @@ export const cronJobSelectSchema = createSelectSchema(cronJob, {
   enabled: (s) => s.transform((v: number) => v !== 0),
 });
 
-export const mcpServerSelectSchema = createSelectSchema(mcpServer, {
-  args: (s) =>
-    s.transform((v: string) => {
-      try {
-        return JSON.parse(v) as string[];
-      } catch {
-        return [] as string[];
-      }
-    }),
-  env: (s) =>
-    s.transform((v: string) => {
-      try {
-        return JSON.parse(v) as Record<string, string>;
-      } catch {
-        return {} as Record<string, string>;
-      }
-    }),
-  transport: (s) => s.transform((v: string) => v as "stdio" | "sse"),
-  enabled: (s) => s.transform((v: number) => v !== 0),
-});
-
 /** Convert boolean to 0|1 for integer columns. Single source of truth
+
+
  *  for the bool→int conversion used by adapters. */
 export const boolToInt = (v: boolean): number => (v ? 1 : 0);
 

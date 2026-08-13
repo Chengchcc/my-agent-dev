@@ -31,6 +31,8 @@ function toAgentResponse(row: AgentRow, status: string) {
     reasoningEffort: rc.reasoning_effort !== "" ? rc.reasoning_effort : null,
     permissionMode: rc.permission_mode,
     maxSteps: rc.max_steps > 0 ? rc.max_steps : null,
+    mcpServers: rc.mcp_servers.map((s) => ({ serverId: s.server_id, enabled: s.enabled })),
+    knowledgePacks: rc.knowledge_packs,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     archivedAt: row.archivedAt,
@@ -175,6 +177,10 @@ export function agentRoutes(
             t.Union([t.Literal("ask"), t.Literal("auto"), t.Literal("deny")]),
           ),
           maxSteps: t.Optional(t.Integer({ minimum: 1 })),
+          mcpServers: t.Optional(
+            t.Array(t.Object({ serverId: t.String({ minLength: 1 }), enabled: t.Boolean() })),
+          ),
+          knowledgePacks: t.Optional(t.Array(t.String({ minLength: 1 }))),
           lark: t.Optional(
             t.Object({
               enabled: t.Optional(t.Boolean()),

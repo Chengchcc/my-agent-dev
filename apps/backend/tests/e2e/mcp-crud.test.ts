@@ -1,16 +1,15 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { unlinkSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { McpClientManager } from "@my-agent-team/adapter-mcp";
 import { Elysia } from "elysia";
-import { sqliteMcpServerAdapter } from "../../src/features/mcp/adapter-sqlite.js";
+import { fileMcpServerAdapter } from "../../src/features/mcp/adapter-file.js";
 import { mcpRoutes } from "../../src/features/mcp/http.js";
 import { createMcpService } from "../../src/features/mcp/service.js";
-import { openDb } from "../../src/infra/sqlite/db.js";
 
-const dbPath = `/tmp/test-e2e-mcp-${Date.now()}.db`;
-const db = openDb(dbPath);
-const port = sqliteMcpServerAdapter(db);
-
+const tmp = mkdtempSync(join(tmpdir(), "e2e-mcp-"));
+const port = fileMcpServerAdapter(tmp);
 const mockManager: McpClientManager = {
   connect: async () => {},
   disconnect: async () => {},
@@ -24,25 +23,22 @@ const svc = createMcpService({
   port,
   mcpClientManager: mockManager,
   agentExists: async () => true,
+  getAgentMcpServers: async () => [],
+  setAgentMcpServers: async () => {},
   idGen: () => `mcp-${crypto.randomUUID().slice(0, 8)}`,
 });
 
 const app = new Elysia().use(mcpRoutes(svc));
 
 afterAll(() => {
-  db.close();
-  try {
-    unlinkSync(dbPath);
-  } catch {
-    /* best-effort */
-  }
+  rmSync(tmp, { recursive: true, force: true });
 });
 
-describe("E2E MCP Server CRUD", () => {
+describe("E2E MCP Server CRUD (global catalog, ADR 0022)", () => {
   test("create -> list -> update -> delete", async () => {
     // 1. Create stdio server
     const createResp = await app.handle(
-      new Request("http://localhost/api/agents/test-agent/mcp-servers", {
+      new Request("http://localhost/api/mcp-servers", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -63,9 +59,7 @@ describe("E2E MCP Server CRUD", () => {
     expect(mcpServer.env.API_KEY).toContain("****");
 
     // 2. List
-    const listResp = await app.handle(
-      new Request("http://localhost/api/agents/test-agent/mcp-servers"),
-    );
+    const listResp = await app.handle(new Request("http://localhost/api/mcp-servers"));
     expect(listResp.status).toBe(200);
     const { mcpServers } = (await listResp.json()) as {
       mcpServers: Array<{ serverId: string; status: string; toolsCount: number }>;
@@ -76,7 +70,7 @@ describe("E2E MCP Server CRUD", () => {
 
     // 3. Update name
     const updateResp = await app.handle(
-      new Request(`http://localhost/api/agents/test-agent/mcp-servers/${mcpServer.serverId}`, {
+      new Request(`http://localhost/api/mcp-servers/${mcpServer.serverId}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: "renamed-fs" }),
@@ -88,23 +82,21 @@ describe("E2E MCP Server CRUD", () => {
 
     // 4. Delete
     const delResp = await app.handle(
-      new Request(`http://localhost/api/agents/test-agent/mcp-servers/${mcpServer.serverId}`, {
+      new Request(`http://localhost/api/mcp-servers/${mcpServer.serverId}`, {
         method: "DELETE",
       }),
     );
     expect(delResp.status).toBe(204);
 
     // 5. List after delete -> empty
-    const listResp2 = await app.handle(
-      new Request("http://localhost/api/agents/test-agent/mcp-servers"),
-    );
+    const listResp2 = await app.handle(new Request("http://localhost/api/mcp-servers"));
     const { mcpServers: list2 } = (await listResp2.json()) as { mcpServers: unknown[] };
     expect(list2.length).toBe(0);
   });
 
   test("create SSE server with url", async () => {
     const createResp = await app.handle(
-      new Request("http://localhost/api/agents/test-agent/mcp-servers", {
+      new Request("http://localhost/api/mcp-servers", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -124,7 +116,7 @@ describe("E2E MCP Server CRUD", () => {
 
   test("delete non-existent -> 404", async () => {
     const delResp = await app.handle(
-      new Request("http://localhost/api/agents/test-agent/mcp-servers/nonexistent", {
+      new Request("http://localhost/api/mcp-servers/nonexistent", {
         method: "DELETE",
       }),
     );

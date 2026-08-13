@@ -3,6 +3,7 @@ import type { agentRoutes } from "./features/agent/http.js";
 import type { agentRunRoutes } from "./features/agent-run/http.js";
 import type { conversationRoutes } from "./features/conversation/http.js";
 import type { cronJobRoutes } from "./features/cron/http.js";
+import type { knowledgeRoutes } from "./features/knowledge/http.js";
 import type { loopRoutes } from "./features/loop/http.js";
 import type { mcpRoutes } from "./features/mcp/http.js";
 import type { modelRoutes } from "./features/models/http.js";
@@ -13,7 +14,6 @@ import type { skillPackRoutes } from "./features/skill-pack/http.js";
 import { checkAuthToken } from "./infra/auth.js";
 import { DomainError } from "./infra/domain-errors.js";
 import { HttpError } from "./infra/errors.js";
-
 export interface FeatureSet {
   agents: ReturnType<typeof agentRoutes>;
   conversations: ReturnType<typeof conversationRoutes>;
@@ -24,6 +24,7 @@ export interface FeatureSet {
   agentRuns: ReturnType<typeof agentRunRoutes>;
   skillPacks: ReturnType<typeof skillPackRoutes>;
   mcp: ReturnType<typeof mcpRoutes>;
+  knowledge: ReturnType<typeof knowledgeRoutes>;
   settings: ReturnType<typeof settingsRoutes>;
   models: ReturnType<typeof modelRoutes>;
 }
@@ -54,6 +55,8 @@ export function createApp(token: string, features: FeatureSet) {
     cronJobs,
     skillPacks,
     mcp,
+    knowledge,
+
     loops,
     settings,
     models,
@@ -74,6 +77,7 @@ export function createApp(token: string, features: FeatureSet) {
     .use(skillPacks)
     .use(settings)
     .use(mcp)
+    .use(knowledge)
     .use(models)
     .onError(({ code, error, set }) => {
       if (error instanceof DomainError) {

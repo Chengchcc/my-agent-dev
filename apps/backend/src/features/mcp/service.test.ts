@@ -1,32 +1,23 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { McpClientManager } from "@my-agent-team/adapter-mcp";
-import { openDb } from "../../infra/sqlite/db.js";
-import { sqliteMcpServerAdapter } from "./adapter-sqlite.js";
+import { fileMcpServerAdapter } from "./adapter-file.js";
 import { createMcpService, McpServerNotFoundError, McpValidationError } from "./service.js";
 
-const db = openDb(":memory:");
-const port = sqliteMcpServerAdapter(db);
+const tmp = mkdtempSync(join(tmpdir(), "mcp-catalog-"));
+const port = fileMcpServerAdapter(tmp);
 
 let idCount = 0;
 const testIdGen = () => `test-mcp-${idCount++}`;
 
-const connectCalls: unknown[] = [];
+const connectCalls: string[] = [];
 const disconnectCalls: string[] = [];
-
-// Deterministic connect-waiter: update()'s disconnect->connect runs in a
-// fire-and-forget async IIFE, so we expose a promise that resolves when the
-// next connect lands - no wall-clock timers needed.
-const connectWaiters: Array<() => void> = [];
-function waitForConnect(): Promise<void> {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  connectWaiters.push(resolve);
-  return promise;
-}
 
 const mockManager: McpClientManager = {
   connect: async (config) => {
-    connectCalls.push(config);
-    connectWaiters.shift()?.();
+    connectCalls.push(config.serverId);
   },
   disconnect: async (serverId) => {
     disconnectCalls.push(serverId);
@@ -37,25 +28,34 @@ const mockManager: McpClientManager = {
   disconnectAll: async () => {},
 };
 
+/** In-memory agent.yml switch store (the file-first assignment backing). */
+const agentSwitches = new Map<string, Array<{ serverId: string; enabled: boolean }>>();
+
 const svc = createMcpService({
   port,
   mcpClientManager: mockManager,
   agentExists: async () => true,
+  getAgentMcpServers: async (agentId) => agentSwitches.get(agentId) ?? [],
+  setAgentMcpServers: async (agentId, entries) => {
+    agentSwitches.set(agentId, [...entries]);
+  },
   idGen: testIdGen,
 });
 
-// service whose agentExists always returns false, for the not-found validation path
 const svcNoAgent = createMcpService({
   port,
   mcpClientManager: mockManager,
   agentExists: async () => false,
+  getAgentMcpServers: async (agentId) => agentSwitches.get(agentId) ?? [],
+  setAgentMcpServers: async (agentId, entries) => {
+    agentSwitches.set(agentId, [...entries]);
+  },
   idGen: testIdGen,
 });
 
-describe("McpService", () => {
-  test("create stdio", async () => {
-    const before = connectCalls.length;
-    const row = await svc.create("agent-1", {
+describe("McpService (unified catalog, ADR 0022)", () => {
+  test("create adds to the GLOBAL catalog; no agent involvement", async () => {
+    const row = await svc.create({
       name: "stdio-server",
       transport: "stdio",
       command: "npx",
@@ -63,7 +63,6 @@ describe("McpService", () => {
       env: { ROOT: "/tmp/data" },
     });
     expect(row.serverId).toStartWith("test-mcp-");
-    expect(row.agentId).toBe("agent-1");
     expect(row.name).toBe("stdio-server");
     expect(row.transport).toBe("stdio");
     expect(row.command).toBe("npx");
@@ -71,94 +70,64 @@ describe("McpService", () => {
     // maskEnv: **** + last4 chars (value "/tmp/data" has 9 chars > 4)
     expect(row.env).toEqual({ ROOT: "****data" });
     expect(row.url).toBeNull();
-    expect(row.enabled).toBe(true);
-    expect(row.createdAt).toBeGreaterThan(0);
-    // fire-and-forget connect on enabled server - mock pushes synchronously
-    expect(connectCalls.length).toBe(before + 1);
+    expect(svc.listCatalog()).toHaveLength(1);
+    // Catalog create does NOT connect (connect happens on assignment).
+    expect(connectCalls).toHaveLength(0);
   });
 
-  test("create sse", async () => {
-    const before = connectCalls.length;
-    const row = await svc.create("agent-1", {
-      name: "sse-server",
-      transport: "sse",
-      url: "https://example.com/sse",
-    });
-    expect(row.transport).toBe("sse");
-    expect(row.url).toBe("https://example.com/sse");
-    expect(row.command).toBeNull();
-    expect(row.enabled).toBe(true);
-    expect(connectCalls.length).toBe(before + 1);
+  test("listForAgent returns only the agent's enabled SUBSET", async () => {
+    const s1 = await svc.create({ name: "s1", transport: "sse", url: "https://x/sse" });
+    await svc.create({ name: "s2", transport: "stdio", command: "echo" });
+    await svc.create({ name: "s3", transport: "stdio", command: "ls" });
+
+    // agent-1 opens only s1 out of the three catalog servers.
+    await svc.setAgentServers("agent-1", [
+      { serverId: s1.serverId, enabled: true },
+      { serverId: "test-mcp-1", enabled: false }, // s2 explicitly off
+    ]);
+    const list = await svc.listForAgent("agent-1");
+    expect(list.map((s) => s.name)).toEqual(["s1"]);
+    expect(connectCalls).toEqual([s1.serverId]);
   });
 
-  test("create non-existent agent throws McpValidationError", async () => {
+  test("setAgentServers rejects unknown catalog ids", async () => {
     await expect(
-      svcNoAgent.create("ghost-agent", { name: "x", transport: "stdio", command: "echo" }),
-    ).rejects.toBeInstanceOf(McpValidationError);
+      svc.setAgentServers("agent-1", [{ serverId: "no-such", enabled: true }]),
+    ).rejects.toBeInstanceOf(McpServerNotFoundError);
   });
 
-  test("listByAgent returns masked env + status + toolsCount", async () => {
-    const row = await svc.create("agent-list", {
-      name: "env-server",
-      transport: "stdio",
-      command: "echo",
-      env: { API_KEY: "sk-1234567890", NORMAL_VAR: "hello" },
-    });
-
-    const list = svc.listByAgent("agent-list");
-    expect(list).toHaveLength(1);
-    const item = list[0]!;
-    expect(item.serverId).toBe(row.serverId);
-    // both env values masked to **** + last4
-    expect(item.env).toEqual({ API_KEY: "****7890", NORMAL_VAR: "****ello" });
-    expect(item.status).toBe("connected");
-    expect(item.toolsCount).toBe(3);
-  });
-
-  test("update changes name and triggers disconnect->connect", async () => {
-    const row = await svc.create("agent-upd", {
-      name: "before-update",
-      transport: "stdio",
-      command: "echo",
-    });
-    const connectBefore = connectCalls.length;
-    const disconnectBefore = disconnectCalls.length;
-
-    // update()'s disconnect->connect runs in a fire-and-forget async IIFE;
-    // await the connect signal deterministically instead of guessing a delay.
-    const connectPromise = waitForConnect();
-    const updated = await svc.update("agent-upd", row.serverId, { name: "after-update" });
-    expect(updated.name).toBe("after-update");
-
-    await connectPromise;
-    expect(disconnectCalls.length).toBe(disconnectBefore + 1);
-    expect(connectCalls.length).toBe(connectBefore + 1);
-  });
-
-  test("update non-existent throws McpServerNotFoundError", async () => {
-    await expect(svc.update("agent-1", "no-such-server", { name: "x" })).rejects.toBeInstanceOf(
-      McpServerNotFoundError,
+  test("setAgentServers rejects a missing agent", async () => {
+    await expect(svcNoAgent.setAgentServers("ghost", [])).rejects.toBeInstanceOf(
+      McpValidationError,
     );
   });
 
-  test("delete removes server and disconnects", async () => {
-    const row = await svc.create("agent-del", {
-      name: "to-delete",
-      transport: "stdio",
-      command: "echo",
-    });
-    const disconnectBefore = disconnectCalls.length;
-
-    await svc.delete("agent-del", row.serverId);
-    // disconnect mock pushes synchronously during the fire-and-forget call
-    expect(disconnectCalls.length).toBeGreaterThan(disconnectBefore);
-    // row is gone
-    expect(svc.listByAgent("agent-del")).toHaveLength(0);
+  test("assignments round-trip through the agent.yml store", async () => {
+    const s = await svc.create({ name: "assign-me", transport: "stdio", command: "echo" });
+    await svc.setAgentServers("agent-2", [{ serverId: s.serverId, enabled: false }]);
+    expect(await svc.listAssignments("agent-2")).toEqual([
+      { serverId: s.serverId, enabled: false },
+    ]);
+    await svc.setAgentServers("agent-2", [{ serverId: s.serverId, enabled: true }]);
+    expect(await svc.listForAgent("agent-2")).toHaveLength(1);
   });
 
-  test("delete non-existent throws McpServerNotFoundError", async () => {
-    await expect(svc.delete("agent-1", "no-such-server")).rejects.toBeInstanceOf(
+  test("update + delete operate on the catalog", async () => {
+    const row = await svc.create({ name: "before", transport: "stdio", command: "echo" });
+    const updated = await svc.update(row.serverId, { name: "after" });
+    expect(updated.name).toBe("after");
+    await expect(svc.update("no-such", { name: "x" })).rejects.toBeInstanceOf(
       McpServerNotFoundError,
     );
+    await svc.delete(row.serverId);
+    await expect(svc.delete("no-such")).rejects.toBeInstanceOf(McpServerNotFoundError);
+  });
+
+  test("a deleted catalog server drops out of every agent's list", async () => {
+    const row = await svc.create({ name: "to-delete", transport: "stdio", command: "echo" });
+    await svc.setAgentServers("agent-3", [{ serverId: row.serverId, enabled: true }]);
+    await svc.delete(row.serverId);
+    // The catalog row is gone; listForAgent resolves only existing ids.
+    expect(await svc.listForAgent("agent-3")).toHaveLength(0);
   });
 });
