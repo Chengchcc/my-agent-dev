@@ -32,6 +32,20 @@ import {
 } from "@/lib/transient-reducer";
 import { typedSource } from "@/lib/typed-source";
 
+/** Transient workflow run progress (SSE-driven; cleared on stream close). */
+export interface WorkflowAgentState {
+  readonly label: string;
+  readonly status: "running" | "done" | "failed";
+  readonly error?: string;
+}
+export interface WorkflowRunState {
+  readonly label: string;
+  readonly agentCount: number;
+  readonly agents: ReadonlyMap<string, WorkflowAgentState>;
+  readonly ok: boolean | null;
+  readonly totalTokens: number;
+}
+
 const RECAP_STORAGE_PREFIX = "mat:recap:";
 
 function safeParse(raw: string): unknown {
@@ -80,6 +94,8 @@ export function useConversation(
   const [runRecaps, setRunRecapsState] = useState<Record<string, { text: string; turn: number }>>(
     {},
   );
+  /** Live workflow runs (transient progress, cleared with the SSE stream). */
+  const [workflows, setWorkflows] = useState<ReadonlyMap<string, WorkflowRunState>>(new Map());
 
   const upsertToolState = useCallback((call: LiveToolCall) => {
     setTransientTools((prev) => upsertTool(prev, call));
@@ -477,6 +493,74 @@ export function useConversation(
           /* malformed - ignore */
         }
       });
+      const upsertWorkflow = (
+        workflowId: string,
+        patch: (w: WorkflowRunState | undefined) => WorkflowRunState | undefined,
+      ): void => {
+        setWorkflows((prev) => {
+          const next = new Map(prev);
+          const updated = patch(prev.get(workflowId));
+          if (updated) next.set(workflowId, updated);
+          else next.delete(workflowId);
+          return next;
+        });
+      };
+      const workflowEvent =
+        (kind: "started" | "agent_started" | "agent_completed" | "completed") => (e: Event) => {
+          try {
+            const ev = JSON.parse((e as MessageEvent).data) as {
+              workflowId?: string;
+              label?: string;
+              agentCount?: number;
+              agentId?: string;
+              ok?: boolean;
+              error?: string;
+              totalTokens?: number;
+            };
+            const workflowId = String(ev.workflowId ?? "");
+            if (!workflowId) return;
+            if (kind === "started") {
+              upsertWorkflow(workflowId, () => ({
+                label: String(ev.label ?? ""),
+                agentCount: Number(ev.agentCount ?? 0),
+                agents: new Map(),
+                ok: null,
+                totalTokens: 0,
+              }));
+              return;
+            }
+            if (kind === "completed") {
+              upsertWorkflow(workflowId, (w) => {
+                if (!w) return w;
+                return { ...w, ok: ev.ok === true, totalTokens: Number(ev.totalTokens ?? 0) };
+              });
+              return;
+            }
+            const agentId = String(ev.agentId ?? "");
+            const agentState: WorkflowAgentState =
+              kind === "agent_started"
+                ? { label: String(ev.label ?? ""), status: "running" }
+                : ev.ok === true
+                  ? { label: String(ev.label ?? ""), status: "done" }
+                  : {
+                      label: String(ev.label ?? ""),
+                      status: "failed",
+                      error: String(ev.error ?? ""),
+                    };
+            upsertWorkflow(workflowId, (w) => {
+              if (!w) return w;
+              const agents = new Map(w.agents);
+              agents.set(agentId, agentState);
+              return { ...w, agents };
+            });
+          } catch {
+            /* malformed - ignore */
+          }
+        };
+      es.addEventListener("workflow_started", workflowEvent("started"));
+      es.addEventListener("workflow_agent_started", workflowEvent("agent_started"));
+      es.addEventListener("workflow_agent_completed", workflowEvent("agent_completed"));
+      es.addEventListener("workflow_completed", workflowEvent("completed"));
     },
     [
       clearRunRecap,
@@ -545,5 +629,6 @@ export function useConversation(
     transientTools,
     runTodos,
     runRecaps,
+    workflows,
   };
 }

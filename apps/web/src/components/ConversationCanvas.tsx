@@ -22,6 +22,7 @@ import { RecapPanel } from "./RecapPanel";
 import { RosterList } from "./RosterList";
 import { Timeline } from "./Timeline";
 import { TodoPanel } from "./TodoPanel";
+import { WorkflowPanel } from "./WorkflowPanel";
 
 interface ConversationCanvasProps {
   conversationId: string;
@@ -48,6 +49,7 @@ export function ConversationCanvas({
     runTodos,
     runRecaps,
     activeRuns,
+    workflows,
   } = useConversation(conversationId, snapshot);
   const { viewerMemberId, roster, items, error, triggerMode, streamConn } = state;
 
@@ -332,6 +334,8 @@ export function ConversationCanvas({
             : "Reconnecting…"}
         </div>
       )}
+      {/* Workflow progress — transient, per running workflow */}
+      <WorkflowPanel workflows={workflows} />
 
       {/* M14.6: Todo progress — pinned above message stream */}
       <TodoPanel
