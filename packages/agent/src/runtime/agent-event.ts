@@ -24,6 +24,24 @@ export type CodingAgentLoopEvent =
   | { type: "compaction_end" }
   | { type: "queue_update" }
   | { type: "recap_update"; text: string; turn: number }
-  | { type: "todo_update"; items: readonly TodoItem[] };
+  | { type: "todo_update"; items: readonly TodoItem[] }
+  | { type: "workflow_started"; workflowId: string; label: string; agentCount: number }
+  | { type: "workflow_agent_started"; workflowId: string; agentId: string; label: string }
+  | {
+      type: "workflow_agent_completed";
+      workflowId: string;
+      agentId: string;
+      label: string;
+      ok: boolean;
+      error?: string;
+      usage?: Readonly<Record<string, unknown>>;
+    }
+  | {
+      type: "workflow_completed";
+      workflowId: string;
+      ok: boolean;
+      agentCount: number;
+      totalTokens: number;
+    };
 
 export type AgentLoopListener = (event: CodingAgentLoopEvent) => void | Promise<void>;
