@@ -1,4 +1,4 @@
-import type { LoopAction, LoopState } from "./types.js";
+import type { ItemStep, LoopAction, LoopState } from "./types.js";
 
 type ReducerOpts = {
   maxRetries?: number;
@@ -193,7 +193,15 @@ const LEGAL_STEP_EDGES: Record<ItemStep, readonly ItemStep[]> = {
   resolved: [],
 };
 
-const ITEM_STEPS: readonly string[] = ["triaged", "fixing", "verifying", "awaiting_review", "resolved", "inbox", "promoted"];
+const ITEM_STEPS: readonly string[] = [
+  "triaged",
+  "fixing",
+  "verifying",
+  "awaiting_review",
+  "resolved",
+  "inbox",
+  "promoted",
+];
 const VERDICTS: readonly string[] = ["PASS", "REJECT", "ESCALATE"];
 
 /** Validate a workflow script's meta writeback against the pure state
@@ -214,7 +222,10 @@ export function validateLoopMetaPatch(
       return { ok: false, reason: `item ${id} has an unknown step: ${String(item.step)}` };
     }
     if (item.result && !VERDICTS.includes(item.result.verdict)) {
-      return { ok: false, reason: `item ${id} has an unknown verdict: ${String(item.result.verdict)}` };
+      return {
+        ok: false,
+        reason: `item ${id} has an unknown verdict: ${String(item.result.verdict)}`,
+      };
     }
     const prev = before.items[id];
     if (!prev) {
