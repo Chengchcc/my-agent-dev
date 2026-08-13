@@ -93,13 +93,19 @@ lark:
 **5. 去掉 loop-agent**
 - 只 seed `default`(Assistant);loop generator/evaluator 的 member `agentId` 从 `"loop-agent"` 改为 `"default"`(loop 的 model/workspace 来自 LOOP.md 显式配置,不依赖 agent 行身份)。
 
+**6. meta 与历史也对齐:所有 coding agent 统一为「cwd 文件 + session 续接」**
+- meta(身份/配置/技能/产品工具/知识库)统一由工作区文件承载(见 §1–§3),所有 agent 从 cwd 原生读——后端不再经 run 输入字段或 CLI flag 注入。
+- 历史也统一:所有 agent 用 **CLI session** 续接 + 分支首轮 flat-text 桥(把产品投影拍平喂一次);**全量投影退役**。
+- run 输入瘦身为 `runId / model / workspace / message`;删 `history` / `systemPrompt` / `skillRoots` / `productTools` 四字段。
+- **修正 ADR 0002**:取消"coding_agent = 全量投影、CLI = session"的双轨特例,统一为单轨(CLI session 是运行态真理,context tree 是产品态真理,对所有 agent 一致)。
+- 自研 coding_agent 加 session 持久化(会话文件,同 pi/omp 的 JSONL 或更简),child 读 `AGENTS.md`/`SOUL.md` + 扫 `.agent/skills/` + 读 `.agent/mcp.json`。
 ## 后果
 
 - 新 feature:`features/agent/workspace-bridge.ts`(或独立 `workspace-bridge` feature)——skill/knowledge/mcp 三类资源的桥接与 reconcile。
 - seed 从"仅 SOUL/USER"扩展为完整布局;materializeWorkspace 幂等 seed。
 - file-first 迁移:agents 表删内容列(迁移 N+1),加 `config` 物化缓存列;agent.yml 解析器 + zod 校验 + 写后 upsert 缓存;所有 `agentModelRef`/`resolveDefaultModel` 读缓存列(消费者不改签名)。
 - coding_agent child 改从 `.agent/skills/` 发现技能;`run.skillRoots` 契约移除,progressive-skill 插件改扫 cwd。
-- CONTEXT.md glossary 需补 **Workspace Bridge** / **Agent Workspace** 词条(实施时同步)。
+- 统一上下文:run 输入删 history/systemPrompt/productTools;coding_agent 加 session 持久化;ADR 0002 双轨改单轨,ADR 0017 + CONTEXT.md 不变量 9 重写。
 
 ## 关联
 
