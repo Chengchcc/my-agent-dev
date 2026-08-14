@@ -194,10 +194,10 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
       const slash = modelId.indexOf("/");
       args.push("--model", slash > 0 ? modelId.slice(slash + 1) : modelId);
     }
+    // claude --effort accepts the canonical levels incl. max (no downgrade).
+    // none = omit the flag (claude has no off-effort; the CLI default stays).
     if (input.run.model.reasoningEffort && input.run.model.reasoningEffort !== "none") {
-      const effort =
-        input.run.model.reasoningEffort === "max" ? "high" : input.run.model.reasoningEffort;
-      args.push("--effort", effort);
+      args.push("--effort", input.run.model.reasoningEffort);
     }
     // Per-run frozen permission_mode (ADR 0020 decision 7): ask -> default
     // (prompts), auto -> acceptEdits, deny -> plan. bypassPermissions is

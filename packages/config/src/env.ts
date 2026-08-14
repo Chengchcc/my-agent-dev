@@ -25,6 +25,7 @@ export const envSchema = z.object({
   BACKEND_TEMPLATE_DIR: z.string().optional(),
   BACKEND_MAX_CONCURRENT: z.coerce.number().int().positive().default(8),
   BACKEND_CANCEL_GRACE_MS: z.coerce.number().int().positive().default(5_000),
+  BACKEND_RUN_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
 
   // ── Anthropic API ──
   ANTHROPIC_API_KEY: z.string().optional(),

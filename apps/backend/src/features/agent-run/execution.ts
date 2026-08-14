@@ -47,6 +47,9 @@ export interface AgentRunExecutionDeps {
    *  Agent's workspace path + permission mode; injected so tests and callers
    *  can vary it). Used ONLY when the Run itself did not pin a workspace
    *  snapshot. */
+  /** Wall-clock cap on a run (ms); the dispatch watchdog stops the
+   *  backend and settles aborted on expiry. */
+  readonly runTimeoutMs?: number;
   readonly resolveWorkspace: (input: {
     conversationId: string;
     agentMemberId: string;
@@ -134,6 +137,7 @@ export function createAgentRunExecutionService(
   deps: AgentRunExecutionDeps,
 ): AgentRunExecutionService {
   const { runPort, contextPort, backends, resolveWorkspace } = deps;
+  const runTimeoutMs = deps.runTimeoutMs ?? 30 * 60_000;
 
   /** Process-lifetime live refs, only for steer/stop/current-event
    *  subscription. Removed when the run reaches a terminal state. */
@@ -408,7 +412,16 @@ export function createAgentRunExecutionService(
     await runPort.markInputAccepted(input.inputId);
     debugLog("agent-run", `input_delivered runId=${runId} inputId=${input.inputId}`);
     const drain = forwardEvents(runId, segment);
-    return { outcome: await segment.outcome, segment, drain };
+    // Wall-clock run cap: a looping CLI (no native max-turns) must not own
+    // the branch forever. stop() settles the segment aborted.
+    const watchdog = setTimeout(() => {
+      void backend.stop(runId).catch(() => {});
+    }, runTimeoutMs);
+    try {
+      return { outcome: await segment.outcome, segment, drain };
+    } finally {
+      clearTimeout(watchdog);
+    }
   }
 
   /** Terminal handling for one outcome: completed -> atomic Product commit;

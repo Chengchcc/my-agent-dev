@@ -29,6 +29,10 @@ const runSnapshotSchema = z.object({
    *  creation. Empty/absent = no skills. */
   skillRoots: z.array(z.string()).optional(),
   cliSessionRef: z.string().optional(),
+  /** Frozen permission_mode (ADR 0020 decision 7); absent = default. */
+  permissionMode: z.enum(["ask", "auto", "deny"]).optional(),
+  /** Frozen workflow budget (tokens); absent = no gate. */
+  workflowBudgetTokens: z.number().int().nonnegative().optional(),
   configRevision: z.number(),
 });
 

@@ -379,6 +379,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     claude_code: { backend: claudeBackend, catalog: new ClaudeModelCatalog() },
   };
   const agentRunExecution = createAgentRunExecutionService({
+    runTimeoutMs: config.runTimeoutMs,
     runPort: agentRunPort,
     contextPort,
     ledgerResolver,

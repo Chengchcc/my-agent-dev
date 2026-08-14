@@ -170,11 +170,11 @@ export class OmpBackend implements AgentBackend<"omp"> {
     const modelId = input.run.model.modelId;
     if (modelId) args.push("--model", modelId);
     args.push("--tools", "read,bash,edit,write,grep,glob");
-    // Canonical reasoning_effort (agent.yml) → omp --thinking level
-    // (ADR 0003 decision 7: none/low/high/max mapped per backend).
-    if (input.run.model.reasoningEffort && input.run.model.reasoningEffort !== "none") {
-      const level =
-        input.run.model.reasoningEffort === "max" ? "xhigh" : input.run.model.reasoningEffort;
+    // Canonical reasoning_effort (agent.yml) → omp --thinking level.
+    // none = explicitly off (never the CLI default); max passes through
+    // (omp natively accepts max, live-verified).
+    if (input.run.model.reasoningEffort) {
+      const level = input.run.model.reasoningEffort === "none" ? "off" : input.run.model.reasoningEffort;
       args.push("--thinking", level);
     }
     if (input.run.systemPrompt) args.push("--append-system-prompt", input.run.systemPrompt);

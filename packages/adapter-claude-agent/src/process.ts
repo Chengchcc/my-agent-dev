@@ -3,6 +3,7 @@
  *  LF-framed stdout reader + bounded stderr tail as the other adapters. */
 
 import type { FileSink, Subprocess } from "bun";
+import { collectSecrets, redactText } from "@my-agent-team/agent-backend";
 
 export interface ClaudeCommandConfig {
   executable: string;
@@ -51,6 +52,9 @@ export function spawnClaudeProcess(
   opts: { cwd: string },
 ): SpawnedClaudeProcess {
   let stderrTail = "";
+  // Secrets captured from the child env: a crashed CLI echoing its
+  // environment must never leak keys into the persistent tail.
+  const secrets = collectSecrets(cfg.env ?? {});
   const proc: Subprocess = Bun.spawn({
     cmd: [cfg.executable, ...(cfg.args ?? [])],
     cwd: opts.cwd,
@@ -66,7 +70,10 @@ export function spawnClaudeProcess(
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      stderrTail = (stderrTail + decoder.decode(value)).slice(-64 * 1024);
+      stderrTail = redactText(
+        (stderrTail + decoder.decode(value)).slice(-64 * 1024),
+        secrets,
+      );
     }
   })();
 
