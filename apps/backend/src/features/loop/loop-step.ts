@@ -205,7 +205,7 @@ function seedLoopWorkflowScript(item: LoopState["items"][string]): string {
  *  (line comments + trailing commas stripped). Null = unparseable. */
 function extractLoopWorkflowMeta(script: string): LoopState | null {
   const m = script.match(/export const meta\s*=\s*(\{[\s\S]*?\});/);
-  if (!m || !m[1]) return null;
+  if (!m?.[1]) return null;
   const cleaned = m[1].replace(/\/\/[^\n]*/g, "").replace(/,\s*([}\]])/g, "$1");
   try {
     const parsed = JSON.parse(cleaned) as { items?: LoopState["items"] };
