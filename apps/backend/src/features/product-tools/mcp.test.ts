@@ -9,12 +9,13 @@ import { createAgentRunService } from "../agent-run/service.js";
 import { sqliteConversationAdapter } from "../conversation/adapter-sqlite.js";
 import { sqliteProductToolCallAdapter } from "./adapter-sqlite.js";
 import { createProductToolsMcpServer } from "./mcp.js";
+import { type RunTokenRegistry, createRunTokenRegistry } from "./run-token-registry.js";
 import { createProductToolsService } from "./service.js";
 
 const CONV = "conv-mcp";
 const MEMBER = "mem-mcp";
-const TOKEN = "test-service-token";
-
+let registry: RunTokenRegistry;
+let TOKEN: string;
 let dataDir: string;
 let db: ReturnType<typeof openDb>;
 let convPort: ReturnType<typeof sqliteConversationAdapter>;
@@ -59,9 +60,11 @@ beforeEach(async () => {
     contextPort,
     conversationPort: convPort,
     callPort: sqliteProductToolCallAdapter(db),
-    idGen: { ulid: () => `y-${Math.random().toString(36).slice(2, 8)}` },
   });
-  server = await createProductToolsMcpServer({ service, serviceToken: TOKEN });
+  registry = createRunTokenRegistry();
+  // Bearer bound to this test's run — minted once per setup like dispatch does.
+  TOKEN = registry.mint({ runId: "run-mcp-test", agentId: "agent-mcp", exp: Date.now() + 60_000 });
+  server = await createProductToolsMcpServer({ service, tokenRegistry: registry });
 
   convPort.createConversation({ conversationId: CONV, createdAt: Date.now() });
   convPort.addMember({
@@ -279,5 +282,26 @@ describe("product tools MCP", () => {
     } finally {
       await client.close();
     }
+  });
+
+  test("auth matrix: no bearer / wrong bearer / revoked run token are 401", async () => {
+    const base = new URL(server.url);
+    const noAuth = await fetch(base, { headers: {} });
+    expect(noAuth.status).toBe(401);
+    await noAuth.text();
+
+    const wrong = await fetch(base, { headers: { Authorization: "Bearer nope" } });
+    expect(wrong.status).toBe(401);
+    await wrong.text();
+
+    const revokedToken = registry.mint({
+      runId: "run-revoked",
+      agentId: "agent-mcp",
+      exp: Date.now() + 60_000,
+    });
+    registry.revoke("run-revoked");
+    const revoked = await fetch(base, { headers: { Authorization: `Bearer ${revokedToken}` } });
+    expect(revoked.status).toBe(401);
+    await revoked.text();
   });
 });
