@@ -126,6 +126,161 @@ const assertions: Assertion[] = [
         if (/404|not found/i.test(text)) throw new Error("404 text present");
       }),
   },
+  {
+    name: "P3-team-list has a search input",
+    check: async () =>
+      withPage("/team", async (page) => {
+        await loginIfNeeded(page);
+        const found = await page.evaluate(() =>
+          Boolean(document.querySelector('input[placeholder="Search agents…"]')),
+        );
+        if (!found) throw new Error("no agent search input on /team");
+      }),
+  },
+  {
+    name: "P3-team-detail has a SubTabs container",
+    check: async () =>
+      withPage("/team", async (page) => {
+        await loginIfNeeded(page);
+        const href = await page.evaluate(() => {
+          const link = document.querySelector('nav[aria-label="Agents"] a[href^="/team/"]');
+          return link ? link.getAttribute("href") : null;
+        });
+        if (!href) throw new Error("no agent link on /team to deep-link");
+        await page.goto(`${BASE}${href}`, { waitUntil: "networkidle2", timeout: 30_000 });
+        const hasTabs = await page.evaluate(() =>
+          Boolean(document.querySelector('[role="tablist"]')),
+        );
+        if (!hasTabs) throw new Error("no SubTabs [role=tablist] on detail page");
+      }),
+  },
+  {
+    name: "P3-mcp-stats has a StatCard container",
+    check: async () =>
+      withPage("/team/mcp", async (page) => {
+        await loginIfNeeded(page);
+        const found = await page.evaluate(() =>
+          Boolean(document.querySelector('[data-testid="stat-cards"]')),
+        );
+        if (!found) throw new Error("no [data-testid=stat-cards] on /team/mcp");
+      }),
+  },
+  {
+    name: "P3-knowledge-info has an InfoBanner container",
+    check: async () =>
+      withPage("/team/knowledge", async (page) => {
+        await loginIfNeeded(page);
+        // fresh context: localStorage has no ib:knowledge-help yet, so the
+        // dismissable banner must be present
+        const found = await page.evaluate(() =>
+          Boolean(document.querySelector('button[aria-label="Dismiss"]')),
+        );
+        if (!found) throw new Error("no InfoBanner dismiss button on /team/knowledge");
+      }),
+  },
+  {
+    name: "P3-skills-toolbar has a search input",
+    check: async () =>
+      withPage("/team/skills", async (page) => {
+        await loginIfNeeded(page);
+        const found = await page.evaluate(() =>
+          Boolean(
+            document.querySelector(
+              'input[placeholder="Search skill packs by name or description"]',
+            ),
+          ),
+        );
+        if (!found) throw new Error("no search input on /team/skills");
+      }),
+  },
+  {
+    name: "P2 kicker-only letter spacing (§2)",
+    check: async () =>
+      withPage("/team/mcp", async (page) => {
+        await loginIfNeeded(page);
+        const offenders = await page.evaluate(() => {
+          const out: string[] = [];
+          for (const el of document.querySelectorAll("main *")) {
+            const ls = getComputedStyle(el).letterSpacing;
+            if (parseFloat(ls) > 1 && !el.className.toString().match(/kicker/i)) {
+              out.push(`${el.tagName}.${el.className.toString().slice(0, 40)}`);
+            }
+          }
+          return out.slice(0, 5);
+        });
+        if (offenders.length > 0)
+          throw new Error(`wide tracking outside kickers: ${offenders.join(", ")}`);
+      }),
+  },
+  {
+    name: "P2 InfoBanner dismiss persists (§2)",
+    check: async () =>
+      withPage("/team/knowledge", async (page) => {
+        await loginIfNeeded(page);
+        // Clear any prior dismissal so the banner renders.
+        await page.evaluate(() => {
+          for (const k of Object.keys(localStorage)) {
+            if (k.startsWith("ib:")) localStorage.removeItem(k);
+          }
+        });
+        await page.reload({ waitUntil: "networkidle2" });
+        const btn = await page.$('button[aria-label="Dismiss"]');
+        if (!btn) throw new Error("no InfoBanner Dismiss button on /team/knowledge");
+        await btn.click();
+        const stored = await page.evaluate(() =>
+          Object.keys(localStorage).some((k) => k.startsWith("ib:")),
+        );
+        if (!stored) throw new Error("InfoBanner dismissed but no ib:* key in localStorage");
+      }),
+  },
+  {
+    name: "P2 composer metrics + 760px column (§3)",
+    check: async () =>
+      withPage("/chat", async (page) => {
+        await loginIfNeeded(page);
+        // Create a throwaway conversation through the BFF so the Composer mounts.
+        const convId = await page.evaluate(async () => {
+          const res = await fetch("/api/bff/conversations", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              title: "ui-audit composer check",
+              members: [
+                { memberId: "default", kind: "agent", agentId: "default" },
+                { memberId: "human-audit", kind: "human", displayName: "Audit" },
+              ],
+            }),
+          });
+          const body = (await res.json()) as { conversationId?: string };
+          return body.conversationId ?? null;
+        });
+        if (!convId) throw new Error("could not create throwaway conversation");
+        await page.goto(`${BASE}/chat/${convId}`, { waitUntil: "networkidle2", timeout: 30_000 });
+        await page.waitForSelector("textarea", { timeout: 15_000 });
+        const m = await page.evaluate(() => {
+          const ta = document.querySelector("textarea");
+          const send = document.querySelector('button[aria-label="Send"]');
+          const col = document.querySelector(".max-w-\\[760px\\]");
+          return {
+            minH: ta ? getComputedStyle(ta).minHeight : "",
+            maxH: ta ? getComputedStyle(ta).maxHeight : "",
+            sendW: send ? send.getBoundingClientRect().width : 0,
+            sendH: send ? send.getBoundingClientRect().height : 0,
+            hasCol: Boolean(col),
+          };
+        });
+        await page.evaluate(async (id: string) => {
+          await fetch(`/api/bff/conversations/${id}`, { method: "DELETE" });
+        }, convId);
+        if (m.minH !== "40px" || m.maxH !== "160px") {
+          throw new Error(`composer height ${m.minH}/${m.maxH}, want 40px/160px`);
+        }
+        if (Math.round(m.sendW) !== 32 || Math.round(m.sendH) !== 32) {
+          throw new Error(`send button ${m.sendW}x${m.sendH}, want 32x32`);
+        }
+        if (!m.hasCol) throw new Error("no 760px message column");
+      }),
+  },
 ];
 
 let failed = 0;

@@ -23,7 +23,7 @@ type PackStatus = "pending" | "installing" | "ready" | "failed" | "syncing";
 type SkillSummary = { name: string; description: string; dir: string };
 
 /** Parent directory of a relative path ("" for top-level files). */
-function dirname(path: string): string {
+export function dirname(path: string): string {
   const slash = path.lastIndexOf("/");
   return slash < 0 ? "" : path.slice(0, slash);
 }
@@ -35,7 +35,7 @@ function statusVariant(status: PackStatus): "default" | "destructive" | "seconda
   return "outline";
 }
 
-function statusLabel(status: PackStatus): string {
+export function statusLabel(status: PackStatus): string {
   if (status === "pending") return "Pending";
   if (status === "installing") return "Installing…";
   if (status === "syncing") return "Syncing…";
@@ -44,7 +44,7 @@ function statusLabel(status: PackStatus): string {
   return status;
 }
 
-function FileTree({
+export function FileTree({
   packId,
   path,
   onSelectFile,
@@ -110,7 +110,7 @@ const MonacoViewer = dynamic(
   },
 );
 
-function FileContent({ packId, path }: { packId: string; path: string }) {
+export function FileContent({ packId, path }: { packId: string; path: string }) {
   const { data, isLoading } = useSkillPackFiles(packId, path);
 
   if (isLoading) return <Skeleton className="h-96 w-full" />;
