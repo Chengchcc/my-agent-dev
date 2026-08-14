@@ -24,10 +24,12 @@ import {
   completeTool,
   type LiveToolCall,
   type LiveToolMap,
+  markTransientError,
   type RunTodoMap,
   removeTransient,
   setRunTodos as setRunTodosMap,
   type TodoItem,
+  type TransientMap,
   upsertTool,
 } from "@/lib/transient-reducer";
 import { typedSource } from "@/lib/typed-source";
@@ -80,11 +82,10 @@ export function useConversation(
   /** Transient streaming output per active run (one bubble per run in the
    *  Timeline). Never persisted; each entry is replaced by the canonical
    *  final Message (`run:<runId>:assistant:0`) or dropped on failure. */
-  const [transients, setTransients] = useState<
-    Record<string, { text: string; thinking: string; agentMemberId: string }>
-  >({});
+  const [transients, setTransients] = useState<TransientMap>({});
   const runStreamsRef = useRef(new Map<string, EventSource>());
   const transientsRef = useRef(transients);
+
   /** Live tool steps per run (`<runId>:<callId>` key). Run-local, transient:
    *  never written to History, cleared at run terminal. */
   const [transientTools, setTransientTools] = useState<LiveToolMap>({});
@@ -201,6 +202,13 @@ export function useConversation(
   const dropTransient = useCallback((runId: string) => {
     setTransients((prev) => {
       const next = removeTransient(prev, runId);
+      transientsRef.current = next;
+      return next;
+    });
+  }, []);
+  const failTransient = useCallback((runId: string, agentMemberId: string, error: string) => {
+    setTransients((prev) => {
+      const next = markTransientError(prev, runId, agentMemberId, error);
       transientsRef.current = next;
       return next;
     });
@@ -352,8 +360,9 @@ export function useConversation(
   /** Follow one run through its Live Update stream. Transient only: the
    *  bubble is kept on `completed` until the canonical final Message
    *  replaces it (no blank frame between stream end and history commit);
-   *  failed/aborted/timeout drops it immediately — those runs have no
-   *  canonical assistant Message to swap in. */
+   *  failed/aborted/timeout keeps it with the error pill — those runs have
+   *  no canonical assistant Message to swap in, so the pill is the only
+   *  failure record until reload. */
   const watchRun = useCallback(
     (runId: string, agentMemberId: string) => {
       setActiveRuns((prev) => new Set(prev).add(runId));
@@ -362,7 +371,7 @@ export function useConversation(
       existing?.close();
       const es = new EventSource(`/api/bff/agent-runs/${runId}/events`);
       runStreamsRef.current.set(runId, es);
-      const done = (dropBubble: boolean) => {
+      const finish = () => {
         runStreamsRef.current.get(runId)?.close();
         runStreamsRef.current.delete(runId);
         setActiveRuns((prev) => {
@@ -375,25 +384,31 @@ export function useConversation(
         // completion (replaced by the canonical Message).
         clearRunToolsState(runId);
         clearRunTodosState(runId);
-        if (dropBubble) {
-          dropTransient(runId);
-          clearRunRecap(runId);
-        }
       };
-      // Transport failure: Live Updates are best-effort; drop the partial
-      // bubble. If the run actually completed, the canonical Message still
-      // arrives via the conversation SSE.
-      es.onerror = () => done(true);
+      /** Transport failure: Live Updates are best-effort; drop the partial
+       *  bubble. If the run actually completed, the canonical Message still
+       *  arrives via the conversation SSE. */
+      const drop = () => {
+        finish();
+        dropTransient(runId);
+        clearRunRecap(runId);
+      };
+      es.onerror = () => drop();
       es.addEventListener("status", (e) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as {
             type?: string;
             status?: string;
+            error?: string;
           };
           if (ev.type !== "status") return;
-          if (ev.status === "completed") done(false);
-          else if (["failed", "aborted", "timeout"].includes(ev.status ?? "")) {
-            done(true);
+          if (ev.status === "completed") {
+            finish();
+          } else if (["failed", "aborted", "timeout"].includes(ev.status ?? "")) {
+            // Failed runs persist no canonical message: keep the bubble and
+            // attach the error pill as the live failure record.
+            failTransient(runId, agentMemberId, ev.error ?? "Run failed");
+            finish();
           }
         } catch {
           /* malformed - ignore */
@@ -569,6 +584,7 @@ export function useConversation(
       clearRunTodosState,
       completeToolState,
       dropTransient,
+      failTransient,
       setRunTodosState,
       upsertRunRecap,
       upsertToolState,

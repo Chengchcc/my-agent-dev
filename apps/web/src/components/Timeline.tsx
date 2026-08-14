@@ -35,6 +35,7 @@ interface TimelineProps {
         thinking: string;
         sender: SenderRef;
         tools?: readonly LiveToolCall[];
+        error?: string;
       }>
     | undefined;
 }
@@ -301,6 +302,8 @@ export function Timeline({
                         content={extractText(m.content)}
                         isStreaming={m.content.state === "streaming"}
                         runStatus={m.content.runStatus}
+                        state={m.content.state}
+                        error={m.content.error?.message}
                       />
                     )}
                     {renderContentBlocks(m.content, {
@@ -317,23 +320,30 @@ export function Timeline({
           {transients?.map((t) => {
             const tools = t.tools ?? [];
             const text = t.text.trim();
+            const showBubble = text || t.error;
             return (
               <div key={`transient-${t.runId}`} className="group relative">
                 {tools.length > 0 && (
-                  <TransientTrace msgCount={text ? 1 : 0} thinking={t.thinking} tools={tools} />
+                  <TransientTrace
+                    msgCount={showBubble ? 1 : 0}
+                    thinking={t.thinking}
+                    tools={tools}
+                  />
                 )}
-                {text ? (
+                {showBubble ? (
                   <MessageBubble
                     align="left"
                     name={t.sender.displayName ?? t.sender.memberId}
                     kind="agent"
                     agentId={t.sender.agentId}
                     content={t.text}
-                    isStreaming
+                    isStreaming={!t.error}
+                    state={t.error ? "error" : undefined}
+                    error={t.error}
                   />
-                ) : tools.length === 0 ? (
+                ) : (
                   <div className="px-1 py-0.5 text-[11px] italic text-(--mute)">thinking…</div>
-                ) : null}
+                )}
               </div>
             );
           })}

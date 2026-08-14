@@ -67,6 +67,8 @@ export function MessageBubble({
   content,
   isStreaming,
   runStatus,
+  state,
+  error,
 }: {
   align: "left" | "right";
   name?: string;
@@ -75,6 +77,8 @@ export function MessageBubble({
   content: string;
   isStreaming?: boolean;
   runStatus?: "running" | "retrying" | "compacting" | "waiting";
+  state?: "pending" | "streaming" | "waiting" | "done" | "error";
+  error?: string;
 }) {
   const isSelf = align === "right";
   return (
@@ -95,6 +99,14 @@ export function MessageBubble({
       )}
       {runStatus === "waiting" && (
         <p className="text-xs text-muted-foreground mt-1">Awaiting approval...</p>
+      )}
+      {(state === "error" || error) && (
+        <div
+          data-testid="message-error"
+          className="mt-2 px-3 py-2 rounded-md border border-(--err)/40 bg-(--err)/10 text-xs text-(--err) break-words"
+        >
+          {error ?? "Run failed"}
+        </div>
       )}
     </MessageShell>
   );

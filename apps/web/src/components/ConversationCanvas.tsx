@@ -126,6 +126,7 @@ export function ConversationCanvas({
       thinking: string;
       sender: SenderRef;
       tools: LiveToolCall[];
+      error?: string;
     }> = [];
     for (const [runId, t] of Object.entries(transients)) {
       const sender = Object.values(roster).find((m) => m.memberId === t.agentMemberId);
@@ -138,6 +139,7 @@ export function ConversationCanvas({
         tools: Object.values(transientTools).filter(
           (tool) => tool.runId === runId && tool.name !== "todo_write",
         ),
+        error: t.error,
       });
     }
     return bubbles;

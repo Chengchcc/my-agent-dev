@@ -458,6 +458,10 @@ export function createAgentRunExecutionService(
       }
       return;
     }
+    // Live subscribers learn WHY the run died (the error text) before the
+    // stream closes; failed runs persist no assistant message, so this
+    // status event is the only live failure record for the UI.
+    broadcast(run.runId, { type: "status", status: outcome.status, error: outcome.error });
     await runPort.finalizeRun(run.runId, outcome);
   }
 
@@ -542,6 +546,10 @@ export function createAgentRunExecutionService(
         const run = await runPort.getRun(runId);
         if (run && isActiveStatus(run.status) && !liveRuns.has(runId)) {
           const detail = error instanceof Error ? error.message : String(error);
+          // Same live-failure record as settleOutcome's terminal branch:
+          // pre-child failures (spawn, catalog, projection) leave no
+          // assistant message, so the status event carries the error text.
+          broadcast(runId, { type: "status", status: "failed", error: detail });
           await runPort
             .finalizeRun(runId, { status: "failed", error: detail })
             .catch((e) => console.error(`[agent-run] finalize failed for ${runId}:`, e));

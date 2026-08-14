@@ -389,15 +389,18 @@ describe("agent run execution (Run-centric)", () => {
     const runId = acquired.run!.runId;
 
     const collector = (async () => {
-      const events: string[] = [];
-      for await (const ev of execution.subscribe(runId)) events.push(ev.type);
+      const events: Array<{ type: string; status?: string; error?: string }> = [];
+      for await (const ev of execution.subscribe(runId)) {
+        if (ev.type === "status") events.push(ev);
+      }
       return events;
     })();
 
     await expect(execution.dispatch(runId)).rejects.toThrow("catalog down");
 
     // The subscriber stream must END after the failed dispatch, not hang
-    // until the HTTP layer's headers timeout.
+    // until the HTTP layer's headers timeout — and the sole event carries
+    // the failure so the UI can show WHY the run died.
     await expect(
       Promise.race([
         collector,
@@ -405,7 +408,7 @@ describe("agent run execution (Run-centric)", () => {
           throw new Error("subscriber did not close");
         }),
       ]),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual([{ type: "status", status: "failed", error: "catalog down" }]);
   }, 15_000);
 
   test("spawn failure is permanent: run finalized failed, delivering input cancelled, subscribers closed", async () => {
@@ -422,8 +425,10 @@ describe("agent run execution (Run-centric)", () => {
     const runId = acquired.run!.runId;
 
     const collector = (async () => {
-      const events: string[] = [];
-      for await (const ev of execution.subscribe(runId)) events.push(ev.type);
+      const events: Array<{ type: string; status?: string; error?: string }> = [];
+      for await (const ev of execution.subscribe(runId)) {
+        if (ev.type === "status") events.push(ev);
+      }
       return events;
     })();
 
@@ -439,14 +444,17 @@ describe("agent run execution (Run-centric)", () => {
     expect(inputs).toHaveLength(1);
     expect(inputs[0]!.status).toBe("cancelled");
 
-    await expect(
-      Promise.race([
-        collector,
-        Bun.sleep(500).then(() => {
-          throw new Error("subscriber did not close");
-        }),
-      ]),
-    ).resolves.toEqual([]);
+    // The failed status event (with the error text) is the only live
+    // failure record subscribers get before the stream closes.
+    const events = await Promise.race([
+      collector,
+      Bun.sleep(500).then(() => {
+        throw new Error("subscriber did not close");
+      }),
+    ]);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "status", status: "failed" });
+    expect(events[0]!.error).toContain("ENOENT");
   }, 15_000);
 
   test("execute rejection is a pre-acceptance failure: run failed + input cancelled", async () => {
@@ -476,8 +484,10 @@ describe("agent run execution (Run-centric)", () => {
     const runId = acquired.run!.runId;
 
     const collector = (async () => {
-      const events: string[] = [];
-      for await (const ev of execution.subscribe(runId)) events.push(ev.type);
+      const events: Array<{ type: string; status?: string; error?: string }> = [];
+      for await (const ev of execution.subscribe(runId)) {
+        if (ev.type === "status") events.push(ev);
+      }
       return events;
     })();
 
@@ -495,7 +505,7 @@ describe("agent run execution (Run-centric)", () => {
           throw new Error("subscriber did not close");
         }),
       ]),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual([{ type: "status", status: "failed", error: "projection boom" }]);
   }, 15_000);
 
   test("no-live cancel releases the branch and promotes the next queued input", async () => {
