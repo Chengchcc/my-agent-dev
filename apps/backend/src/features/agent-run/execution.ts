@@ -19,6 +19,7 @@ import type {
 } from "../agent-context/ports.js";
 import { projectAgentContext } from "../agent-context/projection.js";
 import { buildHistoryTools } from "../product-tools/manifest.js";
+import type { RunTokenRegistry } from "../product-tools/run-token-registry.js";
 import type { AgentRun, BranchInput, ClaimedBranchInput } from "./domain.js";
 import { isActiveStatus, isTerminalStatus } from "./domain.js";
 import type { AgentRunPort } from "./ports.js";
@@ -57,6 +58,9 @@ export interface AgentRunExecutionDeps {
   /** Product Tools MCP endpoint the Coding Agent child connects to
    *  (`sse:<url>`), from PRODUCT_TOOLS_MCP_URL. */
   readonly productToolsEntrypoint: string;
+  /** Per-run product-tools bearer registry; minted at dispatch, revoked
+   *  in dispatchFn's finally (every terminal path). */
+  readonly productToolsTokenRegistry: RunTokenRegistry;
   /** Called after a completed run's Product commit (History Message +
    *  Context ref) lands atomically. Fired on the original commit AND on
    *  retryTerminalCommit replay - consumers must be idempotent per
@@ -269,6 +273,7 @@ export function createAgentRunExecutionService(
     workspace: WorkspaceBinding,
     cliSessionRef: string | undefined,
     lastTodo: string | null,
+    productToolsToken: string,
   ): BackendRunInput {
     const bridge = !cliSessionRef && history.length > 0 ? renderHistoryBridge(history) : "";
     const inputText = input.message.text ?? "";
@@ -324,6 +329,7 @@ export function createAgentRunExecutionService(
       },
       run: runSnapshot,
       workspace,
+      productToolsToken,
       metadata: {
         conversationId: run.conversationId,
         agentMemberId: run.agentMemberId,
@@ -395,6 +401,13 @@ export function createAgentRunExecutionService(
 
     stage.name = "backend_execute";
     debugLog("agent-run", `backend_execute runId=${runId}`);
+    // Per-run product-tools bearer: minted here, revoked in dispatchFn's
+    // finally (every terminal path). A mint throw is a dispatch failure.
+    const productToolsToken = deps.productToolsTokenRegistry.mint({
+      runId,
+      agentId: run.agentMemberId,
+      exp: Date.now() + 30 * 60_000,
+    });
     // The branch's CLI session ref is kind-scoped (`<kind>:<ref>`, ADR 0020
     // decision 6): a ref written by another backend is junk to this CLI and
     // must never be forwarded (pi exits empty on a foreign --session id).
@@ -407,7 +420,7 @@ export function createAgentRunExecutionService(
       ? rawRef.slice(kindPrefix.length)
       : undefined;
     const segment = await backend.execute(
-      buildRunInput(run, history, input, workspace, cliSessionRef, lastTodo),
+      buildRunInput(run, history, input, workspace, cliSessionRef, lastTodo, productToolsToken),
     );
     liveRuns.set(runId, { segment });
     debugLog("agent-run", `backend_accepted runId=${runId}`);
@@ -560,6 +573,9 @@ export function createAgentRunExecutionService(
         inflight.delete(runId);
         inflightPromises.delete(runId);
         liveRuns.delete(runId);
+        // Every terminal path (outcome, preflight failure, crash) funnels
+        // here: the run's product-tools bearer dies with the run.
+        deps.productToolsTokenRegistry.revoke(runId);
         closeSubscribers(runId);
         debugLog("agent-run", `dispatch_end runId=${runId}`);
       }

@@ -14,6 +14,10 @@ import { sqliteConversationAdapter } from "../conversation/adapter-sqlite.js";
 import { sqliteAgentRunAdapter } from "./adapter-sqlite.js";
 import type { AgentRun } from "./domain.js";
 import { createAgentRunExecutionService, runEventStreamFor } from "./execution.js";
+import {
+  createRunTokenRegistry,
+  type RunTokenRegistry,
+} from "../product-tools/run-token-registry.js";
 import { createAgentRunService } from "./service.js";
 
 // ─── Real RPC child (fixture) harness ─────────────────────────────────
@@ -77,6 +81,15 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
         return { runId: runId!, workspaceRoot: rest.join(" ") };
       });
     },
+    /** Per-run product-tools bearers the children received via env. */
+    get executeTokens(): string[] {
+      if (!existsSync(record)) return [];
+      return readFileSync(record, "utf-8")
+        .trim()
+        .split("\n")
+        .filter((l) => l.startsWith("tok "))
+        .map((l) => l.slice(4));
+    },
     get executeMessages(): string[] {
       return readCalls("execute_msg").map((l) => JSON.parse(l) as string);
     },
@@ -114,6 +127,7 @@ function makeExecution(
     list: () => Promise<{ models: Array<{ id: string; available: boolean }> }>;
   },
   contextPortOverride?: Partial<typeof contextPort>,
+  tokenRegistry?: RunTokenRegistry,
 ) {
   const activeRunPort = runPortOverride ?? runPort;
   const ledgerResolver = {
@@ -135,6 +149,7 @@ function makeExecution(
     idGen: { ulid: () => `id-${Math.random().toString(36).slice(2, 12)}` },
     resolveWorkspace: async () => ({ root: dataDir, access: "read_write" }),
     productToolsEntrypoint: "sse:http://127.0.0.1:1/mcp",
+    productToolsTokenRegistry: tokenRegistry ?? createRunTokenRegistry(),
   });
 }
 
@@ -896,6 +911,26 @@ describe("agent run execution (Run-centric)", () => {
     expect(ledger).toHaveLength(1);
     const revision = parseMessageRevision(ledger[0]!.content);
     expect(revision.messageId).toBe(assistantMessageId(runId, 0));
+  });
+
+  test("per-run product-tools token: unique across runs, revoked at settle", async () => {
+    const fake = createFakeDaemon();
+    const registry = createRunTokenRegistry();
+    const execution = makeExecution(fake, undefined, undefined, undefined, registry);
+
+    const first = await enqueue("normal", "tok-1", "hello");
+    await execution.dispatch(first.run!.runId);
+    await waitForTerminal(first.run!.runId);
+    const second = await enqueue("normal", "tok-2", "hello again");
+    await execution.dispatch(second.run!.runId);
+    await waitForTerminal(second.run!.runId);
+
+    const tokens = fake.executeTokens;
+    expect(tokens).toHaveLength(2);
+    // Different bearers per run...
+    expect(new Set(tokens).size).toBe(2);
+    // ...and both runs settled, so neither validates anymore.
+    for (const t of tokens) expect(registry.validate(t)).toBeNull();
   }, 15_000);
 
   test("stop() requests cancellation on the live segment", async () => {

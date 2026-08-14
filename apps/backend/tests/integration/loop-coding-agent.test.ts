@@ -25,6 +25,7 @@ import {
 } from "../../src/features/loop/loop-state-store.js";
 import { loopStep } from "../../src/features/loop/loop-step.js";
 import { openDb } from "../../src/infra/sqlite/db.js";
+import { createRunTokenRegistry } from "../../src/features/product-tools/run-token-registry.js";
 
 /** THE real Loop chain: loopStep → AgentRunService → AgentRunExecution →
  *  real coding-agent child (--mode rpc, fake provider) → git mutations in
@@ -175,6 +176,7 @@ beforeAll(async () => {
     },
   };
   const realExecution = createAgentRunExecutionService({
+    productToolsTokenRegistry: createRunTokenRegistry(),
     runPort,
     contextPort,
     ledgerResolver,

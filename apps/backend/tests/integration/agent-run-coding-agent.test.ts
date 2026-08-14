@@ -128,6 +128,7 @@ beforeAll(async () => {
     },
   };
   execution = createAgentRunExecutionService({
+    productToolsTokenRegistry: registry,
     runPort,
     contextPort,
     ledgerResolver,

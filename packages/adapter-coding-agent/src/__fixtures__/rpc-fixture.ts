@@ -70,6 +70,11 @@ const out = (obj: unknown): void => {
 async function main(): Promise<void> {
   if (scenario === "exit-before-acceptance") process.exit(3);
 
+  // Per-run product-tools bearer the backend injected via spawn env —
+  // recorded so tests can assert uniqueness across runs.
+  const productToolToken = process.env.CODING_AGENT_PRODUCT_TOOL_TOKEN;
+  if (record && productToolToken) appendFileSync(record, `tok ${productToolToken}\n`);
+
   const decoder = new TextDecoder();
   let buffer = "";
   const stdinReader = (Bun.stdin.stream() as ReadableStream<Uint8Array>).getReader();
