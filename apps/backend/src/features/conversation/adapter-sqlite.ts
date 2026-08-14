@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { deserializeLedgerContent, extractText } from "@my-agent-team/message";
 import { and, desc, eq, gt, inArray, isNotNull, like, notInArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import * as schema from "../../infra/db/schema.js";
@@ -13,7 +14,6 @@ import type {
   LedgerEntry,
   MemberRow,
 } from "./ports.js";
-import { deserializeLedgerContent, extractText } from "@my-agent-team/message";
 
 export function sqliteConversationAdapter(db: Database): ConversationPort {
   const d = drizzle(db, { schema, casing: "snake_case" });
