@@ -37,6 +37,8 @@ interface FakeDaemonOptions {
   steerError?: boolean;
   /** Emit native tool trace + todo_update events before the outcome. */
   toolTodo?: boolean;
+  /** The completed outcome carries this cliSessionRef. */
+  sessionRef?: string;
 }
 
 function createFakeDaemon(opts: FakeDaemonOptions = {}) {
@@ -55,6 +57,7 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
       RPC_FIXTURE_SCENARIO: scenario,
       RPC_FIXTURE_RECORD: record,
       RPC_FIXTURE_OUTCOME_DELAY_MS: String(opts.outcomeDelayMs ?? 60),
+      ...(opts.sessionRef ? { RPC_FIXTURE_SESSION_REF: opts.sessionRef } : {}),
     },
   };
   const readCalls = (kind: string): string[] => {
@@ -76,6 +79,9 @@ function createFakeDaemon(opts: FakeDaemonOptions = {}) {
     },
     get executeMessages(): string[] {
       return readCalls("execute_msg").map((l) => JSON.parse(l) as string);
+    },
+    get executeRefs(): Array<string | null> {
+      return readCalls("execute_ref").map((l) => JSON.parse(l) as string | null);
     },
     get steerCalls(): string[] {
       return readCalls("steer").map((l) => l.split(" ")[0]!);
@@ -284,6 +290,27 @@ describe("agent run execution (Run-centric)", () => {
     expect(fake.executeMessages[1]).toContain("second");
     expect(fake.executeMessages[1]!.trimEnd().endsWith("second")).toBe(true);
   }, 15_000);
+  test("session ref round-trip: the second run carries the ref, no history bridge", async () => {
+    const fake = createFakeDaemon({ sessionRef: "cli-sess-1" });
+    const execution = makeExecution(fake);
+
+    // Run 1: the outcome reports cli-sess-1 -> the branch stores
+    // `<kind>:cli-sess-1` (settleOutcome prefixes the backend kind).
+    const first = await enqueue("normal", "ref-1", "hello");
+    await execution.dispatch(first.run!.runId);
+    await waitForTerminal(first.run!.runId);
+    expect(fake.executeRefs[0]).toBe(null); // fresh branch: no ref yet
+
+    // Run 2 (follow_up): the branch's ref is kind-scoped and STRIPPED for
+    // the wire; the message carries NO flat-text history bridge.
+    const followUp = await enqueue("follow_up", "ref-2", "second");
+    expect(followUp.acquired).toBe(true);
+    await execution.dispatch(followUp.run!.runId);
+    await waitForTerminal(followUp.run!.runId);
+    expect(fake.executeRefs[1]).toBe("cli-sess-1");
+    expect(fake.executeMessages[1]).toBe("second");
+  }, 15_000);
+
   test("tool trace and todo_update survive the wire onto the Run SSE", async () => {
     const fake = createFakeDaemon({ toolTodo: true });
     const execution = makeExecution(fake);

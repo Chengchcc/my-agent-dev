@@ -304,6 +304,7 @@ export function createAgentRunExecutionService(
       runSnapshot.systemPrompt = productContext;
     }
     if (run.skillRoots && run.skillRoots.length > 0) runSnapshot.skillRoots = run.skillRoots;
+    if (cliSessionRef) runSnapshot.cliSessionRef = cliSessionRef;
     if (run.permissionMode) {
       runSnapshot.permissionMode = run.permissionMode as "ask" | "auto" | "deny";
     }
