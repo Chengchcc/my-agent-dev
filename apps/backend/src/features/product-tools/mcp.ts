@@ -1,9 +1,10 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import type { RunTokenContext, RunTokenRegistry } from "./run-token-registry.js";
 import type { ProductToolsService } from "./service.js";
 
 /** Wire identity the Coding Agent Worker attaches to every call:
@@ -16,11 +17,11 @@ interface WireIdentity {
   callId?: unknown;
   idempotencyKey?: unknown;
 }
-
 export interface ProductToolsMcpServerOptions {
   readonly service: ProductToolsService;
-  /** Bearer token the Coding Agent Worker sends (PRODUCT_TOOLS_SERVICE_TOKEN). */
-  readonly serviceToken: string;
+  /** Per-run bearer registry — the ONLY accepted auth. A token validates
+   *  only while its run is live (minted at dispatch, revoked at settle). */
+  readonly tokenRegistry: RunTokenRegistry;
   readonly host?: string;
   /** 0 = ephemeral port. */
   readonly port?: number;
@@ -32,15 +33,12 @@ export interface ProductToolsMcpServer {
   close(): Promise<void>;
 }
 
-function authorize(req: IncomingMessage, token: string): boolean {
+function authorize(req: IncomingMessage, registry: RunTokenRegistry): RunTokenContext | null {
   const header = req.headers.authorization;
-  if (!header) return false;
+  if (!header) return null;
   const [scheme, value] = header.split(" ");
-  if (scheme !== "Bearer" || value === undefined) return false;
-  // constant-time comparison (equal-length guard + timingSafeEqual)
-  const a = new TextEncoder().encode(value);
-  const b = new TextEncoder().encode(token);
-  return a.length === b.length && timingSafeEqual(a, b);
+  if (scheme !== "Bearer" || value === undefined) return null;
+  return registry.validate(value);
 }
 
 /** MCP layer only: protocol parsing, service-token authentication, input
@@ -50,10 +48,9 @@ function authorize(req: IncomingMessage, token: string): boolean {
 export async function createProductToolsMcpServer(
   opts: ProductToolsMcpServerOptions,
 ): Promise<ProductToolsMcpServer> {
-  const { service, serviceToken } = opts;
+  const { service, tokenRegistry } = opts;
   const host = opts.host ?? "127.0.0.1";
   const port = opts.port ?? 0;
-
   const server = new Server(
     { name: "product-tools", version: "1.0.0" },
     { capabilities: { tools: {} } },
@@ -191,7 +188,10 @@ export async function createProductToolsMcpServer(
   const transports = new Map<string, SSEServerTransport>();
 
   const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    if (!authorize(req, serviceToken)) {
+    const caller = authorize(req, tokenRegistry);
+    // Audit stamp: caller.runId is the authenticated run this request
+    // belongs to (identity args are advisory; the bearer is the truth).
+    if (!caller) {
       res.writeHead(401, { "content-type": "application/json" });
       res.end(JSON.stringify({ code: "unauthorized", message: "missing or invalid token" }));
       return;

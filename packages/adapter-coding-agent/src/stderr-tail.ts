@@ -26,6 +26,7 @@ export function collectSecrets(env: Readonly<Record<string, string | undefined>>
     "ANTHROPIC_AUTH_TOKEN",
     "CODING_AGENT_PRODUCT_TOOL_TOKEN",
     "PRODUCT_TOOLS_SERVICE_TOKEN",
+    "PRODUCT_TOOLS_RUN_TOKEN",
     "BACKEND_AUTH_TOKEN",
   ];
   for (const [key, value] of Object.entries(env)) {

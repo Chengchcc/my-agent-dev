@@ -48,6 +48,7 @@ import {
   createProductToolsService,
   sqliteProductToolCallAdapter,
 } from "../features/product-tools/index.js";
+import { createRunTokenRegistry } from "../features/product-tools/run-token-registry.js";
 import {
   createProjectService,
   projectRoutes,
@@ -311,11 +312,14 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     idGen: { ulid },
   });
   let productToolsMcp: Awaited<ReturnType<typeof createProductToolsMcpServer>> | null = null;
-  if (config.productToolsMcpUrl && config.productToolsServiceToken) {
+  // Per-run bearer registry: tokens are minted at dispatch and revoked at
+  // settle (agent-run execution); this is the ONLY accepted MCP auth.
+  const productToolsTokenRegistry = createRunTokenRegistry();
+  if (config.productToolsMcpUrl) {
     const mcpUrl = new URL(config.productToolsMcpUrl);
     productToolsMcp = await createProductToolsMcpServer({
       service: productTools,
-      serviceToken: config.productToolsServiceToken,
+      tokenRegistry: productToolsTokenRegistry,
       host: mcpUrl.hostname,
       port: Number(mcpUrl.port) || 0,
     });
@@ -356,21 +360,18 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   // preflight error from the execution service, never a silent fallback.
   const ompBackend = new OmpBackend({
     executable: config.ompBin ?? "omp",
-    productToolsToken: config.productToolsServiceToken,
   });
   const piBackend = new PiBackend({
     executable: config.piBin ?? "pi",
     // `pi install npm:pi-mcp-adapter` registers the adapter; an explicit
     // path overrides it for per-run spawns (D3 全量对齐).
     mcpAdapterPath: config.piMcpAdapterPath,
-    productToolsToken: config.productToolsServiceToken,
   });
   const claudeBackend = new ClaudeBackend({
     executable: config.claudeBin ?? "claude",
     // bypassPermissions is refused under root; CLAUDE_PERMISSION_MODE
     // on non-root deployments (Gate 0).
     permissionMode: config.claudePermissionMode,
-    productToolsToken: config.productToolsServiceToken,
   });
   const backends: BackendRegistry = {
     coding_agent: { backend: codingAgentBackend, catalog: codingAgentCatalog },
@@ -379,6 +380,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     claude_code: { backend: claudeBackend, catalog: new ClaudeModelCatalog() },
   };
   const agentRunExecution = createAgentRunExecutionService({
+    productToolsTokenRegistry,
     runTimeoutMs: config.runTimeoutMs,
     runPort: agentRunPort,
     contextPort,
@@ -525,13 +527,17 @@ export async function installFeatures(services: BackendServices): Promise<Instal
           })),
           // The product-tools server (ledger access, ADR 0020) merges into
           // the SAME workspace .mcp.json — one config, one writer.
-          ...(config.productToolsMcpUrl && config.productToolsServiceToken
+          ...(config.productToolsMcpUrl
             ? [
                 {
                   name: "product-tools",
                   transport: "sse" as const,
                   url: config.productToolsMcpUrl,
-                  headers: { Authorization: `Bearer ${config.productToolsServiceToken}` },
+                  // ENV NAME, not the token: pi (bearerTokenEnv) and omp
+                  // (bearer_token_env_var) read this var at connect time;
+                  // claude expands the ${VAR} placeholder in headers. The
+                  // per-run bearer arrives via spawn env. File stays static.
+                  bearerTokenEnv: "PRODUCT_TOOLS_RUN_TOKEN",
                 },
               ]
             : []),

@@ -22,6 +22,7 @@ import { sqliteConversationAdapter } from "../../src/features/conversation/adapt
 import { sqliteProductToolCallAdapter } from "../../src/features/product-tools/adapter-sqlite.js";
 import { buildHistoryTools } from "../../src/features/product-tools/manifest.js";
 import { createProductToolsMcpServer } from "../../src/features/product-tools/mcp.js";
+import { createRunTokenRegistry } from "../../src/features/product-tools/run-token-registry.js";
 import { createProductToolsService } from "../../src/features/product-tools/service.js";
 import { openDb } from "../../src/infra/sqlite/db.js";
 
@@ -39,7 +40,7 @@ import { openDb } from "../../src/infra/sqlite/db.js";
  *
  *  No fake/in-process Backend anywhere in the chain. */
 
-const TOKEN = "product-tools-token";
+let TOKEN = "";
 const CONV = "conv-e2e";
 const MEMBER = "mem-e2e";
 
@@ -95,7 +96,9 @@ beforeAll(async () => {
     callPort: sqliteProductToolCallAdapter(db),
     idGen: { ulid: () => `y-${Math.random().toString(36).slice(2, 8)}` },
   });
-  mcp = await createProductToolsMcpServer({ service: productTools, serviceToken: TOKEN });
+  const registry = createRunTokenRegistry();
+  TOKEN = registry.mint({ runId: "run-it", agentId: "agent-it", exp: Date.now() + 120_000 });
+  mcp = await createProductToolsMcpServer({ service: productTools, tokenRegistry: registry });
 
   // Real Coding Agent as a SEPARATE PROCESS per Run (deployment-shaped):
   // the adapter spawns `bun apps/coding-agent/src/cli.ts --mode rpc` and
@@ -125,6 +128,7 @@ beforeAll(async () => {
     },
   };
   execution = createAgentRunExecutionService({
+    productToolsTokenRegistry: registry,
     runPort,
     contextPort,
     ledgerResolver,

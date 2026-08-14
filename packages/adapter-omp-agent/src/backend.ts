@@ -41,9 +41,6 @@ export interface OmpBackendOptions {
   /** Extra env applied over the parent process env (inherited by the
    *  child, like CODING_AGENT_BIN's env merge). */
   env?: Readonly<Record<string, string | undefined>>;
-  /** Product Tools MCP bearer token for the workspace mcp.json (D3:
-   *  claude/pi/omp run with product tools mounted when available). */
-  productToolsToken?: string;
   abortGraceMs?: number;
 }
 
@@ -65,7 +62,6 @@ export class OmpBackend implements AgentBackend<"omp"> {
   private readonly executable: string;
   private readonly extraArgs: readonly string[];
   private readonly extraEnv: Readonly<Record<string, string | undefined>> | undefined;
-  private readonly productToolsToken: string | undefined;
   private readonly abortGraceMs: number;
   private readonly active = new Map<string, ActiveRun>();
   private disposed = false;
@@ -74,7 +70,6 @@ export class OmpBackend implements AgentBackend<"omp"> {
     this.executable = opts.executable ?? "omp";
     this.extraArgs = opts.args ?? [];
     this.extraEnv = opts.env;
-    this.productToolsToken = opts.productToolsToken;
     this.abortGraceMs = opts.abortGraceMs ?? 3_000;
   }
 
@@ -93,8 +88,11 @@ export class OmpBackend implements AgentBackend<"omp"> {
     const args = this.buildArgs(input, resumeRef);
     let proc: SpawnedOmpProcess;
     try {
+      const runEnv = input.productToolsToken
+        ? { ...this.extraEnv, PRODUCT_TOOLS_RUN_TOKEN: input.productToolsToken }
+        : this.extraEnv;
       proc = spawnOmpProcess(
-        { executable: this.executable, args: [...this.extraArgs, ...args], env: this.extraEnv },
+        { executable: this.executable, args: [...this.extraArgs, ...args], env: runEnv },
         { cwd: workspace },
       );
     } catch (err) {

@@ -24,6 +24,7 @@ import {
   type LoopStateStore,
 } from "../../src/features/loop/loop-state-store.js";
 import { loopStep } from "../../src/features/loop/loop-step.js";
+import { createRunTokenRegistry } from "../../src/features/product-tools/run-token-registry.js";
 import { openDb } from "../../src/infra/sqlite/db.js";
 
 /** THE real Loop chain: loopStep → AgentRunService → AgentRunExecution →
@@ -175,6 +176,7 @@ beforeAll(async () => {
     },
   };
   const realExecution = createAgentRunExecutionService({
+    productToolsTokenRegistry: createRunTokenRegistry(),
     runPort,
     contextPort,
     ledgerResolver,

@@ -36,11 +36,6 @@ export function resolveCodingAgentCommand(
     GROQ_API_KEY: process.env.GROQ_API_KEY,
     OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
     MY_AGENT_HOME: process.env.MY_AGENT_HOME,
-    // The Product Tools service token reaches the child ONLY via env —
-    // never through command args, run input, entrypoint URL or logs.
-    ...(config.productToolsServiceToken
-      ? { CODING_AGENT_PRODUCT_TOOL_TOKEN: config.productToolsServiceToken }
-      : {}),
     ...opts.env,
   };
 

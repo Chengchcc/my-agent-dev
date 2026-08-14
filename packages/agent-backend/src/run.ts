@@ -32,6 +32,9 @@ export interface BackendRunInput<K extends string = string> {
   readonly input: BackendInputMessage;
   readonly run: AgentRunSnapshot<K>;
   readonly workspace: WorkspaceBinding;
+  /** Per-run product-tools bearer. Backends deliver it to their child
+   *  (spawn env). Absent = no product tools for this run. */
+  readonly productToolsToken?: string;
   readonly metadata: {
     readonly conversationId: string;
     readonly agentMemberId: string;

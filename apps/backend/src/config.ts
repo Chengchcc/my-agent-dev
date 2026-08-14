@@ -28,7 +28,6 @@ export interface BackendConfig {
   claudeBin?: string;
   claudePermissionMode?: string;
   productToolsMcpUrl?: string;
-  productToolsServiceToken?: string;
 }
 
 /**
@@ -56,6 +55,5 @@ export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
     claudeBin: env.CLAUDE_BIN,
     claudePermissionMode: env.CLAUDE_PERMISSION_MODE,
     productToolsMcpUrl: env.PRODUCT_TOOLS_MCP_URL,
-    productToolsServiceToken: env.PRODUCT_TOOLS_SERVICE_TOKEN,
   };
 }

@@ -50,30 +50,21 @@ describe("resolveCodingAgentCommand", () => {
     ).toThrow(/Coding Agent source entry not found/);
   });
 
-  test("forwards provider env subset + token, merged with caller env", () => {
-    const result = resolveCodingAgentCommand(
-      {
-        ...baseConfig,
-        productToolsServiceToken: "tok-secret",
-      },
-      { env: { EXTRA: "1" } },
-    );
+  test("forwards provider env subset, merged with caller env", () => {
+    const result = resolveCodingAgentCommand(baseConfig, { env: { EXTRA: "1" } });
 
-    expect(result.env).toMatchObject({
-      CODING_AGENT_PRODUCT_TOOL_TOKEN: "tok-secret",
-      EXTRA: "1",
-    });
+    expect(result.env).toMatchObject({ EXTRA: "1" });
     // Provider env keys are always present in the child env (forwarded from
     // process.env, possibly undefined — the child resolves which providers
     // have keys via its own catalog registration).
     expect("ANTHROPIC_API_KEY" in (result.env ?? {})).toBe(true);
     expect("DEEPSEEK_API_KEY" in (result.env ?? {})).toBe(true);
     expect("MY_AGENT_HOME" in (result.env ?? {})).toBe(true);
-    // The token never appears in the command line.
-    expect(JSON.stringify(result.args ?? [])).not.toContain("tok-secret");
   });
 
-  test("omits absent product tools token", () => {
+  test("no product-tools token at the command layer — it is per-run", () => {
+    // The bearer is minted per run at dispatch and injected by the backend
+    // at execute time; resolveCodingAgentCommand must never bake one in.
     const result = resolveCodingAgentCommand(baseConfig);
     expect(result.env?.CODING_AGENT_PRODUCT_TOOL_TOKEN).toBeUndefined();
   });
