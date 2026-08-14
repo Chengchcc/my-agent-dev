@@ -50,6 +50,13 @@ workspace/
 - 每个 Run 由对应 adapter spawn 一次性子进程;coding_agent 用 stdin/stdout JSONL,CLI 用 argv+stdin。
 - **session 不按 kind 建目录、不共享**:产品只存一个不透明引用(`branch.cliSessionRef`,run 输入透传 + outcome 回写);切 kind = 新 session。
 - **run 输入已瘦身**(ADR 0020 决策 6 修订):删 history/productTools;保留 systemPrompt/skillRoots 作 run 级覆盖通道(Loop 作用域)。首轮上下文 = flat-text 桥(无 session ref 时由 backend 把投影拍平拼进 message)。
+- **能力矩阵**:workflow(`run_workflow`/`workflow_run` 子代理扇出 + 脚本编排)是
+  **coding_agent 专属**——执行器在 child 进程内(共享 model stream/工具/store)。
+  CLI backends(claude/pi/omp)是薄适配器,无等价面:它们的编排面 = MCP 挂载的
+  产品工具(history/todo)+ 各自原生工具,不提供 workflow,前端无事件即无卡片
+  (天然降级)。产品功能(loop)锁 `coding_agent`,不受 agent kind 影响。
+  跨 kind 的 workflow 唯一路径 = 产品侧编排(调度层 + 身份传播 + 结果回流),
+  与"一次输入一个 run"的模型冲突,不做。
 
 ## 3. 一个对话一个 Agent(ADR 0021)
 
