@@ -20,6 +20,7 @@ import type {
   BackendRunOutcome,
   BackendRunSegment,
 } from "@my-agent-team/agent-backend";
+import { guardedConsume } from "@my-agent-team/agent-backend";
 import {
   buildOutcomeMessages,
   createClaudeAccumulator,
@@ -233,6 +234,16 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
   /** Single stdout parse loop + stdin write. The terminal outcome is
    *  decided ONLY here (result event / error / exit code). */
   private async consumeStdout(
+    handle: ActiveRun,
+    input: BackendRunInput<"claude_code">,
+  ): Promise<void> {
+    await guardedConsume(() => this.consumeBody(handle, input), (message) => {
+      handle.settle({ status: "failed", error: `stdout consume failed: ${message}` });
+      this.active.delete(handle.runId);
+    });
+  }
+
+  private async consumeBody(
     handle: ActiveRun,
     input: BackendRunInput<"claude_code">,
   ): Promise<void> {

@@ -1,5 +1,6 @@
 export type { AgentBackend, BackendRegistry, BackendRegistryEntry } from "./backend.js";
 export { debugLog } from "./debug.js";
+export { guardedConsume } from "./cli-consume.js";
 export type { BackendEvent, BackendExtensionEvent, CoreBackendEvent, Usage } from "./event.js";
 export type {
   AgentRunSnapshot,
