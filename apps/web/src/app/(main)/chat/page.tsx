@@ -228,8 +228,12 @@ export default function ChatOverviewPage() {
                   <p className="text-sm font-medium text-(--ink) truncate">
                     {conv.title ?? `Conversation ${conv.conversationId.slice(0, 8)}`}
                   </p>
+                  {conv.lastMessagePreview && (
+                    <p className="text-xs text-(--mute) truncate mt-0.5">
+                      {conv.lastMessagePreview}
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
-                    {/* Member avatars */}
                     <div className="flex -space-x-1.5">
                       {conv.members.slice(0, 4).map((m) => (
                         <span

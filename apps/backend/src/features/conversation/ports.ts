@@ -73,17 +73,17 @@ export interface ConversationWithMembers {
   members: MemberRow[];
   /** Last ledger entry timestamp; null when the conversation has no messages yet. */
   lastActivityAt: number | null;
+  lastMessagePreview: string | null;
 }
-
 export interface ConversationPort {
   createConversation(input: CreateConversationInput): ConversationRow;
+  deleteConversation(conversationId: string): Promise<boolean>;
   getConversation(conversationId: string): ConversationRow | null;
   setConversationTitle(conversationId: string, title: string): void;
   updateHopCount(conversationId: string, count: number): void;
   listConversations(): ConversationWithMembers[];
   listConversationsByAgent(agentId: string): ConversationWithMembers[];
-  deleteConversation(conversationId: string): Promise<boolean>;
-  /** Last ledger entry timestamp for a conversation, or null when empty. */
+  getLastMessagePreview?(conversationId: string): string | null;
   getLastActivityAt?(conversationId: string): number | null;
 
   addMember(input: CreateMemberInput): { member: MemberRow; created: boolean };

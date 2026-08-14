@@ -87,6 +87,7 @@ export function conversationRoutes(
           forkSource: conv.forkSource,
           forkFromSeq: conv.forkFromSeq,
           lastActivityAt: svc.port.getLastActivityAt?.(id) ?? null,
+          lastMessagePreview: svc.port.getLastMessagePreview?.(id) ?? null,
           members,
         };
       })
