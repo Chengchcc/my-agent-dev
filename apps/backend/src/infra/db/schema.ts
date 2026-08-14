@@ -263,7 +263,6 @@ export const conversationLedgerSelectSchema = createSelectSchema(conversationLed
   undone: (s) => s.transform((v: number) => v !== 0),
 });
 
-
 export const projectSelectSchema = createSelectSchema(project);
 
 export const cronJobSelectSchema = createSelectSchema(cronJob, {

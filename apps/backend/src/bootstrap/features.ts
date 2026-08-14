@@ -394,9 +394,26 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       const members = conv.convPort.getMembers(conversationId);
       const member = members.find((m) => m.memberId === agentMemberId);
       const agent = member?.agentId ? await agentSvc.getById(member.agentId) : null;
+      const access = agent?.config.runtime_config.permission_mode === "ask"
+        ? "read_only"
+        : "read_write";
+      // Project-bound conversation (ADR 0023): cwd is the agent's worktree
+      // for that project; context (skills/prompt/token) still comes from
+      // the agent workspace. Not attached = explicit dispatch failure.
+      const convRow = conv.convPort.getConversation(conversationId);
+      if (convRow?.projectId) {
+        if (!agent?.config.runtime_config.projects.includes(convRow.projectId)) {
+          throw new Error(
+            `agent ${member?.agentId ?? "?"} has not attached project ${convRow.projectId}; ` +
+              `attach it via the agent update API (agent.yml runtime_config.projects)`,
+          );
+        }
+        const worktree = join(agent.workspacePath, "projects", convRow.projectId);
+        return { root: worktree, access };
+      }
       return {
         root: agent?.workspacePath ?? config.workspaceRoot,
-        access: agent?.config.runtime_config.permission_mode === "ask" ? "read_only" : "read_write",
+        access,
       };
     },
     productToolsEntrypoint: config.productToolsMcpUrl
@@ -657,7 +674,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       getSetupManager,
       (id: string) => projectSvc.exists(id),
     ),
-    conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore, (id: string) => projectSvc.exists(id)),
+    conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore, (id: string) =>
+      projectSvc.exists(id),
+    ),
     ops: opsRoutes(opsSvc),
     agentRuns: agentRunRoutes({ db, agentRunService, agentRunExecution }),
     projects: projectRoutes(projectSvc),
