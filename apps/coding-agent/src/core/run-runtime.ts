@@ -373,8 +373,19 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   let sessionEmit: ((event: CodingAgentLoopEvent) => void) | null = null;
   // The workflow executor rides the SAME model stream + summarizer as the
   // main loop; subagents get the file tools only (no workflow/product tools).
-  // Registered BEFORE createCodingAgentSession: the session snapshots the
-  // plugin tool table at construction time.
+  // Product budget gate (T11a): the Loop freezes its remaining daily budget
+  // on the Run; the executor refuses new spawns once the completed agents'
+  // usage estimate exceeds it. Advisory - the product dailyCap stays the
+  // hard gate. No budget on the run = no gate.
+  let workflowSpentTokens = 0;
+  const workflowBudgetGate = (): { allowed: boolean; reason?: string } => {
+    const budget = activeRun?.workflowBudgetTokens;
+    if (budget == null) return { allowed: true };
+    if (workflowSpentTokens >= budget) {
+      return { allowed: false, reason: "workflow budget exhausted" };
+    }
+    return { allowed: true };
+  };
   const workflowExecutor = createWorkflowExecutor({
     makeSubagentStream: () => streamModel,
     modelId: deps.modelId,
@@ -383,7 +394,21 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     tools: fileTools,
     workspaceRoot: deps.workspaceRoot,
     workspaceAccess: deps.workspaceAccess,
-    emit: (event) => sessionEmit?.(event),
+    budgetGate: workflowBudgetGate,
+    emit: (event) => {
+      if (event.type === "workflow_agent_completed" && event.usage) {
+        const usage = event.usage;
+        if (typeof usage === "object") {
+          const tokens = (v: unknown): number => (typeof v === "number" && v > 0 ? v : 0);
+          workflowSpentTokens +=
+            tokens((usage as Record<string, unknown>).inputTokens) +
+            tokens((usage as Record<string, unknown>).outputTokens) +
+            tokens((usage as Record<string, unknown>).cacheReadTokens) +
+            tokens((usage as Record<string, unknown>).cacheWriteTokens);
+        }
+      }
+      sessionEmit?.(event);
+    },
     maxConcurrent: 8,
     maxTotal: 64,
   });

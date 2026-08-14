@@ -167,6 +167,7 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
       permissionMode: null,
       todoSnapshot: null,
       workspace: null,
+      workflowBudgetTokens: null,
       createdAt: 0,
       terminalAt: null,
     };

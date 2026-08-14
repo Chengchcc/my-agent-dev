@@ -57,6 +57,7 @@ function parseRun(row: typeof schema.agentRun.$inferSelect): AgentRun {
     skillRoots: row.skillRoots ? (JSON.parse(row.skillRoots) as string[]) : null,
     permissionMode: row.permissionMode,
     todoSnapshot: row.todoSnapshot,
+    workflowBudgetTokens: row.workflowBudgetTokens,
     createdAt: row.createdAt,
     terminalAt: row.terminalAt,
   };
@@ -85,6 +86,7 @@ function parseInput(row: typeof schema.branchInputQueue.$inferSelect): BranchInp
       systemPrompt: row.systemPrompt,
       skillRoots: row.skillRoots ? (JSON.parse(row.skillRoots) as string[]) : null,
       permissionMode: row.permissionMode,
+      workflowBudgetTokens: row.workflowBudgetTokens,
     },
     createdAt: row.createdAt,
     deliveredAt: row.deliveredAt,
@@ -147,6 +149,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
               systemPrompt: command.systemPrompt ?? null,
               skillRoots: command.skillRoots ? JSON.stringify(command.skillRoots) : null,
               permissionMode: command.permissionMode ?? null,
+              workflowBudgetTokens: command.workflowBudgetTokens ?? null,
               createdAt: now,
             })
             .run();
@@ -531,6 +534,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             systemPrompt: snapshot.systemPrompt ?? null,
             skillRoots: snapshot.skillRoots ? JSON.stringify(snapshot.skillRoots) : null,
             permissionMode: snapshot.permissionMode ?? null,
+            workflowBudgetTokens: snapshot.workflowBudgetTokens ?? null,
             createdAt: now,
           })
           .run();

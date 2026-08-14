@@ -369,12 +369,18 @@ export const agentRun = sqliteTable(
     systemPrompt: text("system_prompt"),
     /** JSON: frozen skill pack roots (absolute dirs scanned for SKILL.md). */
     skillRoots: text("skill_roots"),
+<<<<<<< HEAD
     /** Frozen permission_mode (ask/auto/deny), mapped per backend at
      *  dispatch (ADR 0020 decision 7; claude --permission-mode). */
     permissionMode: text("permission_mode"),
     /** JSON: the run's latest task list snapshot (todo_write product tool).
      *  Re-injected into the next run's prompt as the Current Tasks section. */
     todoSnapshot: text("todo_snapshot"),
+=======
+    /** Optional workflow budget (tokens): the Loop freezes the remaining
+     *  daily budget at dispatch; the child gates subagent spawns on it. */
+    workflowBudgetTokens: integer("workflow_budget_tokens"),
+>>>>>>> 8d65e63f (feat(agent-run): workflow budget frozen on runs and gated in the child)
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     terminalAt: integer("terminal_at", { mode: "number" }),
   },
@@ -415,7 +421,13 @@ export const branchInputQueue = sqliteTable(
     workspaceAccess: text("workspace_access"),
     systemPrompt: text("system_prompt"),
     skillRoots: text("skill_roots"), // JSON: readonly string[]
+<<<<<<< HEAD
     permissionMode: text("permission_mode"),
+=======
+    /** Optional workflow budget (tokens), frozen at enqueue; the child
+     *  gates workflow subagent spawns on it. */
+    workflowBudgetTokens: integer("workflow_budget_tokens"),
+>>>>>>> 8d65e63f (feat(agent-run): workflow budget frozen on runs and gated in the child)
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     deliveredAt: integer("delivered_at", { mode: "number" }),
   },
