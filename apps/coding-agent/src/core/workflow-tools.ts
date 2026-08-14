@@ -55,7 +55,6 @@ export function createWorkflowTools(deps: WorkflowToolDeps): readonly PluginTool
       type: "object",
       properties: {
         label: { type: "string" },
-        concurrency: { type: "number", maximum: 8 },
         items: {
           type: "array",
           maxItems: 64,

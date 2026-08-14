@@ -28,9 +28,12 @@ export async function evaluateWorkflowScript(input: {
 }): Promise<EvaluateResult> {
   const timeoutMs = input.timeoutMs ?? 60_000;
   const { agent, pipeline } = input.primitives;
+  // codeGeneration off kills the constructor.constructor escape: no dynamic
+  // code can be minted from the sandbox (the model's bash tool is already
+  // workspace-scoped; this closes the vm's host-Function bridge).
   const context = vm.createContext(
     { agent, pipeline, args: input.args },
-    { name: "workflow-script" },
+    { name: "workflow-script", codeGeneration: { strings: false, wasm: false } },
   );
   const wrapped = `(async () => { ${input.script} })()`;
   const promise = vm.runInContext(wrapped, context, { timeout: timeoutMs }) as Promise<unknown>;
