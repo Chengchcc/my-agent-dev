@@ -200,8 +200,10 @@ const results = await pipeline(Object.values(meta.items), async (item) => {
 });
 
 // After this workflow, use the write tool to update the meta block: for EACH
-// item set step (a legal edge), result (the verdict JSON), and touchedFiles
-// (the file list the fix agent reported, as a JSON array of strings).
+// item set step (one of triaged | fixing | verifying | awaiting_review |
+// resolved | inbox | promoted - a fixed+verified item moves to verifying),
+// result (the verdict JSON), and touchedFiles (the file list the fix agent
+// reported, as a JSON array of strings).
 return results;
 `;
 
@@ -432,8 +434,10 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       `# Workflow\nThe script at .workflows/loop.js carries EVERY item's state in its meta block. ` +
         `Run it with the workflow_run tool (pass the script text). After the workflow completes, ` +
         `use the write tool to update the meta block in .workflows/loop.js: for each item set ` +
-        `step (a legal transition), result (the verdict JSON from that item's verify agent), and ` +
-        `touchedFiles (the JSON array of files that item's fix agent reported).`,
+        `step (one of triaged | fixing | verifying | awaiting_review | resolved | inbox | ` +
+        `promoted - a fixed+verified item moves to verifying), result (the verdict JSON from ` +
+        `that item's verify agent), and touchedFiles (the JSON array of files that item's fix ` +
+        `agent reported).`,
     ].join("\n\n");
     const genSkillRoots = params.builtinSkillsDir
       ? [params.builtinSkillsDir, `${params.loopConfigPath}/skills`]
