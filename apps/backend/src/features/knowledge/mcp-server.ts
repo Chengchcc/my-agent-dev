@@ -9,7 +9,7 @@
  *  Usage: bun knowledge-mcp-server.ts <knowledge-dir>
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -29,14 +29,35 @@ if (!existsSync(root)) {
 const MAX_RESULTS = 20;
 const MAX_LINE = 400;
 
+/** The REAL root (symlinks resolved): every read path must land under it. */
+const realRoot = (() => {
+  try {
+    return realpathSync(root);
+  } catch {
+    return root;
+  }
+})();
+
 function inside(p: string): boolean {
-  return p === root || p.startsWith(`${root}${sep}`);
+  return p === realRoot || p.startsWith(`${realRoot}${sep}`);
+}
+
+function realpathSafe(p: string): string | null {
+  try {
+    return realpathSync(p);
+  } catch {
+    return null;
+  }
 }
 
 function* walkFiles(dir: string): Generator<string> {
   for (const name of readdirSync(dir).sort()) {
     const full = join(dir, name);
     try {
+      // Symlink escape guard: a linked file/dir outside the knowledge root
+      // must never be traversed or read (zip/pack sources are untrusted).
+      const real = realpathSafe(full);
+      if (real !== null && !inside(real)) return;
       if (statSync(full).isDirectory()) {
         yield* walkFiles(full);
       } else if (name !== "index.md" && /\.(md|txt|ya?ml|json)$/.test(name)) {
@@ -91,7 +112,9 @@ server.registerTool(
     const tagSet = new Set((tags ?? []).map((t) => t.toLowerCase()));
     const results: string[] = [];
     outer: for (const file of walkFiles(root)) {
-      const text = readFileSync(file, "utf-8");
+      const realFile = realpathSafe(file);
+      if (realFile === null || !inside(realFile)) continue;
+      const text = readFileSync(realFile, "utf-8");
       const meta = parseFrontmatter(text);
       const rel = file.slice(root.length + 1);
       if (tagSet.size > 0 && !meta.tags.some((t) => tagSet.has(t.toLowerCase()))) continue;

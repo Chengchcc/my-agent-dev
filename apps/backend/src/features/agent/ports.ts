@@ -1,7 +1,7 @@
 import type { AgentConfig } from "./agent-config.js";
 import type { AgentRow } from "./domain.js";
 
-/** Storage port for agents (file-first, ADR 0003 decision 1): the row
+/** Storage port for agents (file-first, ADR 0020 decision 1): the row
  *  carries only the FK anchor, the workspace location and the
  *  materialized `config` (parsed agent.yml). */
 export interface AgentPort {

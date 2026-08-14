@@ -1,7 +1,7 @@
 import type { BackendModelRef } from "@my-agent-team/agent-backend";
 import type { AgentConfig } from "./agent-config.js";
 
-/** Agent row (file-first, ADR 0003 decision 1): the DB keeps only the FK
+/** Agent row (file-first, ADR 0020 decision 1): the DB keeps only the FK
  *  anchor (id), the workspace location, and a materialized cache of the
  *  parsed `agent.yml` (`config`). */
 export interface AgentRow {
@@ -57,7 +57,7 @@ export interface UpdateAgentInput {
 
 /** Canonical Backend model reference for an Agent record. Reads from the
  *  materialized agent.yml config (runtime_config) — the file is the
- *  source (ADR 0003). */
+ *  source (ADR 0020). */
 export function agentModelRef(agent: Pick<AgentRow, "config">): BackendModelRef {
   const rc = agent.config.runtime_config;
   return {

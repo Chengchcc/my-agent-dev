@@ -33,6 +33,7 @@ export function createAgentSvc(
     port: agentPort,
     idGen: ulid,
     workspaceRoot: config.workspaceRoot,
+    allowedWorkspaceRoots: [config.workspaceRoot, join(config.dataDir, "agents")],
     onCreate: opts?.onAgentCreate,
     onUpdate: opts?.onAgentUpdate,
     materializeWorkspace: async (agentId) => {

@@ -221,7 +221,7 @@ export function createAgentRunExecutionService(
     );
   }
 
-  /** First-turn bridge (ADR 0003 decision 6): when the branch has no CLI
+  /** First-turn bridge (ADR 0020 decision 6): when the branch has no CLI
    *  session yet, the projected product history is flattened into the input
    *  message as text — the CLI session becomes the runtime truth from the
    *  second turn on. Flat text loses tool structure; accepted. */
@@ -237,7 +237,7 @@ export function createAgentRunExecutionService(
   /** Assemble the BackendRunInput for a run's single input. The run's
    *  systemPrompt + skillRoots are the frozen snapshot persisted at Run
    *  creation - never re-resolved at dispatch (recovery reuses them); they
-   *  stay in the contract as the run-scoped override channel (ADR 0003).
+   *  stay in the contract as the run-scoped override channel (ADR 0020).
    *  The Product Context (identity + current task list) rides the same
    *  prompt so CLI backends carry their run identity into product tools. */
   function renderTodoSection(todoSnapshot: string | null): string {
@@ -290,6 +290,9 @@ export function createAgentRunExecutionService(
     // CLI backends mount product tools through .mcp.json without the child's
     // per-call wire identity: the identity + task list ride the system
     // prompt, and the model passes the identity as a tool argument.
+    // SECURITY NOTE: the identity is anti-ACCIDENT, not anti-MALICE - a
+    // hostile model can forge any tuple it reads from the prompt. Hard
+    // binding needs a per-run token (scheduled, see security-debt-backlog).
     const productContext = [
       "## Product Context",
       "Product tools (history_recent, history_search, history_around,",
@@ -384,7 +387,7 @@ export function createAgentRunExecutionService(
 
     stage.name = "context_projection";
     const history = await projectHistory(run.branchId);
-    // The branch's CLI session reference (ADR 0003 decision 6): an opaque
+    // The branch's CLI session reference (ADR 0020 decision 6): an opaque
     // pointer the coding agent resolves natively — the product only
     // forwards it, never manages the session itself.
     const branch = await contextPort.getBranch(run.branchId);
@@ -392,7 +395,7 @@ export function createAgentRunExecutionService(
 
     stage.name = "backend_execute";
     debugLog("agent-run", `backend_execute runId=${runId}`);
-    // The branch's CLI session ref is kind-scoped (`<kind>:<ref>`, ADR 0003
+    // The branch's CLI session ref is kind-scoped (`<kind>:<ref>`, ADR 0020
     // decision 6): a ref written by another backend is junk to this CLI and
     // must never be forwarded (pi exits empty on a foreign --session id).
     const kindPrefix = `${run.modelRef.backendKind}:`;
@@ -427,7 +430,7 @@ export function createAgentRunExecutionService(
   /** Terminal handling for one outcome: completed -> atomic Product commit;
    *  failed/aborted/timeout -> terminal Run without an assistant message. */
   async function settleOutcome(run: AgentRun, outcome: BackendRunOutcome): Promise<void> {
-    // CLI session reference (ADR 0003 decision 6): kind-scoped on the
+    // CLI session reference (ADR 0020 decision 6): kind-scoped on the
     // branch so a backend switch never hands a foreign id to the next CLI.
     if (outcome.cliSessionRef) {
       const scoped = `${run.modelRef.backendKind}:${outcome.cliSessionRef}`;
