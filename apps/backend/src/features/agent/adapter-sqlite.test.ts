@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { openDb } from "../../infra/sqlite/db.js";
 import { sqliteAgentAdapter } from "./adapter-sqlite.js";
-import { agentConfigSchema, buildAgentConfig, serializeAgentYaml } from "./agent-config.js";
+import { buildAgentConfig, serializeAgentYaml } from "./agent-config.js";
 
 const db = openDb(":memory:");
 const adapter = sqliteAgentAdapter(db);

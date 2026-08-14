@@ -10,7 +10,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { reconcileSkillLinks, writeMcpConfig } from "./workspace-bridge.js";
+import {
+  reconcileAgentResources,
+  reconcileSkillLinks,
+  writeMcpConfig,
+} from "./workspace-bridge.js";
 
 function tmpWorkspace(): string {
   const dir = mkdtempSync(join(tmpdir(), "bridge-"));
@@ -67,5 +71,30 @@ describe("workspace bridge", () => {
     writeMcpConfig(ws, []);
     expect(existsSync(path)).toBe(false);
     rmSync(ws, { recursive: true, force: true });
+  });
+});
+
+describe("extraRoots bridge (ADR 0023)", () => {
+  test("mcp + product tools bridge into worktree roots too", () => {
+    const ws = tmpWorkspace();
+    const wt = tmpWorkspace();
+    reconcileAgentResources({
+      workspacePath: ws,
+      kind: "coding_agent",
+      skillPacks: [],
+      mcpServers: [
+        {
+          name: "product-tools",
+          transport: "sse",
+          url: "http://127.0.0.1:3005/sse",
+          bearerTokenEnv: "PRODUCT_TOOLS_RUN_TOKEN",
+        },
+      ],
+      productTools: [{ name: "history_recent" }],
+      knowledgePacks: [],
+      extraRoots: [wt],
+    });
+    expect(existsSync(join(wt, ".mcp.json"))).toBe(true);
+    expect(existsSync(join(wt, ".agent", "product-tools.json"))).toBe(true);
   });
 });

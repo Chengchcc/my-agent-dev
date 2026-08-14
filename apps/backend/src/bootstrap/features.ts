@@ -49,6 +49,7 @@ import {
   sqliteProductToolCallAdapter,
 } from "../features/product-tools/index.js";
 import { createRunTokenRegistry } from "../features/product-tools/run-token-registry.js";
+import { ensureMirror, ensureWorktree } from "../features/project/worktree.js";
 import {
   createProjectService,
   projectRoutes,
@@ -512,7 +513,38 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       const assignedKnowledge = agent.config.runtime_config.knowledge_packs
         .map((packId) => knowledgeSvc.getById(packId))
         .filter((p): p is NonNullable<typeof p> => p !== null && p.status === "ready");
+      // ADR 0023: materialize a worktree per attached project and bridge
+      // the same mcp + product-tools config into it. Failures warn, never
+      // throw (reconcile stays best-effort like the other bridges).
+      const extraRoots: string[] = [];
+      for (const pid of agent.config.runtime_config.projects) {
+        const project = projectSvc.getById(pid);
+        if (!project?.repoUrl) {
+          console.warn(
+            `[reconcile] agent ${agentId}: project ${pid} missing or no repoUrl, skipped`,
+          );
+          continue;
+        }
+        const wp = {
+          projectId: project.projectId,
+          repoUrl: project.repoUrl,
+          defaultBranch: project.defaultBranch,
+        };
+        try {
+          const mirror = await ensureMirror(config.dataDir, wp);
+          const wt = await ensureWorktree(mirror, agent.workspacePath, wp, agentId);
+          if (wt) extraRoots.push(wt);
+          else {
+            console.warn(
+              `[reconcile] agent ${agentId}: worktree slot for ${pid} occupied, skipped`,
+            );
+          }
+        } catch (err) {
+          console.warn(`[reconcile] agent ${agentId}: worktree for ${pid} failed:`, err);
+        }
+      }
       reconcileAgentResources({
+        extraRoots,
         workspacePath: agent.workspacePath,
         kind: agent.config.runtime_config.runtime,
         skillPacks: packs
