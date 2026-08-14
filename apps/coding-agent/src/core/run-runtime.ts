@@ -37,6 +37,7 @@ import {
   type WebSearchPort,
 } from "@my-agent-team/tools-common";
 import { fakeProvider } from "./fake-provider.js";
+import { mountWorkspaceMcpServers } from "./mcp-mount.js";
 
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { readProductToolsManifest } from "./product-tools-manifest.js";
@@ -144,8 +145,8 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   // Generic .mcp.json mounting (ADR 0022): user servers + knowledge.
   // Skips "product-tools" (the manifest path owns it) and names that
   // collide with the native table.
-  tools.push(
-    ...(await mountWorkspaceMcpServers(deps.workspaceRoot, new Set(tools.map((t) => t.name)))),
+  fileTools.push(
+    ...(await mountWorkspaceMcpServers(deps.workspaceRoot, new Set(fileTools.map((t) => t.name)))),
   );
   if (deps.webSearch) {
     fileTools.push(createPortWebSearchTool(deps.webSearch) as unknown as PluginTool);

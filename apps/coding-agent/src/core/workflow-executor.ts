@@ -160,7 +160,6 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
             runId: sessionId,
             model: { backendKind: "coding_agent", modelId: opts.modelId },
             systemPrompt: SUBAGENT_SYSTEM_PROMPT,
-            productTools: [],
             configRevision: 0,
           },
           workspace: { root: opts.workspaceRoot, access: opts.workspaceAccess },

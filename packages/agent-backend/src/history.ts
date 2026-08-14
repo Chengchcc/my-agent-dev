@@ -29,7 +29,6 @@ export interface AgentRunSnapshot<K extends string = string> {
   /** Skill pack roots (absolute dirs scanned for SKILL.md), frozen at Run
    *  creation. The Runtime loads them via the progressive skill plugin. */
   readonly skillRoots?: readonly string[];
-<<<<<<< HEAD
   /** The branch's CLI session reference (ADR 0003 decision 6): an opaque
    *  pointer the coding agent resolves itself (its own native session
    *  storage). Absent = fresh session. The product stores only this
@@ -38,10 +37,7 @@ export interface AgentRunSnapshot<K extends string = string> {
   /** Frozen permission_mode (ask/auto/deny), mapped per backend at
    *  dispatch (ADR 0020 decision 7). */
   readonly permissionMode?: "ask" | "auto" | "deny";
-=======
   /** Optional workflow budget (tokens) frozen at Run creation. */
   readonly workflowBudgetTokens?: number;
-  readonly productTools: readonly ProductToolDescriptor[];
->>>>>>> 8d65e63f (feat(agent-run): workflow budget frozen on runs and gated in the child)
   readonly configRevision: number;
 }
