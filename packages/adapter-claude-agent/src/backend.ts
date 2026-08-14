@@ -237,10 +237,13 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
     handle: ActiveRun,
     input: BackendRunInput<"claude_code">,
   ): Promise<void> {
-    await guardedConsume(() => this.consumeBody(handle, input), (message) => {
-      handle.settle({ status: "failed", error: `stdout consume failed: ${message}` });
-      this.active.delete(handle.runId);
-    });
+    await guardedConsume(
+      () => this.consumeBody(handle, input),
+      (message) => {
+        handle.settle({ status: "failed", error: `stdout consume failed: ${message}` });
+        this.active.delete(handle.runId);
+      },
+    );
   }
 
   private async consumeBody(

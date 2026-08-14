@@ -89,7 +89,7 @@ async function main(): Promise<void> {
         type: string;
         runId?: string;
         input?: {
-          run?: { runId?: string };
+          run?: { runId?: string; cliSessionRef?: string };
           input?: { message?: { text?: string } };
         };
       };

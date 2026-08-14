@@ -4,7 +4,6 @@ export {
   mergeMcpCatalog,
   readMcpCatalog,
 } from "./adapter-file.js";
-export { backfillLegacyMcpAssignments } from "./backfill.js";
 export type {
   AgentMcpAssignment,
   CreateMcpServerInput,

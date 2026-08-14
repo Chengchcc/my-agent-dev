@@ -69,11 +69,11 @@ describe("outcome messages", () => {
   });
 });
 
-  test("an error event with NO message still registers a failed outcome", () => {
-    const acc = createOmpAccumulator();
-    const evt = parseOmpLine(JSON.stringify({ type: "error" }));
-    expect(evt).not.toBeNull();
-    if (evt) mapOmpEvent(acc, evt);
-    expect(typeof acc.error).toBe("string");
-    expect(acc.error).toBeTruthy();
-  });
+test("an error event with NO message still registers a failed outcome", () => {
+  const acc = createOmpAccumulator();
+  const evt = parseOmpLine(JSON.stringify({ type: "error" }));
+  expect(evt).not.toBeNull();
+  if (evt) mapOmpEvent(acc, evt);
+  expect(typeof acc.error).toBe("string");
+  expect(acc.error).toBeTruthy();
+});
