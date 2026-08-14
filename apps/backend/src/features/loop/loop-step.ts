@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import type { BackendModelRef, BackendRunOutcome } from "@my-agent-team/agent-backend";
-import type { LoopConfig, LoopState } from "@my-agent-team/loop";
-import { loopReducer, parseLoopConfig, parseVerdictMd } from "@my-agent-team/loop";
+import type { LoopConfig, LoopState, Verdict } from "@my-agent-team/loop";
+import { loopReducer, parseLoopConfig, validateLoopMetaPatch } from "@my-agent-team/loop";
 import { isTerminalStatus } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
@@ -42,6 +42,9 @@ export interface LoopStepParams {
   agentRunExecution: AgentRunExecutionService;
   /** Resolve a LOOP.md model name to a BackendModelRef. */
   resolveModel: (modelName: string) => Promise<BackendModelRef>;
+  /** The repo builtin skills dir (workflow authoring etc.); prepended to
+   *  the generator's skill roots when provided. */
+  builtinSkillsDir?: string;
 }
 
 /** Stable deterministic identities - Generator and Evaluator are fully
@@ -49,14 +52,8 @@ export interface LoopStepParams {
 export function loopGeneratorConversationId(loopId: string): string {
   return `loop:${loopId}:generator`;
 }
-export function loopEvaluatorConversationId(loopId: string): string {
-  return `loop:${loopId}:evaluator`;
-}
 export function loopGeneratorMemberId(loopId: string): string {
   return `loop-generator:${loopId}`;
-}
-export function loopEvaluatorMemberId(loopId: string): string {
-  return `loop-evaluator:${loopId}`;
 }
 
 function usageTokens(usage: BackendRunOutcome["usage"] | null | undefined): number {
@@ -166,6 +163,59 @@ function actionToReducer(action: ReviewAction) {
   }
 }
 
+/** The workflow script the Loop seeds per item. The meta block carries
+ *  the item's state (seeded as JSON); the model updates it after the run
+ *  via the write tool, and the product validates the writeback with
+ *  validateLoopMetaPatch before applying the verdict. */
+const LOOP_WORKFLOW_TEMPLATE = `// Loop workflow (product-seeded). Update the meta block after the run
+// with the item's new step (a legal transition) and its verdict result.
+export const meta = __META_JSON__;
+
+const item = Object.values(meta.items)[0];
+const fix = await agent(
+  \`Fix the loop item. Summary: \${item.summary}. Source: \${item.source}. Smallest possible diff; do not commit.\`,
+  { label: \`\${item.id}-fix\` },
+);
+const verdict = await agent(
+  \`Verify the fix for item \${item.id}. Run the relevant tests and return JSON: {"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"..."}.\`,
+  {
+    label: \`\${item.id}-verify\`,
+    schema: {
+      type: "object",
+      properties: {
+        verdict: { type: "string", enum: ["PASS", "REJECT", "ESCALATE"] },
+        reasons: { type: "array" },
+        evidence: { type: "string" },
+      },
+      required: ["verdict", "evidence"],
+    },
+  },
+);
+// After this workflow, use the write tool to update the meta block above:
+// the item's step (legal edge) and result (the verdict JSON above).
+return { id: item.id, verdict: verdict.output, fixText: fix.text };
+`;
+
+function seedLoopWorkflowScript(item: LoopState["items"][string]): string {
+  const metaJson = JSON.stringify({ items: { [item.id]: item } });
+  return LOOP_WORKFLOW_TEMPLATE.replace("__META_JSON__", metaJson);
+}
+
+/** Extract the model-edited meta block: balanced-brace scan + lenient JSON
+ *  (line comments + trailing commas stripped). Null = unparseable. */
+function extractLoopWorkflowMeta(script: string): LoopState | null {
+  const m = script.match(/export const meta\s*=\s*(\{[\s\S]*?\});/);
+  if (!m || !m[1]) return null;
+  const cleaned = m[1].replace(/\/\/[^\n]*/g, "").replace(/,\s*([}\]])/g, "$1");
+  try {
+    const parsed = JSON.parse(cleaned) as { items?: LoopState["items"] };
+    if (!parsed.items || typeof parsed.items !== "object") return null;
+    return { loopId: "", lastRun: null, items: parsed.items };
+  } catch {
+    return null;
+  }
+}
+
 function buildGeneratorPrompt(
   item: LoopState["items"][string],
   template: string,
@@ -197,7 +247,6 @@ export async function loopStep(params: LoopStepParams): Promise<LoopState> {
 
 async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
   const repoPath = await resolveRepoPath(params.loopConfigPath, params.projectPort, params.dataDir);
-  const workDir = repoPath ?? params.loopConfigPath;
 
   // 1. Read state from DB
   let state = params.store.load(params.loopId);
@@ -228,10 +277,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
   }
 
   const genModel = cfg.generator.model;
-  const evalModel = cfg.evaluator.model;
   const genPrompt = cfg.generator.systemPrompt;
-  const evalPrompt = cfg.evaluator.systemPrompt;
-  const acceptance = cfg.acceptance || "被修改的文件相关测试全绿，改动范围合理";
   const denylist: string[] = cfg.denylist;
   const dailyCap = cfg.budget?.dailyCap ?? 0;
 
@@ -335,7 +381,10 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
 
     const baseSha = (await git.revParse(cwd)).text().trim();
 
-    // ── Generator: one Agent Run on its own stable scope ──
+    // ── Generator: one Agent Run per item, workflow-driven ──
+    // The Loop seeds the workflow script (meta = this item's state); the
+    // generator runs it (fix fan-out + self-verification) and writes the
+    // verdict back into the script's meta via the write tool.
     const genConversationId = loopGeneratorConversationId(params.loopId);
     const genMemberId = loopGeneratorMemberId(params.loopId);
     await ensureLoopScope(params.convPort, genConversationId, genMemberId, "default");
@@ -344,6 +393,17 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       .quiet()
       .text()
       .catch(() => "");
+    await Bun.write(`${cwd}/.workflows/loop.js`, seedLoopWorkflowScript(item)).catch(() => {});
+    const genPromptFull = [
+      buildGeneratorPrompt(item, genPrompt, { repoPath: cwd, gitLog }),
+      `# Workflow\nThe script at .workflows/loop.js carries this item's state in its meta block. ` +
+        `Run it with the workflow_run tool (pass the script text). After the workflow completes, ` +
+        `use the write tool to update the meta block in .workflows/loop.js: the item's step must ` +
+        `follow a legal transition and its result must be the verdict JSON from the verify agent.`,
+    ].join("\n\n");
+    const genSkillRoots = params.builtinSkillsDir
+      ? [params.builtinSkillsDir, `${params.loopConfigPath}/skills`]
+      : [`${params.loopConfigPath}/skills`];
     let genAcquire = await params.agentRunService.enqueueAndAcquire({
       conversationId: genConversationId,
       agentMemberId: genMemberId,
@@ -351,18 +411,21 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       mode: "normal",
       message: {
         role: "user",
-        text: buildGeneratorPrompt(item, genPrompt, { repoPath: cwd, gitLog }),
+        text: genPromptFull,
       },
       defaultModel: await params.resolveModel(genModel),
       configRevision: 1,
       idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}`,
       // LOOP.md generator systemPrompt is the frozen Run system prompt;
-      // skills live in the loop config's skills/ dir.
+      // skills live in the loop config's skills/ dir + the builtin docs.
       systemPrompt: genPrompt || undefined,
-      skillRoots: [`${params.loopConfigPath}/skills`],
+      skillRoots: genSkillRoots,
       // Workspace is a Run execution fact: the Generator MUST run in the
       // cloned repo, not the loop-agent's own workspace.
       workspace: { root: cwd, access: "read_write" },
+      // Freeze the remaining daily budget on the Run: the child's workflow
+      // executor gates subagent spawns against it.
+      ...(dailyCap > 0 ? { workflowBudgetTokens: Math.max(0, dailyCap - spent) } : {}),
     });
     if (
       genAcquire.replayed &&
@@ -380,14 +443,15 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         mode: "normal",
         message: {
           role: "user",
-          text: buildGeneratorPrompt(item, genPrompt, { repoPath: cwd, gitLog }),
+          text: genPromptFull,
         },
         defaultModel: await params.resolveModel(genModel),
         configRevision: 1,
         idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}:retry`,
         systemPrompt: genPrompt || undefined,
-        skillRoots: [`${params.loopConfigPath}/skills`],
+        skillRoots: genSkillRoots,
         workspace: { root: cwd, access: "read_write" },
+        ...(dailyCap > 0 ? { workflowBudgetTokens: Math.max(0, dailyCap - spent) } : {}),
       });
       if (retry.acquired && retry.run) {
         genAcquire = { ...retry, replayed: false };
@@ -431,116 +495,47 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         verdict: {
           verdict: "REJECT",
           reasons: [`修改了 denylist 保护路径: ${violations.join(", ")}`],
-          evidence: "denylist check (pre-evaluator)",
+          evidence: "denylist check (pre-verifier)",
         },
       });
       await git.resetHard(cwd, baseSha);
       continue;
     }
 
-    // ── Evaluator: separate stable scope, only after deterministic prep ──
-    // The user prompt ALWAYS carries acceptance criteria, the changed files
-    // and the VERDICT.md requirement; the LOOP.md systemPrompt is only an
-    // extra behavioral constraint (frozen into the Run as systemPrompt).
-    const evaluatorPrompt = [
-      `# Acceptance Criteria\n${acceptance}`,
-      `# Files Changed\n${filesChanged || "none"}`,
-      `# Task\nReview the changes in the workspace against the acceptance criteria. ` +
-        `Write your verdict to VERDICT.md in the workspace root. The file must contain YAML with: ` +
-        `verdict: PASS | REJECT | ESCALATE, reasons: [...], evidence: "..."`,
-      ...(evalPrompt.trim() ? [`# Additional Instructions\n${evalPrompt.trim()}`] : []),
-    ].join("\n\n");
-    const evalConversationId = loopEvaluatorConversationId(params.loopId);
-    const evalMemberId = loopEvaluatorMemberId(params.loopId);
-    await ensureLoopScope(params.convPort, evalConversationId, evalMemberId, "default");
-
-    const verdictPath = `${workDir}/VERDICT.md`;
-    try {
-      await Bun.write(verdictPath, "");
-    } catch {
-      // ignore
-    }
-
-    let evalAcquire = await params.agentRunService.enqueueAndAcquire({
-      conversationId: evalConversationId,
-      agentMemberId: evalMemberId,
-      backendKind: "coding_agent",
-      mode: "normal",
-      message: { role: "user", text: evaluatorPrompt },
-      defaultModel: await params.resolveModel(evalModel),
-      configRevision: 1,
-      idempotencyKey: `loop-eval:${params.loopId}:${item.id}:${baseSha}`,
-      // Evaluator systemPrompt from LOOP.md; skills from the loop config.
-      systemPrompt: evalPrompt || undefined,
-      skillRoots: [`${params.loopConfigPath}/skills`],
-      // The Evaluator writes VERDICT.md into the same clone; read_write is
-      // honest until the verdict moves out-of-band.
-      workspace: { root: workDir, access: "read_write" },
-    });
-    if (
-      evalAcquire.replayed &&
-      evalAcquire.run &&
-      isTerminalStatus(evalAcquire.run.status) &&
-      evalAcquire.run.status !== "completed"
-    ) {
-      const retry = await params.agentRunService.enqueueAndAcquire({
-        conversationId: evalConversationId,
-        agentMemberId: evalMemberId,
-        backendKind: "coding_agent",
-        mode: "normal",
-        message: { role: "user", text: evaluatorPrompt },
-        defaultModel: await params.resolveModel(evalModel),
-        configRevision: 1,
-        idempotencyKey: `loop-eval:${params.loopId}:${item.id}:${baseSha}:retry`,
-        systemPrompt: evalPrompt || undefined,
-        skillRoots: [`${params.loopConfigPath}/skills`],
-        workspace: { root: workDir, access: "read_write" },
-      });
-      if (retry.acquired && retry.run) {
-        evalAcquire = { ...retry, replayed: false };
-      }
-    }
-    if (!evalAcquire.acquired || !evalAcquire.run) {
-      throw new Error(
-        `loopStep: evaluator run for item ${item.id} could not acquire its branch (queued behind an active run)`,
-      );
-    }
-    const evaluatorRunId = evalAcquire.run.runId;
-    const EVALUATOR_TIMEOUT_MS = 60_000;
-    const evalWatchdog = setTimeout(() => {
-      void params.agentRunExecution.stop(evaluatorRunId).catch(() => {});
-    }, EVALUATOR_TIMEOUT_MS);
-    try {
-      await params.agentRunExecution.dispatch(evaluatorRunId);
-    } finally {
-      clearTimeout(evalWatchdog);
-    }
-    const evalRun = await params.agentRunService.getRun(evaluatorRunId);
-    if (dailyCap > 0) {
-      spent = params.store.addBudget(
-        params.loopId,
-        today,
-        usageTokens(evalRun?.terminalResult?.usage),
-      );
-    }
-    // Read verdict (the file content is the verdict fact; the run outcome
-    // only says whether execution completed)
-    const verdictMd = await Bun.file(verdictPath)
+    // ── Workflow verdict: the script's meta carries the result ──
+    // The model wrote the verdict into .workflows/loop.js; the product
+    // validates the writeback against the pure reducer invariants and
+    // applies the EVALUATOR_VERDICT transition. No separate evaluator Run.
+    const scriptText = await Bun.file(`${cwd}/.workflows/loop.js`)
       .text()
       .catch(() => "");
-    let verdict = parseVerdictMd(verdictMd);
-    if (!verdictMd.trim()) {
-      verdict = { verdict: "ESCALATE", reasons: ["evaluator produced no verdict"], evidence: "" };
+    const writtenMeta = extractLoopWorkflowMeta(scriptText);
+    const seedMeta: LoopState = {
+      loopId: params.loopId,
+      lastRun: null,
+      items: { [item.id]: item },
+    };
+    const noVerdict = (reason: string): Verdict => ({
+      verdict: "ESCALATE",
+      reasons: [reason],
+      evidence: "",
+    });
+    let verdict: Verdict;
+    if (!writtenMeta) {
+      verdict = noVerdict("workflow script has no parseable meta block");
+    } else {
+      const validation = validateLoopMetaPatch(seedMeta, writtenMeta);
+      if (!validation.ok) {
+        verdict = noVerdict(`workflow meta writeback invalid: ${validation.reason}`);
+      } else {
+        verdict = writtenMeta.items[item.id]?.result ?? noVerdict("workflow wrote no verdict");
+      }
     }
-
-    if (verdict) {
-      state = loopReducer(state, {
-        type: "EVALUATOR_VERDICT",
-        itemId: item.id,
-        verdict,
-        evaluatorRunId,
-      });
-    }
+    state = loopReducer(state, {
+      type: "EVALUATOR_VERDICT",
+      itemId: item.id,
+      verdict,
+    });
 
     // Rollback on REJECT/ESCALATE
     const updatedItem = state.items[item.id];

@@ -164,6 +164,7 @@ export function createCronScheduler(deps: {
         backendKind: "coding_agent",
         modelId,
       }),
+      builtinSkillsDir: deps.config.builtinSkillsDir,
     };
     let attempt = 0;
     let currentJob = job;

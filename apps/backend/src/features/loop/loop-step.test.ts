@@ -126,9 +126,10 @@ function emptyState(): LoopState {
 
 interface RunScript {
   genStatus?: "completed" | "failed" | "commit_failed";
-  evalStatus?: "completed" | "aborted" | "timeout";
-  /** VERDICT.md content the evaluator "writes". */
-  evalVerdictMd?: string;
+  /** The workflow meta the fake generator "writes back" to
+   *  .workflows/loop.js. undefined = a default PASS meta; null = no file
+   *  (the no-writeback path). */
+  workflowMeta?: Record<string, unknown> | null;
   /** usage tokens returned on both runs. */
   usageTokens?: number;
   /** generator rejects the input (queued behind another run). */
@@ -235,27 +236,31 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
     async dispatch(runId) {
       const run = runs.get(runId);
       if (!run) return;
-      if (run.agentMemberId.startsWith("loop-evaluator")) {
-        const status = script.evalStatus ?? "completed";
-        (run as { status: AgentRun["status"] }).status = status;
-        if (script.evalVerdictMd !== undefined) {
-          await Bun.write(`${workDir}/VERDICT.md`, script.evalVerdictMd);
-        }
-        (run as { terminalResult: BackendRunOutcome | null }).terminalResult = {
-          status: status === "completed" ? "completed" : status,
-          ...(script.usageTokens !== undefined
-            ? { usage: { inputTokens: script.usageTokens, outputTokens: 0 } }
-            : {}),
-        } as BackendRunOutcome;
-      } else {
-        const status = script.genStatus ?? "completed";
-        (run as { status: AgentRun["status"] }).status = status;
-        (run as { terminalResult: BackendRunOutcome | null }).terminalResult = {
-          status: status === "completed" ? "completed" : status,
-          ...(script.usageTokens !== undefined
-            ? { usage: { inputTokens: script.usageTokens, outputTokens: 0 } }
-            : {}),
-        } as BackendRunOutcome;
+      const status = script.genStatus ?? "completed";
+      (run as { status: AgentRun["status"] }).status = status;
+      (run as { terminalResult: BackendRunOutcome | null }).terminalResult = {
+        status: status === "completed" ? "completed" : status,
+        ...(script.usageTokens !== undefined
+          ? { usage: { inputTokens: script.usageTokens, outputTokens: 0 } }
+          : {}),
+      } as BackendRunOutcome;
+      // The fake model writes the workflow meta back to the script file.
+      if (script.workflowMeta !== null) {
+        const meta =
+          script.workflowMeta ??
+          ({
+            "item-1": {
+              id: "item-1",
+              step: "verifying",
+              result: { verdict: "PASS", evidence: "e" },
+            },
+          } as Record<string, unknown>);
+        const dir = `${workDir}/.workflows`;
+        await mkdir(dir, { recursive: true });
+        await Bun.write(
+          `${dir}/loop.js`,
+          `export const meta = ${JSON.stringify({ items: meta })};`,
+        );
       }
     },
     async recover() {},
@@ -279,8 +284,6 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
 }
 
 const genConversationId = (loopId: string) => `loop:${loopId}:generator`;
-const evalConversationId = (loopId: string) => `loop:${loopId}:evaluator`;
-
 async function runStep(
   overrides: Partial<{
     store: LoopStateStore;
@@ -341,46 +344,45 @@ function stateWithFixingItem(store: LoopStateStore): LoopState {
 }
 
 describe("loopStep — Generator/Evaluator as Agent Runs", () => {
-  test("TICK → generator + evaluator each run on their own stable scope", async () => {
+  test("TICK → one generator run on its stable scope (no evaluator scope)", async () => {
     const store = createTestStore();
     stateWithFixingItem(store);
-    const { enqueues } = await runStep({
-      store,
-      script: { evalVerdictMd: "verdict: PASS\nevidence: ok" },
-    });
+    const { enqueues } = await runStep({ store });
 
     const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"));
-    const eva = enqueues.find((e) => e.agentMemberId.startsWith("loop-evaluator"));
     expect(gen).toBeTruthy();
-    expect(eva).toBeTruthy();
-    // independent deterministic identities
+    expect(enqueues.some((e) => e.agentMemberId.startsWith("loop-evaluator"))).toBe(false);
+    // deterministic generator identity
     expect(gen!.conversationId).toBe(genConversationId("test"));
-    expect(eva!.conversationId).toBe(evalConversationId("test"));
-    expect(gen!.conversationId).not.toBe(eva!.conversationId);
     expect(gen!.mode).toBe("normal");
     expect(gen!.idempotencyKey).toContain("loop-gen:test:item-1:");
+    // the seeded workflow instruction rides the prompt
+    expect(gen!.message?.text).toContain(".workflows/loop.js");
   });
 
-  test("PASS verdict → item resolved; generatorRunId + evaluatorRunId persisted", async () => {
+  test("PASS verdict via workflow meta → awaiting_review; generatorRunId persisted", async () => {
     const store = createTestStore();
     stateWithFixingItem(store);
-    const { enqueues } = await runStep({
+    await runStep({
       store,
-      script: { evalVerdictMd: "verdict: PASS\nevidence: tests green" },
+      script: {
+        workflowMeta: {
+          "item-1": {
+            id: "item-1",
+            step: "verifying",
+            result: { verdict: "PASS", evidence: "tests green" },
+          },
+        },
+      },
     });
-    const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"))!;
-    const eva = enqueues.find((e) => e.agentMemberId.startsWith("loop-evaluator"))!;
 
     const saved = store.load("test");
     const item = Object.values(saved.items)[0]!;
     expect(item.step).toBe("awaiting_review");
-    // generatorRunId field now carries the Agent Run id
+    // generatorRunId field now carries the Agent Run id; no evaluator run id
     expect(item.generatorRunId).toMatch(/^run-\d+$/);
-    expect(item.evaluatorRunId).toMatch(/^run-\d+$/);
-    expect(item.evaluatorRunId).not.toBe(item.generatorRunId);
+    expect(item.evaluatorRunId).toBeFalsy();
     expect(item.result?.verdict).toBe("PASS");
-    void gen;
-    void eva;
   });
 
   test("generator run queued → loopStep fails (no dispatch of a second run)", async () => {
@@ -432,10 +434,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     stateWithFixingItem(store);
     const { enqueues } = await runStep({
       store,
-      script: {
-        genReplayTerminal: true,
-        evalVerdictMd: "verdict: PASS\nevidence: e",
-      },
+      script: { genReplayTerminal: true },
     });
     // first enqueue replayed the terminal run; the retry-scoped key acquired
     // a fresh run and the loop completed normally
@@ -468,7 +467,15 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     const { result } = await runStep({
       store,
       gitRunner,
-      script: { evalVerdictMd: "verdict: REJECT\nreason: not good\nevidence: e" },
+      script: {
+        workflowMeta: {
+          "item-1": {
+            id: "item-1",
+            step: "verifying",
+            result: { verdict: "REJECT", reasons: ["not good"], evidence: "e" },
+          },
+        },
+      },
     });
     const item = result.items["item-1"]!;
     expect(item.step).toBe("fixing");
@@ -489,26 +496,13 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     expect(result.items["item-1"]!.result?.verdict).toBe("REJECT");
   });
 
-  test("empty VERDICT.md → ESCALATE to inbox", async () => {
+  test("no workflow meta writeback → ESCALATE to inbox", async () => {
     const store = createTestStore();
     stateWithFixingItem(store);
-    const { result } = await runStep({ store, script: { evalVerdictMd: "" } });
+    const { result } = await runStep({ store, script: { workflowMeta: null } });
     const item = result.items["item-1"]!;
     expect(item.step).toBe("inbox");
     expect(item.result?.verdict).toBe("ESCALATE");
-  });
-
-  test("evaluator timeout (aborted) → no crash, ESCALATE on empty verdict", async () => {
-    const store = createTestStore();
-    stateWithFixingItem(store);
-    const { result } = await runStep({
-      store,
-      script: { evalStatus: "aborted", evalVerdictMd: "" },
-    });
-    const item = result.items["item-1"]!;
-    expect(item.step).toBe("inbox");
-    expect(item.result?.verdict).toBe("ESCALATE");
-    expect(item.evaluatorRunId).toBeTruthy();
   });
 
   test("human APPROVE → resolved item removed from store", async () => {
@@ -542,13 +536,9 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     const store = createTestStore();
     stateWithFixingItem(store);
     const dir = await initLoopDir("test-project", undefined, "  dailyCap: 10000");
-    await runStep({
-      store,
-      dir,
-      script: { evalVerdictMd: "verdict: PASS\nevidence: e", usageTokens: 1500 },
-    });
+    await runStep({ store, dir, script: { usageTokens: 1500 } });
     const spent = store.getBudget("test", new Date().toISOString().slice(0, 10));
-    expect(spent).toBe(3000); // gen + eval
+    expect(spent).toBe(1500); // one generator run (the evaluator Run is gone)
   });
 
   test("generator prompt includes repo path + git log context", async () => {
@@ -568,7 +558,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
         dataDir,
         projectPort,
         gitRunner,
-        script: { evalVerdictMd: "verdict: PASS\nevidence: e" },
+        script: {},
       });
       const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"))!;
       expect(gen.message.text).toContain(`${dataDir}/repos/test-project`);
