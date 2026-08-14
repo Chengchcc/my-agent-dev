@@ -84,7 +84,9 @@ export function MessageBubble({
   return (
     <MessageShell align={align} name={name} kind={kind} agentId={agentId} isStreaming={isStreaming}>
       {isSelf ? (
-        <p className="whitespace-pre-wrap wrap-break-word text-(--ink)">{content}</p>
+        <p className="whitespace-pre-wrap wrap-break-word text-(--ink) bg-(--panel2) rounded-lg px-3 py-2">
+          {content}
+        </p>
       ) : (
         <>
           <StreamingMarkdown text={content} streaming={isStreaming ?? false} />
@@ -103,7 +105,7 @@ export function MessageBubble({
       {(state === "error" || error) && (
         <div
           data-testid="message-error"
-          className="mt-2 px-3 py-2 rounded-md border border-(--err)/40 bg-(--err)/10 text-xs text-(--err) break-words"
+          className="mt-2 px-3 py-2 rounded-md border border-(--err)/40 bg-(--err)/10 text-xs text-(--err) wrap-break-word"
         >
           {error ?? "Run failed"}
         </div>

@@ -32,4 +32,12 @@ describe("MessageBubble error pill", () => {
     );
     expect(html).not.toContain("message-error");
   });
+
+  test("user messages render as a panel2 bubble (§3)", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubble align="right" kind="human" content="hello" state="done" />,
+    );
+    expect(html).toContain("bg-(--panel2)");
+    expect(html).toContain("rounded-lg");
+  });
 });
