@@ -19,8 +19,8 @@ import type {
   BackendRunOutcome,
   BackendRunSegment,
 } from "@my-agent-team/agent-backend";
-import { buildOutcomeMessages, createPiAccumulator, mapPiEvent } from "./event-mapper.js";
 import { guardedConsume } from "@my-agent-team/agent-backend";
+import { buildOutcomeMessages, createPiAccumulator, mapPiEvent } from "./event-mapper.js";
 import { type SpawnedPiProcess, spawnPiProcess } from "./process.js";
 import { parsePiLine } from "./wire.js";
 
@@ -199,10 +199,13 @@ export class PiBackend implements AgentBackend<"pi"> {
   /** Single stdout parse loop. The terminal outcome is decided ONLY here
    *  (exit code + error event). */
   private async consumeStdout(handle: ActiveRun, resumeRef: string | undefined): Promise<void> {
-    await guardedConsume(() => this.consumeBody(handle, resumeRef), (message) => {
-      handle.settle({ status: "failed", error: `stdout consume failed: ${message}` });
-      this.active.delete(handle.runId);
-    });
+    await guardedConsume(
+      () => this.consumeBody(handle, resumeRef),
+      (message) => {
+        handle.settle({ status: "failed", error: `stdout consume failed: ${message}` });
+        this.active.delete(handle.runId);
+      },
+    );
   }
 
   private async consumeBody(handle: ActiveRun, resumeRef: string | undefined): Promise<void> {

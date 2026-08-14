@@ -108,9 +108,15 @@ export function mapOmpEvent(acc: OmpRunAccumulator, evt: OmpEvent): boolean {
       return false;
     }
     case "error": {
+      // JSON.stringify(undefined) returns undefined and poisons the string
+      // type; a missing message must still land a failed outcome.
       acc.error =
-        typeof evt.message === "string" && evt.message ? evt.message : JSON.stringify(evt.message);
-      return acc.error !== null;
+        typeof evt.message === "string" && evt.message
+          ? evt.message
+          : evt.message === undefined
+            ? "cli reported an error (no message)"
+            : String(JSON.stringify(evt.message));
+      return true;
     }
     case "auto_retry_end": {
       if (evt.success === false && typeof evt.finalError === "string" && evt.finalError) {

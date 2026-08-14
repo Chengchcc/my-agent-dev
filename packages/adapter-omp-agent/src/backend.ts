@@ -16,8 +16,8 @@ import type {
   BackendRunOutcome,
   BackendRunSegment,
 } from "@my-agent-team/agent-backend";
-import { buildOutcomeMessages, createOmpAccumulator, mapOmpEvent } from "./event-mapper.js";
 import { guardedConsume } from "@my-agent-team/agent-backend";
+import { buildOutcomeMessages, createOmpAccumulator, mapOmpEvent } from "./event-mapper.js";
 import { type SpawnedOmpProcess, spawnOmpProcess } from "./process.js";
 import { parseOmpLine } from "./wire.js";
 
@@ -193,10 +193,13 @@ export class OmpBackend implements AgentBackend<"omp"> {
    *  (exit code + error event) — the outcome is the sole terminal authority
    *  (ADR 0017). */
   private async consumeStdout(handle: ActiveRun, resumeRef: string | undefined): Promise<void> {
-    await guardedConsume(() => this.consumeBody(handle, resumeRef), (message) => {
-      handle.settle({ status: "failed", error: `stdout consume failed: ${message}` });
-      this.active.delete(handle.runId);
-    });
+    await guardedConsume(
+      () => this.consumeBody(handle, resumeRef),
+      (message) => {
+        handle.settle({ status: "failed", error: `stdout consume failed: ${message}` });
+        this.active.delete(handle.runId);
+      },
+    );
   }
 
   private async consumeBody(handle: ActiveRun, resumeRef: string | undefined): Promise<void> {
