@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { loopReducer } from "./loop-reducer.js";
+import { loopReducer, validateLoopMetaPatch } from "./loop-reducer.js";
 import type { LoopState } from "./types.js";
 
 function emptyState(): LoopState {
@@ -470,5 +470,100 @@ describe("loopReducer — immutability", () => {
     });
     const next = loopReducer(s, { type: "TICK" });
     expect(next.items).not.toBe(s.items);
+  });
+});
+
+describe("validateLoopMetaPatch", () => {
+  const base: LoopState = {
+    loopId: "l1",
+    lastRun: null,
+    items: {
+      i1: {
+        id: "i1",
+        source: "src",
+        summary: "s",
+        step: "triaged",
+        attempt: 0,
+        priority: 1,
+        result: null,
+      },
+    },
+  };
+
+  test("a legal step advance passes", () => {
+    const after: LoopState = {
+      ...base,
+      items: { i1: { ...base.items.i1!, step: "fixing" } },
+    };
+    expect(validateLoopMetaPatch(base, after)).toEqual({ ok: true });
+  });
+
+  test("the REJECT retry edge verifying -> fixing is legal", () => {
+    const before: LoopState = {
+      ...base,
+      items: { i1: { ...base.items.i1!, step: "verifying" } },
+    };
+    const after: LoopState = {
+      ...before,
+      items: { i1: { ...before.items.i1!, step: "fixing", attempt: 1 } },
+    };
+    expect(validateLoopMetaPatch(before, after)).toEqual({ ok: true });
+  });
+
+  test("a new item must enter at triaged", () => {
+    const after: LoopState = {
+      ...base,
+      items: {
+        ...base.items,
+        i2: {
+          id: "i2",
+          source: "src",
+          summary: "n",
+          step: "fixing",
+          attempt: 0,
+          priority: 1,
+          result: null,
+        },
+      },
+    };
+    const result = validateLoopMetaPatch(base, after);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("must enter at triaged");
+  });
+
+  test("a backward step is rejected", () => {
+    const before: LoopState = {
+      ...base,
+      items: { i1: { ...base.items.i1!, step: "verifying" } },
+    };
+    const after: LoopState = {
+      ...before,
+      items: { i1: { ...before.items.i1!, step: "triaged" } },
+    };
+    const result = validateLoopMetaPatch(before, after);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("cannot move");
+  });
+
+  test("item removal is rejected (the loop owns dismissal)", () => {
+    const after: LoopState = { ...base, items: {} };
+    const result = validateLoopMetaPatch(base, after);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("removed");
+  });
+
+  test("unknown steps and verdicts are rejected", () => {
+    const badStep: LoopState = {
+      ...base,
+      items: { i1: { ...base.items.i1!, step: "nonsense" as never } },
+    };
+    expect(validateLoopMetaPatch(base, badStep).ok).toBe(false);
+    const badVerdict: LoopState = {
+      ...base,
+      items: {
+        i1: { ...base.items.i1!, result: { verdict: "MAYBE" as never, evidence: "e" } },
+      },
+    };
+    expect(validateLoopMetaPatch(base, badVerdict).ok).toBe(false);
   });
 });

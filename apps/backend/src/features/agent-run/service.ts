@@ -47,6 +47,8 @@ export interface AgentRunService {
     systemPrompt?: string;
     skillRoots?: readonly string[];
     permissionMode?: string;
+    /** Optional workflow budget (tokens) frozen on the Run. */
+    workflowBudgetTokens?: number;
   }): Promise<{
     acquired: boolean;
     queued: boolean;
@@ -152,6 +154,7 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
         systemPrompt,
         skillRoots,
         permissionMode,
+        workflowBudgetTokens: input.workflowBudgetTokens,
       });
     },
 

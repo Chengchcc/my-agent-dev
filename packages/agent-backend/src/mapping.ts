@@ -68,6 +68,40 @@ export function mapRunEvent(event: TransportRunEvent): BackendEvent<"coding_agen
       if (status === "stopped") return { type: "status", status: "aborted" };
       return { type: "status", status: "completed" };
     }
+    case "workflow_started":
+      return {
+        type: "workflow_started",
+        workflowId: String(event.data.workflowId ?? ""),
+        label: String(event.data.label ?? ""),
+        agentCount: Number(event.data.agentCount ?? 0),
+      };
+    case "workflow_agent_started":
+      return {
+        type: "workflow_agent_started",
+        workflowId: String(event.data.workflowId ?? ""),
+        agentId: String(event.data.agentId ?? ""),
+        label: String(event.data.label ?? ""),
+      };
+    case "workflow_agent_completed": {
+      const usage = event.data.usage as Readonly<Record<string, unknown>> | undefined;
+      return {
+        type: "workflow_agent_completed",
+        workflowId: String(event.data.workflowId ?? ""),
+        agentId: String(event.data.agentId ?? ""),
+        label: String(event.data.label ?? ""),
+        ok: event.data.ok === true,
+        ...(typeof event.data.error === "string" ? { error: event.data.error } : {}),
+        ...(usage ? { usage } : {}),
+      };
+    }
+    case "workflow_completed":
+      return {
+        type: "workflow_completed",
+        workflowId: String(event.data.workflowId ?? ""),
+        ok: event.data.ok === true,
+        agentCount: Number(event.data.agentCount ?? 0),
+        totalTokens: Number(event.data.totalTokens ?? 0),
+      };
     default:
       return {
         type: `backend.coding_agent.${event.type}`,

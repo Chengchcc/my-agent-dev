@@ -1,4 +1,4 @@
-export { loopReducer } from "./loop-reducer.js";
+export { loopReducer, validateLoopMetaPatch } from "./loop-reducer.js";
 export type { LoopConfig } from "./state-md.js";
 export {
   formatInboxMd,

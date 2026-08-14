@@ -360,4 +360,121 @@ describe("createCodingAgentRuntime", () => {
     expect(batches[0]!.model.id).toBe("big");
     await rt.close();
   });
+  test("run_workflow fans out subagents and reports workflow events (phase 1)", async () => {
+    const requests: string[] = [];
+    const provider: Provider = {
+      id: "fake",
+      name: "Fake",
+      getModels: () => [FAKE_MODEL],
+      async *stream(_model: Model, messages: readonly Message[]): AsyncIterable<AIMessageChunk> {
+        const system = messages.find((m) => m.role === "system");
+        if (system?.text.includes("You are a subagent")) {
+          requests.push("subagent");
+          yield { delta: { type: "text", text: "sub-result" } };
+          yield { usage: { input: 10, output: 3, cacheRead: 1, cacheCreate: 0 } };
+          yield { stopReason: "end_turn" };
+          return;
+        }
+        if (!requests.includes("tool")) {
+          requests.push("tool");
+          yield { delta: { type: "tool_use", id: "toolu-1", name: "run_workflow" } };
+          yield {
+            delta: {
+              type: "input_json_delta",
+              id: "toolu-1",
+              partial_json: JSON.stringify({
+                items: [
+                  { prompt: "one", label: "a" },
+                  { prompt: "two", label: "b" },
+                ],
+              }),
+            },
+          };
+          yield { stopReason: "tool_use" };
+          return;
+        }
+        requests.push("main");
+        yield { delta: { type: "text", text: "done" } };
+        yield { usage: { input: 10, output: 3, cacheRead: 1, cacheCreate: 0 } };
+        yield { stopReason: "end_turn" };
+      },
+    };
+    const modelRuntime = createModelRuntime();
+    modelRuntime.registerProvider(provider);
+    const runtime = await createCodingAgentRuntime({
+      runId: "r-wf",
+      modelId: "fake/echo",
+      workspaceRoot: tmp,
+      workspaceAccess: "read_write",
+      modelRuntime,
+      skillRoots: [],
+    });
+    const segment = await runtime.run(runInput("r-wf"));
+    const { outcome, events } = await settle(segment);
+    await runtime.close();
+    expect(outcome.status).toBe("completed");
+    // Two subagent streams + one main tool turn + one final main turn.
+    expect(requests.filter((r) => r === "subagent")).toHaveLength(2);
+    expect(events).toContain("workflow_started");
+    expect(events).toContain("workflow_agent_started");
+    expect(events).toContain("workflow_agent_completed");
+    expect(events).toContain("workflow_completed");
+  });
+  test("workflow_run evaluates a script, fans out agents, and persists .workflows", async () => {
+    const requests: string[] = [];
+    const script =
+      'const a = await agent("one"); const b = await agent("two"); return [a.text, b.text];';
+    const provider: Provider = {
+      id: "fake",
+      name: "Fake",
+      getModels: () => [FAKE_MODEL],
+      async *stream(_model: Model, messages: readonly Message[]): AsyncIterable<AIMessageChunk> {
+        const system = messages.find((m) => m.role === "system");
+        if (system?.text.includes("You are a subagent")) {
+          requests.push("subagent");
+          yield { delta: { type: "text", text: "sub-result" } };
+          yield { usage: { input: 10, output: 3, cacheRead: 1, cacheCreate: 0 } };
+          yield { stopReason: "end_turn" };
+          return;
+        }
+        if (!requests.includes("script")) {
+          requests.push("script");
+          yield { delta: { type: "tool_use", id: "toolu-2", name: "workflow_run" } };
+          yield {
+            delta: {
+              type: "input_json_delta",
+              id: "toolu-2",
+              partial_json: JSON.stringify({ script, name: "audit" }),
+            },
+          };
+          yield { stopReason: "tool_use" };
+          return;
+        }
+        requests.push("main");
+        yield { delta: { type: "text", text: "done" } };
+        yield { usage: { input: 10, output: 3, cacheRead: 1, cacheCreate: 0 } };
+        yield { stopReason: "end_turn" };
+      },
+    };
+    const modelRuntime = createModelRuntime();
+    modelRuntime.registerProvider(provider);
+    const runtime = await createCodingAgentRuntime({
+      runId: "r-wfs",
+      modelId: "fake/echo",
+      workspaceRoot: tmp,
+      workspaceAccess: "read_write",
+      modelRuntime,
+      skillRoots: [],
+    });
+    const segment = await runtime.run(runInput("r-wfs"));
+    const { outcome, events } = await settle(segment);
+    await runtime.close();
+    expect(outcome.status).toBe("completed");
+    expect(requests.filter((r) => r === "subagent")).toHaveLength(2);
+    expect(events).toContain("workflow_agent_completed");
+    expect(events).toContain("workflow_completed");
+    // The script persists to the workspace for inspection/re-runs.
+    const saved = await Bun.file(join(tmp, ".workflows", "audit.js")).text();
+    expect(saved).toBe(script);
+  });
 });

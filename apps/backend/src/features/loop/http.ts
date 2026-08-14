@@ -21,7 +21,7 @@ import {
   runLoop,
 } from "./loop-service.js";
 import type { LoopStateStore } from "./loop-state-store.js";
-import { loopEvaluatorConversationId, loopGeneratorConversationId } from "./loop-step.js";
+import { loopGeneratorConversationId } from "./loop-step.js";
 
 export function loopRoutes(input: {
   cronSvc: CronJobService;
@@ -212,7 +212,6 @@ export function loopRoutes(input: {
       // and its terminal commit.
       const active = await agentRunService.hasActiveRunForConversations([
         loopGeneratorConversationId(id),
-        loopEvaluatorConversationId(id),
       ]);
       if (active) {
         throw new ConflictError("Loop has an active run; stop it before deleting.");

@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
   type CodingAgentLoopEvent,
   type CodingAgentSession,
@@ -13,6 +17,7 @@ import {
 } from "@my-agent-team/agent";
 import type { AgentRunSnapshot, ProjectedHistoryItem } from "@my-agent-team/agent-backend";
 import { type ModelRuntime, resolveModelAlias } from "@my-agent-team/ai";
+import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 import { createProgressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
 import { createRecapPlugin } from "@my-agent-team/plugin-recap";
@@ -33,16 +38,21 @@ import {
 } from "@my-agent-team/tools-common";
 import { fakeProvider } from "./fake-provider.js";
 import { mountWorkspaceMcpServers } from "./mcp-mount.js";
+
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { readProductToolsManifest } from "./product-tools-manifest.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
+import { evaluateWorkflowScript } from "./workflow-evaluator.js";
+import { createWorkflowExecutor, type WorkflowAgentResult } from "./workflow-executor.js";
+import { createWorkflowTools } from "./workflow-tools.js";
 
-/** Token estimation via content char/4 (≈1 token per 4 chars of English/code).
- *  More accurate than JSON.stringify char/4 which includes ~30% syntax
- *  overhead from key names, quotes, braces. Counts actual text + block
- *  content, adds a fixed overhead per message for role/structure framing.
- *  Swap for a real tokenizer (tiktoken, provider SDK) by replacing this
- *  function — the ContextBudget.estimate interface is the extension point. */
+/** Token estimation via content char/4 (approx 1 token per 4 chars of
+ *  English/code). More accurate than JSON.stringify char/4 which includes
+ *  ~30% syntax overhead from key names, quotes, braces. Counts actual text +
+ *  block content, adds a fixed overhead per message for role/structure
+ *  framing. Swap for a real tokenizer (tiktoken, provider SDK) by replacing
+ *  this function — the ContextBudget.estimate interface is the extension
+ *  point. */
 function estimateMessageTokens(message: Message): number {
   let chars = message.text?.length ?? 0;
   if (message.blocks) {
@@ -120,7 +130,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   if (!currentModel) {
     throw new Error(`model not found in catalog: ${deps.modelId}`);
   }
-  const tools: PluginTool[] = [
+  const fileTools: PluginTool[] = [
     createReadTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
     createLsTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
     createTreeTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
@@ -128,24 +138,24 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     createGrepTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool,
   ];
   if (deps.workspaceAccess === "read_write") {
-    tools.push(createWriteTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
-    tools.push(createEditTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
-    tools.push(createBashTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool);
+    fileTools.push(createWriteTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
+    fileTools.push(createEditTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
+    fileTools.push(createBashTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool);
   }
   // Generic .mcp.json mounting (ADR 0022): user servers + knowledge.
   // Skips "product-tools" (the manifest path owns it) and names that
   // collide with the native table.
-  tools.push(
-    ...(await mountWorkspaceMcpServers(deps.workspaceRoot, new Set(tools.map((t) => t.name)))),
+  fileTools.push(
+    ...(await mountWorkspaceMcpServers(deps.workspaceRoot, new Set(fileTools.map((t) => t.name)))),
   );
   if (deps.webSearch) {
-    tools.push(createPortWebSearchTool(deps.webSearch) as unknown as PluginTool);
+    fileTools.push(createPortWebSearchTool(deps.webSearch) as unknown as PluginTool);
   }
   if (deps.webFetch) {
-    tools.push(createPortWebFetchTool(deps.webFetch) as unknown as PluginTool);
+    fileTools.push(createPortWebFetchTool(deps.webFetch) as unknown as PluginTool);
   }
 
-  const nativeToolsPlugin: Plugin = { name: "native-tools", tools };
+  const nativeToolsPlugin: Plugin = { name: "native-tools", tools: fileTools };
   const plugins: Plugin[] = [
     nativeToolsPlugin,
     createRecapPlugin({
@@ -362,6 +372,113 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   // Two-phase: sessionEmit is bound after session creation (the session's
   // emit method doesn't exist until createCodingAgentSession returns).
   let sessionEmit: ((event: CodingAgentLoopEvent) => void) | null = null;
+  // The workflow executor rides the SAME model stream + summarizer as the
+  // main loop; subagents get the file tools only (no workflow/product tools).
+  // Product budget gate (T11a): the Loop freezes its remaining daily budget
+  // on the Run; the executor refuses new spawns once the completed agents'
+  // usage estimate exceeds it. Advisory - the product dailyCap stays the
+  // hard gate. No budget on the run = no gate.
+  let workflowSpentTokens = 0;
+  const workflowBudgetGate = (): { allowed: boolean; reason?: string } => {
+    const budget = activeRun?.workflowBudgetTokens;
+    if (budget == null) return { allowed: true };
+    if (workflowSpentTokens >= budget) {
+      return { allowed: false, reason: "workflow budget exhausted" };
+    }
+    return { allowed: true };
+  };
+  const workflowExecutor = createWorkflowExecutor({
+    makeSubagentStream: () => streamModel,
+    modelId: deps.modelId,
+    summarize,
+    contextBudget,
+    tools: fileTools,
+    workspaceRoot: deps.workspaceRoot,
+    workspaceAccess: deps.workspaceAccess,
+    budgetGate: workflowBudgetGate,
+    emit: (event) => {
+      if (event.type === "workflow_agent_completed" && event.usage) {
+        const usage = event.usage;
+        if (typeof usage === "object") {
+          const tokens = (v: unknown): number => (typeof v === "number" && v > 0 ? v : 0);
+          workflowSpentTokens +=
+            tokens((usage as Record<string, unknown>).inputTokens) +
+            tokens((usage as Record<string, unknown>).outputTokens) +
+            tokens((usage as Record<string, unknown>).cacheReadTokens) +
+            tokens((usage as Record<string, unknown>).cacheWriteTokens);
+        }
+      }
+      sessionEmit?.(event);
+    },
+    maxConcurrent: 8,
+    maxTotal: 64,
+  });
+  // Script runs: one workflowId shared by every agent() the script spawns.
+  // The vm evaluator has no fs/network; the executor enforces caps/budget.
+  const runScript = async ({
+    script,
+    args,
+  }: {
+    script: string;
+    args?: unknown;
+  }): Promise<{ ok: boolean; totalTokens: number; value: unknown }> => {
+    const workflowId = `wf-${Date.now().toString(36)}`;
+    const results: WorkflowAgentResult[] = [];
+    sessionEmit?.({
+      type: "workflow_started",
+      workflowId,
+      label: "script",
+      agentCount: 0,
+    });
+    const { value } = await evaluateWorkflowScript({
+      script,
+      args,
+      primitives: {
+        agent: async (prompt, opts) => {
+          const result = await workflowExecutor.runSubagent({
+            workflowId,
+            agentId: randomUUID(),
+            prompt,
+            ...(opts?.schema ? { schema: opts.schema } : {}),
+            ...(opts?.label ? { label: opts.label } : {}),
+          });
+          results.push(result);
+          return result;
+        },
+        pipeline: (items, fn) => Promise.all(items.map(fn)),
+      },
+    });
+    const totalTokens = results.reduce(
+      (acc, r) =>
+        acc +
+        (r.usage?.inputTokens ?? 0) +
+        (r.usage?.outputTokens ?? 0) +
+        (r.usage?.cacheReadTokens ?? 0) +
+        (r.usage?.cacheWriteTokens ?? 0),
+      0,
+    );
+    const ok = results.every((r) => r.ok);
+    sessionEmit?.({
+      type: "workflow_completed",
+      workflowId,
+      ok,
+      agentCount: results.length,
+      totalTokens,
+    });
+    return { ok, totalTokens, value };
+  };
+  plugins.push({
+    name: "workflow-tools",
+    tools: createWorkflowTools({
+      runWorkflow: (input) => workflowExecutor.runWorkflow(input),
+      runScript,
+      writeScript: (name, content) => {
+        const dir = join(deps.workspaceRoot, ".workflows");
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, `${name}.js`), content);
+      },
+    }),
+  });
   const pluginRuntime: PluginRuntime = {
     streamModel: (providerId, modelId, messages, opts) =>
       deps.modelRuntime.stream(providerId, modelId, messages, opts),
@@ -374,6 +491,56 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     signal: new AbortController().signal,
   };
 
+  // Hoisted so both the main session and workflow subagent sessions share it.
+  async function* streamModel(
+    messages: readonly Message[],
+    signal?: AbortSignal,
+    tools?: readonly PluginTool[],
+  ): AsyncIterable<AIMessageChunk> {
+    const run = activeRun;
+    if (!run) throw new Error("no active run: model unresolved");
+    const catalog = await deps.modelRuntime.getCatalog();
+    const model = catalog.models.find(
+      (m) => `${m.providerId}/${m.modelId}` === resolveModelAlias(run.model.modelId),
+    );
+    if (!model) throw new Error(`model not found: ${run.model.modelId}`);
+    const timeoutSignal = AbortSignal.timeout(modelTimeoutMs);
+    const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+    const reasoningEffort = (run.model as { reasoningEffort?: string }).reasoningEffort;
+    const reasoningOpts =
+      reasoningEffort === "none"
+        ? { thinking: { type: "disabled" as const } }
+        : reasoningEffort === "low" || reasoningEffort === "high" || reasoningEffort === "max"
+          ? {
+              thinking: { type: "adaptive" as const, display: "summarized" as const },
+              effort: (reasoningEffort === "max" ? "xhigh" : reasoningEffort) as
+                | "low"
+                | "high"
+                | "xhigh",
+            }
+          : {};
+    const stream = deps.modelRuntime.stream(model.providerId, model.modelId, messages, {
+      signal: combined,
+      cacheControl: true,
+      ...reasoningOpts,
+      tools: tools?.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+      })),
+    });
+    const iter = stream[Symbol.asyncIterator]();
+    try {
+      for (;;) {
+        const next = await nextBounded(iter, combined, timeoutSignal);
+        if (next.done) return;
+        yield next.value;
+      }
+    } finally {
+      if (!combined.aborted) await iter.return?.().catch(() => {});
+    }
+  }
+
   const session = createCodingAgentSession({
     sessionId: deps.runId,
     store,
@@ -381,60 +548,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     pluginRuntime,
     maxSteps: 32,
     maxForceContinues: 4,
-    modelStream: async function* (messages, signal, tools) {
-      const run = activeRun;
-      if (!run) throw new Error("no active run: model unresolved");
-      const catalog = await deps.modelRuntime.getCatalog();
-      const model = catalog.models.find(
-        (m) => `${m.providerId}/${m.modelId}` === resolveModelAlias(run.model.modelId),
-      );
-      if (!model) throw new Error(`model not found: ${run.model.modelId}`);
-      const timeoutSignal = AbortSignal.timeout(modelTimeoutMs);
-      const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-      // Reasoning effort from the run config: none disables thinking;
-      // low/high/max use adaptive thinking with the matching effort.
-      const reasoningEffort = (run.model as { reasoningEffort?: string }).reasoningEffort;
-      const reasoningOpts =
-        reasoningEffort === "none"
-          ? { thinking: { type: "disabled" as const } }
-          : reasoningEffort === "low" || reasoningEffort === "high" || reasoningEffort === "max"
-            ? {
-                thinking: { type: "adaptive" as const, display: "summarized" as const },
-                // ponytail: DB may carry "max" from older agent records;
-                // map to "xhigh" (our canonical highest level).
-                effort: (reasoningEffort === "max" ? "xhigh" : reasoningEffort) as
-                  | "low"
-                  | "high"
-                  | "xhigh",
-              }
-            : {};
-      const stream = deps.modelRuntime.stream(model.providerId, model.modelId, messages, {
-        signal: combined,
-        // Prompt caching: ephemeral cache breakpoints on the system prompt
-        // and the last tool definition. Endpoints that don't support
-        // caching silently ignore the breakpoint.
-        cacheControl: true,
-        ...reasoningOpts,
-        // Providers only consume the schema fields; execution happens in
-        // the loop via toolMap. Explicit mapping keeps PluginTool's
-        // richer execute contract out of the provider boundary.
-        tools: tools?.map((t) => ({
-          name: t.name,
-          description: t.description,
-          inputSchema: t.inputSchema,
-        })),
-      });
-      const iter = stream[Symbol.asyncIterator]();
-      try {
-        for (;;) {
-          const next = await nextBounded(iter, combined, timeoutSignal);
-          if (next.done) return;
-          yield next.value;
-        }
-      } finally {
-        if (!combined.aborted) await iter.return?.().catch(() => {});
-      }
-    },
+    modelStream: streamModel,
     summarize,
     contextBudget,
     resolveModel,

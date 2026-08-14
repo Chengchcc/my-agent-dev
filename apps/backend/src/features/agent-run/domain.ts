@@ -60,6 +60,8 @@ export interface AgentRun {
   readonly permissionMode: string | null;
   /** JSON: latest task list snapshot (todo_write product tool). */
   readonly todoSnapshot: string | null;
+  /** Optional workflow budget (tokens), frozen at Run creation. */
+  readonly workflowBudgetTokens: number | null;
   readonly createdAt: number;
   readonly terminalAt: number | null;
 }
@@ -91,6 +93,7 @@ export interface BranchInput {
     readonly systemPrompt: string | null;
     readonly skillRoots: readonly string[] | null;
     readonly permissionMode: string | null;
+    readonly workflowBudgetTokens: number | null;
   };
   readonly createdAt: number;
   readonly deliveredAt: number | null;
@@ -137,6 +140,8 @@ export interface AcquireAgentRunCommand {
   readonly skillRoots?: readonly string[];
   /** Frozen permission_mode (ADR 0020 decision 7). */
   readonly permissionMode?: string;
+  /** Optional workflow budget (tokens) for this Run; null = no gate. */
+  readonly workflowBudgetTokens?: number;
 }
 export interface AcquireAgentRunResult {
   readonly acquired: boolean;

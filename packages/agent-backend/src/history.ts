@@ -37,5 +37,7 @@ export interface AgentRunSnapshot<K extends string = string> {
   /** Frozen permission_mode (ask/auto/deny), mapped per backend at
    *  dispatch (ADR 0020 decision 7). */
   readonly permissionMode?: "ask" | "auto" | "deny";
+  /** Optional workflow budget (tokens) frozen at Run creation. */
+  readonly workflowBudgetTokens?: number;
   readonly configRevision: number;
 }

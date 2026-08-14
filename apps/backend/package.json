@@ -27,6 +27,7 @@
     "@my-agent-team/adapter-pi-agent": "workspace:*",
     "@my-agent-team/adapter-claude-agent": "workspace:*",
     "@my-agent-team/agent-backend": "workspace:*",
+    "@my-agent-team/ai": "workspace:*",
     "@my-agent-team/api-contract": "workspace:*",
     "@my-agent-team/config": "workspace:*",
     "@my-agent-team/conversation": "workspace:*",

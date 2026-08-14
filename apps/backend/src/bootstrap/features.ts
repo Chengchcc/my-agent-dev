@@ -262,9 +262,12 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       const identity = await identityStore.getIdentity(agentId);
       const systemPrompt = buildAgentSystemPrompt(identity.soul, identity.user);
       const packs = await skillPackPort.listForAgent(agentId);
-      const skillRoots = packs
+      const packRoots = packs
         .filter((p) => p.status === "ready")
         .map((p) => installPath(config.dataDir, p.id));
+      // The builtin skills (capability docs: workflow authoring, loop
+      // workflow) are ALWAYS available - assigned packs add on top.
+      const skillRoots = [config.builtinSkillsDir, ...packRoots];
       const result: {
         systemPrompt?: string;
         skillRoots?: readonly string[];

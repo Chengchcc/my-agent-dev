@@ -9,7 +9,7 @@ import {
 } from "@my-agent-team/adapter-coding-agent";
 import type { BackendEvent } from "@my-agent-team/agent-backend";
 import type { LoopState } from "@my-agent-team/loop";
-import { loopReducer, parseVerdictMd } from "@my-agent-team/loop";
+import { loopReducer } from "@my-agent-team/loop";
 import {
   createAgentContextService,
   sqliteAgentContextAdapter,
@@ -28,7 +28,7 @@ import { openDb } from "../../src/infra/sqlite/db.js";
 
 /** THE real Loop chain: loopStep → AgentRunService → AgentRunExecution →
  *  real coding-agent child (--mode rpc, fake provider) → git mutations in
- *  the cloned repo → git diff base..head → evaluator writes VERDICT.md →
+ *  the cloned repo → the workflow meta writeback (reducer-validated) →
  *  reducer transition. Skills come from <loopConfigPath>/skills and are
  *  loaded by the real child (skill_load tool result observed in events).
  *
@@ -57,18 +57,35 @@ const eventLog = new Map<string, BackendEvent<"coding_agent">[]>();
 /** The scripted tool script: ONE branch for both roles, decided by the
  *  workspace state:
  *  - generator (changes.txt missing): commit a change to the clone;
- *  - evaluator (changes.txt present): write VERDICT.md.
+ *  - verifier (changes.txt present): write the workflow meta verdict.
  *  The second entry proves the real child loaded <loopConfigPath>/skills:
  *  skill_load must resolve the loop-skill body (visible in events). */
+const LOOP_META_JSON = JSON.stringify({
+  items: {
+    [ITEM_ID]: {
+      id: ITEM_ID,
+      step: "verifying",
+      result: { verdict: "PASS", evidence: "loop-e2e" },
+    },
+  },
+});
 const FAKE_TOOL_SCRIPT = JSON.stringify([
   {
     name: "bash",
     input: {
       command:
-        "if [ -f changes.txt ]; then printf 'verdict: PASS\\nevidence: \"loop-e2e\"\\n' > VERDICT.md; else echo phase5 >> changes.txt && git add -A && git -c user.name=loop -c user.email=loop@test commit -m phase5-change; fi",
+        "echo phase5 >> changes.txt && git add -A && git -c user.name=loop -c user.email=loop@test commit -m phase5-change",
     },
   },
   { name: "skill_load", input: { name: "loop-skill" } },
+  {
+    name: "bash",
+    input: {
+      command: `cat > .workflows/loop.js <<'WFE'
+export const meta = ${LOOP_META_JSON};
+WFE`,
+    },
+  },
 ]);
 
 async function setupRemoteRepo(): Promise<string> {
@@ -206,7 +223,7 @@ afterAll(async () => {
 });
 
 describe("Loop with a REAL coding-agent child", () => {
-  test("generator commits to the clone, loads loop skills, evaluator writes VERDICT.md", async () => {
+  test("generator commits to the clone, loads loop skills, writes the workflow meta", async () => {
     const projectPort = {
       createProject: () => {
         throw new Error("not implemented");
@@ -245,8 +262,9 @@ describe("Loop with a REAL coding-agent child", () => {
 
     // ── State machine: generator + evaluator ran, verdict PASS ──
     const item = result.items[ITEM_ID]!;
+
     expect(item.generatorRunId).toBeTruthy();
-    expect(item.evaluatorRunId).toBeTruthy();
+    expect(item.evaluatorRunId).toBeFalsy();
     expect(item.result?.verdict).toBe("PASS");
 
     // ── The generator REALLY modified and committed the clone ──
@@ -256,10 +274,9 @@ describe("Loop with a REAL coding-agent child", () => {
     const diff = await Bun.$`git -C ${clone} diff HEAD~1..HEAD --name-only`.quiet().text();
     expect(diff).toContain("changes.txt");
 
-    // ── The evaluator REALLY wrote VERDICT.md in the clone ──
-    const verdictMd = await Bun.file(join(clone, "VERDICT.md")).text();
-    const verdict = parseVerdictMd(verdictMd);
-    expect(verdict?.verdict).toBe("PASS");
+    // ── The workflow meta really landed in the clone ──
+    const metaScript = await Bun.file(join(clone, ".workflows", "loop.js")).text();
+    expect(metaScript).toContain('"verdict":"PASS"');
 
     // ── The real child loaded <loopConfigPath>/skills: skill_load
     //    resolved the loop-skill body (observable in the run events) ──

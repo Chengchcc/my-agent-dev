@@ -1,4 +1,4 @@
-import type { LoopAction, LoopState } from "./types.js";
+import type { ItemStep, LoopAction, LoopState } from "./types.js";
 
 type ReducerOpts = {
   maxRetries?: number;
@@ -176,4 +176,72 @@ export function loopReducer(state: LoopState, action: LoopAction, opts?: Reducer
   }
 
   return { ...state, items };
+}
+
+// ─── Meta writeback validation (workflow consumer) ─────────────────────
+
+/** The state machine's step edges. REJECT retries legitimately move
+ *  verifying → fixing (a "backward" edge in any linear order), so the
+ *  validator uses the EDGE SET, not a sequence index. */
+const LEGAL_STEP_EDGES: Record<ItemStep, readonly ItemStep[]> = {
+  inbox: ["promoted", "triaged"],
+  promoted: ["triaged"],
+  triaged: ["fixing"],
+  fixing: ["verifying"],
+  verifying: ["resolved", "awaiting_review", "fixing", "inbox"],
+  awaiting_review: ["resolved", "inbox"],
+  resolved: [],
+};
+
+const ITEM_STEPS: readonly string[] = [
+  "triaged",
+  "fixing",
+  "verifying",
+  "awaiting_review",
+  "resolved",
+  "inbox",
+  "promoted",
+];
+const VERDICTS: readonly string[] = ["PASS", "REJECT", "ESCALATE"];
+
+/** Validate a workflow script's meta writeback against the pure state
+ *  machine invariants. The model can never free-write loop state: only
+ *  ADD_ITEM semantics (new ids entering at `triaged`) and legal step
+ *  edges are accepted; item removal is rejected (the loop owns dismissal). */
+export function validateLoopMetaPatch(
+  before: LoopState,
+  after: LoopState,
+): { ok: true } | { ok: false; reason: string } {
+  for (const id of Object.keys(before.items)) {
+    if (!(id in after.items)) {
+      return { ok: false, reason: `item ${id} was removed - the loop owns dismissal` };
+    }
+  }
+  for (const [id, item] of Object.entries(after.items)) {
+    if (!ITEM_STEPS.includes(item.step)) {
+      return { ok: false, reason: `item ${id} has an unknown step: ${String(item.step)}` };
+    }
+    if (item.result && !VERDICTS.includes(item.result.verdict)) {
+      return {
+        ok: false,
+        reason: `item ${id} has an unknown verdict: ${String(item.result.verdict)}`,
+      };
+    }
+    const prev = before.items[id];
+    if (!prev) {
+      // New item: the ADD_ITEM contract enters at `triaged` only.
+      if (item.step !== "triaged") {
+        return { ok: false, reason: `new item ${id} must enter at triaged, got ${item.step}` };
+      }
+      continue;
+    }
+    if (prev.step === item.step) continue; // field-only patches (result/attempt)
+    if (!LEGAL_STEP_EDGES[prev.step].includes(item.step)) {
+      return {
+        ok: false,
+        reason: `item ${id} cannot move ${prev.step} -> ${item.step}`,
+      };
+    }
+  }
+  return { ok: true };
 }

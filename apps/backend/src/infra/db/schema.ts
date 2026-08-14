@@ -375,6 +375,9 @@ export const agentRun = sqliteTable(
     /** JSON: the run's latest task list snapshot (todo_write product tool).
      *  Re-injected into the next run's prompt as the Current Tasks section. */
     todoSnapshot: text("todo_snapshot"),
+    /** Optional workflow budget (tokens): the Loop freezes the remaining
+     *  daily budget at dispatch; the child gates subagent spawns on it. */
+    workflowBudgetTokens: integer("workflow_budget_tokens"),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     terminalAt: integer("terminal_at", { mode: "number" }),
   },
@@ -416,6 +419,9 @@ export const branchInputQueue = sqliteTable(
     systemPrompt: text("system_prompt"),
     skillRoots: text("skill_roots"), // JSON: readonly string[]
     permissionMode: text("permission_mode"),
+    /** Optional workflow budget (tokens), frozen at enqueue; the child
+     *  gates workflow subagent spawns on it. */
+    workflowBudgetTokens: integer("workflow_budget_tokens"),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     deliveredAt: integer("delivered_at", { mode: "number" }),
   },

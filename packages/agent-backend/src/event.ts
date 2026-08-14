@@ -29,7 +29,35 @@ export type CoreBackendEvent =
       readonly result?: Readonly<Record<string, unknown>>;
     }
   | { readonly type: "pending_action"; readonly actionId: string }
-  | { readonly type: "status"; readonly status: string };
+  | { readonly type: "status"; readonly status: string }
+  | {
+      readonly type: "workflow_started";
+      readonly workflowId: string;
+      readonly label: string;
+      readonly agentCount: number;
+    }
+  | {
+      readonly type: "workflow_agent_started";
+      readonly workflowId: string;
+      readonly agentId: string;
+      readonly label: string;
+    }
+  | {
+      readonly type: "workflow_agent_completed";
+      readonly workflowId: string;
+      readonly agentId: string;
+      readonly label: string;
+      readonly ok: boolean;
+      readonly error?: string;
+      readonly usage?: unknown;
+    }
+  | {
+      readonly type: "workflow_completed";
+      readonly workflowId: string;
+      readonly ok: boolean;
+      readonly agentCount: number;
+      readonly totalTokens: number;
+    };
 
 /** Opaque Backend-specific event. The kind segment must match the producing
  *  Backend's `backendKind`; the event segment is Backend-private. Usable for
