@@ -9,7 +9,7 @@ import { createAgentRunService } from "../agent-run/service.js";
 import { sqliteConversationAdapter } from "../conversation/adapter-sqlite.js";
 import { sqliteProductToolCallAdapter } from "./adapter-sqlite.js";
 import { createProductToolsMcpServer } from "./mcp.js";
-import { type RunTokenRegistry, createRunTokenRegistry } from "./run-token-registry.js";
+import { createRunTokenRegistry, type RunTokenRegistry } from "./run-token-registry.js";
 import { createProductToolsService } from "./service.js";
 
 const CONV = "conv-mcp";
@@ -60,6 +60,7 @@ beforeEach(async () => {
     contextPort,
     conversationPort: convPort,
     callPort: sqliteProductToolCallAdapter(db),
+    idGen: { ulid: () => `y-${Math.random().toString(36).slice(2, 8)}` },
   });
   registry = createRunTokenRegistry();
   // Bearer bound to this test's run — minted once per setup like dispatch does.
