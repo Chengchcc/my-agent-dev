@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -476,6 +476,13 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
         const dir = join(deps.workspaceRoot, ".workflows");
         mkdirSync(dir, { recursive: true });
         writeFileSync(join(dir, `${name}.js`), content);
+      },
+      readScript: (name) => {
+        try {
+          return readFileSync(join(deps.workspaceRoot, ".workflows", `${name}.js`), "utf8");
+        } catch {
+          return "";
+        }
       },
     }),
   });

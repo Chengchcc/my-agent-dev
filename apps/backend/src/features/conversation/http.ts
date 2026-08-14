@@ -107,7 +107,7 @@ export function conversationRoutes(
           // `.workflows/name.js` through the workflow_run tool. Unknown
           // commands pass through untouched (the model sees the raw text).
           if (resolveAgentWorkspace) {
-            const rawText = extractText(content as never);
+            const rawText = typeof content === "string" ? content : extractText(content as never);
             const slash = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(rawText);
             if (slash?.[1]) {
               const members = svc.port.getMembers(conversationId);
@@ -117,13 +117,11 @@ export function conversationRoutes(
                 const scriptPath = root ? `${root}/.workflows/${slash[1]}.js` : null;
                 if (scriptPath && existsSync(scriptPath)) {
                   const args = (slash[2] ?? "").trim();
-                  content = {
-                    text:
-                      `Run the saved workflow \`.workflows/${slash[1]}.js\` with the ` +
-                      `workflow_run tool` +
-                      (args ? `. Args: ${args}` : "") +
-                      `. Then report the workflow's result.`,
-                  };
+                  content =
+                    `Run the saved workflow with the workflow_run tool ` +
+                    `(name: "${slash[1]}")` +
+                    (args ? `. Args: ${args}` : "") +
+                    `. Then report the workflow's actual findings.`;
                 }
               }
             }

@@ -18,6 +18,8 @@ export interface WorkflowToolDeps {
   readonly runScript: (input: { script: string; args?: unknown }) => Promise<WorkflowScriptResult>;
   /** Persist a script to `<workspace>/.workflows/<name>.js` for reuse. */
   readonly writeScript: (name: string, content: string) => void;
+  /** Read a saved script back (name-only invocation support). */
+  readonly readScript: (name: string) => string;
 }
 
 /** Boundary narrowing: tool args arrive from the model as unknown-shaped
@@ -94,12 +96,18 @@ export function createWorkflowTools(deps: WorkflowToolDeps): readonly PluginTool
         name: { type: "string" },
         args: { type: "object" },
       },
-      required: ["script"],
+      // script OR name (name-only loads the saved script).
     },
     async execute(args) {
-      const script = typeof args.script === "string" ? args.script : "";
-      if (typeof args.name === "string" && args.name.length > 0) {
-        deps.writeScript(args.name, script);
+      let script = typeof args.script === "string" ? args.script : "";
+      const name = typeof args.name === "string" ? args.name : "";
+      if (!script.trim() && name.length > 0) {
+        // Name-only invocation: load the saved script instead of
+        // overwriting it with an empty body.
+        script = deps.readScript(name);
+      }
+      if (name.length > 0) {
+        deps.writeScript(name, script);
       }
       const result = await deps.runScript({ script, args: args.args });
       return {

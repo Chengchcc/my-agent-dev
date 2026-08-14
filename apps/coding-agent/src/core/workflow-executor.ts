@@ -71,8 +71,11 @@ export interface WorkflowExecutor {
 }
 
 const SUBAGENT_SYSTEM_PROMPT =
-  "You are a subagent of a coding agent run. Complete the given task and stop. " +
-  "Return only the result text (or JSON when a schema is requested).";
+  "You are a subagent of a coding agent run. Complete the given task in as few " +
+  "steps as possible. Use tools only to gather what you need. When you have the " +
+  "answer, write it as your FINAL message and STOP - do not call more tools, do " +
+  "not double-check with extra reads. Return only the result text (or JSON when " +
+  "a schema is requested).";
 
 export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowExecutor {
   let totalSpawned = 0;
@@ -140,7 +143,7 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
         sessionId,
         store,
         plugins: [{ name: "subagent-tools", tools: opts.tools }],
-        maxSteps: 8,
+        maxSteps: 24,
         maxForceContinues: 2,
         modelStream: opts.makeSubagentStream(sessionId),
         summarize: opts.summarize,
@@ -169,7 +172,8 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
         signal?.removeEventListener("abort", onAbort);
       }
       void store.close().catch(() => {});
-      const text = (result.messages?.at(-1)?.text ?? "").trim();
+      const lastAssistant = [...(result.messages ?? [])].reverse().find((m) => m.role === "assistant");
+      const text = (lastAssistant?.text ?? "").trim();
       let output: unknown;
       let parseError: string | undefined;
       if (input.schema && text) {
