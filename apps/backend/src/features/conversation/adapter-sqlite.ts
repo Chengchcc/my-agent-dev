@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { deserializeLedgerContent, extractText } from "@my-agent-team/message";
 import { and, desc, eq, gt, inArray, isNotNull, like, notInArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import * as schema from "../../infra/db/schema.js";
@@ -24,6 +25,21 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
       .where(eq(schema.conversationLedger.conversationId, conversationId))
       .get();
     return row?.max ?? null;
+  };
+  /** ≤120-char text preview of the conversation's last message. */
+  const lastMessagePreview = (conversationId: string): string | null => {
+    const row = d
+      .select({ content: schema.conversationLedger.content })
+      .from(schema.conversationLedger)
+      .where(eq(schema.conversationLedger.conversationId, conversationId))
+      .orderBy(desc(schema.conversationLedger.ts))
+      .limit(1)
+      .get();
+    if (!row) return null;
+    const rev = deserializeLedgerContent(row.content);
+    const text = extractText("raw" in rev ? {} : rev).trim();
+    if (!text) return null;
+    return text.length > 120 ? `${text.slice(0, 120)}…` : text;
   };
 
   return {
@@ -88,6 +104,7 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
           .all()
           .map((m) => schema.memberSelectSchema.parse(m) as MemberRow),
         lastActivityAt: lastLedgerTs(c.conversationId),
+        lastMessagePreview: lastMessagePreview(c.conversationId),
       }));
     },
 
@@ -185,15 +202,17 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
               .all()
               .map((m) => schema.memberSelectSchema.parse(m) as MemberRow),
             lastActivityAt: lastLedgerTs(c.conversationId),
+            lastMessagePreview: lastMessagePreview(c.conversationId),
           };
         })
         .filter(Boolean) as ConversationWithMembers[];
     },
+    getLastMessagePreview(conversationId: string): string | null {
+      return lastMessagePreview(conversationId);
+    },
     getLastActivityAt(conversationId: string): number | null {
       return lastLedgerTs(conversationId);
     },
-    // ─── Member ────────────────────────────────────
-
     addMember(input: CreateMemberInput): { member: MemberRow; created: boolean } {
       const rows = d
         .insert(schema.member)

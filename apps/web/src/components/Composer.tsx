@@ -13,6 +13,10 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Composer metrics (§3): auto height 40–160px, panel bg, radius 8. */
+const COMPOSER_MIN_H = 40;
+const COMPOSER_MAX_H = 160;
+
 interface ComposerProps {
   onSend: (message: string, addressedTo: string[]) => void;
   onSlashCommand: (input: string) => void;
@@ -20,14 +24,18 @@ interface ComposerProps {
   placeholder?: string;
   roster?: Record<string, SenderRef>;
   autoAgentCount: number;
+  /** A run is live: the send button becomes the red-dot Stop. */
+  isBusy?: boolean;
+  onStop?: () => void;
 }
-
 export function Composer({
   onSend,
   onSlashCommand,
   disabled,
   placeholder = "Type a message…  Ctrl+Enter to send",
   roster,
+  isBusy,
+  onStop,
 }: ComposerProps) {
   const [value, setValue] = useState("");
   const [showMentions, setShowMentions] = useState(false);
@@ -70,8 +78,8 @@ export function Composer({
   const autoGrow = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = "44px";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    el.style.height = `${COMPOSER_MIN_H}px`;
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_H)}px`;
   }, []);
 
   const resolveAddressedTo = useCallback(
@@ -148,7 +156,7 @@ export function Composer({
       setValue("");
       setShowSlash(false);
       if (textareaRef.current) {
-        textareaRef.current.style.height = "44px";
+        textareaRef.current.style.height = `${COMPOSER_MIN_H}px`;
         textareaRef.current.focus();
       }
       return;
@@ -162,7 +170,7 @@ export function Composer({
     onSend(trimmed, addressedTo);
     setValue("");
     if (textareaRef.current) {
-      textareaRef.current.style.height = "44px";
+      textareaRef.current.style.height = `${COMPOSER_MIN_H}px`;
       textareaRef.current.focus();
     }
   }, [value, disabled, onSend, onSlashCommand, resolveAddressedTo, agentMembers.length]);
@@ -288,13 +296,13 @@ export function Composer({
             placeholder={disabled ? "Agent is responding…" : effectivePlaceholder}
             rows={1}
             disabled={disabled}
-            className="w-full resize-none bg-(--canvas-soft) border border-(--hairline)
-                       rounded-md p-3  text-sm text-(--ink)
+            className="w-full resize-none bg-(--panel) border border-(--hairline)
+                       rounded-lg p-3  text-sm text-(--ink)
                        placeholder:text-(--mute)
                        focus:outline-none focus:border-(--primary)
                        disabled:opacity-40 disabled:cursor-not-allowed
                        transition-colors duration-200"
-            style={{ minHeight: "44px", maxHeight: "200px" }}
+            style={{ minHeight: `${COMPOSER_MIN_H}px`, maxHeight: `${COMPOSER_MAX_H}px` }}
           />
 
           {/* @mention popover */}
@@ -398,14 +406,27 @@ export function Composer({
           </Tooltip>
         )}
 
-        <Button
-          onClick={handleSend}
-          disabled={disabled || !value.trim()}
-          size="icon"
-          className="shrink-0 mb-0.5"
-        >
-          <ArrowUp size={16} className="shrink-0" aria-label="Send" />
-        </Button>
+        {isBusy && onStop ? (
+          <Button
+            onClick={onStop}
+            size="icon"
+            className="shrink-0 mb-0.5 h-8 w-8 bg-(--err)/15 hover:bg-(--err)/25"
+            title="Stop the run"
+            aria-label="Stop"
+          >
+            <span className="size-2.5 rounded-full bg-(--err) animate-pulse" />
+          </Button>
+        ) : (
+          <Button
+            onClick={handleSend}
+            disabled={disabled || !value.trim()}
+            size="icon"
+            className="shrink-0 mb-0.5 h-8 w-8"
+            aria-label="Send"
+          >
+            <ArrowUp size={16} className="shrink-0" />
+          </Button>
+        )}
       </div>
     </div>
   );

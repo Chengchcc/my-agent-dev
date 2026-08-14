@@ -15,9 +15,7 @@
     "format": "biome check --write .",
     "test": "bun test --pass-with-no-tests",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
-    "db:generate:backend": "drizzle-kit generate --config drizzle.backend.config.ts",
-    "db:migrate:backend": "bun run src/main.ts",
-    "db:check:backend": "drizzle-kit check --config drizzle.backend.config.ts"
+    "db:migrate:backend": "bun run src/main.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",

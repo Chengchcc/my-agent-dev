@@ -106,7 +106,13 @@ export function agentRoutes(
           backendKind: t.Optional(backendKindUnion),
           workspacePath: t.Optional(t.String({ minLength: 1 })),
           reasoningEffort: t.Optional(
-            t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),
+            t.Union([
+              t.Literal("none"),
+              t.Literal("low"),
+              t.Literal("high"),
+              t.Literal("max"),
+              t.Null(),
+            ]),
           ),
           permissionMode: t.Optional(
             t.Union([t.Literal("ask"), t.Literal("auto"), t.Literal("deny")]),
@@ -171,7 +177,13 @@ export function agentRoutes(
           backendKind: t.Optional(backendKindUnion),
           workspacePath: t.Optional(t.String({ minLength: 1 })),
           reasoningEffort: t.Optional(
-            t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),
+            t.Union([
+              t.Literal("none"),
+              t.Literal("low"),
+              t.Literal("high"),
+              t.Literal("max"),
+              t.Null(),
+            ]),
           ),
           permissionMode: t.Optional(
             t.Union([t.Literal("ask"), t.Literal("auto"), t.Literal("deny")]),
@@ -252,7 +264,11 @@ export function agentRoutes(
         } catch {
           return { path: rel, entries: [] };
         }
-        const target = resolveInWorkspace(root, rel);
+        // Realpath the root FIRST: a symlinked workspace root (macOS /tmp)
+        // must not turn every legal file into a 403 via a stale prefix.
+        const realRoot = realpathSyncSafe(root);
+        if (realRoot === null) return { path: rel, entries: [] };
+        const target = resolveInWorkspace(realRoot, rel);
         if (target === null)
           return Response.json({ error: "path escapes workspace" }, { status: 403 });
         if (!existsSync(target) || !statSync(target).isDirectory()) {
@@ -290,13 +306,17 @@ export function agentRoutes(
         } catch {
           return Response.json({ error: "agent not found" }, { status: 404 });
         }
-        const target = resolveInWorkspace(root, rel);
+        // Realpath the root FIRST (macOS /tmp symlink): the containment
+        // check must run against the REAL root, not the lexical path.
+        const realRoot = realpathSyncSafe(root);
+        if (realRoot === null) return Response.json({ error: "agent not found" }, { status: 404 });
+        const target = resolveInWorkspace(realRoot, rel);
         if (target === null)
           return Response.json({ error: "path escapes workspace" }, { status: 403 });
         // realpath: a symlink inside the workspace must not smuggle reads
         // outside it (the bridge links pack dirs; those stay inside).
         const real = realpathSyncSafe(target);
-        if (real === null || real === root || !real.startsWith(`${root}${sep}`)) {
+        if (real === null || real === realRoot || !real.startsWith(`${realRoot}${sep}`)) {
           return Response.json({ error: "path escapes workspace" }, { status: 403 });
         }
         if (!existsSync(real) || !statSync(real).isFile()) {

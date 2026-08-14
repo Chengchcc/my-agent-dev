@@ -147,9 +147,10 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
       form.reset({
         name: editAgent.name,
         backendKind: editAgent.backendKind ?? "coding_agent",
-        model: editAgent.modelName.includes("/")
-          ? editAgent.modelName
-          : `anthropic/${editAgent.modelName}`,
+        model:
+          editAgent.modelProvider && editAgent.modelName
+            ? `${editAgent.modelProvider}/${editAgent.modelName}`
+            : editAgent.modelName,
         reasoningEffort: editAgent.reasoningEffort ?? "",
         permissionMode: editAgent.permissionMode,
         maxSteps: editAgent.maxSteps?.toString() ?? "",
@@ -225,7 +226,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
       permissionMode: values.permissionMode,
       ...(values.workspacePath ? { workspacePath: values.workspacePath } : {}),
       ...(values.maxSteps ? { maxSteps: parseInt(values.maxSteps, 10) } : {}),
-      ...(values.reasoningEffort ? { reasoningEffort: values.reasoningEffort } : {}),
+      reasoningEffort: values.reasoningEffort || null,
     };
     if (values.enableLark)
       body.lark = {

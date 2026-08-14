@@ -35,6 +35,7 @@ interface TimelineProps {
         thinking: string;
         sender: SenderRef;
         tools?: readonly LiveToolCall[];
+        error?: string;
       }>
     | undefined;
 }
@@ -136,14 +137,6 @@ export function Timeline({
 }: TimelineProps) {
   const segments = useMemo(() => groupTurns(messages), [messages]);
   const anchors = useMemo(() => extractAnchors(segments), [segments]);
-  // Map segment id → per-conversation turn number (1-based)
-  const turnNumBySegId = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const a of anchors) {
-      map.set(a.id.replace("turn-", ""), a.seq);
-    }
-    return map;
-  }, [anchors]);
   const [activeAnchor, setActiveAnchor] = useState<string | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
@@ -195,26 +188,23 @@ export function Timeline({
     const items: Array<{
       seg: TurnSegment;
       anchorId?: string;
-      turnNum?: number;
-      isFirst?: boolean;
     }> = [];
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]!;
-      // Place a turn divider/anchor before each message that starts a turn.
+      // Anchors carry the scroll-to-turn targets (the jump nav beside the
+      // timeline); the old numbered divider row was removed with the polish.
       if (isTurnStart(segments, i)) {
         const id = segmentId(seg);
         items.push({
           seg,
           anchorId: `turn-${id}`,
-          turnNum: turnNumBySegId.get(id),
-          isFirst: i === 0,
         });
         continue;
       }
       items.push({ seg });
     }
     return items;
-  }, [segments, turnNumBySegId]);
+  }, [segments]);
 
   return (
     <div className="flex gap-0">
@@ -247,7 +237,7 @@ export function Timeline({
       {/* Timeline content */}
       <div className="flex-1 min-w-0">
         <div className="max-w-3xl mx-auto">
-          {renderItems.map(({ seg, anchorId, turnNum, isFirst }) => {
+          {renderItems.map(({ seg, anchorId }) => {
             if (seg.kind === "turn") {
               // Agent turn blocks never start a turn, so they carry no anchor.
               return (
@@ -277,15 +267,6 @@ export function Timeline({
 
             return (
               <div key={m.id} id={anchorId} className={anchorId ? "scroll-mt-16" : undefined}>
-                {anchorId && turnNum !== undefined && !isFirst && (
-                  <div className="flex items-center gap-3 py-3">
-                    <div className="flex-1 h-px bg-(--hairline)" />
-                    <div className="flex items-center gap-1 text-[10px] text-(--mute) shrink-0">
-                      <span>#{turnNum}</span>
-                    </div>
-                    <div className="flex-1 h-px bg-(--hairline)" />
-                  </div>
-                )}
                 <div
                   style={virt}
                   data-seq={m.seq}
@@ -301,6 +282,8 @@ export function Timeline({
                         content={extractText(m.content)}
                         isStreaming={m.content.state === "streaming"}
                         runStatus={m.content.runStatus}
+                        state={m.content.state}
+                        error={m.content.error?.message}
                       />
                     )}
                     {renderContentBlocks(m.content, {
@@ -317,23 +300,43 @@ export function Timeline({
           {transients?.map((t) => {
             const tools = t.tools ?? [];
             const text = t.text.trim();
+            const showBubble = text || t.error;
             return (
               <div key={`transient-${t.runId}`} className="group relative">
                 {tools.length > 0 && (
-                  <TransientTrace msgCount={text ? 1 : 0} thinking={t.thinking} tools={tools} />
+                  <TransientTrace
+                    msgCount={showBubble ? 1 : 0}
+                    thinking={t.thinking}
+                    tools={tools}
+                  />
                 )}
-                {text ? (
+                {showBubble ? (
                   <MessageBubble
                     align="left"
                     name={t.sender.displayName ?? t.sender.memberId}
                     kind="agent"
                     agentId={t.sender.agentId}
                     content={t.text}
-                    isStreaming
+                    isStreaming={!t.error}
+                    state={t.error ? "error" : undefined}
+                    error={t.error}
                   />
-                ) : tools.length === 0 ? (
-                  <div className="px-1 py-0.5 text-[11px] italic text-(--mute)">thinking…</div>
-                ) : null}
+                ) : (
+                  <div
+                    data-testid="thinking-placeholder"
+                    className="flex items-center gap-1.5 px-1 py-2"
+                    role="status"
+                  >
+                    <span className="sr-only">Agent is thinking</span>
+                    {[0, 1, 2].map((i) => (
+                      <span
+                        key={i}
+                        className="size-1.5 rounded-full bg-(--mute) animate-bounce"
+                        style={{ animationDelay: `${i * 150}ms` }}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

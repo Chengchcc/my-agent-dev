@@ -105,19 +105,13 @@ export function AgentList() {
                        "
             style={{}}
           >
-            <h3
-              className="text-xl font-normal text-(--ink-strong) tracking-tight font-sans"
-              style={{ letterSpacing: "-0.65px" }}
-            >
+            <h3 className="text-xl font-normal text-(--ink-strong) tracking-tight font-sans">
               {agent.name}
             </h3>
 
             <div className="mt-3 flex items-center gap-2">
               <span className="size-1.5 rounded-full bg-(--primary) opacity-60" />
-              <span
-                className="text-xs text-(--mute) tracking-wider uppercase font-sans font-semibold"
-                style={{ letterSpacing: "2.52px" }}
-              >
+              <span className="text-xs text-(--mute) tracking-wider uppercase font-sans font-semibold">
                 {agent.modelProvider}/{agent.modelName}
               </span>
             </div>
@@ -139,7 +133,7 @@ export function AgentList() {
             </div>
 
             <div className="mt-4 flex items-center gap-3 text-[10px] text-(--mute)">
-              <span className="border border-(--hairline) rounded-sm px-1.5 py-0.5 uppercase tracking-[0.15em] font-sans font-semibold">
+              <span className="border border-(--hairline) rounded-sm px-1.5 py-0.5 uppercase tracking-kicker font-sans font-semibold">
                 {agent.permissionMode}
               </span>
               <span>

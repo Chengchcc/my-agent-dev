@@ -11,6 +11,9 @@ export interface BackendConfig {
   authToken: string;
   maxConcurrentRuns: number;
   cancelGraceMs: number;
+  /** Wall-clock cap on a run: the dispatch watchdog stops the backend and
+   *  settles the run aborted when it exceeds this. */
+  runTimeoutMs: number;
   /** Absolute path to the repo skills/ directory (source for builtin seed). */
   builtinSkillsDir: string;
   /** Coding Agent executable (spawned per Run). Defaults to "coding-agent"
@@ -44,6 +47,7 @@ export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
     authToken: env.BACKEND_AUTH_TOKEN,
     maxConcurrentRuns: env.BACKEND_MAX_CONCURRENT,
     cancelGraceMs: env.BACKEND_CANCEL_GRACE_MS,
+    runTimeoutMs: env.BACKEND_RUN_TIMEOUT_MS ?? 30 * 60_000,
     builtinSkillsDir: process.env.BUILTIN_SKILLS_DIR ?? resolve(import.meta.dir, "../../../skills"),
     codingAgentBin: env.CODING_AGENT_BIN,
     knowledgeMcpServerBin: env.KNOWLEDGE_MCP_SERVER_BIN,

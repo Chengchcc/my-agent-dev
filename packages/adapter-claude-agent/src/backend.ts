@@ -20,6 +20,7 @@ import type {
   BackendRunOutcome,
   BackendRunSegment,
 } from "@my-agent-team/agent-backend";
+import { guardedConsume } from "@my-agent-team/agent-backend";
 import {
   buildOutcomeMessages,
   createClaudeAccumulator,
@@ -193,10 +194,10 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
       const slash = modelId.indexOf("/");
       args.push("--model", slash > 0 ? modelId.slice(slash + 1) : modelId);
     }
+    // claude --effort accepts the canonical levels incl. max (no downgrade).
+    // none = omit the flag (claude has no off-effort; the CLI default stays).
     if (input.run.model.reasoningEffort && input.run.model.reasoningEffort !== "none") {
-      const effort =
-        input.run.model.reasoningEffort === "max" ? "high" : input.run.model.reasoningEffort;
-      args.push("--effort", effort);
+      args.push("--effort", input.run.model.reasoningEffort);
     }
     // Per-run frozen permission_mode (ADR 0020 decision 7): ask -> default
     // (prompts), auto -> acceptEdits, deny -> plan. bypassPermissions is
@@ -233,6 +234,19 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
   /** Single stdout parse loop + stdin write. The terminal outcome is
    *  decided ONLY here (result event / error / exit code). */
   private async consumeStdout(
+    handle: ActiveRun,
+    input: BackendRunInput<"claude_code">,
+  ): Promise<void> {
+    await guardedConsume(
+      () => this.consumeBody(handle, input),
+      (message) => {
+        handle.settle({ status: "failed", error: `stdout consume failed: ${message}` });
+        this.active.delete(handle.runId);
+      },
+    );
+  }
+
+  private async consumeBody(
     handle: ActiveRun,
     input: BackendRunInput<"claude_code">,
   ): Promise<void> {

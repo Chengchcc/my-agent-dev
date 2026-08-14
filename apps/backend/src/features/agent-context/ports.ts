@@ -53,7 +53,7 @@ export interface AgentContextPort {
     backendKind: string,
   ): Promise<ContextBranch>;
 
-  /** Record the branch's CLI session reference (ADR 0002) after a
+  /** Record the branch's CLI session reference (ADR 0019) after a
    *  CLI-backed run settles. No revision bump — informational state. */
   updateBranchCliSessionRef(branchId: string, cliSessionRef: string): Promise<ContextBranch | null>;
 

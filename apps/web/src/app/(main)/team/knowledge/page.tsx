@@ -1,12 +1,20 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { BookOpen, RefreshCw } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Page, PageBody, PageHeader } from "@/components/page";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  InfoBanner,
+  ListRowCard,
+  ListToolbar,
+  SectionKicker,
+  StatCard,
+} from "@/components/ui/polish";
 import { api } from "@/lib/api";
 
 /** Knowledge pack pool (ADR 0022): install builtin/git packs here; agent
@@ -21,31 +29,39 @@ interface PackRow {
   error: string | null;
 }
 
-function statusVariant(status: string): "default" | "destructive" | "secondary" | "outline" {
-  if (status === "ready") return "default";
-  if (status === "failed") return "destructive";
-  return "secondary";
+function statusLabel(status: PackRow["status"]): string {
+  if (status === "pending") return "Pending";
+  if (status === "installing") return "Installing…";
+  if (status === "syncing") return "Syncing…";
+  if (status === "ready") return "Ready";
+  if (status === "failed") return "Failed";
+  return status;
 }
 
 export default function KnowledgePackPage() {
   const qc = useQueryClient();
-  const { data } = useQuery({
+  const { data, refetch } = useQuery({
     queryKey: ["knowledge-packs"],
     queryFn: () => api.listKnowledgePacks() as Promise<{ packs: PackRow[] }>,
   });
+  const [query, setQuery] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [sourceKind, setSourceKind] = useState<"builtin" | "git">("git");
   const [sourceUrl, setSourceUrl] = useState("");
 
   const install = useMutation({
-    mutationFn: () =>
-      api.installKnowledgePack({
-        name,
-        ...(description ? { description } : {}),
-        sourceKind,
-        ...(sourceKind === "git" ? { sourceUrl } : {}),
-      }),
+    mutationFn: () => {
+      const body: {
+        name: string;
+        description?: string;
+        sourceKind: "builtin" | "git";
+        sourceUrl?: string;
+      } = { name, sourceKind };
+      if (description) body.description = description;
+      if (sourceKind === "git") body.sourceUrl = sourceUrl;
+      return api.installKnowledgePack(body);
+    },
     onSuccess: () => {
       setName("");
       setDescription("");
@@ -59,18 +75,66 @@ export default function KnowledgePackPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["knowledge-packs"] }),
   });
 
+  const packs = useMemo(() => data?.packs ?? [], [data]);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return packs;
+    return packs.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q),
+    );
+  }, [packs, query]);
+
+  const ready = packs.filter((p) => p.status === "ready").length;
+  const failed = packs.filter((p) => p.status === "failed").length;
+  const installing = packs.filter(
+    (p) => p.status === "installing" || p.status === "syncing" || p.status === "pending",
+  ).length;
+
   return (
     <Page>
-      <PageHeader breadcrumb="Team" title="Knowledge Packs" />
+      <PageHeader
+        breadcrumb="Team"
+        title="Knowledge Packs"
+        subtitle="Install shared knowledge packs here; attach them per agent from the agent's Knowledge tab."
+        actions={
+          <Button variant="ghost" size="sm" onClick={() => void refetch()}>
+            <RefreshCw className="size-3.5" />
+            Refresh
+          </Button>
+        }
+      />
       <PageBody>
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-end gap-3 border border-(--hairline) rounded p-4">
+        <div className="space-y-6">
+          <InfoBanner
+            id="ib:knowledge-help"
+            title="How this page works"
+            body="Packs are installed from a git repo or the builtin library, then referenced by agents. Example: https://github.com/org/repo.git or a local path."
+          />
+
+          <div data-testid="stat-cards" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatCard label="Packs" value={packs.length} />
+            <StatCard label="Ready" value={ready} />
+            <StatCard label="Failed" value={failed} tone={failed > 0 ? "err" : undefined} />
+            <StatCard
+              label="Installing"
+              value={installing}
+              tone={installing > 0 ? "warn" : undefined}
+            />
+          </div>
+
+          <ListToolbar
+            searchValue={query}
+            onSearch={setQuery}
+            placeholder="Search packs by name or description"
+          />
+
+          <div className="flex flex-wrap items-end gap-3 rounded-(--radius-card) border border-(--hairline) bg-(--panel) p-4">
             <div className="space-y-1">
               <Label>Name</Label>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="kb-fixture"
+                placeholder="my-docs-pack"
               />
             </div>
             <div className="space-y-1">
@@ -98,45 +162,53 @@ export default function KnowledgePackPage() {
                 <Input
                   value={sourceUrl}
                   onChange={(e) => setSourceUrl(e.target.value)}
-                  placeholder="https://github.com/org/kb.git"
+                  placeholder="e.g. https://github.com/org/repo.git or a local path"
                 />
               </div>
             )}
             <Button
               onClick={() => void install.mutate()}
-              disabled={!name || (sourceKind === "git" && !sourceUrl)}
+              disabled={install.isPending || !name || (sourceKind === "git" && !sourceUrl)}
             >
-              Install
+              {install.isPending ? "Installing…" : "Install"}
             </Button>
           </div>
 
-          <ul className="space-y-2">
-            {(data?.packs ?? []).map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center justify-between gap-3 border border-(--hairline) rounded px-4 py-3"
-              >
-                <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">{p.name}</div>
-                  <div className="text-xs text-(--mute) truncate">{p.description}</div>
-                  {p.status === "failed" && p.error && (
-                    <div className="text-xs text-destructive truncate">{p.error}</div>
-                  )}
+          <div>
+            <SectionKicker hint="Installed packs are available to every agent.">
+              Installed packs
+            </SectionKicker>
+            <div className="space-y-2">
+              {filtered.map((p) => (
+                <ListRowCard
+                  key={p.id}
+                  icon={<BookOpen className="size-4 text-(--mute)" />}
+                  title={p.name}
+                  tag={{ label: p.sourceKind }}
+                  badges={[statusLabel(p.status)]}
+                  desc={p.status === "failed" && p.error ? p.error : p.description}
+                  actions={
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => void remove.mutate(p.id)}
+                    >
+                      Delete
+                    </Button>
+                  }
+                />
+              ))}
+              {filtered.length === 0 && (
+                <div data-testid="empty-state">
+                  <EmptyState
+                    icon={BookOpen}
+                    title="No knowledge packs installed"
+                    description="Install your first pack with the form above."
+                  />
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <Badge variant={statusVariant(p.status)} className="text-xs">
-                    {p.status}
-                  </Badge>
-                  <Button variant="destructive" size="sm" onClick={() => void remove.mutate(p.id)}>
-                    Delete
-                  </Button>
-                </div>
-              </li>
-            ))}
-            {(data?.packs ?? []).length === 0 && (
-              <p className="text-sm text-(--mute)">No knowledge packs installed.</p>
-            )}
-          </ul>
+              )}
+            </div>
+          </div>
         </div>
       </PageBody>
     </Page>

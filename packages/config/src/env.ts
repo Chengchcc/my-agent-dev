@@ -25,6 +25,7 @@ export const envSchema = z.object({
   BACKEND_TEMPLATE_DIR: z.string().optional(),
   BACKEND_MAX_CONCURRENT: z.coerce.number().int().positive().default(8),
   BACKEND_CANCEL_GRACE_MS: z.coerce.number().int().positive().default(5_000),
+  BACKEND_RUN_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
 
   // ── Anthropic API ──
   ANTHROPIC_API_KEY: z.string().optional(),
@@ -35,6 +36,7 @@ export const envSchema = z.object({
   SESSION_SECRET: z.string().optional().describe("HMAC secret for session cookies"),
   NODE_ENV: z.string().optional(),
   MOCK_USER_ID: z.string().optional().describe("Dev-only: mock login user id"),
+  SESSION_COOKIE_SECURE: z.string().optional(),
   MOCK_PASSWORD: z.string().optional().describe("Dev-only: mock login password"),
 
   // ── Lark-bot runner ──

@@ -190,16 +190,20 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     const resumeId = input.run.cliSessionRef;
     const sessionId = resumeId ?? newSessionId();
     const loaded = resumeId ? loadSessionMessages(resumeId) : [];
-    const sessionTranscript =
-      loaded.length > 0
-        ? loaded.map((message, i) => ({
-            productEntryId: `session:${i}`,
-            // Validated at the file boundary; the single-step cast aligns
-            // zod's inferred shape with the Message interface (the session
-            // file holds messages the child itself wrote).
-            message: MessageSchema.parse(message) as Message,
-          }))
-        : undefined;
+    // A corrupt line must degrade that entry (log + skip), never brick the
+    // whole resume: MessageSchema.parse throws on the first bad shape.
+    const parsedTranscript: { productEntryId: string; message: Message }[] = [];
+    for (const [i, message] of loaded.entries()) {
+      try {
+        parsedTranscript.push({
+          productEntryId: `session:${i}`,
+          message: MessageSchema.parse(message) as Message,
+        });
+      } catch {
+        console.warn(`[rpc] skipping malformed session line ${i} for ${resumeId}`);
+      }
+    }
+    const sessionTranscript = parsedTranscript.length > 0 ? parsedTranscript : undefined;
     let effectiveInput: typeof input;
 
     let segment: BackendRunSegment<"coding_agent">;

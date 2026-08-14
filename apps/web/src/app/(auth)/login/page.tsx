@@ -73,14 +73,11 @@ function LoginForm() {
       <div className="fixed top-0 inset-x-0 h-0.5 bg-(--primary)" />
 
       <div className="w-full max-w-sm px-8 animate-fade-in">
-        <p className="text-xs tracking-[2.52px] uppercase text-(--mute) mb-8 font-sans font-semibold">
+        <p className="text-xs tracking-kicker uppercase text-(--mute) mb-8 font-sans font-semibold">
           Observatory
         </p>
 
-        <h1
-          className="text-3xl/tight font-normal text-(--ink-strong) mb-2 font-sans"
-          style={{ letterSpacing: "-0.65px" }}
-        >
+        <h1 className="text-3xl/tight font-normal text-(--ink-strong) mb-2 font-sans">
           Agent
           <br />
           Workspace
@@ -101,7 +98,7 @@ function LoginForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <label className="text-[10px] tracking-[2.52px] uppercase text-(--mute) block mb-2 font-sans font-semibold">
+                  <label className="text-[10px] tracking-kicker uppercase text-(--mute) block mb-2 font-sans font-semibold">
                     Password
                   </label>
                   <FormControl>
@@ -129,7 +126,7 @@ function LoginForm() {
         </Form>
 
         <div className="mt-12 pt-6 border-t border-(--hairline)">
-          <p className="text-[10px] tracking-[0.15em] text-(--mute)">
+          <p className="text-[10px] tracking-kicker text-(--mute)">
             my-agent-team &copy; {new Date().getFullYear()}
           </p>
         </div>

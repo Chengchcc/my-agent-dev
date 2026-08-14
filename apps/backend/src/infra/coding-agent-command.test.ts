@@ -12,6 +12,7 @@ const baseConfig: BackendConfig = {
   port: 3000,
   authToken: "test-token",
   cancelGraceMs: 100,
+  runTimeoutMs: 30 * 60_000,
   maxConcurrentRuns: 4,
   builtinSkillsDir: "/tmp/skills",
 };

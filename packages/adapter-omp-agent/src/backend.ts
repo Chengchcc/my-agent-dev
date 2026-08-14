@@ -16,6 +16,7 @@ import type {
   BackendRunOutcome,
   BackendRunSegment,
 } from "@my-agent-team/agent-backend";
+import { guardedConsume } from "@my-agent-team/agent-backend";
 import { buildOutcomeMessages, createOmpAccumulator, mapOmpEvent } from "./event-mapper.js";
 import { type SpawnedOmpProcess, spawnOmpProcess } from "./process.js";
 import { parseOmpLine } from "./wire.js";
@@ -169,11 +170,12 @@ export class OmpBackend implements AgentBackend<"omp"> {
     const modelId = input.run.model.modelId;
     if (modelId) args.push("--model", modelId);
     args.push("--tools", "read,bash,edit,write,grep,glob");
-    // Canonical reasoning_effort (agent.yml) → omp --thinking level
-    // (ADR 0003 decision 7: none/low/high/max mapped per backend).
-    if (input.run.model.reasoningEffort && input.run.model.reasoningEffort !== "none") {
+    // Canonical reasoning_effort (agent.yml) → omp --thinking level.
+    // none = explicitly off (never the CLI default); max passes through
+    // (omp natively accepts max, live-verified).
+    if (input.run.model.reasoningEffort) {
       const level =
-        input.run.model.reasoningEffort === "max" ? "xhigh" : input.run.model.reasoningEffort;
+        input.run.model.reasoningEffort === "none" ? "off" : input.run.model.reasoningEffort;
       args.push("--thinking", level);
     }
     if (input.run.systemPrompt) args.push("--append-system-prompt", input.run.systemPrompt);
@@ -192,6 +194,16 @@ export class OmpBackend implements AgentBackend<"omp"> {
    *  (exit code + error event) — the outcome is the sole terminal authority
    *  (ADR 0017). */
   private async consumeStdout(handle: ActiveRun, resumeRef: string | undefined): Promise<void> {
+    await guardedConsume(
+      () => this.consumeBody(handle, resumeRef),
+      (message) => {
+        handle.settle({ status: "failed", error: `stdout consume failed: ${message}` });
+        this.active.delete(handle.runId);
+      },
+    );
+  }
+
+  private async consumeBody(handle: ActiveRun, resumeRef: string | undefined): Promise<void> {
     const acc = createOmpAccumulator();
     for await (const line of handle.proc.stdout) {
       if (line.trim() === "") continue;

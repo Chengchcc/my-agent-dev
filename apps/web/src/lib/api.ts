@@ -41,14 +41,9 @@ export type SystemInfo = ApiReturn<typeof api.getSystemInfo>;
 export type { ContentBlock };
 export type MemberInfo = Member;
 export type { LedgerEntry };
-
-/** Extract fork source ID from a conversation snapshot (defensive - field arrives once backend ships). */
+/** Extract fork source ID from a conversation snapshot (null when not a fork). */
 export function getForkSourceId(conv: ConversationSnapshot): string | null {
-  if ("forkSource" in conv) {
-    const v = conv.forkSource;
-    return typeof v === "string" ? v : null;
-  }
-  return null;
+  return typeof conv.forkSource === "string" ? conv.forkSource : null;
 }
 
 export function classifyError(e: unknown) {
@@ -143,7 +138,6 @@ export const api = {
   listSurfaces: () => unwrap(client.api.ops.surfaces.get()),
   // Projects
   listProjects: () => unwrap(client.api.projects.get()),
-  getProject: (id: string) => unwrap(client.api.projects({ id }).get()),
   createProject: (body: {
     name: string;
     repoUrl?: string;

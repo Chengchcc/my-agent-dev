@@ -1,30 +1,9 @@
 -- 0025: file-first agent.yml (ADR 0003 decision 1).
 -- Content columns fold into a single `config` JSON cache (the parsed
 -- agent.yml); only id / workspace_path / archived_at / timestamps stay
--- relational. Existing rows are converted in place before the drops.
+-- relational. Upgrade policy: delete .backend-data and re-boot - the
+-- legacy rows are never converted in place.
 ALTER TABLE `agents` ADD COLUMN `config` text NOT NULL DEFAULT '{}';
---> statement-breakpoint
-UPDATE `agents` SET `config` = json_object(
-  'schema_version', '1',
-  'enabled', 1,
-  'id', `id`,
-  'name', `name`,
-  'title', `name`,
-  'description', '',
-  'runtime_config', json_object(
-    'runtime', `backend_kind`,
-    'model_id', `model_provider` || '/' || `model_name`,
-    'reasoning_effort', coalesce(`reasoning_effort`, ''),
-    'permission_mode', `permission_mode`,
-    'max_steps', coalesce(`max_steps`, 0)
-  ),
-  'lark', json_object(
-    'enabled', `lark_enabled`,
-    'app_id', coalesce(`lark_app_id`, ''),
-    'bot_display_name', coalesce(`lark_bot_display_name`, ''),
-    'profile_ref', coalesce(`lark_profile_ref`, '')
-  )
-);
 --> statement-breakpoint
 ALTER TABLE `agents` DROP COLUMN `name`;
 --> statement-breakpoint

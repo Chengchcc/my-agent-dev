@@ -13,7 +13,7 @@ export function ToolResultCard({
       }`}
     >
       <div className="p-3">
-        <p className="text-[10px] tracking-[0.15em] uppercase font-sans font-semibold text-(--mute) mb-1">
+        <p className="text-[10px] tracking-kicker uppercase font-sans font-semibold text-(--mute) mb-1">
           Result
         </p>
         <pre

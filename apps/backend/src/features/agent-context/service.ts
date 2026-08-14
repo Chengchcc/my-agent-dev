@@ -64,7 +64,7 @@ export interface AgentContextService {
     backendKind: string,
   ): Promise<ContextBranch>;
 
-  /** Record the branch's CLI session reference (ADR 0002). */
+  /** Record the branch's CLI session reference (ADR 0019). */
   updateBranchCliSessionRef(branchId: string, cliSessionRef: string): Promise<ContextBranch | null>;
 
   moveBranchLeaf(

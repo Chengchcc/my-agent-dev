@@ -20,10 +20,21 @@ export interface ClaudeRunAccumulator {
   result: { result: string | null; isError: boolean } | null;
   /** Error surfaced by the `error` event type. */
   error: string | null;
+  /** tool_use callId → tool name (the tool_result block carries only the
+   *  id; the completed event must restore the real name). */
+  readonly toolNames: Map<string, string>;
 }
 
 export function createClaudeAccumulator(): ClaudeRunAccumulator {
-  return { events: [], usage: {}, assistantTexts: [], sessionId: null, result: null, error: null };
+  return {
+    events: [],
+    usage: {},
+    assistantTexts: [],
+    sessionId: null,
+    result: null,
+    error: null,
+    toolNames: new Map(),
+  };
 }
 
 export function mapClaudeEvent(acc: ClaudeRunAccumulator, evt: ClaudeEvent): boolean {
@@ -45,6 +56,7 @@ export function mapClaudeEvent(acc: ClaudeRunAccumulator, evt: ClaudeEvent): boo
           acc.events.push({ type: "thinking_delta", text: block.thinking ?? block.text! });
           visible = true;
         } else if (block.type === "tool_use" && block.id && block.name) {
+          acc.toolNames.set(block.id, block.name);
           acc.events.push({
             type: "native_tool_started",
             toolName: block.name,
@@ -63,7 +75,7 @@ export function mapClaudeEvent(acc: ClaudeRunAccumulator, evt: ClaudeEvent): boo
         if (block.type === "tool_result" && block.tool_use_id) {
           acc.events.push({
             type: "native_tool_completed",
-            toolName: "claude_tool",
+            toolName: acc.toolNames.get(block.tool_use_id) ?? "claude_tool",
             callId: block.tool_use_id,
             result: {
               output:

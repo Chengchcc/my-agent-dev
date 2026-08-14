@@ -10,7 +10,9 @@
     "lint": "biome check . && eslint .",
     "format": "biome check --write .",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint:ui": "bun scripts/ui-lint.ts",
+    "audit:ui": "bun scripts/ui-audit.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -52,6 +54,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "tailwindcss": "^4.0.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "puppeteer-core": "^24.0.0"
   }
 }

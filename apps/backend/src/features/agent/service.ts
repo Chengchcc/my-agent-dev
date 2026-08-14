@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import { BusyError, NotFoundError } from "../../infra/domain-errors.js";
+import { join, resolve, sep } from "node:path";
+import { BusyError, NotFoundError, ValidationError } from "../../infra/domain-errors.js";
 import { buildAgentConfig, serializeAgentYaml } from "./agent-config.js";
 import type { AgentRow, CreateAgentInput, UpdateAgentInput } from "./domain.js";
 import type { AgentPort } from "./ports.js";
@@ -33,17 +33,33 @@ export function createAgentService(opts: {
   onCreate?: (agentId: string) => Promise<void>;
   /** Optional hook called after agent update (e.g. workspace-bridge reconcile). */
   onUpdate?: (agentId: string) => Promise<void>;
+  /** Absolute roots an HTTP workspace override may live under (D4: the
+   *  workspaceRoot + the managed agents dir). Outside = ValidationError. */
+  allowedWorkspaceRoots?: readonly string[];
 }): AgentService {
   const { port, idGen, materializeWorkspace, onCreate, onUpdate } = opts;
 
   return {
     async create(input: CreateAgentInput): Promise<AgentRow> {
       const id = input.id ?? idGen();
-      // Agent-level workspace override (ADR 0003): a configured absolute
+      // Agent-level workspace override (ADR 0020): a configured absolute
       // path is materialized verbatim (mkdir -p + seeded defaults);
       // otherwise fall back to the managed <dataDir>/agents/<id> location.
-      const workspacePath = input.workspacePath
-        ? await ensureAgentWorkspace(resolve(input.workspacePath))
+      const overridePath = input.workspacePath;
+      const workspacePath = overridePath
+        ? await (async () => {
+            const abs = resolve(overridePath);
+            const allowed =
+              opts.allowedWorkspaceRoots?.some(
+                (root) => abs === root || abs.startsWith(`${root}${sep}`),
+              ) ?? false;
+            if (!allowed) {
+              throw new ValidationError(
+                `workspace override ${abs} is outside the allowed roots: ${opts.allowedWorkspaceRoots?.join(", ") ?? "none"}`,
+              );
+            }
+            return ensureAgentWorkspace(abs);
+          })()
         : await materializeWorkspace(id, input.template);
 
       const config = buildAgentConfig({
@@ -63,7 +79,7 @@ export function createAgentService(opts: {
           : undefined,
       });
 
-      // agent.yml is the single source (ADR 0003): write it into the
+      // agent.yml is the single source (ADR 0020): write it into the
       // workspace, then cache the parsed form in the DB.
       await writeFile(join(workspacePath, "agent.yml"), serializeAgentYaml(config), "utf-8");
 

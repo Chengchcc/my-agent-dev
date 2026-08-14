@@ -47,6 +47,9 @@ export interface AgentRunExecutionDeps {
    *  Agent's workspace path + permission mode; injected so tests and callers
    *  can vary it). Used ONLY when the Run itself did not pin a workspace
    *  snapshot. */
+  /** Wall-clock cap on a run (ms); the dispatch watchdog stops the
+   *  backend and settles aborted on expiry. */
+  readonly runTimeoutMs?: number;
   readonly resolveWorkspace: (input: {
     conversationId: string;
     agentMemberId: string;
@@ -134,6 +137,7 @@ export function createAgentRunExecutionService(
   deps: AgentRunExecutionDeps,
 ): AgentRunExecutionService {
   const { runPort, contextPort, backends, resolveWorkspace } = deps;
+  const runTimeoutMs = deps.runTimeoutMs ?? 30 * 60_000;
 
   /** Process-lifetime live refs, only for steer/stop/current-event
    *  subscription. Removed when the run reaches a terminal state. */
@@ -217,7 +221,7 @@ export function createAgentRunExecutionService(
     );
   }
 
-  /** First-turn bridge (ADR 0003 decision 6): when the branch has no CLI
+  /** First-turn bridge (ADR 0020 decision 6): when the branch has no CLI
    *  session yet, the projected product history is flattened into the input
    *  message as text — the CLI session becomes the runtime truth from the
    *  second turn on. Flat text loses tool structure; accepted. */
@@ -233,7 +237,7 @@ export function createAgentRunExecutionService(
   /** Assemble the BackendRunInput for a run's single input. The run's
    *  systemPrompt + skillRoots are the frozen snapshot persisted at Run
    *  creation - never re-resolved at dispatch (recovery reuses them); they
-   *  stay in the contract as the run-scoped override channel (ADR 0003).
+   *  stay in the contract as the run-scoped override channel (ADR 0020).
    *  The Product Context (identity + current task list) rides the same
    *  prompt so CLI backends carry their run identity into product tools. */
   function renderTodoSection(todoSnapshot: string | null): string {
@@ -286,6 +290,9 @@ export function createAgentRunExecutionService(
     // CLI backends mount product tools through .mcp.json without the child's
     // per-call wire identity: the identity + task list ride the system
     // prompt, and the model passes the identity as a tool argument.
+    // SECURITY NOTE: the identity is anti-ACCIDENT, not anti-MALICE - a
+    // hostile model can forge any tuple it reads from the prompt. Hard
+    // binding needs a per-run token (scheduled, see security-debt-backlog).
     const productContext = [
       "## Product Context",
       "Product tools (history_recent, history_search, history_around,",
@@ -304,6 +311,7 @@ export function createAgentRunExecutionService(
       runSnapshot.systemPrompt = productContext;
     }
     if (run.skillRoots && run.skillRoots.length > 0) runSnapshot.skillRoots = run.skillRoots;
+    if (cliSessionRef) runSnapshot.cliSessionRef = cliSessionRef;
     if (run.permissionMode) {
       runSnapshot.permissionMode = run.permissionMode as "ask" | "auto" | "deny";
     }
@@ -379,7 +387,7 @@ export function createAgentRunExecutionService(
 
     stage.name = "context_projection";
     const history = await projectHistory(run.branchId);
-    // The branch's CLI session reference (ADR 0003 decision 6): an opaque
+    // The branch's CLI session reference (ADR 0020 decision 6): an opaque
     // pointer the coding agent resolves natively — the product only
     // forwards it, never manages the session itself.
     const branch = await contextPort.getBranch(run.branchId);
@@ -387,7 +395,7 @@ export function createAgentRunExecutionService(
 
     stage.name = "backend_execute";
     debugLog("agent-run", `backend_execute runId=${runId}`);
-    // The branch's CLI session ref is kind-scoped (`<kind>:<ref>`, ADR 0003
+    // The branch's CLI session ref is kind-scoped (`<kind>:<ref>`, ADR 0020
     // decision 6): a ref written by another backend is junk to this CLI and
     // must never be forwarded (pi exits empty on a foreign --session id).
     const kindPrefix = `${run.modelRef.backendKind}:`;
@@ -407,13 +415,22 @@ export function createAgentRunExecutionService(
     await runPort.markInputAccepted(input.inputId);
     debugLog("agent-run", `input_delivered runId=${runId} inputId=${input.inputId}`);
     const drain = forwardEvents(runId, segment);
-    return { outcome: await segment.outcome, segment, drain };
+    // Wall-clock run cap: a looping CLI (no native max-turns) must not own
+    // the branch forever. stop() settles the segment aborted.
+    const watchdog = setTimeout(() => {
+      void backend.stop(runId).catch(() => {});
+    }, runTimeoutMs);
+    try {
+      return { outcome: await segment.outcome, segment, drain };
+    } finally {
+      clearTimeout(watchdog);
+    }
   }
 
   /** Terminal handling for one outcome: completed -> atomic Product commit;
    *  failed/aborted/timeout -> terminal Run without an assistant message. */
   async function settleOutcome(run: AgentRun, outcome: BackendRunOutcome): Promise<void> {
-    // CLI session reference (ADR 0003 decision 6): kind-scoped on the
+    // CLI session reference (ADR 0020 decision 6): kind-scoped on the
     // branch so a backend switch never hands a foreign id to the next CLI.
     if (outcome.cliSessionRef) {
       const scoped = `${run.modelRef.backendKind}:${outcome.cliSessionRef}`;
@@ -441,6 +458,10 @@ export function createAgentRunExecutionService(
       }
       return;
     }
+    // Live subscribers learn WHY the run died (the error text) before the
+    // stream closes; failed runs persist no assistant message, so this
+    // status event is the only live failure record for the UI.
+    broadcast(run.runId, { type: "status", status: outcome.status, error: outcome.error });
     await runPort.finalizeRun(run.runId, outcome);
   }
 
@@ -525,6 +546,10 @@ export function createAgentRunExecutionService(
         const run = await runPort.getRun(runId);
         if (run && isActiveStatus(run.status) && !liveRuns.has(runId)) {
           const detail = error instanceof Error ? error.message : String(error);
+          // Same live-failure record as settleOutcome's terminal branch:
+          // pre-child failures (spawn, catalog, projection) leave no
+          // assistant message, so the status event carries the error text.
+          broadcast(runId, { type: "status", status: "failed", error: detail });
           await runPort
             .finalizeRun(runId, { status: "failed", error: detail })
             .catch((e) => console.error(`[agent-run] finalize failed for ${runId}:`, e));

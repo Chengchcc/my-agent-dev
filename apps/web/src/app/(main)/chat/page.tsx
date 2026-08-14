@@ -45,6 +45,12 @@ export default function ChatOverviewPage() {
   const [input, setInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const { data: agents } = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => api.listAgents(),
+  });
+  const [agentId, setAgentId] = useState("default");
+  const selectedAgent = agents?.find((a) => a.id === agentId);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(searchQuery), 300);
@@ -62,7 +68,12 @@ export default function ChatOverviewPage() {
     createConv.mutate(
       {
         members: [
-          { memberId: "default", kind: "agent", agentId: "default", displayName: "Assistant" },
+          {
+            memberId: agentId,
+            kind: "agent",
+            agentId,
+            displayName: selectedAgent?.name ?? "Assistant",
+          },
           {
             memberId: `human-${crypto.randomUUID().slice(0, 8)}`,
             kind: "human",
@@ -102,6 +113,18 @@ export default function ChatOverviewPage() {
               <Send size={13} />
             </div>
             <span className="text-sm font-semibold text-(--ink-strong)">New Chat</span>
+            <select
+              value={agentId}
+              onChange={(e) => setAgentId(e.target.value)}
+              className="ml-auto text-xs border border-(--hairline) rounded-md bg-transparent px-2 py-1 text-(--ink-strong)"
+              aria-label="Agent"
+            >
+              {(agents ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
           </div>
           <Textarea
             value={input}
@@ -205,8 +228,12 @@ export default function ChatOverviewPage() {
                   <p className="text-sm font-medium text-(--ink) truncate">
                     {conv.title ?? `Conversation ${conv.conversationId.slice(0, 8)}`}
                   </p>
+                  {conv.lastMessagePreview && (
+                    <p className="text-xs text-(--mute) truncate mt-0.5">
+                      {conv.lastMessagePreview}
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
-                    {/* Member avatars */}
                     <div className="flex -space-x-1.5">
                       {conv.members.slice(0, 4).map((m) => (
                         <span

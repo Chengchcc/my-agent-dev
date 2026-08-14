@@ -56,6 +56,9 @@ const scenario = process.env.RPC_FIXTURE_SCENARIO ?? "normal";
 const record = process.env.RPC_FIXTURE_RECORD;
 const cwdMarker = process.env.RPC_FIXTURE_CWD_MARKER;
 const outcomeDelayMs = Number(process.env.RPC_FIXTURE_OUTCOME_DELAY_MS ?? 60);
+// When set, the completed outcome carries this cliSessionRef (the CLI-side
+// session identity round-trip, ADR 0020 decision 6).
+const sessionRef = process.env.RPC_FIXTURE_SESSION_REF;
 
 function note(kind: string, runId: string): void {
   if (record) appendFileSync(record, `${kind} ${runId}\n`);
@@ -86,7 +89,7 @@ async function main(): Promise<void> {
         type: string;
         runId?: string;
         input?: {
-          run?: { runId?: string };
+          run?: { runId?: string; cliSessionRef?: string };
           input?: { message?: { text?: string } };
         };
       };
@@ -121,6 +124,7 @@ async function main(): Promise<void> {
         // The input message text (JSON-escaped: the first-turn bridge is
         // flat text with \n\n separators, recorded as ONE log line).
         note("execute_msg", JSON.stringify(cmd.input?.input?.message?.text ?? ""));
+        note("execute_ref", JSON.stringify(cmd.input?.run?.cliSessionRef ?? null));
         if (cwdMarker) writeFileSync(cwdMarker, process.cwd());
         if (scenario === "silent") {
           // Never respond to execute: models a child stuck pre-acceptance
@@ -247,6 +251,7 @@ async function main(): Promise<void> {
             outcome: {
               status: "completed",
               messages: [{ role: "assistant", text: "done" }],
+              ...(sessionRef ? { cliSessionRef: sessionRef } : {}),
             },
           });
           setTimeout(() => process.exit(0), 20);

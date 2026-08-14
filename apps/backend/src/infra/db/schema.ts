@@ -13,7 +13,7 @@ export const agents = sqliteTable(
   {
     id: text().primaryKey(),
     workspacePath: text().notNull().unique(),
-    /** Materialized cache of the parsed workspace `agent.yml` (ADR 0003
+    /** Materialized cache of the parsed workspace `agent.yml` (ADR 0020
      *  decision 1: the file is the single source; content columns are
      *  folded into this JSON). */
     config: text().notNull().default("{}"),

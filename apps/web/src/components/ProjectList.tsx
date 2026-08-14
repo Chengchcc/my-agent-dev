@@ -52,19 +52,13 @@ export function ProjectList() {
                          "
               style={{}}
             >
-              <h3
-                className="text-xl font-normal text-(--ink-strong) tracking-tight font-sans"
-                style={{ letterSpacing: "-0.65px" }}
-              >
+              <h3 className="text-xl font-normal text-(--ink-strong) tracking-tight font-sans">
                 {project.name}
               </h3>
 
               <div className="mt-3 flex items-center gap-2">
                 <span className="size-1.5 rounded-full bg-(--primary) opacity-60" />
-                <span
-                  className="text-xs text-(--mute) tracking-wider uppercase font-sans font-semibold"
-                  style={{ letterSpacing: "2.52px" }}
-                >
+                <span className="text-xs text-(--mute) tracking-wider uppercase font-sans font-semibold">
                   {project.repoUrl ? "repository configured" : "no repository"}
                 </span>
               </div>

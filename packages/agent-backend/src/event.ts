@@ -29,7 +29,7 @@ export type CoreBackendEvent =
       readonly result?: Readonly<Record<string, unknown>>;
     }
   | { readonly type: "pending_action"; readonly actionId: string }
-  | { readonly type: "status"; readonly status: string }
+  | { readonly type: "status"; readonly status: string; readonly error?: string }
   | {
       readonly type: "workflow_started";
       readonly workflowId: string;

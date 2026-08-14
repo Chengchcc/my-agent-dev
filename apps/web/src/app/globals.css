@@ -63,17 +63,35 @@
 
 /* ── Raw color tokens (VoltAgent DESIGN.md authority) ── */
 :root {
-  --canvas: #101010;
+  /* ── Design tokens (ui polish plan v2 §1: named-only, no bare hex/px) ── */
+  --canvas: #101010; /* bg surface 1 (measured baseline) */
+  --panel: #171717; /* cards/sidebar, one step above canvas */
+  --panel2: #1f1f1f; /* hover/active */
+  --ink: #f2f2f2; /* primary text (measured baseline) */
+  --mute: #a3a3a3;
+  --faint: #5f5f5f;
+  --hairline: #262626;
+  --ok: #00d992;
+  --warn: #f5b849;
+  --err: #f5565b;
+  --info: #5b9bf5;
+  --text-cap: 0.6875rem; /* 11px */
+  --tracking-kicker: 0.15em; /* the ONLY letter-spacing above 0 (kickers) */
+  --text-body: 0.8125rem; /* 13px */
+  --text-emph: 0.9375rem; /* 15px */
+  --text-h2: 1.25rem; /* 20px */
+  --text-h1: 1.625rem; /* 26px */
+  --radius-card: 6px;
+  --radius-btn: 8px;
+
+  /* legacy aliases: the existing components consume these names */
   --canvas-soft: #1a1a1a;
   --primary: #00d992;
   --primary-soft: #2fd6a1;
   --primary-deep: #10b981;
   --on-primary: #101010;
-  --ink: #f2f2f2;
   --ink-strong: #ffffff;
   --body: #bdbdbd;
-  --mute: #a0a8b0;
-  --hairline: #3d3a39;
   --hairline-soft: #b8b3b0;
   --canvas-text-soft: #f5f6f7;
 

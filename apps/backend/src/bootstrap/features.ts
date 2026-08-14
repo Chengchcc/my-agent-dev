@@ -41,7 +41,6 @@ import {
 } from "../features/knowledge/index.js";
 import { CliSetupProvisioner, LarkSetupManager } from "../features/lark-bot/index.js";
 import { loopRoutes } from "../features/loop/http.js";
-import { backfillLegacyMcpAssignments } from "../features/mcp/backfill.js";
 import { createMcpService, fileMcpServerAdapter, mcpRoutes } from "../features/mcp/index.js";
 import { modelRoutes } from "../features/models/index.js";
 import {
@@ -196,17 +195,17 @@ export async function installFeatures(services: BackendServices): Promise<Instal
           return { provider: first.id.slice(0, slash), model: first.id.slice(slash + 1) };
         }
       }
-    } catch {
-      /* catalog spawn unavailable at bootstrap — fall through */
+    } catch (err) {
+      console.warn(
+        "[bootstrap] seed model catalog failed:",
+        err instanceof Error ? err.message : String(err),
+      );
     }
     // ponytail: placeholder until a provider key is configured. Agents
     // exist with identity/memory/skills; dispatch fails until the user
     // picks a real model in the UI.
     return { provider: "unconfigured", model: "none" };
   }
-
-  const seedModel = await defaultSeedModel();
-  await ensureAgent("default", "Assistant", seedModel);
 
   // ─── Conversation + Phase 5 Agent Run (conversation first: the ledger
   //      resolver and run services build on its port; the execution service
@@ -347,6 +346,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   };
   const codingAgentCommand = resolveCodingAgentCommand(config);
   const codingAgentCatalog = new CodingAgentModelCatalog(codingAgentCommand);
+
   const codingAgentBackend = new CodingAgentBackend(codingAgentCommand, {
     maxConcurrent: config.maxConcurrentRuns,
     abortGraceMs: config.cancelGraceMs,
@@ -379,6 +379,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     claude_code: { backend: claudeBackend, catalog: new ClaudeModelCatalog() },
   };
   const agentRunExecution = createAgentRunExecutionService({
+    runTimeoutMs: config.runTimeoutMs,
     runPort: agentRunPort,
     contextPort,
     ledgerResolver,
@@ -572,15 +573,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     idGen: ulid,
   });
 
-  // ADR 0022: promote the legacy per-agent MCP subsets into agent.yml
-  // (runs once - drops mcp_server_legacy when done; each update
-  // reconciles the workspace).
-  await backfillLegacyMcpAssignments(db, config.dataDir, {
-    listAgents: () => agentSvc.list(),
-    getAgentMcpServers: mcpSvcRaw.listAssignments,
-    setAgentMcpServers: mcpSvc.setAgentServers,
-  });
-
   const cronSvc = createCronJobService({
     port: sqliteCronJobAdapter(db),
     idGen: ulid,
@@ -715,6 +707,14 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     await larkBotRegistry.dispose();
     setupManager?.dispose();
     await productToolsMcp?.close();
+  }
+
+  // Seed the default agent AFTER the whole wiring (the catalog const and
+  // the reconcile binding): an early call reads a TDZ const and skips the
+  // workspace reconcile (no skills links, no .mcp.json).
+  {
+    const seedModel = await defaultSeedModel();
+    await ensureAgent("default", "Assistant", seedModel);
   }
 
   return {

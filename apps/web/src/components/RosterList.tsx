@@ -25,7 +25,7 @@ export function RosterList({ conversationId, roster, viewerMemberId, onClose }: 
     <>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] tracking-[0.15em] uppercase text-(--mute) font-semibold">
+          <span className="text-[10px] tracking-kicker uppercase text-(--mute) font-semibold">
             Members ({memberCount})
           </span>
         </div>

@@ -8,6 +8,9 @@ export interface TransientRun {
    *  Rendered inside the running trace; never part of the text bubble. */
   thinking: string;
   agentMemberId: string;
+  /** Terminal failure of this run (status event error field). Kept live
+   *  because failed runs persist no assistant message. */
+  error?: string;
 }
 
 export type TransientMap = Record<string, TransientRun>;
@@ -53,7 +56,23 @@ export function removeTransient(state: TransientMap, runId: string): TransientMa
   return next;
 }
 
-// ─── Live tool steps (Run-local, transient) ──────────────────────────────
+/** Mark a run terminal-failed: keep its text, attach the error. Callers
+ *  decide when the bubble leaves (never auto-dropped on failure). */
+export function markTransientError(
+  state: TransientMap,
+  runId: string,
+  agentMemberId: string,
+  error: string,
+): TransientMap {
+  const next = { ...state };
+  next[runId] = {
+    text: state[runId]?.text ?? "",
+    thinking: state[runId]?.thinking ?? "",
+    agentMemberId,
+    error,
+  };
+  return next;
+}
 
 export interface LiveToolCall {
   runId: string;

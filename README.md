@@ -190,6 +190,10 @@ bun run test        # 全仓测试
 bun run build       # 全仓构建（turbo）
 ```
 
+> **数据库升级策略**：迁移只保证 fresh-boot 路径。改动 schema 后若旧开发库
+> 启动异常，直接删掉 `apps/backend/.backend-data/` 重启即可（开发数据,非持久
+> 事实）——不存在 in-place 升级路径,旧库兼容问题不修。
+
 ## 📄 License
 
 MIT

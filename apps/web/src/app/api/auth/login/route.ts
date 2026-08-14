@@ -14,11 +14,18 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (contentType.includes("application/json")) {
       return NextResponse.json({ error: result.error }, { status: 401 });
     }
-    return NextResponse.redirect(new URL("/login?error=invalid_password", req.url));
+    return new Response(null, {
+      status: 302,
+      headers: { Location: "/login?error=invalid_password" },
+    });
   }
 
-  // 302 redirect — browser processes Set-Cookie natively on navigation
-  const resp = NextResponse.redirect(new URL("/work", req.url));
-  resp.headers.set("Set-Cookie", result.cookie);
-  return resp;
+  // 302 with a RELATIVE Location: the browser resolves it against the
+  // request origin. An absolute URL derived from req.url/nextUrl flips to
+  // the server's internal host (localhost) and strands the cookie on
+  // 127.0.0.1 clients.
+  return new Response(null, {
+    status: 302,
+    headers: { Location: "/work", "Set-Cookie": result.cookie },
+  });
 }

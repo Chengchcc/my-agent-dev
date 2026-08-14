@@ -2,6 +2,7 @@
  *  (LF-framed stdout lines, bounded stderr tail) but no secrets redaction —
  *  pi has no token-bearing env vars of its own. */
 
+import { collectSecrets, redactText } from "@my-agent-team/agent-backend";
 import type { Subprocess } from "bun";
 
 export interface PiCommandConfig {
@@ -46,6 +47,9 @@ async function* readLines(stream: ReadableStream<Uint8Array>): AsyncIterable<str
 
 export function spawnPiProcess(cfg: PiCommandConfig, opts: { cwd: string }): SpawnedPiProcess {
   let stderrTail = "";
+  // Secrets captured from the child env: a crashed CLI echoing its
+  // environment must never leak keys into the persistent tail.
+  const secrets = collectSecrets(cfg.env ?? {});
   // The pi CLI speaks the omp daemon protocol: a leaked OMP_DAEMON_* pair
   // (from the harness hosting this backend) routes its worker at the wrong
   // daemon and hangs the run forever. Scrub before inheriting.
@@ -67,7 +71,7 @@ export function spawnPiProcess(cfg: PiCommandConfig, opts: { cwd: string }): Spa
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      stderrTail = (stderrTail + decoder.decode(value)).slice(-64 * 1024);
+      stderrTail = redactText((stderrTail + decoder.decode(value)).slice(-64 * 1024), secrets);
     }
   })();
 

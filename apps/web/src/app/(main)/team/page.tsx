@@ -1,19 +1,5 @@
-import { AgentForm } from "@/components/AgentForm";
-import { AgentList } from "@/components/AgentList";
-import { Page, PageBody, PageHeader } from "@/components/page";
+import { TeamView } from "./_components/team-view";
 
 export default function AgentsPage() {
-  return (
-    <Page>
-      <PageHeader
-        breadcrumb="Team"
-        title="Agents"
-        description="Agent identities, workspaces, skills and MCP."
-        action={<AgentForm />}
-      />
-      <PageBody>
-        <AgentList />
-      </PageBody>
-    </Page>
-  );
+  return <TeamView />;
 }

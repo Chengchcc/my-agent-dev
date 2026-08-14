@@ -57,3 +57,15 @@ describe("outcome messages", () => {
     expect(buildOutcomeMessages(["hello"])).toEqual([{ role: "assistant", text: "hello" }]);
   });
 });
+
+test("an error event with NO message still registers a failed outcome", () => {
+  const acc = createPiAccumulator();
+  // A bare {type:"error"} line: JSON.stringify(undefined) used to return
+  // undefined and poison acc.error into a non-null-non-string value that
+  // the downstream `else if (acc.error)` branch swallowed.
+  const evt = parsePiLine(JSON.stringify({ type: "error" }));
+  expect(evt).not.toBeNull();
+  if (evt) mapPiEvent(acc, evt);
+  expect(typeof acc.error).toBe("string");
+  expect(acc.error).toBeTruthy();
+});

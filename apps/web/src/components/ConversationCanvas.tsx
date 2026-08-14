@@ -126,6 +126,7 @@ export function ConversationCanvas({
       thinking: string;
       sender: SenderRef;
       tools: LiveToolCall[];
+      error?: string;
     }> = [];
     for (const [runId, t] of Object.entries(transients)) {
       const sender = Object.values(roster).find((m) => m.memberId === t.agentMemberId);
@@ -138,6 +139,7 @@ export function ConversationCanvas({
         tools: Object.values(transientTools).filter(
           (tool) => tool.runId === runId && tool.name !== "todo_write",
         ),
+        error: t.error,
       });
     }
     return bubbles;
@@ -256,36 +258,20 @@ export function ConversationCanvas({
             {label && (
               <>
                 <span
-                  className={`size-1.5  rounded-full transition-colors duration-500 ${
-                    busy ? "animate-dot-pulse" : ""
+                  className={`size-1.5 rounded-full transition-colors duration-500 ${
+                    busy ? "animate-dot-pulse bg-(--primary)" : "bg-(--mute)"
                   }`}
-                  style={{
-                    backgroundColor: busy ? "var(--primary)" : "var(--mute)",
-                  }}
                 />
                 <span
-                  className="text-xs tracking-[0.15em] uppercase font-semibold"
-                  style={{
-                    color: busy ? "var(--primary)" : "var(--mute)",
-                  }}
+                  className={`text-xs tracking-kicker uppercase font-semibold ${
+                    busy ? "text-(--primary)" : "text-(--mute)"
+                  }`}
                 >
                   {label}
                 </span>
               </>
             )}
             {!label && <span className="text-xs text-(--mute)">Idle</span>}
-            {busy && currentRunId && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs text-destructive hover:text-destructive"
-                onClick={() => {
-                  api.cancelAgentRun(currentRunId).then(() => toast.success("Stopped"));
-                }}
-              >
-                Stop
-              </Button>
-            )}
             <Button
               variant="ghost"
               size="icon"
@@ -317,16 +303,17 @@ export function ConversationCanvas({
         <GoalStatusBar conversationId={conversationId} />
       </div>
 
-      {/* SSE connection warning */}
+      {/* SSE connection warning — sticky alert until the stream recovers */}
       {(streamConn === "reconnecting" || streamConn === "closed") && (
         <div
-          className={`shrink-0 px-6 py-1.5 flex items-center gap-2 text-xs ${
-            streamConn === "closed" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
+          role="alert"
+          className={`sticky top-0 z-30 shrink-0 px-6 py-1.5 flex items-center gap-2 text-xs ${
+            streamConn === "closed" ? "bg-(--err)/15 text-(--err)" : "bg-(--warn)/15 text-(--warn)"
           }`}
         >
           <span
-            className={`size-1.5  rounded-full animate-pulse ${
-              streamConn === "closed" ? "bg-red-500" : "bg-amber-500"
+            className={`size-1.5 rounded-full animate-pulse ${
+              streamConn === "closed" ? "bg-(--err)" : "bg-(--warn)"
             }`}
           />
           {streamConn === "closed"
@@ -334,6 +321,7 @@ export function ConversationCanvas({
             : "Reconnecting…"}
         </div>
       )}
+
       {/* Workflow progress — transient, per running workflow */}
       <WorkflowPanel workflows={workflows} />
 
@@ -387,19 +375,15 @@ export function ConversationCanvas({
       <div className="flex-1 flex min-h-0 relative">
         {/* Main scroll area */}
         <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-          <div className="mx-auto" style={{ maxWidth: "72ch", padding: "0 1.5rem" }}>
+          <div className="mx-auto max-w-[760px] px-6 py-6 pb-40">
             {items.length === 0 ? (
               <div className="flex flex-col items-start justify-center py-24">
                 {primaryAgent && (
-                  <h1
-                    className="font-sans text-2xl font-normal text-(--ink-strong) mb-3"
-                    style={{ letterSpacing: "-0.65px" }}
-                  >
+                  <h1 className="font-sans text-2xl font-normal text-(--ink-strong) mb-3">
                     {primaryAgent.displayName ?? primaryAgent.memberId}
                   </h1>
                 )}
                 <p className="text-sm text-(--mute) mb-6">Send a message to begin.</p>
-                <p className="font-mono text-[13px] text-(--primary)">&#x25B8; type to start</p>
               </div>
             ) : (
               <div className="py-4">
@@ -487,7 +471,7 @@ export function ConversationCanvas({
               h-7 shrink-0 gap-1.5 rounded-md px-2
               border border-(--hairline)
               bg-transparent
-              text-[10px] font-medium tracking-[0.08em]
+              text-[10px] font-medium tracking-kicker
               text-(--mute)
               hover:bg-(--canvas-soft)
               hover:text-(--ink)
@@ -528,6 +512,14 @@ export function ConversationCanvas({
           placeholder={busy ? "Steer the agent..." : "Send a message..."}
           roster={roster}
           autoAgentCount={Object.values(roster).filter((m) => m.kind === "agent").length}
+          isBusy={busy}
+          onStop={
+            currentRunId
+              ? () => {
+                  api.cancelAgentRun(currentRunId).then(() => toast.success("Stopped"));
+                }
+              : undefined
+          }
         />
       </div>
     </div>
@@ -545,7 +537,7 @@ function GoalStatusBar({ conversationId }: { conversationId: string }) {
 
   return (
     <div className="flex items-center gap-2 mt-2 px-3 py-1.5 rounded-md bg-(--canvas-soft) border border-(--hairline)">
-      <span className="text-[10px] font-semibold tracking-[2px] uppercase text-(--primary) shrink-0">
+      <span className="text-[10px] font-semibold tracking-kicker uppercase text-(--primary) shrink-0">
         Goal
       </span>
       <span className="text-xs text-(--ink-strong) truncate flex-1">{goal.condition}</span>

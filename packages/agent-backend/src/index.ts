@@ -1,4 +1,5 @@
 export type { AgentBackend, BackendRegistry, BackendRegistryEntry } from "./backend.js";
+export { guardedConsume } from "./cli-consume.js";
 export { debugLog } from "./debug.js";
 export type { BackendEvent, BackendExtensionEvent, CoreBackendEvent, Usage } from "./event.js";
 export type {
@@ -16,6 +17,7 @@ export type {
   BackendModelCatalog,
   BackendModelRef,
 } from "./model.js";
+export { collectSecrets, redactText } from "./redact.js";
 export type {
   BackendInputMessage,
   BackendRunInput,

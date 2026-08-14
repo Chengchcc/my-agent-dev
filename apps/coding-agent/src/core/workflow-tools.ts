@@ -20,6 +20,12 @@ export interface WorkflowToolDeps {
   readonly writeScript: (name: string, content: string) => void;
 }
 
+/** Validate a workflow script name: a plain label, never a path segment.
+ *  Model-supplied names must not escape the .workflows dir. */
+export function isValidWorkflowName(name: string): boolean {
+  return /^[a-z0-9-]{1,64}$/i.test(name);
+}
+
 /** Boundary narrowing: tool args arrive from the model as unknown-shaped
  *  JSON - validate each field before it enters the executor. */
 function parseItem(raw: unknown): WorkflowAgentSpec {
@@ -49,7 +55,6 @@ export function createWorkflowTools(deps: WorkflowToolDeps): readonly PluginTool
       type: "object",
       properties: {
         label: { type: "string" },
-        concurrency: { type: "number", maximum: 8 },
         items: {
           type: "array",
           maxItems: 64,

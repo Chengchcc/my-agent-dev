@@ -35,7 +35,7 @@ export function MessageShell({
       <div className={`max-w-[85%] ${isSelf ? "order-2" : ""}`}>
         {!isSelf && name && (
           <span
-            className="text-[10px] tracking-[0.15em] uppercase mb-1.5 block font-sans font-semibold flex items-center gap-1.5"
+            className="text-[10px] tracking-kicker uppercase mb-1.5 block font-sans font-semibold flex items-center gap-1.5"
             style={accent ? { color: accent } : undefined}
           >
             {accent && (
@@ -67,6 +67,8 @@ export function MessageBubble({
   content,
   isStreaming,
   runStatus,
+  state,
+  error,
 }: {
   align: "left" | "right";
   name?: string;
@@ -75,12 +77,16 @@ export function MessageBubble({
   content: string;
   isStreaming?: boolean;
   runStatus?: "running" | "retrying" | "compacting" | "waiting";
+  state?: "pending" | "streaming" | "waiting" | "done" | "error";
+  error?: string;
 }) {
   const isSelf = align === "right";
   return (
     <MessageShell align={align} name={name} kind={kind} agentId={agentId} isStreaming={isStreaming}>
       {isSelf ? (
-        <p className="whitespace-pre-wrap wrap-break-word text-(--ink)">{content}</p>
+        <p className="whitespace-pre-wrap wrap-break-word text-(--ink) bg-(--panel2) rounded-lg px-3 py-2">
+          {content}
+        </p>
       ) : (
         <>
           <StreamingMarkdown text={content} streaming={isStreaming ?? false} />
@@ -95,6 +101,14 @@ export function MessageBubble({
       )}
       {runStatus === "waiting" && (
         <p className="text-xs text-muted-foreground mt-1">Awaiting approval...</p>
+      )}
+      {(state === "error" || error) && (
+        <div
+          data-testid="message-error"
+          className="mt-2 px-3 py-2 rounded-md border border-(--err)/40 bg-(--err)/10 text-xs text-(--err) wrap-break-word"
+        >
+          {error ?? "Run failed"}
+        </div>
       )}
     </MessageShell>
   );
