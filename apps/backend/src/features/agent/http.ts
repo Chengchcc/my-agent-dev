@@ -33,6 +33,7 @@ function toAgentResponse(row: AgentRow, status: string) {
     maxSteps: rc.max_steps > 0 ? rc.max_steps : null,
     mcpServers: rc.mcp_servers.map((s) => ({ serverId: s.server_id, enabled: s.enabled })),
     knowledgePacks: rc.knowledge_packs,
+    projects: rc.projects,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     archivedAt: row.archivedAt,
@@ -80,6 +81,8 @@ export function agentRoutes(
   identityStore?: AgentIdentityStore,
   larkStatusOf?: (agentId: string) => string,
   getSetupManager?: () => LarkSetupManager,
+  /** Project existence check for the PATCH projects validation. */
+  projectExists?: (id: string) => boolean,
 ) {
   const statusOf = (row: AgentRow) => deriveLarkStatus(row, larkStatusOf?.(row.id));
 
@@ -157,6 +160,13 @@ export function agentRoutes(
               );
             }
           }
+          if (body.projects && projectExists) {
+            for (const pid of body.projects) {
+              if (!projectExists(pid)) {
+                return Response.json({ error: `unknown project ${pid}` }, { status: 400 });
+              }
+            }
+          }
           const row = await svc.update(id, body);
           return toAgentResponse(row, statusOf(row));
         } catch (err) {
@@ -193,6 +203,7 @@ export function agentRoutes(
             t.Array(t.Object({ serverId: t.String({ minLength: 1 }), enabled: t.Boolean() })),
           ),
           knowledgePacks: t.Optional(t.Array(t.String({ minLength: 1 }))),
+          projects: t.Optional(t.Array(t.String({ minLength: 1 }))),
           lark: t.Optional(
             t.Object({
               enabled: t.Optional(t.Boolean()),

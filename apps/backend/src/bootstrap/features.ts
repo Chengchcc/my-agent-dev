@@ -623,6 +623,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       identityStore,
       (id: string) => larkBotRegistry.statusOf(id),
       getSetupManager,
+      (id: string) => projectSvc.exists(id),
     ),
     conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore),
     ops: opsRoutes(opsSvc),

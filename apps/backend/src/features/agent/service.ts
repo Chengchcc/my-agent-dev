@@ -117,6 +117,7 @@ export function createAgentService(opts: {
         maxSteps: input.maxSteps,
         mcpServers: input.mcpServers,
         knowledgePacks: input.knowledgePacks,
+        projects: input.projects,
         lark: input.lark
           ? {
               enabled: input.lark.enabled,
