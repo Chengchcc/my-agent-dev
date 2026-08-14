@@ -174,7 +174,8 @@ export class OmpBackend implements AgentBackend<"omp"> {
     // none = explicitly off (never the CLI default); max passes through
     // (omp natively accepts max, live-verified).
     if (input.run.model.reasoningEffort) {
-      const level = input.run.model.reasoningEffort === "none" ? "off" : input.run.model.reasoningEffort;
+      const level =
+        input.run.model.reasoningEffort === "none" ? "off" : input.run.model.reasoningEffort;
       args.push("--thinking", level);
     }
     if (input.run.systemPrompt) args.push("--append-system-prompt", input.run.systemPrompt);

@@ -25,7 +25,7 @@ export interface CreateAgentInput {
    *  coding agent runs in (its AGENTS.md/CLAUDE.md take effect there).
    *  Defaults to the managed <dataDir>/agents/<id>. */
   workspacePath?: string;
-  reasoningEffort?: "none" | "low" | "high" | "max";
+  reasoningEffort?: "none" | "low" | "high" | "max" | null;
   permissionMode?: "ask" | "auto" | "deny";
   maxSteps?: number;
   lark?: {

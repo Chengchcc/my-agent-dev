@@ -203,8 +203,7 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
         console.warn(`[rpc] skipping malformed session line ${i} for ${resumeId}`);
       }
     }
-    const sessionTranscript =
-      parsedTranscript.length > 0 ? parsedTranscript : undefined;
+    const sessionTranscript = parsedTranscript.length > 0 ? parsedTranscript : undefined;
     let effectiveInput: typeof input;
 
     let segment: BackendRunSegment<"coding_agent">;

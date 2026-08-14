@@ -106,7 +106,7 @@ export function agentRoutes(
           backendKind: t.Optional(backendKindUnion),
           workspacePath: t.Optional(t.String({ minLength: 1 })),
           reasoningEffort: t.Optional(
-            t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),
+            t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max"), t.Null()]),
           ),
           permissionMode: t.Optional(
             t.Union([t.Literal("ask"), t.Literal("auto"), t.Literal("deny")]),
@@ -171,7 +171,7 @@ export function agentRoutes(
           backendKind: t.Optional(backendKindUnion),
           workspacePath: t.Optional(t.String({ minLength: 1 })),
           reasoningEffort: t.Optional(
-            t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),
+            t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max"), t.Null()]),
           ),
           permissionMode: t.Optional(
             t.Union([t.Literal("ask"), t.Literal("auto"), t.Literal("deny")]),

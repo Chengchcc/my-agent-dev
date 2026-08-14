@@ -2,8 +2,8 @@
  *  written, then stdin closes (`-p` mode reads stdin and exits). Same
  *  LF-framed stdout reader + bounded stderr tail as the other adapters. */
 
-import type { FileSink, Subprocess } from "bun";
 import { collectSecrets, redactText } from "@my-agent-team/agent-backend";
+import type { FileSink, Subprocess } from "bun";
 
 export interface ClaudeCommandConfig {
   executable: string;
@@ -70,10 +70,7 @@ export function spawnClaudeProcess(
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      stderrTail = redactText(
-        (stderrTail + decoder.decode(value)).slice(-64 * 1024),
-        secrets,
-      );
+      stderrTail = redactText((stderrTail + decoder.decode(value)).slice(-64 * 1024), secrets);
     }
   })();
 

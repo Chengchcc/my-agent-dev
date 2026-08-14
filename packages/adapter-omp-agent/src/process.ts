@@ -2,8 +2,8 @@
  *  (LF-framed stdout lines, bounded stderr tail) but no secrets redaction —
  *  omp has no token-bearing env vars of its own. */
 
-import type { Subprocess } from "bun";
 import { collectSecrets, redactText } from "@my-agent-team/agent-backend";
+import type { Subprocess } from "bun";
 
 export interface OmpCommandConfig {
   executable: string;
@@ -70,10 +70,7 @@ export function spawnOmpProcess(cfg: OmpCommandConfig, opts: { cwd: string }): S
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      stderrTail = redactText(
-        (stderrTail + decoder.decode(value)).slice(-64 * 1024),
-        secrets,
-      );
+      stderrTail = redactText((stderrTail + decoder.decode(value)).slice(-64 * 1024), secrets);
     }
   })();
 

@@ -156,6 +156,7 @@ export function useConversation(
       setTransientTools({});
       setRunTodos({});
       setRunRecapsState({});
+      setWorkflows(new Map());
     };
   }, [conversationId]);
 
