@@ -1,4 +1,5 @@
 import { Elysia, t } from "elysia";
+import { ConflictError } from "../../infra/domain-errors.js";
 import { ProjectNotFoundError, type ProjectService, ValidationError } from "./service.js";
 
 export function projectRoutes(svc: ProjectService) {
@@ -31,6 +32,8 @@ export function projectRoutes(svc: ProjectService) {
       } catch (err) {
         if (err instanceof ProjectNotFoundError)
           return Response.json({ error: err.message }, { status: 404 });
+        if (err instanceof ConflictError)
+          return Response.json({ error: err.message }, { status: 409 });
         throw err;
       }
     })
@@ -56,9 +59,9 @@ export function projectRoutes(svc: ProjectService) {
         }),
       },
     )
-    .delete("/api/projects/:id", ({ params: { id }, set }) => {
+    .delete("/api/projects/:id", async ({ params: { id }, set }) => {
       try {
-        svc.remove(id);
+        await svc.remove(id);
         set.status = 204;
         return "";
       } catch (err) {

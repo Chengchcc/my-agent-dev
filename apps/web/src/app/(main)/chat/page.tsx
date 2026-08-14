@@ -49,7 +49,12 @@ export default function ChatOverviewPage() {
     queryKey: ["agents"],
     queryFn: () => api.listAgents(),
   });
+  const { data: projects } = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => api.listProjects(),
+  });
   const [agentId, setAgentId] = useState("default");
+  const [projectId, setProjectId] = useState("");
   const selectedAgent = agents?.find((a) => a.id === agentId);
 
   useEffect(() => {
@@ -67,6 +72,7 @@ export default function ChatOverviewPage() {
     if (!input.trim()) return;
     createConv.mutate(
       {
+        ...(projectId ? { projectId } : {}),
         members: [
           {
             memberId: agentId,
@@ -122,6 +128,19 @@ export default function ChatOverviewPage() {
               {(agents ?? []).map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              className="text-xs border border-(--hairline) rounded-md bg-transparent px-2 py-1 text-(--ink-strong)"
+              aria-label="Project (optional worktree)"
+            >
+              <option value="">No project</option>
+              {(projects?.projects ?? []).map((p) => (
+                <option key={p.projectId} value={p.projectId}>
+                  {p.name}
                 </option>
               ))}
             </select>

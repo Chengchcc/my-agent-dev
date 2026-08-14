@@ -19,14 +19,24 @@ import { useAgentSkillPacks } from "@/features/skill-packs/hooks";
 import { overlineClass } from "@/lib/form-styles";
 import { AgentConfigBar } from "./agent-config-bar";
 import { AgentDescriptionCard } from "./agent-description-card";
+import { AgentProjectsPanel } from "./agent-projects-panel.js";
 
-type Tab = "persona" | "skills" | "mcp" | "knowledge" | "memory" | "workspace" | "activity";
+type Tab =
+  | "persona"
+  | "skills"
+  | "mcp"
+  | "knowledge"
+  | "projects"
+  | "memory"
+  | "workspace"
+  | "activity";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "persona", label: "Persona" },
   { key: "skills", label: "Skills" },
   { key: "mcp", label: "MCP" },
   { key: "knowledge", label: "Knowledge" },
+  { key: "projects", label: "Projects" },
   { key: "memory", label: "Memory" },
   { key: "workspace", label: "Workspace" },
   { key: "activity", label: "Activity" },
@@ -98,6 +108,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
           {tab === "skills" && <AgentSkillsPanel agentId={agentId} />}
           {tab === "mcp" && <McpServerPanel agentId={agentId} />}
           {tab === "knowledge" && <KnowledgePackPanel agentId={agentId} />}
+          {tab === "projects" && <AgentProjectsPanel agent={agent} />}
           {tab === "memory" && <AgentMemoryPanel agentId={agentId} />}
           {tab === "workspace" && <WorkspaceExplorer agentId={agentId} />}
           {tab === "activity" && (

@@ -394,9 +394,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       const members = conv.convPort.getMembers(conversationId);
       const member = members.find((m) => m.memberId === agentMemberId);
       const agent = member?.agentId ? await agentSvc.getById(member.agentId) : null;
-      const access = agent?.config.runtime_config.permission_mode === "ask"
-        ? "read_only"
-        : "read_write";
+      const access =
+        agent?.config.runtime_config.permission_mode === "ask" ? "read_only" : "read_write";
       // Project-bound conversation (ADR 0023): cwd is the agent's worktree
       // for that project; context (skills/prompt/token) still comes from
       // the agent workspace. Not attached = explicit dispatch failure.
@@ -464,7 +463,18 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   // ─── Project ────────────────────────────────────────────────
 
   const projectPort = sqliteProjectAdapter(db);
-  const projectSvc = createProjectService({ port: projectPort, idGen: ulid });
+  const projectSvc = createProjectService({
+    port: projectPort,
+    idGen: ulid,
+    // Detach guard (ADR 0023): refuse deleting a project agents still
+    // attach to. agentSvc.list returns rows carrying the materialized
+    // config cache; includeArchived covers archived agents too.
+    listAgentConfigs: async () =>
+      (await agentSvc.list(true)).map((a) => ({
+        id: a.id,
+        projects: a.config.runtime_config.projects,
+      })),
+  });
 
   // ─── MCP ────────────────────────────────────────────────────
 

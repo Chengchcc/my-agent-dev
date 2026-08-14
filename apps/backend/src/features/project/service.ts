@@ -1,4 +1,5 @@
 import {
+  ConflictError,
   ValidationError as DomainValidationError,
   NotFoundError,
 } from "../../infra/domain-errors.js";
@@ -18,6 +19,9 @@ export interface ProjectServiceDeps {
   port: ProjectPort;
   idGen: () => string;
   now?: () => number;
+  /** Agent configs for the detach guard (ADR 0023): deleting a project
+   *  that agents still attach to is refused with their ids. */
+  listAgentConfigs?: () => Promise<Array<{ id: string; projects: string[] }>>;
 }
 
 export function createProjectService(deps: ProjectServiceDeps) {
@@ -94,7 +98,14 @@ export function createProjectService(deps: ProjectServiceDeps) {
       }
     },
 
-    remove(id: string): void {
+    async remove(id: string): Promise<void> {
+      const agents = (await deps.listAgentConfigs?.()) ?? [];
+      const attached = agents.filter((a) => a.projects.includes(id));
+      if (attached.length > 0) {
+        throw new ConflictError(
+          `project ${id} is still attached to: ${attached.map((a) => a.id).join(", ")}`,
+        );
+      }
       if (!port.deleteProject(id)) throw new ProjectNotFoundError(id);
     },
   };

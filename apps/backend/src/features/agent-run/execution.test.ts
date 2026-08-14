@@ -11,11 +11,11 @@ import { assistantMessageId, parseMessageRevision } from "@my-agent-team/message
 import { openDb } from "../../infra/sqlite/db.js";
 import { createAgentContextService, sqliteAgentContextAdapter } from "../agent-context/index.js";
 import { sqliteConversationAdapter } from "../conversation/adapter-sqlite.js";
-import { sqliteProjectAdapter } from "../project/adapter-sqlite.js";
 import {
   createRunTokenRegistry,
   type RunTokenRegistry,
 } from "../product-tools/run-token-registry.js";
+import { sqliteProjectAdapter } from "../project/adapter-sqlite.js";
 import { sqliteAgentRunAdapter } from "./adapter-sqlite.js";
 import type { AgentRun } from "./domain.js";
 import { createAgentRunExecutionService, runEventStreamFor } from "./execution.js";
@@ -971,7 +971,13 @@ describe("agent run execution (Run-centric)", () => {
     const projectPort = sqliteProjectAdapter(db);
     for (const pid of ["p-attached", "p-other"]) {
       if (!projectPort.getProject(pid)) {
-        projectPort.createProject({ projectId: pid, name: pid, createdAt: Date.now() });
+        projectPort.createProject({
+          projectId: pid,
+          name: pid,
+          repoUrl: null,
+          defaultBranch: null,
+          createdAt: Date.now(),
+        });
       }
     }
     convPort.createConversation({
@@ -1006,7 +1012,13 @@ describe("agent run execution (Run-centric)", () => {
   test("project-bound conversation with unattached project fails explicitly", async () => {
     const projectPort2 = sqliteProjectAdapter(db);
     if (!projectPort2.getProject("p-other")) {
-      projectPort2.createProject({ projectId: "p-other", name: "p-other", createdAt: Date.now() });
+      projectPort2.createProject({
+        projectId: "p-other",
+        name: "p-other",
+        repoUrl: null,
+        defaultBranch: null,
+        createdAt: Date.now(),
+      });
     }
     convPort.createConversation({
       conversationId: "conv-unattached",

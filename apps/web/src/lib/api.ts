@@ -24,6 +24,7 @@ export type LarkSetupSession = ApiReturn<typeof api.larkSetup>;
 export type AgentRow = ApiReturn<typeof api.listAgents>[number] & {
   mcpServers?: Array<{ serverId: string; enabled: boolean }>;
   knowledgePacks?: string[];
+  projects?: string[];
 };
 export type AgentRunDetail = ApiReturn<typeof api.getAgentRun>;
 export type AgentRuntimeStatus = ApiReturn<typeof api.getAgentRuntime>;
@@ -82,6 +83,7 @@ export const api = {
     unwrap(client.api.conversations.get({ query: agentId ? { agentId } : undefined })),
   createConversation: (body: {
     conversationId?: string;
+    projectId?: string;
     members: Array<{
       memberId?: string;
       kind: "agent" | "human";
