@@ -70,7 +70,7 @@ export default function KnowledgePackPage() {
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="kb-fixture"
+                placeholder="my-docs-pack"
               />
             </div>
             <div className="space-y-1">
@@ -98,7 +98,7 @@ export default function KnowledgePackPage() {
                 <Input
                   value={sourceUrl}
                   onChange={(e) => setSourceUrl(e.target.value)}
-                  placeholder="https://github.com/org/kb.git"
+                  placeholder="e.g. https://github.com/org/repo.git or a local path"
                 />
               </div>
             )}
