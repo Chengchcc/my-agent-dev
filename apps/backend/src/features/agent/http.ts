@@ -311,6 +311,25 @@ export function agentRoutes(
         query: t.Object({ path: t.String() }),
       },
     )
+    .get("/api/agents/:id/workflows", async ({ params: { id } }) => {
+      let root: string;
+      try {
+        root = (await svc.getById(id)).workspacePath;
+      } catch {
+        return Response.json({ error: "agent not found" }, { status: 404 });
+      }
+      // Saved workflow scripts: one command per .workflows/<name>.js.
+      const dir = pathJoin(root, ".workflows");
+      let names: string[] = [];
+      try {
+        names = readdirSync(dir, { withFileTypes: true })
+          .filter((e) => e.isFile() && e.name.endsWith(".js"))
+          .map((e) => e.name.slice(0, -3));
+      } catch {
+        // no .workflows dir: empty command list
+      }
+      return { names: names.sort() };
+    })
     .put(
       "/api/agents/:id/identity",
       async ({ params: { id }, body }) => {

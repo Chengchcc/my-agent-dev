@@ -178,6 +178,15 @@ export function ConversationCanvas({
     return agent ?? null;
   }, [roster]);
 
+  // Saved workflow commands for the slash menu (agent workspace .workflows/).
+  const { data: workflowData } = useQuery({
+    queryKey: ["agent-workflows", primaryAgent?.agentId],
+    queryFn: () =>
+      primaryAgent?.agentId ? api.getAgentWorkflows(primaryAgent.agentId) : { names: [] },
+    enabled: !!primaryAgent?.agentId,
+  });
+  const workflowCommands = workflowData?.names ?? [];
+
   // Backend kind badge: agentId → agents.backendKind (D2/D3). Drives the
   // header badge; CLI backends (claude/pi/omp) run with CLI-session
   // context continuity (ADR 0002).
@@ -528,6 +537,7 @@ export function ConversationCanvas({
           placeholder={busy ? "Steer the agent..." : "Send a message..."}
           roster={roster}
           autoAgentCount={Object.values(roster).filter((m) => m.kind === "agent").length}
+          workflowCommands={workflowCommands}
         />
       </div>
     </div>

@@ -20,6 +20,8 @@ interface ComposerProps {
   placeholder?: string;
   roster?: Record<string, SenderRef>;
   autoAgentCount: number;
+  /** Saved workflow scripts (.workflows/*.js) shown in the slash menu. */
+  workflowCommands?: readonly string[];
 }
 
 export function Composer({
@@ -28,6 +30,7 @@ export function Composer({
   disabled,
   placeholder = "Type a message…  Ctrl+Enter to send",
   roster,
+  workflowCommands = [],
 }: ComposerProps) {
   const [value, setValue] = useState("");
   const [showMentions, setShowMentions] = useState(false);
@@ -54,8 +57,17 @@ export function Composer({
 
   const filteredSlash = useMemo(() => {
     const q = value.trim().toLowerCase();
-    return slashCommands.filter((c) => c.command.startsWith(q));
-  }, [value]);
+    const staticCmds = slashCommands.filter((c) => c.command.startsWith(q));
+    const workflows = workflowCommands
+      .filter((name) => `/${name}`.startsWith(q))
+      .map((name) => ({
+        command: `/${name}`,
+        description: "Run the saved workflow",
+        argsHint: "[args]",
+        execute: async () => ({ handled: true }),
+      }));
+    return [...staticCmds, ...workflows];
+  }, [value, workflowCommands]);
 
   // Reset selection when filter changes (including on filter input)
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional - must reset when filter narrows options

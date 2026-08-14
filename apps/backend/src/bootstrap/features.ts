@@ -626,7 +626,13 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       (id: string) => larkBotRegistry.statusOf(id),
       getSetupManager,
     ),
-    conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore),
+    conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore, async (agentId) => {
+      try {
+        return (await agentSvc.getById(agentId)).workspacePath;
+      } catch {
+        return null;
+      }
+    }),
     ops: opsRoutes(opsSvc),
     agentRuns: agentRunRoutes({ db, agentRunService, agentRunExecution }),
     projects: projectRoutes(projectSvc),

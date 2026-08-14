@@ -67,6 +67,7 @@ export const api = {
   // Agents
   listAgents: () => unwrap(client.api.agents.get()),
   getAgent: (id: string) => unwrap(client.api.agents({ id }).get()),
+  getAgentWorkflows: (id: string) => unwrap(client.api.agents({ id }).workflows.get()),
   createAgent: (body: Parameters<typeof client.api.agents.post>[0]) =>
     unwrap(client.api.agents.post(body)),
   updateAgent: (id: string, body: Record<string, unknown>) =>

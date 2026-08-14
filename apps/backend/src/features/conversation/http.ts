@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { conversationEvents, createSseEncoder } from "@my-agent-team/api-contract";
 import { extractText } from "@my-agent-team/message";
 import { Elysia, t } from "elysia";
@@ -9,6 +10,8 @@ export function conversationRoutes(
   svc: ConversationService,
   idGen: () => string,
   goalStore: GoalStateStore,
+  /** Resolve an agent's workspace path (for the /<workflow> command entry). */
+  resolveAgentWorkspace?: (agentId: string) => Promise<string | null>,
 ) {
   return (
     new Elysia()
@@ -99,11 +102,37 @@ export function conversationRoutes(
       .post(
         "/api/conversations/:id/messages",
         async ({ params: { id: conversationId }, body, set }) => {
+          let content = body.content;
+          // Workflow command entry: `/name [args]` runs the saved script
+          // `.workflows/name.js` through the workflow_run tool. Unknown
+          // commands pass through untouched (the model sees the raw text).
+          if (resolveAgentWorkspace) {
+            const rawText = extractText(content as never);
+            const slash = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(rawText);
+            if (slash?.[1]) {
+              const members = svc.port.getMembers(conversationId);
+              const agent = members.find((m) => m.kind === "agent");
+              if (agent?.agentId) {
+                const root = await resolveAgentWorkspace(agent.agentId);
+                const scriptPath = root ? `${root}/.workflows/${slash[1]}.js` : null;
+                if (scriptPath && existsSync(scriptPath)) {
+                  const args = (slash[2] ?? "").trim();
+                  content = {
+                    text:
+                      `Run the saved workflow \`.workflows/${slash[1]}.js\` with the ` +
+                      `workflow_run tool` +
+                      (args ? `. Args: ${args}` : "") +
+                      `. Then report the workflow's result.`,
+                  };
+                }
+              }
+            }
+          }
           const result = await svc.postMessage({
             conversationId,
             senderMemberId: body.senderMemberId,
             addressedTo: body.addressedTo,
-            content: body.content,
+            content,
           });
           set.status = 202;
           return result;
