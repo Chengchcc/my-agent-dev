@@ -35,7 +35,7 @@ export function MessageShell({
       <div className={`max-w-[85%] ${isSelf ? "order-2" : ""}`}>
         {!isSelf && name && (
           <span
-            className="text-[10px] tracking-[0.15em] uppercase mb-1.5 block font-sans font-semibold flex items-center gap-1.5"
+            className="text-[10px] tracking-kicker uppercase mb-1.5 block font-sans font-semibold flex items-center gap-1.5"
             style={accent ? { color: accent } : undefined}
           >
             {accent && (

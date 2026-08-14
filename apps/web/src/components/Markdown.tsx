@@ -107,7 +107,7 @@ function buildComponents(): Components {
     tbody: ({ children }) => <tbody>{children}</tbody>,
     tr: ({ children }) => <tr>{children}</tr>,
     th: ({ children }) => (
-      <th className="px-2 py-1 text-left border-b border-(--hairline) font-semibold text-(--mute) text-[10px] tracking-[2.52px] uppercase">
+      <th className="px-2 py-1 text-left border-b border-(--hairline) font-semibold text-(--mute) text-[10px] tracking-kicker uppercase">
         {children}
       </th>
     ),

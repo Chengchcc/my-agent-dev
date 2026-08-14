@@ -104,7 +104,7 @@ export default function WorkTodayPage() {
                         {loop.cronExpr || "Manual"}
                       </div>
                     </div>
-                    <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border border-(--hairline) text-(--mute) uppercase tracking-[0.15em]">
+                    <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border border-(--hairline) text-(--mute) uppercase tracking-kicker">
                       Draft
                     </span>
                   </div>

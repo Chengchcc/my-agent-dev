@@ -36,6 +36,7 @@ export const envSchema = z.object({
   SESSION_SECRET: z.string().optional().describe("HMAC secret for session cookies"),
   NODE_ENV: z.string().optional(),
   MOCK_USER_ID: z.string().optional().describe("Dev-only: mock login user id"),
+  SESSION_COOKIE_SECURE: z.string().optional(),
   MOCK_PASSWORD: z.string().optional().describe("Dev-only: mock login password"),
 
   // ── Lark-bot runner ──

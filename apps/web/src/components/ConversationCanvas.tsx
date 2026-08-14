@@ -256,18 +256,14 @@ export function ConversationCanvas({
             {label && (
               <>
                 <span
-                  className={`size-1.5  rounded-full transition-colors duration-500 ${
-                    busy ? "animate-dot-pulse" : ""
+                  className={`size-1.5 rounded-full transition-colors duration-500 ${
+                    busy ? "animate-dot-pulse bg-(--primary)" : "bg-(--mute)"
                   }`}
-                  style={{
-                    backgroundColor: busy ? "var(--primary)" : "var(--mute)",
-                  }}
                 />
                 <span
-                  className="text-xs tracking-[0.15em] uppercase font-semibold"
-                  style={{
-                    color: busy ? "var(--primary)" : "var(--mute)",
-                  }}
+                  className={`text-xs tracking-kicker uppercase font-semibold ${
+                    busy ? "text-(--primary)" : "text-(--mute)"
+                  }`}
                 >
                   {label}
                 </span>
@@ -387,14 +383,11 @@ export function ConversationCanvas({
       <div className="flex-1 flex min-h-0 relative">
         {/* Main scroll area */}
         <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-          <div className="mx-auto" style={{ maxWidth: "72ch", padding: "0 1.5rem" }}>
+          <div className="mx-auto max-w-[72ch] px-6">
             {items.length === 0 ? (
               <div className="flex flex-col items-start justify-center py-24">
                 {primaryAgent && (
-                  <h1
-                    className="font-sans text-2xl font-normal text-(--ink-strong) mb-3"
-                    style={{ letterSpacing: "-0.65px" }}
-                  >
+                  <h1 className="font-sans text-2xl font-normal text-(--ink-strong) mb-3">
                     {primaryAgent.displayName ?? primaryAgent.memberId}
                   </h1>
                 )}
@@ -487,7 +480,7 @@ export function ConversationCanvas({
               h-7 shrink-0 gap-1.5 rounded-md px-2
               border border-(--hairline)
               bg-transparent
-              text-[10px] font-medium tracking-[0.08em]
+              text-[10px] font-medium tracking-kicker
               text-(--mute)
               hover:bg-(--canvas-soft)
               hover:text-(--ink)
@@ -545,7 +538,7 @@ function GoalStatusBar({ conversationId }: { conversationId: string }) {
 
   return (
     <div className="flex items-center gap-2 mt-2 px-3 py-1.5 rounded-md bg-(--canvas-soft) border border-(--hairline)">
-      <span className="text-[10px] font-semibold tracking-[2px] uppercase text-(--primary) shrink-0">
+      <span className="text-[10px] font-semibold tracking-kicker uppercase text-(--primary) shrink-0">
         Goal
       </span>
       <span className="text-xs text-(--ink-strong) truncate flex-1">{goal.condition}</span>

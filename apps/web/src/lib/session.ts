@@ -89,7 +89,9 @@ export async function readSession(cookieHeader: string | null): Promise<SessionP
 }
 
 function isSecureEnv(): boolean {
-  return env().NODE_ENV === "production";
+  // Opt-in: Secure cookies are rejected by browsers on http:// (the local
+  // dev/self-host surface). HTTPS deployments set SESSION_COOKIE_SECURE=1.
+  return env().SESSION_COOKIE_SECURE === "1";
 }
 
 export function sessionCookieHeader(value: string, maxAge: number = MAX_AGE_MS / 1000): string {

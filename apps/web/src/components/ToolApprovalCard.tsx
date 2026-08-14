@@ -53,9 +53,7 @@ export function ToolApprovalCard({ tool, onApprove, onDeny, disabled }: ToolAppr
         {/* Header */}
         <div className="flex items-center gap-3 mb-3">
           <span className={`size-2  rounded-full ${s.dot}`} />
-          <p
-            className={`text-[10px] tracking-[0.15em] uppercase font-sans font-semibold ${s.text}`}
-          >
+          <p className={`text-[10px] tracking-kicker uppercase font-sans font-semibold ${s.text}`}>
             {s.label}
           </p>
         </div>
