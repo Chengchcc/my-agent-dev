@@ -24,6 +24,12 @@ export interface GitRunner {
   revParse(cwd: string): Promise<GitRunnerOutput>;
   diff(cwd: string, base: string, head: string): Promise<GitRunnerOutput>;
   resetHard(cwd: string, sha: string): Promise<GitRunnerOutput>;
+  /** The files existing at sha (one per line). */
+  lsTree(cwd: string, sha: string): Promise<GitRunnerOutput>;
+  /** Restore the given files to their sha content (selective rollback). */
+  checkoutFiles(cwd: string, sha: string, files: readonly string[]): Promise<GitRunnerOutput>;
+  /** Remove the given files from the index + worktree (new-file rollback). */
+  removeFiles(cwd: string, files: readonly string[]): Promise<GitRunnerOutput>;
 }
 export interface LoopStepParams {
   loopConfigPath: string;
@@ -167,38 +173,59 @@ function actionToReducer(action: ReviewAction) {
  *  the item's state (seeded as JSON); the model updates it after the run
  *  via the write tool, and the product validates the writeback with
  *  validateLoopMetaPatch before applying the verdict. */
-const LOOP_WORKFLOW_TEMPLATE = `// Loop workflow (product-seeded). Update the meta block after the run
-// with the item's new step (a legal transition) and its verdict result.
+const LOOP_WORKFLOW_TEMPLATE = `// Loop workflow (product-seeded). Update the meta block after the run.
 export const meta = __META_JSON__;
 
-const item = Object.values(meta.items)[0];
-const fix = await agent(
-  \`Fix the loop item. Summary: \${item.summary}. Source: \${item.source}. Smallest possible diff; do not commit.\`,
-  { label: \`\${item.id}-fix\` },
-);
-const verdict = await agent(
-  \`Verify the fix for item \${item.id}. Run the relevant tests and return JSON: {"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"..."}.\`,
-  {
-    label: \`\${item.id}-verify\`,
-    schema: {
-      type: "object",
-      properties: {
-        verdict: { type: "string", enum: ["PASS", "REJECT", "ESCALATE"] },
-        reasons: { type: "array" },
-        evidence: { type: "string" },
+const results = await pipeline(Object.values(meta.items), async (item) => {
+  const fix = await agent(
+    \`Fix loop item \${item.id}: \${item.summary}. Source: \${item.source}. Smallest possible diff; do not commit. End your reply with the exact list of files you changed, one path per line.\`,
+    { label: \`\${item.id}-fix\` },
+  );
+  const verdict = await agent(
+    \`Verify the fix for item \${item.id}. Run the relevant tests and return JSON: {"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"..."}.\`,
+    {
+      label: \`\${item.id}-verify\`,
+      schema: {
+        type: "object",
+        properties: {
+          verdict: { type: "string", enum: ["PASS", "REJECT", "ESCALATE"] },
+          reasons: { type: "array" },
+          evidence: { type: "string" },
+        },
+        required: ["verdict", "evidence"],
       },
-      required: ["verdict", "evidence"],
     },
-  },
-);
-// After this workflow, use the write tool to update the meta block above:
-// the item's step (legal edge) and result (the verdict JSON above).
-return { id: item.id, verdict: verdict.output, fixText: fix.text };
+  );
+  return { id: item.id, verdict: verdict.output, fixText: fix.text };
+});
+
+// After this workflow, use the write tool to update the meta block: for EACH
+// item set step (a legal edge), result (the verdict JSON), and touchedFiles
+// (the file list the fix agent reported, as a JSON array of strings).
+return results;
 `;
 
-function seedLoopWorkflowScript(item: LoopState["items"][string]): string {
-  const metaJson = JSON.stringify({ items: { [item.id]: item } });
-  return LOOP_WORKFLOW_TEMPLATE.replace("__META_JSON__", metaJson);
+function seedLoopWorkflowScript(items: readonly LoopState["items"][string][]): string {
+  const byId: LoopState["items"] = {};
+  for (const item of items) byId[item.id] = item;
+  return LOOP_WORKFLOW_TEMPLATE.replace("__META_JSON__", JSON.stringify({ items: byId }));
+}
+
+/** Revert one item's files to the base commit (existing files restored,
+ *  new files removed). Trusts the model's touchedFiles attribution - the
+ *  denylist check on the same list runs before this. */
+async function rollbackItemFiles(
+  git: GitRunner,
+  cwd: string,
+  baseSha: string,
+  files: readonly string[],
+): Promise<void> {
+  if (files.length === 0) return;
+  const baseFiles = new Set((await git.lsTree(cwd, baseSha)).text().split("\n").filter(Boolean));
+  const existing = files.filter((f) => baseFiles.has(f));
+  const added = files.filter((f) => !baseFiles.has(f));
+  if (existing.length > 0) await git.checkoutFiles(cwd, baseSha, existing);
+  if (added.length > 0) await git.removeFiles(cwd, added);
 }
 
 /** Extract the model-edited meta block: balanced-brace scan + lenient JSON
@@ -216,29 +243,32 @@ function extractLoopWorkflowMeta(script: string): LoopState | null {
   }
 }
 
-function buildGeneratorPrompt(
-  item: LoopState["items"][string],
+function buildMultiItemPrompt(
+  items: readonly LoopState["items"][string][],
   template: string,
   context?: { repoPath?: string; gitLog?: string },
 ): string {
-  // The user prompt ALWAYS carries the item facts: summary, source,
-  // rejection note and project context. The LOOP.md systemPrompt is only an
-  // extra behavioral constraint (frozen into the Run as systemPrompt), so a
-  // template that omits placeholders can never starve the agent of the item.
-  let note = "";
-  if (item.result && "reasons" in item.result) {
-    note = `- 上次被拒原因: ${item.result.reasons.join("; ")}`;
-  }
+  // The user prompt ALWAYS carries every item's facts: summary, source and
+  // rejection note. The LOOP.md systemPrompt is only an extra behavioral
+  // constraint (frozen into the Run as systemPrompt), so a template that
+  // omits placeholders can never starve the agent of the items.
+  const cores = items.map((item) => {
+    let note = "";
+    if (item.result && "reasons" in item.result) {
+      note = `- 上次被拒原因: ${item.result.reasons.join("; ")}`;
+    }
+    return [
+      `## Item ${item.id}`,
+      `# Task\n${item.summary}`,
+      `# Source\n${item.source}`,
+      ...(note ? [note] : []),
+    ].join("\n\n");
+  });
   const ctx = context?.repoPath
     ? `\n\n## Project Context\n- Repo: ${context.repoPath}\n${context.gitLog ? `- Recent changes:\n${context.gitLog}\n` : ""}`
     : "";
-  const core = [
-    `# Task\n${item.summary}`,
-    `# Source\n${item.source}`,
-    ...(note ? [note] : []),
-  ].join("\n\n");
   const extra = template.trim();
-  return `${core}${extra ? `\n\n# Additional Instructions\n${extra}` : ""}${ctx}`;
+  return `${cores.join("\n\n---\n\n")}${extra ? `\n\n# Additional Instructions\n${extra}` : ""}${ctx}`;
 }
 
 export async function loopStep(params: LoopStepParams): Promise<LoopState> {
@@ -340,6 +370,11 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       Bun.$`git diff --name-only ${base}..${head}`.cwd(cwd).quiet(),
     resetHard: (cwd: string, sha: string) =>
       Bun.$`git reset --hard ${sha}`.cwd(cwd).quiet().nothrow(),
+    lsTree: (cwd: string, sha: string) => Bun.$`git ls-tree -r --name-only ${sha}`.cwd(cwd).quiet(),
+    checkoutFiles: (cwd: string, sha: string, files: readonly string[]) =>
+      Bun.$`git checkout ${sha} -- ${files}`.cwd(cwd).quiet().nothrow(),
+    removeFiles: (cwd: string, files: readonly string[]) =>
+      Bun.$`git rm -f ${files}`.cwd(cwd).quiet().nothrow(),
   };
 
   const today = new Date().toISOString().slice(0, 10);
@@ -373,18 +408,14 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
   if (dailyCap > 0 && spent >= dailyCap) {
     notifyBudgetExceeded();
   }
-  for (const item of fixingItems) {
-    if (dailyCap > 0 && spent >= dailyCap) {
-      notifyBudgetExceeded();
-      break;
-    }
 
+  // ── ONE generator run per step, covering ALL fixing items ──
+  // The Loop seeds one workflow (meta = every fixing item); the generator
+  // fans out per-item fix + self-verification and writes per-item verdicts
+  // AND touchedFiles back into the meta. The product validates the whole
+  // writeback and applies per-item transitions + selective rollback.
+  if (fixingItems.length > 0) {
     const baseSha = (await git.revParse(cwd)).text().trim();
-
-    // ── Generator: one Agent Run per item, workflow-driven ──
-    // The Loop seeds the workflow script (meta = this item's state); the
-    // generator runs it (fix fan-out + self-verification) and writes the
-    // verdict back into the script's meta via the write tool.
     const genConversationId = loopGeneratorConversationId(params.loopId);
     const genMemberId = loopGeneratorMemberId(params.loopId);
     await ensureLoopScope(params.convPort, genConversationId, genMemberId, "default");
@@ -393,13 +424,16 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       .quiet()
       .text()
       .catch(() => "");
-    await Bun.write(`${cwd}/.workflows/loop.js`, seedLoopWorkflowScript(item)).catch(() => {});
+    await Bun.write(`${cwd}/.workflows/loop.js`, seedLoopWorkflowScript(fixingItems)).catch(
+      () => {},
+    );
     const genPromptFull = [
-      buildGeneratorPrompt(item, genPrompt, { repoPath: cwd, gitLog }),
-      `# Workflow\nThe script at .workflows/loop.js carries this item's state in its meta block. ` +
+      buildMultiItemPrompt(fixingItems, genPrompt, { repoPath: cwd, gitLog }),
+      `# Workflow\nThe script at .workflows/loop.js carries EVERY item's state in its meta block. ` +
         `Run it with the workflow_run tool (pass the script text). After the workflow completes, ` +
-        `use the write tool to update the meta block in .workflows/loop.js: the item's step must ` +
-        `follow a legal transition and its result must be the verdict JSON from the verify agent.`,
+        `use the write tool to update the meta block in .workflows/loop.js: for each item set ` +
+        `step (a legal transition), result (the verdict JSON from that item's verify agent), and ` +
+        `touchedFiles (the JSON array of files that item's fix agent reported).`,
     ].join("\n\n");
     const genSkillRoots = params.builtinSkillsDir
       ? [params.builtinSkillsDir, `${params.loopConfigPath}/skills`]
@@ -415,7 +449,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       },
       defaultModel: await params.resolveModel(genModel),
       configRevision: 1,
-      idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}`,
+      idempotencyKey: `loop-gen:${params.loopId}:${baseSha}`,
       // LOOP.md generator systemPrompt is the frozen Run system prompt;
       // skills live in the loop config's skills/ dir + the builtin docs.
       systemPrompt: genPrompt || undefined,
@@ -433,7 +467,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       isTerminalStatus(genAcquire.run.status) &&
       genAcquire.run.status !== "completed"
     ) {
-      // The previous attempt for this (item, baseSha) ended terminal without
+      // The previous attempt for this baseSha ended terminal without
       // committing (failed/aborted/timeout) - replaying it would short-
       // circuit forever. Issue a fresh run for the retry.
       const retry = await params.agentRunService.enqueueAndAcquire({
@@ -447,7 +481,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         },
         defaultModel: await params.resolveModel(genModel),
         configRevision: 1,
-        idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}:retry`,
+        idempotencyKey: `loop-gen:${params.loopId}:${baseSha}:retry`,
         systemPrompt: genPrompt || undefined,
         skillRoots: genSkillRoots,
         workspace: { root: cwd, access: "read_write" },
@@ -459,7 +493,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     }
     if (!genAcquire.acquired || !genAcquire.run) {
       throw new Error(
-        `loopStep: generator run for item ${item.id} could not acquire its branch (queued behind an active run)`,
+        `loopStep: generator run could not acquire its branch (queued behind an active run)`,
       );
     }
     const generatorRunId = genAcquire.run.runId;
@@ -476,36 +510,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       );
     }
 
-    const headSha = (await git.revParse(cwd)).text().trim();
-    const filesChanged = (await git.diff(cwd, baseSha, headSha)).text().trim();
-
-    state = loopReducer(state, {
-      type: "GENERATOR_DONE",
-      itemId: item.id,
-      // the item's run identity is now an Agent Run id
-      generatorRunId: generatorRunId,
-    });
-
-    const changedFiles = filesChanged ? filesChanged.split("\n").filter(Boolean) : [];
-    const violations = denylistedFiles(changedFiles, denylist);
-    if (violations.length > 0) {
-      state = loopReducer(state, {
-        type: "EVALUATOR_VERDICT",
-        itemId: item.id,
-        verdict: {
-          verdict: "REJECT",
-          reasons: [`修改了 denylist 保护路径: ${violations.join(", ")}`],
-          evidence: "denylist check (pre-verifier)",
-        },
-      });
-      await git.resetHard(cwd, baseSha);
-      continue;
-    }
-
-    // ── Workflow verdict: the script's meta carries the result ──
-    // The model wrote the verdict into .workflows/loop.js; the product
-    // validates the writeback against the pure reducer invariants and
-    // applies the EVALUATOR_VERDICT transition. No separate evaluator Run.
+    // ── Workflow verdicts: the script's meta carries every item's result ──
     const scriptText = await Bun.file(`${cwd}/.workflows/loop.js`)
       .text()
       .catch(() => "");
@@ -513,34 +518,59 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     const seedMeta: LoopState = {
       loopId: params.loopId,
       lastRun: null,
-      items: { [item.id]: item },
+      items: Object.fromEntries(fixingItems.map((i) => [i.id, i])),
     };
     const noVerdict = (reason: string): Verdict => ({
       verdict: "ESCALATE",
       reasons: [reason],
       evidence: "",
     });
-    let verdict: Verdict;
-    if (!writtenMeta) {
-      verdict = noVerdict("workflow script has no parseable meta block");
-    } else {
-      const validation = validateLoopMetaPatch(seedMeta, writtenMeta);
-      if (!validation.ok) {
+    const validation = writtenMeta
+      ? validateLoopMetaPatch(seedMeta, writtenMeta)
+      : { ok: false as const, reason: "workflow script has no parseable meta block" };
+
+    for (const item of fixingItems) {
+      state = loopReducer(state, {
+        type: "GENERATOR_DONE",
+        itemId: item.id,
+        generatorRunId,
+      });
+
+      const writtenItem = writtenMeta?.items[item.id];
+      const rawTouched = (writtenItem as { touchedFiles?: unknown } | undefined)?.touchedFiles;
+      const touchedFiles = Array.isArray(rawTouched)
+        ? rawTouched.filter((f): f is string => typeof f === "string")
+        : [];
+      const violations = denylistedFiles(touchedFiles, denylist);
+      let verdict: Verdict;
+      if (violations.length > 0) {
+        verdict = {
+          verdict: "REJECT",
+          reasons: [`修改了 denylist 保护路径: ${violations.join(", ")}`],
+          evidence: "denylist check (pre-verifier)",
+        };
+      } else if (!validation.ok) {
         verdict = noVerdict(`workflow meta writeback invalid: ${validation.reason}`);
       } else {
-        verdict = writtenMeta.items[item.id]?.result ?? noVerdict("workflow wrote no verdict");
+        verdict = writtenItem?.result ?? noVerdict(`workflow wrote no verdict for ${item.id}`);
       }
-    }
-    state = loopReducer(state, {
-      type: "EVALUATOR_VERDICT",
-      itemId: item.id,
-      verdict,
-    });
+      state = loopReducer(state, {
+        type: "EVALUATOR_VERDICT",
+        itemId: item.id,
+        verdict,
+      });
 
-    // Rollback on REJECT/ESCALATE
-    const updatedItem = state.items[item.id];
-    if (updatedItem && (updatedItem.step === "fixing" || updatedItem.step === "inbox")) {
-      await git.resetHard(cwd, baseSha);
+      // Selective rollback on REJECT/ESCALATE: revert THIS item's files
+      // (PASS items keep their changes in the shared clone).
+      const updatedItem = state.items[item.id];
+      if (updatedItem && (updatedItem.step === "fixing" || updatedItem.step === "inbox")) {
+        if (touchedFiles.length > 0) {
+          await rollbackItemFiles(git, cwd, baseSha, touchedFiles);
+        } else {
+          // No attribution available: conservative whole-tree reset.
+          await git.resetHard(cwd, baseSha);
+        }
+      }
     }
   }
 

@@ -355,7 +355,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     // deterministic generator identity
     expect(gen!.conversationId).toBe(genConversationId("test"));
     expect(gen!.mode).toBe("normal");
-    expect(gen!.idempotencyKey).toContain("loop-gen:test:item-1:");
+    expect(gen!.idempotencyKey).toContain("loop-gen:test:");
     // the seeded workflow instruction rides the prompt
     expect(gen!.message?.text).toContain(".workflows/loop.js");
   });
@@ -463,6 +463,9 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
       revParse: () => Promise.resolve({ text: () => "deadbeef" }),
       diff: () => Promise.resolve({ text: () => "src/x.ts\n" }),
       resetHard: () => Promise.resolve({ text: () => "" }),
+      lsTree: () => Promise.resolve({ text: () => "src/x.ts" }),
+      checkoutFiles: () => Promise.resolve({ text: () => "" }),
+      removeFiles: () => Promise.resolve({ text: () => "" }),
     };
     const { result } = await runStep({
       store,
@@ -490,8 +493,25 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
       revParse: () => Promise.resolve({ text: () => "deadbeef" }),
       diff: () => Promise.resolve({ text: () => ".env\n" }),
       resetHard: () => Promise.resolve({ text: () => "" }),
+      lsTree: () => Promise.resolve({ text: () => "src/x.ts" }),
+      checkoutFiles: () => Promise.resolve({ text: () => "" }),
+      removeFiles: () => Promise.resolve({ text: () => "" }),
     };
-    const { enqueues, result } = await runStep({ store, dir, gitRunner });
+    const { enqueues, result } = await runStep({
+      store,
+      dir,
+      gitRunner,
+      script: {
+        workflowMeta: {
+          "item-1": {
+            id: "item-1",
+            step: "verifying",
+            result: { verdict: "PASS", evidence: "e" },
+            touchedFiles: [".env"],
+          },
+        },
+      },
+    });
     expect(enqueues.some((e) => e.agentMemberId.startsWith("loop-evaluator"))).toBe(false);
     expect(result.items["item-1"]!.result?.verdict).toBe("REJECT");
   });
@@ -541,6 +561,68 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     expect(spent).toBe(1500); // one generator run (the evaluator Run is gone)
   });
 
+  test("all fixing items ride ONE run; selective rollback reverts only rejected files", async () => {
+    const store = createTestStore();
+    // Two fixing items: item-1 passes, item-2 rejects.
+    let state = loopReducer(emptyState(), {
+      type: "ADD_ITEM",
+      item: { id: "item-1", source: "issue", summary: "fix one" },
+      priority: 1,
+    });
+    state = loopReducer(state, {
+      type: "ADD_ITEM",
+      item: { id: "item-2", source: "issue", summary: "fix two" },
+      priority: 1,
+    });
+    store.save("test", state, {});
+    const rollbacks: string[][] = [];
+    const removed: string[][] = [];
+    const gitRunner: GitRunner = {
+      revParse: () => Promise.resolve({ text: () => "deadbeef" }),
+      diff: () => Promise.resolve({ text: () => "src/a.ts\nsrc/b.ts" }),
+      resetHard: () => Promise.resolve({ text: () => "" }),
+      lsTree: () => Promise.resolve({ text: () => "src/a.ts\nsrc/b.ts" }),
+      checkoutFiles: (_cwd, _sha, files) => {
+        rollbacks.push([...files]);
+        return Promise.resolve({ text: () => "" });
+      },
+      removeFiles: (_cwd, files) => {
+        removed.push([...files]);
+        return Promise.resolve({ text: () => "" });
+      },
+    };
+    const { enqueues, result } = await runStep({
+      store,
+      gitRunner,
+      script: {
+        workflowMeta: {
+          "item-1": {
+            id: "item-1",
+            step: "verifying",
+            result: { verdict: "PASS", evidence: "e1" },
+            touchedFiles: ["src/a.ts"],
+          },
+          "item-2": {
+            id: "item-2",
+            step: "verifying",
+            result: { verdict: "REJECT", reasons: ["broken"], evidence: "e2" },
+            touchedFiles: ["src/b.ts"],
+          },
+        },
+      },
+    });
+    // ONE generator run for both items.
+    const genEnqueues = enqueues.filter((e) => e.agentMemberId.startsWith("loop-generator"));
+    expect(genEnqueues).toHaveLength(1);
+    // item-1 passed, item-2 went back to fixing with attempt 2.
+    expect(result.items["item-1"]!.step).toBe("awaiting_review");
+    expect(result.items["item-2"]!.step).toBe("fixing");
+    expect(result.items["item-2"]!.attempt).toBe(2);
+    // Selective rollback: ONLY item-2's file restored; no whole-tree reset.
+    expect(rollbacks).toEqual([["src/b.ts"]]);
+    expect(removed).toEqual([]);
+  });
+
   test("generator prompt includes repo path + git log context", async () => {
     const { dataDir, projectPort, cleanup } = await setupGitDataDir();
     try {
@@ -551,6 +633,9 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
         revParse: () => Promise.resolve({ text: () => "abc123" }),
         diff: () => Promise.resolve({ text: () => "" }),
         resetHard: () => Promise.resolve({ text: () => "" }),
+        lsTree: () => Promise.resolve({ text: () => "src/x.ts" }),
+        checkoutFiles: () => Promise.resolve({ text: () => "" }),
+        removeFiles: () => Promise.resolve({ text: () => "" }),
       };
       const { enqueues } = await runStep({
         store,
