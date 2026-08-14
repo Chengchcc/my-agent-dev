@@ -15,4 +15,4 @@
 ## 待办
 
 - **D5 硬绑定**:product-tools 的 token-per-run 注入(编译期),替代 workspace 广播的 `.mcp.json` 明文 token。设计级,独立分支。
-- **web 死簇清理**:api.ts 的 useMcp*/update* 无调用方、forkSource 过期注释、`['agent', id]` invalidate 键 prefix——纯删除,随下次 web 改动顺手做。
+- ~~web 死簇清理~~(2026-08-14 关闭):P3 落地后 updateAgent/agentKeys/forkSource 均有真实调用方;删除死码 `api.getProject`(零调用方)、修正 `getForkSourceId` 过时的 defensive 注释。
