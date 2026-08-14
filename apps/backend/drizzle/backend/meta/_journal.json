@@ -225,6 +225,13 @@
       "when": 1786606000000,
       "tag": "0031_workflow_budget",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1786700000000,
+      "tag": "0032_project_worktree",
+      "breakpoints": true
     }
   ]
 }

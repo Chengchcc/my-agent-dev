@@ -49,12 +49,12 @@ import {
   sqliteProductToolCallAdapter,
 } from "../features/product-tools/index.js";
 import { createRunTokenRegistry } from "../features/product-tools/run-token-registry.js";
-import { ensureMirror, ensureWorktree } from "../features/project/worktree.js";
 import {
   createProjectService,
   projectRoutes,
   sqliteProjectAdapter,
 } from "../features/project/index.js";
+import { ensureMirror, ensureWorktree } from "../features/project/worktree.js";
 import { createRuntimeOpsService, opsRoutes } from "../features/runtime-ops/index.js";
 import { settingsRoutes } from "../features/settings/index.js";
 import type { SkillPackRow } from "../features/skill-pack/index.js";
@@ -657,7 +657,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       getSetupManager,
       (id: string) => projectSvc.exists(id),
     ),
-    conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore),
+    conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore, (id: string) => projectSvc.exists(id)),
     ops: opsRoutes(opsSvc),
     agentRuns: agentRunRoutes({ db, agentRunService, agentRunExecution }),
     projects: projectRoutes(projectSvc),

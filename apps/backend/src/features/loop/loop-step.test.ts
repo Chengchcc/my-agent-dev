@@ -93,7 +93,6 @@ async function setupGitDataDir(): Promise<{
         name: "test",
         repoUrl: bareSrc,
         defaultBranch: "main",
-        autoOrchestrate: false,
         createdAt: 0,
         updatedAt: 0,
       };

@@ -22,7 +22,6 @@ export function projectRoutes(svc: ProjectService) {
           name: t.String({ minLength: 1 }),
           repoUrl: t.Optional(t.String()),
           defaultBranch: t.Optional(t.String()),
-          autoOrchestrate: t.Optional(t.Boolean()),
         }),
       },
     )
@@ -54,7 +53,6 @@ export function projectRoutes(svc: ProjectService) {
           name: t.Optional(t.String()),
           repoUrl: t.Optional(t.Union([t.String(), t.Null()])),
           defaultBranch: t.Optional(t.Union([t.String(), t.Null()])),
-          autoOrchestrate: t.Optional(t.Boolean()),
         }),
       },
     )

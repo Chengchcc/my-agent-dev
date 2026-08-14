@@ -15,6 +15,8 @@ export interface ConversationRow {
   forkSource: string | null;
   /** Fork provenance: source ledger seq the fork was cut from, else null. */
   forkFromSeq: number | null;
+  /** Project binding (ADR 0023): runs use the project worktree as cwd. */
+  projectId: string | null;
 }
 
 export interface MemberRow {
@@ -41,6 +43,7 @@ export interface CreateConversationInput {
   forkSource?: string | null;
   /** Fork provenance: source ledger seq the fork was cut from. */
   forkFromSeq?: number | null;
+  projectId?: string | null;
 }
 
 export interface CreateMemberInput {

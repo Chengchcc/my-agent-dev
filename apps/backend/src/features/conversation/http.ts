@@ -9,6 +9,7 @@ export function conversationRoutes(
   svc: ConversationService,
   idGen: () => string,
   goalStore: GoalStateStore,
+  projectExists?: (id: string) => boolean,
 ) {
   return (
     new Elysia()
@@ -23,10 +24,14 @@ export function conversationRoutes(
         async ({ body, set }) => {
           const conversationId = body.conversationId ?? idGen();
           const now = Date.now();
+          if (body.projectId && projectExists && !projectExists(body.projectId)) {
+            return Response.json({ error: `unknown project ${body.projectId}` }, { status: 400 });
+          }
           svc.port.createConversation({
             conversationId,
             triggerMode: body.triggerMode ?? "mention",
             createdAt: now,
+            projectId: body.projectId ?? null,
           });
           const members = body.members ?? [];
           for (const m of members) {
@@ -46,6 +51,7 @@ export function conversationRoutes(
         {
           body: t.Object({
             conversationId: t.Optional(t.String({ minLength: 1 })),
+            projectId: t.Optional(t.String({ minLength: 1 })),
             members: t.Optional(
               t.Array(
                 t.Object({
@@ -85,6 +91,7 @@ export function conversationRoutes(
           title: conv.title,
           createdAt: conv.createdAt,
           forkSource: conv.forkSource,
+          projectId: conv.projectId,
           forkFromSeq: conv.forkFromSeq,
           lastActivityAt: svc.port.getLastActivityAt?.(id) ?? null,
           lastMessagePreview: svc.port.getLastMessagePreview?.(id) ?? null,

@@ -34,6 +34,11 @@ export const conversation = sqliteTable("conversation", {
   createdAt: integer({ mode: "number" }).notNull(),
   forkSource: text("fork_source"),
   forkFromSeq: integer("fork_from_seq"),
+  /** Project binding (ADR 0023): runs in this conversation use the
+   *  project worktree as cwd. Null = agent workspace (default). */
+  projectId: text("project_id").references(() => project.projectId, {
+    onDelete: "restrict",
+  }),
 });
 
 // ─── member ────────────────────────────────────────────────────────
@@ -94,7 +99,6 @@ export const project = sqliteTable(
     name: text().notNull(),
     repoUrl: text(),
     defaultBranch: text(),
-    autoOrchestrate: integer().notNull().default(0),
     createdAt: integer({ mode: "number" }).notNull(),
     updatedAt: integer({ mode: "number" }).notNull(),
   },
@@ -259,9 +263,8 @@ export const conversationLedgerSelectSchema = createSelectSchema(conversationLed
   undone: (s) => s.transform((v: number) => v !== 0),
 });
 
-export const projectSelectSchema = createSelectSchema(project, {
-  autoOrchestrate: (s) => s.transform((v: number) => v !== 0),
-});
+
+export const projectSelectSchema = createSelectSchema(project);
 
 export const cronJobSelectSchema = createSelectSchema(cronJob, {
   enabled: (s) => s.transform((v: number) => v !== 0),
