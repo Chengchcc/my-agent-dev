@@ -69,10 +69,6 @@ export const envSchema = z.object({
     .string()
     .optional()
     .describe("Public URL of the Product Backend Product Tools MCP endpoint"),
-  PRODUCT_TOOLS_SERVICE_TOKEN: z
-    .string()
-    .optional()
-    .describe("Service token the Coding Agent child sends to Product Tools MCP"),
 });
 
 export type Env = z.infer<typeof envSchema>;

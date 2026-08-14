@@ -20,8 +20,8 @@ import { createAgentRunExecutionService } from "../../src/features/agent-run/exe
 import { createAgentRunService } from "../../src/features/agent-run/service.js";
 import { sqliteConversationAdapter } from "../../src/features/conversation/adapter-sqlite.js";
 import { createConversationFeature } from "../../src/features/conversation/conversation-compose.js";
-import { openDb } from "../../src/infra/sqlite/db.js";
 import { createRunTokenRegistry } from "../../src/features/product-tools/run-token-registry.js";
+import { openDb } from "../../src/infra/sqlite/db.js";
 
 /** D2 acceptance: switching an agent's backend kind auto-forks a new
  *  default branch pinned to the new kind; the old branch's history stays

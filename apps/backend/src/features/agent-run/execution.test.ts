@@ -11,13 +11,13 @@ import { assistantMessageId, parseMessageRevision } from "@my-agent-team/message
 import { openDb } from "../../infra/sqlite/db.js";
 import { createAgentContextService, sqliteAgentContextAdapter } from "../agent-context/index.js";
 import { sqliteConversationAdapter } from "../conversation/adapter-sqlite.js";
-import { sqliteAgentRunAdapter } from "./adapter-sqlite.js";
-import type { AgentRun } from "./domain.js";
-import { createAgentRunExecutionService, runEventStreamFor } from "./execution.js";
 import {
   createRunTokenRegistry,
   type RunTokenRegistry,
 } from "../product-tools/run-token-registry.js";
+import { sqliteAgentRunAdapter } from "./adapter-sqlite.js";
+import type { AgentRun } from "./domain.js";
+import { createAgentRunExecutionService, runEventStreamFor } from "./execution.js";
 import { createAgentRunService } from "./service.js";
 
 // ─── Real RPC child (fixture) harness ─────────────────────────────────
