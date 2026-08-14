@@ -44,7 +44,7 @@ import { readProductToolsManifest } from "./product-tools-manifest.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
 import { evaluateWorkflowScript } from "./workflow-evaluator.js";
 import { createWorkflowExecutor, type WorkflowAgentResult } from "./workflow-executor.js";
-import { createWorkflowTools } from "./workflow-tools.js";
+import { createWorkflowTools, isValidWorkflowName } from "./workflow-tools.js";
 
 /** Token estimation via content char/4 (approx 1 token per 4 chars of
  *  English/code). More accurate than JSON.stringify char/4 which includes
@@ -473,6 +473,14 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       runWorkflow: (input) => workflowExecutor.runWorkflow(input),
       runScript,
       writeScript: (name, content) => {
+        // The name is model-supplied: never treat it as a path segment
+        // (a "../" escape would write outside the workspace).
+        if (!isValidWorkflowName(name)) {
+          throw new Error(`invalid workflow name (allowed: [a-z0-9-], max 64): ${name}`);
+        }
+        if (deps.workspaceAccess !== "read_write") {
+          throw new Error("workflow scripts cannot be saved in a read_only workspace");
+        }
         const dir = join(deps.workspaceRoot, ".workflows");
         mkdirSync(dir, { recursive: true });
         writeFileSync(join(dir, `${name}.js`), content);
