@@ -45,8 +45,6 @@ export interface PiBackendOptions {
   /** pi-mcp-adapter extension path (`pi install npm:pi-mcp-adapter`
    *  registers it; an explicit -e path overrides for per-run spawns). */
   mcpAdapterPath?: string;
-  /** Product Tools MCP bearer token for the workspace mcp.json. */
-  productToolsToken?: string;
   abortGraceMs?: number;
 }
 
@@ -66,7 +64,6 @@ export class PiBackend implements AgentBackend<"pi"> {
   private readonly extraArgs: readonly string[];
   private readonly extraEnv: Readonly<Record<string, string | undefined>> | undefined;
   private readonly mcpAdapterPath: string | undefined;
-  private readonly productToolsToken: string | undefined;
   private readonly abortGraceMs: number;
   private readonly active = new Map<string, ActiveRun>();
   private disposed = false;
@@ -76,7 +73,6 @@ export class PiBackend implements AgentBackend<"pi"> {
     this.extraArgs = opts.args ?? [];
     this.extraEnv = opts.env;
     this.mcpAdapterPath = opts.mcpAdapterPath;
-    this.productToolsToken = opts.productToolsToken;
     this.abortGraceMs = opts.abortGraceMs ?? 3_000;
   }
 
@@ -95,8 +91,11 @@ export class PiBackend implements AgentBackend<"pi"> {
     const args = this.buildArgs(input, resumeRef);
     let proc: SpawnedPiProcess;
     try {
+      const runEnv = input.productToolsToken
+        ? { ...this.extraEnv, PRODUCT_TOOLS_RUN_TOKEN: input.productToolsToken }
+        : this.extraEnv;
       proc = spawnPiProcess(
-        { executable: this.executable, args: [...this.extraArgs, ...args], env: this.extraEnv },
+        { executable: this.executable, args: [...this.extraArgs, ...args], env: runEnv },
         { cwd: workspace },
       );
     } catch (err) {

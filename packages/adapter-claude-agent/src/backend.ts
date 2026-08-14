@@ -51,8 +51,6 @@ export interface ClaudeBackendOptions {
   /** Permission mode flag value; omitted by default because
    *  bypassPermissions is refused under root. */
   permissionMode?: string;
-  /** Product Tools MCP bearer token for --mcp-config. */
-  productToolsToken?: string;
   abortGraceMs?: number;
 }
 
@@ -72,7 +70,6 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
   private readonly extraArgs: readonly string[];
   private readonly extraEnv: Readonly<Record<string, string | undefined>> | undefined;
   private readonly permissionMode: string | undefined;
-  private readonly productToolsToken: string | undefined;
   private readonly abortGraceMs: number;
   private readonly active = new Map<string, ActiveRun>();
   private disposed = false;
@@ -82,7 +79,6 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
     this.extraArgs = opts.args ?? [];
     this.extraEnv = opts.env;
     this.permissionMode = opts.permissionMode;
-    this.productToolsToken = opts.productToolsToken;
     this.abortGraceMs = opts.abortGraceMs ?? 3_000;
   }
 
@@ -106,8 +102,11 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
     const args = this.buildArgs(input, resumeId, mcpConfigPath);
     let proc: SpawnedClaudeProcess;
     try {
+      const runEnv = input.productToolsToken
+        ? { ...this.extraEnv, PRODUCT_TOOLS_RUN_TOKEN: input.productToolsToken }
+        : this.extraEnv;
       proc = spawnClaudeProcess(
-        { executable: this.executable, args: [...this.extraArgs, ...args], env: this.extraEnv },
+        { executable: this.executable, args: [...this.extraArgs, ...args], env: runEnv },
         { cwd: workspace },
       );
     } catch (err) {

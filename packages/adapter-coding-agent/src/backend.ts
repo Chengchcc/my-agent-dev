@@ -185,7 +185,18 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
         "coding-agent-adapter",
         `spawning runId=${runId} executable=${this.command.executable} cwd=${input.workspace.root}`,
       );
-      proc = spawnCodingAgentProcess(this.command, { cwd: input.workspace.root });
+      proc = spawnCodingAgentProcess(
+        input.productToolsToken
+          ? {
+              ...this.command,
+              env: {
+                ...this.command.env,
+                CODING_AGENT_PRODUCT_TOOL_TOKEN: input.productToolsToken,
+              },
+            }
+          : this.command,
+        { cwd: input.workspace.root },
+      );
       debugLog("coding-agent-adapter", `spawned runId=${runId} pid=${proc.pid}`);
     } catch (err) {
       releaseOnce();
