@@ -99,8 +99,8 @@ export default function McpCatalogPage() {
                 />
               </div>
             )}
-            <Button onClick={() => void create.mutate()} disabled={!name}>
-              Add server
+            <Button onClick={() => void create.mutate()} disabled={create.isPending || !name}>
+              {create.isPending ? "Adding…" : "Add server"}
             </Button>
           </div>
 

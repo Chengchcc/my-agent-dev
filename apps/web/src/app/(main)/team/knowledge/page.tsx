@@ -104,9 +104,9 @@ export default function KnowledgePackPage() {
             )}
             <Button
               onClick={() => void install.mutate()}
-              disabled={!name || (sourceKind === "git" && !sourceUrl)}
+              disabled={install.isPending || !name || (sourceKind === "git" && !sourceUrl)}
             >
-              Install
+              {install.isPending ? "Installing…" : "Install"}
             </Button>
           </div>
 
