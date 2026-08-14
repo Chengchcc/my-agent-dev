@@ -48,7 +48,10 @@ export const envSchema = z.object({
     .string()
     .optional()
     .describe("Coding Agent executable spawned per Run (default: coding-agent on PATH)"),
-  // ── Backend kinds (ADR 0002): CLI executables + mounts ──
+  KNOWLEDGE_MCP_SERVER_BIN: z
+    .string()
+    .optional()
+    .describe("Knowledge recall MCP server entry (ADR 0022; default: dev source / prod dist)"),
   OMP_BIN: z.string().optional().describe("omp executable per Run (default: omp on PATH)"),
   PI_BIN: z.string().optional().describe("pi executable per Run (default: pi on PATH)"),
   PI_MCP_ADAPTER_PATH: z

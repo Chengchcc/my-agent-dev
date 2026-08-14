@@ -1,22 +1,21 @@
-import type { AgentRow, CreateAgentInput, UpdateAgentInput } from "./domain.js";
+import type { AgentConfig } from "./agent-config.js";
+import type { AgentRow } from "./domain.js";
 
+/** Storage port for agents (file-first, ADR 0003 decision 1): the row
+ *  carries only the FK anchor, the workspace location and the
+ *  materialized `config` (parsed agent.yml). */
 export interface AgentPort {
-  create(
-    input: CreateAgentInput & {
-      id: string;
-      workspacePath: string;
-      now: number;
-      larkEnabled: boolean;
-      larkAppId: string | null;
-      larkProfileRef: string | null;
-      larkBotDisplayName: string | null;
-    },
-  ): Promise<AgentRow>;
+  create(input: {
+    id: string;
+    workspacePath: string;
+    config: AgentConfig;
+    now: number;
+  }): Promise<AgentRow>;
   findById(id: string): Promise<AgentRow | null>;
   list(includeArchived?: boolean): Promise<AgentRow[]>;
   update(
     id: string,
-    input: UpdateAgentInput & { now: number; lark?: { profileRef?: string } },
+    input: { config: AgentConfig; now: number; workspacePath?: string },
   ): Promise<AgentRow | null>;
   archive(id: string, now: number): Promise<AgentRow | null>;
   /** M11: Permanently delete agent + threads + checkpoints + member rows from backend.db. */

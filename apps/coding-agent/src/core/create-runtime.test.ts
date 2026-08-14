@@ -46,13 +46,11 @@ function makeModelRuntime(record: Message[][]) {
 
 function runInput(runId: string, systemPrompt?: string): BackendRunInput<"coding_agent"> {
   return {
-    history: [],
     input: { inputId: `in-${runId}`, message: { role: "user", text: "go" } },
     run: {
       runId,
       model: { backendKind: "coding_agent", modelId: "fake/echo" },
       ...(systemPrompt ? { systemPrompt } : {}),
-      productTools: [],
       configRevision: 1,
     },
     workspace: { root: tmp, access: "read_write" },
@@ -282,20 +280,19 @@ describe("createCodingAgentRuntime", () => {
       workspaceAccess: "read_write",
       modelRuntime: runtime,
       skillRoots: [],
-    });
-    // ~30K chars of history (two messages, 4+ branch entries): ~7.5K
-    // estimated tokens - over small(4K)*0.7, far under big(200K)*0.7.
-    // Compaction fires ONLY if the budget uses the run model.
-    const segment = await rt.run({
-      history: [
+      // ~30K chars of history (two messages, 4+ branch entries): ~7.5K
+      // estimated tokens - over small(4K)*0.7, far under big(200K)*0.7.
+      // Compaction fires ONLY if the budget uses the run model.
+      sessionTranscript: [
         { productEntryId: "e1", message: { role: "user", text: "x".repeat(15_000) } },
         { productEntryId: "e2", message: { role: "user", text: "x".repeat(15_000) } },
       ],
+    });
+    const segment = await rt.run({
       input: { inputId: "in-budget", message: { role: "user", text: "go" } },
       run: {
         runId: "r-budget",
         model: { backendKind: "coding_agent", modelId: "fake/small" },
-        productTools: [],
         configRevision: 1,
       },
       workspace: { root: tmp, access: "read_write" },
@@ -340,19 +337,18 @@ describe("createCodingAgentRuntime", () => {
       workspaceAccess: "read_write",
       modelRuntime: runtime,
       skillRoots: [],
-    });
-    // Same ~30K chars (~7.5K tokens): over small(4K)*0.7 - the WRONG budget
-    // would compact; the run model's 200K window must not.
-    const segment = await rt.run({
-      history: [
+      // Same ~30K chars (~7.5K tokens): over small(4K)*0.7 - the WRONG
+      // budget would compact; the run model's 200K window must not.
+      sessionTranscript: [
         { productEntryId: "e1", message: { role: "user", text: "x".repeat(15_000) } },
         { productEntryId: "e2", message: { role: "user", text: "x".repeat(15_000) } },
       ],
+    });
+    const segment = await rt.run({
       input: { inputId: "in-budget2", message: { role: "user", text: "go" } },
       run: {
         runId: "r-budget2",
         model: { backendKind: "coding_agent", modelId: "fake/big" },
-        productTools: [],
         configRevision: 1,
       },
       workspace: { root: tmp, access: "read_write" },

@@ -12,6 +12,7 @@ used_by:
 ---
 
 # 对话与成员
+> ⚠ **已过时(2026-08-13)**:ADR 0021 收编为一个对话一个 Agent(member 恰一,human 消息为外部事件);roster、@提及解析、wake routing 的多成员机制已退化/删除(relationships 已删,迁移 0026)。本页保留为历史,现行模型见 [Agent 工作区与多后端](../agents/workspace-and-backends.md)。
 
 对话是共享协作空间，成员是人/Agent/系统在这个空间里的本地身份。触发模式、跳数上限、活动锁和 @提及解析，共同防止多 Agent 失控地互相触发。
 

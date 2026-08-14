@@ -21,8 +21,10 @@ export type CronJobRow = ApiReturn<typeof api.listCronJobs>["cronJobs"][number];
 export type LoopRow = ApiReturn<typeof api.listLoops>["loops"][number];
 export type LoopDetail = ApiReturn<typeof api.getLoop>["loop"];
 export type LarkSetupSession = ApiReturn<typeof api.larkSetup>;
-export type AgentRow = ApiReturn<typeof api.listAgents>[number];
-export type AgentRunListItem = ApiReturn<typeof api.listAgentRuns>["runs"][number];
+export type AgentRow = ApiReturn<typeof api.listAgents>[number] & {
+  mcpServers?: Array<{ serverId: string; enabled: boolean }>;
+  knowledgePacks?: string[];
+};
 export type AgentRunDetail = ApiReturn<typeof api.getAgentRun>;
 export type AgentRuntimeStatus = ApiReturn<typeof api.getAgentRuntime>;
 export type SurfaceOpsItem = ApiReturn<typeof api.listSurfaces>[number];
@@ -32,18 +34,8 @@ export type CreateLoopResult = ApiReturn<typeof api.createLoop>;
 export type RefineLoopResult = ApiReturn<typeof api.refineLoop>;
 export type ActivateLoopResult = ApiReturn<typeof api.activateLoop>;
 export type SettingsMap = ApiReturn<typeof api.getSettings>["settings"];
-// ponytail: relationships routes are conditionally mounted, Eden can't infer types
-export interface RelationshipRow {
-  id: string;
-  fromAgent: string;
-  toAgent: string;
-  relType: "assigns_to" | "collaborates_with";
-  weight: number;
-  instruction: string | null;
-  createdAt: number;
-  updatedAt: number;
-}
 export type McpServerRow = ApiReturn<typeof api.listMcpServers>["mcpServers"][number];
+
 export type SystemInfo = ApiReturn<typeof api.getSystemInfo>;
 
 export type { ContentBlock };
@@ -236,23 +228,24 @@ export const api = {
   getSystemInfo: () => unwrap(client.api.settings.system.get()),
   updateSetting: (key: string, value: unknown) =>
     unwrap(client.api.settings({ key }).put({ value })),
-  // MCP Servers
-  listMcpServers: (agentId: string) =>
-    unwrap(client.api.agents({ id: agentId })["mcp-servers"].get()),
-  createMcpServer: (
-    agentId: string,
-    body: {
-      name: string;
-      transport: "stdio" | "sse";
-      command?: string;
-      args?: string[];
-      env?: Record<string, string>;
-      url?: string;
-      enabled?: boolean;
-    },
-  ) => unwrap(client.api.agents({ id: agentId })["mcp-servers"].post(body)),
+  // MCP catalog (ADR 0022, direct fetch - global routes)
+  listMcpServers: () =>
+    fetch("/api/bff/mcp-servers", { credentials: "include" }).then((r) => r.json()),
+  createMcpServer: (body: {
+    name: string;
+    transport: "stdio" | "sse";
+    command?: string;
+    args?: string[];
+    env?: Record<string, string>;
+    url?: string;
+  }) =>
+    fetch("/api/bff/mcp-servers", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json()),
   updateMcpServer: (
-    agentId: string,
     serverId: string,
     body: {
       name?: string;
@@ -260,56 +253,51 @@ export const api = {
       args?: string[];
       env?: Record<string, string>;
       url?: string;
-      enabled?: boolean;
     },
-  ) => unwrap(client.api.agents({ id: agentId })["mcp-servers"]({ serverId }).put(body)),
-  deleteMcpServer: (agentId: string, serverId: string) =>
-    unwrap(client.api.agents({ id: agentId })["mcp-servers"]({ serverId }).delete()),
-  // Memory
-  getAgentMemory: (agentId: string) =>
-    fetch(`/api/bff/agents/${agentId}/memory`, { credentials: "include" }).then((r) => r.json()),
-  // Relationships (direct fetch - conditional routes not visible to Eden)
-  listAgentRelationships: async (agentId: string) => {
-    const resp = await fetch(`/api/bff/agents/${agentId}/relationships`, {
-      credentials: "include",
-    });
-    return (await resp.json()) as { relationships: RelationshipRow[] };
-  },
-  createRelationship: async (
-    agentId: string,
-    body: {
-      toAgentId: string;
-      relType: "assigns_to" | "collaborates_with";
-      weight?: number;
-      instruction?: string;
-    },
-  ) => {
-    const resp = await fetch(`/api/bff/agents/${agentId}/relationships`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return (await resp.json()) as { relationship: RelationshipRow };
-  },
-  updateRelationship: async (
-    agentId: string,
-    relId: string,
-    body: { weight?: number; instruction?: string },
-  ) => {
-    const resp = await fetch(`/api/bff/agents/${agentId}/relationships/${relId}`, {
+  ) =>
+    fetch(`/api/bff/mcp-servers/${serverId}`, {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    });
-    return (await resp.json()) as { relationship: RelationshipRow };
-  },
-  deleteRelationship: (agentId: string, relId: string) =>
-    fetch(`/api/bff/agents/${agentId}/relationships/${relId}`, {
+    }).then((r) => r.json()),
+  deleteMcpServer: (serverId: string) =>
+    fetch(`/api/bff/mcp-servers/${serverId}`, {
       method: "DELETE",
       credentials: "include",
     }).then((r) => r.ok),
+  // Knowledge packs (ADR 0022, direct fetch)
+  listKnowledgePacks: () =>
+    fetch("/api/bff/knowledge-packs", { credentials: "include" }).then((r) => r.json()),
+  installKnowledgePack: (body: {
+    name: string;
+    description?: string;
+    sourceKind: "builtin" | "git" | "zip";
+    sourceUrl?: string;
+  }) =>
+    fetch("/api/bff/knowledge-packs/install", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json()),
+  deleteKnowledgePack: (id: string) =>
+    fetch(`/api/bff/knowledge-packs/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    }).then((r) => r.ok),
+  // Memory
+  getAgentMemory: (agentId: string) =>
+    fetch(`/api/bff/agents/${agentId}/memory`, { credentials: "include" }).then((r) => r.json()),
+  // Workspace (read-only file browser, ADR 0003)
+  listWorkspaceEntries: (agentId: string, path: string) =>
+    fetch(`/api/bff/agents/${agentId}/workspace/entries?path=${encodeURIComponent(path)}`, {
+      credentials: "include",
+    }).then((r) => r.json()),
+  readWorkspaceFile: (agentId: string, path: string) =>
+    fetch(`/api/bff/agents/${agentId}/workspace/file?path=${encodeURIComponent(path)}`, {
+      credentials: "include",
+    }).then((r) => r.json()),
   // Models (direct fetch - route not visible to Eden treaty)
   listModels: async () => {
     const resp = await fetch("/api/bff/models", { credentials: "include" });
@@ -321,7 +309,6 @@ export const api = {
         models: Array<{
           id: string;
           name: string;
-          provider: string;
           reasoning: boolean;
           input: string[];
           cost: { input: number; output: number; cacheRead: number; cacheWrite: number };

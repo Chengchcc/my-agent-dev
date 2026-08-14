@@ -16,18 +16,12 @@ export interface WorkspaceBinding {
   readonly access: "read_only" | "read_write";
 }
 
-/** Product Tool manifest entry exposed to a Backend. */
-export interface ProductToolDescriptor {
-  readonly name: string;
-  readonly description: string;
-  readonly inputSchema: Readonly<Record<string, unknown>>;
-  readonly entrypoint: string;
-}
-
 /** Frozen per-Run configuration. Fixed at Agent Run start; every `execute()`
- *  carries it so model, system prompt and Product Tool manifest changes take
- *  effect on the next Run without any shared state. Parameterized by `K` so
- *  the model ref's backendKind is locked to the Backend's kind. */
+ *  carries it so model and system prompt changes take effect on the next Run
+ *  without any shared state. Product Tool definitions ride the workspace
+ *  files (.agent/product-tools.json, ADR 0003 decision 6), not this snapshot.
+ *  Parameterized by `K` so the model ref's backendKind is locked to the
+ *  Backend's kind. */
 export interface AgentRunSnapshot<K extends string = string> {
   readonly runId: string;
   readonly model: BackendModelRef<K>;
@@ -35,6 +29,13 @@ export interface AgentRunSnapshot<K extends string = string> {
   /** Skill pack roots (absolute dirs scanned for SKILL.md), frozen at Run
    *  creation. The Runtime loads them via the progressive skill plugin. */
   readonly skillRoots?: readonly string[];
-  readonly productTools: readonly ProductToolDescriptor[];
+  /** The branch's CLI session reference (ADR 0003 decision 6): an opaque
+   *  pointer the coding agent resolves itself (its own native session
+   *  storage). Absent = fresh session. The product stores only this
+   *  reference — never manages the CLI's session files. */
+  readonly cliSessionRef?: string;
+  /** Frozen permission_mode (ask/auto/deny), mapped per backend at
+   *  dispatch (ADR 0020 decision 7). */
+  readonly permissionMode?: "ask" | "auto" | "deny";
   readonly configRevision: number;
 }

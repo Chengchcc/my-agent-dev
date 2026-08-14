@@ -73,7 +73,6 @@ export async function buildCliRunInput(opts: {
   const modelId = `${model.providerId}/${model.modelId}`;
   const runId = `cli-${randomUUID()}`;
   return {
-    history: [],
     input: {
       inputId: `cli-in-${randomUUID()}`,
       message: { role: "user", text: opts.prompt },
@@ -81,7 +80,7 @@ export async function buildCliRunInput(opts: {
     run: {
       runId,
       model: { backendKind: "coding_agent", modelId },
-      productTools: [],
+
       configRevision: 0,
     },
     workspace: { root: opts.workspaceRoot, access: "read_write" },

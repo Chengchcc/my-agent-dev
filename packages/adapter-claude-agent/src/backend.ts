@@ -10,8 +10,8 @@
  *  bypassPermissions` is refused when running as root — the flag is only
  *  passed when explicitly configured. */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type {
   AgentBackend,
   BackendEvent,
@@ -65,9 +65,6 @@ interface ActiveRun {
   readonly events: AsyncIterable<BackendEvent<"claude_code">>;
 }
 
-/** Branch-pinned session id file: `{"sessionId": "..."}` (ADR 0002). */
-const SESSION_REL = join(".my-agent", "claude-session");
-
 export class ClaudeBackend implements AgentBackend<"claude_code"> {
   readonly kind = "claude_code" as const;
   private readonly executable: string;
@@ -96,10 +93,14 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
     }
 
     const workspace = input.workspace.root;
-    const sessionFile = join(workspace, SESSION_REL, `${input.metadata.branchId}.json`);
-    const resumeId = readSessionId(sessionFile);
+    // The CLI owns its session (claude's own storage keyed by session_id);
+    // the product forwards the branch's opaque reference only (ADR 0003).
+    const resumeId = input.run.cliSessionRef ?? null;
 
-    const mcpConfigPath = this.writeMcpConfig(input, workspace);
+    // The workspace bridge owns the single cwd .mcp.json (user servers +
+    // product-tools, ADR 0003); pass it to claude only when it exists.
+    const mcpPath = join(workspace, ".mcp.json");
+    const mcpConfigPath = existsSync(mcpPath) ? mcpPath : null;
 
     const args = this.buildArgs(input, resumeId, mcpConfigPath);
     let proc: SpawnedClaudeProcess;
@@ -117,7 +118,7 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
 
     const handle = createActiveRun(runId, proc);
     this.active.set(runId, handle);
-    void this.consumeStdout(handle, input, sessionFile, resumeId);
+    void this.consumeStdout(handle, input);
     return {
       events: handle.events,
       outcome: handle.outcome,
@@ -186,67 +187,47 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
       "-p",
     ];
     const modelId = input.run.model.modelId;
-    if (modelId) args.push("--model", modelId);
+    if (modelId) {
+      // The catalog uses canonical `<provider>/<model>` ids; the claude CLI
+      // (and its API proxy) expects the BARE model name.
+      const slash = modelId.indexOf("/");
+      args.push("--model", slash > 0 ? modelId.slice(slash + 1) : modelId);
+    }
     if (input.run.model.reasoningEffort && input.run.model.reasoningEffort !== "none") {
       const effort =
         input.run.model.reasoningEffort === "max" ? "high" : input.run.model.reasoningEffort;
       args.push("--effort", effort);
     }
-    if (this.permissionMode) args.push("--permission-mode", this.permissionMode);
+    // Per-run frozen permission_mode (ADR 0020 decision 7): ask -> default
+    // (prompts), auto -> acceptEdits, deny -> plan. bypassPermissions is
+    // refused by the claude CLI under root/sudo - the workspace settings
+    // (.claude/settings.json) pre-allow the product tools instead.
+    const runPerm = input.run.permissionMode;
+    if (runPerm) {
+      const mode = runPerm === "auto" ? "acceptEdits" : runPerm === "deny" ? "plan" : "default";
+      args.push("--permission-mode", mode);
+    } else if (this.permissionMode) {
+      args.push("--permission-mode", this.permissionMode);
+    }
     if (resumeId) args.push("--resume", resumeId);
     if (mcpConfigPath) args.push("--mcp-config", mcpConfigPath);
     if (input.run.systemPrompt) args.push("--append-system-prompt", input.run.systemPrompt);
     return args;
   }
 
-  /** The driving input as ONE stream-json user message. When the branch
-   *  has no claude session yet, the projected history is rendered as flat
-   *  text inside the same message (ponytail: first-turn-only bridge). */
-  private buildStdinInput(input: BackendRunInput<"claude_code">, resume: boolean): string {
+  /** The driving input as ONE stream-json user message. The first-turn
+   *  history bridge (ADR 0003 decision 6) is already flat text inside the
+   *  message, rendered by the Backend when the branch has no claude session
+   *  reference yet. */
+  private buildStdinInput(input: BackendRunInput<"claude_code">): string {
     const inputText = input.input.message.text ?? "";
-    let prompt = inputText;
-    if (!resume && input.history.length > 0) {
-      const historyText = input.history
-        .map((h) => {
-          const who = h.message.role === "user" ? "User" : "Assistant";
-          return `${who}: ${h.message.text}`;
-        })
-        .join("\n\n");
-      prompt = `${historyText}\n\n${inputText}`;
-    }
     return JSON.stringify({
       type: "user",
       message: {
         role: "user",
-        content: [{ type: "text", text: prompt }],
+        content: [{ type: "text", text: inputText }],
       },
     });
-  }
-
-  /** Product Tools mounting (D3): write the standard mcp.json and pass it
-   *  via --mcp-config. Returns null when the entrypoint is not a real SSE
-   *  url (unconfigured deployment). */
-  private writeMcpConfig(input: BackendRunInput<"claude_code">, workspace: string): string | null {
-    const entrypoint = input.run.productTools[0]?.entrypoint ?? "";
-    if (!entrypoint.startsWith("sse:")) return null;
-    const url = entrypoint.slice(4);
-    const headers =
-      this.productToolsToken !== undefined
-        ? { Authorization: `Bearer ${this.productToolsToken}` }
-        : undefined;
-    const dir = join(workspace, ".my-agent");
-    mkdirSync(dir, { recursive: true });
-    const path = join(dir, "claude-mcp.json");
-    writeFileSync(
-      path,
-      JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
-        mcpServers: {
-          "product-tools": { type: "sse", url, ...(headers ? { headers } : {}) },
-        },
-      }),
-    );
-    return path;
   }
 
   /** Single stdout parse loop + stdin write. The terminal outcome is
@@ -254,12 +235,10 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
   private async consumeStdout(
     handle: ActiveRun,
     input: BackendRunInput<"claude_code">,
-    sessionFile: string,
-    resumeId: string | null,
   ): Promise<void> {
     const acc = createClaudeAccumulator();
     try {
-      handle.proc.writeLine(this.buildStdinInput(input, resumeId !== null));
+      handle.proc.writeLine(this.buildStdinInput(input));
       handle.proc.closeStdin();
     } catch {
       /* stdin closed early — the parse loop still reads stdout */
@@ -271,6 +250,7 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
       mapClaudeEvent(acc, evt);
       for (const e of acc.events.splice(0)) handle.pushEvent(e);
     }
+
     const exitCode = await handle.proc.exit.catch(() => null);
 
     if (handle.stopRequested) {
@@ -300,31 +280,8 @@ export class ClaudeBackend implements AgentBackend<"claude_code"> {
         ...(acc.sessionId ? { cliSessionRef: acc.sessionId } : {}),
       });
     }
-    // Persist the session id for --resume continuation (ADR 0002).
-    if (acc.sessionId) {
-      try {
-        writeSessionId(sessionFile, acc.sessionId);
-      } catch {
-        /* session persistence failure is not a run failure */
-      }
-    }
     this.active.delete(handle.runId);
   }
-}
-
-function readSessionId(sessionFile: string): string | null {
-  try {
-    if (!existsSync(sessionFile)) return null;
-    const parsed = JSON.parse(readFileSync(sessionFile, "utf8")) as { sessionId?: string };
-    return parsed.sessionId ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function writeSessionId(sessionFile: string, sessionId: string): void {
-  mkdirSync(dirname(sessionFile), { recursive: true });
-  writeFileSync(sessionFile, JSON.stringify({ sessionId }));
 }
 
 function createActiveRun(runId: string, proc: SpawnedClaudeProcess): ActiveRun {

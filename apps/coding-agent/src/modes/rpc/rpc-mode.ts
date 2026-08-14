@@ -16,9 +16,18 @@ import {
   responseOutputSchema,
 } from "@my-agent-team/agent-backend";
 import type { ModelRuntime } from "@my-agent-team/ai";
+import { type Message, MessageSchema } from "@my-agent-team/message";
 import { type CodingAgentRuntime, createCodingAgentRuntime } from "../../core/create-runtime.js";
+import {
+  appendSessionMessages,
+  loadSessionMessages,
+  newSessionId,
+} from "../../core/session-file.js";
+import {
+  readWorkspaceSystemPrompt,
+  scanWorkspaceSkillRoots,
+} from "../../core/workspace-context.js";
 import { createJsonlReader } from "./jsonl.js";
-
 /** Minimal RPC mode: stdin JSONL commands, stdout JSONL outputs only, stderr
  *  for logs. One process = at most one execute = one Run = one outcome, then
  *  the process exits. No Session lifecycle, no HTTP, no registry. */
@@ -173,24 +182,58 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
       return;
     }
     const runId = input.run.runId;
+    // Session (ADR 0003 decision 6): the child owns its session file; the
+    // product forwards the branch's opaque reference. Resume loads the
+    // transcript as the loop's seed history (validated at the file
+    // boundary); a ref whose file is missing/empty degrades to a fresh
+    // session (the first-turn bridge already lives in the input message).
+    const resumeId = input.run.cliSessionRef;
+    const sessionId = resumeId ?? newSessionId();
+    const loaded = resumeId ? loadSessionMessages(resumeId) : [];
+    const sessionTranscript =
+      loaded.length > 0
+        ? loaded.map((message, i) => ({
+            productEntryId: `session:${i}`,
+            // Validated at the file boundary; the single-step cast aligns
+            // zod's inferred shape with the Message interface (the session
+            // file holds messages the child itself wrote).
+            message: MessageSchema.parse(message) as Message,
+          }))
+        : undefined;
+    let effectiveInput: typeof input;
+
     let segment: BackendRunSegment<"coding_agent">;
     try {
+      // cwd-based meta (ADR 0003 decision 6): skills and the system prompt
+      // live in workspace files (.agent/skills + AGENTS.md/SOUL.md/USER.md).
+      // Explicit run-input values (Loop scopes) win over the cwd fallback.
+      const cwdSkills = scanWorkspaceSkillRoots(input.workspace.root);
+      const cwdPrompt = readWorkspaceSystemPrompt(input.workspace.root);
+      effectiveInput =
+        input.run.systemPrompt || cwdPrompt === undefined
+          ? input
+          : {
+              ...input,
+              run: { ...input.run, systemPrompt: cwdPrompt },
+            };
+
       runtime = await createCodingAgentRuntime({
         runId,
         modelId: input.run.model.modelId,
         workspaceRoot: input.workspace.root,
         workspaceAccess: input.workspace.access,
         modelRuntime: opts.modelRuntime,
-        skillRoots: input.run.skillRoots ?? [],
+        skillRoots: input.run.skillRoots?.length ? input.run.skillRoots : cwdSkills,
+        sessionTranscript,
         onEvent: (event) => {
           if (!finished) emit(eventOutputSchema.parse({ type: "event", runId, event }));
         },
       });
       // run() resolves when the loop is live: acceptance ⟹ routable.
-      segment = await runtime.run(input as never);
+      segment = await runtime.run(effectiveInput as never);
       debugLog(
         "coding-agent",
-        `runtime_assembled runId=${runId} skills=${input.run.skillRoots?.length ?? 0} access=${input.workspace.access}`,
+        `runtime_assembled runId=${runId} skills=${(input.run.skillRoots?.length ? input.run.skillRoots : cwdSkills).length} access=${input.workspace.access}`,
       );
     } catch (caught) {
       emitResponse(command.id, "execute", false, `runtime assembly failed: ${redactError(caught)}`);
@@ -202,9 +245,9 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     currentRunId = runId;
     debugLog("coding-agent", `loop_live runId=${runId}`);
     emitResponse(command.id, "execute", true, undefined);
-    void driveOutcome(runtime, segment, runId);
-  }
 
+    void driveOutcome(runtime, segment, runId, sessionId, effectiveInput.input.message);
+  }
   /** Await the outcome, emit the outcome envelope, flush, close the runtime,
    *  then END the reader so the process exits on its own (one Run → one
    *  outcome → exit) - no dependency on the parent closing stdin. */
@@ -212,6 +255,8 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     runtime: CodingAgentRuntime,
     segment: BackendRunSegment<"coding_agent">,
     runId: string,
+    sessionId: string,
+    inputMessage: Record<string, unknown>,
   ): Promise<void> {
     let outcome: BackendRunOutcome;
     try {
@@ -219,10 +264,19 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     } catch (caught) {
       outcome = { status: "failed", error: redactError(caught) };
     }
+    // Persist the turn into the child's session file (user + assistant/tool
+    // messages) so the next run resumes the transcript (ADR 0003).
+    if (outcome.status === "completed" && outcome.messages?.length) {
+      appendSessionMessages(sessionId, process.cwd(), [inputMessage, ...outcome.messages]);
+    }
+    const outcomeWithRef: BackendRunOutcome = {
+      ...outcome,
+      cliSessionRef: sessionId,
+    };
     finished = true;
     await runtime.close().catch(() => {});
     debugLog("coding-agent", `runtime_closed runId=${runId}`);
-    emit(outcomeOutputSchema.parse({ type: "outcome", runId, outcome }));
+    emit(outcomeOutputSchema.parse({ type: "outcome", runId, outcome: outcomeWithRef }));
     debugLog("coding-agent", `outcome runId=${runId} status=${outcome.status}`);
     await writeChain;
     // Unblock the reader: the pending stdin read resolves done and the main

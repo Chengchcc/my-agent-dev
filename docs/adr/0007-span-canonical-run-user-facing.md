@@ -1,8 +1,10 @@
 # ADR 0007: `span` as canonical backend term, `run` as user-facing term
 
+> ⚠ **已过期(2026-08-13)**:span/attempt/control_plane_event/span_origin 表已在 Phase 6 删除(迁移 0020),`run` 成为唯一执行身份——canonical 术语问题随 span 退役而消失。见 ADR 0016/0017。
+
 ## 状态
 
-Accepted
+Superseded(was Accepted)
 
 ## 上下文
 

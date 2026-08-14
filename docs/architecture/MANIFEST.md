@@ -1,15 +1,11 @@
 # 打包清单
 
+- `docs/adr/README.md`(索引;0001–0021 全部 ADR 在此目录)
 - `docs/adr/0001-loop-prune-is-post-processing.md`
-- `docs/adr/0002-config-generation-is-builtin-skill.md`
-- `docs/adr/0003-state-md-single-writer.md`
-- `docs/adr/0004-discovery-is-agent-session.md`
-- `docs/adr/0006-loop-lock-deferred.md`
-- `docs/adr/0005-mcp-deferred-for-loop.md`
 - `README.md`
 - `docs/architecture/README.md`
 - `docs/architecture/runs/output-and-live-updates.md`
-- `docs/architecture/backend/data-model.md`
+- `docs/architecture/agents/workspace-and-backends.md`
 - `docs/architecture/backend/event-log.md`（tombstone）
 - `docs/architecture/backend/overview.md`
 - `docs/architecture/backend/loop-runner.md`
@@ -31,9 +27,9 @@
 - `docs/architecture/index.llm.md`
 - `docs/architecture/map.md`
 - `docs/architecture/operations/troubleshooting.md`
-- `docs/architecture/plugins/fs-memory.md`
-- `docs/architecture/plugins/progressive-skill.md`
-- `docs/architecture/plugins/task-guard.md`
+- `docs/architecture/plugins/fs-memory.md`（tombstone）
+- `docs/architecture/plugins/task-guard.md`（tombstone）
+
 - `docs/architecture/roadmap/future-work.md`
 - `docs/architecture/runtime/framework.md`（tombstone）
 - `docs/architecture/runtime/plugin.md`（tombstone）
@@ -43,7 +39,7 @@
 - `docs/architecture/runtime/coding-agent-prompt.md`
 - `docs/architecture/runtime/coding-agent-models.md`
 - `docs/architecture/runtime/compaction.md`
-- `docs/architecture/runtime/memory.md`
+- `docs/architecture/runtime/memory.md`（tombstone）
 - `docs/architecture/security/overview.md`
 - `docs/architecture/surfaces/lark.md`
 - `docs/architecture/surfaces/overview.md`

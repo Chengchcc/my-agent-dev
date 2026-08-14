@@ -1,7 +1,12 @@
 import type { McpClientManager } from "@my-agent-team/adapter-mcp";
 import { NotFoundError, ValidationError } from "../../infra/domain-errors.js";
 import { ulid } from "../../infra/ids.js";
-import type { CreateMcpServerInput, McpServerRow, UpdateMcpServerInput } from "./domain.js";
+import type {
+  AgentMcpAssignment,
+  CreateMcpServerInput,
+  McpServerRow,
+  UpdateMcpServerInput,
+} from "./domain.js";
 import type { McpServerPort } from "./ports.js";
 
 export class McpServerNotFoundError extends NotFoundError {
@@ -12,11 +17,19 @@ export class McpServerNotFoundError extends NotFoundError {
 
 export class McpValidationError extends ValidationError {}
 
+/** MCP unified catalog (ADR 0022): a global server pool. Per-agent
+ *  switches live in agent.yml (file-first) - the service reads/writes
+ *  them through the `agentMcpServers` callbacks wired to the agent
+ *  service. */
 export interface McpService {
-  listByAgent(agentId: string): McpServerRow[];
-  create(agentId: string, input: CreateMcpServerInput): Promise<McpServerRow>;
-  update(agentId: string, serverId: string, input: UpdateMcpServerInput): Promise<McpServerRow>;
-  delete(agentId: string, serverId: string): Promise<void>;
+  listCatalog(): McpServerRow[];
+  create(input: CreateMcpServerInput): Promise<McpServerRow>;
+  update(serverId: string, input: UpdateMcpServerInput): Promise<McpServerRow>;
+  delete(serverId: string): Promise<void>;
+  listAssignments(agentId: string): Promise<AgentMcpAssignment[]>;
+  setAgentServers(agentId: string, entries: AgentMcpAssignment[]): Promise<void>;
+  /** Assigned AND enabled servers (the workspace bridge's input). */
+  listForAgent(agentId: string): Promise<McpServerRow[]>;
 }
 
 function maskEnv(row: McpServerRow): McpServerRow {
@@ -32,118 +45,108 @@ export function createMcpService(deps: {
   port: McpServerPort;
   mcpClientManager: McpClientManager;
   agentExists: (id: string) => Promise<boolean>;
+  getAgentMcpServers: (agentId: string) => Promise<AgentMcpAssignment[]>;
+  setAgentMcpServers: (agentId: string, entries: AgentMcpAssignment[]) => Promise<void>;
   idGen?: () => string;
 }): McpService {
   const idGen = deps.idGen ?? ulid;
 
-  function require(serverId: string): McpServerRow {
+  function requireServer(serverId: string): McpServerRow {
     const r = deps.port.getById(serverId);
     if (!r) throw new McpServerNotFoundError(serverId);
     return r;
   }
 
+  const withStatus = (row: McpServerRow): McpServerRow => ({
+    ...row,
+    status: deps.mcpClientManager.getStatus(row.serverId),
+    toolsCount: deps.mcpClientManager.getToolCount(row.serverId),
+  });
+
   return {
-    listByAgent(agentId: string): McpServerRow[] {
-      return deps.port
-        .listByAgent(agentId)
-        .map(maskEnv)
-        .map((row) => ({
-          ...row,
-          status: deps.mcpClientManager.getStatus(row.serverId),
-          toolsCount: deps.mcpClientManager.getToolCount(row.serverId),
-        }));
+    listCatalog(): McpServerRow[] {
+      return deps.port.list().map(maskEnv).map(withStatus);
     },
 
-    async create(agentId: string, input: CreateMcpServerInput): Promise<McpServerRow> {
-      if (!(await deps.agentExists(agentId))) {
-        throw new McpValidationError(`Agent not found: ${agentId}`);
-      }
+    async create(input: CreateMcpServerInput): Promise<McpServerRow> {
       const now = Date.now();
       const serverId = idGen();
       const row = deps.port.create({
         serverId,
-        agentId,
         name: input.name,
         transport: input.transport,
         command: input.command ?? null,
         args: input.args ? JSON.stringify(input.args) : "[]",
         env: input.env ? JSON.stringify(input.env) : "{}",
         url: input.url ?? null,
-        enabled: input.enabled !== false ? 1 : 0,
         createdAt: now,
         updatedAt: now,
       });
+      return maskEnv(withStatus(row));
+    },
 
-      if (row.enabled) {
-        deps.mcpClientManager
-          .connect({
-            serverId: row.serverId,
-            agentId: row.agentId,
-            name: row.name,
-            transport: row.transport,
-            command: row.command ?? undefined,
-            args: row.args ?? undefined,
-            env: row.env ?? undefined,
-            url: row.url ?? undefined,
-            enabled: row.enabled,
-          })
-          .catch(() => {});
+    async update(serverId: string, input: UpdateMcpServerInput): Promise<McpServerRow> {
+      requireServer(serverId);
+      const row = deps.port.update(serverId, {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.command !== undefined ? { command: input.command } : {}),
+        ...(input.args !== undefined ? { args: JSON.stringify(input.args) } : {}),
+        ...(input.env !== undefined ? { env: JSON.stringify(input.env) } : {}),
+        ...(input.url !== undefined ? { url: input.url } : {}),
+        updatedAt: Date.now(),
+      });
+      if (!row) throw new McpServerNotFoundError(serverId);
+      return maskEnv(withStatus(row));
+    },
+
+    async delete(serverId: string): Promise<void> {
+      requireServer(serverId);
+      deps.mcpClientManager.disconnect(serverId);
+      deps.port.delete(serverId);
+    },
+
+    async listAssignments(agentId: string): Promise<AgentMcpAssignment[]> {
+      return deps.getAgentMcpServers(agentId);
+    },
+
+    async setAgentServers(agentId: string, entries: AgentMcpAssignment[]): Promise<void> {
+      if (!(await deps.agentExists(agentId))) {
+        throw new McpValidationError(`Agent not found: ${agentId}`);
       }
-
-      return maskEnv(row);
+      for (const e of entries) requireServer(e.serverId);
+      await deps.setAgentMcpServers(agentId, entries);
+      // Connect enabled servers for status display; disconnect the rest.
+      for (const e of entries) {
+        const row = requireServer(e.serverId);
+        if (e.enabled) {
+          void deps.mcpClientManager
+            .connect({
+              serverId: row.serverId,
+              agentId: "*",
+              name: row.name,
+              transport: row.transport,
+              ...(row.command ? { command: row.command } : {}),
+              ...(row.args ? { args: row.args } : {}),
+              ...(row.env ? { env: row.env } : {}),
+              ...(row.url ? { url: row.url } : {}),
+              enabled: true,
+            })
+            .catch(() => {});
+        } else {
+          deps.mcpClientManager.disconnect(e.serverId);
+        }
+      }
     },
 
-    async update(
-      _agentId: string,
-      serverId: string,
-      input: UpdateMcpServerInput,
-    ): Promise<McpServerRow> {
-      require(serverId); // throws if not found
-
-      const sets: Record<string, unknown> = {};
-      if (input.name !== undefined) sets.name = input.name;
-      if (input.command !== undefined) sets.command = input.command;
-      if (input.args !== undefined) sets.args = JSON.stringify(input.args);
-      if (input.env !== undefined) sets.env = JSON.stringify(input.env);
-      if (input.url !== undefined) sets.url = input.url;
-      if (input.enabled !== undefined) sets.enabled = input.enabled ? 1 : 0;
-
-      const updated = deps.port.update(serverId, { ...sets, updatedAt: Date.now() });
-      if (!updated) throw new McpServerNotFoundError(serverId);
-
-      // Disconnect old, reconnect with fresh config — sequenced, not raced
-      void (async () => {
-        try {
-          await deps.mcpClientManager.disconnect(serverId);
-        } catch {
-          // best-effort, carry on
-        }
-        if (updated.enabled) {
-          try {
-            await deps.mcpClientManager.connect({
-              serverId: updated.serverId,
-              agentId: updated.agentId,
-              name: updated.name,
-              transport: updated.transport,
-              command: updated.command ?? undefined,
-              args: updated.args ?? undefined,
-              env: updated.env ?? undefined,
-              url: updated.url ?? undefined,
-              enabled: updated.enabled,
-            });
-          } catch {
-            // degraded mode handles empty tools
-          }
-        }
-      })();
-
-      return { ...maskEnv(updated), status: deps.mcpClientManager.getStatus(updated.serverId) };
-    },
-
-    async delete(_agentId: string, serverId: string): Promise<void> {
-      require(serverId);
-      deps.mcpClientManager.disconnect(serverId).catch(() => {});
-      if (!deps.port.delete(serverId)) throw new McpServerNotFoundError(serverId);
+    async listForAgent(agentId: string): Promise<McpServerRow[]> {
+      const assigned = (await deps.getAgentMcpServers(agentId))
+        .filter((a) => a.enabled)
+        .map((a) => a.serverId);
+      const byId = new Map(deps.port.list().map((r) => [r.serverId, r]));
+      return assigned
+        .map((id) => byId.get(id))
+        .filter((r): r is McpServerRow => r !== undefined)
+        .map(maskEnv);
     },
   };
 }

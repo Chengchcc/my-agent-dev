@@ -6,7 +6,6 @@ import type {
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
-  ProductToolDescriptor,
   ProjectedHistoryItem,
   WorkspaceBinding,
 } from "@my-agent-team/agent-backend";
@@ -19,6 +18,7 @@ import type {
   LedgerMessageResolver,
 } from "../agent-context/ports.js";
 import { projectAgentContext } from "../agent-context/projection.js";
+import { buildHistoryTools } from "../product-tools/manifest.js";
 import type { AgentRun, BranchInput, ClaimedBranchInput } from "./domain.js";
 import { isActiveStatus, isTerminalStatus } from "./domain.js";
 import type { AgentRunPort } from "./ports.js";
@@ -30,61 +30,6 @@ function finalAnswerMessage(messages: readonly Message[] | undefined): Message |
   return [...(messages ?? [])]
     .reverse()
     .find((m) => m.role === "assistant" && (m.text?.trim() ?? "") !== "");
-}
-
-// ─── Product History Tools (the only canonical tool set) ─────────────
-
-/** The Product Tool manifest: history read tools plus one semantic mutation
- *  (history_retain) with durable call idempotency. Entrypoint is the
- *  child-reachable Product Tools MCP endpoint (`sse:<url>`); it is injected
- *  per service so tests and deployments can point at a real endpoint. */
-export function buildHistoryTools(entrypoint: string): readonly ProductToolDescriptor[] {
-  return [
-    {
-      name: "history_recent",
-      description:
-        "Read the most recent messages visible to this agent member in the conversation. Returns the last N messages with their ledger seq and role.",
-      inputSchema: { type: "object", properties: { limit: { type: "number" } } },
-      entrypoint,
-    },
-    {
-      name: "history_search",
-      description:
-        "Search the conversation ledger for messages matching a keyword. Scoped to this run's conversation only.",
-      inputSchema: {
-        type: "object",
-        properties: { keyword: { type: "string" }, limit: { type: "number" } },
-        required: ["keyword"],
-      },
-      entrypoint,
-    },
-    {
-      name: "history_around",
-      description:
-        "Read messages around a ledger seq in this conversation (context window before and after).",
-      inputSchema: {
-        type: "object",
-        properties: {
-          seq: { type: "number" },
-          before: { type: "number" },
-          after: { type: "number" },
-        },
-        required: ["seq"],
-      },
-      entrypoint,
-    },
-    {
-      name: "history_retain",
-      description:
-        "Pin a conversation message into this agent's context branch so later runs keep it. Semantic mutation; replay-safe.",
-      inputSchema: {
-        type: "object",
-        properties: { seq: { type: "number" }, reason: { type: "string" } },
-        required: ["seq"],
-      },
-      entrypoint,
-    },
-  ];
 }
 
 // ─── Execution service ───────────────────────────────────────────────
@@ -272,26 +217,102 @@ export function createAgentRunExecutionService(
     );
   }
 
+  /** First-turn bridge (ADR 0003 decision 6): when the branch has no CLI
+   *  session yet, the projected product history is flattened into the input
+   *  message as text — the CLI session becomes the runtime truth from the
+   *  second turn on. Flat text loses tool structure; accepted. */
+  function renderHistoryBridge(history: readonly ProjectedHistoryItem[]): string {
+    return history
+      .map((h) => {
+        const who = h.message.role === "user" ? "User" : "Assistant";
+        return `${who}: ${h.message.text}`;
+      })
+      .join("\n\n");
+  }
+
   /** Assemble the BackendRunInput for a run's single input. The run's
    *  systemPrompt + skillRoots are the frozen snapshot persisted at Run
-   *  creation - never re-resolved at dispatch (recovery reuses them). */
+   *  creation - never re-resolved at dispatch (recovery reuses them); they
+   *  stay in the contract as the run-scoped override channel (ADR 0003).
+   *  The Product Context (identity + current task list) rides the same
+   *  prompt so CLI backends carry their run identity into product tools. */
+  function renderTodoSection(todoSnapshot: string | null): string {
+    if (!todoSnapshot) {
+      return "## Current Tasks\nNone yet. Use the todo_write product tool to track your task list.";
+    }
+    try {
+      const items = JSON.parse(todoSnapshot) as readonly {
+        id: string;
+        text: string;
+        status: string;
+      }[];
+      const marks = { pending: "- [ ]", in_progress: "- [~]", done: "- [x]" };
+      return `## Current Tasks\n${items
+        .map((t) => {
+          const mark = marks[t.status as keyof typeof marks] ?? "- [ ]";
+          return `${mark} ${t.text} (id: ${t.id})`;
+        })
+        .join("\n")}`;
+    } catch {
+      return "## Current Tasks\nNone yet. Use the todo_write product tool to track your task list.";
+    }
+  }
+
   function buildRunInput(
     run: AgentRun,
     history: readonly ProjectedHistoryItem[],
     input: BranchInput,
     workspace: WorkspaceBinding,
+    cliSessionRef: string | undefined,
+    lastTodo: string | null,
   ): BackendRunInput {
+    const bridge = !cliSessionRef && history.length > 0 ? renderHistoryBridge(history) : "";
+    const inputText = input.message.text ?? "";
+    const runSnapshot: {
+      runId: string;
+      model: typeof run.modelRef;
+      configRevision: number;
+      systemPrompt?: string;
+      skillRoots?: readonly string[];
+      cliSessionRef?: string;
+      permissionMode?: "ask" | "auto" | "deny";
+    } = {
+      runId: run.runId,
+      model: run.modelRef,
+      configRevision: run.configRevision,
+    };
+
+    // CLI backends mount product tools through .mcp.json without the child's
+    // per-call wire identity: the identity + task list ride the system
+    // prompt, and the model passes the identity as a tool argument.
+    const productContext = [
+      "## Product Context",
+      "Product tools (history_recent, history_search, history_around,",
+      "history_retain, todo_write) require your run identity. Always pass it",
+      "as the `identity` argument:",
+      `- runId: ${run.runId}`,
+      `- conversationId: ${run.conversationId}`,
+      `- agentMemberId: ${run.agentMemberId}`,
+      `- branchId: ${run.branchId}`,
+      "",
+      renderTodoSection(lastTodo),
+    ].join("\n");
+    if (run.systemPrompt) {
+      runSnapshot.systemPrompt = `${run.systemPrompt}\n\n${productContext}`;
+    } else {
+      runSnapshot.systemPrompt = productContext;
+    }
+    if (run.skillRoots && run.skillRoots.length > 0) runSnapshot.skillRoots = run.skillRoots;
+    if (cliSessionRef) runSnapshot.cliSessionRef = cliSessionRef;
+    if (run.permissionMode) {
+      runSnapshot.permissionMode = run.permissionMode as "ask" | "auto" | "deny";
+    }
     return {
-      history,
-      input: { inputId: input.inputId, message: input.message },
-      run: {
-        runId: run.runId,
-        model: run.modelRef,
-        ...(run.systemPrompt ? { systemPrompt: run.systemPrompt } : {}),
-        ...(run.skillRoots && run.skillRoots.length > 0 ? { skillRoots: run.skillRoots } : {}),
-        productTools: buildHistoryTools(deps.productToolsEntrypoint),
-        configRevision: run.configRevision,
+      input: {
+        inputId: input.inputId,
+        message: bridge ? { ...input.message, text: `${bridge}\n\n${inputText}` } : input.message,
       },
+      run: runSnapshot,
       workspace,
       metadata: {
         conversationId: run.conversationId,
@@ -356,11 +377,28 @@ export function createAgentRunExecutionService(
 
     stage.name = "context_projection";
     const history = await projectHistory(run.branchId);
+    // The branch's CLI session reference (ADR 0003 decision 6): an opaque
+    // pointer the coding agent resolves natively — the product only
+    // forwards it, never manages the session itself.
+    const branch = await contextPort.getBranch(run.branchId);
     debugLog("agent-run", `context_projected runId=${runId} entries=${history.length}`);
 
     stage.name = "backend_execute";
     debugLog("agent-run", `backend_execute runId=${runId}`);
-    const segment = await backend.execute(buildRunInput(run, history, input, workspace));
+    // The branch's CLI session ref is kind-scoped (`<kind>:<ref>`, ADR 0003
+    // decision 6): a ref written by another backend is junk to this CLI and
+    // must never be forwarded (pi exits empty on a foreign --session id).
+    const kindPrefix = `${run.modelRef.backendKind}:`;
+    const rawRef = branch?.cliSessionRef;
+    // The previous run's task list re-enters the prompt so every backend
+    // continues it without a pull round-trip.
+    const lastTodo = await runPort.getLatestRunTodo(run.branchId);
+    const cliSessionRef = rawRef?.startsWith(kindPrefix)
+      ? rawRef.slice(kindPrefix.length)
+      : undefined;
+    const segment = await backend.execute(
+      buildRunInput(run, history, input, workspace, cliSessionRef, lastTodo),
+    );
     liveRuns.set(runId, { segment });
     debugLog("agent-run", `backend_accepted runId=${runId}`);
 
@@ -373,12 +411,11 @@ export function createAgentRunExecutionService(
   /** Terminal handling for one outcome: completed -> atomic Product commit;
    *  failed/aborted/timeout -> terminal Run without an assistant message. */
   async function settleOutcome(run: AgentRun, outcome: BackendRunOutcome): Promise<void> {
-    // CLI session reference (ADR 0002): record the CLI-side runtime truth
-    // on the branch — informational, never blocks the terminal settle.
+    // CLI session reference (ADR 0003 decision 6): kind-scoped on the
+    // branch so a backend switch never hands a foreign id to the next CLI.
     if (outcome.cliSessionRef) {
-      await deps.contextPort
-        .updateBranchCliSessionRef(run.branchId, outcome.cliSessionRef)
-        .catch(() => {});
+      const scoped = `${run.modelRef.backendKind}:${outcome.cliSessionRef}`;
+      await deps.contextPort.updateBranchCliSessionRef(run.branchId, scoped).catch(() => {});
     }
     if (outcome.status === "completed") {
       try {

@@ -1,8 +1,10 @@
 # ADR 0004: Discovery 是 loopStep() 内的独立 AgentSession
 
+> ⚠ **已过期(2026-08-13)**:discovery 阶段已从 loopStep 移除——现 Loop 只有 generator/evaluator 两段,无独立 Discovery AgentSession。本文保留为历史设计。
+
 ## 状态
 
-Accepted
+Obsolete(was Accepted)
 
 ## 上下文
 

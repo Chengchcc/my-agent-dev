@@ -1,8 +1,10 @@
 # ADR 0008: 塌缩 harness 调用层——删除 SessionSpec / SessionFactory / executeAgentRun
 
+> ✅ **已实施(2026-08-13)**:SessionSpec/SessionFactory/executeAgentRun 已全部删除(Phase 5/6,packages/harness 退役,apps/coding-agent 以 createCodingAgentRuntime 单入口取代)。本文档从提案转为实施记录。
+
 ## 状态
 
-Proposed
+Implemented(was Proposed)
 
 ## 上下文
 

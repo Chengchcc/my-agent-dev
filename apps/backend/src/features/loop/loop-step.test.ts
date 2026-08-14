@@ -164,6 +164,8 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
       productTools: null,
       systemPrompt: null,
       skillRoots: null,
+      permissionMode: null,
+      todoSnapshot: null,
       workspace: null,
       createdAt: 0,
       terminalAt: null,

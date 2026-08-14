@@ -11,8 +11,6 @@
  *  NOT yet verified against a real pi CLI (not installed locally —
  *  Gate 0 record). */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import type {
   AgentBackend,
   BackendEvent,
@@ -61,8 +59,6 @@ interface ActiveRun {
   readonly events: AsyncIterable<BackendEvent<"pi">>;
 }
 
-const SESSION_REL = join(".my-agent", "pi-session");
-
 export class PiBackend implements AgentBackend<"pi"> {
   readonly kind = "pi" as const;
   private readonly executable: string;
@@ -91,15 +87,11 @@ export class PiBackend implements AgentBackend<"pi"> {
     }
 
     const workspace = input.workspace.root;
-    // pi writes a fresh session file when absent and resumes an existing
-    // one — the same `--session <path>` flag covers both (unlike omp).
-    const sessionPath = join(workspace, SESSION_REL, `${input.metadata.branchId}.jsonl`);
-    const resume = existsSync(sessionPath);
-    if (!resume) mkdirSync(dirname(sessionPath), { recursive: true });
+    // The CLI owns its session (native storage); the product forwards the
+    // branch's opaque reference only (ADR 0003 decision 6).
+    const resumeRef = input.run.cliSessionRef;
 
-    this.writeMcpConfig(input, workspace);
-
-    const args = this.buildArgs(input, sessionPath, resume);
+    const args = this.buildArgs(input, resumeRef);
     let proc: SpawnedPiProcess;
     try {
       proc = spawnPiProcess(
@@ -115,7 +107,7 @@ export class PiBackend implements AgentBackend<"pi"> {
 
     const handle = createActiveRun(runId, proc);
     this.active.set(runId, handle);
-    void this.consumeStdout(handle, sessionPath);
+    void this.consumeStdout(handle, resumeRef);
     return {
       events: handle.events,
       outcome: handle.outcome,
@@ -170,9 +162,10 @@ export class PiBackend implements AgentBackend<"pi"> {
 
   // ─── Internals ─────────────────────────────────────────────────────────
 
-  private buildArgs(input: BackendRunInput<"pi">, sessionPath: string, resume: boolean): string[] {
+  private buildArgs(input: BackendRunInput<"pi">, resumeRef: string | undefined): string[] {
     const args = ["-p", "--mode", "json"];
-    args.push("--session", sessionPath);
+    // pi's --session accepts an id (or file path) and resumes when found.
+    if (resumeRef) args.push("--session", resumeRef);
     const modelId = input.run.model.modelId;
     if (modelId) {
       // Canonical `<provider>/<model>` id splits into pi's two flags.
@@ -184,53 +177,27 @@ export class PiBackend implements AgentBackend<"pi"> {
         args.push("--model", modelId);
       }
     }
-    args.push("--tools", "read,bash,edit,write,grep,find,ls");
+    // mcp/mcpScript are the pi-mcp-adapter gateway tools: without them in
+    // the allowlist the extension's tools are disabled and product tools
+    // (mounted from .mcp.json) are invisible to the model.
+    args.push("--tools", "read,bash,edit,write,grep,find,ls,mcp,mcpScript");
     if (input.run.systemPrompt) args.push("--append-system-prompt", input.run.systemPrompt);
     if (this.mcpAdapterPath) args.push("--extension", this.mcpAdapterPath);
-    args.push(this.buildPrompt(input, resume));
+    args.push(this.buildPrompt(input));
     return args;
   }
 
-  /** The driving input message. When the branch has no pi session yet, the
-   *  projected product history is rendered as flat text so the model is not
-   *  amnesiac (ponytail: first-turn-only bridge; flat text loses tool
-   *  structure). */
-  private buildPrompt(input: BackendRunInput<"pi">, resume: boolean): string {
-    const inputText = input.input.message.text ?? "";
-    if (resume || input.history.length === 0) return inputText;
-    const historyText = input.history
-      .map((h) => {
-        const who = h.message.role === "user" ? "User" : "Assistant";
-        return `${who}: ${h.message.text}`;
-      })
-      .join("\n\n");
-    return `${historyText}\n\n${inputText}`;
-  }
-
-  /** Product Tools mounting (D3): the standard `.mcp.json` in the workspace
-   *  root — pi-mcp-adapter reads it (cwd or ~/.config/mcp/mcp.json). */
-  private writeMcpConfig(input: BackendRunInput<"pi">, workspace: string): void {
-    const entrypoint = input.run.productTools[0]?.entrypoint ?? "";
-    if (!entrypoint.startsWith("sse:")) return;
-    const url = entrypoint.slice(4);
-    const headers =
-      this.productToolsToken !== undefined
-        ? { Authorization: `Bearer ${this.productToolsToken}` }
-        : undefined;
-    writeFileSync(
-      join(workspace, ".mcp.json"),
-      JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
-        mcpServers: {
-          "product-tools": { type: "sse", url, ...(headers ? { headers } : {}) },
-        },
-      }),
-    );
+  /** The driving input message. The first-turn history bridge (ADR 0003
+   *  decision 6) is already flat text inside the message, rendered by the
+   *  Backend when the branch has no pi session reference yet — the pi
+   *  session is the runtime truth from the second turn on. */
+  private buildPrompt(input: BackendRunInput<"pi">): string {
+    return input.input.message.text ?? "";
   }
 
   /** Single stdout parse loop. The terminal outcome is decided ONLY here
    *  (exit code + error event). */
-  private async consumeStdout(handle: ActiveRun, sessionPath: string): Promise<void> {
+  private async consumeStdout(handle: ActiveRun, resumeRef: string | undefined): Promise<void> {
     const acc = createPiAccumulator();
     for await (const line of handle.proc.stdout) {
       if (line.trim() === "") continue;
@@ -257,9 +224,7 @@ export class PiBackend implements AgentBackend<"pi"> {
         status: "completed",
         messages: buildOutcomeMessages(acc.assistantTexts),
         usage: acc.usage,
-        // The branch-pinned session file is the CLI-side runtime truth
-        // (ADR 0002); the Product Backend records it on the branch.
-        cliSessionRef: sessionPath,
+        ...((acc.sessionId ?? resumeRef) ? { cliSessionRef: acc.sessionId ?? resumeRef } : {}),
       });
     }
     this.active.delete(handle.runId);

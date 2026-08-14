@@ -104,6 +104,7 @@ describe("Agent Run service: frozen Run config", () => {
       idempotencyKey: `key-cfg2`,
       systemPrompt: "explicit",
       skillRoots: [],
+      permissionMode: "auto",
     });
     expect(result.acquired).toBe(true);
     expect(result.run?.systemPrompt).toBe("explicit");

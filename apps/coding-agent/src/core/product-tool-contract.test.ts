@@ -133,6 +133,15 @@ mkdirSync(ws, { recursive: true });
 // PATH lookup for `bun` inside the wrapper is not guaranteed.
 writeFileSync(wrapper, `#!/bin/sh\nexec ${process.execPath} ${serverPath}\n`, { mode: 0o755 });
 const entrypoint = `stdio:${wrapper}`;
+// ADR 0003 decision 6: the child reads its tool manifest from the workspace
+// files (.agent/product-tools.json), not the run input.
+mkdirSync(join(ws, ".agent"), { recursive: true });
+writeFileSync(
+  join(ws, ".agent", "product-tools.json"),
+  JSON.stringify([
+    { name: "echo", description: "Echo", inputSchema: { type: "object" }, entrypoint },
+  ]),
+);
 
 /** A REAL coding-agent child process (apps/coding-agent/src/cli.ts --mode
  *  rpc) with a scripted fake provider + a real stdio MCP echo server
@@ -157,19 +166,10 @@ function startDaemon(
 
 function runInput(runId: string) {
   return {
-    history: [],
     input: { inputId: `in-${runId}`, message: { role: "user" as const, text: "go" } },
     run: {
       runId,
       model: { backendKind: "coding_agent" as const, modelId: "fake/echo" },
-      productTools: [
-        {
-          name: "echo",
-          description: "Echo",
-          inputSchema: { type: "object" },
-          entrypoint,
-        },
-      ],
       configRevision: 1,
     },
     workspace: { root: ws, access: "read_write" as const },

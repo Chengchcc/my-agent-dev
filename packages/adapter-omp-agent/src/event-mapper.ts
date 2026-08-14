@@ -16,10 +16,13 @@ export interface OmpRunAccumulator {
   readonly assistantTexts: string[];
   /** Error surfaced by the `error` event type. */
   error: string | null;
+  /** Native session id from the `session` event (the CLI owns its session;
+   *  the product stores only this opaque reference — ADR 0003). */
+  sessionId: string | null;
 }
 
 export function createOmpAccumulator(): OmpRunAccumulator {
-  return { events: [], usage: {}, assistantTexts: [], error: null };
+  return { events: [], usage: {}, assistantTexts: [], error: null, sessionId: null };
 }
 
 /** Reduce one wire event into the accumulator. Returns true when the event
@@ -27,6 +30,10 @@ export function createOmpAccumulator(): OmpRunAccumulator {
  *  for debug logging. */
 export function mapOmpEvent(acc: OmpRunAccumulator, evt: OmpEvent): boolean {
   switch (evt.type) {
+    case "session": {
+      if (evt.id) acc.sessionId = evt.id;
+      return false;
+    }
     case "message_update": {
       const ae = evt.assistantMessageEvent;
       if (!ae) return false;

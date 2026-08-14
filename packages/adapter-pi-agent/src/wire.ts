@@ -46,7 +46,7 @@ export interface PiToolResult {
 }
 
 export type PiEvent =
-  | { readonly type: "session" }
+  | { readonly type: "session"; readonly id?: string }
   | { readonly type: "agent_start" }
   | {
       readonly type: "agent_end";

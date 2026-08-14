@@ -44,6 +44,7 @@ const formSchema = z.object({
   reasoningEffort: z.enum(["", "none", "low", "high", "max"]).default(""),
   permissionMode: z.enum(["ask", "auto", "deny"]).default("ask"),
   maxSteps: z.string().trim().default(""),
+  workspacePath: z.string().trim().default(""),
   enableLark: z.boolean().default(false),
   botDisplayName: z.string().trim().default(""),
 });
@@ -110,6 +111,12 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
     );
   }, [modelGroups, selBackendKind, selProvider]);
 
+  // Per-kind capability surface (ADR 0003 decision 7): claude has no
+  // provider concept (its model set is fixed); pi has no reasoning-effort
+  // flag; pi/omp ignore the permission mode. Fields hide, values persist.
+  const hideProvider = selBackendKind === "claude_code";
+  const hideEffort = selBackendKind === "pi";
+  const hidePermission = selBackendKind === "pi" || selBackendKind === "omp";
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -121,6 +128,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
       reasoningEffort: editAgent?.reasoningEffort ?? "",
       permissionMode: editAgent?.permissionMode ?? "ask",
       maxSteps: editAgent?.maxSteps?.toString() ?? "",
+      workspacePath: editAgent?.workspacePath ?? "",
       enableLark: editAgent?.lark?.enabled ?? false,
       botDisplayName: editAgent?.lark?.botDisplayName ?? "",
     },
@@ -145,6 +153,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
         reasoningEffort: editAgent.reasoningEffort ?? "",
         permissionMode: editAgent.permissionMode,
         maxSteps: editAgent.maxSteps?.toString() ?? "",
+        workspacePath: editAgent.workspacePath ?? "",
         enableLark: editAgent.lark?.enabled ?? false,
         botDisplayName: editAgent.lark?.botDisplayName ?? "",
       });
@@ -214,6 +223,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
         model: values.model.split("/").slice(1).join("/") || values.model,
       },
       permissionMode: values.permissionMode,
+      ...(values.workspacePath ? { workspacePath: values.workspacePath } : {}),
       ...(values.maxSteps ? { maxSteps: parseInt(values.maxSteps, 10) } : {}),
       ...(values.reasoningEffort ? { reasoningEffort: values.reasoningEffort } : {}),
     };
@@ -379,52 +389,56 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name="model"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className={`${overlineClass} mb-1.5 block`}>Provider</FormLabel>
-                        <Select
-                          value={field.value.split("/")[0] ?? ""}
-                          onValueChange={(v) => {
-                            const vv = v ?? "";
-                            setSelProvider(vv);
-                            // Never carry a model across providers: pick the
-                            // first available model of the new provider.
-                            const current = field.value;
-                            const stillValid = modelGroups.some(
-                              (m) =>
-                                m.id === current &&
-                                m.provider === vv &&
-                                m.backendKind === selBackendKind &&
-                                m.available,
-                            );
-                            if (stillValid) return;
-                            const first = modelGroups.find(
-                              (m) =>
-                                m.provider === vv &&
-                                m.backendKind === selBackendKind &&
-                                m.available,
-                            );
-                            field.onChange(first?.id ?? "");
-                          }}
-                        >
-                          <SelectTrigger className={fieldClass}>
-                            <SelectValue placeholder="Select provider…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {kindProviders.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {!hideProvider && (
+                    <FormField
+                      control={form.control}
+                      name="model"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className={`${overlineClass} mb-1.5 block`}>
+                            Provider
+                          </FormLabel>
+                          <Select
+                            value={field.value.split("/")[0] ?? ""}
+                            onValueChange={(v) => {
+                              const vv = v ?? "";
+                              setSelProvider(vv);
+                              // Never carry a model across providers: pick
+                              // the first available model of the new provider.
+                              const current = field.value;
+                              const stillValid = modelGroups.some(
+                                (m) =>
+                                  m.id === current &&
+                                  m.provider === vv &&
+                                  m.backendKind === selBackendKind &&
+                                  m.available,
+                              );
+                              if (stillValid) return;
+                              const first = modelGroups.find(
+                                (m) =>
+                                  m.provider === vv &&
+                                  m.backendKind === selBackendKind &&
+                                  m.available,
+                              );
+                              field.onChange(first?.id ?? "");
+                            }}
+                          >
+                            <SelectTrigger className={fieldClass}>
+                              <SelectValue placeholder="Select provider…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {kindProviders.map((p) => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  {p.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                   <FormField
                     control={form.control}
                     name="model"
@@ -483,56 +497,60 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="permissionMode"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className={`${overlineClass} mb-1.5 block`}>
-                          Permission Mode
-                        </FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger className={fieldClass}>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="ask">Ask (approval)</SelectItem>
-                            <SelectItem value="auto">Auto</SelectItem>
-                            <SelectItem value="deny">Deny</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="reasoningEffort"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className={`${overlineClass} mb-1.5 block`}>
-                          Reasoning Effort
-                        </FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger className={fieldClass}>
-                              <SelectValue placeholder="Provider default" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="">Provider default</SelectItem>
-                            <SelectItem value="none">None (thinking off)</SelectItem>
-                            <SelectItem value="low">Low</SelectItem>
-                            <SelectItem value="high">High</SelectItem>
-                            <SelectItem value="max">Max</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {!hidePermission && (
+                    <FormField
+                      control={form.control}
+                      name="permissionMode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className={`${overlineClass} mb-1.5 block`}>
+                            Permission Mode
+                          </FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger className={fieldClass}>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="ask">Ask (approval)</SelectItem>
+                              <SelectItem value="auto">Auto</SelectItem>
+                              <SelectItem value="deny">Deny</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                  {!hideEffort && (
+                    <FormField
+                      control={form.control}
+                      name="reasoningEffort"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className={`${overlineClass} mb-1.5 block`}>
+                            Reasoning Effort
+                          </FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger className={fieldClass}>
+                                <SelectValue placeholder="Provider default" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="">Provider default</SelectItem>
+                              <SelectItem value="none">None (thinking off)</SelectItem>
+                              <SelectItem value="low">Low</SelectItem>
+                              <SelectItem value="high">High</SelectItem>
+                              <SelectItem value="max">Max</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                   <FormField
                     control={form.control}
                     name="maxSteps"
@@ -545,6 +563,23 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                             type="number"
                             placeholder="Unlimited"
                             min={1}
+                            className={fieldClass}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="workspacePath"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className={`${overlineClass} mb-1.5 block`}>Workspace</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder=".backend-data/agents/<id>"
                             className={fieldClass}
                           />
                         </FormControl>

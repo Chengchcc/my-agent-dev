@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BackendRunInput, BackendRunSegment } from "@my-agent-team/agent-backend";
@@ -7,11 +7,11 @@ import { PiBackend, PiBackendError } from "./backend.js";
 
 const FAKE_ENTRY = join(import.meta.dir, "__fixtures__", "fake-pi.ts");
 
-function makeBackend(fixture: string): PiBackend {
+function makeBackend(fixture: string, logPath?: string): PiBackend {
   return new PiBackend({
     executable: process.execPath,
     args: [FAKE_ENTRY],
-    env: { PI_FAKE_FIXTURE: fixture },
+    env: { PI_FAKE_FIXTURE: fixture, ...(logPath ? { PI_FAKE_LOG: logPath } : {}) },
   });
 }
 
@@ -64,21 +64,30 @@ describe("PiBackend", () => {
     ).rejects.toThrow(PiBackendError);
   });
 
-  test("session file pinned per branch; --session used on both runs", async () => {
+  test("session reference passthrough: fresh run reports id, next run resumes it", async () => {
     const ws = mkdtempSync(join(tmpdir(), "pi-adapter-"));
-    const backend = makeBackend("pi-wire-text.jsonl");
+    const log = join(ws, "log.json");
+    const backend = makeBackend("pi-wire-text.jsonl", log);
     const input = makeInput("branch-x");
     const withWs = { ...input, workspace: { root: ws, access: "read_write" as const } };
-    const sessionFile = join(ws, ".my-agent", "pi-session", "branch-x.jsonl");
-    await drain(await backend.execute(withWs));
-    expect(await Bun.file(sessionFile).exists()).toBe(true);
-    const firstArgs = JSON.parse(await Bun.file(`${sessionFile}.args`).text()) as string[];
-    expect(firstArgs).toContain("--session");
-    // pi resumes an existing session file through the SAME --session flag.
-    await drain(await backend.execute(withWs));
-    const secondArgs = JSON.parse(await Bun.file(`${sessionFile}.args`).text()) as string[];
+
+    // Fresh run: no --session flag; the fake's `session` event id reported.
+    const first = await drain(await backend.execute(withWs));
+    const firstArgs = JSON.parse(readFileSync(log, "utf8")) as string[];
+    expect(firstArgs.some((a) => a === "--session" || a === "-r")).toBe(false);
+    if (first.outcome.status === "completed") {
+      expect(first.outcome.cliSessionRef).toBe("019ff6c3-9fa1-73d4-a47a-8f43ce31cd73");
+    }
+
+    // Second run with the stored reference resumes via --session <id>.
+    const resumed = {
+      ...withWs,
+      run: { ...withWs.run, cliSessionRef: "019ff6c3-9fa1-73d4-a47a-8f43ce31cd73" },
+    };
+    await drain(await backend.execute(resumed));
+    const secondArgs = JSON.parse(readFileSync(log, "utf8")) as string[];
     expect(secondArgs).toContain("--session");
-    expect(secondArgs).not.toContain("-r");
+    expect(secondArgs).toContain("019ff6c3-9fa1-73d4-a47a-8f43ce31cd73");
     // provider/model split into pi's two flags
     expect(secondArgs).toContain("--provider");
     expect(secondArgs).toContain("deepseek");

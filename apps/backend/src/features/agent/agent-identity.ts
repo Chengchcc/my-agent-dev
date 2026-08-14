@@ -38,19 +38,14 @@ async function readTextOrNull(filePath: string): Promise<string | null> {
  *
  *  Also reads flat memory/*.md for backward compat (legacy agents). */
 
-/** Simple layout: dataDir/agents/{agentId}/ — flat workspace, no shared/private split. */
-function agentDir(dataDir: string, agentId: string): string {
-  return path.join(dataDir, "agents", agentId);
-}
-
 export function createAgentIdentityStore(opts: {
   dataDir: string;
   getAgent: (agentId: string) => Promise<{ workspacePath: string }>;
 }): AgentIdentityStore {
   return {
     async getIdentity(agentId: string): Promise<IdentityData> {
-      void (await opts.getAgent(agentId)); // validate agent exists
-      const root = agentDir(opts.dataDir, agentId);
+      const agent = await opts.getAgent(agentId); // validate agent exists
+      const root = agent.workspacePath;
       await mkdir(root, { recursive: true });
 
       const [soul, user] = await Promise.all([
@@ -61,8 +56,8 @@ export function createAgentIdentityStore(opts: {
     },
 
     async updateIdentity(agentId: string, patch: IdentityPatch): Promise<void> {
-      void (await opts.getAgent(agentId)); // validate agent exists
-      const root = agentDir(opts.dataDir, agentId);
+      const agent = await opts.getAgent(agentId); // validate agent exists
+      const root = agent.workspacePath;
       await mkdir(root, { recursive: true });
 
       // Ensure memory/facts/ directory exists so the agent can write

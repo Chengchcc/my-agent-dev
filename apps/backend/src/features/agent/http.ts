@@ -1,11 +1,11 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join as pathJoin } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { join as pathJoin, resolve as pathResolve, sep } from "node:path";
 import { BACKEND_KINDS } from "@my-agent-team/agent-backend";
 import { Elysia, t } from "elysia";
 import type { LarkSetupManager } from "../lark-bot/setup-manager.js";
 import type { AgentIdentityStore } from "./agent-identity.js";
 import type { AgentRow } from "./domain.js";
-import type { RelationshipService } from "./relationship-service.js";
+
 import type { AgentService } from "./service.js";
 import { AgentBusyError, AgentNotFoundError } from "./service.js";
 
@@ -18,32 +18,36 @@ const backendKindUnion = t.Enum(
 // ── Response types (inferred by Elysia from handler return values) ──
 
 function toAgentResponse(row: AgentRow, status: string) {
+  const rc = row.config.runtime_config;
+  const lk = row.config.lark;
+  const slash = rc.model_id.indexOf("/");
   return {
     id: row.id,
-    name: row.name,
-    template: row.template,
+    name: row.config.name,
     workspacePath: row.workspacePath,
-    modelProvider: row.modelProvider,
-    modelName: row.modelName,
-    backendKind: row.backendKind,
-    reasoningEffort: row.reasoningEffort,
-    permissionMode: row.permissionMode,
-    maxSteps: row.maxSteps,
+    modelProvider: slash > 0 ? rc.model_id.slice(0, slash) : "unknown",
+    modelName: slash > 0 ? rc.model_id.slice(slash + 1) : rc.model_id,
+    backendKind: rc.runtime,
+    reasoningEffort: rc.reasoning_effort !== "" ? rc.reasoning_effort : null,
+    permissionMode: rc.permission_mode,
+    maxSteps: rc.max_steps > 0 ? rc.max_steps : null,
+    mcpServers: rc.mcp_servers.map((s) => ({ serverId: s.server_id, enabled: s.enabled })),
+    knowledgePacks: rc.knowledge_packs,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     archivedAt: row.archivedAt,
     lark: {
-      enabled: row.larkEnabled,
-      appId: row.larkAppId,
-      profileRef: row.larkProfileRef,
-      botDisplayName: row.larkBotDisplayName,
+      enabled: lk.enabled,
+      appId: lk.app_id !== "" ? lk.app_id : null,
+      profileRef: lk.profile_ref !== "" ? lk.profile_ref : null,
+      botDisplayName: lk.bot_display_name !== "" ? lk.bot_display_name : null,
       status,
     },
   };
 }
 
 function deriveLarkStatus(row: AgentRow, registryStatus?: string): string {
-  if (!row.larkEnabled || !row.larkProfileRef) return "not_configured";
+  if (!row.config.lark.enabled || !row.config.lark.profile_ref) return "not_configured";
   if (registryStatus === "running") return "running";
   if (registryStatus === "degraded") return "degraded";
   if (registryStatus === "error") return "error";
@@ -51,6 +55,21 @@ function deriveLarkStatus(row: AgentRow, registryStatus?: string): string {
 }
 
 // ── Elysia plugin ──
+/** Resolve `rel` inside `root`; null when the result escapes the root.
+ *  Read-only workspace browsing (the workspace viewer tab). */
+function resolveInWorkspace(root: string, rel: string): string | null {
+  const abs = rel ? pathResolve(root, rel) : root;
+  const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
+  return abs === root || abs.startsWith(prefix) ? abs : null;
+}
+
+function realpathSyncSafe(p: string): string | null {
+  try {
+    return realpathSync(p);
+  } catch {
+    return null;
+  }
+}
 
 export function agentRoutes(
   svc: AgentService,
@@ -61,8 +80,6 @@ export function agentRoutes(
   identityStore?: AgentIdentityStore,
   larkStatusOf?: (agentId: string) => string,
   getSetupManager?: () => LarkSetupManager,
-  relSvc?: RelationshipService,
-  dataDir?: string,
 ) {
   const statusOf = (row: AgentRow) => deriveLarkStatus(row, larkStatusOf?.(row.id));
 
@@ -87,6 +104,7 @@ export function agentRoutes(
             model: t.String({ minLength: 1 }),
           }),
           backendKind: t.Optional(backendKindUnion),
+          workspacePath: t.Optional(t.String({ minLength: 1 })),
           reasoningEffort: t.Optional(
             t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),
           ),
@@ -121,7 +139,7 @@ export function agentRoutes(
         try {
           if (body.lark?.enabled === true) {
             const existing = await svc.getById(id);
-            const hasExistingProfile = !!existing.larkProfileRef;
+            const hasExistingProfile = !!existing.config.lark.profile_ref;
             const hasFreshCredentials = !!(body.lark?.appId && body.lark?.appSecret);
             if (!hasExistingProfile && !hasFreshCredentials) {
               return Response.json(
@@ -151,6 +169,7 @@ export function agentRoutes(
             }),
           ),
           backendKind: t.Optional(backendKindUnion),
+          workspacePath: t.Optional(t.String({ minLength: 1 })),
           reasoningEffort: t.Optional(
             t.Union([t.Literal("none"), t.Literal("low"), t.Literal("high"), t.Literal("max")]),
           ),
@@ -158,6 +177,10 @@ export function agentRoutes(
             t.Union([t.Literal("ask"), t.Literal("auto"), t.Literal("deny")]),
           ),
           maxSteps: t.Optional(t.Integer({ minimum: 1 })),
+          mcpServers: t.Optional(
+            t.Array(t.Object({ serverId: t.String({ minLength: 1 }), enabled: t.Boolean() })),
+          ),
+          knowledgePacks: t.Optional(t.Array(t.String({ minLength: 1 }))),
           lark: t.Optional(
             t.Object({
               enabled: t.Optional(t.Boolean()),
@@ -195,9 +218,14 @@ export function agentRoutes(
         throw err;
       }
     })
-    .get("/api/agents/:id/memory", ({ params: { id } }) => {
-      if (!dataDir) return { memories: [], memSummary: null, memoryMd: null };
-      const memDir = pathJoin(dataDir, "agents", id, "memory");
+    .get("/api/agents/:id/memory", async ({ params: { id } }) => {
+      let root: string;
+      try {
+        root = (await svc.getById(id)).workspacePath;
+      } catch {
+        return { memories: [], memSummary: null, memoryMd: null };
+      }
+      const memDir = pathJoin(root, "memory");
       const factsDir = pathJoin(memDir, "facts");
       const factFiles = existsSync(factsDir)
         ? readdirSync(factsDir).filter((f) => f.endsWith(".md"))
@@ -214,6 +242,75 @@ export function agentRoutes(
         memoryMd: existsSync(mdPath) ? readFileSync(mdPath, "utf-8") : null,
       };
     })
+    .get(
+      "/api/agents/:id/workspace/entries",
+      async ({ params: { id }, query }) => {
+        const rel = typeof query?.path === "string" ? query.path : "";
+        let root: string;
+        try {
+          root = (await svc.getById(id)).workspacePath;
+        } catch {
+          return { path: rel, entries: [] };
+        }
+        const target = resolveInWorkspace(root, rel);
+        if (target === null)
+          return Response.json({ error: "path escapes workspace" }, { status: 403 });
+        if (!existsSync(target) || !statSync(target).isDirectory()) {
+          return Response.json({ error: "not a directory" }, { status: 400 });
+        }
+        const entries = readdirSync(target, { withFileTypes: true })
+          .map((d) => ({
+            name: d.name,
+            kind: d.isDirectory() ? "dir" : d.isSymbolicLink() ? "symlink" : "file",
+            size: d.isFile() ? statSync(pathJoin(target, d.name)).size : null,
+          }))
+          .sort((a, b) =>
+            a.kind === b.kind
+              ? a.name.localeCompare(b.name)
+              : a.kind === "dir"
+                ? -1
+                : b.kind === "dir"
+                  ? 1
+                  : 0,
+          );
+        return { path: rel, entries };
+      },
+      {
+        query: t.Object({ path: t.Optional(t.String()) }),
+      },
+    )
+    .get(
+      "/api/agents/:id/workspace/file",
+      async ({ params: { id }, query }) => {
+        const rel = typeof query?.path === "string" ? query.path : "";
+        if (!rel) return Response.json({ error: "path required" }, { status: 400 });
+        let root: string;
+        try {
+          root = (await svc.getById(id)).workspacePath;
+        } catch {
+          return Response.json({ error: "agent not found" }, { status: 404 });
+        }
+        const target = resolveInWorkspace(root, rel);
+        if (target === null)
+          return Response.json({ error: "path escapes workspace" }, { status: 403 });
+        // realpath: a symlink inside the workspace must not smuggle reads
+        // outside it (the bridge links pack dirs; those stay inside).
+        const real = realpathSyncSafe(target);
+        if (real === null || real === root || !real.startsWith(`${root}${sep}`)) {
+          return Response.json({ error: "path escapes workspace" }, { status: 403 });
+        }
+        if (!existsSync(real) || !statSync(real).isFile()) {
+          return Response.json({ error: "not a file" }, { status: 400 });
+        }
+        const size = statSync(real).size;
+        const MAX = 256_000;
+        if (size > MAX) return { content: null, size, truncated: true };
+        return { content: readFileSync(real, "utf-8"), size, truncated: false };
+      },
+      {
+        query: t.Object({ path: t.String() }),
+      },
+    )
     .put(
       "/api/agents/:id/identity",
       async ({ params: { id }, body }) => {
@@ -253,7 +350,7 @@ export function agentRoutes(
             botDisplayName:
               typeof body.botDisplayName === "string"
                 ? body.botDisplayName
-                : (existing.larkBotDisplayName ?? undefined),
+                : existing.config.lark.bot_display_name || undefined,
             brand: body.brand === "lark" ? "lark" : "feishu",
           });
           return session;
@@ -289,8 +386,8 @@ export function agentRoutes(
     });
 
   // Skill pack assignment routes (optional)
-  // Always mounted — skillPackSvc is always provided by main.ts
-  let chain = base
+  const chain = base
+
     .get("/api/agents/:id/skill-packs", async ({ params: { id } }) => {
       const packs = await skillPackSvc.listForAgent(id);
       return packs;
@@ -307,46 +404,6 @@ export function agentRoutes(
         }),
       },
     );
-
-  if (relSvc) {
-    chain = chain
-      .get("/api/agents/:id/relationships", ({ params: { id } }) => {
-        return { relationships: relSvc.listForAgent(id) };
-      })
-      .post(
-        "/api/agents/:id/relationships",
-        async ({ params: { id }, body, set }) => {
-          const rel = await relSvc.create(id, body);
-          set.status = 201;
-          return { relationship: rel };
-        },
-        {
-          body: t.Object({
-            toAgentId: t.String({ minLength: 1 }),
-            relType: t.Union([t.Literal("assigns_to"), t.Literal("collaborates_with")]),
-            weight: t.Optional(t.Number()),
-            instruction: t.Optional(t.String()),
-          }),
-        },
-      )
-      .put(
-        "/api/agents/:id/relationships/:rid",
-        ({ params: { rid }, body }) => {
-          return { relationship: relSvc.update(rid, body) };
-        },
-        {
-          body: t.Object({
-            weight: t.Optional(t.Number()),
-            instruction: t.Optional(t.String()),
-          }),
-        },
-      )
-      .delete("/api/agents/:id/relationships/:rid", ({ params: { rid }, set }) => {
-        relSvc.remove(rid);
-        set.status = 204;
-        return new Response(null, { status: 204 });
-      });
-  }
 
   return chain;
 }

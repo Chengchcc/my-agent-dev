@@ -242,6 +242,60 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
     }
     return { content: result };
   }
+  const TODO_STATUSES: Record<string, true> = { pending: true, in_progress: true, done: true };
+
+  /** Boundary check on model-supplied items: the durable snapshot is
+   *  re-injected into the next run's prompt, so a bad shape (e.g. the
+   *  model's `title` habit) would poison every later run's Current Tasks. */
+  function isTodoItem(v: unknown): boolean {
+    if (!v || typeof v !== "object") return false;
+    if (!("id" in v) || !("text" in v) || !("status" in v)) return false;
+    const id = v.id;
+    const text = v.text;
+    const status = v.status;
+    return (
+      typeof id === "string" &&
+      id.length > 0 &&
+      typeof text === "string" &&
+      text.length > 0 &&
+      typeof status === "string" &&
+      TODO_STATUSES[status] === true
+    );
+  }
+
+  async function todoWrite(
+    run: AgentRun,
+    input: ProductToolCallInput,
+  ): Promise<ProductToolCallResult> {
+    const items = Array.isArray(input.args.items) ? input.args.items : null;
+    if (!items || items.length > 200 || !items.every(isTodoItem)) {
+      throw new ProductToolRejectedError(
+        "todo_write items must be [{id: string, text: string, status: pending | in_progress | done}] (max 200)",
+      );
+    }
+    const inputHash = JSON.stringify({ tool: input.tool, args: input.args });
+    // Same durable idempotency fast path as history_retain.
+    const existing = await callPort.getCall(run.runId, input.callId);
+    if (existing) {
+      if (existing.toolName !== input.tool || existing.inputHash !== inputHash) {
+        throw new ProductToolRejectedError(
+          `call id ${input.callId} reused with a different tool/input`,
+        );
+      }
+      return { content: existing.result ?? "{}" };
+    }
+    const snapshot = JSON.stringify(items);
+    await runPort.setRunTodoSnapshot(run.runId, snapshot);
+    const result = JSON.stringify({ items });
+    await callPort.recordCall({
+      runId: run.runId,
+      callId: input.callId,
+      toolName: input.tool,
+      inputHash,
+      result,
+    });
+    return { content: result };
+  }
 
   return {
     async call(input) {
@@ -280,6 +334,8 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
           return historyAround(run, input.args);
         case "history_retain":
           return historyRetain(run, input);
+        case "todo_write":
+          return todoWrite(run, input);
         default:
           throw new ProductToolRejectedError(`tool ${input.tool} is not supported`);
       }

@@ -17,7 +17,7 @@ function catalogPaths(env: Record<string, string | undefined>): string[] {
   const paths: string[] = [];
   if (env.MY_AGENT_HOME) paths.push(join(env.MY_AGENT_HOME, "models.yml"));
   paths.push(join(homedir(), ".my-agent", "models.yml"));
-  paths.push(resolve(".my-agent", "models.yml"));
+  paths.push(resolve(".agent", "models.yml"));
   return paths;
 }
 

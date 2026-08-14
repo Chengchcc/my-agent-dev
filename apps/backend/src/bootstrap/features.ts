@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { ClaudeBackend, ClaudeModelCatalog } from "@my-agent-team/adapter-claude-agent";
 import { CodingAgentBackend, CodingAgentModelCatalog } from "@my-agent-team/adapter-coding-agent";
 import { OmpBackend, OmpModelCatalog } from "@my-agent-team/adapter-omp-agent";
@@ -8,12 +9,11 @@ import type {
   BackendRegistryEntry,
 } from "@my-agent-team/agent-backend";
 import type { Message } from "@my-agent-team/message";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { FeatureSet } from "../app.js";
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
 import { AgentBusyError, agentModelRef, agentRoutes } from "../features/agent/index.js";
-import { createRelationshipService } from "../features/agent/relationship-service.js";
+import { reconcileAgentResources } from "../features/agent/workspace-bridge.js";
 import {
   createAgentContextService,
   sqliteAgentContextAdapter,
@@ -21,6 +21,7 @@ import {
 import type { LedgerMessageResolver } from "../features/agent-context/ports.js";
 import {
   agentRunRoutes,
+  buildHistoryTools,
   createAgentRunExecutionService,
   createAgentRunService,
   sqliteAgentRunAdapter,
@@ -33,9 +34,15 @@ import {
   cronJobRoutes,
   sqliteCronJobAdapter,
 } from "../features/cron/index.js";
+import {
+  createKnowledgeService,
+  knowledgeRoutes,
+  sqliteKnowledgePackAdapter,
+} from "../features/knowledge/index.js";
 import { CliSetupProvisioner, LarkSetupManager } from "../features/lark-bot/index.js";
 import { loopRoutes } from "../features/loop/http.js";
-import { createMcpService, mcpRoutes, sqliteMcpServerAdapter } from "../features/mcp/index.js";
+import { backfillLegacyMcpAssignments } from "../features/mcp/backfill.js";
+import { createMcpService, fileMcpServerAdapter, mcpRoutes } from "../features/mcp/index.js";
 import { modelRoutes } from "../features/models/index.js";
 import {
   createProductToolsMcpServer,
@@ -61,8 +68,8 @@ import {
   sqliteSkillPackAdapter,
 } from "../features/skill-pack/index.js";
 import { resolveCodingAgentCommand } from "../infra/coding-agent-command.js";
-import * as backendSchema from "../infra/db/schema.js";
 import { ulid } from "../infra/ids.js";
+import { resolveKnowledgeMcpServerEntry } from "../infra/knowledge-mcp-command.js";
 import type { BackendServices } from "./services.js";
 
 // ─── Helper ───────────────────────────────────────────────────
@@ -146,11 +153,17 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   });
 
   // ─── Agent service ──────────────────────────────────────────
-
   // Busy guard for hardDelete is wired after the Agent Run adapter exists.
   const busyGuard: { check: ((agentId: string) => void) | undefined } = { check: undefined };
+  // Workspace bridge (ADR 0003 decision 3): reconcile skills/mcp into the
+  // agent workspace. Late-bound (mcpSvc is created further down).
+  const reconcileAgent: { fn: (agentId: string) => Promise<void> } = { fn: async () => {} };
   const agentSvc = createAgentSvc(db, config, larkBotRegistry, {
-    onAgentCreate: (agentId: string) => skillPackSvc.setAgentPacks(agentId, ["builtin"]),
+    onAgentCreate: async (agentId: string) => {
+      await skillPackSvc.setAgentPacks(agentId, ["builtin"]);
+      await reconcileAgent.fn(agentId);
+    },
+    onAgentUpdate: (agentId: string) => reconcileAgent.fn(agentId),
     assertNoActiveRun: (agentId: string) => busyGuard.check?.(agentId),
   });
 
@@ -194,9 +207,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   const seedModel = await defaultSeedModel();
   await ensureAgent("default", "Assistant", seedModel);
-  await ensureAgent("loop-agent", "Loop Agent", seedModel);
-
-  const relSvc = createRelationshipService(db, config);
 
   // ─── Conversation + Phase 5 Agent Run (conversation first: the ledger
   //      resolver and run services build on its port; the execution service
@@ -255,13 +265,18 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       const skillRoots = packs
         .filter((p) => p.status === "ready")
         .map((p) => installPath(config.dataDir, p.id));
-      return {
-        ...(systemPrompt ? { systemPrompt } : {}),
-        ...(skillRoots.length > 0 ? { skillRoots } : {}),
-      };
+      const result: {
+        systemPrompt?: string;
+        skillRoots?: readonly string[];
+        permissionMode?: string;
+      } = {};
+      if (systemPrompt) result.systemPrompt = systemPrompt;
+      if (skillRoots.length > 0) result.skillRoots = skillRoots;
+      const agent = await agentSvc.getById(agentId).catch(() => null);
+      if (agent) result.permissionMode = agent.config.runtime_config.permission_mode;
+      return result;
     },
   });
-
   const dispatchRun: { fn: (runId: string) => Promise<void> } = { fn: async () => {} };
   const injectSteer: {
     fn: (branchId: string, input: { inputId: string; message: Message }) => Promise<void>;
@@ -271,9 +286,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const abortStaleRun: { fn: (runId: string) => Promise<void> } = { fn: async () => {} };
   const conv = createConversationFeature({
     convPort,
+
     agentSvc,
     settingsSvc,
-    relSvc,
     agentRunService,
     dispatchRun: (runId: string) => dispatchRun.fn(runId),
     injectSteer: (branchId, input) => injectSteer.fn(branchId, input),
@@ -374,7 +389,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       const agent = member?.agentId ? await agentSvc.getById(member.agentId) : null;
       return {
         root: agent?.workspacePath ?? config.workspaceRoot,
-        access: agent?.permissionMode === "ask" ? "read_only" : "read_write",
+        access: agent?.config.runtime_config.permission_mode === "ask" ? "read_only" : "read_write",
       };
     },
     productToolsEntrypoint: config.productToolsMcpUrl
@@ -411,14 +426,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   // ─── Runtime Ops (surface-health audit only) ───────────────
 
-  const backendDrizzle = drizzle(db, { casing: "snake_case", schema: backendSchema });
   const agentNames = new Map<string, string>();
   {
-    const rows = backendDrizzle
-      .select({ id: backendSchema.agents.id, name: backendSchema.agents.name })
-      .from(backendSchema.agents)
-      .all();
-    for (const r of rows) agentNames.set(r.id, r.name);
+    const rows = await agentSvc.list(true);
+    for (const r of rows) agentNames.set(r.id, r.config.name);
   }
 
   const opsSvc = createRuntimeOpsService({
@@ -433,14 +444,139 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   // ─── MCP ────────────────────────────────────────────────────
 
-  const mcpSvc = createMcpService({
-    port: sqliteMcpServerAdapter(db),
+  const mcpSvcRaw = createMcpService({
+    port: fileMcpServerAdapter(config.dataDir),
     mcpClientManager,
     agentExists: (id: string) => agentSvc.exists(id),
+    getAgentMcpServers: async (agentId) => {
+      const agent = await agentSvc.getById(agentId);
+      return agent.config.runtime_config.mcp_servers.map((s) => ({
+        serverId: s.server_id,
+        enabled: s.enabled,
+      }));
+    },
+    setAgentMcpServers: async (agentId, entries) => {
+      await agentSvc.update(agentId, {
+        mcpServers: entries.map((e) => ({ serverId: e.serverId, enabled: e.enabled })),
+      });
+    },
+    idGen: ulid,
+  });
+  // Catalog mutations + assignment changes re-reconcile every affected
+  // agent's workspace mcp.json (ADR 0022).
+  const mcpSvc: ReturnType<typeof createMcpService> = {
+    ...mcpSvcRaw,
+    async create(input) {
+      const row = await mcpSvcRaw.create(input);
+      return row;
+    },
+    async update(serverId, input) {
+      const row = await mcpSvcRaw.update(serverId, input);
+      for (const agentId of await agentIdsWithMcpServer(serverId)) {
+        await reconcileAgent.fn(agentId);
+      }
+      return row;
+    },
+    async delete(serverId) {
+      const affected = await agentIdsWithMcpServer(serverId);
+      await mcpSvcRaw.delete(serverId);
+      for (const agentId of affected) await reconcileAgent.fn(agentId);
+    },
+    async setAgentServers(agentId, entries) {
+      await mcpSvcRaw.setAgentServers(agentId, entries);
+      await reconcileAgent.fn(agentId);
+    },
+  };
+  async function agentIdsWithMcpServer(serverId: string): Promise<string[]> {
+    // The catalog row exists before delete; agents are whoever assigned it.
+    const all = await agentSvc.list();
+    const ids: string[] = [];
+    for (const agent of all) {
+      if ((await mcpSvcRaw.listAssignments(agent.id)).some((a) => a.serverId === serverId)) {
+        ids.push(agent.id);
+      }
+    }
+    return ids;
+  }
+
+  reconcileAgent.fn = async (agentId: string): Promise<void> => {
+    try {
+      const agent = await agentSvc.getById(agentId);
+      const packs = await skillPackPort.listForAgent(agentId);
+      const assignedKnowledge = agent.config.runtime_config.knowledge_packs
+        .map((packId) => knowledgeSvc.getById(packId))
+        .filter((p): p is NonNullable<typeof p> => p !== null && p.status === "ready");
+      reconcileAgentResources({
+        workspacePath: agent.workspacePath,
+        kind: agent.config.runtime_config.runtime,
+        skillPacks: packs
+          .filter((p) => p.status === "ready")
+          .map((p) => ({ id: p.id, source: installPath(config.dataDir, p.id) })),
+        mcpServers: [
+          ...(await mcpSvc.listForAgent(agentId)).map((s) => ({
+            name: s.name,
+            transport: s.transport,
+            url: s.url,
+            command: s.command,
+          })),
+          // The product-tools server (ledger access, ADR 0020) merges into
+          // the SAME workspace .mcp.json — one config, one writer.
+          ...(config.productToolsMcpUrl && config.productToolsServiceToken
+            ? [
+                {
+                  name: "product-tools",
+                  transport: "sse" as const,
+                  url: config.productToolsMcpUrl,
+                  headers: { Authorization: `Bearer ${config.productToolsServiceToken}` },
+                },
+              ]
+            : []),
+          // The knowledge recall server (ADR 0022): merged only when the
+          // agent has ready packs (stdio, scoped to its knowledge dir).
+          ...(assignedKnowledge.length > 0
+            ? [
+                {
+                  name: "knowledge",
+                  transport: "stdio" as const,
+                  command: process.execPath,
+                  args: [
+                    resolveKnowledgeMcpServerEntry(config),
+                    join(agent.workspacePath, "knowledge"),
+                  ],
+                },
+              ]
+            : []),
+        ],
+        productTools: config.productToolsMcpUrl
+          ? [...buildHistoryTools(`sse:${config.productToolsMcpUrl}`)]
+          : [],
+        knowledgePacks: assignedKnowledge.map((p) => ({
+          id: p.id,
+          source: p.installedRef ?? "",
+          name: p.name,
+          description: p.description,
+        })),
+      });
+    } catch (err) {
+      console.error(`[bridge] reconcile failed for ${agentId}:`, err);
+    }
+  };
+
+  // ─── Knowledge packs (ADR 0022) ──────────────────────────────
+  const knowledgeSvc = createKnowledgeService({
+    port: sqliteKnowledgePackAdapter(db),
+    dataDir: config.dataDir,
     idGen: ulid,
   });
 
-  // ─── Cron ───────────────────────────────────────────────────
+  // ADR 0022: promote the legacy per-agent MCP subsets into agent.yml
+  // (runs once - drops mcp_server_legacy when done; each update
+  // reconciles the workspace).
+  await backfillLegacyMcpAssignments(db, config.dataDir, {
+    listAgents: () => agentSvc.list(),
+    getAgentMcpServers: mcpSvcRaw.listAssignments,
+    setAgentMcpServers: mcpSvc.setAgentServers,
+  });
 
   const cronSvc = createCronJobService({
     port: sqliteCronJobAdapter(db),
@@ -478,13 +614,14 @@ export async function installFeatures(services: BackendServices): Promise<Instal
             .then((rows: SkillPackRow[]) =>
               rows.map((r) => ({ id: r.id, name: r.name, status: r.status })),
             ),
-        setAgentPacks: (id: string, packIds: string[]) => skillPackSvc.setAgentPacks(id, packIds),
+        setAgentPacks: async (id: string, packIds: string[]) => {
+          await skillPackSvc.setAgentPacks(id, packIds);
+          await reconcileAgent.fn(id);
+        },
       },
       identityStore,
       (id: string) => larkBotRegistry.statusOf(id),
       getSetupManager,
-      relSvc,
-      config.dataDir,
     ),
     conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore),
     ops: opsRoutes(opsSvc),
@@ -510,8 +647,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     }),
     cronJobs: cronJobRoutes(cronSvc, cronScheduler),
     skillPacks: skillPackRoutes(skillPackSvc, config.dataDir),
-    settings: settingsRoutes(settingsSvc),
     mcp: mcpRoutes(mcpSvc),
+    knowledge: knowledgeRoutes(knowledgeSvc),
+    settings: settingsRoutes(settingsSvc),
+
     models: modelRoutes({
       list: async () => {
         // Aggregate every registered backend's catalog, tagging each model
@@ -547,9 +686,13 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
     const allAgents = await agentSvc.list(true);
     for (const agent of allAgents) {
-      if (agent.larkEnabled && agent.larkProfileRef) {
+      if (agent.config.lark.enabled && agent.config.lark.profile_ref) {
         void larkBotRegistry
-          .ensureLarkBot(agent.id, agent.larkBotDisplayName, agent.larkProfileRef)
+          .ensureLarkBot(
+            agent.id,
+            agent.config.lark.bot_display_name,
+            agent.config.lark.profile_ref,
+          )
           .catch((err: Error) => console.error(`[lark] failed to start bot for ${agent.id}:`, err));
       }
     }

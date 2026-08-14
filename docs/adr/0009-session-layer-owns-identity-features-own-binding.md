@@ -1,8 +1,10 @@
 # ADR 0009: SessionManager + ctx.span — 身份自洽，追踪归 framework，业务上浮，harness 不泄
 
+> ⚠ **已过期(2026-08-13)**:SessionManager/ctx.span 与 packages/framework 已随 Phase 6 整体删除(run-centric 重写,见 ADR 0016/0019)。本文的身份/追踪分层设计不再对应任何现有代码。
+
 ## 状态
 
-Accepted
+Superseded(was Accepted)
 
 ## 上下文
 

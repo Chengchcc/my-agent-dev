@@ -2,8 +2,8 @@ import type { BackendModelRef } from "@my-agent-team/agent-backend";
 import type { Message } from "@my-agent-team/message";
 import { ulid } from "../../infra/ids.js";
 import { type AgentService, agentModelRef } from "../agent/index.js";
-import type { RelationshipService } from "../agent/relationship-service.js";
 import type { AgentContextService } from "../agent-context/service.js";
+
 import type { AgentRunService } from "../agent-run/service.js";
 import type { SettingsService } from "../settings/index.js";
 import { createGoalStateStore, type GoalStateStore } from "./goal-state.js";
@@ -23,7 +23,7 @@ export function createConversationFeature(input: {
   convPort: ConversationPort;
   agentSvc: AgentService;
   settingsSvc: SettingsService;
-  relSvc: RelationshipService;
+
   agentRunService: AgentRunService;
   /** Break the execution<->cascade cycle: features.ts wires this to
    *  AgentRunExecutionService.dispatch once that service exists. */
@@ -45,7 +45,7 @@ export function createConversationFeature(input: {
     convPort,
     agentSvc,
     settingsSvc,
-    relSvc,
+
     agentRunService,
     dispatchRun,
     injectSteer,
@@ -71,7 +71,6 @@ export function createConversationFeature(input: {
     resolveDefaultModel: async (agentId): Promise<BackendModelRef> => {
       return agentModelRef(await agentSvc.getById(agentId));
     },
-    getRelationshipEdges: (agentIds) => relSvc.getEdges(agentIds),
   });
 
   return { convPort, convSvc, goalStore };

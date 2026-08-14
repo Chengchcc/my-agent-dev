@@ -9,6 +9,7 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/.turbo/**",
       "**/.next/**",
+      "**/.backend-data/**",
       "**/next-env.d.ts",
       "bun.lock",
     ],

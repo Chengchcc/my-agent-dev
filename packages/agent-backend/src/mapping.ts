@@ -85,20 +85,25 @@ export function mapRunOutcome(outcome: {
   error?: string;
   usage?: unknown;
   title?: string;
+  cliSessionRef?: string;
 }): BackendRunOutcome {
+  // The child's session reference (ADR 0003) survives every terminal status:
+  // the product round-trips it into branch.cliSessionRef for the next run.
+  const ref = outcome.cliSessionRef ? { cliSessionRef: outcome.cliSessionRef } : {};
   if (outcome.status === "completed") {
     return {
       status: "completed",
       messages: outcome.messages as never,
       usage: outcome.usage as never,
       ...(outcome.title ? { title: outcome.title } : {}),
+      ...ref,
     };
   }
   if (outcome.status === "aborted") {
-    return { status: "aborted", error: outcome.error };
+    return { status: "aborted", error: outcome.error, ...ref };
   }
   if (outcome.status === "timeout") {
-    return { status: "timeout", error: outcome.error };
+    return { status: "timeout", error: outcome.error, ...ref };
   }
-  return { status: "failed", error: outcome.error ?? "run failed" };
+  return { status: "failed", error: outcome.error ?? "run failed", ...ref };
 }

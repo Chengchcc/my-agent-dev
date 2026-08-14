@@ -4,6 +4,7 @@ import type {
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
+  ProjectedHistoryItem,
   RunEventEnvelope,
 } from "@my-agent-team/agent-backend";
 import { mapRunEvent } from "@my-agent-team/agent-backend";
@@ -23,6 +24,10 @@ export interface CreateCodingAgentRuntimeOptions {
   workspaceAccess: "read_only" | "read_write";
   modelRuntime: ModelRuntime;
   skillRoots: readonly string[];
+  /** The resumed CLI session transcript (ADR 0003 decision 6), validated
+   *  messages from the session file. Seeds the loop's store in place of the
+   *  retired wire `history` projection. Absent = fresh session. */
+  sessionTranscript?: readonly ProjectedHistoryItem[];
   /** Called for every runtime event as a wire envelope (id/type/data), after
    *  the in-process segment stream. Used by RPC mode to forward events to
    *  stdout; print/json modes leave it unset. */
@@ -142,7 +147,7 @@ export async function createCodingAgentRuntime(
       const outcomePromise = (async (): Promise<BackendRunOutcome> => {
         try {
           const result = await rt.session.startLoop({
-            history: input.history,
+            history: options.sessionTranscript ?? [],
             input: input.input,
             run: input.run as never,
             workspace: input.workspace,

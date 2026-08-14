@@ -13,6 +13,7 @@ used_by:
 ---
 
 # Product Backend 总览
+> ⚠ **部分过时(2026-08-13)**:本页按单引擎(coding-agent 子进程)叙述;现为四后端(claude/pi/omp 同 spawn 模式)+ Agent 工作区文件桥接。另:成员模型按 ADR 0021 简化为单 Agent。现行结构见 [Agent 工作区与多后端](../agents/workspace-and-backends.md)。
 
 Product Backend 是系统的产品核心。它拥有 Conversation、成员、共享消息、Agent Context 分支、Cron、Loop 和面向端的 HTTP/SSE API。执行只有一条链：**Agent Run → Agent Backend → 一次性 coding-agent 子进程**。
 

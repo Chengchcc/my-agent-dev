@@ -8,6 +8,7 @@ import { createModelRuntime, type ModelRuntime } from "@my-agent-team/ai";
 import type { AIMessageChunk } from "@my-agent-team/core";
 import type { Message } from "@my-agent-team/message";
 import { fakeProvider } from "../../core/fake-provider.js";
+import { loadSessionMessages } from "../../core/session-file.js";
 import { runRpcMode } from "./rpc-mode.js";
 
 /** In-process RPC mode tests: the full command/output protocol through the
@@ -16,6 +17,7 @@ import { runRpcMode } from "./rpc-mode.js";
  *  cli-modes.test.ts. */
 
 const tmp = mkdtempSync(join(tmpdir(), "rpc-mode-test-"));
+process.env.CODING_AGENT_SESSION_DIR = join(tmp, "sessions");
 
 const FAKE_MODEL: Model = {
   id: "echo",
@@ -88,12 +90,10 @@ const EXECUTE = {
   id: "e1",
   type: "execute",
   input: {
-    history: [],
     input: { inputId: "in-1", message: { role: "user", text: "go" } },
     run: {
       runId: "r-1",
       model: { backendKind: "coding_agent", modelId: "fake/echo" },
-      productTools: [],
       configRevision: 1,
       skillRoots: [],
     },
@@ -213,5 +213,52 @@ describe("RPC mode (in-process)", () => {
     const h = makeHarness();
     h.close();
     expect(await h.exitCode).toBe(1);
+  }, 10_000);
+
+  test("session persists and resumes via cliSessionRef (ADR 0003 round trip)", async () => {
+    // First run: fresh session. The outcome reports the session id; the
+    // session file records the turn (user + assistant).
+    const h1 = makeHarness();
+    h1.write(JSON.stringify(EXECUTE));
+    await waitFor(() => parseLines(h1.lines()).some((o) => o.type === "outcome"));
+    expect(await h1.exitCode).toBe(0);
+    const outcome1 = parseLines(h1.lines()).find((o) => o.type === "outcome");
+    const ref = outcome1?.outcome.cliSessionRef;
+    expect(typeof ref).toBe("string");
+    expect(outcome1?.outcome.status).toBe("completed");
+
+    const transcript = loadSessionMessages(ref as string);
+    expect(transcript.length).toBeGreaterThanOrEqual(2);
+    expect(transcript[0]?.role).toBe("user");
+    expect(transcript.at(-1)?.role).toBe("assistant");
+
+    // Second run: resume the branch's session reference. The transcript
+    // becomes the run history; the file accumulates the second turn and the
+    // outcome carries the SAME reference.
+    const h2 = makeHarness();
+    h2.write(
+      JSON.stringify({
+        ...EXECUTE,
+        id: "e2",
+        input: {
+          ...EXECUTE.input,
+          input: { inputId: "in-2", message: { role: "user", text: "continue" } },
+          run: { ...EXECUTE.input.run, cliSessionRef: ref },
+        },
+      }),
+    );
+    await waitFor(() => parseLines(h2.lines()).some((o) => o.type === "outcome"));
+    expect(await h2.exitCode).toBe(0);
+    const outcome2 = parseLines(h2.lines()).find((o) => o.type === "outcome");
+    expect(outcome2?.outcome.cliSessionRef).toBe(ref);
+
+    const grown = loadSessionMessages(ref as string);
+    expect(grown.length).toBeGreaterThanOrEqual(transcript.length + 2);
+    expect(grown[0]?.role).toBe("user");
+    expect(grown.at(-1)?.role).toBe("assistant");
+    // The second user turn is present in the middle of the transcript.
+    expect(
+      grown.slice(transcript.length).some((m) => m.role === "user" && m.text === "continue"),
+    ).toBe(true);
   }, 10_000);
 });

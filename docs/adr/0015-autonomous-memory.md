@@ -1,7 +1,8 @@
 # ADR: Autonomous Memory
 
+> ✅ **目标达成、机制被取代(2026-08-13)**:agent 自主记忆经 workspace 文件落地(agent 自写 `memory/facts/*.md` + `MEMORY.md`,SOUL/USER 经 cwd meta 注入 child);原 plugin-memory 包 + identityPlugin 注入 `<memory>` 标签的机制未建。
+
 **日期**: 2026-07-22
-**状态**: design
 **范围**: `packages/plugin-memory`（新包），conversation-compose 接线，identityPlugin 注入
 
 ---

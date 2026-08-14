@@ -1,6 +1,6 @@
 import type { Message } from "@my-agent-team/message";
 import type { BackendEvent, Usage } from "./event.js";
-import type { AgentRunSnapshot, ProjectedHistoryItem, WorkspaceBinding } from "./history.js";
+import type { AgentRunSnapshot, WorkspaceBinding } from "./history.js";
 
 /** The actual execution input crossing the Backend boundary: the durable
  *  Product input-queue identity plus the canonical Message it carries.
@@ -21,14 +21,14 @@ export interface BackendInputMessage {
 }
 
 /** The complete durable facts of one Agent Run crossing the Backend boundary.
- *  A Run is executed from a FULL projection of the Product Context Branch -
- *  there is no incremental resume and no session identity: `runId` is the only
- *  execution identity. `workspace` is a Run execution fact (the caller pins
- *  the cloned repo for Loop Runs, the agent-record workspace otherwise), never
- *  re-derived by the Backend. Parameterized by `K` so the snapshot's model ref
- *  is locked to the Backend's kind. */
+ *  History is NOT part of the contract (ADR 0003 decision 6): the first-turn
+ *  bridge is flat text inside `input.message` (rendered by the Backend when
+ *  the branch has no CLI session reference yet); from the second turn on the
+ *  CLI session is the runtime truth. `workspace` is a Run execution fact (the
+ *  caller pins the cloned repo for Loop Runs, the agent-record workspace
+ *  otherwise), never re-derived by the Backend. Parameterized by `K` so the
+ *  snapshot's model ref is locked to the Backend's kind. */
 export interface BackendRunInput<K extends string = string> {
-  readonly history: readonly ProjectedHistoryItem[];
   readonly input: BackendInputMessage;
   readonly run: AgentRunSnapshot<K>;
   readonly workspace: WorkspaceBinding;

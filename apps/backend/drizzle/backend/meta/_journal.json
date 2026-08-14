@@ -75,100 +75,149 @@
     {
       "idx": 10,
       "version": "6",
+      "when": 1783401000000,
+      "tag": "0010_agent_relationship",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
       "when": 1783500000000,
       "tag": "0011_conversation_fork_undo",
       "breakpoints": true
     },
     {
-      "idx": 11,
+      "idx": 12,
       "version": "6",
       "when": 1783600000000,
       "tag": "0012_agent_context_and_runs",
       "breakpoints": true
     },
     {
-      "idx": 12,
+      "idx": 13,
       "version": "7",
       "when": 1754000000000,
       "tag": "0013_phase4_product_tools",
       "breakpoints": true
     },
     {
-      "idx": 13,
+      "idx": 14,
       "version": "7",
       "when": 1754100000000,
       "tag": "0014_phase4_commit_identity",
       "breakpoints": true
     },
     {
-      "idx": 14,
+      "idx": 15,
       "version": "7",
       "when": 1754200000000,
       "tag": "0015_phase4_queue_seq",
       "breakpoints": true
     },
     {
-      "idx": 15,
+      "idx": 16,
       "version": "7",
       "when": 1754400000000,
       "tag": "0016_loop_item_run_ids",
       "breakpoints": true
     },
     {
-      "idx": 16,
+      "idx": 17,
       "version": "7",
       "when": 1754500000000,
       "tag": "0017_agent_run_workspace",
       "breakpoints": true
     },
     {
-      "idx": 17,
+      "idx": 18,
       "version": "7",
       "when": 1754600000000,
       "tag": "0018_drop_backend_session_binding",
       "breakpoints": true
     },
     {
-      "idx": 18,
+      "idx": 19,
       "version": "6",
       "when": 1785000000000,
       "tag": "0019_phase5_run_snapshot",
       "breakpoints": true
     },
     {
-      "idx": 19,
+      "idx": 20,
       "version": "6",
       "when": 1785930899335,
       "tag": "0020_phase6_drop_legacy_execution",
       "breakpoints": true
     },
     {
-      "idx": 20,
+      "idx": 21,
       "version": "6",
       "when": 1786000000000,
       "tag": "0021_canonical_message_sequence",
       "breakpoints": true
     },
     {
-      "idx": 21,
+      "idx": 22,
       "version": "6",
       "when": 1786100000000,
       "tag": "0022_agent_reasoning_effort",
       "breakpoints": true
     },
     {
-      "idx": 22,
+      "idx": 23,
       "version": "6",
       "when": 1786527517339,
       "tag": "0023_drop_agent_model_base_url",
       "breakpoints": true
     },
     {
-      "idx": 23,
+      "idx": 24,
       "version": "6",
       "when": 1786528200000,
       "tag": "0024_backend_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1786600000000,
+      "tag": "0025_file_first_agent_yml",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1786601000000,
+      "tag": "0026_drop_agent_relationship",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1786602000000,
+      "tag": "0027_mcp_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1786603000000,
+      "tag": "0028_knowledge_packs",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1786604000000,
+      "tag": "0029_permission_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1786605000000,
+      "tag": "0030_run_todo",
+      "breakpoints": false
     }
   ]
 }

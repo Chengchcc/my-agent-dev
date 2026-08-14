@@ -16,14 +16,13 @@ export interface AgentRunServiceDeps {
   readonly contextService: AgentContextService;
   readonly idGen: IdGenerator;
   readonly ledgerResolver: LedgerMessageResolver;
-  /** Resolve the frozen Run config (systemPrompt + skillRoots) from the
-   *  target Agent (identity + assigned ready skill packs). Called when the
-   *  caller did not pass explicit values - Loop scopes pass their own
-   *  LOOP.md config instead. */
+  /** Resolve the frozen Run config (systemPrompt + skillRoots +
+   *  permissionMode) from the target Agent. Called when the caller did not
+   *  pass explicit values - Loop scopes pass their own LOOP.md config. */
   readonly resolveRunConfig?: (input: {
     conversationId: string;
     agentMemberId: string;
-  }) => Promise<{ systemPrompt?: string; skillRoots?: readonly string[] }>;
+  }) => Promise<{ systemPrompt?: string; skillRoots?: readonly string[]; permissionMode?: string }>;
 }
 
 /** Product-facing Agent Run service. Manages durable Run creation, queue,
@@ -47,6 +46,7 @@ export interface AgentRunService {
      *  service's resolveRunConfig resolves them from the target Agent. */
     systemPrompt?: string;
     skillRoots?: readonly string[];
+    permissionMode?: string;
   }): Promise<{
     acquired: boolean;
     queued: boolean;
@@ -122,13 +122,18 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
       // Agent's identity + assigned skill packs.
       let systemPrompt = input.systemPrompt;
       let skillRoots = input.skillRoots;
-      if ((systemPrompt === undefined || skillRoots === undefined) && deps.resolveRunConfig) {
+      let permissionMode = input.permissionMode;
+      if (
+        (systemPrompt === undefined || skillRoots === undefined || permissionMode === undefined) &&
+        deps.resolveRunConfig
+      ) {
         const resolved = await deps.resolveRunConfig({
           conversationId: input.conversationId,
           agentMemberId: input.agentMemberId,
         });
         systemPrompt ??= resolved.systemPrompt;
         skillRoots ??= resolved.skillRoots;
+        permissionMode ??= resolved.permissionMode;
       }
 
       return port.enqueueAndAcquire({
@@ -146,6 +151,7 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
         workspace: input.workspace,
         systemPrompt,
         skillRoots,
+        permissionMode,
       });
     },
 

@@ -27,6 +27,7 @@ const TOOL_MANIFEST = [
   { name: "history_search", description: "s", inputSchema: {}, entrypoint: "sse:x" },
   { name: "history_around", description: "a", inputSchema: {}, entrypoint: "sse:x" },
   { name: "history_retain", description: "t", inputSchema: {}, entrypoint: "sse:x" },
+  { name: "todo_write", description: "w", inputSchema: {}, entrypoint: "sse:x" },
 ];
 
 async function createRun(messageText: string): Promise<string> {
@@ -417,6 +418,79 @@ describe("product tools service", () => {
       .query("SELECT COUNT(*) AS n FROM product_tool_call WHERE run_id = ? AND call_id = ?")
       .get(runId, "toolu-cc") as { n: number };
     expect(count.n).toBe(1);
+  });
+
+  test("todo_write persists the snapshot and replays idempotently", async () => {
+    const runId = await createRun("hi");
+    const items = [
+      { id: "t1", text: "plan", status: "pending" },
+      { id: "t2", text: "build", status: "in_progress" },
+    ];
+    const result = await service.call({
+      identity: identity(runId),
+      callId: "toolu-todo",
+      idempotencyKey: `${runId}:toolu-todo`,
+      tool: "todo_write",
+      args: { items },
+    });
+    expect(JSON.parse(result.content)).toEqual({ items });
+    const run = await runPort.getRun(runId);
+    expect(run?.todoSnapshot).toBe(JSON.stringify(items));
+    // The branch's latest todo is what the next run's prompt injects.
+    expect(await runPort.getLatestRunTodo(branchId)).toBe(JSON.stringify(items));
+    // Replay with the same call id returns the stored result.
+    const replay = await service.call({
+      identity: identity(runId),
+      callId: "toolu-todo",
+      idempotencyKey: `${runId}:toolu-todo`,
+      tool: "todo_write",
+      args: { items },
+    });
+    expect(replay.content).toBe(result.content);
+    // A second run in the same branch supersedes the latest snapshot.
+    await runPort.finalizeRun(runId, {
+      status: "completed",
+      messages: [{ role: "assistant", text: "x" }],
+    });
+    const run2 = await createRun("next");
+    const next = [{ id: "t3", text: "ship", status: "done" }];
+    await service.call({
+      identity: identity(run2),
+      callId: "toolu-todo-2",
+      idempotencyKey: `${run2}:toolu-todo-2`,
+      tool: "todo_write",
+      args: { items: next },
+    });
+    expect(await runPort.getLatestRunTodo(branchId)).toBe(JSON.stringify(next));
+  });
+
+  test("todo_write rejects malformed items", async () => {
+    const runId = await createRun("hi");
+    await expect(
+      service.call({
+        identity: identity(runId),
+        callId: "toolu-bad",
+        idempotencyKey: `${runId}:toolu-bad`,
+        tool: "todo_write",
+        args: { items: "not-an-array" },
+      }),
+    ).rejects.toThrow(/items must be/);
+  });
+
+  test("todo_write rejects items with non-conforming fields (model habit)", async () => {
+    const runId = await createRun("hi");
+    await expect(
+      service.call({
+        identity: identity(runId),
+        callId: "toolu-shape",
+        idempotencyKey: `${runId}:toolu-shape`,
+        tool: "todo_write",
+        // deepseek wrote `title` instead of `text` with a loose schema:
+        // the durable snapshot re-enters the next run's prompt, so this
+        // must reject instead of poisoning later runs.
+        args: { items: [{ id: "plan", title: "计划", status: "pending" }] },
+      }),
+    ).rejects.toThrow(/id: string, text: string/);
   });
 
   test("an already-aborted signal rejects the call", async () => {

@@ -16,7 +16,7 @@ import { type ModelRuntime, resolveModelAlias } from "@my-agent-team/ai";
 import type { Message } from "@my-agent-team/message";
 import { createProgressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
 import { createRecapPlugin } from "@my-agent-team/plugin-recap";
-import { createTodoPlugin } from "@my-agent-team/plugin-todo";
+
 import {
   createBashTool,
   createEditTool,
@@ -32,7 +32,9 @@ import {
   type WebSearchPort,
 } from "@my-agent-team/tools-common";
 import { fakeProvider } from "./fake-provider.js";
+import { mountWorkspaceMcpServers } from "./mcp-mount.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
+import { readProductToolsManifest } from "./product-tools-manifest.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
 
 /** Token estimation via content char/4 (≈1 token per 4 chars of English/code).
@@ -130,6 +132,12 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     tools.push(createEditTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
     tools.push(createBashTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool);
   }
+  // Generic .mcp.json mounting (ADR 0022): user servers + knowledge.
+  // Skips "product-tools" (the manifest path owns it) and names that
+  // collide with the native table.
+  tools.push(
+    ...(await mountWorkspaceMcpServers(deps.workspaceRoot, new Set(tools.map((t) => t.name)))),
+  );
   if (deps.webSearch) {
     tools.push(createPortWebSearchTool(deps.webSearch) as unknown as PluginTool);
   }
@@ -140,7 +148,6 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   const nativeToolsPlugin: Plugin = { name: "native-tools", tools };
   const plugins: Plugin[] = [
     nativeToolsPlugin,
-    createTodoPlugin({ sessionId: deps.runId, store }),
     createRecapPlugin({
       recapModelRef: { providerId: "", modelId: "" },
       enabled: process.env.CODING_AGENT_RECAP_ENABLED === "1",
@@ -222,8 +229,11 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     },
   };
   const resolveTools = async (input: CodingLoopInput): Promise<readonly PluginTool[]> => {
-    const manifest = input.run.productTools;
-    if (!manifest || manifest.length === 0) return [];
+    // ADR 0003 decision 6: the manifest lives in the workspace files
+    // (.agent/product-tools.json, written by the workspace bridge), never
+    // in the run input.
+    const manifest = readProductToolsManifest(input.workspace.root);
+    if (manifest.length === 0) return [];
     // Per-call timeout: default 30s, overridable via env so the real MCP
     // timeout path is testable without waiting 30s.
     const rawTimeout = process.env.CODING_AGENT_PRODUCT_TOOL_TIMEOUT_MS;

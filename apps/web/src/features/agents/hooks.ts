@@ -18,48 +18,40 @@ export { useArchiveAgent, useCreateAgent, useSetIdentity, useUpdateAgent } from 
 export { agentKeys } from "./query-keys";
 
 const mcpKeys = {
-  list: (agentId: string) => ["mcp-servers", agentId] as const,
+  catalog: ["mcp-catalog"] as const,
 };
 
-export function useAgentMcpServers(agentId: string) {
+export function useMcpCatalog() {
   return useQuery({
-    queryKey: mcpKeys.list(agentId),
-    queryFn: () => api.listMcpServers(agentId),
+    queryKey: mcpKeys.catalog,
+    queryFn: () => api.listMcpServers(),
   });
 }
 
-export function useCreateMcpServer(agentId: string) {
+export function useCreateMcpServer() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Parameters<typeof api.createMcpServer>[1]) =>
-      api.createMcpServer(agentId, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mcpKeys.list(agentId) }),
+    mutationFn: (body: Parameters<typeof api.createMcpServer>[0]) => api.createMcpServer(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: mcpKeys.catalog }),
   });
 }
 
-export function useUpdateMcpServer(agentId: string) {
+export function useUpdateMcpServer() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({
       serverId,
       ...body
-    }: { serverId: string } & Parameters<typeof api.updateMcpServer>[2]) =>
-      api.updateMcpServer(agentId, serverId, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mcpKeys.list(agentId) }),
+    }: { serverId: string } & Parameters<typeof api.updateMcpServer>[1]) =>
+      api.updateMcpServer(serverId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: mcpKeys.catalog }),
   });
 }
 
-export function useDeleteMcpServer(agentId: string) {
+export function useDeleteMcpServer() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (serverId: string) => api.deleteMcpServer(agentId, serverId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: mcpKeys.list(agentId) }),
-  });
-}
-
-export function useAgentRelationships(agentId: string) {
-  return useQuery({
-    queryKey: ["agent", agentId, "relationships"],
-    queryFn: () => api.listAgentRelationships(agentId),
+    mutationFn: (serverId: string) => api.deleteMcpServer(serverId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: mcpKeys.catalog }),
   });
 }

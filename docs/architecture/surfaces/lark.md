@@ -14,6 +14,7 @@ used_by:
 ---
 
 # 飞书
+> ⚠ **部分过时(2026-08-13)**:ADR 0021 后不再建 human 成员(human 消息为对话外部事件);"群/用户映射成对话/成员"简化为群映射成单 Agent 对话。
 
 飞书把飞书的群/用户映射成对话/成员，把入站消息 POST 给后端，通过 sse-watcher 消费 conversation ledger SSE 中的 MessageRevision 决定流式/最终可见文本。sse-watcher 是唯一出站流入口。去重依赖 revision 的 messageId + canSkipFinalLedgerText。
 

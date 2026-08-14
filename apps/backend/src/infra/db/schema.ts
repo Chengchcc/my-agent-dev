@@ -3,7 +3,6 @@ import {
   index,
   integer,
   primaryKey,
-  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -13,26 +12,14 @@ export const agents = sqliteTable(
   "agents",
   {
     id: text().primaryKey(),
-    name: text().notNull(),
-    template: text(),
     workspacePath: text().notNull().unique(),
-    modelProvider: text().notNull(),
-    modelName: text().notNull(),
-    /** Execution backend kind (ADR 0002): coding_agent / claude_code /
-     *  pi / omp. Defaults to the coding agent; switching auto-forks the
-     *  branch (old history stays read-only). */
-    backendKind: text().notNull().default("coding_agent"),
-    /** Thinking-mode effort (none/low/high/max); null = provider default. */
-    reasoningEffort: text(),
-    permissionMode: text().notNull().default("ask"),
-    maxSteps: integer(),
+    /** Materialized cache of the parsed workspace `agent.yml` (ADR 0003
+     *  decision 1: the file is the single source; content columns are
+     *  folded into this JSON). */
+    config: text().notNull().default("{}"),
     createdAt: integer({ mode: "number" }).notNull(),
     updatedAt: integer({ mode: "number" }).notNull(),
     archivedAt: integer({ mode: "number" }),
-    larkEnabled: integer().notNull().default(0),
-    larkAppId: text(),
-    larkProfileRef: text(),
-    larkBotDisplayName: text(),
   },
   (table) => [index("idx_agents_archived").on(table.archivedAt)],
 );
@@ -219,60 +206,38 @@ export const settings = sqliteTable("settings", {
   updatedAt: integer({ mode: "number" }).notNull(),
 });
 
-// ─── mcp_server ─────────────────────────────────────────────────────
-export const mcpServer = sqliteTable(
-  "mcp_server",
-  {
-    serverId: text("server_id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    name: text().notNull(),
-    transport: text().notNull(),
-    command: text(),
-    args: text(),
-    env: text(),
-    url: text(),
-    enabled: integer({ mode: "number" }).notNull().default(1),
-    createdAt: integer({ mode: "number" }).notNull(),
-    updatedAt: integer({ mode: "number" }).notNull(),
-  },
-  (table) => [index("idx_mcp_server_agent").on(table.agentId)],
-);
-
-// ─── agent_relationship ─────────────────────────────────────────────
-export const agentRelationship = sqliteTable(
-  "agent_relationship",
+// ─── knowledge_pack (ADR 0022: install pool only; per-agent switches
+//     live in agent.yml - file-first, no assignment table) ────────────
+export const knowledgePack = sqliteTable(
+  "knowledge_pack",
   {
     id: text().primaryKey(),
-    fromAgent: text()
-      .notNull()
-      .references(() => agents.id, { onDelete: "cascade" }),
-    toAgent: text()
-      .notNull()
-      .references(() => agents.id, { onDelete: "cascade" }),
-    relType: text().notNull(), // 'assigns_to' | 'collaborates_with'
-    weight: real().notNull().default(1.0),
-    instruction: text(),
+    name: text().notNull(),
+    description: text().notNull(),
+    sourceKind: text().notNull(),
+    sourceUrl: text(),
+    versionRef: text(),
+    installedRef: text(),
+    status: text().notNull(),
+    error: text(),
     createdAt: integer({ mode: "number" }).notNull(),
     updatedAt: integer({ mode: "number" }).notNull(),
   },
-  (table) => [
-    uniqueIndex("idx_agent_rel_unique").on(table.fromAgent, table.toAgent, table.relType),
-    index("idx_agent_rel_from").on(table.fromAgent),
-    index("idx_agent_rel_to").on(table.toAgent),
-  ],
+  (table) => [index("idx_knowledge_pack_status").on(table.status)],
 );
 
-// ── Zod schemas (type chain: drizzle table → Zod → z.infer → TS type) ──
+export const knowledgePackSelectSchema = createSelectSchema(knowledgePack, {
+  sourceKind: (s) => s.transform((v) => v as "builtin" | "git" | "zip"),
+  status: (s) => s.transform((v) => v as "pending" | "installing" | "ready" | "failed" | "syncing"),
+});
+
+// ─── Zod schemas (type chain: drizzle table → Zod → z.infer → TS type) ──
 
 import { createSelectSchema } from "drizzle-zod";
 
 // ── Simple tables (drizzle-zod auto-generate) ──
 
-export const agentsSelectSchema = createSelectSchema(agents, {
-  larkEnabled: (s) => s.transform((v: number) => v !== 0),
-  permissionMode: (s) => s.transform((v) => v as "ask" | "auto" | "deny"),
-  reasoningEffort: (s) => s.transform((v) => v as "none" | "low" | "high" | "max" | null),
-});
+export const agentsSelectSchema = createSelectSchema(agents);
 export const conversationSelectSchema = createSelectSchema(conversation);
 export const memberSelectSchema = createSelectSchema(member);
 export const skillPackSelectSchema = createSelectSchema(skillPack, {
@@ -280,9 +245,6 @@ export const skillPackSelectSchema = createSelectSchema(skillPack, {
   status: (s) => s.transform((v) => v as "pending" | "installing" | "ready" | "failed" | "syncing"),
 });
 export const agentSkillPackSelectSchema = createSelectSchema(agentSkillPack);
-export const agentRelationshipSelectSchema = createSelectSchema(agentRelationship, {
-  relType: (s) => s.transform((v) => v as "assigns_to" | "collaborates_with"),
-});
 
 // ── Tables with JSON/bool columns — drizzle-zod refine callback pattern ──
 // callback (schema) => schema.transform(...) adds transforms while preserving drizzle-zod types
@@ -305,28 +267,9 @@ export const cronJobSelectSchema = createSelectSchema(cronJob, {
   enabled: (s) => s.transform((v: number) => v !== 0),
 });
 
-export const mcpServerSelectSchema = createSelectSchema(mcpServer, {
-  args: (s) =>
-    s.transform((v: string) => {
-      try {
-        return JSON.parse(v) as string[];
-      } catch {
-        return [] as string[];
-      }
-    }),
-  env: (s) =>
-    s.transform((v: string) => {
-      try {
-        return JSON.parse(v) as Record<string, string>;
-      } catch {
-        return {} as Record<string, string>;
-      }
-    }),
-  transport: (s) => s.transform((v: string) => v as "stdio" | "sse"),
-  enabled: (s) => s.transform((v: number) => v !== 0),
-});
-
 /** Convert boolean to 0|1 for integer columns. Single source of truth
+
+
  *  for the bool→int conversion used by adapters. */
 export const boolToInt = (v: boolean): number => (v ? 1 : 0);
 
@@ -426,6 +369,12 @@ export const agentRun = sqliteTable(
     systemPrompt: text("system_prompt"),
     /** JSON: frozen skill pack roots (absolute dirs scanned for SKILL.md). */
     skillRoots: text("skill_roots"),
+    /** Frozen permission_mode (ask/auto/deny), mapped per backend at
+     *  dispatch (ADR 0020 decision 7; claude --permission-mode). */
+    permissionMode: text("permission_mode"),
+    /** JSON: the run's latest task list snapshot (todo_write product tool).
+     *  Re-injected into the next run's prompt as the Current Tasks section. */
+    todoSnapshot: text("todo_snapshot"),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     terminalAt: integer("terminal_at", { mode: "number" }),
   },
@@ -466,6 +415,7 @@ export const branchInputQueue = sqliteTable(
     workspaceAccess: text("workspace_access"),
     systemPrompt: text("system_prompt"),
     skillRoots: text("skill_roots"), // JSON: readonly string[]
+    permissionMode: text("permission_mode"),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     deliveredAt: integer("delivered_at", { mode: "number" }),
   },

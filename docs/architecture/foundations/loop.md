@@ -14,6 +14,7 @@ used_by:
 ---
 
 # Loop
+> ⚠ **部分过时(2026-08-13)**:本页为 design 态;Loop 现已实现(generator/evaluator 两段,ADR 0004 的 discovery 已移除,0006 的锁/池未落地,0011 后 Issue 退役)。实现见 `apps/backend/src/features/loop/` 与 `packages/loop/`。
 
 > 本页 `status: design`：grilling 后锁定的设计，尚未进代码。Issue 和 Loop 的关系已收敛：Loop 是统一的工作系统，Issue/Kanban 被吸收为 Loop 的特例。
 

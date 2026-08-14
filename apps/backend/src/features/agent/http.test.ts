@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { Elysia } from "elysia";
 import type { AgentRow } from "./domain.js";
 import { agentRoutes } from "./http.js";
@@ -11,19 +12,8 @@ function makeSvc() {
     async create(input) {
       const row: AgentRow = {
         id: input.id,
-        name: input.name,
-        template: input.template ?? null,
         workspacePath: input.workspacePath,
-        modelProvider: input.model.provider,
-        modelName: input.model.model,
-        backendKind: input.backendKind ?? "coding_agent",
-        reasoningEffort: input.reasoningEffort ?? null,
-        permissionMode: input.permissionMode ?? "ask",
-        maxSteps: input.maxSteps ?? null,
-        larkEnabled: input.larkEnabled ?? false,
-        larkAppId: input.larkAppId ?? null,
-        larkProfileRef: input.larkProfileRef ?? null,
-        larkBotDisplayName: input.larkBotDisplayName ?? null,
+        config: input.config,
         createdAt: input.now,
         updatedAt: input.now,
         archivedAt: null,
@@ -40,8 +30,8 @@ function makeSvc() {
     async update(id, input) {
       const r = rows.get(id);
       if (!r || r.archivedAt) return null;
-      if (input.name !== undefined) r.name = input.name;
-      if (input.permissionMode !== undefined) r.permissionMode = input.permissionMode;
+      r.config = input.config;
+      if (input.workspacePath !== undefined) r.workspacePath = input.workspacePath;
       r.updatedAt = input.now;
       return r;
     },
@@ -63,7 +53,11 @@ function makeSvc() {
         port,
         idGen: () => crypto.randomUUID().slice(0, 8),
         workspaceRoot: "/tmp",
-        materializeWorkspace: async (id) => `/tmp/ws/${id}`,
+        materializeWorkspace: async (id) => {
+          const dir = `/tmp/ws/${id}`;
+          mkdirSync(dir, { recursive: true });
+          return dir;
+        },
         purgeWorkspace: async () => {},
         assertNoActiveRun: () => {},
       }),
@@ -161,5 +155,49 @@ describe("agent HTTP routes", () => {
       }),
     );
     expect(resp.status).toBe(200);
+  });
+
+  test("workspace entries/file list and read, traversal rejected", async () => {
+    const app = makeSvc();
+    const createResp = await app.handle(
+      new Request("http://localhost/api/agents", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "ws", model: { provider: "a", model: "m" } }),
+      }),
+    );
+    const created = (await readJson(createResp)) as { id: string };
+    const ws = `/tmp/ws/${created.id}`;
+    mkdirSync(`${ws}/knowledge`, { recursive: true });
+    writeFileSync(`${ws}/AGENTS.md`, "# rules");
+    writeFileSync(`${ws}/knowledge/README.md`, "# kb");
+
+    // List root: dirs first, then files.
+    const entriesResp = await app.handle(
+      new Request(`http://localhost/api/agents/${created.id}/workspace/entries?path=`),
+    );
+    expect(entriesResp.status).toBe(200);
+    const entries = (await readJson(entriesResp)) as {
+      entries: Array<{ name: string; kind: string }>;
+    };
+    expect(entries.entries.map((e) => e.name).sort()).toEqual([
+      "AGENTS.md",
+      "agent.yml",
+      "knowledge",
+    ]);
+    expect(entries.entries.find((e) => e.name === "knowledge")?.kind).toBe("dir");
+
+    // Read a file.
+    const fileResp = await app.handle(
+      new Request(`http://localhost/api/agents/${created.id}/workspace/file?path=AGENTS.md`),
+    );
+    expect(fileResp.status).toBe(200);
+    expect(((await readJson(fileResp)) as { content: string }).content).toBe("# rules");
+
+    // Traversal: ../ escapes the workspace.
+    const escapeResp = await app.handle(
+      new Request(`http://localhost/api/agents/${created.id}/workspace/file?path=../../etc/passwd`),
+    );
+    expect(escapeResp.status).toBe(403);
   });
 });
