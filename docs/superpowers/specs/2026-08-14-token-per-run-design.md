@@ -97,10 +97,18 @@ readonly productToolsToken?: string;
 }
 ```
 
-- 文件变成**静态可提交**的:占位符无密,写一次不再随 token 轮换重写。
-- 三个 CLI adapter 的构造参数 `productToolsToken`(现在只存不用的死字段)删除。
+**实测矩阵结果(2026-08-14,真机)**:
 
-**实测矩阵**(实现期逐家跑通,失败降级见 §7):
+| backend | 送达路径 | 结论 |
+|---|---|---|
+| coding_agent | env `CODING_AGENT_PRODUCT_TOOL_TOKEN` per-execute(adapter 覆盖 command env) | ✓ 集成测试覆盖 |
+| claude_code | `.mcp.json` headers 内 `${PRODUCT_TOOLS_RUN_TOKEN}` 占位符展开 + spawn env | ✓ 真机:claude 2.1.229 对 SSE 连接发送 `Authorization: Bearer <env值>`(首个无凭据探测后全部带 token) |
+| pi | `bearerTokenEnv: "PRODUCT_TOOLS_RUN_TOKEN"` 字段(pi-mcp-adapter `resolveBearerToken` → `process.env[name]`) | ✓ 源码级验证(adapter utils.ts:198) |
+| omp | `bearer_token_env_var: "PRODUCT_TOOLS_RUN_TOKEN"` 字段(cli.js 读 `Bun.env[name]` → Authorization) | ✓ 源码级验证 |
+
+实现修正:实测发现 pi/omp **不支持** `${VAR}` 字符串展开,改用各自的 env-name 字段。bridge 的 product-tools 条目同时写三种形态(`bearerTokenEnv` + `bearer_token_env_var` 字段 + headers 占位符),各 CLI 读各的;文件完全静态、无密。
+
+**原计划矩阵**(供对照,已由上表取代):
 1. CLI 是否展开配置文件里的 `${VAR}`(claude 官方支持;pi/omp 实测)。
 2. 展开/env 是否覆盖 SSE headers 的 Authorization。
 3. 退路 A:per-invocation 配置覆写(claude `--mcp-config` 内联 JSON;pi `--tools`/adapter 参数;omp 等价 flag)。
@@ -132,20 +140,12 @@ dispatchFn finally
 ```
 
 TTL 是第二道保险:即使 revoke 路径全灭,token 也在 ≤30 min 后自然死亡。
+(送达形态按 §3.4 实测矩阵:claude 展开 headers 占位符;pi/omp 读 env-name 字段。)
 
 ## 5. 错误处理
-
-- mint 失败(容量满):deliverInput 抛错 → 走既有 dispatch catch(run failed + input cancelled + status event)。不静默降级成无 token run——那等于静默丢 product tools。
-- CLI 拿不到 env(某家不支持展开且所有退路失败):该家 run 启动时 product-tools 调用会 401。这是**显式失败**,按 §7 处理,不做 fallback 到静态 token。
-- registry 进程重启:所有活 token 失效,在跑的 run 的 product-tools 调用开始 401。可接受(child 本来也随 backend 重启死掉——backend 是单进程真理源,重启 = 所有 run 终结)。
-
-## 6. 测试
-
-- **单元**(`run-token-registry.test.ts`):mint→validate 往返;revoke 后 validate null;过期 validate null;同 run 二次 mint 旧 token 失效;容量上限抛错。
-- **MCP 层**:无 Authorization → 401;错 token → 401;注册表 token → 200;revoke 后同 token → 401。`serviceToken` 参数删除后的编译错误即静态验证。
-- **execution 集成**(扩展现有 fake-daemon 套件):两次 dispatch 的 child env 中 `PRODUCT_TOOLS_RUN_TOKEN`/`CODING_AGENT_PRODUCT_TOOL_TOKEN` 值不同;run settle 后拿旧 token 打 MCP → 401。
-- **真机矩阵**(§3.4 表):每家 CLI 至少一条「product-tools 调用成功 + 审计含 runId」的 E2E;不支持的家用退路并记录。
-- **回归**:audit 14/14、全仓 typecheck/lint/test 绿。
+- mint 失败(容量满):deliverInput 抛错 → 既有 dispatch catch(run failed + input cancelled + status event)。不静默降级成无 token run。
+- CLI 拿不到 env:该家 product-tools 调用 401(显式失败),按 §7 处理,不 fallback 静态 token。
+- registry 进程重启:所有活 token 失效;可接受——backend 是单进程真理源,重启 = 所有 run 终结。
 
 ## 7. 实测驱动的降级决策(唯一预留的弹性)
 

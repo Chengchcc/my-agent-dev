@@ -48,6 +48,7 @@ import {
   createProductToolsService,
   sqliteProductToolCallAdapter,
 } from "../features/product-tools/index.js";
+import { createRunTokenRegistry } from "../features/product-tools/run-token-registry.js";
 import {
   createProjectService,
   projectRoutes,
@@ -67,7 +68,6 @@ import {
   sqliteSkillPackAdapter,
 } from "../features/skill-pack/index.js";
 import { resolveCodingAgentCommand } from "../infra/coding-agent-command.js";
-import { createRunTokenRegistry } from "../features/product-tools/run-token-registry.js";
 import { ulid } from "../infra/ids.js";
 import { resolveKnowledgeMcpServerEntry } from "../infra/knowledge-mcp-command.js";
 import type { BackendServices } from "./services.js";
@@ -533,10 +533,11 @@ export async function installFeatures(services: BackendServices): Promise<Instal
                   name: "product-tools",
                   transport: "sse" as const,
                   url: config.productToolsMcpUrl,
-                  // Placeholder only: the per-run bearer reaches the CLI
-                  // child via spawn env (PRODUCT_TOOLS_RUN_TOKEN) which the
-                  // CLI expands here. The file never contains a secret.
-                  headers: { Authorization: "Bearer ${PRODUCT_TOOLS_RUN_TOKEN}" },
+                  // ENV NAME, not the token: pi (bearerTokenEnv) and omp
+                  // (bearer_token_env_var) read this var at connect time;
+                  // claude expands the ${VAR} placeholder in headers. The
+                  // per-run bearer arrives via spawn env. File stays static.
+                  bearerTokenEnv: "PRODUCT_TOOLS_RUN_TOKEN",
                 },
               ]
             : []),

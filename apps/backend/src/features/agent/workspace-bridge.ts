@@ -31,9 +31,14 @@ export interface McpServerEntry {
   url?: string | null;
   command?: string | null;
   args?: string[];
-  /** Auth headers (e.g. the product-tools bearer token). Written into
-   *  the workspace .mcp.json — same exposure as the adapter's old write. */
+  /** Auth headers written verbatim into the workspace .mcp.json. Must
+   *  never carry a secret — use bearerTokenEnv for the per-run token. */
   headers?: Record<string, string>;
+  /** ENV-VAR NAME (not the token): the CLI reads the bearer at connect
+   *  time from its process env (pi: bearerTokenEnv, omp:
+   *  bearer_token_env_var). The per-run token reaches the child via spawn
+   *  env (PRODUCT_TOOLS_RUN_TOKEN) — the file stays static and secret-free. */
+  bearerTokenEnv?: string;
 }
 
 /** Reconcile the `<kind>/skills/` symlinks: create missing links to the
@@ -96,6 +101,16 @@ export function writeMcpConfig(workspacePath: string, servers: readonly McpServe
     if (s.transport === "stdio" && s.command) entry.command = s.command;
     if (s.transport === "stdio" && s.args && s.args.length > 0) entry.args = s.args;
     if (s.headers) entry.headers = s.headers;
+
+    // Per-kind env-name auth: pi and omp read the named var at connect
+    // time; claude (no such field) expands ${VAR} inside header strings.
+    if (s.bearerTokenEnv) {
+      entry.bearerTokenEnv = s.bearerTokenEnv;
+      entry.bearer_token_env_var = s.bearerTokenEnv;
+      if (!s.headers) {
+        entry.headers = { Authorization: "Bearer ${PRODUCT_TOOLS_RUN_TOKEN}" };
+      }
+    }
     mcpServers[s.name] = entry;
   }
   writeFileSync(
