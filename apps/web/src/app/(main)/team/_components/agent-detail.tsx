@@ -19,7 +19,7 @@ import { useAgentSkillPacks } from "@/features/skill-packs/hooks";
 import { overlineClass } from "@/lib/form-styles";
 import { AgentConfigBar } from "./agent-config-bar";
 import { AgentDescriptionCard } from "./agent-description-card";
-import { AgentProjectsPanel } from "./agent-projects-panel.js";
+import { AgentProjectsPanel } from "./agent-projects-panel";
 
 type Tab =
   | "persona"

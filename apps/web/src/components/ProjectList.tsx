@@ -1,12 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useDeleteProject, useProjectList } from "@/features/projects/hooks";
 import type { ProjectRow } from "@/lib/api";
 import { ProjectForm } from "./ProjectForm";
-import Link from "next/link";
 
 export function ProjectList() {
   const [editingProject, setEditingProject] = useState<ProjectRow | null>(null);

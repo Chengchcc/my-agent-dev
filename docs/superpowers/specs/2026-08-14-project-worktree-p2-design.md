@@ -152,9 +152,9 @@ cron/手动 → loopStep
 
 ## 7. 验收清单
 
-- [ ] LOOP.md `agent` 字段路由 worktree;无字段 = default 兼容
-- [ ] `grep -rn "dataDir/repos\|resolveRepoPath" apps/backend/src` 零命中
-- [ ] Loop step 在 worktree 上跑通(集成测试,含 rollback)
-- [ ] 聚合页:status/diff/FF/merge 真机走通(本地 file:// repo)
-- [ ] push 开关生效且失败可恢复(422 响应含旧 sha)
-- [ ] 全仓 typecheck/lint/test 绿 + audit 15/14+1 绿
+- [x] LOOP.md `agent` 字段路由 worktree;无字段 = default 兼容
+- [x] `grep -rn "dataDir/repos\|resolveRepoPath" apps/backend/src` 零命中
+- [x] Loop step 在 worktree 上跑通(集成测试,含 rollback)
+- [x] 聚合页:status/diff/FF/merge 真机走通(本地 file:// repo)
+- [x] push 开关生效且失败可恢复(422 响应含旧 sha)
+- [x] 全仓 typecheck/lint/test 绿 + audit 15/14+1 绿
