@@ -55,6 +55,7 @@ import {
   sqliteProjectAdapter,
 } from "../features/project/index.js";
 import { ensureMirror, ensureWorktree } from "../features/project/worktree.js";
+import { createWorktreeOps } from "../features/project/worktree-ops.js";
 import { createRuntimeOpsService, opsRoutes } from "../features/runtime-ops/index.js";
 import { settingsRoutes } from "../features/settings/index.js";
 import type { SkillPackRow } from "../features/skill-pack/index.js";
@@ -673,6 +674,18 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   // ─── FeatureSet ─────────────────────────────────────────────
 
+  // Worktree read/merge ops over the project mirrors (ADR 0023 P2).
+  const worktreeOps = createWorktreeOps({
+    dataDir: config.dataDir,
+    projectPort,
+    listAgentConfigs: async () =>
+      (await agentSvc.list(true)).map((a) => ({
+        id: a.id,
+        workspacePath: a.workspacePath,
+        projects: a.config.runtime_config.projects,
+      })),
+  });
+
   const featureSet: FeatureSet = {
     agents: agentRoutes(
       agentSvc,
@@ -698,7 +711,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     ),
     ops: opsRoutes(opsSvc),
     agentRuns: agentRunRoutes({ db, agentRunService, agentRunExecution }),
-    projects: projectRoutes(projectSvc),
+    projects: projectRoutes(projectSvc, worktreeOps),
     loops: loopRoutes({
       agentWorkspaceOf: resolveAgentWorkspace,
       cronSvc,

@@ -2,10 +2,10 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ProjectPort } from "./ports.js";
 import type { ProjectRow } from "./domain.js";
-import { createWorktreeOps } from "./worktree-ops.js";
+import type { ProjectPort } from "./ports.js";
 import { ensureMirror, ensureWorktree } from "./worktree.js";
+import { createWorktreeOps } from "./worktree-ops.js";
 
 const dirs: string[] = [];
 afterAll(() => {
