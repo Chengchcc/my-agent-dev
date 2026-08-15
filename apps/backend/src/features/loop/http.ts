@@ -82,6 +82,7 @@ export function loopRoutes(input: {
             name: body.name,
             intent: body.intent,
             projectId: body.projectId,
+            agent: body.agent,
             cronExpr: body.cronExpr,
           },
         );
@@ -93,6 +94,7 @@ export function loopRoutes(input: {
           name: t.String(),
           intent: t.Optional(t.String()),
           projectId: t.Optional(t.String()),
+          agent: t.Optional(t.String({ minLength: 1 })),
           cronExpr: t.Optional(t.String()),
         }),
       },

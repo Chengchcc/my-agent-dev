@@ -151,6 +151,7 @@ export interface CreateLoopInput {
   name: string;
   intent?: string;
   projectId?: string;
+  agent?: string;
   cronExpr?: string;
 }
 
@@ -214,7 +215,7 @@ export async function createLoop(
   }
 
   // 4. Deterministic LOOP.md (intent is documented, not interpreted)
-  await writeDefaultLoopMd(dir, input.name, input.projectId, settingsSvc);
+  await writeDefaultLoopMd(dir, input.name, input.projectId, input.agent, settingsSvc);
 
   return readGenerationResult(dir, job.cronJobId, job.name, job.cronExpr, job.loopConfigPath);
 }
@@ -242,7 +243,7 @@ export async function refineLoop(
   const dir = `${dataDir}/${job.loopConfigPath}`;
 
   await safeRm(`${dir}/LOOP.md`);
-  await writeDefaultLoopMd(dir, job.name, undefined, settingsSvc);
+  await writeDefaultLoopMd(dir, job.name, undefined, undefined, settingsSvc);
 
   let preview = "";
   try {
@@ -371,6 +372,7 @@ async function writeDefaultLoopMd(
   dir: string,
   name: string,
   projectId: string | undefined,
+  agent: string | undefined,
   settingsSvc?: SettingsService,
 ): Promise<void> {
   // LOOP.md stores the FULL canonical model ID (<provider>/<model>) - the
@@ -394,6 +396,7 @@ async function writeDefaultLoopMd(
     [
       "---",
       `projectId: ${projectId ?? ""}`,
+      `agent: ${agent ?? "default"}`,
       "generator:",
       `  model: ${genModel}`,
       '  systemPrompt: ""',

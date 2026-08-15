@@ -519,3 +519,26 @@ describe("parseLoopConfig", () => {
     expect(parseLoopConfig("# Hello")).toBeNull();
   });
 });
+
+describe("parseLoopConfig agent field (ADR 0023 P2)", () => {
+  const base = [
+    "---",
+    "projectId: proj-x",
+    "generator:",
+    "  model: claude-sonnet-4",
+    "  systemPrompt: fix",
+    "evaluator:",
+    "  model: claude-opus-4",
+    "  systemPrompt: verify",
+  ];
+
+  test("reads the agent field when present", () => {
+    const cfg = parseLoopConfig([...base, "agent: coder-1", "---"].join("\n"));
+    expect(cfg?.agent).toBe("coder-1");
+  });
+
+  test("defaults to default for back-compat", () => {
+    const cfg = parseLoopConfig([...base, "---"].join("\n"));
+    expect(cfg?.agent).toBe("default");
+  });
+});

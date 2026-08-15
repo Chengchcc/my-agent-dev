@@ -303,6 +303,9 @@ export function parseVerdictMd(md: string): Verdict | null {
 
 export interface LoopConfig {
   projectId: string;
+  /** The agent whose (agent, project) worktree runs this loop's steps
+   *  (ADR 0023 P2). Empty string = "default" (back-compat). */
+  agent: string;
   generator: { model: string; systemPrompt: string };
   evaluator: { model: string; systemPrompt: string };
   acceptance: string;
@@ -339,6 +342,7 @@ export function parseLoopConfig(md: string): LoopConfig | null {
 
   return {
     projectId: String(frontmatter.projectId ?? ""),
+    agent: String(frontmatter.agent ?? "default") || "default",
     generator: {
       model: String(gen.model),
       systemPrompt: String(gen.systemPrompt ?? ""),
