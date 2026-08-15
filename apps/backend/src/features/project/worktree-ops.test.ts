@@ -17,6 +17,9 @@ async function makeSource(dir: string): Promise<string> {
   const src = join(dir, "src");
   mkdirSync(src, { recursive: true });
   await Bun.$`git init -b main ${src}`.quiet();
+  // Let this non-bare origin accept pushes to its checked-out branch (a
+  // real remote is bare/hosted; this fixture needs the local loophole).
+  await Bun.$`git -C ${src} config receive.denyCurrentBranch updateInstead`.quiet();
   await Bun.$`git -C ${src} config user.email t@t`.quiet();
   await Bun.$`git -C ${src} config user.name t`.quiet();
   await Bun.$`echo base > ${join(src, "F.txt")}`.quiet();
@@ -95,7 +98,6 @@ describe("worktree ops", () => {
 
     const ops = opsFor(dir, src);
     const st = await ops.status(PID);
-    console.log("DEBUG mirror refs:", await Bun.$`git -C  show-ref`.nothrow().quiet().text());
     expect(st).toHaveLength(1);
     expect(st[0]).toMatchObject({ agentId: "a1", ahead: 1, behind: 0, worktreeReady: true });
 
@@ -143,5 +145,29 @@ describe("worktree ops", () => {
 
     const ops = opsFor(dir, src);
     await expect(ops.merge(PID, "a1", { push: false })).rejects.toThrow(/F\.txt/);
+  }, 20_000);
+});
+
+describe("push semantics (regression: mirror forbids refspec push)", () => {
+  test("fast-forward with push lands on the origin and stays after refresh", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wops-push-"));
+    dirs.push(dir);
+    const { mirror, wt, src } = await setup(dir);
+    await Bun.$`echo work > ${join(wt, "P.txt")}`.quiet();
+    await Bun.$`git -C ${wt} add -A`.quiet();
+    await commit(wt, "p");
+
+    const ops = opsFor(dir, src);
+    await ops.fastForward(PID, "a1", { push: true });
+
+    // Origin actually received the tip.
+    const srcTip = await Bun.$`git -C ${src} rev-parse main`.quiet().text();
+    const mirrorTip = await Bun.$`git -C ${mirror} rev-parse main`.quiet().text();
+    expect(mirrorTip.trim()).toBe(srcTip.trim());
+
+    // A subsequent mirror refresh (ff-only fetch) does NOT regress it.
+    await ops.status(PID);
+    const after = await Bun.$`git -C ${mirror} rev-parse main`.quiet().text();
+    expect(after.trim()).toBe(srcTip.trim());
   }, 20_000);
 });

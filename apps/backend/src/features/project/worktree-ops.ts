@@ -43,8 +43,14 @@ export function createWorktreeOps(deps: {
     });
   };
 
-  const baseRef = (projectId: string): string =>
-    projectOf(projectId).defaultBranch ?? "origin/HEAD";
+  /** Base branch name; null defaultBranch falls back to the remote HEAD
+   *  the mirror recorded at clone time (resolvable as a raw sha). */
+  const baseRef = async (projectId: string, mirror: string): Promise<string> => {
+    const named = projectOf(projectId).defaultBranch;
+    if (named) return named;
+    const head = await Bun.$`git -C ${mirror} symbolic-ref --short HEAD`.nothrow().quiet().text();
+    return head.trim() || "main";
+  };
 
   /** rev-list counts [behind ahead] between base and the agent branch. */
   const counts = async (mirror: string, base: string, branch: string) => {
@@ -56,15 +62,21 @@ export function createWorktreeOps(deps: {
     return { behind: behind ?? 0, ahead: ahead ?? 0 };
   };
 
+  /** Push the base branch. A mirror clone forbids refspec pushes
+   *  (remote.origin.mirror=true) — override the config per-invocation. */
   const pushBase = async (mirror: string, base: string): Promise<void> => {
-    const res = await Bun.$`git -C ${mirror} push origin ${base}`.quiet().nothrow();
+    const res = await Bun.$`git -C ${mirror} -c remote.origin.mirror=false push origin ${base}`
+      .quiet()
+      .nothrow();
     if (res.exitCode !== 0) {
       throw new Error(`push failed: ${res.stderr.toString().slice(0, 200)}`);
     }
   };
 
   /** Move base to the branch tip after the divergence preflight. Shared by
-   *  fast-forward and merge (they differ only in the preflight). */
+   *  fast-forward and merge (they differ only in the preflight). A failed
+   * push rolls the base back to its previous tip (the caller never sees a
+   * half-moved state). */
   const moveBase = async (
     projectId: string,
     agentId: string,
@@ -72,17 +84,25 @@ export function createWorktreeOps(deps: {
     preflight: (mirror: string, base: string, branch: string) => Promise<void>,
   ): Promise<void> => {
     const mirror = await mirrorOf(projectId);
-    const base = baseRef(projectId);
+    const base = await baseRef(projectId, mirror);
     const branch = `agent/${agentId}/${projectId}`;
     await preflight(mirror, base, branch);
+    const prevTip = (await Bun.$`git -C ${mirror} rev-parse ${base}`.quiet().text()).trim();
     await Bun.$`git -C ${mirror} branch -f ${base} ${branch}`.quiet();
-    if (opts.push) await pushBase(mirror, base);
+    if (opts.push) {
+      try {
+        await pushBase(mirror, base);
+      } catch (err) {
+        await Bun.$`git -C ${mirror} branch -f ${base} ${prevTip}`.quiet().nothrow();
+        throw err;
+      }
+    }
   };
 
   return {
     async status(projectId) {
       const mirror = await mirrorOf(projectId);
-      const base = baseRef(projectId);
+      const base = await baseRef(projectId, mirror);
       const agents = (await deps.listAgentConfigs()).filter((a) => a.projects.includes(projectId));
       const out: WorktreeStatus[] = [];
       for (const a of agents) {
@@ -105,7 +125,7 @@ export function createWorktreeOps(deps: {
 
     async diff(projectId, agentId) {
       const mirror = await mirrorOf(projectId);
-      const base = baseRef(projectId);
+      const base = await baseRef(projectId, mirror);
       return Bun.$`git -C ${mirror} diff ${base}...agent/${agentId}/${projectId}`.quiet().text();
     },
 

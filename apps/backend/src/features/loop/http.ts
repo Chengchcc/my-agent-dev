@@ -63,7 +63,7 @@ export function loopRoutes(input: {
 
   return new Elysia()
     .get("/api/loops", () => {
-      return { loops: listLoops(cronSvc, store) };
+      return { loops: listLoops(cronSvc, store, dataDir) };
     })
     .get("/api/work/today", () => {
       return { reviewQueue: getTodayWork(cronSvc, store) };

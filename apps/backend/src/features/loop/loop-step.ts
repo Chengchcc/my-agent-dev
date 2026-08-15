@@ -271,12 +271,6 @@ export async function loopStep(params: LoopStepParams): Promise<LoopState> {
 }
 
 async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
-  const cwd = await resolveLoopWorktree(params.loopConfigPath, {
-    projectPort: params.projectPort,
-    dataDir: params.dataDir,
-    agentWorkspaceOf: params.agentWorkspaceOf,
-  });
-
   // 1. Read state from DB
   let state = params.store.load(params.loopId);
   // inboxItems stored as items with step="inbox" — separate them
@@ -347,6 +341,15 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     return state;
   }
 
+  // The worktree is materialized ONLY for the generator path: review
+  // actions early-return above and must never reset a worktree that a
+  // live run may hold (H1 from the landing review).
+  const cwd = await resolveLoopWorktree(params.loopConfigPath, {
+    projectPort: params.projectPort,
+    dataDir: params.dataDir,
+    agentWorkspaceOf: params.agentWorkspaceOf,
+  });
+
   // 3. Cron TICK — Generator → Evaluator
   state = loopReducer(state, { type: "TICK" });
 
@@ -414,7 +417,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     // verdict back into the script's meta via the write tool.
     const genConversationId = loopGeneratorConversationId(params.loopId);
     const genMemberId = loopGeneratorMemberId(params.loopId);
-    await ensureLoopScope(params.convPort, genConversationId, genMemberId, "default");
+    await ensureLoopScope(params.convPort, genConversationId, genMemberId, cfg.agent || "default");
     const gitLog = await Bun.$`git log --oneline -5`
       .cwd(repoCwd)
       .quiet()
@@ -568,6 +571,16 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     const updatedItem = state.items[item.id];
     if (updatedItem && (updatedItem.step === "fixing" || updatedItem.step === "inbox")) {
       await git.resetHard(repoCwd, baseSha);
+    } else if (verdict.verdict === "PASS" && cwd) {
+      // PASS: commit the approved work onto the agent branch (H2 from the
+      // landing review) — the model is told not to commit, so the product
+      // layer does it. Without this the next step's clean-start reset
+      // would destroy the approved changes and ahead would stay 0.
+      const staged = await Bun.$`git -C ${cwd} status --porcelain`.quiet().text();
+      if (staged.trim()) {
+        await Bun.$`git -C ${cwd} add -A`.quiet();
+        await Bun.$`git -C ${cwd} -c user.email=loop@agent -c user.name=loop commit -qm ${`loop ${params.loopId} item ${item.id}`}`.quiet();
+      }
     }
   }
 

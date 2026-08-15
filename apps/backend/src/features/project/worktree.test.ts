@@ -66,3 +66,52 @@ describe("project worktree", () => {
     expect(await Bun.$`cat ${join(slot, "KEEP")}`.text()).toContain("mine");
   });
 });
+
+describe("mirror freshness (regression: fetch used to be a no-op)", () => {
+  test("ensureMirror advances the base branch when origin moves", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wt-fresh-"));
+    dirs.push(dir);
+    const src = await makeSourceRepo(dir);
+    const dataDir = join(dir, "data");
+
+    const mirror = await ensureMirror(dataDir, { ...PROJECT, repoUrl: src });
+    const before = await Bun.$`git -C ${mirror} rev-parse main`.quiet().text();
+
+    // Remote advances.
+    await Bun.$`echo more > ${join(src, "MORE.txt")}`.quiet();
+    await Bun.$`git -C ${src} add -A`.quiet();
+    await Bun.$`git -C ${src} -c user.email=t@t -c user.name=t commit -m more`.quiet();
+
+    await ensureMirror(dataDir, { ...PROJECT, repoUrl: src });
+    const after = await Bun.$`git -C ${mirror} rev-parse main`.quiet().text();
+    expect(after.trim()).not.toBe(before.trim());
+  });
+
+  test("agent branches survive the base refresh", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wt-keep-"));
+    dirs.push(dir);
+    const src = await makeSourceRepo(dir);
+    const dataDir = join(dir, "data");
+    const agentWs = join(dir, "agent-ws");
+    mkdirSync(agentWs, { recursive: true });
+
+    const mirror = await ensureMirror(dataDir, { ...PROJECT, repoUrl: src });
+    const wt = await ensureWorktree(mirror, agentWs, { ...PROJECT, repoUrl: src }, "agent-1");
+    await Bun.$`echo w > ${join(wt!, "W")}`.quiet();
+    await Bun.$`git -C ${wt} add -A`.quiet();
+    await Bun.$`git -C ${wt} -c user.email=t@t -c user.name=t commit -qm w`.quiet();
+
+    await Bun.$`echo more > ${join(src, "MORE")}`.quiet();
+    await Bun.$`git -C ${src} add -A`.quiet();
+    await Bun.$`git -C ${src} -c user.email=t@t -c user.name=t commit -qm m`.quiet();
+    await ensureMirror(dataDir, { ...PROJECT, repoUrl: src });
+
+    const has =
+      (
+        await Bun.$`git -C ${mirror} show-ref --verify refs/heads/agent/agent-1/p1`
+          .nothrow()
+          .quiet()
+      ).exitCode === 0;
+    expect(has).toBe(true);
+  });
+});

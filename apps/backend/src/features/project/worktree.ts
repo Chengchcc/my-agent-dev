@@ -26,16 +26,16 @@ export async function ensureMirror(dataDir: string, project: WorktreeProject): P
   if (existsSync(mirror)) {
     // The mirror's default refspec (+refs/*:refs/*) overwrites LOCAL heads
     // on every fetch: it deletes agent worktree branches the remote lacks
-    // (--prune) and reverts fast-forwarded base branches. Instead fetch
-    // each remote head with ff-only semantics into the local head — the
-    // base advances with the remote but never regresses, and local-only
+    // (--prune) and reverts fast-forwarded base branches. So refresh ONLY
+    // the project's base branch, ff-only, from the remote — the base
+    // advances with the remote but never regresses, and local-only
     // branches (agent worktrees) are untouchable from the fetch path.
-    const heads = (await Bun.$`git -C ${mirror} for-each-ref refs/remotes/origin`.quiet().text())
-      .split("\n")
-      .map((l) => l.replace("refs/remotes/origin/", "").trim())
-      .filter(Boolean);
-    for (const head of heads) {
-      await Bun.$`git -C ${mirror} fetch -q origin ${head}:${head}`.nothrow().quiet();
+    // NOTE: a mirror clone has no refs/remotes/origin/* namespace; the
+    // remote tip is reachable as FETCH_HEAD right after this fetch.
+    if (project.defaultBranch) {
+      await Bun.$`git -C ${mirror} fetch -q origin ${project.defaultBranch}:${project.defaultBranch}`
+        .nothrow()
+        .quiet();
     }
     return mirror;
   }

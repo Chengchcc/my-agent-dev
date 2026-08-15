@@ -54,7 +54,7 @@ import {
   projectRoutes,
   sqliteProjectAdapter,
 } from "../features/project/index.js";
-import { ensureMirror, ensureWorktree } from "../features/project/worktree.js";
+import { ensureMirror, ensureWorktree, removeWorktree } from "../features/project/worktree.js";
 import { createWorktreeOps } from "../features/project/worktree-ops.js";
 import { createRuntimeOpsService, opsRoutes } from "../features/runtime-ops/index.js";
 import { settingsRoutes } from "../features/settings/index.js";
@@ -159,13 +159,16 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const busyGuard: { check: ((agentId: string) => void) | undefined } = { check: undefined };
   // Workspace bridge (ADR 0003 decision 3): reconcile skills/mcp into the
   // agent workspace. Late-bound (mcpSvc is created further down).
-  const reconcileAgent: { fn: (agentId: string) => Promise<void> } = { fn: async () => {} };
+  const reconcileAgent: {
+    fn: (agentId: string, prevProjects?: string[]) => Promise<void>;
+  } = { fn: async () => {} };
   const agentSvc = createAgentSvc(db, config, larkBotRegistry, {
     onAgentCreate: async (agentId: string) => {
       await skillPackSvc.setAgentPacks(agentId, ["builtin"]);
       await reconcileAgent.fn(agentId);
     },
-    onAgentUpdate: (agentId: string) => reconcileAgent.fn(agentId),
+    onAgentUpdate: (agentId: string, prevProjects: string[]) =>
+      reconcileAgent.fn(agentId, prevProjects),
     assertNoActiveRun: (agentId: string) => busyGuard.check?.(agentId),
   });
 
@@ -534,9 +537,39 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     return ids;
   }
 
-  reconcileAgent.fn = async (agentId: string): Promise<void> => {
+  reconcileAgent.fn = async (agentId: string, prevProjects?: string[]): Promise<void> => {
     try {
       const agent = await agentSvc.getById(agentId);
+      // Detach cleanup (ADR 0023): projects removed since the previous
+      // config get their worktree + branch removed.
+      if (prevProjects) {
+        const removed = prevProjects.filter(
+          (pid) => !agent.config.runtime_config.projects.includes(pid),
+        );
+        for (const pid of removed) {
+          const project = projectSvc.getById(pid);
+          if (!project?.repoUrl) continue;
+          try {
+            const mirror = await ensureMirror(config.dataDir, {
+              projectId: project.projectId,
+              repoUrl: project.repoUrl,
+              defaultBranch: project.defaultBranch,
+            });
+            await removeWorktree(
+              mirror,
+              agent.workspacePath,
+              {
+                projectId: project.projectId,
+                repoUrl: project.repoUrl,
+                defaultBranch: project.defaultBranch,
+              },
+              agentId,
+            );
+          } catch (err) {
+            console.warn(`[reconcile] detach cleanup for ${agentId}/${pid} failed:`, err);
+          }
+        }
+      }
       const packs = await skillPackPort.listForAgent(agentId);
       const assignedKnowledge = agent.config.runtime_config.knowledge_packs
         .map((packId) => knowledgeSvc.getById(packId))

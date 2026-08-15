@@ -32,7 +32,7 @@ export function createAgentService(opts: {
   /** Optional hook called after agent creation (e.g. assign builtin skill pack). */
   onCreate?: (agentId: string) => Promise<void>;
   /** Optional hook called after agent update (e.g. workspace-bridge reconcile). */
-  onUpdate?: (agentId: string) => Promise<void>;
+  onUpdate?: (agentId: string, prevProjects: string[]) => Promise<void>;
   /** Absolute roots an HTTP workspace override may live under (D4: the
    *  workspaceRoot + the managed agents dir). Outside = ValidationError. */
   allowedWorkspaceRoots?: readonly string[];
@@ -142,7 +142,7 @@ export function createAgentService(opts: {
         ...(workspacePath !== existing.workspacePath ? { workspacePath } : {}),
       });
       if (!row) throw new AgentNotFoundError(id);
-      await onUpdate?.(id);
+      await onUpdate?.(id, existing.config.runtime_config.projects);
       return row;
     },
 

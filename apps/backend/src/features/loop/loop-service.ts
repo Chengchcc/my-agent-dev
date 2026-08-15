@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import type { BackendModelRef } from "@my-agent-team/agent-backend";
 import type { ItemState, LoopState, Verdict } from "@my-agent-team/loop";
@@ -6,10 +7,10 @@ import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";
 import type { CronJobService } from "../cron/service.js";
 import { loopStep } from "../loop/loop-step.js";
-import { resolveLoopPaths } from "../loop/resolve-paths.js";
 import type { ProjectPort } from "../project/ports.js";
 import type { SettingsService } from "../settings/index.js";
 import type { LoopStateStore } from "./loop-state-store.js";
+import { resolveLoopPaths } from "./resolve-paths.js";
 
 // ── Result types ───────────────────────────────────────────────────────────
 
@@ -79,13 +80,35 @@ export type RefineLoopResult = {
 
 // ── Query functions ────────────────────────────────────────────────────────
 
-export function listLoops(cronSvc: CronJobService, store: LoopStateStore): LoopListItem[] {
+/** Minimal LOOP.md frontmatter read for list views: projectId + agent. */
+function readLoopProjectId(loopConfigPath: string): string | null {
+  try {
+    const text = readFileSync(`${loopConfigPath}/LOOP.md`, "utf-8");
+    const m = text.match(/^---\s*\n([\s\S]*?)\n---/);
+    if (!m?.[1]) return null;
+    const pid = m[1].match(/^projectId:\s*(.+)$/m);
+    return pid?.[1]?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function listLoops(
+  cronSvc: CronJobService,
+  store: LoopStateStore,
+  dataDir = ".",
+): LoopListItem[] {
   return cronSvc.port.listCronJobs().map((job) => {
     const state = job.loopConfigPath ? store.load(job.cronJobId) : null;
     return {
       cronJobId: job.cronJobId,
       name: job.name,
       agentId: job.agentId,
+      // Project binding from LOOP.md frontmatter (read once per list; the
+      // file parse is cheap and cached by the OS).
+      projectId: job.loopConfigPath
+        ? readLoopProjectId(resolveLoopPaths(job, dataDir).loopConfigPath)
+        : null,
       cronExpr: job.cronExpr,
       enabled: job.enabled,
       loopConfigPath: job.loopConfigPath ?? null,

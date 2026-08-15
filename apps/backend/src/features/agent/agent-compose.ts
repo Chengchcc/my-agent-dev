@@ -21,7 +21,7 @@ export function createAgentSvc(
   opts?: {
     onAgentCreate?: (agentId: string) => Promise<void>;
     /** Called after agent update (workspace-bridge reconcile). */
-    onAgentUpdate?: (agentId: string) => Promise<void>;
+    onAgentUpdate?: (agentId: string, prevProjects: string[]) => Promise<void>;
     /** Throws when the agent has an active Agent Run. Defaults to no-op. */
     assertNoActiveRun?: (agentId: string) => void;
   },
