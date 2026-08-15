@@ -649,7 +649,16 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     },
   });
 
+  /** LOOP.md agent ids -> agent workspace paths (ADR 0023 P2). */
+  const resolveAgentWorkspace = async (id: string): Promise<string | null> => {
+    const agent = await agentSvc.getById(id).catch(() => null);
+    return agent?.workspacePath ?? null;
+  };
+  console.info(
+    `[bootstrap] loop steps now use per-agent worktrees; legacy clones under ${config.dataDir}/repos are no longer read and may be deleted manually`,
+  );
   const cronScheduler = createCronScheduler({
+    agentWorkspaceOf: resolveAgentWorkspace,
     cronSvc,
     config,
     convPort,
@@ -691,6 +700,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     agentRuns: agentRunRoutes({ db, agentRunService, agentRunExecution }),
     projects: projectRoutes(projectSvc),
     loops: loopRoutes({
+      agentWorkspaceOf: resolveAgentWorkspace,
       cronSvc,
       scheduler: cronScheduler,
       dataDir: config.dataDir,

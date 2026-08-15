@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import type { BackendModelRef, BackendRunOutcome } from "@my-agent-team/agent-backend";
 import type { LoopConfig, LoopState, Verdict } from "@my-agent-team/loop";
+import { ensureMirror, ensureWorktree } from "../project/worktree.js";
 import { loopReducer, parseLoopConfig, validateLoopMetaPatch } from "@my-agent-team/loop";
 import { isTerminalStatus } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
@@ -8,6 +9,7 @@ import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";
 import type { ProjectPort } from "../project/ports.js";
 import type { LoopStateStore } from "./loop-state-store.js";
+import { join } from "node:path";
 
 type ReviewAction = {
   itemId: string;
@@ -45,6 +47,9 @@ export interface LoopStepParams {
   /** The repo builtin skills dir (workflow authoring etc.); prepended to
    *  the generator's skill roots when provided. */
   builtinSkillsDir?: string;
+  /** Resolve a LOOP.md agent id to its workspace path (null = unknown
+   *  agent). Wired from the composition root via agentSvc. */
+  agentWorkspaceOf: (agentId: string) => Promise<string | null>;
 }
 
 /** Stable deterministic identities - Generator and Evaluator are fully
@@ -111,14 +116,19 @@ function denylistedFiles(files: string[], patterns: string[]): string[] {
   return files.filter((f) => patterns.some((p) => matchesGlob(f, p)));
 }
 
-/** Resolve (and materialize) the loop's cloned repo workspace. Exported so
- *  the composition root can bind Agent Run workspaces for loop scopes to the
- *  actual clone, not the loop-agent's own workspace. */
-export async function resolveRepoPath(
+/** Resolve the loop agent's (agent, project) worktree and hard-reset it to
+ *  the project's default branch - the per-step clean start (ADR 0023 P2;
+ *  replaces the retired per-step shallow clone). Returns null when the
+ *  loop has no projectId. */
+export async function resolveLoopWorktree(
   loopConfigPath: string,
-  projectPort: ProjectPort | undefined,
-  dataDir: string | undefined,
+  deps: {
+    projectPort: ProjectPort | undefined;
+    dataDir: string | undefined;
+    agentWorkspaceOf: (agentId: string) => Promise<string | null>;
+  },
 ): Promise<string | null> {
+  const { projectPort, dataDir, agentWorkspaceOf } = deps;
   if (!projectPort || !dataDir) return null;
   let cfg: LoopConfig | null;
   try {
@@ -132,20 +142,36 @@ export async function resolveRepoPath(
   if (!project?.repoUrl) {
     throw new Error(`loopStep: project ${projectId} has no repoUrl`);
   }
-  const repoPath = `${dataDir}/repos/${projectId}`;
-  const branch = project.defaultBranch ?? "main";
-  if (!existsSync(repoPath)) {
-    await Bun.$`git clone --depth 1 --branch ${branch} ${project.repoUrl} ${repoPath}`.quiet();
-  } else {
-    await Bun.$`git fetch origin`.cwd(repoPath).quiet();
-    await Bun.$`git checkout ${branch}`.cwd(repoPath).quiet();
-    await Bun.$`git reset --hard origin/${branch}`.cwd(repoPath).quiet();
+  const agentId = cfg?.agent || "default";
+  const agentWs = await agentWorkspaceOf(agentId);
+  if (!agentWs) {
+    throw new Error(`loopStep: LOOP.md agent "${agentId}" not found`);
   }
-  const ok =
-    (await Bun.$`git -C ${repoPath} rev-parse --is-inside-work-tree`.quiet().nothrow()).exitCode ===
-    0;
-  if (!ok) throw new Error(`loopStep: repoPath is not a git work tree: ${repoPath}`);
-  return repoPath;
+  const mirror = await ensureMirror(dataDir, {
+    projectId: project.projectId,
+    repoUrl: project.repoUrl,
+    defaultBranch: project.defaultBranch,
+  });
+  const wt = await ensureWorktree(
+    mirror,
+    agentWs,
+    {
+      projectId: project.projectId,
+      repoUrl: project.repoUrl,
+      defaultBranch: project.defaultBranch,
+    },
+    agentId,
+  );
+  if (!wt) {
+    throw new Error(`loopStep: worktree slot occupied at ${join(agentWs, "projects", projectId)}`);
+  }
+  // Clean start per step: the mirror was just fetched; the default branch
+  // ref there IS the remote tip.
+  const ref = project.defaultBranch
+    ? `refs/heads/${project.defaultBranch}`
+    : "refs/remotes/origin/HEAD";
+  await Bun.$`git -C ${wt} reset --hard ${ref}`.quiet();
+  return wt;
 }
 
 function actionToReducer(action: ReviewAction) {
@@ -246,7 +272,11 @@ export async function loopStep(params: LoopStepParams): Promise<LoopState> {
 }
 
 async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
-  const repoPath = await resolveRepoPath(params.loopConfigPath, params.projectPort, params.dataDir);
+  const cwd = await resolveLoopWorktree(params.loopConfigPath, {
+    projectPort: params.projectPort,
+    dataDir: params.dataDir,
+    agentWorkspaceOf: params.agentWorkspaceOf,
+  });
 
   // 1. Read state from DB
   let state = params.store.load(params.loopId);
@@ -323,16 +353,14 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
 
   const fixingItems = Object.values(state.items).filter((i) => i.step === "fixing");
 
-  // Fail closed: never run git mutations against the backend's own cwd.
-  const gitCwd = repoPath;
-  if (fixingItems.length > 0 && !gitCwd) {
+  // Fail closed: never run git mutations without a resolved worktree.
+  if (fixingItems.length > 0 && !cwd) {
     throw new Error(
-      "loopStep: cannot process fixing items without a resolved repoPath " +
-        "(check LOOP.md projectId, project.repoUrl, and that projectPort/dataDir are wired)",
+      "loopStep: cannot process fixing items without a resolved worktree " +
+        "(check LOOP.md projectId/agent, project.repoUrl, and that projectPort/dataDir are wired)",
     );
   }
-
-  const cwd = gitCwd!;
+  const repoCwd: string = cwd ?? ".";
 
   const git = params.gitRunner ?? {
     revParse: (cwd: string) => Bun.$`git rev-parse HEAD`.cwd(cwd).quiet(),
@@ -379,7 +407,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       break;
     }
 
-    const baseSha = (await git.revParse(cwd)).text().trim();
+    const baseSha = (await git.revParse(repoCwd)).text().trim();
 
     // ── Generator: one Agent Run per item, workflow-driven ──
     // The Loop seeds the workflow script (meta = this item's state); the
@@ -389,13 +417,13 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     const genMemberId = loopGeneratorMemberId(params.loopId);
     await ensureLoopScope(params.convPort, genConversationId, genMemberId, "default");
     const gitLog = await Bun.$`git log --oneline -5`
-      .cwd(cwd)
+      .cwd(repoCwd)
       .quiet()
       .text()
       .catch(() => "");
-    await Bun.write(`${cwd}/.workflows/loop.js`, seedLoopWorkflowScript(item)).catch(() => {});
+    await Bun.write(`${repoCwd}/.workflows/loop.js`, seedLoopWorkflowScript(item)).catch(() => {});
     const genPromptFull = [
-      buildGeneratorPrompt(item, genPrompt, { repoPath: cwd, gitLog }),
+      buildGeneratorPrompt(item, genPrompt, { repoPath: repoCwd, gitLog }),
       `# Workflow\nThe script at .workflows/loop.js carries this item's state in its meta block. ` +
         `Run it with the workflow_run tool (pass the script text). After the workflow completes, ` +
         `use the write tool to update the meta block in .workflows/loop.js: the item's step must ` +
@@ -422,7 +450,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       skillRoots: genSkillRoots,
       // Workspace is a Run execution fact: the Generator MUST run in the
       // cloned repo, not the loop-agent's own workspace.
-      workspace: { root: cwd, access: "read_write" },
+      workspace: { root: repoCwd, access: "read_write" },
       // Freeze the remaining daily budget on the Run: the child's workflow
       // executor gates subagent spawns against it.
       ...(dailyCap > 0 ? { workflowBudgetTokens: Math.max(0, dailyCap - spent) } : {}),
@@ -450,7 +478,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}:retry`,
         systemPrompt: genPrompt || undefined,
         skillRoots: genSkillRoots,
-        workspace: { root: cwd, access: "read_write" },
+        workspace: { root: repoCwd, access: "read_write" },
         ...(dailyCap > 0 ? { workflowBudgetTokens: Math.max(0, dailyCap - spent) } : {}),
       });
       if (retry.acquired && retry.run) {
@@ -476,8 +504,8 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       );
     }
 
-    const headSha = (await git.revParse(cwd)).text().trim();
-    const filesChanged = (await git.diff(cwd, baseSha, headSha)).text().trim();
+    const headSha = (await git.revParse(repoCwd)).text().trim();
+    const filesChanged = (await git.diff(repoCwd, baseSha, headSha)).text().trim();
 
     state = loopReducer(state, {
       type: "GENERATOR_DONE",
@@ -498,7 +526,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
           evidence: "denylist check (pre-verifier)",
         },
       });
-      await git.resetHard(cwd, baseSha);
+      await git.resetHard(repoCwd, baseSha);
       continue;
     }
 
@@ -540,7 +568,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     // Rollback on REJECT/ESCALATE
     const updatedItem = state.items[item.id];
     if (updatedItem && (updatedItem.step === "fixing" || updatedItem.step === "inbox")) {
-      await git.resetHard(cwd, baseSha);
+      await git.resetHard(repoCwd, baseSha);
     }
   }
 

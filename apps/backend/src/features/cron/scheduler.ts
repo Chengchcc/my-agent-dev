@@ -36,6 +36,8 @@ export function createCronScheduler(deps: {
   cronSvc: CronJobService;
   config: BackendConfig;
   convPort: ConversationPort;
+  /** Resolve LOOP.md agent ids to workspace paths (ADR 0023 P2). */
+  agentWorkspaceOf: (agentId: string) => Promise<string | null>;
   agentRunService: AgentRunService;
   agentRunExecution: AgentRunExecutionService;
   resolveDefaultModel: (agentId: string) => Promise<BackendModelRef>;
@@ -165,6 +167,7 @@ export function createCronScheduler(deps: {
         modelId,
       }),
       builtinSkillsDir: deps.config.builtinSkillsDir,
+      agentWorkspaceOf: deps.agentWorkspaceOf,
     };
     let attempt = 0;
     let currentJob = job;

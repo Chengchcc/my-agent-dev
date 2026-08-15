@@ -78,6 +78,7 @@ function makeApp(activeRuns = false) {
         } as never,
         agentRunExecution: {} as never,
         resolveModel: async () => ({ kind: "anthropic", id: "test" }) as never,
+        agentWorkspaceOf: async () => null,
       }),
     );
 

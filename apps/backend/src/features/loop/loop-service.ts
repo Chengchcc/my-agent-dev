@@ -278,6 +278,7 @@ export async function runLoop(
     resolveModel: (modelName: string) => Promise<BackendModelRef>;
     /** Repo builtin skills dir; forwarded to the Loop step. */
     builtinSkillsDir?: string;
+    agentWorkspaceOf: (agentId: string) => Promise<string | null>;
   },
   id: string,
 ): Promise<LoopState | null> {
@@ -305,6 +306,7 @@ export async function runLoop(
     agentRunExecution,
     resolveModel,
     ...(deps.builtinSkillsDir ? { builtinSkillsDir: deps.builtinSkillsDir } : {}),
+    agentWorkspaceOf: deps.agentWorkspaceOf,
   });
 }
 
@@ -326,6 +328,7 @@ export async function reviewLoop(
     resolveModel: (modelName: string) => Promise<BackendModelRef>;
     /** Repo builtin skills dir; forwarded to the Loop step. */
     builtinSkillsDir?: string;
+    agentWorkspaceOf: (agentId: string) => Promise<string | null>;
   },
   id: string,
   input: ReviewInput,
@@ -359,6 +362,7 @@ export async function reviewLoop(
     agentRunExecution,
     resolveModel,
     ...(deps.builtinSkillsDir ? { builtinSkillsDir: deps.builtinSkillsDir } : {}),
+    agentWorkspaceOf: deps.agentWorkspaceOf,
   });
 
   return { state, action: input.verdict };

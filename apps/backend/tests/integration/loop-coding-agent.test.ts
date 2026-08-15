@@ -237,7 +237,6 @@ describe("Loop with a REAL coding-agent child", () => {
               name: "test",
               repoUrl: join(dataDir, "remote.git"),
               defaultBranch: "main",
-              autoOrchestrate: false,
               createdAt: 0,
               updatedAt: 0,
             }
@@ -260,6 +259,7 @@ describe("Loop with a REAL coding-agent child", () => {
         backendKind: "coding_agent",
         modelId,
       }),
+      agentWorkspaceOf: async () => join(dataDir, "loop-agent-ws"),
     });
 
     // ── State machine: generator + evaluator ran, verdict PASS ──
@@ -270,7 +270,7 @@ describe("Loop with a REAL coding-agent child", () => {
     expect(item.result?.verdict).toBe("PASS");
 
     // ── The generator REALLY modified and committed the clone ──
-    const clone = join(dataDir, "repos", "test-project");
+    const clone = join(dataDir, "loop-agent-ws", "projects", "test-project");
     const log = await Bun.$`git -C ${clone} log --oneline -1`.quiet().text();
     expect(log).toContain("phase5-change");
     const diff = await Bun.$`git -C ${clone} diff HEAD~1..HEAD --name-only`.quiet().text();

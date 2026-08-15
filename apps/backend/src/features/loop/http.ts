@@ -34,6 +34,7 @@ export function loopRoutes(input: {
   agentRunExecution: AgentRunExecutionService;
   resolveModel: (modelName: string) => Promise<BackendModelRef>;
   settingsSvc?: SettingsService;
+  agentWorkspaceOf: (agentId: string) => Promise<string | null>;
 }) {
   const {
     cronSvc,
@@ -46,10 +47,12 @@ export function loopRoutes(input: {
     agentRunExecution,
     resolveModel,
     settingsSvc,
+    agentWorkspaceOf,
   } = input;
 
   const loopStepDeps = {
     dataDir,
+    agentWorkspaceOf,
     store,
     projectPort,
     convPort,
