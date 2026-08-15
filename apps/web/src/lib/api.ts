@@ -140,6 +140,14 @@ export const api = {
   listSurfaces: () => unwrap(client.api.ops.surfaces.get()),
   // Projects
   listProjects: () => unwrap(client.api.projects.get()),
+  getProject: (id: string) => unwrap(client.api.projects({ id }).get()),
+  listProjectWorktrees: (id: string) => unwrap(client.api.projects({ id }).worktrees.get()),
+  projectWorktreeDiff: (id: string, agentId: string) =>
+    unwrap(client.api.projects({ id }).worktrees({ agentId }).diff.get()),
+  projectWorktreeFastForward: (id: string, agentId: string, push: boolean) =>
+    unwrap(client.api.projects({ id }).worktrees({ agentId })["fast-forward"].post({ push })),
+  projectWorktreeMerge: (id: string, agentId: string, push: boolean) =>
+    unwrap(client.api.projects({ id }).worktrees({ agentId }).merge.post({ push })),
   createProject: (body: { name: string; repoUrl?: string; defaultBranch?: string }) =>
     unwrap(client.api.projects.post(body)),
   updateProject: (
