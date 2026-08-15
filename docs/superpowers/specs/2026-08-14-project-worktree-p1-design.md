@@ -140,9 +140,9 @@ for projectId of agent.config.runtime_config.projects:
 
 ## 6. 验收清单
 
-- [ ] agent.yml `projects` 声明 → worktree 落位 + bridge 文件存在(幂等)
-- [ ] 会话带 projectId 的 run cwd = worktree(context 不变)
-- [ ] 未声明 project 的 run 显式失败,错误可操作
-- [ ] detach 清理 worktree + 分支;project 删除被 attach 阻止
-- [ ] `grep -rn autoOrchestrate apps/backend/src` 零命中
-- [ ] 全仓 typecheck/lint/test 绿 + audit 14/14
+- [x] agent.yml `projects` 声明 → worktree 落位 + bridge 文件存在(幂等)
+- [x] 会话带 projectId 的 run cwd = worktree(context 不变)
+- [x] 未声明 project 的 run 显式失败,错误可操作
+- [x] detach 清理 worktree + 分支;project 删除被 attach 阻止
+- [x] `grep -rn autoOrchestrate apps/backend/src` 零命中
+- [x] 全仓 typecheck/lint/test 绿 + audit 14/14

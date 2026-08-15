@@ -140,19 +140,14 @@ export const api = {
   listSurfaces: () => unwrap(client.api.ops.surfaces.get()),
   // Projects
   listProjects: () => unwrap(client.api.projects.get()),
-  createProject: (body: {
-    name: string;
-    repoUrl?: string;
-    defaultBranch?: string;
-    autoOrchestrate?: boolean;
-  }) => unwrap(client.api.projects.post(body)),
+  createProject: (body: { name: string; repoUrl?: string; defaultBranch?: string }) =>
+    unwrap(client.api.projects.post(body)),
   updateProject: (
     id: string,
     body: {
       name?: string;
       repoUrl?: string | null;
       defaultBranch?: string | null;
-      autoOrchestrate?: boolean;
     },
   ) => unwrap(client.api.projects({ id }).patch(body)),
   deleteProject: (id: string) => unwrap(client.api.projects({ id }).delete()),
