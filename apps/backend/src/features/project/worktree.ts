@@ -23,9 +23,20 @@ function branchName(agentId: string, projectId: string): string {
 export async function ensureMirror(dataDir: string, project: WorktreeProject): Promise<string> {
   const mirror = join(dataDir, "projects", `${project.projectId}.git`);
   const tmp = `${mirror}.tmp`;
-  mkdirSync(join(dataDir, "projects"), { recursive: true });
   if (existsSync(mirror)) {
-    await Bun.$`git -C ${mirror} fetch --prune origin`.quiet();
+    // The mirror's default refspec (+refs/*:refs/*) overwrites LOCAL heads
+    // on every fetch: it deletes agent worktree branches the remote lacks
+    // (--prune) and reverts fast-forwarded base branches. Instead fetch
+    // each remote head with ff-only semantics into the local head — the
+    // base advances with the remote but never regresses, and local-only
+    // branches (agent worktrees) are untouchable from the fetch path.
+    const heads = (await Bun.$`git -C ${mirror} for-each-ref refs/remotes/origin`.quiet().text())
+      .split("\n")
+      .map((l) => l.replace("refs/remotes/origin/", "").trim())
+      .filter(Boolean);
+    for (const head of heads) {
+      await Bun.$`git -C ${mirror} fetch -q origin ${head}:${head}`.nothrow().quiet();
+    }
     return mirror;
   }
   if (existsSync(tmp)) rmSync(tmp, { recursive: true, force: true });

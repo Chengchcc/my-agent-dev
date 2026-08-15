@@ -1,15 +1,14 @@
-import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { BackendModelRef, BackendRunOutcome } from "@my-agent-team/agent-backend";
 import type { LoopConfig, LoopState, Verdict } from "@my-agent-team/loop";
-import { ensureMirror, ensureWorktree } from "../project/worktree.js";
 import { loopReducer, parseLoopConfig, validateLoopMetaPatch } from "@my-agent-team/loop";
 import { isTerminalStatus } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";
 import type { ProjectPort } from "../project/ports.js";
+import { ensureMirror, ensureWorktree } from "../project/worktree.js";
 import type { LoopStateStore } from "./loop-state-store.js";
-import { join } from "node:path";
 
 type ReviewAction = {
   itemId: string;
