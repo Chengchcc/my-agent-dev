@@ -15,6 +15,7 @@ import {
   createRunTokenRegistry,
   type RunTokenRegistry,
 } from "../product-tools/run-token-registry.js";
+import { sqliteProjectAdapter } from "../project/adapter-sqlite.js";
 import { sqliteAgentRunAdapter } from "./adapter-sqlite.js";
 import type { AgentRun } from "./domain.js";
 import { createAgentRunExecutionService, runEventStreamFor } from "./execution.js";
@@ -147,7 +148,20 @@ function makeExecution(
       },
     },
     idGen: { ulid: () => `id-${Math.random().toString(36).slice(2, 12)}` },
-    resolveWorkspace: async () => ({ root: dataDir, access: "read_write" }),
+    resolveWorkspace: async ({ conversationId: cid }) => {
+      // Mirrors the composition root: a project-bound conversation maps
+      // to the agent's worktree; not attached = explicit failure.
+      const convRow = convPort.getConversation(cid);
+      if (convRow?.projectId) {
+        if (convRow.projectId !== "p-attached") {
+          throw new Error(
+            `agent has not attached project ${convRow.projectId}; attach it via the agent update API (agent.yml runtime_config.projects)`,
+          );
+        }
+        return { root: join(dataDir, "projects", convRow.projectId), access: "read_write" };
+      }
+      return { root: dataDir, access: "read_write" };
+    },
     productToolsEntrypoint: "sse:http://127.0.0.1:1/mcp",
     productToolsTokenRegistry: tokenRegistry ?? createRunTokenRegistry(),
   });
@@ -950,5 +964,90 @@ describe("agent run execution (Run-centric)", () => {
     await dispatchPromise;
     expect(fake.stopCalls).toEqual([runId]);
     await waitForTerminal(runId);
+  }, 15_000);
+
+  test("project-bound conversation runs with cwd = the worktree", async () => {
+    mkdirSync(join(dataDir, "projects", "p-attached"), { recursive: true });
+    const projectPort = sqliteProjectAdapter(db);
+    for (const pid of ["p-attached", "p-other"]) {
+      if (!projectPort.getProject(pid)) {
+        projectPort.createProject({
+          projectId: pid,
+          name: pid,
+          repoUrl: null,
+          defaultBranch: null,
+          createdAt: Date.now(),
+        });
+      }
+    }
+    convPort.createConversation({
+      conversationId: "conv-proj",
+      createdAt: Date.now(),
+      projectId: "p-attached",
+    });
+    convPort.addMember({
+      conversationId: "conv-proj",
+      memberId: agentMemberId,
+      kind: "agent",
+      agentId: "agent-1",
+      joinedAt: Date.now(),
+    });
+    const fake = createFakeDaemon();
+    const execution = makeExecution(fake);
+    const acquired = await backend.enqueueAndAcquire({
+      conversationId: "conv-proj",
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "in project" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "proj-1",
+    });
+    await execution.dispatch(acquired.run!.runId);
+    await waitForTerminal(acquired.run!.runId);
+    expect(fake.executeCalls[0]?.workspaceRoot).toBe(join(dataDir, "projects", "p-attached"));
+  }, 15_000);
+
+  test("project-bound conversation with unattached project fails explicitly", async () => {
+    const projectPort2 = sqliteProjectAdapter(db);
+    if (!projectPort2.getProject("p-other")) {
+      projectPort2.createProject({
+        projectId: "p-other",
+        name: "p-other",
+        repoUrl: null,
+        defaultBranch: null,
+        createdAt: Date.now(),
+      });
+    }
+    convPort.createConversation({
+      conversationId: "conv-unattached",
+      createdAt: Date.now(),
+      projectId: "p-other",
+    });
+    convPort.addMember({
+      conversationId: "conv-unattached",
+      memberId: agentMemberId,
+      kind: "agent",
+      agentId: "agent-1",
+      joinedAt: Date.now(),
+    });
+    const fake = createFakeDaemon();
+    const execution = makeExecution(fake);
+    const acquired = await backend.enqueueAndAcquire({
+      conversationId: "conv-unattached",
+      agentMemberId,
+      backendKind: "coding_agent",
+      mode: "normal",
+      message: { role: "user", text: "nope" },
+      defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+      configRevision: 1,
+      idempotencyKey: "proj-2",
+    });
+    await expect(execution.dispatch(acquired.run!.runId)).rejects.toThrow(
+      /has not attached project p-other/,
+    );
+    const run = await waitForTerminal(acquired.run!.runId);
+    expect(run.status).toBe("failed");
   }, 15_000);
 });

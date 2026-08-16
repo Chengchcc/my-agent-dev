@@ -34,6 +34,7 @@ export function loopRoutes(input: {
   agentRunExecution: AgentRunExecutionService;
   resolveModel: (modelName: string) => Promise<BackendModelRef>;
   settingsSvc?: SettingsService;
+  agentWorkspaceOf: (agentId: string) => Promise<string | null>;
 }) {
   const {
     cronSvc,
@@ -46,10 +47,12 @@ export function loopRoutes(input: {
     agentRunExecution,
     resolveModel,
     settingsSvc,
+    agentWorkspaceOf,
   } = input;
 
   const loopStepDeps = {
     dataDir,
+    agentWorkspaceOf,
     store,
     projectPort,
     convPort,
@@ -60,7 +63,7 @@ export function loopRoutes(input: {
 
   return new Elysia()
     .get("/api/loops", () => {
-      return { loops: listLoops(cronSvc, store) };
+      return { loops: listLoops(cronSvc, store, dataDir) };
     })
     .get("/api/work/today", () => {
       return { reviewQueue: getTodayWork(cronSvc, store) };
@@ -82,6 +85,7 @@ export function loopRoutes(input: {
             name: body.name,
             intent: body.intent,
             projectId: body.projectId,
+            agent: body.agent,
             cronExpr: body.cronExpr,
           },
         );
@@ -93,6 +97,7 @@ export function loopRoutes(input: {
           name: t.String(),
           intent: t.Optional(t.String()),
           projectId: t.Optional(t.String()),
+          agent: t.Optional(t.String({ minLength: 1 })),
           cronExpr: t.Optional(t.String()),
         }),
       },

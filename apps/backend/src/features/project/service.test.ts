@@ -101,14 +101,14 @@ describe("ProjectService", () => {
     expect(() => svc.update(p2.projectId, { name: p1.name })).toThrow(ValidationError);
   });
 
-  test("remove succeeds", () => {
+  test("remove succeeds", async () => {
     const p = svc.createProject({ name: `remove-${Date.now()}` });
-    svc.remove(p.projectId);
+    await svc.remove(p.projectId);
     expect(svc.exists(p.projectId)).toBe(false);
   });
 
-  test("remove throws ProjectNotFoundError for missing", () => {
-    expect(() => svc.remove("nonexistent")).toThrow(ProjectNotFoundError);
+  test("remove throws ProjectNotFoundError for missing", async () => {
+    await expect(svc.remove("nonexistent")).rejects.toThrow(ProjectNotFoundError);
   });
 
   test("port is exposed", () => {

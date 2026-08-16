@@ -5,7 +5,6 @@ export interface CreateProjectRecord {
   name: string;
   repoUrl: string | null;
   defaultBranch: string | null;
-  autoOrchestrate?: boolean;
   createdAt: number;
 }
 
@@ -13,7 +12,6 @@ export interface UpdateProjectRecord {
   name?: string;
   repoUrl?: string | null;
   defaultBranch?: string | null;
-  autoOrchestrate?: boolean;
   updatedAt: number;
 }
 

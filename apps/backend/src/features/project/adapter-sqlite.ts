@@ -18,8 +18,6 @@ export function sqliteProjectAdapter(db: Database): ProjectPort {
           name: input.name,
           repoUrl: input.repoUrl,
           defaultBranch: input.defaultBranch,
-          autoOrchestrate:
-            input.autoOrchestrate !== undefined ? schema.boolToInt(input.autoOrchestrate) : 0,
           createdAt: input.createdAt,
           updatedAt: input.createdAt,
         })
@@ -48,8 +46,6 @@ export function sqliteProjectAdapter(db: Database): ProjectPort {
       if (patch.name !== undefined) sets.name = patch.name;
       if (patch.repoUrl !== undefined) sets.repoUrl = patch.repoUrl;
       if (patch.defaultBranch !== undefined) sets.defaultBranch = patch.defaultBranch;
-      if (patch.autoOrchestrate !== undefined)
-        sets.autoOrchestrate = schema.boolToInt(patch.autoOrchestrate);
 
       if (Object.keys(sets).length === 0) {
         return this.getProject(projectId);

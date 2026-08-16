@@ -24,6 +24,7 @@ export type LarkSetupSession = ApiReturn<typeof api.larkSetup>;
 export type AgentRow = ApiReturn<typeof api.listAgents>[number] & {
   mcpServers?: Array<{ serverId: string; enabled: boolean }>;
   knowledgePacks?: string[];
+  projects?: string[];
 };
 export type AgentRunDetail = ApiReturn<typeof api.getAgentRun>;
 export type AgentRuntimeStatus = ApiReturn<typeof api.getAgentRuntime>;
@@ -82,6 +83,7 @@ export const api = {
     unwrap(client.api.conversations.get({ query: agentId ? { agentId } : undefined })),
   createConversation: (body: {
     conversationId?: string;
+    projectId?: string;
     members: Array<{
       memberId?: string;
       kind: "agent" | "human";
@@ -138,19 +140,22 @@ export const api = {
   listSurfaces: () => unwrap(client.api.ops.surfaces.get()),
   // Projects
   listProjects: () => unwrap(client.api.projects.get()),
-  createProject: (body: {
-    name: string;
-    repoUrl?: string;
-    defaultBranch?: string;
-    autoOrchestrate?: boolean;
-  }) => unwrap(client.api.projects.post(body)),
+  getProject: (id: string) => unwrap(client.api.projects({ id }).get()),
+  listProjectWorktrees: (id: string) => unwrap(client.api.projects({ id }).worktrees.get()),
+  projectWorktreeDiff: (id: string, agentId: string) =>
+    unwrap(client.api.projects({ id }).worktrees({ agentId }).diff.get()),
+  projectWorktreeFastForward: (id: string, agentId: string, push: boolean) =>
+    unwrap(client.api.projects({ id }).worktrees({ agentId })["fast-forward"].post({ push })),
+  projectWorktreeMerge: (id: string, agentId: string, push: boolean) =>
+    unwrap(client.api.projects({ id }).worktrees({ agentId }).merge.post({ push })),
+  createProject: (body: { name: string; repoUrl?: string; defaultBranch?: string }) =>
+    unwrap(client.api.projects.post(body)),
   updateProject: (
     id: string,
     body: {
       name?: string;
       repoUrl?: string | null;
       defaultBranch?: string | null;
-      autoOrchestrate?: boolean;
     },
   ) => unwrap(client.api.projects({ id }).patch(body)),
   deleteProject: (id: string) => unwrap(client.api.projects({ id }).delete()),

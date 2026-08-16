@@ -23,6 +23,8 @@ export const agentConfigSchema = z.object({
       .array(z.object({ server_id: z.string().min(1), enabled: z.boolean() }))
       .default([]),
     knowledge_packs: z.array(z.string()).default([]),
+    /** Attached projects (ADR 0023): each materializes a worktree. */
+    projects: z.array(z.string().min(1)).default([]),
   }),
   lark: z.object({
     enabled: z.boolean(),
@@ -47,6 +49,7 @@ export function buildAgentConfig(input: {
   maxSteps?: number;
   mcpServers?: Array<{ serverId: string; enabled: boolean }>;
   knowledgePacks?: string[];
+  projects?: string[];
   lark?: {
     enabled?: boolean;
     appId?: string;
@@ -80,6 +83,7 @@ export function buildAgentConfig(input: {
         prev?.runtime_config.mcp_servers ??
         [],
       knowledge_packs: input.knowledgePacks ?? prev?.runtime_config.knowledge_packs ?? [],
+      projects: input.projects ?? prev?.runtime_config.projects ?? [],
     },
     lark: {
       enabled: input.lark?.enabled ?? prev?.lark.enabled ?? false,
@@ -115,6 +119,8 @@ export function serializeAgentYaml(config: AgentConfig): string {
     ...rc.mcp_servers.map((s) => `    - server_id: ${q(s.server_id)}\n      enabled: ${s.enabled}`),
     "  knowledge_packs:",
     ...rc.knowledge_packs.map((p) => `    - ${q(p)}`),
+    "  projects:",
+    ...rc.projects.map((p) => `    - ${q(p)}`),
     "lark:",
     `  enabled: ${lk.enabled}`,
     `  app_id: ${q(lk.app_id)}`,

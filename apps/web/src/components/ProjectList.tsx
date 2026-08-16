@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -47,10 +48,10 @@ export function ProjectList() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {projects.map((project) => (
           <div key={project.projectId} className="relative group">
-            <div
+            <Link
+              href={`/team/projects/${project.projectId}`}
               className="block border border-(--hairline) rounded-lg bg-(--canvas) p-8
-                         "
-              style={{}}
+                         hover:border-(--primary) transition-colors"
             >
               <h3 className="text-xl font-normal text-(--ink-strong) tracking-tight font-sans">
                 {project.name}
@@ -77,7 +78,7 @@ export function ProjectList() {
                   day: "numeric",
                 })}
               </div>
-            </div>
+            </Link>
 
             {/* Edit / Delete controls */}
             <div className="absolute top-3 right-3 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity">

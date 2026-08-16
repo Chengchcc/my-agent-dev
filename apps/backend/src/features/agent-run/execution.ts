@@ -147,6 +147,9 @@ export function createAgentRunExecutionService(
    *  subscription. Removed when the run reaches a terminal state. */
   const liveRuns = new Map<string, LiveRun>();
   const inflight = new Set<string>();
+  /** Worktree roots with a live dispatch (ADR 0023 §5): same-root runs
+   *  queue instead of racing the same checkout. Keyed by workspace root. */
+  const rootLocks = new Map<string, Promise<void>>();
   /** Dispatch promises by runId: dispose() drains them AFTER the children
    *  are dead so the DB is never closed mid-finalize. */
   const inflightPromises = new Map<string, Promise<void>>();
@@ -510,7 +513,29 @@ export function createAgentRunExecutionService(
           "agent-run",
           `input_claimed runId=${runId} inputId=${claimed.input.inputId} mode=${claimed.input.mode}`,
         );
-        const { outcome, segment, drain } = await deliverInput(run, claimed, stage);
+        // Same-worktree runs serialize (ADR 0023 §5): a shared checkout
+        // must never host two concurrent children.
+        const workspace0 =
+          run.workspace ??
+          (await resolveWorkspace({
+            conversationId: run.conversationId,
+            agentMemberId: run.agentMemberId,
+          }));
+        const prevLock = rootLocks.get(workspace0.root) ?? Promise.resolve();
+        const { promise: turn, resolve: releaseTurn } = Promise.withResolvers<void>();
+        rootLocks.set(
+          workspace0.root,
+          prevLock.then(() => turn),
+        );
+        await prevLock.catch(() => {});
+        let deliverResult: Awaited<ReturnType<typeof deliverInput>>;
+        try {
+          deliverResult = await deliverInput(run, claimed, stage);
+        } finally {
+          releaseTurn();
+          if (rootLocks.get(workspace0.root) === turn) rootLocks.delete(workspace0.root);
+        }
+        const { outcome, segment, drain } = deliverResult;
         if (outcome) {
           stage.name = "settle_outcome";
           debugLog("agent-run", `outcome runId=${runId} status=${outcome.status}`);

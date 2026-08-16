@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import type { BackendModelRef } from "@my-agent-team/agent-backend";
 import type { ItemState, LoopState, Verdict } from "@my-agent-team/loop";
@@ -6,10 +7,10 @@ import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";
 import type { CronJobService } from "../cron/service.js";
 import { loopStep } from "../loop/loop-step.js";
-import { resolveLoopPaths } from "../loop/resolve-paths.js";
 import type { ProjectPort } from "../project/ports.js";
 import type { SettingsService } from "../settings/index.js";
 import type { LoopStateStore } from "./loop-state-store.js";
+import { resolveLoopPaths } from "./resolve-paths.js";
 
 // ── Result types ───────────────────────────────────────────────────────────
 
@@ -79,13 +80,35 @@ export type RefineLoopResult = {
 
 // ── Query functions ────────────────────────────────────────────────────────
 
-export function listLoops(cronSvc: CronJobService, store: LoopStateStore): LoopListItem[] {
+/** Minimal LOOP.md frontmatter read for list views: projectId + agent. */
+function readLoopProjectId(loopConfigPath: string): string | null {
+  try {
+    const text = readFileSync(`${loopConfigPath}/LOOP.md`, "utf-8");
+    const m = text.match(/^---\s*\n([\s\S]*?)\n---/);
+    if (!m?.[1]) return null;
+    const pid = m[1].match(/^projectId:\s*(.+)$/m);
+    return pid?.[1]?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function listLoops(
+  cronSvc: CronJobService,
+  store: LoopStateStore,
+  dataDir = ".",
+): LoopListItem[] {
   return cronSvc.port.listCronJobs().map((job) => {
     const state = job.loopConfigPath ? store.load(job.cronJobId) : null;
     return {
       cronJobId: job.cronJobId,
       name: job.name,
       agentId: job.agentId,
+      // Project binding from LOOP.md frontmatter (read once per list; the
+      // file parse is cheap and cached by the OS).
+      projectId: job.loopConfigPath
+        ? readLoopProjectId(resolveLoopPaths(job, dataDir).loopConfigPath)
+        : null,
       cronExpr: job.cronExpr,
       enabled: job.enabled,
       loopConfigPath: job.loopConfigPath ?? null,
@@ -151,6 +174,7 @@ export interface CreateLoopInput {
   name: string;
   intent?: string;
   projectId?: string;
+  agent?: string;
   cronExpr?: string;
 }
 
@@ -214,7 +238,7 @@ export async function createLoop(
   }
 
   // 4. Deterministic LOOP.md (intent is documented, not interpreted)
-  await writeDefaultLoopMd(dir, input.name, input.projectId, settingsSvc);
+  await writeDefaultLoopMd(dir, input.name, input.projectId, input.agent, settingsSvc);
 
   return readGenerationResult(dir, job.cronJobId, job.name, job.cronExpr, job.loopConfigPath);
 }
@@ -242,7 +266,7 @@ export async function refineLoop(
   const dir = `${dataDir}/${job.loopConfigPath}`;
 
   await safeRm(`${dir}/LOOP.md`);
-  await writeDefaultLoopMd(dir, job.name, undefined, settingsSvc);
+  await writeDefaultLoopMd(dir, job.name, undefined, undefined, settingsSvc);
 
   let preview = "";
   try {
@@ -277,6 +301,7 @@ export async function runLoop(
     resolveModel: (modelName: string) => Promise<BackendModelRef>;
     /** Repo builtin skills dir; forwarded to the Loop step. */
     builtinSkillsDir?: string;
+    agentWorkspaceOf: (agentId: string) => Promise<string | null>;
   },
   id: string,
 ): Promise<LoopState | null> {
@@ -304,6 +329,7 @@ export async function runLoop(
     agentRunExecution,
     resolveModel,
     ...(deps.builtinSkillsDir ? { builtinSkillsDir: deps.builtinSkillsDir } : {}),
+    agentWorkspaceOf: deps.agentWorkspaceOf,
   });
 }
 
@@ -325,6 +351,7 @@ export async function reviewLoop(
     resolveModel: (modelName: string) => Promise<BackendModelRef>;
     /** Repo builtin skills dir; forwarded to the Loop step. */
     builtinSkillsDir?: string;
+    agentWorkspaceOf: (agentId: string) => Promise<string | null>;
   },
   id: string,
   input: ReviewInput,
@@ -358,6 +385,7 @@ export async function reviewLoop(
     agentRunExecution,
     resolveModel,
     ...(deps.builtinSkillsDir ? { builtinSkillsDir: deps.builtinSkillsDir } : {}),
+    agentWorkspaceOf: deps.agentWorkspaceOf,
   });
 
   return { state, action: input.verdict };
@@ -371,6 +399,7 @@ async function writeDefaultLoopMd(
   dir: string,
   name: string,
   projectId: string | undefined,
+  agent: string | undefined,
   settingsSvc?: SettingsService,
 ): Promise<void> {
   // LOOP.md stores the FULL canonical model ID (<provider>/<model>) - the
@@ -394,6 +423,7 @@ async function writeDefaultLoopMd(
     [
       "---",
       `projectId: ${projectId ?? ""}`,
+      `agent: ${agent ?? "default"}`,
       "generator:",
       `  model: ${genModel}`,
       '  systemPrompt: ""',

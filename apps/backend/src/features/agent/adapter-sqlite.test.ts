@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { openDb } from "../../infra/sqlite/db.js";
 import { sqliteAgentAdapter } from "./adapter-sqlite.js";
-import { buildAgentConfig } from "./agent-config.js";
+import { buildAgentConfig, serializeAgentYaml } from "./agent-config.js";
 
 const db = openDb(":memory:");
 const adapter = sqliteAgentAdapter(db);
@@ -74,5 +74,21 @@ describe("sqliteAgentAdapter", () => {
     });
     expect(updated).not.toBeNull();
     expect(updated?.config.lark.profile_ref).toBe("agent:a1");
+  });
+});
+
+describe("agent config projects field (ADR 0023)", () => {
+  test("round-trips through the serialized agent.yml form", () => {
+    const config = cfg("a-projects", "ProjAgent", { projects: ["p1", "p2"] });
+    expect(config.runtime_config.projects).toEqual(["p1", "p2"]);
+    const yaml = serializeAgentYaml(config);
+    expect(yaml).toContain("  projects:");
+    expect(yaml).toContain('- "p1"');
+  });
+
+  test("prev fallback keeps existing projects when patch omits them", () => {
+    const prev = cfg("a-prev", "Prev", { projects: ["p1"] });
+    const next = buildAgentConfig({ id: "a-prev", name: "Prev", prev });
+    expect(next.runtime_config.projects).toEqual(["p1"]);
   });
 });

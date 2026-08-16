@@ -212,10 +212,12 @@ export function ListRowCard({
         {secondaryActions && <div className="mt-2 flex items-center gap-2">{secondaryActions}</div>}
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <span className="flex items-center gap-1.5 text-(--text-cap) text-(--mute)">
-          <span className="size-1.5 rounded-full" style={{ background: statusDot }} />
-          {statusText}
-        </span>
+        {status && (
+          <span className="flex items-center gap-1.5 text-(--text-cap) text-(--mute)">
+            <span className="size-1.5 rounded-full" style={{ background: statusDot }} />
+            {statusText}
+          </span>
+        )}
         {actions}
       </div>
     </div>

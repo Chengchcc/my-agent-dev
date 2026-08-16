@@ -1,4 +1,5 @@
 import {
+  ConflictError,
   ValidationError as DomainValidationError,
   NotFoundError,
 } from "../../infra/domain-errors.js";
@@ -18,6 +19,9 @@ export interface ProjectServiceDeps {
   port: ProjectPort;
   idGen: () => string;
   now?: () => number;
+  /** Agent configs for the detach guard (ADR 0023): deleting a project
+   *  that agents still attach to is refused with their ids. */
+  listAgentConfigs?: () => Promise<Array<{ id: string; projects: string[] }>>;
 }
 
 export function createProjectService(deps: ProjectServiceDeps) {
@@ -31,7 +35,6 @@ export function createProjectService(deps: ProjectServiceDeps) {
       name: string;
       repoUrl?: string | null;
       defaultBranch?: string | null;
-      autoOrchestrate?: boolean;
     }): ProjectRow {
       const name = input.name.trim();
       if (!name) throw new ValidationError("project name required");
@@ -41,7 +44,6 @@ export function createProjectService(deps: ProjectServiceDeps) {
           name,
           repoUrl: input.repoUrl ?? null,
           defaultBranch: input.defaultBranch ?? null,
-          autoOrchestrate: input.autoOrchestrate,
           createdAt: now(),
         });
       } catch (err) {
@@ -73,7 +75,6 @@ export function createProjectService(deps: ProjectServiceDeps) {
         name?: string;
         repoUrl?: string | null;
         defaultBranch?: string | null;
-        autoOrchestrate?: boolean;
       },
     ): ProjectRow {
       if (patch.name !== undefined && !patch.name.trim()) {
@@ -84,7 +85,6 @@ export function createProjectService(deps: ProjectServiceDeps) {
           name: patch.name?.trim() || undefined,
           repoUrl: patch.repoUrl,
           defaultBranch: patch.defaultBranch,
-          autoOrchestrate: patch.autoOrchestrate,
           updatedAt: now(),
         });
         if (!p) throw new ProjectNotFoundError(id);
@@ -98,7 +98,14 @@ export function createProjectService(deps: ProjectServiceDeps) {
       }
     },
 
-    remove(id: string): void {
+    async remove(id: string): Promise<void> {
+      const agents = (await deps.listAgentConfigs?.()) ?? [];
+      const attached = agents.filter((a) => a.projects.includes(id));
+      if (attached.length > 0) {
+        throw new ConflictError(
+          `project ${id} is still attached to: ${attached.map((a) => a.id).join(", ")}`,
+        );
+      }
       if (!port.deleteProject(id)) throw new ProjectNotFoundError(id);
     },
   };

@@ -93,7 +93,6 @@ async function setupGitDataDir(): Promise<{
         name: "test",
         repoUrl: bareSrc,
         defaultBranch: "main",
-        autoOrchestrate: false,
         createdAt: 0,
         updatedAt: 0,
       };
@@ -301,7 +300,13 @@ async function runStep(
   const dataDir = overrides.dataDir ?? ownGit!.dataDir;
   const projectPort = overrides.projectPort ?? ownGit!.projectPort;
   const dir = overrides.dir ?? (await initLoopDir("test-project"));
-  const fake = makeFakeRuns(overrides.script ?? {}, `${dataDir}/repos/test-project`);
+  // The loop step materializes the agent worktree at
+  // <agentWs>/projects/<projectId>; the fake workflow meta write must land
+  // there (the real seed does).
+  const fake = makeFakeRuns(
+    overrides.script ?? {},
+    join(dataDir, "loop-agent-ws", "projects", "test-project"),
+  );
   try {
     const result = await loopStep({
       loopConfigPath: dir,
@@ -323,6 +328,7 @@ async function runStep(
       agentRunService: fake.agentRunService,
       agentRunExecution: fake.agentRunExecution,
       resolveModel: async (name) => ({ backendKind: "coding_agent", modelId: name }),
+      agentWorkspaceOf: async () => join(dataDir, "loop-agent-ws"),
     });
     return { result, ...fake };
   } finally {
@@ -400,7 +406,10 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     try {
       const dir = await initLoopDir("test-project");
       try {
-        const fake = makeFakeRuns({ genStatus: "failed" }, `${dataDir}/repos/test-project`);
+        const fake = makeFakeRuns(
+          { genStatus: "failed" },
+          join(dataDir, "loop-agent-ws", "projects", "test-project"),
+        );
         await expect(
           loopStep({
             loopConfigPath: dir,
@@ -418,6 +427,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
             agentRunService: fake.agentRunService,
             agentRunExecution: fake.agentRunExecution,
             resolveModel: async (name) => ({ backendKind: "coding_agent", modelId: name }),
+            agentWorkspaceOf: async () => join(dataDir, "loop-agent-ws"),
           }),
         ).rejects.toThrow("generator run");
         expect(fake.enqueues.some((e) => e.agentMemberId.startsWith("loop-evaluator"))).toBe(false);
@@ -561,7 +571,9 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
         script: {},
       });
       const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"))!;
-      expect(gen.message.text).toContain(`${dataDir}/repos/test-project`);
+      expect(gen.message.text).toContain(
+        join(dataDir, "loop-agent-ws", "projects", "test-project"),
+      );
       expect(gen.message.text).toContain("Project Context");
       expect(gen.message.text).toContain("Recent changes");
     } finally {

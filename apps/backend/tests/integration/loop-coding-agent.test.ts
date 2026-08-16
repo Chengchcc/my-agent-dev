@@ -237,7 +237,6 @@ describe("Loop with a REAL coding-agent child", () => {
               name: "test",
               repoUrl: join(dataDir, "remote.git"),
               defaultBranch: "main",
-              autoOrchestrate: false,
               createdAt: 0,
               updatedAt: 0,
             }
@@ -260,6 +259,7 @@ describe("Loop with a REAL coding-agent child", () => {
         backendKind: "coding_agent",
         modelId,
       }),
+      agentWorkspaceOf: async () => join(dataDir, "loop-agent-ws"),
     });
 
     // ── State machine: generator + evaluator ran, verdict PASS ──
@@ -269,12 +269,19 @@ describe("Loop with a REAL coding-agent child", () => {
     expect(item.evaluatorRunId).toBeFalsy();
     expect(item.result?.verdict).toBe("PASS");
 
-    // ── The generator REALLY modified and committed the clone ──
-    const clone = join(dataDir, "repos", "test-project");
-    const log = await Bun.$`git -C ${clone} log --oneline -1`.quiet().text();
+    // ── The generator REALLY modified the worktree; on PASS the product
+    //    layer commits everything onto the agent branch (H2) ──
+    const clone = join(dataDir, "loop-agent-ws", "projects", "test-project");
+    const log = await Bun.$`git -C ${clone} log --oneline -3`.quiet().text();
     expect(log).toContain("phase5-change");
-    const diff = await Bun.$`git -C ${clone} diff HEAD~1..HEAD --name-only`.quiet().text();
+    expect(log).toContain("loop loop-e2e item item-1");
+    const diff = await Bun.$`git -C ${clone} diff HEAD~2..HEAD --name-only`.quiet().text();
     expect(diff).toContain("changes.txt");
+
+    // H2: the PASS commit landed on the agent branch — the mirror's base
+    // is now behind it (aggregate-page FF becomes available).
+    const branch = await Bun.$`git -C ${clone} rev-parse --abbrev-ref HEAD`.quiet().text();
+    expect(branch.trim()).toMatch(/^agent\//);
 
     // ── The workflow meta really landed in the clone ──
     const metaScript = await Bun.file(join(clone, ".workflows", "loop.js")).text();

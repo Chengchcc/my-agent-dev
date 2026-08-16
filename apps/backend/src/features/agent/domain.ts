@@ -46,6 +46,7 @@ export interface UpdateAgentInput {
   maxSteps?: number;
   mcpServers?: Array<{ serverId: string; enabled: boolean }>;
   knowledgePacks?: string[];
+  projects?: string[];
   lark?: {
     enabled?: boolean;
     appId?: string;

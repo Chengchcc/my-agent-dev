@@ -7,7 +7,6 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -32,7 +31,6 @@ const formSchema = z.object({
   name: z.string().trim().min(1, "Project name is required"),
   repoUrl: z.string().trim().optional().default(""),
   defaultBranch: z.string().trim().optional().default(""),
-  autoOrchestrate: z.boolean().default(false),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -53,7 +51,6 @@ export function ProjectForm({ editProject, onSuccess }: ProjectFormProps) {
       name: editProject?.name ?? "",
       repoUrl: editProject?.repoUrl ?? "",
       defaultBranch: editProject?.defaultBranch ?? "",
-      autoOrchestrate: editProject?.autoOrchestrate ?? false,
     },
   });
 
@@ -64,7 +61,6 @@ export function ProjectForm({ editProject, onSuccess }: ProjectFormProps) {
         name: editProject.name,
         repoUrl: editProject.repoUrl ?? "",
         defaultBranch: editProject.defaultBranch ?? "",
-        autoOrchestrate: editProject.autoOrchestrate ?? false,
       });
       setServerError("");
       setOpen(true);
@@ -92,7 +88,6 @@ export function ProjectForm({ editProject, onSuccess }: ProjectFormProps) {
             name: values.name,
             repoUrl: values.repoUrl || null,
             defaultBranch: values.defaultBranch || null,
-            autoOrchestrate: values.autoOrchestrate,
           },
         },
         {
@@ -112,7 +107,6 @@ export function ProjectForm({ editProject, onSuccess }: ProjectFormProps) {
       createMutation.mutate(
         {
           name: values.name,
-          autoOrchestrate: values.autoOrchestrate,
           ...(values.repoUrl ? { repoUrl: values.repoUrl } : {}),
           ...(values.defaultBranch ? { defaultBranch: values.defaultBranch } : {}),
         },
@@ -190,26 +184,6 @@ export function ProjectForm({ editProject, onSuccess }: ProjectFormProps) {
                   <FormControl>
                     <Input {...field} placeholder="main" className={fieldClass} />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="autoOrchestrate"
-              render={({ field }) => (
-                <FormItem>
-                  <div className="flex items-center gap-2">
-                    <FormControl>
-                      <Checkbox checked={field.value} onCheckedChange={field.onChange} />
-                    </FormControl>
-                    <FormLabel className={overlineClass}>Auto-advance</FormLabel>
-                  </div>
-                  <p className={hintClass}>
-                    When enabled, completed issues advance to the next column automatically; when
-                    disabled every step needs manual approval.
-                  </p>
                   <FormMessage />
                 </FormItem>
               )}

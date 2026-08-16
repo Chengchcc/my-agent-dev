@@ -56,6 +56,7 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
           createdAt: input.createdAt,
           forkSource: input.forkSource ?? null,
           forkFromSeq: input.forkFromSeq ?? null,
+          projectId: input.projectId ?? null,
         })
         .returning()
         .get();

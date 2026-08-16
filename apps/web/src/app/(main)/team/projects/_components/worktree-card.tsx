@@ -1,0 +1,100 @@
+"use client";
+
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { FastForward, GitBranch, GitMerge } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { ListRowCard } from "@/components/ui/polish";
+import { api } from "@/lib/api";
+
+export interface WorktreeRow {
+  agentId: string;
+  branch: string;
+  ahead: number;
+  behind: number;
+  worktreeReady: boolean;
+}
+
+/** One agent's worktree card: branch status vs the project base branch,
+ *  expandable diff, in-page fast-forward / merge (ADR 0023 P2). */
+export function WorktreeCard({ projectId, row }: { projectId: string; row: WorktreeRow }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [push, setPush] = useState(false);
+  const { data: agents } = useQuery({ queryKey: ["agents"], queryFn: () => api.listAgents() });
+  const agentName = agents?.find((a) => a.id === row.agentId)?.name ?? row.agentId;
+  const { data: diff } = useQuery({
+    queryKey: ["project-worktree-diff", projectId, row.agentId],
+    queryFn: () => api.projectWorktreeDiff(projectId, row.agentId),
+    enabled: open,
+  });
+
+  async function act(kind: "fast-forward" | "merge") {
+    const confirmed = window.confirm(
+      `${kind === "merge" ? "Merge" : "Fast-forward"} ${row.branch} into the base branch` +
+        `${push ? " and push to origin" : ""}?`,
+    );
+    if (!confirmed) return;
+    try {
+      if (kind === "fast-forward") {
+        await api.projectWorktreeFastForward(projectId, row.agentId, push);
+      } else {
+        await api.projectWorktreeMerge(projectId, row.agentId, push);
+      }
+      await qc.invalidateQueries({ queryKey: ["project-worktrees", projectId] });
+      toast.success(kind === "merge" ? "Merged" : "Fast-forwarded");
+    } catch (err) {
+      toast.error(`Failed to ${kind}`, {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  }
+
+  return (
+    <div data-testid="worktree-card" className="space-y-2">
+      <ListRowCard
+        icon={<GitBranch size={16} className="text-(--mute)" />}
+        title={agentName}
+        idChip={row.branch}
+        desc={row.worktreeReady ? undefined : "worktree not materialized — attach to materialize"}
+        meta={[`ahead ${row.ahead}`, `behind ${row.behind}`]}
+        tag={row.ahead > 0 ? { label: "has changes" } : undefined}
+        actions={
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1 text-xs text-(--mute)">
+              <input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} />
+              push
+            </label>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void act("fast-forward")}
+              disabled={row.ahead === 0}
+              title={row.ahead === 0 ? "Nothing ahead of the base branch" : undefined}
+            >
+              <FastForward size={12} /> FF
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void act("merge")}
+              disabled={row.ahead === 0}
+              title={row.ahead === 0 ? "Nothing ahead of the base branch" : undefined}
+            >
+              <GitMerge size={12} /> Merge
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setOpen((v) => !v)}>
+              {open ? "Hide diff" : "Diff"}
+            </Button>
+          </div>
+        }
+      />
+      {open && (
+        <pre className="max-h-96 overflow-auto rounded-lg border border-(--hairline) bg-(--panel) p-3 text-xs leading-relaxed text-(--body)">
+          {(diff?.diff ?? "loading…").split("\n").slice(0, 200).join("\n")}
+        </pre>
+      )}
+    </div>
+  );
+}

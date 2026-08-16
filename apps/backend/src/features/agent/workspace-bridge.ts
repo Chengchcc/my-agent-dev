@@ -143,6 +143,7 @@ export function writeProductToolsManifest(
     }
     return;
   }
+  mkdirSync(join(workspacePath, ".agent"), { recursive: true });
   writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
@@ -227,10 +228,15 @@ export function reconcileAgentResources(input: {
     name: string;
     description: string;
   }>;
+  /** Extra workspace roots (project worktrees, ADR 0023) receiving the
+   *  same mcp + product-tools bridge. The caller materializes them. */
+  extraRoots?: readonly string[];
 }): void {
+  for (const root of [input.workspacePath, ...(input.extraRoots ?? [])]) {
+    writeMcpConfig(root, input.mcpServers);
+    writeProductToolsManifest(root, input.productTools);
+  }
   reconcileSkillLinks(input.workspacePath, input.kind, input.skillPacks);
-  writeMcpConfig(input.workspacePath, input.mcpServers);
-  writeProductToolsManifest(input.workspacePath, input.productTools);
   reconcileKnowledgeResources(input.workspacePath, input.knowledgePacks);
   writeClaudeSettings(input.workspacePath);
 }

@@ -54,6 +54,8 @@ import {
   projectRoutes,
   sqliteProjectAdapter,
 } from "../features/project/index.js";
+import { ensureMirror, ensureWorktree, removeWorktree } from "../features/project/worktree.js";
+import { createWorktreeOps } from "../features/project/worktree-ops.js";
 import { createRuntimeOpsService, opsRoutes } from "../features/runtime-ops/index.js";
 import { settingsRoutes } from "../features/settings/index.js";
 import type { SkillPackRow } from "../features/skill-pack/index.js";
@@ -157,13 +159,16 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const busyGuard: { check: ((agentId: string) => void) | undefined } = { check: undefined };
   // Workspace bridge (ADR 0003 decision 3): reconcile skills/mcp into the
   // agent workspace. Late-bound (mcpSvc is created further down).
-  const reconcileAgent: { fn: (agentId: string) => Promise<void> } = { fn: async () => {} };
+  const reconcileAgent: {
+    fn: (agentId: string, prevProjects?: string[]) => Promise<void>;
+  } = { fn: async () => {} };
   const agentSvc = createAgentSvc(db, config, larkBotRegistry, {
     onAgentCreate: async (agentId: string) => {
       await skillPackSvc.setAgentPacks(agentId, ["builtin"]);
       await reconcileAgent.fn(agentId);
     },
-    onAgentUpdate: (agentId: string) => reconcileAgent.fn(agentId),
+    onAgentUpdate: (agentId: string, prevProjects: string[]) =>
+      reconcileAgent.fn(agentId, prevProjects),
     assertNoActiveRun: (agentId: string) => busyGuard.check?.(agentId),
   });
 
@@ -393,9 +398,25 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       const members = conv.convPort.getMembers(conversationId);
       const member = members.find((m) => m.memberId === agentMemberId);
       const agent = member?.agentId ? await agentSvc.getById(member.agentId) : null;
+      const access =
+        agent?.config.runtime_config.permission_mode === "ask" ? "read_only" : "read_write";
+      // Project-bound conversation (ADR 0023): cwd is the agent's worktree
+      // for that project; context (skills/prompt/token) still comes from
+      // the agent workspace. Not attached = explicit dispatch failure.
+      const convRow = conv.convPort.getConversation(conversationId);
+      if (convRow?.projectId) {
+        if (!agent?.config.runtime_config.projects.includes(convRow.projectId)) {
+          throw new Error(
+            `agent ${member?.agentId ?? "?"} has not attached project ${convRow.projectId}; ` +
+              `attach it via the agent update API (agent.yml runtime_config.projects)`,
+          );
+        }
+        const worktree = join(agent.workspacePath, "projects", convRow.projectId);
+        return { root: worktree, access };
+      }
       return {
         root: agent?.workspacePath ?? config.workspaceRoot,
-        access: agent?.config.runtime_config.permission_mode === "ask" ? "read_only" : "read_write",
+        access,
       };
     },
     productToolsEntrypoint: config.productToolsMcpUrl
@@ -446,7 +467,18 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   // ─── Project ────────────────────────────────────────────────
 
   const projectPort = sqliteProjectAdapter(db);
-  const projectSvc = createProjectService({ port: projectPort, idGen: ulid });
+  const projectSvc = createProjectService({
+    port: projectPort,
+    idGen: ulid,
+    // Detach guard (ADR 0023): refuse deleting a project agents still
+    // attach to. agentSvc.list returns rows carrying the materialized
+    // config cache; includeArchived covers archived agents too.
+    listAgentConfigs: async () =>
+      (await agentSvc.list(true)).map((a) => ({
+        id: a.id,
+        projects: a.config.runtime_config.projects,
+      })),
+  });
 
   // ─── MCP ────────────────────────────────────────────────────
 
@@ -505,14 +537,75 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     return ids;
   }
 
-  reconcileAgent.fn = async (agentId: string): Promise<void> => {
+  reconcileAgent.fn = async (agentId: string, prevProjects?: string[]): Promise<void> => {
     try {
       const agent = await agentSvc.getById(agentId);
+      // Detach cleanup (ADR 0023): projects removed since the previous
+      // config get their worktree + branch removed.
+      if (prevProjects) {
+        const removed = prevProjects.filter(
+          (pid) => !agent.config.runtime_config.projects.includes(pid),
+        );
+        for (const pid of removed) {
+          const project = projectSvc.getById(pid);
+          if (!project?.repoUrl) continue;
+          try {
+            const mirror = await ensureMirror(config.dataDir, {
+              projectId: project.projectId,
+              repoUrl: project.repoUrl,
+              defaultBranch: project.defaultBranch,
+            });
+            await removeWorktree(
+              mirror,
+              agent.workspacePath,
+              {
+                projectId: project.projectId,
+                repoUrl: project.repoUrl,
+                defaultBranch: project.defaultBranch,
+              },
+              agentId,
+            );
+          } catch (err) {
+            console.warn(`[reconcile] detach cleanup for ${agentId}/${pid} failed:`, err);
+          }
+        }
+      }
       const packs = await skillPackPort.listForAgent(agentId);
       const assignedKnowledge = agent.config.runtime_config.knowledge_packs
         .map((packId) => knowledgeSvc.getById(packId))
         .filter((p): p is NonNullable<typeof p> => p !== null && p.status === "ready");
+      // ADR 0023: materialize a worktree per attached project and bridge
+      // the same mcp + product-tools config into it. Failures warn, never
+      // throw (reconcile stays best-effort like the other bridges).
+      const extraRoots: string[] = [];
+      for (const pid of agent.config.runtime_config.projects) {
+        const project = projectSvc.getById(pid);
+        if (!project?.repoUrl) {
+          console.warn(
+            `[reconcile] agent ${agentId}: project ${pid} missing or no repoUrl, skipped`,
+          );
+          continue;
+        }
+        const wp = {
+          projectId: project.projectId,
+          repoUrl: project.repoUrl,
+          defaultBranch: project.defaultBranch,
+        };
+        try {
+          const mirror = await ensureMirror(config.dataDir, wp);
+          const wt = await ensureWorktree(mirror, agent.workspacePath, wp, agentId);
+          if (wt) extraRoots.push(wt);
+          else {
+            console.warn(
+              `[reconcile] agent ${agentId}: worktree slot for ${pid} occupied, skipped`,
+            );
+          }
+        } catch (err) {
+          console.warn(`[reconcile] agent ${agentId}: worktree for ${pid} failed:`, err);
+        }
+      }
       reconcileAgentResources({
+        extraRoots,
         workspacePath: agent.workspacePath,
         kind: agent.config.runtime_config.runtime,
         skillPacks: packs
@@ -590,7 +683,16 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     },
   });
 
+  /** LOOP.md agent ids -> agent workspace paths (ADR 0023 P2). */
+  const resolveAgentWorkspace = async (id: string): Promise<string | null> => {
+    const agent = await agentSvc.getById(id).catch(() => null);
+    return agent?.workspacePath ?? null;
+  };
+  console.info(
+    `[bootstrap] loop steps now use per-agent worktrees; legacy clones under ${config.dataDir}/repos are no longer read and may be deleted manually`,
+  );
   const cronScheduler = createCronScheduler({
+    agentWorkspaceOf: resolveAgentWorkspace,
     cronSvc,
     config,
     convPort,
@@ -604,6 +706,18 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   });
 
   // ─── FeatureSet ─────────────────────────────────────────────
+
+  // Worktree read/merge ops over the project mirrors (ADR 0023 P2).
+  const worktreeOps = createWorktreeOps({
+    dataDir: config.dataDir,
+    projectPort,
+    listAgentConfigs: async () =>
+      (await agentSvc.list(true)).map((a) => ({
+        id: a.id,
+        workspacePath: a.workspacePath,
+        projects: a.config.runtime_config.projects,
+      })),
+  });
 
   const featureSet: FeatureSet = {
     agents: agentRoutes(
@@ -623,12 +737,16 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       identityStore,
       (id: string) => larkBotRegistry.statusOf(id),
       getSetupManager,
+      (id: string) => projectSvc.exists(id),
     ),
-    conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore),
+    conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore, (id: string) =>
+      projectSvc.exists(id),
+    ),
     ops: opsRoutes(opsSvc),
     agentRuns: agentRunRoutes({ db, agentRunService, agentRunExecution }),
-    projects: projectRoutes(projectSvc),
+    projects: projectRoutes(projectSvc, worktreeOps),
     loops: loopRoutes({
+      agentWorkspaceOf: resolveAgentWorkspace,
       cronSvc,
       scheduler: cronScheduler,
       dataDir: config.dataDir,

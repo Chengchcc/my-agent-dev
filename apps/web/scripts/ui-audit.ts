@@ -281,6 +281,17 @@ const assertions: Assertion[] = [
         if (!m.hasCol) throw new Error("no 760px message column");
       }),
   },
+  {
+    name: "P2-project-detail has a worktree card container",
+    check: async () =>
+      withPage("/team/projects", async (page) => {
+        await loginIfNeeded(page);
+        const first = await page.$("a[href^='/team/projects/']");
+        if (!first) return; // no projects on this box: nothing to audit
+        await first.click();
+        await page.waitForSelector('[data-testid="project-worktrees"]', { timeout: 15_000 });
+      }),
+  },
 ];
 
 let failed = 0;
