@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { FolderGit2 } from "lucide-react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -62,9 +63,13 @@ export default function ProjectDetailPage() {
             </p>
           ) : (
             loops.map((l) => (
-              <div key={l.cronJobId} className="text-sm text-(--body)">
+              <Link
+                key={l.cronJobId}
+                href={`/work/${l.cronJobId}`}
+                className="block rounded-lg border border-(--hairline) bg-(--canvas) px-4 py-3 text-sm text-(--body) hover:border-(--primary) transition-colors"
+              >
                 {l.name}
-              </div>
+              </Link>
             ))
           )}
         </section>

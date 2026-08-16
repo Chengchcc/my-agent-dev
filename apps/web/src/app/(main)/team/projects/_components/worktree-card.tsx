@@ -22,6 +22,8 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [push, setPush] = useState(false);
+  const { data: agents } = useQuery({ queryKey: ["agents"], queryFn: () => api.listAgents() });
+  const agentName = agents?.find((a) => a.id === row.agentId)?.name ?? row.agentId;
   const { data: diff } = useQuery({
     queryKey: ["project-worktree-diff", projectId, row.agentId],
     queryFn: () => api.projectWorktreeDiff(projectId, row.agentId),
@@ -53,13 +55,13 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
     <div data-testid="worktree-card" className="space-y-2">
       <ListRowCard
         icon={<GitBranch size={16} className="text-(--mute)" />}
-        title={row.agentId}
+        title={agentName}
         idChip={row.branch}
         desc={row.worktreeReady ? undefined : "worktree not materialized — attach to materialize"}
-        tag={row.ahead > 0 ? { label: `${row.ahead} ahead` } : undefined}
+        meta={[`ahead ${row.ahead}`, `behind ${row.behind}`]}
+        tag={row.ahead > 0 ? { label: "has changes" } : undefined}
         actions={
           <div className="flex items-center gap-2">
-            {row.behind > 0 && <span className="text-xs text-(--warn)">{row.behind} behind</span>}
             <label className="flex items-center gap-1 text-xs text-(--mute)">
               <input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} />
               push
@@ -69,6 +71,7 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
               size="sm"
               onClick={() => void act("fast-forward")}
               disabled={row.ahead === 0}
+              title={row.ahead === 0 ? "Nothing ahead of the base branch" : undefined}
             >
               <FastForward size={12} /> FF
             </Button>
@@ -77,6 +80,7 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
               size="sm"
               onClick={() => void act("merge")}
               disabled={row.ahead === 0}
+              title={row.ahead === 0 ? "Nothing ahead of the base branch" : undefined}
             >
               <GitMerge size={12} /> Merge
             </Button>
