@@ -142,7 +142,7 @@ export function createProgressiveSkillPlugin(opts: ProgressiveSkillOptions): Plu
   const skillLoadTool: PluginTool = {
     name: "skill_load",
     description:
-      "Load the full body of a skill by name. Only the name/description is in the index; use this to read the actual instructions.",
+      "Load the full body of a skill by name. Only the name/description is in the index; use this to read the actual instructions. Relative paths in the body resolve against the returned `dir`.",
     inputSchema: {
       type: "object",
       properties: { name: { type: "string", description: "Skill name from the index" } },
@@ -169,6 +169,8 @@ export function createProgressiveSkillPlugin(opts: ProgressiveSkillOptions): Plu
       const skillDir = fullPath.slice(0, fullPath.lastIndexOf("/"));
       return {
         name: entry.name,
+        dir: skillDir,
+        hint: "Resolve relative paths and scripts against `dir`.",
         body: body.replaceAll("${SKILL_DIR}", skillDir),
       } as unknown as Readonly<Record<string, unknown>>;
     },

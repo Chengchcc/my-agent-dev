@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { BackendRunInput } from "@chengchenccc/agent-backend";
 import type { ModelRuntime } from "@chengchenccc/ai";
-import { buildSystemPrompt } from "../core/prompts.js";
+import { buildSystemPrompt, readMemorySummary } from "../core/prompts.js";
 import { readWorkspaceSystemPrompt } from "../core/workspace-context.js";
 import { UsageError } from "./args.js";
 
@@ -84,6 +84,7 @@ export async function buildCliRunInput(opts: {
       model: { backendKind: "oma", modelId },
       systemPrompt: buildSystemPrompt({
         workspacePrompt: readWorkspaceSystemPrompt(opts.workspaceRoot),
+        memorySummary: readMemorySummary(opts.workspaceRoot),
         cwd: opts.workspaceRoot,
       }),
       configRevision: 0,

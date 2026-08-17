@@ -4,7 +4,7 @@ import { debugLog } from "@chengchenccc/agent-backend";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { type Message, MessageSchema } from "@chengchenccc/message";
 import { createOmaRuntime, type OmaRuntime } from "../../core/create-runtime.js";
-import { buildSystemPrompt } from "../../core/prompts.js";
+import { buildSystemPrompt, readMemorySummary } from "../../core/prompts.js";
 import {
   appendSessionMessages,
   loadSessionMessages,
@@ -221,6 +221,7 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
               ...input.run,
               systemPrompt: buildSystemPrompt({
                 workspacePrompt: cwdPrompt,
+                memorySummary: readMemorySummary(input.workspace.root),
                 cwd: input.workspace.root,
               }),
             },

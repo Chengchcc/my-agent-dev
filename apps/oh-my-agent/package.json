@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp -r src/prompts dist/prompts && chmod +x dist/cli.js",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/prompts && cp -r src/prompts/. dist/prompts/ && chmod +x dist/cli.js",
     "dev": "bun src/cli.ts",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "test": "bun test",
