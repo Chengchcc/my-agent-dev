@@ -3,7 +3,6 @@ import type {
   BackendEvent,
   BackendModelRef,
   BackendRegistry,
-  BackendRegistryEntry,
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
