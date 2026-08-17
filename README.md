@@ -30,7 +30,7 @@ my-agent-team 是一个**团队级 Agent 运行时**。每个 Agent 有独立的
 
 | Agents | MCP Servers | Knowledge Packs |
 |---|---|---|
-| ![Team agents](docs/screenshots/team.png) | ![MCP catalog](docs/screenshots/mcp.png) | ![Knowledge packs](docs/screenshots/knowledge.png) |
+| <img src="docs/screenshots/team.png" width="280" alt="Team agents" /> | <img src="docs/screenshots/mcp.png" width="280" alt="MCP catalog" /> | <img src="docs/screenshots/knowledge.png" width="280" alt="Knowledge packs" /> |
 
 ## 🚀 快速开始
 
@@ -88,32 +88,14 @@ providers:
           maxTokensField: max_tokens  # 或 max_completion_tokens
 ```
 
-
-┌──────────────────────────────────────────────────────────┐
-│ Surfaces         Web 控制台  飞书 Bot                       │
-├──────────────────────────────────────────────────────────┤
-│ Product Backend  HTTP/SSE · 账本 · Agent Context           │
-│                  Agent Run · 输入队列 · Product Tools       │
-│                  Workspace Bridge(文件桥接) · Loop 调度    │
-├──────────────────────────────────────────────────────────┤
-│ Agent Backends   oma / claude / pi / omp          │
-│ (adapters)       spawn 一次性子进程 · stdin/stdout JSONL   │
-│                  session 引用透传 · steer/abort            │
-├──────────────────────────────────────────────────────────┤
-│ Oma     per-Run Runtime:model/tool loop、         │
-│ (自研 child)     retry、compaction、todo、skills           │
-│                  cwd 文件 meta + 原生 session 续接          │
-│ CLI Backends     claude / pi / omp:原生读 cwd 配置、       │
-│ (三方)           各自 session 存储                         │
-├──────────────────────────────────────────────────────────┤
-│ AI Provider层    ┌──────────────┬──────────────┬────────┐ │
-│ (ADR-0018)       │ Anthropic    │ OpenAI Chat  │ OAI Resp│ │
-│                  │ Messages     │ Completions  │ API     │ │
-│                  └──────┬───────┴──────┬───────┴───┬────┘ │
-│                  createProvider()  fetchSSE()  compat()   │
-│                  ApiRegistry (OCP)   SharedSSE (DIP)      │
-└──────────────────────────────────────────────────────────┘
-```
+| Layer | Components |
+|---|---|
+| Surfaces | Web console, Lark bot |
+| Product Backend | HTTP/SSE, ledger, Agent Context, Agent Run, input queue, Product Tools, workspace bridge, Loop scheduler |
+| Agent Backends | oma / claude / pi / omp adapters |
+| Oma child | per-Run runtime: model/tool loop, retry, compaction, todo, skills |
+| CLI backends | claude / pi / omp read cwd config and native session storage |
+| AI Provider layer | Anthropic / OpenAI Chat / OAI Responses via createProvider, fetchSSE, compat registry |
 
 一次对话的完整链路:**人发消息 -> 端 POST -> Backend 写账本 -> 创建 Agent Run -> 按后端 kind spawn 子进程(自研 child 或 CLI)-> assistant 消息流式推送(SSE)-> terminal outcome -> 原子提交最终 Message**。
 
@@ -148,13 +130,13 @@ providers:
 ```
 apps/
   backend/       Product Backend — HTTP/SSE、账本、Agent Context、Agent Run、Loop、Product Tools
-  oma/  Oma CLI — print/json/rpc 模式，被 backend 按 Run spawn
+  oh-my-agent/  Oma CLI — print/json/rpc 模式，被 backend 按 Run spawn
   web/           Web 控制台 — Next.js 15 + shadcn/ui + React Query
   lark-bot/      飞书 Bot 适配器
 
   core/                    协议层：Message 类型、ChatModel、Tool、stream-utils（无 run loop）
   agent/                   Oma Runtime — 唯一真实 model/tool loop、插件、in-memory SessionStore
-  agent-backend/           Agent Backend 契约：BackendRunInput/Outcome/Event + JSONL 协议 schema
+  agent-backend/           Agent Backend 中立契约：BackendRunInput/Outcome/Event/Segment
   adapter-oma-agent/    Adapter — spawn 自研 child、JSONL 读写、steer/abort、并发上限
   adapter-claude-agent/    Adapter — spawn claude CLI（stream-json、--resume/--mcp-config）
   adapter-pi-agent/        Adapter — spawn pi CLI（--session/--provider/--model）
@@ -180,7 +162,7 @@ apps/
 |---|---|
 | [架构 Wiki](docs/architecture/README.md) | 入口，按「你想干什么」组织阅读路线 |
 | [系统总览](docs/architecture/system-overview.md) | 执行链 + 容器视图 + 不变量 |
-| [ADR 索引](docs/adr/README.md) | 全部决策记录（0001–0021，含状态标注） |
+| [ADR 索引](docs/adr/README.md) | 全部决策记录（0001–0024，含状态标注） |
 | [Provider 架构](docs/architecture/provider-architecture-spec.md) | 多 API Provider 设计规范（SOLID） |
 | [事实与投影](docs/architecture/foundations/facts-and-projections.md) | 数据模型的核心设计原则 |
 | [Agent Backend](docs/architecture/execution/agent-backend.md) | Agent Backend 协议与 child-process transport |
