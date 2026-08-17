@@ -26,6 +26,11 @@ my-agent-team 是一个**团队级 Agent 运行时**。每个 Agent 有独立的
 - **Product Tools** — History 读写等产品能力由 Product Backend 统一执行(幂等 + 审计)
 - **SQLite 单文件存储** — backend.db,零运维部署
 
+## 📸 Screenshots
+
+| Agents | MCP Servers | Knowledge Packs |
+|---|---|---|
+| ![Team agents](docs/screenshots/team.png) | ![MCP catalog](docs/screenshots/mcp.png) | ![Knowledge packs](docs/screenshots/knowledge.png) |
 
 ## 🚀 快速开始
 
