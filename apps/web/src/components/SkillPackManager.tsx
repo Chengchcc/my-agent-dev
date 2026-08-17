@@ -3,6 +3,7 @@
 import { Download, FolderSync, GitBranch, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { FileContentViewer } from "@/components/FileContentViewer";
+import { PackFileSearch } from "@/components/PackFileSearch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -308,6 +309,7 @@ export function SkillPackManager() {
                   </Button>
                 </div>
                 <Card className="p-3">
+                  <PackFileSearch packId={selectedPack!} onOpen={(p) => setSelectedFile(p)} />
                   <FileTree
                     packId={selectedPack!}
                     path={selectedSkill ? dirname(selectedSkill.dir) : ""}

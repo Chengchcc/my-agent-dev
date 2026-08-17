@@ -3,6 +3,7 @@
 import { ArrowUp, AtSign, Bot, CornerDownLeft, Terminal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { type ChatModelOverride, ModelPicker } from "@/components/ModelPicker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -18,7 +19,8 @@ const COMPOSER_MIN_H = 40;
 const COMPOSER_MAX_H = 160;
 
 interface ComposerProps {
-  onSend: (message: string, addressedTo: string[]) => void;
+  conversationId: string;
+  onSend: (message: string, addressedTo: string[], model?: ChatModelOverride) => void;
   onSlashCommand: (input: string) => void;
   disabled?: boolean;
   placeholder?: string;
@@ -29,6 +31,7 @@ interface ComposerProps {
   onStop?: () => void;
 }
 export function Composer({
+  conversationId,
   onSend,
   onSlashCommand,
   disabled,
@@ -37,6 +40,26 @@ export function Composer({
   isBusy,
   onStop,
 }: ComposerProps) {
+  const [model, setModel] = useState<ChatModelOverride | null>(() => {
+    try {
+      const raw = localStorage.getItem(`oma.chat.model:${conversationId}`);
+      return raw ? (JSON.parse(raw) as ChatModelOverride) : null;
+    } catch {
+      return null;
+    }
+  });
+  const pickModel = useCallback(
+    (m: ChatModelOverride | null) => {
+      setModel(m);
+      try {
+        if (m) localStorage.setItem(`oma.chat.model:${conversationId}`, JSON.stringify(m));
+        else localStorage.removeItem(`oma.chat.model:${conversationId}`);
+      } catch {
+        /* storage unavailable — selection stays per-mount */
+      }
+    },
+    [conversationId],
+  );
   const [value, setValue] = useState("");
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState("");
@@ -167,13 +190,12 @@ export function Composer({
       setShowMentions(true);
       return;
     }
-    onSend(trimmed, addressedTo);
+    onSend(trimmed, addressedTo, model ?? undefined);
     setValue("");
     if (textareaRef.current) {
       textareaRef.current.style.height = `${COMPOSER_MIN_H}px`;
-      textareaRef.current.focus();
     }
-  }, [value, disabled, onSend, onSlashCommand, resolveAddressedTo, agentMembers.length]);
+  }, [value, disabled, onSend, onSlashCommand, resolveAddressedTo, agentMembers.length, model]);
 
   const navigateMention = useCallback(
     (dir: -1 | 1) => {
@@ -385,6 +407,8 @@ export function Composer({
             </div>
           )}
         </div>
+
+        <ModelPicker value={model} onChange={pickModel} />
 
         {showMentionButton && (
           <Tooltip>

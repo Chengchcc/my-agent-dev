@@ -5,6 +5,7 @@ import { ChevronRight, MessageSquareIcon, Search, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAgentList } from "@/features/agents/hooks";
 import { useCreateConversation, useRecentConversations } from "@/features/conversations/hooks";
 import { type AgentRow, api, getForkSourceId } from "@/lib/api";
-
 function relativeTime(ts: number | null | undefined): string {
   if (!ts) return "";
   const diff = Date.now() - ts;
@@ -227,9 +227,10 @@ export default function ChatOverviewPage() {
             ))}
           </div>
         ) : conversations.length === 0 ? (
-          <div className="text-center py-12">
-            <MessageSquareIcon size={28} className="text-(--mute) mx-auto mb-2" />
-            <p className="text-sm text-(--mute)">No conversations yet</p>
+          <div className="py-12">
+            <MessageSquareIcon size={28} className="text-(--mute) mx-auto mb-4" />
+            <p className="mb-4 text-sm text-(--mute)">No conversations yet</p>
+            <OnboardingChecklist />
           </div>
         ) : (
           <div className="space-y-1">

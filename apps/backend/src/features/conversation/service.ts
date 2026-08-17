@@ -81,6 +81,8 @@ export interface ConversationService {
     /** Optional mode override; default: normal when the branch is idle,
      *  steer when a run is active (the caller wants to influence it). */
     mode?: BranchInputMode;
+    /** Per-input model override (same-kind guard applies). */
+    modelOverride?: BackendModelRef;
   }): Promise<{ seq: number; triggeredRuns: TriggeredRun[] }>;
   addMember(input: {
     conversationId: string;
@@ -249,13 +251,20 @@ class ConversationServiceImpl implements ConversationService {
     message: Message;
     idempotencyKey: string;
     mode?: BranchInputMode;
+    /** Per-input model override; honored only when its backendKind matches
+     *  the agent's default kind (foreign-kind refs would break the branch). */
+    modelOverride?: BackendModelRef;
   }): Promise<TriggeredRun> {
     const members = this.port.getMembers(input.conversationId);
     const member = members.find((m) => m.memberId === input.memberId);
     if (!member?.agentId) {
       throw new Error(`no agent member ${input.memberId} in ${input.conversationId}`);
     }
-    const defaultModel = await this.#resolveDefaultModel(member.agentId);
+    const resolved = await this.#resolveDefaultModel(member.agentId);
+    const defaultModel =
+      input.modelOverride && input.modelOverride.backendKind === resolved.backendKind
+        ? input.modelOverride
+        : resolved;
     const kind = defaultModel.backendKind;
     // The default branch (with any kind-switch fork, D2) is ensured by
     // AgentRunService.enqueueAndAcquire — the single run-creation choke
@@ -352,6 +361,7 @@ class ConversationServiceImpl implements ConversationService {
     addressedTo: string[];
     content: unknown;
     mode?: BranchInputMode;
+    modelOverride?: BackendModelRef;
   }): Promise<{ seq: number; triggeredRuns: TriggeredRun[] }> {
     const conv = this.#buildConversation(input.conversationId);
     if (!conv) throw new Error(`Conversation not found: ${input.conversationId}`);
@@ -419,6 +429,7 @@ class ConversationServiceImpl implements ConversationService {
               message,
               idempotencyKey: `${input.conversationId}:${seq}:${target.memberId}`,
               mode: input.mode,
+              modelOverride: input.modelOverride,
             }),
           );
         } catch (err) {

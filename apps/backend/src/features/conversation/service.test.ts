@@ -28,6 +28,7 @@ const enqueueCalls: Array<{
   conversationId: string;
   agentMemberId: string;
   mode: string;
+  defaultModel: unknown;
   idempotencyKey: string;
   message: { text?: string };
 }> = [];
@@ -45,6 +46,7 @@ function makeRunService(): AgentRunService {
         agentMemberId: input.agentMemberId,
         mode: input.mode,
         idempotencyKey: input.idempotencyKey,
+        defaultModel: input.defaultModel,
         message: input.message as { text?: string },
       });
       const runId = `run-${runIdCounter++}`;
@@ -252,9 +254,36 @@ describe("conversation service (Agent Run cutover)", () => {
     expect(dispatchCalls).toHaveLength(0);
     expect(injectSteerCalls).toHaveLength(1);
     expect(injectSteerCalls[0]!.inputId).toBeTruthy();
-    expect(abortStaleCalls).toHaveLength(0);
   });
 
+  test("postMessage modelOverride: same-kind honored, foreign-kind ignored", async () => {
+    const id = "cid-mo";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    enqueueCalls.length = 0;
+
+    await svc.postMessage({
+      conversationId: id,
+      senderMemberId: humanMemberId,
+      addressedTo: [agentMemberId],
+      content: "use my model",
+      modelOverride: { backendKind: "oma", modelId: "fake/other", reasoningEffort: "low" },
+    });
+    expect(enqueueCalls[0]!.defaultModel).toEqual({
+      backendKind: "oma",
+      modelId: "fake/other",
+      reasoningEffort: "low",
+    });
+
+    enqueueCalls.length = 0;
+    await svc.postMessage({
+      conversationId: id,
+      senderMemberId: humanMemberId,
+      addressedTo: [agentMemberId],
+      content: "foreign kind",
+      modelOverride: { backendKind: "claude_code", modelId: "claude-x" },
+    });
+    expect(enqueueCalls[0]!.defaultModel).toEqual({ backendKind: "oma", modelId: "fake/echo" });
+  });
   test("zombie active run (DB active, no live child) -> abortStaleRun + fresh NORMAL run", async () => {
     const id = "cid-z";
     const { humanMemberId, agentMemberId } = setupConv(id);

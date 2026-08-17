@@ -2,12 +2,12 @@
 
 import { Bot } from "lucide-react";
 import { useMemo, useState } from "react";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { Page, PageHeader } from "@/components/page";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAgentList } from "@/features/agents/hooks";
 import { AgentDetail } from "./agent-detail";
 import { AgentListColumn } from "./agent-list-column";
-
 /** Master-detail split for /team and /team/[agentId]: 280px agent rail +
  *  detail column. `/team` shows the first agent; the deep-link route
  *  `/team/[agentId]` pins that agent. */
@@ -42,11 +42,16 @@ export function TeamView({ selectedId }: { selectedId?: string }) {
               {isLoading ? (
                 <div className="h-40 animate-pulse rounded-lg bg-(--panel2)" />
               ) : (
-                <EmptyState
-                  icon={Bot}
-                  title="No agents yet"
-                  description="Create your first agent to get started."
-                />
+                <>
+                  <EmptyState
+                    icon={Bot}
+                    title="No agents yet"
+                    description="Create your first agent to get started."
+                  />
+                  <div className="mt-4">
+                    <OnboardingChecklist />
+                  </div>
+                </>
               )}
             </div>
           </Page>

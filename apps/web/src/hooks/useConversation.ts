@@ -3,6 +3,7 @@
 import { conversationEvents } from "@chengchenccc/api-contract";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { ChatModelOverride } from "@/components/ModelPicker";
 import {
   useConversationSnapshot,
   usePostConversationMessage,
@@ -594,7 +595,7 @@ export function useConversation(
   );
 
   const send = useCallback(
-    (text: string, addressedTo?: string[]) => {
+    (text: string, addressedTo?: string[], model?: ChatModelOverride) => {
       const viewer = state.roster[state.viewerMemberId] ?? {
         memberId: state.viewerMemberId,
         kind: "human" as const,
@@ -608,6 +609,7 @@ export function useConversation(
           senderMemberId: state.viewerMemberId,
           text,
           addressedTo: resolved.length > 0 ? resolved : resolveAddressedTo(state),
+          model,
         },
         {
           onSuccess: (result) => {

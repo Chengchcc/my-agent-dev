@@ -504,6 +504,7 @@ export function ConversationCanvas({
           )}
         </div>
         <Composer
+          conversationId={conversationId}
           onSend={send}
           onSlashCommand={handleSlashCommand}
           disabled={false}

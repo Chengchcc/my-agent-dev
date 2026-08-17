@@ -15,6 +15,12 @@ interface SearchResult {
   ts: number;
 }
 
+type Hit =
+  | ({ type: "conversation"; href: string } & SearchResult)
+  | { type: "agent"; id: string; name: string; desc?: string; href: string }
+  | { type: "loop"; id: string; name: string; href: string }
+  | { type: "project"; id: string; name: string; href: string };
+
 interface GlobalSearchProps {
   open: boolean;
   onClose: () => void;
@@ -76,10 +82,10 @@ function highlight(text: string, query: string): React.ReactNode {
 export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<Hit[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
 
@@ -104,11 +110,62 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
     }
     setIsLoading(true);
     debounceRef.current = setTimeout(async () => {
+      const q = query.trim().toLowerCase();
       try {
-        const data = await api.searchConversations(query.trim());
-        const items = data.results ?? [];
-        setResults(Array.isArray(items) ? items : []);
-        setActiveIndex(items.length > 0 ? 0 : -1);
+        const [conv, agents, loops, projects] = await Promise.all([
+          api.searchConversations(query.trim()).catch(() => ({ results: [] })),
+          api.listAgents().catch(() => [] as Awaited<ReturnType<typeof api.listAgents>>),
+          api.listLoops().catch(() => ({ loops: [] })),
+          api.listProjects().catch(() => ({ projects: [] })),
+        ]);
+        const agentList = Array.isArray(agents) ? agents : [];
+        const hits: Hit[] = [
+          ...(conv.results ?? []).slice(0, 5).map(
+            (r): Hit => ({
+              type: "conversation",
+              href: `/chat/${r.conversationId}?at=${r.seq}`,
+              ...r,
+            }),
+          ),
+          ...agentList
+            .filter(
+              (a) => a.name.toLowerCase().includes(q) || a.backendKind.toLowerCase().includes(q),
+            )
+            .slice(0, 3)
+            .map(
+              (a): Hit => ({
+                type: "agent",
+                id: a.id,
+                name: a.name,
+                desc: a.backendKind,
+                href: `/team/agents/${a.id}`,
+              }),
+            ),
+          ...(loops.loops ?? [])
+            .filter((l) => (l.name ?? "").toLowerCase().includes(q))
+            .slice(0, 3)
+            .map(
+              (l): Hit => ({
+                type: "loop",
+                id: l.cronJobId,
+                name: l.name ?? l.cronJobId,
+                href: `/work/${l.cronJobId}`,
+              }),
+            ),
+          ...(projects.projects ?? [])
+            .filter((p) => (p.name ?? "").toLowerCase().includes(q))
+            .slice(0, 3)
+            .map(
+              (p): Hit => ({
+                type: "project",
+                id: p.projectId,
+                name: p.name,
+                href: `/team/projects/${p.projectId}`,
+              }),
+            ),
+        ];
+        setResults(hits);
+        setActiveIndex(hits.length > 0 ? 0 : -1);
       } catch {
         setResults([]);
       } finally {
@@ -138,9 +195,8 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
         case "Enter":
           e.preventDefault();
           if (activeIndex >= 0 && activeIndex < results.length) {
-            const r = results[activeIndex]!;
             onClose();
-            router.push(`/chat/${r.conversationId}?at=${r.seq}`);
+            router.push(results[activeIndex]!.href);
           }
           break;
       }
@@ -170,9 +226,8 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search conversations..."
             className="flex-1 bg-transparent py-3 text-base outline-none placeholder:text-(--mute)"
-            autoComplete="off"
+            placeholder="Search chats, agents, loops, projects..."
             spellCheck={false}
           />
           <button
@@ -233,24 +288,39 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
           {!isLoading &&
             results.map((r, i) => (
               <button
-                key={`${r.conversationId}-${r.seq}`}
+                key={`${r.type}-${"id" in r ? r.id : ""}-${i}`}
                 type="button"
                 onClick={() => {
                   onClose();
-                  router.push(`/chat/${r.conversationId}?at=${r.seq}`);
+                  router.push(r.href);
                 }}
                 onMouseEnter={() => setActiveIndex(i)}
                 className={`flex w-full flex-col gap-1 border-b border-(--hairline) px-4 py-3 text-left transition-colors last:border-b-0 ${i === activeIndex ? "bg-(--canvas-soft)" : "hover:bg-(--canvas-soft)"}`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-(--ink-strong) truncate max-w-[260px]">
-                    {r.conversationTitle ?? `Conversation ${r.conversationId.slice(0, 8)}`}
+                  <span className="shrink-0 rounded bg-(--canvas-soft) px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-(--mute)">
+                    {r.type}
                   </span>
-                  <span className="text-xs text-(--mute) shrink-0">· {r.senderName}</span>
-                  <span className="ml-auto text-xs text-(--mute) shrink-0">{formatTime(r.ts)}</span>
+                  <span className="text-xs font-medium text-(--ink-strong) truncate max-w-[260px]">
+                    {r.type === "conversation"
+                      ? (r.conversationTitle ?? `Conversation ${r.conversationId.slice(0, 8)}`)
+                      : r.name}
+                  </span>
+                  {r.type === "conversation" && (
+                    <>
+                      <span className="text-xs text-(--mute) shrink-0">· {r.senderName}</span>
+                      <span className="ml-auto text-xs text-(--mute) shrink-0">
+                        {formatTime(r.ts)}
+                      </span>
+                    </>
+                  )}
                 </div>
                 <p className="line-clamp-2 text-sm text-(--ink)">
-                  {highlight(extractSnippet(r.snippet), query)}
+                  {r.type === "conversation"
+                    ? highlight(extractSnippet(r.snippet), query)
+                    : r.type === "agent"
+                      ? highlight(r.desc ?? "", query)
+                      : null}
                 </p>
               </button>
             ))}

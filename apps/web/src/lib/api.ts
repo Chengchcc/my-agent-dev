@@ -38,9 +38,13 @@ export type ActivateLoopResult = ApiReturn<typeof api.activateLoop>;
 export type SettingsMap = ApiReturn<typeof api.getSettings>["settings"];
 export type McpServerRow = ApiReturn<typeof api.listMcpServers>["mcpServers"][number];
 
-export type SystemInfo = ApiReturn<typeof api.getSystemInfo>;
+export type ChatModelOverride = {
+  backendKind: string;
+  modelId: string;
+  reasoningEffort?: "none" | "low" | "high" | "max";
+};
 
-export type { ContentBlock };
+export type SystemInfo = ApiReturn<typeof api.getSystemInfo>;
 export type MemberInfo = Member;
 export type { LedgerEntry };
 /** Extract fork source ID from a conversation snapshot (null when not a fork). */
@@ -96,7 +100,12 @@ export const api = {
   getConversation: (id: string) => unwrap(client.api.conversations({ id }).get()),
   postConversationMessage: (
     id: string,
-    body: { senderMemberId: string; addressedTo: string[]; content: unknown },
+    body: {
+      senderMemberId: string;
+      addressedTo: string[];
+      content: unknown;
+      model?: ChatModelOverride;
+    },
   ) => unwrap(client.api.conversations({ id }).messages.post(body)),
   deleteConversation: (id: string) => unwrap(client.api.conversations({ id }).delete()),
   clearConversation: (id: string) => unwrap(client.api.conversations({ id }).clear.post({})),
@@ -219,6 +228,8 @@ export const api = {
   getSkillPackSkills: (id: string) => unwrap(client.api["skill-packs"]({ id }).skills.get()),
   getSkillPackFiles: (id: string, path?: string) =>
     unwrap(client.api["skill-packs"]({ id }).files.get({ query: path ? { path } : undefined })),
+  searchSkillPack: (id: string, q: string) =>
+    unwrap(client.api["skill-packs"]({ id }).search.get({ query: { q } })),
   installSkillPackGit: (body: { name: string; description: string; url: string; ref?: string }) =>
     unwrap(client.api["skill-packs"].git.post(body)),
   uploadSkillPackZip: (body: { name: string; description: string; file: File }) =>

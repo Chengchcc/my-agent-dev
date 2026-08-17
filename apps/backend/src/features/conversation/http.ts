@@ -112,6 +112,7 @@ export function conversationRoutes(
             senderMemberId: body.senderMemberId,
             addressedTo: body.addressedTo,
             content: body.content,
+            modelOverride: body.model,
           });
           set.status = 202;
           return result;
@@ -121,6 +122,20 @@ export function conversationRoutes(
             senderMemberId: t.String({ minLength: 1 }),
             addressedTo: t.Array(t.String()),
             content: t.Any(),
+            model: t.Optional(
+              t.Object({
+                backendKind: t.String(),
+                modelId: t.String(),
+                reasoningEffort: t.Optional(
+                  t.Union([
+                    t.Literal("none"),
+                    t.Literal("low"),
+                    t.Literal("high"),
+                    t.Literal("max"),
+                  ]),
+                ),
+              }),
+            ),
           }),
         },
       )

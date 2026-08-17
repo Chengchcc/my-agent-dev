@@ -1,4 +1,4 @@
-import { existsSync, rmSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { buildSkillIndex } from "@chengchenccc/plugin-progressive-skill";
 import { Elysia, t } from "elysia";
@@ -169,6 +169,49 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
       {
         query: t.Object({
           path: t.Optional(t.String()),
+        }),
+      },
+    )
+    .get(
+      "/api/skill-packs/:id/search",
+      ({ params: { id }, query: { q }, set }) => {
+        const root = resolve(posixSkillRoot(dataDir), id);
+        if (!existsSync(root)) {
+          set.status = 404;
+          return { error: "Pack not found" };
+        }
+        const needle = q.toLowerCase();
+        const results: Array<{ path: string; line: number; snippet: string }> = [];
+        const walk = (dir: string, rel: string) => {
+          if (results.length >= 50) return;
+          for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            if (results.length >= 50) return;
+            if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+            const full = join(dir, entry.name);
+            const relPath = rel ? `${rel}/${entry.name}` : entry.name;
+            if (entry.isDirectory()) {
+              walk(full, relPath);
+            } else if (entry.isFile() && statSync(full).size <= 512_000) {
+              const lines = readFileSync(full, "utf8").split("\n");
+              for (let i = 0; i < lines.length && results.length < 50; i++) {
+                const line = lines[i] ?? "";
+                if (line.toLowerCase().includes(needle)) {
+                  results.push({
+                    path: relPath,
+                    line: i + 1,
+                    snippet: line.trim().slice(0, 160),
+                  });
+                }
+              }
+            }
+          }
+        };
+        walk(root, "");
+        return { results };
+      },
+      {
+        query: t.Object({
+          q: t.String({ minLength: 1 }),
         }),
       },
     );

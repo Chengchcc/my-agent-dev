@@ -3,6 +3,7 @@
 import { Download, GitBranch, Package, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { InstallPackForm } from "@/components/InstallPackForm";
+import { PackFileSearch } from "@/components/PackFileSearch";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { dirname, FileContent, FileTree, statusLabel } from "@/components/SkillPackManager";
 import { Button } from "@/components/ui/button";
@@ -103,6 +104,7 @@ function PackDrawer({ pack, onClose }: { pack: PackEntry; onClose: () => void })
                 </Button>
               </div>
               <Card className="p-3">
+                <PackFileSearch packId={pack.id} onOpen={setSelectedFile} />
                 <FileTree packId={pack.id} path={root} onSelectFile={setSelectedFile} />
               </Card>
             </div>

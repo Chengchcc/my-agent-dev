@@ -1,6 +1,7 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import type { ChatModelOverride } from "@/lib/api";
 import { api, type ConversationSnapshot } from "@/lib/api";
 import { conversationKeys } from "./query-keys";
 
@@ -84,11 +85,17 @@ export function useConversationSnapshot(
 
 export function usePostConversationMessage(conversationId: string) {
   return useMutation({
-    mutationFn: (params: { senderMemberId: string; text: string; addressedTo: string[] }) =>
+    mutationFn: (params: {
+      senderMemberId: string;
+      text: string;
+      addressedTo: string[];
+      model?: ChatModelOverride;
+    }) =>
       api.postConversationMessage(conversationId, {
         senderMemberId: params.senderMemberId,
         addressedTo: params.addressedTo,
         content: params.text,
+        model: params.model,
       }),
   });
 }
