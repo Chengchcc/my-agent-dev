@@ -1,5 +1,4 @@
 import type { LedgerEntry, Member } from "@chengchenccc/conversation";
-import type { ContentBlock } from "@chengchenccc/message";
 import { client, unwrap } from "./client";
 
 // ── Types derived from API treaty (single source: backend App type) ──
