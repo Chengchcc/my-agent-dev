@@ -25,7 +25,9 @@ export function newSessionId(): string {
 
 /** Load the transcript messages of a session file (wire-loose shape).
  *  Missing/corrupt files yield [] (the caller falls back to a fresh
- *  session). */
+ *  session). A compaction event REPLACES everything recorded before it:
+ *  the summary becomes one context message, later turns stay live — so a
+ *  resumed session does not re-inflate the context it already compacted. */
 export function loadSessionMessages(id: string): Record<string, unknown>[] {
   const path = sessionPath(id);
   if (!existsSync(path)) return [];
@@ -38,8 +40,16 @@ export function loadSessionMessages(id: string): Record<string, unknown>[] {
       const evt = JSON.parse(line) as {
         type?: string;
         message?: Record<string, unknown>;
+        summary?: string;
       };
       if (evt.type === "message" && evt.message?.role) messages.push(evt.message);
+      else if (evt.type === "compaction" && typeof evt.summary === "string") {
+        messages.length = 0;
+        messages.push({
+          role: "user",
+          text: `<previous_session_summary>\n${evt.summary}\n</previous_session_summary>`,
+        });
+      }
     } catch {
       /* skip malformed line */
     }
@@ -47,6 +57,21 @@ export function loadSessionMessages(id: string): Record<string, unknown>[] {
   return messages;
 }
 
+/** Append a compaction event: records that the run compacted everything
+ *  recorded so far in this file into `summary`. Must be called AFTER the
+ *  turn's messages are appended. */
+export function appendSessionCompaction(id: string, summary: string): void {
+  const path = sessionPath(id);
+  if (!existsSync(path)) return;
+  appendFileSync(
+    path,
+    `${JSON.stringify({
+      type: "compaction",
+      timestamp: new Date().toISOString(),
+      summary,
+    })}\n`,
+  );
+}
 /** Append message events to the session file (header written on create;
  *  parentId chains to the file's last message id). */
 export function appendSessionMessages(id: string, cwd: string, messages: readonly unknown[]): void {

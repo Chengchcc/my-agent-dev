@@ -48,6 +48,8 @@ export interface OmaRuntime {
   stop(): Promise<void>;
   /** Close MCP clients and the in-memory Store. Call after the run settles. */
   close(): Promise<void>;
+  /** Compaction summaries from this run's loop; read before close(). */
+  compactions(): Promise<string[]>;
 }
 
 function mapLoopResult(result: OmaLoopResult): BackendRunOutcome {
@@ -195,6 +197,17 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
 
     async close() {
       await rt.close();
+    },
+
+    /** Compaction summaries produced by this run's loop (empty when the
+     *  run never compacted). Read the store BEFORE close(). */
+    async compactions(): Promise<string[]> {
+      const branch = await rt.store.readBranch(options.runId);
+      const summaries: string[] = [];
+      for (const entry of branch) {
+        if (entry.type === "compaction" && entry.summary) summaries.push(entry.summary);
+      }
+      return summaries;
     },
   };
 }

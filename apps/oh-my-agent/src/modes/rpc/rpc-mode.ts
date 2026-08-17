@@ -6,6 +6,7 @@ import { type Message, MessageSchema } from "@chengchenccc/message";
 import { createOmaRuntime, type OmaRuntime } from "../../core/create-runtime.js";
 import { buildSystemPrompt, readMemorySummary } from "../../core/prompts.js";
 import {
+  appendSessionCompaction,
   appendSessionMessages,
   loadSessionMessages,
   newSessionId,
@@ -278,6 +279,9 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
     // messages) so the next run resumes the transcript (ADR 0003).
     if (outcome.status === "completed" && outcome.messages?.length) {
       appendSessionMessages(sessionId, process.cwd(), [inputMessage, ...outcome.messages]);
+      for (const summary of await runtime.compactions()) {
+        appendSessionCompaction(sessionId, summary);
+      }
     }
     const outcomeWithRef: BackendRunOutcome = {
       ...outcome,
