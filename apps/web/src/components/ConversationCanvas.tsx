@@ -22,6 +22,7 @@ import { RecapPanel } from "./RecapPanel";
 import { RosterList } from "./RosterList";
 import { Timeline } from "./Timeline";
 import { TodoPanel } from "./TodoPanel";
+import { UsagePanel } from "./UsagePanel";
 import { WorkflowPanel } from "./WorkflowPanel";
 
 interface ConversationCanvasProps {
@@ -412,11 +413,8 @@ export function ConversationCanvas({
 
         {/* Roster — desktop sidebar */}
         <aside className="hidden md:block shrink-0 w-56 border-l border-(--hairline) overflow-y-auto p-3">
-          <RosterList
-            conversationId={conversationId}
-            roster={roster}
-            viewerMemberId={viewerMemberId}
-          />
+          <RosterList roster={roster} viewerMemberId={viewerMemberId} />
+          <UsagePanel conversationId={conversationId} />
         </aside>
 
         {/* Roster — mobile trigger */}
@@ -447,11 +445,11 @@ export function ConversationCanvas({
             aria-label="Members"
           >
             <RosterList
-              conversationId={conversationId}
               roster={roster}
               viewerMemberId={viewerMemberId}
               onClose={() => setRosterOpen(false)}
             />
+            <UsagePanel conversationId={conversationId} />
           </aside>
         </>
       )}

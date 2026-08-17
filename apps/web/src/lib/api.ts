@@ -98,12 +98,6 @@ export const api = {
     id: string,
     body: { senderMemberId: string; addressedTo: string[]; content: unknown },
   ) => unwrap(client.api.conversations({ id }).messages.post(body)),
-  addConversationMember: (
-    id: string,
-    body: { memberId: string; kind: "agent" | "human"; agentId?: string; displayName?: string },
-  ) => unwrap(client.api.conversations({ id }).members.post(body)),
-  removeConversationMember: (id: string, memberId: string) =>
-    unwrap(client.api.conversations({ id }).members.delete({ memberId })),
   deleteConversation: (id: string) => unwrap(client.api.conversations({ id }).delete()),
   clearConversation: (id: string) => unwrap(client.api.conversations({ id }).clear.post({})),
   compactConversation: (id: string) => unwrap(client.api.conversations({ id }).compact.post({})),
@@ -136,6 +130,12 @@ export const api = {
     ),
   getAgentRun: (runId: string) => unwrap(client.api["agent-runs"]({ runId }).get()),
   cancelAgentRun: (runId: string) => unwrap(client.api["agent-runs"]({ runId }).cancel.post()),
+  getUsageSummary: (conversationId?: string) =>
+    unwrap(
+      client.api.usage.summary.get({
+        query: conversationId ? { conversationId } : undefined,
+      }),
+    ),
   getAgentRuntime: (agentId: string) =>
     unwrap(client.api.ops.agents({ id: agentId }).runtime.get()),
   listSurfaces: () => unwrap(client.api.ops.surfaces.get()),

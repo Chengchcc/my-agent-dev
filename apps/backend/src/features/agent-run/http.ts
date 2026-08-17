@@ -29,6 +29,28 @@ export function agentRunRoutes(input: {
 }) {
   const { db, agentRunService, agentRunExecution } = input;
 
+  /** Sum terminal usage columns over agent_run rows matching `where`. */
+  const usageTotals = (where: string, args: (string | number)[]) =>
+    db
+      .query(
+        `SELECT COUNT(*) AS runs,
+                COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.inputTokens') AS REAL)), 0) AS inputTokens,
+                COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.outputTokens') AS REAL)), 0) AS outputTokens,
+                COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.cacheReadTokens') AS REAL)), 0) AS cacheReadTokens,
+                COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.cacheWriteTokens') AS REAL)), 0) AS cacheWriteTokens,
+                COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.costUsd') AS REAL)), 0) AS costUsd
+           FROM agent_run
+          WHERE terminal_result IS NOT NULL ${where}`,
+      )
+      .get(...args) as {
+      runs: number;
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      costUsd: number;
+    };
+
   return new Elysia()
     .get(
       "/api/agent-runs",
@@ -100,6 +122,24 @@ export function agentRunRoutes(input: {
           ),
           agentId: t.Optional(t.String()),
           limit: t.Optional(t.String()),
+        }),
+      },
+    )
+    .get(
+      "/api/usage/summary",
+      ({ query }) => {
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        return {
+          conversation: query.conversationId
+            ? usageTotals("AND conversation_id = ?", [query.conversationId])
+            : null,
+          today: usageTotals("AND created_at >= ?", [startOfDay.getTime()]),
+        };
+      },
+      {
+        query: t.Object({
+          conversationId: t.Optional(t.String({ minLength: 1 })),
         }),
       },
     )

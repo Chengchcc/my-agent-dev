@@ -1,6 +1,6 @@
 "use client";
 
-import { Package } from "lucide-react";
+import { MessageCircle, Package } from "lucide-react";
 import { useState } from "react";
 
 import { AgentForm } from "@/components/AgentForm";
@@ -13,10 +13,12 @@ import { McpServerPanel } from "@/components/McpServerPanel";
 import { AgentRunsTable } from "@/components/ops/AgentRunsTable";
 import { QueryState } from "@/components/ops/QueryState";
 import { Page, PageHeader } from "@/components/page";
+import { Button } from "@/components/ui/button";
 import { ListRowCard, SubTabs } from "@/components/ui/polish";
 import { Switch } from "@/components/ui/switch";
 import { WorkspaceExplorer } from "@/components/WorkspaceExplorer";
 import { useAgentDetail } from "@/features/agents/hooks";
+import { useStartChat } from "@/features/conversations/hooks";
 import { useAgentRuns } from "@/features/ops/hooks";
 import {
   useAgentSkillPacks,
@@ -67,6 +69,7 @@ function packStatusLabel(status: PackStatus): string {
 export function AgentDetail({ agentId }: { agentId: string }) {
   const [tab, setTab] = useState<Tab>("persona");
   const { data: agent, isLoading } = useAgentDetail(agentId);
+  const chat = useStartChat(agentId, agent?.name);
 
   if (isLoading) {
     return (
@@ -96,7 +99,15 @@ export function AgentDetail({ agentId }: { agentId: string }) {
       <PageHeader
         breadcrumb="Team / Agents"
         title={agent.name}
-        action={<AgentForm editAgent={agent} triggerLabel="Edit" />}
+        action={
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => chat.start()} disabled={chat.isPending}>
+              <MessageCircle className="size-4" />
+              Chat
+            </Button>
+            <AgentForm editAgent={agent} triggerLabel="Edit" />
+          </div>
+        }
       />
       <div className="mx-auto max-w-[860px] space-y-6 px-4 sm:px-6 lg:px-8 py-6">
         <AgentDescriptionCard agent={agent} />

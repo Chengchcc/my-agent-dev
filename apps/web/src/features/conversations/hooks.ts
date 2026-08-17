@@ -1,4 +1,6 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { api, type ConversationSnapshot } from "@/lib/api";
 import { conversationKeys } from "./query-keys";
 
@@ -37,25 +39,36 @@ export function useCreateConversation() {
   });
 }
 
-export function useAddConversationMember(conversationId: string) {
+/** Create a 1:1 human<->agent conversation and navigate into it. */
+export function useStartChat(agentId: string, agentName?: string) {
+  const router = useRouter();
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: Parameters<typeof api.addConversationMember>[1]) =>
-      api.addConversationMember(conversationId, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: conversationKeys.detail(conversationId) });
-    },
-  });
-}
+  const create = useCreateConversation();
 
-export function useRemoveConversationMember(conversationId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (memberId: string) => api.removeConversationMember(conversationId, memberId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: conversationKeys.detail(conversationId) });
-    },
-  });
+  const start = () => {
+    const humanId = `human-${crypto.randomUUID().slice(0, 8)}`;
+    create.mutate(
+      {
+        members: [
+          { memberId: agentId, kind: "agent", agentId, displayName: agentName },
+          { memberId: humanId, kind: "human", userRef: "__legacy__", displayName: "User" },
+        ],
+      },
+      {
+        onSuccess: (conv) => {
+          qc.invalidateQueries({ queryKey: conversationKeys.byAgent(agentId) });
+          router.push(`/chat/${conv.conversationId}`);
+        },
+        onError: (err) => {
+          toast.error("Failed to create conversation", {
+            description: err instanceof Error ? err.message : "Unknown error",
+          });
+        },
+      },
+    );
+  };
+
+  return { isPending: create.isPending, start };
 }
 
 export function useConversationSnapshot(

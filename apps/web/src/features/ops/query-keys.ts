@@ -5,4 +5,6 @@ export const opsKeys = {
   runDetail: (runId: string) => ["ops", "agent-runs", runId] as const,
   agentRuntime: (agentId: string) => ["ops", "agents", agentId, "runtime"] as const,
   surfaces: () => ["ops", "surfaces"] as const,
+  usageSummary: (conversationId?: string) =>
+    ["ops", "usage-summary", conversationId ?? "all"] as const,
 };

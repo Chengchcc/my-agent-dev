@@ -19,6 +19,15 @@ export function useSurfaces() {
   return useQuery(surfacesQuery());
 }
 
+export function useUsageSummary(conversationId?: string) {
+  return useQuery({
+    queryKey: opsKeys.usageSummary(conversationId),
+    queryFn: () => api.getUsageSummary(conversationId),
+    enabled: true,
+    refetchInterval: 15_000,
+  });
+}
+
 export function useAgentRuntimes(agentIds: string[], opts?: { refetchInterval?: number }) {
   return useQueries({
     queries: agentIds.map((id) => ({
