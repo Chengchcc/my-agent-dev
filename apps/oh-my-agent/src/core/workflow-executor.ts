@@ -10,6 +10,7 @@ import {
 import type { Usage } from "@chengchenccc/agent-backend";
 import type { AIMessageChunk } from "@chengchenccc/core";
 import type { Message } from "@chengchenccc/message";
+import subagentPrompt from "../prompts/agents/subagent.md" with { type: "text" };
 
 export interface WorkflowAgentSpec {
   readonly prompt: string;
@@ -70,9 +71,7 @@ export interface WorkflowExecutor {
   }): Promise<WorkflowRunResult>;
 }
 
-const SUBAGENT_SYSTEM_PROMPT =
-  "You are a subagent of a oma run. Complete the given task and stop. " +
-  "Return only the result text (or JSON when a schema is requested).";
+const SUBAGENT_SYSTEM_PROMPT = subagentPrompt.trim();
 
 export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowExecutor {
   let totalSpawned = 0;

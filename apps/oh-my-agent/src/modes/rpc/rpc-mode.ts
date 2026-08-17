@@ -9,6 +9,7 @@ import {
   loadSessionMessages,
   newSessionId,
 } from "../../core/session-file.js";
+import { buildSystemPrompt } from "../../core/prompts.js";
 import {
   readWorkspaceSystemPrompt,
   scanWorkspaceSkillRoots,
@@ -212,13 +213,18 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
       // Explicit run-input values (Loop scopes) win over the cwd fallback.
       const cwdSkills = scanWorkspaceSkillRoots(input.workspace.root);
       const cwdPrompt = readWorkspaceSystemPrompt(input.workspace.root);
-      effectiveInput =
-        input.run.systemPrompt || cwdPrompt === undefined
-          ? input
-          : {
-              ...input,
-              run: { ...input.run, systemPrompt: cwdPrompt },
-            };
+      effectiveInput = input.run.systemPrompt
+        ? input
+        : {
+            ...input,
+            run: {
+              ...input.run,
+              systemPrompt: buildSystemPrompt({
+                workspacePrompt: cwdPrompt,
+                cwd: input.workspace.root,
+              }),
+            },
+          };
 
       runtime = await createOmaRuntime({
         runId,

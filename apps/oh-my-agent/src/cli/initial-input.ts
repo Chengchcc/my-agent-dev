@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { BackendRunInput } from "@chengchenccc/agent-backend";
 import type { ModelRuntime } from "@chengchenccc/ai";
+import { buildSystemPrompt } from "../core/prompts.js";
+import { readWorkspaceSystemPrompt } from "../core/workspace-context.js";
 import { UsageError } from "./args.js";
 
 /** One-shot CLI stdin bound: a hostile `cat huge-file | oma -p`
@@ -80,7 +82,10 @@ export async function buildCliRunInput(opts: {
     run: {
       runId,
       model: { backendKind: "oma", modelId },
-
+      systemPrompt: buildSystemPrompt({
+        workspacePrompt: readWorkspaceSystemPrompt(opts.workspaceRoot),
+        cwd: opts.workspaceRoot,
+      }),
       configRevision: 0,
     },
     workspace: { root: opts.workspaceRoot, access: "read_write" },
