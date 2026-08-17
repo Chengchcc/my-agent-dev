@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -25,6 +25,7 @@ import {
 } from "../../src/features/loop/loop-state-store.js";
 import { loopStep } from "../../src/features/loop/loop-step.js";
 import { createRunTokenRegistry } from "../../src/features/product-tools/run-token-registry.js";
+import { createWorkspaceLockRegistry } from "../../src/features/project/workspace-lock.js";
 import { openDb } from "../../src/infra/sqlite/db.js";
 
 /** THE real Loop chain: loopStep → AgentRunService → AgentRunExecution →
@@ -176,6 +177,7 @@ beforeAll(async () => {
     },
   };
   const realExecution = createAgentRunExecutionService({
+    workspaceLocks: createWorkspaceLockRegistry(),
     productToolsTokenRegistry: createRunTokenRegistry(),
     runPort,
     contextPort,
@@ -260,6 +262,7 @@ describe("Loop with a REAL coding-agent child", () => {
         modelId,
       }),
       agentWorkspaceOf: async () => join(dataDir, "loop-agent-ws"),
+      withWorkspaceLock: createWorkspaceLockRegistry().withLock.bind(createWorkspaceLockRegistry()),
     });
 
     // ── State machine: generator + evaluator ran, verdict PASS ──
@@ -283,9 +286,13 @@ describe("Loop with a REAL coding-agent child", () => {
     const branch = await Bun.$`git -C ${clone} rev-parse --abbrev-ref HEAD`.quiet().text();
     expect(branch.trim()).toMatch(/^agent\//);
 
-    // ── The workflow meta really landed in the clone ──
-    const metaScript = await Bun.file(join(clone, ".workflows", "loop.js")).text();
-    expect(metaScript).toContain('"verdict":"PASS"');
+    // A2: the workflow scratch file is deleted at PASS (never committed);
+    // the verdict lives in the run state instead.
+    expect(existsSync(join(clone, ".workflows", "loop.js"))).toBe(false);
+    // A2: the FINAL TREE (not just the latest commit message) drops the
+    // scratch — the child may commit it, the product commit removes it.
+    const treeFiles = await Bun.$`git -C ${clone} ls-tree -r --name-only HEAD`.quiet().text();
+    expect(treeFiles).not.toContain(".workflows/");
 
     // ── The real child loaded <loopConfigPath>/skills: skill_load
     //    resolved the loop-skill body (observable in the run events) ──

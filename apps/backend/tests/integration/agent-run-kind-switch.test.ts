@@ -21,6 +21,7 @@ import { createAgentRunService } from "../../src/features/agent-run/service.js";
 import { sqliteConversationAdapter } from "../../src/features/conversation/adapter-sqlite.js";
 import { createConversationFeature } from "../../src/features/conversation/conversation-compose.js";
 import { createRunTokenRegistry } from "../../src/features/product-tools/run-token-registry.js";
+import { createWorkspaceLockRegistry } from "../../src/features/project/workspace-lock.js";
 import { openDb } from "../../src/infra/sqlite/db.js";
 
 /** D2 acceptance: switching an agent's backend kind auto-forks a new
@@ -134,6 +135,7 @@ beforeAll(async () => {
   });
 
   execution = createAgentRunExecutionService({
+    workspaceLocks: createWorkspaceLockRegistry(),
     productToolsTokenRegistry: createRunTokenRegistry(),
     runPort,
     contextPort,

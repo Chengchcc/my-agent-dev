@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,9 +12,10 @@ import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ProjectRow } from "../project/domain.js";
 import type { ProjectPort } from "../project/ports.js";
+import { createWorkspaceLockRegistry } from "../project/workspace-lock.js";
 import { createLoopStateStore, type LoopStateStore } from "./loop-state-store.js";
 import type { GitRunner } from "./loop-step.js";
-import { loopStep } from "./loop-step.js";
+import { loopCleanStart, loopStep } from "./loop-step.js";
 
 // Every test gets its own mkdtemp dirs — no shared fixed /tmp paths, so the
 // file is safe under full-suite parallel execution (a shared dir would let one
@@ -129,6 +131,9 @@ interface RunScript {
    *  .workflows/loop.js. undefined = a default PASS meta; null = no file
    *  (the no-writeback path). */
   workflowMeta?: Record<string, unknown> | null;
+  /** Real files the fake generator touches inside the worktree (A2:
+   *  denylist sees untracked files through porcelain). */
+  touchFiles?: string[];
   /** usage tokens returned on both runs. */
   usageTokens?: number;
   /** generator rejects the input (queued behind another run). */
@@ -235,6 +240,13 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
     async dispatch(runId) {
       const run = runs.get(runId);
       if (!run) return;
+      // A2: touch files at dispatch time — the worktree exists now and
+      // porcelain picks them up as untracked.
+      for (const rel of script.touchFiles ?? []) {
+        await Bun.write(join(workDir, rel), "touched").catch(() => {
+          /* fixture without a worktree */
+        });
+      }
       const status = script.genStatus ?? "completed";
       (run as { status: AgentRun["status"] }).status = status;
       (run as { terminalResult: BackendRunOutcome | null }).terminalResult = {
@@ -329,8 +341,13 @@ async function runStep(
       agentRunExecution: fake.agentRunExecution,
       resolveModel: async (name) => ({ backendKind: "coding_agent", modelId: name }),
       agentWorkspaceOf: async () => join(dataDir, "loop-agent-ws"),
+      withWorkspaceLock: createWorkspaceLockRegistry().withLock.bind(createWorkspaceLockRegistry()),
     });
-    return { result, ...fake };
+    return {
+      result,
+      ...fake,
+      worktreeRoot: join(dataDir, "loop-agent-ws", "projects", "test-project"),
+    };
   } finally {
     await ownGit?.cleanup();
     // The loop dir is always a per-test mkdtemp (created here or by the
@@ -428,6 +445,9 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
             agentRunExecution: fake.agentRunExecution,
             resolveModel: async (name) => ({ backendKind: "coding_agent", modelId: name }),
             agentWorkspaceOf: async () => join(dataDir, "loop-agent-ws"),
+            withWorkspaceLock: createWorkspaceLockRegistry().withLock.bind(
+              createWorkspaceLockRegistry(),
+            ),
           }),
         ).rejects.toThrow("generator run");
         expect(fake.enqueues.some((e) => e.agentMemberId.startsWith("loop-evaluator"))).toBe(false);
@@ -496,12 +516,13 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     const store = createTestStore();
     stateWithFixingItem(store);
     const dir = await initLoopDir("test-project", "        - .env");
-    const gitRunner: GitRunner = {
-      revParse: () => Promise.resolve({ text: () => "deadbeef" }),
-      diff: () => Promise.resolve({ text: () => ".env\n" }),
-      resetHard: () => Promise.resolve({ text: () => "" }),
-    };
-    const { enqueues, result } = await runStep({ store, dir, gitRunner });
+    // A2: the violation is an UNTRACKED .env — porcelain must catch it
+    // (the retired diff-based check could not).
+    const { enqueues, result } = await runStep({
+      store,
+      dir,
+      script: { touchFiles: [".env"] },
+    });
     expect(enqueues.some((e) => e.agentMemberId.startsWith("loop-evaluator"))).toBe(false);
     expect(result.items["item-1"]!.result?.verdict).toBe("REJECT");
   });
@@ -580,4 +601,117 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
       await cleanup();
     }
   });
+});
+
+/** Commit a change on the bare fixture origin via a scratch worktree
+ *  (the fixture source IS bare — you cannot commit inside it directly). */
+async function commitOnOrigin(
+  bareSrc: string,
+  file: string,
+  content: string,
+  msg: string,
+): Promise<void> {
+  const scratch = `${bareSrc}-scratch`;
+  await Bun.$`git -C ${bareSrc} worktree add -q ${scratch} main`.nothrow().quiet();
+  try {
+    await Bun.write(join(scratch, file), content);
+    await Bun.$`git -C ${scratch} add -A`.quiet();
+    await Bun.$`git -C ${scratch} -c user.email=t@t -c user.name=t commit -qm ${msg}`.quiet();
+    await Bun.$`git -C ${scratch} push -q ${bareSrc} main:main`.nothrow().quiet();
+  } finally {
+    await Bun.$`git -C ${bareSrc} worktree remove --force ${scratch}`.nothrow().quiet();
+  }
+}
+
+describe("loopCleanStart (A1): branch lifecycle", () => {
+  test("PASS commit survives the next tick's clean start", async () => {
+    const fixture = await setupGitDataDir();
+    try {
+      const store = createTestStore();
+      stateWithFixingItem(store);
+      const first = await runStep({
+        store,
+        dataDir: fixture.dataDir,
+        projectPort: fixture.projectPort,
+        // A real change so the PASS commit has content (meta alone is
+        // deleted before the commit).
+        script: { touchFiles: ["CHANGE.txt"] },
+      });
+      expect(first.result.items["item-1"]?.result?.verdict).toBe("PASS");
+      // Second tick on the SAME fixture: the clean start must not wipe the
+      // PASS commit (it resets to the branch's own HEAD, not the base).
+      const second = await runStep({
+        store,
+        dataDir: fixture.dataDir,
+        projectPort: fixture.projectPort,
+      });
+      const wtRoot = second.worktreeRoot;
+      expect(existsSync(wtRoot)).toBe(true);
+      const log = await Bun.$`git -C ${wtRoot} log --oneline -5`.quiet().text();
+      expect(log).toMatch(/loop test item item-1/);
+    } finally {
+      await fixture.cleanup();
+    }
+  }, 20_000);
+
+  test("branch strictly behind base fast-forwards to base", async () => {
+    const dir = await setupGitDataDir();
+    const agentWs = join(dir.dataDir, "loop-agent-ws");
+    mkdirSync(join(agentWs, "projects"), { recursive: true });
+    try {
+      const { ensureMirror, ensureWorktree } = await import("../project/worktree.js");
+      const repoUrl = dir.projectPort.getProject("test-project")!.repoUrl!;
+      const mirror = await ensureMirror(dir.dataDir, {
+        projectId: "test-project",
+        repoUrl,
+        defaultBranch: "main",
+      });
+      const wt = await ensureWorktree(
+        mirror,
+        agentWs,
+        { projectId: "test-project", repoUrl, defaultBranch: "main" },
+        "default",
+      );
+      if (!wt) throw new Error("worktree setup failed");
+      // Base advances remotely; branch has nothing of its own.
+      await commitOnOrigin(repoUrl, "NEW", "new", "new");
+      await Bun.$`git -C ${mirror} fetch -q origin main:main`.nothrow().quiet();
+      await loopCleanStart(wt, mirror, "main");
+      const files = await Bun.$`git -C ${wt} ls-files`.quiet().text();
+      expect(files).toContain("NEW");
+    } finally {
+      await dir.cleanup();
+    }
+  }, 20_000);
+
+  test("diverged branch refuses instead of wiping ahead work", async () => {
+    const dir = await setupGitDataDir();
+    const agentWs = join(dir.dataDir, "loop-agent-ws");
+    mkdirSync(join(agentWs, "projects"), { recursive: true });
+    const { ensureMirror, ensureWorktree } = await import("../project/worktree.js");
+    const mirror = await ensureMirror(dir.dataDir, {
+      projectId: "test-project",
+      repoUrl: dir.projectPort.getProject("test-project")!.repoUrl!,
+      defaultBranch: "main",
+    });
+    const wt = await ensureWorktree(
+      mirror,
+      agentWs,
+      { projectId: "test-project", repoUrl: "", defaultBranch: "main" },
+      "default",
+    );
+    if (!wt) throw new Error("worktree setup failed");
+    // agent commit + base advance -> divergence
+    await Bun.$`echo mine > ${join(wt, "MINE")}`.quiet();
+    await Bun.$`git -C ${wt} add -A`.quiet();
+    await Bun.$`git -C ${wt} -c user.email=t@t -c user.name=t commit -qm mine`.quiet();
+    const src = dir.projectPort.getProject("test-project")!.repoUrl!;
+    await commitOnOrigin(src, "THEIRS", "theirs", "theirs");
+    await Bun.$`git -C ${mirror} fetch -q origin main:main`.nothrow().quiet();
+    await expect(loopCleanStart(wt, mirror, "main")).rejects.toThrow(/diverged/);
+    // the ahead work is intact
+    const mine = await Bun.$`git -C ${wt} log --oneline -1`.quiet().text();
+    expect(mine).toContain("mine");
+    await dir.cleanup();
+  }, 20_000);
 });

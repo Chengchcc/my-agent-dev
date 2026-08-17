@@ -54,6 +54,7 @@ import {
   projectRoutes,
   sqliteProjectAdapter,
 } from "../features/project/index.js";
+import { createWorkspaceLockRegistry } from "../features/project/workspace-lock.js";
 import { ensureMirror, ensureWorktree, removeWorktree } from "../features/project/worktree.js";
 import { createWorktreeOps } from "../features/project/worktree-ops.js";
 import { createRuntimeOpsService, opsRoutes } from "../features/runtime-ops/index.js";
@@ -157,6 +158,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   // ─── Agent service ──────────────────────────────────────────
   // Busy guard for hardDelete is wired after the Agent Run adapter exists.
   const busyGuard: { check: ((agentId: string) => void) | undefined } = { check: undefined };
+  /** Shared per-worktree lock registry (A4): run dispatch, loop
+   *  clean-start/reset and agent detach serialize on the same roots. */
+  const workspaceLocks = createWorkspaceLockRegistry();
+
   // Workspace bridge (ADR 0003 decision 3): reconcile skills/mcp into the
   // agent workspace. Late-bound (mcpSvc is created further down).
   const reconcileAgent: {
@@ -385,6 +390,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     claude_code: { backend: claudeBackend, catalog: new ClaudeModelCatalog() },
   };
   const agentRunExecution = createAgentRunExecutionService({
+    workspaceLocks,
     productToolsTokenRegistry,
     runTimeoutMs: config.runTimeoutMs,
     runPort: agentRunPort,
@@ -693,6 +699,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   );
   const cronScheduler = createCronScheduler({
     agentWorkspaceOf: resolveAgentWorkspace,
+    withWorkspaceLock: workspaceLocks.withLock.bind(workspaceLocks),
     cronSvc,
     config,
     convPort,
@@ -747,6 +754,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     projects: projectRoutes(projectSvc, worktreeOps),
     loops: loopRoutes({
       agentWorkspaceOf: resolveAgentWorkspace,
+      withWorkspaceLock: workspaceLocks.withLock.bind(workspaceLocks),
       cronSvc,
       scheduler: cronScheduler,
       dataDir: config.dataDir,

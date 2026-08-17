@@ -24,6 +24,7 @@ import { buildHistoryTools } from "../../src/features/product-tools/manifest.js"
 import { createProductToolsMcpServer } from "../../src/features/product-tools/mcp.js";
 import { createRunTokenRegistry } from "../../src/features/product-tools/run-token-registry.js";
 import { createProductToolsService } from "../../src/features/product-tools/service.js";
+import { createWorkspaceLockRegistry } from "../../src/features/project/workspace-lock.js";
 import { openDb } from "../../src/infra/sqlite/db.js";
 
 /** THE Phase 5 acceptance chain, all real:
@@ -129,6 +130,7 @@ beforeAll(async () => {
   };
   execution = createAgentRunExecutionService({
     productToolsTokenRegistry: registry,
+    workspaceLocks: createWorkspaceLockRegistry(),
     runPort,
     contextPort,
     ledgerResolver,

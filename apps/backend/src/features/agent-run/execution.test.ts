@@ -16,6 +16,7 @@ import {
   type RunTokenRegistry,
 } from "../product-tools/run-token-registry.js";
 import { sqliteProjectAdapter } from "../project/adapter-sqlite.js";
+import { createWorkspaceLockRegistry } from "../project/workspace-lock.js";
 import { sqliteAgentRunAdapter } from "./adapter-sqlite.js";
 import type { AgentRun } from "./domain.js";
 import { createAgentRunExecutionService, runEventStreamFor } from "./execution.js";
@@ -163,6 +164,7 @@ function makeExecution(
       return { root: dataDir, access: "read_write" };
     },
     productToolsEntrypoint: "sse:http://127.0.0.1:1/mcp",
+    workspaceLocks: createWorkspaceLockRegistry(),
     productToolsTokenRegistry: tokenRegistry ?? createRunTokenRegistry(),
   });
 }

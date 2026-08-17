@@ -302,6 +302,7 @@ export async function runLoop(
     /** Repo builtin skills dir; forwarded to the Loop step. */
     builtinSkillsDir?: string;
     agentWorkspaceOf: (agentId: string) => Promise<string | null>;
+    withWorkspaceLock: <T>(root: string, fn: () => Promise<T>) => Promise<T>;
   },
   id: string,
 ): Promise<LoopState | null> {
@@ -330,6 +331,7 @@ export async function runLoop(
     resolveModel,
     ...(deps.builtinSkillsDir ? { builtinSkillsDir: deps.builtinSkillsDir } : {}),
     agentWorkspaceOf: deps.agentWorkspaceOf,
+    withWorkspaceLock: deps.withWorkspaceLock,
   });
 }
 
@@ -352,6 +354,7 @@ export async function reviewLoop(
     /** Repo builtin skills dir; forwarded to the Loop step. */
     builtinSkillsDir?: string;
     agentWorkspaceOf: (agentId: string) => Promise<string | null>;
+    withWorkspaceLock: <T>(root: string, fn: () => Promise<T>) => Promise<T>;
   },
   id: string,
   input: ReviewInput,
@@ -386,6 +389,7 @@ export async function reviewLoop(
     resolveModel,
     ...(deps.builtinSkillsDir ? { builtinSkillsDir: deps.builtinSkillsDir } : {}),
     agentWorkspaceOf: deps.agentWorkspaceOf,
+    withWorkspaceLock: deps.withWorkspaceLock,
   });
 
   return { state, action: input.verdict };

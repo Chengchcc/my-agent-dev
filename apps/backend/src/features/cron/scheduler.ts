@@ -38,6 +38,8 @@ export function createCronScheduler(deps: {
   convPort: ConversationPort;
   /** Resolve LOOP.md agent ids to workspace paths (ADR 0023 P2). */
   agentWorkspaceOf: (agentId: string) => Promise<string | null>;
+  /** Shared per-worktree lock registry (A4). */
+  withWorkspaceLock: <T>(root: string, fn: () => Promise<T>) => Promise<T>;
   agentRunService: AgentRunService;
   agentRunExecution: AgentRunExecutionService;
   resolveDefaultModel: (agentId: string) => Promise<BackendModelRef>;
@@ -168,6 +170,7 @@ export function createCronScheduler(deps: {
       }),
       builtinSkillsDir: deps.config.builtinSkillsDir,
       agentWorkspaceOf: deps.agentWorkspaceOf,
+      withWorkspaceLock: deps.withWorkspaceLock,
     };
     let attempt = 0;
     let currentJob = job;

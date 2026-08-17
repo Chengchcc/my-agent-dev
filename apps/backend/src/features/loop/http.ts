@@ -35,6 +35,7 @@ export function loopRoutes(input: {
   resolveModel: (modelName: string) => Promise<BackendModelRef>;
   settingsSvc?: SettingsService;
   agentWorkspaceOf: (agentId: string) => Promise<string | null>;
+  withWorkspaceLock: <T>(root: string, fn: () => Promise<T>) => Promise<T>;
 }) {
   const {
     cronSvc,
@@ -53,6 +54,7 @@ export function loopRoutes(input: {
   const loopStepDeps = {
     dataDir,
     agentWorkspaceOf,
+    withWorkspaceLock: input.withWorkspaceLock,
     store,
     projectPort,
     convPort,

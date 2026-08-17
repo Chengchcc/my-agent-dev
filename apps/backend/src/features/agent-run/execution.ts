@@ -20,6 +20,7 @@ import type {
 import { projectAgentContext } from "../agent-context/projection.js";
 import { buildHistoryTools } from "../product-tools/manifest.js";
 import type { RunTokenRegistry } from "../product-tools/run-token-registry.js";
+import type { WorkspaceLockRegistry } from "../project/workspace-lock.js";
 import type { AgentRun, BranchInput, ClaimedBranchInput } from "./domain.js";
 import { isActiveStatus, isTerminalStatus } from "./domain.js";
 import type { AgentRunPort } from "./ports.js";
@@ -61,6 +62,9 @@ export interface AgentRunExecutionDeps {
   /** Per-run product-tools bearer registry; minted at dispatch, revoked
    *  in dispatchFn's finally (every terminal path). */
   readonly productToolsTokenRegistry: RunTokenRegistry;
+  /** Shared per-worktree lock (A4): run dispatch, loop clean-start/reset
+   *  and agent detach serialize on the same roots. */
+  readonly workspaceLocks: WorkspaceLockRegistry;
   /** Called after a completed run's Product commit (History Message +
    *  Context ref) lands atomically. Fired on the original commit AND on
    *  retryTerminalCommit replay - consumers must be idempotent per
@@ -147,9 +151,6 @@ export function createAgentRunExecutionService(
    *  subscription. Removed when the run reaches a terminal state. */
   const liveRuns = new Map<string, LiveRun>();
   const inflight = new Set<string>();
-  /** Worktree roots with a live dispatch (ADR 0023 §5): same-root runs
-   *  queue instead of racing the same checkout. Keyed by workspace root. */
-  const rootLocks = new Map<string, Promise<void>>();
   /** Dispatch promises by runId: dispose() drains them AFTER the children
    *  are dead so the DB is never closed mid-finalize. */
   const inflightPromises = new Map<string, Promise<void>>();
@@ -521,20 +522,9 @@ export function createAgentRunExecutionService(
             conversationId: run.conversationId,
             agentMemberId: run.agentMemberId,
           }));
-        const prevLock = rootLocks.get(workspace0.root) ?? Promise.resolve();
-        const { promise: turn, resolve: releaseTurn } = Promise.withResolvers<void>();
-        rootLocks.set(
-          workspace0.root,
-          prevLock.then(() => turn),
+        const deliverResult = await deps.workspaceLocks.withLock(workspace0.root, () =>
+          deliverInput(run, claimed, stage),
         );
-        await prevLock.catch(() => {});
-        let deliverResult: Awaited<ReturnType<typeof deliverInput>>;
-        try {
-          deliverResult = await deliverInput(run, claimed, stage);
-        } finally {
-          releaseTurn();
-          if (rootLocks.get(workspace0.root) === turn) rootLocks.delete(workspace0.root);
-        }
         const { outcome, segment, drain } = deliverResult;
         if (outcome) {
           stage.name = "settle_outcome";

@@ -49,6 +49,9 @@ export interface LoopStepParams {
   /** Resolve a LOOP.md agent id to its workspace path (null = unknown
    *  agent). Wired from the composition root via agentSvc. */
   agentWorkspaceOf: (agentId: string) => Promise<string | null>;
+  /** Shared per-worktree lock (A4): run dispatch, loop clean-start/reset
+   *  and agent detach serialize against each other. */
+  withWorkspaceLock: <T>(root: string, fn: () => Promise<T>) => Promise<T>;
 }
 
 /** Stable deterministic identities - Generator and Evaluator are fully
@@ -110,6 +113,26 @@ function matchesGlob(path: string, pattern: string): boolean {
   return regex.test(path);
 }
 
+/** All paths the run touched: untracked + modified (porcelain) plus
+ *  anything the model managed to commit on top of baseSha (A2 — the old
+ *  diff-based check missed uncommitted files entirely). */
+async function collectChangedPaths(repoCwd: string, baseSha: string): Promise<string[]> {
+  const porcelain = await Bun.$`git -C ${repoCwd} status --porcelain=v1 -uall`.quiet().text();
+  const worktreePaths = porcelain
+    .split("\n")
+    .map((l) => l.slice(3).trim())
+    .filter(Boolean);
+  const committed = await Bun.$`git -C ${repoCwd} diff --name-only ${baseSha}..HEAD`
+    .quiet()
+    .nothrow()
+    .text();
+  const committedPaths = committed
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return [...new Set([...worktreePaths, ...committedPaths])];
+}
+
 function denylistedFiles(files: string[], patterns: string[]): string[] {
   if (patterns.length === 0) return [];
   return files.filter((f) => patterns.some((p) => matchesGlob(f, p)));
@@ -119,6 +142,12 @@ function denylistedFiles(files: string[], patterns: string[]): string[] {
  *  the project's default branch - the per-step clean start (ADR 0023 P2;
  *  replaces the retired per-step shallow clone). Returns null when the
  *  loop has no projectId. */
+export interface LoopWorktree {
+  cwd: string;
+  mirror: string;
+  base: string;
+}
+
 export async function resolveLoopWorktree(
   loopConfigPath: string,
   deps: {
@@ -126,7 +155,7 @@ export async function resolveLoopWorktree(
     dataDir: string | undefined;
     agentWorkspaceOf: (agentId: string) => Promise<string | null>;
   },
-): Promise<string | null> {
+): Promise<LoopWorktree | null> {
   const { projectPort, dataDir, agentWorkspaceOf } = deps;
   if (!projectPort || !dataDir) return null;
   let cfg: LoopConfig | null;
@@ -164,13 +193,55 @@ export async function resolveLoopWorktree(
   if (!wt) {
     throw new Error(`loopStep: worktree slot occupied at ${join(agentWs, "projects", projectId)}`);
   }
-  // Clean start per step: the mirror was just fetched; the default branch
-  // ref there IS the remote tip.
-  const ref = project.defaultBranch
-    ? `refs/heads/${project.defaultBranch}`
-    : "refs/remotes/origin/HEAD";
-  await Bun.$`git -C ${wt} reset --hard ${ref}`.quiet();
-  return wt;
+  const base = await resolveBaseBranch(mirror, project.defaultBranch);
+  return { cwd: wt, mirror, base };
+}
+
+/** Resolve the project's base branch name inside the mirror: the recorded
+ *  defaultBranch, else the remote HEAD the mirror cloned from (never the
+ *  nonexistent refs/remotes/origin/HEAD path). */
+export async function resolveBaseBranch(
+  mirror: string,
+  defaultBranch: string | null,
+): Promise<string> {
+  if (defaultBranch) return defaultBranch;
+  const head = await Bun.$`git -C ${mirror} symbolic-ref --short HEAD`.nothrow().quiet().text();
+  const resolved = head.trim();
+  if (!resolved) {
+    throw new Error("loopStep: cannot resolve the project's default branch (empty mirror HEAD)");
+  }
+  return resolved;
+}
+
+/** Per-step clean start (A1): start from the agent branch's own committed
+ *  state, never from the base — PASS commits must survive the next tick.
+ *  Uncommitted leftovers (failed runs, hand edits) are wiped. */
+export async function loopCleanStart(wt: string, _mirror: string, base: string): Promise<void> {
+  // Count against the WORKTREE's HEAD (the agent branch): the mirror's own
+  // HEAD is the default branch and would compare the wrong side.
+  const counts = await Bun.$`git -C ${wt} rev-list --left-right --count refs/heads/${base}...HEAD`
+    .nothrow()
+    .quiet()
+    .text();
+  const [behindRaw, aheadRaw] = counts.trim().split(/\s+/);
+  const behind = Number(behindRaw ?? 0);
+  const ahead = Number(aheadRaw ?? 0);
+  if (behind > 0 && ahead > 0) {
+    // Real divergence: both sides advanced past the merge-base. Refuse —
+    // wiping the branch's own commits would destroy approved work.
+    throw new Error(
+      `loopStep: agent branch and base ${base} diverged; merge via the project page before the next tick`,
+    );
+  }
+  if (behind > 0 && ahead === 0) {
+    // Strictly behind (nothing of its own): follow the base.
+    await Bun.$`git -C ${wt} reset --hard refs/heads/${base}`.quiet();
+  } else {
+    // At or ahead of the base: start each step from the branch's own
+    // committed state (PASS commits survive), wiping uncommitted noise.
+    await Bun.$`git -C ${wt} reset --hard HEAD`.quiet();
+  }
+  await Bun.$`git -C ${wt} clean -fd`.quiet();
 }
 
 function actionToReducer(action: ReviewAction) {
@@ -344,11 +415,18 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
   // The worktree is materialized ONLY for the generator path: review
   // actions early-return above and must never reset a worktree that a
   // live run may hold (H1 from the landing review).
-  const cwd = await resolveLoopWorktree(params.loopConfigPath, {
+  const resolved = await resolveLoopWorktree(params.loopConfigPath, {
     projectPort: params.projectPort,
     dataDir: params.dataDir,
     agentWorkspaceOf: params.agentWorkspaceOf,
   });
+  const cwd = resolved?.cwd ?? null;
+  if (resolved) {
+    // A1/A4: per-step clean start under the shared workspace lock — a
+    // live run holding this worktree settles first.
+    const { cwd: wt, mirror, base } = resolved;
+    await params.withWorkspaceLock(wt, () => loopCleanStart(wt, mirror, base));
+  }
 
   // 3. Cron TICK — Generator → Evaluator
   state = loopReducer(state, { type: "TICK" });
@@ -506,9 +584,6 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       );
     }
 
-    const headSha = (await git.revParse(repoCwd)).text().trim();
-    const filesChanged = (await git.diff(repoCwd, baseSha, headSha)).text().trim();
-
     state = loopReducer(state, {
       type: "GENERATOR_DONE",
       itemId: item.id,
@@ -516,7 +591,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       generatorRunId: generatorRunId,
     });
 
-    const changedFiles = filesChanged ? filesChanged.split("\n").filter(Boolean) : [];
+    const changedFiles = await collectChangedPaths(repoCwd, baseSha);
     const violations = denylistedFiles(changedFiles, denylist);
     if (violations.length > 0) {
       state = loopReducer(state, {
@@ -529,6 +604,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         },
       });
       await git.resetHard(repoCwd, baseSha);
+      await Bun.$`git -C ${repoCwd} clean -fd`.quiet();
       continue;
     }
 
@@ -571,11 +647,17 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     const updatedItem = state.items[item.id];
     if (updatedItem && (updatedItem.step === "fixing" || updatedItem.step === "inbox")) {
       await git.resetHard(repoCwd, baseSha);
+      await Bun.$`git -C ${repoCwd} clean -fd`.quiet();
     } else if (verdict.verdict === "PASS" && cwd) {
       // PASS: commit the approved work onto the agent branch (H2 from the
       // landing review) — the model is told not to commit, so the product
       // layer does it. Without this the next step's clean-start reset
       // would destroy the approved changes and ahead would stay 0.
+      // A2: the workflow scratch never enters the final state — unstage
+      // it (the child may have committed it) and delete the file before
+      // the product commit; the committed tree drops it.
+      await Bun.$`git -C ${cwd} rm -q -r --cached --ignore-unmatch .workflows`.nothrow().quiet();
+      await Bun.$`rm -rf ${cwd}/.workflows`.quiet();
       const staged = await Bun.$`git -C ${cwd} status --porcelain`.quiet().text();
       if (staged.trim()) {
         await Bun.$`git -C ${cwd} add -A`.quiet();

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { Elysia } from "elysia";
 import { DomainError } from "../../infra/domain-errors.js";
 import { createCronJobService } from "../cron/service.js";
+import { createWorkspaceLockRegistry } from "../project/workspace-lock.js";
 import { loopRoutes } from "./http.js";
 import { createLoopStateStore } from "./loop-state-store.js";
 
@@ -79,6 +80,9 @@ function makeApp(activeRuns = false) {
         agentRunExecution: {} as never,
         resolveModel: async () => ({ kind: "anthropic", id: "test" }) as never,
         agentWorkspaceOf: async () => null,
+        withWorkspaceLock: createWorkspaceLockRegistry().withLock.bind(
+          createWorkspaceLockRegistry(),
+        ),
       }),
     );
 
