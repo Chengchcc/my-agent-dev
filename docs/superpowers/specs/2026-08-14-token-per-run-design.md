@@ -53,7 +53,7 @@ export interface RunTokenRegistry {
 
 - token = `crypto.randomBytes(32).toString("base64url")`(256-bit)。
 - Map 键 = token 的 SHA-256(注册表内存里也不留明文,防 core dump / heap snapshot 泄漏);查找前先哈希再 `timingSafeEqual` 逐候选比对——直接 `Map.has(sha256hex)` 即可,SHA-256 输入是高熵随机值,不需要额外常时措施。
-- TTL 兜底(默认 30 min,等于 BACKEND_RUN_TIMEOUT_MS 的默认值):validate 时顺手过期清扫;防止 dispatch 意外没走到 finally 时 token 悬挂。
+- ~~TTL 兜底~~(B2 修订,2026-08-16 移除):run 生命周期 = mint-at-dispatch / revoke-at-settle,进程内存为弱状态;墙钟 TTL 会静默 401 长于它的合法 run(BACKEND_RUN_TIMEOUT_MS 可配置更长)。
 - 容量上限(默认 10_000):超限 mint 抛错。这是防泄漏护栏,不是正常路径。
 
 ### 3.2 MCP server 只认注册表(`mcp.ts` 改造)
@@ -139,7 +139,7 @@ dispatchFn finally
   → 后续同 token 请求 401
 ```
 
-TTL 是第二道保险:即使 revoke 路径全灭,token 也在 ≤30 min 后自然死亡。
+TTL 已移除(B2):安全边界是 run settle + 进程内存,不是墙钟。
 (送达形态按 §3.4 实测矩阵:claude 展开 headers 占位符;pi/omp 读 env-name 字段。)
 
 ## 5. 错误处理

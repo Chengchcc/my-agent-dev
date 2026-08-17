@@ -849,6 +849,18 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     await ensureAgent("default", "Assistant", seedModel);
   }
 
+  // B4: one best-effort reconcile over every agent at boot — worktrees and
+  // bridged configs refresh without waiting for the first PATCH (replaces
+  // any stale static-bearer .mcp.json from older installs). Failures warn
+  // per agent; startup proceeds.
+  for (const agent of await agentSvc.list(true)) {
+    try {
+      await reconcileAgent.fn(agent.id);
+    } catch (err) {
+      console.warn(`[bootstrap] startup reconcile failed for ${agent.id}:`, err);
+    }
+  }
+
   return {
     featureSet,
     cronScheduler,

@@ -3,7 +3,9 @@ import { createHash, randomBytes } from "node:crypto";
 export interface RunTokenContext {
   readonly runId: string;
   readonly agentId: string;
-  readonly exp: number;
+  /** Retained for informational purposes only — NOT a security boundary.
+   *  The lifecycle is mint-at-dispatch / revoke-at-settle (B2). */
+  readonly exp?: number;
 }
 
 export interface RunTokenRegistry {
@@ -42,15 +44,10 @@ export function createRunTokenRegistry(opts: { capacity?: number } = {}): RunTok
       return token;
     },
     validate(token) {
-      const hash = keyOf(token);
-      const ctx = byHash.get(hash);
-      if (!ctx) return null;
-      if (Date.now() > ctx.exp) {
-        byHash.delete(hash);
-        byRun.delete(ctx.runId);
-        return null;
-      }
-      return ctx;
+      // B2: presence only. The run's settle path revokes; the process
+      // memory is the weak state. A wall-clock TTL would silently 401
+      // legitimate long runs (BACKEND_RUN_TIMEOUT_MS can exceed it).
+      return byHash.get(keyOf(token)) ?? null;
     },
     revoke(runId) {
       const hash = byRun.get(runId);

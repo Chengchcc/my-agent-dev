@@ -237,7 +237,12 @@ export class CodingAgentBackend implements AgentBackend<"coding_agent"> {
     // Single stdout routing task per handle.
     void consumeStdout(handle, this);
 
-    proc.writeLine(JSON.stringify({ id: handle.executeCommandId, type: "execute", input }));
+    // B3: the bearer reaches the child ONLY via spawn env. The wire
+    // payload (stdin JSONL — logged by debug fixtures) must not carry it.
+    const { productToolsToken: _stripped, ...wireInput } = input;
+    proc.writeLine(
+      JSON.stringify({ id: handle.executeCommandId, type: "execute", input: wireInput }),
+    );
     debugLog("coding-agent-adapter", `execute_sent runId=${runId}`);
 
     const acceptanceError = await handle.acceptance;

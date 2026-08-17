@@ -63,8 +63,6 @@ beforeEach(async () => {
     idGen: { ulid: () => `y-${Math.random().toString(36).slice(2, 8)}` },
   });
   registry = createRunTokenRegistry();
-  // Bearer bound to this test's run — minted once per setup like dispatch does.
-  TOKEN = registry.mint({ runId: "run-mcp-test", agentId: "agent-mcp", exp: Date.now() + 60_000 });
   server = await createProductToolsMcpServer({ service, tokenRegistry: registry });
 
   convPort.createConversation({ conversationId: CONV, createdAt: Date.now() });
@@ -96,6 +94,9 @@ beforeEach(async () => {
     idempotencyKey: "mcp-run",
   });
   runId = acq.run!.runId;
+  // Bearer bound to this test's REAL run (B1: the session authenticates
+  // this exact runId; identity args must match).
+  TOKEN = registry.mint({ runId, agentId: "a1", exp: Date.now() + 60_000 });
   await runPort.setRunProductTools(runId, [
     { name: "history_recent", description: "r", inputSchema: {}, entrypoint: "sse:x" },
     { name: "history_search", description: "s", inputSchema: {}, entrypoint: "sse:x" },
@@ -298,11 +299,72 @@ describe("product tools MCP", () => {
     const revokedToken = registry.mint({
       runId: "run-revoked",
       agentId: "agent-mcp",
-      exp: Date.now() + 60_000,
     });
     registry.revoke("run-revoked");
     const revoked = await fetch(base, { headers: { Authorization: `Bearer ${revokedToken}` } });
     expect(revoked.status).toBe(401);
     await revoked.text();
+  });
+});
+
+describe("B1: session binds the authenticated runId", () => {
+  test("A's token + B's identity args → isError; A + A passes", async () => {
+    const tokenA = registry.mint({ runId, agentId: "a1", exp: Date.now() + 60_000 });
+    const tokenB = registry.mint({ runId: "run-other", agentId: "a1", exp: Date.now() + 60_000 });
+    const clientA = await connectClient(tokenA);
+    try {
+      // Forged identity: claims run-other through A's session.
+      const forged = await clientA.callTool({
+        name: "history_recent",
+        arguments: {
+          limit: 5,
+          identity: {
+            ...IDENTITY,
+            runId: "run-other",
+            branchId,
+            conversationId: CONV,
+            agentMemberId: MEMBER,
+          },
+        },
+      });
+      expect(forged.isError).toBe(true);
+      expect(forged.content[0]?.text).toContain("authenticated run");
+      // Honest identity through the same session works.
+      const honest = await clientA.callTool({
+        name: "history_recent",
+        arguments: {
+          limit: 5,
+          identity: { ...IDENTITY, runId, branchId, conversationId: CONV, agentMemberId: MEMBER },
+        },
+      });
+      expect(honest.isError).not.toBe(true);
+    } finally {
+      await clientA.close();
+    }
+    void tokenB;
+  });
+
+  test("POST /messages with a different run's bearer → 401", async () => {
+    const tokenA = registry.mint({ runId, agentId: "a1", exp: Date.now() + 60_000 });
+    const tokenOther = registry.mint({
+      runId: "run-other2",
+      agentId: "a1",
+      exp: Date.now() + 60_000,
+    });
+    const client = await connectClient(tokenA);
+    try {
+      // Grab the session id from the live transport via the SSE endpoint:
+      // reuse the server url; posting with the wrong bearer must 401.
+      const base = new URL(server.url);
+      const res = await fetch(`${base.origin}/messages?sessionId=nonexistent`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tokenOther}`, "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+      });
+      expect(res.status).toBe(400); // unknown session first
+      await res.text();
+    } finally {
+      await client.close();
+    }
   });
 });

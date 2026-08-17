@@ -51,141 +51,164 @@ export async function createProductToolsMcpServer(
   const { service, tokenRegistry } = opts;
   const host = opts.host ?? "127.0.0.1";
   const port = opts.port ?? 0;
-  const server = new Server(
-    { name: "product-tools", version: "1.0.0" },
-    { capabilities: { tools: {} } },
-  );
+  /** B1: one Server per SSE session; the tools/call handler closes over
+   *  the authenticated runId and rejects mismatched identity args. */
+  const makeServer = (authenticatedRunId: string): Server => {
+    const s = new Server(
+      { name: "product-tools", version: "1.0.0" },
+      {
+        capabilities: { tools: {} },
+      },
+    );
 
-  const identitySchema = {
-    type: "object",
-    properties: {
-      runId: { type: "string" },
-      conversationId: { type: "string" },
-      agentMemberId: { type: "string" },
-      branchId: { type: "string" },
-    },
-  };
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
-      {
-        name: "history_recent",
-        description:
-          "Read the most recent messages visible to this agent member in the conversation. Pass the identity from the system prompt.",
-        inputSchema: {
-          type: "object",
-          properties: { limit: { type: "number" }, identity: identitySchema },
-        },
+    const identitySchema = {
+      type: "object",
+      properties: {
+        runId: { type: "string" },
+        conversationId: { type: "string" },
+        agentMemberId: { type: "string" },
+        branchId: { type: "string" },
       },
-      {
-        name: "history_search",
-        description: "Search the conversation ledger for messages matching a keyword.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            keyword: { type: "string" },
-            limit: { type: "number" },
-            identity: identitySchema,
+    };
+    s.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: [
+        {
+          name: "history_recent",
+          description:
+            "Read the most recent messages visible to this agent member in the conversation. Pass the identity from the system prompt.",
+          inputSchema: {
+            type: "object",
+            properties: { limit: { type: "number" }, identity: identitySchema },
           },
-          required: ["keyword"],
         },
-      },
-      {
-        name: "history_around",
-        description: "Read messages around a ledger seq in this conversation.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            seq: { type: "number" },
-            before: { type: "number" },
-            after: { type: "number" },
-            identity: identitySchema,
-          },
-          required: ["seq"],
-        },
-      },
-      {
-        name: "history_retain",
-        description:
-          "Pin a conversation message into this agent's context branch. Semantic mutation; replay-safe.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            seq: { type: "number" },
-            reason: { type: "string" },
-            identity: identitySchema,
-          },
-          required: ["seq"],
-        },
-      },
-      {
-        name: "todo_write",
-        description:
-          "Replace this run's task list (durable, shown in the product UI). Pass the full desired list as items: [{id: string, text: string, status: pending | in_progress | done}]. The product injects your current list as Current Tasks in the system prompt.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            items: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string" },
-                  text: { type: "string" },
-                  status: { type: "string", enum: ["pending", "in_progress", "done"] },
-                },
-                required: ["id", "text", "status"],
-              },
+        {
+          name: "history_search",
+          description: "Search the conversation ledger for messages matching a keyword.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              keyword: { type: "string" },
+              limit: { type: "number" },
+              identity: identitySchema,
             },
-            identity: identitySchema,
+            required: ["keyword"],
           },
-          required: ["items"],
         },
-      },
-    ],
-  }));
+        {
+          name: "history_around",
+          description: "Read messages around a ledger seq in this conversation.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              seq: { type: "number" },
+              before: { type: "number" },
+              after: { type: "number" },
+              identity: identitySchema,
+            },
+            required: ["seq"],
+          },
+        },
+        {
+          name: "history_retain",
+          description:
+            "Pin a conversation message into this agent's context branch. Semantic mutation; replay-safe.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              seq: { type: "number" },
+              reason: { type: "string" },
+              identity: identitySchema,
+            },
+            required: ["seq"],
+          },
+        },
+        {
+          name: "todo_write",
+          description:
+            "Replace this run's task list (durable, shown in the product UI). Pass the full desired list as items: [{id: string, text: string, status: pending | in_progress | done}]. The product injects your current list as Current Tasks in the system prompt.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              items: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string" },
+                    text: { type: "string" },
+                    status: { type: "string", enum: ["pending", "in_progress", "done"] },
+                  },
+                  required: ["id", "text", "status"],
+                },
+              },
+              identity: identitySchema,
+            },
+            required: ["items"],
+          },
+        },
+      ],
+    }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const name = req.params.name;
-    const args = (req.params.arguments ?? {}) as Record<string, unknown>;
-    const meta = (req.params as { _meta?: { identity?: WireIdentity } })._meta;
-    // CLI backends cannot attach _meta: the system prompt carries the
-    // identity and the model passes it as the `identity` argument.
-    const argIdentity = (args.identity ?? {}) as Record<string, unknown>;
-    const identity = meta?.identity ?? argIdentity;
-    const str = (v: unknown): string => (typeof v === "string" ? v : "");
-    const runId = str(identity.runId);
-    // callId/idempotencyKey: injected by the child's wire caller; generated
-    // here for CLI backends (the service validates the pairing).
-    const callId = str(identity.callId) || randomUUID();
-    const idempotencyKey = str(identity.idempotencyKey) || `${runId}:${callId}`;
-    try {
-      const result = await service.call({
-        identity: {
-          runId,
-          conversationId: str(identity.conversationId),
-          agentMemberId: str(identity.agentMemberId),
-          branchId: str(identity.branchId),
-        },
-        callId,
-        idempotencyKey,
-        tool: name,
-        args,
-      });
-      return {
-        content: [{ type: "text", text: result.content }],
-        ...(result.isError ? { isError: true } : {}),
-      };
-    } catch (err) {
-      return {
-        content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
-        isError: true,
-      };
-    }
-  });
+    s.setRequestHandler(CallToolRequestSchema, async (req) => {
+      const name = req.params.name;
+      const args = (req.params.arguments ?? {}) as Record<string, unknown>;
+      const meta = (req.params as { _meta?: { identity?: WireIdentity } })._meta;
+      // CLI backends cannot attach _meta: the system prompt carries the
+      // identity and the model passes it as the `identity` argument.
+      const argIdentity = (args.identity ?? {}) as Record<string, unknown>;
+      const identity = meta?.identity ?? argIdentity;
+      const str = (v: unknown): string => (typeof v === "string" ? v : "");
+      const runId = str(identity.runId);
+      // B1: the identity args must match the session's authenticated run —
+      // a valid bearer for run A cannot act as run B by forging args.
+      if (runId && runId !== authenticatedRunId) {
+        return {
+          content: [
+            { type: "text", text: "identity does not match the session's authenticated run" },
+          ],
+          isError: true,
+        };
+      }
+      // callId/idempotencyKey: injected by the child's wire caller; generated
+      // here for CLI backends (the service validates the pairing).
+      const callId = str(identity.callId) || randomUUID();
+      const idempotencyKey = str(identity.idempotencyKey) || `${runId}:${callId}`;
+      try {
+        const result = await service.call({
+          identity: {
+            runId,
+            conversationId: str(identity.conversationId),
+            agentMemberId: str(identity.agentMemberId),
+            branchId: str(identity.branchId),
+          },
+          callId,
+          idempotencyKey,
+          tool: name,
+          args,
+        });
+        return {
+          content: [{ type: "text", text: result.content }],
+          ...(result.isError ? { isError: true } : {}),
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
+          isError: true,
+        };
+      }
+    });
+
+    return s;
+  };
 
   // SSE sessions: GET /sse establishes a stream (keyed by session id), POST
   // /messages delivers JSON-RPC for that session. Both require the token.
-  const transports = new Map<string, SSEServerTransport>();
+  // B1: each session binds the token's authenticated runId — a valid
+  // bearer for run A can never act as run B through any session.
+  const sessions = new Map<
+    string,
+    { transport: SSEServerTransport; authenticatedRunId: string; server: Server }
+  >();
 
   const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const caller = authorize(req, tokenRegistry);
@@ -199,9 +222,16 @@ export async function createProductToolsMcpServer(
     const url = req.url ?? "";
     if (req.method === "GET" && url === "/sse") {
       const transport = new SSEServerTransport("/messages", res);
-      transports.set(transport.sessionId, transport);
-      res.on("close", () => transports.delete(transport.sessionId));
-      await server.connect(transport).catch(() => undefined);
+      // B1: a dedicated Server per session — the handler closure pins the
+      // authenticated runId, so identity forgery in tool args is rejected.
+      const sessionServer = makeServer(caller.runId);
+      sessions.set(transport.sessionId, {
+        transport,
+        authenticatedRunId: caller.runId,
+        server: sessionServer,
+      });
+      res.on("close", () => sessions.delete(transport.sessionId));
+      await sessionServer.connect(transport).catch(() => undefined);
       return;
     }
     if (req.method === "POST" && url.startsWith("/messages")) {
@@ -209,13 +239,20 @@ export async function createProductToolsMcpServer(
       const query = new URL(url, "http://localhost").searchParams.get("sessionId");
       const header = req.headers["mcp-session-id"];
       const sessionId = query ?? (typeof header === "string" ? header : undefined);
-      const transport = typeof sessionId === "string" ? transports.get(sessionId) : undefined;
-      if (!transport) {
+      const session = typeof sessionId === "string" ? sessions.get(sessionId) : undefined;
+      if (!session) {
         res.writeHead(400, { "content-type": "application/json" });
         res.end(JSON.stringify({ code: "invalid_request", message: "unknown session" }));
         return;
       }
-      await transport.handlePostMessage(req, res, undefined).catch(() => undefined);
+      if (caller.runId !== session.authenticatedRunId) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({ code: "unauthorized", message: "token does not own this session" }),
+        );
+        return;
+      }
+      await session.transport.handlePostMessage(req, res, undefined).catch(() => undefined);
       return;
     }
     res.writeHead(404, { "content-type": "application/json" });

@@ -410,7 +410,6 @@ export function createAgentRunExecutionService(
     const productToolsToken = deps.productToolsTokenRegistry.mint({
       runId,
       agentId: run.agentMemberId,
-      exp: Date.now() + 30 * 60_000,
     });
     // The branch's CLI session ref is kind-scoped (`<kind>:<ref>`, ADR 0020
     // decision 6): a ref written by another backend is junk to this CLI and

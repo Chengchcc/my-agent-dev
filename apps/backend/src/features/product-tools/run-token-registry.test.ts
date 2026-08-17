@@ -18,10 +18,12 @@ describe("RunTokenRegistry", () => {
     expect(reg.validate(t2)).not.toBeNull();
   });
 
-  test("expired tokens fail validation", () => {
+  test("tokens ignore wall-clock expiry (B2: lifecycle is revoke-at-settle)", () => {
     const reg = createRunTokenRegistry();
     const t = reg.mint({ runId: "r1", agentId: "a1", exp: Date.now() - 1 });
-    expect(reg.validate(t)).toBeNull();
+    // A long-running run must not silently lose product tools at a TTL
+    // boundary; only revoke() (or a process restart) invalidates.
+    expect(reg.validate(t)).toMatchObject({ runId: "r1" });
   });
 
   test("re-minting a runId invalidates its previous token", () => {
