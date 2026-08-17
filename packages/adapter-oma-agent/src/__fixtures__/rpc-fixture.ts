@@ -255,7 +255,24 @@ async function main(): Promise<void> {
             runId,
             outcome: {
               status: "completed",
-              messages: [{ role: "assistant", text: "done" }],
+              messages:
+                scenario === "blocks-outcome"
+                  ? [
+                      {
+                        role: "assistant",
+                        blocks: [
+                          { type: "text", text: "running checks" },
+                          { type: "tool_use", id: "tu1", name: "bash", input: { cmd: "ls" } },
+                          {
+                            type: "tool_result",
+                            tool_use_id: "tu1",
+                            content: "file-a\nfile-b",
+                            is_error: false,
+                          },
+                        ],
+                      },
+                    ]
+                  : [{ role: "assistant", text: "done" }],
               ...(sessionRef ? { cliSessionRef: sessionRef } : {}),
             },
           });

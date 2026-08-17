@@ -45,17 +45,22 @@ interface FakeDaemonOptions {
   toolTodo?: boolean;
   /** The completed outcome carries this cliSessionRef. */
   sessionRef?: string;
+  /** Raw fixture scenario (overrides the sugar flags). */
+  scenario?: string;
 }
 
 function createFakeDaemon(opts: FakeDaemonOptions = {}) {
   const record = `${dataDir}/daemon-${daemonSeq++}.log`;
-  const scenario = opts.failFirstExecute
-    ? "reject-first-execute"
-    : opts.steerError
-      ? "steer-error"
-      : opts.toolTodo
-        ? "tool-todo"
-        : "normal";
+  const scenario =
+    opts.scenario ??
+    (opts.failFirstExecute
+      ? "reject-first-execute"
+      : opts.steerError
+        ? "steer-error"
+        : opts.toolTodo
+          ? "tool-todo"
+          : "normal");
+
   const config: OmaCommandConfig = {
     executable: process.execPath,
     args: [FIXTURE, "--mode", "rpc"],
@@ -320,6 +325,26 @@ describe("agent run execution (Run-centric)", () => {
     expect(fake.executeMessages[1]).toContain("Assistant: done");
     expect(fake.executeMessages[1]).toContain("second");
     expect(fake.executeMessages[1]!.trimEnd().endsWith("second")).toBe(true);
+  }, 15_000);
+
+  test("first-turn bridge keeps tool structure from block messages", async () => {
+    const fake = createFakeDaemon({ scenario: "blocks-outcome" });
+    const execution = makeExecution(fake);
+
+    const first = await enqueue("normal", "blocks-1", "run checks");
+    await execution.dispatch(first.run!.runId);
+    await waitForTerminal(first.run!.runId);
+
+    const followUp = await enqueue("follow_up", "blocks-2", "continue");
+    await execution.dispatch(followUp.run!.runId);
+    await waitForTerminal(followUp.run!.runId);
+
+    const bridged = fake.executeMessages[1] ?? "";
+    expect(bridged).toContain("running checks");
+    expect(bridged).toContain("[tool bash]");
+    expect(bridged).toContain('"cmd":"ls"');
+    expect(bridged).toContain("[tool result] file-a");
+    expect(bridged.endsWith("continue")).toBe(true);
   }, 15_000);
   test("session ref round-trip: the second run carries the ref, no history bridge", async () => {
     const fake = createFakeDaemon({ sessionRef: "cli-sess-1" });

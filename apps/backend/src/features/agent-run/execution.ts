@@ -3,6 +3,7 @@ import type {
   BackendEvent,
   BackendModelRef,
   BackendRegistry,
+  BackendRegistryEntry,
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
@@ -11,7 +12,7 @@ import type {
 } from "@chengchenccc/agent-backend";
 import { BACKEND_KINDS, type BackendKind, debugLog } from "@chengchenccc/agent-backend";
 import { resolveModelAlias } from "@chengchenccc/ai";
-import type { Message } from "@chengchenccc/message";
+import type { ContentBlock, Message } from "@chengchenccc/message";
 import type {
   AgentContextPort,
   IdGenerator,
@@ -232,12 +233,35 @@ export function createAgentRunExecutionService(
   /** First-turn bridge (ADR 0020 decision 6): when the branch has no CLI
    *  session yet, the projected product history is flattened into the input
    *  message as text — the CLI session becomes the runtime truth from the
-   *  second turn on. Flat text loses tool structure; accepted. */
+   *  second turn on. The renderer is block-aware: tool calls/results and
+   *  multi-block messages keep their structure (compact transcripts, not
+   *  bare text) so the first turn does not lose what happened. */
+  function renderBlock(b: ContentBlock, depth = 0): string {
+    const pad = "  ".repeat(depth);
+    if (b.type === "text") return `${pad}${b.text}`;
+    if (b.type === "tool_use") {
+      return `${pad}[tool ${b.name}] ${JSON.stringify(b.input ?? {}).slice(0, 400)}`;
+    }
+    if (b.type === "tool_result") {
+      return `${pad}[${b.is_error ? "tool error" : "tool result"}] ${b.content.slice(0, 600)}`;
+    }
+    return `${pad}[${b.type}]`;
+  }
+
   function renderHistoryBridge(history: readonly ProjectedHistoryItem[]): string {
     return history
       .map((h) => {
         const who = h.message.role === "user" ? "User" : "Assistant";
-        return `${who}: ${h.message.text}`;
+        const body =
+          h.message.text && h.message.text.trim() !== ""
+            ? h.message.text
+            : Array.isArray(h.message.blocks)
+              ? h.message.blocks
+                  .map((b) => renderBlock(b))
+                  .filter(Boolean)
+                  .join("\n")
+              : "";
+        return `${who}: ${body}`;
       })
       .join("\n\n");
   }
