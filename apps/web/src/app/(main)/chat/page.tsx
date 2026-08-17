@@ -122,6 +122,12 @@ export default function ChatOverviewPage() {
             <select
               value={agentId}
               onChange={(e) => setAgentId(e.target.value)}
+              onBlur={() => {
+                const next = agents?.find((a) => a.id === agentId);
+                if (projectId && next && !next.projects?.includes(projectId)) {
+                  setProjectId("");
+                }
+              }}
               className="ml-auto text-xs border border-(--hairline) rounded-md bg-transparent px-2 py-1 text-(--ink-strong)"
               aria-label="Agent"
             >
@@ -138,11 +144,13 @@ export default function ChatOverviewPage() {
               aria-label="Project (optional worktree)"
             >
               <option value="">No project</option>
-              {(projects?.projects ?? []).map((p) => (
-                <option key={p.projectId} value={p.projectId}>
-                  {p.name}
-                </option>
-              ))}
+              {(projects?.projects ?? [])
+                .filter((p) => selectedAgent?.projects?.includes(p.projectId))
+                .map((p) => (
+                  <option key={p.projectId} value={p.projectId}>
+                    {p.name}
+                  </option>
+                ))}
             </select>
           </div>
           <Textarea

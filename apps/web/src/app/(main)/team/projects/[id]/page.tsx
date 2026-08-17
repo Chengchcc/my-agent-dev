@@ -14,11 +14,15 @@ import { WorktreeCard } from "../_components/worktree-card";
 export default function ProjectDetailPage() {
   const params = useParams<{ id: string }>();
   const projectId = params.id;
-  const { data: projectRes } = useQuery({
+  const {
+    data: projectRes,
+    error: projectErr,
+    isError,
+  } = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => api.getProject(projectId),
   });
-  const { data: wtRes } = useQuery({
+  const { data: wtRes, error: wtErr } = useQuery({
     queryKey: ["project-worktrees", projectId],
     queryFn: () => api.listProjectWorktrees(projectId),
   });
@@ -43,7 +47,19 @@ export default function ProjectDetailPage() {
       <PageBody size="reading" className="space-y-8">
         <section className="space-y-3" data-testid="project-worktrees">
           <h2 className="text-sm font-medium">Worktrees</h2>
-          {worktrees.length === 0 ? (
+          {(isError || wtErr) && (
+            <div
+              data-testid="project-error"
+              className="rounded-lg border border-(--err)/40 bg-(--err)/10 p-3 text-sm text-(--err)"
+            >
+              {String(
+                (wtErr ?? projectErr) instanceof Error
+                  ? (wtErr ?? projectErr)?.message
+                  : "failed to load project data",
+              )}
+            </div>
+          )}
+          {!isError && !wtErr && worktrees.length === 0 ? (
             <div data-testid="empty-state">
               <EmptyState
                 icon={FolderGit2}

@@ -32,8 +32,17 @@ export async function ensureMirror(dataDir: string, project: WorktreeProject): P
     // branches (agent worktrees) are untouchable from the fetch path.
     // NOTE: a mirror clone has no refs/remotes/origin/* namespace; the
     // remote tip is reachable as FETCH_HEAD right after this fetch.
+    // C1: a changed repoUrl must repoint the mirror's remote before the
+    // next fetch/push — otherwise the mirror keeps talking to the old
+    // origin forever.
+    const currentUrl = (
+      await Bun.$`git -C ${mirror} remote get-url origin`.nothrow().quiet().text()
+    ).trim();
+    if (currentUrl && currentUrl !== project.repoUrl) {
+      await Bun.$`git -C ${mirror} remote set-url origin -- ${project.repoUrl}`.nothrow().quiet();
+    }
     if (project.defaultBranch) {
-      await Bun.$`git -C ${mirror} fetch -q origin ${project.defaultBranch}:${project.defaultBranch}`
+      await Bun.$`git -C ${mirror} fetch -q origin -- ${project.defaultBranch}:${project.defaultBranch}`
         .nothrow()
         .quiet();
     }

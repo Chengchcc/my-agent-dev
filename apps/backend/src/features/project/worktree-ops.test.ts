@@ -171,3 +171,56 @@ describe("push semantics (regression: mirror forbids refspec push)", () => {
     expect(after.trim()).toBe(srcTip.trim());
   }, 20_000);
 });
+
+describe("C3: defaultBranch resolution", () => {
+  test("null defaultBranch resolves the mirror HEAD and status works", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wops-null-"));
+    dirs.push(dir);
+    const src = await makeSource(dir);
+    const dataDir = join(dir, "data");
+    const agentWs = join(dir, "agent");
+    mkdirSync(agentWs, { recursive: true });
+    const { ensureMirror, ensureWorktree } = await import("./worktree.js");
+    const mirror = await ensureMirror(dataDir, {
+      projectId: PID,
+      repoUrl: src,
+      defaultBranch: null,
+    });
+    const wt = await ensureWorktree(
+      mirror,
+      agentWs,
+      { projectId: PID, repoUrl: src, defaultBranch: null },
+      "a1",
+    );
+    if (!wt) throw new Error("setup failed");
+    await Bun.$`echo w > ${join(wt, "W")}`.quiet();
+    await Bun.$`git -C ${wt} add -A`.quiet();
+    await commit(wt, "w");
+
+    const ops = createWorktreeOps({
+      dataDir,
+      projectPort: {
+        createProject: () => {
+          throw new Error("unused");
+        },
+        getProject: (id: string) =>
+          id === PID
+            ? {
+                projectId: PID,
+                name: "p",
+                repoUrl: src,
+                defaultBranch: null,
+                createdAt: 0,
+                updatedAt: 0,
+              }
+            : null,
+        listProjects: () => [],
+        updateProject: () => null,
+        deleteProject: () => false,
+      },
+      listAgentConfigs: async () => [{ id: "a1", workspacePath: agentWs, projects: [PID] }],
+    });
+    const st = await ops.status(PID);
+    expect(st[0]?.ahead).toBe(1);
+  }, 20_000);
+});

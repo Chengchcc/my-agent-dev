@@ -475,6 +475,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const projectPort = sqliteProjectAdapter(db);
   const projectSvc = createProjectService({
     port: projectPort,
+    hasProjectBinding: (pid: string) => conv.convPort.hasProjectBinding?.(pid) ?? false,
     idGen: ulid,
     // Detach guard (ADR 0023): refuse deleting a project agents still
     // attach to. agentSvc.list returns rows carrying the materialized

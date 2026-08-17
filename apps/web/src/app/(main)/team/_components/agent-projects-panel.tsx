@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FolderGit2 } from "lucide-react";
 import { toast } from "sonner";
 import { ListRowCard } from "@/components/ui/polish";
+import { agentKeys } from "@/features/agents/query-keys";
 import { type AgentRow, api } from "@/lib/api";
 
 /** Projects tab (ADR 0023): toggle which projects this agent attaches to.
@@ -19,7 +20,10 @@ export function AgentProjectsPanel({ agent }: { agent: AgentRow }) {
       : [...attached, projectId];
     try {
       await api.updateAgent(agent.id, { projects: next });
-      await qc.invalidateQueries({ queryKey: ["agent", agent.id] });
+      // P2: use the canonical keys so the list AND detail (incl. other
+      // views keyed by agentKeys.lists()) refresh without remounting.
+      await qc.invalidateQueries({ queryKey: agentKeys.detail(agent.id) });
+      await qc.invalidateQueries({ queryKey: agentKeys.lists() });
       toast.success(next.includes(projectId) ? "Project attached" : "Project detached");
     } catch (err) {
       toast.error("Failed to update projects", {

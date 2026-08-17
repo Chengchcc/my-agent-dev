@@ -22,6 +22,35 @@ export interface ProjectServiceDeps {
   /** Agent configs for the detach guard (ADR 0023): deleting a project
    *  that agents still attach to is refused with their ids. */
   listAgentConfigs?: () => Promise<Array<{ id: string; projects: string[] }>>;
+  /** C2: whether any conversation binds this project. */
+  hasProjectBinding?: (projectId: string) => boolean;
+}
+
+/** C1: repoUrl and defaultBranch are inserted into git commands. Reject
+ *  values that could smuggle options or traverse refs: leading dashes,
+ *  whitespace, path separators. Accept https/ssh/file URLs and absolute
+ *  or relative local paths. */
+function validateRepoRefs(
+  repoUrl: string | null | undefined,
+  defaultBranch: string | null | undefined,
+): void {
+  if (repoUrl) {
+    const u = repoUrl.trim();
+    if (!u) throw new ValidationError("repoUrl must not be empty");
+    if (u.startsWith("-")) throw new ValidationError("repoUrl must not start with '-'");
+    const schemeOk = /^(https|ssh|file):\/\//.test(u);
+    const localPath = u.startsWith("/") || u.startsWith(".");
+    if (!schemeOk && !localPath) {
+      throw new ValidationError("repoUrl must be an https/ssh/file URL or a local path");
+    }
+  }
+  if (defaultBranch) {
+    const b = defaultBranch.trim();
+    if (b.startsWith("-")) throw new ValidationError("defaultBranch must not start with '-'");
+    if (/[\s/\\]|\\.\\./.test(b)) {
+      throw new ValidationError("defaultBranch must not contain whitespace or path separators");
+    }
+  }
 }
 
 export function createProjectService(deps: ProjectServiceDeps) {
@@ -38,6 +67,7 @@ export function createProjectService(deps: ProjectServiceDeps) {
     }): ProjectRow {
       const name = input.name.trim();
       if (!name) throw new ValidationError("project name required");
+      validateRepoRefs(input.repoUrl, input.defaultBranch);
       try {
         return port.createProject({
           projectId: idGen(),
@@ -80,6 +110,7 @@ export function createProjectService(deps: ProjectServiceDeps) {
       if (patch.name !== undefined && !patch.name.trim()) {
         throw new ValidationError("project name must not be empty");
       }
+      validateRepoRefs(patch.repoUrl, patch.defaultBranch);
       try {
         const p = port.updateProject(id, {
           name: patch.name?.trim() || undefined,
@@ -105,6 +136,11 @@ export function createProjectService(deps: ProjectServiceDeps) {
         throw new ConflictError(
           `project ${id} is still attached to: ${attached.map((a) => a.id).join(", ")}`,
         );
+      }
+      // C2: conversations reference the project (FK RESTRICT would
+      // surface as a raw 500 — fail with a readable 409 instead).
+      if (deps.hasProjectBinding?.(id)) {
+        throw new ConflictError(`project ${id} is bound to conversations; remove them first`);
       }
       if (!port.deleteProject(id)) throw new ProjectNotFoundError(id);
     },

@@ -87,6 +87,16 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
         .run();
     },
 
+    hasProjectBinding(projectId: string): boolean {
+      const row = d
+        .select({ one: schema.conversation.conversationId })
+        .from(schema.conversation)
+        .where(eq(schema.conversation.projectId, projectId))
+        .limit(1)
+        .get();
+      return row !== undefined;
+    },
+
     listConversations(): ConversationWithMembers[] {
       const convs = d
         .select()

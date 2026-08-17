@@ -70,6 +70,9 @@ export function projectRoutes(svc: ProjectService, worktreeOps?: WorktreeOps) {
         if (err instanceof ProjectNotFoundError) {
           return Response.json({ error: err.message }, { status: 404 });
         }
+        if (err instanceof Error && err.message.includes("has no repoUrl")) {
+          return Response.json({ error: err.message }, { status: 409 });
+        }
         throw err;
       }
     })
@@ -82,6 +85,9 @@ export function projectRoutes(svc: ProjectService, worktreeOps?: WorktreeOps) {
       } catch (err) {
         if (err instanceof ProjectNotFoundError) {
           return Response.json({ error: err.message }, { status: 404 });
+        }
+        if (err instanceof Error && err.message.includes("has no repoUrl")) {
+          return Response.json({ error: err.message }, { status: 409 });
         }
         throw err;
       }

@@ -22,6 +22,7 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [push, setPush] = useState(false);
+  const [acting, setActing] = useState<"fast-forward" | "merge" | null>(null);
   const { data: agents } = useQuery({ queryKey: ["agents"], queryFn: () => api.listAgents() });
   const agentName = agents?.find((a) => a.id === row.agentId)?.name ?? row.agentId;
   const { data: diff } = useQuery({
@@ -31,23 +32,29 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
   });
 
   async function act(kind: "fast-forward" | "merge") {
+    if (acting) return; // P2: no double submission
     const confirmed = window.confirm(
       `${kind === "merge" ? "Merge" : "Fast-forward"} ${row.branch} into the base branch` +
         `${push ? " and push to origin" : ""}?`,
     );
     if (!confirmed) return;
+    setActing(kind);
     try {
       if (kind === "fast-forward") {
         await api.projectWorktreeFastForward(projectId, row.agentId, push);
       } else {
         await api.projectWorktreeMerge(projectId, row.agentId, push);
       }
+      // P2: the diff must refresh with the new base too.
       await qc.invalidateQueries({ queryKey: ["project-worktrees", projectId] });
+      await qc.invalidateQueries({ queryKey: ["project-worktree-diff", projectId, row.agentId] });
       toast.success(kind === "merge" ? "Merged" : "Fast-forwarded");
     } catch (err) {
       toast.error(`Failed to ${kind}`, {
         description: err instanceof Error ? err.message : "Unknown error",
       });
+    } finally {
+      setActing(null);
     }
   }
 
@@ -70,7 +77,7 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
               variant="outline"
               size="sm"
               onClick={() => void act("fast-forward")}
-              disabled={row.ahead === 0}
+              disabled={row.ahead === 0 || acting !== null}
               title={row.ahead === 0 ? "Nothing ahead of the base branch" : undefined}
             >
               <FastForward size={12} /> FF
@@ -79,7 +86,7 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
               variant="outline"
               size="sm"
               onClick={() => void act("merge")}
-              disabled={row.ahead === 0}
+              disabled={row.ahead === 0 || acting !== null}
               title={row.ahead === 0 ? "Nothing ahead of the base branch" : undefined}
             >
               <GitMerge size={12} /> Merge

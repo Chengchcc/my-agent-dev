@@ -1008,7 +1008,11 @@ describe("agent run execution (Run-centric)", () => {
     });
     await execution.dispatch(acquired.run!.runId);
     await waitForTerminal(acquired.run!.runId);
-    expect(fake.executeCalls[0]?.workspaceRoot).toBe(join(dataDir, "projects", "p-attached"));
+    // D1: the OS may normalize the spawn cwd (macOS /private, symlinks)
+    // — compare realpaths, not raw strings.
+    expect(realpathSync(fake.executeCalls[0]!.workspaceRoot)).toBe(
+      realpathSync(join(dataDir, "projects", "p-attached")),
+    );
   }, 15_000);
 
   test("project-bound conversation with unattached project fails explicitly", async () => {

@@ -85,6 +85,8 @@ export interface ConversationPort {
   setConversationTitle(conversationId: string, title: string): void;
   updateHopCount(conversationId: string, count: number): void;
   listConversations(): ConversationWithMembers[];
+  /** C2: any conversation bound to this project (delete guard). */
+  hasProjectBinding?(projectId: string): boolean;
   listConversationsByAgent(agentId: string): ConversationWithMembers[];
   getLastMessagePreview?(conversationId: string): string | null;
   getLastActivityAt?(conversationId: string): number | null;
