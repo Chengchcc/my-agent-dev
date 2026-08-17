@@ -102,7 +102,7 @@ for projectId of agent.config.runtime_config.projects:
 
 ### 2.6 web
 
-- `/team/[agentId]` 详情:Projects 区(多选 toggle 列表,数据 = listProjects + agent.config.projects;mutation = PATCH projects)。
+- `/team/agents/[agentId]` 详情:Projects 区(多选 toggle 列表,数据 = listProjects + agent.config.projects;mutation = PATCH projects)。
 - `/chat` 新建会话:可选 project 下拉(有 projectId 时提示「该会话的运行工作区 = project worktree」)。
 - `/team/projects` 行:展示 attach 的 agent 数(查询:遍历 agents 的 config.projects)。
 

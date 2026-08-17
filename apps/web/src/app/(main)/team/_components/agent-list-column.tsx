@@ -43,7 +43,7 @@ export function AgentListColumn({
               return (
                 <li key={a.id}>
                   <Link
-                    href={`/team/${a.id}`}
+                    href={`/team/agents/${a.id}`}
                     aria-current={active ? "page" : undefined}
                     className={`flex items-center gap-2 rounded-lg px-2 py-2 ${
                       active ? "bg-(--panel2)" : "hover:bg-(--panel)"

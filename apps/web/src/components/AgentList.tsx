@@ -99,7 +99,7 @@ export function AgentList() {
       {active.map((agent) => (
         <div key={agent.id} className="relative group">
           <Link
-            href={`/team/${agent.id}`}
+            href={`/team/agents/${agent.id}`}
             className="block border border-(--hairline) rounded-lg bg-(--canvas) p-8
                        hover:border-(--primary) transition-colors duration-300
                        "

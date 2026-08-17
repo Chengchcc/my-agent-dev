@@ -89,7 +89,10 @@ SYSTEM—— 系统健康与全局检索（低调，给运维，不占一级心�
 
 # ③ TEAM（Agent 同事）
 /team                      Agent 花名册：身份 + 就绪状态（合并原 /ops/agents）
-/team/[agentId]            单 Agent：Persona & Memory + 能力(Skill Packs) + 最近运行
+/team/agents/[agentId]     单 Agent：Persona & Memory + 能力(Skill Packs) + 最近运行
+                           （agent 详情住在 /team/agents/ 前缀下——与 /team/skills、/team/mcp、
+                           /team/knowledge、/team/projects 平级段不再同层竞态,agent id
+                           撞名静态段的路由劫持风险消除）
 /team/skills               Skill Pack 分发（能力是团队资产）
 /team/projects             Project 作为工作归属域
 
