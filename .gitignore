@@ -13,3 +13,4 @@ coverage/
 apps/web/tsconfig.tsbuildinfo
 .claude/skills
 .agents
+.omp/
