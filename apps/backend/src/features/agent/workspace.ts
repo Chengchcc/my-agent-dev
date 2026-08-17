@@ -57,6 +57,19 @@ export async function seedAgentWorkspace(dir: string): Promise<void> {
   ]);
 }
 
+/** Human-readable directory slug for a NEW agent workspace (HTTP-created
+ *  agents only). Explicit-id seeds keep their id as the directory name. */
+export function agentWorkspaceSlug(name: string): string {
+  return (
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "agent"
+  );
+}
+
 /** Materialize an agent workspace directory (mkdir -p) and seed defaults. */
 export async function ensureAgentWorkspace(dir: string): Promise<string> {
   await seedAgentWorkspace(dir);

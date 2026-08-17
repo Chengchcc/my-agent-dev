@@ -22,7 +22,7 @@ export function createAgentService(opts: {
   port: AgentPort;
   idGen: () => string;
   workspaceRoot: string;
-  materializeWorkspace: (agentId: string, template?: string) => Promise<string>;
+  materializeWorkspace: (agentId: string, template?: string, name?: string) => Promise<string>;
   // M11 hardDelete dependencies — all closures from composition root (main.ts)
   purgeWorkspace: (agentId: string) => Promise<void>;
   /** Guard: throws BusyError when the agent has an ACTIVE Agent Run
@@ -60,7 +60,7 @@ export function createAgentService(opts: {
             }
             return ensureAgentWorkspace(abs);
           })()
-        : await materializeWorkspace(id, input.template);
+        : await materializeWorkspace(id, input.template, input.id ? undefined : input.name);
 
       const config = buildAgentConfig({
         id,

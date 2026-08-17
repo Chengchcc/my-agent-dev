@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { BackendConfig } from "../../config.js";
@@ -8,7 +9,7 @@ import { sqliteAgentAdapter } from "./adapter-sqlite.js";
 import { withLarkLifecycle } from "./agent-lark.js";
 import type { AgentService } from "./index.js";
 import { createAgentService } from "./index.js";
-import { ensureAgentWorkspace } from "./workspace.js";
+import { agentWorkspaceSlug, ensureAgentWorkspace } from "./workspace.js";
 
 /** Create the full agent service with workspace materialization, hard-delete
  *  dependencies, lark-bot orchestration, and optional onCreate hook.
@@ -36,8 +37,15 @@ export function createAgentSvc(
     allowedWorkspaceRoots: [config.workspaceRoot, join(config.dataDir, "agents")],
     onCreate: opts?.onAgentCreate,
     onUpdate: opts?.onAgentUpdate,
-    materializeWorkspace: async (agentId) => {
-      return ensureAgentWorkspace(join(agentsDir, agentId));
+    materializeWorkspace: async (agentId, _template, name) => {
+      const base = name ? agentWorkspaceSlug(name) : agentId;
+      let dir = join(agentsDir, base);
+      let suffix = 2;
+      while (existsSync(dir)) {
+        dir = join(agentsDir, `${base}-${suffix}`);
+        suffix++;
+      }
+      return ensureAgentWorkspace(dir);
     },
 
     purgeWorkspace: async (agentId) => {
