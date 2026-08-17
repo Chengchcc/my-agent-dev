@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { ClaudeBackend, ClaudeModelCatalog } from "@my-agent-team/adapter-claude-agent";
 import { CodingAgentBackend, CodingAgentModelCatalog } from "@my-agent-team/adapter-coding-agent";
 import { OmpBackend, OmpModelCatalog } from "@my-agent-team/adapter-omp-agent";
@@ -691,7 +691,21 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     port: sqliteKnowledgePackAdapter(db),
     dataDir: config.dataDir,
     idGen: ulid,
+    builtinRoot: resolve(import.meta.dir, "../../../../knowledge-packs"),
   });
+
+  // Builtin project knowledge pack: installed once, then available to every agent.
+  if (!knowledgeSvc.list().some((p) => p.sourceKind === "builtin" && p.name === "my-agent-team")) {
+    await knowledgeSvc
+      .install({
+        name: "my-agent-team",
+        description: "my-agent-team project knowledge: architecture, conventions, ADRs, operations",
+        sourceKind: "builtin",
+      })
+      .catch((err: Error) =>
+        console.error(`[knowledge] builtin my-agent-team seed failed: ${err.message}`),
+      );
+  }
 
   const cronSvc = createCronJobService({
     port: sqliteCronJobAdapter(db),
