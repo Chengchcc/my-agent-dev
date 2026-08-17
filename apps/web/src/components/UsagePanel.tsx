@@ -47,13 +47,20 @@ function UsageRow({ label, t }: { label: string; t: Totals }) {
   );
 }
 
-/** Token spend for the current chat session plus today's fleet-wide total. */
-export function UsagePanel({ conversationId }: { conversationId: string }) {
-  const { data } = useUsageSummary(conversationId);
+/** Token spend for a scope (chat session or agent) plus today's fleet total. */
+export function UsagePanel({
+  conversationId,
+  agentId,
+}: {
+  conversationId?: string;
+  agentId?: string;
+}) {
+  const { data } = useUsageSummary({ conversationId, agentId });
 
   return (
     <div className="mt-4 border-t border-(--hairline) pt-3">
-      <UsageRow label="This chat" t={data?.conversation ?? EMPTY} />
+      {conversationId && <UsageRow label="This chat" t={data?.conversation ?? EMPTY} />}
+      {agentId && <UsageRow label="This agent" t={data?.agent ?? EMPTY} />}
       <UsageRow label="Today" t={data?.today ?? EMPTY} />
     </div>
   );

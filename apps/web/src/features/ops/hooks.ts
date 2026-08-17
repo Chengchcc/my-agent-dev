@@ -19,11 +19,10 @@ export function useSurfaces() {
   return useQuery(surfacesQuery());
 }
 
-export function useUsageSummary(conversationId?: string) {
+export function useUsageSummary(scope: { conversationId?: string; agentId?: string }) {
   return useQuery({
-    queryKey: opsKeys.usageSummary(conversationId),
-    queryFn: () => api.getUsageSummary(conversationId),
-    enabled: true,
+    queryKey: opsKeys.usageSummary(scope),
+    queryFn: () => api.getUsageSummary(scope),
     refetchInterval: 15_000,
   });
 }

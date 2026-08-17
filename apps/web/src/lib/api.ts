@@ -130,10 +130,16 @@ export const api = {
     ),
   getAgentRun: (runId: string) => unwrap(client.api["agent-runs"]({ runId }).get()),
   cancelAgentRun: (runId: string) => unwrap(client.api["agent-runs"]({ runId }).cancel.post()),
-  getUsageSummary: (conversationId?: string) =>
+  getUsageSummary: (scope: { conversationId?: string; agentId?: string }) =>
     unwrap(
       client.api.usage.summary.get({
-        query: conversationId ? { conversationId } : undefined,
+        query:
+          scope.conversationId || scope.agentId
+            ? {
+                conversationId: scope.conversationId || undefined,
+                agentId: scope.agentId || undefined,
+              }
+            : undefined,
       }),
     ),
   getAgentRuntime: (agentId: string) =>

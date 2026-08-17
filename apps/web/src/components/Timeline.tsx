@@ -1,5 +1,5 @@
 "use client";
-
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -54,6 +54,16 @@ function SystemNotice({ text }: { text: string }) {
       </span>
     </div>
   );
+}
+
+/** Assistant messages carry their run id in the message id (`run:<id>:…`).
+ *  Canonical Message exposes it as `id`; raw revisions as `messageId`. */
+function runIdOf(item: MessageItem): string | null {
+  const c = item.content;
+  const mid =
+    c.id ?? ("messageId" in c && typeof c.messageId === "string" ? c.messageId : undefined);
+  const m = /^run:([^:]+):/.exec(mid ?? "");
+  return m ? m[1]! : null;
 }
 
 // ── Transient live trace ──
@@ -443,26 +453,37 @@ function MessageActions({
               Edit &amp; Replay
             </Button>
           ) : (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
-              onClick={() =>
-                undoMut.mutate(
-                  { id: conversationId, count: 1 },
-                  {
-                    onSuccess: () => toast.success("Undone"),
-                    onError: (err) =>
-                      toast.error("Undo failed", {
-                        description: err instanceof Error ? err.message : "Unknown error",
-                      }),
-                  },
-                )
-              }
-              disabled={undoMut.isPending}
-            >
-              {undoMut.isPending ? "Undoing..." : "Undo"}
-            </Button>
+            <>
+              {runIdOf(item) && (
+                <Link
+                  href={`/system/runs/${runIdOf(item)}`}
+                  className="inline-flex h-6 items-center px-2 text-[10px] text-(--mute) hover:text-(--body)"
+                  title="Open run detail"
+                >
+                  View Run ↗
+                </Link>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
+                onClick={() =>
+                  undoMut.mutate(
+                    { id: conversationId, count: 1 },
+                    {
+                      onSuccess: () => toast.success("Undone"),
+                      onError: (err) =>
+                        toast.error("Undo failed", {
+                          description: err instanceof Error ? err.message : "Unknown error",
+                        }),
+                    },
+                  )
+                }
+                disabled={undoMut.isPending}
+              >
+                {undoMut.isPending ? "Undoing..." : "Undo"}
+              </Button>
+            </>
           )}
           <Button
             size="sm"

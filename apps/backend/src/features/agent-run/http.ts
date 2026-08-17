@@ -49,15 +49,15 @@ export function agentRunRoutes(input: {
   async function usageTotals(where: string, args: (string | number)[]): Promise<UsageTotals> {
     const groups = db
       .query(
-        `SELECT model_ref, COUNT(*) AS runs,
-                COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.inputTokens') AS REAL)), 0) AS inputTokens,
-                COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.outputTokens') AS REAL)), 0) AS outputTokens,
-                COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.cacheReadTokens') AS REAL)), 0) AS cacheReadTokens,
-                COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.cacheWriteTokens') AS REAL)), 0) AS cacheWriteTokens,
-                COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.costUsd') AS REAL)), 0) AS reportedCostUsd
-           FROM agent_run
-          WHERE terminal_result IS NOT NULL ${where}
-          GROUP BY model_ref`,
+        `SELECT ar.model_ref, COUNT(*) AS runs,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.inputTokens') AS REAL)), 0) AS inputTokens,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.outputTokens') AS REAL)), 0) AS outputTokens,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.cacheReadTokens') AS REAL)), 0) AS cacheReadTokens,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.cacheWriteTokens') AS REAL)), 0) AS cacheWriteTokens,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.costUsd') AS REAL)), 0) AS reportedCostUsd
+           FROM agent_run ar
+          WHERE ar.terminal_result IS NOT NULL ${where}
+          GROUP BY ar.model_ref`,
       )
       .all(...args) as Array<{
       model_ref: string;
@@ -178,14 +178,21 @@ export function agentRunRoutes(input: {
         startOfDay.setHours(0, 0, 0, 0);
         return {
           conversation: query.conversationId
-            ? await usageTotals("AND conversation_id = ?", [query.conversationId])
+            ? await usageTotals("AND ar.conversation_id = ?", [query.conversationId])
             : null,
-          today: await usageTotals("AND created_at >= ?", [startOfDay.getTime()]),
+          agent: query.agentId
+            ? await usageTotals(
+                "AND EXISTS (SELECT 1 FROM member m WHERE m.member_id = ar.agent_member_id AND m.conversation_id = ar.conversation_id AND m.agent_id = ?)",
+                [query.agentId],
+              )
+            : null,
+          today: await usageTotals("AND ar.created_at >= ?", [startOfDay.getTime()]),
         };
       },
       {
         query: t.Object({
           conversationId: t.Optional(t.String({ minLength: 1 })),
+          agentId: t.Optional(t.String({ minLength: 1 })),
         }),
       },
     )

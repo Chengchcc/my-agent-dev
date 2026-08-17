@@ -13,6 +13,7 @@ import { McpServerPanel } from "@/components/McpServerPanel";
 import { AgentRunsTable } from "@/components/ops/AgentRunsTable";
 import { QueryState } from "@/components/ops/QueryState";
 import { Page, PageHeader } from "@/components/page";
+import { UsagePanel } from "@/components/UsagePanel";
 import { Button } from "@/components/ui/button";
 import { ListRowCard, SubTabs } from "@/components/ui/polish";
 import { Switch } from "@/components/ui/switch";
@@ -124,6 +125,9 @@ export function AgentDetail({ agentId }: { agentId: string }) {
           {tab === "workspace" && <WorkspaceExplorer agentId={agentId} />}
           {tab === "activity" && (
             <div className="space-y-6">
+              <div className="rounded-lg border border-(--hairline) px-3 pb-1 pt-3">
+                <UsagePanel agentId={agentId} />
+              </div>
               <ConversationList agentId={agentId} agentName={agent.name} />
               <RecentRuns agentId={agentId} />
             </div>
