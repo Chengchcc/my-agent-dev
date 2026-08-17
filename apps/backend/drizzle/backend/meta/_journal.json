@@ -232,6 +232,13 @@
       "when": 1786700000000,
       "tag": "0032_project_worktree",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1787010000000,
+      "tag": "0033_rename_coding_agent_kind",
+      "breakpoints": true
     }
   ]
 }

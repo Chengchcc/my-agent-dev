@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { BackendRunOutcome } from "@chengchenccc/agent-backend";
+import { resolveModelAlias } from "@chengchenccc/ai";
 import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
 import { type AgentRunExecutionService, runEventStreamFor } from "./execution.js";
@@ -26,30 +27,75 @@ export function agentRunRoutes(input: {
   db: Database;
   agentRunService: AgentRunService;
   agentRunExecution: AgentRunExecutionService;
+  /** Catalog prices keyed "<backendKind>/<modelId>", USD per million tokens.
+   *  Boot builds it once; catalogs are static for the process lifetime. */
+  modelCosts: Promise<
+    Map<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>
+  >;
 }) {
-  const { db, agentRunService, agentRunExecution } = input;
+  const { db, agentRunService, agentRunExecution, modelCosts } = input;
 
-  /** Sum terminal usage columns over agent_run rows matching `where`. */
-  const usageTotals = (where: string, args: (string | number)[]) =>
-    db
+  type UsageTotals = {
+    runs: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    costUsd: number;
+  };
+
+  /** Token sums per model_ref, priced via the catalog. Falls back to the
+   *  backend-reported usage.costUsd when a model has no catalog price. */
+  async function usageTotals(where: string, args: (string | number)[]): Promise<UsageTotals> {
+    const groups = db
       .query(
-        `SELECT COUNT(*) AS runs,
+        `SELECT model_ref, COUNT(*) AS runs,
                 COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.inputTokens') AS REAL)), 0) AS inputTokens,
                 COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.outputTokens') AS REAL)), 0) AS outputTokens,
                 COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.cacheReadTokens') AS REAL)), 0) AS cacheReadTokens,
                 COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.cacheWriteTokens') AS REAL)), 0) AS cacheWriteTokens,
-                COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.costUsd') AS REAL)), 0) AS costUsd
+                COALESCE(SUM(CAST(json_extract(terminal_result, '$.usage.costUsd') AS REAL)), 0) AS reportedCostUsd
            FROM agent_run
-          WHERE terminal_result IS NOT NULL ${where}`,
+          WHERE terminal_result IS NOT NULL ${where}
+          GROUP BY model_ref`,
       )
-      .get(...args) as {
+      .all(...args) as Array<{
+      model_ref: string;
       runs: number;
       inputTokens: number;
       outputTokens: number;
       cacheReadTokens: number;
       cacheWriteTokens: number;
-      costUsd: number;
+      reportedCostUsd: number;
+    }>;
+
+    const costs = await modelCosts;
+    const t: UsageTotals = {
+      runs: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      costUsd: 0,
     };
+    for (const g of groups) {
+      t.runs += g.runs;
+      t.inputTokens += g.inputTokens;
+      t.outputTokens += g.outputTokens;
+      t.cacheReadTokens += g.cacheReadTokens;
+      t.cacheWriteTokens += g.cacheWriteTokens;
+      const ref = JSON.parse(g.model_ref) as { backendKind: string; modelId: string };
+      const c = costs.get(`${ref.backendKind}/${resolveModelAlias(ref.modelId)}`);
+      t.costUsd += c
+        ? (g.inputTokens * c.input +
+            g.outputTokens * c.output +
+            g.cacheReadTokens * c.cacheRead +
+            g.cacheWriteTokens * c.cacheWrite) /
+          1e6
+        : g.reportedCostUsd;
+    }
+    return t;
+  }
 
   return new Elysia()
     .get(
@@ -127,14 +173,14 @@ export function agentRunRoutes(input: {
     )
     .get(
       "/api/usage/summary",
-      ({ query }) => {
+      async ({ query }) => {
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
         return {
           conversation: query.conversationId
-            ? usageTotals("AND conversation_id = ?", [query.conversationId])
+            ? await usageTotals("AND conversation_id = ?", [query.conversationId])
             : null,
-          today: usageTotals("AND created_at >= ?", [startOfDay.getTime()]),
+          today: await usageTotals("AND created_at >= ?", [startOfDay.getTime()]),
         };
       },
       {

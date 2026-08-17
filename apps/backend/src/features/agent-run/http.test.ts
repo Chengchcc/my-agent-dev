@@ -7,6 +7,7 @@ const app = agentRunRoutes({
   db,
   agentRunService: {} as never,
   agentRunExecution: {} as never,
+  modelCosts: Promise.resolve(new Map()),
 });
 
 function seedDefaultMember(conversationId: string, now: number): void {

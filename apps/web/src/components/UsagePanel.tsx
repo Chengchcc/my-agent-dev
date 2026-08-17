@@ -34,14 +34,13 @@ function UsageRow({ label, t }: { label: string; t: Totals }) {
           {label}
         </span>
         <span className="text-xs font-medium text-(--ink-strong) tabular-nums">
-          {fmtTokens(t.inputTokens + t.outputTokens)} tok
+          {fmtTokens(t.inputTokens + t.outputTokens)} tok · ≈${t.costUsd.toFixed(2)}
         </span>
       </div>
       <p className="text-[10px] text-(--mute) tabular-nums">
         in {fmtTokens(t.inputTokens)} · out {fmtTokens(t.outputTokens)}
         {t.cacheReadTokens + t.cacheWriteTokens > 0 &&
           ` · cache ${fmtTokens(t.cacheReadTokens + t.cacheWriteTokens)}`}
-        {t.costUsd > 0 && ` · ≈$${t.costUsd.toFixed(2)}`}
         {` · ${t.runs} run${t.runs !== 1 ? "s" : ""}`}
       </p>
     </div>

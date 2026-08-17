@@ -8,6 +8,7 @@ import type {
   BackendRegistry,
   BackendRegistryEntry,
 } from "@chengchenccc/agent-backend";
+import { resolveModelAlias } from "@chengchenccc/ai";
 import type { Message } from "@chengchenccc/message";
 import type { FeatureSet } from "../app.js";
 import { createAgentSvc } from "../features/agent/agent-compose.js";
@@ -779,7 +780,25 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       projectSvc.exists(id),
     ),
     ops: opsRoutes(opsSvc),
-    agentRuns: agentRunRoutes({ db, agentRunService, agentRunExecution }),
+    agentRuns: agentRunRoutes({
+      db,
+      agentRunService,
+      agentRunExecution,
+      // ponytail: catalog prices snapshotted once per boot; catalogs are
+      // static for the process lifetime (env/config driven).
+      modelCosts: (async () => {
+        const map = new Map<
+          string,
+          { input: number; output: number; cacheRead: number; cacheWrite: number }
+        >();
+        for (const [kind, entry] of Object.entries(backends)) {
+          for (const m of (await entry.catalog.list()).models) {
+            map.set(`${kind}/${resolveModelAlias(m.id)}`, m.cost);
+          }
+        }
+        return map;
+      })(),
+    }),
     projects: projectRoutes(projectSvc, worktreeOps),
     loops: loopRoutes({
       agentWorkspaceOf: resolveAgentWorkspace,
