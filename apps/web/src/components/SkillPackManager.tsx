@@ -1,8 +1,8 @@
 "use client";
 
 import { Download, FolderSync, GitBranch, RefreshCw, Trash2 } from "lucide-react";
-import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { FileContentViewer } from "@/components/FileContentViewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -102,21 +102,13 @@ export function FileTree({
   );
 }
 
-const MonacoViewer = dynamic(
-  () => import("@/components/MonacoViewer").then((m) => m.MonacoViewer),
-  {
-    ssr: false,
-    loading: () => <Skeleton className="h-96 w-full" />,
-  },
-);
-
 export function FileContent({ packId, path }: { packId: string; path: string }) {
   const { data, isLoading } = useSkillPackFiles(packId, path);
 
   if (isLoading) return <Skeleton className="h-96 w-full" />;
   if (data?.type !== "file") return null;
 
-  return <MonacoViewer value={data.content ?? ""} path={data.path} />;
+  return <FileContentViewer value={data.content ?? ""} path={data.path} />;
 }
 
 export function SkillPackManager() {
@@ -257,7 +249,7 @@ export function SkillPackManager() {
           }
         }}
       >
-        <SheetContent className="w-[500px] sm:max-w-[600px] overflow-y-auto">
+        <SheetContent className="w-[92vw] max-w-[1200px] overflow-y-auto">
           <SheetHeader>
             <SheetTitle>
               {packs?.find((p: { id: string }) => p.id === selectedPack)?.name ?? "Pack Details"}
@@ -265,8 +257,7 @@ export function SkillPackManager() {
           </SheetHeader>
 
           <div className="mt-4 flex flex-col md:flex-row gap-4">
-            {/* Left pane: skills + pack files */}
-            <div className="md:w-[240px] md:shrink-0 space-y-4">
+            <div className="space-y-4 md:w-[240px] md:shrink-0">
               <details open className="group">
                 <summary className="flex items-center justify-between text-sm font-semibold cursor-pointer select-none">
                   Skills

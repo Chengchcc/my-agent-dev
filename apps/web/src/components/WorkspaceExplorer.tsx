@@ -2,8 +2,8 @@
 
 import { ChevronRight, FileText, Folder, FolderOpen } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { FileContentViewer } from "@/components/FileContentViewer";
 import { api } from "@/lib/api";
-import { fieldClass } from "@/lib/form-styles";
 
 /** Read-only workspace file browser (ADR 0003): directory tree + file
  *  content. Backs the agent detail "workspace" tab — the workspace files
@@ -125,24 +125,19 @@ export function WorkspaceExplorer({ agentId }: { agentId: string }) {
       </div>
 
       {/* File content */}
-      <div className="rounded-lg border border-[var(--line)] bg-[var(--canvas-soft)] min-h-[320px] flex flex-col">
-        <div className="flex items-center gap-1 px-3 py-2 text-xs text-[var(--mute)] border-b border-[var(--line)]">
-          <ChevronRight className="size-3" />
-          <span className="font-mono truncate">{selected ?? "select a file"}</span>
-          {truncated && <span className="text-amber-500">— truncated (256K cap)</span>}
-        </div>
-        {content === null ? (
+      {content === null ? (
+        <div className="rounded-lg border border-[var(--line)] bg-[var(--canvas-soft)] min-h-[320px] flex flex-col">
+          <div className="flex items-center gap-1 px-3 py-2 text-xs text-[var(--mute)] border-b border-[var(--line)]">
+            <ChevronRight className="size-3" />
+            <span className="font-mono truncate">{selected ?? "select a file"}</span>
+          </div>
           <div className="flex-1 flex items-center justify-center text-xs text-[var(--mute)] p-4">
             Read-only: workspace files are the agent&apos;s config truth.
           </div>
-        ) : (
-          <pre
-            className={`${fieldClass} flex-1 overflow-auto text-xs/relaxed p-3 font-mono whitespace-pre-wrap border-0 rounded-none`}
-          >
-            {content}
-          </pre>
-        )}
-      </div>
+        </div>
+      ) : (
+        <FileContentViewer value={content} path={selected ?? ""} truncated={truncated} />
+      )}
     </div>
   );
 }

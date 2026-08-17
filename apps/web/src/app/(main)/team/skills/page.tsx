@@ -56,7 +56,7 @@ function PackDrawer({ pack, onClose }: { pack: PackEntry; onClose: () => void })
 
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[500px] overflow-y-auto sm:max-w-[600px]">
+      <SheetContent className="w-[92vw] max-w-[1200px] overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{pack.name}</SheetTitle>
         </SheetHeader>
