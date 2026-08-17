@@ -1,5 +1,5 @@
 {
-  "name": "@my-agent-team/conversation",
+  "name": "@chengchenccc/conversation",
   "version": "0.1.0",
   "description": "Conversation/Member domain types + zod schemas + pure helpers (zero runtime deps)",
   "type": "module",
@@ -15,7 +15,7 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
-    "@my-agent-team/message": "workspace:*",
+    "@chengchenccc/message": "workspace:*",
     "zod": "^3.23.0"
   },
   "devDependencies": {}

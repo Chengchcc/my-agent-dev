@@ -27,7 +27,7 @@ function seedDefaultMember(conversationId: string, now: number): void {
 function seedRun(runId: string, conversationId: string, now: number): void {
   db.query(
     `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, created_at)
-     VALUES (?, ?, ?, 'default', '{"backendKind":"coding_agent","modelId":"fake/echo"}', 'completed', ?, 1, ?)`,
+     VALUES (?, ?, ?, 'default', '{"backendKind":"oma","modelId":"fake/echo"}', 'completed', ?, 1, ?)`,
   ).run(runId, `br-${conversationId}`, conversationId, `ik-${runId}`, now);
 }
 

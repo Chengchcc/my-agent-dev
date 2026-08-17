@@ -10,8 +10,8 @@ A fresh database and a database containing existing Conversation History/Member 
 
 ## Prerequisites
 
-- Phase 0 is complete and `@my-agent-team/agent-backend` exports `BackendModelRef`, `ProjectedHistoryItem`, `AgentRunSnapshot`, `BackendRunOutcome`, `PendingAction`, and `PendingActionResponse`.
-- Read `docs/superpowers/specs/agent-backend-coding-agent-rewrite/phase-1-agent-context-and-runs.md` and treat it as authoritative.
+- Phase 0 is complete and `@chengchenccc/agent-backend` exports `BackendModelRef`, `ProjectedHistoryItem`, `AgentRunSnapshot`, `BackendRunOutcome`, `PendingAction`, and `PendingActionResponse`.
+- Read `docs/superpowers/specs/agent-backend-oma-rewrite/phase-1-agent-context-and-runs.md` and treat it as authoritative.
 - Preserve current `conversation`, `member`, and `conversation_ledger` product facts.
 
 ## Non-goals
@@ -147,7 +147,7 @@ Expected: all uniqueness, partial-index, and cascade assertions pass.
 
 **Files:**
 - Create: `apps/backend/src/features/agent-context/domain.ts`
-- Modify: `apps/backend/package.json` — add workspace dependency `@my-agent-team/agent-backend`
+- Modify: `apps/backend/package.json` — add workspace dependency `@chengchenccc/agent-backend`
 
 **Actions:**
 1. Define `AgentContextTree`, `AgentContextEntry`, `ContextBranch`, `BackendSessionBinding`, and payload unions for `ledger_message`, `private_message`, `product_tool_exchange`, `summary`, and `model_change`.
@@ -243,7 +243,7 @@ Expected: lazy creation, two-Agent isolation, model-next-run, fork inheritance/o
 1. Implement `projectAgentContext({ branchId, throughEntryId? })` returning `ProjectedHistoryItem[]` with `productEntryId` equal to the stable Context `entryId`.
 2. Walk parent links root-to-leaf; reject a `throughEntryId` not on the selected branch path.
 3. Apply the latest applicable Summary by replacing entries through `coversThroughEntryId`, without deleting stored entries; merge later private Messages and semantic Product Tool exchanges in order.
-4. Resolve each Ledger Message ref through a narrow Conversation port query by exact `conversationId + ledgerSeq`; deserialize with `@my-agent-team/message` and fail on a missing/invalid ref rather than silently inventing content.
+4. Resolve each Ledger Message ref through a narrow Conversation port query by exact `conversationId + ledgerSeq`; deserialize with `@chengchenccc/message` and fail on a missing/invalid ref rather than silently inventing content.
 5. Keep projection independent of Agent Backend adapters and Runtime session state.
 
 **Check:**
@@ -459,7 +459,7 @@ bun test apps/backend/src/infra/sqlite/db.test.ts \
   apps/backend/src/features/agent-run \
   apps/backend/src/features/conversation/adapter-sqlite.test.ts
 bun run --cwd apps/backend db:check:backend
-grep -RInE 'checkpoint_(messages|interrupts|events)|checkpointer\.db|@my-agent-team/agent' \
+grep -RInE 'checkpoint_(messages|interrupts|events)|checkpointer\.db|@chengchenccc/agent' \
   apps/backend/src/features/agent-context \
   apps/backend/src/features/agent-run \
   apps/backend/drizzle/backend/0012_agent_context_and_runs.sql
@@ -473,7 +473,7 @@ Expected: focused tests pass; Drizzle check exits 0; forbidden-dependency search
 **Time box:** 15 minutes
 
 **Files:**
-- Review: `docs/superpowers/specs/agent-backend-coding-agent-rewrite/phase-1-agent-context-and-runs.md`
+- Review: `docs/superpowers/specs/agent-backend-oma-rewrite/phase-1-agent-context-and-runs.md`
 
 **Actions:**
 1. Check each acceptance item against a named test: existing fixture migration, no checkpointer dependency, concurrent acquire, member isolation, ref-only entries, next-run model, non-destructive branch operations, stable product entry identity, lazy default branch, restart queue order, pre-accept reclaim, consume-once action, and run-ID terminal idempotency.
@@ -483,7 +483,7 @@ Expected: focused tests pass; Drizzle check exits 0; forbidden-dependency search
 **Check:**
 ```bash
 grep -nE 'checkpoint|member\.session|dual write|compatib|Phase 5|Runtime' \
-  docs/superpowers/plans/agent-backend-coding-agent-rewrite/phase-1-durable-agent-context-and-runs.md
+  docs/superpowers/plans/agent-backend-oma-rewrite/phase-1-durable-agent-context-and-runs.md
 ```
 Expected: matches occur only in explicit prohibitions, destructive policy, and phase-boundary statements.
 

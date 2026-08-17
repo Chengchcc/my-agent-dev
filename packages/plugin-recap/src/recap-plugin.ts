@@ -1,5 +1,5 @@
-import type { Plugin, PluginRuntime } from "@my-agent-team/agent";
-import { extractText, type Message } from "@my-agent-team/message";
+import type { Plugin, PluginRuntime } from "@chengchenccc/agent";
+import { extractText, type Message } from "@chengchenccc/message";
 
 export interface RecapPluginOptions {
   /** Model to use for recap generation (provider/model id). */

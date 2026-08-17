@@ -1,8 +1,8 @@
 /** Product Tool manifest (ADR 0003 decision 6): the fixed tool definitions
- *  the coding agent exposes over MCP. The SAME manifest is
+ *  the oma exposes over MCP. The SAME manifest is
  *  - persisted per run at first dispatch (product-tools MCP authorizes calls
  *    against the run's declared tools),
- *  - written into the agent workspace (`.agent/product-tools.json`) so the
+ *  - written into the agent workspace (`.oma/product-tools.json`) so the
  *    child builds its tool table from cwd files, not the run input.
  *  `entrypoint` is the deployment's product-tools MCP URL/executable. */
 export interface ProductToolDescriptor {

@@ -1,0 +1,10 @@
+{"type":"event","runId":"r-fixture-1","event":{"id":0,"type":"agent_start","data":{"type":"agent_start"}}}
+{"type":"event","runId":"r-fixture-1","event":{"id":1,"type":"message_start","data":{"type":"message_start"}}}
+{"id":"e1","type":"response","command":"execute","success":true}
+{"type":"event","runId":"r-fixture-1","event":{"id":2,"type":"retry_start","data":{"type":"retry_start","attempt":1}}}
+{"type":"event","runId":"r-fixture-1","event":{"id":3,"type":"message_update","data":{"type":"message_update","text":"done"}}}
+{"type":"event","runId":"r-fixture-1","event":{"id":4,"type":"retry_end","data":{"type":"retry_end"}}}
+{"type":"event","runId":"r-fixture-1","event":{"id":5,"type":"message_end","data":{"type":"message_end"}}}
+{"type":"event","runId":"r-fixture-1","event":{"id":6,"type":"turn_end","data":{"type":"turn_end","turn":1}}}
+{"type":"event","runId":"r-fixture-1","event":{"id":7,"type":"agent_end","data":{"type":"agent_end","status":"completed"}}}
+{"type":"outcome","runId":"r-fixture-1","outcome":{"status":"completed","messages":[{"role":"assistant","text":"done"}],"usage":{"inputTokens":10,"outputTokens":3,"cacheReadTokens":1,"cacheWriteTokens":0},"title":"done","cliSessionRef":"498d70af-b28a-4deb-9c42-5431b24fd20b"}}

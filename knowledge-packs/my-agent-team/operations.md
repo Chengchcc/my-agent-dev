@@ -18,7 +18,7 @@ Scoped examples:
 
 ## Testing model doubles
 
-- echoModel() from @my-agent-team/test-helpers: deterministic scripted ChatModel
+- echoModel() from @chengchenccc/test-helpers: deterministic scripted ChatModel
 - inMemoryPersistence(), consoleLogger({ level: "silent" }), passthroughContextManager()
 - Loop tests use mockSessionFactory(verdictMd)
 
@@ -39,7 +39,7 @@ Scoped examples:
 
 ## Debugging
 
-- CODING_AGENT_DEBUG=1 emits the run lifecycle chain to stderr (no message content)
+- OMA_DEBUG=1 emits the run lifecycle chain to stderr (no message content)
 - Bun timers in Promise.race must be cleared or the process lingers
 - Bun.spawn throws ENOENT on a missing cwd
 - StdioClientTransport does not inherit custom parent env vars; pass config in-band

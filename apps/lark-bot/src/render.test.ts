@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { MessageRevision } from "@my-agent-team/message";
+import type { MessageRevision } from "@chengchenccc/message";
 import { renderRevision } from "./render.js";
 
 function makeRevision(overrides: Partial<MessageRevision> = {}): MessageRevision {

@@ -29,7 +29,7 @@
 └────────────────────────────────────────────────────────────────┘
 ```
 
-M3 在 L2 之上、L4 之下,交付 `@my-agent-team/framework` 一个包。
+M3 在 L2 之上、L4 之下,交付 `@chengchenccc/framework` 一个包。
 
 依赖方向铁律：framework → core。框架不依赖 adapter-anthropic 或 tools-common。
 
@@ -41,7 +41,7 @@ M3 在 L2 之上、L4 之下,交付 `@my-agent-team/framework` 一个包。
 
 | 包 | 目录 | 职责 |
 |---|---|---|
-| `@my-agent-team/framework` | `packages/framework/` | `createAgent` + `Agent` + `definePlugin` + 内置 plugin/checkpointer |
+| `@chengchenccc/framework` | `packages/framework/` | `createAgent` + `Agent` + `definePlugin` + 内置 plugin/checkpointer |
 
 ### 3.2 不修改
 
@@ -58,14 +58,14 @@ M3 在 L2 之上、L4 之下,交付 `@my-agent-team/framework` 一个包。
 
 ---
 
-## 四、`@my-agent-team/framework`
+## 四、`@chengchenccc/framework`
 
 ### 4.1 依赖
 
 ```json
 {
   "dependencies": {
-    "@my-agent-team/core": "workspace:*"
+    "@chengchenccc/core": "workspace:*"
   }
 }
 ```
@@ -75,7 +75,7 @@ M3 在 L2 之上、L4 之下,交付 `@my-agent-team/framework` 一个包。
 ```ts
 // packages/framework/src/create-agent.ts
 
-import type { ChatModel, Tool, Message, RunOptions } from "@my-agent-team/core";
+import type { ChatModel, Tool, Message, RunOptions } from "@chengchenccc/core";
 
 export interface Agent {
   readonly thread: Thread;
@@ -427,7 +427,7 @@ export function fileCheckpointer(options: { path: string }): Checkpointer;
 
 ```text
 packages/framework/
-├── package.json              # deps: @my-agent-team/core
+├── package.json              # deps: @chengchenccc/core
 ├── tsconfig.json             # build:排除 *.test.ts
 ├── tsconfig.test.json        # typecheck:包含 src/**/*.ts
 └── src/
@@ -591,7 +591,7 @@ Gate 通过标准同 M1：typecheck 0 error、lint 0 error、所有 test pass、
 ## 十三、验收清单
 
 - [ ] `bun install && bun run format && bun run lint && bun run typecheck && bun run test && bun run build` 全绿
-- [ ] `@my-agent-team/framework` 公开 `createAgent` / `definePlugin` / `slidingWindow` / `consoleLogger` / `fileCheckpointer`
+- [ ] `@chengchenccc/framework` 公开 `createAgent` / `definePlugin` / `slidingWindow` / `consoleLogger` / `fileCheckpointer`
 - [ ] `create-agent.test.ts` 17 个场景全部通过
 - [ ] `plugin.test.ts` 2 个场景通过
 - [ ] `sliding-window.test.ts` 3 个场景通过
@@ -607,7 +607,7 @@ Gate 通过标准同 M1：typecheck 0 error、lint 0 error、所有 test pass、
 
 | Milestone | 内容 |
 |---|---|
-| M4 | `@my-agent-team/harness-coding`: coding agent(system prompt + built-in tools) |
+| M4 | `@chengchenccc/harness-coding`: oma(system prompt + built-in tools) |
 | M5 | 复审 — 出现 3+ 重复时才提取 `decorators` 共享包 |
 
 ---

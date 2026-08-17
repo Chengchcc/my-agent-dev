@@ -6,7 +6,7 @@
 
 ## Goal
 
-给 Plugin 注入一个 **Runtime context**（`PluginRuntime`），让 hooks 能访问 Coding Agent 的能力（模型流、store、workspace、emit），**不引入 jiti、不改 Plugin 为 class**。
+给 Plugin 注入一个 **Runtime context**（`PluginRuntime`），让 hooks 能访问 Oma 的能力（模型流、store、workspace、emit），**不引入 jiti、不改 Plugin 为 class**。
 
 ## Design
 
@@ -21,10 +21,10 @@ Pi 的 `ExtensionAPI` 是一个运行时注入的上下文对象，extension fac
 ```typescript
 // packages/agent/src/runtime/plugin-runtime.ts
 
-import type { AIMessageChunk } from "@my-agent-team/core";
-import type { Message } from "@my-agent-team/message";
+import type { AIMessageChunk } from "@chengchenccc/core";
+import type { Message } from "@chengchenccc/message";
 import type { SessionStore } from "../persistence/session-store.js";
-import type { CodingAgentLoopEvent } from "./agent-event.js";
+import type { OmaLoopEvent } from "./agent-event.js";
 
 /** Capabilities injected into plugin hooks at runtime. Mirrors a subset of
  *  pi's ExtensionContext: model stream, store, workspace, event emit. */
@@ -46,7 +46,7 @@ export interface PluginRuntime {
   readonly workspaceRoot: string;
 
   /** Emit a UI-transient event to the Run SSE (never to History). */
-  readonly emit: (event: CodingAgentLoopEvent) => void;
+  readonly emit: (event: OmaLoopEvent) => void;
 
   /** The run's abort signal (for graceful shutdown). */
   readonly signal: AbortSignal;
@@ -66,7 +66,7 @@ export interface PluginHooks {
     toolName: string,
     result: unknown,
     rt: PluginRuntime,
-  ): CodingAgentLoopEvent | undefined;
+  ): OmaLoopEvent | undefined;
 }
 ```
 
@@ -74,7 +74,7 @@ export interface PluginHooks {
 
 ### Agent Loop 改动
 
-1. `CodingAgentSessionOptions` 新增 `pluginRuntime: PluginRuntime`
+1. `OmaSessionOptions` 新增 `pluginRuntime: PluginRuntime`
 2. Loop 在调用每个 hook 时传入 `rt`：
    ```ts
    // beforeModel
@@ -91,7 +91,7 @@ export interface PluginHooks {
 ### Run Runtime 构建
 
 ```typescript
-// apps/coding-agent/src/core/run-runtime.ts
+// apps/oh-my-agent/src/core/run-runtime.ts
 
 const pluginRuntime: PluginRuntime = {
   streamModel: (providerId, modelId, messages, opts) =>
@@ -103,7 +103,7 @@ const pluginRuntime: PluginRuntime = {
   signal: controller?.signal ?? new AbortController().signal,
 };
 
-const session = createCodingAgentSession({
+const session = createOmaSession({
   ...
   plugins,
   pluginRuntime,
@@ -146,7 +146,7 @@ Plugin 构造时只传**配置**（modelRef, enabled），运行时能力从 hoo
 | { type: "pet_bark"; mood: string; text: string; level: number }
 ```
 
-mapping.ts 的 default case 自动映射为 `backend.coding_agent.recap_update` / `backend.coding_agent.pet_bark`。Web 的 watchRun 已有事件监听模式（todo_update 同构）。
+mapping.ts 的 default case 自动映射为 `backend.oma.recap_update` / `backend.oma.pet_bark`。Web 的 watchRun 已有事件监听模式（todo_update 同构）。
 
 ## 不做
 

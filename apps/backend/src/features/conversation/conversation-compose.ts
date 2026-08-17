@@ -1,5 +1,5 @@
-import type { BackendModelRef } from "@my-agent-team/agent-backend";
-import type { Message } from "@my-agent-team/message";
+import type { BackendModelRef } from "@chengchenccc/agent-backend";
+import type { Message } from "@chengchenccc/message";
 import { ulid } from "../../infra/ids.js";
 import { type AgentService, agentModelRef } from "../agent/index.js";
 import type { AgentContextService } from "../agent-context/service.js";

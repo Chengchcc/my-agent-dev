@@ -1,5 +1,5 @@
 {
-  "name": "@my-agent-team/core",
+  "name": "@chengchenccc/core",
   "version": "0.1.0",
   "description": "Core protocol and minimal runtime",
   "type": "module",
@@ -20,7 +20,7 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
-    "@my-agent-team/message": "workspace:*"
+    "@chengchenccc/message": "workspace:*"
   },
   "devDependencies": {}
 }

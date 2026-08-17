@@ -2,7 +2,7 @@
  *  written, then stdin closes (`-p` mode reads stdin and exits). Same
  *  LF-framed stdout reader + bounded stderr tail as the other adapters. */
 
-import { collectSecrets, redactText } from "@my-agent-team/agent-backend";
+import { collectSecrets, redactText } from "@chengchenccc/agent-backend";
 import type { FileSink, Subprocess } from "bun";
 
 export interface ClaudeCommandConfig {

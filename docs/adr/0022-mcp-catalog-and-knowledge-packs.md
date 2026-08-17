@@ -10,13 +10,13 @@ ADR 0020 确立了"资源一份、桥接分发"的 Workspace Bridge 模型。三
 
 | 资源 | 统一配置池 | agent 级开关 | 桥接 | 运行时消费 |
 |---|---|---|---|---|
-| Skill Pack | ✓(install 池) | ✓(DB 分配表) | ✓ 软链 `.<kind>/skills` | coding agent 经 progressive-skill 插件**主动加载** |
+| Skill Pack | ✓(install 池) | ✓(DB 分配表) | ✓ 软链 `.<kind>/skills` | oma 经 progressive-skill 插件**主动加载** |
 | MCP | ✗ `mcp_server` 是 per-agent 表 | ✗ | ✓ `.mcp.json` | 各后端原生挂载 |
 | Knowledge | ✗(仅 seed 空目录) | ✗ | ✗ | 无 |
 
 两个缺口都要按 skill-pack 的"统一配置池 + agent 级开关"模式补齐。**agent 级开关遵循 file-first**(ADR 0020:agent.yml 是唯一真源):开关写进 agent.yml,不建 DB 分配表(与 skill pack 的分配表不同——那是历史遗留,新资源不再走 DB 分配)。
 
-knowledge 的**运行时消费**与 skill 有本质区别:skill 会被 coding agent **加载并执行**(progressive-skill 扫目录、skill_load 读全文);knowledge 是参考资料,**不会被自动加载**——它需要轻量索引注入 prompt + **召回工具**(agent 按需查询)。
+knowledge 的**运行时消费**与 skill 有本质区别:skill 会被 oma **加载并执行**(progressive-skill 扫目录、skill_load 读全文);knowledge 是参考资料,**不会被自动加载**——它需要轻量索引注入 prompt + **召回工具**(agent 按需查询)。
 
 ## 决策
 
@@ -47,8 +47,8 @@ runtime_config:
 ```
 
 - Bridge:agent.yml 列出的 pack **软链**进 workspace `knowledge/<packId>`;并**生成机器索引** `knowledge/index.md`(每 pack 的标题、描述、文件清单,reconcile 时幂等重建——与 manifest.json 同构的桥接产物)。
-- **prompt 注入**:coding agent 的 cwd meta 通道(workspace-context)把 `knowledge/index.md` 包成 `<available_knowledge>…</available_knowledge>` 段追加到 system prompt(与 skill 索引同形态;有文件才追加)。CLI 后端原生读 cwd 文件,index.md 对它们同样可见。
-- **召回工具 = MCP(非 child 原生)**:`knowledge_search`(AND 关键词 + 可选 tag 过滤,frontmatter title/tags/summary 服务召回质量)+ `knowledge_read`(路径约束在 knowledge/ 内)实现为 **backend 的 stdio MCP server**(`features/knowledge/mcp-server.ts`),bridge 把它合并进 `.mcp.json`——**四个后端挂载同一套召回面**。child 因此补了通用 `.mcp.json` 挂载(跳过 product-tools,manifest 路径已管它),user 自配的 MCP server 对 coding_agent 也开始生效。
+- **prompt 注入**:oma 的 cwd meta 通道(workspace-context)把 `knowledge/index.md` 包成 `<available_knowledge>…</available_knowledge>` 段追加到 system prompt(与 skill 索引同形态;有文件才追加)。CLI 后端原生读 cwd 文件,index.md 对它们同样可见。
+- **召回工具 = MCP(非 child 原生)**:`knowledge_search`(AND 关键词 + 可选 tag 过滤,frontmatter title/tags/summary 服务召回质量)+ `knowledge_read`(路径约束在 knowledge/ 内)实现为 **backend 的 stdio MCP server**(`features/knowledge/mcp-server.ts`),bridge 把它合并进 `.mcp.json`——**四个后端挂载同一套召回面**。child 因此补了通用 `.mcp.json` 挂载(跳过 product-tools,manifest 路径已管它),user 自配的 MCP server 对 oma 也开始生效。
 - 消费语义:knowledge 是**参考**,不是指令——不参与 skill 的加载/执行链路。
 
 ### 3. 边界与降级

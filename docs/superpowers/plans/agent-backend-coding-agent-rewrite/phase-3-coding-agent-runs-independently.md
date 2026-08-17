@@ -1,10 +1,10 @@
-# Phase 3 — Coding Agent Runs Independently Implementation Plan
+# Phase 3 — Oma Runs Independently Implementation Plan
 
-**Goal:** Deploy the Coding Agent as an independent, authenticated Agent Backend service with one Worker process per active Agent Run. Session continuity is guaranteed by the SQLite `SessionStore`, never by a resident Worker process.
+**Goal:** Deploy the Oma as an independent, authenticated Agent Backend service with one Worker process per active Agent Run. Session continuity is guaranteed by the SQLite `SessionStore`, never by a resident Worker process.
 
-**Outcome:** `apps/coding-agent` owns one-shot Worker lifecycle (spawn per Run, execute, emit one outcome, exit), NDJSON IPC, bounded event replay, model catalog publication, and Product Tool MCP connectivity; `packages/adapter-coding-agent` implements the exact `AgentBackend` method set `start/send/resume/respond/stop/close` over HTTP + SSE. A real Adapter contract test completes an Agent Run in a Worker without Product Backend caller cutover.
+**Outcome:** `apps/oh-my-agent` owns one-shot Worker lifecycle (spawn per Run, execute, emit one outcome, exit), NDJSON IPC, bounded event replay, model catalog publication, and Product Tool MCP connectivity; `packages/adapter-oma-agent` implements the exact `AgentBackend` method set `start/send/resume/respond/stop/close` over HTTP + SSE. A real Adapter contract test completes an Agent Run in a Worker without Product Backend caller cutover.
 
-**Prerequisites:** Phase 0 `@my-agent-team/agent-backend` contracts compile; Phase 2 exposes the Coding Agent Runtime, SQLite `SessionStore`, `ModelRuntime`, runtime event types, and Worker-safe construction APIs. Read `docs/superpowers/specs/agent-backend-coding-agent-rewrite/phase-3-coding-agent-service.md`, `docs/architecture/execution/agent-backend.md`, `docs/architecture/runtime/coding-agent.md`, `docs/architecture/runtime/coding-agent-session.md`, and `docs/architecture/runtime/coding-agent-models.md` before implementation.
+**Prerequisites:** Phase 0 `@chengchenccc/agent-backend` contracts compile; Phase 2 exposes the Oma Runtime, SQLite `SessionStore`, `ModelRuntime`, runtime event types, and Worker-safe construction APIs. Read `docs/superpowers/specs/agent-backend-oma-rewrite/phase-3-oma-service.md`, `docs/architecture/execution/agent-backend.md`, `docs/architecture/runtime/oma.md`, `docs/architecture/runtime/oma-session.md`, and `docs/architecture/runtime/oma-models.md` before implementation.
 
 **Non-goals:** Do not modify Product Backend execution or callers; that begins in Phase 4 and caller cutover remains Phase 5. Do not add an in-process Runtime fallback, old checkpointer/session migration, a `respond` HTTP endpoint, pending continuation state, worker-crash active-loop recovery, dual transport, provider credentials in Product Backend, or a daemon session catalog database.
 
@@ -16,49 +16,49 @@
 
 ## Wave 1 — Create the two deployable workspace units
 
-### Task 1.1 — Scaffold the Coding Agent service package
+### Task 1.1 — Scaffold the Oma service package
 
 **Time box:** 20 minutes
 
 **Files:**
-- Create: `apps/coding-agent/package.json`
-- Create: `apps/coding-agent/tsconfig.json`
-- Create: `apps/coding-agent/tsconfig.test.json`
-- Create: `apps/coding-agent/src/main.ts`
+- Create: `apps/oh-my-agent/package.json`
+- Create: `apps/oh-my-agent/tsconfig.json`
+- Create: `apps/oh-my-agent/tsconfig.test.json`
+- Create: `apps/oh-my-agent/src/main.ts`
 
 **Actions:**
-1. Copy the application script shape from `apps/backend/package.json` and compiler shape from `apps/lark-bot/tsconfig.json`; use package name `@my-agent-team/coding-agent` and mark it private.
-2. Add only direct runtime dependencies: `@my-agent-team/agent`, `@my-agent-team/agent-backend`, `@my-agent-team/ai`, `@my-agent-team/adapter-mcp`, `@my-agent-team/config`, `elysia`, `zod`, and the already-installed MCP SDK if Phase 2 does not expose a ready MCP client constructor.
+1. Copy the application script shape from `apps/backend/package.json` and compiler shape from `apps/lark-bot/tsconfig.json`; use package name `@chengchenccc/oh-my-agent` and mark it private.
+2. Add only direct runtime dependencies: `@chengchenccc/agent`, `@chengchenccc/agent-backend`, `@chengchenccc/ai`, `@chengchenccc/adapter-mcp`, `@chengchenccc/config`, `elysia`, `zod`, and the already-installed MCP SDK if Phase 2 does not expose a ready MCP client constructor.
 3. Add `build`, `dev`, `lint`, `test`, and `typecheck` scripts matching repository conventions; `dev` must execute `src/main.ts`, not Product Backend.
 4. Keep `src/main.ts` minimal and compilable: load configuration and exit cleanly until Task 4.4 wires the server; do not export future symbols or add an in-process Runtime fallback.
 
 **Check:**
 ```bash
-bun pm ls --all | grep '@my-agent-team/coding-agent'
+bun pm ls --all | grep '@chengchenccc/oh-my-agent'
 ```
 Expected: the new workspace package is listed exactly once.
 
-**Done when:** Bun recognizes `@my-agent-team/coding-agent` as an independent workspace application and no source file imports `apps/backend`.
+**Done when:** Bun recognizes `@chengchenccc/oh-my-agent` as an independent workspace application and no source file imports `apps/backend`.
 
-### Task 1.2 — Scaffold the Coding Agent Adapter package
+### Task 1.2 — Scaffold the Oma Adapter package
 
 **Time box:** 20 minutes
 
 **Files:**
-- Create: `packages/adapter-coding-agent/package.json`
-- Create: `packages/adapter-coding-agent/tsconfig.json`
-- Create: `packages/adapter-coding-agent/tsconfig.test.json`
-- Create: `packages/adapter-coding-agent/src/index.ts`
+- Create: `packages/adapter-oma-agent/package.json`
+- Create: `packages/adapter-oma-agent/tsconfig.json`
+- Create: `packages/adapter-oma-agent/tsconfig.test.json`
+- Create: `packages/adapter-oma-agent/src/index.ts`
 
 **Actions:**
 1. Copy the package/export/script shape from `packages/adapter-mcp/package.json`.
-2. Add runtime dependencies only on `@my-agent-team/agent-backend` and `zod`; use platform `fetch`, `ReadableStream`, and `AbortController` rather than another HTTP/SSE dependency.
-3. Export only symbols created in this card. Later cards update the barrel immediately after creating `CodingAgentClient`, `CodingAgentBackend`, and `CodingAgentModelCatalog`.
-4. Do not depend on `@my-agent-team/agent`, `@my-agent-team/ai`, Elysia, SQLite, or Product Backend.
+2. Add runtime dependencies only on `@chengchenccc/agent-backend` and `zod`; use platform `fetch`, `ReadableStream`, and `AbortController` rather than another HTTP/SSE dependency.
+3. Export only symbols created in this card. Later cards update the barrel immediately after creating `OmaClient`, `OmaBackend`, and `OmaModelCatalog`.
+4. Do not depend on `@chengchenccc/agent`, `@chengchenccc/ai`, Elysia, SQLite, or Product Backend.
 
 **Check:**
 ```bash
-bun pm ls --all | grep -E '@my-agent-team/(coding-agent|adapter-coding-agent)'
+bun pm ls --all | grep -E '@chengchenccc/(oma|adapter-oma-agent)'
 ```
 Expected: both new workspace packages are listed exactly once.
 
@@ -69,21 +69,21 @@ Expected: both new workspace packages are listed exactly once.
 **Time box:** 25 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/config.ts`
-- Create: `apps/coding-agent/src/config.test.ts`
-- Modify: `apps/coding-agent/src/main.ts`
+- Create: `apps/oh-my-agent/src/config.ts`
+- Create: `apps/oh-my-agent/src/config.test.ts`
+- Modify: `apps/oh-my-agent/src/main.ts`
 
 **Actions:**
-1. Define and validate dedicated `CODING_AGENT_*` variables: `HOST`, `PORT`, `AUTH_TOKEN`, `DATA_DIR`, `WORKSPACE_ROOTS`, `MAX_STARTING_WORKERS`, `WORKER_STOP_GRACE_MS`, `ACCEPT_TIMEOUT_MS`, `EVENT_BUFFER_SIZE`, and optional provider variables consumed by Phase 2 `ModelRuntime`. There is deliberately no idle timeout or reap interval: Workers are one-shot and never idle-sleep.
+1. Define and validate dedicated `OMA_*` variables: `HOST`, `PORT`, `AUTH_TOKEN`, `DATA_DIR`, `WORKSPACE_ROOTS`, `MAX_STARTING_WORKERS`, `WORKER_STOP_GRACE_MS`, `ACCEPT_TIMEOUT_MS`, `EVENT_BUFFER_SIZE`, and optional provider variables consumed by Phase 2 `ModelRuntime`. There is deliberately no idle timeout or reap interval: Workers are one-shot and never idle-sleep.
 2. Resolve `DATA_DIR/sessions` and workspace allowlisted roots to absolute paths at startup; reject an empty auth token, empty allowlist, non-positive limits, and roots that do not exist.
-3. Keep provider credentials inside the Coding Agent process configuration and expose only redacted configured/missing status to later model catalog code.
+3. Keep provider credentials inside the Oma process configuration and expose only redacted configured/missing status to later model catalog code.
 4. Test defaults, malformed numbers, empty token, and root normalization; do not add the variables to shared Product Backend configuration unless another non-Product process already requires them.
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/config.test.ts
+bun test apps/oh-my-agent/src/config.test.ts
 ```
-Expected: all configuration boundary tests pass; error messages name the invalid `CODING_AGENT_*` field without printing secret values.
+Expected: all configuration boundary tests pass; error messages name the invalid `OMA_*` field without printing secret values.
 
 **Done when:** The daemon can fail fast with an isolated single-tenant configuration and no Product Backend credential/provider coupling.
 
@@ -92,18 +92,18 @@ Expected: all configuration boundary tests pass; error messages name the invalid
 **Time box:** 15 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/dependency-boundary.test.ts`
-- Create: `packages/adapter-coding-agent/src/dependency-boundary.test.ts`
+- Create: `apps/oh-my-agent/src/dependency-boundary.test.ts`
+- Create: `packages/adapter-oma-agent/src/dependency-boundary.test.ts`
 
 **Actions:**
 1. Read each new package manifest and source imports in a focused test.
-2. Assert `apps/coding-agent` does not import `apps/backend`, Product DB modules, Conversation History, Agent Context, or old checkpointer/session modules.
-3. Assert `packages/adapter-coding-agent` imports neither `@my-agent-team/agent` nor `@my-agent-team/ai`, Elysia, Drizzle, `bun:sqlite`, or `apps/*`.
+2. Assert `apps/oh-my-agent` does not import `apps/backend`, Product DB modules, Conversation History, Agent Context, or old checkpointer/session modules.
+3. Assert `packages/adapter-oma-agent` imports neither `@chengchenccc/agent` nor `@chengchenccc/ai`, Elysia, Drizzle, `bun:sqlite`, or `apps/*`.
 4. Assert no file contains an in-process fallback factory or conditional Runtime import path.
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/dependency-boundary.test.ts packages/adapter-coding-agent/src/dependency-boundary.test.ts
+bun test apps/oh-my-agent/src/dependency-boundary.test.ts packages/adapter-oma-agent/src/dependency-boundary.test.ts
 ```
 Expected: both package-boundary tests pass.
 
@@ -118,8 +118,8 @@ Expected: both package-boundary tests pass.
 **Time box:** 30 minutes
 
 **Files:**
-- Create: `packages/adapter-coding-agent/src/transport.ts`
-- Create: `packages/adapter-coding-agent/src/transport.test.ts`
+- Create: `packages/adapter-oma-agent/src/transport.ts`
+- Create: `packages/adapter-oma-agent/src/transport.test.ts`
 
 **Actions:**
 1. Define Zod wire schemas and inferred types for `StartSessionRequest/Response`, `SendRunRequest/Response`, `ResumeSessionRequest/Response`, `StopSessionResponse`, `CloseSessionResponse`, `CompactSessionRequest/Response`, `RunEventEnvelope`, `RunOutcomeResponse`, `ModelCatalogResponse`, and structured transport errors.
@@ -130,7 +130,7 @@ Expected: both package-boundary tests pass.
 
 **Check:**
 ```bash
-bun test packages/adapter-coding-agent/src/transport.test.ts
+bun test packages/adapter-oma-agent/src/transport.test.ts
 ```
 Expected: DTO round-trip tests pass and malformed identity/mode cases fail schema parsing.
 
@@ -141,8 +141,8 @@ Expected: DTO round-trip tests pass and malformed identity/mode cases fail schem
 **Time box:** 30 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/worker-protocol.ts`
-- Create: `apps/coding-agent/src/worker-protocol.test.ts`
+- Create: `apps/oh-my-agent/src/worker-protocol.ts`
+- Create: `apps/oh-my-agent/src/worker-protocol.test.ts`
 
 **Actions:**
 1. Define daemon-to-Worker commands `open_session`, `start_run`, `send`, `compact`, `stop_run`, `close_session`, and `shutdown`; every command carries `protocolVersion`, `commandId`, `backendSessionId`, and the applicable `runId`.
@@ -153,7 +153,7 @@ Expected: DTO round-trip tests pass and malformed identity/mode cases fail schem
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/worker-protocol.test.ts
+bun test apps/oh-my-agent/src/worker-protocol.test.ts
 ```
 Expected: parser tests pass; malformed/oversized/version-mismatched input is rejected before Runtime dispatch.
 
@@ -164,8 +164,8 @@ Expected: parser tests pass; malformed/oversized/version-mismatched input is rej
 **Time box:** 25 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/event-buffer.ts`
-- Create: `apps/coding-agent/src/event-buffer.test.ts`
+- Create: `apps/oh-my-agent/src/event-buffer.ts`
+- Create: `apps/oh-my-agent/src/event-buffer.test.ts`
 
 **Actions:**
 1. Implement a per-`runId` ring buffer bounded by `EVENT_BUFFER_SIZE`; allocate strictly increasing decimal event IDs per run.
@@ -176,7 +176,7 @@ Expected: parser tests pass; malformed/oversized/version-mismatched input is rej
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/event-buffer.test.ts
+bun test apps/oh-my-agent/src/event-buffer.test.ts
 ```
 Expected: all replay/eviction/disconnect tests pass with monotonic IDs.
 
@@ -187,8 +187,8 @@ Expected: all replay/eviction/disconnect tests pass with monotonic IDs.
 **Time box:** 25 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/session-record.ts`
-- Create: `apps/coding-agent/src/session-record.test.ts`
+- Create: `apps/oh-my-agent/src/session-record.ts`
+- Create: `apps/oh-my-agent/src/session-record.test.ts`
 
 **Actions:**
 1. Define daemon-local states `idle`, `starting`, `running`, `closing`, `closed`, and `crashed`, plus `activeRunId`, Worker PID, last activity, and settled run outcomes. There is no `sleeping` state: a session is `idle` whenever no Worker is live.
@@ -200,7 +200,7 @@ Expected: all replay/eviction/disconnect tests pass with monotonic IDs.
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/session-record.test.ts
+bun test apps/oh-my-agent/src/session-record.test.ts
 ```
 Expected: lifecycle matrix tests pass; a crashed record cannot return to `running` through resume.
 
@@ -215,9 +215,9 @@ Expected: lifecycle matrix tests pass; a crashed record cannot return to `runnin
 **Time box:** 30 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/worker-main.ts`
-- Create: `apps/coding-agent/src/worker-runtime.ts`
-- Create: `apps/coding-agent/src/worker-runtime.test.ts`
+- Create: `apps/oh-my-agent/src/worker-main.ts`
+- Create: `apps/oh-my-agent/src/worker-runtime.ts`
+- Create: `apps/oh-my-agent/src/worker-runtime.test.ts`
 
 **Actions:**
 1. Read NDJSON commands from stdin with the Task 2 parser and emit protocol messages only on stdout; send logs to stderr with session/run prefixes and secret redaction.
@@ -228,22 +228,22 @@ Expected: lifecycle matrix tests pass; a crashed record cannot return to `runnin
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/worker-runtime.test.ts
+bun test apps/oh-my-agent/src/worker-runtime.test.ts
 ```
 Expected: the in-memory harness proves normal/follow-up/steer dispatch and exactly-one outcome without spawning the daemon.
 
-**Done when:** A Worker owns one complete Coding Agent Runtime and has no Product Backend imports or database access.
+**Done when:** A Worker owns one complete Oma Runtime and has no Product Backend imports or database access.
 
 ### Task 3.2 — Implement Worker process handles and strict IPC isolation
 
 **Time box:** 30 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/worker-process.ts`
-- Create: `apps/coding-agent/src/worker-process.test.ts`
+- Create: `apps/oh-my-agent/src/worker-process.ts`
+- Create: `apps/oh-my-agent/src/worker-process.test.ts`
 
 **Actions:**
-1. Spawn `bun run apps/coding-agent/src/worker-main.ts` with piped stdin/stdout/stderr and only the session/model/tool environment required by that Worker.
+1. Spawn `bun run apps/oh-my-agent/src/worker-main.ts` with piped stdin/stdout/stderr and only the session/model/tool environment required by that Worker.
 2. Correlate commands through `commandId`; reject duplicate in-flight IDs and responses whose session/run/command identity does not match.
 3. Parse stdout exclusively as protocol NDJSON; forward stderr as redacted diagnostics without parsing it as business events.
 4. Implement graceful termination as `shutdown` → wait `WORKER_STOP_GRACE_MS` → `SIGTERM` → bounded wait → `SIGKILL`, following `apps/backend/src/features/lark-bot/registry.ts`.
@@ -251,7 +251,7 @@ Expected: the in-memory harness proves normal/follow-up/steer dispatch and exact
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/worker-process.test.ts
+bun test apps/oh-my-agent/src/worker-process.test.ts
 ```
 Expected: process tests pass; malformed stdout kills only the fixture Worker and produces one typed fatal result.
 
@@ -262,8 +262,8 @@ Expected: process tests pass; malformed stdout kills only the fixture Worker and
 **Time box:** 30 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/session-supervisor.ts`
-- Create: `apps/coding-agent/src/session-supervisor.test.ts`
+- Create: `apps/oh-my-agent/src/session-supervisor.ts`
+- Create: `apps/oh-my-agent/src/session-supervisor.test.ts`
 
 **Actions:**
 1. Maintain a map keyed by `backendSessionId`; serialize lifecycle mutations per session with a Promise chain and dedupe concurrent identical idempotency keys into one in-flight Promise (no double Worker spawn).
@@ -275,7 +275,7 @@ Expected: process tests pass; malformed stdout kills only the fixture Worker and
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/session-supervisor.test.ts
+bun test apps/oh-my-agent/src/session-supervisor.test.ts
 ```
 Expected: supervisor tests pass, including two distinct Worker PIDs per Run and one-crash/other-continues isolation.
 
@@ -286,8 +286,8 @@ Expected: supervisor tests pass, including two distinct Worker PIDs per Run and 
 **Time box:** 25 minutes
 
 **Files:**
-- Modify: `apps/coding-agent/src/session-supervisor.ts`
-- Modify: `apps/coding-agent/src/session-supervisor.test.ts`
+- Modify: `apps/oh-my-agent/src/session-supervisor.ts`
+- Modify: `apps/oh-my-agent/src/session-supervisor.test.ts`
 
 **Actions:**
 1. Add a small FIFO semaphore around Worker starts using `MAX_STARTING_WORKERS`; do not limit already-running Workers with this semaphore.
@@ -297,7 +297,7 @@ Expected: supervisor tests pass, including two distinct Worker PIDs per Run and 
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/session-supervisor.test.ts --test-name-pattern='startup|one-shot|PID'
+bun test apps/oh-my-agent/src/session-supervisor.test.ts --test-name-pattern='startup|one-shot|PID'
 ```
 Expected: focused tests pass; consecutive Runs on one session use different Worker PIDs and the second Worker reads the state the first persisted.
 
@@ -308,8 +308,8 @@ Expected: focused tests pass; consecutive Runs on one session use different Work
 **Time box:** 25 minutes
 
 **Files:**
-- Modify: `apps/coding-agent/src/session-supervisor.ts`
-- Create: `apps/coding-agent/src/crash-isolation.test.ts`
+- Modify: `apps/oh-my-agent/src/session-supervisor.ts`
+- Create: `apps/oh-my-agent/src/crash-isolation.test.ts`
 
 **Actions:**
 1. On unexpected Worker exit (its run has not settled), resolve the active run outcome as `failed` with a stable worker-crash code, close the run's event buffer, and mark the session `crashed`.
@@ -320,7 +320,7 @@ Expected: focused tests pass; consecutive Runs on one session use different Work
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/crash-isolation.test.ts
+bun test apps/oh-my-agent/src/crash-isolation.test.ts
 ```
 Expected: each crash case fails only its run; the sibling fixture run completes; no active-loop recovery command is sent.
 
@@ -335,8 +335,8 @@ Expected: each crash case fails only its run; the sibling fixture run completes;
 **Time box:** 20 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/auth.ts`
-- Create: `apps/coding-agent/src/auth.test.ts`
+- Create: `apps/oh-my-agent/src/auth.ts`
+- Create: `apps/oh-my-agent/src/auth.test.ts`
 
 **Actions:**
 1. Implement `x-auth-token` verification with equal-length guarding followed by `crypto.timingSafeEqual`, matching `apps/backend/src/infra/auth.ts` without importing Product Backend.
@@ -346,7 +346,7 @@ Expected: each crash case fails only its run; the sibling fixture run completes;
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/auth.test.ts
+bun test apps/oh-my-agent/src/auth.test.ts
 ```
 Expected: all auth cases pass and unauthorized response bodies are indistinguishable.
 
@@ -357,19 +357,19 @@ Expected: all auth cases pass and unauthorized response bodies are indistinguish
 **Time box:** 30 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/routes.ts`
-- Create: `apps/coding-agent/src/routes.test.ts`
+- Create: `apps/oh-my-agent/src/routes.ts`
+- Create: `apps/oh-my-agent/src/routes.test.ts`
 
 **Actions:**
 1. Implement the Task 2 route set with Elysia and shared wire schemas; validate path IDs and bodies before supervisor calls.
 2. Map accepted/idempotent/conflict/not-found/busy/replay-window errors to stable HTTP statuses and structured error codes.
 3. Return mutation acceptance only after Worker `command_accepted`; never report delivery before acceptance.
-4. Keep `POST /compact` as a Coding Agent transport operation but outside `AgentBackend`; do not expose `respond` or a separate steer endpoint.
+4. Keep `POST /compact` as a Oma transport operation but outside `AgentBackend`; do not expose `respond` or a separate steer endpoint.
 5. Test every route, auth requirement, status mapping, and absence of forbidden endpoints.
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/routes.test.ts
+bun test apps/oh-my-agent/src/routes.test.ts
 ```
 Expected: route contract tests pass; `/respond` and `/steer` return 404.
 
@@ -380,8 +380,8 @@ Expected: route contract tests pass; `/respond` and `/steer` return 404.
 **Time box:** 30 minutes
 
 **Files:**
-- Modify: `apps/coding-agent/src/routes.ts`
-- Modify: `apps/coding-agent/src/routes.test.ts`
+- Modify: `apps/oh-my-agent/src/routes.ts`
+- Modify: `apps/oh-my-agent/src/routes.test.ts`
 
 **Actions:**
 1. Implement `GET /v1/runs/:runId/events` as `text/event-stream` with `id`, `event`, JSON `data`, heartbeat comments, and request-abort cleanup, following `apps/backend/src/http/response.ts`.
@@ -392,7 +392,7 @@ Expected: route contract tests pass; `/respond` and `/steer` return 404.
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/routes.test.ts --test-name-pattern='SSE|Last-Event-ID|outcome|disconnect'
+bun test apps/oh-my-agent/src/routes.test.ts --test-name-pattern='SSE|Last-Event-ID|outcome|disconnect'
 ```
 Expected: focused tests pass; disconnecting the first stream does not abort the fixture run.
 
@@ -403,13 +403,13 @@ Expected: focused tests pass; disconnecting the first stream does not abort the 
 **Time box:** 25 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/app.ts`
-- Create: `apps/coding-agent/src/server.ts`
-- Modify: `apps/coding-agent/src/main.ts`
-- Create: `apps/coding-agent/src/main.test.ts`
+- Create: `apps/oh-my-agent/src/app.ts`
+- Create: `apps/oh-my-agent/src/server.ts`
+- Modify: `apps/oh-my-agent/src/main.ts`
+- Create: `apps/oh-my-agent/src/main.test.ts`
 
 **Actions:**
-1. Compose config, model runtime/catalog, event store, supervisor, routes, and auth in `createCodingAgentApp`; keep constructors injectable for tests.
+1. Compose config, model runtime/catalog, event store, supervisor, routes, and auth in `createOmaApp`; keep constructors injectable for tests.
 2. Start `Bun.serve` with `idleTimeout: 0` for SSE, mirroring `apps/backend/src/server.ts`.
 3. On SIGTERM/SIGINT, stop accepting HTTP, stop active runs, gracefully terminate all Workers, close session stores, then exit.
 4. Make shutdown idempotent and bounded; force-kill only Workers exceeding grace.
@@ -417,7 +417,7 @@ Expected: focused tests pass; disconnecting the first stream does not abort the 
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/main.test.ts
+bun test apps/oh-my-agent/src/main.test.ts
 ```
 Expected: app lifecycle tests pass; every fixture Worker receives graceful shutdown exactly once.
 
@@ -432,9 +432,9 @@ Expected: app lifecycle tests pass; every fixture Worker receives graceful shutd
 **Time box:** 25 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/model-catalog.ts`
-- Create: `apps/coding-agent/src/model-catalog.test.ts`
-- Modify: `apps/coding-agent/src/routes.ts`
+- Create: `apps/oh-my-agent/src/model-catalog.ts`
+- Create: `apps/oh-my-agent/src/model-catalog.test.ts`
+- Modify: `apps/oh-my-agent/src/routes.ts`
 
 **Actions:**
 1. Map Phase 2 `ModelRuntime` models to `BackendModel` with canonical `provider/model` IDs, display name, reasoning support, modalities, context window, max output tokens, and availability.
@@ -445,7 +445,7 @@ Expected: app lifecycle tests pass; every fixture Worker receives graceful shutd
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/model-catalog.test.ts
+bun test apps/oh-my-agent/src/model-catalog.test.ts
 ```
 Expected: catalog tests pass and serialized fixtures contain no credential value.
 
@@ -456,8 +456,8 @@ Expected: catalog tests pass and serialized fixtures contain no credential value
 **Time box:** 30 minutes
 
 **Files:**
-- Create: `packages/adapter-coding-agent/src/client.ts`
-- Create: `packages/adapter-coding-agent/src/client.test.ts`
+- Create: `packages/adapter-oma-agent/src/client.ts`
+- Create: `packages/adapter-oma-agent/src/client.test.ts`
 
 **Actions:**
 1. Implement authenticated JSON requests with shared schema parsing, caller `AbortSignal`, stable error mapping, and no automatic mutation retry beyond explicit idempotency replay by the caller.
@@ -468,46 +468,46 @@ Expected: catalog tests pass and serialized fixtures contain no credential value
 
 **Check:**
 ```bash
-bun test packages/adapter-coding-agent/src/client.test.ts
+bun test packages/adapter-oma-agent/src/client.test.ts
 ```
-Expected: client transport tests pass using an in-process fake HTTP server only; no Coding Agent Runtime import is present.
+Expected: client transport tests pass using an in-process fake HTTP server only; no Oma Runtime import is present.
 
 **Done when:** The Adapter has one reusable transport client and no direct daemon internals.
 
-### Task 5.3 — Map Coding Agent events and outcomes
+### Task 5.3 — Map Oma events and outcomes
 
 **Time box:** 25 minutes
 
 **Files:**
-- Create: `packages/adapter-coding-agent/src/event-mapper.ts`
-- Create: `packages/adapter-coding-agent/src/event-mapper.test.ts`
+- Create: `packages/adapter-oma-agent/src/event-mapper.ts`
+- Create: `packages/adapter-oma-agent/src/event-mapper.test.ts`
 
 **Actions:**
 1. Map text, thinking, native tool, Product Tool, status, turn completion, and turn failure events to Phase 0 `BackendEvent` core kinds.
-2. Map Runtime-only lifecycle details under `backend.coding_agent.*`; never create an unnamespaced extension.
+2. Map Runtime-only lifecycle details under `backend.oma.*`; never create an unnamespaced extension.
 3. Map terminal outcomes exactly to `completed | failed | aborted | timeout`; reject `suspended` from this backend because `pendingActionResponse=false`.
 4. Preserve usage and final `Message` without inferring completion from stream closure or final text.
 5. Test every supported mapping, unknown extension mapping, malformed payload rejection, and suspended-outcome rejection.
 
 **Check:**
 ```bash
-bun test packages/adapter-coding-agent/src/event-mapper.test.ts
+bun test packages/adapter-oma-agent/src/event-mapper.test.ts
 ```
-Expected: mapping tests pass and all extension names begin `backend.coding_agent.`.
+Expected: mapping tests pass and all extension names begin `backend.oma.`.
 
 **Done when:** Product-facing events/outcomes are stable and Runtime-specific details remain namespaced.
 
-### Task 5.4 — Implement `CodingAgentBackend` with the exact method set
+### Task 5.4 — Implement `OmaBackend` with the exact method set
 
 **Time box:** 30 minutes
 
 **Files:**
-- Create: `packages/adapter-coding-agent/src/backend.ts`
-- Create: `packages/adapter-coding-agent/src/backend.test.ts`
-- Modify: `packages/adapter-coding-agent/src/index.ts`
+- Create: `packages/adapter-oma-agent/src/backend.ts`
+- Create: `packages/adapter-oma-agent/src/backend.test.ts`
+- Modify: `packages/adapter-oma-agent/src/index.ts`
 
 **Actions:**
-1. Implement `AgentBackend` properties `kind="coding-agent"` and capabilities `persistentSession=true`, `nativeResume=true`, `nativeSteer=true`, `productTools="mcp"`, `pendingActionResponse=false`, with truthful `thinkingStream` from the Runtime transport contract.
+1. Implement `AgentBackend` properties `kind="oma"` and capabilities `persistentSession=true`, `nativeResume=true`, `nativeSteer=true`, `productTools="mcp"`, `pendingActionResponse=false`, with truthful `thinkingStream` from the Runtime transport contract.
 2. Implement only the interface methods `start`, `send`, `resume`, `respond`, `stop`, and `close`; `start`/`resume` return session handle plus first run segment.
 3. Route steer exclusively through `send(session, { ...input, mode: "steer" })`; do not add `steer()` to the class or transport client.
 4. Implement `respond()` as an immediate typed unsupported error without any HTTP request, pending state, or endpoint.
@@ -515,32 +515,32 @@ Expected: mapping tests pass and all extension names begin `backend.coding_agent
 
 **Check:**
 ```bash
-bun test packages/adapter-coding-agent/src/backend.test.ts
+bun test packages/adapter-oma-agent/src/backend.test.ts
 ```
 Expected: interface tests pass; method keys are exactly `start/send/resume/respond/stop/close`; steer uses `/send`; respond performs zero fetches.
 
-**Done when:** The Coding Agent is a complete Agent Backend implementation without pretending to support durable pending actions.
+**Done when:** The Oma is a complete Agent Backend implementation without pretending to support durable pending actions.
 
 ### Task 5.5 — Implement the separate model catalog Adapter
 
 **Time box:** 20 minutes
 
 **Files:**
-- Create: `packages/adapter-coding-agent/src/model-catalog.ts`
-- Create: `packages/adapter-coding-agent/src/model-catalog.test.ts`
-- Modify: `packages/adapter-coding-agent/src/index.ts`
+- Create: `packages/adapter-oma-agent/src/model-catalog.ts`
+- Create: `packages/adapter-oma-agent/src/model-catalog.test.ts`
+- Modify: `packages/adapter-oma-agent/src/index.ts`
 
 **Actions:**
-1. Implement `CodingAgentModelCatalog` as a thin adapter over `CodingAgentClient.getModels()`.
+1. Implement `OmaModelCatalog` as a thin adapter over `OmaClient.getModels()`.
 2. Return Phase 0 `BackendModelCatalog`/`BackendModel` values without leaking transport or Provider fields.
 3. Keep model catalog outside the `AgentBackend` method set.
 4. Test successful mapping, unavailable models, schema rejection, and auth errors.
 
 **Check:**
 ```bash
-bun test packages/adapter-coding-agent/src/model-catalog.test.ts
+bun test packages/adapter-oma-agent/src/model-catalog.test.ts
 ```
-Expected: catalog Adapter tests pass and `CodingAgentBackend` has no model-listing method.
+Expected: catalog Adapter tests pass and `OmaBackend` has no model-listing method.
 
 **Done when:** Runtime model discovery is independently composable in Phase 4.
 
@@ -553,8 +553,8 @@ Expected: catalog Adapter tests pass and `CodingAgentBackend` has no model-listi
 **Time box:** 25 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/product-tool-transport.ts`
-- Create: `apps/coding-agent/src/product-tool-transport.test.ts`
+- Create: `apps/oh-my-agent/src/product-tool-transport.ts`
+- Create: `apps/oh-my-agent/src/product-tool-transport.test.ts`
 
 **Actions:**
 1. Implement a dedicated Product Tool MCP wrapper in this file; do not reuse `adaptMcpTool`, whose current caller interface drops `AbortSignal`.
@@ -565,7 +565,7 @@ Expected: catalog Adapter tests pass and `CodingAgentBackend` has no model-listi
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/product-tool-transport.test.ts
+bun test apps/oh-my-agent/src/product-tool-transport.test.ts
 ```
 Expected: focused tests pass; every recorded call includes all six identity fields and the original input.
 
@@ -576,8 +576,8 @@ Expected: focused tests pass; every recorded call includes all six identity fiel
 **Time box:** 30 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/fixtures/product-tool-contract-server.ts`
-- Create: `apps/coding-agent/src/product-tool-contract.test.ts`
+- Create: `apps/oh-my-agent/src/fixtures/product-tool-contract-server.ts`
+- Create: `apps/oh-my-agent/src/product-tool-contract.test.ts`
 
 **Actions:**
 1. Start a real test MCP server using the installed SDK and register deterministic tools `echo_identity`, `wait_until_released`, `timeout`, and `fail`.
@@ -588,7 +588,7 @@ Expected: focused tests pass; every recorded call includes all six identity fiel
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/product-tool-contract.test.ts
+bun test apps/oh-my-agent/src/product-tool-contract.test.ts
 ```
 Expected: real Worker-to-MCP contract tests pass for success, identity, synchronous wait, timeout, cancellation, and failure.
 
@@ -599,7 +599,7 @@ Expected: real Worker-to-MCP contract tests pass for success, identity, synchron
 **Time box:** 30 minutes
 
 **Files:**
-- Create: `apps/coding-agent/src/session-lifecycle.integration.test.ts`
+- Create: `apps/oh-my-agent/src/session-lifecycle.integration.test.ts`
 
 **Actions:**
 1. Start a daemon fixture with a temporary data directory and deterministic fake model provider; create a session with projected history containing known `productEntryId` values.
@@ -610,7 +610,7 @@ Expected: real Worker-to-MCP contract tests pass for success, identity, synchron
 
 **Check:**
 ```bash
-bun test apps/coding-agent/src/session-lifecycle.integration.test.ts
+bun test apps/oh-my-agent/src/session-lifecycle.integration.test.ts
 ```
 Expected: integration test passes with different pre/post Worker PIDs, one copy of each Product entry, and one semantic run for the replayed mutation.
 
@@ -621,18 +621,18 @@ Expected: integration test passes with different pre/post Worker PIDs, one copy 
 **Time box:** 30 minutes
 
 **Files:**
-- Create: `packages/adapter-coding-agent/src/backend.integration.test.ts`
+- Create: `packages/adapter-oma-agent/src/backend.integration.test.ts`
 
 **Actions:**
-1. Start the real Coding Agent app on an ephemeral port with a temporary session root, fake provider, and contract-test MCP server.
-2. Construct only `CodingAgentClient`, `CodingAgentBackend`, and Phase 0 inputs; call `start()` and consume mapped events plus outcome.
+1. Start the real Oma app on an ephemeral port with a temporary session root, fake provider, and contract-test MCP server.
+2. Construct only `OmaClient`, `OmaBackend`, and Phase 0 inputs; call `start()` and consume mapped events plus outcome.
 3. Send a steer input through `send(mode: "steer")`, complete a Product Tool call, and assert one terminal completed outcome with final `Message` and usage.
 4. Disconnect/reconnect SSE using the last event ID and verify no duplicate mapped events.
 5. Stop and close the session through the Agent Backend methods and assert the Worker exits and session file is deleted.
 
 **Check:**
 ```bash
-bun test packages/adapter-coding-agent/src/backend.integration.test.ts
+bun test packages/adapter-oma-agent/src/backend.integration.test.ts
 ```
 Expected: a real independent Worker completes the Agent Run through Adapter HTTP/SSE; no Product Backend process or in-process Runtime path is used.
 
@@ -658,12 +658,12 @@ Expected: a real independent Worker completes the Agent Run through Adapter HTTP
 
 **Check:**
 ```bash
-bun run --cwd apps/coding-agent build && \
-bun run --cwd apps/coding-agent typecheck && \
-bun test apps/coding-agent/src && \
-bun run --cwd packages/adapter-coding-agent build && \
-bun run --cwd packages/adapter-coding-agent typecheck && \
-bun test packages/adapter-coding-agent/src
+bun run --cwd apps/oh-my-agent build && \
+bun run --cwd apps/oh-my-agent typecheck && \
+bun test apps/oh-my-agent/src && \
+bun run --cwd packages/adapter-oma-agent build && \
+bun run --cwd packages/adapter-oma-agent typecheck && \
+bun test packages/adapter-oma-agent/src
 ```
 Expected: all six commands exit 0.
 
@@ -671,10 +671,10 @@ Then run the exact smoke matrix:
 
 ```bash
 bun test \
-  apps/coding-agent/src/session-supervisor.test.ts \
-  apps/coding-agent/src/integration/session-lifecycle.integration.test.ts \
-  apps/coding-agent/src/integration/backend.integration.test.ts \
-  apps/coding-agent/src/product-tool-contract.test.ts
+  apps/oh-my-agent/src/session-supervisor.test.ts \
+  apps/oh-my-agent/src/integration/session-lifecycle.integration.test.ts \
+  apps/oh-my-agent/src/integration/backend.integration.test.ts \
+  apps/oh-my-agent/src/product-tool-contract.test.ts
 ```
 Expected: all tests pass and output demonstrates:
 - each Run uses its own Worker process and a different PID from the previous Run on the same session;
@@ -692,12 +692,12 @@ Expected: all tests pass and output demonstrates:
 Run forbidden-surface checks:
 
 ```bash
-! grep -R "respond" apps/coding-agent/src/routes.ts apps/coding-agent/src/app.ts
-! grep -R "steer(" packages/adapter-coding-agent/src
-! grep -R --exclude='*.test.ts' -E "checkpointer|runtimeSessionId|pendingContinuation|createAgent\(" apps/coding-agent/src packages/adapter-coding-agent/src
-! grep -R -E "from .*(@my-agent-team/(agent|ai)|apps/backend|elysia|drizzle|bun:sqlite)" packages/adapter-coding-agent/src
+! grep -R "respond" apps/oh-my-agent/src/routes.ts apps/oh-my-agent/src/app.ts
+! grep -R "steer(" packages/adapter-oma-agent/src
+! grep -R --exclude='*.test.ts' -E "checkpointer|runtimeSessionId|pendingContinuation|createAgent\(" apps/oh-my-agent/src packages/adapter-oma-agent/src
+! grep -R -E "from .*(@chengchenccc/(agent|ai)|apps/backend|elysia|drizzle|bun:sqlite)" packages/adapter-oma-agent/src
 ```
-Expected: all negated searches exit 0. The exact `respond()` method remains only in `packages/adapter-coding-agent/src/backend.ts` and its test as an unsupported interface implementation; there is no respond transport route.
+Expected: all negated searches exit 0. The exact `respond()` method remains only in `packages/adapter-oma-agent/src/backend.ts` and its test as an unsupported interface implementation; there is no respond transport route.
 
 **Done when:** Every Phase 3 acceptance item has passing executable evidence.
 
@@ -706,8 +706,8 @@ Expected: all negated searches exit 0. The exact `respond()` method remains only
 **Time box:** 15 minutes
 
 **Files:**
-- Verify: `docs/superpowers/specs/agent-backend-coding-agent-rewrite/phase-3-coding-agent-service.md`
-- Verify: `docs/superpowers/specs/agent-backend-coding-agent-rewrite/README.md`
+- Verify: `docs/superpowers/specs/agent-backend-oma-rewrite/phase-3-oma-service.md`
+- Verify: `docs/superpowers/specs/agent-backend-oma-rewrite/README.md`
 
 **Actions:**
 1. Confirm Product Backend callers are unchanged and no Agent Run execution registry/composition was added early.
@@ -718,9 +718,9 @@ Expected: all negated searches exit 0. The exact `respond()` method remains only
 
 **Check:**
 ```bash
-bun test packages/adapter-coding-agent/src/backend.test.ts --test-name-pattern='method set|capabilities|respond|steer' && \
-bun test apps/coding-agent/src/dependency-boundary.test.ts packages/adapter-coding-agent/src/dependency-boundary.test.ts
+bun test packages/adapter-oma-agent/src/backend.test.ts --test-name-pattern='method set|capabilities|respond|steer' && \
+bun test apps/oh-my-agent/src/dependency-boundary.test.ts packages/adapter-oma-agent/src/dependency-boundary.test.ts
 ```
 Expected: focused contract and boundary gates pass.
 
-**Done when:** **DESTRUCTIVE CHECKPOINT — PHASE 3 COMPLETE:** Coding Agent is independently deployable and usable through the Adapter contract; Product caller cutover has not begun, and Phase 4 can connect Agent Run execution without reopening Worker, transport, replay, auth, model catalog, or Product Tool protocol design.
+**Done when:** **DESTRUCTIVE CHECKPOINT — PHASE 3 COMPLETE:** Oma is independently deployable and usable through the Adapter contract; Product caller cutover has not begun, and Phase 4 can connect Agent Run execution without reopening Worker, transport, replay, auth, model catalog, or Product Tool protocol design.

@@ -55,7 +55,7 @@ function freshFixture(prefix: string) {
 async function setupBranch(prefix: string) {
   const { conversationId, agentMemberId } = freshFixture(prefix);
   const tree = await ctxPort.getOrCreateTree(conversationId, agentMemberId);
-  const branch = await ctxPort.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+  const branch = await ctxPort.getOrCreateDefaultBranch(tree.treeId, "oma");
   return { conversationId, agentMemberId, branch };
 }
 
@@ -73,7 +73,7 @@ describe("Agent Run: atomic acquire", () => {
       inputIdempotencyKey: `ikey-acq1`,
       runIdempotencyKey: `rkey-acq1`,
       deliveryIdempotencyKey: `dkey-acq1`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -96,7 +96,7 @@ describe("Agent Run: atomic acquire", () => {
       inputIdempotencyKey: `ikey-acq2-1`,
       runIdempotencyKey: `rkey-acq2-1`,
       deliveryIdempotencyKey: `dkey-acq2-1`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -111,7 +111,7 @@ describe("Agent Run: atomic acquire", () => {
       inputIdempotencyKey: `ikey-acq2-2`,
       runIdempotencyKey: `rkey-acq2-2`,
       deliveryIdempotencyKey: `dkey-acq2-2`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision + 1,
     });
@@ -146,7 +146,7 @@ describe("Agent Run: atomic acquire", () => {
       inputIdempotencyKey: `ikey-acq4`,
       runIdempotencyKey: `rkey-acq4`,
       deliveryIdempotencyKey: `dkey-acq4`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -168,7 +168,7 @@ describe("Agent Run: atomic acquire", () => {
       inputIdempotencyKey: `ikey-dup`,
       runIdempotencyKey: `rkey-dup-1`,
       deliveryIdempotencyKey: `dkey-dup-1`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -183,7 +183,7 @@ describe("Agent Run: atomic acquire", () => {
       inputIdempotencyKey: `ikey-dup`, // same key
       runIdempotencyKey: `rkey-dup-1`,
       deliveryIdempotencyKey: `dkey-dup-1b`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -204,7 +204,7 @@ describe("Agent Run: queue delivery", () => {
       inputIdempotencyKey: `ikey-q1`,
       runIdempotencyKey: `rkey-q1`,
       deliveryIdempotencyKey: `dkey-q1`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -228,7 +228,7 @@ describe("Agent Run: queue delivery", () => {
       inputIdempotencyKey: `ikey-q2`,
       runIdempotencyKey: `rkey-q2`,
       deliveryIdempotencyKey: `dkey-q2`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -253,7 +253,7 @@ describe("Agent Run: queue delivery", () => {
       inputIdempotencyKey: `ikey-q2b-1`,
       runIdempotencyKey: `rkey-q2b-1`,
       deliveryIdempotencyKey: `dkey-q2b-1`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -269,7 +269,7 @@ describe("Agent Run: queue delivery", () => {
       inputIdempotencyKey: `ikey-q2b-2`,
       runIdempotencyKey: `rkey-q2b-2`,
       deliveryIdempotencyKey: `dkey-q2b-2`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -296,7 +296,7 @@ describe("Agent Run: queue delivery", () => {
       inputIdempotencyKey: `ikey-q3`,
       runIdempotencyKey: `rkey-q3`,
       deliveryIdempotencyKey: `dkey-q3`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -321,7 +321,7 @@ describe("Agent Run: PendingAction consume-once", () => {
       inputIdempotencyKey: `ikey-pa1`,
       runIdempotencyKey: `rkey-pa1`,
       deliveryIdempotencyKey: `dkey-pa1`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -363,7 +363,7 @@ describe("Agent Run: PendingAction consume-once", () => {
       inputIdempotencyKey: `ikey-pa2`,
       runIdempotencyKey: `rkey-pa2`,
       deliveryIdempotencyKey: `dkey-pa2`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -401,7 +401,7 @@ describe("Agent Run: PendingAction consume-once", () => {
       inputIdempotencyKey: `ikey-pa3`,
       runIdempotencyKey: `rkey-pa3`,
       deliveryIdempotencyKey: `dkey-pa3`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -442,7 +442,7 @@ describe("Agent Run: terminal CAS", () => {
       inputIdempotencyKey: `ikey-term1`,
       runIdempotencyKey: `rkey-term1`,
       deliveryIdempotencyKey: `dkey-term1`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -472,7 +472,7 @@ describe("Agent Run: terminal CAS", () => {
       inputIdempotencyKey: `ikey-term2`,
       runIdempotencyKey: `rkey-term2`,
       deliveryIdempotencyKey: `dkey-term2`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -495,7 +495,7 @@ describe("Agent Run: terminal CAS", () => {
       inputIdempotencyKey: `ikey-term3`,
       runIdempotencyKey: `rkey-term3`,
       deliveryIdempotencyKey: `dkey-term3`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -518,7 +518,7 @@ describe("Agent Run: terminal CAS", () => {
       inputIdempotencyKey: `ikey-term4`,
       runIdempotencyKey: `rkey-term4`,
       deliveryIdempotencyKey: `dkey-term4`,
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
     });
@@ -553,7 +553,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
       inputIdempotencyKey: "ikey-snap1",
       runIdempotencyKey: "rkey-snap1",
       deliveryIdempotencyKey: "dkey-snap1",
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
       systemPrompt: "frozen prompt",
@@ -581,7 +581,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
       inputIdempotencyKey: "ikey-snap2-1",
       runIdempotencyKey: "rkey-snap2-1",
       deliveryIdempotencyKey: "dkey-snap2-1",
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       expectedRevision: branch.revision,
       systemPrompt: "first prompt",
@@ -598,7 +598,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
       inputIdempotencyKey: "ikey-snap2-2",
       runIdempotencyKey: "rkey-snap2-2",
       deliveryIdempotencyKey: "dkey-snap2-2",
-      defaultModel: { backendKind: "coding_agent", modelId: "model-b" },
+      defaultModel: { backendKind: "oma", modelId: "model-b" },
       configRevision: 7,
       workspace: { root: "/pinned-other", access: "read_only" },
       systemPrompt: "second prompt",
@@ -613,7 +613,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
     await runPort.finalizeRun(first.run!.runId, { status: "completed" });
     const second = await runPort.acquireNextRun(branch.branchId);
     expect(second).not.toBeNull();
-    expect(second!.modelRef).toEqual({ backendKind: "coding_agent", modelId: "model-b" });
+    expect(second!.modelRef).toEqual({ backendKind: "oma", modelId: "model-b" });
     expect(second!.configRevision).toBe(7);
     expect(second!.workspace).toEqual({ root: "/pinned-other", access: "read_only" });
     expect(second!.systemPrompt).toBe("second prompt");
@@ -633,7 +633,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
       inputIdempotencyKey: "ikey-idle-b1",
       runIdempotencyKey: "rkey-idle-b1",
       deliveryIdempotencyKey: "dkey-idle-b1",
-      defaultModel: { backendKind: "coding_agent", modelId: "m" },
+      defaultModel: { backendKind: "oma", modelId: "m" },
       configRevision: 1,
       expectedRevision: b.branch.revision,
     });
@@ -647,7 +647,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
       inputIdempotencyKey: "ikey-idle-b2",
       runIdempotencyKey: "rkey-idle-b2",
       deliveryIdempotencyKey: "dkey-idle-b2",
-      defaultModel: { backendKind: "coding_agent", modelId: "m" },
+      defaultModel: { backendKind: "oma", modelId: "m" },
       configRevision: 1,
       expectedRevision: b.branch.revision + 1,
     });
@@ -661,7 +661,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
       inputIdempotencyKey: "ikey-idle-a1",
       runIdempotencyKey: "rkey-idle-a1",
       deliveryIdempotencyKey: "dkey-idle-a1",
-      defaultModel: { backendKind: "coding_agent", modelId: "m" },
+      defaultModel: { backendKind: "oma", modelId: "m" },
       configRevision: 1,
       expectedRevision: a.branch.revision,
     });
@@ -675,7 +675,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
       inputIdempotencyKey: "ikey-idle-a2",
       runIdempotencyKey: "rkey-idle-a2",
       deliveryIdempotencyKey: "dkey-idle-a2",
-      defaultModel: { backendKind: "coding_agent", modelId: "m" },
+      defaultModel: { backendKind: "oma", modelId: "m" },
       configRevision: 1,
       expectedRevision: a.branch.revision + 1,
     });
@@ -689,7 +689,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
       inputIdempotencyKey: "ikey-idle-a3",
       runIdempotencyKey: "rkey-idle-a3",
       deliveryIdempotencyKey: "dkey-idle-a3",
-      defaultModel: { backendKind: "coding_agent", modelId: "m" },
+      defaultModel: { backendKind: "oma", modelId: "m" },
       configRevision: 1,
       expectedRevision: a.branch.revision + 1,
     });

@@ -1,4 +1,4 @@
-# @my-agent-team/loop
+# @chengchenccc/loop
 
 Pure-function state reducer for the Loop work system. Implements the item step state machine defined in `docs/architecture/foundations/loop.md`.
 
@@ -17,7 +17,7 @@ Pure-function state reducer for the Loop work system. Implements the item step s
 ## Usage
 
 ```typescript
-import { loopReducer } from "@my-agent-team/loop";
+import { loopReducer } from "@chengchenccc/loop";
 
 const state = { loopId: "morning-triage", lastRun: null, items: {} };
 
@@ -46,4 +46,4 @@ s = loopReducer(s, { type: "APPROVE", itemId: "01" });
 
 ## No dependencies
 
-This package is a pure TypeScript module. It imports nothing from `@my-agent-team/*` or any third-party library.
+This package is a pure TypeScript module. It imports nothing from `@chengchenccc/*` or any third-party library.

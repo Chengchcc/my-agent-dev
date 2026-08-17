@@ -389,7 +389,7 @@ function splitTop(s: string, delim: string): string[] {
 }
 
 /** Parse a models.yml text into a CatalogSpec. The caller handles file I/O
- *  (reads from `~/.my-agent/models.yml` or project `.agent/models.yml`). */
+ *  (reads from `~/.oma/models.yml` or project `.oma/models.yml`). */
 export function parseCatalogYAML(text: string): CatalogSpec {
   const root: Record<string, unknown> = {};
   const lines = text.split("\n");

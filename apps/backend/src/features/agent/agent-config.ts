@@ -12,7 +12,7 @@ export const agentConfigSchema = z.object({
   title: z.string(),
   description: z.string(),
   runtime_config: z.object({
-    /** BackendKind: coding_agent | claude_code | pi | omp. */
+    /** BackendKind: oma | claude_code | pi | omp. */
     runtime: z.string().min(1),
     model_id: z.string().min(1),
     reasoning_effort: z.union([z.enum(["none", "low", "high", "max"]), z.literal("")]),
@@ -59,7 +59,7 @@ export function buildAgentConfig(input: {
   prev?: AgentConfig;
 }): AgentConfig {
   const prev = input.prev;
-  const runtime = input.backendKind ?? prev?.runtime_config.runtime ?? "coding_agent";
+  const runtime = input.backendKind ?? prev?.runtime_config.runtime ?? "oma";
   const modelId = input.model
     ? `${input.model.provider}/${input.model.model}`
     : (prev?.runtime_config.model_id ?? "unconfigured/none");

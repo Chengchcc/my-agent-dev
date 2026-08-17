@@ -1,4 +1,4 @@
-import { extractText, type Message } from "@my-agent-team/message";
+import { extractText, type Message } from "@chengchenccc/message";
 import type { PluginRuntime } from "./plugin-runtime.js";
 
 // ── Low-signal pre-filter (deterministic, no model call) ──────────────────

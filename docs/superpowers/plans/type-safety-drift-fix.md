@@ -170,11 +170,11 @@ const parsed = typeof e.content === "string"
   ? (JSON.parse(e.content) as Record<string, unknown>)
   : (e.content as Record<string, unknown>);
 // after
-import { MessageRevisionSchema, deserializeLedgerContent } from "@my-agent-team/message";
+import { MessageRevisionSchema, deserializeLedgerContent } from "@chengchenccc/message";
 const revision = deserializeLedgerContent(e.content);
 ```
 
-> 注：`conv-svc-factory.ts` 已有 `@my-agent-team/message` 的 import（`serializeMessageRevision`、`extractText` 等），只需确认 `deserializeLedgerContent` 是否导出。若未导出，在 `packages/message/src/helpers.ts` 补一个导出。
+> 注：`conv-svc-factory.ts` 已有 `@chengchenccc/message` 的 import（`serializeMessageRevision`、`extractText` 等），只需确认 `deserializeLedgerContent` 是否导出。若未导出，在 `packages/message/src/helpers.ts` 补一个导出。
 
 **F2b: checkpoint-events-store.ts**
 

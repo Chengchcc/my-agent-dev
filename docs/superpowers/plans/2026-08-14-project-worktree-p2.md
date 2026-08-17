@@ -14,7 +14,7 @@
 - commitlint: scope in parentheses, no CJK, body lines ≤100 chars.
 - No `as unknown as` (test-double boundary exception only); no python/sed to edit source — read+edit.
 - Real wall-clock waits in tests are forbidden (`ts-no-test-timers`); poll awaited conditions instead.
-- Loop package is source-only (no build); backend rebuilds after `packages/loop` changes are not needed — but run `bun run build --filter=@my-agent-team/loop` is NOT a script; just typecheck.
+- Loop package is source-only (no build); backend rebuilds after `packages/loop` changes are not needed — but run `bun run build --filter=@chengchenccc/loop` is NOT a script; just typecheck.
 
 ---
 
@@ -31,9 +31,9 @@
 ```typescript
 test("parseLoopConfig reads the agent field with default back-compat", () => {
   const withAgent = parseLoopConfig(LOOP_MD_HEADER + "\nagent: coder-1\n" + LOOP_MD_BODY);
-  expect(withAgent?.agent).toBe("coder-1");
+  expect(withAgent?.oma).toBe("coder-1");
   const without = parseLoopConfig(LOOP_MD_HEADER + "\n" + LOOP_MD_BODY);
-  expect(without?.agent).toBe("default");
+  expect(without?.oma).toBe("default");
 });
 ```
 
@@ -60,7 +60,7 @@ export interface LoopConfig {
 
 In `parseLoopConfig`'s return object add:
 ```typescript
-    agent: String(frontmatter.agent ?? "default") || "default",
+    agent: String(frontmatter.oma ?? "default") || "default",
 ```
 
 `loop-service.ts` `writeDefaultLoopMd`: add `agent: string | undefined` to the signature; emit after projectId:

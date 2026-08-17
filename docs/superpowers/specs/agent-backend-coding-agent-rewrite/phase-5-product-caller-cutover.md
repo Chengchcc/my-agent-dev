@@ -8,8 +8,8 @@
 Product Backend
 → durable Agent Run
 → AgentRunExecutionService
-→ CodingAgentBackend（process adapter）
-→ spawn coding-agent --mode rpc（stdin/stdout JSONL child）
+→ OmaBackend（process adapter）
+→ spawn oma --mode rpc（stdin/stdout JSONL child）
 → one Run / one child process / one loop
 → BackendRunOutcome
 → backend.db atomic terminal commit
@@ -36,7 +36,7 @@ scopeKey / scope table / scope registry
 getOrCreateHeadless()
 ```
 
-Phase 4 只支持真实 `backendKind = coding_agent`。
+Phase 4 只支持真实 `backendKind = oma`。
 
 ## 可直接使用的已存在 API
 
@@ -75,7 +75,7 @@ ProductToolsService
 最终删除 Product Backend 对以下旧执行机制的依赖：
 
 ```text
-@my-agent-team/agent
+@chengchenccc/agent
 createAgentSession
 Agent / AgentConfig
 SessionManager / SqliteSessionManager
@@ -215,7 +215,7 @@ recap_update 投影
 Runtime plugin 私有事件驱动 Product 状态
 ```
 
-Coding Agent 没有这些稳定核心事件，不得模拟。
+Oma 没有这些稳定核心事件，不得模拟。
 
 ### Title
 
@@ -251,7 +251,7 @@ ensure deterministic Conversation/Member/Branch
 → enqueueAndAcquire({
     conversationId,
     agentMemberId,
-    backendKind: "coding_agent",
+    backendKind: "oma",
     mode: "normal",
     message: cron prompt,
     defaultModel,
@@ -339,7 +339,7 @@ Evaluator Run 只在确定性准备完成后创建。输入包含：acceptance�
 
 删除：SqliteSessionManager / SessionManager / checkpointer.db / ModelRegistry / ProviderAuth for Product execution / createDefaultModelRegistry / direct defaultTools/defaultPlugins/defaultContextManager / supervisor→sessionManager disposal wiring / old resume route。
 
-Phase 4 已在 `installFeatures()` 构造：AgentRunService、AgentRunExecutionService、ProductToolsService、Product Tools MCP、CodingAgentBackend。保留并注入到 Conversation/Cron/Loop。
+Phase 4 已在 `installFeatures()` 构造：AgentRunService、AgentRunExecutionService、ProductToolsService、Product Tools MCP、OmaBackend。保留并注入到 Conversation/Cron/Loop。
 
 ### Agent 删除
 
@@ -394,7 +394,7 @@ Web hook 内部暴露简单视图：
 
 不创建通用 stream reconciler service。当对应 Run 的 canonical final Message 进入 History，清理该 Run transient state。
 
-删除旧：streaming MessageRevision 作为 canonical Message、spanId/sessionId 决定 busy、approval resume 旧 endpoint、session stop/recover 客户端。`backend.coding_agent.*` 事件只能用于诊断/增强 UI，不能改变 Product 状态。
+删除旧：streaming MessageRevision 作为 canonical Message、spanId/sessionId 决定 busy、approval resume 旧 endpoint、session stop/recover 客户端。`backend.oma.*` 事件只能用于诊断/增强 UI，不能改变 Product 状态。
 
 ## Wave 10 — Lark 切流
 
@@ -414,9 +414,9 @@ apps/backend/src/features/runtime-ops/checkpoint-events-store.ts + test
 apps/backend/test-helpers/mock-span.ts
 ```
 
-SpanSupervisor 若只服务旧 Agent 执行，删除。若仍用于非 Agent audit，只保留不依赖 `@my-agent-team/agent` / SessionManager / CheckpointEvent 的部分。
+SpanSupervisor 若只服务旧 Agent 执行，删除。若仍用于非 Agent audit，只保留不依赖 `@chengchenccc/agent` / SessionManager / CheckpointEvent 的部分。
 
-删除 Backend package 依赖中不再使用的：`@my-agent-team/agent`、旧 runtime plugins、旧 ModelRegistry 相关依赖。不删除仓库级 packages（Phase 6 处理）。
+删除 Backend package 依赖中不再使用的：`@chengchenccc/agent`、旧 runtime plugins、旧 ModelRegistry 相关依赖。不删除仓库级 packages（Phase 6 处理）。
 
 ## 行为迁移原则
 
@@ -457,7 +457,7 @@ session recovery
 ## Clean gate（必须全部为零）
 
 ```bash
-! grep -R '@my-agent-team/agent' apps/backend --include='*.ts' --include='package.json'
+! grep -R '@chengchenccc/agent' apps/backend --include='*.ts' --include='package.json'
 ! grep -R -E 'createAgentSession|SessionManager|SqliteSessionManager|ConversationLock|activeSessions|member\.sessionId|resumeRoutes' apps/backend --include='*.ts'
 ! grep -R -E '\.(prompt|steer|followUp|compact)\(' apps/backend/src --include='*.ts'
 ! grep -R 'checkpointer\.db' apps/backend/src --include='*.ts'
@@ -529,7 +529,7 @@ Lark final 只来自 canonical History
 Ops 只以 Agent Run 为 Product 执行身份
 Backend 无 SessionManager/createAgentSession/ConversationLock
 Backend 无 checkpointer.db 产品依赖
-apps/backend 不依赖 @my-agent-team/agent
+apps/backend 不依赖 @chengchenccc/agent
 无兼容层、fallback 或双写
 全仓 build/typecheck/test/lint 恢复绿色
 ```
@@ -556,31 +556,31 @@ Phase 5 已实施完毕，所有验收标准通过：
 - normal/steer/follow_up 全部先持久化（`branch_input_queue`，rowid 排序），restart 后顺序保持。
 - Web 只用 canonical Conversation History + transient Agent Run Live Updates；Lark final 只来自 canonical History。
 - Ops 以 Agent Run 为唯一执行身份（`/api/agent-runs` list/detail/cancel/events）。
-- `apps/backend` 零 `@my-agent-team/agent` 依赖，无 SessionManager/createAgentSession/ConversationLock/checkpointer.db。
+- `apps/backend` 零 `@chengchenccc/agent` 依赖，无 SessionManager/createAgentSession/ConversationLock/checkpointer.db。
 - 删除的旧 Runtime 文件与包见实施记录；无兼容层、fallback 或双写。
 - 全仓 build / typecheck / test / lint 恢复绿色。
 
 ## Phase 5 续：Run-centric Rewrite（2026-08-05）
 
-上一条完成记录之后，执行传输层再次收敛：**Coding Agent HTTP daemon 被删除**，改为与 Pi 类似的独立产品 CLI + 每 Run 一个 child process。Product 侧（Agent Run、queue、terminal commit、frozen snapshot）不变。
+上一条完成记录之后，执行传输层再次收敛：**Oma HTTP daemon 被删除**，改为与 Pi 类似的独立产品 CLI + 每 Run 一个 child process。Product 侧（Agent Run、queue、terminal commit、frozen snapshot）不变。
 
 ### 新执行链
 
 ```text
 Product Backend
 → AgentRunExecutionService
-→ adapter-coding-agent（process adapter）
-→ spawn coding-agent --mode rpc
+→ adapter-oma-agent（process adapter）
+→ spawn oma --mode rpc
 → stdin/stdout JSONL protocol
-→ per-Run Coding Agent Runtime（fresh in-memory Store）
+→ per-Run Oma Runtime（fresh in-memory Store）
 → BackendRunOutcome
 → process 自行退出（不依赖父进程关 stdin）
 ```
 
 ### 边界
 
-- `apps/coding-agent` = Coding Agent 产品本体：单一 Runtime 工厂（`createCodingAgentRuntime`）+ print/json/rpc 三种 mode + `--list-models`。未来 TUI 复用同一 Runtime 工厂。无 HTTP、无 TUI scaffold、无 JSONL session（YAGNI）。
-- `packages/adapter-coding-agent` = Product Backend 的 process adapter：spawn、stdin/stdout 协议、runId → live child、steer/stop、event 映射、bounded/redacted stderr tail、`--list-models` catalog。无 HTTP client、无 SSE、无 outcome polling、无 RunRegistry。
+- `apps/oh-my-agent` = Oma 产品本体：单一 Runtime 工厂（`createOmaRuntime`）+ print/json/rpc 三种 mode + `--list-models`。未来 TUI 复用同一 Runtime 工厂。无 HTTP、无 TUI scaffold、无 JSONL session（YAGNI）。
+- `packages/adapter-oma-agent` = Product Backend 的 process adapter：spawn、stdin/stdout 协议、runId → live child、steer/stop、event 映射、bounded/redacted stderr tail、`--list-models` catalog。无 HTTP client、无 SSE、无 outcome polling、无 RunRegistry。
 - `packages/agent-backend/src/transport.ts` = stdio JSONL wire contract（execute/steer/abort commands；response/event/outcome outputs），事件映射（`mapRunEvent`/`mapRunOutcome`）也在 contract package，两侧共用。
 
 ### 新增不可变式
@@ -597,11 +597,11 @@ live child 数量受 BACKEND_MAX_CONCURRENT_RUNS 限制（FIFO spawn slot；stop
 ### 删除
 
 ```text
-apps/coding-agent: app.ts / server.ts / routes.ts / auth.ts / run-registry.ts / event-buffer.ts / config.ts + HTTP/SSE 测试；Elysia 依赖
+apps/oh-my-agent: app.ts / server.ts / routes.ts / auth.ts / run-registry.ts / event-buffer.ts / config.ts + HTTP/SSE 测试；Elysia 依赖
 adapter: client.ts / transport.ts（HTTP client、SSE parser、outcome polling、TransportError）
-env: CODING_AGENT_URL / CODING_AGENT_SERVICE_TOKEN / CODING_AGENT_HOST / CODING_AGENT_PORT / CODING_AGENT_EVENT_BUFFER_SIZE / CODING_AGENT_AUTH_TOKEN
-新增 env: CODING_AGENT_BIN（executable，默认 "coding-agent"；测试用 bun + entry source）
-Product Tools service token 只经 child env（CODING_AGENT_PRODUCT_TOOL_TOKEN）传递
+env: OMA_URL / OMA_SERVICE_TOKEN / OMA_HOST / OMA_PORT / OMA_EVENT_BUFFER_SIZE / OMA_AUTH_TOKEN
+新增 env: OMA_BIN（executable，默认 "oma"；测试用 bun + entry source）
+Product Tools service token 只经 child env（OMA_PRODUCT_TOOL_TOKEN）传递
 ```
 
 ### Frozen Run snapshot（migration 0019）
@@ -627,6 +627,6 @@ Product Tools service token 只经 child env（CODING_AGENT_PRODUCT_TOOL_TOKEN�
 ### 完成记录（2026-08-05）
 
 - HTTP daemon/client/SSE/polling 全删；clean gates 3/3 通过。
-- full gates 全绿：build / typecheck / lint / test（35/35 turbo tasks）；coding-agent 61 tests、adapter 19、backend 310。
+- full gates 全绿：build / typecheck / lint / test（35/35 turbo tasks）；oma 61 tests、adapter 19、backend 310。
 - 关键 commit：`f6b93e31`（run-centric rewrite）→ `2db4699a`（评审修复：self-exit / maxConcurrent / realpath / loop e2e / acceptance⟹live）→ `18a68638`（CLI piped stdin + --list-models 语义）。
 - 明确 ceiling：单进程单 Run 后 stdin EOF 驱动退出（adapter 保证 close，child 侧无超时自退）；`--list-models` 成功结果仅实例内缓存；TUI / JSONL session / resume / fork / SDK 未实现（结构允许未来接入同一 Runtime 工厂）。

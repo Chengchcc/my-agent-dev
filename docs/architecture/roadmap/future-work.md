@@ -94,7 +94,7 @@ used_by:
 
   | 优先级 | 设计 | Pi 做法 | 我们现状 | 成本 |
   |---|---|---|---|---|
-  | **P0** | Provider 注册制 | ✅ 已完成 | `@my-agent-team/ai` 包，Provider/ModelRegistry/anthropicProvider，启动时注册全局复用 | 2026-07-17 |
+  | **P0** | Provider 注册制 | ✅ 已完成 | `@chengchenccc/ai` 包，Provider/ModelRegistry/anthropicProvider，启动时注册全局复用 | 2026-07-17 |
   | **P0** | Model 对象替代裸字符串 | ✅ 已完成 | Model 带 cost/contextWindow/maxTokens/reasoning/input，agent 配置存 provider/id | 2026-07-17 |
   | **P1** | Hook 事件返回类型 | `AgentHarnessEventResultMap` 每个 hook 有明确返回类型，`beforeProviderRequest` 可 per-call 改 headers/timeout/retries | `PluginHooks` 返回值简单，无 `beforeProviderRequest` hook，无法 per-call 注入 headers | 2 天 |
   | **P1** | AgentMessage declaration merging | ⏳ 待办 | Message 是固定 union | 半天 |
@@ -104,7 +104,7 @@ used_by:
   | **P3** | Result<T,E> 错误类型 | `Result<TValue, TError>` 显式 `{ok, value} \| {ok: false, error}`，不依赖 throw | 全用 throw + try/catch + DomainError 层级 | 低（风格偏好，不值得迁移） |
   | **P3** | Tool terminate 标记 | `AgentToolResult.terminate: boolean`，工具可标记"执行后终止 agent loop" | 无，工具不能主动终止 loop（InterruptSignal 已覆盖类似场景） | 低 |
 
-  Pi 的 Provider 设计已落地：`@my-agent-team/ai` 包，`anthropicProvider` + `openAICompletionsApi` + `createOpenAICompatProvider`，删掉 `@anthropic-ai/sdk` 依赖，直接 fetch + SSE 解析。加新 provider（DeepSeek/Groq/custom）只需 5 行配置。
+  Pi 的 Provider 设计已落地：`@chengchenccc/ai` 包，`anthropicProvider` + `openAICompletionsApi` + `createOpenAICompatProvider`，删掉 `@anthropic-ai/sdk` 依赖，直接 fetch + SSE 解析。加新 provider（DeepSeek/Groq/custom）只需 5 行配置。
 
   不值得借鉴的：OAuth（桌面端场景）、动态 model 列表拉取（可后加）、TypeBox 类型（我们用 zod 已够用）。
 - **Session Tree + Checkpointer 拆分（2026-07-17）**　**历史方案，已随 Phase 5/6 删除。** Checkpointer / MessageStore / EventLog / InterruptStore 拆分、Session Tree（SQLite session 文件、SessionRepo、SessionManager）均已不存在。当前 Runtime 状态是 per-Run、in-memory 的 SessionStore（`packages/agent`），Run 结束即销毁；产品恢复只依赖 Conversation History 与 Agent Context。
@@ -124,7 +124,7 @@ used_by:
   | **P3** | Tokenizer（精确 token 计数） | ✅ 已完成 | countTokens/countMessageTokens 工具函数 | 2026-07-21 |
 
   OMP 的 dialect 系统（anthropic/deepseek/gemini/glm/kimi/qwen3 等 15+ 个 dialect 的 prompt 格式适配）不值得抄 -- 我们的 API 层已有消息转换，且不需要 thinking 格式适配（不同模型的 reasoning 格式差异由 API 层处理）。
-- **Autonomous Memory（自主记忆）（2026-07-22）**　**历史方案，已随 Phase 6 删除。** `plugin-fs-memory` / `plugin-memory` 包不存在；memory.autoExtract 等 settings 已从 UI 移除。当前没有 autonomous memory pipeline producer。Agent 详情页 Memory tab 仍存在，但只读取 workspace 中已有的文件（如 memory/facts、memory_summary.md），不做自动提取/合并。若恢复，必须作为 Coding Agent 或 Product 侧的真实能力重做。
+- **Autonomous Memory（自主记忆）（2026-07-22）**　**历史方案，已随 Phase 6 删除。** `plugin-fs-memory` / `plugin-memory` 包不存在；memory.autoExtract 等 settings 已从 UI 移除。当前没有 autonomous memory pipeline producer。Agent 详情页 Memory tab 仍存在，但只读取 workspace 中已有的文件（如 memory/facts、memory_summary.md），不做自动提取/合并。若恢复，必须作为 Oma 或 Product 侧的真实能力重做。
 
 
 - **Pet（陪伴审查 agent）（2026-07-21）**　**历史方案，已随 Phase 6 删除。** `packages/plugin-pet`、PetStatusBar、Pet tab、`pet.*` settings、`pet_bark` LedgerKind/SSE 事件均不存在（源码 clean search 为零）。若未来恢复，Pet 必须作为 Product-side post-run feature 重新设计（不恢复 runtime plugin）。
@@ -151,7 +151,7 @@ used_by:
   | **废弃别名** | — | 删除 `summarizingContextManager`，完成重构 |
 
 - **删除 transport / heartbeat 残骸**　**已解决。** `attempt` 表的 `pid` / `heartbeat_at` 列已删除（migration 0009），reaper 心跳分支已移除。Phase 6 进一步删除了整个 span/attempt/control_plane_event/span_origin 审计体系（迁移 0020）；Ops 面以 Agent Run 为中心（`/api/agent-runs`），无 session/span 概念。
-- **Harness 运行时加固（M22）**　**历史方案，已随 Phase 5/6 删除。** harness/framework 包与进程内运行循环已不存在；其产物（steering/follow-up、工具并行、压缩管线）以 Coding Agent Runtime 形式保留在 `packages/agent`（per-Run、子进程内），相关当前页面见 [Coding Agent](../runtime/coding-agent.md)。
+- **Harness 运行时加固（M22）**　**历史方案，已随 Phase 5/6 删除。** harness/framework 包与进程内运行循环已不存在；其产物（steering/follow-up、工具并行、压缩管线）以 Oma Runtime 形式保留在 `packages/agent`（per-Run、子进程内），相关当前页面见 [Oma](../runtime/oma.md)。
 
 ## 处理原则
 

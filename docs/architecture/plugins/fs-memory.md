@@ -15,6 +15,6 @@ used_by: []
 
 - `memory/MEMORY.md` — 汇总/dated memory;`memory/facts/*.md` — agent 自写事实;
 - backend `features/agent/agent-identity.ts` 确保目录存在并读取展示;`GET /api/agents/:id/memory` 供 Web 的 Memory tab;
-- SOUL.md / USER.md 经 cwd meta 注入 Coding Agent(system prompt 通道)。
+- SOUL.md / USER.md 经 cwd meta 注入 Oma(system prompt 通道)。
 
 相关当前页面:[Agent 工作区与多后端](../agents/workspace-and-backends.md)。

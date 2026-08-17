@@ -137,15 +137,15 @@ Agent 不直接依赖外部系统。Backend 负责创建共享基础设施；Plu
 
 ```text
 旧:
-@my-agent-team/ai
-@my-agent-team/core
-@my-agent-team/framework
-@my-agent-team/harness
+@chengchenccc/ai
+@chengchenccc/core
+@chengchenccc/framework
+@chengchenccc/harness
 
 新（已落地）:
-@my-agent-team/ai               ← provider/model runtime
-@my-agent-team/core             ← protocol + run
-@my-agent-team/agent            ← Agent + SDK + Plugin assembly
+@chengchenccc/ai               ← provider/model runtime
+@chengchenccc/core             ← protocol + run
+@chengchenccc/agent            ← Agent + SDK + Plugin assembly
 ```
 
 ### 6. Agent Hooks 设计

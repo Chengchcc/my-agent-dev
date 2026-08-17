@@ -371,17 +371,17 @@ function buildPhase6PreMigrationFixture(dbPath: string): void {
     "INSERT INTO agent_context_tree (tree_id, conversation_id, agent_member_id, created_at) VALUES ('tree-p6', 'c-p6', 'm-agent', 1000)",
   );
   db.exec(
-    "INSERT INTO agent_context_branch (branch_id, tree_id, leaf_entry_id, ledger_cursor, backend_kind, is_default, revision, created_at) VALUES ('branch-p6', 'tree-p6', NULL, 2, 'coding_agent', 1, 1, 1000)",
+    "INSERT INTO agent_context_branch (branch_id, tree_id, leaf_entry_id, ledger_cursor, backend_kind, is_default, revision, created_at) VALUES ('branch-p6', 'tree-p6', NULL, 2, 'oma', 1, 1, 1000)",
   );
   db.exec(
     "INSERT INTO agent_context_entry (entry_id, tree_id, parent_id, type, payload, ledger_seq, created_at) VALUES ('entry-p6-1', 'tree-p6', NULL, 'private_message', '{\"note\":\"first\"}', NULL, 1000), ('entry-p6-2', 'tree-p6', 'entry-p6-1', 'ledger_message', '{\"seq\":1}', 1, 1000)",
   );
   // Agent Run + branch input queue
   db.exec(
-    "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, terminal_result, config_revision, system_prompt, skill_roots, created_at, terminal_at) VALUES ('run-p6-1', 'branch-p6', 'c-p6', 'm-agent', '{\"backendKind\":\"coding_agent\",\"modelId\":\"claude-sonnet-4-6\"}', 'completed', 'ik-p6-1', '{\"status\":\"completed\"}', 1, 'sys-p6', '[\"/p6/skills\"]', 1000, 2000)",
+    "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, terminal_result, config_revision, system_prompt, skill_roots, created_at, terminal_at) VALUES ('run-p6-1', 'branch-p6', 'c-p6', 'm-agent', '{\"backendKind\":\"oma\",\"modelId\":\"claude-sonnet-4-6\"}', 'completed', 'ik-p6-1', '{\"status\":\"completed\"}', 1, 'sys-p6', '[\"/p6/skills\"]', 1000, 2000)",
   );
   db.exec(
-    "INSERT INTO branch_input_queue (input_id, branch_id, mode, message, status, delivery_idempotency_key, input_idempotency_key, run_id, model_ref, config_revision, created_at) VALUES ('in-p6', 'branch-p6', 'normal', '{\"text\":\"next\"}', 'delivered', 'del-p6', 'iid-p6', 'run-p6-1', '{\"backendKind\":\"coding_agent\",\"modelId\":\"claude-sonnet-4-6\"}', 1, 1000)",
+    "INSERT INTO branch_input_queue (input_id, branch_id, mode, message, status, delivery_idempotency_key, input_idempotency_key, run_id, model_ref, config_revision, created_at) VALUES ('in-p6', 'branch-p6', 'normal', '{\"text\":\"next\"}', 'delivered', 'del-p6', 'iid-p6', 'run-p6-1', '{\"backendKind\":\"oma\",\"modelId\":\"claude-sonnet-4-6\"}', 1, 1000)",
   );
   db.exec(
     "INSERT INTO product_tool_call (run_id, call_id, tool_name, input_hash, status, result, created_at, completed_at) VALUES ('run-p6-1', 'call-p6', 'history_retain', 'h1', 'completed', '{\"ok\":true}', 1000, 1500)",
@@ -532,7 +532,7 @@ test("Phase 6: product facts survive 0020 migration, legacy audit deleted, no Co
     .query("SELECT * FROM agent_context_branch WHERE branch_id='branch-p6'")
     .get() as { ledger_cursor: number; backend_kind: string };
   expect(branch.ledger_cursor).toBe(2);
-  expect(branch.backend_kind).toBe("coding_agent");
+  expect(branch.backend_kind).toBe("oma");
 
   db.close();
   try {

@@ -29,7 +29,7 @@ export interface LoopConfig {
 }
 ```
 
-- `parseLoopConfig`:`agent: String(frontmatter.agent ?? "default")`;写入侧(loop-service `writeDefaultLoopMd` + create API body)同步加可选 `agent` 字段。
+- `parseLoopConfig`:`agent: String(frontmatter.oma ?? "default")`;写入侧(loop-service `writeDefaultLoopMd` + create API body)同步加可选 `agent` 字段。
 - `gen.model === eval.model` 等现有校验不动;`agent` 不校验存在性(loop 层无 agent 概念,backend 层负责)。
 
 ### 2.2 resolveLoopWorktree(loop-step.ts 替换 resolveRepoPath)

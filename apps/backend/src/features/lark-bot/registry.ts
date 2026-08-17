@@ -1,6 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
-import { parseEnv } from "@my-agent-team/config";
+import { parseEnv } from "@chengchenccc/config";
 import { safeAgentId } from "../../infra/agent-id.js";
 
 const _env = parseEnv(process.env);

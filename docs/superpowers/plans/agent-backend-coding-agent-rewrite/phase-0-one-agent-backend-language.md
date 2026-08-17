@@ -1,12 +1,12 @@
 # Phase 0 — One Agent Backend Language
 
-**Goal:** Create `@my-agent-team/agent-backend` as the only implementation-independent Agent Run contract.
+**Goal:** Create `@chengchenccc/agent-backend` as the only implementation-independent Agent Run contract.
 
 **Outcome:** The package builds, typechecks, and tests alone; a fake Agent Backend implements the full interface; consumers use its barrel for events/outcomes; incomplete inputs and forbidden legacy names fail contract checks.
 
 **Prerequisites:**
-- Treat `docs/superpowers/specs/agent-backend-coding-agent-rewrite/phase-0-contracts.md` as authoritative.
-- Read `docs/architecture/execution/agent-backend.md` and `docs/architecture/runtime/coding-agent-models.md:115-148`.
+- Treat `docs/superpowers/specs/agent-backend-oma-rewrite/phase-0-contracts.md` as authoritative.
+- Read `docs/architecture/execution/agent-backend.md` and `docs/architecture/runtime/oma-models.md:115-148`.
 - Follow `_template/package/{package.json,tsconfig.json,tsconfig.test.json}`.
 - Reuse `Message` only from `packages/message/src/index.ts`; do not re-export through or modify `packages/core/src/index.ts`.
 - Phase 0 has no prerequisite. It gates Phases 1 and 2. Product caller cutover is Phase 5 only.
@@ -45,9 +45,9 @@
 - Modify `bun.lock`
 
 **Actions:**
-1. Run `bun run create`; choose `packages`, directory `agent-backend`, package `@my-agent-team/agent-backend`, description `Implementation-independent Agent Backend contracts`.
+1. Run `bun run create`; choose `packages`, directory `agent-backend`, package `@chengchenccc/agent-backend`, description `Implementation-independent Agent Backend contracts`.
 2. Keep the generated tsconfigs. Set `test` to `bun test`.
-3. Add exactly one dependency: `"@my-agent-team/message": "workspace:*"`; leave `devDependencies` empty.
+3. Add exactly one dependency: `"@chengchenccc/message": "workspace:*"`; leave `devDependencies` empty.
 4. Run `bun install`.
 
 Use the template manifest shape with this scripts/dependency section:
@@ -60,7 +60,7 @@ Use the template manifest shape with this scripts/dependency section:
   "typecheck": "tsc -p tsconfig.test.json --noEmit"
 },
 "dependencies": {
-  "@my-agent-team/message": "workspace:*"
+  "@chengchenccc/message": "workspace:*"
 },
 "devDependencies": {}
 ```
@@ -71,7 +71,7 @@ Use the template manifest shape with this scripts/dependency section:
 bun -e 'const p=await Bun.file("packages/agent-backend/package.json").json(); console.log(p.name,Object.keys(p.dependencies??{}))'
 ```
 
-Expected: package name plus only `@my-agent-team/message`.
+Expected: package name plus only `@chengchenccc/message`.
 
 **Done when:** The workspace sees the package and its manifest has no other dependency.
 
@@ -108,7 +108,7 @@ export interface BackendModelCatalog {
 }
 ```
 
-2. Add these exact history/config contracts; import `Message` from `@my-agent-team/message` and `BackendModelRef` from `./model.js`:
+2. Add these exact history/config contracts; import `Message` from `@chengchenccc/message` and `BackendModelRef` from `./model.js`:
 
 ```ts
 export interface ProjectedHistoryItem {
@@ -243,7 +243,7 @@ export interface BackendSessionRun {
 }
 ```
 
-Use type-only imports from `@my-agent-team/message`, `./history.js`, and the already-created `./event.js`.
+Use type-only imports from `@chengchenccc/message`, `./history.js`, and the already-created `./event.js`.
 
 **Check:**
 
@@ -295,7 +295,7 @@ bun run --cwd packages/agent-backend build
 
 Expected: `dist/index.d.ts` contains all required types; `dist/index.js` has no contract implementation.
 
-**Done when:** Consumers need only `@my-agent-team/agent-backend`.
+**Done when:** Consumers need only `@chengchenccc/agent-backend`.
 
 ### Card 6 — Add contract tests and negative type guards
 
@@ -309,7 +309,7 @@ Expected: `dist/index.d.ts` contains all required types; `dist/index.js` has no 
 2. Test `start()`, consume `segment.events`, await `segment.outcome`, and assert session/outcome using types imported only from `./index.js`.
 3. Add `// @ts-expect-error` assignments proving a `BackendRunInput` without `run` and a `ProjectedHistoryItem` without `productEntryId` fail.
 4. Add `// @ts-expect-error` type imports for `ProductTurn`, `RuntimeBinding`, `runtimeSessionId`, `AgentSessionPool`, `AgentLoop`, `SpanResult`, and `ExecutionId`; add a negative capabilities assignment containing `nativeFork`.
-5. Add a Bun test reading `../package.json` from `import.meta.url` and asserting dependencies equal `{ "@my-agent-team/message": "workspace:*" }` and devDependencies equal `{}`.
+5. Add a Bun test reading `../package.json` from `import.meta.url` and asserting dependencies equal `{ "@chengchenccc/message": "workspace:*" }` and devDependencies equal `{}`.
 
 Minimal segment helper:
 
@@ -367,13 +367,13 @@ bun run --cwd packages/agent-backend test
 Expected: all exit 0.
 
 ```bash
-bun -e 'const p=await Bun.file("packages/agent-backend/package.json").json(); const a=Object.keys(p.dependencies??{}).sort(); if(JSON.stringify(a)!==JSON.stringify(["@my-agent-team/message"])) throw new Error(a.join(",")); console.log("dependency allowlist: PASS")'
+bun -e 'const p=await Bun.file("packages/agent-backend/package.json").json(); const a=Object.keys(p.dependencies??{}).sort(); if(JSON.stringify(a)!==JSON.stringify(["@chengchenccc/message"])) throw new Error(a.join(",")); console.log("dependency allowlist: PASS")'
 ```
 
 Expected: `dependency allowlist: PASS`.
 
 ```bash
-if grep -R -n -E 'from "(@my-agent-team/(agent|ai|core)|elysia|drizzle-orm|bun:sqlite)' packages/agent-backend/src; then exit 1; else echo "source dependency denylist: PASS"; fi
+if grep -R -n -E 'from "(@chengchenccc/(agent|ai|core)|elysia|drizzle-orm|bun:sqlite)' packages/agent-backend/src; then exit 1; else echo "source dependency denylist: PASS"; fi
 ```
 
 Expected: `source dependency denylist: PASS`.
@@ -404,7 +404,7 @@ Expected: changes only in `packages/agent-backend/**` and `bun.lock`.
 ## Final phase gate
 
 - [ ] Package independently builds, typechecks, and tests.
-- [ ] Only dependency is `@my-agent-team/message`; no backend app, agent, ai, core, Elysia, Drizzle, `bun:sqlite`, or Provider SDK import.
+- [ ] Only dependency is `@chengchenccc/message`; no backend app, agent, ai, core, Elysia, Drizzle, `bun:sqlite`, or Provider SDK import.
 - [ ] Message is reused, not copied.
 - [ ] All Phase 0 public types are exported from the root.
 - [ ] Both start/resume and send inputs require `AgentRunSnapshot`.

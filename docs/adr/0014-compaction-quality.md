@@ -15,7 +15,7 @@
 
 ## 调研
 
-对比了 Pi (`/root/pi/packages/coding-agent/src/core/compaction/`) 和 OMP (`/root/.bun/install/global/node_modules/@oh-my-pi/pi-agent-core/src/compaction/`)。
+对比了 Pi (`/root/pi/packages/oma/src/core/compaction/`) 和 OMP (`/root/.bun/install/global/node_modules/@oh-my-pi/pi-agent-core/src/compaction/`)。
 
 ## 决策
 
@@ -51,7 +51,7 @@ OMP 的 8 段 markdown 格式：
 ### 不做
 
 - OMP 的 `compaction-short-summary.md`（2-3 句 PR 描述）— recap 已覆盖
-- Pi 的文件操作追踪 — coding-agent 专属
+- Pi 的文件操作追踪 — oma 专属
 - Pi 的 turn prefix 分段摘要 — 边缘场景（单 turn 超大）
 - OMP 的 snapcompact — Rust 原生 + vision 依赖
 

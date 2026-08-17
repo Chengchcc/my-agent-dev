@@ -1,9 +1,9 @@
-import type { Message, MessageRevision } from "@my-agent-team/message";
-import { extractText, mergeMessageRevision, parseMessageRevision } from "@my-agent-team/message";
+import type { Message, MessageRevision } from "@chengchenccc/message";
+import { extractText, mergeMessageRevision, parseMessageRevision } from "@chengchenccc/message";
 
 // ─── Types ────────────────────────────────────────────────
 
-/** Mirrors @my-agent-team/conversation Member.kind exactly.
+/** Mirrors @chengchenccc/conversation Member.kind exactly.
  *  System notices (member join/leave) are NOT messages — they are UiItems of kind "notice". */
 export interface SenderRef {
   memberId: string;

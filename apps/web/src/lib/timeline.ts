@@ -1,1 +1,1 @@
-export { extractText } from "@my-agent-team/message";
+export { extractText } from "@chengchenccc/message";

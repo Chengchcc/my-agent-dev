@@ -18,7 +18,7 @@ used_by:
 
 ## 单一 Message 本体
 
-`Message` 仍然是唯一消息领域类型（`@my-agent-team/message`）。Ledger、Runtime 和 Surface 不各自发明不同的 Message；它们保存引用、包装生命周期或转换协议。
+`Message` 仍然是唯一消息领域类型（`@chengchenccc/message`）。Ledger、Runtime 和 Surface 不各自发明不同的 Message；它们保存引用、包装生命周期或转换协议。
 
 ```text
 Message
@@ -41,7 +41,7 @@ Tree 的 scope 是 `(conversationId, agentMemberId)`。它决定该 Agent 在某
 ### Run-time 状态：执行缓存与投影
 
 ```text
-一次性 coding-agent 子进程
+一次性 oma 子进程
   = 该 Run 的执行缓存（model/tool transcript、compaction、todo）
   = 子进程退出即销毁，永不跨 Run 复用
 ```
@@ -83,7 +83,7 @@ Streaming delta 不写 canonical history。只有 terminal assistant Message 才
 
 ## Product Tool 结果何时进入 Context
 
-Coding Agent 的 native tools 由子进程自己执行，其原始 tool lifecycle 属于 runtime events。Product Tool 由 Product Backend 执行，语义变更类调用写 `product_tool_call`（幂等/审计）。
+Oma 的 native tools 由子进程自己执行，其原始 tool lifecycle 属于 runtime events。Product Tool 由 Product Backend 执行，语义变更类调用写 `product_tool_call`（幂等/审计）。
 
 只有满足以下条件的 Product Tool call/result 才进入 Agent Context：
 
@@ -99,7 +99,7 @@ Coding Agent 的 native tools 由子进程自己执行，其原始 tool lifecycl
 
 Product Summary 是 Tree entry（`type=summary`），由 Product Policy 与 summarizer 生成。它只改变 context projection，原始历史保留。
 
-Runtime compaction 是 Coding Agent 子进程内部的执行缓存优化（下一个 Run 不继承），不写 Agent Context，也不改变产品历史。
+Runtime compaction 是 Oma 子进程内部的执行缓存优化（下一个 Run 不继承），不写 Agent Context，也不改变产品历史。
 
 ## 为什么每次都是 full projection
 

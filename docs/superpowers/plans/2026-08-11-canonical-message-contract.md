@@ -4,7 +4,7 @@
 **Spec**: [2026-08-11-canonical-message-contract.md](../specs/2026-08-11-canonical-message-contract.md)
 **ADR**: [0017-canonical-message-contract](../../adr/0017-canonical-message-contract.md)
 
-## Wave 1: 协议层契约（`@my-agent-team/message`）
+## Wave 1: 协议层契约（`@chengchenccc/message`）
 
 ### Task 1.1: 新增 `canonical.ts`
 - `normalizeCanonicalMessages(messages): Message[]`：assistant 混 tool_result → 拆成 assistant(kept) + tool(paired results)，孤儿丢弃，其余透传
@@ -21,32 +21,32 @@
 ### Gate
 - `cd packages/message && bun test && bun run typecheck`
 
-## Wave 2: Outcome 协议序列化（`@my-agent-team/agent-backend` + adapter）
+## Wave 2: Outcome 协议序列化（`@chengchenccc/agent-backend` + adapter）
 
 ### Task 2.1: `BackendRunOutcome` 扩展
 - 新增 `messages: Message[]`（run 产生的 canonical 序列）；`output` 保留兼容
 - 更新 outcome 相关 schema/类型（`packages/agent-backend`）
 
 ### Task 2.2: Adapter 协议
-- `packages/adapter-coding-agent/src/protocol.ts`：`OutcomeOutput` 加 `messages`
+- `packages/adapter-oma-agent/src/protocol.ts`：`OutcomeOutput` 加 `messages`
 - rpc-fixture 同步
 
 ### Gate
 - `cd packages/agent-backend && bun test && bun run typecheck`
 
-## Wave 3: Runtime 输出（`packages/agent` + `apps/coding-agent`）
+## Wave 3: Runtime 输出（`packages/agent` + `apps/oh-my-agent`）
 
 ### Task 3.1: agent-loop 输出序列
 - 删除当前"最后一条带文本 assistant"的 output 逻辑
 - 返回该 run 新增的 canonical 消息序列（assistant(tool_use)/tool(tool_result)/assistant(text)，branch 顺序，过滤本轮输入之前的消息）
 
 ### Task 3.2: rpc-mode outcome 携带序列
-- `apps/coding-agent/src/modes/rpc`：outcome 带 `messages`
+- `apps/oh-my-agent/src/modes/rpc`：outcome 带 `messages`
 - 更新 harness 测试（output.blocks 断言 → messages 断言）
 
 ### Gate
 - `cd packages/agent && bun test`
-- `cd apps/coding-agent && bun test`
+- `cd apps/oh-my-agent && bun test`
 
 ## Wave 4: Backend 提交（`apps/backend`）
 
@@ -68,7 +68,7 @@
 
 ### Gate
 - `cd apps/backend && bun test`（全量）
-- `bun run --filter=@my-agent-team/backend typecheck`
+- `bun run --filter=@chengchenccc/backend typecheck`
 
 ## Wave 5: Web UI（`apps/web`）
 
@@ -93,7 +93,7 @@
 - `bun run typecheck`（全仓）
 - `bun run lint`（全仓）
 - `bun run test`（全仓）
-- `bun run --filter=@my-agent-team/web build`
+- `bun run --filter=@chengchenccc/web build`
 - 浏览器实测：真实模型多轮对话，run 2+ 不再 400；ledger 有完整 canonical 序列；UI canonical trace 含工具结果
 
 ### Gate

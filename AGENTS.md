@@ -42,10 +42,10 @@ L2 Runtime      run() async generator - messages -> model stream -> tool execute
 L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock
 
 **Package dependency graph:**
-- Leaves: `@my-agent-team/message`, `@my-agent-team/config`, `@my-agent-team/loop`
-- Core: `@my-agent-team/core` -> `@my-agent-team/agent`
+- Leaves: `@chengchenccc/message`, `@chengchenccc/config`, `@chengchenccc/loop`
+- Core: `@chengchenccc/core` -> `@chengchenccc/agent`
 - Plugins: 5 packages under `packages/plugin-*` (identity, fs-memory, progressive-skill, task-guard, conversation-context)
-- Apps: `@my-agent-team/backend` (consumes all), `@my-agent-team/web` (Next.js), `@my-agent-team/lark-bot`
+- Apps: `@chengchenccc/backend` (consumes all), `@chengchenccc/web` (Next.js), `@chengchenccc/lark-bot`
 
 **Data flow:** Backend is the single truth source. Frontend uses Eden Treaty typed client to call BFF proxy (`/api/bff/[...path]`) which forwards to backend with auth headers. SSE events from backend flow through Next.js BFF to React Query subscriptions.
 
@@ -83,12 +83,12 @@ cd packages/framework && bun test --test-name-pattern="createAgent"
 cd apps/backend && bun run typecheck
 ```
 
-**Per-package scripts:** Each package has `build`, `lint`, `test`, `typecheck` scripts (except `@my-agent-team/loop` which has no build — source-only).
+**Per-package scripts:** Each package has `build`, `lint`, `test`, `typecheck` scripts (except `@chengchenccc/loop` which has no build — source-only).
 
 ## Code Conventions & Common Patterns
 
 ### Imports: No deep imports
-Cross-package imports MUST go through the barrel (`index.ts`). `import { loopReducer } from "@my-agent-team/loop"` not `"@my-agent-team/loop/src/loop-reducer.js"`. Enforced by ESLint `consistent-type-imports`.
+Cross-package imports MUST go through the barrel (`index.ts`). `import { loopReducer } from "@chengchenccc/loop"` not `"@chengchenccc/loop/src/loop-reducer.js"`. Enforced by ESLint `consistent-type-imports`.
 
 ### Dependency Injection
 Backend uses **composition-root DI** (no framework): `main.ts` creates adapters, injects them into service factories, then mounts HTTP routes. Every feature follows hexagonal architecture:
@@ -137,7 +137,7 @@ interface PluginHooks {
 Use `definePlugin({ name, hooks, tools? })` to create plugins. `validatePlugins()` checks tool name collisions.
 
 ### ChatModel is the only integration point
-Core has no LLM dependency. `ChatModel.stream(messages, opts?) → AsyncIterable<AIMessageChunk>` is the contract. Tests use `echoModel()` from `@my-agent-team/test-helpers`.
+Core has no LLM dependency. `ChatModel.stream(messages, opts?) → AsyncIterable<AIMessageChunk>` is the contract. Tests use `echoModel()` from `@chengchenccc/test-helpers`.
 
 ### Loop System
 Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop orchestration** (AgentSession dispatch, git rollback, budget tracking).
@@ -189,15 +189,15 @@ Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop
 - **TypeScript:** ESM with `NodeNext` resolution, target ES2023, strict mode, `noUncheckedIndexedAccess`
 - **Git hooks:** Husky pre-commit (biome format + check) + commit-msg (commitlint conventional commits, no CJK)
 - **CI:** `bun run typecheck && bun run lint && bun run test`
-- **Package naming:** `@my-agent-team/<domain-name>` (domain-level, not engine/utility-level)
+- **Package naming:** `@chengchenccc/<domain-name>` (domain-level, not engine/utility-level)
 
 ## Testing & QA
 
 - **Framework:** `bun:test` (`describe`/`test`/`expect`)
 - **Location:** `*.test.ts` files beside source
-- **Model mocking:** Define scripted `ChatModel` implementations that yield predetermined turns. `echoModel()` from `@my-agent-team/test-helpers` provides a reusable factory.
+- **Model mocking:** Define scripted `ChatModel` implementations that yield predetermined turns. `echoModel()` from `@chengchenccc/test-helpers` provides a reusable factory.
 - **Core mocking primitives:** `inMemoryPersistence()`, `consoleLogger({ level: "silent" })`, `passthroughContextManager()`
 - **Integration tests:** Use `createAgentSession()` with real plugins (identity, memory, progressive-skill) and scripted models
 - **Loop tests:** `mockSessionFactory(verdictMd)` — creates a `SessionFactory` that writes VERDICT.md when evaluator runs
 - **Coverage:** No enforced threshold; tests should cover behavior (conditional branches, invariants, error handling), not plumbing
-- **Test helpers:** `@my-agent-team/test-helpers` exports `echoModel()` with `EchoScript` type for deterministic model responses
+- **Test helpers:** `@chengchenccc/test-helpers` exports `echoModel()` with `EchoScript` type for deterministic model responses

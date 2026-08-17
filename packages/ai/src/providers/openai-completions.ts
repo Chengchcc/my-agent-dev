@@ -1,5 +1,5 @@
-import type { AIMessageChunk } from "@my-agent-team/core";
-import type { Message, TextBlock, ToolResultBlock, ToolUseBlock } from "@my-agent-team/message";
+import type { AIMessageChunk } from "@chengchenccc/core";
+import type { Message, TextBlock, ToolResultBlock, ToolUseBlock } from "@chengchenccc/message";
 import { registerApi } from "../api-registry.js";
 import { type ResolvedOpenAICompat, resolveOpenAICompat } from "../compat.js";
 import type { Model, ProviderStreamOptions } from "../types.js";

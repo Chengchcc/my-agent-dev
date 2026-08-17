@@ -1,18 +1,18 @@
 ---
-id: runtime.coding-agent-session
-title: Coding Agent Session（Run-local 执行缓存）
+id: runtime.oma-session
+title: Oma Session（Run-local 执行缓存）
 status: current
 owners: architecture
 summary: "Runtime 的 SessionStore（packages/agent）是 per-Run、in-memory 的执行缓存：seed 时原子写入 full Product history + meta + input，loop 跑完后随子进程销毁。无 SQLite session 文件、无 worker、无跨 Run 恢复。"
 depends_on:
-  - runtime.coding-agent
+  - runtime.oma
 used_by:
-  - runtime.coding-agent-prompt
+  - runtime.oma-prompt
 ---
 
-# Coding Agent Session（Run-local 执行缓存）
+# Oma Session（Run-local 执行缓存）
 
-Coding Agent Runtime 的状态是 **per-Run、in-memory** 的。它是该 Run 的执行缓存，不是产品历史，也不跨 Run 存在。
+Oma Runtime 的状态是 **per-Run、in-memory** 的。它是该 Run 的执行缓存，不是产品历史，也不跨 Run 存在。
 
 ## 它和 Agent Context 有什么区别
 
@@ -30,7 +30,7 @@ Runtime SessionStore
 
 `packages/agent/src/persistence/` 提供 `SessionStore` port 与 in-memory 实现（`createInMemorySessionStore`）。没有 SQLite session 文件、没有 catalog、没有 worker registry。
 
-`createCodingAgentRuntime()` 在 Run 开始时以 `sessionId = runId` 创建 session：
+`createOmaRuntime()` 在 Run 开始时以 `sessionId = runId` 创建 session：
 
 ```text
 seed：full Product history（projected entries）
@@ -86,6 +86,6 @@ child crash    → 当前 Run failed；下一个输入 = 新 Run = 新子进程 
 
 ## 关联页面
 
-- [Coding Agent](./coding-agent.md)
-- [Coding Agent Prompt 与 Context](./coding-agent-prompt.md)
+- [Oma](./oma.md)
+- [Oma Prompt 与 Context](./oma-prompt.md)
 - [Agent Context](../agents/context.md)

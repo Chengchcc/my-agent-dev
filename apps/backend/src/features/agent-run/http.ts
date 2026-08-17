@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { BackendRunOutcome } from "@my-agent-team/agent-backend";
+import type { BackendRunOutcome } from "@chengchenccc/agent-backend";
 import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
 import { type AgentRunExecutionService, runEventStreamFor } from "./execution.js";

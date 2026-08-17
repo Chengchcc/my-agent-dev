@@ -39,7 +39,7 @@ export class SqliteSessionManager implements SessionManager {
 ```
 
 3. `ulid` 替换为 `crypto.randomUUID()`（去 backend `infra/ids.js` 依赖）
-4. `sqliteCheckpointer` 已从 `@my-agent-team/framework` 导入（harness 已依赖 framework）
+4. `sqliteCheckpointer` 已从 `@chengchenccc/framework` 导入（harness 已依赖 framework）
 5. `BackendConfig` 依赖消除，`SpanSupervisor` 依赖消除
 
 **文件：`packages/harness/src/index.ts`**
@@ -55,8 +55,8 @@ export { SqliteSessionManager } from "./session-manager.js";
 | 文件 | 改动 |
 |------|------|
 | `apps/backend/src/features/span/session-manager.ts` | **删除** |
-| `apps/backend/src/main.ts` | `SqliteSessionManager` import 从 `./features/span/session-manager.js` 改为 `@my-agent-team/harness`；构造改为 `new SqliteSessionManager({ checkpointerPath: join(config.dataDir, "checkpointer.db"), startSpan: (s, s2, o) => supervisor.startSpan(s, s2, o) })` |
-| `apps/backend/src/features/conversation/conversation-compose.ts` | `SessionManager` type import 改为 `@my-agent-team/harness` |
+| `apps/backend/src/main.ts` | `SqliteSessionManager` import 从 `./features/span/session-manager.js` 改为 `@chengchenccc/harness`；构造改为 `new SqliteSessionManager({ checkpointerPath: join(config.dataDir, "checkpointer.db"), startSpan: (s, s2, o) => supervisor.startSpan(s, s2, o) })` |
+| `apps/backend/src/features/conversation/conversation-compose.ts` | `SessionManager` type import 改为 `@chengchenccc/harness` |
 | `apps/backend/src/features/cron/scheduler.ts` | 同上 |
 | `apps/backend/src/features/loop/loop-step.ts` | 同上 |
 | `apps/backend/src/features/loop/http.ts` | 同上 |
@@ -92,7 +92,7 @@ export { SqliteSessionManager } from "./session-manager.js";
 1. `packages/harness/src/session-manager.ts` 存在，导出 `SessionManager`、`SqliteSessionManager`、`SessionManagerConfig`、`StartSpanFn`
 2. `packages/harness/src/index.ts` 导出上述类型
 3. `apps/backend/src/features/span/session-manager.ts` 已删除
-4. backend 6 个文件的 import 改为 `@my-agent-team/harness`
+4. backend 6 个文件的 import 改为 `@chengchenccc/harness`
 5. `main.ts` 构造 `SqliteSessionManager` 使用新参数（`checkpointerPath` + `startSpan`）
 6. `SqliteSessionManager` 不依赖 `BackendConfig` 或 `SpanSupervisor`
 7. `bun run typecheck` 37/37 通过

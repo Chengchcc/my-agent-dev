@@ -1,8 +1,8 @@
-# Phase 2: Complete Coding Agent Implementation Plan
+# Phase 2: Complete Oma Implementation Plan
 
 ## Goal
 
-Replace the current `@my-agent-team/agent` facade with a Worker-local Coding Agent runtime that has one Agent Loop owner, one durable Coding Session Tree, static plugins, sandboxed tools, progressive skills, and a provider-backed `ModelRuntime`.
+Replace the current `@chengchenccc/agent` facade with a Worker-local Oma runtime that has one Agent Loop owner, one durable Coding Session Tree, static plugins, sandboxed tools, progressive skills, and a provider-backed `ModelRuntime`.
 
 ## Outcome
 
@@ -11,7 +11,7 @@ A single-process harness can create/open a Coding Session and complete an Agent 
 ## Prerequisites
 
 - Phase 0 contracts exist in `packages/agent-backend`; use `ProjectedHistoryItem` and `AgentRunSnapshot` rather than inventing Product Backend types.
-- Read `docs/superpowers/specs/agent-backend-coding-agent-rewrite/phase-2-coding-agent-core.md` and the four `docs/architecture/runtime/coding-agent*.md` documents before implementation.
+- Read `docs/superpowers/specs/agent-backend-oma-rewrite/phase-2-oma-core.md` and the four `docs/architecture/runtime/oma*.md` documents before implementation.
 - Work on the programme branch; temporary downstream TypeScript failures are allowed and must not be “fixed” with aliases, adapters, dual writes, or caller migration.
 
 ## Non-goals
@@ -40,7 +40,7 @@ A single-process harness can create/open a Coding Session and complete an Agent 
 **Actions:**
 1. Define `Provider`, `CredentialStore`, normalized provider errors, catalog refresh results, availability, and the new `ModelRuntime` API.
 2. Implement provider registration/replacement, model lookup, credential resolution, availability filtering, refresh/cache, and stream dispatch.
-3. Keep old registry/resolver exports temporarily inside `packages/ai` until Task 2 converts every provider/config caller; do not use them in new Coding Agent code.
+3. Keep old registry/resolver exports temporarily inside `packages/ai` until Task 2 converts every provider/config caller; do not use them in new Oma code.
 4. Add tests for duplicate/replaced providers, missing credentials, availability filtering, refresh, dispatch, and normalized errors.
 
 **Check:**
@@ -373,7 +373,7 @@ Expected: tests pass without network access and `tools-common` typechecks with n
 
 **Actions:**
 1. Define Pi-style typed lifecycle events only: agent/turn/message/tool/retry/compaction/queue; remove old session/facade event aliases.
-2. Implement `CodingAgentSession.startLoop`, `steer`, `stop`, `compact`, and listener subscription with at most one active loop per session.
+2. Implement `OmaSession.startLoop`, `steer`, `stop`, `compact`, and listener subscription with at most one active loop per session.
 3. Dispatch and await listener promises in registration order; emit `agent_end` before waiting for its listeners, and settle only after they finish.
 4. Treat a reopened session as having no active loop; do not persist resumable loop/checkpoint state.
 
@@ -472,7 +472,7 @@ Expected: only transient provider errors retry; input counts remain unchanged; s
 
 **Actions:**
 1. Export only Coding Session/Agent Loop, SessionStore adapters/types, static Plugin types, prompt/context/compaction types, and built-in todo APIs.
-2. Remove Drizzle and Zod if no new runtime file uses them; add direct workspace dependencies on `@my-agent-team/agent-backend`, `@my-agent-team/ai`, and `@my-agent-team/tools-common` as actually imported.
+2. Remove Drizzle and Zod if no new runtime file uses them; add direct workspace dependencies on `@chengchenccc/agent-backend`, `@chengchenccc/ai`, and `@chengchenccc/tools-common` as actually imported.
 3. Delete all legacy implementations and compatibility-focused tests; do not replace them with aliases or negative runtime shims.
 4. Add a compile-time export-surface test proving new exports work and old names cannot be imported.
 
@@ -492,7 +492,7 @@ Expected: grep exits successfully because no forbidden export exists; `packages/
 **Time box:** 30 minutes
 
 **Files:**
-- Create: `packages/agent/src/runtime/coding-agent-harness.test.ts`
+- Create: `packages/agent/src/runtime/oma-harness.test.ts`
 - Modify only if required by failures: files created or rewritten in Tasks 1–15
 
 **Actions:**
@@ -504,12 +504,12 @@ Expected: grep exits successfully because no forbidden export exists; `packages/
 **Check:**
 
 ```bash
-bun test packages/agent/src/runtime/coding-agent-harness.test.ts
+bun test packages/agent/src/runtime/oma-harness.test.ts
 ```
 
 Expected: both memory and SQLite scenarios complete with identical outcomes; reopen restores completed branch/todo only and starts no loop.
 
-**Done when:** Coding Agent Runtime core executes a complete Agent Loop in one process with every Phase 2 invariant observable in the harness.
+**Done when:** Oma Runtime core executes a complete Agent Loop in one process with every Phase 2 invariant observable in the harness.
 
 ## Final phase gate — Phase 2 only
 

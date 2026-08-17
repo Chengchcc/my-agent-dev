@@ -4,7 +4,7 @@
 
 **Goal:** Bind every product-tools MCP token to exactly one Agent Run: minted at dispatch, revoked at settle, `.mcp.json` carries only a placeholder — no static token anywhere.
 
-**Architecture:** A process-internal `RunTokenRegistry` (SHA-256 keyed Map) replaces the static bearer. The execution service mints per run and passes the token through `BackendRunInput.productToolsToken`; each adapter injects it into the child's spawn env under `PRODUCT_TOOLS_RUN_TOKEN` (coding_agent keeps `CODING_AGENT_PRODUCT_TOOL_TOKEN`). The workspace `.mcp.json` writes `Bearer ${PRODUCT_TOOLS_RUN_TOKEN}` once, statically.
+**Architecture:** A process-internal `RunTokenRegistry` (SHA-256 keyed Map) replaces the static bearer. The execution service mints per run and passes the token through `BackendRunInput.productToolsToken`; each adapter injects it into the child's spawn env under `PRODUCT_TOOLS_RUN_TOKEN` (oma keeps `OMA_PRODUCT_TOOL_TOKEN`). The workspace `.mcp.json` writes `Bearer ${PRODUCT_TOOLS_RUN_TOKEN}` once, statically.
 
 **Tech Stack:** Bun 1.3, TypeScript (ESM/NodeNext), bun:test, @modelcontextprotocol/sdk SSE transport.
 
@@ -300,7 +300,7 @@ In `BackendRunInput` (after `workspace`):
 
 - [ ] **Step 2: Build + typecheck**
 
-Run: `cd /root/my-agent-team && bun run build --filter=@my-agent-team/agent-backend && cd apps/backend && bun run typecheck`
+Run: `cd /root/my-agent-team && bun run build --filter=@chengchenccc/agent-backend && cd apps/backend && bun run typecheck`
 Expected: clean.
 
 - [ ] **Step 3: Commit**
@@ -320,7 +320,7 @@ Three adapters, same shape. For each: in `execute()`, merge the token into the s
 - Modify: `packages/adapter-claude-agent/src/backend.ts`
 - Modify: `packages/adapter-pi-agent/src/backend.ts`
 - Modify: `packages/adapter-omp-agent/src/backend.ts`
-- Modify: `packages/adapter-coding-agent/src/backend.ts`
+- Modify: `packages/adapter-oma-agent/src/backend.ts`
 
 - [ ] **Step 1: claude — per-run env**
 
@@ -342,18 +342,18 @@ Delete the `productToolsToken` constructor option, the `private readonly product
 
 - [ ] **Step 3: omp — same change** (around its spawn call)
 
-- [ ] **Step 4: coding_agent — per-execute env override**
+- [ ] **Step 4: oma — per-execute env override**
 
-`CodingAgentBackend` holds a shared `command` (env baked at construction):
+`OmaBackend` holds a shared `command` (env baked at construction):
 
 ```typescript
-      proc = spawnCodingAgentProcess(
+      proc = spawnOmaProcess(
         input.productToolsToken
           ? {
               ...this.command,
               env: {
                 ...this.command.env,
-                CODING_AGENT_PRODUCT_TOOL_TOKEN: input.productToolsToken,
+                OMA_PRODUCT_TOOL_TOKEN: input.productToolsToken,
               },
             }
           : this.command,
@@ -363,13 +363,13 @@ Delete the `productToolsToken` constructor option, the `private readonly product
 
 - [ ] **Step 5: Build adapters + backend typecheck**
 
-Run: `cd /root/my-agent-team && bun run build --filter=@my-agent-team/adapter-claude-agent --filter=@my-agent-team/adapter-pi-agent --filter=@my-agent-team/adapter-omp-agent --filter=@my-agent-team/adapter-coding-agent && cd apps/backend && bun run typecheck`
+Run: `cd /root/my-agent-team && bun run build --filter=@chengchenccc/adapter-claude-agent --filter=@chengchenccc/adapter-pi-agent --filter=@chengchenccc/adapter-omp-agent --filter=@chengchenccc/adapter-oma-agent && cd apps/backend && bun run typecheck`
 Expected: clean.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/adapter-claude-agent/src/backend.ts packages/adapter-pi-agent/src/backend.ts packages/adapter-omp-agent/src/backend.ts packages/adapter-coding-agent/src/backend.ts
+git add packages/adapter-claude-agent/src/backend.ts packages/adapter-pi-agent/src/backend.ts packages/adapter-omp-agent/src/backend.ts packages/adapter-oma-agent/src/backend.ts
 git commit -m "feat(agent): adapters inject per-run product-tools token into spawn env"
 ```
 
@@ -455,18 +455,18 @@ In `PiBackend.execute()`, same `runEnv` construction around `spawnPiProcess`; de
 
 Same in `OmpBackend.execute()` around its spawn call; delete the dead option/field.
 
-- [ ] **Step 4: coding_agent — env override per execute**
+- [ ] **Step 4: oma — env override per execute**
 
-`CodingAgentBackend` holds a shared `command` (env baked at construction). Add a per-run override in `execute()`:
+`OmaBackend` holds a shared `command` (env baked at construction). Add a per-run override in `execute()`:
 
 ```typescript
-      proc = spawnCodingAgentProcess(
+      proc = spawnOmaProcess(
         input.productToolsToken
           ? {
               ...this.command,
               env: {
                 ...this.command.env,
-                CODING_AGENT_PRODUCT_TOOL_TOKEN: input.productToolsToken,
+                OMA_PRODUCT_TOOL_TOKEN: input.productToolsToken,
               },
             }
           : this.command,
@@ -476,7 +476,7 @@ Same in `OmpBackend.execute()` around its spawn call; delete the dead option/fie
 
 - [ ] **Step 5: Build all adapters + backend typecheck**
 
-Run: `cd /root/my-agent-team && bun run build --filter=@my-agent-team/adapter-claude-agent --filter=@my-agent-team/adapter-pi-agent --filter=@my-agent-team/adapter-omp-agent --filter=@my-agent-team/adapter-coding-agent`
+Run: `cd /root/my-agent-team && bun run build --filter=@chengchenccc/adapter-claude-agent --filter=@chengchenccc/adapter-pi-agent --filter=@chengchenccc/adapter-omp-agent --filter=@chengchenccc/adapter-oma-agent`
 Expected: build errors only in `apps/backend` consumers — none in the packages.
 
 - [ ] **Step 6: Commit**
@@ -493,9 +493,9 @@ git commit -m "feat(agent): adapters inject per-run product-tools token into spa
 **Files:**
 - Modify: `apps/backend/src/bootstrap/features.ts`
 - Modify: `apps/backend/src/config.ts`
-- Modify: `apps/backend/src/infra/coding-agent-command.ts`
+- Modify: `apps/backend/src/infra/oma-command.ts`
 - Modify: `packages/agent-backend/src/redact.ts`
-- Modify: `packages/adapter-coding-agent/src/stderr-tail.ts`
+- Modify: `packages/adapter-oma-agent/src/stderr-tail.ts`
 
 - [ ] **Step 1: features.ts**
 
@@ -536,13 +536,13 @@ git commit -m "feat(agent): adapters inject per-run product-tools token into spa
 
 Delete `productToolsServiceToken?: string;` (line 31) and its env mapping `productToolsServiceToken: env.PRODUCT_TOOLS_SERVICE_TOKEN,` (line 59).
 
-- [ ] **Step 3: coding-agent-command.ts**
+- [ ] **Step 3: oma-command.ts**
 
 Delete the static injection block (lines ~40-43):
 
 ```typescript
     ...(config.productToolsServiceToken
-      ? { CODING_AGENT_PRODUCT_TOOL_TOKEN: config.productToolsServiceToken }
+      ? { OMA_PRODUCT_TOOL_TOKEN: config.productToolsServiceToken }
       : {}),
 ```
 
@@ -550,13 +550,13 @@ Delete the static injection block (lines ~40-43):
 
 - [ ] **Step 4: redact lists**
 
-`packages/agent-backend/src/redact.ts`: add `"PRODUCT_TOOLS_RUN_TOKEN"` next to `CODING_AGENT_PRODUCT_TOOL_TOKEN`.
-`packages/adapter-coding-agent/src/stderr-tail.ts`: add the same name.
+`packages/agent-backend/src/redact.ts`: add `"PRODUCT_TOOLS_RUN_TOKEN"` next to `OMA_PRODUCT_TOOL_TOKEN`.
+`packages/adapter-oma-agent/src/stderr-tail.ts`: add the same name.
 Rebuild both packages.
 
 - [ ] **Step 5: Full verify**
 
-Run: `cd /root/my-agent-team && bun run build --filter=@my-agent-team/agent-backend --filter=@my-agent-team/adapter-coding-agent && cd apps/backend && bun run typecheck && bun test src/features/`
+Run: `cd /root/my-agent-team && bun run build --filter=@chengchenccc/agent-backend --filter=@chengchenccc/adapter-oma-agent && cd apps/backend && bun run typecheck && bun test src/features/`
 Expected: typecheck clean; suites green.
 
 Run: `grep -rn "productToolsServiceToken" apps/backend/src --include="*.ts" | grep -v test`
@@ -565,7 +565,7 @@ Expected: zero hits.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/backend/src/bootstrap/features.ts apps/backend/src/config.ts apps/backend/src/infra/coding-agent-command.ts packages/agent-backend/src/redact.ts packages/adapter-coding-agent/src/stderr-tail.ts
+git add apps/backend/src/bootstrap/features.ts apps/backend/src/config.ts apps/backend/src/infra/oma-command.ts packages/agent-backend/src/redact.ts packages/adapter-oma-agent/src/stderr-tail.ts
 git commit -m "feat(backend): static product-tools token removed - registry wiring only"
 ```
 

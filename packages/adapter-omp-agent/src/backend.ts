@@ -15,8 +15,8 @@ import type {
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
-} from "@my-agent-team/agent-backend";
-import { guardedConsume } from "@my-agent-team/agent-backend";
+} from "@chengchenccc/agent-backend";
+import { guardedConsume } from "@chengchenccc/agent-backend";
 import { buildOutcomeMessages, createOmpAccumulator, mapOmpEvent } from "./event-mapper.js";
 import { type SpawnedOmpProcess, spawnOmpProcess } from "./process.js";
 import { parseOmpLine } from "./wire.js";
@@ -39,7 +39,7 @@ export interface OmpBackendOptions {
    *  entry path). */
   args?: readonly string[];
   /** Extra env applied over the parent process env (inherited by the
-   *  child, like CODING_AGENT_BIN's env merge). */
+   *  child, like OMA_BIN's env merge). */
   env?: Readonly<Record<string, string | undefined>>;
   abortGraceMs?: number;
 }

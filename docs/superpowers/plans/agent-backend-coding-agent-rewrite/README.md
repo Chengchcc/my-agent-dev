@@ -1,4 +1,4 @@
-# Agent Backend + Coding Agent Rewrite Plans
+# Agent Backend + Oma Rewrite Plans
 
 ## Start here
 
@@ -12,8 +12,8 @@
 |---|---|---|---:|
 | 0 | [One Agent Backend Language](./phase-0-one-agent-backend-language.md) | Shared Run input/event/outcome contract | See plan |
 | 1 | [Durable Agent Context and Runs](./phase-1-durable-agent-context-and-runs.md) | Product facts, branches, runs, queue | See plan |
-| 2 | [Complete Coding Agent](./phase-2-complete-coding-agent.md) | New loop/session/model/tool runtime | See plan |
-| 3 | [Coding Agent Runs Independently](./phase-3-coding-agent-runs-independently.md) | Independent service + Worker + Adapter | See plan |
+| 2 | [Complete Oma](./phase-2-complete-oma.md) | New loop/session/model/tool runtime | See plan |
+| 3 | [Oma Runs Independently](./phase-3-oma-runs-independently.md) | Independent service + Worker + Adapter | See plan |
 | 4 | [Product Backend Executes Agent Runs](./phase-4-product-backend-executes-agent-runs.md) | Run execution, Product Tools, atomic commit | See plan |
 | 5 | [All Product Flows Use Agent Runs](./phase-5-all-product-flows-use-agent-runs.md) | Conversation/Cron/Loop/Skill Pack cutover; 续：Run-centric rewrite（child-process CLI） | See plan |
 | 6 | [Only New Execution Remains](./phase-6-only-new-execution-remains.md) | Old Agent/checkpoint path deleted | See plan |
@@ -47,7 +47,7 @@ Public facts:
 Conversation History + Agent Context + Agent Run
 
 Execution:
-Agent Backend → Claude Code / Codex / OpenCode / Coding Agent
+Agent Backend → Claude Code / Codex / OpenCode / Oma
 
 Internal caches:
 execution session + Coding Session
@@ -55,5 +55,5 @@ execution session + Coding Session
 
 ## Source specs
 
-- `docs/superpowers/specs/agent-backend-coding-agent-rewrite/README.md`
+- `docs/superpowers/specs/agent-backend-oma-rewrite/README.md`
 - `docs/architecture/README.md`

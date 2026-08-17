@@ -3,7 +3,7 @@ id: architecture.index
 title: 架构 Wiki 首页
 status: current
 owners: architecture
-summary: "当前架构:Product Backend 保存 Conversation History 与 Agent Context,创建 Agent Run;四 Agent Backend(coding-agent/claude/pi/omp)为每个 Run spawn 一次性子进程;Agent 配置与记忆住在工作区文件里(Workspace Bridge 桥接);对话是单 Agent 的 session 产品态投影(ADR 0021)。"
+summary: "当前架构:Product Backend 保存 Conversation History 与 Agent Context,创建 Agent Run;四 Agent Backend(oma/claude/pi/omp)为每个 Run spawn 一次性子进程;Agent 配置与记忆住在工作区文件里(Workspace Bridge 桥接);对话是单 Agent 的 session 产品态投影(ADR 0021)。"
 depends_on:
 used_by:
 ---
@@ -15,7 +15,7 @@ used_by:
 ```text
 Product Backend
 → durable Agent Run
-→ Agent Backend(按 kind:coding-agent / claude / pi / omp)
+→ Agent Backend(按 kind:oma / claude / pi / omp)
 → spawn one-shot child
 → (自研)stdin/stdout JSONL RPC / (CLI)argv+stdin
 → native session 续接(cliSessionRef 透传)
@@ -52,10 +52,10 @@ Product Backend
 
 1. [Agent 工作区与多后端](./agents/workspace-and-backends.md)
 2. [Agent Backend](./execution/agent-backend.md)
-3. [Coding Agent](./runtime/coding-agent.md)
-4. [Coding Agent Session](./runtime/coding-agent-session.md)
-5. [Coding Agent Prompt 与 Context](./runtime/coding-agent-prompt.md)
-6. [Coding Agent Provider 与 ModelRuntime](./runtime/coding-agent-models.md)
+3. [Oma](./runtime/oma.md)
+4. [Oma Session](./runtime/oma-session.md)
+5. [Oma Prompt 与 Context](./runtime/oma-prompt.md)
+6. [Oma Provider 与 ModelRuntime](./runtime/oma-models.md)
 
 ### Task / Cron / Loop
 
@@ -75,10 +75,10 @@ Product Backend
 | Agent Context | Agent 实际消费和保留的语义历史 |
 | Context Branch | Agent Context 中一条可 fork/rollback 的历史路径 |
 | Agent Run | Context Branch 上的一次持久产品执行(唯一执行身份) |
-| Agent Backend | 执行 Agent Run 的引擎边界(四个实现:coding-agent / claude / pi / omp) |
+| Agent Backend | 执行 Agent Run 的引擎边界(四个实现:oma / claude / pi / omp) |
 | Workspace Bridge | 把 skill/mcp/product-tools 幂等桥接进工作区文件的后端机制 |
 | Product Tool | Conversation History、审批等产品能力 |
-| Coding Agent | 本仓库自研、无 UI 的一次性 CLI 执行引擎 |
+| Oma | 本仓库自研、无 UI 的一次性 CLI 执行引擎 |
 
 ## 设计约束
 
@@ -93,7 +93,7 @@ Agent Backend 为每个 Run spawn 一次性子进程,按 kind 选实现。
 - Streaming 不进入 Conversation History 或 Agent Context。
 - Agent 最终 Message 与 Context 引用必须同事务提交(agent_run_id 唯一标记)。
 - Product Tools 的权限和事实归 Product Backend。
-- Coding Agent 的 loop、retry、compaction、todo 和 skill 加载都是子进程内部实现。
+- Oma 的 loop、retry、compaction、todo 和 skill 加载都是子进程内部实现。
 
 ## 结构化入口
 

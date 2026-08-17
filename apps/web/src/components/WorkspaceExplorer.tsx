@@ -7,7 +7,7 @@ import { fieldClass } from "@/lib/form-styles";
 
 /** Read-only workspace file browser (ADR 0003): directory tree + file
  *  content. Backs the agent detail "workspace" tab — the workspace files
- *  (AGENTS.md/SOUL.md/USER.md/agent.yml/knowledge/.agent) are the agent's
+ *  (AGENTS.md/SOUL.md/USER.md/agent.yml/knowledge/.oma) are the agent's
  *  config truth; this view reads them, never writes. */
 
 export interface WorkspaceEntry {

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
-import type { BackendModelRef } from "@my-agent-team/agent-backend";
-import type { ItemState, LoopState, Verdict } from "@my-agent-team/loop";
+import type { BackendModelRef } from "@chengchenccc/agent-backend";
+import type { ItemState, LoopState, Verdict } from "@chengchenccc/loop";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";
@@ -407,7 +407,7 @@ async function writeDefaultLoopMd(
   settingsSvc?: SettingsService,
 ): Promise<void> {
   // LOOP.md stores the FULL canonical model ID (<provider>/<model>) - the
-  // same key the Coding Agent catalog validates.
+  // same key the Oma catalog validates.
   const genModel =
     settingsSvc?.get<string>("loop.generatorModel") ?? "anthropic/claude-sonnet-4-20250514";
   const evalModel =

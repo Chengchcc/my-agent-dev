@@ -367,7 +367,7 @@ test("reconcileAgentResources bridges mcp + product tools into extra roots", () 
   const wt = tmpWorkspace();
   reconcileAgentResources({
     workspacePath: ws,
-    kind: "coding_agent",
+    kind: "oma",
     skillPacks: [],
     mcpServers: [{ name: "product-tools", transport: "sse", url: "http://127.0.0.1:3005/sse", bearerTokenEnv: "PRODUCT_TOOLS_RUN_TOKEN" }],
     productTools: [{ name: "history_recent" }],
@@ -375,7 +375,7 @@ test("reconcileAgentResources bridges mcp + product tools into extra roots", () 
     extraRoots: [wt],
   });
   expect(existsSync(join(wt, ".mcp.json"))).toBe(true);
-  expect(existsSync(join(wt, ".agent", "product-tools.json"))).toBe(true);
+  expect(existsSync(join(wt, ".oma", "product-tools.json"))).toBe(true);
 });
 ```
 

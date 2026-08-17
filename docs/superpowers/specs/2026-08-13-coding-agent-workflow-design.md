@@ -1,14 +1,14 @@
-# Coding Agent 动态工作流(workflow)设计
+# Oma 动态工作流(workflow)设计
 
 - 日期:2026-08-13
-- 分支:`feat/coding-agent-workflow`
+- 分支:`feat/oma-workflow`
 - 状态:设计已获批(问卷 + 四段设计 + loop 消费者方向)
 
 ## 1. 背景与目标
 
 参考 Claude Code 的 dynamic workflow:模型把"大规模编排"写成脚本(或直接调用编排原语),运行时执行,会话/run 保持响应。目标:
 
-1. **第一步(子代理原语)**:coding-agent 获得进程内大规模并行子代理能力——模型用工具扇出 N 个子代理并发执行、聚合结果。
+1. **第一步(子代理原语)**:oma 获得进程内大规模并行子代理能力——模型用工具扇出 N 个子代理并发执行、聚合结果。
 2. **第二步(脚本运行时)**:模型把编排写成可读、可改、可重跑的 JS 脚本(`agent()` / `pipeline()` 原语),沙箱求值。
 3. **loop 改造(首个消费者)**:backend 的 loop feature 重构为"bundled workflow + 产品薄控制面"——持久状态载入脚本 meta,纯 reducer 降级为 meta 写回校验器。
 
@@ -54,7 +54,7 @@ run_workflow({ items: [{ prompt, schema?, label? }], concurrency? })
 
 ## 4. 事件契约
 
-### 4.1 child 内部事件(`CodingAgentLoopEvent` 新增)
+### 4.1 child 内部事件(`OmaLoopEvent` 新增)
 
 ```ts
 { type: "workflow_started",         workflowId, label, agentCount }
@@ -73,7 +73,7 @@ run_workflow({ items: [{ prompt, schema?, label? }], concurrency? })
 1. **无 stage 概念**(第一步是平铺扇出;第二步 A 的 `pipeline()` 引入阶段时再加 `stage` 字段)。
 2. **子代理的工具事件不上线**(agent 级事件足够;钻取留后续)。
 3. **事件不派生终态**:run 的 outcome 仍是唯一终态权威(沿用现有契约原则)。
-4. **仅 coding-agent 后端**产生这些事件(claude/pi/omp 无 workflow;union 共享但其他后端永不 emit)。
+4. **仅 oma 后端**产生这些事件(claude/pi/omp 无 workflow;union 共享但其他后端永不 emit)。
 5. 与 feat/agent-workspace 合并时,`CoreBackendEvent` union 两线都有新增,预期小冲突。
 
 ## 5. 脚本求值器(第二步 A)

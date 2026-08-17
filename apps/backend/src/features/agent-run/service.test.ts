@@ -69,10 +69,10 @@ describe("Agent Run service: frozen Run config", () => {
     const result = await svc.enqueueAndAcquire({
       conversationId,
       agentMemberId,
-      backendKind: "coding_agent",
+      backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "run" },
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       idempotencyKey: `key-cfg1`,
     });
@@ -96,10 +96,10 @@ describe("Agent Run service: frozen Run config", () => {
     const result = await svc.enqueueAndAcquire({
       conversationId,
       agentMemberId,
-      backendKind: "coding_agent",
+      backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "run" },
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       idempotencyKey: `key-cfg2`,
       systemPrompt: "explicit",
@@ -124,10 +124,10 @@ describe("Agent Run service: frozen Run config", () => {
       svc.enqueueAndAcquire({
         conversationId,
         agentMemberId,
-        backendKind: "coding_agent",
+        backendKind: "oma",
         mode: "normal",
         message: { role: "user", text: "nope" },
-        defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+        defaultModel: { backendKind: "oma", modelId: "model-a" },
         configRevision: 1,
         idempotencyKey: "key-disabled",
       }),
@@ -141,10 +141,10 @@ describe("Agent Run service", () => {
     const result = await runService.enqueueAndAcquire({
       conversationId,
       agentMemberId,
-      backendKind: "coding_agent",
+      backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "run" },
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       idempotencyKey: `key-s1`,
     });
@@ -157,20 +157,20 @@ describe("Agent Run service", () => {
     await runService.enqueueAndAcquire({
       conversationId,
       agentMemberId,
-      backendKind: "coding_agent",
+      backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "first" },
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       idempotencyKey: `key-s2-1`,
     });
     const result2 = await runService.enqueueAndAcquire({
       conversationId,
       agentMemberId,
-      backendKind: "coding_agent",
+      backendKind: "oma",
       mode: "steer",
       message: { role: "user", text: "steer" },
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       idempotencyKey: `key-s2-2`,
     });
@@ -184,10 +184,10 @@ describe("Agent Run service", () => {
     const r1 = await runService.enqueueAndAcquire({
       conversationId,
       agentMemberId,
-      backendKind: "coding_agent",
+      backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "first" },
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       idempotencyKey: `key-s3-1`,
     });
@@ -197,13 +197,9 @@ describe("Agent Run service", () => {
     await runService.finalizeRun(r1.run!.runId, { status: "completed" });
 
     // Change model on the branch
-    const branch = await ctxService.getOrCreateDefaultBranch(
-      conversationId,
-      agentMemberId,
-      "coding_agent",
-    );
+    const branch = await ctxService.getOrCreateDefaultBranch(conversationId, agentMemberId, "oma");
     await ctxService.changeModel(branch.branchId, branch.revision, {
-      backendKind: "coding_agent",
+      backendKind: "oma",
       modelId: "model-b",
     });
 
@@ -211,10 +207,10 @@ describe("Agent Run service", () => {
     const r2 = await runService.enqueueAndAcquire({
       conversationId,
       agentMemberId,
-      backendKind: "coding_agent",
+      backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "second" },
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       idempotencyKey: `key-s3-2`,
     });
@@ -262,20 +258,20 @@ describe("Agent Run cross-feature scenarios", () => {
     const r1 = await runService.enqueueAndAcquire({
       conversationId,
       agentMemberId: "mem-iso-a",
-      backendKind: "coding_agent",
+      backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "run-a" },
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       idempotencyKey: `key-iso-a`,
     });
     const r2 = await runService.enqueueAndAcquire({
       conversationId,
       agentMemberId: "mem-iso-b",
-      backendKind: "coding_agent",
+      backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "run-b" },
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       idempotencyKey: `key-iso-b`,
     });
@@ -291,10 +287,10 @@ describe("Agent Run cross-feature scenarios", () => {
     await runService.enqueueAndAcquire({
       conversationId,
       agentMemberId,
-      backendKind: "coding_agent",
+      backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "run" },
-      defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
       configRevision: 1,
       idempotencyKey: `key-ref`,
     });

@@ -1,7 +1,7 @@
 "use client";
 
-import { conversationEvents } from "@my-agent-team/api-contract";
-import { deserializeLedgerContent, extractText } from "@my-agent-team/message";
+import { conversationEvents } from "@chengchenccc/api-contract";
+import { deserializeLedgerContent, extractText } from "@chengchenccc/message";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";

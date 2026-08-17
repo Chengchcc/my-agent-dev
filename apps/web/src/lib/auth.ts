@@ -1,4 +1,4 @@
-import { parseEnv } from "@my-agent-team/config";
+import { parseEnv } from "@chengchenccc/config";
 import { clearCookieHeader, createSession, readSession, sessionCookieHeader } from "./session";
 
 let _env: ReturnType<typeof parseEnv> | undefined;

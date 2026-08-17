@@ -1,4 +1,4 @@
-import type { BackendModelRef } from "@my-agent-team/agent-backend";
+import type { BackendModelRef } from "@chengchenccc/agent-backend";
 import type { AgentConfig } from "./agent-config.js";
 
 /** Agent row (file-first, ADR 0020 decision 1): the DB keeps only the FK
@@ -24,7 +24,7 @@ export interface CreateAgentInput {
   /** Top-level kill switch (agent.yml enabled). Defaults to true. */
   enabled?: boolean;
   /** Optional workspace override (agent-hub 预留): an absolute path the
-   *  coding agent runs in (its AGENTS.md/CLAUDE.md take effect there).
+   *  oma runs in (its AGENTS.md/CLAUDE.md take effect there).
    *  Defaults to the managed <dataDir>/agents/<id>. */
   workspacePath?: string;
   reasoningEffort?: "none" | "low" | "high" | "max" | null;

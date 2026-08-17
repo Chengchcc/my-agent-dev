@@ -8,7 +8,7 @@ summary: "Loop 是统一的工作系统--所有工作（自动发现或手动添
 depends_on:
   - foundations.issue
   - foundations.cron-job
-  - agent.agent
+  - agent.oma
 used_by:
   - backend.loop-runner
 ---
@@ -75,7 +75,7 @@ evaluator 拒绝且 attempt < maxRetries → 回 `fixing`（带拒绝理由）�
 
 ## Generator 和 Evaluator 是分离的 Agent
 
-不同 model、不同 system prompt、不同的 Agent Run（各自 spawn 独立 coding-agent 子进程，run idempotency key 区分）。Evaluator 默认立场："ASSUME broken until proven otherwise"。验证通过执行测试和操作页面（MCP），不只读代码。
+不同 model、不同 system prompt、不同的 Agent Run（各自 spawn 独立 oma 子进程，run idempotency key 区分）。Evaluator 默认立场："ASSUME broken until proven otherwise"。验证通过执行测试和操作页面（MCP），不只读代码。
 
 结构化 verdict（PASS/REJECT + 证据）解析后写入 item 的 result 字段，在 review card 里展示。
 

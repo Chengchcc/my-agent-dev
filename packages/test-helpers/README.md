@@ -1,4 +1,4 @@
-# @my-agent-team/test-helpers
+# @chengchenccc/test-helpers
 
 给测试用的 model test double。它提供一个按脚本回放的假 `ChatModel`，让你在不调真实 API 的情况下测试 agent 的行为。
 
@@ -25,7 +25,7 @@ agent 的运行内核以 `ChatModel` 接口为中心。测试这套内核时，�
 ## 怎么用
 
 ```ts
-import { echoModel, type EchoScript } from "@my-agent-team/test-helpers";
+import { echoModel, type EchoScript } from "@chengchenccc/test-helpers";
 
 const script: EchoScript = {
   turns: [

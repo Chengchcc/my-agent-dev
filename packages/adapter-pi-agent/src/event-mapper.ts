@@ -5,8 +5,8 @@
  *  Usage extraction differs from omp: pi's `turn_end` message carries the
  *  authoritative usage (solo's pi parser reads it there too). */
 
-import type { BackendEvent, Usage } from "@my-agent-team/agent-backend";
-import type { Message } from "@my-agent-team/message";
+import type { BackendEvent, Usage } from "@chengchenccc/agent-backend";
+import type { Message } from "@chengchenccc/message";
 import type { PiEvent, PiMessageEvent } from "./wire.js";
 
 export interface PiRunAccumulator {

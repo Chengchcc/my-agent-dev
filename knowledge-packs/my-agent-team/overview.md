@@ -24,7 +24,7 @@ plus a Loop automation engine that subsumes issue triage and cron-based work.
 
 - apps/backend: Elysia server, services, routes, cron, Loop orchestration
 - apps/web: Next.js App Router UI
-- apps/coding-agent: Pi-like CLI child process (run-centric RPC)
+- apps/oh-my-agent: Pi-like CLI child process (run-centric RPC)
 - apps/lark-bot: Lark/Feishu IM integration
 - packages/core: protocol types + run/collectStream
 - packages/agent: agent lifecycle, createAgentSession, plugins, context pipeline

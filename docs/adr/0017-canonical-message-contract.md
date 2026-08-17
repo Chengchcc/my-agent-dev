@@ -2,7 +2,7 @@
 
 **日期**: 2026-08-11
 **状态**: accepted
-**范围**: `@my-agent-team/message`（契约定义）、`@my-agent-team/agent-backend`（outcome 协议）、`packages/agent`（runtime 输出）、`packages/adapter-coding-agent`（adapter 映射）、`apps/backend`（ledger 提交 + 身份索引）、`apps/web`（tool 消息渲染）、`packages/ai`（provider 纯转换）
+**范围**: `@chengchenccc/message`（契约定义）、`@chengchenccc/agent-backend`（outcome 协议）、`packages/agent`（runtime 输出）、`packages/adapter-oma-agent`（adapter 映射）、`apps/backend`（ledger 提交 + 身份索引）、`apps/web`（tool 消息渲染）、`packages/ai`（provider 纯转换）
 
 ---
 
@@ -26,7 +26,7 @@ assistant: [text, tool_use, tool_result]
 
 - backend projection 拆解 + anthropic serializer 拆解：同一规则写两遍
 - openai-compat provider 没覆盖（静默丢 tool_result → 孤儿 tool_calls）
-- 每加一个 coding agent 类型 = 一个新的可能产出坏消息的生产者；每加一个 provider = 一个必须自己防御的消费者
+- 每加一个 oma 类型 = 一个新的可能产出坏消息的生产者；每加一个 provider = 一个必须自己防御的消费者
 - 复杂度随 adapter 数量线性增长，不收敛
 
 ### 3. 根因：合法性不是契约，是各消费方的自觉
@@ -35,7 +35,7 @@ assistant: [text, tool_use, tool_result]
 
 ## 决策
 
-### 1. Canonical 消息契约（协议层，`@my-agent-team/message`）
+### 1. Canonical 消息契约（协议层，`@chengchenccc/message`）
 
 | role | 允许内容 | 禁止 |
 |------|---------|------|
@@ -46,7 +46,7 @@ assistant: [text, tool_use, tool_result]
 辅助函数（协议层单一实现）：
 
 ```typescript
-// @my-agent-team/message
+// @chengchenccc/message
 normalizeCanonicalMessages(messages: Message[]): Message[];
 // assistant 含 tool_result → 拆成 assistant(tool_use) + tool(tool_result)（孤儿丢弃）
 // 其余原样透传。形状驱动，与 agent 类型无关。
@@ -56,7 +56,7 @@ normalizeCanonicalMessages(messages: Message[]): Message[];
 
 `commitCompletedRun` 是**所有 adapter 输出的唯一入口**。在此对 run 的消息序列做 `normalizeCanonicalMessages`：
 
-- 一个点、对所有 coding agent 类型通用
+- 一个点、对所有 oma 类型通用
 - 换 adapter 不需要改 backend —— 契约由边界强制，不靠生产方自觉
 - 归一化结果保证"ledger 里任何序列都能被任意 provider 直接回灌"
 
@@ -98,10 +98,10 @@ assistant(text)              ← 最终答案
 
 ## 实现顺序
 
-1. `@my-agent-team/message`：契约 + `normalizeCanonicalMessages`（Wave 1）
-2. `@my-agent-team/agent-backend`：outcome 携带消息序列（Wave 2）
+1. `@chengchenccc/message`：契约 + `normalizeCanonicalMessages`（Wave 1）
+2. `@chengchenccc/agent-backend`：outcome 携带消息序列（Wave 2）
 3. `packages/agent`：runtime 输出 canonical 序列（Wave 3）
-4. `packages/adapter-coding-agent` + `apps/coding-agent`：序列透传（Wave 3）
+4. `packages/adapter-oma-agent` + `apps/oh-my-agent`：序列透传（Wave 3）
 5. `apps/backend`：多消息提交 + 身份索引迁移（Wave 4）
 6. `apps/web`：`groupTurns`/`isConclusionMessage` 支持 tool 消息（Wave 5）
 7. 完整回归：typecheck + lint + 全量测试 + web build + 浏览器多轮实测（Wave 6）
@@ -111,7 +111,7 @@ assistant(text)              ← 最终答案
 ```text
 adapter 边界                     ledger（canonical 序列）        provider
 ┌───────────────────┐   ┌────────────────────────┐   ┌────────────────┐
-│ coding agent X    │   │ user                    │   │ 纯转换          │
+│ oma X    │   │ user                    │   │ 纯转换          │
 │ → run 消息序列     │ → │ assistant(tool_use)     │ → │ tool→user       │ → wire
 │ （canonical）      │   │ tool(tool_result)       │   │ （无拆解）       │
 │ normalizeCanonical│   │ assistant(text)         │   │                │

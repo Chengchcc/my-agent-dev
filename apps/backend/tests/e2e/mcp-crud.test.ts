@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { McpClientManager } from "@my-agent-team/adapter-mcp";
+import type { McpClientManager } from "@chengchenccc/adapter-mcp";
 import { Elysia } from "elysia";
 import { fileMcpServerAdapter } from "../../src/features/mcp/adapter-file.js";
 import { mcpRoutes } from "../../src/features/mcp/http.js";

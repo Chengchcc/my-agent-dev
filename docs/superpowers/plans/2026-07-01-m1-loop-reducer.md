@@ -4,7 +4,7 @@
 
 **Goal:** 建 `packages/loop/` 新包，落地 `loopReducer(state, action, opts?) → state` 纯函数 + 全量单测。
 
-**Architecture:** 纯 TypeScript 类型 + 纯函数。无依赖（不 import 任何 `@my-agent-team/*` 包）。L4 级（与 harness 同级），但只含类型和纯逻辑——不调 AgentSession、不读文件、不碰网络。
+**Architecture:** 纯 TypeScript 类型 + 纯函数。无依赖（不 import 任何 `@chengchenccc/*` 包）。L4 级（与 harness 同级），但只含类型和纯逻辑——不调 AgentSession、不读文件、不碰网络。
 
 **Tech Stack:** TypeScript, bun:test
 
@@ -24,7 +24,7 @@
 
 ```json
 {
-  "name": "@my-agent-team/loop-engine",
+  "name": "@chengchenccc/loop-engine",
   "version": "0.1.0",
   "type": "module",
   "main": "./src/index.ts",

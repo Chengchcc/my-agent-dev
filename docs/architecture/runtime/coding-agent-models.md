@@ -1,26 +1,26 @@
 ---
-id: runtime.coding-agent-models
-title: Coding Agent Provider 与 ModelRuntime
+id: runtime.oma-models
+title: Oma Provider 与 ModelRuntime
 status: current
 owners: architecture
-summary: "模型系统由 packages/ai 提供：Provider 注册制 + Model 元数据 + ModelRuntime（createModelRuntime）。Product Backend 只保存 BackendModelRef（backendKind=coding_agent + modelId）；子进程内解析并 stream。无 daemon CredentialStore —— 凭证来自 Product Backend 环境。"
+summary: "模型系统由 packages/ai 提供：Provider 注册制 + Model 元数据 + ModelRuntime（createModelRuntime）。Product Backend 只保存 BackendModelRef（backendKind=oma + modelId）；子进程内解析并 stream。无 daemon CredentialStore —— 凭证来自 Product Backend 环境。"
 depends_on:
-  - runtime.coding-agent
+  - runtime.oma
 used_by:
-  - runtime.coding-agent-prompt
+  - runtime.oma-prompt
 ---
 
-# Coding Agent Provider 与 ModelRuntime
+# Oma Provider 与 ModelRuntime
 
-Coding Agent 直接调用模型 API（不是外部 Runtime 的包装器）。模型系统在 `packages/ai`：Provider 注册制、Model 元数据（cost/contextWindow/maxTokens）、`createModelRuntime()` 统一解析与 stream。
+Oma 直接调用模型 API（不是外部 Runtime 的包装器）。模型系统在 `packages/ai`：Provider 注册制、Model 元数据（cost/contextWindow/maxTokens）、`createModelRuntime()` 统一解析与 stream。
 
 ## 模型配置由谁负责
 
 ```text
 Product Backend
-  owns BackendModelRef { backendKind: "coding_agent", modelId }（agent 记录 / Run 快照）
+  owns BackendModelRef { backendKind: "oma", modelId }（agent 记录 / Run 快照）
 
-Coding Agent（子进程）
+Oma（子进程）
   resolveModel(modelId) → Provider.stream(...)
 ```
 
@@ -44,7 +44,7 @@ Context Branch 的 `model_change` entry 决定下一个 Agent Run 的 effective 
 
 ## 关联页面
 
-- [Coding Agent](./coding-agent.md)
-- [Coding Agent Prompt 与 Context](./coding-agent-prompt.md)
-- [Coding Agent Session](./coding-agent-session.md)
+- [Oma](./oma.md)
+- [Oma Prompt 与 Context](./oma-prompt.md)
+- [Oma Session](./oma-session.md)
 - [Agent Backend](../execution/agent-backend.md)

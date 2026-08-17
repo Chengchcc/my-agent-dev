@@ -1,11 +1,11 @@
-import type { BackendModelRef } from "@my-agent-team/agent-backend";
-import { debugLog } from "@my-agent-team/agent-backend";
+import type { BackendModelRef } from "@chengchenccc/agent-backend";
+import { debugLog } from "@chengchenccc/agent-backend";
 import {
   type AgentMember,
   Conversation as ConversationSchema,
   resolveTriggerTargets,
-} from "@my-agent-team/conversation";
-import type { Message } from "@my-agent-team/message";
+} from "@chengchenccc/conversation";
+import type { Message } from "@chengchenccc/message";
 import {
   ContentBlockSchema,
   extractText,
@@ -13,7 +13,7 @@ import {
   MessageRevisionSchema,
   serializeMessageRevision,
   systemMessageId,
-} from "@my-agent-team/message";
+} from "@chengchenccc/message";
 import { DomainError } from "../../infra/domain-errors.js";
 import type { AgentContextService } from "../agent-context/service.js";
 import type { BranchInputMode } from "../agent-run/domain.js";
@@ -270,7 +270,7 @@ class ConversationServiceImpl implements ConversationService {
     // steer (ADR 0002): a steer input is queued as the NEXT turn's input
     // instead of being injected into a live child (and never silently
     // dropped — the input is durable in branch_input_queue).
-    const cliBackend = kind !== "coding_agent";
+    const cliBackend = kind !== "oma";
     // Auto-inferred routing needs three states, not two:
     //   live child      -> steer (routable now)
     //   dispatch in flight (pre-acceptance) -> follow_up (queued, NEVER aborted)

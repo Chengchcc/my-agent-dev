@@ -47,7 +47,7 @@ const deps: ConversationServiceDeps = {
   isLive: () => false,
   isInflight: () => false,
   abortStaleRun: async () => {},
-  resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
+  resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "m" }),
   maxConsecutiveAgentHops: () => 8,
   idGen,
   agentRunService: {
@@ -67,7 +67,7 @@ const deps: ConversationServiceDeps = {
           branchId: "b",
           conversationId: input.conversationId,
           agentMemberId: input.agentMemberId,
-          modelRef: { backendKind: "coding_agent", modelId: "m" },
+          modelRef: { backendKind: "oma", modelId: "m" },
           status: "running",
           idempotencyKey: input.idempotencyKey,
           terminalResult: null,

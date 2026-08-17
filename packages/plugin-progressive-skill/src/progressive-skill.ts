@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { MetaSectionProvider, Plugin, PluginTool } from "@my-agent-team/agent";
+import type { MetaSectionProvider, Plugin, PluginTool } from "@chengchenccc/agent";
 
 function isWithinRoot(root: string, target: string): boolean {
   try {

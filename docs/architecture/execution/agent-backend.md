@@ -1,9 +1,9 @@
 ---
-id: execution.agent-backend
+id: execution.oma-backend
 title: Agent Backend
 status: current
 owners: architecture
-summary: "Agent Backend 是执行 Agent Run 的引擎边界。当前唯一实现是 CodingAgentBackend：每个 Run spawn 一个一次性 coding-agent 子进程，stdin/stdout JSONL RPC，BackendRunOutcome 是唯一终态。无跨 Run session、无 resume、无 daemon。"
+summary: "Agent Backend 是执行 Agent Run 的引擎边界。当前唯一实现是 OmaBackend：每个 Run spawn 一个一次性 oma 子进程，stdin/stdout JSONL RPC，BackendRunOutcome 是唯一终态。无跨 Run session、无 resume、无 daemon。"
 depends_on:
   - agents.context
 used_by:
@@ -19,12 +19,12 @@ Agent Backend 是 Product Backend 与执行引擎之间的协议边界。Product
 ```text
 Agent Run
   → Agent Backend
-      → spawn one-shot coding-agent child
+      → spawn one-shot oma child
       → Live Updates
       → BackendRunOutcome
 ```
 
-当前仓库只有一个 Agent Backend 实现：`CodingAgentBackend`（`packages/adapter-coding-agent`）。它不是一个常驻服务 —— 每个 Agent Run 独立 spawn 一个 `coding-agent --mode rpc` 子进程，子进程完成 outcome 后自行退出。
+当前仓库只有一个 Agent Backend 实现：`OmaBackend`（`packages/adapter-oma-agent`）。它不是一个常驻服务 —— 每个 Agent Run 独立 spawn 一个 `oma --mode rpc` 子进程，子进程完成 outcome 后自行退出。
 
 ## Agent Backend 协议
 
@@ -89,21 +89,21 @@ stderr               logs only（尾部 + 脱敏由 Adapter 处理）
 ```
 
 - 每个 command 有 id；child 先响应 `response { id, success }` 再继续。
-- 事件是 `RunEventEnvelope { id, type, data }`，由契约包（`@my-agent-team/agent-backend`）在两侧用同一 mapping 映射为 `backend.coding_agent.*` 事件。
+- 事件是 `RunEventEnvelope { id, type, data }`，由契约包（`@chengchenccc/agent-backend`）在两侧用同一 mapping 映射为 `backend.oma.*` 事件。
 - 一个 Run → 一个 outcome envelope → flush → child 自行退出。Adapter 不依赖父进程关 stdin。
 
 ## Adapter 职责
 
-- spawn 子进程（`CODING_AGENT_BIN`）并做 child 并发上限（maxConcurrentRuns）；
+- spawn 子进程（`OMA_BIN`）并做 child 并发上限（maxConcurrentRuns）；
 - JSONL 读写、command id 匹配、acceptance 排序（先记录 acceptance 再处理后续 command）；
 - steer/abort 转发给 live Run；
 - stderr 尾部与脱敏；
 - event/outcome 映射（`mapRunEvent` / `mapRunOutcome`）；
 - child recycle（outcome 后回收 spawn slot）。
 
-## Coding Agent 如何接入
+## Oma 如何接入
 
-`coding-agent` 是独立 CLI（print/json/rpc 三种模式），由 Adapter 以 `--mode rpc` spawn。子进程内 `createCodingAgentRuntime()` 构造 per-Run Runtime（`packages/agent` 的 CodingAgentSession + in-memory SessionStore），seed 时把 full Product history + meta + input 原子写入，然后跑 loop。Runtime 的 model/tool loop、native tools、retry、compaction、todo、progressive skill 全部在子进程内，Run 结束即销毁。
+`oma` 是独立 CLI（print/json/rpc 三种模式），由 Adapter 以 `--mode rpc` spawn。子进程内 `createOmaRuntime()` 构造 per-Run Runtime（`packages/agent` 的 OmaSession + in-memory SessionStore），seed 时把 full Product history + meta + input 原子写入，然后跑 loop。Runtime 的 model/tool loop、native tools、retry、compaction、todo、progressive skill 全部在子进程内，Run 结束即销毁。
 
 ## 不变量
 
@@ -113,12 +113,12 @@ stderr               logs only（尾部 + 脱敏由 Adapter 处理）
 4. Terminal `BackendRunOutcome` 是 Agent Run 终态唯一来源。
 5. 同一 runId + 同 payload 幂等（重放接受结果）；同 runId + 不同 payload 冲突。
 6. Product Backend 不读取 child 的私有 transcript；Runtime 原生工具留在 child。
-7. 事件映射在契约包内两侧一致，`backend.coding_agent.*` 是扩展命名空间，产品状态机不依赖它。
+7. 事件映射在契约包内两侧一致，`backend.oma.*` 是扩展命名空间，产品状态机不依赖它。
 
 ## 关联页面
 
 - [系统总览](../system-overview.md)
 - [Agent Context](../agents/context.md)
 - [后端总览](../backend/overview.md)
-- [Coding Agent](../runtime/coding-agent.md)
+- [Oma](../runtime/oma.md)
 - [Conversation History](../conversation/history.md)

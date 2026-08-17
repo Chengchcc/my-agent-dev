@@ -4,9 +4,9 @@
 
 **Goal:** loopStep() 从 packages/loop 迁到 `apps/backend`，接上真实 SessionFactory——generator 改代码、evaluator 验证、verdict 推进 step。
 
-**Architecture:** packages/loop 删 loop-step.ts/loop-step.test.ts，只留纯逻辑。backend loop-step.ts 直接 import `@my-agent-team/loop` 的 reducer + state-md + parseVerdictMd，复用现有 SessionFactory。
+**Architecture:** packages/loop 删 loop-step.ts/loop-step.test.ts，只留纯逻辑。backend loop-step.ts 直接 import `@chengchenccc/loop` 的 reducer + state-md + parseVerdictMd，复用现有 SessionFactory。
 
-**Tech Stack:** TypeScript, @my-agent-team/harness (AgentSession), bun:test
+**Tech Stack:** TypeScript, @chengchenccc/harness (AgentSession), bun:test
 
 **Reference:** `docs/superpowers/specs/2026-07-01-m3-agent-session-wiring.md`
 
@@ -178,8 +178,8 @@ import {
   parseInboxMd,
   formatInboxMd,
   parseVerdictMd,
-} from "@my-agent-team/loop";
-import type { LoopState, LoopAction } from "@my-agent-team/loop";
+} from "@chengchenccc/loop";
+import type { LoopState, LoopAction } from "@chengchenccc/loop";
 import type { SessionFactory } from "../../run/session-factory.js"; // 调整路径
 
 type ReviewAction = {
@@ -424,8 +424,8 @@ git add apps/backend/src/features/loop/loop-step.ts && git commit -m "feat(backe
 ```typescript
 import { describe, test, expect, afterEach } from "bun:test";
 import { loopStep } from "./loop-step.js";
-import { parseStateMd, formatStateMd, parseInboxMd, loopReducer } from "@my-agent-team/loop";
-import type { LoopState } from "@my-agent-team/loop";
+import { parseStateMd, formatStateMd, parseInboxMd, loopReducer } from "@chengchenccc/loop";
+import type { LoopState } from "@chengchenccc/loop";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 
 const TMP = "/tmp/loop-step-m3-test";

@@ -1,4 +1,4 @@
-# @my-agent-team/lark-bot
+# @chengchenccc/lark-bot
 
 把飞书(Lark)当作一个对话 surface 的桥接常驻进程。它让用户能像和普通联系人聊天那样跟 agent 对话:一端连飞书的 IM 事件流,一端连 backend 的会话 API,在两边之间双向翻译。一个 agent 对应一个 lark-bot 进程,由 backend 拉起和管理。
 

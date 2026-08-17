@@ -248,7 +248,7 @@ ctx.context = emptyStore;                         // ← 原 ctx.data = undefine
 **内部字段**：`#data: Ctx | undefined` → 持有一个 store：
 
 ```typescript
-import { type ContextKey, type ContextStore, createContextStore } from "@my-agent-team/framework";
+import { type ContextKey, type ContextStore, createContextStore } from "@chengchenccc/framework";
 
 #pendingContext: ContextStore | undefined;        // 原 #data
 
@@ -282,7 +282,7 @@ this.#pendingContext = undefined;                 // ← 原 this.#data = undefi
 **新增导出 key**（模块顶层，feature 拥有类型）：
 
 ```typescript
-import { defineContext } from "@my-agent-team/framework";
+import { defineContext } from "@chengchenccc/framework";
 
 export interface ConversationContext {
   id: string; surface: string; senderName: string; input: string;
@@ -311,7 +311,7 @@ async beforeModel(ctx, messages) {
 唯一 caller 改一处（`:174`）：
 
 ```typescript
-import { ConversationCtx } from "@my-agent-team/plugin-conversation-context";
+import { ConversationCtx } from "@chengchenccc/plugin-conversation-context";
 
 // 原：session.setData({ id: conversationId, surface, senderName: agentMemberId, input: input ?? "" });
 session.setContext(ConversationCtx, {
@@ -329,7 +329,7 @@ session.prompt(input ?? "", { spanId, origin: { conversationId, agentMemberId: a
 **测试改动**（`conversation-context-plugin.test.ts`，把 `data:` 改成 `context:`）：
 
 ```typescript
-import { createContextStore } from "@my-agent-team/framework";
+import { createContextStore } from "@chengchenccc/framework";
 import { ConversationCtx } from "./conversation-context-plugin.js";
 
 const store = createContextStore();

@@ -29,76 +29,76 @@
       },
     },
     "apps/backend": {
-      "name": "@my-agent-team/backend",
+      "name": "@chengchenccc/backend",
       "version": "0.1.0",
       "dependencies": {
+        "@chengchenccc/adapter-oma-agent": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.12.1",
-        "@my-agent-team/adapter-claude-agent": "workspace:*",
-        "@my-agent-team/adapter-coding-agent": "workspace:*",
-        "@my-agent-team/adapter-mcp": "workspace:*",
-        "@my-agent-team/adapter-omp-agent": "workspace:*",
-        "@my-agent-team/adapter-pi-agent": "workspace:*",
-        "@my-agent-team/agent-backend": "workspace:*",
-        "@my-agent-team/ai": "workspace:*",
-        "@my-agent-team/api-contract": "workspace:*",
-        "@my-agent-team/config": "workspace:*",
-        "@my-agent-team/conversation": "workspace:*",
-        "@my-agent-team/loop": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
-        "@my-agent-team/plugin-progressive-skill": "workspace:*",
-        "@my-agent-team/tools-common": "workspace:*",
+        "@chengchenccc/adapter-claude-agent": "workspace:*",
+        "@chengchenccc/adapter-mcp": "workspace:*",
+        "@chengchenccc/adapter-omp-agent": "workspace:*",
+        "@chengchenccc/adapter-pi-agent": "workspace:*",
+        "@chengchenccc/agent-backend": "workspace:*",
+        "@chengchenccc/ai": "workspace:*",
+        "@chengchenccc/api-contract": "workspace:*",
+        "@chengchenccc/config": "workspace:*",
+        "@chengchenccc/conversation": "workspace:*",
+        "@chengchenccc/loop": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
+        "@chengchenccc/plugin-progressive-skill": "workspace:*",
+        "@chengchenccc/tools-common": "workspace:*",
         "drizzle-orm": "^0.44.0",
         "elysia": "^1.0.0",
         "zod": "^3.23.0",
       },
       "devDependencies": {
-        "@my-agent-team/test-helpers": "workspace:*",
-      },
-    },
-    "apps/coding-agent": {
-      "name": "@my-agent-team/coding-agent",
-      "version": "0.1.0",
-      "bin": {
-        "coding-agent": "./dist/cli.js",
-      },
-      "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.12.1",
-        "@my-agent-team/adapter-mcp": "workspace:*",
-        "@my-agent-team/agent": "workspace:*",
-        "@my-agent-team/agent-backend": "workspace:*",
-        "@my-agent-team/ai": "workspace:*",
-        "@my-agent-team/config": "workspace:*",
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
-        "@my-agent-team/plugin-progressive-skill": "workspace:*",
-        "@my-agent-team/plugin-recap": "workspace:*",
-        "@my-agent-team/plugin-todo": "workspace:*",
-        "@my-agent-team/tools-common": "workspace:*",
-        "zod": "^3.23.0",
-      },
-      "devDependencies": {
-        "@my-agent-team/adapter-coding-agent": "workspace:*",
-        "@my-agent-team/test-helpers": "workspace:*",
-        "bun-types": "latest",
-        "typescript": "^5.7.0",
+        "@chengchenccc/test-helpers": "workspace:*",
       },
     },
     "apps/lark-bot": {
-      "name": "@my-agent-team/lark-bot",
+      "name": "@chengchenccc/lark-bot",
       "version": "0.1.0",
       "dependencies": {
         "@elysiajs/eden": "^1.0.0",
-        "@my-agent-team/api-contract": "workspace:*",
-        "@my-agent-team/backend": "workspace:*",
-        "@my-agent-team/config": "workspace:*",
-        "@my-agent-team/conversation": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
+        "@chengchenccc/api-contract": "workspace:*",
+        "@chengchenccc/backend": "workspace:*",
+        "@chengchenccc/config": "workspace:*",
+        "@chengchenccc/conversation": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
         "drizzle-orm": "^0.44.0",
         "zod": "^3.23.0",
       },
     },
+    "apps/oh-my-agent": {
+      "name": "@chengchenccc/oh-my-agent",
+      "version": "0.1.0",
+      "bin": {
+        "oma": "./dist/cli.js",
+      },
+      "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.12.1",
+        "@chengchenccc/adapter-mcp": "workspace:*",
+        "@chengchenccc/agent": "workspace:*",
+        "@chengchenccc/agent-backend": "workspace:*",
+        "@chengchenccc/ai": "workspace:*",
+        "@chengchenccc/config": "workspace:*",
+        "@chengchenccc/core": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
+        "@chengchenccc/plugin-progressive-skill": "workspace:*",
+        "@chengchenccc/plugin-recap": "workspace:*",
+        "@chengchenccc/plugin-todo": "workspace:*",
+        "@chengchenccc/tools-common": "workspace:*",
+        "zod": "^3.23.0",
+      },
+      "devDependencies": {
+        "@chengchenccc/adapter-oma-agent": "workspace:*",
+        "@chengchenccc/test-helpers": "workspace:*",
+        "bun-types": "latest",
+        "typescript": "^5.7.0",
+      },
+    },
     "apps/web": {
-      "name": "@my-agent-team/web",
+      "name": "@chengchenccc/web",
       "version": "0.1.0",
       "dependencies": {
         "@base-ui/react": "^1.5.0",
@@ -107,11 +107,11 @@
         "@elysiajs/eden": "^1.0.0",
         "@hookform/resolvers": "^4",
         "@monaco-editor/react": "^4.7.0",
-        "@my-agent-team/api-contract": "workspace:*",
-        "@my-agent-team/backend": "workspace:*",
-        "@my-agent-team/config": "workspace:*",
-        "@my-agent-team/conversation": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
+        "@chengchenccc/api-contract": "workspace:*",
+        "@chengchenccc/backend": "workspace:*",
+        "@chengchenccc/config": "workspace:*",
+        "@chengchenccc/conversation": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
         "@radix-ui/react-label": "^2.1.10",
         "@radix-ui/react-slot": "^1.3.0",
         "@tanstack/react-query": "^5.60.0",
@@ -145,23 +145,11 @@
       },
     },
     "packages/adapter-claude-agent": {
-      "name": "@my-agent-team/adapter-claude-agent",
+      "name": "@chengchenccc/adapter-claude-agent",
       "version": "0.1.0",
       "dependencies": {
-        "@my-agent-team/agent-backend": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
-      },
-      "devDependencies": {
-        "bun-types": "latest",
-        "typescript": "^5.7.0",
-      },
-    },
-    "packages/adapter-coding-agent": {
-      "name": "@my-agent-team/adapter-coding-agent",
-      "version": "0.1.0",
-      "dependencies": {
-        "@my-agent-team/agent-backend": "workspace:*",
-        "zod": "^3.23.0",
+        "@chengchenccc/agent-backend": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
       },
       "devDependencies": {
         "bun-types": "latest",
@@ -169,19 +157,31 @@
       },
     },
     "packages/adapter-mcp": {
-      "name": "@my-agent-team/adapter-mcp",
+      "name": "@chengchenccc/adapter-mcp",
       "version": "0.1.0",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.12.1",
-        "@my-agent-team/core": "workspace:*",
+        "@chengchenccc/core": "workspace:*",
+      },
+    },
+    "packages/adapter-oma-agent": {
+      "name": "@chengchenccc/adapter-oma-agent",
+      "version": "0.1.0",
+      "dependencies": {
+        "@chengchenccc/agent-backend": "workspace:*",
+        "zod": "^3.23.0",
+      },
+      "devDependencies": {
+        "bun-types": "latest",
+        "typescript": "^5.7.0",
       },
     },
     "packages/adapter-omp-agent": {
-      "name": "@my-agent-team/adapter-omp-agent",
+      "name": "@chengchenccc/adapter-omp-agent",
       "version": "0.1.0",
       "dependencies": {
-        "@my-agent-team/agent-backend": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
+        "@chengchenccc/agent-backend": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
       },
       "devDependencies": {
         "bun-types": "latest",
@@ -189,11 +189,11 @@
       },
     },
     "packages/adapter-pi-agent": {
-      "name": "@my-agent-team/adapter-pi-agent",
+      "name": "@chengchenccc/adapter-pi-agent",
       "version": "0.1.0",
       "dependencies": {
-        "@my-agent-team/agent-backend": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
+        "@chengchenccc/agent-backend": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
       },
       "devDependencies": {
         "bun-types": "latest",
@@ -201,41 +201,41 @@
       },
     },
     "packages/agent": {
-      "name": "@my-agent-team/agent",
+      "name": "@chengchenccc/agent",
       "version": "0.0.0",
       "dependencies": {
-        "@my-agent-team/agent-backend": "workspace:*",
-        "@my-agent-team/ai": "workspace:*",
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
+        "@chengchenccc/agent-backend": "workspace:*",
+        "@chengchenccc/ai": "workspace:*",
+        "@chengchenccc/core": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
       },
       "devDependencies": {
-        "@my-agent-team/test-helpers": "workspace:*",
+        "@chengchenccc/test-helpers": "workspace:*",
         "bun-types": "latest",
         "typescript": "^5.7.0",
       },
     },
     "packages/agent-backend": {
-      "name": "@my-agent-team/agent-backend",
+      "name": "@chengchenccc/agent-backend",
       "version": "0.1.0",
       "dependencies": {
-        "@my-agent-team/message": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
         "zod": "^3.23.0",
       },
     },
     "packages/ai": {
-      "name": "@my-agent-team/ai",
+      "name": "@chengchenccc/ai",
       "version": "0.1.0",
       "dependencies": {
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
+        "@chengchenccc/core": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
       },
     },
     "packages/api-contract": {
-      "name": "@my-agent-team/api-contract",
+      "name": "@chengchenccc/api-contract",
       "version": "0.1.0",
       "dependencies": {
-        "@my-agent-team/conversation": "workspace:*",
+        "@chengchenccc/conversation": "workspace:*",
         "zod": "^3.23.0",
       },
       "peerDependencies": {
@@ -243,87 +243,91 @@
       },
     },
     "packages/config": {
-      "name": "@my-agent-team/config",
+      "name": "@chengchenccc/config",
       "version": "0.1.0",
       "dependencies": {
         "zod": "^3.23.0",
       },
     },
     "packages/conversation": {
-      "name": "@my-agent-team/conversation",
+      "name": "@chengchenccc/conversation",
       "version": "0.1.0",
       "dependencies": {
-        "@my-agent-team/message": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
         "zod": "^3.23.0",
       },
     },
     "packages/core": {
-      "name": "@my-agent-team/core",
+      "name": "@chengchenccc/core",
       "version": "0.1.0",
       "dependencies": {
-        "@my-agent-team/message": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
       },
     },
     "packages/loop": {
-      "name": "@my-agent-team/loop",
+      "name": "@chengchenccc/loop",
       "version": "0.1.0",
       "devDependencies": {
         "@types/bun": "latest",
       },
     },
     "packages/message": {
-      "name": "@my-agent-team/message",
+      "name": "@chengchenccc/message",
       "version": "0.1.0",
       "dependencies": {
         "zod": "^3.23.0",
       },
     },
     "packages/plugin-progressive-skill": {
-      "name": "@my-agent-team/plugin-progressive-skill",
+      "name": "@chengchenccc/plugin-progressive-skill",
       "version": "0.1.0",
       "dependencies": {
-        "@my-agent-team/agent": "workspace:*",
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
-        "@my-agent-team/tools-common": "workspace:*",
+        "@chengchenccc/agent": "workspace:*",
+        "@chengchenccc/core": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
+        "@chengchenccc/tools-common": "workspace:*",
         "gray-matter": "^4.0.3",
       },
     },
     "packages/plugin-recap": {
-      "name": "@my-agent-team/plugin-recap",
+      "name": "@chengchenccc/plugin-recap",
       "version": "0.0.0",
       "dependencies": {
-        "@my-agent-team/agent": "workspace:*",
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
+        "@chengchenccc/agent": "workspace:*",
+        "@chengchenccc/core": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
       },
     },
     "packages/plugin-todo": {
-      "name": "@my-agent-team/plugin-todo",
+      "name": "@chengchenccc/plugin-todo",
       "version": "0.1.0",
       "dependencies": {
-        "@my-agent-team/agent": "workspace:*",
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
+        "@chengchenccc/agent": "workspace:*",
+        "@chengchenccc/core": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
       },
     },
     "packages/test-helpers": {
-      "name": "@my-agent-team/test-helpers",
+      "name": "@chengchenccc/test-helpers",
       "version": "0.1.0",
       "dependencies": {
-        "@my-agent-team/core": "workspace:*",
-        "@my-agent-team/message": "workspace:*",
+        "@chengchenccc/core": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
       },
     },
     "packages/tools-common": {
-      "name": "@my-agent-team/tools-common",
+      "name": "@chengchenccc/tools-common",
       "version": "0.1.0",
       "dependencies": {
-        "@my-agent-team/core": "workspace:*",
+        "@chengchenccc/core": "workspace:*",
       },
     },
   },
   "packages": {
+    "@chengchenccc/adapter-oma-agent": ["@chengchenccc/adapter-oma-agent@workspace:packages/adapter-oma-agent"],
+
+    "@chengchenccc/oh-my-agent": ["@chengchenccc/oh-my-agent@workspace:apps/oh-my-agent"],
+
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "https://registry.npmmirror.com/@alloc/quick-lru/-/quick-lru-5.2.0.tgz", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "https://registry.npmmirror.com/@babel/code-frame/-/code-frame-7.29.7.tgz", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
@@ -662,51 +666,47 @@
 
     "@monaco-editor/react": ["@monaco-editor/react@4.7.0", "", { "dependencies": { "@monaco-editor/loader": "^1.5.0" }, "peerDependencies": { "monaco-editor": ">= 0.25.0 < 1", "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0", "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-cyzXQCtO47ydzxpQtCGSQGOC8Gk3ZUeBXFAxD+CWXYFo5OqZyZUonFl0DwUlTyAfRHntBfw2p3w4s9R6oe1eCA=="],
 
-    "@my-agent-team/adapter-claude-agent": ["@my-agent-team/adapter-claude-agent@workspace:packages/adapter-claude-agent"],
+    "@chengchenccc/adapter-claude-agent": ["@chengchenccc/adapter-claude-agent@workspace:packages/adapter-claude-agent"],
 
-    "@my-agent-team/adapter-coding-agent": ["@my-agent-team/adapter-coding-agent@workspace:packages/adapter-coding-agent"],
+    "@chengchenccc/adapter-mcp": ["@chengchenccc/adapter-mcp@workspace:packages/adapter-mcp"],
 
-    "@my-agent-team/adapter-mcp": ["@my-agent-team/adapter-mcp@workspace:packages/adapter-mcp"],
+    "@chengchenccc/adapter-omp-agent": ["@chengchenccc/adapter-omp-agent@workspace:packages/adapter-omp-agent"],
 
-    "@my-agent-team/adapter-omp-agent": ["@my-agent-team/adapter-omp-agent@workspace:packages/adapter-omp-agent"],
+    "@chengchenccc/adapter-pi-agent": ["@chengchenccc/adapter-pi-agent@workspace:packages/adapter-pi-agent"],
 
-    "@my-agent-team/adapter-pi-agent": ["@my-agent-team/adapter-pi-agent@workspace:packages/adapter-pi-agent"],
+    "@chengchenccc/agent": ["@chengchenccc/agent@workspace:packages/agent"],
 
-    "@my-agent-team/agent": ["@my-agent-team/agent@workspace:packages/agent"],
+    "@chengchenccc/agent-backend": ["@chengchenccc/agent-backend@workspace:packages/agent-backend"],
 
-    "@my-agent-team/agent-backend": ["@my-agent-team/agent-backend@workspace:packages/agent-backend"],
+    "@chengchenccc/ai": ["@chengchenccc/ai@workspace:packages/ai"],
 
-    "@my-agent-team/ai": ["@my-agent-team/ai@workspace:packages/ai"],
+    "@chengchenccc/api-contract": ["@chengchenccc/api-contract@workspace:packages/api-contract"],
 
-    "@my-agent-team/api-contract": ["@my-agent-team/api-contract@workspace:packages/api-contract"],
+    "@chengchenccc/backend": ["@chengchenccc/backend@workspace:apps/backend"],
 
-    "@my-agent-team/backend": ["@my-agent-team/backend@workspace:apps/backend"],
+    "@chengchenccc/config": ["@chengchenccc/config@workspace:packages/config"],
 
-    "@my-agent-team/coding-agent": ["@my-agent-team/coding-agent@workspace:apps/coding-agent"],
+    "@chengchenccc/conversation": ["@chengchenccc/conversation@workspace:packages/conversation"],
 
-    "@my-agent-team/config": ["@my-agent-team/config@workspace:packages/config"],
+    "@chengchenccc/core": ["@chengchenccc/core@workspace:packages/core"],
 
-    "@my-agent-team/conversation": ["@my-agent-team/conversation@workspace:packages/conversation"],
+    "@chengchenccc/lark-bot": ["@chengchenccc/lark-bot@workspace:apps/lark-bot"],
 
-    "@my-agent-team/core": ["@my-agent-team/core@workspace:packages/core"],
+    "@chengchenccc/loop": ["@chengchenccc/loop@workspace:packages/loop"],
 
-    "@my-agent-team/lark-bot": ["@my-agent-team/lark-bot@workspace:apps/lark-bot"],
+    "@chengchenccc/message": ["@chengchenccc/message@workspace:packages/message"],
 
-    "@my-agent-team/loop": ["@my-agent-team/loop@workspace:packages/loop"],
+    "@chengchenccc/plugin-progressive-skill": ["@chengchenccc/plugin-progressive-skill@workspace:packages/plugin-progressive-skill"],
 
-    "@my-agent-team/message": ["@my-agent-team/message@workspace:packages/message"],
+    "@chengchenccc/plugin-recap": ["@chengchenccc/plugin-recap@workspace:packages/plugin-recap"],
 
-    "@my-agent-team/plugin-progressive-skill": ["@my-agent-team/plugin-progressive-skill@workspace:packages/plugin-progressive-skill"],
+    "@chengchenccc/plugin-todo": ["@chengchenccc/plugin-todo@workspace:packages/plugin-todo"],
 
-    "@my-agent-team/plugin-recap": ["@my-agent-team/plugin-recap@workspace:packages/plugin-recap"],
+    "@chengchenccc/test-helpers": ["@chengchenccc/test-helpers@workspace:packages/test-helpers"],
 
-    "@my-agent-team/plugin-todo": ["@my-agent-team/plugin-todo@workspace:packages/plugin-todo"],
+    "@chengchenccc/tools-common": ["@chengchenccc/tools-common@workspace:packages/tools-common"],
 
-    "@my-agent-team/test-helpers": ["@my-agent-team/test-helpers@workspace:packages/test-helpers"],
-
-    "@my-agent-team/tools-common": ["@my-agent-team/tools-common@workspace:packages/tools-common"],
-
-    "@my-agent-team/web": ["@my-agent-team/web@workspace:apps/web"],
+    "@chengchenccc/web": ["@chengchenccc/web@workspace:apps/web"],
 
     "@next/env": ["@next/env@15.5.19", "https://registry.npmmirror.com/@next/env/-/env-15.5.19.tgz", {}, "sha512-sWWluFvcv5v3Fxznmf2ZfjyoVQt/64oCnYqS90inQWGzMPK1VjvekPiz3OPHKmFT30EnHrjlbyaHLt3M0vWabw=="],
 
@@ -2024,6 +2024,10 @@
 
     "zwitch": ["zwitch@2.0.4", "https://registry.npmmirror.com/zwitch/-/zwitch-2.0.4.tgz", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
 
+    "@chengchenccc/adapter-oma-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@chengchenccc/oh-my-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
     "@babel/core/semver": ["semver@6.3.1", "https://registry.npmmirror.com/semver/-/semver-6.3.1.tgz", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
 
     "@babel/helper-compilation-targets/lru-cache": ["lru-cache@5.1.1", "https://registry.npmmirror.com/lru-cache/-/lru-cache-5.1.1.tgz", { "dependencies": { "yallist": "^3.0.2" } }, "sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w=="],
@@ -2048,17 +2052,13 @@
 
     "@modelcontextprotocol/sdk/ajv": ["ajv@8.20.0", "https://registry.npmmirror.com/ajv/-/ajv-8.20.0.tgz", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-uri": "^3.0.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2" } }, "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA=="],
 
-    "@my-agent-team/adapter-claude-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+    "@chengchenccc/adapter-claude-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
-    "@my-agent-team/adapter-coding-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+    "@chengchenccc/adapter-omp-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
-    "@my-agent-team/adapter-omp-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+    "@chengchenccc/adapter-pi-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
-    "@my-agent-team/adapter-pi-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@my-agent-team/agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@my-agent-team/coding-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+    "@chengchenccc/agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@pnpm/network.ca-file/graceful-fs": ["graceful-fs@4.2.10", "https://registry.npmmirror.com/graceful-fs/-/graceful-fs-4.2.10.tgz", {}, "sha512-9ByhssR2fPVsNZj478qUUbKfmL0+t5BDVyjShtyZZLiK7ZDAArFFfopyOTj0M05wE2tJPisA4iTnnXl2YoPvOA=="],
 

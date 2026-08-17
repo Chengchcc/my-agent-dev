@@ -16,7 +16,7 @@
 
 ## Design
 
-### 1. Canonical 消息契约（`@my-agent-team/message`）
+### 1. Canonical 消息契约（`@chengchenccc/message`）
 
 ```typescript
 // role 语义
@@ -31,7 +31,7 @@ type CanonicalRole = "user" | "assistant" | "tool" | "system";
 **归一化函数**（协议层唯一实现，形状驱动，与 agent 类型无关）：
 
 ```typescript
-// @my-agent-team/message/src/canonical.ts
+// @chengchenccc/message/src/canonical.ts
 export function normalizeCanonicalMessages(messages: readonly Message[]): Message[] {
   const out: Message[] = [];
   for (const m of messages) {
@@ -53,7 +53,7 @@ export function normalizeCanonicalMessages(messages: readonly Message[]): Messag
 }
 ```
 
-### 2. Outcome 协议：单消息 → 消息序列（`@my-agent-team/agent-backend`）
+### 2. Outcome 协议：单消息 → 消息序列（`@chengchenccc/agent-backend`）
 
 `BackendRunOutcome` 当前 `output: Message | undefined`。扩展为携带序列：
 
@@ -67,8 +67,8 @@ interface BackendRunOutcome {
 }
 ```
 
-- `packages/adapter-coding-agent/src/protocol.ts`：`OutcomeOutput` 同样扩展
-- `apps/coding-agent` rpc-mode：outcome 携带 session 该 run 的 branch 消息（输入之外）
+- `packages/adapter-oma-agent/src/protocol.ts`：`OutcomeOutput` 同样扩展
+- `apps/oh-my-agent` rpc-mode：outcome 携带 session 该 run 的 branch 消息（输入之外）
 - 兼容：`output` 继续存在（老调用方/测试），新提交路径优先用 `messages`
 
 ### 3. Runtime 输出（`packages/agent/src/runtime/agent-loop.ts`）

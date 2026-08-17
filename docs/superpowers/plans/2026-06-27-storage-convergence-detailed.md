@@ -121,7 +121,7 @@ describe("createCheckpointEventsStore", () => {
 - [ ] **Step 1.2: Run the test to confirm it fails**
 
 ```bash
-cd /root/my-agent-team/apps/backend && bun test --test-name-pattern="createCheckpointEventsStore"
+cd /root/my@chengchenccc/apps/backend && bun test --test-name-pattern="createCheckpointEventsStore"
 ```
 Expected: Test FAILS with `SQLITE_READONLY` error from `db.exec("PRAGMA journal_mode=WAL")` on line 17 of `checkpoint-events-store.ts`.
 
@@ -145,14 +145,14 @@ export function createCheckpointEventsStore(db: Database): CheckpointEventsStore
 - [ ] **Step 1.4: Run the test to confirm it passes**
 
 ```bash
-cd /root/my-agent-team/apps/backend && bun test --test-name-pattern="createCheckpointEventsStore"
+cd /root/my@chengchenccc/apps/backend && bun test --test-name-pattern="createCheckpointEventsStore"
 ```
 Expected: All tests PASS.
 
 - [ ] **Step 1.5: Verify no other tests broke**
 
 ```bash
-cd /root/my-agent-team/apps/backend && bun test
+cd /root/my@chengchenccc/apps/backend && bun test
 ```
 Expected: All tests pass.
 
@@ -325,14 +325,14 @@ describe("onRunComplete — todo_update projection", () => {
 - [ ] **Step 2.5: Run the tests to confirm**
 
 ```bash
-cd /root/my-agent-team/apps/backend && bun test --test-name-pattern="todo_update"
+cd /root/my@chengchenccc/apps/backend && bun test --test-name-pattern="todo_update"
 ```
 Expected: If using Path A, the new tests pass (the main.ts change makes the production path work). If existing projection tests fail due to missing mocks, update them.
 
 - [ ] **Step 2.6: Run full backend test suite**
 
 ```bash
-cd /root/my-agent-team/apps/backend && bun test
+cd /root/my@chengchenccc/apps/backend && bun test
 ```
 Expected: All tests pass.
 
@@ -482,7 +482,7 @@ describe("getSessionDetail", () => {
 - [ ] **Step 3.3: Run the test — should fail (methods not implemented)**
 
 ```bash
-cd /root/my-agent-team/apps/backend && bun test --test-name-pattern="listSessions|getSessionDetail"
+cd /root/my@chengchenccc/apps/backend && bun test --test-name-pattern="listSessions|getSessionDetail"
 ```
 Expected: FAIL — TypeScript compilation error or runtime error because `listSessions` and `getSessionDetail` don't exist on the service yet.
 
@@ -597,7 +597,7 @@ Note: Since `deriveSessionStatusFromDb` needs the `db` instance and is called fr
 - [ ] **Step 3.5: Run the test — should pass**
 
 ```bash
-cd /root/my-agent-team/apps/backend && bun test --test-name-pattern="listSessions|getSessionDetail"
+cd /root/my@chengchenccc/apps/backend && bun test --test-name-pattern="listSessions|getSessionDetail"
 ```
 Expected: PASS.
 
@@ -762,7 +762,7 @@ To:
 - [ ] **Step 3.11: Run frontend typecheck**
 
 ```bash
-cd /root/my-agent-team/apps/web && bun run typecheck
+cd /root/my@chengchenccc/apps/web && bun run typecheck
 ```
 Expected: zero type errors.
 
@@ -960,7 +960,7 @@ export type RunOpsEventKind =
 - [ ] **Step 6.4: Compile-check — dead kind references will fail TypeScript**
 
 ```bash
-cd /root/my-agent-team/apps/backend && bun run typecheck
+cd /root/my@chengchenccc/apps/backend && bun run typecheck
 ```
 Expected: If any code references the 12 removed kind values, TypeScript compilation will fail. Fix each one by removing the reference.
 
@@ -1367,7 +1367,7 @@ rm apps/backend/drizzle.events.config.ts
 
 - [ ] **Step 8.9: Update gen-drizzle.sh**
 
-In `/root/my-agent-team/scripts/gen-drizzle.sh`, delete line 10:
+In `/root/my@chengchenccc/scripts/gen-drizzle.sh`, delete line 10:
 
 ```bash
 # BEFORE:
@@ -1427,7 +1427,7 @@ Expected: Two connections — `openDb(...backend.db)` and `new Database(...check
 - [ ] **Step 8.14: Run drizzle-kit generate ONCE for the combined schema**
 
 ```bash
-cd /root/my-agent-team/apps/backend && bunx drizzle-kit generate --config drizzle.backend.config.ts
+cd /root/my@chengchenccc/apps/backend && bunx drizzle-kit generate --config drizzle.backend.config.ts
 ```
 
 This will generate migration SQL files in `apps/backend/drizzle/backend/`. **MANUALLY INSPECT** every generated SQL file:
@@ -1469,7 +1469,7 @@ DETACH DATABASE ev;
 - [ ] **Step 8.16: Smoke test — fresh start with empty DB**
 
 ```bash
-cd /root/my-agent-team/apps/backend
+cd /root/my@chengchenccc/apps/backend
 rm -rf .backend-data
 mkdir -p .backend-data
 # Run gen-drizzle to create migration files
@@ -1490,7 +1490,7 @@ Expected: No SQLite errors, backend starts successfully with 2 DB files (backend
 
 ```bash
 # If you have an events.db with real data:
-cd /root/my-agent-team/apps/backend
+cd /root/my@chengchenccc/apps/backend
 # Run the migration script
 sqlite3 .backend-data/backend.db < scripts/migrate-events-to-backend.sql
 # Start backend

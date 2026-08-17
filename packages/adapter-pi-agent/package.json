@@ -1,5 +1,5 @@
 {
-  "name": "@my-agent-team/adapter-pi-agent",
+  "name": "@chengchenccc/adapter-pi-agent",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,8 @@
     "lint": "biome check . && eslint ."
   },
   "dependencies": {
-    "@my-agent-team/agent-backend": "workspace:*",
-    "@my-agent-team/message": "workspace:*"
+    "@chengchenccc/agent-backend": "workspace:*",
+    "@chengchenccc/message": "workspace:*"
   },
   "devDependencies": {
     "bun-types": "latest",

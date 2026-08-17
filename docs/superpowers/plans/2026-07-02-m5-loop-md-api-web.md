@@ -219,8 +219,8 @@ patterns:
 - [ ] **Step 4.1: 在 loopStep 开头读 LOOP.md**
 
 ```typescript
-import { parseLoopConfig } from "@my-agent-team/loop";
-import type { LoopConfig } from "@my-agent-team/loop";
+import { parseLoopConfig } from "@chengchenccc/loop";
+import type { LoopConfig } from "@chengchenccc/loop";
 
 // 在 loopStep 内部
 const loopMdPath = `${params.loopConfigPath}/LOOP.md`;
@@ -265,7 +265,7 @@ import { Elysia, t } from "elysia";
 import type { CronJobService } from "../cron/service.js";
 import type { CronScheduler } from "../cron/scheduler.js";
 import { loopStep } from "./loop-step.js";
-import { parseStateMd } from "@my-agent-team/loop";
+import { parseStateMd } from "@chengchenccc/loop";
 
 export function loopRoutes(
   cronSvc: CronJobService,

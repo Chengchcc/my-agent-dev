@@ -11,13 +11,13 @@
 把 Agent 生命周期从 `packages/harness` 与 `packages/framework` 的分裂状态收敛到 `packages/agent`：
 
 ```text
-backend → @my-agent-team/agent → core
+backend → @chengchenccc/agent → core
 ```
 
 迁移期间允许：
 
 ```text
-@my-agent-team/agent → @my-agent-team/framework
+@chengchenccc/agent → @chengchenccc/framework
 ```
 
 这是临时内部适配，不是最终公共边界。
@@ -38,7 +38,7 @@ backend → @my-agent-team/agent → core
 
 ## 3. Agent 公共边界
 
-第一阶段的 `@my-agent-team/agent` 必须提供以下行为：
+第一阶段的 `@chengchenccc/agent` 必须提供以下行为：
 
 ```ts
 export type AgentState =
@@ -73,7 +73,7 @@ export interface Agent {
 }
 ```
 
-实际字段类型可以复用现有实现，但新包的 backend caller 不得需要 import `@my-agent-team/framework` 才能使用这些行为。
+实际字段类型可以复用现有实现，但新包的 backend caller 不得需要 import `@chengchenccc/framework` 才能使用这些行为。
 The signatures below are target boundary sketches. Before implementation, each workstream must map them to concrete exported types in the current package; an agent must not invent `any`-typed placeholders or leave unresolved names in a buildable package.
 
 The minimum concrete aliases are:

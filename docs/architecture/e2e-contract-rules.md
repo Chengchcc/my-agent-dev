@@ -13,7 +13,7 @@
 | 当你要…… | 先停，去这里取真源 | 禁止 |
 |---|---|---|
 | 在 web 用一个后端返回的字段 | 改 backend 返回类型，让它经 `App` 流过来；web 从 treaty 推导 | 在 web 手写/扩一个 `interface` 接住它 |
-| 调一个后端接口 | `client.api.*`（`treaty<App>`，类型来自 `@my-agent-team/api-contract`） | `apiFetch<T>` / 裸 `fetch` + `as T` |
+| 调一个后端接口 | `client.api.*`（`treaty<App>`，类型来自 `@chengchenccc/api-contract`） | `apiFetch<T>` / 裸 `fetch` + `as T` |
 | 消费一个 SSE 事件 | 在 `SSEEventMap` 加/取该事件的 zod schema，用 `typedSource(url, map)` | `new EventSource` + 各自 `JSON.parse` + `as` |
 | 拼一个 SSE 端点 URL | `sseEndpoints` 注册表 + `openSSE(name, params)` | 组件里手写 `/.../events` 模板字符串 |
 | 加一个 `useQuery` / `useMutation` | `features/<x>/queries.ts` 写 `queryOptions(params)`，组件只调 `useXxx` | 组件内联 `queryKey:` / `queryFn:`；key 与请求参数分开写 |
@@ -27,7 +27,7 @@
 
 | 契约类 | 单一真源 | 消费方式 | 反模式（=裂化） |
 |---|---|---|---|
-| HTTP 请求/响应 | backend Elysia `App` → re-export 自 `@my-agent-team/api-contract` | `treaty<App>()` 推导 | 手抄 `XxxRow` interface、`apiFetch<T>`、响应 `as` |
+| HTTP 请求/响应 | backend Elysia `App` → re-export 自 `@chengchenccc/api-contract` | `treaty<App>()` 推导 | 手抄 `XxxRow` interface、`apiFetch<T>`、响应 `as` |
 | SSE 事件载荷 | `SSEEventMap`（值为 zod schema，`api-contract/src/sse.ts`） | 后端 `sseEncoder<M>`、前端 `typedSource<M>` | 后端裸 `event` 字符串、前端各自 `JSON.parse`+`safeParse`/`as` |
 | SSE 端点 URL | `sseEndpoints` 注册表（path 模板 + events map 绑定） | `openSSE(name, params)` | 组件手写 URL 模板，与 map 各自漂移 |
 | react-query key/param | `queryOptions(params)`（`features/<x>/queries.ts`），`params` 为 key 与请求参数唯一来源 | `useXxx` hook（组件唯一入口） | 组件内联 `queryKey`/`queryFn`；key 写 id、queryFn 改 userId 静默错位 |
@@ -35,6 +35,7 @@
 | 跨进程消息（lark `content`、webhook event） | 共享 zod schema | 两端 `import` + `parse`/`safeParse` | 一端 interface、另一端 `as`；backend 收成 `z.unknown()` |
 | 枚举 / 状态 | 共享 `as const` / `z.enum` | 两端 `import` | 各处重抄字面量；`as Status` |
 | DB JSON 列 | zod 双向 codec | `parse` 读 / `serialize` 写 | `JSON.parse(...) as T` |
+| Oma stdio JSONL 协议 | `apps/oh-my-agent` 生成的 canonical fixture（`rpc-*.jsonl`） | `packages/adapter-oma-agent` 测试消费 fixture | 共享 wire-schema 包；或两端各写 schema 且无 fixture |
 | 模板变量 | 固定 `PromptVars` 类型 | 类型约束 + 文档化变量表 | `Record<string, unknown>` + `strict:false` 静默空串 |
 
 ## 3. 写完自检（grep 非零 = 裂化，须修）

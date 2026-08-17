@@ -1,5 +1,5 @@
 {
-  "name": "@my-agent-team/adapter-mcp",
+  "name": "@chengchenccc/adapter-mcp",
   "version": "0.1.0",
   "description": "MCP client adapter - connects external MCP servers, adapts tools to Tool interface",
   "type": "module",
@@ -21,6 +21,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "@my-agent-team/core": "workspace:*"
+    "@chengchenccc/core": "workspace:*"
   }
 }

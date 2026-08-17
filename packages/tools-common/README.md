@@ -1,4 +1,4 @@
-# @my-agent-team/tools-common
+# @chengchenccc/tools-common
 
 Agent 与外界交互的标准工具：bash、文件读写编辑、grep、glob、网络、搜索。
 
@@ -22,7 +22,7 @@ Agent 与外界交互的标准工具：bash、文件读写编辑、grep、glob�
 ## 怎么用
 
 ```ts
-import { createReadTool, createWriteTool, bashTool } from "@my-agent-team/tools-common";
+import { createReadTool, createWriteTool, bashTool } from "@chengchenccc/tools-common";
 
 const read = createReadTool({ cwd: "/data/agents/abc" });
 const write = createWriteTool({ cwd: "/data/agents/abc" });

@@ -13,7 +13,7 @@ Product Tools MCP(ledger 读写、审批)现在用单一静态 token(`PRODUCT_TO
 2. **无归属**:所有 agent、所有 run 共享一个 token,product-tools 审计无法回答「这次调用是哪个 run 发起的」。
 3. **无撤销**:token 泄漏只能改 env 重启全栈。
 
-coding_agent 后端已经走 per-run env(`CODING_AGENT_PRODUCT_TOOL_TOKEN`),但值仍是静态 token;三家 CLI(claude_code/pi/omp)完全依赖 `.mcp.json` 明文。
+oma 后端已经走 per-run env(`OMA_PRODUCT_TOOL_TOKEN`),但值仍是静态 token;三家 CLI(claude_code/pi/omp)完全依赖 `.mcp.json` 明文。
 
 ## 2. 目标与非目标
 
@@ -81,7 +81,7 @@ readonly productToolsToken?: string;
 
 | backend | 送达方式 | 实现 |
 |---|---|---|
-| coding_agent | env `CODING_AGENT_PRODUCT_TOOL_TOKEN`(现有通道) | `coding-agent-command.ts` 的静态注入删除,改从 run input 取值 |
+| oma | env `OMA_PRODUCT_TOOL_TOKEN`(现有通道) | `oma-command.ts` 的静态注入删除,改从 run input 取值 |
 | claude_code | spawn env `PRODUCT_TOOLS_RUN_TOKEN` + `.mcp.json` 占位符 | adapter `execute()` 把 token 合进 per-run env |
 | pi | 同 claude 形态 | 同上 |
 | omp | 同 claude 形态 | 同上 |
@@ -101,7 +101,7 @@ readonly productToolsToken?: string;
 
 | backend | 送达路径 | 结论 |
 |---|---|---|
-| coding_agent | env `CODING_AGENT_PRODUCT_TOOL_TOKEN` per-execute(adapter 覆盖 command env) | ✓ 集成测试覆盖 |
+| oma | env `OMA_PRODUCT_TOOL_TOKEN` per-execute(adapter 覆盖 command env) | ✓ 集成测试覆盖 |
 | claude_code | `.mcp.json` headers 内 `${PRODUCT_TOOLS_RUN_TOKEN}` 占位符展开 + spawn env | ✓ 真机:claude 2.1.229 对 SSE 连接发送 `Authorization: Bearer <env值>`(首个无凭据探测后全部带 token) |
 | pi | `bearerTokenEnv: "PRODUCT_TOOLS_RUN_TOKEN"` 字段(pi-mcp-adapter `resolveBearerToken` → `process.env[name]`) | ✓ 源码级验证(adapter utils.ts:198) |
 | omp | `bearer_token_env_var: "PRODUCT_TOOLS_RUN_TOKEN"` 字段(cli.js 读 `Bun.env[name]` → Authorization) | ✓ 源码级验证 |
@@ -118,7 +118,7 @@ readonly productToolsToken?: string;
 
 - `apps/backend/src/config.ts`:`productToolsServiceToken` 字段删除。
 - `PRODUCT_TOOLS_SERVICE_TOKEN` env:删除读取。残留 env 不报警——静默忽略即正确(它不再是任何东西的钥匙)。
-- `agent-backend/redact.ts` / `adapter-coding-agent/stderr-tail.ts` 的 secret 名单加 `PRODUCT_TOOLS_RUN_TOKEN`(redact 列表保留 `CODING_AGENT_PRODUCT_TOOL_TOKEN`,两名字都要——coding_agent 通道名不变)。
+- `agent-backend/redact.ts` / `adapter-oma-agent/stderr-tail.ts` 的 secret 名单加 `PRODUCT_TOOLS_RUN_TOKEN`(redact 列表保留 `OMA_PRODUCT_TOOL_TOKEN`,两名字都要——oma 通道名不变)。
 - bootstrap(features.ts)MCP server 启动条件:`config.productToolsMcpUrl` 单独决定;不再需要静态 token 才起 server。
 
 ### 3.6 Bridge(`workspace-bridge.ts`)
@@ -131,7 +131,7 @@ readonly productToolsToken?: string;
 deliverInput
   → registry.mint(runId, agentId, exp)
   → BackendRunInput.productToolsToken
-  → adapter spawn:env PRODUCT_TOOLS_RUN_TOKEN(或 coding_agent 专用名)
+  → adapter spawn:env PRODUCT_TOOLS_RUN_TOKEN(或 oma 专用名)
   → CLI 读 .mcp.json 占位符 → 展开 → Bearer <per-run token>
   → MCP server authorize:registry.validate → 401/放行(+runId 归属)
 dispatchFn finally

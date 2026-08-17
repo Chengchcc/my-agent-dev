@@ -13,7 +13,7 @@
 
 ## 调研
 
-分析 OMP 的 `pi-coding-agent/src/memories/` 和 `pi-coding-agent/src/memory-backend/`。
+分析 OMP 的 `pi-oma/src/memories/` 和 `pi-oma/src/memory-backend/`。
 
 ### OMP 架构
 

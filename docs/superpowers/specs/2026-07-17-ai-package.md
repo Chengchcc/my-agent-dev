@@ -1,8 +1,8 @@
-# Spec: @my-agent-team/ai — Provider + Model 统一管理
+# Spec: @chengchenccc/ai — Provider + Model 统一管理
 
 ## Problem
 
-当前 `createModel()` 硬编码 Anthropic，Model 只是一个裸字符串。需要参考 pi-ai 的设计，引入 Provider + Model 元数据体系，放在独立的 `@my-agent-team/ai` 包中。
+当前 `createModel()` 硬编码 Anthropic，Model 只是一个裸字符串。需要参考 pi-ai 的设计，引入 Provider + Model 元数据体系，放在独立的 `@chengchenccc/ai` 包中。
 
 ## Goal
 
@@ -33,7 +33,7 @@ packages/ai/
 ### 类型定义 (types.ts)
 
 ```typescript
-import type { ChatModel } from "@my-agent-team/core";
+import type { ChatModel } from "@chengchenccc/core";
 
 /** 模型输入模态 */
 export type InputModality = "text" | "image";
@@ -152,7 +152,7 @@ export const ANTHROPIC_MODELS: readonly Model[] = [
 - 保留 `AnthropicChatModel` / `AnthropicChatModelConfig`
 
 **backend 改动：**
-- `agent-helpers.ts` — `createDefaultModelRegistry` 改为从 `@my-agent-team/ai` 导入
+- `agent-helpers.ts` — `createDefaultModelRegistry` 改为从 `@chengchenccc/ai` 导入
 - `createModel` 签名改为 `(model: Model, registry: ModelRegistry, auth: ProviderAuth)`
 - agent 的 `modelName` 字段解析为 `Model` 对象：`registry.getModel(provider, id)`
 
@@ -181,12 +181,12 @@ Model 对象包含完整元数据（cost/contextWindow/maxTokens），前端可�
 ## 依赖关系
 
 ```
-@my-agent-team/ai
-  ├── @my-agent-team/core (ChatModel 类型)
-  └── @my-agent-team/adapter-anthropic (AnthropicChatModel 类)
+@chengchenccc/ai
+  ├── @chengchenccc/core (ChatModel 类型)
+  └── @chengchenccc/adapter-anthropic (AnthropicChatModel 类)
 
-@my-agent-team/backend
-  └── @my-agent-team/ai (registry + providers)
+@chengchenccc/backend
+  └── @chengchenccc/ai (registry + providers)
 ```
 
 ## Plan
@@ -206,7 +206,7 @@ Model 对象包含完整元数据（cost/contextWindow/maxTokens），前端可�
 4. 清理 `packages/adapter-anthropic/src/index.ts` 导出
 
 ### Phase 3: backend 接线 (1 天)
-1. `agent-helpers.ts` — 从 `@my-agent-team/ai` 导入，改 `createModel` 签名
+1. `agent-helpers.ts` — 从 `@chengchenccc/ai` 导入，改 `createModel` 签名
 2. `main.ts` — `createDefaultModelRegistry` 改用 ai 包
 3. `conversation-compose.ts` — 传 Model 对象替代字符串
 4. `scheduler.ts` — 同上

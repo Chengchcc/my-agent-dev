@@ -19,8 +19,8 @@ import type {
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
-} from "@my-agent-team/agent-backend";
-import { guardedConsume } from "@my-agent-team/agent-backend";
+} from "@chengchenccc/agent-backend";
+import { guardedConsume } from "@chengchenccc/agent-backend";
 import {
   buildOutcomeMessages,
   createClaudeAccumulator,

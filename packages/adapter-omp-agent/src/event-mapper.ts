@@ -3,8 +3,8 @@
  *  per-turn assistant texts). Terminal truth stays with the Run outcome —
  *  events never decide terminal state. */
 
-import type { BackendEvent, Usage } from "@my-agent-team/agent-backend";
-import type { Message } from "@my-agent-team/message";
+import type { BackendEvent, Usage } from "@chengchenccc/agent-backend";
+import type { Message } from "@chengchenccc/message";
 import type { OmpEvent, OmpMessageEvent } from "./wire.js";
 
 export interface OmpRunAccumulator {

@@ -15,12 +15,12 @@
 
 M9 是 **一个新 port 包 + backend 子进程化 + 事件投影端点 + 实体重建模 + 清理积压**：
 
-- 新增 `@my-agent-team/event-log` — `EventLog` port 接口定义(`EventSink` 写侧 / `EventSource` 读侧)+ sqlite/in-memory 实现。事件事实源,独立于 checkpointer
+- 新增 `@chengchenccc/event-log` — `EventLog` port 接口定义(`EventSink` 写侧 / `EventSource` 读侧)+ sqlite/in-memory 实现。事件事实源,独立于 checkpointer
 - 改 `apps/backend` — `RunService.start` 从"返回进程内 generator"改为"**fork runner-stdio 子进程 + 返回 202 + runId**";新增 `RunSupervisor`(进程内)、`GET /api/runs/:id/events` SSE 投影端点、重启重新发现逻辑
-- 改 `@my-agent-team/runner-stdio` — entry 自持 `EventSink`,每个 yield 出来的事件 `append` 落库;捕获 `SIGTERM` 透传 abort;支持 `mode='resume'`
-- 改 `@my-agent-team/agent-spec` — 新增 `runId` / `attemptId` / `mode` / `resumeCommand` / `storage.eventLog` 字段(EventLog 连接配置由 backend 下发;`attemptId` 用于子进程 heartbeat 定位)
-- 改 `@my-agent-team/adapter-anthropic` — 把 `AbortSignal` 透传给底层 `fetch({ signal })`,使 in-flight 模型调用可即时取消
-- 改 `@my-agent-team/checkpointer-sqlite` — 表创建唯一归口到 backend 迁移台账,清偿 `db.test` 红;`appendEvent`/`readEvents`(Tier 3)语义降级为内部审计,不再是投影源
+- 改 `@chengchenccc/runner-stdio` — entry 自持 `EventSink`,每个 yield 出来的事件 `append` 落库;捕获 `SIGTERM` 透传 abort;支持 `mode='resume'`
+- 改 `@chengchenccc/agent-spec` — 新增 `runId` / `attemptId` / `mode` / `resumeCommand` / `storage.eventLog` 字段(EventLog 连接配置由 backend 下发;`attemptId` 用于子进程 heartbeat 定位)
+- 改 `@chengchenccc/adapter-anthropic` — 把 `AbortSignal` 透传给底层 `fetch({ signal })`,使 in-flight 模型调用可即时取消
+- 改 `@chengchenccc/checkpointer-sqlite` — 表创建唯一归口到 backend 迁移台账,清偿 `db.test` 红;`appendEvent`/`readEvents`(Tier 3)语义降级为内部审计,不再是投影源
 - 实体重建模:`runs` 单表拆为 **`run`(逻辑)** + **`attempt`(物理执行)** 两表;存活判定收敛到 **`heartbeat_at` 单一真相源**
 - 改 `apps/cli` — 从"POST 拿流"改为"POST 拿 runId → GET events 订阅"
 
@@ -192,17 +192,17 @@ run(逻辑, 同 run_id 贯穿)
 
 ## 四、交付范围
 
-### 4.1 新包：`@my-agent-team/event-log`
+### 4.1 新包：`@chengchenccc/event-log`
 
 **包路径**：`packages/event-log/`
 
-**依赖**：`@my-agent-team/framework`(type-only：`AgentEvent`);零运行时依赖(`bun:sqlite` 是 Bun built-in)。
+**依赖**：`@chengchenccc/framework`(type-only：`AgentEvent`);零运行时依赖(`bun:sqlite` 是 Bun built-in)。
 
 **导出**(接口定义见 [13-event-log §三](../architecture/13-event-log.md)):
 
 ```ts
 // packages/event-log/src/index.ts
-import type { AgentEvent } from "@my-agent-team/framework";
+import type { AgentEvent } from "@chengchenccc/framework";
 
 export interface EventRecord {
   seq: number;          // 全局单调,SSE Last-Event-ID 即此值
@@ -257,7 +257,7 @@ CREATE INDEX idx_event_log_run    ON event_log(run_id, seq);
 CREATE INDEX idx_event_log_thread ON event_log(thread_id, seq);
 ```
 
-### 4.2 改：`@my-agent-team/agent-spec`
+### 4.2 改：`@chengchenccc/agent-spec`
 
 新增字段(见 [12-agent-spec](../architecture/12-agent-spec.md)),`schemaVersion` 不变(向后兼容追加):
 
@@ -277,7 +277,7 @@ storage: z.object({
 
 > **不变量(EventLog 收敛)**:`storage.eventLog` 由 backend 下发并指向 backend 也能连的同一存储;`storage.checkpointer` 由 runner 策略自由选(backend 永久无感)。见 [13-event-log §8.2](../architecture/13-event-log.md)。
 
-### 4.3 改：`@my-agent-team/runner-stdio`
+### 4.3 改：`@chengchenccc/runner-stdio`
 
 entry 自持写侧 `EventSink`,`append` 在前、`writeEvent`(stdout 通知)在后;新增 `mode='resume'` 分支;捕获 `SIGTERM` 透传 abort。
 
@@ -294,11 +294,11 @@ for await (const ev of stream) {
 
 heartbeat:entry 起一个定时器 `UPDATE attempt SET heartbeat_at = now()`(它本就连着 DB)。
 
-### 4.4 改：`@my-agent-team/adapter-anthropic`
+### 4.4 改：`@chengchenccc/adapter-anthropic`
 
 `anthropic-chat-model.ts` 把 `ChatModelOptions.signal` 透传给底层 `fetch({ signal })`,使 cancel 时 in-flight 模型调用即时中断,而非等响应回来。
 
-### 4.5 改：`@my-agent-team/checkpointer-sqlite`(债务清偿)
+### 4.5 改：`@chengchenccc/checkpointer-sqlite`(债务清偿)
 
 - **表创建唯一归口** backend `openDb()` 台账循环;`sqliteCheckpointer()` 不再自建表,仅假设表已存在。harness 独立使用场景提供 `ensureCheckpointerSchema(db)` 显式调用,内部也走"按 name 台账"逻辑,不裸 `CREATE`。
 - **`db.test` 红的真实根因**:backend 经 `"main": "./dist/index.js"` 导入 checkpointer 的**陈旧构建产物**(早于源码加 `name`/`id` 字段),迁移对象 `name` 为 `null` → 台账记 `null` → `checkpointer_v1_messages` 未登记。**修法**:rebuild dist + 归口台账,并加 CI 守卫防 dist 漂移。

@@ -1,5 +1,5 @@
 {
-  "name": "@my-agent-team/api-contract",
+  "name": "@chengchenccc/api-contract",
   "version": "0.1.0",
   "description": "Shared API contract types (HTTP App, SSE event maps) — zero runtime deps, type-only",
   "type": "module",
@@ -15,7 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@my-agent-team/conversation": "workspace:*",
+    "@chengchenccc/conversation": "workspace:*",
     "zod": "^3.23.0"
   },
   "peerDependencies": {

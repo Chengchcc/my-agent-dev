@@ -1,4 +1,4 @@
-import type { Message } from "@my-agent-team/message";
+import type { Message } from "@chengchenccc/message";
 import type { Tool } from "./tool.js";
 
 export interface AIMessageChunk {

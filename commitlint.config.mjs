@@ -17,7 +17,7 @@ export default {
         "config",
         "agent",
         "agent-backend",
-        "adapter-coding-agent",
+        "adapter-oma-agent",
         "adapter-omp-agent",
         "adapter-pi-agent",
         "adapter-claude-agent",
@@ -32,7 +32,7 @@ export default {
         "plugin-recap",
         // Apps
         "backend",
-        "coding-agent",
+        "oh-my-agent",
         "web",
         "lark-bot",
         // Features

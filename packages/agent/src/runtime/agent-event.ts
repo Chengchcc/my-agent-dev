@@ -1,7 +1,7 @@
 import type { TodoItem } from "./todo.js";
 
-/** Pi-style typed lifecycle events per runtime/coding-agent.md. */
-export type CodingAgentLoopEvent =
+/** Pi-style typed lifecycle events per runtime/oma.md. */
+export type OmaLoopEvent =
   | { type: "agent_start" }
   | { type: "agent_end"; status: "completed" | "failed" | "stopped" }
   | { type: "turn_start"; turn: number }
@@ -44,4 +44,4 @@ export type CodingAgentLoopEvent =
       totalTokens: number;
     };
 
-export type AgentLoopListener = (event: CodingAgentLoopEvent) => void | Promise<void>;
+export type AgentLoopListener = (event: OmaLoopEvent) => void | Promise<void>;

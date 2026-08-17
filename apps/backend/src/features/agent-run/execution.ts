@@ -8,10 +8,10 @@ import type {
   BackendRunSegment,
   ProjectedHistoryItem,
   WorkspaceBinding,
-} from "@my-agent-team/agent-backend";
-import { BACKEND_KINDS, type BackendKind, debugLog } from "@my-agent-team/agent-backend";
-import { resolveModelAlias } from "@my-agent-team/ai";
-import type { Message } from "@my-agent-team/message";
+} from "@chengchenccc/agent-backend";
+import { BACKEND_KINDS, type BackendKind, debugLog } from "@chengchenccc/agent-backend";
+import { resolveModelAlias } from "@chengchenccc/ai";
+import type { Message } from "@chengchenccc/message";
 import type {
   AgentContextPort,
   IdGenerator,
@@ -56,7 +56,7 @@ export interface AgentRunExecutionDeps {
     conversationId: string;
     agentMemberId: string;
   }) => Promise<WorkspaceBinding>;
-  /** Product Tools MCP endpoint the Coding Agent child connects to
+  /** Product Tools MCP endpoint the Oma child connects to
    *  (`sse:<url>`), from PRODUCT_TOOLS_MCP_URL. */
   readonly productToolsEntrypoint: string;
   /** Per-run product-tools bearer registry; minted at dispatch, revoked
@@ -398,7 +398,7 @@ export function createAgentRunExecutionService(
     stage.name = "context_projection";
     const history = await projectHistory(run.branchId);
     // The branch's CLI session reference (ADR 0020 decision 6): an opaque
-    // pointer the coding agent resolves natively — the product only
+    // pointer the oma resolves natively — the product only
     // forwards it, never manages the session itself.
     const branch = await contextPort.getBranch(run.branchId);
     debugLog("agent-run", `context_projected runId=${runId} entries=${history.length}`);
@@ -489,7 +489,7 @@ export function createAgentRunExecutionService(
    *  cold start). */
   async function dispatchInner(runId: string): Promise<void> {
     // Failure diagnostics: which phase threw, so a stuck/dead run is
-    // attributable without message/tool content (CODING_AGENT_DEBUG=1).
+    // attributable without message/tool content (OMA_DEBUG=1).
     const stage = { name: "load_run" };
     try {
       const run = await runPort.getRun(runId);

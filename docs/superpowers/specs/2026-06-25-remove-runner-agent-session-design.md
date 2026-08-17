@@ -41,7 +41,7 @@ createGenericAgent、RunnerDaemon、RunSupervisor 三处。
 | 14 | **Conversation 工具 surface-agnostic** | 四个通用工具（read_history/read_context/search/members）都读 ledger，不区分 surface。Surface 差异仅在系统提示和 surface 专属工具（如 Lark 的 `start_new_conversation`） |
 | 15 | **Backend 拥有 plugin 实现** | Plugin 不依赖 backend，只接收 `Tool[]` + `systemPrompt`。Backend 创建工具（闭包持有 convPort）并组装 plugin。依赖方向：backend → plugin |
 | 16 | **ThreadProjection 整块删除** | 确认死代码。读路径无 HTTP 路由，写路径无人消费。删除 `apps/backend/src/features/thread-projection/` 全部 6 个文件 |
-| 17 | **conversation 包瘦身** | 保留领域类型（LedgerEntry/Member/Conversation/resolveTriggerTargets）。移除 `projectForMember`（移到 backend）。移除对 `@my-agent-team/message` 的 re-export |
+| 17 | **conversation 包瘦身** | 保留领域类型（LedgerEntry/Member/Conversation/resolveTriggerTargets）。移除 `projectForMember`（移到 backend）。移除对 `@chengchenccc/message` 的 re-export |
 | 18 | **forkRun → startAgentRun** | 命名修正。input 是触发消息文本（不再是空串）。跟直接调用的区别只在于是否挂 ConversationContextPlugin——都在一个 conversation 里就挂 |
 | 19 | **Checkpointer 不迁移 + deleteThread** | 合并到全局 `checkpointer.db`，不迁移旧数据（checkpointer 是运行时恢复状态，canonical 在 ledger）。新增 `deleteThread(threadId)` 方法 |
 | 20 | **Issue/Cron 都是 conversation** | Issue 创建时自动建 conversation（`conversationId = issueId`），cron 同理。Agent 输出走 ledger → SSE → 前端。不需要 ConversationContextPlugin（无多人对话） |
@@ -611,7 +611,7 @@ packages/conversation/
 | 内容 | 去向 |
 |------|------|
 | `projectForMember` | 移到 `apps/backend/src/features/conversation/projection.ts`——它属于 backend 的渲染逻辑 |
-| `Message` / `MessageRevision` 等 re-export | **删除**——调用方直接 import `@my-agent-team/message` |
+| `Message` / `MessageRevision` 等 re-export | **删除**——调用方直接 import `@chengchenccc/message` |
 
 ### 15.3 不变
 

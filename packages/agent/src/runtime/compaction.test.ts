@@ -7,7 +7,7 @@ async function setup(messages: Array<Record<string, unknown>>) {
   const sid = `compaction-${Math.random().toString(36).slice(2, 8)}`;
   await store.create({
     sessionId: sid,
-    backendKind: "coding_agent",
+    backendKind: "oma",
     workspaceRoot: "/ws",
     leafEntryId: null,
     createdAt: Date.now(),

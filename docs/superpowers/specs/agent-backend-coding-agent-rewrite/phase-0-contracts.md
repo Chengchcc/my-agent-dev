@@ -2,7 +2,7 @@
 
 ## 目标
 
-建立唯一、可编译、与实现无关的 AgentBackend 协议。Product Backend、Coding Agent Adapter、Claude/Codex/OpenCode Adapter 和 transport 后续只能依赖这组类型通信。
+建立唯一、可编译、与实现无关的 AgentBackend 协议。Product Backend、Oma Adapter、Claude/Codex/OpenCode Adapter 和 transport 后续只能依赖这组类型通信。
 
 本 Phase 不实现 Backend 或 Runtime。
 
@@ -17,7 +17,7 @@
 ## 约束
 
 1. 协议包不能依赖 `apps/backend`、`packages/agent`、Provider SDK 或 HTTP framework。
-2. `Message` 继续来自 `@my-agent-team/message`，不复制消息模型。
+2. `Message` 继续来自 `@chengchenccc/message`，不复制消息模型。
 3. Product DB、Runtime Plugin、Coding Session Tree、Provider credential 都不能进入公共协议。
 4. `Agent Run` 是产品执行身份；`BackendRunSegment` 是一次 Adapter continuation；`Agent Loop` 不出现在协议中。
 5. `suspended` 是 segment outcome，不是 Agent Run terminal status。
@@ -49,7 +49,7 @@ packages/agent-backend/
 
 ## 实现步骤
 
-1. 创建 workspace package；只依赖 `@my-agent-team/message`，必要时使用 Zod 做边界 validation。
+1. 创建 workspace package；只依赖 `@chengchenccc/message`，必要时使用 Zod 做边界 validation。
 2. 固定 `runId`、`branchId`、`productEntryId`、`backendSessionId`、`actionId`，禁止通用 `ExecutionId`。
 3. `AgentRunSnapshot` 固定 model、systemPrompt、productTools、configRevision；`start()` 和 `send()` 都必须接收。
 4. 定义 terminal outcome：completed/failed/aborted/timeout；定义 nonterminal suspended。

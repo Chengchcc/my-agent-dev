@@ -20,7 +20,7 @@ function section(heading: string, body: string): string | null {
 }
 
 /** Render the unified <system-reminder> Meta user message from runtime facts.
- *  Empty sections are omitted. The structure follows coding-agent-prompt.md. */
+ *  Empty sections are omitted. The structure follows oma-prompt.md. */
 export function renderLoopMeta(input: LoopMetaInput): string {
   const sections: string[] = [];
 

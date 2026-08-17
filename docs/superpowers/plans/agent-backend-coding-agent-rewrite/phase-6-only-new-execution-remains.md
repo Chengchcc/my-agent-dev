@@ -2,7 +2,7 @@
 
 ## Goal
 
-Delete every legacy Product execution/checkpoint path after Phase 5 so Agent Run → Agent Backend → Coding Agent is the only execution model.
+Delete every legacy Product execution/checkpoint path after Phase 5 so Agent Run → Agent Backend → Oma is the only execution model.
 
 ## Outcome
 
@@ -36,7 +36,7 @@ Active source, schema, routes, config, packages, scripts, operations, and curren
 
 **Files:**
 
-- Inspect: `docs/superpowers/specs/agent-backend-coding-agent-rewrite/phase-5-product-caller-cutover.md`
+- Inspect: `docs/superpowers/specs/agent-backend-oma-rewrite/phase-5-product-caller-cutover.md`
 - Create: `scripts/smoke-agent-run.ts`
 - Modify: `apps/backend/src/infra/sqlite/db.test.ts`
 
@@ -51,7 +51,7 @@ Active source, schema, routes, config, packages, scripts, operations, and curren
 **Check:**
 
 ```bash
-! grep -RInE '@my-agent-team/agent|createAgentSession|SessionManager|ConversationLock|activeSessions|member\.sessionId|checkpointer\.db' apps/backend/src
+! grep -RInE '@chengchenccc/agent|createAgentSession|SessionManager|ConversationLock|activeSessions|member\.sessionId|checkpointer\.db' apps/backend/src
 bun test apps/backend/src/infra/sqlite/db.test.ts
 bun run scripts/smoke-agent-run.ts --mode clean
 bun run scripts/smoke-agent-run.ts --mode restart
@@ -76,19 +76,19 @@ Expected: search is zero; Product-fact baseline test and both smoke modes pass.
 
 **Actions:**
 
-1. List importers of `@my-agent-team/agent`, every plugin package, and `run`/`RunOptions` from core.
-2. Classify each plugin as statically owned by the Phase 2 Coding Agent or unowned.
+1. List importers of `@chengchenccc/agent`, every plugin package, and `run`/`RunOptions` from core.
+2. Classify each plugin as statically owned by the Phase 2 Oma or unowned.
 3. Classify `packages/core/src/run.ts` separately from still-live `ChatModel`, `Tool`, message-block, and stream utilities.
 4. Record deletion targets in the working transcript; do not add a permanent inventory file.
 
 **Check:**
 
 ```bash
-grep -RInE 'from ["'"']@my-agent-team/(agent|plugin-[^"'"']+)["'"']|\bRunOptions\b' apps packages --include='*.ts' --include='*.tsx'
-grep -RInE '"@my-agent-team/(agent|plugin-[^"]+|core)"' apps/*/package.json packages/*/package.json
+grep -RInE 'from ["'"']@chengchenccc/(agent|plugin-[^"'"']+)["'"']|\bRunOptions\b' apps packages --include='*.ts' --include='*.tsx'
+grep -RInE '"@chengchenccc/(agent|plugin-[^"]+|core)"' apps/*/package.json packages/*/package.json
 ```
 
-Expected: every hit has a current Coding Agent owner or a deletion task below.
+Expected: every hit has a current Oma owner or a deletion task below.
 
 **Done when:** No runtime/package deletion depends on guessed ownership.
 
@@ -148,14 +148,14 @@ Expected: every active hit is assigned to Waves 3 or 4; every retained audit tab
 **Check:**
 
 ```bash
-! grep -RInE '\bRunOptions\b|@my-agent-team/core.*\brun\b' apps packages --include='*.ts' --include='*.tsx'
+! grep -RInE '\bRunOptions\b|@chengchenccc/core.*\brun\b' apps packages --include='*.ts' --include='*.tsx'
 bun run --cwd packages/core typecheck
 bun run --cwd packages/core test
 ```
 
 Expected: search is zero; package gates pass.
 
-**Done when:** Coding Agent owns the only Agent Loop.
+**Done when:** Oma owns the only Agent Loop.
 
 ### Task 2.2: Delete legacy facade, stores, and checkpoint persistence
 
@@ -185,9 +185,9 @@ bun run --cwd packages/agent typecheck
 bun run --cwd packages/agent test
 ```
 
-Expected: searches are zero; old drizzle directory is absent; new Coding Agent runtime passes.
+Expected: searches are zero; old drizzle directory is absent; new Oma runtime passes.
 
-**Done when:** `packages/agent` contains only Phase 2 Worker-local Coding Agent code.
+**Done when:** `packages/agent` contains only Phase 2 Worker-local Oma code.
 
 ### Task 2.3: Delete unowned Product runtime plugin packages
 
@@ -199,21 +199,21 @@ Expected: searches are zero; old drizzle directory is absent; new Coding Agent r
 - Delete only after zero-import proof: `packages/plugin-goal/`
 - Delete only after zero-import proof: `packages/plugin-pet/`
 - Delete only after zero-import proof: `packages/plugin-recap/`
-- Delete any other plugin package without a Phase 2 Coding Agent owner
-- Preserve or fold only plugins still statically loaded by Coding Agent
+- Delete any other plugin package without a Phase 2 Oma owner
+- Preserve or fold only plugins still statically loaded by Oma
 
 **Actions:**
 
 1. Re-run source and manifest searches per package.
 2. Delete zero-owner directories; do not keep empty workspace shells.
-3. If behavior moved into Coding Agent, migrate the final importer first.
-4. Do not move Product Conversation state or Product Tool closures into Coding Agent plugins.
+3. If behavior moved into Oma, migrate the final importer first.
+4. Do not move Product Conversation state or Product Tool closures into Oma plugins.
 
 **Check:**
 
 ```bash
 for p in plugin-conversation-context plugin-goal plugin-pet plugin-recap; do
-  ! grep -RIn "@my-agent-team/$p" apps packages --include='*.ts' --include='*.tsx' --include='package.json' --exclude-dir="$p"
+  ! grep -RIn "@chengchenccc/$p" apps packages --include='*.ts' --include='*.tsx' --include='package.json' --exclude-dir="$p"
 done
 ```
 
@@ -230,8 +230,8 @@ Expected: every deleted package has zero live importer.
 - Verify: `packages/agent/`
 - Verify: `packages/core/`
 - Verify: surviving plugins
-- Verify: `apps/coding-agent/`
-- Verify: `packages/adapter-coding-agent/`
+- Verify: `apps/oh-my-agent/`
+- Verify: `packages/adapter-oma-agent/`
 
 **Actions:**
 
@@ -242,15 +242,15 @@ Expected: every deleted package has zero live importer.
 **Check:**
 
 ```bash
-! grep -RInE 'createAgentSession|SessionManager|AgentHooks|checkpoint_messages|checkpoint_interrupts|checkpoint_events|ProductTurn|SelfHosted|runtimeSessionId' packages/*/src apps/coding-agent/src
+! grep -RInE 'createAgentSession|SessionManager|AgentHooks|checkpoint_messages|checkpoint_interrupts|checkpoint_events|ProductTurn|SelfHosted|runtimeSessionId' packages/*/src apps/oh-my-agent/src
 bun run --cwd packages/agent test
-bun run --cwd apps/coding-agent test
-bun run --cwd packages/adapter-coding-agent test
+bun run --cwd apps/oh-my-agent test
+bun run --cwd packages/adapter-oma-agent test
 ```
 
 Expected: search is zero; all focused tests pass.
 
-**Done when:** **DESTRUCTIVE CHECKPOINT A:** old runtime code is gone and Coding Agent still runs independently.
+**Done when:** **DESTRUCTIVE CHECKPOINT A:** old runtime code is gone and Oma still runs independently.
 
 ## Wave 3 — Delete backend checkpoint and legacy execution surfaces
 
@@ -515,12 +515,12 @@ Expected: next Run rebuilds from Product facts only.
 - Delete or tombstone: `docs/architecture/runtime/context-manager.md`
 - Delete or tombstone: `docs/architecture/runtime/plugin.md`
 - Delete or tombstone: `docs/architecture/harness/harness.md`
-- Preserve/update: `docs/architecture/runtime/coding-agent*.md`
+- Preserve/update: `docs/architecture/runtime/oma*.md`
 - Preserve/update: `docs/architecture/execution/agent-backend.md`
 
 **Actions:**
 
-1. Delete pages fully replaced by Coding Agent/Agent Backend docs.
+1. Delete pages fully replaced by Oma/Agent Backend docs.
 2. Use a short `status: deprecated` tombstone only for durable incoming links.
 3. Remove obsolete implementation instructions from tombstones.
 4. Remove claims that Product Backend owns Agent Loop, session, plugins, compaction, Provider SDK, or checkpoint storage.
@@ -533,7 +533,7 @@ grep -RInE 'createAgentSession|SessionManager|AgentHooks|checkpointer|checkpoint
 
 Expected: hits exist only in short, explicit deprecated tombstones.
 
-**Done when:** Coding Agent and Agent Backend are the only current execution narrative.
+**Done when:** Oma and Agent Backend are the only current execution narrative.
 
 ### Task 5.2: Rewrite operations/backend guidance
 
@@ -576,7 +576,7 @@ Expected: zero active guidance hits; any tombstone is manually excluded and revi
 
 - Modify: `README.md`
 - Modify: `apps/backend/README.md`
-- Modify/create if present in Phase 3: `apps/coding-agent/README.md`
+- Modify/create if present in Phase 3: `apps/oh-my-agent/README.md`
 - Modify: `docs/architecture/README.md`
 - Modify: `docs/architecture/index.llm.md`
 - Modify: `docs/architecture/map.md`
@@ -586,7 +586,7 @@ Expected: zero active guidance hits; any tombstone is manually excluded and revi
 
 **Actions:**
 
-1. Replace in-process/checkpointer diagrams with Product Backend → Agent Run → Agent Backend → Coding Agent.
+1. Replace in-process/checkpointer diagrams with Product Backend → Agent Run → Agent Backend → Oma.
 2. Describe `backend.db` Product facts and disposable daemon-owned Coding Session storage.
 3. Remove deleted packages/pages and add new rewrite packages/apps.
 4. Verify every `concepts.json` path exists.
@@ -621,15 +621,15 @@ Expected: search is zero; checker prints `concept paths OK`.
 1. Remove deleted plugin and Product Backend runtime dependencies.
 2. Remove dependencies used only by deleted files.
 3. Remove stale exports/files/scripts.
-4. Keep `@my-agent-team/agent` only if it remains the real Phase 2 runtime and only in Coding Agent-owned manifests.
+4. Keep `@chengchenccc/agent` only if it remains the real Phase 2 runtime and only in Oma-owned manifests.
 
 **Check:**
 
 ```bash
-grep -RInE '"@my-agent-team/(agent|plugin-conversation-context|plugin-goal|plugin-pet|plugin-recap)"' apps/*/package.json packages/*/package.json || true
+grep -RInE '"@chengchenccc/(agent|plugin-conversation-context|plugin-goal|plugin-pet|plugin-recap)"' apps/*/package.json packages/*/package.json || true
 ```
 
-Expected: every remaining hit has a current Coding Agent source importer.
+Expected: every remaining hit has a current Oma source importer.
 
 **Done when:** Manifest edges exactly match live imports.
 
@@ -645,14 +645,14 @@ Expected: every remaining hit has a current Coding Agent source importer.
 - Modify: `scripts/predev.sh`
 - Modify: `scripts/gen-drizzle.sh`
 - Modify: `scripts/dev.sh`
-- Modify: Coding Agent process/deployment config
+- Modify: Oma process/deployment config
 - Modify: `commitlint.config.mjs`
 
 **Actions:**
 
 1. Remove references to deleted packages and stale `framework`/`harness` paths.
 2. Keep only real migration targets.
-3. Make dev start/stop backend, Coding Agent daemon, and surfaces together.
+3. Make dev start/stop backend, Oma daemon, and surfaces together.
 4. Remove old in-process/runner-registry comments; add no orchestration abstraction.
 
 **Check:**
@@ -685,7 +685,7 @@ Expected: search is zero; scripts parse.
 
 ```bash
 bun install
-! grep -nE 'packages/(plugin-conversation-context|plugin-goal|plugin-pet|plugin-recap)|@my-agent-team/(plugin-conversation-context|plugin-goal|plugin-pet|plugin-recap)' bun.lock
+! grep -nE 'packages/(plugin-conversation-context|plugin-goal|plugin-pet|plugin-recap)|@chengchenccc/(plugin-conversation-context|plugin-goal|plugin-pet|plugin-recap)' bun.lock
 bun pm ls --all
 ```
 
@@ -786,12 +786,12 @@ Expected: all five pass sequentially.
 **Files:**
 
 - Execute: `scripts/smoke-agent-run.ts`
-- Exercise: `apps/coding-agent/`
+- Exercise: `apps/oh-my-agent/`
 - Exercise: `apps/backend/`
 
 **Actions:**
 
-1. Start Coding Agent and Backend with the script's documented environment.
+1. Start Oma and Backend with the script's documented environment.
 2. Post an authenticated Conversation Message and wait for terminal Agent Run.
 3. Assert Live Updates were observed and exactly one History Message + Context ref + terminal Run were committed.
 4. Stop the Worker/session; post the next Message and assert resume-if-valid or rebuild from Product facts.
@@ -807,7 +807,7 @@ bun run scripts/smoke-agent-run.ts --mode restart
 Expected: both modes print the complete Message → Run → Backend → Worker → outcome → atomic commit → next-run recovery sequence and exit 0.
 
 
-**Done when:** End to end, only Agent Run + Agent Backend + Coding Agent executes work.
+**Done when:** End to end, only Agent Run + Agent Backend + Oma executes work.
 
 ### Task 7.4: Smoke failure and recovery
 
@@ -829,7 +829,7 @@ Expected: both modes print the complete Message → Run → Backend → Worker �
 **Check:**
 
 ```bash
-bun test apps/backend/src/features/agent-run/execution.test.ts apps/backend/src/features/product-tools apps/coding-agent/src/session-supervisor.test.ts
+bun test apps/backend/src/features/agent-run/execution.test.ts apps/backend/src/features/product-tools apps/oh-my-agent/src/session-supervisor.test.ts
 ! grep -RInE 'checkpointer\.db|checkpoint_messages|checkpoint_interrupts|createAgentSession|SessionManager|AgentHooks|runtimeSessionId|ProductTurn|SelfHosted' apps/*/src packages/*/src scripts
 ```
 
@@ -856,7 +856,7 @@ Expected: search is zero and every command exits 0. Then repeat Task 7.3 once wi
 **Phase complete when:**
 
 - Agent Run is the only Product execution control plane.
-- Coding Agent owns the only Agent Loop/Coding Session runtime.
+- Oma owns the only Agent Loop/Coding Session runtime.
 - Product Backend has no legacy facade, Provider/runtime assembly, checkpoint store, old plugin assembly, or old route.
 - Product facts and useful audit survive; execution cache is deleted without conversion.
 - No package/config/script/current-doc edge points to the old model.

@@ -80,10 +80,10 @@ describe("Agent Context: tree and default branch", () => {
   test("getOrCreateDefaultBranch creates default branch", async () => {
     const { conversationId, agentMemberId } = freshFixture("branch");
     const tree = await ctx.getOrCreateTree(conversationId, agentMemberId);
-    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "oma");
     expect(branch.treeId).toBe(tree.treeId);
     expect(branch.isDefault).toBe(true);
-    expect(branch.backendKind).toBe("coding_agent");
+    expect(branch.backendKind).toBe("oma");
     expect(branch.ledgerCursor).toBe(0);
     expect(branch.revision).toBe(1);
   });
@@ -91,8 +91,8 @@ describe("Agent Context: tree and default branch", () => {
   test("getOrCreateDefaultBranch is idempotent", async () => {
     const { conversationId, agentMemberId } = freshFixture("idem-branch");
     const tree = await ctx.getOrCreateTree(conversationId, agentMemberId);
-    const b1 = await ctx.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
-    const b2 = await ctx.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const b1 = await ctx.getOrCreateDefaultBranch(tree.treeId, "oma");
+    const b2 = await ctx.getOrCreateDefaultBranch(tree.treeId, "oma");
     expect(b1.branchId).toBe(b2.branchId);
   });
 });
@@ -101,7 +101,7 @@ describe("Agent Context: entry append and CAS", () => {
   test("appendEntry appends to leaf and increments revision", async () => {
     const { conversationId, agentMemberId } = freshFixture("append");
     const tree = await ctx.getOrCreateTree(conversationId, agentMemberId);
-    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "oma");
 
     const result = await ctx.appendEntry({
       branchId: branch.branchId,
@@ -121,7 +121,7 @@ describe("Agent Context: entry append and CAS", () => {
   test("appendEntry CAS conflict throws", async () => {
     const { conversationId, agentMemberId } = freshFixture("cas");
     const tree = await ctx.getOrCreateTree(conversationId, agentMemberId);
-    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "oma");
 
     await ctx.appendEntry({
       branchId: branch.branchId,
@@ -146,7 +146,7 @@ describe("Agent Context: entry append and CAS", () => {
   test("listEntriesToLeaf returns root-to-leaf order", async () => {
     const { conversationId, agentMemberId } = freshFixture("order");
     const tree = await ctx.getOrCreateTree(conversationId, agentMemberId);
-    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "oma");
 
     const r1 = await ctx.appendEntry({
       branchId: branch.branchId,
@@ -187,8 +187,8 @@ describe("Agent Context: two-member isolation", () => {
     const tree2 = await ctx.getOrCreateTree(conversationId, "mem-iso2");
     expect(tree1.treeId).not.toBe(tree2.treeId);
 
-    const branch1 = await ctx.getOrCreateDefaultBranch(tree1.treeId, "coding_agent");
-    const branch2 = await ctx.getOrCreateDefaultBranch(tree2.treeId, "coding_agent");
+    const branch1 = await ctx.getOrCreateDefaultBranch(tree1.treeId, "oma");
+    const branch2 = await ctx.getOrCreateDefaultBranch(tree2.treeId, "oma");
 
     await ctx.appendEntry({
       branchId: branch1.branchId,
@@ -216,7 +216,7 @@ describe("Agent Context: ledger_message stores ref only", () => {
     });
 
     const tree = await ctx.getOrCreateTree(conversationId, agentMemberId);
-    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "oma");
     const result = await ctx.appendEntry({
       branchId: branch.branchId,
       expectedRevision: 1,
@@ -244,7 +244,7 @@ describe("Agent Context: fork and move leaf", () => {
   test("fork creates new branch with inherited backend kind, preserves entries", async () => {
     const { conversationId, agentMemberId } = freshFixture("fork1");
     const tree = await ctx.getOrCreateTree(conversationId, agentMemberId);
-    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "oma");
     const r1 = await ctx.appendEntry({
       branchId: branch.branchId,
       expectedRevision: 1,
@@ -258,7 +258,7 @@ describe("Agent Context: fork and move leaf", () => {
       expectedRevision: 2,
       fromEntryId: r1.entryId,
     });
-    expect(forked.backendKind).toBe("coding_agent");
+    expect(forked.backendKind).toBe("oma");
     expect(forked.isDefault).toBe(false);
     expect(forked.branchId).not.toBe(branch.branchId);
 
@@ -275,7 +275,7 @@ describe("Agent Context: fork and move leaf", () => {
   test("fork can change backend kind", async () => {
     const { conversationId, agentMemberId } = freshFixture("fork2");
     const tree = await ctx.getOrCreateTree(conversationId, agentMemberId);
-    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "oma");
     const r1 = await ctx.appendEntry({
       branchId: branch.branchId,
       expectedRevision: 1,
@@ -296,7 +296,7 @@ describe("Agent Context: fork and move leaf", () => {
   test("move leaf does not delete entries", async () => {
     const { conversationId, agentMemberId } = freshFixture("move");
     const tree = await ctx.getOrCreateTree(conversationId, agentMemberId);
-    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const branch = await ctx.getOrCreateDefaultBranch(tree.treeId, "oma");
     const r1 = await ctx.appendEntry({
       branchId: branch.branchId,
       expectedRevision: 1,

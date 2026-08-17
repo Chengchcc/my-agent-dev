@@ -2,7 +2,7 @@
 
 > **For agentic workers:** 本计划只迁移 backend 的 Agent caller。不要在本计划内引入 Capability、拆分 `conversation-compose.ts`、修改数据库 schema 或删除旧包。
 >
-> **Goal:** 在 Runtime Foundation 完成后，让 backend 的 Conversation、Resume、Cron、Loop、Skill Pack 入口使用 `@my-agent-team/agent`，保持现有行为。
+> **Goal:** 在 Runtime Foundation 完成后，让 backend 的 Conversation、Resume、Cron、Loop、Skill Pack 入口使用 `@chengchenccc/agent`，保持现有行为。
 >
 > **Architecture:** 逐个垂直切片迁移 caller。每个切片独立 typecheck/test/build；不做新旧 Agent 双写。Session 绑定、Span/Origin、ledger projection、retry、interrupt 和 cleanup 语义保持不变。
 >
@@ -62,7 +62,7 @@ scoped test
 
 ### Required change
 
-Replace backend conversation usage of `AgentSession` and `SessionManager` with the public API from `@my-agent-team/agent`.
+Replace backend conversation usage of `AgentSession` and `SessionManager` with the public API from `@chengchenccc/agent`.
 
 Preserve:
 
@@ -94,7 +94,7 @@ bun run --cwd apps/backend typecheck
 Structural check:
 
 ```bash
-! grep -R '@my-agent-team/harness' apps/backend/src/features/conversation --include='*.ts'
+! grep -R '@chengchenccc/harness' apps/backend/src/features/conversation --include='*.ts'
 ```
 
 Behavior checks:
@@ -242,7 +242,7 @@ bun run --cwd apps/backend typecheck
 After all five caller tasks are merged:
 
 ```bash
-! grep -R '@my-agent-team/harness' apps/backend/src --include='*.ts'
+! grep -R '@chengchenccc/harness' apps/backend/src --include='*.ts'
 bun run --cwd apps/backend typecheck
 bun run build
 bun run test

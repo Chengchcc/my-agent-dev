@@ -8,7 +8,7 @@ depends_on:
   - design-philosophy
   - foundations.facts-and-projections
 used_by:
-  - agent.agent
+  - agent.oma
   - backend.overview
 ---
 
@@ -58,7 +58,7 @@ flowchart TB
   subgraph adapter["Adapter 层"]
     CHILD["runId 路由 execute/steer/abort<br/>deliveryIdempotencyKey 重投去重"]
   end
-  subgraph runtime["Coding Agent 层"]
+  subgraph runtime["Oma 层"]
     SESS["Runtime 内 sessionId = runId<br/>in-memory SessionStore，Run 结束销毁"]
   end
   RUN -->|execute(run snapshot)| CHILD

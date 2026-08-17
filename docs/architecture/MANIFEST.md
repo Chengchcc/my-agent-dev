@@ -34,10 +34,10 @@
 - `docs/architecture/runtime/framework.md`（tombstone）
 - `docs/architecture/runtime/plugin.md`（tombstone）
 - `docs/architecture/runtime/context-manager.md`（tombstone）
-- `docs/architecture/runtime/coding-agent.md`
-- `docs/architecture/runtime/coding-agent-session.md`
-- `docs/architecture/runtime/coding-agent-prompt.md`
-- `docs/architecture/runtime/coding-agent-models.md`
+- `docs/architecture/runtime/oma.md`
+- `docs/architecture/runtime/oma-session.md`
+- `docs/architecture/runtime/oma-prompt.md`
+- `docs/architecture/runtime/oma-models.md`
 - `docs/architecture/runtime/compaction.md`
 - `docs/architecture/runtime/memory.md`（tombstone）
 - `docs/architecture/security/overview.md`

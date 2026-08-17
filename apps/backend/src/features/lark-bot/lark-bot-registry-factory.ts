@@ -1,4 +1,4 @@
-import { parseEnv } from "@my-agent-team/config";
+import { parseEnv } from "@chengchenccc/config";
 import type { BackendConfig } from "../../config.js";
 import type { LarkBotRegistry } from "./index.js";
 import { DevLarkBotRegistry, ProdLarkBotRegistry } from "./index.js";

@@ -1,5 +1,5 @@
-import type { Message } from "@my-agent-team/message";
-import type { CodingAgentLoopEvent } from "./agent-event.js";
+import type { Message } from "@chengchenccc/message";
+import type { OmaLoopEvent } from "./agent-event.js";
 import type { PluginRuntime } from "./plugin-runtime.js";
 
 export interface PluginTool {
@@ -57,10 +57,7 @@ export interface PluginHooks {
     toolName: string,
     result: unknown,
     rt: PluginRuntime,
-  ):
-    | CodingAgentLoopEvent
-    | { content?: unknown; isError?: boolean; terminate?: boolean }
-    | undefined;
+  ): OmaLoopEvent | { content?: unknown; isError?: boolean; terminate?: boolean } | undefined;
   /** Rewrite tool call arguments before execution.
    *  Use for deobfuscation, normalization, or injecting context. */
   transformToolArgs?(toolName: string, input: unknown, rt: PluginRuntime): unknown;

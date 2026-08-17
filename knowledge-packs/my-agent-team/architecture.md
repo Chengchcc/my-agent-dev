@@ -21,7 +21,7 @@ into service factories, then mounts HTTP routes in app.ts.
   It resolves the frozen run config (system prompt, skill roots, permission mode)
   and persists the input atomically.
 - AgentRunExecutionService.dispatch spawns the per-backend child process.
-- coding-agent runs one process per turn and speaks stdio JSONL over RPC.
+- oma runs one process per turn and speaks stdio JSONL over RPC.
 - BackendRunOutcome is the only terminal authority; events are observational.
 
 ## Workspace bridge
@@ -29,7 +29,7 @@ into service factories, then mounts HTTP routes in app.ts.
 reconcileAgentResources writes per-agent workspace config:
 
 - .mcp.json: enabled MCP servers + product-tools + knowledge recall server
-- .agent/product-tools.json: product tool manifest for coding-agent
+- .oma/product-tools.json: product tool manifest for oma
 - <kind>/skills symlinks: assigned skill packs
 - knowledge/ symlinks + index.md: assigned knowledge packs
 - .claude/settings.json: pre-allowed product tools for claude backend

@@ -169,7 +169,7 @@ In `packages/framework/src/create-agent.test.ts` (or a new test file), add:
 ```typescript
 import { describe, test, expect } from "bun:test";
 import { createAgent } from "./create-agent.js";
-import { echoModel } from "@my-agent-team/test-helpers";
+import { echoModel } from "@chengchenccc/test-helpers";
 
 describe("Agent.subscribe()", () => {
   test("notifies subscriber on each event", async () => {
@@ -288,9 +288,9 @@ git commit -m "refactor(framework): rename summarizingContextManager to autoSumm
 Write `packages/harness/src/agent-session.ts`:
 
 ```typescript
-import type { Agent, AgentEvent, AgentEventListener, Checkpointer, ContextManager, Logger, Plugin } from "@my-agent-team/framework";
-import type { ChatModel, Tool } from "@my-agent-team/core";
-import type { Message } from "@my-agent-team/message";
+import type { Agent, AgentEvent, AgentEventListener, Checkpointer, ContextManager, Logger, Plugin } from "@chengchenccc/framework";
+import type { ChatModel, Tool } from "@chengchenccc/core";
+import type { Message } from "@chengchenccc/message";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -491,7 +491,7 @@ export class AgentSession {
   // ─── Private ─────────────────────────────────────────
 
   async #initAgent(): Promise<void> {
-    const { createAgent } = await import("@my-agent-team/framework");
+    const { createAgent } = await import("@chengchenccc/framework");
     const agent = await createAgent({
       model: this.#config.model,
       threadId: this.#config.threadId,
@@ -653,7 +653,7 @@ Create `packages/harness/src/agent-session.test.ts`:
 
 ```typescript
 import { describe, test, expect } from "bun:test";
-import { echoModel } from "@my-agent-team/test-helpers";
+import { echoModel } from "@chengchenccc/test-helpers";
 import { AgentSession } from "./agent-session.js";
 
 describe("AgentSession", () => {
@@ -725,10 +725,10 @@ git commit -m "feat(harness): add AgentSession class with retry/event/subscribe 
 - [ ] **Step 1: Write compaction.ts**
 
 ```typescript
-import type { ChatModel } from "@my-agent-team/core";
-import type { Message } from "@my-agent-team/message";
-import { collectStream } from "@my-agent-team/core";
-import type { Checkpointer } from "@my-agent-team/framework";
+import type { ChatModel } from "@chengchenccc/core";
+import type { Message } from "@chengchenccc/message";
+import { collectStream } from "@chengchenccc/core";
+import type { Checkpointer } from "@chengchenccc/framework";
 
 export interface CompactionOptions {
   model: ChatModel;
@@ -834,8 +834,8 @@ Create `packages/harness/src/compaction.test.ts`:
 
 ```typescript
 import { describe, test, expect } from "bun:test";
-import { echoModel } from "@my-agent-team/test-helpers";
-import { inMemoryCheckpointer } from "@my-agent-team/framework";
+import { echoModel } from "@chengchenccc/test-helpers";
+import { inMemoryCheckpointer } from "@chengchenccc/framework";
 import { compactThread, reflectionGuidance } from "./compaction.js";
 
 describe("compactThread", () => {
@@ -904,8 +904,8 @@ git commit -m "feat(harness): add compaction logic and reflectionGuidance"
 ```typescript
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import type { Plugin } from "@my-agent-team/framework";
-import type { Message } from "@my-agent-team/message";
+import type { Plugin } from "@chengchenccc/framework";
+import type { Message } from "@chengchenccc/message";
 import { composeSystemPrompt } from "../system-prompt.js";
 import { todayAndYesterday } from "../daily-log.js";
 
@@ -1104,7 +1104,7 @@ git commit -m "feat(harness): export AgentSession, compaction, identityPlugin fr
 ```typescript
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import type { Tool } from "@my-agent-team/core";
+import type { Tool } from "@chengchenccc/core";
 
 /** Simple cwd-based default — tools resolve relative paths against this. */
 export function withDefaultCwd(tool: Tool, cwd: string): Tool {
@@ -1327,7 +1327,7 @@ In `packages/plugin-fs-memory/src/fs-memory.ts`, change the options type:
 export interface FsMemoryOptions {
   cwd: string;             // NEW: workspace root directory
   // DEPRECATED: kept for backward compat
-  ws?: import("@my-agent-team/tools-common").AgentFsLike;
+  ws?: import("@chengchenccc/tools-common").AgentFsLike;
   root?: string;
   enableWrite?: boolean;
   searchLimit?: number;
@@ -1340,7 +1340,7 @@ Update `fsMemoryPlugin` to use `cwd` to build a simple `AgentFsLike` adapter int
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 
-function nodeFsAdapter(cwd: string): import("@my-agent-team/tools-common").AgentFsLike {
+function nodeFsAdapter(cwd: string): import("@chengchenccc/tools-common").AgentFsLike {
   return {
     async read(path: string) {
       try {
@@ -1427,7 +1427,7 @@ export interface ProgressiveSkillOptions {
   maxCharsPerLoad?: number;
   posixSkillRoot?: string;
   // DEPRECATED
-  ws?: import("@my-agent-team/tools-common").AgentFsLike;
+  ws?: import("@chengchenccc/tools-common").AgentFsLike;
 }
 ```
 
@@ -1576,7 +1576,7 @@ git commit -m "feat(message): add runStatus field to MessageRevision"
 - [ ] **Step 1: Write conversation tools**
 
 ```typescript
-import type { Tool } from "@my-agent-team/core";
+import type { Tool } from "@chengchenccc/core";
 import type { ConversationPort } from "./ports.js";
 
 interface ConvToolDeps {
@@ -1716,9 +1716,9 @@ git commit -m "feat(backend): add conversation tools (read_history/read_context/
 
 ```typescript
 // packages/harness/src/plugins/conversation-context-plugin.ts
-import type { Plugin } from "@my-agent-team/framework";
-import type { Tool } from "@my-agent-team/core";
-import type { Message } from "@my-agent-team/message";
+import type { Plugin } from "@chengchenccc/framework";
+import type { Tool } from "@chengchenccc/core";
+import type { Message } from "@chengchenccc/message";
 
 export interface ConversationContextPluginOptions {
   tools: Tool[];
@@ -2177,14 +2177,14 @@ Keep the function in `packages/conversation` for now but mark `@deprecated — u
 
 - [ ] **Step 2: Remove message re-exports from packages/conversation**
 
-In `packages/conversation/src/index.ts`, remove all re-exports from `@my-agent-team/message`. Callers that need `Message`, `MessageRevision`, etc. should import directly from `@my-agent-team/message`.
+In `packages/conversation/src/index.ts`, remove all re-exports from `@chengchenccc/message`. Callers that need `Message`, `MessageRevision`, etc. should import directly from `@chengchenccc/message`.
 
 Check all imports across the repo and fix:
 ```bash
-grep -r "from ['\"]@my-agent-team/conversation['\"]" --include="*.ts" | grep -v node_modules
+grep -r "from ['\"]@chengchenccc/conversation['\"]" --include="*.ts" | grep -v node_modules
 ```
 
-Update each to import from `@my-agent-team/message` directly for message types.
+Update each to import from `@chengchenccc/message` directly for message types.
 
 - [ ] **Step 3: Commit**
 

@@ -26,7 +26,7 @@ Loop 的 item 走一条 `triaged → fixing → verifying → awaiting_review �
 1. **包结构**：`packages/loop/` 新包，与 `packages/harness/` 同级（L4），依赖只向下（core types）。
 2. **测试**：`bun:test`，`*.test.ts` 与源文件同目录。
 3. **TypeScript**：ESM + NodeNext，target ES2023，strict + `noUncheckedIndexedAccess`。
-4. **无依赖**：不 import `@my-agent-team/harness`、`@my-agent-team/framework`、`@my-agent-team/core`——纯 TS 类型 + 纯函数。
+4. **无依赖**：不 import `@chengchenccc/harness`、`@chengchenccc/framework`、`@chengchenccc/core`——纯 TS 类型 + 纯函数。
 5. **已有契约**：`loop-runner.md` 已定 `loopReducer` 签名 + 不变量；`loop.md` 已定 item step 状态机。
 
 ## 3. 第一性原则

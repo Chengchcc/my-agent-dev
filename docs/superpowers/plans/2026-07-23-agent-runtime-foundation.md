@@ -2,11 +2,11 @@
 
 > **For agentic workers:** 按 task 顺序执行。每个 task 独立 review、独立验证；不要跨 task 提前清理。
 >
-> **Goal:** 建立 `@my-agent-team/agent`，承接当前 `AgentSession + SessionManager` 的 observable behavior，并冻结 AgentHooks 边界；迁移期间内部暂时复用 `@my-agent-team/framework`。
+> **Goal:** 建立 `@chengchenccc/agent`，承接当前 `AgentSession + SessionManager` 的 observable behavior，并冻结 AgentHooks 边界；迁移期间内部暂时复用 `@chengchenccc/framework`。
 >
 > **Architecture:** 新 Agent 是 lifecycle facade，不是从 `core.run()` 重新实现一套 runtime。第一阶段保留 framework 的执行循环、存储和 context 实现，由新包封装 Agent 生命周期。完成后 backend caller 才开始迁移。
 >
-> **Tech Stack:** Bun、TypeScript NodeNext、bun:test、`@my-agent-team/core`、`@my-agent-team/framework`、`@my-agent-team/message`。
+> **Tech Stack:** Bun、TypeScript NodeNext、bun:test、`@chengchenccc/core`、`@chengchenccc/framework`、`@chengchenccc/message`。
 >
 > **Contract:** [`2026-07-23-agent-runtime-contract.md`](../specs/2026-07-23-agent-runtime-contract.md)
 >
@@ -58,9 +58,9 @@ First phase may depend on:
 
 ```json
 {
-  "@my-agent-team/core": "workspace:*",
-  "@my-agent-team/framework": "workspace:*",
-  "@my-agent-team/message": "workspace:*"
+  "@chengchenccc/core": "workspace:*",
+  "@chengchenccc/framework": "workspace:*",
+  "@chengchenccc/message": "workspace:*"
 }
 ```
 
@@ -233,7 +233,7 @@ Structural checks:
 ```bash
 # framework imports may exist in internal adapter/implementation files
 # index.ts must not re-export framework-only types
-! grep -n 'from "@my-agent-team/framework"' packages/agent/src/index.ts
+! grep -n 'from "@chengchenccc/framework"' packages/agent/src/index.ts
 ```
 
 ### Non-goals

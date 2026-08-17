@@ -406,7 +406,7 @@ async function main(): Promise<void> {
   );
   assertSafeDirectoryName(directoryName);
 
-  const defaultPackageName = `@my-agent-team/${directoryName.split("/").at(-1)}`;
+  const defaultPackageName = `@chengchenccc/${directoryName.split("/").at(-1)}`;
   const packageName = await input({
     message: "Package name:",
     default: defaultPackageName,
@@ -657,7 +657,7 @@ When prompted, enter:
 ```txt
 Where should the package be created? packages
 Directory name: tmp-validation
-Package name: @my-agent-team/tmp-validation
+Package name: @chengchenccc/tmp-validation
 Description: Temporary validation package
 ```
 
@@ -669,7 +669,7 @@ Verify `packages/tmp-validation/package.json` contains:
 
 ```json
 {
-  "name": "@my-agent-team/tmp-validation",
+  "name": "@chengchenccc/tmp-validation",
   "version": "0.1.0",
   "description": "Temporary validation package"
 }
@@ -679,7 +679,7 @@ Verify `packages/tmp-validation/src/index.ts` contains:
 
 ```ts
 export function packageName(): string {
-  return "@my-agent-team/tmp-validation";
+  return "@chengchenccc/tmp-validation";
 }
 ```
 

@@ -43,7 +43,7 @@
 
 ### Packages
 
-删除已经失去用途的 plugin package；保留仍被 Coding Agent 静态 Plugin 使用的 package。删除前用 package import graph 验证真实 callsite，不保留空壳 package。
+删除已经失去用途的 plugin package；保留仍被 Oma 静态 Plugin 使用的 package。删除前用 package import graph 验证真实 callsite，不保留空壳 package。
 
 ### Data
 
@@ -66,7 +66,7 @@
 ### 文档
 
 - 旧 runtime/framework/harness 页面改为 deprecated tombstone 或删除。
-- Coding Agent 和 AgentBackend 页面成为唯一主线。
+- Oma 和 AgentBackend 页面成为唯一主线。
 - 更新 README、index.llm、map、concepts.json、settings/operations 文档。
 
 ## 实现步骤
@@ -119,7 +119,7 @@ bun run test
 ### Smoke test
 
 ```text
-start backend + coding-agent daemon
+start backend + oma daemon
 → post Conversation Message
 → create Agent Run
 → Worker model/tool loop
@@ -138,4 +138,4 @@ start backend + coding-agent daemon
 
 ## 完成条件
 
-仓库中只有一套 Product execution control plane 和一套 Coding Agent Runtime。旧 session/checkpoint 机制完全消失，没有兼容层或双真源。
+仓库中只有一套 Product execution control plane 和一套 Oma Runtime。旧 session/checkpoint 机制完全消失，没有兼容层或双真源。

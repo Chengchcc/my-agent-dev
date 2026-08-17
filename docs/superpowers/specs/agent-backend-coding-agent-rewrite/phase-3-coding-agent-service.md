@@ -1,14 +1,14 @@
-# Phase 3：让 Coding Agent 成为独立 Agent Backend
+# Phase 3：让 Oma 成为独立 Agent Backend
 
 ## 目标
 
-把 Phase 2 Runtime core 放入独立 Coding Agent Service，并通过 `CodingAgentBackend` 实现 AgentBackend 协议。
+把 Phase 2 Runtime core 放入独立 Oma Service，并通过 `OmaBackend` 实现 AgentBackend 协议。
 
 ```text
 Product Backend
-  → CodingAgent Backend
+  → Oma Backend
       → HTTP commands + SSE
-          → Coding Agent Service
+          → Oma Service
               → CodingSessionSupervisor
                   → one Worker per active Run
 ```
@@ -38,7 +38,7 @@ Coding Session 的连续性由 SQLite SessionStore 保证，不依赖长期 Work
 
 ## 不兼容策略
 
-- 不支持 in-process Coding Agent fallback。
+- 不支持 in-process Oma fallback。
 - 不支持旧 checkpointer session ID。
 - 不支持 worker crash 后恢复同一 active loop。
 - 不实现 respond command；pendingActionResponse=false。
@@ -60,7 +60,7 @@ Coding Session 的连续性由 SQLite SessionStore 保证，不依赖长期 Work
 ## 目标文件
 
 ```text
-apps/coding-agent/
+apps/oh-my-agent/
   package.json
   tsconfig.json
   src/config.ts
@@ -74,7 +74,7 @@ apps/coding-agent/
   src/worker-main.ts
   src/event-buffer.ts
 
-packages/adapter-coding-agent/
+packages/adapter-oma-agent/
   package.json
   tsconfig.json
   src/client.ts
@@ -93,7 +93,7 @@ packages/adapter-coding-agent/
 5. 每 Session 串行 mutation（Promise chain）+ in-flight idempotency dedupe；runId 全局唯一。
 6. Daemon 按 run 保存有限 monotonic event buffer；SSE 支持 Last-Event-ID。
 7. service credential 使用 constant-time compare。
-8. CodingAgentBackend 实现 model catalog、start/send/resume/respond/stop/close、event/outcome mapping；steer 通过 `send(... mode: "steer")`，不是独立 AgentBackend method。
+8. OmaBackend 实现 model catalog、start/send/resume/respond/stop/close、event/outcome mapping；steer 通过 `send(... mode: "steer")`，不是独立 AgentBackend method。
 9. capabilities：persistentSession/nativeResume/nativeSteer=true，pendingActionResponse=false，productTools=mcp。persistentSession 表示 Coding Session 可跨 Worker 复用，不表示 Worker 长期存在。
 10. 定义 Product Tools transport contract；使用 contract-test server 验证同步调用、identity、timeout、cancellation。
 
@@ -110,10 +110,10 @@ packages/adapter-coding-agent/
 - malformed IPC 只终止对应 Worker。
 - Adapter 只依赖 agent-backend contract 和 transport client。
 - productEntryId 无损持久化。
-- 扩展事件使用 `backend.coding_agent.*`。
+- 扩展事件使用 `backend.oma.*`。
 - 不存在 in-process fallback、respond endpoint 或 pending continuation state。
 - contract-test MCP server 可从真实 Run Worker 同步调用；tool 事件 callId 使用真实模型 tool_use ID。
 
 ## 完成条件
 
-Coding Agent 是独立可部署的 AgentBackend。Product Backend 尚未接 Pool，也能通过 Adapter contract test 完成真实 Worker Agent Run。
+Oma 是独立可部署的 AgentBackend。Product Backend 尚未接 Pool，也能通过 Adapter contract test 完成真实 Worker Agent Run。

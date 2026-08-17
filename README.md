@@ -1,5 +1,5 @@
 <p align="center">
-  <strong>Multi-Agent Team Runtime — 四个 Coding Agent 后端可切换，Agent 工作区即配置文件，Web 和飞书双端实时可见</strong>
+  <strong>Multi-Agent Team Runtime — 四个 Oma 后端可切换，Agent 工作区即配置文件，Web 和飞书双端实时可见</strong>
 </p>
 
 <p align="center">
@@ -10,14 +10,14 @@
 
 ---
 
-my-agent-team 是一个**团队级 Agent 运行时**。每个 Agent 有独立的工作区（身份、技能、MCP、记忆都是工作区里的文件），运行时可以选择自研 coding-agent 或 claude / pi / omp 四种后端，各自用原生 session 续接上下文。对话在 Web 控制台和飞书群里实时同步，Agent 由 Product Backend 按 Run 调度执行——不掉消息、不重复、所有端看到的状态一致。
+my-agent-team 是一个**团队级 Agent 运行时**。每个 Agent 有独立的工作区（身份、技能、MCP、记忆都是工作区里的文件），运行时可以选择自研 oma 或 claude / pi / omp 四种后端，各自用原生 session 续接上下文。对话在 Web 控制台和飞书群里实时同步，Agent 由 Product Backend 按 Run 调度执行——不掉消息、不重复、所有端看到的状态一致。
 
 ## ✨ Highlights
 
-- **四后端可切换** — 自研 coding-agent 与 claude / pi / omp 任一运行,agent 级配置、每 Run 冻结,切后端不丢上下文(各自原生 session 续接,产品只存一个引用)
+- **四后端可切换** — 自研 oma 与 claude / pi / omp 任一运行,agent 级配置、每 Run 冻结,切后端不丢上下文(各自原生 session 续接,产品只存一个引用)
 - **Agent 工作区即配置** — 身份(SOUL/USER)、技能、MCP、产品工具、知识库都是工作区里的文件(AGENTS.md / `.mcp.json` / `.<kind>/skills`),后端自动桥接,人类可直接改文件
 - **一个对话一个 Agent** — 对话是 Agent session 的产品态投影;多 Agent 协作 = 多个对话投影到同一件事情(Work)上(ADR 0021)
-- **多 Provider 多协议** — 支持 Anthropic Messages、OpenAI Chat Completions、OpenAI Responses 三种 API 协议;builtin provider 只需环境有 API Key 即自动生效;用户通过 `~/.my-agent/models.yml` 添加自定义 provider
+- **多 Provider 多协议** — 支持 Anthropic Messages、OpenAI Chat Completions、OpenAI Responses 三种 API 协议;builtin provider 只需环境有 API Key 即自动生效;用户通过 `~/.oma/models.yml` 添加自定义 provider
 - **Thinking/Reasoning** — 全链路支持 Anthropic extended thinking、DeepSeek reasoning_content、OpenAI reasoning_effort;Web UI 可选 thinking level
 - **双端同步** — Web 控制台 + 飞书(Lark IM)Bot,同一条对话两边实时可见
 - **对话账本** — canonical conversation store(conversation_ledger),所有消息经单一入口写入,端只做渲染
@@ -60,7 +60,7 @@ Builtin provider 只需环境变量有对应的 API Key 即自动可用：
 | Groq | `GROQ_API_KEY` | Llama 3.3 70B |
 | OpenRouter | `OPENROUTER_API_KEY` | Claude Sonnet 5 + 更多 |
 
-自定义 provider 或模型覆盖，在 `~/.my-agent/models.yml` 中声明：
+自定义 provider 或模型覆盖，在 `~/.oma/models.yml` 中声明：
 
 ```yaml
 providers:
@@ -91,11 +91,11 @@ providers:
 │                  Agent Run · 输入队列 · Product Tools       │
 │                  Workspace Bridge(文件桥接) · Loop 调度    │
 ├──────────────────────────────────────────────────────────┤
-│ Agent Backends   coding-agent / claude / pi / omp          │
+│ Agent Backends   oma / claude / pi / omp          │
 │ (adapters)       spawn 一次性子进程 · stdin/stdout JSONL   │
 │                  session 引用透传 · steer/abort            │
 ├──────────────────────────────────────────────────────────┤
-│ Coding Agent     per-Run Runtime:model/tool loop、         │
+│ Oma     per-Run Runtime:model/tool loop、         │
 │ (自研 child)     retry、compaction、todo、skills           │
 │                  cwd 文件 meta + 原生 session 续接          │
 │ CLI Backends     claude / pi / omp:原生读 cwd 配置、       │
@@ -117,7 +117,7 @@ providers:
 ### Provider 架构（ADR 0018）
 
 ```
-~/.my-agent/models.yml          BUILTIN_CATALOG
+~/.oma/models.yml          BUILTIN_CATALOG
        │ (运行时读取)                │ (TypeScript 内置)
        └─────── merge ───────────────┘
                     │
@@ -134,7 +134,7 @@ providers:
     └────────────────────────────────────┘
 ```
 
-> **Coding Agent 启动方式**：开发环境 `bun run dev` 开箱即用——Backend 自动用 Bun 运行 `apps/coding-agent/src/cli.ts`，无需全局安装或 `bun link`。生产环境通过 `CODING_AGENT_BIN` 指向构建后的 `apps/coding-agent/dist/cli.js` 绝对路径（详见 `apps/backend/.env.example`）。
+> **Oma 启动方式**：开发环境 `bun run dev` 开箱即用——Backend 自动用 Bun 运行 `apps/oh-my-agent/src/cli.ts`，无需全局安装或 `bun link`。生产环境通过 `OMA_BIN` 指向构建后的 `apps/oh-my-agent/dist/cli.js` 绝对路径（详见 `apps/backend/.env.example`）。
 
 详细架构见 [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)。
 
@@ -143,14 +143,14 @@ providers:
 ```
 apps/
   backend/       Product Backend — HTTP/SSE、账本、Agent Context、Agent Run、Loop、Product Tools
-  coding-agent/  Coding Agent CLI — print/json/rpc 模式，被 backend 按 Run spawn
+  oma/  Oma CLI — print/json/rpc 模式，被 backend 按 Run spawn
   web/           Web 控制台 — Next.js 15 + shadcn/ui + React Query
   lark-bot/      飞书 Bot 适配器
 
   core/                    协议层：Message 类型、ChatModel、Tool、stream-utils（无 run loop）
-  agent/                   Coding Agent Runtime — 唯一真实 model/tool loop、插件、in-memory SessionStore
+  agent/                   Oma Runtime — 唯一真实 model/tool loop、插件、in-memory SessionStore
   agent-backend/           Agent Backend 契约：BackendRunInput/Outcome/Event + JSONL 协议 schema
-  adapter-coding-agent/    Adapter — spawn 自研 child、JSONL 读写、steer/abort、并发上限
+  adapter-oma-agent/    Adapter — spawn 自研 child、JSONL 读写、steer/abort、并发上限
   adapter-claude-agent/    Adapter — spawn claude CLI（stream-json、--resume/--mcp-config）
   adapter-pi-agent/        Adapter — spawn pi CLI（--session/--provider/--model）
   adapter-omp-agent/       Adapter — spawn omp CLI（-r/--thinking）
@@ -163,9 +163,9 @@ apps/
   tools-common/            通用工具：read/write/edit/bash/grep/glob
   api-contract/            跨进程类型契约（SSE 事件、Eden Treaty）
   config/                  配置加载
-  plugin-todo/             Run-local todo 跟踪（Coding Agent 加载）
-  plugin-progressive-skill/ 渐进式技能加载（Coding Agent 加载）
-  plugin-recap/            上下文超出时的回溯摘要（Coding Agent 加载）
+  plugin-todo/             Run-local todo 跟踪（Oma 加载）
+  plugin-progressive-skill/ 渐进式技能加载（Oma 加载）
+  plugin-recap/            上下文超出时的回溯摘要（Oma 加载）
   test-helpers/            测试工具（echoModel）
 ```
 

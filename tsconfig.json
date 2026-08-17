@@ -2,10 +2,10 @@
   "files": [],
   "references": [
     { "path": "./apps/backend" },
-    { "path": "./apps/coding-agent" },
+    { "path": "./apps/oh-my-agent" },
     { "path": "./apps/lark-bot" },
     { "path": "./apps/web" },
-    { "path": "./packages/adapter-coding-agent" },
+    { "path": "./packages/adapter-oma-agent" },
     { "path": "./packages/adapter-mcp" },
     { "path": "./packages/agent" },
     { "path": "./packages/agent-backend" },

@@ -1,16 +1,16 @@
 ---
-id: runtime.coding-agent-prompt
-title: Coding Agent Prompt 与 Context
+id: runtime.oma-prompt
+title: Oma Prompt 与 Context
 status: current
 owners: architecture
 summary: "每个 Agent Run 使用 AgentRunSnapshot 冻结的 systemPrompt（Product Agent SOUL/identity/skill 契约）+ Meta User Message（runtime context）+ 真实 Prompt。三者在子进程内 seed 进 SessionStore，与 full Product history 一起构成模型输入。"
 depends_on:
-  - runtime.coding-agent
-  - runtime.coding-agent-session
+  - runtime.oma
+  - runtime.oma-session
 used_by:
 ---
 
-# Coding Agent Prompt 与 Context
+# Oma Prompt 与 Context
 
 Prompt 分层在 Run 开始时由 Product Backend（systemPrompt 快照）与 Runtime（meta）确定。**systemPrompt/skillRoots 是 Agent Run 创建时冻结的 Run 级快照**（`agent_run.system_prompt` / `skill_roots`，输入队列行也携带自己的 request-time 快照）。
 
@@ -63,7 +63,7 @@ Runtime 扫描 Run 快照的 `skillRoots`（Skill Pack 物化出的绝对目录�
 
 ## Memory 由谁保存
 
-Memory 由 Product Backend 拥有。Adapter/Product 将高价值摘要和索引渲染到 Meta；详细事实通过 Product Memory 工具渐进读取。Coding Agent 不自行成为 Product Memory canonical store。
+Memory 由 Product Backend 拥有。Adapter/Product 将高价值摘要和索引渲染到 Meta；详细事实通过 Product Memory 工具渐进读取。Oma 不自行成为 Product Memory canonical store。
 
 ## 不变量
 
@@ -76,7 +76,7 @@ Memory 由 Product Backend 拥有。Adapter/Product 将高价值摘要和索引�
 
 ## 关联页面
 
-- [Coding Agent](./coding-agent.md)
-- [Coding Agent Session](./coding-agent-session.md)
-- [Coding Agent Provider 与 ModelRuntime](./coding-agent-models.md)
+- [Oma](./oma.md)
+- [Oma Session](./oma-session.md)
+- [Oma Provider 与 ModelRuntime](./oma-models.md)
 - [Agent Backend](../execution/agent-backend.md)

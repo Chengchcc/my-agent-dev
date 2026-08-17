@@ -1,5 +1,5 @@
 {
-  "name": "@my-agent-team/agent-backend",
+  "name": "@chengchenccc/agent-backend",
   "version": "0.1.0",
   "description": "Implementation-independent Agent Backend contracts",
   "type": "module",
@@ -20,7 +20,7 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
-    "@my-agent-team/message": "workspace:*",
+    "@chengchenccc/message": "workspace:*",
     "zod": "^3.23.0"
   },
   "devDependencies": {}

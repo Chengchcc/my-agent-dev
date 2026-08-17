@@ -1,4 +1,4 @@
-import type { Tool, ToolExecuteResult } from "@my-agent-team/core";
+import type { Tool, ToolExecuteResult } from "@chengchenccc/core";
 
 export interface McpToolDefinition {
   name: string;

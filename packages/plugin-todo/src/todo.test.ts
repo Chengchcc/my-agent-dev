@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createInMemorySessionStore, readTodo } from "@my-agent-team/agent";
+import { createInMemorySessionStore, readTodo } from "@chengchenccc/agent";
 import { createTodoPlugin } from "./todo.js";
 
 describe("plugin-todo", () => {
@@ -8,7 +8,7 @@ describe("plugin-todo", () => {
     const sid = "todo-test";
     await store.create({
       sessionId: sid,
-      backendKind: "coding_agent",
+      backendKind: "oma",
       workspaceRoot: "/ws",
       leafEntryId: null,
       createdAt: Date.now(),
@@ -36,7 +36,7 @@ describe("plugin-todo", () => {
     const sid = "todo-hook";
     await store.create({
       sessionId: sid,
-      backendKind: "coding_agent",
+      backendKind: "oma",
       workspaceRoot: "/ws",
       leafEntryId: null,
       createdAt: Date.now(),

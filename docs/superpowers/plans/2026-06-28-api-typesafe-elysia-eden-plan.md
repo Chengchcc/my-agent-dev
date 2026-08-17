@@ -83,19 +83,19 @@ router.ts 内靠注释手工保序：
 ```jsonc
 // packages/api-contract/package.json
 {
-  "name": "@my-agent-team/api-contract",
+  "name": "@chengchenccc/api-contract",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": ["dist"],
   "dependencies": { "elysia": "^1.x" },        // 仅为类型解析
-  "devDependencies": { "@my-agent-team/backend": "workspace:*" } // 类型来源，不进运行时
+  "devDependencies": { "@chengchenccc/backend": "workspace:*" } // 类型来源，不进运行时
 }
 ```
 
 ```ts
 // packages/api-contract/src/index.ts
-export type { App } from "@my-agent-team/backend/app";
+export type { App } from "@chengchenccc/backend/app";
 ```
 
 - backend `package.json` 加 `"exports": { "./app": "./dist/app.js" }` 以暴露 `App` 类型入口。
@@ -274,7 +274,7 @@ function openSSE<K extends keyof typeof sseEndpoints>(name: K, params: Parameter
 ```ts
 // web/src/lib/client.ts （新建）
 import { treaty } from "@elysiajs/eden";
-import type { App } from "@my-agent-team/api-contract";
+import type { App } from "@chengchenccc/api-contract";
 export const client = treaty<App>("/api/bff", {
   fetch: { credentials: "include" },                  // 对齐 api.ts:97 maw_session
   onResponse: (res) => { if (res.status === 401 && typeof window !== "undefined") location.href = "/login"; }, // 对齐 :106-109
@@ -282,7 +282,7 @@ export const client = treaty<App>("/api/bff", {
 ```
 
 - BFF `route.ts` / `bff.ts proxyRequest` **不动**：treaty 发 `/api/bff/agents/x` → BFF 透传 path → 后端，落点与现 `apiFetch('agents/x')` 一致。
-- web `package.json` + `@elysiajs/eden`、`@my-agent-team/api-contract`。
+- web `package.json` + `@elysiajs/eden`、`@chengchenccc/api-contract`。
 
 ### 6.2 删手抄类型 + 改调用
 
@@ -397,7 +397,7 @@ export const makeClient = (backendUrl: string, token: string) =>
   treaty<App>(backendUrl, { headers: { "x-auth-token": token } });   // 无 BFF，直连
 ```
 
-- `lark-bot/package.json` + `@my-agent-team/api-contract`、`@elysiajs/eden`。
+- `lark-bot/package.json` + `@chengchenccc/api-contract`、`@elysiajs/eden`。
 
 ### 7.2 6 处迁移逐条（删 4+1 处 as）
 
@@ -433,7 +433,7 @@ env 单源（E1-a，PR-0）:
 lark content 单源（E1-b，并入 PR-5）:
   现状 lark-bot 写 content={text,source,larkEventId,larkMessageId}（ingest.ts:171-176）
        → backend content: z.unknown()（conversation/http.ts:37），内层零校验
-  改法 content 形状提共享 zod（api-contract 或 @my-agent-team/message），两端 import；backend 替 z.unknown()
+  改法 content 形状提共享 zod（api-contract 或 @chengchenccc/message），两端 import；backend 替 z.unknown()
 
 lark event 单源（E1-c，并入 PR-5）:
   现状 LarkMessageEvent 手写 interface（event-parser.ts:3-17）+ JSON.parse as Record<string,unknown> :21 + 逐字段手 narrow :23-42

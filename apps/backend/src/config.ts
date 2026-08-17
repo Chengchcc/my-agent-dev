@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
-import type { Env } from "@my-agent-team/config";
-import { parseEnv } from "@my-agent-team/config";
+import type { Env } from "@chengchenccc/config";
+import { parseEnv } from "@chengchenccc/config";
 
 export interface BackendConfig {
   port: number;
@@ -16,9 +16,9 @@ export interface BackendConfig {
   runTimeoutMs: number;
   /** Absolute path to the repo skills/ directory (source for builtin seed). */
   builtinSkillsDir: string;
-  /** Coding Agent executable (spawned per Run). Defaults to "coding-agent"
+  /** Oma executable (spawned per Run). Defaults to "oma"
    *  on PATH; tests point it at the Bun runtime + app entry source. */
-  codingAgentBin?: string;
+  omaBin?: string;
   /** Knowledge recall MCP server entry (ADR 0022). Optional: exotic
    *  deployments override; otherwise dev uses source, prod uses dist. */
   knowledgeMcpServerBin?: string;
@@ -48,7 +48,7 @@ export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
     cancelGraceMs: env.BACKEND_CANCEL_GRACE_MS,
     runTimeoutMs: env.BACKEND_RUN_TIMEOUT_MS ?? 30 * 60_000,
     builtinSkillsDir: process.env.BUILTIN_SKILLS_DIR ?? resolve(import.meta.dir, "../../../skills"),
-    codingAgentBin: env.CODING_AGENT_BIN,
+    omaBin: env.OMA_BIN,
     knowledgeMcpServerBin: env.KNOWLEDGE_MCP_SERVER_BIN,
     piBin: env.PI_BIN,
     piMcpAdapterPath: env.PI_MCP_ADAPTER_PATH,

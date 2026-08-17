@@ -3,12 +3,12 @@ id: flows.e2e-web-message
 title: Web 消息端到端
 status: current
 owners: architecture
-summary: "Web 消息流：写入 Conversation History → 触发 Agent Run → Adapter spawn 一次性 coding-agent 子进程 → streaming 只做实时投影 → terminal outcome 后原子提交 Ledger 与 Tree。"
+summary: "Web 消息流：写入 Conversation History → 触发 Agent Run → Adapter spawn 一次性 oma 子进程 → streaming 只做实时投影 → terminal outcome 后原子提交 Ledger 与 Tree。"
 depends_on:
   - surfaces.web
   - runs.output-and-live-updates
   - agents.context
-  - execution.agent-backend
+  - execution.oma-backend
 used_by:
 ---
 
@@ -27,7 +27,7 @@ sequenceDiagram
   participant T as Agent Context
   participant S as Agent Runs
   participant A as Agent Backend
-  participant K as coding-agent child
+  participant K as oma child
 
   U->>W: 发送消息 / @Agent
   W->>P: POST Conversation Message
@@ -70,7 +70,7 @@ Backend 根据 trigger mode、mention、addressedTo、权限和 branch 选择目
 
 ## 4. Streaming
 
-Adapter 把子进程事件映射为 Product Backend 核心事件（`mapRunEvent`）。Web 实时显示 text、thinking、tool 和 status，但这是 transient projection，不写 canonical Tree。`backend.coding_agent.*` 事件可以显示在诊断 UI，但产品逻辑不依赖它。
+Adapter 把子进程事件映射为 Product Backend 核心事件（`mapRunEvent`）。Web 实时显示 text、thinking、tool 和 status，但这是 transient projection，不写 canonical Tree。`backend.oma.*` 事件可以显示在诊断 UI，但产品逻辑不依赖它。
 
 ## 5. Terminal commit
 

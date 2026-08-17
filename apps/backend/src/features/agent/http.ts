@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join as pathJoin, resolve as pathResolve, sep } from "node:path";
-import { BACKEND_KINDS } from "@my-agent-team/agent-backend";
+import { BACKEND_KINDS } from "@chengchenccc/agent-backend";
 import { Elysia, t } from "elysia";
 import type { LarkSetupManager } from "../lark-bot/setup-manager.js";
 import type { AgentIdentityStore } from "./agent-identity.js";

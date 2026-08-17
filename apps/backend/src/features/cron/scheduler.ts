@@ -1,4 +1,4 @@
-import type { BackendModelRef } from "@my-agent-team/agent-backend";
+import type { BackendModelRef } from "@chengchenccc/agent-backend";
 import type { BackendConfig } from "../../config.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
@@ -163,9 +163,9 @@ export function createCronScheduler(deps: {
       agentRunService: deps.agentRunService,
       agentRunExecution: deps.agentRunExecution,
       // LOOP.md stores the full canonical model ID; pass it through. Loop
-      // runs are coding_agent-scoped (no agent row carries the kind).
+      // runs are oma-scoped (no agent row carries the kind).
       resolveModel: async (modelId: string): Promise<BackendModelRef> => ({
-        backendKind: "coding_agent",
+        backendKind: "oma",
         modelId,
       }),
       builtinSkillsDir: deps.config.builtinSkillsDir,

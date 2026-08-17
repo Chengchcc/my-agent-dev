@@ -30,7 +30,7 @@ sequenceDiagram
   Bot->>B: POST /api/conversations/:id/messages
   B->>L: 写入人类 MessageRevision
   B->>AG: executeAgentRun(input, {origin:"conversation", surface:"lark"})
-  AG: create Agent Run + spawn coding-agent child（per-Run Runtime）
+  AG: create Agent Run + spawn oma child（per-Run Runtime）
   AG->>AG: model/tool loop（自动多轮：模型 ↔ 工具执行）
   AG-->>B: onAssistantMessage("message_update") -> appendAssistantMessage
   B->>L: MessageRevision（state: streaming，同 messageId）

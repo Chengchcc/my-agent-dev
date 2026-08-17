@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
-import { buildSkillIndex } from "@my-agent-team/plugin-progressive-skill";
+import { buildSkillIndex } from "@chengchenccc/plugin-progressive-skill";
 
 // ─── validation helpers ──────────────────────────────────────────────────────────
 

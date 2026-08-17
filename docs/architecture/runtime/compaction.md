@@ -10,7 +10,7 @@ Compaction 是长对话保持上下文可用性的核心机制。当对话 token
 - `packages/agent/src/context/compaction/prompts.ts` - 摘要 prompt 模板（8 段 markdown）
 - `packages/agent/src/persistence/session.ts` - `CompactionEntry` 持久化 + `buildContext()` 重建
 
-> Compaction 是 Coding Agent 子进程内部的 Run-local 机制（`packages/agent`），随子进程销毁。Product Backend 不做 compaction；产品侧对应概念是 Agent Context 的 Product Summary。
+> Compaction 是 Oma 子进程内部的 Run-local 机制（`packages/agent`），随子进程销毁。Product Backend 不做 compaction；产品侧对应概念是 Agent Context 的 Product Summary。
 
 ## Session 条目模型
 
@@ -117,7 +117,7 @@ Session Tree 支持可逆压缩：
 
 ## 生产装配
 
-Coding Agent Runtime 装配 compaction 为默认管线（`packages/agent`），按 token 预算触发；Provider context overflow 时自动压缩后最多 retry 一次。Product Backend 不参与装配。
+Oma Runtime 装配 compaction 为默认管线（`packages/agent`），按 token 预算触发；Provider context overflow 时自动压缩后最多 retry 一次。Product Backend 不参与装配。
 
 ## 不做
 
@@ -126,4 +126,4 @@ Coding Agent Runtime 装配 compaction 为默认管线（`packages/agent`），�
 - **Branch summarization**（分支摘要）— 无 `/tree` 功能
 - **Mid-turn compaction**（回合内压缩）— 当前只在每轮 shape 时触发
 - **远程 compaction**（remote endpoint）— 无需求
-- **文件操作追踪** — coding-agent 专属，通用 agent 价值不大
+- **文件操作追踪** — oma 专属，通用 agent 价值不大

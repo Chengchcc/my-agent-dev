@@ -1,5 +1,5 @@
-import type { AIMessageChunk } from "@my-agent-team/core";
-import type { Message } from "@my-agent-team/message";
+import type { AIMessageChunk } from "@chengchenccc/core";
+import type { Message } from "@chengchenccc/message";
 
 // ─── Modalities + Cost ───
 

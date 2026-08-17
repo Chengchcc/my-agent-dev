@@ -1,8 +1,8 @@
-/** Spawn the omp CLI. Same shape as adapter-coding-agent's process helper
+/** Spawn the omp CLI. Same shape as adapter-oma-agent's process helper
  *  (LF-framed stdout lines, bounded stderr tail) but no secrets redaction —
  *  omp has no token-bearing env vars of its own. */
 
-import { collectSecrets, redactText } from "@my-agent-team/agent-backend";
+import { collectSecrets, redactText } from "@chengchenccc/agent-backend";
 import type { Subprocess } from "bun";
 
 export interface OmpCommandConfig {

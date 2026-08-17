@@ -1,16 +1,16 @@
-# AgentBackend 与 Coding Agent Rewrite Approach
+# AgentBackend 与 Oma Rewrite Approach
 
 ## 目标
 
-把当前 Product Backend 直接创建和控制 `@my-agent-team/agent` session 的架构重写为：
+把当前 Product Backend 直接创建和控制 `@chengchenccc/agent` session 的架构重写为：
 
 ```text
 Product Backend
   → Agent Run
       → Agent Backend
-          → Claude Code / Codex / OpenCode / Coding Agent
+          → Claude Code / Codex / OpenCode / Oma
 
-Coding Agent
+Oma
   → independent process service
       → one Worker per live Coding Session
 ```
@@ -23,21 +23,21 @@ Coding Agent
 - Conversation 使用进程内 `ConversationLock` 和 `activeSessions`，没有 branch 级持久 ownership。
 - Conversation History、member.session_id、span/attempt、checkpoint 分担了 context/run/session 语义。
 - `packages/agent` 存在双 Agent 层、双 transcript、错误 retry/compaction/prompt ownership。
-- 仓库尚无统一 Agent Backend protocol、独立 Coding Agent service 或持久 Agent Run execution。
+- 仓库尚无统一 Agent Backend protocol、独立 Oma service 或持久 Agent Run execution。
 
 详细代码映射和实施约束已进入各 Phase 文档。
 
 ## Phase 文档
 
-1. [Phase 0：One Agent Backend Language](./agent-backend-coding-agent-rewrite/phase-0-contracts.md)
-2. [Phase 1：Durable Agent Context and Runs](./agent-backend-coding-agent-rewrite/phase-1-agent-context-and-runs.md)
-3. [Phase 2：A Complete Coding Agent](./agent-backend-coding-agent-rewrite/phase-2-coding-agent-core.md)
-4. [Phase 3：Coding Agent Runs Independently](./agent-backend-coding-agent-rewrite/phase-3-coding-agent-service.md)
-5. [Phase 4：Product Backend Executes Agent Runs](./agent-backend-coding-agent-rewrite/phase-4-agent-run-execution.md)
-6. [Phase 5：All Product Flows Use Agent Runs](./agent-backend-coding-agent-rewrite/phase-5-product-caller-cutover.md)
-7. [Phase 6：Only the New Execution Model Remains](./agent-backend-coding-agent-rewrite/phase-6-remove-old-execution.md)
+1. [Phase 0：One Agent Backend Language](./agent-backend-oma-rewrite/phase-0-contracts.md)
+2. [Phase 1：Durable Agent Context and Runs](./agent-backend-oma-rewrite/phase-1-agent-context-and-runs.md)
+3. [Phase 2：A Complete Oma](./agent-backend-oma-rewrite/phase-2-oma-core.md)
+4. [Phase 3：Oma Runs Independently](./agent-backend-oma-rewrite/phase-3-oma-service.md)
+5. [Phase 4：Product Backend Executes Agent Runs](./agent-backend-oma-rewrite/phase-4-agent-run-execution.md)
+6. [Phase 5：All Product Flows Use Agent Runs](./agent-backend-oma-rewrite/phase-5-product-caller-cutover.md)
+7. [Phase 6：Only the New Execution Model Remains](./agent-backend-oma-rewrite/phase-6-remove-old-execution.md)
 
-总索引和依赖图见 [Rewrite Programme](./agent-backend-coding-agent-rewrite/README.md)。
+总索引和依赖图见 [Rewrite Programme](./agent-backend-oma-rewrite/README.md)。
 
 ## 依赖关系
 
@@ -48,8 +48,8 @@ Phase 0 One Agent Backend Language
   │         └─ Phase 5 All Product Flows Use Agent Runs
   │              └─ Phase 6 Only the New Execution Model Remains
   │
-  └─ Phase 2 A Complete Coding Agent
-       └─ Phase 3 Coding Agent Runs Independently
+  └─ Phase 2 A Complete Oma
+       └─ Phase 3 Oma Runs Independently
             └─ Phase 4 Product Backend Executes Agent Runs
 ```
 

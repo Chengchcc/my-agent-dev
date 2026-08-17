@@ -112,7 +112,7 @@ describe("extraRoots bridge (ADR 0023)", () => {
     const wt = tmpWorkspace();
     reconcileAgentResources({
       workspacePath: ws,
-      kind: "coding_agent",
+      kind: "oma",
       skillPacks: [],
       mcpServers: [
         {
@@ -127,6 +127,6 @@ describe("extraRoots bridge (ADR 0023)", () => {
       extraRoots: [wt],
     });
     expect(existsSync(join(wt, ".mcp.json"))).toBe(true);
-    expect(existsSync(join(wt, ".agent", "product-tools.json"))).toBe(true);
+    expect(existsSync(join(wt, ".oma", "product-tools.json"))).toBe(true);
   });
 });

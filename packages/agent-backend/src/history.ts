@@ -1,4 +1,4 @@
-import type { Message } from "@my-agent-team/message";
+import type { Message } from "@chengchenccc/message";
 import type { BackendModelRef } from "./model.js";
 
 /** A projected history entry. `productEntryId` is the stable Agent Context
@@ -19,7 +19,7 @@ export interface WorkspaceBinding {
 /** Frozen per-Run configuration. Fixed at Agent Run start; every `execute()`
  *  carries it so model and system prompt changes take effect on the next Run
  *  without any shared state. Product Tool definitions ride the workspace
- *  files (.agent/product-tools.json, ADR 0003 decision 6), not this snapshot.
+ *  files (.oma/product-tools.json, ADR 0003 decision 6), not this snapshot.
  *  Parameterized by `K` so the model ref's backendKind is locked to the
  *  Backend's kind. */
 export interface AgentRunSnapshot<K extends string = string> {
@@ -30,7 +30,7 @@ export interface AgentRunSnapshot<K extends string = string> {
    *  creation. The Runtime loads them via the progressive skill plugin. */
   readonly skillRoots?: readonly string[];
   /** The branch's CLI session reference (ADR 0003 decision 6): an opaque
-   *  pointer the coding agent resolves itself (its own native session
+   *  pointer the oma resolves itself (its own native session
    *  storage). Absent = fresh session. The product stores only this
    *  reference — never manages the CLI's session files. */
   readonly cliSessionRef?: string;

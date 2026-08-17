@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BackendRunInput, BackendRunSegment } from "@my-agent-team/agent-backend";
+import type { BackendRunInput, BackendRunSegment } from "@chengchenccc/agent-backend";
 import { ClaudeBackend, ClaudeBackendError } from "./backend.js";
 
 const FAKE_ENTRY = join(import.meta.dir, "__fixtures__", "fake-claude.ts");

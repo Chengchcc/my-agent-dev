@@ -1,6 +1,6 @@
-import type { LedgerEntry, LedgerKind, Member } from "@my-agent-team/conversation";
+import type { LedgerEntry, LedgerKind, Member } from "@chengchenccc/conversation";
 
-// Re-export canonical types from @my-agent-team/conversation
+// Re-export canonical types from @chengchenccc/conversation
 export type { LedgerKind };
 
 export interface ConversationRow {
@@ -30,7 +30,7 @@ export interface MemberRow {
   joinedAt: number;
 }
 
-// M17.5: LedgerEntry is imported from the canonical @my-agent-team/conversation
+// M17.5: LedgerEntry is imported from the canonical @chengchenccc/conversation
 // package (single ontology).
 export type { LedgerEntry };
 

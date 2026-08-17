@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { deserializeLedgerContent, extractText } from "@my-agent-team/message";
+import { deserializeLedgerContent, extractText } from "@chengchenccc/message";
 import { and, desc, eq, gt, inArray, isNotNull, like, notInArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import * as schema from "../../infra/db/schema.js";

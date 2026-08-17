@@ -25,8 +25,8 @@
 | todo 全 done 检查（删） | `task-guard.ts:232-260`（在 beforeStop 内） |
 | beforeStop hook | `task-guard.ts:232-280` |
 | Plugin init 接口 | `packages/framework/src/plugin.ts` |
-| collectStream | `@my-agent-team/core` |
-| extractText | `@my-agent-team/message` |
+| collectStream | `@chengchenccc/core` |
+| extractText | `@chengchenccc/message` |
 | 现有 plugin 包结构参考 | `packages/plugin-identity/` |
 
 ---
@@ -43,7 +43,7 @@
 
 - [ ] **Step 1: package.json**
 
-复制 `packages/plugin-identity/package.json` 结构，改 name 为 `@my-agent-team/plugin-todo`。依赖：`@my-agent-team/core`, `@my-agent-team/framework`, `@my-agent-team/message`。
+复制 `packages/plugin-identity/package.json` 结构，改 name 为 `@chengchenccc/plugin-todo`。依赖：`@chengchenccc/core`, `@chengchenccc/framework`, `@chengchenccc/message`。
 
 - [ ] **Step 2: tsconfig.json + tsconfig.test.json**
 

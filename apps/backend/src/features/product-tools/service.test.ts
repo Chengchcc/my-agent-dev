@@ -34,10 +34,10 @@ async function createRun(messageText: string): Promise<string> {
   const acq = await backend.enqueueAndAcquire({
     conversationId: CONV,
     agentMemberId: MEMBER,
-    backendKind: "coding_agent",
+    backendKind: "oma",
     mode: "normal",
     message: { role: "user", text: messageText },
-    defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+    defaultModel: { backendKind: "oma", modelId: "fake/echo" },
     configRevision: 1,
     idempotencyKey: `pt-${Math.random().toString(36).slice(2, 8)}`,
   });
@@ -100,7 +100,7 @@ beforeEach(async () => {
     joinedAt: Date.now(),
   });
   const tree = await contextPort.getOrCreateTree(CONV, MEMBER);
-  const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+  const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "oma");
   branchId = branch.branchId;
   // seed conversation history (two user messages + one internal)
   convPort.appendLedgerEntry({

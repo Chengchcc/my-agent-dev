@@ -1,4 +1,4 @@
-import type { Message } from "@my-agent-team/message";
+import type { Message } from "@chengchenccc/message";
 import { ToolCallCard } from "@/components/ToolCallCard";
 import { ToolResultCard } from "@/components/ToolResultCard";
 

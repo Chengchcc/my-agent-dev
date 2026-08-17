@@ -1,4 +1,4 @@
-import type { Message } from "@my-agent-team/message";
+import type { Message } from "@chengchenccc/message";
 import type { SessionStore } from "../persistence/session-store.js";
 import type { CodingSessionEntry } from "../persistence/session-tree.js";
 

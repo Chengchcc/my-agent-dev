@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Phase 6 deployment smoke: full Backend HTTP stack with a REAL coding-agent
+ * Phase 6 deployment smoke: full Backend HTTP stack with a REAL oma
  * child (fake provider — no network) per Product Run.
  *
  *   bun scripts/smoke-agent-run.ts --mode clean
@@ -29,8 +29,8 @@ const dataDir = mkdtempSync(join(tmpdir(), "smoke-agent-run-"));
 process.env.BACKEND_DATA_DIR = dataDir;
 process.env.ANTHROPIC_API_KEY = "sk-fake";
 process.env.BACKEND_AUTH_TOKEN = TOKEN;
-process.env.CODING_AGENT_FAKE_PROVIDER = "1";
-process.env.CODING_AGENT_FAKE_TOOLS_RECORD = `${dataDir}/tools-record.json`;
+process.env.OMA_FAKE_PROVIDER = "1";
+process.env.OMA_FAKE_TOOLS_RECORD = `${dataDir}/tools-record.json`;
 
 const { createApp } = await import("../apps/backend/src/app.js");
 const { installFeatures } = await import("../apps/backend/src/bootstrap/features.js");

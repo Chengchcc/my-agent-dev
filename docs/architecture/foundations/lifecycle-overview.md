@@ -3,7 +3,7 @@ id: foundations.lifecycle-overview
 title: 生命周期总览
 status: current
 owners: architecture
-summary: "一次 Agent Run 的生命周期：Product Backend 写入并投影 Product Context → 创建 Agent Run → Adapter spawn 一次性 coding-agent 子进程 → child 产出 BackendRunOutcome → terminal commit 原子写 Ledger + Context。"
+summary: "一次 Agent Run 的生命周期：Product Backend 写入并投影 Product Context → 创建 Agent Run → Adapter spawn 一次性 oma 子进程 → child 产出 BackendRunOutcome → terminal commit 原子写 Ledger + Context。"
 depends_on:
   - foundations.facts-and-projections
 used_by:
@@ -22,7 +22,7 @@ sequenceDiagram
   participant L as conversation_ledger
   participant C as Agent Context
   participant A as Adapter
-  participant K as coding-agent child
+  participant K as oma child
 
   U->>P: 发送消息 / cron 到点 / Loop 触发
   P->>L: appendLedgerEntry（人类 Message）
@@ -45,7 +45,7 @@ sequenceDiagram
 
 **2. 排队与 acquire**　输入进入 `branch_input_queue`。同一 branch 最多一个 active Run：空闲则立即 acquire，忙则排队（steer 可注入 live Run，follow_up 等 terminal）。
 
-**3. 执行**　Adapter 为 Run spawn 一次性 `coding-agent --mode rpc` 子进程，stdin 发 `execute` command，stdout 收 event/outcome envelopes。子进程内 per-Run Runtime 跑模型/工具循环（retry、compaction、todo、skill 加载）。
+**3. 执行**　Adapter 为 Run spawn 一次性 `oma --mode rpc` 子进程，stdin 发 `execute` command，stdout 收 event/outcome envelopes。子进程内 per-Run Runtime 跑模型/工具循环（retry、compaction、todo、skill 加载）。
 
 **4. 固化事实**　terminal `BackendRunOutcome` 到达后，Product Backend 在同一事务写 final assistant Message（`agent_run_id`）到 Ledger、追加 Context ref、更新 branch、标记 Run terminal。事务失败 → commit_failed，幂等重试。
 

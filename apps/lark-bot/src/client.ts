@@ -1,6 +1,6 @@
+import type { App } from "@chengchenccc/backend/app";
 import type { Treaty } from "@elysiajs/eden";
 import { treaty } from "@elysiajs/eden";
-import type { App } from "@my-agent-team/backend/app";
 
 type AppClient = Treaty.Create<App>;
 

@@ -1,4 +1,4 @@
-import type { McpClientManager } from "@my-agent-team/adapter-mcp";
+import type { McpClientManager } from "@chengchenccc/adapter-mcp";
 import { NotFoundError, ValidationError } from "../../infra/domain-errors.js";
 import { ulid } from "../../infra/ids.js";
 import type {

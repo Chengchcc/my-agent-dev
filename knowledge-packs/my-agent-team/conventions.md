@@ -3,7 +3,7 @@
 ## Imports
 
 Cross-package imports MUST go through the barrel index.ts.
-No deep imports like @my-agent-team/loop/src/loop-reducer.js.
+No deep imports like @chengchenccc/loop/src/loop-reducer.js.
 
 ## Dependency injection
 
@@ -40,7 +40,7 @@ Use definePlugin({ name, hooks, tools }). validatePlugins() checks tool name col
 ## ChatModel contract
 
 Core has no LLM dependency. ChatModel.stream(messages, opts?) is the contract.
-Tests use echoModel() from @my-agent-team/test-helpers.
+Tests use echoModel() from @chengchenccc/test-helpers.
 
 ## File naming
 

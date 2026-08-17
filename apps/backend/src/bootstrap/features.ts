@@ -1,14 +1,14 @@
 import { join, resolve } from "node:path";
-import { ClaudeBackend, ClaudeModelCatalog } from "@my-agent-team/adapter-claude-agent";
-import { CodingAgentBackend, CodingAgentModelCatalog } from "@my-agent-team/adapter-coding-agent";
-import { OmpBackend, OmpModelCatalog } from "@my-agent-team/adapter-omp-agent";
-import { PiBackend, PiModelCatalog } from "@my-agent-team/adapter-pi-agent";
+import { ClaudeBackend, ClaudeModelCatalog } from "@chengchenccc/adapter-claude-agent";
+import { OmaBackend, OmaModelCatalog } from "@chengchenccc/adapter-oma-agent";
+import { OmpBackend, OmpModelCatalog } from "@chengchenccc/adapter-omp-agent";
+import { PiBackend, PiModelCatalog } from "@chengchenccc/adapter-pi-agent";
 import type {
   BackendKind,
   BackendRegistry,
   BackendRegistryEntry,
-} from "@my-agent-team/agent-backend";
-import type { Message } from "@my-agent-team/message";
+} from "@chengchenccc/agent-backend";
+import type { Message } from "@chengchenccc/message";
 import type { FeatureSet } from "../app.js";
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
@@ -70,9 +70,9 @@ import {
   skillPackRoutes,
   sqliteSkillPackAdapter,
 } from "../features/skill-pack/index.js";
-import { resolveCodingAgentCommand } from "../infra/coding-agent-command.js";
 import { ulid } from "../infra/ids.js";
 import { resolveKnowledgeMcpServerEntry } from "../infra/knowledge-mcp-command.js";
+import { resolveOmaCommand } from "../infra/oma-command.js";
 import type { BackendServices } from "./services.js";
 
 // ─── Helper ───────────────────────────────────────────────────
@@ -344,7 +344,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     console.log(`[bootstrap] product tools MCP listening at ${productToolsMcp.url}`);
   }
 
-  // The execution service exists unconditionally: the Coding Agent is a
+  // The execution service exists unconditionally: the Oma is a
   // child process (one Run = one spawn). When the executable is missing,
   // startup continues - /api/models errors and Run dispatch keeps the input
   // unaccepted until the executable exists.
@@ -366,10 +366,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       }
     })().catch((err) => console.error(`[bootstrap] onRunCommitted failed for ${runId}:`, err));
   };
-  const codingAgentCommand = resolveCodingAgentCommand(config);
-  const codingAgentCatalog = new CodingAgentModelCatalog(codingAgentCommand);
+  const codingAgentCommand = resolveOmaCommand(config);
+  const codingAgentCatalog = new OmaModelCatalog(codingAgentCommand);
 
-  const codingAgentBackend = new CodingAgentBackend(codingAgentCommand, {
+  const codingAgentBackend = new OmaBackend(codingAgentCommand, {
     maxConcurrent: config.maxConcurrentRuns,
     abortGraceMs: config.cancelGraceMs,
   });
@@ -392,7 +392,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     permissionMode: config.claudePermissionMode,
   });
   const backends: BackendRegistry = {
-    coding_agent: { backend: codingAgentBackend, catalog: codingAgentCatalog },
+    oma: { backend: codingAgentBackend, catalog: codingAgentCatalog },
     omp: { backend: ompBackend, catalog: new OmpModelCatalog() },
     pi: { backend: piBackend, catalog: new PiModelCatalog() },
     claude_code: { backend: claudeBackend, catalog: new ClaudeModelCatalog() },
@@ -793,10 +793,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       agentRunService,
       agentRunExecution,
       // LOOP.md stores the full canonical model ID; pass it through. Loop
-      // generator/evaluator runs are always coding_agent-scoped (the loop
+      // generator/evaluator runs are always oma-scoped (the loop
       // domain has no agent row to carry a kind — D2 applies to agents).
       resolveModel: async (modelId: string) => ({
-        backendKind: "coding_agent",
+        backendKind: "oma",
         modelId,
       }),
       settingsSvc,

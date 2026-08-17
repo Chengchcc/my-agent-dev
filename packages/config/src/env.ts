@@ -45,11 +45,8 @@ export const envSchema = z.object({
     .optional()
     .describe("'dev' | 'prod' — selects lark-bot registry implementation"),
 
-  // ── Phase 5: Coding Agent process + Product Tools MCP ──
-  CODING_AGENT_BIN: z
-    .string()
-    .optional()
-    .describe("Coding Agent executable spawned per Run (default: coding-agent on PATH)"),
+  // ── Phase 5: Oma process + Product Tools MCP ──
+  OMA_BIN: z.string().optional().describe("Oma executable spawned per Run (default: oma on PATH)"),
   KNOWLEDGE_MCP_SERVER_BIN: z
     .string()
     .optional()

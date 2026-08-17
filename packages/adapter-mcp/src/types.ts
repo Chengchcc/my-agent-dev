@@ -1,4 +1,4 @@
-import type { Tool } from "@my-agent-team/core";
+import type { Tool } from "@chengchenccc/core";
 
 export type McpTransport = "stdio" | "sse";
 

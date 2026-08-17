@@ -1,8 +1,8 @@
-# Phase 2：重写 Coding Agent
+# Phase 2：重写 Oma
 
 ## 目标
 
-将 `packages/agent` 重写为 Worker-local Coding Agent Runtime：一个 Agent Loop owner、一棵 Coding Session Tree、一套 Plugin/Tool/Prompt/ModelRuntime 边界。
+将 `packages/agent` 重写为 Worker-local Oma Runtime：一个 Agent Loop owner、一棵 Coding Session Tree、一套 Plugin/Tool/Prompt/ModelRuntime 边界。
 
 这是破坏性重写。Phase 2 期间旧 Product Backend caller 可以暂时无法编译；不为旧调用链保留兼容层。
 
@@ -43,7 +43,7 @@ packages/ai/src/
 packages/tools-common/src/
 ```
 
-删除旧 facade/persistence/plugin exports；本 Phase 只修改 Coding Agent 自身 package 与 tests。Product Backend、Cron、Loop、Skill Pack 等业务 caller 统一在 Phase 5 迁移，不在本 Phase 提前切流。
+删除旧 facade/persistence/plugin exports；本 Phase 只修改 Oma 自身 package 与 tests。Product Backend、Cron、Loop、Skill Pack 等业务 caller 统一在 Phase 5 迁移，不在本 Phase 提前切流。
 
 ## 实现步骤
 
@@ -78,4 +78,4 @@ packages/tools-common/src/
 
 ## 完成条件
 
-Coding Agent Runtime core 能在单进程 harness 中执行完整 Agent Loop。旧 Runtime API 已彻底删除，没有兼容实现。
+Oma Runtime core 能在单进程 harness 中执行完整 Agent Loop。旧 Runtime API 已彻底删除，没有兼容实现。

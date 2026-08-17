@@ -3,26 +3,26 @@ id: architecture.system-overview
 title: 系统总览
 status: current
 owners: architecture
-summary: "Product Backend 拥有 Conversation History、Agent Context、Agent Run 与 Product Tools；每个 Agent Run 由 Agent Backend spawn 一个一次性 coding-agent 子进程执行（stdin/stdout JSONL RPC），BackendRunOutcome 是唯一终态依据，terminal commit 原子写入 History + Context。"
+summary: "Product Backend 拥有 Conversation History、Agent Context、Agent Run 与 Product Tools；每个 Agent Run 由 Agent Backend spawn 一个一次性 oma 子进程执行（stdin/stdout JSONL RPC），BackendRunOutcome 是唯一终态依据，terminal commit 原子写入 History + Context。"
 depends_on:
   - foundations.facts-and-projections
 used_by:
   - backend.overview
-  - execution.agent-backend
+  - execution.oma-backend
   - agents.context
   - flows.e2e-web-message
 ---
 
 # 系统总览
-> ⚠ **部分过时(2026-08-13)**:执行链已扩展为四 Agent Backend(coding-agent / claude / pi / omp,ADR 0019/0020);对话模型改为单 Agent(ADR 0021)。现行结构见 [Agent 工作区与多后端](./agents/workspace-and-backends.md)。
+> ⚠ **部分过时(2026-08-13)**:执行链已扩展为四 Agent Backend(oma / claude / pi / omp,ADR 0019/0020);对话模型改为单 Agent(ADR 0021)。现行结构见 [Agent 工作区与多后端](./agents/workspace-and-backends.md)。
 
-本页描述**当前架构**：Product Backend 拥有用户和产品能够依赖的全部事实；Agent Backend 负责执行 Agent Run，且当前只有一个执行引擎 —— Coding Agent 子进程。
+本页描述**当前架构**：Product Backend 拥有用户和产品能够依赖的全部事实；Agent Backend 负责执行 Agent Run，且当前只有一个执行引擎 —— Oma 子进程。
 
 ## 一句话模型
 
 ```text
 Product Backend 保存 History 和 Context，创建并提交 Agent Run。
-Agent Backend 为每个 Run spawn 一次性 coding-agent 子进程。
+Agent Backend 为每个 Run spawn 一次性 oma 子进程。
 子进程内的 per-Run Runtime 跑模型/工具循环，产出 BackendRunOutcome。
 Product Backend 在 terminal outcome 后原子提交最终 Message 与 Context。
 ```
@@ -33,9 +33,9 @@ Product Backend 在 terminal outcome 后原子提交最终 Message 与 Context�
 Product Backend
 → durable Agent Run
 → full Product Context projection
-→ Agent Backend (packages/adapter-coding-agent)
-→ spawn one-shot coding-agent child (--mode rpc, stdin/stdout JSONL)
-→ per-Run Coding Agent Runtime (packages/agent)
+→ Agent Backend (packages/adapter-oma-agent)
+→ spawn one-shot oma child (--mode rpc, stdin/stdout JSONL)
+→ per-Run Oma Runtime (packages/agent)
 → BackendRunOutcome
 → atomic Product terminal commit
 ```
@@ -66,7 +66,7 @@ flowchart TB
     RPC[stdin/stdout JSONL]
   end
 
-  subgraph Child[Coding Agent child process]
+  subgraph Child[Oma child process]
     Runtime[per-Run Runtime<br/>model/tool loop · retry · compaction · todo · skills]
   end
 
@@ -94,7 +94,7 @@ flowchart TB
 - Agent 身份与配置、Run 的 systemPrompt/skillRoots 快照；
 - final assistant Message 与 terminal commit（agent_run_id 唯一提交标记）。
 
-### Coding Agent 拥有（子进程内，每 Run 新建）
+### Oma 拥有（子进程内，每 Run 新建）
 
 - model/tool loop；
 - native tools 与 retry；
@@ -102,7 +102,7 @@ flowchart TB
 - Run-local todo 与 progressive skill loading；
 - print / json / rpc 三种 CLI 模式。
 
-### Adapter 拥有（packages/adapter-coding-agent）
+### Adapter 拥有（packages/adapter-oma-agent）
 
 - spawn 子进程、stdin/stdout JSONL 帧；
 - steer / abort 命令；
@@ -132,7 +132,7 @@ Agent Run 从 active Context Branch 投影完整线性 `ProjectedHistoryItem[]` 
 
 ### 工具边界
 
-Coding Agent 在子进程内执行 native tools（文件/Shell/搜索等）。Product Tools 由 Product Backend 统一实现；子进程通过 Product Tools MCP 调用，transport 不改变工具的权限与事实归属。语义相关 call/result 写 `product_tool_call` 与 Agent Context。
+Oma 在子进程内执行 native tools（文件/Shell/搜索等）。Product Tools 由 Product Backend 统一实现；子进程通过 Product Tools MCP 调用，transport 不改变工具的权限与事实归属。语义相关 call/result 写 `product_tool_call` 与 Agent Context。
 
 ## 一次 Agent Run 的主流程
 
@@ -143,7 +143,7 @@ sequenceDiagram
   participant H as Conversation History
   participant C as Agent Context
   participant A as Adapter
-  participant K as coding-agent child
+  participant K as oma child
 
   U->>P: 发送消息
   P->>H: 追加人类 Message

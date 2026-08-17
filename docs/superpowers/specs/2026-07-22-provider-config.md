@@ -15,7 +15,7 @@ export function createDefaultModelRegistry(config: BackendConfig): ModelRegistry
 
 四个问题：
 
-1. **加 provider 要改代码** -- DeepSeek/OpenAI 每次要改 `agent-helpers.ts`，即使 `@my-agent-team/ai` 已内置 `deepseekProvider` / `createOpenAICompatProvider`
+1. **加 provider 要改代码** -- DeepSeek/OpenAI 每次要改 `agent-helpers.ts`，即使 `@chengchenccc/ai` 已内置 `deepseekProvider` / `createOpenAICompatProvider`
 2. **无运行时配置** -- 不能通过配置文件切换 provider/model，必须改代码重启
 3. **前端无感知** -- Settings 页面 pet 的 `provider`/`model` 字段是自由文本，用户不知道有哪些可用
 4. **零配置体验差** -- 设了 `ANTHROPIC_API_KEY` 还得手动改代码注册，migration/新部署都要踩坑
@@ -55,7 +55,7 @@ providers:
 
 ### 自动注册（无 models.yml 时）
 
-内置 provider 表驻留在 `@my-agent-team/ai` 包内：
+内置 provider 表驻留在 `@chengchenccc/ai` 包内：
 
 ```typescript
 // packages/ai/src/builtin-providers.ts
@@ -186,7 +186,7 @@ apps/backend/
 
 ```typescript
 // model-registry-loader.ts
-import { loadProvider, builtinProviders } from "@my-agent-team/ai";
+import { loadProvider, builtinProviders } from "@chengchenccc/ai";
 import { readFileSync } from "node:fs";
 import YAML from "yaml";
 

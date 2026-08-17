@@ -1,5 +1,5 @@
 {
-  "name": "@my-agent-team/lark-bot",
+  "name": "@chengchenccc/lark-bot",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,11 +14,11 @@
   "dependencies": {
     "drizzle-orm": "^0.44.0",
     "@elysiajs/eden": "^1.0.0",
-    "@my-agent-team/api-contract": "workspace:*",
-    "@my-agent-team/backend": "workspace:*",
-    "@my-agent-team/config": "workspace:*",
-    "@my-agent-team/conversation": "workspace:*",
-    "@my-agent-team/message": "workspace:*",
+    "@chengchenccc/api-contract": "workspace:*",
+    "@chengchenccc/backend": "workspace:*",
+    "@chengchenccc/config": "workspace:*",
+    "@chengchenccc/conversation": "workspace:*",
+    "@chengchenccc/message": "workspace:*",
     "zod": "^3.23.0"
   }
 }

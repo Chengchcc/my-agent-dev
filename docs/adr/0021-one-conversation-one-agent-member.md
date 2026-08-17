@@ -1,4 +1,4 @@
-# ADR 0021: Conversation 是 Coding Agent Session 的产品态投影,一个 Conversation 一个 Agent
+# ADR 0021: Conversation 是 Oma Session 的产品态投影,一个 Conversation 一个 Agent
 
 ## 状态
 
@@ -12,7 +12,7 @@ Accepted(2026-08-13)
 
 - **relationships 已删除**(2026-08-13):多 agent 协作图无真实使用者;wake routing 退化为无图 fallback。
 - **@mention / 多成员定向**:只服务"一个 conversation 里多个 agent 抢话",从未被真正需要;无 UI 入口,loop/lark/web 实际都是单成员用法。
-- **方向问题**:按 ADR 0019(双轨真理),CLI session 是运行态真理(runtime truth,由 coding agent 原生维护),context tree/ledger 是产品态真理(product truth)。conversation 就是 coding agent 的 session 在 backend 上的**产品态投影**——它是产物,不是容器。一个 session 属于一个 agent,它的投影天然是一条 agent 线;把多个 agent 的投影塞进同一个 conversation,是让多个运行态真理共用一个产品态投影,没有任何共享语义。
+- **方向问题**:按 ADR 0019(双轨真理),CLI session 是运行态真理(runtime truth,由 oma 原生维护),context tree/ledger 是产品态真理(product truth)。conversation 就是 oma 的 session 在 backend 上的**产品态投影**——它是产物,不是容器。一个 session 属于一个 agent,它的投影天然是一条 agent 线;把多个 agent 的投影塞进同一个 conversation,是让多个运行态真理共用一个产品态投影,没有任何共享语义。
 
 **投影的边界(本节是约束,不是比喻)**:投影只约束**形状**,不构成**来源**。conversation 与 session 是两条独立持久化线,互不可重建,也互不等价:
 

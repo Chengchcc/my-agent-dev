@@ -1,4 +1,4 @@
-import { parseEnv } from "@my-agent-team/config";
+import { parseEnv } from "@chengchenccc/config";
 import { ConversationCanvas } from "@/components/ConversationCanvas";
 import { createServerClient, unwrap } from "@/lib/client";
 

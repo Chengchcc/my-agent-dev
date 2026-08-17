@@ -1,4 +1,4 @@
-// Phase 2: Coding Agent Runtime
+// Phase 2: Oma Runtime
 //
 // Persistence
 
@@ -19,15 +19,15 @@ export type {
 } from "./persistence/session-tree.js";
 
 // Runtime
-export type { AgentLoopListener, CodingAgentLoopEvent } from "./runtime/agent-event.js";
+export type { AgentLoopListener, OmaLoopEvent } from "./runtime/agent-event.js";
 export type {
-  CodingAgentLoopResult,
-  CodingAgentSession,
-  CodingAgentSessionOptions,
   ContextBudget,
   ContextSummarizer,
+  OmaLoopResult,
+  OmaSession,
+  OmaSessionOptions,
 } from "./runtime/agent-loop.js";
-export { createCodingAgentSession } from "./runtime/agent-loop.js";
+export { createOmaSession } from "./runtime/agent-loop.js";
 export type { CompactionResult } from "./runtime/compaction.js";
 // Compaction + retry
 export { compactSession } from "./runtime/compaction.js";

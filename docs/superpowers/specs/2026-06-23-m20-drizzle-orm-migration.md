@@ -106,7 +106,7 @@
 
 ```bash
 cd /root/my-agent-team
-bun add drizzle-orm --filter @my-agent-team/backend --filter @my-agent-team/lark-bot --filter @my-agent-team/framework
+bun add drizzle-orm --filter @chengchenccc/backend --filter @chengchenccc/lark-bot --filter @chengchenccc/framework
 bun add -D drizzle-kit
 ```
 

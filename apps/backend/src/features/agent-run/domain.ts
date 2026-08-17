@@ -2,8 +2,8 @@ import type {
   BackendModelRef,
   BackendRunOutcome,
   WorkspaceBinding,
-} from "@my-agent-team/agent-backend";
-import type { Message } from "@my-agent-team/message";
+} from "@chengchenccc/agent-backend";
+import type { Message } from "@chengchenccc/message";
 
 // ─── Agent Run status ────────────────────────────────────────────
 

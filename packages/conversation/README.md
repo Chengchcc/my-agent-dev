@@ -1,4 +1,4 @@
-# @my-agent-team/conversation
+# @chengchenccc/conversation
 
 对话领域模型的 canonical definition。定义 Member（参与者身份）、Conversation（对话聚合）、LedgerEntry（账本条目的 zod schema + 类型）、以及 resolveTriggerTargets（触发解析）。纯 Zod schema 加无状态辅助函数。
 
@@ -37,4 +37,4 @@
 
 ## 依赖
 
-`conversation` 依赖 `zod` + `@my-agent-team/message`（re-export codec）。被 `apps/backend`、`apps/web`、`apps/lark-bot` 三个 app 跨端依赖。
+`conversation` 依赖 `zod` + `@chengchenccc/message`（re-export codec）。被 `apps/backend`、`apps/web`、`apps/lark-bot` 三个 app 跨端依赖。

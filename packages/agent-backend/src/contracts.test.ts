@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Message } from "@my-agent-team/message";
+import type { Message } from "@chengchenccc/message";
 import type {
   AgentBackend,
   BackendEvent,
@@ -100,13 +100,12 @@ describe("agent-backend contracts", () => {
     expect(async () => await backend.stop("run-1")).not.toThrow();
   });
 
-  test("package manifest allows only @my-agent-team/message and zod", async () => {
+  test("package manifest allows only @chengchenccc/message and zod", async () => {
     const url = new URL("../package.json", import.meta.url);
     const pkg = await Bun.file(url).json();
     expect(pkg.dependencies).toEqual({
-      "@my-agent-team/message": "workspace:*",
-      // zod powers the neutral transport wire contract (daemon + adapter
-      // share these schemas without importing each other's implementation).
+      "@chengchenccc/message": "workspace:*",
+      // zod powers the neutral backend-kind schema and runtime validation.
       zod: "^3.23.0",
     });
     expect(pkg.devDependencies).toEqual({});
@@ -114,10 +113,9 @@ describe("agent-backend contracts", () => {
 
   test("package runtime entry imports without missing exports", async () => {
     const module = await import("./index.js");
-    // The barrel exports the stdio JSONL wire contract next to the types.
-    expect(module.executeCommandSchema).toBeDefined();
-    expect(module.codingAgentOutputSchema).toBeDefined();
-    expect(module.modelCatalogResponseSchema).toBeDefined();
+    // The barrel exposes the backend-agnostic contracts only.
+    expect(module.BACKEND_KINDS).toBeDefined();
+    expect(module.collectSecrets).toBeDefined();
   });
 
   test("extension events are namespaced to the backend kind", () => {
@@ -151,11 +149,11 @@ const _noProductEntryId: ProjectedHistoryItem = {
   message: { role: "user", text: "hello" },
 };
 
-// Extension event without an event segment (backend.coding_agent) is invalid:
+// Extension event without an event segment (backend.oma) is invalid:
 // the namespace requires backend.<kind>.<event>.
-const _noEventSegment: BackendEvent<"coding_agent"> =
-  // @ts-expect-error - backend.coding_agent lacks the <event> segment
-  { type: "backend.coding_agent", payload: {} };
+const _noEventSegment: BackendEvent<"oma"> =
+  // @ts-expect-error - backend.oma lacks the <event> segment
+  { type: "backend.oma", payload: {} };
 
 // Extension event with the wrong kind is invalid for a backend of kind "fake":
 // "claude" != "fake".

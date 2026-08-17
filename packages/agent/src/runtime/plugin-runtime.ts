@@ -1,7 +1,7 @@
-import type { AIMessageChunk } from "@my-agent-team/core";
-import type { Message } from "@my-agent-team/message";
+import type { AIMessageChunk } from "@chengchenccc/core";
+import type { Message } from "@chengchenccc/message";
 import type { SessionStore } from "../persistence/session-store.js";
-import type { CodingAgentLoopEvent } from "./agent-event.js";
+import type { OmaLoopEvent } from "./agent-event.js";
 
 /** Runtime capabilities injected into plugin hooks. Mirrors a subset of
  *  model stream, store, workspace, event emit.
@@ -40,7 +40,7 @@ export interface PluginRuntime {
   readonly workspaceRoot: string;
 
   /** Emit a UI-transient event to the Run SSE (never to History). */
-  readonly emit: (event: CodingAgentLoopEvent) => void;
+  readonly emit: (event: OmaLoopEvent) => void;
 
   /** The run's abort signal (for graceful shutdown). */
   readonly signal: AbortSignal;

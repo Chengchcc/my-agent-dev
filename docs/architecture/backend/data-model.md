@@ -59,7 +59,7 @@ agent_context_branch
   tree_id FK
   leaf_entry_id nullable
   ledger_cursor
-  backend_kind    "coding_agent"
+  backend_kind    "oma"
   is_default
   revision
   created_at

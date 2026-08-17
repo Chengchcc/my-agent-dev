@@ -1,5 +1,5 @@
-import type { LarkMessageEvent } from "@my-agent-team/api-contract";
-import { larkMessageEventSchema } from "@my-agent-team/api-contract";
+import type { LarkMessageEvent } from "@chengchenccc/api-contract";
+import { larkMessageEventSchema } from "@chengchenccc/api-contract";
 
 export type { LarkMessageEvent };
 

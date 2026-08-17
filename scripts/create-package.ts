@@ -77,7 +77,7 @@ async function main(): Promise<void> {
   );
   assertSafeDirectoryName(directoryName);
 
-  const defaultPackageName = `@my-agent-team/${directoryName}`;
+  const defaultPackageName = `@chengchenccc/${directoryName}`;
   const packageName = await input({
     message: "Package name:",
     default: defaultPackageName,

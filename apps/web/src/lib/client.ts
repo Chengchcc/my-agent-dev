@@ -1,5 +1,5 @@
+import type { App } from "@chengchenccc/backend/app";
 import { treaty } from "@elysiajs/eden";
-import type { App } from "@my-agent-team/backend/app";
 
 /** Client-side treaty — through BFF (cookie → x-auth-token translation). */
 export const client = treaty<App>("/api/bff", {

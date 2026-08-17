@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import type { CodingAgentLoopEvent, PluginRuntime } from "@my-agent-team/agent";
-import type { AIMessageChunk } from "@my-agent-team/core";
-import type { Message } from "@my-agent-team/message";
+import type { OmaLoopEvent, PluginRuntime } from "@chengchenccc/agent";
+import type { AIMessageChunk } from "@chengchenccc/core";
+import type { Message } from "@chengchenccc/message";
 import { createRecapPlugin } from "./recap-plugin.js";
 
 function mockRuntime(streamText: string): {
   rt: PluginRuntime;
-  emitted: CodingAgentLoopEvent[];
+  emitted: OmaLoopEvent[];
 } {
-  const emitted: CodingAgentLoopEvent[] = [];
+  const emitted: OmaLoopEvent[] = [];
   const rt: PluginRuntime = {
     async *streamModel() {
       yield { delta: { type: "text", text: streamText } } as AIMessageChunk;

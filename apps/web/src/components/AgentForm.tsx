@@ -70,14 +70,12 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
   const providers = useMemo(() => modelData?.providers ?? [], [modelData]);
   // Backend kinds present in the aggregated catalog, canonical order.
   const backendKinds = useMemo(() => {
-    const order = ["coding_agent", "claude_code", "pi", "omp"];
+    const order = ["oma", "claude_code", "pi", "omp"];
     const seen = new Set<string>();
     for (const p of providers) for (const m of p.models) if (m.backendKind) seen.add(m.backendKind);
     return order.filter((k) => seen.has(k));
   }, [providers]);
-  const [selBackendKind, setSelBackendKind] = useState<string>(
-    editAgent?.backendKind ?? "coding_agent",
-  );
+  const [selBackendKind, setSelBackendKind] = useState<string>(editAgent?.backendKind ?? "oma");
   const [selProvider, setSelProvider] = useState<string>(
     (editAgent?.modelName ?? "").includes("/") ? (editAgent?.modelName ?? "").split("/")[0]! : "",
   );
@@ -88,7 +86,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
         name: m.name ?? m.id,
         provider: p.id,
         providerName: p.name,
-        backendKind: m.backendKind ?? "coding_agent",
+        backendKind: m.backendKind ?? "oma",
         available: m.available !== false,
         reasoning: m.reasoning,
         contextWindow: m.contextWindow,
@@ -121,7 +119,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: editAgent?.name ?? "",
-      backendKind: editAgent?.backendKind ?? "coding_agent",
+      backendKind: editAgent?.backendKind ?? "oma",
       // Empty until the catalog loads (see effect below): never hard-code a
       // provider model that may not exist in the runtime catalog.
       model: editAgent?.modelName ?? "",
@@ -146,7 +144,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
     if (editAgent) {
       form.reset({
         name: editAgent.name,
-        backendKind: editAgent.backendKind ?? "coding_agent",
+        backendKind: editAgent.backendKind ?? "oma",
         model:
           editAgent.modelProvider && editAgent.modelName
             ? `${editAgent.modelProvider}/${editAgent.modelName}`
@@ -158,7 +156,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
         enableLark: editAgent.lark?.enabled ?? false,
         botDisplayName: editAgent.lark?.botDisplayName ?? "",
       });
-      setSelBackendKind(editAgent.backendKind ?? "coding_agent");
+      setSelBackendKind(editAgent.backendKind ?? "oma");
       setSetupSession(null);
     }
   }, [editAgent, form]);

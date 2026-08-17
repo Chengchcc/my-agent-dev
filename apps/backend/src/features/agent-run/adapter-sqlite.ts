@@ -1,12 +1,12 @@
 import type { Database } from "bun:sqlite";
-import type { BackendRunOutcome } from "@my-agent-team/agent-backend";
+import type { BackendRunOutcome } from "@chengchenccc/agent-backend";
 import {
   assistantMessageId,
   type MessageRevision,
   MessageRevisionSchema,
   normalizeCanonicalMessages,
   serializeMessageRevision,
-} from "@my-agent-team/message";
+} from "@chengchenccc/message";
 import { and, desc, eq, gt, inArray, isNull, not, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import * as schema from "../../infra/db/schema.js";
@@ -77,7 +77,7 @@ function parseInput(row: typeof schema.branchInputQueue.$inferSelect): BranchInp
     configSnapshot: {
       modelRef: row.modelRef
         ? (JSON.parse(row.modelRef) as { backendKind: string; modelId: string })
-        : { backendKind: "coding_agent", modelId: "" },
+        : { backendKind: "oma", modelId: "" },
       configRevision: row.configRevision ?? 0,
       workspace:
         row.workspaceRoot && row.workspaceAccess
@@ -802,7 +802,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
         // Boundary enforcement (ADR 0017): the Run's output must be a
         // canonical message sequence — assistant never carries tool_result.
         // normalizeCanonicalMessages is the single normalization point for
-        // any coding agent type; a completed run with no messages commits
+        // any oma type; a completed run with no messages commits
         // nothing to the ledger.
         const canonical = normalizeCanonicalMessages(messages ?? []);
 

@@ -11,9 +11,9 @@ import {
 import { join } from "node:path";
 import { knowledgePackIndex } from "../knowledge/install.js";
 /** BackendKind → project config dir (ADR 0003 decision 2: the four
- *  config dirs each coding agent reads from its cwd). */
+ *  config dirs each oma reads from its cwd). */
 export const KIND_DIR: Record<string, string> = {
-  coding_agent: ".agent",
+  oma: ".oma",
   pi: ".pi",
   omp: ".omp",
   claude_code: ".claude",
@@ -128,15 +128,15 @@ export function writeMcpConfig(workspacePath: string, servers: readonly McpServe
   );
 }
 
-/** Write the product-tool manifest (ADR 0003 decision 6): the coding agent
- *  child builds its tool table from `.agent/product-tools.json` — the
+/** Write the product-tool manifest (ADR 0003 decision 6): the oma
+ *  child builds its tool table from `.oma/product-tools.json` — the
  *  run input no longer carries the manifest. Empty manifest = remove the
  *  file (no product tools). */
 export function writeProductToolsManifest(
   workspacePath: string,
   manifest: readonly unknown[],
 ): void {
-  const path = join(workspacePath, ".agent", "product-tools.json");
+  const path = join(workspacePath, ".oma", "product-tools.json");
   if (manifest.length === 0) {
     try {
       unlinkSync(path);
@@ -145,7 +145,7 @@ export function writeProductToolsManifest(
     }
     return;
   }
-  mkdirSync(join(workspacePath, ".agent"), { recursive: true });
+  mkdirSync(join(workspacePath, ".oma"), { recursive: true });
   writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 

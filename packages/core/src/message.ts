@@ -3,4 +3,4 @@ export type {
   TextBlock,
   ToolResultBlock,
   ToolUseBlock,
-} from "@my-agent-team/message";
+} from "@chengchenccc/message";

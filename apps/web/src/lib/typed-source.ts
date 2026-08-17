@@ -1,4 +1,4 @@
-import type { SSEEventMap } from "@my-agent-team/api-contract";
+import type { SSEEventMap } from "@chengchenccc/api-contract";
 import type { z } from "zod";
 
 /** typedSource wraps EventSource with zod schema validation per event name.

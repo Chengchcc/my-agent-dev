@@ -24,7 +24,7 @@ used_by:
 
 ## 执行层：工作区沙箱
 
-`bash` / `glob` / `grep` 这类能触碰文件系统的工具，在 Coding Agent 装配时被包进 Run 的 workspace root（`WorkspaceBinding { root, access: read_only | read_write }`，由 Product Backend 在 Run 快照中冻结）。Coding Agent 子进程执行命令的可见范围被钉在沙箱内，碰不到沙箱之外的真实文件系统；Loop Run 使用 clone 出的独立 repo 作为 workspace root。
+`bash` / `glob` / `grep` 这类能触碰文件系统的工具，在 Oma 装配时被包进 Run 的 workspace root（`WorkspaceBinding { root, access: read_only | read_write }`，由 Product Backend 在 Run 快照中冻结）。Oma 子进程执行命令的可见范围被钉在沙箱内，碰不到沙箱之外的真实文件系统；Loop Run 使用 clone 出的独立 repo 作为 workspace root。
 
 ## 边界各管各的
 

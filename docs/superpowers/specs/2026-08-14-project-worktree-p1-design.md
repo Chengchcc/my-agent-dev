@@ -10,7 +10,7 @@
 **目标**
 - agent.yml 声明 `runtime_config.projects: [projectId]`(file-first 多对多)。
 - (agent, project) 对 materialize 一个 git worktree 到 `<agentWs>/projects/<id>/`,共享 bare mirror `<dataDir>/projects/<id>.git`。
-- bridge 把 `.mcp.json` + `.agent/product-tools.json` 写进 worktree(修 product tools 在非默认 cwd 场景的断裂)。
+- bridge 把 `.mcp.json` + `.oma/product-tools.json` 写进 worktree(修 product tools 在非默认 cwd 场景的断裂)。
 - conversation 可选携带 projectId;该会话的 run cwd = worktree,context 仍来自 agent workspace。
 - 删除 `autoOrchestrate` 死字段(全链 17 处)。
 
@@ -112,7 +112,7 @@ for projectId of agent.config.runtime_config.projects:
 用户勾选 project(PATCH /api/agents/:id {projects})
   → agent.yml 重写 + DB 缓存 + reconcile
   → ensureMirror(首次 clone --mirror)+ ensureWorktree(分支 agent/<a>/<p>)
-  → bridge 写 .mcp.json / .agent/product-tools.json 进 worktree
+  → bridge 写 .mcp.json / .oma/product-tools.json 进 worktree
 创建会话(POST /api/conversations {projectId})
   → 发消息 → run dispatch → resolveWorkspace
   → conversation.projectId + agent 已声明 → workspace.root = worktree

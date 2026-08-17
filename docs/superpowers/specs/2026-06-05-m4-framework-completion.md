@@ -1,13 +1,13 @@
 # M4 Spec — Framework 补齐
 
-> M4 把 `@my-agent-team/framework` 从 M3 的可跑状态补齐到架构文档定义的形态。
+> M4 把 `@chengchenccc/framework` 从 M3 的可跑状态补齐到架构文档定义的形态。
 > 经过 17 轮设计 review，所有模糊地带已精确化。这是**施工图**，不是设计稿。
 
 ---
 
 ## 一、定位
 
-M4 是 `@my-agent-team/framework` 的**内部补齐**：
+M4 是 `@chengchenccc/framework` 的**内部补齐**：
 
 - 零新依赖（只依赖 `core`，fileCheckpointer 依赖 `node:fs/promises`）
 - 不动 M1/M2 包

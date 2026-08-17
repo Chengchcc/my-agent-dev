@@ -12,7 +12,7 @@ flowchart LR
   Automation[Task / Cron / Loop] --> Run
   Tools[Product Tools] --> Run
   Run --> Backend[Agent Backends ×4]
-  Backend --> Child[coding-agent child]
+  Backend --> Child[oma child]
   Backend --> Cli[claude / pi / omp CLI]
   Workspace[Agent Workspace 文件] --> Child
   Workspace --> Cli

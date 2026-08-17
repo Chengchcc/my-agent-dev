@@ -113,20 +113,20 @@ SSE 的线协议（: ping 心跳、message revision state=done/error）原样保
 ### 3.1 病灶
 
 - backend 的返回体类型**不存在**：`json(row)`（`http/response.ts:4`）吃 `unknown`，编译器看不到 shape。
-- web 想拿后端类型只能手抄，因为直接 `import type` `@my-agent-team/backend` 会把 `adapter-anthropic`/`drizzle-orm`/`handlebars`（`apps/backend/package.json` deps）整条拖进 web 的类型图——又重又会引入 Node-only 类型。
+- web 想拿后端类型只能手抄，因为直接 `import type` `@chengchenccc/backend` 会把 `adapter-anthropic`/`drizzle-orm`/`handlebars`（`apps/backend/package.json` deps）整条拖进 web 的类型图——又重又会引入 Node-only 类型。
 
 ### 3.2 新建 `packages/api-contract`（`C1`）
 
-零运行时依赖的契约出口包，仿照现有 `@my-agent-team/conversation`（`packages/conversation/package.json`，deps 仅 message+zod）：
+零运行时依赖的契约出口包，仿照现有 `@chengchenccc/conversation`（`packages/conversation/package.json`，deps 仅 message+zod）：
 
 ```text
 packages/api-contract/
-  package.json     name: @my-agent-team/api-contract，dependencies: { elysia }（仅类型用）
-  src/index.ts     export type { App } from "@my-agent-team/backend/app"
+  package.json     name: @chengchenccc/api-contract，dependencies: { elysia }（仅类型用）
+  src/index.ts     export type { App } from "@chengchenccc/backend/app"
   tsconfig.json    composite，只产 .d.ts
 ```
 
-> 决策：**为何不让 web 直接 import backend**？backend deps 含 `adapter-anthropic`/`drizzle-orm`/`handlebars`（核验自 `apps/backend/package.json`），直接依赖会把这些拖进 web/lark-bot 的类型解析。`api-contract` 做一道「类型防火墙」：只 re-export `type App`，`elysia` 作为类型 peer，下游只为类型付费、不为运行时付费。这正是仓里已有的 `@my-agent-team/conversation`/`@my-agent-team/message` 零依赖包的同款手法。
+> 决策：**为何不让 web 直接 import backend**？backend deps 含 `adapter-anthropic`/`drizzle-orm`/`handlebars`（核验自 `apps/backend/package.json`），直接依赖会把这些拖进 web/lark-bot 的类型解析。`api-contract` 做一道「类型防火墙」：只 re-export `type App`，`elysia` 作为类型 peer，下游只为类型付费、不为运行时付费。这正是仓里已有的 `@chengchenccc/conversation`/`@chengchenccc/message` 零依赖包的同款手法。
 
 ### 3.3 backend 引入 Elysia，与现路由**并存**（`B1`）
 
@@ -139,7 +139,7 @@ apps/backend/src/app.ts     新建：const app = new Elysia()；export type App 
 ```
 
 - `server.ts`（`:9-14`）暂不动，仍 `Bun.serve({ fetch: router })`。Elysia app 此阶段只为「让 api-contract 有 `App` 可导」，不接管流量。
-- 验收：web 能 `import type { App } from "@my-agent-team/api-contract"`，`treaty<App>().health.get()` 类型通。
+- 验收：web 能 `import type { App } from "@chengchenccc/api-contract"`，`treaty<App>().health.get()` 类型通。
 
 ---
 
@@ -436,7 +436,7 @@ lark-bot 是无头桥接，无浏览器、无 cookie，直接用 `x-auth-token`�
 ```text
 lark-bot/src/client.ts 新建：
   treaty<App>(backendUrl, { headers: { "x-auth-token": backendAuthToken } })
-lark-bot/package.json + dependencies: @my-agent-team/api-contract, @elysiajs/eden
+lark-bot/package.json + dependencies: @chengchenccc/api-contract, @elysiajs/eden
 ```
 
 ### 7.2 6 处 fetch → treaty，删 `as`（`L1`）
@@ -473,7 +473,7 @@ lark-bot/package.json + dependencies: @my-agent-team/api-contract, @elysiajs/ede
 ### 7A.2 收敛手法（`E1`）
 
 - **环境变量单源**：抽一份共享 zod `envSchema` + `parseEnv()`，三进程统一调用；变量名成单源，缺失/拼错在启动时 fail-fast 而非运行时静默。统一命名（消除 `BACKEND_TOKEN` 与 `BACKEND_AUTH_TOKEN` 的不一致）。
-- **lark `content` 单源**：把 `content` 形状提成共享 zod schema（放 `api-contract` 或 `@my-agent-team/message`），lark-bot 写入与 backend 接收两端 `import` 同一 schema，backend 用它替 `z.unknown()`；Eden 化后写入响应也自动类型化。
+- **lark `content` 单源**：把 `content` 形状提成共享 zod schema（放 `api-contract` 或 `@chengchenccc/message`），lark-bot 写入与 backend 接收两端 `import` 同一 schema，backend 用它替 `z.unknown()`；Eden 化后写入响应也自动类型化。
 - **lark event 单源**：`LarkMessageEvent` 改 zod schema，`parseEvent` 用 `safeParse` 替手写 narrow。
 - **`IssueStatus` 单源**：枚举挪入共享包（`z.enum` / `as const`），backend 与 web 两端 `import`，消除 web 本地副本与 `as IssueStatus` 强转。
 

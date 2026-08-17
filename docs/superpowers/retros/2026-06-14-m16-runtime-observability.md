@@ -45,7 +45,7 @@
 
 **规格要求：** runner daemon 用同一 trace 创建 attempt/model/tool/EventLog spans。
 
-**实际落地：** `HostToRunner.start` 携带了 `trace` 字段，daemon 的 `#onStart` 可以访问 `msg.trace`，但 daemon 内部没有创建子 span。原因是 runner-daemon 没有引入 `@my-agent-team/runtime-observability` 依赖（避免 daemon 启动时初始化 OTel SDK）。
+**实际落地：** `HostToRunner.start` 携带了 `trace` 字段，daemon 的 `#onStart` 可以访问 `msg.trace`，但 daemon 内部没有创建子 span。原因是 runner-daemon 没有引入 `@chengchenccc/runtime-observability` 依赖（避免 daemon 启动时初始化 OTel SDK）。
 
 **影响：** trace 从 backend 传播到 runner transport 层，但 runner 内部 span 不可见。跨进程 trace 链在 transport 边界断裂。需要后续在 daemon 中初始化 RuntimeTracer 并包裹 `#drive` / `#routeEvent`。
 

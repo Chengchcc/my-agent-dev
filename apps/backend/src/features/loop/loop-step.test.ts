@@ -4,9 +4,9 @@ import { existsSync, mkdirSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BackendRunOutcome } from "@my-agent-team/agent-backend";
-import type { LoopState } from "@my-agent-team/loop";
-import { loopReducer } from "@my-agent-team/loop";
+import type { BackendRunOutcome } from "@chengchenccc/agent-backend";
+import type { LoopState } from "@chengchenccc/loop";
+import { loopReducer } from "@chengchenccc/loop";
 import type { AgentRun } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
@@ -161,7 +161,7 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
       branchId: `b-${runId}`,
       conversationId: conv,
       agentMemberId: member,
-      modelRef: { backendKind: "coding_agent", modelId: "m" },
+      modelRef: { backendKind: "oma", modelId: "m" },
       status: "completed",
       idempotencyKey: ikey,
       terminalResult: null,
@@ -339,7 +339,7 @@ async function runStep(
       action: overrides.action,
       agentRunService: fake.agentRunService,
       agentRunExecution: fake.agentRunExecution,
-      resolveModel: async (name) => ({ backendKind: "coding_agent", modelId: name }),
+      resolveModel: async (name) => ({ backendKind: "oma", modelId: name }),
       agentWorkspaceOf: async () => join(dataDir, "loop-agent-ws"),
       withWorkspaceLock: createWorkspaceLockRegistry().withLock.bind(createWorkspaceLockRegistry()),
     });
@@ -443,7 +443,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
             } as never,
             agentRunService: fake.agentRunService,
             agentRunExecution: fake.agentRunExecution,
-            resolveModel: async (name) => ({ backendKind: "coding_agent", modelId: name }),
+            resolveModel: async (name) => ({ backendKind: "oma", modelId: name }),
             agentWorkspaceOf: async () => join(dataDir, "loop-agent-ws"),
             withWorkspaceLock: createWorkspaceLockRegistry().withLock.bind(
               createWorkspaceLockRegistry(),

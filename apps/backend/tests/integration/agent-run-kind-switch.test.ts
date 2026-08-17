@@ -3,12 +3,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  CodingAgentBackend,
-  type CodingAgentCommandConfig,
-} from "@my-agent-team/adapter-coding-agent";
-import { OmpBackend } from "@my-agent-team/adapter-omp-agent";
-import type { Message } from "@my-agent-team/message";
+import { OmaBackend, type OmaCommandConfig } from "@chengchenccc/adapter-oma-agent";
+import { OmpBackend } from "@chengchenccc/adapter-omp-agent";
+import type { Message } from "@chengchenccc/message";
 import { buildAgentConfig } from "../../src/features/agent/agent-config.js";
 import type { AgentRow } from "../../src/features/agent/domain.js";
 import {
@@ -26,7 +23,7 @@ import { openDb } from "../../src/infra/sqlite/db.js";
 
 /** D2 acceptance: switching an agent's backend kind auto-forks a new
  *  default branch pinned to the new kind; the old branch's history stays
- *  intact. Run 1 goes through the real coding-agent child (scripted fake
+ *  intact. Run 1 goes through the real oma child (scripted fake
  *  provider); run 2 goes through the omp adapter with the fake-CLI wire
  *  fixture. Both run to terminal via the real execution service. */
 
@@ -34,8 +31,7 @@ const CONV = "conv-switch";
 const HUMAN = "human-1";
 const AGENT_MEMBER = "agent-1";
 
-const CODING_AGENT_ENTRY = new URL("../../../../apps/coding-agent/src/cli.ts", import.meta.url)
-  .pathname;
+const OMA_ENTRY = new URL("../../../../apps/oh-my-agent/src/cli.ts", import.meta.url).pathname;
 const OMP_FAKE_ENTRY = new URL(
   "../../../../packages/adapter-omp-agent/src/__fixtures__/fake-omp.ts",
   import.meta.url,
@@ -47,8 +43,8 @@ let convPort: ReturnType<typeof sqliteConversationAdapter>;
 let contextPort: ReturnType<typeof sqliteAgentContextAdapter>;
 let execution: ReturnType<typeof createAgentRunExecutionService>;
 let feature: ReturnType<typeof createConversationFeature>;
-let agentKind = "coding_agent";
-/** branch the coding_agent run committed to (captured in test 1). */
+let agentKind = "oma";
+/** branch the oma run committed to (captured in test 1). */
 let codingAgentBranchId = "";
 
 // Stub agent row (file-first, ADR 0003): the conversation service reads
@@ -119,13 +115,13 @@ beforeAll(async () => {
     ledgerResolver,
   });
 
-  // coding_agent: real child (scripted fake provider); omp: fake-CLI.
-  const codingAgentCommand: CodingAgentCommandConfig = {
+  // oma: real child (scripted fake provider); omp: fake-CLI.
+  const codingAgentCommand: OmaCommandConfig = {
     executable: process.execPath,
-    args: [CODING_AGENT_ENTRY, "--mode", "rpc"],
+    args: [OMA_ENTRY, "--mode", "rpc"],
     env: {
-      CODING_AGENT_FAKE_PROVIDER: "1",
-      CODING_AGENT_PRODUCT_TOOL_TOKEN: "t",
+      OMA_FAKE_PROVIDER: "1",
+      OMA_PRODUCT_TOOL_TOKEN: "t",
     },
   };
   const ompFake = new OmpBackend({
@@ -141,8 +137,8 @@ beforeAll(async () => {
     contextPort,
     ledgerResolver,
     backends: {
-      coding_agent: {
-        backend: new CodingAgentBackend(codingAgentCommand),
+      oma: {
+        backend: new OmaBackend(codingAgentCommand),
         // Stub catalog: the fake-provider child lists no real models, but
         // preflight needs the agent's model to exist (the switch path is
         // what this test exercises, not the catalog).
@@ -228,7 +224,7 @@ afterAll(async () => {
 });
 
 describe("backend kind switch auto-forks the branch (D2)", () => {
-  test("run 1 lands on a coding_agent branch", async () => {
+  test("run 1 lands on a oma branch", async () => {
     const { triggeredRuns } = await feature.convSvc.postMessage({
       conversationId: CONV,
       senderMemberId: HUMAN,
@@ -238,8 +234,8 @@ describe("backend kind switch auto-forks the branch (D2)", () => {
     expect(triggeredRuns.length).toBeGreaterThan(0);
     expect(await waitForTerminal(triggeredRuns[0]!.runId)).toBe("completed");
     const tree = await contextPort.getOrCreateTree(CONV, AGENT_MEMBER);
-    const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
-    expect(branch.backendKind).toBe("coding_agent");
+    const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "oma");
+    expect(branch.backendKind).toBe("oma");
     codingAgentBranchId = branch.branchId;
   });
 
@@ -260,7 +256,7 @@ describe("backend kind switch auto-forks the branch (D2)", () => {
     // the new default is a FORK: distinct branch id, old branch untouched
     expect(branch.branchId).not.toBe(codingAgentBranchId);
 
-    // Old coding_agent branch still exists and keeps its kind.
+    // Old oma branch still exists and keeps its kind.
     const rows = (await db
       .query(
         "SELECT branch_id, backend_kind, is_default FROM agent_context_branch WHERE tree_id = ?",
@@ -271,7 +267,7 @@ describe("backend kind switch auto-forks the branch (D2)", () => {
       is_default: number;
     }>;
     expect(rows.length).toBe(2);
-    const old = rows.find((r) => r.backend_kind === "coding_agent");
+    const old = rows.find((r) => r.backend_kind === "oma");
     const fresh = rows.find((r) => r.backend_kind === "omp");
     expect(old).toBeDefined();
     expect(old?.is_default).toBe(0);

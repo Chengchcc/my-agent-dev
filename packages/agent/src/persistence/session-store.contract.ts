@@ -13,7 +13,7 @@ export function runSessionStoreContract(
   const sessionId = `sess-${Math.random().toString(36).slice(2, 10)}`;
   const meta: CodingSessionMetadata = {
     sessionId,
-    backendKind: "coding_agent",
+    backendKind: "oma",
     workspaceRoot: "/ws",
     leafEntryId: null,
     createdAt: Date.now(),

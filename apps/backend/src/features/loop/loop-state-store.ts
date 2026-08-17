@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { ItemState, LoopState, Verdict } from "@my-agent-team/loop";
+import type { ItemState, LoopState, Verdict } from "@chengchenccc/loop";
 
 export interface LoopStateStore {
   load(loopId: string): LoopState;

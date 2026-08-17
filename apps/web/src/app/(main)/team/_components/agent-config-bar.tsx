@@ -15,7 +15,7 @@ import { agentKeys } from "@/features/agents/query-keys";
 import { useModelList } from "@/features/models/hooks";
 import { type AgentRow, api } from "@/lib/api";
 
-const BACKEND_ORDER = ["coding_agent", "claude_code", "pi", "omp"];
+const BACKEND_ORDER = ["oma", "claude_code", "pi", "omp"];
 
 const labelClass = "text-(--text-cap) uppercase tracking-kicker font-semibold text-(--mute)";
 
@@ -37,7 +37,7 @@ export function AgentConfigBar({ agent }: { agent: AgentRow }) {
           id: `${p.id}/${m.id}`,
           name: m.name ?? m.id,
           provider: p.id,
-          backendKind: m.backendKind ?? "coding_agent",
+          backendKind: m.backendKind ?? "oma",
           available: m.available !== false,
         })),
       ),
@@ -49,7 +49,7 @@ export function AgentConfigBar({ agent }: { agent: AgentRow }) {
     return BACKEND_ORDER.filter((k) => seen.has(k));
   }, [groups]);
 
-  const [backendKind, setBackendKind] = useState(agent.backendKind ?? "coding_agent");
+  const [backendKind, setBackendKind] = useState(agent.backendKind ?? "oma");
   const [model, setModel] = useState(`${agent.modelProvider}/${agent.modelName}`);
   const [effort, setEffort] = useState(agent.reasoningEffort ?? "");
   const [enabled, setEnabled] = useState(agent.enabled ?? true);
@@ -88,7 +88,7 @@ export function AgentConfigBar({ agent }: { agent: AgentRow }) {
   };
 
   const onBackend = (v: string | null) => {
-    const next = v ?? "coding_agent";
+    const next = v ?? "oma";
     const prev = backendKind;
     setBackendKind(next);
     commit({ backendKind: next }, () => setBackendKind(prev));

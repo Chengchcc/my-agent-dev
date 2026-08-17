@@ -1,11 +1,11 @@
-import type { BackendInputMessage, Usage } from "@my-agent-team/agent-backend";
-import { debugLog } from "@my-agent-team/agent-backend";
-import { ProviderError } from "@my-agent-team/ai";
-import type { AIMessageChunk } from "@my-agent-team/core";
-import type { Message } from "@my-agent-team/message";
+import type { BackendInputMessage, Usage } from "@chengchenccc/agent-backend";
+import { debugLog } from "@chengchenccc/agent-backend";
+import { ProviderError } from "@chengchenccc/ai";
+import type { AIMessageChunk } from "@chengchenccc/core";
+import type { Message } from "@chengchenccc/message";
 import type { SessionStore } from "../persistence/session-store.js";
 import type { MessageEntry } from "../persistence/session-tree.js";
-import type { AgentLoopListener, CodingAgentLoopEvent } from "./agent-event.js";
+import type { AgentLoopListener, OmaLoopEvent } from "./agent-event.js";
 import { type CompactionBudget, compactSession } from "./compaction.js";
 import type { CodingLoopInput } from "./loop-input.js";
 import { buildLoopInput } from "./loop-input.js";
@@ -18,7 +18,7 @@ import { retryStream } from "./retry.js";
 import { buildTitleContext, generateTitle } from "./title.js";
 import { type PruneConfig, pruneOldToolResults } from "./tool-pruning.js";
 
-export type { AgentLoopListener, CodingAgentLoopEvent };
+export type { AgentLoopListener, OmaLoopEvent };
 
 /** Thinking-mode effort, aligned with the provider's Anthropic config. */
 
@@ -46,7 +46,7 @@ export interface ContextBudget extends CompactionBudget {
   readonly triggerRatio: number;
 }
 
-export interface CodingAgentSessionOptions {
+export interface OmaSessionOptions {
   readonly sessionId: string;
   readonly store: SessionStore;
   readonly plugins: readonly Plugin[];
@@ -88,7 +88,7 @@ export interface CodingAgentSessionOptions {
  *  assistant(text) as separate messages in branch order — never merged into
  *  an assistant message. `usage` is the last usage chunk from the model
  *  stream; `error` is a redacted reason for failed/stopped outcomes. */
-export interface CodingAgentLoopResult {
+export interface OmaLoopResult {
   readonly status: "completed" | "failed" | "stopped";
   readonly messages?: readonly Message[];
   readonly usage?: Usage;
@@ -97,11 +97,11 @@ export interface CodingAgentLoopResult {
   readonly title?: string;
 }
 
-export interface CodingAgentSession {
+export interface OmaSession {
   readonly sessionId: string;
   readonly status: "idle" | "running" | "completed" | "failed" | "stopped";
-  startLoop(input: CodingLoopInput): Promise<CodingAgentLoopResult>;
-  startFollowUp(input: CodingLoopInput): Promise<CodingAgentLoopResult>;
+  startLoop(input: CodingLoopInput): Promise<OmaLoopResult>;
+  startFollowUp(input: CodingLoopInput): Promise<OmaLoopResult>;
   /** Inject a steer input into the active loop. No Meta, no new Loop: the
    *  message is queued and appended at the next safe boundary. */
   steer(input: BackendInputMessage): void;
@@ -109,7 +109,7 @@ export interface CodingAgentSession {
   compact(): Promise<void>;
   onEvent(listener: AgentLoopListener): () => void;
   /** Emit a UI-transient event to all subscribers (for PluginRuntime). */
-  emit(event: CodingAgentLoopEvent): void;
+  emit(event: OmaLoopEvent): void;
 }
 
 /** One model turn, accumulated purely from the stream: raw outputs
@@ -123,7 +123,7 @@ interface ModelTurn {
   readonly stopReason?: string;
 }
 
-export function createCodingAgentSession(opts: CodingAgentSessionOptions): CodingAgentSession {
+export function createOmaSession(opts: OmaSessionOptions): OmaSession {
   validatePlugins(opts.plugins);
   const listeners = new Set<AgentLoopListener>();
   // Resolve the plugin runtime: opts.pluginRuntime from run-runtime, or a
@@ -153,7 +153,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   const runIdForDebug = (): string => debugRunId;
   const tokenEstimateCache = new TokenEstimateCache();
 
-  async function emit(event: CodingAgentLoopEvent): Promise<void> {
+  async function emit(event: OmaLoopEvent): Promise<void> {
     for (const l of listeners) {
       try {
         await l(event);
@@ -197,7 +197,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
   async function runLoop(
     codingInput: CodingLoopInput,
     mode: "normal" | "follow_up",
-  ): Promise<CodingAgentLoopResult> {
+  ): Promise<OmaLoopResult> {
     if (active) throw new Error("Loop already active");
     active = true;
     status = "running";
@@ -579,7 +579,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       }
 
       let title: string | undefined;
-      if (status === "completed" && process.env.CODING_AGENT_TITLE_ENABLED !== "0") {
+      if (status === "completed" && process.env.OMA_TITLE_ENABLED !== "0") {
         const titleBranch = await readBranchMessages();
         const titleCtx = buildTitleContext(titleBranch);
         if (titleCtx) {
@@ -624,10 +624,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
     let thinkingRedacted = false;
     const toolCallBuilders = new Map<string, { id: string; name: string; jsonParts: string[] }>();
     debugTurn++;
-    debugLog(
-      "coding-agent",
-      `model_start runId=${runIdForDebug()} turn=${debugTurn} model=${debugModelId}`,
-    );
+    debugLog("oma", `model_start runId=${runIdForDebug()} turn=${debugTurn} model=${debugModelId}`);
 
     await emit({ type: "message_start" });
     const stream = retryStream(
@@ -683,7 +680,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       await emit({ type: "message_end" });
     }
     debugLog(
-      "coding-agent",
+      "oma",
       `model_end runId=${runIdForDebug()} turn=${debugTurn} stopReason=${stopReason ?? "none"}`,
     );
 
@@ -713,10 +710,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
       call: PendingToolCall,
     ): Promise<{ id: string; result: unknown; isError: boolean; terminate: boolean }> {
       const tool = toolMap.get(call.name);
-      debugLog(
-        "coding-agent",
-        `tool_start runId=${runIdForDebug()} name=${call.name} callId=${call.id}`,
-      );
+      debugLog("oma", `tool_start runId=${runIdForDebug()} name=${call.name} callId=${call.id}`);
       await emit({
         type: "tool_execution_start",
         toolName: call.name,
@@ -784,7 +778,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         isError = true;
       }
       debugLog(
-        "coding-agent",
+        "oma",
         `tool_end runId=${runIdForDebug()} name=${call.name} callId=${call.id} error=${isError}`,
       );
       await emit({
@@ -799,7 +793,7 @@ export function createCodingAgentSession(opts: CodingAgentSessionOptions): Codin
         try {
           const ret = p.hooks?.afterTool?.(call.name, result, rt);
           if (ret) {
-            // CodingAgentLoopEvent (has `type`) → emit; patch object →
+            // OmaLoopEvent (has `type`) → emit; patch object →
             // override result fields field-by-field.
             if ("type" in ret) {
               await emit(ret);

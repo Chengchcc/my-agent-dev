@@ -8,7 +8,7 @@ summary: "loopStep() 是 Loop 的执行入口--一个无状态函数，每次 cr
 depends_on:
   - foundations.loop
   - foundations.cron-job
-  - agent.agent
+  - agent.oma
 used_by: []
 ---
 
@@ -65,7 +65,7 @@ CronJob fires → `loopStep()` → 推进到 `awaiting_review` → 返回。几�
 
 ## Generator 和 Evaluator 分离
 
-同一个 item 的 generator 和 evaluator 是不同的 Agent Run（各自 spawn 独立 coding-agent 子进程）：
+同一个 item 的 generator 和 evaluator 是不同的 Agent Run（各自 spawn 独立 oma 子进程）：
 
 ```
 generator run:

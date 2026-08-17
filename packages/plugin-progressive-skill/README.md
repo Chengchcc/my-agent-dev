@@ -1,4 +1,4 @@
-# @my-agent-team/plugin-progressive-skill
+# @chengchenccc/plugin-progressive-skill
 
 一个 agent 插件，实现 Claude Code 风格的渐进式技能加载。它先把所有可用技能的名字和简介塞进系统提示，让模型知道有哪些能力；只有模型真正要用某个技能时，才通过工具把完整说明按需读进来。
 
@@ -27,8 +27,8 @@
 ## 怎么用
 
 ```ts
-import { progressiveSkillPlugin } from "@my-agent-team/plugin-progressive-skill";
-import type { AgentFsLike } from "@my-agent-team/tools-common";
+import { progressiveSkillPlugin } from "@chengchenccc/plugin-progressive-skill";
+import type { AgentFsLike } from "@chengchenccc/tools-common";
 
 declare const ws: AgentFsLike;
 
@@ -42,4 +42,4 @@ const plugin = progressiveSkillPlugin({
 // 把 plugin 注册进 Agent 配置即可
 ```
 
-依赖关系：依赖 `@my-agent-team/core`、`@my-agent-team/agent`、`@my-agent-team/tools-common`（`AgentFsLike`），以及 `gray-matter`（解析 SKILL.md frontmatter）。
+依赖关系：依赖 `@chengchenccc/core`、`@chengchenccc/agent`、`@chengchenccc/tools-common`（`AgentFsLike`），以及 `gray-matter`（解析 SKILL.md frontmatter）。

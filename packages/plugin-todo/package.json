@@ -1,5 +1,5 @@
 {
-  "name": "@my-agent-team/plugin-todo",
+  "name": "@chengchenccc/plugin-todo",
   "version": "0.1.0",
   "description": "Todo tool plugin - agent task progress tracking",
   "type": "module",
@@ -20,8 +20,8 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
-    "@my-agent-team/core": "workspace:*",
-    "@my-agent-team/agent": "workspace:*",
-    "@my-agent-team/message": "workspace:*"
+    "@chengchenccc/core": "workspace:*",
+    "@chengchenccc/agent": "workspace:*",
+    "@chengchenccc/message": "workspace:*"
   }
 }

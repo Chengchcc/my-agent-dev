@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { McpClientManager } from "@my-agent-team/adapter-mcp";
+import type { McpClientManager } from "@chengchenccc/adapter-mcp";
 import { fileMcpServerAdapter } from "./adapter-file.js";
 import { createMcpService, McpServerNotFoundError, McpValidationError } from "./service.js";
 

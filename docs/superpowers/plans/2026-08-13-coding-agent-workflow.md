@@ -1,14 +1,14 @@
-# Coding Agent 动态工作流实现计划
+# Oma 动态工作流实现计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 coding-agent 增加进程内动态工作流能力(子代理扇出 + 脚本编排),并将 backend loop 改造为首个消费者。
+**Goal:** 为 oma 增加进程内动态工作流能力(子代理扇出 + 脚本编排),并将 backend loop 改造为首个消费者。
 
 **Architecture:** 全进程内。workflow 执行器在 child 里创建独立子会话(同模型 + 文件工具、独立 store、空上下文),并发上限 8/总数 64;脚本经 `node:vm` 白名单沙箱求值;事件走现有 wire(RPC → backend SSE → 前端进度卡)。loop 状态载入脚本 meta,纯 reducer 校验写回。
 
 **Tech Stack:** Bun、TypeScript(ESM/NodeNext)、`node:vm`、bun:test、Next.js 15 App Router。
 
-**Spec:** `docs/superpowers/specs/2026-08-13-coding-agent-workflow-design.md`
+**Spec:** `docs/superpowers/specs/2026-08-13-oma-workflow-design.md`
 
 ---
 
@@ -16,11 +16,11 @@
 
 | 文件 | 责任 |
 |---|---|
-| `apps/coding-agent/src/core/workflow-executor.ts`(新) | 子代理引擎:`runSubagent` + `runWorkflow` + 并发/总数上限 + 预算钩子 + 事件发射 |
-| `apps/coding-agent/src/core/workflow-tools.ts`(新) | 两个 PluginTool:`run_workflow`(Phase 1)、`workflow_run`(Phase 2) |
-| `apps/coding-agent/src/core/workflow-evaluator.ts`(新,Phase 2) | vm 沙箱:`agent`/`pipeline` 原语 + 60s 脚本预算 |
-| `apps/coding-agent/src/core/run-runtime.ts`(改) | 装配执行器 + 注册 workflow 工具 + 抽出共享的文件工具构造 |
-| `packages/agent/src/runtime/agent-event.ts`(改) | `CodingAgentLoopEvent` += 4 个 workflow 事件 |
+| `apps/oh-my-agent/src/core/workflow-executor.ts`(新) | 子代理引擎:`runSubagent` + `runWorkflow` + 并发/总数上限 + 预算钩子 + 事件发射 |
+| `apps/oh-my-agent/src/core/workflow-tools.ts`(新) | 两个 PluginTool:`run_workflow`(Phase 1)、`workflow_run`(Phase 2) |
+| `apps/oh-my-agent/src/core/workflow-evaluator.ts`(新,Phase 2) | vm 沙箱:`agent`/`pipeline` 原语 + 60s 脚本预算 |
+| `apps/oh-my-agent/src/core/run-runtime.ts`(改) | 装配执行器 + 注册 workflow 工具 + 抽出共享的文件工具构造 |
+| `packages/agent/src/runtime/agent-event.ts`(改) | `OmaLoopEvent` += 4 个 workflow 事件 |
 | `packages/agent-backend/src/event.ts`(改) | `CoreBackendEvent` += 4 个 workflow 事件 |
 | `packages/agent-backend/src/mapping.ts`(改) | `mapRunEvent` += 4 个 case |
 | `apps/web/src/hooks/useConversation.ts`(改) | workflow 状态 + 4 个 SSE 监听 |
@@ -76,7 +76,7 @@ describe("workflow event mapping", () => {
 - [ ] **Step 2:运行确认失败**
 
 Run: `cd packages/agent-backend && bun test src/mapping.test.ts`
-Expected: FAIL(TS 编译错:`CodingAgentLoopEvent`/`BackendEvent` 缺 workflow 成员)
+Expected: FAIL(TS 编译错:`OmaLoopEvent`/`BackendEvent` 缺 workflow 成员)
 
 - [ ] **Step 3:实现事件类型**
 
@@ -113,7 +113,7 @@ Expected: FAIL(TS 编译错:`CodingAgentLoopEvent`/`BackendEvent` 缺 workflow �
         type: "workflow_started",
         workflowId: String(event.data.workflowId ?? ""),
         label: String(event.data.label ?? ""),
-        agentCount: Number(event.data.agentCount ?? 0),
+        agentCount: Number(event.data.omaCount ?? 0),
       };
     case "workflow_agent_started":
       return {
@@ -139,7 +139,7 @@ Expected: FAIL(TS 编译错:`CodingAgentLoopEvent`/`BackendEvent` 缺 workflow �
         type: "workflow_completed",
         workflowId: String(event.data.workflowId ?? ""),
         ok: event.data.ok === true,
-        agentCount: Number(event.data.agentCount ?? 0),
+        agentCount: Number(event.data.omaCount ?? 0),
         totalTokens: Number(event.data.totalTokens ?? 0),
       };
 ```
@@ -159,8 +159,8 @@ git commit -m "feat(agent): workflow lifecycle events in the wire contract"
 ## Task 2:workflow 执行器引擎
 
 **Files:**
-- Create: `apps/coding-agent/src/core/workflow-executor.ts`
-- Test: `apps/coding-agent/src/core/workflow-executor.test.ts`
+- Create: `apps/oh-my-agent/src/core/workflow-executor.ts`
+- Test: `apps/oh-my-agent/src/core/workflow-executor.test.ts`
 
 - [ ] **Step 1:写失败测试**
 
@@ -252,15 +252,15 @@ describe("createWorkflowExecutor", () => {
 
 - [ ] **Step 2:运行确认失败**
 
-Run: `cd apps/coding-agent && bun test src/core/workflow-executor.test.ts`
+Run: `cd apps/oh-my-agent && bun test src/core/workflow-executor.test.ts`
 Expected: FAIL(module not found)
 
 - [ ] **Step 3:写 echo fixture + 实现**
 
-`apps/coding-agent/src/core/__fixtures__/echo-model.ts`:
+`apps/oh-my-agent/src/core/__fixtures__/echo-model.ts`:
 
 ```ts
-import type { AIMessageChunk } from "@my-agent-team/message";
+import type { AIMessageChunk } from "@chengchenccc/message";
 
 /** Deterministic scripted model stream: yields one assistant text chunk
  *  then ends. The text is JSON for schema tests when the prompt asks. */
@@ -275,8 +275,8 @@ export function createEchoModelStream(text: string): (() => AsyncIterable<AIMess
 
 ```ts
 import { randomUUID } from "node:crypto";
-import type { AIMessageChunk, Message } from "@my-agent-team/message";
-import type { ContextBudget, ContextSummarizer, PluginTool } from "@my-agent-team/agent";
+import type { AIMessageChunk, Message } from "@chengchenccc/message";
+import type { ContextBudget, ContextSummarizer, PluginTool } from "@chengchenccc/agent";
 
 export interface WorkflowAgentSpec {
   readonly prompt: string;
@@ -354,10 +354,10 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
     const sessionId = `wf:${input.workflowId}:${input.agentId}`;
     opts.emit({ type: "workflow_agent_started", workflowId: input.workflowId, agentId: input.agentId, label: input.label ?? input.agentId });
     try {
-      const { createCodingAgentSession } = await import("@my-agent-team/agent");
-      const { createInMemorySessionStore } = await import("@my-agent-team/agent");
+      const { createOmaSession } = await import("@chengchenccc/agent");
+      const { createInMemorySessionStore } = await import("@chengchenccc/agent");
       const store = createInMemorySessionStore();
-      const session = createCodingAgentSession({
+      const session = createOmaSession({
         sessionId,
         store,
         plugins: [],
@@ -458,25 +458,25 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
 
 - [ ] **Step 4:运行确认通过**
 
-Run: `cd apps/coding-agent && bun test src/core/workflow-executor.test.ts`
+Run: `cd apps/oh-my-agent && bun test src/core/workflow-executor.test.ts`
 Expected: PASS(4 tests)
 
 - [ ] **Step 5:Commit**
 
 ```bash
-git add apps/coding-agent/src/core/workflow-executor.ts apps/coding-agent/src/core/workflow-executor.test.ts apps/coding-agent/src/core/__fixtures__/echo-model.ts
-git commit -m "feat(coding-agent): in-process workflow executor with caps and budget gate"
+git add apps/oh-my-agent/src/core/workflow-executor.ts apps/oh-my-agent/src/core/workflow-executor.test.ts apps/oh-my-agent/src/core/__fixtures__/echo-model.ts
+git commit -m "feat(oma): in-process workflow executor with caps and budget gate"
 ```
 
 ## Task 3:run_workflow 工具 + 装配进 run-runtime
 
 **Files:**
-- Create: `apps/coding-agent/src/core/workflow-tools.ts`
-- Modify: `apps/coding-agent/src/core/run-runtime.ts`(工具构造抽出 + 执行器装配 + 工具注册)
+- Create: `apps/oh-my-agent/src/core/workflow-tools.ts`
+- Modify: `apps/oh-my-agent/src/core/run-runtime.ts`(工具构造抽出 + 执行器装配 + 工具注册)
 
 - [ ] **Step 1:写失败测试**
 
-`apps/coding-agent/src/core/workflow-tools.test.ts`:
+`apps/oh-my-agent/src/core/workflow-tools.test.ts`:
 
 ```ts
 import { describe, expect, test } from "bun:test";
@@ -504,14 +504,14 @@ describe("createWorkflowTools", () => {
 });
 ```
 
-- [ ] **Step 2:运行确认失败** → `cd apps/coding-agent && bun test src/core/workflow-tools.test.ts`,Expected: FAIL
+- [ ] **Step 2:运行确认失败** → `cd apps/oh-my-agent && bun test src/core/workflow-tools.test.ts`,Expected: FAIL
 
 - [ ] **Step 3:实现**
 
 `workflow-tools.ts`:
 
 ```ts
-import type { PluginTool } from "@my-agent-team/agent";
+import type { PluginTool } from "@chengchenccc/agent";
 import type { WorkflowRunResult, WorkflowAgentSpec } from "./workflow-executor.js";
 
 export interface WorkflowToolDeps {
@@ -613,14 +613,14 @@ export function createWorkflowTools(deps: WorkflowToolDeps): readonly PluginTool
 
 - [ ] **Step 4:运行确认通过**
 
-Run: `cd apps/coding-agent && bun test src/core/` + `cd /root/my-agent-team && bun run typecheck`
+Run: `cd apps/oh-my-agent && bun test src/core/` + `cd /root/my-agent-team && bun run typecheck`
 Expected: PASS / 42 tasks
 
 - [ ] **Step 5:Commit**
 
 ```bash
-git add apps/coding-agent/src/core/
-git commit -m "feat(coding-agent): run_workflow tool wired into the run runtime"
+git add apps/oh-my-agent/src/core/
+git commit -m "feat(oma): run_workflow tool wired into the run runtime"
 ```
 
 ## Task 4:前端进度卡
@@ -670,7 +670,7 @@ SSE 监听(与 native_tool 监听同块)加:
             case "workflow_started":
               upsertWorkflow(workflowId, () => ({
                 label: String(ev.label ?? ""),
-                agentCount: Number(ev.agentCount ?? 0),
+                agentCount: Number(ev.omaCount ?? 0),
                 agents: new Map(),
                 ok: null,
                 totalTokens: 0,
@@ -728,7 +728,7 @@ function WorkflowPanel({ workflows }: { workflows: ReadonlyMap<string, WorkflowR
         return (
           <div key={id}>
             <div className="font-medium">
-              {w.label} · {done}/{w.agentCount} agents
+              {w.label} · {done}/{w.omaCount} agents
             </div>
             <ul>
               {[...w.agents.entries()].map(([agentId, a]) => (
@@ -762,7 +762,7 @@ git commit -m "feat(web): workflow progress card from SSE events"
 
 ## Task 5:Phase 1 端到端验收
 
-- [ ] **Step 1:集成测试**——`apps/coding-agent/src/core/create-runtime.test.ts` 补一个 case:用 scripted 模型(首轮发 `run_workflow` 工具调用,items=2 个 echo prompt)→ 断言 outcome 完成 + 事件流含 4 类 workflow 事件 + 工具结果含 2 个 item text。参照现有 create-runtime.test 的 harness 写。
+- [ ] **Step 1:集成测试**——`apps/oh-my-agent/src/core/create-runtime.test.ts` 补一个 case:用 scripted 模型(首轮发 `run_workflow` 工具调用,items=2 个 echo prompt)→ 断言 outcome 完成 + 事件流含 4 类 workflow 事件 + 工具结果含 2 个 item text。参照现有 create-runtime.test 的 harness 写。
 - [ ] **Step 2:全量门禁**
 
 Run: `cd /root/my-agent-team && bun run typecheck && bun run lint && bun run test`
@@ -771,7 +771,7 @@ Expected: 全绿
 - [ ] **Step 3:Commit + 推分支**
 
 ```bash
-git add -A && git commit -m "test(coding-agent): phase 1 workflow end-to-end" && git push -u origin feat/coding-agent-workflow
+git add -A && git commit -m "test(oma): phase 1 workflow end-to-end" && git push -u origin feat/oma-workflow
 ```
 
 ---
@@ -781,8 +781,8 @@ git add -A && git commit -m "test(coding-agent): phase 1 workflow end-to-end" &&
 ## Task 6:vm 沙箱求值器
 
 **Files:**
-- Create: `apps/coding-agent/src/core/workflow-evaluator.ts`
-- Test: `apps/coding-agent/src/core/workflow-evaluator.test.ts`
+- Create: `apps/oh-my-agent/src/core/workflow-evaluator.ts`
+- Test: `apps/oh-my-agent/src/core/workflow-evaluator.test.ts`
 
 - [ ] **Step 1:失败测试**
 
@@ -838,7 +838,7 @@ describe("evaluateWorkflowScript", () => {
 });
 ```
 
-- [ ] **Step 2:失败确认** → `cd apps/coding-agent && bun test src/core/workflow-evaluator.test.ts`
+- [ ] **Step 2:失败确认** → `cd apps/oh-my-agent && bun test src/core/workflow-evaluator.test.ts`
 
 - [ ] **Step 3:实现**
 
@@ -882,20 +882,20 @@ export async function evaluateWorkflowScript(input: {
 }
 ```
 
-- [ ] **Step 4:通过确认** → `cd apps/coding-agent && bun test src/core/workflow-evaluator.test.ts`
+- [ ] **Step 4:通过确认** → `cd apps/oh-my-agent && bun test src/core/workflow-evaluator.test.ts`
 
 - [ ] **Step 5:Commit**
 
 ```bash
-git add apps/coding-agent/src/core/workflow-evaluator.ts apps/coding-agent/src/core/workflow-evaluator.test.ts
-git commit -m "feat(coding-agent): sandboxed workflow script evaluator"
+git add apps/oh-my-agent/src/core/workflow-evaluator.ts apps/oh-my-agent/src/core/workflow-evaluator.test.ts
+git commit -m "feat(oma): sandboxed workflow script evaluator"
 ```
 
 ## Task 7:workflow_run 工具 + 脚本落盘
 
 **Files:**
-- Modify: `apps/coding-agent/src/core/workflow-tools.ts`(加 `workflow_run` 工具)
-- Modify: `apps/coding-agent/src/core/run-runtime.ts`(`runScript` 桩 → 真实实现)
+- Modify: `apps/oh-my-agent/src/core/workflow-tools.ts`(加 `workflow_run` 工具)
+- Modify: `apps/oh-my-agent/src/core/run-runtime.ts`(`runScript` 桩 → 真实实现)
 
 - [ ] **Step 1:`workflow-tools.ts` 加工具**
 
@@ -968,8 +968,8 @@ git commit -m "feat(coding-agent): sandboxed workflow script evaluator"
 - [ ] **Step 4:Commit**
 
 ```bash
-git add apps/coding-agent/src/core/
-git commit -m "feat(coding-agent): workflow_run tool with sandboxed scripts and .workflows persistence"
+git add apps/oh-my-agent/src/core/
+git commit -m "feat(oma): workflow_run tool with sandboxed scripts and .workflows persistence"
 ```
 
 ## Task 8:Phase 2 验收 + push

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Message } from "@my-agent-team/message";
+import type { Message } from "@chengchenccc/message";
 import { pruneOldToolResults } from "./tool-pruning.js";
 
 /** Build a tool message with tool_result content. */

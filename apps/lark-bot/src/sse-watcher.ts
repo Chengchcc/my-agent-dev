@@ -1,11 +1,11 @@
 import type { Database } from "bun:sqlite";
-import { type LedgerEntry, parseLedgerEntry } from "@my-agent-team/conversation";
+import { type LedgerEntry, parseLedgerEntry } from "@chengchenccc/conversation";
 import {
   deserializeLedgerContent,
   isTerminalMessageState,
   MessageStateSchema,
   type parseMessageRevision,
-} from "@my-agent-team/message";
+} from "@chengchenccc/message";
 import { z } from "zod";
 import {
   getMemberBindingsForChat,

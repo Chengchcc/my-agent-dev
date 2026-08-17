@@ -15,7 +15,7 @@ import type { Message } from "./message.js";
  * canonical position. Pure messages pass through unchanged.
  *
  * Shape-driven and producer-agnostic: this is the single normalization point
- * at the adapter boundary, so any future coding agent type is covered without
+ * at the adapter boundary, so any future oma type is covered without
  * backend changes.
  */
 export function normalizeCanonicalMessages(messages: readonly Message[]): Message[] {

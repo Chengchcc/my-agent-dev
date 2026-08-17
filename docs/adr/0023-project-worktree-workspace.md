@@ -12,12 +12,12 @@ Project 现状是「孤岛 CRUD + 一个真实消费者」:
 2. **Chat/手动 run 与 project 无关**:conversation 无 projectId;agent 的 cwd 永远是自己的 workspace,想让它操作某个 repo 只能靠对话里人肉贴路径。
 3. **`autoOrchestrate` 是死字段**:注释说「reactor auto-advances issues」,reactor/issues 已随 ADR 0011 退役,零消费者。
 
-更根本的:现有架构有一个**没有说破的裂缝——「角色记忆的家」和「干活的 cwd」是同一个东西**(workspace.root)。Loop 绕过了它(直接换 cwd),代价是 clone 里没有 agent 的任何资源桥:`.mcp.json`、`.agent/product-tools.json` 都不在,CLI 后端的 product tools 在 Loop 场景实际上是断的。
+更根本的:现有架构有一个**没有说破的裂缝——「角色记忆的家」和「干活的 cwd」是同一个东西**(workspace.root)。Loop 绕过了它(直接换 cwd),代价是 clone 里没有 agent 的任何资源桥:`.mcp.json`、`.oma/product-tools.json` 都不在,CLI 后端的 product tools 在 Loop 场景实际上是断的。
 
 目标模型(用户裁决):
 
 - **Project ↔ Agent 多对多**:一个 project 可以被多个 agent 串行或并行操作;一个 agent 可以同时参与多个 project。
-- **本质**:agent 底层的 coding agent 在自己 workspace 完成身份加载(persona/skills/knowledge/history),然后**到 project 的 checkout 上 coding**——context 与 cwd 分离。
+- **本质**:agent 底层的 oma 在自己 workspace 完成身份加载(persona/skills/knowledge/history),然后**到 project 的 checkout 上 coding**——context 与 cwd 分离。
 - 可选实现路径:`cd` 到共享 checkout,或 `git worktree` 到 agent workspace 子目录。
 
 ## 决策
@@ -52,7 +52,7 @@ ADR 0020 的「workspace 即 cwd」只对**无 project 参与**的 run 成立。
 <dataDir>/projects/<projectId>.git        # 共享 bare mirror(N 个 agent 一份对象存储)
 <agentWorkspace>/projects/<projectId>/    # 该 agent 的 worktree checkout
   .mcp.json                               # bridge 写入(product-tools + 用户 servers)
-  .agent/product-tools.json               # bridge 写入
+  .oma/product-tools.json               # bridge 写入
   ...                                     # repo 内容(git worktree)
 ```
 

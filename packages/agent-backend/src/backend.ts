@@ -21,7 +21,7 @@ export type BackendRegistry = Partial<Record<BackendKind, BackendRegistryEntry>>
  *  Context projection. `steer` injects into the CURRENT live Run only; `stop`
  *  terminates the target Run.
  *
- *  `K` is the Backend's kind string (e.g. `"coding_agent"`). It locks
+ *  `K` is the Backend's kind string (e.g. `"oma"`). It locks
  *  extension events to `backend.<K>.*` and constrains every input's model ref
  *  to the same `K`. */
 export interface AgentBackend<K extends string = string> {

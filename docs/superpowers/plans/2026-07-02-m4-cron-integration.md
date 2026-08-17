@@ -228,7 +228,7 @@ function buildSpec(params: { sessionId: string; modelName: string; cwd: string }
     config: deps.config,
     supervisor: deps.supervisor,
     opsStore: deps.opsStore,
-    agentSvc: deps.agentSvc,
+    agentSvc: deps.omaSvc,
     sessionFactory: deps.sessionFactory,
   });
   // 复用 makeRunDeps 里的 SessionSpec 构造

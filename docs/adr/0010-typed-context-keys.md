@@ -31,7 +31,7 @@ create-agent.ts(302,41): 同上
 
 `bun test`（Bun 不做类型检查）在 framework 包内是 137 pass / 0 fail，所以问题在运行时不可见。但 `bun run typecheck`（tsc）失败：
 
-- framework 编译失败 → 依赖 `@my-agent-team/framework` 的 8 个包全部 `^build` 失败 → turbo 的 `typecheck` / `test`（都 `dependsOn: ["^build"]`）整条流水线红。
+- framework 编译失败 → 依赖 `@chengchenccc/framework` 的 8 个包全部 `^build` 失败 → turbo 的 `typecheck` / `test`（都 `dependsOn: ["^build"]`）整条流水线红。
 - collapse-harness spec 的验收标准 `bun run typecheck # 0 errors` + `bun run test # 340 pass / 0 fail` 因此**从未真正通过**。
 
 ### 泛型方案的结构性问题（不止这一个编译错）

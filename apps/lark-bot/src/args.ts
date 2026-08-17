@@ -1,4 +1,4 @@
-import { parseEnv } from "@my-agent-team/config";
+import { parseEnv } from "@chengchenccc/config";
 
 export interface LarkBotArgs {
   agentId: string;

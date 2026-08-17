@@ -47,7 +47,7 @@
 
 ```json
 {
-  "name": "@my-agent-team/adapter-mcp",
+  "name": "@chengchenccc/adapter-mcp",
   "version": "0.1.0",
   "description": "MCP client adapter - connects external MCP servers, adapts tools to Tool interface",
   "type": "module",
@@ -62,7 +62,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "@my-agent-team/core": "workspace:*"
+    "@chengchenccc/core": "workspace:*"
   }
 }
 ```
@@ -74,7 +74,7 @@
 - [ ] **Step 3: types.ts**
 
 ```typescript
-import type { Tool } from "@my-agent-team/core";
+import type { Tool } from "@chengchenccc/core";
 
 export type McpTransport = "stdio" | "sse";
 
@@ -104,7 +104,7 @@ export interface McpConnectionEntry {
 MCP tool -> Tool 接口适配。名字格式 `mcp__{serverName}__{toolName}`。
 
 ```typescript
-import type { Tool, ToolExecuteResult } from "@my-agent-team/core";
+import type { Tool, ToolExecuteResult } from "@chengchenccc/core";
 
 /** Sanitize server name for tool prefix: lowercase + [a-z0-9-]. */
 export function sanitizeServerName(name: string): string {
@@ -160,7 +160,7 @@ export function adaptMcpTool(
 - [ ] **Step 6: mcp-client-manager.ts**
 
 ```typescript
-import type { Tool } from "@my-agent-team/core";
+import type { Tool } from "@chengchenccc/core";
 import type { McpServerConfig, McpConnectionEntry } from "./types.js";
 import { adaptMcpTool, type McpToolCaller } from "./mcp-tool-adapter.js";
 

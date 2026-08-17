@@ -10,7 +10,7 @@ depends_on:
   - foundations.loop-pattern
   - backend.loop-runner
   - foundations.cron-job
-  - agent.agent
+  - agent.oma
   - design-philosophy
 used_by:
   - flows.e2e-loop-verification

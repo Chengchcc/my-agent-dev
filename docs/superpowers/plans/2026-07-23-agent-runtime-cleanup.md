@@ -189,8 +189,8 @@ Existing SQLite tables and file formats stay compatible. A schema migration is a
 ### Preconditions
 
 ```bash
-! grep -R '@my-agent-team/harness' packages apps --include='*.ts'
-! grep -R '@my-agent-team/framework' packages apps --include='*.ts'
+! grep -R '@chengchenccc/harness' packages apps --include='*.ts'
+! grep -R '@chengchenccc/framework' packages apps --include='*.ts'
 ```
 
 If either command finds a business caller, stop. Do not delete the package.
@@ -227,8 +227,8 @@ bun run test
 Structural checks:
 
 ```bash
-! grep -R '@my-agent-team/harness' packages apps --include='*.ts'
-! grep -R '@my-agent-team/framework' packages apps --include='*.ts'
+! grep -R '@chengchenccc/harness' packages apps --include='*.ts'
+! grep -R '@chengchenccc/framework' packages apps --include='*.ts'
 ```
 
 ## 5. Documentation update

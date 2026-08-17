@@ -210,7 +210,7 @@ async function executeAgentRun(deps, req) {
   const { attemptSeq } = await deps.supervisor.startMainRun(runId, sessionId, { agentId });
 
   // 造 spec 所需的 per-agent 资料仍读 agentSvc，但 model/checkpointer 的 new 已在 factory 内部/组装根
-  const agent = await deps.agentSvc.getById(agentId);
+  const agent = await deps.omaSvc.getById(agentId);
   const spec = buildSessionSpec(agent, origin, deps);   // 纯组装，无 I/O new
   const session = deps.sessionFactory.getOrCreate(sessionId, spec);  // ← 复用点
 

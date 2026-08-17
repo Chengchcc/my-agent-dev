@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { BackendRunOutcome } from "@my-agent-team/agent-backend";
+import type { BackendRunOutcome } from "@chengchenccc/agent-backend";
 import type { AgentRun } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
@@ -55,7 +55,7 @@ function makeRunsFakes(script: {
         branchId: "b",
         conversationId: input.conversationId,
         agentMemberId: input.agentMemberId,
-        modelRef: { backendKind: "coding_agent", modelId: "m" },
+        modelRef: { backendKind: "oma", modelId: "m" },
         status: "running",
         idempotencyKey: input.idempotencyKey,
         terminalResult: null,
@@ -168,7 +168,7 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
       },
       agentRunService: fakes.runService,
       agentRunExecution: fakes.execution,
-      resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
+      resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "m" }),
       scheduler: fakeSched,
       store: { load: () => ({ loopId: "x", lastRun: null, items: {} }) },
     } as unknown as Parameters<typeof createCronScheduler>[0],
@@ -252,7 +252,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       convPort: conv,
       agentRunService: fakes.runService,
       agentRunExecution: fakes.execution,
-      resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
+      resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "m" }),
       now: () => 1_700_000_000_000,
       scheduler: {
         schedule: (_expr: string, fn: () => void) => {
@@ -294,7 +294,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       },
       agentRunService: fakes.runService,
       agentRunExecution: { ...fakes.execution, dispatch: dispatchSpy },
-      resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
+      resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "m" }),
       scheduler: {
         schedule: (_expr: string, fn: () => void) => {
           fired = fn;
@@ -331,7 +331,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       },
       agentRunService: fakes.runService,
       agentRunExecution: { ...fakes.execution, stop: stopSpy },
-      resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
+      resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "m" }),
       scheduler: {
         schedule: (_expr: string, fn: () => void) => {
           fired = () => {
@@ -373,7 +373,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       },
       agentRunService: fakes.runService,
       agentRunExecution: fakes.execution,
-      resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
+      resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "m" }),
       now: () => 1_700_000_000_000,
       backoffMs: () => 1,
       scheduler: {
@@ -418,7 +418,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       },
       agentRunService: fakes.runService,
       agentRunExecution: fakes.execution,
-      resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
+      resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "m" }),
       backoffMs: () => 1,
       scheduler: {
         schedule: (_expr: string, fn: () => void) => {
@@ -456,7 +456,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       },
       agentRunService: fakes.runService,
       agentRunExecution: fakes.execution,
-      resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
+      resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "m" }),
       backoffMs: () => 1,
       scheduler: {
         schedule: (_expr: string, fn: () => void) => {
@@ -493,7 +493,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       },
       agentRunService: fakes.runService,
       agentRunExecution: fakes.execution,
-      resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "m" }),
+      resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "m" }),
       scheduler: {
         schedule: (_expr: string, fn: () => void) => {
           fired = fn;

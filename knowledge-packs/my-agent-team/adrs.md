@@ -9,7 +9,7 @@
 - ADR 0023: projects attach to agents and materialize as git worktrees under the
   agent workspace. The same MCP + product-tools bridge is written into worktree
   roots.
-- Phase 5: run-centric rewrite. The product adapter spawns coding-agent --mode rpc
+- Phase 5: run-centric rewrite. The product adapter spawns oma --mode rpc
   per Product Run; the backend persists frozen run snapshots and per-input config
   snapshots; idle branches with pending inputs recover at boot.
 - Phase 6: clean cutover. Legacy execution schema (span/attempt/control_plane_event)

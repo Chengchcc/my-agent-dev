@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Model } from "@my-agent-team/ai";
+import type { Model } from "@chengchenccc/ai";
 import type { Plugin } from "./plugin.js";
 import { renderLoopMeta } from "./prompt.js";
 

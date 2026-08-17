@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { McpClientManager } from "@my-agent-team/adapter-mcp";
+import type { McpClientManager } from "@chengchenccc/adapter-mcp";
 import { Elysia } from "elysia";
 import { sqliteAgentAdapter } from "../../src/features/agent/adapter-sqlite.js";
 import { agentRoutes } from "../../src/features/agent/http.js";

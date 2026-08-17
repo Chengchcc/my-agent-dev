@@ -1,4 +1,4 @@
-import type { MessageRevision } from "@my-agent-team/message";
+import type { MessageRevision } from "@chengchenccc/message";
 import { normalizeForLarkMarkdown } from "./markdown-normalizer.js";
 
 /**

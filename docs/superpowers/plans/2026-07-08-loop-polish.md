@@ -80,7 +80,7 @@
 })
 ```
 
-需要 import `loopReducer` from `@my-agent-team/loop` 和 `ulid`。
+需要 import `loopReducer` from `@chengchenccc/loop` 和 `ulid`。
 
 - [ ] **Step 2: api.ts 加 `addLoopItem`**
 

@@ -4,12 +4,12 @@ import type {
   AgentRunSnapshot,
   BackendInputMessage,
   WorkspaceBinding,
-} from "@my-agent-team/agent-backend";
-import { ProviderError } from "@my-agent-team/ai";
-import type { AIMessageChunk } from "@my-agent-team/core";
+} from "@chengchenccc/agent-backend";
+import { ProviderError } from "@chengchenccc/ai";
+import type { AIMessageChunk } from "@chengchenccc/core";
 import { createInMemorySessionStore } from "../persistence/in-memory-session-store.js";
 import type { SessionStore } from "../persistence/session-store.js";
-import { createCodingAgentSession } from "./agent-loop.js";
+import { createOmaSession } from "./agent-loop.js";
 import type { CodingLoopInput } from "./loop-input.js";
 import type { Plugin } from "./plugin.js";
 import { readTodo, writeTodo } from "./todo.js";
@@ -17,7 +17,7 @@ import { readTodo, writeTodo } from "./todo.js";
 // Title generation (agent-loop) performs an extra ephemeral model call on
 // completed runs; these loop tests count model attempts and must be
 // deterministic, so disable it.
-process.env.CODING_AGENT_TITLE_ENABLED = "0";
+process.env.OMA_TITLE_ENABLED = "0";
 
 type StoreFactory = (sid: string) => SessionStore;
 type ReopenFactory = (sid: string) => SessionStore;
@@ -25,7 +25,7 @@ type ReopenFactory = (sid: string) => SessionStore;
 function createSession(store: SessionStore, sid: string) {
   return store.create({
     sessionId: sid,
-    backendKind: "coding_agent",
+    backendKind: "oma",
     workspaceRoot: "/ws",
     leafEntryId: null,
     createdAt: Date.now(),
@@ -75,9 +75,9 @@ function staticTool(name: string) {
     },
   };
 }
-const LOOP_RUN: AgentRunSnapshot<"coding_agent"> = {
+const LOOP_RUN: AgentRunSnapshot<"oma"> = {
   runId: "loop-run",
-  model: { backendKind: "coding_agent", modelId: "test-1" },
+  model: { backendKind: "oma", modelId: "test-1" },
 
   configRevision: 1,
 };
@@ -89,7 +89,7 @@ const LOOP_META = { conversationId: "c", agentMemberId: "m", branchId: "b", prod
 function loopInput(over: {
   message: string;
   history?: CodingLoopInput["history"];
-  run?: AgentRunSnapshot<"coding_agent">;
+  run?: AgentRunSnapshot<"oma">;
 }): CodingLoopInput {
   const input: BackendInputMessage = {
     inputId: "ti",
@@ -114,7 +114,7 @@ function testHarness(
     test("1. product history + one Meta + one Prompt enter the tree", async () => {
       const store = storeFactory("h1");
       await createSession(store, "h1");
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h1",
         store,
         plugins: [],
@@ -143,7 +143,7 @@ function testHarness(
       // Exactly one meta per loop
       expect(sources.filter((s) => s === "meta")).toHaveLength(1);
       // Product history is idempotent: re-run with same productEntryId skips
-      const loop2 = createCodingAgentSession({
+      const loop2 = createOmaSession({
         sessionId: "h1",
         store,
         plugins: [],
@@ -168,7 +168,7 @@ function testHarness(
     test("2. system prompt never enters SessionStore", async () => {
       const store = storeFactory("h2");
       await createSession(store, "h2");
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h2",
         store,
         plugins: [],
@@ -189,7 +189,7 @@ function testHarness(
       const store = storeFactory("h2b");
       await createSession(store, "h2b");
       let seenSystem = "";
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h2b",
         store,
         plugins: [],
@@ -217,7 +217,7 @@ function testHarness(
       await createSession(store, "h3");
       const plugin: Plugin = { name: "test", tools: [echoTool()] };
       let callCount = 0;
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h3",
         store,
         plugins: [plugin],
@@ -252,7 +252,7 @@ function testHarness(
         },
       };
       const plugin: Plugin = { name: "test", tools: [tool] };
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h4",
         store,
         plugins: [plugin],
@@ -274,7 +274,7 @@ function testHarness(
       const store = storeFactory("h5");
       await createSession(store, "h5");
       const plugin: Plugin = { name: "test", tools: [echoTool()] };
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h5",
         store,
         plugins: [plugin],
@@ -311,7 +311,7 @@ function testHarness(
         },
       };
       const plugin: Plugin = { name: "test", tools: [throwingTool] };
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h5a",
         store,
         plugins: [plugin],
@@ -357,7 +357,7 @@ function testHarness(
         },
       };
       const plugin: Plugin = { name: "test", tools: [slowRead] };
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h5c",
         store,
         plugins: [plugin],
@@ -397,7 +397,7 @@ function testHarness(
         },
       };
       const plugin: Plugin = { name: "test", tools: [finishTool] };
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h5d",
         store,
         plugins: [plugin],
@@ -440,7 +440,7 @@ function testHarness(
         });
       }
       let compacted = false;
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h5e",
         store,
         plugins: [],
@@ -469,7 +469,7 @@ function testHarness(
     test("5b. stop during provider stream ends as stopped, not failed", async () => {
       const store = storeFactory("h5b");
       await createSession(store, "h5b");
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h5b",
         store,
         plugins: [],
@@ -496,7 +496,7 @@ function testHarness(
       await createSession(store, "h6");
       const plugin: Plugin = { name: "test", tools: [echoTool()] };
       let seenMessages: Array<{ role: string; blocks?: Array<{ type: string }> }> = [];
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h6",
         store,
         plugins: [plugin],
@@ -526,7 +526,7 @@ function testHarness(
       await createSession(store, "h7");
       let attempts = 0;
       let firstCallMessages: unknown = null;
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h7",
         store,
         plugins: [],
@@ -565,7 +565,7 @@ function testHarness(
       await createSession(store, "h7c");
       let attempts = 0;
       const updates: string[] = [];
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h7c",
         store,
         plugins: [],
@@ -601,7 +601,7 @@ function testHarness(
       const store = storeFactory("h7f");
       await createSession(store, "h7f");
       const { promise: yieldedFirst, resolve: yieldedResolve } = Promise.withResolvers<void>();
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h7f",
         store,
         plugins: [],
@@ -652,7 +652,7 @@ function testHarness(
           },
         ],
       };
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h7h",
         store,
         plugins: [plugin],
@@ -692,7 +692,7 @@ function testHarness(
     test("7g. message_start always pairs with message_end, even on failure", async () => {
       const store = storeFactory("h7g");
       await createSession(store, "h7g");
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h7g",
         store,
         plugins: [],
@@ -721,7 +721,7 @@ function testHarness(
       const store = storeFactory("h7e");
       await createSession(store, "h7e");
       let attempts = 0;
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h7e",
         store,
         plugins: [],
@@ -755,7 +755,7 @@ function testHarness(
       const store = storeFactory("h7b");
       await createSession(store, "h7b");
       let attempts = 0;
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h7b",
         store,
         plugins: [],
@@ -800,7 +800,7 @@ function testHarness(
         },
       };
       const plugin: Plugin = { name: "test", tools: [slowTool] };
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h7d",
         store,
         plugins: [plugin],
@@ -832,7 +832,7 @@ function testHarness(
       const store = storeFactory("h8");
       await createSession(store, "h8");
       let turn = 0;
-      let loopRef: ReturnType<typeof createCodingAgentSession> | null = null;
+      let loopRef: ReturnType<typeof createOmaSession> | null = null;
       const steerTool = {
         name: "steer_from_tool",
         description: "Steer the loop",
@@ -842,7 +842,7 @@ function testHarness(
         },
       };
       const plugin: Plugin = { name: "test", tools: [steerTool] };
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h8",
         store,
         plugins: [plugin],
@@ -872,7 +872,7 @@ function testHarness(
     test("8a. idle steer is rejected and does not enter the loop", async () => {
       const store = storeFactory("h8a");
       await createSession(store, "h8a");
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h8a",
         store,
         plugins: [],
@@ -895,7 +895,7 @@ function testHarness(
     test("8b. late steer does not leak into follow-up", async () => {
       const store = storeFactory("h8b");
       await createSession(store, "h8b");
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h8b",
         store,
         plugins: [],
@@ -923,7 +923,7 @@ function testHarness(
       const store = storeFactory("h8c");
       await createSession(store, "h8c");
       const { promise: modelStarted, resolve: modelResolve } = Promise.withResolvers<void>();
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h8c",
         store,
         plugins: [],
@@ -950,7 +950,7 @@ function testHarness(
     test("8d. setup failure settles to failed with agent_end", async () => {
       const store = storeFactory("h8d");
       // Do NOT create the session — appendBatch will throw "not found"
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h8d",
         store,
         plugins: [],
@@ -974,7 +974,7 @@ function testHarness(
       const store = storeFactory("h8e");
       await createSession(store, "h8e");
       const { promise: _toolStarted, resolve: toolStartedResolve } = Promise.withResolvers<void>();
-      let loopRef: ReturnType<typeof createCodingAgentSession> | null = null;
+      let loopRef: ReturnType<typeof createOmaSession> | null = null;
       const finishTool = {
         name: "finish",
         description: "Terminate",
@@ -986,7 +986,7 @@ function testHarness(
         },
       };
       const plugin: Plugin = { name: "test", tools: [finishTool] };
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h8e",
         store,
         plugins: [plugin],
@@ -1081,7 +1081,7 @@ function testHarness(
           ],
         });
       }
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h8f",
         store,
         plugins: [],
@@ -1140,7 +1140,7 @@ function testHarness(
         }
         return "summary";
       };
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h8g",
         store,
         plugins: [],
@@ -1170,7 +1170,7 @@ function testHarness(
     test("9. follow-up creates a new loop with new Meta", async () => {
       const store = storeFactory("h9");
       await createSession(store, "h9");
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h9",
         store,
         plugins: [],
@@ -1196,7 +1196,7 @@ function testHarness(
       await createSession(store, "h9b");
       let ptAExecutions = 0;
       let resolveCalls = 0;
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h9b",
         store,
         plugins: [],
@@ -1262,7 +1262,7 @@ function testHarness(
           ],
         });
       }
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h10",
         store,
         plugins: [],
@@ -1299,7 +1299,7 @@ function testHarness(
       }
       let attempts = 0;
       let compacted = false;
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h11",
         store,
         plugins: [],
@@ -1409,7 +1409,7 @@ function testHarness(
     test("14. delayed listener blocks loop settlement", async () => {
       const store = storeFactory("h14");
       await createSession(store, "h14");
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h14",
         store,
         plugins: [],
@@ -1444,7 +1444,7 @@ function testHarness(
     test("15. reopen does not restore an active loop", async () => {
       const store = storeFactory("h15");
       await createSession(store, "h15");
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h15",
         store,
         plugins: [],
@@ -1460,7 +1460,7 @@ function testHarness(
       // Completed branch + todo remain, but no active loop object exists
       expect(snap.entries.length).toBeGreaterThan(0);
       // A fresh loop starts idle; nothing auto-resumes
-      const fresh = createCodingAgentSession({
+      const fresh = createOmaSession({
         sessionId: "h15",
         store: reopened,
         plugins: [],
@@ -1476,7 +1476,7 @@ function testHarness(
       const store = storeFactory("h16");
       await createSession(store, "h16");
       const SENTINEL = "sk-sentinel-123456";
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h16",
         store,
         plugins: [],
@@ -1508,7 +1508,7 @@ function testHarness(
       await createSession(store, "h17");
       let seenTools: ReadonlyArray<{ name: string }> = [];
 
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h17",
         store,
         plugins: [{ name: "native", tools: [staticTool("ls"), staticTool("read")] }],
@@ -1536,7 +1536,7 @@ function testHarness(
       let beforeRunCalls = 0;
       let beforeRunMsgCount = -1;
 
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h18",
         store,
         plugins: [
@@ -1568,7 +1568,7 @@ function testHarness(
       let afterRunStatus = "";
       let afterRunMsgCount = -1;
 
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h19",
         store,
         plugins: [
@@ -1602,7 +1602,7 @@ function testHarness(
       let afterRunCalls = 0;
       let modelCalls = 0;
 
-      const loop = createCodingAgentSession({
+      const loop = createOmaSession({
         sessionId: "h20",
         store,
         plugins: [

@@ -3,11 +3,11 @@ id: runs.output-and-live-updates
 title: Agent Run 输出与实时更新
 status: current
 owners: backend-runtime
-summary: "coding-agent 子进程为一次 Agent Run 产生实时更新和唯一 outcome。Live Updates 可以丢失；terminal BackendRunOutcome（completed/failed/aborted/timeout）才产生 canonical Message。无 suspended 终态。"
+summary: "oma 子进程为一次 Agent Run 产生实时更新和唯一 outcome。Live Updates 可以丢失；terminal BackendRunOutcome（completed/failed/aborted/timeout）才产生 canonical Message。无 suspended 终态。"
 depends_on:
   - conversation.history
   - agents.context
-  - execution.agent-backend
+  - execution.oma-backend
 used_by:
   - surfaces.web
   - surfaces.lark
@@ -16,7 +16,7 @@ used_by:
 
 # Agent Run 输出与实时更新
 
-coding-agent 子进程为一次 Agent Run 输出实时更新和 outcome。核心边界：Live Updates 可以丢失，terminal outcome 才产生 canonical Message。
+oma 子进程为一次 Agent Run 输出实时更新和 outcome。核心边界：Live Updates 可以丢失，terminal outcome 才产生 canonical Message。
 
 ## 子进程输出什么
 
@@ -47,7 +47,7 @@ pending_action
 status
 ```
 
-Product Backend 将这些更新通过 SSE 发送给 Web/Lark。它们不写 Agent Context，也不作为 Conversation History 的事实。子进程独有信息使用 `backend.coding_agent.*`，只用于诊断或增强 UI。
+Product Backend 将这些更新通过 SSE 发送给 Web/Lark。它们不写 Agent Context，也不作为 Conversation History 的事实。子进程独有信息使用 `backend.oma.*`，只用于诊断或增强 UI。
 
 ## Outcome 如何提交最终 Message
 
@@ -103,7 +103,7 @@ Product Tool 由 Product Backend 执行（`product_tool_call` 幂等/审计）�
 1. Terminal outcome 是 Agent Run 完成唯一依据。
 2. Streaming event 不直接成为 canonical Message。
 3. completed Agent Run 的 History Message + Context ref 必须原子提交。
-4. `backend.coding_agent.*` 私有事件不能驱动核心业务状态机。
+4. `backend.oma.*` 私有事件不能驱动核心业务状态机。
 5. branch lock 在 terminal commit 后释放。
 6. follow-up 在当前 Agent Run 完成后处理（新 Run、新子进程）。
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { conversationEvents } from "@my-agent-team/api-contract";
+import { conversationEvents } from "@chengchenccc/api-contract";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -456,7 +456,7 @@ export function useConversation(
             result?: unknown;
           };
           // todo_write replaces the whole run's todo snapshot — same state
-          // the backend.coding_agent.todo_update event and the panel read.
+          // the backend.oma.todo_update event and the panel read.
           // todo_write arrives as product_tool_completed on the child
           // backend and native_tool_completed on CLI backends (their MCP
           // mount); result shapes differ ({content}/{output} json string
@@ -486,7 +486,7 @@ export function useConversation(
       es.addEventListener("native_tool_completed", toolCompleted("native"));
       es.addEventListener("product_tool_started", toolStarted("product"));
       es.addEventListener("product_tool_completed", toolCompleted("product"));
-      es.addEventListener("backend.coding_agent.todo_update", (e) => {
+      es.addEventListener("backend.oma.todo_update", (e) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as {
             payload?: { items?: readonly TodoItem[] };
@@ -497,7 +497,7 @@ export function useConversation(
           /* malformed - ignore */
         }
       });
-      es.addEventListener("backend.coding_agent.recap_update", (e) => {
+      es.addEventListener("backend.oma.recap_update", (e) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as {
             payload?: { text?: string; turn?: number };

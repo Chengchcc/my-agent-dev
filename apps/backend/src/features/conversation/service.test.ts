@@ -58,7 +58,7 @@ function makeRunService(): AgentRunService {
               branchId: "b",
               conversationId: input.conversationId,
               agentMemberId: input.agentMemberId,
-              modelRef: { backendKind: "coding_agent", modelId: "m" },
+              modelRef: { backendKind: "oma", modelId: "m" },
               status: "running",
               idempotencyKey: input.idempotencyKey,
               terminalResult: null,
@@ -126,7 +126,7 @@ const svc = createConversationService({
     abortStaleCalls.push(runId);
   },
   contextService: contextSvc,
-  resolveDefaultModel: async () => ({ backendKind: "coding_agent", modelId: "fake/echo" }),
+  resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "fake/echo" }),
   maxConsecutiveAgentHops: () => 3,
   idGen: () => `id-${Math.random().toString(36).slice(2, 8)}`,
 });

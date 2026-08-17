@@ -6,7 +6,7 @@
       "status": "design",
       "owners": "architecture",
       "path": "docs/architecture/README.md",
-      "summary": "当前架构入口：Product Backend → Agent Run → 一次性 coding-agent 子进程 → BackendRunOutcome → terminal commit。",
+      "summary": "当前架构入口：Product Backend → Agent Run → 一次性 oma 子进程 → BackendRunOutcome → terminal commit。",
       "depends_on": [],
       "used_by": []
     },
@@ -16,11 +16,11 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/system-overview.md",
-      "summary": "Product Backend 拥有产品事实；Agent Backend 为每个 Run spawn 一次性 coding-agent 子进程；BackendRunOutcome 是唯一终态。",
+      "summary": "Product Backend 拥有产品事实；Agent Backend 为每个 Run spawn 一次性 oma 子进程；BackendRunOutcome 是唯一终态。",
       "depends_on": [],
       "used_by": [
         "backend.overview",
-        "execution.agent-backend",
+        "execution.oma-backend",
         "agents.context",
         "flows.e2e-web-message"
       ]
@@ -31,9 +31,9 @@
       "status": "current",
       "owners": "backend-runtime",
       "path": "docs/architecture/backend/overview.md",
-      "summary": "Product Backend 拥有 Conversation History、Agent Context、Agent Run、输入队列与 Product Tools；执行由一次性 coding-agent 子进程完成。",
+      "summary": "Product Backend 拥有 Conversation History、Agent Context、Agent Run、输入队列与 Product Tools；执行由一次性 oma 子进程完成。",
       "depends_on": ["architecture.system-overview"],
-      "used_by": ["backend.data-model", "execution.agent-backend", "agents.context"]
+      "used_by": ["backend.data-model", "execution.oma-backend", "agents.context"]
     },
     {
       "id": "agents.context",
@@ -43,19 +43,15 @@
       "path": "docs/architecture/agents/context.md",
       "summary": "每个 Conversation Agent Member 实际知道什么；保存共享 Message 引用、私有语义、Product Tool 结果、summary 和 Context Branch。",
       "depends_on": ["conversation.history"],
-      "used_by": [
-        "architecture.system-overview",
-        "execution.agent-backend",
-        "flows.e2e-web-message"
-      ]
+      "used_by": ["architecture.system-overview", "execution.oma-backend", "flows.e2e-web-message"]
     },
     {
-      "id": "execution.agent-backend",
+      "id": "execution.oma-backend",
       "title": "Agent Backend",
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/execution/agent-backend.md",
-      "summary": "AgentBackend 协议（execute/steer/abort）与 CodingAgentBackend 实现：每个 Run spawn 一次性 coding-agent 子进程，stdin/stdout JSONL，BackendRunOutcome 唯一终态。",
+      "summary": "AgentBackend 协议（execute/steer/abort）与 OmaBackend 实现：每个 Run spawn 一次性 oma 子进程，stdin/stdout JSONL，BackendRunOutcome 唯一终态。",
       "depends_on": ["agents.context"],
       "used_by": ["architecture.system-overview", "backend.overview", "flows.e2e-web-message"]
     },
@@ -76,7 +72,7 @@
       "owners": "backend-runtime",
       "path": "docs/architecture/runs/output-and-live-updates.md",
       "summary": "Agent Backend 产生 Live Updates 与 outcome；只有 terminal outcome 才原子提交 History Message 与 Agent Context。",
-      "depends_on": ["conversation.history", "agents.context", "execution.agent-backend"],
+      "depends_on": ["conversation.history", "agents.context", "execution.oma-backend"],
       "used_by": ["surfaces.web", "surfaces.lark", "flows.e2e-web-message"]
     },
     {
@@ -100,7 +96,7 @@
         "surfaces.web",
         "runs.output-and-live-updates",
         "agents.context",
-        "execution.agent-backend"
+        "execution.oma-backend"
       ],
       "used_by": []
     },
@@ -145,48 +141,44 @@
       "used_by": []
     },
     {
-      "id": "runtime.coding-agent",
-      "title": "Coding Agent",
+      "id": "runtime.oma",
+      "title": "Oma",
       "status": "current",
       "owners": "architecture",
-      "path": "docs/architecture/runtime/coding-agent.md",
+      "path": "docs/architecture/runtime/oma.md",
       "summary": "无 UI 的一次性 CLI 执行引擎（print/json/rpc），由 Adapter 按 Run spawn；子进程内 per-Run Runtime（packages/agent）跑完产出 BackendRunOutcome 后退出。",
-      "depends_on": ["execution.agent-backend"],
-      "used_by": [
-        "runtime.coding-agent-session",
-        "runtime.coding-agent-prompt",
-        "runtime.coding-agent-models"
-      ]
+      "depends_on": ["execution.oma-backend"],
+      "used_by": ["runtime.oma-session", "runtime.oma-prompt", "runtime.oma-models"]
     },
     {
-      "id": "runtime.coding-agent-session",
-      "title": "Coding Agent Session",
+      "id": "runtime.oma-session",
+      "title": "Oma Session",
       "status": "current",
       "owners": "architecture",
-      "path": "docs/architecture/runtime/coding-agent-session.md",
+      "path": "docs/architecture/runtime/oma-session.md",
       "summary": "Runtime 的 SessionStore 是 per-Run、in-memory 执行缓存：seed full Product history + meta + input，Run 结束销毁；无 SQLite session、无 worker、无跨 Run 恢复。",
-      "depends_on": ["runtime.coding-agent"],
-      "used_by": ["runtime.coding-agent-prompt"]
+      "depends_on": ["runtime.oma"],
+      "used_by": ["runtime.oma-prompt"]
     },
     {
-      "id": "runtime.coding-agent-prompt",
-      "title": "Coding Agent Prompt 与 Context",
+      "id": "runtime.oma-prompt",
+      "title": "Oma Prompt 与 Context",
       "status": "current",
       "owners": "architecture",
-      "path": "docs/architecture/runtime/coding-agent-prompt.md",
+      "path": "docs/architecture/runtime/oma-prompt.md",
       "summary": "每个 Run 使用 Run 快照冻结的 systemPrompt + Meta User Message + 真实 Prompt，随 full Product history seed 进 SessionStore。",
-      "depends_on": ["runtime.coding-agent", "runtime.coding-agent-session"],
+      "depends_on": ["runtime.oma", "runtime.oma-session"],
       "used_by": []
     },
     {
-      "id": "runtime.coding-agent-models",
-      "title": "Coding Agent Provider 与 ModelRuntime",
+      "id": "runtime.oma-models",
+      "title": "Oma Provider 与 ModelRuntime",
       "status": "current",
       "owners": "architecture",
-      "path": "docs/architecture/runtime/coding-agent-models.md",
+      "path": "docs/architecture/runtime/oma-models.md",
       "summary": "模型系统由 packages/ai（Provider 注册制 + ModelRuntime）提供；Product Backend 只保存 BackendModelRef，子进程内解析并 stream。",
-      "depends_on": ["runtime.coding-agent"],
-      "used_by": ["runtime.coding-agent-prompt"]
+      "depends_on": ["runtime.oma"],
+      "used_by": ["runtime.oma-prompt"]
     }
   ]
 }

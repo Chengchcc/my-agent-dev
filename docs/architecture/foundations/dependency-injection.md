@@ -9,7 +9,7 @@ depends_on:
   - design-philosophy
 used_by:
   - runtime.framework
-  - agent.agent
+  - agent.oma
   - backend.overview
 ---
 
@@ -94,13 +94,13 @@ export function pipeContextManagers(...managers: ContextPipeline[]): ContextPipe
 
 ### 4. 构造函数注入（端口聚合 + 合理缺省）
 
-`CodingAgentSession`（`packages/agent/src/runtime/agent-loop.ts`）通过一个 config 对象聚合所有协作者，每一项都是接口而非具体类：
+`OmaSession`（`packages/agent/src/runtime/agent-loop.ts`）通过一个 config 对象聚合所有协作者，每一项都是接口而非具体类：
 
 ```ts
-createCodingAgentSession({ model, workspaceRoot, plugins, tools, store, ... })
+createOmaSession({ model, workspaceRoot, plugins, tools, store, ... })
 ```
 
-构造里对 retry / compaction / maxSteps 给默认值再覆盖——**注入但有合理缺省**，调用方只在需要时覆写。见 [Coding Agent](../runtime/coding-agent.md)。
+构造里对 retry / compaction / maxSteps 给默认值再覆盖——**注入但有合理缺省**，调用方只在需要时覆写。见 [Oma](../runtime/oma.md)。
 
 ### 5. 组合根（Composition Root）
 

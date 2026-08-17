@@ -1,6 +1,6 @@
 import { rename, rm } from "node:fs/promises";
-import type { BackendModelRef } from "@my-agent-team/agent-backend";
-import { loopReducer } from "@my-agent-team/loop";
+import type { BackendModelRef } from "@chengchenccc/agent-backend";
+import { loopReducer } from "@chengchenccc/loop";
 import { Elysia, t } from "elysia";
 import { ConflictError } from "../../infra/domain-errors.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";

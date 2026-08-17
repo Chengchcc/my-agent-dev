@@ -1,5 +1,5 @@
-import { conversationEvents, createSseEncoder } from "@my-agent-team/api-contract";
-import { extractText } from "@my-agent-team/message";
+import { conversationEvents, createSseEncoder } from "@chengchenccc/api-contract";
+import { extractText } from "@chengchenccc/message";
 import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
 import type { GoalStateStore } from "./goal-state.js";

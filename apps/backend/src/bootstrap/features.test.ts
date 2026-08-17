@@ -93,9 +93,9 @@ describe("InstalledFeatures", () => {
 
 test("fresh boot: default agent carries a real model + the onCreate chain ran", async () => {
   const dir = mkdtempSync(`${tmpdir()}/p9-fresh-`);
-  // The coding-agent child's runtime catalog resolves models.yml via
-  // MY_AGENT_HOME (same env the real deployment sets).
-  process.env.MY_AGENT_HOME = dir;
+  // The oma child's runtime catalog resolves models.yml via
+  // OMA_HOME (same env the real deployment sets).
+  process.env.OMA_HOME = dir;
   const cfg = setup(dir);
 
   const { createBackendServices } = await import("./services.js");
@@ -114,7 +114,7 @@ test("fresh boot: default agent carries a real model + the onCreate chain ran", 
     runtime_config: { runtime: string; model_id: string };
   };
   // The seed derives from the live catalog, never the placeholder.
-  expect(config.runtime_config.runtime).toBe("coding_agent");
+  expect(config.runtime_config.runtime).toBe("oma");
   expect(config.runtime_config.model_id).not.toBe("unconfigured/none");
   expect(config.runtime_config.model_id).toContain("/");
 
@@ -131,7 +131,7 @@ test("fresh boot: default agent carries a real model + the onCreate chain ran", 
   // none; the link proves the onCreate reconcile ran).
   const workspace = `${dir}/agents/default`;
   const { existsSync } = await import("node:fs");
-  expect(existsSync(`${workspace}/.agent/skills`)).toBe(true);
+  expect(existsSync(`${workspace}/.oma/skills`)).toBe(true);
 
   await installed.dispose();
   await services.mcpClientManager.disconnectAll();

@@ -1,5 +1,5 @@
 {
-  "name": "@my-agent-team/config",
+  "name": "@chengchenccc/config",
   "version": "0.1.0",
   "description": "Shared envSchema + parseEnv — single source of truth for all process environment variables",
   "type": "module",

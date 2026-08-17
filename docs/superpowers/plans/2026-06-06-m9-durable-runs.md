@@ -4,7 +4,7 @@
 
 **Goal:** 将 run 执行从进程内 generator 重构为独立子进程 + EventLog 事实源 + SSE 只读投影，实现断连继续跑、重连不丢事件、cancel 真停。
 
-**Architecture:** 新增 `@my-agent-team/event-log` port 包（EventSink/EventSource 读写分离）；backend 子进程化（fork runner-stdio + 202 + GET /events 投影端点）；实体重建模（run/attempt 拆分 + heartbeat 判活）；清偿 3 项前置债务（迁移台账 + repairToolPairs + adapter role 交替）。
+**Architecture:** 新增 `@chengchenccc/event-log` port 包（EventSink/EventSource 读写分离）；backend 子进程化（fork runner-stdio + 202 + GET /events 投影端点）；实体重建模（run/attempt 拆分 + heartbeat 判活）；清偿 3 项前置债务（迁移台账 + repairToolPairs + adapter role 交替）。
 
 **Tech Stack:** TypeScript, Bun, SQLite (WAL), Zod, Anthropic SDK, SSE, child_process
 
@@ -143,7 +143,7 @@ readEvents?(threadId: string): AsyncIterable<CheckpointEvent>;
 
 ```ts
 // apps/backend/src/infra/sqlite/migrations.ts
-import { SQLITE_CHECKPOINTER_MIGRATIONS } from "@my-agent-team/checkpointer-sqlite";
+import { SQLITE_CHECKPOINTER_MIGRATIONS } from "@chengchenccc/checkpointer-sqlite";
 
 export interface Migration {
   id: number;
@@ -578,7 +578,7 @@ git commit -m "fix(adapter-anthropic): merge system/same-role, handle thinking, 
 ```json
 // packages/event-log/package.json
 {
-  "name": "@my-agent-team/event-log",
+  "name": "@chengchenccc/event-log",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -596,7 +596,7 @@ git commit -m "fix(adapter-anthropic): merge system/same-role, handle thinking, 
     "lint": "biome check . && eslint src"
   },
   "dependencies": {
-    "@my-agent-team/framework": "workspace:*"
+    "@chengchenccc/framework": "workspace:*"
   }
 }
 ```
@@ -617,7 +617,7 @@ git commit -m "fix(adapter-anthropic): merge system/same-role, handle thinking, 
 
 ```ts
 // packages/event-log/src/index.ts
-import type { AgentEvent } from "@my-agent-team/framework";
+import type { AgentEvent } from "@chengchenccc/framework";
 import { Database } from "bun:sqlite";
 import { EventEmitter } from "node:events";
 
@@ -1108,8 +1108,8 @@ git commit -m "feat(adapter-anthropic): verify & harden AbortSignal to fetch (ca
 ```ts
 // packages/runner-stdio/src/entry.ts
 
-import { sqliteEventLog, inMemoryEventLog } from "@my-agent-team/event-log";
-import type { EventSink } from "@my-agent-team/event-log";
+import { sqliteEventLog, inMemoryEventLog } from "@chengchenccc/event-log";
+import type { EventSink } from "@chengchenccc/event-log";
 
 export interface EntryIO {
   specJson: string;
@@ -1388,7 +1388,7 @@ git commit -m "feat(backend): run/attempt entity split + heartbeat liveness conf
 ```ts
 // apps/backend/src/features/run/event-bus.ts
 import { EventEmitter } from "node:events";
-import type { EventRecord } from "@my-agent-team/event-log";
+import type { EventRecord } from "@chengchenccc/event-log";
 
 /**
  * 进程内 pub/sub，用于同 backend 内的低延迟事件通知。
@@ -1418,8 +1418,8 @@ export class RunEventBus {
 ```ts
 // apps/backend/src/features/run/supervisor.ts
 import { ChildProcess, spawn } from "node:child_process";
-import type { AgentSpec } from "@my-agent-team/agent-spec";
-import type { EventLog, EventSource } from "@my-agent-team/event-log";
+import type { AgentSpec } from "@chengchenccc/agent-spec";
+import type { EventLog, EventSource } from "@chengchenccc/event-log";
 import { RunEventBus } from "./event-bus";
 import type { BackendConfig } from "../../config";
 

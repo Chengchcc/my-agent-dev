@@ -1,6 +1,6 @@
 # LLM 入口索引
 
-本目录主 Wiki 描述当前架构:Product Backend 拥有产品事实,四 Agent Backend(coding-agent/claude/pi/omp)为每个 Agent Run spawn 一次性子进程执行;Agent 配置与记忆住在工作区文件里。页面可独立阅读;`status: deprecated` 表示 tombstone(历史概念,新设计不要引用);带 ⚠ banner 的页面部分过时。
+本目录主 Wiki 描述当前架构:Product Backend 拥有产品事实,四 Agent Backend(oma/claude/pi/omp)为每个 Agent Run spawn 一次性子进程执行;Agent 配置与记忆住在工作区文件里。页面可独立阅读;`status: deprecated` 表示 tombstone(历史概念,新设计不要引用);带 ⚠ banner 的页面部分过时。
 
 ## 整体架构
 
@@ -20,18 +20,18 @@
 ```text
 Conversation History = 共享会话事实
 Agent Context = 单 Agent Member 的 context 事实
-coding-agent 子进程 = 单次 Run 的可丢弃执行缓存
+oma 子进程 = 单次 Run 的可丢弃执行缓存
 ```
 
 Agent Run = Product Backend 持久执行身份（唯一执行身份，无 span/attempt/session）
-Agent Loop = Coding Agent 子进程内部执行机制
+Agent Loop = Oma 子进程内部执行机制
 
-## 执行链（Agent Backend / Coding Agent）
+## 执行链（Agent Backend / Oma）
 
 1. `execution/agent-backend.md`
 2. `agents/context.md`
 3. `backend/overview.md`
-4. `runtime/coding-agent.md`
+4. `runtime/oma.md`
 
 Product Backend 只依赖 AgentBackend 协议（execute/steer/abort），不依赖子进程内部 transcript、tool loop、retry、compaction 或 sub-agent。
 
@@ -71,12 +71,12 @@ Runtime 原生工具由子进程自己执行。History、审批等 Product Tool 
 
 ## 自研 Runtime
 
-1. `runtime/coding-agent.md`
-2. `runtime/coding-agent-session.md`
-3. `runtime/coding-agent-prompt.md`
-4. `runtime/coding-agent-models.md`
+1. `runtime/oma.md`
+2. `runtime/oma-session.md`
+3. `runtime/oma-prompt.md`
+4. `runtime/oma-models.md`
 
-Coding Agent 是无 UI 的一次性 CLI（print/json/rpc），由 Adapter 按 Run spawn。其 in-memory SessionStore 是单次 Run 的执行缓存，不是 Agent Context。
+Oma 是无 UI 的一次性 CLI（print/json/rpc），由 Adapter 按 Run spawn。其 in-memory SessionStore 是单次 Run 的执行缓存，不是 Agent Context。
 
 ## Tombstones（历史概念）
 

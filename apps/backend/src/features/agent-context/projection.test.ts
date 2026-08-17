@@ -54,7 +54,7 @@ describe("Agent Context projection", () => {
     });
 
     const tree = await port.getOrCreateTree(conversationId, agentMemberId);
-    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "oma");
     const r1 = await port.appendEntry({
       branchId: branch.branchId,
       expectedRevision: 1,
@@ -94,7 +94,7 @@ describe("Agent Context projection", () => {
     });
 
     const tree = await port.getOrCreateTree(conversationId, agentMemberId);
-    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "oma");
     const r1 = await port.appendEntry({
       branchId: branch.branchId,
       expectedRevision: 1,
@@ -130,7 +130,7 @@ describe("Agent Context projection", () => {
   test("private messages are projected with stable productEntryId", async () => {
     const { conversationId, agentMemberId } = freshFixture("4");
     const tree = await port.getOrCreateTree(conversationId, agentMemberId);
-    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "oma");
     const r1 = await port.appendEntry({
       branchId: branch.branchId,
       expectedRevision: 1,
@@ -168,7 +168,7 @@ describe("Agent Context projection", () => {
     });
 
     const tree = await port.getOrCreateTree(conversationId, agentMemberId);
-    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "oma");
     // e1 (covered) -> e2 (retained) -> s1 (summary coversThrough=e1)
     const e1 = await port.appendEntry({
       branchId: branch.branchId,
@@ -240,7 +240,7 @@ describe("Agent Context projection", () => {
     };
 
     const tree = await port.getOrCreateTree(a.conversationId, a.agentMemberId);
-    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+    const branch = await port.getOrCreateDefaultBranch(tree.treeId, "oma");
     await port.appendEntry({
       branchId: branch.branchId,
       expectedRevision: 1,

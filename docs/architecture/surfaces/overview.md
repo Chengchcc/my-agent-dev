@@ -13,7 +13,7 @@ used_by:
 
 # 端总览
 
-端是面向用户的适配器，目前是 Web 和飞书。它们采集输入、渲染 conversation ledger SSE 推送的消息、把外部身份映射成成员、处理 UX 层的去重。端不拥有任何持久事实——事实存在于 conversation ledger 与 Agent Context 中（执行由一次性 coding-agent 子进程完成，端不可见）。
+端是面向用户的适配器，目前是 Web 和飞书。它们采集输入、渲染 conversation ledger SSE 推送的消息、把外部身份映射成成员、处理 UX 层的去重。端不拥有任何持久事实——事实存在于 conversation ledger 与 Agent Context 中（执行由一次性 oma 子进程完成，端不可见）。
 
 ## 端拥有什么、不拥有什么
 

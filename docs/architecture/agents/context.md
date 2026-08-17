@@ -9,7 +9,7 @@ depends_on:
   - foundations.facts-and-projections
 used_by:
   - architecture.system-overview
-  - execution.agent-backend
+  - execution.oma-backend
   - flows.e2e-web-message
 ---
 
@@ -108,7 +108,7 @@ interface ContextBranch {
 
 ### Run-time 状态（子进程内，非 Context 语义）
 
-Agent Run 没有持久 execution session：每次执行由 Adapter spawn 一次性 coding-agent 子进程，子进程内的 in-memory SessionStore 是该 Run 的私有缓存（`sessionId = runId`），Run 结束即销毁。没有 binding、没有同步点、没有原生 resume —— 下一个 Run 永远从当前 Context Branch 的 full projection 重建。
+Agent Run 没有持久 execution session：每次执行由 Adapter spawn 一次性 oma 子进程，子进程内的 in-memory SessionStore 是该 Run 的私有缓存（`sessionId = runId`），Run 结束即销毁。没有 binding、没有同步点、没有原生 resume —— 下一个 Run 永远从当前 Context Branch 的 full projection 重建。
 
 > 历史版本（daemon/session 架构）曾允许「binding 匹配则 resume」；Phase 5/6 已删除该路径，`backend_session_binding` 表与 resume 语义不复存在。
 

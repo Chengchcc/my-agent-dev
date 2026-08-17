@@ -7,7 +7,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import type { RunTokenContext, RunTokenRegistry } from "./run-token-registry.js";
 import type { ProductToolsService } from "./service.js";
 
-/** Wire identity the Coding Agent Worker attaches to every call:
+/** Wire identity the Oma Worker attaches to every call:
  *  `_meta.identity` with run/conversation/member/branch/callId/idempotencyKey. */
 interface WireIdentity {
   runId?: unknown;
@@ -28,7 +28,7 @@ export interface ProductToolsMcpServerOptions {
 }
 
 export interface ProductToolsMcpServer {
-  /** Base URL the Coding Agent Worker connects to (entrypoint `sse:<url>`). */
+  /** Base URL the Oma Worker connects to (entrypoint `sse:<url>`). */
   readonly url: string;
   close(): Promise<void>;
 }
@@ -43,7 +43,7 @@ function authorize(req: IncomingMessage, registry: RunTokenRegistry): RunTokenCo
 
 /** MCP layer only: protocol parsing, service-token authentication, input
  *  validation, and error normalization. Business logic lives in
- *  ProductToolsService. Serves the legacy SSE transport the Coding Agent
+ *  ProductToolsService. Serves the legacy SSE transport the Oma
  *  Worker's SSEClientTransport speaks. */
 export async function createProductToolsMcpServer(
   opts: ProductToolsMcpServerOptions,

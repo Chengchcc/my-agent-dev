@@ -1,4 +1,4 @@
-import type { Message } from "@my-agent-team/message";
+import type { Message } from "@chengchenccc/message";
 import type { AgentContextEntry, AgentContextTree, ContextBranch } from "./domain.js";
 
 /** Append input for a new entry on a branch leaf. */

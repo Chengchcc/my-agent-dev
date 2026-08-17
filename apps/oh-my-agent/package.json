@@ -1,0 +1,43 @@
+{
+  "name": "@chengchenccc/oh-my-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "oma": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "dev": "bun src/cli.ts",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "test": "bun test",
+    "lint": "biome check . && eslint ."
+  },
+  "dependencies": {
+    "@chengchenccc/adapter-mcp": "workspace:*",
+    "@chengchenccc/agent": "workspace:*",
+    "@chengchenccc/agent-backend": "workspace:*",
+    "@chengchenccc/ai": "workspace:*",
+    "@chengchenccc/core": "workspace:*",
+    "@chengchenccc/config": "workspace:*",
+    "@chengchenccc/message": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@chengchenccc/plugin-progressive-skill": "workspace:*",
+    "@chengchenccc/plugin-todo": "workspace:*",
+    "@chengchenccc/plugin-recap": "workspace:*",
+    "@chengchenccc/tools-common": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@chengchenccc/test-helpers": "workspace:*",
+    "bun-types": "latest",
+    "typescript": "^5.7.0",
+    "@chengchenccc/adapter-oma-agent": "workspace:*"
+  }
+}

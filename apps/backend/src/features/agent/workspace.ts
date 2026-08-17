@@ -1,14 +1,14 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
-/** Per-kind project config dirs (the coding agent's cwd-level config).
+/** Per-kind project config dirs (the oma's cwd-level config).
  *  Seeded as empty placeholders; skills are symlinked into <dir>/skills
  *  and MCP servers written to <dir>/mcp.json by the workspace bridge. */
-export const CONFIG_DIRS = [".agent", ".pi", ".omp", ".claude"] as const;
+export const CONFIG_DIRS = [".oma", ".pi", ".omp", ".claude"] as const;
 
 const AGENTS_MD = [
   "# Agent 工作区",
   "",
-  "本目录是此 Agent 的运行工作区(coding agent 的 cwd)。",
+  "本目录是此 Agent 的运行工作区(oma 的 cwd)。",
   "身份与人格见 SOUL.md;机器可读清单见 manifest.json。",
   "",
   "## 知识库",

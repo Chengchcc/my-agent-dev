@@ -3,20 +3,20 @@ import type {
   BackendInputMessage,
   ProjectedHistoryItem,
   WorkspaceBinding,
-} from "@my-agent-team/agent-backend";
+} from "@chengchenccc/agent-backend";
 import type { AppendBatchInput } from "../persistence/session-store.js";
 export interface LoopInputResult {
   readonly batch: AppendBatchInput;
   readonly systemPrompt: string;
 }
 /** Cross-boundary input for one loop. Carries only domain facts - NO metaText
- *  and NO systemPrompt: the CodingAgentSession renders the Meta Message
+ *  and NO systemPrompt: the OmaSession renders the Meta Message
  *  internally from run/workspace/plugin/todo state (renderLoopMeta is the sole
  *  Meta owner), and reads the system prompt from `run.systemPrompt`. */
 export interface CodingLoopInput {
   readonly history: readonly ProjectedHistoryItem[];
   readonly input: BackendInputMessage;
-  readonly run: AgentRunSnapshot<"coding_agent">;
+  readonly run: AgentRunSnapshot<"oma">;
   readonly workspace: WorkspaceBinding;
   readonly metadata: {
     readonly conversationId: string;

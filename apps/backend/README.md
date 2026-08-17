@@ -6,7 +6,7 @@
 
 - **Agent CRUD 与身份**：创建、查询、更新、归档 agent。管理 model 配置、permission mode、maxSteps 与 workspace。
 - **Conversation**：多个 member（人或 agent）共享的 conversation ledger。负责 ledger 追加、成员管理、@mention 触发与 hop control。
-- **Agent Run 执行**：所有真实 Agent 执行（Conversation 回复、Cron、Loop Generator/Evaluator）统一走 `AgentRunService.enqueueAndAcquire` → `AgentRunExecutionService.dispatch`。输入先持久化（normal/steer/follow_up 队列），terminal 结果由 Agent Run 与 Conversation History 表达。执行引擎是一次性 coding-agent 子进程（one Run / one child），Product Backend 只依赖统一 Agent Backend 协议（`@my-agent-team/agent-backend`）。
+- **Agent Run 执行**：所有真实 Agent 执行（Conversation 回复、Cron、Loop Generator/Evaluator）统一走 `AgentRunService.enqueueAndAcquire` → `AgentRunExecutionService.dispatch`。输入先持久化（normal/steer/follow_up 队列），terminal 结果由 Agent Run 与 Conversation History 表达。执行引擎是一次性 oma 子进程（one Run / one child），Product Backend 只依赖统一 Agent Backend 协议（`@chengchenccc/agent-backend`）。
 - **Product Context**：每个 agent member 一份 Agent Context（parent-linked entries 支持 branch/fork）。final assistant Message 只在 terminal commit 时写入 History + Context，原子提交。
 - **Product Tools**：History 只读工具 + `history_retain` 由 Product Backend 统一执行（MCP 是接入方式，不是领域身份）。
 - **SSE 推送**：conversation 的 ledger SSE 是 canonical 输出的唯一通道；Agent Run Live Updates 只供实时展示，断线可丢，不写 History。
@@ -24,7 +24,7 @@
 Human Message → Conversation History（canonical）
 → trigger → AgentRunService.enqueueAndAcquire（normal/steer/follow_up 先持久化）
 → acquired → AgentRunExecutionService.dispatch(runId)
-→ spawn coding-agent --mode rpc 子进程（per-Run Runtime，in-memory SessionStore）
+→ spawn oma --mode rpc 子进程（per-Run Runtime，in-memory SessionStore）
 → BackendRunOutcome → backend.db 原子 terminal commit（History Message + Context ref + run）
 → child 自行退出
 ```

@@ -1,5 +1,5 @@
-import type { Plugin, PluginTool, SessionStore, TodoItem } from "@my-agent-team/agent";
-import { readTodo, writeTodo } from "@my-agent-team/agent";
+import type { Plugin, PluginTool, SessionStore, TodoItem } from "@chengchenccc/agent";
+import { readTodo, writeTodo } from "@chengchenccc/agent";
 
 export interface TodoPluginOptions {
   readonly sessionId: string;

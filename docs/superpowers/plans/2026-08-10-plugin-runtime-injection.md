@@ -15,7 +15,7 @@
 
 ### Task 1.3: Agent Loop 接入
 - `packages/agent/src/runtime/agent-loop.ts`
-- `CodingAgentSessionOptions` 加 `pluginRuntime: PluginRuntime`
+- `OmaSessionOptions` 加 `pluginRuntime: PluginRuntime`
 - beforeModel: 传 `opts.pluginRuntime`
 - afterModel: 在 `turn_end` emit 之前调用（processModelTurn + executeTools 之后）
 - afterTool: 传 `opts.pluginRuntime`
@@ -26,13 +26,13 @@
 - 修复所有 test 里的 mock session（加 `pluginRuntime` stub）
 
 ### Task 1.5: Run Runtime 构建 + 注入
-- `apps/coding-agent/src/core/run-runtime.ts`
+- `apps/oh-my-agent/src/core/run-runtime.ts`
 - 构建 `pluginRuntime` 对象
-- 传入 `createCodingAgentSession`
+- 传入 `createOmaSession`
 
 ### Gate
 - `tsc -b` 0 errors
-- `bun test` 全绿（agent 68 + plugin 2 + coding-agent 69 + backend 334 + web 47）
+- `bun test` 全绿（agent 68 + plugin 2 + oma 69 + backend 334 + web 47）
 - `bun scripts/smoke-agent-run.ts --mode clean` PASS
 
 ## Wave 2: Recap MVP
@@ -48,13 +48,13 @@
 - mapping.ts default case 自动覆盖（验证）
 
 ### Task 2.3: Run Runtime 接入 recap
-- `apps/coding-agent/src/core/run-runtime.ts`
-- 从 Run snapshot 解析 recapModelRef（或 env `CODING_AGENT_RECAP_MODEL`，默认同主模型）
-- plugins 数组加 createRecapPlugin（enabled = env `CODING_AGENT_RECAP_ENABLED !== "0"`）
+- `apps/oh-my-agent/src/core/run-runtime.ts`
+- 从 Run snapshot 解析 recapModelRef（或 env `OMA_RECAP_MODEL`，默认同主模型）
+- plugins 数组加 createRecapPlugin（enabled = env `OMA_RECAP_ENABLED !== "0"`）
 
 ### Task 2.4: Web RecapPanel
 - `apps/web/src/components/RecapPanel.tsx`: 常驻面板（右 260px 桌面 / 顶部条移动）
-- watchRun 监听 `backend.coding_agent.recap_update` -> `runRecaps` state
+- watchRun 监听 `backend.oma.recap_update` -> `runRecaps` state
 - ConversationCanvas 布局：对话区 + RecapPanel 右侧
 - Run terminal 时清对应 recap
 
@@ -75,7 +75,7 @@
 - bark 注入：beforeModel 把上次 bark 作为 system 消息追加
 
 ### Task 3.2: Web Pet 渲染
-- watchRun 监听 `backend.coding_agent.pet_bark` -> transient bubble（同 LiveToolStep 层）
+- watchRun 监听 `backend.oma.pet_bark` -> transient bubble（同 LiveToolStep 层）
 - 底部 pet 状态栏（mood + 等级 placeholder）
 
 ### Task 3.3: 测试

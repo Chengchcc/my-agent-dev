@@ -6,11 +6,11 @@
 >
 > **ADR:** [`0016-agent-runtime.md`](../../adr/0016-agent-runtime.md)
 
-**Goal:** 在不破坏 Agent 生命周期、Session 持久化、Interrupt/Resume、Conversation projection、Cron 和 Loop 行为的前提下，将 `framework + harness` 收敛为 `@my-agent-team/agent`，并把 backend 功能装配统一为 Plugin + createAgentSession()。
+**Goal:** 在不破坏 Agent 生命周期、Session 持久化、Interrupt/Resume、Conversation projection、Cron 和 Loop 行为的前提下，将 `framework + harness` 收敛为 `@chengchenccc/agent`，并把 backend 功能装配统一为 Plugin + createAgentSession()。
 
 **Architecture:** 采用 Strangler migration。先建立 `packages/agent` 生命周期边界，内部暂时复用 `framework`；再迁移 backend caller；再统一 backend caller 到 Plugin + createAgentSession；最后拆分 composition、清理命名并删除旧包。Capability/AgentExtension 试验代码已在 P8 删除。
 
-**Tech Stack:** Bun 1.3.14、TypeScript NodeNext、Turborepo、bun:test、Elysia backend、Drizzle/SQLite、现有 `@my-agent-team/core` / `@my-agent-team/framework` / `@my-agent-team/harness`。
+**Tech Stack:** Bun 1.3.14、TypeScript NodeNext、Turborepo、bun:test、Elysia backend、Drizzle/SQLite、现有 `@chengchenccc/core` / `@chengchenccc/framework` / `@chengchenccc/harness`。
 
 ---
 
@@ -72,7 +72,7 @@ P11 Remove framework/harness and final verification
 完成后必须得到：
 
 ```text
-@my-agent-team/agent 可独立 build
+@chengchenccc/agent 可独立 build
 Agent 行为覆盖 AgentSession 基线
 SessionManager 可恢复已有 session
 AgentHooks 有独立行为测试
@@ -87,8 +87,8 @@ backend 尚未迁移，但原有 backend 继续可 build
 完成后必须得到：
 
 ```text
-backend 不再依赖 @my-agent-team/harness
-Conversation、Resume、Cron、Loop、Skill Pack 都使用 @my-agent-team/agent
+backend 不再依赖 @chengchenccc/harness
+Conversation、Resume、Cron、Loop、Skill Pack 都使用 @chengchenccc/agent
 数据库 schema、AgentEvent payload、用户路径不变
 ```
 
@@ -185,7 +185,7 @@ Bun test 不能替代 TypeScript typecheck。
 
 ### Backend Adoption
 
-每个 caller 独立迁移。单个 caller 回滚到 `@my-agent-team/harness`，不触碰数据库。
+每个 caller 独立迁移。单个 caller 回滚到 `@chengchenccc/harness`，不触碰数据库。
 
 
 ### Cleanup

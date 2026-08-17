@@ -1,5 +1,5 @@
 {
-  "name": "@my-agent-team/tools-common",
+  "name": "@chengchenccc/tools-common",
   "version": "0.1.0",
   "description": "Common tools for my-agent-team",
   "type": "module",
@@ -20,7 +20,7 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
-    "@my-agent-team/core": "workspace:*"
+    "@chengchenccc/core": "workspace:*"
   },
   "devDependencies": {}
 }

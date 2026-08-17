@@ -11,8 +11,8 @@
 | `SessionManager` 接口 + `SqliteSessionManager` | `apps/backend/src/features/span/session-manager.ts` (85行) |
 | 构造依赖 `BackendConfig` (dataDir) + `SpanSupervisor` (startSpan) | 同上 line 38-41 |
 | `ulid` from `../../infra/ids.js` | 同上 line 5 |
-| `sqliteCheckpointer` from `@my-agent-team/framework` | 同上 line 2 |
-| `AgentSession`, `SessionConfig` from `@my-agent-team/harness` | 同上 line 3 |
+| `sqliteCheckpointer` from `@chengchenccc/framework` | 同上 line 2 |
+| `AgentSession`, `SessionConfig` from `@chengchenccc/harness` | 同上 line 3 |
 | harness barrel | `packages/harness/src/index.ts` |
 | `AgentSessionConfig.startSpan` 签名 | `packages/harness/src/agent-session.ts:43` |
 | main.ts 构造 SessionManager | `apps/backend/src/main.ts:107` |
@@ -67,7 +67,7 @@
 
 ```typescript
 // 旧: import { SqliteSessionManager } from "./features/span/session-manager.js";
-// 新: import { SqliteSessionManager } from "@my-agent-team/harness";
+// 新: import { SqliteSessionManager } from "@chengchenccc/harness";
 
 // 旧: const sessionManager = new SqliteSessionManager({ config, supervisor });
 // 新:
@@ -81,14 +81,14 @@ const sessionManager = new SqliteSessionManager({
 
 - [ ] **Step 3: 5 个文件改 import**
 
-所有 `import type { SessionManager } from "./span/session-manager.js"` (或相对路径变体) 改为 `import type { SessionManager } from "@my-agent-team/harness"`。
+所有 `import type { SessionManager } from "./span/session-manager.js"` (或相对路径变体) 改为 `import type { SessionManager } from "@chengchenccc/harness"`。
 
 逐文件：
-- conversation-compose.ts: `import type { SessionManager } from "../span/session-manager.js"` -> `import type { SessionManager } from "@my-agent-team/harness"`
+- conversation-compose.ts: `import type { SessionManager } from "../span/session-manager.js"` -> `import type { SessionManager } from "@chengchenccc/harness"`
 - scheduler.ts: 同上模式
 - loop-step.ts: 同上
 - loop/http.ts: 同上
-- span/http.ts: `import type { SessionManager } from "./session-manager.js"` -> `import type { SessionManager } from "@my-agent-team/harness"`
+- span/http.ts: `import type { SessionManager } from "./session-manager.js"` -> `import type { SessionManager } from "@chengchenccc/harness"`
 
 - [ ] **Step 4: typecheck + test**
 

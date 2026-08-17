@@ -1,15 +1,15 @@
 # Backend Kinds — Gate 0 协议面核实记录
 
-> 状态: **已完成**(2026-08-12)。决策见 §7;四个 kind(coding_agent / claude_code / pi / omp)均已实现并接线,见 ADR 0019 与各 adapter 包。本文件保留协议事实与 wire 证据。
-> 目标: 多 coding-agent backend(claude / pi / omp)切换前的协议面核实。本文件只记实测事实与映射点,不产码。
+> 状态: **已完成**(2026-08-12)。决策见 §7;四个 kind(oma / claude_code / pi / omp)均已实现并接线,见 ADR 0019 与各 adapter 包。本文件保留协议事实与 wire 证据。
+> 目标: 多 oma backend(claude / pi / omp)切换前的协议面核实。本文件只记实测事实与映射点,不产码。
 
 ## 0. 本机环境实测
 
 | 项 | 结果 |
 |---|---|
 | `claude` | `/usr/bin/claude`(npm 全局 @anthropic-ai/claude-code),**2.1.165 → 2.1.228**(2026-08-12 经 npmmirror 升级)。**API 面零变化**: stream-json 全套 flag、wire 事件型录(init/assistant/result/thinking_tokens)与 2.1.165 同构 |
-| `pi` | **已装** `@earendil-works/pi-coding-agent@0.84.1`(全局 bun,bin=`pi`)。真机 wire 已抓(2026-08-13): 事件型录与源码/solo parser 一致,另有 `agent_settled`(忽略即可);`--session <path>` 写+续实锤(第二轮 cacheRead 载入、上下文答对);bash 工具调用 ✓。产品栈 E2E(对话→工具→session 续接→stop→aborted)全绿 |
-| `omp` | **已装** `@oh-my-pi/pi-coding-agent@17.2.15`,bin=`omp`(注意:与 `pi` 是两个产品) |
+| `pi` | **已装** `@earendil-works/pi-oma@0.84.1`(全局 bun,bin=`pi`)。真机 wire 已抓(2026-08-13): 事件型录与源码/solo parser 一致,另有 `agent_settled`(忽略即可);`--session <path>` 写+续实锤(第二轮 cacheRead 载入、上下文答对);bash 工具调用 ✓。产品栈 E2E(对话→工具→session 续接→stop→aborted)全绿 |
+| `omp` | **已装** `@oh-my-pi/pi-oma@17.2.15`,bin=`omp`(注意:与 `pi` 是两个产品) |
 | 模型通路 | `DEEPSEEK_API_KEY` 已设;omp 走 `deepseek/deepseek-v4-flash`(api=openai-completions)实测通;claude 本机自带 deepseek-v4-pro 凭据实测通 |
 
 ## 1. claude(stream-json)
@@ -89,28 +89,28 @@
 | 终态信号 | result/error/退出 | 退出+码 | agent_end/退出 |
 | abort 语义 | kill | kill | kill |
 
-**注**: 三家 CLI 都无协议内 abort;`stop()` = kill 子进程(与 coding_agent 的协议内 abort 不同 → contracts 测试需按 backend 参数化)。
+**注**: 三家 CLI 都无协议内 abort;`stop()` = kill 子进程(与 oma 的协议内 abort 不同 → contracts 测试需按 backend 参数化)。
 
 ## 5. 仓库现状核对(§0 地基 + S1 触点,全部核实)
 
 | 触点 | 现状 |
 |---|---|
-| `transport.ts` 两处 kind literal | 实为 `z.literal("coding_agent")`(transport.ts:29,162 待核行号;S1 改 union) |
-| `execution.ts:97` 单一 backend | `AgentRunExecutionDeps.backend: CodingAgentBackend` + `modelCatalog: CodingAgentModelCatalog`;类型硬编码散布: LiveRun(119-121)、forwardEvents(225)、buildRunInput(266)、`run.modelRef as BackendModelRef<"coding_agent">`(272)、deliverInput(293)、assertModelAvailable(237-247,错误文案也写死 "Coding Agent catalog") |
+| `transport.ts` 两处 kind literal | 实为 `z.literal("oma")`(transport.ts:29,162 待核行号;S1 改 union) |
+| `execution.ts:97` 单一 backend | `AgentRunExecutionDeps.backend: OmaBackend` + `modelCatalog: OmaModelCatalog`;类型硬编码散布: LiveRun(119-121)、forwardEvents(225)、buildRunInput(266)、`run.modelRef as BackendModelRef<"oma">`(272)、deliverInput(293)、assertModelAvailable(237-247,错误文案也写死 "Oma catalog") |
 | `resolveModel` 硬编码 | **两处**: `bootstrap/features.ts:469`(loopRoutes)+ `cron/scheduler.ts:161` |
-| `/api/models` 聚合 | `features.ts:479-495` list 回调(单一 coding-agent catalog)+ `models/http.ts groupByProvider`(只按 provider 分组,无 kind 维度) |
+| `/api/models` 聚合 | `features.ts:479-495` list 回调(单一 oma catalog)+ `models/http.ts groupByProvider`(只按 provider 分组,无 kind 维度) |
 | agents 表 | `agent/domain.ts:56-68 agentModelRef()` 硬编码 kind;`agents` 表无 backendKind 列 |
 | 分支 kind 钉住 | ✓ 已有:`agent_context_branch.backend_kind`(schema.ts:381)、`forkBranch` 支持 backendKind 覆盖(adapter-sqlite.ts:389)、`validateEntry` model_change 校验 kind(domain.ts:140-143) |
 | **迁移号** | 实际最新 `0023_drop_agent_model_base_url.sql` → 新列为 **0024**(handoff 写 0023,错) |
 | 契约测试 | `contracts.test.ts` 是类型级契约 + FakeBackend 行为测试,参数化可行(steer/stop 断言需按 kind 放宽) |
 | web | `(main)/chat/page.tsx handleCreate` 硬编码 `agentId:"default"`(risk 3 属实);`AgentForm.tsx` 有 provider/model 选择(useModelList→providers→groupByProvider),加 Backend 选择器有现成模式 |
-| commitlint | scope-enum 已有 `agent-backend`/`adapter-coding-agent`;新增 adapter 包需加 scope |
+| commitlint | scope-enum 已有 `agent-backend`/`adapter-oma-agent`;新增 adapter 包需加 scope |
 
 ## 6. 与 CONTEXT.md 的冲突(必须显式处理)
 
 - **不变量 9**: "每个 Run 是 full Product Context projection;无跨 Run session/resume/daemon" — D4 直接打破(claude/pi/omp 依赖 CLI session 续接,run 输入不是全量投影)。
 - 术语: Context Branch 定义含 "不是执行 session";CLI session 概念需要独立词条。
-- "Coding Agent 不是 daemon(无常驻进程)" — claude 若选常驻进程形态则部分失效。
+- "Oma 不是 daemon(无常驻进程)" — claude 若选常驻进程形态则部分失效。
 
 ## 7. 决策记录(grill 已定,2026-08-12)
 

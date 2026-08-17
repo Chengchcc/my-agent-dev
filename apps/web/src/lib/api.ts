@@ -1,5 +1,5 @@
-import type { LedgerEntry, Member } from "@my-agent-team/conversation";
-import type { ContentBlock } from "@my-agent-team/message";
+import type { LedgerEntry, Member } from "@chengchenccc/conversation";
+import type { ContentBlock } from "@chengchenccc/message";
 import { client, unwrap } from "./client";
 
 // ── Types derived from API treaty (single source: backend App type) ──

@@ -30,7 +30,7 @@ drizzle schema → store mapper → service DTO → HTTP response → frontend t
 | `deliverable` | 1 (adapter 内) | 无独立 | — |
 | `agents` | 1 (AgentRow) | 1 (AgentRow + LarkConfig) | ⚠️ `archivedAt?` 可选 vs schema nullable；前端多 `lark` 计算字段 |
 | `issue_event` | 1 (IssueEvent) | 1 (IssueEvent) | ❌ `payload: Record` vs schema `text`（JSON 字符串） |
-| `conversation` | 1 (ConversationRow) | 1 (ConversationSnapshot) | ✓ 使用共享包 `@my-agent-team/conversation`（好模式） |
+| `conversation` | 1 (ConversationRow) | 1 (ConversationSnapshot) | ✓ 使用共享包 `@chengchenccc/conversation`（好模式） |
 | `member` | 1 (MemberRow) | 1 (MemberInfo = Member) | ✓ 同上 |
 | `conversation_ledger` | 1 (LedgerEntry) | 1 (LedgerEntry) | ✓ 同上 |
 
@@ -127,7 +127,7 @@ drizzle schema ──drizzle-zod──→ Zod schema ──z.infer──→ TS t
 
 - `buildRunQuery` 动态 SQL
 - `listSessions` GROUP BY（聚合结果不是表行，不能从 schema 推导）
-- `@my-agent-team/conversation` 共享包（已是正确模式——conversation/member/ledger 通过 canonical package 导出）
+- `@chengchenccc/conversation` 共享包（已是正确模式——conversation/member/ledger 通过 canonical package 导出）
 - 前端组件重构
 
 ## 5. 关联

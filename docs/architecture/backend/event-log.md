@@ -16,7 +16,7 @@ used_by: []
 当前执行链：
 
 ```text
-Agent Run → coding-agent child process → transient events / BackendRunOutcome
+Agent Run → oma child process → transient events / BackendRunOutcome
 ```
 
 - 子进程事件（tool/llm 明细）是**瞬时投影**，不持久化为 Product 终态；`BackendRunOutcome` 是唯一终态权威。

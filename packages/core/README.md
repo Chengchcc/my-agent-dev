@@ -1,10 +1,10 @@
-# @my-agent-team/core
+# @chengchenccc/core
 
 定义 agent 系统最底层的协议类型与 stream utilities。整个仓库里所有跟"消息""模型""工具"打交道的代码，最终都对齐到这里的类型。
 
 ## 为什么需要它
 
-一个 agent 系统里有很多角色：模型适配器、工具、对话框架、运行时、后端。如果每一层都自己定义"什么是一条消息""工具长什么样"，它们之间就无法拼装。`core` 的职责就是把这套词汇固定下来：消息、内容块、模型接口、工具接口。它故意保持精简——没有任何运行时依赖，不绑定任何具体的模型厂商，也不掺杂权限、上下文裁剪这些上层关注点（那些属于 Coding Agent Runtime 所在的 `packages/agent`）。
+一个 agent 系统里有很多角色：模型适配器、工具、对话框架、运行时、后端。如果每一层都自己定义"什么是一条消息""工具长什么样"，它们之间就无法拼装。`core` 的职责就是把这套词汇固定下来：消息、内容块、模型接口、工具接口。它故意保持精简——没有任何运行时依赖，不绑定任何具体的模型厂商，也不掺杂权限、上下文裁剪这些上层关注点（那些属于 Oma Runtime 所在的 `packages/agent`）。
 
 可以把 `core` 理解成协议层：它规定形状，不规定行为。
 
@@ -18,8 +18,8 @@
 
 **stream-utils。** `collectStream`（把整条流一次性收集成 `{ blocks, stopReason, usage }`）、`mergeChunkIntoBlocks`、`finalizeToolUseInputs` 是对 chunk 流做折叠的辅助函数，供上层复用。
 
-> 模型/工具循环本身不在这里——`packages/agent` 的 Coding Agent Runtime 是唯一真实 loop。
+> 模型/工具循环本身不在这里——`packages/agent` 的 Oma Runtime 是唯一真实 loop。
 
 ## 依赖关系
 
-`core` 不依赖仓库里任何其他包，是整个系统的地基。它被 Coding Agent（`packages/agent`、`apps/coding-agent`、`packages/adapter-coding-agent`）、`packages/ai`、`packages/adapter-mcp`、`packages/tools-common` 与 `apps/backend` 消费。
+`core` 不依赖仓库里任何其他包，是整个系统的地基。它被 Oma（`packages/agent`、`apps/oh-my-agent`、`packages/adapter-oma-agent`）、`packages/ai`、`packages/adapter-mcp`、`packages/tools-common` 与 `apps/backend` 消费。

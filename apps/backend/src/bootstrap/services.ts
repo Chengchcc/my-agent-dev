@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
-import type { McpClientManager } from "@my-agent-team/adapter-mcp";
-import { createMcpClientManager } from "@my-agent-team/adapter-mcp";
+import type { McpClientManager } from "@chengchenccc/adapter-mcp";
+import { createMcpClientManager } from "@chengchenccc/adapter-mcp";
 import type { BackendConfig } from "../config.js";
 import { loadConfig } from "../config.js";
 import type { LarkBotRegistry } from "../features/lark-bot/index.js";

@@ -5,7 +5,7 @@ import "./anthropic-messages.js";
 import "./openai-completions.js";
 import "./openai-responses.js";
 
-import type { AIMessageChunk } from "@my-agent-team/core";
+import type { AIMessageChunk } from "@chengchenccc/core";
 import { type Model, ProviderError } from "../types.js";
 import { createProvider } from "./create-provider.js";
 

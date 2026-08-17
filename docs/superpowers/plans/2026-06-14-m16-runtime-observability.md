@@ -724,7 +724,7 @@ Write `packages/runtime-observability/package.json`:
 
 ```json
 {
-  "name": "@my-agent-team/runtime-observability",
+  "name": "@chengchenccc/runtime-observability",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -1284,7 +1284,7 @@ export type RunnerToHost =
     };
 
 // Add RuntimeTraceContext import:
-import type { RuntimeTraceContext } from "@my-agent-team/runtime-observability";
+import type { RuntimeTraceContext } from "@chengchenccc/runtime-observability";
 ```
 
 - [ ] **Step 13: Update protocol test**
@@ -1356,7 +1356,7 @@ git commit -m "feat: runtime-observability package + trace on start + daemon_hea
 Modify `apps/backend/src/features/run/supervisor.ts` — inject ops store and tracer:
 
 ```ts
-import type { RuntimeTracer } from "@my-agent-team/runtime-observability";
+import type { RuntimeTracer } from "@chengchenccc/runtime-observability";
 import type { RuntimeOpsStore } from "../runtime-ops/store.js";
 
 export interface RunSupervisorOptions {
@@ -1450,7 +1450,7 @@ In `apps/backend/src/main.ts`, create ops store and tracer, pass to supervisor:
 
 ```ts
 import { RuntimeOpsStore } from "./features/runtime-ops/index.js";
-import { createRuntimeTracer, resolveObservabilityConfig } from "@my-agent-team/runtime-observability";
+import { createRuntimeTracer, resolveObservabilityConfig } from "@chengchenccc/runtime-observability";
 
 const obsConfig = resolveObservabilityConfig({ serviceName: "backend" });
 const tracer = createRuntimeTracer(obsConfig);

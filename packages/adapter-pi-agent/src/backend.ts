@@ -7,7 +7,7 @@
  *
  *  Wire format: pi's extension event taxonomy (message_update /
  *  tool_execution_start|end / turn_end / agent_end), from
- *  /root/pi/packages/coding-agent/src/core/agent-session.ts.
+ *  /root/pi/packages/oma/src/core/agent-session.ts.
  *  NOT yet verified against a real pi CLI (not installed locally —
  *  Gate 0 record). */
 
@@ -18,8 +18,8 @@ import type {
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
-} from "@my-agent-team/agent-backend";
-import { guardedConsume } from "@my-agent-team/agent-backend";
+} from "@chengchenccc/agent-backend";
+import { guardedConsume } from "@chengchenccc/agent-backend";
 import { buildOutcomeMessages, createPiAccumulator, mapPiEvent } from "./event-mapper.js";
 import { type SpawnedPiProcess, spawnPiProcess } from "./process.js";
 import { parsePiLine } from "./wire.js";

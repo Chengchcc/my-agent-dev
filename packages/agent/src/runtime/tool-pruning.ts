@@ -1,4 +1,4 @@
-import type { Message } from "@my-agent-team/message";
+import type { Message } from "@chengchenccc/message";
 
 /** Configuration for old tool-result pruning. */
 export interface PruneConfig {

@@ -112,7 +112,7 @@ git commit -m "feat(loop): add loop_item and loop_budget Drizzle tables"
 ```ts
 // apps/backend/src/features/loop/loop-state-store.ts
 import type { Database } from "bun:sqlite";
-import type { ItemState, LoopState, Verdict } from "@my-agent-team/loop";
+import type { ItemState, LoopState, Verdict } from "@chengchenccc/loop";
 
 export interface LoopStateStore {
   /** Load all items for a loop, aggregated into LoopState. */
@@ -855,7 +855,7 @@ git commit -m "feat(loop): wire LoopStateStore through main.ts → http → sche
 import { Database } from "bun:sqlite";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
-import { parseStateMd, parseInboxMd } from "@my-agent-team/loop";
+import { parseStateMd, parseInboxMd } from "@chengchenccc/loop";
 import { createLoopStateStore } from "./loop-state-store.js";
 
 const loopsDir = process.argv[2]!;

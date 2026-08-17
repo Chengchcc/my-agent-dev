@@ -71,7 +71,7 @@ packages/adapter-mcp/
 └── tsconfig.json
 ```
 
-依赖：`@modelcontextprotocol/sdk`、`@my-agent-team/core`（Tool 接口）。
+依赖：`@modelcontextprotocol/sdk`、`@chengchenccc/core`（Tool 接口）。
 
 #### McpClientManager
 

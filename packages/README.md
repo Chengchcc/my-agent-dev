@@ -1,6 +1,6 @@
 # Packages
 
-`packages/` 是整个 agent 系统的可复用内核，按职责从底到上分层：最底下是协议/契约类型，往上是 Coding Agent Runtime、执行链 adapter、模型系统与插件，再到一组工具与测试设施。`apps/` 下的后端与各 surface 都是把这些包拼起来用。
+`packages/` 是整个 agent 系统的可复用内核，按职责从底到上分层：最底下是协议/契约类型，往上是 Oma Runtime、执行链 adapter、模型系统与插件，再到一组工具与测试设施。`apps/` 下的后端与各 surface 都是把这些包拼起来用。
 
 设计上的一条主线是：**依赖只能向下**。`core` 处在最底层且零依赖，所有人都对齐到它定义的模型、工具类型；越往上的包越"有主张"，但永远不会被下层反向依赖。
 
@@ -9,8 +9,8 @@
 ```text
 Product Backend (apps/backend)
 → Agent Run
-→ Adapter (adapter-coding-agent)
-→ spawn 一次性 coding-agent 子进程 (apps/coding-agent)
+→ Adapter (adapter-oma-agent)
+→ spawn 一次性 oma 子进程 (apps/oh-my-agent)
 → per-Run Runtime (agent)
 → BackendRunOutcome (agent-backend 契约)
 → Product terminal commit
@@ -29,11 +29,11 @@ Product Backend (apps/backend)
 
 **Runtime 与执行链**
 
-- [`agent`](./agent/)：**Coding Agent 唯一真实 Runtime**——`createCodingAgentSession()`（model/tool loop、retry、compaction、插件、todo）、in-memory SessionStore、prompt/meta 构建。
-- [`adapter-coding-agent`](./adapter-coding-agent/)：`CodingAgentBackend`——spawn child、stdin/stdout JSONL、steer/abort、并发上限、stderr 脱敏、child recycle。
+- [`agent`](./agent/)：**Oma 唯一真实 Runtime**——`createOmaSession()`（model/tool loop、retry、compaction、插件、todo）、in-memory SessionStore、prompt/meta 构建。
+- [`adapter-oma-agent`](./adapter-oma-agent/)：`OmaBackend`——spawn child、stdin/stdout JSONL、steer/abort、并发上限、stderr 脱敏、child recycle。
 - [`ai`](./ai/)：Provider 注册制 + Model 元数据 + `createModelRuntime()` + `AnthropicChatModel`——全仓唯一直接 import 模型 SDK 的地方。
 
-**插件（Coding Agent 加载的真实能力）**
+**插件（Oma 加载的真实能力）**
 
 - [`plugin-progressive-skill`](./plugin-progressive-skill/)：SKILL.md 渐进式加载，按 Run 冻结的 `skillRoots` 扫描，按需分页喂给模型。
 - [`plugin-todo`](./plugin-todo/)：Run-local todo 跟踪（规划 + 进度 + 停止前把关）。
@@ -53,7 +53,7 @@ Product Backend (apps/backend)
 
 ## 从哪读起
 
-- **想理解整体**：`core` → `agent-backend` → `adapter-coding-agent`，这条线就是执行链。
+- **想理解整体**：`core` → `agent-backend` → `adapter-oma-agent`，这条线就是执行链。
 - **想加插件**：先看 `agent` 的插件契约，再照着 `plugin-todo` / `plugin-progressive-skill` 抄结构。
 - **想接新模型厂商**：看 `ai` 的 Provider 接口，照着 `AnthropicChatModel` 写适配器。
-- **在做后端**：`agent-backend`（契约）→ `adapter-coding-agent`（child 边界）→ `apps/backend` 的 agent-run feature（执行编排）。
+- **在做后端**：`agent-backend`（契约）→ `adapter-oma-agent`（child 边界）→ `apps/backend` 的 agent-run feature（执行编排）。

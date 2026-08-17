@@ -3,19 +3,19 @@ id: backend.overview
 title: Product Backend 总览
 status: current
 owners: backend-runtime
-summary: "Product Backend 是产品事实与 Agent 执行控制面的拥有者：Conversation History、Agent Context、Agent Run、输入队列与 Product Tools。每个 Run 由 Agent Backend spawn 一次性 coding-agent 子进程执行，terminal outcome 原子提交。"
+summary: "Product Backend 是产品事实与 Agent 执行控制面的拥有者：Conversation History、Agent Context、Agent Run、输入队列与 Product Tools。每个 Run 由 Agent Backend spawn 一次性 oma 子进程执行，terminal outcome 原子提交。"
 depends_on:
   - architecture.system-overview
 used_by:
   - backend.data-model
-  - execution.agent-backend
+  - execution.oma-backend
   - agents.context
 ---
 
 # Product Backend 总览
-> ⚠ **部分过时(2026-08-13)**:本页按单引擎(coding-agent 子进程)叙述;现为四后端(claude/pi/omp 同 spawn 模式)+ Agent 工作区文件桥接。另:成员模型按 ADR 0021 简化为单 Agent。现行结构见 [Agent 工作区与多后端](../agents/workspace-and-backends.md)。
+> ⚠ **部分过时(2026-08-13)**:本页按单引擎(oma 子进程)叙述;现为四后端(claude/pi/omp 同 spawn 模式)+ Agent 工作区文件桥接。另:成员模型按 ADR 0021 简化为单 Agent。现行结构见 [Agent 工作区与多后端](../agents/workspace-and-backends.md)。
 
-Product Backend 是系统的产品核心。它拥有 Conversation、成员、共享消息、Agent Context 分支、Cron、Loop 和面向端的 HTTP/SSE API。执行只有一条链：**Agent Run → Agent Backend → 一次性 coding-agent 子进程**。
+Product Backend 是系统的产品核心。它拥有 Conversation、成员、共享消息、Agent Context 分支、Cron、Loop 和面向端的 HTTP/SSE API。执行只有一条链：**Agent Run → Agent Backend → 一次性 oma 子进程**。
 
 ## Product Backend 拥有什么
 
@@ -29,7 +29,7 @@ Product Backend 是系统的产品核心。它拥有 Conversation、成员、共
 | Product Tools | History 读写、审批等产品能力；权限、幂等、审计 |
 | Live Updates | Run 的实时文本、thinking、tool 和状态更新（可丢） |
 
-Product Backend 不拥有子进程内部的模型循环、原生 tools、compaction、retry 或 todo —— 那些属于 Coding Agent。
+Product Backend 不拥有子进程内部的模型循环、原生 tools、compaction、retry 或 todo —— 那些属于 Oma。
 
 ## 核心关系
 
@@ -62,7 +62,7 @@ Agent Run 是执行控制面的领域对象：固定 Context Branch、model/conf
 
 ### Agent Backend
 
-Agent Run 通过 `backendKind = "coding_agent"` 选择执行引擎。Adapter spawn 一次性 child 进程执行；`runId` 是唯一执行身份。无 daemon、无 session、无 resume。
+Agent Run 通过 `backendKind = "oma"` 选择执行引擎。Adapter spawn 一次性 child 进程执行；`runId` 是唯一执行身份。无 daemon、无 session、无 resume。
 
 ### Product Tools
 

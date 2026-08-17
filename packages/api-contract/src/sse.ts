@@ -1,4 +1,4 @@
-import { LedgerEntry } from "@my-agent-team/conversation";
+import { LedgerEntry } from "@chengchenccc/conversation";
 import type { z } from "zod";
 
 // ── SSE event maps (event name → zod schema) ──

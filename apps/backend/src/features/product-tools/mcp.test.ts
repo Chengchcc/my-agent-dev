@@ -74,7 +74,7 @@ beforeEach(async () => {
     joinedAt: Date.now(),
   });
   const tree = await contextPort.getOrCreateTree(CONV, MEMBER);
-  const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "coding_agent");
+  const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "oma");
   branchId = branch.branchId;
   convPort.appendLedgerEntry({
     conversationId: CONV,
@@ -86,10 +86,10 @@ beforeEach(async () => {
   const acq = await backend.enqueueAndAcquire({
     conversationId: CONV,
     agentMemberId: MEMBER,
-    backendKind: "coding_agent",
+    backendKind: "oma",
     mode: "normal",
     message: { role: "user", text: "go" },
-    defaultModel: { backendKind: "coding_agent", modelId: "fake/echo" },
+    defaultModel: { backendKind: "oma", modelId: "fake/echo" },
     configRevision: 1,
     idempotencyKey: "mcp-run",
   });
@@ -112,7 +112,7 @@ afterEach(async () => {
 });
 
 /** Connect a real MCP client through the SSE transport with the service
- *  token, exactly like the Coding Agent Worker does. */
+ *  token, exactly like the Oma Worker does. */
 async function connectClient(token: string) {
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
   const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");

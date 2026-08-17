@@ -1,7 +1,7 @@
 import { join } from "node:path";
-import type { BackendModelRef, BackendRunOutcome } from "@my-agent-team/agent-backend";
-import type { LoopConfig, LoopState, Verdict } from "@my-agent-team/loop";
-import { loopReducer, parseLoopConfig, validateLoopMetaPatch } from "@my-agent-team/loop";
+import type { BackendModelRef, BackendRunOutcome } from "@chengchenccc/agent-backend";
+import type { LoopConfig, LoopState, Verdict } from "@chengchenccc/loop";
+import { loopReducer, parseLoopConfig, validateLoopMetaPatch } from "@chengchenccc/loop";
 import { isTerminalStatus } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
@@ -515,7 +515,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     let genAcquire = await params.agentRunService.enqueueAndAcquire({
       conversationId: genConversationId,
       agentMemberId: genMemberId,
-      backendKind: "coding_agent",
+      backendKind: "oma",
       mode: "normal",
       message: {
         role: "user",
@@ -547,7 +547,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       const retry = await params.agentRunService.enqueueAndAcquire({
         conversationId: genConversationId,
         agentMemberId: genMemberId,
-        backendKind: "coding_agent",
+        backendKind: "oma",
         mode: "normal",
         message: {
           role: "user",

@@ -1,4 +1,4 @@
-import type { Message } from "@my-agent-team/message";
+import type { Message } from "@chengchenccc/message";
 import type { BackendEvent, Usage } from "./event.js";
 import type { AgentRunSnapshot, WorkspaceBinding } from "./history.js";
 

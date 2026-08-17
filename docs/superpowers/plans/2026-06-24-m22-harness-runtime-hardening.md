@@ -6,7 +6,7 @@
 
 **Architecture:** Four sequential phases (P1→P2→P3→P4), each building on the prior's changes to shared files (`run-loop.ts`, `agent-options.ts`). P1 adds `executionMode` to Tool and batch-based execution. P2 swaps shape/beforeModel order, adds structured summarizer, and wires default context manager in harness. P3 adds steering queue + outer follow-up loop. P4 extends progressive-skill to dual-domain + `/skill:name`.
 
-**Tech Stack:** TypeScript (ESM/NodeNext, strict mode), bun:test, @my-agent-team/* monorepo
+**Tech Stack:** TypeScript (ESM/NodeNext, strict mode), bun:test, @chengchenccc/* monorepo
 
 **Spec:** `docs/superpowers/specs/2026-06-24-m22-harness-runtime-hardening-design.md`
 
@@ -236,7 +236,7 @@ git commit -m "feat(framework): extract runOneCollect for parallel tool batch ex
 
 ```ts
 import { describe, expect, test } from "bun:test";
-import type { Tool, ToolUseBlock } from "@my-agent-team/core";
+import type { Tool, ToolUseBlock } from "@chengchenccc/core";
 import { consoleLogger, inMemoryCheckpointer, passthroughContextManager } from "../index.js";
 import type { AgentRuntime } from "../agent-options.js";
 import { createPluginRunner } from "../plugin-runner.js";
@@ -341,7 +341,7 @@ describe("runOneCollect", () => {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cd /root/my-agent-team/packages/framework && bun test --test-name-pattern="runOneCollect"`
+Run: `cd /root/my@chengchenccc/packages/framework && bun test --test-name-pattern="runOneCollect"`
 Expected: 4 tests PASS
 
 - [ ] **Step 3: Commit**
@@ -477,7 +477,7 @@ Expected: PASS
 
 - [ ] **Step 4: Run existing tests to verify no regressions**
 
-Run: `cd /root/my-agent-team && bun run test --filter="@my-agent-team/framework"`
+Run: `cd /root/my-agent-team && bun run test --filter="@chengchenccc/framework"`
 Expected: All existing tests PASS
 
 - [ ] **Step 5: Commit**
@@ -498,8 +498,8 @@ git commit -m "feat(framework): batch-based parallel tool execution with concurr
 
 ```ts
 import { describe, expect, test } from "bun:test";
-import type { AIMessageChunk, ChatModel, Tool } from "@my-agent-team/core";
-import type { Message } from "@my-agent-team/message";
+import type { AIMessageChunk, ChatModel, Tool } from "@chengchenccc/core";
+import type { Message } from "@chengchenccc/message";
 import { consoleLogger, inMemoryCheckpointer, passthroughContextManager } from "../index.js";
 import type { AgentRuntime } from "./agent-options.js";
 import { createPluginRunner } from "./plugin-runner.js";
@@ -754,7 +754,7 @@ describe("runLoop tool parallel execution", () => {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cd /root/my-agent-team/packages/framework && bun test --test-name-pattern="runLoop tool parallel"`
+Run: `cd /root/my@chengchenccc/packages/framework && bun test --test-name-pattern="runLoop tool parallel"`
 Expected: 5 tests PASS
 
 - [ ] **Step 3: Commit**
@@ -804,8 +804,8 @@ git commit -m "feat(framework): export runOneCollect and RunOneResult"
 - [ ] **Step 1: Add PreserveHint type and optional preserve field**
 
 ```ts
-import type { ChatModel } from "@my-agent-team/core";
-import type { Message } from "@my-agent-team/message";
+import type { ChatModel } from "@chengchenccc/core";
+import type { Message } from "@chengchenccc/message";
 import type { Logger } from "./logger.js";
 
 /** Marks index ranges in a Message[] that must not be dropped by shape(). */
@@ -895,7 +895,7 @@ Expected: PASS
 
 - [ ] **Step 4: Run existing framework tests**
 
-Run: `cd /root/my-agent-team/packages/framework && bun test`
+Run: `cd /root/my@chengchenccc/packages/framework && bun test`
 Expected: All existing tests PASS (passthrough and summarizing managers ignore preserve)
 
 - [ ] **Step 5: Commit**
@@ -1039,7 +1039,7 @@ describe("defaultSummarize", () => {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cd /root/my-agent-team/packages/framework && bun test --test-name-pattern="structuredSummarize|defaultSummarize"`
+Run: `cd /root/my@chengchenccc/packages/framework && bun test --test-name-pattern="structuredSummarize|defaultSummarize"`
 Expected: 3 new tests PASS
 
 - [ ] **Step 3: Commit**
@@ -1066,7 +1066,7 @@ import {
   pipeContextManagers,
   summarizingContextManager,
   toolResultTruncator,
-} from "@my-agent-team/framework";
+} from "@chengchenccc/framework";
 ```
 
 The `structuredSummarize` function needs to be importable. Since it's defined in framework's internal module, add a re-export in framework's index first (do this as a separate step or inline).
@@ -1113,7 +1113,7 @@ import {
   structuredSummarize,
   summarizingContextManager,
   toolResultTruncator,
-} from "@my-agent-team/framework";
+} from "@chengchenccc/framework";
 ```
 
 - [ ] **Step 3: Verify typecheck**
@@ -1123,7 +1123,7 @@ Expected: PASS
 
 - [ ] **Step 4: Run existing harness tests**
 
-Run: `cd /root/my-agent-team/packages/harness && bun test`
+Run: `cd /root/my@chengchenccc/packages/harness && bun test`
 Expected: All existing tests PASS (some may need updating if they assert on agent config shape)
 
 - [ ] **Step 5: Commit**
@@ -1142,7 +1142,7 @@ git commit -m "feat(harness): wire default contextManager with structured summar
 
 - [ ] **Step 1: Check what the existing tests assert and update if needed**
 
-Run: `cd /root/my-agent-team/packages/harness && bun test`
+Run: `cd /root/my@chengchenccc/packages/harness && bun test`
 Expected: If tests fail, update assertions. If they pass, no changes needed.
 If changes needed, look at the specific assertion and adjust to accommodate the new default contextManager.
 
@@ -1340,7 +1340,7 @@ Expected: PASS
 
 - [ ] **Step 5: Run existing tests**
 
-Run: `cd /root/my-agent-team/packages/framework && bun test`
+Run: `cd /root/my@chengchenccc/packages/framework && bun test`
 Expected: All existing tests PASS (no steering/followUp → behavior identical)
 
 - [ ] **Step 6: Commit**
@@ -1458,7 +1458,7 @@ describe("runLoop steering", () => {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cd /root/my-agent-team/packages/framework && bun test --test-name-pattern="runLoop steering"`
+Run: `cd /root/my@chengchenccc/packages/framework && bun test --test-name-pattern="runLoop steering"`
 Expected: 4 tests PASS
 
 - [ ] **Step 3: Commit**
@@ -1507,7 +1507,7 @@ In `loadOneSkillFrontmatter`, add after the description line:
 
 - [ ] **Step 2: Run existing progressive-skill tests**
 
-Run: `cd /root/my-agent-team/packages/plugin-progressive-skill && bun test`
+Run: `cd /root/my@chengchenccc/packages/plugin-progressive-skill && bun test`
 Expected: All existing tests PASS (new field is optional)
 
 - [ ] **Step 3: Commit**
@@ -1705,7 +1705,7 @@ Expected: PASS
 
 - [ ] **Step 6: Run existing progressive-skill tests**
 
-Run: `cd /root/my-agent-team/packages/plugin-progressive-skill && bun test`
+Run: `cd /root/my@chengchenccc/packages/plugin-progressive-skill && bun test`
 Expected: Tests may need updates for the `root` → `roots` change. Fix as needed.
 
 - [ ] **Step 7: Commit**
@@ -1949,7 +1949,7 @@ describe("backward compat: single root", () => {
 
 - [ ] **Step 2: Run tests**
 
-Run: `cd /root/my-agent-team/packages/plugin-progressive-skill && bun test`
+Run: `cd /root/my@chengchenccc/packages/plugin-progressive-skill && bun test`
 Expected: All tests (old + new) PASS
 
 - [ ] **Step 3: Commit**
