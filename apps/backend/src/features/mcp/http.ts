@@ -7,6 +7,7 @@ const createBody = t.Object({
   command: t.Optional(t.String()),
   args: t.Optional(t.Array(t.String())),
   env: t.Optional(t.Record(t.String(), t.String())),
+  headers: t.Optional(t.Record(t.String(), t.String())),
   url: t.Optional(t.String()),
 });
 
@@ -15,6 +16,7 @@ const updateBody = t.Object({
   command: t.Optional(t.String()),
   args: t.Optional(t.Array(t.String())),
   env: t.Optional(t.Record(t.String(), t.String())),
+  headers: t.Optional(t.Record(t.String(), t.String())),
   url: t.Optional(t.String()),
 });
 
@@ -24,6 +26,15 @@ export function mcpRoutes(svc: McpService) {
   return new Elysia()
     .get("/api/mcp-servers", () => {
       return { mcpServers: svc.listCatalog() };
+    })
+    .get("/api/mcp-servers/:serverId", async ({ params: { serverId } }) => {
+      try {
+        return { mcpServer: svc.getServer(serverId) };
+      } catch (e) {
+        if (e instanceof McpServerNotFoundError)
+          return Response.json({ error: e.message }, { status: 404 });
+        throw e;
+      }
     })
     .post(
       "/api/mcp-servers",
@@ -56,6 +67,15 @@ export function mcpRoutes(svc: McpService) {
       },
       { body: updateBody },
     )
+    .post("/api/mcp-servers/:serverId/test", async ({ params: { serverId } }) => {
+      try {
+        return await svc.testConnection(serverId);
+      } catch (e) {
+        if (e instanceof McpServerNotFoundError)
+          return Response.json({ error: e.message }, { status: 404 });
+        throw e;
+      }
+    })
     .delete("/api/mcp-servers/:serverId", async ({ params: { serverId }, set }) => {
       try {
         await svc.delete(serverId);

@@ -24,6 +24,7 @@ function toAgentResponse(row: AgentRow, status: string) {
   return {
     id: row.id,
     name: row.config.name,
+    enabled: row.config.enabled,
     workspacePath: row.workspacePath,
     modelProvider: slash > 0 ? rc.model_id.slice(0, slash) : "unknown",
     modelName: slash > 0 ? rc.model_id.slice(slash + 1) : rc.model_id,
@@ -107,6 +108,7 @@ export function agentRoutes(
             model: t.String({ minLength: 1 }),
           }),
           backendKind: t.Optional(backendKindUnion),
+          enabled: t.Optional(t.Boolean()),
           workspacePath: t.Optional(t.String({ minLength: 1 })),
           reasoningEffort: t.Optional(
             t.Union([
@@ -185,6 +187,7 @@ export function agentRoutes(
             }),
           ),
           backendKind: t.Optional(backendKindUnion),
+          enabled: t.Optional(t.Boolean()),
           workspacePath: t.Optional(t.String({ minLength: 1 })),
           reasoningEffort: t.Optional(
             t.Union([

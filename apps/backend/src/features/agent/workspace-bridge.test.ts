@@ -7,9 +7,11 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { knowledgePackIndex } from "../knowledge/install.js";
 import {
   reconcileAgentResources,
   reconcileSkillLinks,
@@ -55,21 +57,51 @@ describe("workspace bridge", () => {
   test("writeMcpConfig writes servers and removes the file when empty", () => {
     const ws = tmpWorkspace();
     writeMcpConfig(ws, [
-      { name: "sse-srv", transport: "sse", url: "http://127.0.0.1:9/mcp" },
-      { name: "stdio-srv", transport: "stdio", command: "my-tool" },
+      {
+        name: "sse-srv",
+        transport: "sse",
+        url: "http://127.0.0.1:9/mcp",
+        headers: { Authorization: "Bearer t" },
+      },
+      {
+        name: "stdio-srv",
+        transport: "stdio",
+        command: "my-tool",
+        args: ["--flag"],
+        env: { ROOT: "/tmp" },
+      },
     ]);
     const path = join(ws, ".mcp.json");
     const parsed = JSON.parse(readFileSync(path, "utf-8")) as {
-      mcpServers: Record<string, Record<string, string>>;
+      mcpServers: Record<string, Record<string, unknown>>;
     };
     expect(parsed.mcpServers["sse-srv"]).toEqual({
       type: "sse",
       url: "http://127.0.0.1:9/mcp",
+      headers: { Authorization: "Bearer t" },
     });
-    expect(parsed.mcpServers["stdio-srv"]).toEqual({ type: "stdio", command: "my-tool" });
+    expect(parsed.mcpServers["stdio-srv"]).toEqual({
+      type: "stdio",
+      command: "my-tool",
+      args: ["--flag"],
+      env: { ROOT: "/tmp" },
+    });
 
     writeMcpConfig(ws, []);
     expect(existsSync(path)).toBe(false);
+    rmSync(ws, { recursive: true, force: true });
+  });
+
+  test("knowledgePackIndex excludes .git", () => {
+    const ws = tmpWorkspace();
+    const pack = join(ws, "pack");
+    mkdirSync(join(pack, ".git"), { recursive: true });
+    mkdirSync(join(pack, "docs"), { recursive: true });
+    writeFileSync(join(pack, ".git", "HEAD"), "ref: refs/heads/main");
+    writeFileSync(join(pack, "docs", "a.md"), "# A");
+    const index = knowledgePackIndex({ name: "p", description: "d", installedRef: pack });
+    expect(index).not.toContain(".git");
+    expect(index).toContain("docs/");
     rmSync(ws, { recursive: true, force: true });
   });
 });

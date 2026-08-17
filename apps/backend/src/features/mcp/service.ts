@@ -30,15 +30,23 @@ export interface McpService {
   setAgentServers(agentId: string, entries: AgentMcpAssignment[]): Promise<void>;
   /** Assigned AND enabled servers (the workspace bridge's input). */
   listForAgent(agentId: string): Promise<McpServerRow[]>;
+  /** Raw (unmasked) single server — the edit form's source of truth. */
+  getServer(serverId: string): McpServerRow;
+  /** Explicit probe: reconnects and reports manager status + tool count. */
+  testConnection(serverId: string): Promise<{ status: string; toolsCount: number }>;
 }
 
-function maskEnv(row: McpServerRow): McpServerRow {
-  if (!row.env) return row;
+function maskSecrets(record: Record<string, string> | null): Record<string, string> | null {
+  if (!record) return record;
   const masked: Record<string, string> = {};
-  for (const [k, v] of Object.entries(row.env)) {
+  for (const [k, v] of Object.entries(record)) {
     masked[k] = v.length > 4 ? `****${v.slice(-4)}` : "****";
   }
-  return { ...row, env: masked };
+  return masked;
+}
+
+function maskRow(row: McpServerRow): McpServerRow {
+  return { ...row, env: maskSecrets(row.env), headers: maskSecrets(row.headers) };
 }
 
 export function createMcpService(deps: {
@@ -65,7 +73,7 @@ export function createMcpService(deps: {
 
   return {
     listCatalog(): McpServerRow[] {
-      return deps.port.list().map(maskEnv).map(withStatus);
+      return deps.port.list().map(maskRow).map(withStatus);
     },
 
     async create(input: CreateMcpServerInput): Promise<McpServerRow> {
@@ -78,25 +86,33 @@ export function createMcpService(deps: {
         command: input.command ?? null,
         args: input.args ? JSON.stringify(input.args) : "[]",
         env: input.env ? JSON.stringify(input.env) : "{}",
+        headers: input.headers ? JSON.stringify(input.headers) : "{}",
         url: input.url ?? null,
         createdAt: now,
         updatedAt: now,
       });
-      return maskEnv(withStatus(row));
+      return maskRow(withStatus(row));
     },
 
     async update(serverId: string, input: UpdateMcpServerInput): Promise<McpServerRow> {
       requireServer(serverId);
-      const row = deps.port.update(serverId, {
-        ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.command !== undefined ? { command: input.command } : {}),
-        ...(input.args !== undefined ? { args: JSON.stringify(input.args) } : {}),
-        ...(input.env !== undefined ? { env: JSON.stringify(input.env) } : {}),
-        ...(input.url !== undefined ? { url: input.url } : {}),
-        updatedAt: Date.now(),
-      });
+      const patch: {
+        name?: string;
+        command?: string | null;
+        args?: string | null;
+        env?: string | null;
+        headers?: string | null;
+        url?: string | null;
+      } = {};
+      if (input.name !== undefined) patch.name = input.name;
+      if (input.command !== undefined) patch.command = input.command;
+      if (input.args !== undefined) patch.args = JSON.stringify(input.args);
+      if (input.env !== undefined) patch.env = JSON.stringify(input.env);
+      if (input.headers !== undefined) patch.headers = JSON.stringify(input.headers);
+      if (input.url !== undefined) patch.url = input.url;
+      const row = deps.port.update(serverId, { ...patch, updatedAt: Date.now() });
       if (!row) throw new McpServerNotFoundError(serverId);
-      return maskEnv(withStatus(row));
+      return maskRow(withStatus(row));
     },
 
     async delete(serverId: string): Promise<void> {
@@ -137,16 +153,40 @@ export function createMcpService(deps: {
         }
       }
     },
-
     async listForAgent(agentId: string): Promise<McpServerRow[]> {
       const assigned = (await deps.getAgentMcpServers(agentId))
         .filter((a) => a.enabled)
         .map((a) => a.serverId);
       const byId = new Map(deps.port.list().map((r) => [r.serverId, r]));
-      return assigned
-        .map((id) => byId.get(id))
-        .filter((r): r is McpServerRow => r !== undefined)
-        .map(maskEnv);
+      return assigned.map((id) => byId.get(id)).filter((r): r is McpServerRow => r !== undefined);
+    },
+
+    getServer(serverId: string): McpServerRow {
+      return requireServer(serverId);
+    },
+
+    async testConnection(serverId: string): Promise<{ status: string; toolsCount: number }> {
+      const row = requireServer(serverId);
+      const config: Parameters<McpClientManager["connect"]>[0] = {
+        serverId: row.serverId,
+        agentId: "*",
+        name: row.name,
+        transport: row.transport,
+        enabled: true,
+      };
+      if (row.command) config.command = row.command;
+      if (row.args) config.args = row.args;
+      if (row.env) config.env = row.env;
+      if (row.url) config.url = row.url;
+      try {
+        await deps.mcpClientManager.connect(config);
+      } catch {
+        /* missing command/url: manager recorded a failed entry */
+      }
+      return {
+        status: deps.mcpClientManager.getStatus(serverId) ?? "failed",
+        toolsCount: deps.mcpClientManager.getToolCount(serverId),
+      };
     },
   };
 }

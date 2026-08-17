@@ -9,8 +9,9 @@ import { Page, PageBody, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useAgentList } from "@/features/agents/hooks";
 import { useCreateConversation, useRecentConversations } from "@/features/conversations/hooks";
-import { api, getForkSourceId } from "@/lib/api";
+import { type AgentRow, api, getForkSourceId } from "@/lib/api";
 
 function relativeTime(ts: number | null | undefined): string {
   if (!ts) return "";
@@ -45,10 +46,7 @@ export default function ChatOverviewPage() {
   const [input, setInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const { data: agents } = useQuery({
-    queryKey: ["agents"],
-    queryFn: () => api.listAgents(),
-  });
+  const { data: agents } = useAgentList() as { data?: AgentRow[] };
   const { data: projects } = useQuery({
     queryKey: ["projects"],
     queryFn: () => api.listProjects(),
@@ -132,8 +130,9 @@ export default function ChatOverviewPage() {
               aria-label="Agent"
             >
               {(agents ?? []).map((a) => (
-                <option key={a.id} value={a.id}>
+                <option key={a.id} value={a.id} disabled={a.enabled === false}>
                   {a.name}
+                  {a.enabled === false ? " (disabled)" : ""}
                 </option>
               ))}
             </select>

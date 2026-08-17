@@ -368,13 +368,15 @@ function NavFooter() {
   }
 
   return (
-    <SidebarFooter>
+    <SidebarFooter className="shrink-0 border-t border-(--hairline) bg-(--panel) p-1.5">
       <SidebarMenu>
         <SidebarMenuItem>
           <DropdownMenu>
-            <DropdownMenuTrigger render={<SidebarMenuButton />}>
+            <DropdownMenuTrigger render={<SidebarMenuButton className="min-w-0" />}>
               <LogOutIcon />
-              <span className="truncate group-data-[collapsible=icon]:hidden">Account</span>
+              <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">
+                Account
+              </span>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="start" className="w-48">
               <DropdownMenuLabel>Signed in</DropdownMenuLabel>

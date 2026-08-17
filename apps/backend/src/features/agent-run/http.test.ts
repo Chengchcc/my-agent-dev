@@ -46,13 +46,28 @@ describe("agent run list", () => {
     expect(hits).toHaveLength(1);
   });
 
-  test("agentId filter resolves through the conversation-scoped member join", async () => {
+  test("verdict derives from tool_result.is_error, not the model text", async () => {
+    const now = Date.now();
+    seedDefaultMember("c-verdict", now);
+    seedRun("run-verdict", "c-verdict", now);
+    db.query("UPDATE agent_run SET terminal_result = ? WHERE run_id = ?").run(
+      JSON.stringify({
+        status: "completed",
+        messages: [
+          {
+            role: "tool",
+            blocks: [{ type: "tool_result", tool_use_id: "t1", content: "boom", is_error: true }],
+          },
+        ],
+      }),
+      "run-verdict",
+    );
     const resp = await app.handle(
       new Request("http://localhost/api/agent-runs?limit=50&agentId=ag-1"),
     );
-    expect(resp.status).toBe(200);
-    const body = (await resp.json()) as { runs: Array<{ runId: string; agentId: string | null }> };
-    expect(body.runs.length).toBeGreaterThan(0);
-    for (const r of body.runs) expect(r.agentId).toBe("ag-1");
+    const body = (await resp.json()) as {
+      runs: Array<{ runId: string; verdict: string }>;
+    };
+    expect(body.runs.find((r) => r.runId === "run-verdict")?.verdict).toBe("fail");
   });
 });

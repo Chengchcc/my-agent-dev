@@ -6,10 +6,18 @@ import type {
 } from "@my-agent-team/agent-backend";
 import { debugLog } from "@my-agent-team/agent-backend";
 import type { Message } from "@my-agent-team/message";
+import { ConflictError } from "../../infra/domain-errors.js";
 import type { IdGenerator, LedgerMessageResolver } from "../agent-context/ports.js";
 import type { AgentContextService } from "../agent-context/service.js";
 import type { AgentRun, BranchInput, BranchInputMode, PendingActionRecord } from "./domain.js";
 import type { AgentRunPort } from "./ports.js";
+
+export class AgentDisabledError extends ConflictError {
+  constructor(id: string) {
+    super(`Agent disabled: ${id}`);
+    this.name = "AgentDisabledError";
+  }
+}
 
 export interface AgentRunServiceDeps {
   readonly port: AgentRunPort;
@@ -23,6 +31,12 @@ export interface AgentRunServiceDeps {
     conversationId: string;
     agentMemberId: string;
   }) => Promise<{ systemPrompt?: string; skillRoots?: readonly string[]; permissionMode?: string }>;
+  /** Kill-switch gate: false → AgentDisabledError before any queue/branch
+   *  mutation. Chat, cron and loop all funnel through this service. */
+  readonly resolveAgentEnabled?: (input: {
+    conversationId: string;
+    agentMemberId: string;
+  }) => Promise<boolean>;
 }
 
 /** Product-facing Agent Run service. Manages durable Run creation, queue,
@@ -82,6 +96,13 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
 
   return {
     async enqueueAndAcquire(input) {
+      if (deps.resolveAgentEnabled) {
+        const enabled = await deps.resolveAgentEnabled({
+          conversationId: input.conversationId,
+          agentMemberId: input.agentMemberId,
+        });
+        if (!enabled) throw new AgentDisabledError(input.agentMemberId);
+      }
       // Lazily get/create the default branch for this agent member.
       let branch = await contextService.getOrCreateDefaultBranch(
         input.conversationId,

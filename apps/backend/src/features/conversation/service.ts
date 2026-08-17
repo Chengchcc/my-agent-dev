@@ -14,6 +14,7 @@ import {
   serializeMessageRevision,
   systemMessageId,
 } from "@my-agent-team/message";
+import { DomainError } from "../../infra/domain-errors.js";
 import type { AgentContextService } from "../agent-context/service.js";
 import type { BranchInputMode } from "../agent-run/domain.js";
 import type { AgentRunService } from "../agent-run/service.js";
@@ -421,6 +422,7 @@ class ConversationServiceImpl implements ConversationService {
             }),
           );
         } catch (err) {
+          if (err instanceof DomainError) throw err;
           console.error(
             `[conversation] enqueueAndAcquire failed for ${target.memberId}:`,
             err instanceof Error ? err.message : String(err),

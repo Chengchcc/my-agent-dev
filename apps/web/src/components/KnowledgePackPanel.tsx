@@ -1,9 +1,13 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Library } from "lucide-react";
+import { ListRowCard } from "@/components/ui/polish";
+import { Switch } from "@/components/ui/switch";
 import { useAgentDetail } from "@/features/agents/hooks";
+import { agentKeys } from "@/features/agents/query-keys";
 import { type AgentRow, api } from "@/lib/api";
+
 /** Agent-side knowledge switches (ADR 0022): the GLOBAL pack pool is the
  *  source; checking a pack writes its id into agent.yml (file-first);
  *  the bridge then links the pack + regenerates the knowledge index. */
@@ -33,8 +37,8 @@ export function KnowledgePackPanel({ agentId }: { agentId: string }) {
     if (on) next.add(packId);
     else next.delete(packId);
     await api.updateAgent(agentId, { knowledgePacks: [...next] });
-    void qc.invalidateQueries({ queryKey: ["agent", agentId] });
-    void qc.invalidateQueries({ queryKey: ["agents"] });
+    void qc.invalidateQueries({ queryKey: agentKeys.detail(agentId) });
+    void qc.invalidateQueries({ queryKey: agentKeys.lists() });
   };
 
   if (packs.length === 0) {
@@ -46,24 +50,24 @@ export function KnowledgePackPanel({ agentId }: { agentId: string }) {
   }
 
   return (
-    <ul className="space-y-2">
+    <div className="space-y-2">
       {packs.map((p) => (
-        <li
+        <ListRowCard
           key={p.id}
-          className="flex items-center justify-between gap-3 border border-(--hairline) rounded px-4 py-3"
-        >
-          <div className="min-w-0">
-            <div className="text-sm font-medium truncate">{p.name}</div>
-            {p.description && <div className="text-xs text-(--mute) truncate">{p.description}</div>}
-            {p.status !== "ready" && <div className="text-xs text-amber-500">{p.status}</div>}
-          </div>
-          <Checkbox
-            checked={assigned.has(p.id)}
-            disabled={p.status !== "ready"}
-            onCheckedChange={(on) => void toggle(p.id, on === true)}
-          />
-        </li>
+          icon={<Library className="size-4 text-(--mute)" />}
+          title={p.name}
+          desc={p.error ? `${p.description} — ${p.error}` : p.description}
+          badges={[p.status]}
+          status={p.status === "ready" ? "ok" : p.status === "failed" ? "err" : undefined}
+          actions={
+            <Switch
+              checked={assigned.has(p.id)}
+              disabled={p.status !== "ready"}
+              onCheckedChange={(on) => void toggle(p.id, on === true)}
+            />
+          }
+        />
       ))}
-    </ul>
+    </div>
   );
 }

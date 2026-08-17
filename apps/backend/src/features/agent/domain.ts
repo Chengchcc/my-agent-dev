@@ -21,6 +21,8 @@ export interface CreateAgentInput {
   template?: string;
   model: { provider: string; model: string };
   backendKind?: string;
+  /** Top-level kill switch (agent.yml enabled). Defaults to true. */
+  enabled?: boolean;
   /** Optional workspace override (agent-hub 预留): an absolute path the
    *  coding agent runs in (its AGENTS.md/CLAUDE.md take effect there).
    *  Defaults to the managed <dataDir>/agents/<id>. */
@@ -40,6 +42,8 @@ export interface UpdateAgentInput {
   name?: string;
   model?: { provider: string; model: string };
   backendKind?: string;
+  /** Top-level kill switch (agent.yml enabled). */
+  enabled?: boolean;
   workspacePath?: string;
   reasoningEffort?: "none" | "low" | "high" | "max" | null;
   permissionMode?: "ask" | "auto" | "deny";

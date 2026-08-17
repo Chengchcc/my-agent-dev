@@ -52,6 +52,7 @@ export function AgentConfigBar({ agent }: { agent: AgentRow }) {
   const [backendKind, setBackendKind] = useState(agent.backendKind ?? "coding_agent");
   const [model, setModel] = useState(`${agent.modelProvider}/${agent.modelName}`);
   const [effort, setEffort] = useState(agent.reasoningEffort ?? "");
+  const [enabled, setEnabled] = useState(agent.enabled ?? true);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -110,6 +111,12 @@ export function AgentConfigBar({ agent }: { agent: AgentRow }) {
     commit({ reasoningEffort: next || null }, () => setEffort(prev));
   };
 
+  const onEnabled = (next: boolean) => {
+    const prev = enabled;
+    setEnabled(next);
+    commit({ enabled: next }, () => setEnabled(prev));
+  };
+
   return (
     <section className="rounded-(--radius-card) border border-(--hairline) bg-(--panel) px-4 py-3">
       <div className="flex flex-wrap items-end gap-4">
@@ -163,12 +170,12 @@ export function AgentConfigBar({ agent }: { agent: AgentRow }) {
 
         <label className="flex items-center gap-2 pb-1.5">
           <Switch
-            checked={false}
-            onCheckedChange={() => {}}
-            disabled
-            title="Fallback routing not supported yet"
+            checked={enabled}
+            onCheckedChange={onEnabled}
+            aria-label="Agent enabled"
+            title={enabled ? "Agent enabled" : "Agent disabled"}
           />
-          <span className={labelClass}>Fallback</span>
+          <span className={labelClass}>{enabled ? "Enabled" : "Disabled"}</span>
         </label>
 
         <span className="ml-auto pb-1.5 text-(--text-cap) text-(--mute)">

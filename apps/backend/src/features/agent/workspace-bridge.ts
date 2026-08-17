@@ -31,8 +31,9 @@ export interface McpServerEntry {
   url?: string | null;
   command?: string | null;
   args?: string[];
-  /** Auth headers written verbatim into the workspace .mcp.json. Must
-   *  never carry a secret — use bearerTokenEnv for the per-run token. */
+  /** stdio process env, written verbatim into the workspace .mcp.json. */
+  env?: Record<string, string>;
+  /** Auth headers written verbatim into the workspace .mcp.json. */
   headers?: Record<string, string>;
   /** ENV-VAR NAME (not the token): the CLI reads the bearer at connect
    *  time from its process env (pi: bearerTokenEnv, omp:
@@ -100,6 +101,7 @@ export function writeMcpConfig(workspacePath: string, servers: readonly McpServe
     if (s.transport === "sse" && s.url) entry.url = s.url;
     if (s.transport === "stdio" && s.command) entry.command = s.command;
     if (s.transport === "stdio" && s.args && s.args.length > 0) entry.args = s.args;
+    if (s.env && Object.keys(s.env).length > 0) entry.env = s.env;
     if (s.headers) entry.headers = s.headers;
 
     // Per-kind env-name auth: pi and omp read the named var at connect

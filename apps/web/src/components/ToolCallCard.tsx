@@ -10,7 +10,7 @@ export function ToolCallCard({ name, input }: { id?: string; name: string; input
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="font-mono text-[12px]">
+    <div className="min-w-0 font-mono text-[12px]">
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger
           render={
@@ -32,7 +32,7 @@ export function ToolCallCard({ name, input }: { id?: string; name: string; input
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="pl-4 mt-1 flex flex-col gap-1">
-            <pre className="max-h-40 overflow-x-auto whitespace-pre-wrap rounded bg-(--canvas-soft) p-2 text-[12px] leading-relaxed text-(--canvas-text-soft)">
+            <pre className="max-h-40 overflow-x-auto whitespace-pre-wrap rounded bg-(--canvas-soft) p-2 text-[12px] leading-relaxed text-(--canvas-text-soft) wrap-anywhere">
               {JSON.stringify(input, null, 2)}
             </pre>
           </div>

@@ -130,6 +130,7 @@ export function knowledgePackIndex(pack: {
   const walk = (dir: string, depth: number): void => {
     if (depth > 3 || lines.length > 250) return;
     for (const name of readdirSync(dir).sort()) {
+      if (name === ".git") continue;
       const full = join(dir, name);
       const rel = full.slice(root.length + 1);
       try {

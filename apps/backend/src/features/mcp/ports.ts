@@ -7,6 +7,7 @@ export interface CreateMcpServerRecord {
   command: string | null;
   args: string;
   env: string;
+  headers: string;
   url: string | null;
   createdAt: number;
   updatedAt: number;
@@ -17,6 +18,7 @@ export interface UpdateMcpServerRecord {
   command?: string | null;
   args?: string | null;
   env?: string | null;
+  headers?: string | null;
   url?: string | null;
   updatedAt: number;
 }

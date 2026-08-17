@@ -38,8 +38,30 @@ const realRoot = (() => {
   }
 })();
 
+/** Assigned pack install roots (--allowed-pack <dir>, repeatable). The
+ *  workspace bridge links these packs INTO the knowledge dir; their real
+ *  paths live outside it, so they are trusted explicitly. Anything else
+ *  outside realRoot stays rejected. */
+const allowedRealRoots = (() => {
+  const roots: string[] = [];
+  const args = process.argv.slice(3);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--allowed-pack" && args[i + 1]) {
+      const real = realpathSafe(args[i + 1]!);
+      if (real) roots.push(real);
+      i++;
+    }
+  }
+  return roots;
+})();
+
 function inside(p: string): boolean {
   return p === realRoot || p.startsWith(`${realRoot}${sep}`);
+}
+
+function insideAllowed(p: string): boolean {
+  if (inside(p)) return true;
+  return allowedRealRoots.some((r) => p === r || p.startsWith(`${r}${sep}`));
 }
 
 function realpathSafe(p: string): string | null {
@@ -57,7 +79,7 @@ function* walkFiles(dir: string): Generator<string> {
       // Symlink escape guard: a linked file/dir outside the knowledge root
       // must never be traversed or read (zip/pack sources are untrusted).
       const real = realpathSafe(full);
-      if (real !== null && !inside(real)) return;
+      if (real !== null && !insideAllowed(real)) return;
       if (statSync(full).isDirectory()) {
         yield* walkFiles(full);
       } else if (name !== "index.md" && /\.(md|txt|ya?ml|json)$/.test(name)) {
@@ -113,7 +135,7 @@ server.registerTool(
     const results: string[] = [];
     outer: for (const file of walkFiles(root)) {
       const realFile = realpathSafe(file);
-      if (realFile === null || !inside(realFile)) continue;
+      if (realFile === null || !insideAllowed(realFile)) continue;
       const text = readFileSync(realFile, "utf-8");
       const meta = parseFrontmatter(text);
       const rel = file.slice(root.length + 1);
@@ -148,16 +170,17 @@ server.registerTool(
   },
   async ({ path }) => {
     const target = resolve(root, path);
-    if (!inside(target) || !existsSync(target) || !statSync(target).isFile()) {
+    const realTarget = realpathSafe(target);
+    if (realTarget === null || !insideAllowed(realTarget) || !statSync(realTarget).isFile()) {
       return {
         content: [{ type: "text", text: `no such knowledge file: ${path}` }],
         isError: true,
       };
     }
-    if (statSync(target).size > 256_000) {
+    if (statSync(realTarget).size > 256_000) {
       return { content: [{ type: "text", text: "file too large (256K cap)" }], isError: true };
     }
-    return { content: [{ type: "text", text: readFileSync(target, "utf-8") }] };
+    return { content: [{ type: "text", text: readFileSync(realTarget, "utf-8") }] };
   },
 );
 

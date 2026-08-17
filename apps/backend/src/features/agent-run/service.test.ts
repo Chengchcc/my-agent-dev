@@ -5,7 +5,7 @@ import type { IdGenerator, LedgerMessageResolver } from "../agent-context/ports.
 import { createAgentContextService } from "../agent-context/service.js";
 import { sqliteConversationAdapter } from "../conversation/adapter-sqlite.js";
 import { sqliteAgentRunAdapter } from "./adapter-sqlite.js";
-import { createAgentRunService } from "./service.js";
+import { AgentDisabledError, createAgentRunService } from "./service.js";
 
 const db = openDb(":memory:");
 const conv = sqliteConversationAdapter(db);
@@ -109,6 +109,29 @@ describe("Agent Run service: frozen Run config", () => {
     expect(result.acquired).toBe(true);
     expect(result.run?.systemPrompt).toBe("explicit");
     expect(result.run?.skillRoots).toEqual([]);
+  });
+
+  test("resolveAgentEnabled=false rejects before any branch/queue mutation", async () => {
+    const { conversationId, agentMemberId } = freshFixture("disabled");
+    const svc = createAgentRunService({
+      port: runPort,
+      contextService: ctxService,
+      idGen,
+      ledgerResolver,
+      resolveAgentEnabled: async () => false,
+    });
+    await expect(
+      svc.enqueueAndAcquire({
+        conversationId,
+        agentMemberId,
+        backendKind: "coding_agent",
+        mode: "normal",
+        message: { role: "user", text: "nope" },
+        defaultModel: { backendKind: "coding_agent", modelId: "model-a" },
+        configRevision: 1,
+        idempotencyKey: "key-disabled",
+      }),
+    ).rejects.toBeInstanceOf(AgentDisabledError);
   });
 });
 

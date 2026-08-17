@@ -289,6 +289,14 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       if (agent) result.permissionMode = agent.config.runtime_config.permission_mode;
       return result;
     },
+    resolveAgentEnabled: async ({ conversationId, agentMemberId }) => {
+      const members = conv.convPort.getMembers(conversationId);
+      const member = members.find((m) => m.memberId === agentMemberId);
+      const agentId = member?.agentId;
+      if (!agentId) return true; // loop synthetic scope (no agent row)
+      const agent = await agentSvc.getById(agentId).catch(() => null);
+      return agent?.config.enabled ?? true;
+    },
   });
   const dispatchRun: { fn: (runId: string) => Promise<void> } = { fn: async () => {} };
   const injectSteer: {
@@ -624,6 +632,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
             transport: s.transport,
             url: s.url,
             command: s.command,
+            args: s.args ?? [],
+            env: s.env ?? {},
+            headers: s.headers ?? {},
           })),
           // The product-tools server (ledger access, ADR 0020) merges into
           // the SAME workspace .mcp.json — one config, one writer.
@@ -652,6 +663,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
                   args: [
                     resolveKnowledgeMcpServerEntry(config),
                     join(agent.workspacePath, "knowledge"),
+                    ...assignedKnowledge.flatMap((p) =>
+                      p.installedRef ? ["--allowed-pack", p.installedRef] : [],
+                    ),
                   ],
                 },
               ]

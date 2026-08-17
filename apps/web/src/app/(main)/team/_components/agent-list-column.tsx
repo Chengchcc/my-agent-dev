@@ -58,6 +58,7 @@ export function AgentListColumn({
                         {a.name}
                       </span>
                       <span className="block truncate text-(--text-cap) text-(--mute)">
+                        {a.enabled === false ? "Disabled · " : ""}
                         {a.modelName}
                       </span>
                     </span>

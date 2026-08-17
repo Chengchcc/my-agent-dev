@@ -18,7 +18,7 @@ export function ToolStep({
   const [inputOpen, setInputOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
   return (
-    <div className="font-mono text-[12px]">
+    <div className="min-w-0 font-mono text-[12px]">
       <div className="flex items-center gap-2 px-2 py-1">
         <span className="shrink-0 text-(--primary)">→</span>
         <span className="truncate text-(--primary)">{name}</span>
@@ -44,13 +44,13 @@ export function ToolStep({
         </span>
       </div>
       {inputOpen && (
-        <pre className="max-h-40 overflow-x-auto whitespace-pre-wrap rounded bg-(--canvas-soft) p-2 text-[12px] leading-relaxed text-(--canvas-text-soft)">
+        <pre className="max-h-40 overflow-x-auto whitespace-pre-wrap rounded bg-(--canvas-soft) p-2 text-[12px] leading-relaxed text-(--canvas-text-soft) wrap-anywhere">
           {JSON.stringify(input, null, 2)}
         </pre>
       )}
       {resultOpen && result && (
         <pre
-          className={`max-h-40 overflow-x-auto whitespace-pre-wrap rounded bg-(--canvas-soft) p-2 text-[12px] leading-relaxed ${
+          className={`max-h-40 overflow-x-auto whitespace-pre-wrap rounded bg-(--canvas-soft) p-2 text-[12px] leading-relaxed wrap-anywhere ${
             result.isError ? "text-red-400" : "text-(--canvas-text-soft)"
           }`}
         >

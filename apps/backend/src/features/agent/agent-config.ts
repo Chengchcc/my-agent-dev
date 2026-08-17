@@ -44,6 +44,7 @@ export function buildAgentConfig(input: {
   name?: string;
   model?: { provider: string; model: string };
   backendKind?: string;
+  enabled?: boolean;
   reasoningEffort?: string | null;
   permissionMode?: "ask" | "auto" | "deny";
   maxSteps?: number;
@@ -64,7 +65,7 @@ export function buildAgentConfig(input: {
     : (prev?.runtime_config.model_id ?? "unconfigured/none");
   return agentConfigSchema.parse({
     schema_version: "1",
-    enabled: prev?.enabled ?? true,
+    enabled: input.enabled ?? prev?.enabled ?? true,
     id: input.id,
     name: input.name ?? prev?.name ?? input.id,
     title: input.name ?? prev?.title ?? prev?.name ?? input.id,

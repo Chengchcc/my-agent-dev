@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { BackendRunOutcome } from "@my-agent-team/agent-backend";
 import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
 import { type AgentRunExecutionService, runEventStreamFor } from "./execution.js";
@@ -6,6 +7,18 @@ import type { AgentRunService } from "./service.js";
 
 const ACTIVE_STATUSES = ["running", "waiting", "commit_failed"];
 const TERMINAL_STATUSES = ["completed", "failed", "aborted", "timeout"];
+
+/** Tool-result gate (P2): the model's own PASS/FAIL text is not trusted.
+ *  Verdict comes from tool_result.is_error flags in the committed run. */
+function deriveVerdict(outcome: BackendRunOutcome | null): "pass" | "fail" | "unknown" {
+  if (outcome?.status !== "completed") return "unknown";
+  for (const message of outcome.messages ?? []) {
+    for (const block of message.blocks ?? []) {
+      if (block.type === "tool_result" && block.is_error) return "fail";
+    }
+  }
+  return "pass";
+}
 
 /** Minimal Agent Run Ops API: Agent Run is the only Product execution
  *  identity. Spans/attempts/checkpoint events remain audit-only. */
@@ -53,17 +66,23 @@ export function agentRunRoutes(input: {
           agent_id: string | null;
         }>;
         return {
-          runs: rows.map((r) => ({
-            runId: r.run_id,
-            conversationId: r.conversation_id,
-            agentMemberId: r.agent_member_id,
-            agentId: r.agent_id,
-            status: r.status,
-            model: JSON.parse(r.model_ref) as { backendKind: string; modelId: string },
-            createdAt: r.created_at,
-            terminalAt: r.terminal_at,
-            usage: r.terminal_result ? (JSON.parse(r.terminal_result).usage ?? null) : null,
-          })),
+          runs: rows.map((r) => {
+            const outcome = r.terminal_result
+              ? (JSON.parse(r.terminal_result) as BackendRunOutcome)
+              : null;
+            return {
+              runId: r.run_id,
+              conversationId: r.conversation_id,
+              agentMemberId: r.agent_member_id,
+              agentId: r.agent_id,
+              status: r.status,
+              model: JSON.parse(r.model_ref) as { backendKind: string; modelId: string },
+              createdAt: r.created_at,
+              terminalAt: r.terminal_at,
+              usage: outcome?.usage ?? null,
+              verdict: deriveVerdict(outcome),
+            };
+          }),
         };
       },
       {
@@ -101,6 +120,7 @@ export function agentRunRoutes(input: {
           agentMemberId: run.agentMemberId,
           model: run.modelRef,
           status: run.status,
+          verdict: deriveVerdict(run.terminalResult),
           configRevision: run.configRevision,
           createdAt: run.createdAt,
           terminalAt: run.terminalAt,

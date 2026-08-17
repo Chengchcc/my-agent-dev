@@ -16,6 +16,7 @@ export interface FileEntry {
   command: string | null;
   args: string[];
   env: Record<string, string>;
+  headers: Record<string, string>;
   url: string | null;
   createdAt: number;
   updatedAt: number;
@@ -67,6 +68,7 @@ export function fileMcpServerAdapter(dataDir: string): McpServerPort {
       command: e.command,
       args: e.args,
       env: e.env,
+      headers: e.headers,
       url: e.url,
       createdAt: e.createdAt,
       updatedAt: e.updatedAt,
@@ -82,6 +84,7 @@ export function fileMcpServerAdapter(dataDir: string): McpServerPort {
         command: input.command,
         args: parseJson(input.args, [] as string[]),
         env: parseJson(input.env, {} as Record<string, string>),
+        headers: parseJson(input.headers, {} as Record<string, string>),
         url: input.url,
         createdAt: input.createdAt,
         updatedAt: input.updatedAt,
@@ -103,17 +106,16 @@ export function fileMcpServerAdapter(dataDir: string): McpServerPort {
       const idx = servers.findIndex((e) => e.serverId === serverId);
       if (idx < 0) return null;
       const entry = servers[idx]!;
-      servers[idx] = {
-        ...entry,
-        ...(patch.name !== undefined ? { name: patch.name } : {}),
-        ...(patch.command !== undefined ? { command: patch.command } : {}),
-        ...(patch.args !== undefined ? { args: parseJson(patch.args, [] as string[]) } : {}),
-        ...(patch.env !== undefined
-          ? { env: parseJson(patch.env, {} as Record<string, string>) }
-          : {}),
-        ...(patch.url !== undefined ? { url: patch.url } : {}),
-        updatedAt: patch.updatedAt,
-      };
+      const next: FileEntry = { ...entry, updatedAt: patch.updatedAt };
+      if (patch.name !== undefined) next.name = patch.name;
+      if (patch.command !== undefined) next.command = patch.command;
+      if (patch.args !== undefined) next.args = parseJson(patch.args, [] as string[]);
+      if (patch.env !== undefined) next.env = parseJson(patch.env, {} as Record<string, string>);
+      if (patch.headers !== undefined) {
+        next.headers = parseJson(patch.headers, {} as Record<string, string>);
+      }
+      if (patch.url !== undefined) next.url = patch.url;
+      servers[idx] = next;
       writeMcpCatalog(dataDir, servers);
       return rows().find((r) => r.serverId === serverId) ?? null;
     },

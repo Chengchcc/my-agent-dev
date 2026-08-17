@@ -8,6 +8,8 @@ export interface McpServerRow {
   command: string | null;
   args: string[] | null;
   env: Record<string, string> | null;
+  /** SSE request headers (e.g. Authorization). Never exposed raw via HTTP. */
+  headers: Record<string, string> | null;
   url: string | null;
   createdAt: number;
   updatedAt: number;
@@ -27,6 +29,7 @@ export interface CreateMcpServerInput {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  headers?: Record<string, string>;
   url?: string;
 }
 
@@ -35,5 +38,6 @@ export interface UpdateMcpServerInput {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  headers?: Record<string, string>;
   url?: string;
 }

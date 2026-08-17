@@ -1,6 +1,8 @@
 "use client";
 
+import { Package } from "lucide-react";
 import { useState } from "react";
+
 import { AgentForm } from "@/components/AgentForm";
 import { AgentMemoryPanel } from "@/components/AgentMemoryPanel";
 import { ConversationList } from "@/components/ConversationList";
@@ -10,12 +12,16 @@ import { McpServerPanel } from "@/components/McpServerPanel";
 import { AgentRunsTable } from "@/components/ops/AgentRunsTable";
 import { QueryState } from "@/components/ops/QueryState";
 import { Page, PageHeader } from "@/components/page";
-import { Badge } from "@/components/ui/badge";
-import { SubTabs } from "@/components/ui/polish";
+import { ListRowCard, SubTabs } from "@/components/ui/polish";
+import { Switch } from "@/components/ui/switch";
 import { WorkspaceExplorer } from "@/components/WorkspaceExplorer";
 import { useAgentDetail } from "@/features/agents/hooks";
 import { useAgentRuns } from "@/features/ops/hooks";
-import { useAgentSkillPacks } from "@/features/skill-packs/hooks";
+import {
+  useAgentSkillPacks,
+  useSetAgentPacks,
+  useSkillPackList,
+} from "@/features/skill-packs/hooks";
 import { overlineClass } from "@/lib/form-styles";
 import { AgentConfigBar } from "./agent-config-bar";
 import { AgentDescriptionCard } from "./agent-description-card";
@@ -43,15 +49,6 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 type PackStatus = "pending" | "installing" | "ready" | "failed" | "syncing";
-
-function packStatusVariant(
-  status: PackStatus,
-): "default" | "destructive" | "secondary" | "outline" {
-  if (status === "ready") return "default";
-  if (status === "failed") return "destructive";
-  if (status === "installing" || status === "syncing") return "secondary";
-  return "outline";
-}
 
 function packStatusLabel(status: PackStatus): string {
   if (status === "pending") return "Pending";
@@ -122,52 +119,54 @@ export function AgentDetail({ agentId }: { agentId: string }) {
     </Page>
   );
 }
-
 function AgentSkillsPanel({ agentId }: { agentId: string }) {
-  const packsQuery = useAgentSkillPacks(agentId);
+  const { data: allPacks } = useSkillPackList();
+  const { data: assigned } = useAgentSkillPacks(agentId);
+  const setPacks = useSetAgentPacks(agentId);
+  const packs = (allPacks ?? []) as Array<{
+    id: string;
+    name: string;
+    description?: string;
+    status: PackStatus;
+    error?: string;
+  }>;
+  const assignedIds = new Set((assigned ?? []).map((p) => p.id));
+
+  if (packs.length === 0) {
+    return (
+      <p className="text-sm text-(--mute)">
+        No skill packs installed — add them on the Skill Packs page.
+      </p>
+    );
+  }
+
+  const toggle = (packId: string, on: boolean) => {
+    const next = new Set(assignedIds);
+    if (on) next.add(packId);
+    else next.delete(packId);
+    setPacks.mutate([...next]);
+  };
+
   return (
-    <QueryState
-      query={packsQuery}
-      empty={(data) => !data || data.length === 0}
-      emptyMessage="No skill packs bound to this agent."
-    >
-      {(packs) => (
-        <ul className="space-y-2">
-          {packs.map((p) => {
-            const pack = p as {
-              id: string;
-              name: string;
-              description?: string;
-              status: PackStatus;
-              error?: string;
-            };
-            return (
-              <li
-                key={pack.id}
-                className="flex items-center justify-between gap-3 rounded border border-(--hairline) px-4 py-3"
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-(--text-body) font-medium text-(--ink)">
-                    {pack.name}
-                  </div>
-                  {pack.description && (
-                    <div className="truncate text-(--text-cap) text-(--mute)">
-                      {pack.description}
-                    </div>
-                  )}
-                  {pack.status === "failed" && pack.error && (
-                    <div className="truncate text-(--text-cap) text-(--err)">{pack.error}</div>
-                  )}
-                </div>
-                <Badge variant={packStatusVariant(pack.status)} className="shrink-0 text-xs">
-                  {packStatusLabel(pack.status)}
-                </Badge>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </QueryState>
+    <div className="space-y-2">
+      {packs.map((pack) => (
+        <ListRowCard
+          key={pack.id}
+          icon={<Package className="size-4 text-(--mute)" />}
+          title={pack.name}
+          desc={pack.error ? `${pack.description ?? ""} — ${pack.error}` : pack.description}
+          badges={[packStatusLabel(pack.status)]}
+          status={pack.status === "ready" ? "ok" : pack.status === "failed" ? "err" : undefined}
+          actions={
+            <Switch
+              checked={assignedIds.has(pack.id)}
+              disabled={pack.status !== "ready"}
+              onCheckedChange={(on) => void toggle(pack.id, on === true)}
+            />
+          }
+        />
+      ))}
+    </div>
   );
 }
 

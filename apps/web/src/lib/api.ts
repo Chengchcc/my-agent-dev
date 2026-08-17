@@ -22,6 +22,7 @@ export type LoopRow = ApiReturn<typeof api.listLoops>["loops"][number];
 export type LoopDetail = ApiReturn<typeof api.getLoop>["loop"];
 export type LarkSetupSession = ApiReturn<typeof api.larkSetup>;
 export type AgentRow = ApiReturn<typeof api.listAgents>[number] & {
+  enabled?: boolean;
   mcpServers?: Array<{ serverId: string; enabled: boolean }>;
   knowledgePacks?: string[];
   projects?: string[];
@@ -230,12 +231,15 @@ export const api = {
   // MCP catalog (ADR 0022, direct fetch - global routes)
   listMcpServers: () =>
     fetch("/api/bff/mcp-servers", { credentials: "include" }).then((r) => r.json()),
+  getMcpServer: (serverId: string) =>
+    fetch(`/api/bff/mcp-servers/${serverId}`, { credentials: "include" }).then((r) => r.json()),
   createMcpServer: (body: {
     name: string;
     transport: "stdio" | "sse";
     command?: string;
     args?: string[];
     env?: Record<string, string>;
+    headers?: Record<string, string>;
     url?: string;
   }) =>
     fetch("/api/bff/mcp-servers", {
@@ -251,6 +255,7 @@ export const api = {
       command?: string;
       args?: string[];
       env?: Record<string, string>;
+      headers?: Record<string, string>;
       url?: string;
     },
   ) =>
@@ -259,6 +264,11 @@ export const api = {
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+    }).then((r) => r.json()),
+  testMcpServer: (serverId: string) =>
+    fetch(`/api/bff/mcp-servers/${serverId}/test`, {
+      method: "POST",
+      credentials: "include",
     }).then((r) => r.json()),
   deleteMcpServer: (serverId: string) =>
     fetch(`/api/bff/mcp-servers/${serverId}`, {
