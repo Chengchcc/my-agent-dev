@@ -73,7 +73,28 @@ export function appendSessionCompaction(id: string, summary: string): void {
   );
 }
 /** Append message events to the session file (header written on create;
- *  parentId chains to the file's last message id). */
+ *  parentId chains to the file's last message id). The tail scan keeps a
+ *  per-process lastId cache — resume reads the file once, steady-state
+ *  appends are O(1) instead of re-reading the whole transcript. */
+const lastIdBySession = new Map<string, string | null>();
+
+function readLastMessageId(path: string): string | null {
+  let prevId: string | null = null;
+  for (const line of readFileSync(path, "utf8").split("\n").reverse()) {
+    if (!line.trim()) continue;
+    try {
+      const evt = JSON.parse(line) as { type?: string; id?: string };
+      if (evt.type === "message" && evt.id) {
+        prevId = evt.id;
+        break;
+      }
+    } catch {
+      /* skip */
+    }
+  }
+  return prevId;
+}
+
 export function appendSessionMessages(id: string, cwd: string, messages: readonly unknown[]): void {
   const dir = sessionDir();
   mkdirSync(dir, { recursive: true });
@@ -90,17 +111,12 @@ export function appendSessionMessages(id: string, cwd: string, messages: readonl
       })}\n`,
     );
   }
-  // Chain parentId to the last message id currently in the file.
-  let prevId: string | null = null;
-  for (const line of readFileSync(path, "utf8").split("\n")) {
-    if (!line.trim()) continue;
-    try {
-      const evt = JSON.parse(line) as { type?: string; id?: string };
-      if (evt.type === "message" && evt.id) prevId = evt.id;
-    } catch {
-      /* skip */
-    }
+  // First append this process: scan the tail once. Later appends reuse the
+  // cached leaf id (one Runtime appends at most once per turn, sequentially).
+  if (!lastIdBySession.has(id)) {
+    lastIdBySession.set(id, readLastMessageId(path));
   }
+  let prevId = lastIdBySession.get(id) ?? null;
   const lines: string[] = [];
   for (const message of messages) {
     const eventId = crypto.randomUUID();
@@ -115,5 +131,6 @@ export function appendSessionMessages(id: string, cwd: string, messages: readonl
     );
     prevId = eventId;
   }
+  lastIdBySession.set(id, prevId);
   appendFileSync(path, `${lines.join("\n")}\n`);
 }
