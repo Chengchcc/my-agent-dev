@@ -12,5 +12,8 @@ export {
   createWebFetchTool as createPortWebFetchTool,
   createWebSearchTool as createPortWebSearchTool,
 } from "./web-ports.js";
-// Phase 2: workspace sandbox and web ports
+export {
+  createDdgWebSearchPort,
+  createStdWebFetchPort,
+} from "./web-ports-std.js";
 export { WorkspaceEscapeError, WorkspaceSandbox } from "./workspace-sandbox.js";

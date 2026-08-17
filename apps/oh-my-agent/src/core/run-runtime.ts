@@ -24,6 +24,7 @@ import { createRecapPlugin } from "@chengchenccc/plugin-recap";
 
 import {
   createBashTool,
+  createDdgWebSearchPort,
   createEditTool,
   createGlobTool,
   createGrepTool,
@@ -31,6 +32,7 @@ import {
   createPortWebFetchTool,
   createPortWebSearchTool,
   createReadTool,
+  createStdWebFetchPort,
   createTreeTool,
   createWriteTool,
   type WebFetchPort,
@@ -148,11 +150,13 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   fileTools.push(
     ...(await mountWorkspaceMcpServers(deps.workspaceRoot, new Set(fileTools.map((t) => t.name)))),
   );
-  if (deps.webSearch) {
-    fileTools.push(createPortWebSearchTool(deps.webSearch) as unknown as PluginTool);
-  }
-  if (deps.webFetch) {
-    fileTools.push(createPortWebFetchTool(deps.webFetch) as unknown as PluginTool);
+  // Web tools default ON via the std ports (DDG search + guarded fetch);
+  // OMA_DISABLE_WEB=1 opts out for air-gapped workspaces.
+  if (process.env.OMA_DISABLE_WEB !== "1") {
+    fileTools.push(
+      createPortWebSearchTool(deps.webSearch ?? createDdgWebSearchPort()) as unknown as PluginTool,
+      createPortWebFetchTool(deps.webFetch ?? createStdWebFetchPort()) as unknown as PluginTool,
+    );
   }
 
   const nativeToolsPlugin: Plugin = { name: "native-tools", tools: fileTools };
