@@ -4,12 +4,12 @@ import { debugLog } from "@chengchenccc/agent-backend";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { type Message, MessageSchema } from "@chengchenccc/message";
 import { createOmaRuntime, type OmaRuntime } from "../../core/create-runtime.js";
+import { buildSystemPrompt } from "../../core/prompts.js";
 import {
   appendSessionMessages,
   loadSessionMessages,
   newSessionId,
 } from "../../core/session-file.js";
-import { buildSystemPrompt } from "../../core/prompts.js";
 import {
   readWorkspaceSystemPrompt,
   scanWorkspaceSkillRoots,
