@@ -8,6 +8,7 @@ import { AgentMemoryPanel } from "@/components/AgentMemoryPanel";
 import { ConversationList } from "@/components/ConversationList";
 import { IdentityPanel } from "@/components/IdentityPanel";
 import { KnowledgePackPanel } from "@/components/KnowledgePackPanel";
+import { LarkBotPanel } from "@/components/LarkBotPanel";
 import { McpServerPanel } from "@/components/McpServerPanel";
 import { AgentRunsTable } from "@/components/ops/AgentRunsTable";
 import { QueryState } from "@/components/ops/QueryState";
@@ -33,6 +34,7 @@ type Tab =
   | "mcp"
   | "knowledge"
   | "projects"
+  | "lark"
   | "memory"
   | "workspace"
   | "activity";
@@ -42,7 +44,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "skills", label: "Skills" },
   { key: "mcp", label: "MCP" },
   { key: "knowledge", label: "Knowledge" },
-  { key: "projects", label: "Projects" },
+  { key: "lark", label: "Lark" },
   { key: "memory", label: "Memory" },
   { key: "workspace", label: "Workspace" },
   { key: "activity", label: "Activity" },
@@ -106,6 +108,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
           {tab === "mcp" && <McpServerPanel agentId={agentId} />}
           {tab === "knowledge" && <KnowledgePackPanel agentId={agentId} />}
           {tab === "projects" && <AgentProjectsPanel agent={agent} />}
+          {tab === "lark" && <LarkBotPanel agentId={agentId} />}
           {tab === "memory" && <AgentMemoryPanel agentId={agentId} />}
           {tab === "workspace" && <WorkspaceExplorer agentId={agentId} />}
           {tab === "activity" && (
