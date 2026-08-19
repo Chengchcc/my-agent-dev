@@ -370,7 +370,6 @@ export function Composer({
                   className="relative size-12 rounded-md border border-(--hairline) overflow-hidden"
                   title="Attached image"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`data:${a.mediaType};base64,${a.base64}`}
                     alt="attached"
