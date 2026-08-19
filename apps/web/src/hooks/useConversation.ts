@@ -595,7 +595,12 @@ export function useConversation(
   );
 
   const send = useCallback(
-    (text: string, addressedTo?: string[], model?: ChatModelOverride) => {
+    (
+      text: string,
+      addressedTo?: string[],
+      model?: ChatModelOverride,
+      attachments?: readonly { type: "image"; mediaType: string; base64: string }[],
+    ) => {
       const viewer = state.roster[state.viewerMemberId] ?? {
         memberId: state.viewerMemberId,
         kind: "human" as const,
@@ -612,14 +617,6 @@ export function useConversation(
           model,
         },
         {
-          onSuccess: (result) => {
-            for (const run of result.triggeredRuns ?? []) {
-              if (!run.queued && run.runId) watchRun(run.runId, run.agentMemberId);
-            }
-          },
-          // POST pending is decremented when the HTTP request settles (both
-          // success and error) - it is NOT tied to an agent reply. Run
-          // activity is tracked separately via activeRuns.
           onSettled: () => {
             dispatch({ type: "send/settled" });
           },

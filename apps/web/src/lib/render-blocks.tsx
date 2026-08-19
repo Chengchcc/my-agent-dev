@@ -11,6 +11,8 @@ export interface BlockLike {
   content?: unknown;
   is_error?: boolean;
   text?: string;
+  base64?: string;
+  mediaType?: string;
 }
 
 /** Normalize tool_result.content to string. Handles string, ContentBlock[], and null. */
@@ -60,7 +62,7 @@ export function renderContentBlocks(
 
   const toolResults = collectToolResults(typed);
 
-  return typed.map((block) => {
+  return typed.map((block, i) => {
     if (
       block.type === "tool_use" &&
       block.id &&
@@ -73,6 +75,17 @@ export function renderContentBlocks(
           <ToolCallCard name={block.name} input={block.input} />
           {result && <ToolResultCard content={result.content} isError={result.isError} />}
         </div>
+      );
+    }
+    if (block.type === "image" && typeof block.base64 === "string" && block.mediaType) {
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={`img-${i}`}
+          src={`data:${block.mediaType};base64,${block.base64}`}
+          alt="attached image"
+          className="my-1 max-h-80 rounded-md border border-(--hairline)"
+        />
       );
     }
     return null;

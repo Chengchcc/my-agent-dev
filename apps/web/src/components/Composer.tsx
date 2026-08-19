@@ -20,7 +20,12 @@ const COMPOSER_MAX_H = 160;
 
 interface ComposerProps {
   conversationId: string;
-  onSend: (message: string, addressedTo: string[], model?: ChatModelOverride) => void;
+  onSend: (
+    message: string,
+    addressedTo: string[],
+    model?: ChatModelOverride,
+    attachments?: readonly { type: "image"; mediaType: string; base64: string }[],
+  ) => void;
   onSlashCommand: (input: string) => void;
   disabled?: boolean;
   placeholder?: string;
@@ -68,6 +73,9 @@ export function Composer({
   const [slashIndex, setSlashIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const [attachments, setAttachments] = useState<
+    readonly { type: "image"; mediaType: string; base64: string }[]
+  >([]);
 
   const agentMembers = useMemo(() => {
     if (!roster) return [];
@@ -97,6 +105,40 @@ export function Composer({
   useEffect(() => {
     setSlashIndex(0);
   }, [showSlash]);
+  const readImageFile = useCallback((file: File) => {
+    if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") return;
+      const comma = result.indexOf(",");
+      if (comma < 0) return;
+      setAttachments((prev) => [
+        ...prev,
+        { type: "image" as const, mediaType: file.type, base64: result.slice(comma + 1) },
+      ]);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      for (const item of Array.from(e.clipboardData.items)) {
+        if (item.kind === "file") {
+          const file = item.getAsFile();
+          if (file) readImageFile(file);
+        }
+      }
+    },
+    [readImageFile],
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      for (const file of Array.from(e.dataTransfer.files)) readImageFile(file);
+    },
+    [readImageFile],
+  );
 
   const autoGrow = useCallback(() => {
     const el = textareaRef.current;
@@ -190,12 +232,22 @@ export function Composer({
       setShowMentions(true);
       return;
     }
-    onSend(trimmed, addressedTo, model ?? undefined);
+    onSend(trimmed, addressedTo, model ?? undefined, attachments);
     setValue("");
+    setAttachments([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = `${COMPOSER_MIN_H}px`;
     }
-  }, [value, disabled, onSend, onSlashCommand, resolveAddressedTo, agentMembers.length, model]);
+  }, [
+    value,
+    disabled,
+    onSend,
+    onSlashCommand,
+    resolveAddressedTo,
+    agentMembers.length,
+    model,
+    attachments,
+  ]);
 
   const navigateMention = useCallback(
     (dir: -1 | 1) => {
@@ -310,23 +362,51 @@ export function Composer({
     <div className="bg-(--canvas) px-6 py-4">
       <div className="mx-auto flex gap-2 items-end relative" style={{ maxWidth: "72ch" }}>
         <div className="flex-1 relative">
-          <Textarea
-            ref={textareaRef}
-            value={value}
-            onChange={handleInput}
-            onKeyDown={handleKeyDown}
-            placeholder={disabled ? "Agent is responding…" : effectivePlaceholder}
-            rows={1}
-            disabled={disabled}
-            className="w-full resize-none bg-(--panel) border border-(--hairline)
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pb-1.5">
+              {attachments.map((a, i) => (
+                <div
+                  key={i}
+                  className="relative size-12 rounded-md border border-(--hairline) overflow-hidden"
+                  title="Attached image"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`data:${a.mediaType};base64,${a.base64}`}
+                    alt="attached"
+                    className="h-full w-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Remove image"
+                    onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="absolute top-0 right-0 bg-black/60 text-white text-[10px] px-1 leading-4"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+            <Textarea
+              ref={textareaRef}
+              value={value}
+              onChange={handleInput}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              placeholder={disabled ? "Agent is responding…" : effectivePlaceholder}
+              rows={1}
+              disabled={disabled}
+              className="w-full resize-none bg-(--panel) border border-(--hairline)
                        rounded-lg p-3  text-sm text-(--ink)
                        placeholder:text-(--mute)
                        focus:outline-none focus:border-(--primary)
                        disabled:opacity-40 disabled:cursor-not-allowed
                        transition-colors duration-200"
-            style={{ minHeight: `${COMPOSER_MIN_H}px`, maxHeight: `${COMPOSER_MAX_H}px` }}
-          />
-
+              style={{ minHeight: `${COMPOSER_MIN_H}px`, maxHeight: `${COMPOSER_MAX_H}px` }}
+            />
+          </div>
           {/* @mention popover */}
           {showMentions && (
             <div

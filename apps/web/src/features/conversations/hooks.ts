@@ -82,7 +82,6 @@ export function useConversationSnapshot(
     initialData: initialData ?? undefined,
   });
 }
-
 export function usePostConversationMessage(conversationId: string) {
   return useMutation({
     mutationFn: (params: {
@@ -90,16 +89,23 @@ export function usePostConversationMessage(conversationId: string) {
       text: string;
       addressedTo: string[];
       model?: ChatModelOverride;
-    }) =>
-      api.postConversationMessage(conversationId, {
+      attachments?: readonly { type: "image"; mediaType: string; base64: string }[];
+    }) => {
+      const blocks = params.attachments?.length
+        ? [
+            ...(params.text ? [{ type: "text" as const, text: params.text }] : []),
+            ...params.attachments,
+          ]
+        : undefined;
+      return api.postConversationMessage(conversationId, {
         senderMemberId: params.senderMemberId,
         addressedTo: params.addressedTo,
-        content: params.text,
+        content: blocks ?? params.text,
         model: params.model,
-      }),
+      });
+    },
   });
 }
-
 export function useForkConversation() {
   const qc = useQueryClient();
   return useMutation({
