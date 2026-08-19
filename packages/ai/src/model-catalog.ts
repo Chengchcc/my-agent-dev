@@ -27,6 +27,8 @@ export interface ProviderSpec {
   api: string;
   baseUrl: string;
   apiKeyEnv: string;
+  /** Inline literal key from models.yml — fallback when apiKeyEnv is unset. */
+  apiKey?: string;
   models: ModelSpec[];
 }
 

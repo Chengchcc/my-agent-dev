@@ -64,7 +64,7 @@ export function registerProvidersFromCatalog(
 ): void {
   const built = buildAllModels(catalog);
   for (const [pid, entry] of Object.entries(built)) {
-    const apiKey = resolveApiKey(pid, entry.spec.apiKeyEnv, env);
+    const apiKey = resolveApiKey(pid, entry.spec.apiKeyEnv, entry.spec.apiKey, env);
     if (!apiKey) continue;
     const baseUrl = resolveBaseUrl(pid, entry.spec.baseUrl, env);
     runtime.registerProvider(
@@ -79,15 +79,18 @@ export function registerProvidersFromCatalog(
   }
 }
 
-/** Resolve API key with provider-specific fallbacks (ANTHROPIC_AUTH_TOKEN
- *  as a fallback for ANTHROPIC_API_KEY — proxy users depend on it). */
+/** Resolve API key: env var first, then the provider's inline apiKey from
+ *  models.yml, then provider-specific fallbacks (ANTHROPIC_AUTH_TOKEN as a
+ *  fallback for ANTHROPIC_API_KEY — proxy users depend on it). */
 function resolveApiKey(
   pid: string,
   primaryEnv: string,
+  inlineApiKey: string | undefined,
   env: Record<string, string | undefined>,
 ): string | undefined {
   const key = env[primaryEnv];
   if (key) return key;
+  if (inlineApiKey) return inlineApiKey;
   // ponytail: anthropic-specific fallback, delete when ProviderSpec gets
   // a generic fallbackEnv field.
   if (pid === "anthropic") return env.ANTHROPIC_AUTH_TOKEN;
