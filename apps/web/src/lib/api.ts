@@ -36,6 +36,7 @@ export type RefineLoopResult = ApiReturn<typeof api.refineLoop>;
 export type ActivateLoopResult = ApiReturn<typeof api.activateLoop>;
 export type SettingsMap = ApiReturn<typeof api.getSettings>["settings"];
 export type McpServerRow = ApiReturn<typeof api.listMcpServers>["mcpServers"][number];
+export type PendingInput = ApiReturn<typeof api.listConversationInputs>["inputs"][number];
 
 export type ChatModelOverride = {
   backendKind: string;
@@ -103,9 +104,17 @@ export const api = {
       senderMemberId: string;
       addressedTo: string[];
       content: unknown;
+      mode?: "normal" | "steer" | "follow_up";
       model?: ChatModelOverride;
     },
   ) => unwrap(client.api.conversations({ id }).messages.post(body)),
+  listConversationInputs: (id: string) => unwrap(client.api.conversations({ id }).inputs.get()),
+  steerConversationInput: (id: string, inputId: string) =>
+    unwrap(client.api.conversations({ id }).inputs({ inputId }).steer.post()),
+  updateConversationInput: (id: string, inputId: string, text: string) =>
+    unwrap(client.api.conversations({ id }).inputs({ inputId }).patch({ text })),
+  cancelConversationInput: (id: string, inputId: string) =>
+    unwrap(client.api.conversations({ id }).inputs({ inputId }).cancel.post()),
   deleteConversation: (id: string) => unwrap(client.api.conversations({ id }).delete()),
   clearConversation: (id: string) => unwrap(client.api.conversations({ id }).clear.post({})),
   compactConversation: (id: string) => unwrap(client.api.conversations({ id }).compact.post({})),

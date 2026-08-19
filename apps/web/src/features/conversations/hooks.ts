@@ -88,6 +88,7 @@ export function usePostConversationMessage(conversationId: string) {
       senderMemberId: string;
       text: string;
       addressedTo: string[];
+      mode?: "normal" | "steer" | "follow_up";
       model?: ChatModelOverride;
       attachments?: readonly { type: "image"; mediaType: string; base64: string }[];
     }) => {
@@ -101,6 +102,7 @@ export function usePostConversationMessage(conversationId: string) {
         senderMemberId: params.senderMemberId,
         addressedTo: params.addressedTo,
         content: blocks ?? params.text,
+        mode: params.mode,
         model: params.model,
       });
     },

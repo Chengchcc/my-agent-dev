@@ -192,6 +192,57 @@ describe("Agent Run: atomic acquire", () => {
   });
 });
 
+describe("Agent Run: pending input queue (composer)", () => {
+  test("listPendingInputsForConversation joins branch->tree; get/update/cancel CAS", async () => {
+    const { conversationId, agentMemberId, branch } = await setupBranch("pq1");
+    await runPort.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      branchId: branch.branchId,
+      mode: "normal",
+      message: { role: "user", text: "first" },
+      inputIdempotencyKey: "ikey-pq1-1",
+      runIdempotencyKey: "rkey-pq1-1",
+      deliveryIdempotencyKey: "dkey-pq1-1",
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
+      configRevision: 1,
+      expectedRevision: branch.revision,
+    });
+
+    const q = await runPort.enqueueAndAcquire({
+      conversationId,
+      agentMemberId,
+      branchId: branch.branchId,
+      mode: "follow_up",
+      message: { role: "user", text: "queued" },
+      inputIdempotencyKey: "ikey-pq1-2",
+      runIdempotencyKey: "rkey-pq1-2",
+      deliveryIdempotencyKey: "dkey-pq1-2",
+      defaultModel: { backendKind: "oma", modelId: "model-a" },
+      configRevision: 1,
+      expectedRevision: branch.revision + 1,
+    });
+    expect(q.queued).toBe(true);
+
+    const pending = await runPort.listPendingInputsForConversation(conversationId);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]!.mode).toBe("follow_up");
+    expect((pending[0]!.message as { text: string }).text).toBe("queued");
+    expect(pending[0]!.agentMemberId).toBe(agentMemberId);
+
+    const input = await runPort.getInput(q.inputId);
+    expect(input?.status).toBe("pending");
+    expect(await runPort.updateInput(q.inputId, { role: "user", text: "edited" })).toBe(true);
+    expect((await runPort.getInput(q.inputId))!.message as { text: string }).toMatchObject({
+      text: "edited",
+    });
+
+    await runPort.cancelInput(q.inputId);
+    expect(await runPort.listPendingInputsForConversation(conversationId)).toHaveLength(0);
+    expect(await runPort.updateInput(q.inputId, { role: "user", text: "too late" })).toBe(false);
+  });
+});
+
 describe("Agent Run: queue delivery", () => {
   test("claimInputForRun returns the run's delivering row", async () => {
     const { conversationId, agentMemberId, branch } = await setupBranch("q1");

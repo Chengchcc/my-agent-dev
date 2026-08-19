@@ -607,13 +607,16 @@ export function useConversation(
       };
       const resolved = addressedTo ?? [];
       dispatch({ type: "send", text, viewer });
-      // There is no client-side queue: every message is POSTed immediately
-      // and the backend persists it as normal/steer/follow_up.
+      // While a run is live, messages queue for after it settles (the
+      // Composer queue area) instead of being injected as a live steer;
+      // each queued item can be steered/edited/cancelled individually.
+      const queued = isBusy(state) || activeRuns.size > 0;
       sendMut.mutate(
         {
           senderMemberId: state.viewerMemberId,
           text,
           addressedTo: resolved.length > 0 ? resolved : resolveAddressedTo(state),
+          mode: queued ? "follow_up" : undefined,
           model,
           attachments,
         },
@@ -632,7 +635,7 @@ export function useConversation(
         },
       );
     },
-    [sendMut, state.roster, state.viewerMemberId, state, watchRun],
+    [sendMut, state.roster, state.viewerMemberId, state, watchRun, activeRuns.size],
   );
 
   const toggleTriggerMode = useCallback(() => {

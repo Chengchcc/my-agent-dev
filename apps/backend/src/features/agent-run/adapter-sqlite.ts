@@ -1150,6 +1150,56 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
       return rows.map(parseInput);
     },
 
+    async getInput(inputId) {
+      const row = d
+        .select()
+        .from(schema.branchInputQueue)
+        .where(eq(schema.branchInputQueue.inputId, inputId))
+        .get();
+      return row ? parseInput(row) : null;
+    },
+
+    async listPendingInputsForConversation(conversationId) {
+      const rows = d
+        .select()
+        .from(schema.branchInputQueue)
+        .innerJoin(
+          schema.agentContextBranch,
+          eq(schema.branchInputQueue.branchId, schema.agentContextBranch.branchId),
+        )
+        .innerJoin(
+          schema.agentContextTree,
+          eq(schema.agentContextBranch.treeId, schema.agentContextTree.treeId),
+        )
+        .where(
+          and(
+            eq(schema.agentContextTree.conversationId, conversationId),
+            eq(schema.branchInputQueue.status, "pending"),
+          ),
+        )
+        .orderBy(schema.branchInputQueue.seq)
+        .all();
+      return rows.map((r) => ({
+        ...parseInput(r.branch_input_queue),
+        agentMemberId: r.agent_context_tree.agentMemberId,
+      }));
+    },
+
+    async updateInput(inputId, message) {
+      const updated = d
+        .update(schema.branchInputQueue)
+        .set({ message: JSON.stringify(message) })
+        .where(
+          and(
+            eq(schema.branchInputQueue.inputId, inputId),
+            eq(schema.branchInputQueue.status, "pending"),
+          ),
+        )
+        .returning({ inputId: schema.branchInputQueue.inputId })
+        .get();
+      return updated != null;
+    },
+
     async getPendingAction(actionId) {
       const row = d
         .select()

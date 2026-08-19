@@ -121,5 +121,19 @@ export interface AgentRunPort {
    *  while its generator/evaluator scopes are live. */
   hasActiveRunForConversations(conversationIds: readonly string[]): Promise<boolean>;
   listInputs(branchId: string): Promise<BranchInput[]>;
+
+  /** Get a single queued input by id (queue management UI). */
+  getInput(inputId: string): Promise<BranchInput | null>;
+
+  /** Pending inputs across every branch of a conversation, oldest first,
+   *  with the owning agent member id (queue management UI). */
+  listPendingInputsForConversation(
+    conversationId: string,
+  ): Promise<Array<BranchInput & { agentMemberId: string }>>;
+
+  /** CAS a pending input's message (queue edit). Returns false when the
+   *  input is no longer pending. */
+  updateInput(inputId: string, message: Message): Promise<boolean>;
+
   getPendingAction(actionId: string): Promise<PendingActionRecord | null>;
 }

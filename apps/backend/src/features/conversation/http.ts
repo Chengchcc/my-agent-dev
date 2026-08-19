@@ -112,6 +112,7 @@ export function conversationRoutes(
             senderMemberId: body.senderMemberId,
             addressedTo: body.addressedTo,
             content: body.content,
+            mode: body.mode,
             modelOverride: body.model,
           });
           set.status = 202;
@@ -122,6 +123,9 @@ export function conversationRoutes(
             senderMemberId: t.String({ minLength: 1 }),
             addressedTo: t.Array(t.String()),
             content: t.Any(),
+            mode: t.Optional(
+              t.Union([t.Literal("normal"), t.Literal("steer"), t.Literal("follow_up")]),
+            ),
             model: t.Optional(
               t.Object({
                 backendKind: t.String(),
@@ -139,6 +143,35 @@ export function conversationRoutes(
           }),
         },
       )
+      // ── Pending input queue (Composer queue area) ──
+      .get("/api/conversations/:id/inputs", async ({ params: { id: conversationId } }) => {
+        const inputs = await svc.listPendingInputs(conversationId);
+        return { inputs };
+      })
+      .post("/api/conversations/:id/inputs/:inputId/steer", async ({ params: { inputId } }) => {
+        try {
+          await svc.steerInput(inputId);
+          return { ok: true };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg === "Input not found") return Response.json({ error: msg }, { status: 404 });
+          return Response.json({ error: msg }, { status: 409 });
+        }
+      })
+      .patch(
+        "/api/conversations/:id/inputs/:inputId",
+        async ({ params: { inputId }, body }) => {
+          const updated = await svc.updateInput(inputId, body.text);
+          if (!updated)
+            return Response.json({ error: "Input is no longer pending" }, { status: 409 });
+          return { ok: true };
+        },
+        { body: t.Object({ text: t.String({ minLength: 1 }) }) },
+      )
+      .post("/api/conversations/:id/inputs/:inputId/cancel", async ({ params: { inputId } }) => {
+        await svc.cancelInput(inputId);
+        return { ok: true };
+      })
       .post(
         "/api/conversations/:id/members",
         async ({ params: { id: conversationId }, body }) => {

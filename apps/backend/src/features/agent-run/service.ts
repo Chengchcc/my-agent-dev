@@ -89,6 +89,15 @@ export interface AgentRunService {
   getActiveRun(branchId: string): Promise<AgentRun | null>;
   hasActiveRunForConversations(conversationIds: readonly string[]): Promise<boolean>;
   listInputs(branchId: string): Promise<BranchInput[]>;
+  getInput(inputId: string): Promise<BranchInput | null>;
+  /** Pending inputs across every branch of a conversation (queue UI). */
+  listPendingInputsForConversation(
+    conversationId: string,
+  ): Promise<Array<BranchInput & { agentMemberId: string }>>;
+  /** CAS a pending input's message; false when no longer pending. */
+  updateInput(inputId: string, message: Message): Promise<boolean>;
+  /** CAS a pending/delivering input to cancelled. */
+  cancelInput(inputId: string): Promise<void>;
 }
 
 export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunService {
@@ -209,6 +218,22 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
 
     async listInputs(branchId) {
       return port.listInputs(branchId);
+    },
+
+    async getInput(inputId) {
+      return port.getInput(inputId);
+    },
+
+    async listPendingInputsForConversation(conversationId) {
+      return port.listPendingInputsForConversation(conversationId);
+    },
+
+    async updateInput(inputId, message) {
+      return port.updateInput(inputId, message);
+    },
+
+    async cancelInput(inputId) {
+      return port.cancelInput(inputId);
     },
   };
 }

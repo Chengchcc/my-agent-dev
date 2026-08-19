@@ -1,12 +1,25 @@
 "use client";
 
-import { ArrowUp, AtSign, Bot, CornerDownLeft, Terminal } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ArrowUp,
+  AtSign,
+  Bot,
+  Check,
+  CornerDownLeft,
+  ListChecks,
+  Pencil,
+  Send,
+  Terminal,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type ChatModelOverride, ModelPicker } from "@/components/ModelPicker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { api, type PendingInput } from "@/lib/api";
 import type { SenderRef } from "@/lib/conversation-reducer";
 import { slashCommands } from "@/lib/slash-commands";
 
@@ -76,6 +89,34 @@ export function Composer({
   const [attachments, setAttachments] = useState<
     readonly { type: "image"; mediaType: string; base64: string }[]
   >([]);
+
+  // Pending input queue: backend branch_input_queue for this conversation.
+  // Polls only while something is waiting; mutations refetch immediately.
+  const qc = useQueryClient();
+  const inputsQuery = useQuery({
+    queryKey: ["conversation-inputs", conversationId],
+    queryFn: () => api.listConversationInputs(conversationId),
+    refetchInterval: (query) => (query.state.data?.inputs.length ? 2000 : false),
+  });
+  const invalidateQueue = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ["conversation-inputs", conversationId] });
+  }, [qc, conversationId]);
+  const steerMut = useMutation({
+    mutationFn: (inputId: string) => api.steerConversationInput(conversationId, inputId),
+    onSuccess: invalidateQueue,
+    onError: () => toast.error("Send now failed — the run may have settled"),
+  });
+  const editMut = useMutation({
+    mutationFn: (args: { inputId: string; text: string }) =>
+      api.updateConversationInput(conversationId, args.inputId, args.text),
+    onSuccess: invalidateQueue,
+    onError: () => toast.error("Edit failed — the input was already processed"),
+  });
+  const cancelMut = useMutation({
+    mutationFn: (inputId: string) => api.cancelConversationInput(conversationId, inputId),
+    onSuccess: invalidateQueue,
+    onError: () => toast.error("Cancel failed"),
+  });
 
   const agentMembers = useMemo(() => {
     if (!roster) return [];
@@ -235,6 +276,8 @@ export function Composer({
     onSend(trimmed, addressedTo, model ?? undefined, attachments);
     setValue("");
     setAttachments([]);
+    // Give the backend a beat to persist the queued input, then show it.
+    setTimeout(() => void inputsQuery.refetch(), 400);
     if (textareaRef.current) {
       textareaRef.current.style.height = `${COMPOSER_MIN_H}px`;
     }
@@ -247,6 +290,7 @@ export function Composer({
     agentMembers.length,
     model,
     attachments,
+    inputsQuery,
   ]);
 
   const navigateMention = useCallback(
@@ -360,6 +404,32 @@ export function Composer({
 
   return (
     <div className="bg-(--canvas) px-6 py-4">
+      {inputsQuery.data && inputsQuery.data.inputs.length > 0 && (
+        <div className="mx-auto mb-3 max-w-[72ch] rounded-lg border border-(--hairline) bg-(--panel)">
+          <div className="flex items-center gap-1.5 border-b border-(--hairline) px-3 py-1.5">
+            <ListChecks size={12} className="shrink-0 text-(--mute)" />
+            <span className="text-[10px] tracking-widest uppercase text-(--mute) font-semibold">
+              Queue ({inputsQuery.data.inputs.length})
+            </span>
+            <span className="ml-auto text-[10px] text-(--faint)">
+              sent while running — executes after the current run
+            </span>
+          </div>
+          <ul className="max-h-40 overflow-y-auto">
+            {inputsQuery.data.inputs.map((input) => (
+              <QueueItem
+                key={input.inputId}
+                input={input}
+                agentName={roster?.[input.agentMemberId]?.displayName ?? input.agentMemberId}
+                busy={steerMut.isPending || editMut.isPending || cancelMut.isPending}
+                onSteer={() => steerMut.mutate(input.inputId)}
+                onSave={(text) => editMut.mutate({ inputId: input.inputId, text })}
+                onCancel={() => cancelMut.mutate(input.inputId)}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="mx-auto flex gap-2 items-end relative" style={{ maxWidth: "72ch" }}>
         <div className="flex-1 relative">
           {attachments.length > 0 && (
@@ -532,5 +602,132 @@ export function Composer({
         )}
       </div>
     </div>
+  );
+}
+
+function QueueItem({
+  input,
+  agentName,
+  busy,
+  onSteer,
+  onSave,
+  onCancel,
+}: {
+  input: PendingInput;
+  agentName: string;
+  busy: boolean;
+  onSteer: () => void;
+  onSave: (text: string) => void;
+  onCancel: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(input.text);
+
+  if (editing) {
+    return (
+      <li className="flex flex-col gap-1.5 border-b border-(--hairline) px-3 py-2 last:border-b-0">
+        <Textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={2}
+          autoFocus
+          className="w-full resize-none bg-(--canvas) border border-(--hairline) rounded-md p-2 text-sm text-(--ink) focus:outline-none focus:border-(--primary)"
+        />
+        <div className="flex items-center justify-end gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => {
+              setEditing(false);
+              setDraft(input.text);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            className="h-6 px-2 text-xs"
+            disabled={busy || !draft.trim()}
+            onClick={() => {
+              onSave(draft.trim());
+              setEditing(false);
+            }}
+          >
+            <Check size={12} className="mr-1" /> Save
+          </Button>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li className="flex items-center gap-2 border-b border-(--hairline) px-3 py-2 last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-xs text-(--mute)">{agentName}</span>
+          <span className="shrink-0 rounded bg-(--canvas-soft) px-1 py-px text-[9px] uppercase tracking-wider text-(--faint)">
+            {input.mode}
+          </span>
+        </div>
+        <p className="truncate text-sm text-(--ink)">{input.text}</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="sm"
+                className="size-7 p-0 text-(--mute) hover:text-(--body)"
+                disabled={busy}
+                onClick={onSteer}
+                aria-label="Send now"
+              >
+                <Send size={13} />
+              </Button>
+            }
+          />
+          <TooltipContent>Send now (steer into the live run)</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="sm"
+                className="size-7 p-0 text-(--mute) hover:text-(--body)"
+                disabled={busy}
+                onClick={() => {
+                  setDraft(input.text);
+                  setEditing(true);
+                }}
+                aria-label="Edit"
+              >
+                <Pencil size={13} />
+              </Button>
+            }
+          />
+          <TooltipContent>Edit</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="sm"
+                className="size-7 p-0 text-(--mute) hover:text-(--err)"
+                disabled={busy}
+                onClick={onCancel}
+                aria-label="Cancel"
+              >
+                <X size={13} />
+              </Button>
+            }
+          />
+          <TooltipContent>Cancel</TooltipContent>
+        </Tooltip>
+      </div>
+    </li>
   );
 }

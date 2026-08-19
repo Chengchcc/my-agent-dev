@@ -135,6 +135,26 @@ export interface ConversationService {
     senderMemberId: string;
     addressedTo: string[];
   }): Promise<{ newConversationId: string }>;
+
+  // ─── Pending input queue (Composer queue area) ───
+  /** Pending inputs across the conversation's agent branches, oldest first. */
+  listPendingInputs(conversationId: string): Promise<
+    Array<{
+      inputId: string;
+      branchId: string;
+      mode: BranchInputMode;
+      text: string;
+      agentMemberId: string;
+      createdAt: number;
+    }>
+  >;
+  /** Inject a queued input into the branch's LIVE run ("Send now"). Throws
+   *  when the input is gone or no longer pending. */
+  steerInput(inputId: string): Promise<void>;
+  /** CAS a pending input's message; false when no longer pending. */
+  updateInput(inputId: string, text: string): Promise<boolean>;
+  /** CAS a pending/delivering input to cancelled (idempotent). */
+  cancelInput(inputId: string): Promise<void>;
 }
 
 export function createConversationService(deps: ConversationServiceDeps): ConversationService {
@@ -850,5 +870,34 @@ class ConversationServiceImpl implements ConversationService {
       content: input.editedContent,
     });
     return { newConversationId };
+  }
+
+  // ─── Pending input queue (Composer queue area) ───
+
+  async listPendingInputs(conversationId: string) {
+    const inputs = await this.#agentRuns.listPendingInputsForConversation(conversationId);
+    return inputs.map((i) => ({
+      inputId: i.inputId,
+      branchId: i.branchId,
+      mode: i.mode,
+      text: extractText(i.message),
+      agentMemberId: i.agentMemberId,
+      createdAt: i.createdAt,
+    }));
+  }
+
+  async steerInput(inputId: string): Promise<void> {
+    const input = await this.#agentRuns.getInput(inputId);
+    if (!input) throw new Error("Input not found");
+    if (input.status !== "pending") throw new Error("Input is no longer pending");
+    await this.#injectSteer(input.branchId, { inputId, message: input.message });
+  }
+
+  async updateInput(inputId: string, text: string): Promise<boolean> {
+    return this.#agentRuns.updateInput(inputId, { role: "user", text });
+  }
+
+  async cancelInput(inputId: string): Promise<void> {
+    return this.#agentRuns.cancelInput(inputId);
   }
 }

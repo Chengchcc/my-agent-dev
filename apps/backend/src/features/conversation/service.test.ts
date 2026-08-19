@@ -37,6 +37,16 @@ let nextAcquired = true;
 let activeRunId: string | null = null;
 let runIdCounter = 0;
 let knownRunConvId = "cid-1";
+interface FakeQueuedInput {
+  inputId: string;
+  branchId: string;
+  mode: string;
+  text: string;
+  status: "pending" | "delivered" | "cancelled";
+  agentMemberId: string;
+  createdAt: number;
+}
+const fakeInputs = new Map<string, FakeQueuedInput>();
 
 function makeRunService(): AgentRunService {
   return {
@@ -50,6 +60,18 @@ function makeRunService(): AgentRunService {
         message: input.message as { text?: string },
       });
       const runId = `run-${runIdCounter++}`;
+      const inputId = `in-${runId}`;
+      if (!nextAcquired) {
+        fakeInputs.set(inputId, {
+          inputId,
+          branchId: "b",
+          mode: input.mode,
+          text: (input.message as { text?: string }).text ?? "",
+          status: "pending",
+          agentMemberId: input.agentMemberId,
+          createdAt: Date.now(),
+        });
+      }
       return {
         acquired: nextAcquired,
         queued: !nextAcquired,
@@ -70,7 +92,7 @@ function makeRunService(): AgentRunService {
               terminalAt: null,
             } as never)
           : undefined,
-        inputId: `in-${runId}`,
+        inputId,
       };
     },
     async markInputAccepted(inputId) {
@@ -99,6 +121,43 @@ function makeRunService(): AgentRunService {
     },
     async listInputs() {
       return [];
+    },
+    async getInput(inputId) {
+      const i = fakeInputs.get(inputId);
+      if (!i) return null;
+      return {
+        inputId: i.inputId,
+        branchId: i.branchId,
+        mode: i.mode,
+        message: { role: "user", text: i.text },
+        status: i.status,
+        agentMemberId: i.agentMemberId,
+      } as never;
+    },
+    async listPendingInputsForConversation() {
+      return [...fakeInputs.values()]
+        .filter((i) => i.status === "pending")
+        .map(
+          (i) =>
+            ({
+              inputId: i.inputId,
+              branchId: i.branchId,
+              mode: i.mode,
+              message: { role: "user", text: i.text },
+              status: i.status,
+              agentMemberId: i.agentMemberId,
+            }) as never,
+        );
+    },
+    async updateInput(inputId, message) {
+      const i = fakeInputs.get(inputId);
+      if (!i || i.status !== "pending") return false;
+      i.text = (message as { text: string }).text;
+      return true;
+    },
+    async cancelInput(inputId) {
+      const i = fakeInputs.get(inputId);
+      if (i && i.status === "pending") i.status = "cancelled";
     },
     async hasActiveRunForConversations() {
       return false;
@@ -534,5 +593,95 @@ describe("conversation service (Agent Run cutover)", () => {
     const result = await svc.undoMessages({ conversationId: id, count: 1 });
     expect(result.undoneSeqs).toHaveLength(1);
     expect(port.getLedgerEntries(id).some((e) => e.kind === "undo")).toBe(true);
+  });
+
+  // ─── Pending input queue (Composer queue area) ───
+
+  test("explicit follow_up while LIVE child -> queued, NO steer injection (queue semantics)", async () => {
+    const id = "cid-q1";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    nextAcquired = false;
+    activeRunId = "run-live";
+    liveRunIds = new Set(["run-live"]);
+    enqueueCalls.length = 0;
+    dispatchCalls.length = 0;
+    injectSteerCalls.length = 0;
+    fakeInputs.clear();
+
+    const result = await svc.postMessage({
+      conversationId: id,
+      senderMemberId: humanMemberId,
+      addressedTo: [agentMemberId],
+      content: "queue me",
+      mode: "follow_up",
+    });
+
+    expect(enqueueCalls[0]!.mode).toBe("follow_up");
+    expect(result.triggeredRuns).toEqual([{ agentMemberId, runId: "", queued: true }]);
+    expect(dispatchCalls).toHaveLength(0);
+    expect(injectSteerCalls).toHaveLength(0);
+    expect(fakeInputs.size).toBe(1);
+  });
+
+  test("listPendingInputs returns queued inputs; steerInput injects one", async () => {
+    const id = "cid-q2";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    nextAcquired = false;
+    activeRunId = "run-live";
+    liveRunIds = new Set(["run-live"]);
+    enqueueCalls.length = 0;
+    injectSteerCalls.length = 0;
+    fakeInputs.clear();
+
+    await svc.postMessage({
+      conversationId: id,
+      senderMemberId: humanMemberId,
+      addressedTo: [agentMemberId],
+      content: "first",
+      mode: "follow_up",
+    });
+    await svc.postMessage({
+      conversationId: id,
+      senderMemberId: humanMemberId,
+      addressedTo: [agentMemberId],
+      content: "second",
+      mode: "follow_up",
+    });
+
+    const pending = await svc.listPendingInputs(id);
+    expect(pending.map((p) => p.text)).toEqual(["first", "second"]);
+    expect(pending[0]!.agentMemberId).toBe(agentMemberId);
+
+    const inputId = pending[0]!.inputId;
+    await svc.steerInput(inputId);
+    expect(injectSteerCalls).toHaveLength(1);
+    expect(injectSteerCalls[0]!.inputId).toBe(inputId);
+  });
+
+  test("updateInput edits pending text; cancelInput removes it from the queue", async () => {
+    const id = "cid-q3";
+    const { humanMemberId, agentMemberId } = setupConv(id);
+    nextAcquired = false;
+    activeRunId = "run-live";
+    liveRunIds = new Set(["run-live"]);
+    fakeInputs.clear();
+
+    await svc.postMessage({
+      conversationId: id,
+      senderMemberId: humanMemberId,
+      addressedTo: [agentMemberId],
+      content: "original",
+      mode: "follow_up",
+    });
+    const inputId = (await svc.listPendingInputs(id))[0]!.inputId;
+
+    expect(await svc.updateInput(inputId, "edited")).toBe(true);
+    expect((await svc.listPendingInputs(id))[0]!.text).toBe("edited");
+
+    await svc.cancelInput(inputId);
+    expect(await svc.listPendingInputs(id)).toHaveLength(0);
+
+    // edit after cancel is rejected (CAS pending-only)
+    expect(await svc.updateInput(inputId, "too late")).toBe(false);
   });
 });

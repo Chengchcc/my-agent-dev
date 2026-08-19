@@ -107,6 +107,16 @@ function makeRunsFakes(script: {
     async listInputs() {
       return [];
     },
+    async getInput() {
+      return null;
+    },
+    async listPendingInputsForConversation() {
+      return [];
+    },
+    async updateInput() {
+      return false;
+    },
+    async cancelInput() {},
     async hasActiveRunForConversations() {
       return false;
     },
