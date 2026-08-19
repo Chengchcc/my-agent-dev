@@ -23,6 +23,9 @@ export interface LarkProfileProvisioner {
     profileRef: string;
     brand: "feishu" | "lark";
     timeoutMs: number;
+    /** Streamed as soon as the setup URL is visible in child output —
+     *  lark-cli may print it to stdout (TTY) or stderr (piped). */
+    onUrl?: (url: string) => void;
   }): Promise<LarkProfileSetupResult>;
   probe(profileRef: string): Promise<"ready" | "not_ready" | "invalid">;
 }
@@ -39,8 +42,9 @@ export class CliSetupProvisioner implements LarkProfileProvisioner {
     profileRef: string;
     brand: "feishu" | "lark";
     timeoutMs: number;
+    onUrl?: (url: string) => void;
   }): Promise<LarkProfileSetupResult> {
-    const { profileRef, brand, timeoutMs } = input;
+    const { profileRef, brand, timeoutMs, onUrl } = input;
 
     const child = spawn(
       "lark-cli",
@@ -48,18 +52,33 @@ export class CliSetupProvisioner implements LarkProfileProvisioner {
       { stdio: ["ignore", "pipe", "pipe"] },
     );
 
-    let stdout = "";
     let stderr = "";
+    // Combined buffer: with a piped stdout (spawn default) lark-cli prints
+    // the setup URL to stderr, so the URL must be parsed from both streams.
+    let buf = "";
+    let urlParsed = false;
+    const tryParseUrl = () => {
+      if (urlParsed) return;
+      const m = buf.match(SETUP_URL_PATTERN);
+      if (m) {
+        urlParsed = true;
+        onUrl?.(m[0]);
+      }
+    };
 
     child.stdout?.on("data", (d: Buffer) => {
-      stdout += d.toString();
+      buf += d.toString();
+      tryParseUrl();
     });
     child.stderr?.on("data", (d: Buffer) => {
       stderr += d.toString();
+      buf += d.toString();
+      tryParseUrl();
     });
 
-    // URL is parsed from stdout in the exit handler (after all data has arrived)
-    let url = ""; // resolved when stdout data arrives
+    // URL is parsed from the combined buffer in the exit handler (after all
+    // data has arrived); the streaming onUrl above surfaces it earlier.
+    let url = "";
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -69,8 +88,8 @@ export class CliSetupProvisioner implements LarkProfileProvisioner {
     const waitForCompletion = new Promise<string>((resolve, reject) => {
       child.on("exit", (code) => {
         clearTimeout(timer);
-        // Parse URL now that all stdout data has arrived
-        const match = stdout.match(SETUP_URL_PATTERN);
+        // Parse URL now that all data has arrived
+        const match = buf.match(SETUP_URL_PATTERN);
         url = match?.[0] ?? "";
         if (timedOut) {
           reject(new Error("setup timed out"));
@@ -83,7 +102,12 @@ export class CliSetupProvisioner implements LarkProfileProvisioner {
 
       child.on("error", (err) => {
         clearTimeout(timer);
-        reject(err);
+        const code = (err as NodeJS.ErrnoException).code;
+        reject(
+          code === "ENOENT"
+            ? new Error("lark-cli not found — install lark-cli or configure a managed provisioner")
+            : err,
+        );
       });
     });
 

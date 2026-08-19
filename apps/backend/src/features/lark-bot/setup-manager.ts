@@ -71,7 +71,18 @@ export class LarkSetupManager {
 
     // Start provisioner in background
     void this.#provisioner
-      .start({ agentId, profileRef, brand, timeoutMs: DEFAULT_TIMEOUT_MS })
+      .start({
+        agentId,
+        profileRef,
+        brand,
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+        onUrl: (url) => {
+          // Surface the setup URL to the 3s polling UI as soon as lark-cli
+          // prints it (stdout TTY or stderr piped) — do not wait for exit.
+          session.url = url;
+          session.updatedAt = Date.now();
+        },
+      })
       .then((result) => {
         // Store cancel function so cancel() can SIGTERM the lark-cli process
         this.#cancelFns.set(setupId, result.cancel);

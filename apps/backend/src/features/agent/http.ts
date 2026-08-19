@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "n
 import { join as pathJoin, resolve as pathResolve, sep } from "node:path";
 import { BACKEND_KINDS } from "@chengchenccc/agent-backend";
 import { Elysia, t } from "elysia";
+import { probeCliSetupCapability } from "../lark-bot/provisioner.js";
 import type { LarkSetupManager } from "../lark-bot/setup-manager.js";
 import type { AgentIdentityStore } from "./agent-identity.js";
 import type { AgentRow } from "./domain.js";
@@ -375,6 +376,17 @@ export function agentRoutes(
       async ({ params: { id }, body }) => {
         const m = getSetupManager?.();
         if (!m) return Response.json({ error: "Lark setup not available" }, { status: 501 });
+        // Fail fast when lark-cli is missing/disabled: a pending session
+        // would otherwise hang until the 10-minute timeout.
+        if (!(await probeCliSetupCapability())) {
+          return Response.json(
+            {
+              error:
+                "Lark CLI setup unavailable: lark-cli not found or disabled in this environment",
+            },
+            { status: 501 },
+          );
+        }
         try {
           const existing = await svc.getById(id);
           const pending = m.getByAgentId(id);
