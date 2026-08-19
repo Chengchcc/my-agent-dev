@@ -1,16 +1,38 @@
 import type { AIMessageChunk } from "@chengchenccc/core";
-import type { Message, TextBlock, ToolResultBlock, ToolUseBlock } from "@chengchenccc/message";
+import type {
+  ImageBlock,
+  Message,
+  TextBlock,
+  ToolResultBlock,
+  ToolUseBlock,
+} from "@chengchenccc/message";
 import { registerApi } from "../api-registry.js";
 import { type ResolvedOpenAICompat, resolveOpenAICompat } from "../compat.js";
 import type { Model, ProviderStreamOptions } from "../types.js";
 
 // ─── Message conversion ───
 
+/** data URL for an internal image block (OpenAI vision `image_url`). */
+function imageDataUrl(b: ImageBlock): string {
+  return `data:${b.mediaType};base64,${b.base64}`;
+}
+
+/** Content parts array for vision-capable models. OpenAI accepts `image_url`
+ *  parts inside user messages and tool messages. */
+function contentParts(text: string, images: readonly ImageBlock[]): unknown[] {
+  return [
+    ...(text ? [{ type: "text", text }] : []),
+    ...images.map((img) => ({ type: "image_url", image_url: { url: imageDataUrl(img) } })),
+  ];
+}
+
 /** Convert internal Message[] → OpenAI Chat Completions wire messages.
  *  - tool_result block → `{ role: "tool", tool_call_id, content }`
  *  - tool_use blocks   → `tool_calls` array (id + name + JSON-stringified args)
  *  - otherwise         → `{ role, content }` (text blocks joined, fallback to m.text)
- *  With `supportsDeveloperRole`, a "system" role is remapped to "developer". */
+ *  With `supportsDeveloperRole`, a "system" role is remapped to "developer".
+ *  Images (pasted or read_image tool results) become `image_url` content
+ *  parts instead of plain strings. */
 function convertMessages(
   messages: readonly Message[],
   compat: ResolvedOpenAICompat,
@@ -25,7 +47,10 @@ function convertMessages(
         return toolResults.map((result) => ({
           role: "tool",
           tool_call_id: result.tool_use_id,
-          content: result.content,
+          content:
+            result.images && result.images.length > 0
+              ? contentParts(result.content, result.images)
+              : result.content,
         }));
       }
       const toolCalls = m.blocks
@@ -39,8 +64,18 @@ function convertMessages(
         .filter((b): b is TextBlock => b.type === "text")
         .map((b) => b.text)
         .join("");
+      const images = m.blocks.filter((b): b is ImageBlock => b.type === "image");
       if (toolCalls.length > 0) {
-        return [{ role: role(m.role), content: text || null, tool_calls: toolCalls }];
+        return [
+          {
+            role: role(m.role),
+            content: images.length > 0 ? contentParts(text, images) : text || null,
+            tool_calls: toolCalls,
+          },
+        ];
+      }
+      if (images.length > 0) {
+        return [{ role: role(m.role), content: contentParts(text || m.text || "", images) }];
       }
       return [{ role: role(m.role), content: (text || m.text) ?? "" }];
     }

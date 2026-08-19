@@ -30,8 +30,21 @@ function convertInput(messages: readonly Message[], systemRole: string): unknown
         input.push({ type: "message", role: systemRole, content: [{ type: "input_text", text }] });
     } else if (m.role === "user") {
       const text = textOf(m);
-      if (text)
-        input.push({ type: "message", role: "user", content: [{ type: "input_text", text }] });
+      const images =
+        m.blocks?.filter((b): b is Extract<typeof b, { type: "image" }> => b.type === "image") ??
+        [];
+      if (text || images.length > 0)
+        input.push({
+          type: "message",
+          role: "user",
+          content: [
+            ...(text ? [{ type: "input_text", text }] : []),
+            ...images.map((img) => ({
+              type: "input_image",
+              image_url: `data:${img.mediaType};base64,${img.base64}`,
+            })),
+          ],
+        });
     } else if (m.role === "assistant") {
       if (m.blocks?.length) {
         const text = m.blocks

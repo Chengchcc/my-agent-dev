@@ -402,6 +402,112 @@ describe("Provider contract — wire serialization", () => {
     expect(toolMsg.content).toEqual([{ type: "tool_result", tool_use_id: "t1", content: "ok" }]);
   });
 
+  test("openai-completions serializes image blocks as image_url parts", async () => {
+    const provider = makeProvider(openaiModel);
+    const capture = mockFetchCapture(sseRes([DONE]));
+    await collectChunks(
+      provider.stream(
+        openaiModel,
+        [
+          {
+            role: "user",
+            text: "",
+            blocks: [
+              { type: "text", text: "look" },
+              { type: "image", mediaType: "image/png", base64: "aGk=" },
+            ],
+          },
+        ],
+        { apiKey: "test-key" },
+      ),
+    );
+    capture.restore();
+
+    const body = capture.getBody();
+    const msgs = body!.messages as Array<{ role: string; content: unknown }>;
+    expect(msgs[0]).toEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "look" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,aGk=" } },
+      ],
+    });
+  });
+
+  test("openai-completions tool_result carries images as content parts", async () => {
+    const provider = makeProvider(openaiModel);
+    const capture = mockFetchCapture(sseRes([DONE]));
+    await collectChunks(
+      provider.stream(
+        openaiModel,
+        [
+          {
+            role: "assistant",
+            text: "",
+            blocks: [{ type: "tool_use", id: "t1", name: "read_image", input: {} }],
+          },
+          {
+            role: "tool",
+            text: "",
+            blocks: [
+              {
+                type: "tool_result",
+                tool_use_id: "t1",
+                content: "[image attached]",
+                images: [{ type: "image", mediaType: "image/jpeg", base64: "am9o" }],
+              },
+            ],
+          },
+        ],
+        { apiKey: "test-key" },
+      ),
+    );
+    capture.restore();
+
+    const body = capture.getBody();
+    const msgs = body!.messages as Array<{ role: string; content: unknown }>;
+    const toolMsg = msgs[msgs.length - 1]!;
+    expect(toolMsg.role).toBe("tool");
+    expect(toolMsg.content).toEqual([
+      { type: "text", text: "[image attached]" },
+      { type: "image_url", image_url: { url: "data:image/jpeg;base64,am9o" } },
+    ]);
+  });
+
+  test("openai-responses serializes user images as input_image", async () => {
+    const responsesModel: Model = { ...openaiModel, api: "openai-responses" };
+    const provider = makeProvider(responsesModel);
+    const capture = mockFetchCapture(sseRes([DONE]));
+    await collectChunks(
+      provider.stream(
+        responsesModel,
+        [
+          {
+            role: "user",
+            text: "",
+            blocks: [
+              { type: "text", text: "look" },
+              { type: "image", mediaType: "image/png", base64: "aGk=" },
+            ],
+          },
+        ],
+        { apiKey: "test-key" },
+      ),
+    );
+    capture.restore();
+
+    const body = capture.getBody();
+    const input = body!.input as Array<{ type: string; content: unknown }>;
+    expect(input[0]).toEqual({
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_text", text: "look" },
+        { type: "input_image", image_url: "data:image/png;base64,aGk=" },
+      ],
+    });
+  });
+
   test("anthropic serializes tool schemas, defaults missing inputSchema to {}", async () => {
     const provider = makeProvider(anthropicModel);
     const capture = mockFetchCapture(sseRes([DONE]));
