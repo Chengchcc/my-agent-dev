@@ -83,7 +83,7 @@ export function renderContentBlocks(
         <img
           key={`img-${i}`}
           src={`data:${block.mediaType};base64,${block.base64}`}
-          alt="attached image"
+          alt="attached"
           className="my-1 max-h-80 rounded-md border border-(--hairline)"
         />
       );
