@@ -615,8 +615,14 @@ export function useConversation(
           text,
           addressedTo: resolved.length > 0 ? resolved : resolveAddressedTo(state),
           model,
+          attachments,
         },
         {
+          onSuccess: (result) => {
+            for (const run of result.triggeredRuns ?? []) {
+              if (!run.queued && run.runId) watchRun(run.runId, run.agentMemberId);
+            }
+          },
           onSettled: () => {
             dispatch({ type: "send/settled" });
           },

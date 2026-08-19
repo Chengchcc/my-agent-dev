@@ -373,13 +373,13 @@ export function Composer({
                   <img
                     src={`data:${a.mediaType};base64,${a.base64}`}
                     alt="attached"
-                    className="h-full w-full object-cover"
+                    className="size-full  object-cover"
                   />
                   <button
                     type="button"
                     aria-label="Remove image"
                     onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
-                    className="absolute top-0 right-0 bg-black/60 text-white text-[10px] px-1 leading-4"
+                    className="absolute top-0 right-0 bg-black/60 text-white text-[10px]/4 px-1 "
                   >
                     ×
                   </button>
@@ -513,7 +513,7 @@ export function Composer({
           <Button
             onClick={onStop}
             size="icon"
-            className="shrink-0 mb-0.5 h-8 w-8 bg-(--err)/15 hover:bg-(--err)/25"
+            className="shrink-0 mb-0.5 size-8  bg-(--err)/15 hover:bg-(--err)/25"
             title="Stop the run"
             aria-label="Stop"
           >
@@ -524,7 +524,7 @@ export function Composer({
             onClick={handleSend}
             disabled={disabled || !value.trim()}
             size="icon"
-            className="shrink-0 mb-0.5 h-8 w-8"
+            className="shrink-0 mb-0.5 size-8 "
             aria-label="Send"
           >
             <ArrowUp size={16} className="shrink-0" />

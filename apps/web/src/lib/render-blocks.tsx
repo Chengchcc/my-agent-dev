@@ -79,7 +79,6 @@ export function renderContentBlocks(
     }
     if (block.type === "image" && typeof block.base64 === "string" && block.mediaType) {
       return (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           key={`img-${i}`}
           src={`data:${block.mediaType};base64,${block.base64}`}
