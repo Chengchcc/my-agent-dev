@@ -51,23 +51,37 @@ export function KnowledgePackPanel({ agentId }: { agentId: string }) {
 
   return (
     <div className="space-y-2">
-      {packs.map((p) => (
-        <ListRowCard
-          key={p.id}
-          icon={<Library className="size-4 text-(--mute)" />}
-          title={p.name}
-          desc={p.error ? `${p.description} — ${p.error}` : p.description}
-          badges={[p.status]}
-          status={p.status === "ready" ? "ok" : p.status === "failed" ? "err" : undefined}
-          actions={
-            <Switch
-              checked={assigned.has(p.id)}
-              disabled={p.status !== "ready"}
-              onCheckedChange={(on) => void toggle(p.id, on === true)}
-            />
-          }
-        />
-      ))}
+      {packs.map((p) => {
+        const linked = assigned.has(p.id);
+        return (
+          <ListRowCard
+            key={p.id}
+            icon={<Library className="size-4 text-(--mute)" />}
+            title={p.name}
+            desc={p.error ? `${p.description} — ${p.error}` : p.description}
+            // Ready is a GLOBAL install state; a green "ok" badge alone made
+            // users read it as "linked". Ready-but-unassigned shows a neutral
+            // "installed (not linked)" badge instead of the green one.
+            badges={[p.status === "ready" && !linked ? "installed (not linked)" : p.status]}
+            status={
+              p.status === "ready"
+                ? linked
+                  ? "ok"
+                  : undefined
+                : p.status === "failed"
+                  ? "err"
+                  : undefined
+            }
+            actions={
+              <Switch
+                checked={linked}
+                disabled={p.status !== "ready"}
+                onCheckedChange={(on) => void toggle(p.id, on === true)}
+              />
+            }
+          />
+        );
+      })}
     </div>
   );
 }
