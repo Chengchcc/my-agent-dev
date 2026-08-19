@@ -621,9 +621,11 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         configRevision: 1,
         // A retry is a FRESH attempt after a failure - replay safety is the
         // wrong invariant here. A static suffix replays the same dead run
-        // forever (acquired=true on a failed run); the monotonic component
-        // guarantees a new run per tick after each failure.
-        idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}:retry:${item.attempt}`,
+        // forever (acquired=true on a failed run); item.attempt only grows
+        // on a REJECT verdict, so generator failures (which throw before
+        // any verdict) would reuse the same key across ticks. Date.now()
+        // is the monotonic component: one fresh run per tick after failure.
+        idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}:retry:${Date.now()}`,
         systemPrompt: genPrompt || undefined,
         skillRoots: genSkillRoots,
         workspace: { root: repoCwd, access: "read_write" },
@@ -696,16 +698,17 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     });
     let verdict: Verdict;
     // Bug 4: when the generator changed real files but the meta is missing
-    // or unparseable, the work is NOT rolled back silently - it routes to
-    // awaiting_review so a human can decide. Only a no-change run with a
-    // broken meta is a pure ESCALATE (nothing to preserve).
+    // or unparseable, the work must NOT be rolled back. ESCALATE routes to
+    // inbox (reducer) which the rollback guard below treats as rollback, so
+    // changed work uses a PASS verdict (with the changed paths as evidence)
+    // to land in awaiting_review with the worktree intact. Only a no-change
+    // run with a broken meta is a pure ESCALATE (nothing to preserve).
     const changed = changedFiles.length > 0;
     if (!writtenMeta) {
       verdict = changed
         ? {
-            verdict: "ESCALATE",
-            reasons: ["workflow meta 不可解析但 generator 有改动，转人工 review"],
-            evidence: `changed: ${changedFiles.join(", ")}`,
+            verdict: "PASS",
+            evidence: `workflow meta 不可解析但 generator 有改动，转人工 review; changed: ${changedFiles.join(", ")}`,
           }
         : noVerdict("workflow script has no parseable meta block");
     } else {
@@ -722,10 +725,10 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       verdict,
     });
 
-    // Rollback on REJECT/ESCALATE. Bug 4: an ESCALATE that routed to
-    // awaiting_review (meta missing BUT files changed) must NOT roll back -
-    // the worktree keeps the changes for the human to inspect. Only roll
-    // back when the item actually returned to inbox/fixing.
+    // Rollback on REJECT/ESCALATE. Bug 4: changed-without-meta now routes
+    // through a PASS verdict to awaiting_review, so the rollback guard only
+    // fires when the item actually returned to inbox/fixing (REJECT /
+    // pure ESCALATE) — the worktree keeps changes for the human to review.
     const updatedItem = state.items[item.id];
     const rolledBack = updatedItem?.step === "fixing" || updatedItem?.step === "inbox";
     if (rolledBack) {

@@ -151,7 +151,7 @@ function makeRunService(): AgentRunService {
     },
     async updateInput(inputId, message) {
       const i = fakeInputs.get(inputId);
-      if (!i || i.status !== "pending") return false;
+      if (i?.status !== "pending") return false;
       i.text = (message as { text: string }).text;
       return true;
     },

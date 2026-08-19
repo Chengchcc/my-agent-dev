@@ -141,6 +141,11 @@ interface RunScript {
   /** first generator enqueue REPLAYS a terminal failed run; the retry-scoped
    *  key must then acquire a FRESH run. */
   genReplayTerminal?: boolean;
+  /** Simulate the model deleting/corrupting .workflows/loop.js so the
+   *  product sees NO parseable meta writeback. */
+  deleteWorkflowScript?: boolean;
+  /** Observe every enqueue (idempotency keys) even when loopStep throws. */
+  onEnqueue?: (e: { agentMemberId: string; idempotencyKey: string }) => void;
 }
 
 function makeFakeRuns(script: RunScript, workDir: string = "") {
@@ -188,6 +193,10 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
         mode: input.mode,
         idempotencyKey: input.idempotencyKey,
         message: input.message as { text?: string },
+      });
+      script.onEnqueue?.({
+        agentMemberId: input.agentMemberId,
+        idempotencyKey: input.idempotencyKey,
       });
       if (script.genQueued && input.agentMemberId.startsWith("loop-generator")) {
         return { acquired: false, queued: true, replayed: false, inputId: "in" };
@@ -256,6 +265,9 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
         await Bun.write(join(workDir, rel), "touched").catch(() => {
           /* fixture without a worktree */
         });
+      }
+      if (script.deleteWorkflowScript) {
+        await rm(join(workDir, ".workflows", "loop.js"), { force: true }).catch(() => {});
       }
       const status = script.genStatus ?? "completed";
       (run as { status: AgentRun["status"] }).status = status;
@@ -488,6 +500,35 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     expect(item.generatorRunId).toMatch(/^run-\d+$/);
   });
 
+  test("Bug 2: retry key differs across failure ticks (item.attempt is static)", async () => {
+    const fixture = await setupGitDataDir();
+    const seen: string[] = [];
+    try {
+      const store = createTestStore();
+      stateWithFixingItem(store);
+      const script = {
+        genReplayTerminal: true,
+        genStatus: "failed" as const,
+        workflowMeta: null,
+        onEnqueue: (e: { idempotencyKey: string }) => seen.push(e.idempotencyKey),
+      };
+      // Generator fails after the retry enqueue: loopStep throws BEFORE any
+      // state save, so attempt stays 1 on the next tick. The retry key must
+      // still move forward, or the second tick replays the same dead run.
+      await expect(
+        runStep({ store, dataDir: fixture.dataDir, projectPort: fixture.projectPort, script }),
+      ).rejects.toThrow(/ended failed/);
+      await expect(
+        runStep({ store, dataDir: fixture.dataDir, projectPort: fixture.projectPort, script }),
+      ).rejects.toThrow(/ended failed/);
+      const retryKeys = seen.filter((k) => k.includes(":retry"));
+      expect(retryKeys).toHaveLength(2);
+      expect(retryKeys[0]).not.toBe(retryKeys[1]);
+    } finally {
+      await fixture.cleanup();
+    }
+  }, 20_000);
+
   test("generator commit_failed → loopStep throws, evaluator never created", async () => {
     const store = createTestStore();
     stateWithFixingItem(store);
@@ -545,6 +586,32 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     expect(item.step).toBe("inbox");
     expect(item.result?.verdict).toBe("ESCALATE");
   });
+
+  test("Bug 4: meta missing but files changed → PASS/awaiting_review, work preserved", async () => {
+    const fixture = await setupGitDataDir();
+    try {
+      const store = createTestStore();
+      stateWithFixingItem(store);
+      const { result, worktreeRoot } = await runStep({
+        store,
+        dataDir: fixture.dataDir,
+        projectPort: fixture.projectPort,
+        script: { workflowMeta: null, deleteWorkflowScript: true, touchFiles: ["CHANGE.txt"] },
+      });
+      const item = result.items["item-1"]!;
+      // PASS (with evidence) routes to awaiting_review, NOT inbox — the
+      // rollback guard stays false and the worktree is not reset.
+      expect(item.step).toBe("awaiting_review");
+      expect(item.result?.verdict).toBe("PASS");
+      const evidence = item.result && "evidence" in item.result ? item.result.evidence : "";
+      expect(evidence).toContain("CHANGE.txt");
+      // The PASS commit branch committed the change onto the agent branch.
+      const log = await Bun.$`git -C ${worktreeRoot} log --oneline -3`.quiet().text();
+      expect(log).toMatch(/loop test item item-1/);
+    } finally {
+      await fixture.cleanup();
+    }
+  }, 20_000);
 
   test("human APPROVE → resolved item removed from store", async () => {
     const store = createTestStore();
