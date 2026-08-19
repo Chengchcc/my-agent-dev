@@ -4,7 +4,6 @@ export interface CommandContext {
   conversationId: string;
   args: string;
   toast: (msg: string, type?: "success" | "error" | "info") => void;
-  toggleTriggerMode: () => void;
   currentRunId: string | null;
   router: { push: (path: string) => void };
   /** Invalidate the GoalStatusBar query after a goal mutation. */
@@ -82,14 +81,6 @@ export const slashCommands: SlashCommand[] = [
       a.download = `${ctx.conversationId}.md`;
       a.click();
       URL.revokeObjectURL(url);
-      return { handled: true };
-    },
-  },
-  {
-    command: "/auto",
-    description: "Toggle auto/mention trigger mode",
-    execute: async (ctx) => {
-      ctx.toggleTriggerMode();
       return { handled: true };
     },
   },

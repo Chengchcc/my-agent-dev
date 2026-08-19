@@ -31,7 +31,6 @@ export type UiItem =
 /** "message" variant of UiItem — derived, not a new domain concept. */
 export type MessageItem = Extract<UiItem, { kind: "message" }>;
 
-export type TriggerMode = "auto" | "mention";
 export type StreamConn = "connecting" | "open" | "reconnecting" | "closed";
 
 export interface ConvState {
@@ -40,7 +39,6 @@ export interface ConvState {
   items: UiItem[];
   streamConn: StreamConn;
   error: string | null;
-  triggerMode: TriggerMode;
   /** Number of sends that have been dispatched locally but not yet settled
    *  by the backend (HTTP POST in-flight). Decremented on mutation
    *  onSettled (success OR error) - never tied to an agent reply; Run
@@ -56,7 +54,6 @@ export type Action =
   /** POST settled (success OR error): decrement the in-flight counter. */
   | { type: "send/settled" }
   | { type: "conn"; status: StreamConn }
-  | { type: "toggleTriggerMode" }
   | { type: "send/error"; message: string }
   | { type: "member"; seq: number; kind: string; payload: unknown }
   | {
@@ -77,7 +74,6 @@ export function initialState(): ConvState {
     items: [],
     streamConn: "connecting",
     error: null,
-    triggerMode: "auto",
     pendingSendCount: 0,
     optimisticSeq: 0,
   };
@@ -238,12 +234,10 @@ export function reducer(s: ConvState, a: Action): ConvState {
     case "bootstrap": {
       const roster: Record<string, SenderRef> = {};
       for (const m of a.members) roster[m.memberId] = m;
-      const agentCount = Object.values(roster).filter((m) => m.kind === "agent").length;
       return {
         ...s,
         viewerMemberId: a.viewerMemberId,
         roster,
-        triggerMode: agentCount > 1 ? "mention" : "auto",
       };
     }
     case "member": {
@@ -348,9 +342,6 @@ export function reducer(s: ConvState, a: Action): ConvState {
         ...s,
         error: a.message,
       };
-
-    case "toggleTriggerMode":
-      return { ...s, triggerMode: s.triggerMode === "auto" ? "mention" : "auto" };
 
     default:
       return s;

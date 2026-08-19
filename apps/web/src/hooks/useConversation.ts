@@ -65,10 +65,10 @@ function resolveViewerMemberId(members: SenderRef[]): string {
 }
 
 function resolveAddressedTo(s: ConvState): string[] {
-  const agents = Object.values(s.roster).filter((m) => m.kind === "agent");
-  if (agents.length === 0) return [];
-  if (s.triggerMode === "auto") return agents.map((m) => m.memberId);
-  return [];
+  // Single-agent conversations: every message goes to the one agent.
+  return Object.values(s.roster)
+    .filter((m) => m.kind === "agent")
+    .map((m) => m.memberId);
 }
 
 export function useConversation(
@@ -638,17 +638,12 @@ export function useConversation(
     [sendMut, state.roster, state.viewerMemberId, state, watchRun, activeRuns.size],
   );
 
-  const toggleTriggerMode = useCallback(() => {
-    dispatch({ type: "toggleTriggerMode" });
-  }, []);
-
   const busy = isBusy(state) || activeRuns.size > 0;
 
   return {
     state,
     busy,
     send,
-    toggleTriggerMode,
     activeRuns,
     transients,
     transientTools,

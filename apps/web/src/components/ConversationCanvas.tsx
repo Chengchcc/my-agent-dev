@@ -44,7 +44,6 @@ export function ConversationCanvas({
     state,
     busy,
     send,
-    toggleTriggerMode,
     transients,
     transientTools,
     runTodos,
@@ -52,7 +51,7 @@ export function ConversationCanvas({
     activeRuns,
     workflows,
   } = useConversation(conversationId, snapshot);
-  const { viewerMemberId, roster, items, error, triggerMode, streamConn } = state;
+  const { viewerMemberId, roster, items, error, streamConn } = state;
 
   // W3+W5: use the most recent agent run's status, not first-found.
   // Scan from newest to oldest to get the current run's transient state.
@@ -224,14 +223,13 @@ export function ConversationCanvas({
             : type === "info"
               ? toast.info(msg)
               : toast.success(msg),
-        toggleTriggerMode,
         currentRunId,
         router: { push: router.push },
         refreshGoal: () => qc.invalidateQueries({ queryKey: ["goal", conversationId] }),
       };
       await cmd.execute(ctx);
     },
-    [conversationId, send, toggleTriggerMode, currentRunId, router, qc],
+    [conversationId, send, currentRunId, router, qc],
   );
 
   return (
@@ -376,7 +374,7 @@ export function ConversationCanvas({
       <div className="flex-1 flex min-h-0 relative">
         {/* Main scroll area */}
         <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[760px] px-6 py-6 pb-40">
+          <div className="mx-auto max-w-[760px] p-6  pb-40">
             {items.length === 0 ? (
               <div className="flex flex-col items-start justify-center py-24">
                 {primaryAgent && (
@@ -459,36 +457,6 @@ export function ConversationCanvas({
       {/* Composer */}
       <div className="shrink-0 border-t border-(--hairline)">
         <div className="flex items-center gap-2 px-6 pt-3">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={toggleTriggerMode}
-            aria-pressed={triggerMode === "auto"}
-            className="
-              h-7 shrink-0 gap-1.5 rounded-md px-2
-              border border-(--hairline)
-              bg-transparent
-              text-[10px] font-medium tracking-kicker
-              text-(--mute)
-              hover:bg-(--canvas-soft)
-              hover:text-(--ink)
-              aria-pressed:bg-(--canvas-soft)
-              aria-pressed:text-(--primary)
-            "
-            title={
-              triggerMode === "auto"
-                ? "Auto: messages sent to all agents"
-                : "Mention: use @ to address specific agents"
-            }
-          >
-            <span
-              className={`size-1.5  rounded-full ${
-                triggerMode === "auto" ? "bg-(--primary)" : "bg-(--hairline-soft)"
-              }`}
-            />
-            {triggerMode === "auto" ? "AUTO" : "@ MENTION"}
-          </Button>
           {/* Connection status */}
           {streamConn !== "open" && (
             <Badge
@@ -510,7 +478,6 @@ export function ConversationCanvas({
           disabled={false}
           placeholder={busy ? "Steer the agent..." : "Send a message..."}
           roster={roster}
-          autoAgentCount={Object.values(roster).filter((m) => m.kind === "agent").length}
           isBusy={busy}
           onStop={
             currentRunId

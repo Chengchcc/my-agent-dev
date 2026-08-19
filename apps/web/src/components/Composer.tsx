@@ -3,8 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUp,
-  AtSign,
-  Bot,
   Check,
   CornerDownLeft,
   ListChecks,
@@ -23,10 +21,6 @@ import { api, type PendingInput } from "@/lib/api";
 import type { SenderRef } from "@/lib/conversation-reducer";
 import { slashCommands } from "@/lib/slash-commands";
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 /** Composer metrics (§3): auto height 40–160px, panel bg, radius 8. */
 const COMPOSER_MIN_H = 40;
 const COMPOSER_MAX_H = 160;
@@ -43,7 +37,6 @@ interface ComposerProps {
   disabled?: boolean;
   placeholder?: string;
   roster?: Record<string, SenderRef>;
-  autoAgentCount: number;
   /** A run is live: the send button becomes the red-dot Stop. */
   isBusy?: boolean;
   onStop?: () => void;
@@ -79,13 +72,9 @@ export function Composer({
     [conversationId],
   );
   const [value, setValue] = useState("");
-  const [showMentions, setShowMentions] = useState(false);
-  const [mentionFilter, setMentionFilter] = useState("");
-  const [mentionIndex, setMentionIndex] = useState(0);
   const [showSlash, setShowSlash] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
   const [attachments, setAttachments] = useState<
     readonly { type: "image"; mediaType: string; base64: string }[]
   >([]);
@@ -123,25 +112,11 @@ export function Composer({
     return Object.values(roster).filter((m) => m.kind === "agent");
   }, [roster]);
 
-  const filteredMentions = useMemo(() => {
-    const q = mentionFilter.toLowerCase();
-    return agentMembers.filter(
-      (m) =>
-        (m.displayName ?? m.memberId).toLowerCase().includes(q) ||
-        m.memberId.toLowerCase().includes(q),
-    );
-  }, [agentMembers, mentionFilter]);
-
   const filteredSlash = useMemo(() => {
     const q = value.trim().toLowerCase();
     return slashCommands.filter((c) => c.command.startsWith(q));
   }, [value]);
 
-  // Reset selection when filter changes (including on filter input)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional - must reset when filter narrows options
-  useEffect(() => {
-    setMentionIndex(0);
-  }, [mentionFilter]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional - must reset when filter narrows options
   useEffect(() => {
     setSlashIndex(0);
@@ -188,69 +163,22 @@ export function Composer({
     el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_H)}px`;
   }, []);
 
-  const resolveAddressedTo = useCallback(
-    (text: string): string[] => {
-      if (!roster || agentMembers.length === 0) return [];
-      if (agentMembers.length === 1) return [agentMembers[0]!.memberId];
-      const mentioned = new Set<string>();
-      for (const m of agentMembers) {
-        const label = m.displayName ?? m.memberId;
-        // @label must be followed by whitespace/punctuation/EOS —
-        // avoids prefix false-matches (e.g. token "1" hitting agent-11)
-        const re = new RegExp(`@${escapeRegExp(label)}(?=\\s|[,.!?;:]|$)`);
-        if (re.test(text) || text.includes(`@${m.memberId}`)) {
-          mentioned.add(m.memberId);
-        }
-      }
-      return [...mentioned];
-    },
-    [roster, agentMembers],
-  );
-
-  const insertMention = useCallback(
-    (member: SenderRef) => {
-      const el = textareaRef.current;
-      if (!el) return;
-      const name = member.displayName ?? member.memberId;
-      const before = value.slice(0, el.selectionStart);
-      const atPos = before.lastIndexOf("@");
-      const after = value.slice(el.selectionEnd);
-      const newText =
-        atPos >= 0 ? `${before.slice(0, atPos)}@${name} ${after}` : `@${name} ${value}`;
-      setValue(newText);
-      setShowMentions(false);
-      setMentionFilter("");
-      setTimeout(() => {
-        el.focus();
-        const cursor = atPos >= 0 ? atPos + name.length + 2 : name.length + 2;
-        el.setSelectionRange(cursor, cursor);
-      }, 0);
-    },
-    [value],
-  );
+  const resolveAddressedTo = useCallback((): string[] => {
+    // Single-agent conversations: every message goes to the one agent.
+    if (agentMembers.length === 0) return [];
+    return [agentMembers[0]!.memberId];
+  }, [agentMembers]);
 
   const handleInput = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const text = e.target.value;
       setValue(text);
       autoGrow();
-      const el = textareaRef.current;
-      if (el) {
-        const before = text.slice(0, el.selectionStart);
-        const atMatch = before.match(/@(\S*)$/);
-        if (atMatch && agentMembers.length > 1) {
-          setShowMentions(true);
-          setMentionFilter(atMatch[1] ?? "");
-        } else {
-          setShowMentions(false);
-          setMentionFilter("");
-        }
-      }
       // Slash command popover: only while the input is a single token starting with "/"
       // (no spaces yet). Once args begin, the popover closes so typing continues freely.
       setShowSlash(text.startsWith("/") && !/\s/.test(text.trim()));
     },
-    [autoGrow, agentMembers.length],
+    [autoGrow],
   );
 
   const handleSend = useCallback(() => {
@@ -267,12 +195,7 @@ export function Composer({
       }
       return;
     }
-    const addressedTo = resolveAddressedTo(trimmed);
-    if (agentMembers.length > 1 && addressedTo.length === 0) {
-      toast.error("Use @ to specify which agent to send to");
-      setShowMentions(true);
-      return;
-    }
+    const addressedTo = resolveAddressedTo();
     onSend(trimmed, addressedTo, model ?? undefined, attachments);
     setValue("");
     setAttachments([]);
@@ -287,24 +210,10 @@ export function Composer({
     onSend,
     onSlashCommand,
     resolveAddressedTo,
-    agentMembers.length,
     model,
     attachments,
     inputsQuery,
   ]);
-
-  const navigateMention = useCallback(
-    (dir: -1 | 1) => {
-      if (!showMentions || filteredMentions.length === 0) return;
-      setMentionIndex((prev) => {
-        const next = prev + dir;
-        if (next < 0) return filteredMentions.length - 1;
-        if (next >= filteredMentions.length) return 0;
-        return next;
-      });
-    },
-    [showMentions, filteredMentions.length],
-  );
 
   const navigateSlash = useCallback(
     (dir: -1 | 1) => {
@@ -336,35 +245,6 @@ export function Composer({
   }, [slashIndex, filteredSlash]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (showMentions && filteredMentions.length > 0) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setShowMentions(false);
-        return;
-      }
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        navigateMention(1);
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        navigateMention(-1);
-        return;
-      }
-      if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        const idx = Math.min(mentionIndex, filteredMentions.length - 1);
-        if (filteredMentions[idx]) insertMention(filteredMentions[idx]);
-        return;
-      }
-      if (e.key === "Tab") {
-        e.preventDefault();
-        const idx = Math.min(mentionIndex, filteredMentions.length - 1);
-        if (filteredMentions[idx]) insertMention(filteredMentions[idx]);
-        return;
-      }
-    }
     if (showSlash && filteredSlash.length > 0) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -398,9 +278,7 @@ export function Composer({
     }
   };
 
-  const showMentionButton = agentMembers.length > 1;
-  const effectivePlaceholder =
-    agentMembers.length === 1 ? placeholder : "@agent to address…  Ctrl+Enter to send";
+  const effectivePlaceholder = placeholder;
 
   return (
     <div className="bg-(--canvas) px-6 py-4">
@@ -476,45 +354,6 @@ export function Composer({
               style={{ minHeight: `${COMPOSER_MIN_H}px`, maxHeight: `${COMPOSER_MAX_H}px` }}
             />
           </div>
-          {/* @mention popover */}
-          {showMentions && (
-            <div
-              ref={popoverRef}
-              className="absolute bottom-full left-0 mb-1 w-72 bg-(--canvas) border border-(--hairline) rounded-lg z-50 overflow-hidden"
-            >
-              <div className="flex items-center justify-between px-3 py-2 border-b border-(--hairline) bg-(--canvas-soft)">
-                <span className="text-[10px] tracking-widest uppercase text-(--mute) font-semibold">
-                  Mention an agent
-                </span>
-                <span className="text-[10px] text-(--mute) flex items-center gap-1">
-                  <CornerDownLeft size={10} /> to select
-                </span>
-              </div>
-              <div className="max-h-48 overflow-y-auto">
-                {filteredMentions.length === 0 ? (
-                  <p className="text-xs text-(--mute) p-3 ">No matching agents</p>
-                ) : (
-                  filteredMentions.map((m, i) => (
-                    <Button
-                      key={m.memberId}
-                      onClick={() => insertMention(m)}
-                      onMouseEnter={() => setMentionIndex(i)}
-                      className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors ${
-                        i === mentionIndex ? "bg-(--primary)/10" : "hover:bg-(--canvas-soft)"
-                      }`}
-                    >
-                      <Bot size={15} className="text-(--primary) shrink-0" />
-                      <span className="text-sm text-(--body) truncate flex-1">
-                        {m.displayName ?? m.memberId}
-                      </span>
-                      <span className="text-[10px] font-mono text-(--mute) shrink-0">agent</span>
-                    </Button>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-
           {/* Slash command popover */}
           {showSlash && (
             <div className="absolute bottom-full left-0 mb-1 w-80 bg-(--canvas) border border-(--hairline) rounded-lg z-50 overflow-hidden">
@@ -558,26 +397,6 @@ export function Composer({
         </div>
 
         <ModelPicker value={model} onChange={pickModel} />
-
-        {showMentionButton && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  onClick={() => {
-                    setShowMentions(!showMentions);
-                    setMentionFilter("");
-                    setMentionIndex(0);
-                  }}
-                  className="shrink-0 p-2 text-(--mute) hover:text-(--body) transition-colors mb-0.5"
-                >
-                  <AtSign size={16} />
-                </Button>
-              }
-            />
-            <TooltipContent>Mention an agent</TooltipContent>
-          </Tooltip>
-        )}
 
         {isBusy && onStop ? (
           <Button
