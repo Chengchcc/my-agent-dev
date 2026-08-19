@@ -15,7 +15,7 @@ import type { ProjectPort } from "../project/ports.js";
 import { createWorkspaceLockRegistry } from "../project/workspace-lock.js";
 import { createLoopStateStore, type LoopStateStore } from "./loop-state-store.js";
 import type { GitRunner } from "./loop-step.js";
-import { loopCleanStart, loopStep } from "./loop-step.js";
+import { extractLoopWorkflowMeta, loopCleanStart, loopStep } from "./loop-step.js";
 
 // Every test gets its own mkdtemp dirs — no shared fixed /tmp paths, so the
 // file is safe under full-suite parallel execution (a shared dir would let one
@@ -195,7 +195,7 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
       if (
         script.genReplayTerminal &&
         input.agentMemberId.startsWith("loop-generator") &&
-        !input.idempotencyKey.endsWith(":retry")
+        !input.idempotencyKey.includes(":retry")
       ) {
         const old = makeRun(input.agentMemberId, input.conversationId, input.idempotencyKey);
         (old as { status: AgentRun["status"] }).status = "failed";
@@ -714,4 +714,31 @@ describe("loopCleanStart (A1): branch lifecycle", () => {
     expect(mine).toContain("mine");
     await dir.cleanup();
   }, 20_000);
+});
+
+describe("extractLoopWorkflowMeta", () => {
+  test("parses meta with `};` inside evidence strings (Bug 3)", () => {
+    const script = `export const meta = {
+  "items": {
+    "item-1": {
+      "result": {
+        "verdict": "PASS",
+        "evidence": "code: function(){ return x; }; rest",
+        "reasons": ["ok"]
+      }
+    }
+  }
+};`;
+    const state = extractLoopWorkflowMeta(script);
+    const result = state?.items["item-1"]?.result;
+    expect(result?.verdict).toBe("PASS");
+    if (result?.verdict === "PASS") {
+      expect(result.evidence).toBe("code: function(){ return x; }; rest");
+    }
+  });
+
+  test("unbalanced braces return null", () => {
+    const script = `export const meta = { items: {};`;
+    expect(extractLoopWorkflowMeta(script)).toBeNull();
+  });
 });

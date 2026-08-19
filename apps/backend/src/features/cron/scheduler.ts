@@ -40,6 +40,8 @@ export function createCronScheduler(deps: {
   agentWorkspaceOf: (agentId: string) => Promise<string | null>;
   /** Shared per-worktree lock registry (A4). */
   withWorkspaceLock: <T>(root: string, fn: () => Promise<T>) => Promise<T>;
+  /** Per-loop state lock (Bug 1): serializes ticks against manual run/review. */
+  withLoopLock?: <T>(loopId: string, fn: () => Promise<T>) => Promise<T>;
   agentRunService: AgentRunService;
   agentRunExecution: AgentRunExecutionService;
   resolveDefaultModel: (agentId: string) => Promise<BackendModelRef>;
@@ -157,6 +159,7 @@ export function createCronScheduler(deps: {
       loopConfigPath: resolveLoopPaths(job, deps.config.dataDir).loopConfigPath,
       projectPort: deps.projectPort,
       dataDir: deps.config.dataDir,
+      agentWorkspaceOf: deps.agentWorkspaceOf,
       store: deps.store,
       loopId: job.cronJobId,
       convPort: deps.convPort,
@@ -168,9 +171,8 @@ export function createCronScheduler(deps: {
         backendKind: "oma",
         modelId,
       }),
-      builtinSkillsDir: deps.config.builtinSkillsDir,
-      agentWorkspaceOf: deps.agentWorkspaceOf,
       withWorkspaceLock: deps.withWorkspaceLock,
+      ...(deps.withLoopLock ? { withLoopLock: deps.withLoopLock } : {}),
     };
     let attempt = 0;
     let currentJob = job;

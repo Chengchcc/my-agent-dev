@@ -303,6 +303,7 @@ export async function runLoop(
     builtinSkillsDir?: string;
     agentWorkspaceOf: (agentId: string) => Promise<string | null>;
     withWorkspaceLock: <T>(root: string, fn: () => Promise<T>) => Promise<T>;
+    withLoopLock?: <T>(loopId: string, fn: () => Promise<T>) => Promise<T>;
   },
   id: string,
 ): Promise<LoopState | null> {
@@ -332,6 +333,7 @@ export async function runLoop(
     ...(deps.builtinSkillsDir ? { builtinSkillsDir: deps.builtinSkillsDir } : {}),
     agentWorkspaceOf: deps.agentWorkspaceOf,
     withWorkspaceLock: deps.withWorkspaceLock,
+    ...(deps.withLoopLock ? { withLoopLock: deps.withLoopLock } : {}),
   });
 }
 
@@ -355,6 +357,7 @@ export async function reviewLoop(
     builtinSkillsDir?: string;
     agentWorkspaceOf: (agentId: string) => Promise<string | null>;
     withWorkspaceLock: <T>(root: string, fn: () => Promise<T>) => Promise<T>;
+    withLoopLock?: <T>(loopId: string, fn: () => Promise<T>) => Promise<T>;
   },
   id: string,
   input: ReviewInput,
@@ -390,6 +393,7 @@ export async function reviewLoop(
     ...(deps.builtinSkillsDir ? { builtinSkillsDir: deps.builtinSkillsDir } : {}),
     agentWorkspaceOf: deps.agentWorkspaceOf,
     withWorkspaceLock: deps.withWorkspaceLock,
+    ...(deps.withLoopLock ? { withLoopLock: deps.withLoopLock } : {}),
   });
 
   return { state, action: input.verdict };
@@ -408,10 +412,8 @@ async function writeDefaultLoopMd(
 ): Promise<void> {
   // LOOP.md stores the FULL canonical model ID (<provider>/<model>) - the
   // same key the Oma catalog validates.
-  const genModel =
-    settingsSvc?.get<string>("loop.generatorModel") ?? "anthropic/claude-sonnet-4-20250514";
-  const evalModel =
-    settingsSvc?.get<string>("loop.evaluatorModel") ?? "anthropic/claude-opus-4-20250514";
+  const genModel = settingsSvc?.get<string>("loop.generatorModel") ?? "anthropic/claude-sonnet-5";
+  const evalModel = settingsSvc?.get<string>("loop.evaluatorModel") ?? "anthropic/claude-opus-4-8";
   const acceptance = settingsSvc?.get<string>("loop.defaultAcceptance") ?? "";
   const dailyCap = settingsSvc?.get<number>("loop.defaultDailyCap") ?? 200000;
   const denylist = settingsSvc?.get<string[]>("loop.defaultDenylist") ?? [

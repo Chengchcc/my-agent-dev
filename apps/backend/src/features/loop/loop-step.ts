@@ -52,6 +52,10 @@ export interface LoopStepParams {
   /** Shared per-worktree lock (A4): run dispatch, loop clean-start/reset
    *  and agent detach serialize against each other. */
   withWorkspaceLock: <T>(root: string, fn: () => Promise<T>) => Promise<T>;
+  /** Per-loop state lock: serializes load -> reducer -> save across cron
+   *  ticks, manual run and review (Bug 1). Injected from the composition
+   *  root; tests may pass a no-op. */
+  withLoopLock?: <T>(loopId: string, fn: () => Promise<T>) => Promise<T>;
 }
 
 /** Stable deterministic identities - Generator and Evaluator are fully
@@ -297,19 +301,52 @@ function seedLoopWorkflowScript(item: LoopState["items"][string]): string {
   return LOOP_WORKFLOW_TEMPLATE.replace("__META_JSON__", metaJson);
 }
 
-/** Extract the model-edited meta block: balanced-brace scan + lenient JSON
- *  (line comments + trailing commas stripped). Null = unparseable. */
-function extractLoopWorkflowMeta(script: string): LoopState | null {
-  const m = script.match(/export const meta\s*=\s*(\{[\s\S]*?\});/);
-  if (!m?.[1]) return null;
-  const cleaned = m[1].replace(/\/\/[^\n]*/g, "").replace(/,\s*([}\]])/g, "$1");
-  try {
-    const parsed = JSON.parse(cleaned) as { items?: LoopState["items"] };
-    if (!parsed.items || typeof parsed.items !== "object") return null;
-    return { loopId: "", lastRun: null, items: parsed.items };
-  } catch {
-    return null;
+/** Extract the model-edited meta block: a REAL balanced-brace scan that
+ *  skips string literals, so a `};` inside an evidence/reason code snippet
+ *  cannot truncate the object (Bug 3). Lenient JSON after capture (line
+ *  comments + trailing commas stripped). Null = unparseable. */
+export function extractLoopWorkflowMeta(script: string): LoopState | null {
+  const m = script.match(/export const meta\s*=\s*(\{)/);
+  if (m?.index === undefined) return null;
+  const start = m.index + m[0].length - 1; // index of the opening brace
+  let depth = 0;
+  let inStr: '"' | "'" | "`" | null = null;
+  let escaped = false;
+  for (let i = start; i < script.length; i++) {
+    const c = script[i]!;
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (c === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (inStr) {
+      if (c === inStr) inStr = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      inStr = c;
+      continue;
+    }
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) {
+        const raw = script.slice(start, i + 1);
+        const cleaned = raw.replace(/\/\/[^\n]*/g, "").replace(/,\s*([}\]])/g, "$1");
+        try {
+          const parsed = JSON.parse(cleaned) as { items?: LoopState["items"] };
+          if (!parsed.items || typeof parsed.items !== "object") return null;
+          return { loopId: "", lastRun: null, items: parsed.items };
+        } catch {
+          return null;
+        }
+      }
+    }
   }
+  return null; // unbalanced braces
 }
 
 function buildGeneratorPrompt(
@@ -338,6 +375,12 @@ function buildGeneratorPrompt(
 }
 
 export async function loopStep(params: LoopStepParams): Promise<LoopState> {
+  // Per-loop serialization across ALL entry points (cron tick, HTTP run,
+  // HTTP review): load -> reducer -> save must never interleave, or the
+  // later save clobbers the earlier one's reducer output.
+  if (params.withLoopLock) {
+    return params.withLoopLock(params.loopId, () => loopStepImpl(params));
+  }
   return loopStepImpl(params);
 }
 
@@ -425,7 +468,28 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     // A1/A4: per-step clean start under the shared workspace lock — a
     // live run holding this worktree settles first.
     const { cwd: wt, mirror, base } = resolved;
-    await params.withWorkspaceLock(wt, () => loopCleanStart(wt, mirror, base));
+    try {
+      await params.withWorkspaceLock(wt, () => loopCleanStart(wt, mirror, base));
+    } catch (divergeErr) {
+      // Bug 5: a diverged worktree must not kill the whole tick. Escalate
+      // the affected fixing items to manual review, persist, and stop.
+      const reasons = [String(divergeErr)];
+      for (const it of Object.values(state.items)) {
+        if (it.step === "fixing") {
+          state = loopReducer(state, {
+            type: "EVALUATOR_VERDICT",
+            itemId: it.id,
+            verdict: {
+              verdict: "ESCALATE",
+              reasons,
+              evidence: "worktree diverged — manual merge required",
+            },
+          });
+        }
+      }
+      await params.store.save(params.loopId, state, inboxItems);
+      return state;
+    }
   }
 
   // 3. Cron TICK — Generator → Evaluator
@@ -555,7 +619,11 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         },
         defaultModel: await params.resolveModel(genModel),
         configRevision: 1,
-        idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}:retry`,
+        // A retry is a FRESH attempt after a failure - replay safety is the
+        // wrong invariant here. A static suffix replays the same dead run
+        // forever (acquired=true on a failed run); the monotonic component
+        // guarantees a new run per tick after each failure.
+        idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}:retry:${item.attempt}`,
         systemPrompt: genPrompt || undefined,
         skillRoots: genSkillRoots,
         workspace: { root: repoCwd, access: "read_write" },
@@ -627,8 +695,19 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       evidence: "",
     });
     let verdict: Verdict;
+    // Bug 4: when the generator changed real files but the meta is missing
+    // or unparseable, the work is NOT rolled back silently - it routes to
+    // awaiting_review so a human can decide. Only a no-change run with a
+    // broken meta is a pure ESCALATE (nothing to preserve).
+    const changed = changedFiles.length > 0;
     if (!writtenMeta) {
-      verdict = noVerdict("workflow script has no parseable meta block");
+      verdict = changed
+        ? {
+            verdict: "ESCALATE",
+            reasons: ["workflow meta 不可解析但 generator 有改动，转人工 review"],
+            evidence: `changed: ${changedFiles.join(", ")}`,
+          }
+        : noVerdict("workflow script has no parseable meta block");
     } else {
       const validation = validateLoopMetaPatch(seedMeta, writtenMeta);
       if (!validation.ok) {
@@ -643,9 +722,13 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       verdict,
     });
 
-    // Rollback on REJECT/ESCALATE
+    // Rollback on REJECT/ESCALATE. Bug 4: an ESCALATE that routed to
+    // awaiting_review (meta missing BUT files changed) must NOT roll back -
+    // the worktree keeps the changes for the human to inspect. Only roll
+    // back when the item actually returned to inbox/fixing.
     const updatedItem = state.items[item.id];
-    if (updatedItem && (updatedItem.step === "fixing" || updatedItem.step === "inbox")) {
+    const rolledBack = updatedItem?.step === "fixing" || updatedItem?.step === "inbox";
+    if (rolledBack) {
       await git.resetHard(repoCwd, baseSha);
       await Bun.$`git -C ${repoCwd} clean -fd`.quiet();
     } else if (verdict.verdict === "PASS" && cwd) {

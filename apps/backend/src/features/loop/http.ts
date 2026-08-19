@@ -36,6 +36,7 @@ export function loopRoutes(input: {
   settingsSvc?: SettingsService;
   agentWorkspaceOf: (agentId: string) => Promise<string | null>;
   withWorkspaceLock: <T>(root: string, fn: () => Promise<T>) => Promise<T>;
+  withLoopLock?: <T>(loopId: string, fn: () => Promise<T>) => Promise<T>;
 }) {
   const {
     cronSvc,
@@ -49,6 +50,7 @@ export function loopRoutes(input: {
     resolveModel,
     settingsSvc,
     agentWorkspaceOf,
+    withLoopLock,
   } = input;
 
   const loopStepDeps = {
@@ -61,6 +63,7 @@ export function loopRoutes(input: {
     agentRunService,
     agentRunExecution,
     resolveModel,
+    withLoopLock,
   };
 
   return new Elysia()

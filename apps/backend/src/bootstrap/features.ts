@@ -42,6 +42,7 @@ import {
 } from "../features/knowledge/index.js";
 import { CliSetupProvisioner, LarkSetupManager } from "../features/lark-bot/index.js";
 import { loopRoutes } from "../features/loop/http.js";
+import { createLoopLockRegistry } from "../features/loop/loop-lock.js";
 import { createMcpService, fileMcpServerAdapter, mcpRoutes } from "../features/mcp/index.js";
 import { modelRoutes } from "../features/models/index.js";
 import {
@@ -162,6 +163,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   /** Shared per-worktree lock registry (A4): run dispatch, loop
    *  clean-start/reset and agent detach serialize on the same roots. */
   const workspaceLocks = createWorkspaceLockRegistry();
+  const loopLocks = createLoopLockRegistry();
 
   // Workspace bridge (ADR 0003 decision 3): reconcile skills/mcp into the
   // agent workspace. Late-bound (mcpSvc is created further down).
@@ -730,6 +732,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const cronScheduler = createCronScheduler({
     agentWorkspaceOf: resolveAgentWorkspace,
     withWorkspaceLock: workspaceLocks.withLock.bind(workspaceLocks),
+    withLoopLock: loopLocks.withLoopLock.bind(loopLocks),
     cronSvc,
     config,
     convPort,
@@ -801,9 +804,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     }),
     projects: projectRoutes(projectSvc, worktreeOps),
     loops: loopRoutes({
+      cronSvc,
       agentWorkspaceOf: resolveAgentWorkspace,
       withWorkspaceLock: workspaceLocks.withLock.bind(workspaceLocks),
-      cronSvc,
+      withLoopLock: loopLocks.withLoopLock.bind(loopLocks),
       scheduler: cronScheduler,
       dataDir: config.dataDir,
       store: loopStore,
