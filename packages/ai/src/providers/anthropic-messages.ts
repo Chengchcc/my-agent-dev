@@ -125,11 +125,27 @@ function toWireBlock(
   if (b.type === "tool_use") {
     return { type: "tool_use", id: b.id, name: b.name, input: b.input };
   }
+  if (b.type === "image") {
+    return {
+      type: "image",
+      source: { type: "base64", media_type: b.mediaType, data: b.base64 },
+    };
+  }
   if (b.type === "tool_result") {
     return {
       type: "tool_result",
       tool_use_id: b.tool_use_id,
-      content: b.content,
+      ...(b.images && b.images.length > 0
+        ? {
+            content: [
+              ...(b.content.trim() ? [{ type: "text", text: b.content }] : []),
+              ...b.images.map((img) => ({
+                type: "image",
+                source: { type: "base64", media_type: img.mediaType, data: img.base64 },
+              })),
+            ],
+          }
+        : { content: b.content }),
       ...(b.is_error ? { is_error: true } : {}),
     };
   }

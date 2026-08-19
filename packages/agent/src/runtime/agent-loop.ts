@@ -410,24 +410,37 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                   } as Message,
                   createdAt: Date.now(),
                 },
-                ...toolResults.map((result) => ({
-                  type: "message" as const,
-                  role: "tool" as const,
-                  source: "tool_result" as const,
-                  message: {
-                    role: "tool",
-                    text: JSON.stringify(result.result),
-                    blocks: [
-                      {
-                        type: "tool_result" as const,
-                        tool_use_id: result.id,
-                        content: JSON.stringify(result.result),
-                        ...(result.isError ? { is_error: true } : {}),
-                      },
-                    ],
-                  } as Message,
-                  createdAt: Date.now(),
-                })),
+                ...toolResults.map((result) => {
+                  // Vision passthrough: a tool result carrying `images`
+                  // (read_image) keeps them on the tool_result block so
+                  // providers map them onto the wire content array.
+                  const imgs = (result.result as { images?: unknown } | null | undefined)?.images;
+                  const images =
+                    Array.isArray(imgs) && imgs.length > 0
+                      ? {
+                          images: imgs as Message["blocks"],
+                        }
+                      : {};
+                  return {
+                    type: "message" as const,
+                    role: "tool" as const,
+                    source: "tool_result" as const,
+                    message: {
+                      role: "tool",
+                      text: JSON.stringify(result.result),
+                      blocks: [
+                        {
+                          type: "tool_result" as const,
+                          tool_use_id: result.id,
+                          content: JSON.stringify(result.result),
+                          ...(result.isError ? { is_error: true } : {}),
+                          ...images,
+                        },
+                      ],
+                    } as Message,
+                    createdAt: Date.now(),
+                  };
+                }),
               ];
               await persist(batch);
 

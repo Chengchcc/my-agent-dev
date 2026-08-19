@@ -21,14 +21,19 @@ export const ToolUseBlockSchema = z.object({
   name: z.string().min(1),
   input: z.unknown(),
 });
+export const ImageBlockSchema = z.object({
+  type: z.literal("image"),
+  mediaType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+  base64: z.string().min(1),
+});
 
 export const ToolResultBlockSchema = z.object({
   type: z.literal("tool_result"),
   tool_use_id: z.string().min(1),
   content: z.string(),
   is_error: z.boolean().optional(),
+  images: z.array(ImageBlockSchema).optional(),
 });
-
 // M17.3 fix: accept unknown block types via passthrough, so legacy or future
 // block variants don't cause parse failures. The discriminatedUnion covers known
 // types; the passthrough fallback keeps the rest.
@@ -38,6 +43,7 @@ export const ContentBlockSchema = z
     ThinkingBlockSchema,
     ToolUseBlockSchema,
     ToolResultBlockSchema,
+    ImageBlockSchema,
   ])
   .or(z.object({ type: z.string() }).passthrough());
 

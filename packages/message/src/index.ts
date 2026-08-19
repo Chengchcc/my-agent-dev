@@ -1,6 +1,7 @@
 export { normalizeCanonicalMessages } from "./canonical.js";
 export type {
   ContentBlock,
+  ImageBlock,
   TextBlock,
   ThinkingBlock,
   ToolResultBlock,
@@ -27,6 +28,7 @@ export type {
 } from "./message.js";
 export {
   ContentBlockSchema,
+  ImageBlockSchema,
   MessageAuthorSchema,
   MessageErrorSchema,
   MessageParseError,

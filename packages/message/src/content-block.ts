@@ -25,11 +25,22 @@ export interface ToolUseBlock {
   input: unknown;
 }
 
+/** Vision input (Anthropic base64 shape). Rides user messages (pasted
+ * images) and tool results (read_image). */
+export interface ImageBlock {
+  type: "image";
+  mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  base64: string;
+}
+
 export interface ToolResultBlock {
   type: "tool_result";
   tool_use_id: string;
   content: string;
   is_error?: boolean;
+  /** Images returned by a tool (read_image). Mapped onto the wire as
+   * tool_result content blocks - text first, then the images. */
+  images?: readonly ImageBlock[];
 }
 
-export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock;
+export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock | ImageBlock;

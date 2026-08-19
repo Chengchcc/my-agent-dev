@@ -28,9 +28,9 @@ import {
   createEditTool,
   createGlobTool,
   createGrepTool,
-  createLsTool,
   createPortWebFetchTool,
   createPortWebSearchTool,
+  createReadImageTool,
   createReadTool,
   createStdWebFetchPort,
   createTreeTool,
@@ -134,7 +134,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   }
   const fileTools: PluginTool[] = [
     createReadTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
-    createLsTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
+    createReadImageTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
     createTreeTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool,
     createGlobTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool,
     createGrepTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool,
