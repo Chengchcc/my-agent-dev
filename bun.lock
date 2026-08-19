@@ -32,10 +32,9 @@
       "name": "@chengchenccc/backend",
       "version": "0.1.0",
       "dependencies": {
-        "@chengchenccc/adapter-oma-agent": "workspace:*",
-        "@modelcontextprotocol/sdk": "^1.12.1",
         "@chengchenccc/adapter-claude-agent": "workspace:*",
         "@chengchenccc/adapter-mcp": "workspace:*",
+        "@chengchenccc/adapter-oma-agent": "workspace:*",
         "@chengchenccc/adapter-omp-agent": "workspace:*",
         "@chengchenccc/adapter-pi-agent": "workspace:*",
         "@chengchenccc/agent-backend": "workspace:*",
@@ -47,6 +46,7 @@
         "@chengchenccc/message": "workspace:*",
         "@chengchenccc/plugin-progressive-skill": "workspace:*",
         "@chengchenccc/tools-common": "workspace:*",
+        "@modelcontextprotocol/sdk": "^1.12.1",
         "drizzle-orm": "^0.44.0",
         "elysia": "^1.0.0",
         "zod": "^3.23.0",
@@ -59,12 +59,12 @@
       "name": "@chengchenccc/lark-bot",
       "version": "0.1.0",
       "dependencies": {
-        "@elysiajs/eden": "^1.0.0",
         "@chengchenccc/api-contract": "workspace:*",
         "@chengchenccc/backend": "workspace:*",
         "@chengchenccc/config": "workspace:*",
         "@chengchenccc/conversation": "workspace:*",
         "@chengchenccc/message": "workspace:*",
+        "@elysiajs/eden": "^1.0.0",
         "drizzle-orm": "^0.44.0",
         "zod": "^3.23.0",
       },
@@ -76,7 +76,6 @@
         "oma": "./dist/cli.js",
       },
       "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.12.1",
         "@chengchenccc/adapter-mcp": "workspace:*",
         "@chengchenccc/agent": "workspace:*",
         "@chengchenccc/agent-backend": "workspace:*",
@@ -88,6 +87,7 @@
         "@chengchenccc/plugin-recap": "workspace:*",
         "@chengchenccc/plugin-todo": "workspace:*",
         "@chengchenccc/tools-common": "workspace:*",
+        "@modelcontextprotocol/sdk": "^1.12.1",
         "zod": "^3.23.0",
       },
       "devDependencies": {
@@ -102,16 +102,16 @@
       "version": "0.1.0",
       "dependencies": {
         "@base-ui/react": "^1.5.0",
-        "@dnd-kit/core": "^6.3.1",
-        "@dnd-kit/utilities": "^3.2.2",
-        "@elysiajs/eden": "^1.0.0",
-        "@hookform/resolvers": "^4",
-        "@monaco-editor/react": "^4.7.0",
         "@chengchenccc/api-contract": "workspace:*",
         "@chengchenccc/backend": "workspace:*",
         "@chengchenccc/config": "workspace:*",
         "@chengchenccc/conversation": "workspace:*",
         "@chengchenccc/message": "workspace:*",
+        "@dnd-kit/core": "^6.3.1",
+        "@dnd-kit/utilities": "^3.2.2",
+        "@elysiajs/eden": "^1.0.0",
+        "@hookform/resolvers": "^4",
+        "@monaco-editor/react": "^4.7.0",
         "@radix-ui/react-label": "^2.1.10",
         "@radix-ui/react-slot": "^1.3.0",
         "@tanstack/react-query": "^5.60.0",
@@ -125,6 +125,7 @@
         "react-dom": "^19.0.0",
         "react-hook-form": "^7.80.0",
         "react-markdown": "^10.1.0",
+        "react-qr-code": "^2.2.0",
         "recharts": "3.8.0",
         "remark-gfm": "^4.0.1",
         "shadcn": "^4.11.0",
@@ -160,8 +161,8 @@
       "name": "@chengchenccc/adapter-mcp",
       "version": "0.1.0",
       "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.12.1",
         "@chengchenccc/core": "workspace:*",
+        "@modelcontextprotocol/sdk": "^1.12.1",
       },
     },
     "packages/adapter-oma-agent": {
@@ -324,10 +325,6 @@
     },
   },
   "packages": {
-    "@chengchenccc/adapter-oma-agent": ["@chengchenccc/adapter-oma-agent@workspace:packages/adapter-oma-agent"],
-
-    "@chengchenccc/oh-my-agent": ["@chengchenccc/oh-my-agent@workspace:apps/oh-my-agent"],
-
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "https://registry.npmmirror.com/@alloc/quick-lru/-/quick-lru-5.2.0.tgz", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "https://registry.npmmirror.com/@babel/code-frame/-/code-frame-7.29.7.tgz", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
@@ -411,6 +408,52 @@
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.4.16", "https://registry.npmmirror.com/@biomejs/cli-win32-x64/-/cli-win32-x64-2.4.16.tgz", { "os": "win32", "cpu": "x64" }, "sha512-Kp85jgoBHa05gix6UIRjfCDiUV3w/8VIdZ247VyyO2gEjaw12WEVhdIjlxp/AMzXxqxQwbxNTDVZ3Mwd2RG5rw=="],
 
     "@borewit/text-codec": ["@borewit/text-codec@0.2.2", "", {}, "sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ=="],
+
+    "@chengchenccc/adapter-claude-agent": ["@chengchenccc/adapter-claude-agent@workspace:packages/adapter-claude-agent"],
+
+    "@chengchenccc/adapter-mcp": ["@chengchenccc/adapter-mcp@workspace:packages/adapter-mcp"],
+
+    "@chengchenccc/adapter-oma-agent": ["@chengchenccc/adapter-oma-agent@workspace:packages/adapter-oma-agent"],
+
+    "@chengchenccc/adapter-omp-agent": ["@chengchenccc/adapter-omp-agent@workspace:packages/adapter-omp-agent"],
+
+    "@chengchenccc/adapter-pi-agent": ["@chengchenccc/adapter-pi-agent@workspace:packages/adapter-pi-agent"],
+
+    "@chengchenccc/agent": ["@chengchenccc/agent@workspace:packages/agent"],
+
+    "@chengchenccc/agent-backend": ["@chengchenccc/agent-backend@workspace:packages/agent-backend"],
+
+    "@chengchenccc/ai": ["@chengchenccc/ai@workspace:packages/ai"],
+
+    "@chengchenccc/api-contract": ["@chengchenccc/api-contract@workspace:packages/api-contract"],
+
+    "@chengchenccc/backend": ["@chengchenccc/backend@workspace:apps/backend"],
+
+    "@chengchenccc/config": ["@chengchenccc/config@workspace:packages/config"],
+
+    "@chengchenccc/conversation": ["@chengchenccc/conversation@workspace:packages/conversation"],
+
+    "@chengchenccc/core": ["@chengchenccc/core@workspace:packages/core"],
+
+    "@chengchenccc/lark-bot": ["@chengchenccc/lark-bot@workspace:apps/lark-bot"],
+
+    "@chengchenccc/loop": ["@chengchenccc/loop@workspace:packages/loop"],
+
+    "@chengchenccc/message": ["@chengchenccc/message@workspace:packages/message"],
+
+    "@chengchenccc/oh-my-agent": ["@chengchenccc/oh-my-agent@workspace:apps/oh-my-agent"],
+
+    "@chengchenccc/plugin-progressive-skill": ["@chengchenccc/plugin-progressive-skill@workspace:packages/plugin-progressive-skill"],
+
+    "@chengchenccc/plugin-recap": ["@chengchenccc/plugin-recap@workspace:packages/plugin-recap"],
+
+    "@chengchenccc/plugin-todo": ["@chengchenccc/plugin-todo@workspace:packages/plugin-todo"],
+
+    "@chengchenccc/test-helpers": ["@chengchenccc/test-helpers@workspace:packages/test-helpers"],
+
+    "@chengchenccc/tools-common": ["@chengchenccc/tools-common@workspace:packages/tools-common"],
+
+    "@chengchenccc/web": ["@chengchenccc/web@workspace:apps/web"],
 
     "@commitlint/cli": ["@commitlint/cli@21.0.2", "https://registry.npmmirror.com/@commitlint/cli/-/cli-21.0.2.tgz", { "dependencies": { "@commitlint/format": "^21.0.1", "@commitlint/lint": "^21.0.2", "@commitlint/load": "^21.0.2", "@commitlint/read": "^21.0.2", "@commitlint/types": "^21.0.1", "tinyexec": "^1.0.0", "yargs": "^18.0.0" }, "bin": { "commitlint": "cli.js" } }, "sha512-YMmfLbqBg+ZRvvmPhc+cilSQFrh/AgzVgCT1U/OifmUZEwPbvCtA8rN//YNaF9d5eoZphxVMGYtmwA2QgQORgg=="],
 
@@ -665,48 +708,6 @@
     "@monaco-editor/loader": ["@monaco-editor/loader@1.7.0", "", { "dependencies": { "state-local": "^1.0.6" } }, "sha512-gIwR1HrJrrx+vfyOhYmCZ0/JcWqG5kbfG7+d3f/C1LXk2EvzAbHSg3MQ5lO2sMlo9izoAZ04shohfKLVT6crVA=="],
 
     "@monaco-editor/react": ["@monaco-editor/react@4.7.0", "", { "dependencies": { "@monaco-editor/loader": "^1.5.0" }, "peerDependencies": { "monaco-editor": ">= 0.25.0 < 1", "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0", "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-cyzXQCtO47ydzxpQtCGSQGOC8Gk3ZUeBXFAxD+CWXYFo5OqZyZUonFl0DwUlTyAfRHntBfw2p3w4s9R6oe1eCA=="],
-
-    "@chengchenccc/adapter-claude-agent": ["@chengchenccc/adapter-claude-agent@workspace:packages/adapter-claude-agent"],
-
-    "@chengchenccc/adapter-mcp": ["@chengchenccc/adapter-mcp@workspace:packages/adapter-mcp"],
-
-    "@chengchenccc/adapter-omp-agent": ["@chengchenccc/adapter-omp-agent@workspace:packages/adapter-omp-agent"],
-
-    "@chengchenccc/adapter-pi-agent": ["@chengchenccc/adapter-pi-agent@workspace:packages/adapter-pi-agent"],
-
-    "@chengchenccc/agent": ["@chengchenccc/agent@workspace:packages/agent"],
-
-    "@chengchenccc/agent-backend": ["@chengchenccc/agent-backend@workspace:packages/agent-backend"],
-
-    "@chengchenccc/ai": ["@chengchenccc/ai@workspace:packages/ai"],
-
-    "@chengchenccc/api-contract": ["@chengchenccc/api-contract@workspace:packages/api-contract"],
-
-    "@chengchenccc/backend": ["@chengchenccc/backend@workspace:apps/backend"],
-
-    "@chengchenccc/config": ["@chengchenccc/config@workspace:packages/config"],
-
-    "@chengchenccc/conversation": ["@chengchenccc/conversation@workspace:packages/conversation"],
-
-    "@chengchenccc/core": ["@chengchenccc/core@workspace:packages/core"],
-
-    "@chengchenccc/lark-bot": ["@chengchenccc/lark-bot@workspace:apps/lark-bot"],
-
-    "@chengchenccc/loop": ["@chengchenccc/loop@workspace:packages/loop"],
-
-    "@chengchenccc/message": ["@chengchenccc/message@workspace:packages/message"],
-
-    "@chengchenccc/plugin-progressive-skill": ["@chengchenccc/plugin-progressive-skill@workspace:packages/plugin-progressive-skill"],
-
-    "@chengchenccc/plugin-recap": ["@chengchenccc/plugin-recap@workspace:packages/plugin-recap"],
-
-    "@chengchenccc/plugin-todo": ["@chengchenccc/plugin-todo@workspace:packages/plugin-todo"],
-
-    "@chengchenccc/test-helpers": ["@chengchenccc/test-helpers@workspace:packages/test-helpers"],
-
-    "@chengchenccc/tools-common": ["@chengchenccc/tools-common@workspace:packages/tools-common"],
-
-    "@chengchenccc/web": ["@chengchenccc/web@workspace:apps/web"],
 
     "@next/env": ["@next/env@15.5.19", "https://registry.npmmirror.com/@next/env/-/env-15.5.19.tgz", {}, "sha512-sWWluFvcv5v3Fxznmf2ZfjyoVQt/64oCnYqS90inQWGzMPK1VjvekPiz3OPHKmFT30EnHrjlbyaHLt3M0vWabw=="],
 
@@ -1476,6 +1477,8 @@
 
     "longest-streak": ["longest-streak@3.1.0", "https://registry.npmmirror.com/longest-streak/-/longest-streak-3.1.0.tgz", {}, "sha512-9Ri+o0JYgehTaVBBDoMqIl8GXtbWg711O3srftcHhZ0dqnETqLaoIK0x17fUw9rFSlK/0NlsKe0Ahhyl5pXE2g=="],
 
+    "loose-envify": ["loose-envify@1.4.0", "", { "dependencies": { "js-tokens": "^3.0.0 || ^4.0.0" }, "bin": { "loose-envify": "cli.js" } }, "sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q=="],
+
     "lru-cache": ["lru-cache@7.18.3", "", {}, "sha512-jumlc0BIUrS3qJGgIkWZsyfAM7NCWiBcCDhnd+3NNM5KbBmLTgHVfWBcg6W+rLUsIpzpERPsvwUP7CckAQSOoA=="],
 
     "lucide-react": ["lucide-react@1.17.0", "https://registry.npmmirror.com/lucide-react/-/lucide-react-1.17.0.tgz", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-9FA9evdox/JQL5PT57fdA1x/yg8T7knJ98+zjTL3UfKza6pflQUUh3XtaQIHKvnsJw1lmsEyHVlt5jchYxOQ5w=="],
@@ -1704,6 +1707,8 @@
 
     "prompts": ["prompts@2.4.2", "https://registry.npmmirror.com/prompts/-/prompts-2.4.2.tgz", { "dependencies": { "kleur": "^3.0.3", "sisteransi": "^1.0.5" } }, "sha512-NxNv/kLguCA7p3jE8oL2aEBsrJWgAakBpgmgK6lpPWV+WuOmY6r2/zbAVnP+T8bQlA0nzHXSJSJW0Hq7ylaD2Q=="],
 
+    "prop-types": ["prop-types@15.8.1", "", { "dependencies": { "loose-envify": "^1.4.0", "object-assign": "^4.1.1", "react-is": "^16.13.1" } }, "sha512-oj87CgZICdulUohogVAR7AjlC0327U4el4L6eAvOqCeudMDVU0NThNaV+b9Df4dXgSP1gXMTnPdhfe/2qDH5cg=="],
+
     "property-information": ["property-information@7.2.0", "https://registry.npmmirror.com/property-information/-/property-information-7.2.0.tgz", {}, "sha512-IAtzIB6sUiWaJYrX9smp3V46pBGbBeLFRGdh25kg1334VcBlD8HzhPeNIWQH9zhGmo2itIe25EHt9dQP7G5hmg=="],
 
     "proto-list": ["proto-list@1.2.4", "https://registry.npmmirror.com/proto-list/-/proto-list-1.2.4.tgz", {}, "sha512-vtK/94akxsTMhe0/cbfpR+syPuszcuwhqVjJq26CuNDgFGj682oRBXOP5MJpv2r7JtE8MsiepGIqvvOTBwn2vA=="],
@@ -1719,6 +1724,8 @@
     "punycode": ["punycode@2.3.1", "https://registry.npmmirror.com/punycode/-/punycode-2.3.1.tgz", {}, "sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg=="],
 
     "puppeteer-core": ["puppeteer-core@24.43.1", "", { "dependencies": { "@puppeteer/browsers": "2.13.2", "chromium-bidi": "14.0.0", "debug": "^4.4.3", "devtools-protocol": "0.0.1608973", "typed-query-selector": "^2.12.2", "webdriver-bidi-protocol": "0.4.1", "ws": "^8.20.0" } }, "sha512-T5ScUMAsmhdNbgDR41AGESYeS6V9MSgetkSnVhhW+gXvzC42VesKCn5ld87gAZDJ6vLHL9GkRvY9WtQWSnwFbw=="],
+
+    "qrcode-generator": ["qrcode-generator@2.0.4", "", {}, "sha512-mZSiP6RnbHl4xL2Ap5HfkjLnmxfKcPWpWe/c+5XxCuetEenqmNFf1FH/ftXPCtFG5/TDobjsjz6sSNL0Sr8Z9g=="],
 
     "qs": ["qs@6.15.2", "https://registry.npmmirror.com/qs/-/qs-6.15.2.tgz", { "dependencies": { "side-channel": "^1.1.0" } }, "sha512-Rzq0KEyX/w/tEybncDgdkZrJgVUsUMk3xjh3t5bv3S1HTAtg+uOYt72+ZfwiQwKdysThkTBdL/rTi6HDmX9Ddw=="],
 
@@ -1739,6 +1746,8 @@
     "react-is": ["react-is@19.2.7", "https://registry.npmmirror.com/react-is/-/react-is-19.2.7.tgz", {}, "sha512-kZFnouyVv7eP/Phmrlo9FK+zcAdriZJvzxXHF1Sl1P377WSGe2G/JxVolhTrB/jeV47lKImhNUsijjHAAbcl/A=="],
 
     "react-markdown": ["react-markdown@10.1.0", "https://registry.npmmirror.com/react-markdown/-/react-markdown-10.1.0.tgz", { "dependencies": { "@types/hast": "^3.0.0", "@types/mdast": "^4.0.0", "devlop": "^1.0.0", "hast-util-to-jsx-runtime": "^2.0.0", "html-url-attributes": "^3.0.0", "mdast-util-to-hast": "^13.0.0", "remark-parse": "^11.0.0", "remark-rehype": "^11.0.0", "unified": "^11.0.0", "unist-util-visit": "^5.0.0", "vfile": "^6.0.0" }, "peerDependencies": { "@types/react": ">=18", "react": ">=18" } }, "sha512-qKxVopLT/TyA6BX3Ue5NwabOsAzm0Q7kAPwq6L+wWDwisYs7R8vZ0nRXqq6rkueboxpkjvLGU9fWifiX/ZZFxQ=="],
+
+    "react-qr-code": ["react-qr-code@2.2.0", "", { "dependencies": { "prop-types": "^15.8.1", "qrcode-generator": "^2.0.4" }, "peerDependencies": { "react": "*" } }, "sha512-e5nS0UUN22K3Nf8KBRUzemfdJ6OmnN5w+kbnj1lvJaol9RyVRFeGl05bCkxSN2ZegbLxjjYjX1+mmAoX9+fAhw=="],
 
     "react-redux": ["react-redux@9.3.0", "https://registry.npmmirror.com/react-redux/-/react-redux-9.3.0.tgz", { "dependencies": { "@types/use-sync-external-store": "^0.0.6", "use-sync-external-store": "^1.4.0" }, "peerDependencies": { "@types/react": "^18.2.25 || ^19", "react": "^18.0 || ^19", "redux": "^5.0.0" }, "optionalPeers": ["@types/react", "redux"] }, "sha512-KQopgqFo/p/fgmAs5qz6p5RWaNAzq40WAu7fJIXnQpYxFPbJYtsJPWvGeF2rOBaY/kEuV77AVsX8TsQzKm+A/g=="],
 
@@ -2024,10 +2033,6 @@
 
     "zwitch": ["zwitch@2.0.4", "https://registry.npmmirror.com/zwitch/-/zwitch-2.0.4.tgz", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
 
-    "@chengchenccc/adapter-oma-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@chengchenccc/oh-my-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
     "@babel/core/semver": ["semver@6.3.1", "https://registry.npmmirror.com/semver/-/semver-6.3.1.tgz", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
 
     "@babel/helper-compilation-targets/lru-cache": ["lru-cache@5.1.1", "https://registry.npmmirror.com/lru-cache/-/lru-cache-5.1.1.tgz", { "dependencies": { "yallist": "^3.0.2" } }, "sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w=="],
@@ -2037,6 +2042,18 @@
     "@babel/helper-create-class-features-plugin/semver": ["semver@6.3.1", "https://registry.npmmirror.com/semver/-/semver-6.3.1.tgz", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
 
     "@base-ui/utils/reselect": ["reselect@5.2.0", "https://registry.npmmirror.com/reselect/-/reselect-5.2.0.tgz", {}, "sha512-AgZ3UOZm3YndfrJ4OYjgrT7bmCm/1iqkjvEfH/oYjzh6PD2qw4QuT3jjnXIrpdt4MTpMXclMT3lXbmRY+XRakw=="],
+
+    "@chengchenccc/adapter-claude-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@chengchenccc/adapter-oma-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@chengchenccc/adapter-omp-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@chengchenccc/adapter-pi-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@chengchenccc/agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@chengchenccc/oh-my-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@commitlint/config-validator/ajv": ["ajv@8.20.0", "https://registry.npmmirror.com/ajv/-/ajv-8.20.0.tgz", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-uri": "^3.0.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2" } }, "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA=="],
 
@@ -2051,14 +2068,6 @@
     "@eslint-community/eslint-utils/eslint-visitor-keys": ["eslint-visitor-keys@3.4.3", "https://registry.npmmirror.com/eslint-visitor-keys/-/eslint-visitor-keys-3.4.3.tgz", {}, "sha512-wpc+LXeiyiisxPlEkUzU6svyS1frIO3Mgxj1fdy7Pm8Ygzguax2N3Fa/D/ag1WqbOprdI+uY6wMUl8/a2G+iag=="],
 
     "@modelcontextprotocol/sdk/ajv": ["ajv@8.20.0", "https://registry.npmmirror.com/ajv/-/ajv-8.20.0.tgz", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-uri": "^3.0.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2" } }, "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA=="],
-
-    "@chengchenccc/adapter-claude-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@chengchenccc/adapter-omp-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@chengchenccc/adapter-pi-agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@chengchenccc/agent/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@pnpm/network.ca-file/graceful-fs": ["graceful-fs@4.2.10", "https://registry.npmmirror.com/graceful-fs/-/graceful-fs-4.2.10.tgz", {}, "sha512-9ByhssR2fPVsNZj478qUUbKfmL0+t5BDVyjShtyZZLiK7ZDAArFFfopyOTj0M05wE2tJPisA4iTnnXl2YoPvOA=="],
 
@@ -2129,6 +2138,8 @@
     "parse-entities/@types/unist": ["@types/unist@2.0.11", "https://registry.npmmirror.com/@types/unist/-/unist-2.0.11.tgz", {}, "sha512-CmBKiL6NNo/OqgmMn95Fk9Whlp2mtvIv+KNpQKN2F4SjvrEesubTRWGYSg+BnWZOnlCaSTU1sMpsBOzgbYhnsA=="],
 
     "prompts/kleur": ["kleur@3.0.3", "https://registry.npmmirror.com/kleur/-/kleur-3.0.3.tgz", {}, "sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w=="],
+
+    "prop-types/react-is": ["react-is@16.13.1", "", {}, "sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ=="],
 
     "rc/ini": ["ini@1.3.8", "https://registry.npmmirror.com/ini/-/ini-1.3.8.tgz", {}, "sha512-JV/yugV2uzW5iMRSiZAyDtQd+nxtUnjeLt0acNdw98kKLrvuRVyB80tsREOE7yvGVgalhZ6RNXCmEHkUKBKxew=="],
 

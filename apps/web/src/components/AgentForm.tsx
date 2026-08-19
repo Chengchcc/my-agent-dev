@@ -6,6 +6,7 @@ import { ArrowRight, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
+import QRCode from "react-qr-code";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -661,14 +662,19 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                                 Setup in progress - open this link to complete:
                               </p>
                               {setupSession.url ? (
-                                <a
-                                  href={setupSession.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-(--chart-2) underline break-all"
-                                >
-                                  {setupSession.url}
-                                </a>
+                                <div className="flex items-start gap-3">
+                                  <div className="shrink-0 rounded-md border border-(--hairline) bg-white p-1">
+                                    <QRCode value={setupSession.url} size={96} />
+                                  </div>
+                                  <a
+                                    href={setupSession.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-(--chart-2) underline break-all"
+                                  >
+                                    {setupSession.url}
+                                  </a>
+                                </div>
                               ) : (
                                 <p className="text-xs text-amber-600">Waiting for setup URL…</p>
                               )}
