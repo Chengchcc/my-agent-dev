@@ -98,7 +98,7 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
         }
       />
       {open && (
-        <pre className="max-h-96 overflow-auto rounded-lg border border-(--hairline) bg-(--panel) p-3 text-xs leading-relaxed text-(--body)">
+        <pre className="max-h-96 overflow-auto rounded-lg border border-(--hairline) bg-(--panel) p-3 text-xs/relaxed  text-(--body)">
           {(diff?.diff ?? "loading…").split("\n").slice(0, 200).join("\n")}
         </pre>
       )}

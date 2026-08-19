@@ -462,11 +462,11 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                                       </span>
                                     )}
                                     <span>{m.name}</span>
-                                    <span className="text-[10px] text-[var(--mute)]">
+                                    <span className="text-[10px] text-(--mute)">
                                       {(m.contextWindow / 1000).toFixed(0)}K ctx
                                     </span>
                                     {!m.available && (
-                                      <span className="text-[var(--mute)]">— unavailable</span>
+                                      <span className="text-(--mute)">— unavailable</span>
                                     )}
                                   </span>
                                 </SelectItem>

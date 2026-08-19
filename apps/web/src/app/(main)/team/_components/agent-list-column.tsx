@@ -45,7 +45,7 @@ export function AgentListColumn({
                   <Link
                     href={`/team/agents/${a.id}`}
                     aria-current={active ? "page" : undefined}
-                    className={`flex items-center gap-2 rounded-lg px-2 py-2 ${
+                    className={`flex items-center gap-2 rounded-lg p-2  ${
                       active ? "bg-(--panel2)" : "hover:bg-(--panel)"
                     }`}
                     style={{ minHeight: 56 }}
