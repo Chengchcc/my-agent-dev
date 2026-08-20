@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
 import type { Tool, ToolExecuteResult } from "@chengchenccc/core";
+import { WorkspaceSandbox } from "./workspace-sandbox.js";
 
 const MEDIA_TYPES: Record<string, "image/png" | "image/jpeg" | "image/gif" | "image/webp"> = {
   ".png": "image/png",
@@ -28,6 +28,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 /** read_image: return a workspace image as a vision tool result block. */
 export function createReadImageTool(opts: { cwd: string }): Tool {
   const { cwd } = opts;
+  const sandbox = new WorkspaceSandbox(cwd);
   return {
     name: "read_image",
     description:
@@ -49,8 +50,12 @@ export function createReadImageTool(opts: { cwd: string }): Tool {
       if (typeof raw !== "string" || raw.trim() === "") {
         return { content: "Error: path is required", isError: true };
       }
-      const abs = isAbsolute(raw) ? raw : resolve(cwd, raw);
-      if (!abs.startsWith(resolve(cwd))) {
+      let abs: string;
+      try {
+        // validate() resolves + realpath-checks, catching sibling-prefix
+        // paths and symlinks pointing outside the workspace.
+        abs = sandbox.validate(raw);
+      } catch {
         return { content: `Error: path escapes workspace: ${raw}`, isError: true };
       }
       try {

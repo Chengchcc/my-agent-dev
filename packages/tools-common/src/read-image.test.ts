@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createReadImageTool } from "./read-image.js";
 
@@ -43,5 +43,26 @@ describe("createReadImageTool", () => {
     };
     expect(esc.isError).toBe(true);
     expect(esc.content).toContain("escapes workspace");
+  });
+
+  test("sibling-prefix paths outside the workspace are rejected", async () => {
+    const tool = createReadImageTool({ cwd: tmp });
+    const out = (await tool.execute({ path: `${tmp}-evil/x.png` })) as {
+      content: string;
+      isError?: boolean;
+    };
+    expect(out.isError).toBe(true);
+    expect(out.content).toContain("escapes workspace");
+  });
+
+  test("symlink inside the workspace pointing outside is rejected", async () => {
+    symlinkSync("/etc/passwd", join(tmp, "escape-link.png"));
+    const tool = createReadImageTool({ cwd: tmp });
+    const out = (await tool.execute({ path: "escape-link.png" })) as {
+      content: string;
+      isError?: boolean;
+    };
+    expect(out.isError).toBe(true);
+    expect(out.content).toContain("escapes workspace");
   });
 });
