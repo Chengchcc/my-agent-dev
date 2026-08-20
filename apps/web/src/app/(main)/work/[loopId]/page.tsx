@@ -40,6 +40,7 @@ import {
   useDeactivateLoop,
   useDeferItem,
   useDeleteLoop,
+  useDoctorLoop,
   useLoopDetail,
   useRunLoop,
   useUndeferItem,
@@ -58,6 +59,11 @@ export default function LoopDetailPage() {
   const router = useRouter();
   const { data, isLoading } = useLoopDetail(loopId);
   const runMu = useRunLoop();
+  const doctorMu = useDoctorLoop();
+  const [doctorReport, setDoctorReport] = useState<{
+    issues: Array<{ kind: string; target: string; action: string }>;
+    fixed: string[];
+  } | null>(null);
   const activateMu = useActivateLoop();
   const deactivateMu = useDeactivateLoop();
   const addItemMu = useAddLoopItem(loopId);
@@ -166,6 +172,28 @@ export default function LoopDetailPage() {
             >
               Run Now
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                doctorMu.mutate(loopId, {
+                  onSuccess: (data) => {
+                    const report = data?.report;
+                    const n = report?.fixed.length ?? 0;
+                    toast.success(
+                      n > 0
+                        ? `Doctor fixed ${n} issue${n === 1 ? "" : "s"}`
+                        : "Doctor: all healthy",
+                    );
+                    setDoctorReport(report ?? null);
+                  },
+                  onError: (e) => toast.error(`Doctor failed: ${String(e)}`),
+                })
+              }
+              disabled={doctorMu.isPending}
+            >
+              Doctor
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
               Add Item
             </Button>
@@ -202,6 +230,36 @@ export default function LoopDetailPage() {
         }
       />
       <PageBody className="space-y-6">
+        {doctorReport && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Doctor report</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {doctorReport.issues.length === 0 ? (
+                <p className="text-(--mute)">All healthy.</p>
+              ) : (
+                doctorReport.issues.map((issue, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2 rounded border border-(--hairline) p-2"
+                  >
+                    <Badge variant="outline" className="shrink-0 text-[10px]">
+                      {issue.kind}
+                    </Badge>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-mono text-xs">{issue.target}</div>
+                      <div className="text-xs text-(--mute)">{issue.action}</div>
+                    </div>
+                  </div>
+                ))
+              )}
+              {doctorReport.fixed.length > 0 && (
+                <p className="text-xs text-emerald-600">Fixed: {doctorReport.fixed.join(", ")}</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
         {loop.config && (
           <Card>
             <CardHeader>

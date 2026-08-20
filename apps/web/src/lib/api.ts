@@ -246,6 +246,7 @@ export const api = {
   createLoop: (body: { name: string; intent?: string; projectId?: string; cronExpr?: string }) =>
     unwrap(client.api.loops.post(body)),
   runLoop: (id: string) => unwrap(client.api.loops({ id }).run.post({})),
+  doctorLoop: (id: string) => unwrap(client.api.loops({ id }).doctor.post({})),
   reviewLoopItem: (
     id: string,
     body: {

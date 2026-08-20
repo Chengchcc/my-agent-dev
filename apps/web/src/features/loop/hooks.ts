@@ -47,6 +47,12 @@ export function useRunLoop() {
   });
 }
 
+export function useDoctorLoop() {
+  return useMutation({
+    mutationFn: (id: string) => api.doctorLoop(id),
+  });
+}
+
 export function useReviewLoopItem(id: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -102,7 +108,7 @@ export function useAddLoopItem(loopId: string) {
       source: string;
       summary: string;
       priority?: number;
-      taskClass?: string;
+      taskClass?: "bugfix" | "feature" | "refactor" | "research" | "review" | "chore";
     }) => api.addLoopItem(loopId, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: loopKeys.detail(loopId) }),
   });
