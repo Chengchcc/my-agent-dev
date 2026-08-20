@@ -18,6 +18,8 @@ interface LoopBoardItem {
   step: string;
   attempt: number;
   priority: number;
+  taskClass?: string;
+  defer?: { reason: string } | null;
 }
 
 interface LoopBoardProps {
@@ -73,6 +75,19 @@ export function LoopBoard({ items, selectedId, onSelect }: LoopBoardProps) {
                         }
                       >
                         p{item.priority}
+                      </span>
+                    )}
+                    {item.taskClass && (
+                      <span className="rounded bg-(--canvas-soft) px-1 py-px uppercase tracking-wider text-(--faint)">
+                        {item.taskClass}
+                      </span>
+                    )}
+                    {item.defer && (
+                      <span
+                        className="rounded bg-amber-500/10 px-1 py-px text-amber-700"
+                        title={item.defer.reason}
+                      >
+                        ⏸ deferred
                       </span>
                     )}
                   </div>

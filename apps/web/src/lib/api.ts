@@ -257,8 +257,21 @@ export const api = {
   deleteLoop: (id: string) => unwrap(client.api.loops({ id }).delete()),
   activateLoop: (id: string) => unwrap(client.api.loops({ id }).activate.post()),
   deactivateLoop: (id: string) => unwrap(client.api.loops({ id }).deactivate.post()),
-  addLoopItem: (loopId: string, body: { source: string; summary: string; priority?: number }) =>
-    unwrap(client.api.loops({ id: loopId }).items.post(body)),
+  addLoopItem: (
+    loopId: string,
+    body: {
+      source: string;
+      summary: string;
+      priority?: number;
+      taskClass?: "bugfix" | "feature" | "refactor" | "research" | "review" | "chore";
+    },
+  ) => unwrap(client.api.loops({ id: loopId }).items.post(body)),
+  deferLoopItem: (
+    loopId: string,
+    body: { itemId: string; reason: string; until?: number; after?: string[] },
+  ) => unwrap(client.api.loops({ id: loopId }).items({ itemId: body.itemId }).defer.post(body)),
+  undeferLoopItem: (loopId: string, itemId: string) =>
+    unwrap(client.api.loops({ id: loopId }).items({ itemId }).undefer.post()),
   refineLoop: (id: string, body: { intent: string; clarifyRound?: number }) =>
     unwrap(client.api.loops({ id }).refine.post(body)),
   // Work Today

@@ -38,9 +38,11 @@ import {
   useActivateLoop,
   useAddLoopItem,
   useDeactivateLoop,
+  useDeferItem,
   useDeleteLoop,
   useLoopDetail,
   useRunLoop,
+  useUndeferItem,
 } from "@/features/loop/hooks";
 
 const STEP_ORDER = ["fixing", "verifying", "awaiting_review", "resolved"] as const;
@@ -59,7 +61,11 @@ export default function LoopDetailPage() {
   const activateMu = useActivateLoop();
   const deactivateMu = useDeactivateLoop();
   const addItemMu = useAddLoopItem(loopId);
+  const deferItemMu = useDeferItem(loopId);
+  const undeferItemMu = useUndeferItem(loopId);
   const deleteLoopMu = useDeleteLoop();
+  const [deferOpen, setDeferOpen] = useState(false);
+  const [deferReason, setDeferReason] = useState("");
 
   const loop = data?.loop;
   const searchParams = useSearchParams();
@@ -283,6 +289,29 @@ export default function LoopDetailPage() {
 
             {/* Right: evidence chain */}
             <div className="lg:col-span-2 overflow-y-auto">
+              {selected && (
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  {selected.defer ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => undeferItemMu.mutate(selected.id)}
+                    >
+                      Resume ({selected.defer.reason})
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setDeferOpen(true)}
+                    >
+                      Defer
+                    </Button>
+                  )}
+                </div>
+              )}
               <EvidenceChainPanel loopId={loopId} item={selected} />
             </div>
           </div>
@@ -316,7 +345,7 @@ export default function LoopDetailPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Item</DialogTitle>
-          </DialogHeader>
+          </DialogHeader>{" "}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -380,6 +409,52 @@ export default function LoopDetailPage() {
               </Button>
               <Button type="submit" disabled={addItemMu.isPending}>
                 Add
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={deferOpen} onOpenChange={setDeferOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Defer item</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!selected) return;
+              deferItemMu.mutate(
+                { itemId: selected.id, reason: deferReason },
+                {
+                  onSuccess: () => {
+                    setDeferOpen(false);
+                    setDeferReason("");
+                    toast.success("Item deferred");
+                  },
+                  onError: (err) => toast.error(`Defer failed: ${String(err)}`),
+                },
+              );
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="defer-reason">Reason</Label>
+              <Textarea
+                id="defer-reason"
+                value={deferReason}
+                onChange={(e) => setDeferReason(e.target.value)}
+                required
+                rows={2}
+                className="text-sm"
+                placeholder="e.g. waiting for upstream PR"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDeferOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={deferItemMu.isPending || !deferReason.trim()}>
+                Defer
               </Button>
             </DialogFooter>
           </form>

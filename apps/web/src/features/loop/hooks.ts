@@ -98,8 +98,29 @@ export function useRefineLoop(id: string) {
 export function useAddLoopItem(loopId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { source: string; summary: string; priority?: number }) =>
-      api.addLoopItem(loopId, body),
+    mutationFn: (body: {
+      source: string;
+      summary: string;
+      priority?: number;
+      taskClass?: string;
+    }) => api.addLoopItem(loopId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: loopKeys.detail(loopId) }),
+  });
+}
+
+export function useDeferItem(loopId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { itemId: string; reason: string; until?: number; after?: string[] }) =>
+      api.deferLoopItem(loopId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: loopKeys.detail(loopId) }),
+  });
+}
+
+export function useUndeferItem(loopId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId: string) => api.undeferLoopItem(loopId, itemId),
     onSuccess: () => qc.invalidateQueries({ queryKey: loopKeys.detail(loopId) }),
   });
 }
