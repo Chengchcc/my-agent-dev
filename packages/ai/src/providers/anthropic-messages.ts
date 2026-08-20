@@ -189,6 +189,13 @@ function convertMessages(
         .map((b) => toWireBlock(b, wireCompat))
         .filter((b): b is WireBlock => b !== null);
       if (blocks.length > 0) {
+        // Compound shape: answer lives in `text`, `blocks` holds thinking
+        // blocks only. Append the answer as a trailing text block unless a
+        // text block already carried it (legacy shape).
+        const text = (m.text ?? "").trim();
+        if (text && !blocks.some((b) => b.type === "text")) {
+          blocks.push({ type: "text", text: sanitizeSurrogates(m.text ?? "") });
+        }
         wire.push({ role: m.role, content: blocks });
       } else if ((m.text ?? "").trim().length > 0) {
         wire.push({ role: m.role, content: sanitizeSurrogates(m.text ?? "") });

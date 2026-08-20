@@ -497,13 +497,115 @@ describe("Provider contract — wire serialization", () => {
     capture.restore();
 
     const body = capture.getBody();
-    const input = body!.input as Array<{ type: string; content: unknown }>;
+    const input = body!.input as Array<{ type: string; role?: string; content: unknown }>;
     expect(input[0]).toEqual({
       type: "message",
       role: "user",
       content: [
         { type: "input_text", text: "look" },
         { type: "input_image", image_url: "data:image/png;base64,aGk=" },
+      ],
+    });
+  });
+
+  test("openai-responses assistant text survives when blocks are thinking-only", async () => {
+    const responsesModel: Model = { ...openaiModel, api: "openai-responses" };
+    const provider = makeProvider(responsesModel);
+    const capture = mockFetchCapture(sseRes([DONE]));
+    await collectChunks(
+      provider.stream(
+        responsesModel,
+        [
+          {
+            role: "assistant",
+            text: "the answer",
+            blocks: [{ type: "thinking", text: "reasoning", signature: "sig" }],
+          },
+        ],
+        { apiKey: "test-key" },
+      ),
+    );
+    capture.restore();
+
+    const body = capture.getBody();
+    const input = body!.input as Array<{
+      type: string;
+      role?: string;
+      status?: string;
+      content: unknown;
+    }>;
+    expect(input[0]).toEqual({
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text: "the answer" }],
+      status: "completed",
+    });
+  });
+
+  test("anthropic assistant text survives when blocks are thinking-only", async () => {
+    const provider = makeProvider(anthropicModel);
+    const capture = mockFetchCapture(sseRes([DONE]));
+    await collectChunks(
+      provider.stream(
+        anthropicModel,
+        [
+          {
+            role: "assistant",
+            text: "the answer",
+            blocks: [{ type: "thinking", text: "reasoning", signature: "sig" }],
+          },
+        ],
+        { apiKey: "test-key" },
+      ),
+    );
+    capture.restore();
+
+    const body = capture.getBody();
+    const messages = body!.messages as Array<{ role: string; content: unknown }>;
+    expect(messages[0]!.content).toEqual([
+      { type: "thinking", thinking: "reasoning", signature: "sig" },
+      { type: "text", text: "the answer" },
+    ]);
+  });
+
+  test("openai-responses tool_result carries images as input_image parts", async () => {
+    const responsesModel: Model = { ...openaiModel, api: "openai-responses" };
+    const provider = makeProvider(responsesModel);
+    const capture = mockFetchCapture(sseRes([DONE]));
+    await collectChunks(
+      provider.stream(
+        responsesModel,
+        [
+          {
+            role: "tool",
+            text: "",
+            blocks: [
+              {
+                type: "tool_result",
+                tool_use_id: "t1",
+                content: "[image attached]",
+                images: [{ type: "image", mediaType: "image/jpeg", base64: "am9o" }],
+              },
+            ],
+          },
+        ],
+        { apiKey: "test-key" },
+      ),
+    );
+    capture.restore();
+
+    const body = capture.getBody();
+    const input = body!.input as Array<{
+      type: string;
+      call_id?: string;
+      output?: unknown;
+    }>;
+    expect(input[0]).toEqual({
+      type: "function_call_output",
+      call_id: "t1",
+      output: [
+        { type: "input_text", text: "[image attached]" },
+        { type: "input_image", image_url: "data:image/jpeg;base64,am9o" },
       ],
     });
   });

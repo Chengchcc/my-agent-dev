@@ -47,10 +47,11 @@ function convertInput(messages: readonly Message[], systemRole: string): unknown
         });
     } else if (m.role === "assistant") {
       if (m.blocks?.length) {
-        const text = m.blocks
-          .filter((b) => b.type === "text")
-          .map((b) => b.text)
-          .join("");
+        const text =
+          m.blocks
+            .filter((b) => b.type === "text")
+            .map((b) => b.text)
+            .join("") || m.text;
         if (text)
           input.push({
             type: "message",
@@ -79,12 +80,24 @@ function convertInput(messages: readonly Message[], systemRole: string): unknown
         m.blocks?.filter(
           (b): b is Extract<typeof b, { type: "tool_result" }> => b.type === "tool_result",
         ) ?? [];
-      for (const result of results)
+      for (const result of results) {
+        const images = result.images ?? [];
+        const output =
+          images.length > 0
+            ? [
+                ...(result.content ? [{ type: "input_text", text: result.content }] : []),
+                ...images.map((img) => ({
+                  type: "input_image",
+                  image_url: `data:${img.mediaType};base64,${img.base64}`,
+                })),
+              ]
+            : (result.content ?? m.text ?? "");
         input.push({
           type: "function_call_output",
           call_id: result.tool_use_id ?? "",
-          output: result.content ?? m.text ?? "",
+          output,
         });
+      }
       // ponytail: keep the legacy single-output fallback for bare-text tool turns.
       if (!results.length && m.text)
         input.push({ type: "function_call_output", call_id: "", output: m.text });
