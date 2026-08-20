@@ -247,6 +247,8 @@ export const api = {
     unwrap(client.api.loops.post(body)),
   runLoop: (id: string) => unwrap(client.api.loops({ id }).run.post({})),
   doctorLoop: (id: string) => unwrap(client.api.loops({ id }).doctor.post({})),
+  triageLoop: (id: string, sources?: string[]) =>
+    unwrap(client.api.loops({ id }).triage.post({ sources: sources ?? [] })),
   reviewLoopItem: (
     id: string,
     body: {

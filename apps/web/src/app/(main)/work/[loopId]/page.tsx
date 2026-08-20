@@ -43,6 +43,7 @@ import {
   useDoctorLoop,
   useLoopDetail,
   useRunLoop,
+  useTriageLoop,
   useUndeferItem,
 } from "@/features/loop/hooks";
 
@@ -60,6 +61,7 @@ export default function LoopDetailPage() {
   const { data, isLoading } = useLoopDetail(loopId);
   const runMu = useRunLoop();
   const doctorMu = useDoctorLoop();
+  const triageMu = useTriageLoop(loopId);
   const [doctorReport, setDoctorReport] = useState<{
     issues: Array<{ kind: string; target: string; action: string }>;
     fixed: string[];
@@ -193,6 +195,27 @@ export default function LoopDetailPage() {
               disabled={doctorMu.isPending}
             >
               Doctor
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                triageMu.mutate(undefined, {
+                  onSuccess: (data) => {
+                    const added = "added" in data ? data.added : [];
+                    const n = added.length;
+                    toast.success(
+                      n > 0
+                        ? `Triage found ${n} new item${n === 1 ? "" : "s"}`
+                        : "Triage: nothing new",
+                    );
+                  },
+                  onError: (e) => toast.error(`Triage failed: ${String(e)}`),
+                })
+              }
+              disabled={triageMu.isPending}
+            >
+              Triage
             </Button>
             <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
               Add Item

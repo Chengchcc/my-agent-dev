@@ -53,6 +53,14 @@ export function useDoctorLoop() {
   });
 }
 
+export function useTriageLoop(loopId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sources?: string[]) => api.triageLoop(loopId, sources),
+    onSuccess: () => qc.invalidateQueries({ queryKey: loopKeys.detail(loopId) }),
+  });
+}
+
 export function useReviewLoopItem(id: string) {
   const qc = useQueryClient();
   return useMutation({
