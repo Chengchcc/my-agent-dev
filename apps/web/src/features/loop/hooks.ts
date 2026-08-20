@@ -21,8 +21,16 @@ export function useLoopDetail(id: string) {
 export function useCreateLoop() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name: string; intent?: string; projectId?: string; cronExpr?: string }) =>
-      api.createLoop(body),
+    mutationFn: (body: {
+      name: string;
+      intent?: string;
+      goal?: string;
+      action?: string;
+      acceptance?: string;
+      projectId?: string;
+      agent?: string;
+      cronExpr?: string;
+    }) => api.createLoop(body),
     onSuccess: () => qc.invalidateQueries({ queryKey: loopKeys.all }),
   });
 }

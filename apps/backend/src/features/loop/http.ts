@@ -74,7 +74,7 @@ export function loopRoutes(input: {
       return { reviewQueue: getTodayWork(cronSvc, store) };
     })
     .get("/api/loops/:id", async ({ params: { id }, set }) => {
-      const detail = getLoopDetail(cronSvc, store, id);
+      const detail = getLoopDetail(cronSvc, store, id, dataDir);
       if (!detail) {
         set.status = 404;
         return { error: "Not a loop" };
@@ -89,6 +89,9 @@ export function loopRoutes(input: {
           {
             name: body.name,
             intent: body.intent,
+            goal: body.goal,
+            action: body.action,
+            acceptance: body.acceptance,
             projectId: body.projectId,
             agent: body.agent,
             cronExpr: body.cronExpr,
@@ -101,6 +104,9 @@ export function loopRoutes(input: {
         body: t.Object({
           name: t.String(),
           intent: t.Optional(t.String()),
+          goal: t.Optional(t.String()),
+          action: t.Optional(t.String()),
+          acceptance: t.Optional(t.String()),
           projectId: t.Optional(t.String()),
           agent: t.Optional(t.String({ minLength: 1 })),
           cronExpr: t.Optional(t.String()),

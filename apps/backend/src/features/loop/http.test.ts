@@ -94,7 +94,12 @@ async function createLoop(app: ReturnType<typeof makeApp>["app"]): Promise<strin
     new Request("http://localhost/api/loops", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "delete-me", intent: "delete me" }),
+      body: JSON.stringify({
+        name: "delete-me",
+        goal: "delete me",
+        action: "auto fix",
+        acceptance: "tests green",
+      }),
     }),
   );
   expect(resp.status).toBe(201);
@@ -114,7 +119,9 @@ describe("loop HTTP routes", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: "每天汇总git issue",
-          intent: "每天汇总git issue",
+          goal: "每天汇总git issue",
+          action: "生成报告,不改代码",
+          acceptance: "报告包含新增/进行中/阻塞三节",
         }),
       });
       const resp = await app.handle(req);
@@ -126,6 +133,25 @@ describe("loop HTTP routes", () => {
       expect(body.status).toBe("generated");
       expect(body.loop.name).toBe("每天汇总git issue");
       expect(body.loop.cronExpr).toBe("");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("POST /api/loops without the four elements asks for clarification", async () => {
+    const { app, cleanup } = makeApp();
+    try {
+      const resp = await app.handle(
+        new Request("http://localhost/api/loops", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "vague", intent: "do things" }),
+        }),
+      );
+      expect(resp.status).toBe(201);
+      const body = (await resp.json()) as { status: string; questions: string[] };
+      expect(body.status).toBe("needs_clarification");
+      expect(body.questions.length).toBeGreaterThan(0);
     } finally {
       await cleanup();
     }

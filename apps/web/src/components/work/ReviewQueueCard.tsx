@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ function truncate(s: string, n = 120) {
 
 export function ReviewQueueCard({ item }: { item: ReviewQueueItem }) {
   const qc = useQueryClient();
+  const [showEvidence, setShowEvidence] = useState(false);
   const review = useMutation({
     mutationFn: (verdict: "approve" | "reject") =>
       api.reviewLoopItem(item.loopId, { itemId: item.id, verdict }),
@@ -53,7 +55,20 @@ export function ReviewQueueCard({ item }: { item: ReviewQueueItem }) {
             </div>
             <p className="text-sm truncate">{item.summary}</p>
             {evidence && (
-              <p className="text-xs text-(--mute) mt-1 line-clamp-2">{truncate(evidence)}</p>
+              <div className="mt-1">
+                <button
+                  type="button"
+                  className="text-xs text-(--chart-2) underline"
+                  onClick={() => setShowEvidence((v) => !v)}
+                >
+                  {showEvidence ? "Hide evidence" : "Show evidence"}
+                </button>
+                {showEvidence && (
+                  <pre className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap rounded border border-(--hairline) bg-(--canvas-soft) p-2 text-xs">
+                    {evidence}
+                  </pre>
+                )}
+              </div>
             )}
             {reasons && (
               <p className="text-xs text-rose-600/80 mt-0.5 line-clamp-1">

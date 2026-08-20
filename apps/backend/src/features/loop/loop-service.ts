@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import type { BackendModelRef } from "@chengchenccc/agent-backend";
-import type { ItemState, LoopState, Verdict } from "@chengchenccc/loop";
+import { type ItemState, type LoopState, parseLoopConfig, type Verdict } from "@chengchenccc/loop";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";
@@ -54,18 +54,27 @@ export interface LoopDetail {
   state: LoopState;
   pendingCount: number;
   budgetHistory: Array<{ date: string; spent: number }>;
+  /** Parsed LOOP.md config for the detail config card. */
+  config: {
+    model: string;
+    acceptance: string;
+    fixPrompt: string;
+    verifyPrompt: string;
+  } | null;
 }
 
-export type CreateLoopResult = {
-  status: "generated";
-  loop: {
-    id: string;
-    name: string;
-    cronExpr: string;
-    loopConfigPath: string | null;
-    preview: string;
-  };
-};
+export type CreateLoopResult =
+  | {
+      status: "generated";
+      loop: {
+        id: string;
+        name: string;
+        cronExpr: string;
+        loopConfigPath: string | null;
+        preview: string;
+      };
+    }
+  | { status: "needs_clarification"; questions: string[] };
 
 export type RefineLoopResult = {
   status: "generated";
@@ -139,6 +148,7 @@ export function getLoopDetail(
   cronSvc: CronJobService,
   store: LoopStateStore,
   id: string,
+  dataDir?: string,
 ): LoopDetail | null {
   const job = cronSvc.getById(id);
   if (!job?.loopConfigPath) return null;
@@ -154,6 +164,23 @@ export function getLoopDetail(
     generatorRunId: item.generatorRunId,
     evaluatorRunId: item.evaluatorRunId,
   }));
+  let config: LoopDetail["config"] = null;
+  if (dataDir) {
+    try {
+      const md = readFileSync(`${resolveLoopPaths(job, dataDir).loopConfigPath}/LOOP.md`, "utf-8");
+      const parsed = parseLoopConfig(md);
+      if (parsed) {
+        config = {
+          model: parsed.model,
+          acceptance: parsed.acceptance,
+          fixPrompt: parsed.workflow.fixPrompt,
+          verifyPrompt: parsed.workflow.verifyPrompt,
+        };
+      }
+    } catch {
+      /* LOOP.md missing/unparseable — config card stays hidden */
+    }
+  }
   return {
     id,
     name: job.name,
@@ -165,6 +192,7 @@ export function getLoopDetail(
     state,
     pendingCount: items.filter((i) => i.step === "awaiting_review").length,
     budgetHistory: store.getBudgetHistory(id, 7),
+    config,
   };
 }
 
@@ -172,9 +200,14 @@ export function getLoopDetail(
 
 export interface CreateLoopInput {
   name: string;
+  /** Legacy free-form intent; superseded by goal/action/acceptance. */
   intent?: string;
+  goal?: string;
+  action?: string;
+  acceptance?: string;
   projectId?: string;
   agent?: string;
+  /** Cron expression; empty = manual loop. */
   cronExpr?: string;
 }
 
@@ -191,6 +224,27 @@ export async function createLoop(
   input: CreateLoopInput,
 ): Promise<CreateLoopResult> {
   const { cronSvc, dataDir, convPort, settingsSvc } = deps;
+
+  // Four-element gate (loop-config-generator contract): goal / action /
+  // acceptance must be present or the API asks, never writes an empty shell.
+  const missing: string[] = [];
+  if (!input.goal?.trim()) missing.push("goal");
+  if (!input.action?.trim()) missing.push("action");
+  if (!input.acceptance?.trim()) missing.push("acceptance");
+  if (missing.length > 0) {
+    return {
+      status: "needs_clarification",
+      questions: missing.map(
+        (m) =>
+          `缺少 ${m} 要素` +
+          (m === "goal"
+            ? "（要自动化什么？）"
+            : m === "action"
+              ? "（做什么 + 边界：自动修 / 只通知 / 生成报告）"
+              : "（怎么算做好，如“相关测试全绿”）"),
+      ),
+    };
+  }
 
   const loopName = input.name.trim().toLowerCase().replace(/\s+/g, "-");
   const loopPath = `loops/${loopName}`;
@@ -237,8 +291,16 @@ export async function createLoop(
     }
   }
 
-  // 4. Deterministic LOOP.md (intent is documented, not interpreted)
-  await writeDefaultLoopMd(dir, input.name, input.projectId, input.agent, settingsSvc);
+  // 4. Workflow-first LOOP.md (goal/action/acceptance drive the prompts)
+  await writeLoopMd(dir, {
+    name: input.name,
+    goal: input.goal!,
+    action: input.action!,
+    acceptance: input.acceptance!,
+    projectId: input.projectId,
+    agent: input.agent,
+    settingsSvc,
+  });
 
   return readGenerationResult(dir, job.cronJobId, job.name, job.cronExpr, job.loopConfigPath);
 }
@@ -266,7 +328,13 @@ export async function refineLoop(
   const dir = `${dataDir}/${job.loopConfigPath}`;
 
   await safeRm(`${dir}/LOOP.md`);
-  await writeDefaultLoopMd(dir, job.name, undefined, undefined, settingsSvc);
+  await writeLoopMd(dir, {
+    name: job.name,
+    goal: "",
+    action: "",
+    acceptance: "",
+    settingsSvc,
+  });
 
   let preview = "";
   try {
@@ -401,22 +469,26 @@ export async function reviewLoop(
 
 // ── Internal helpers ───────────────────────────────────────────────────────
 
-const RUNTIME_SKILLS = ["loop-triage", "loop-generator", "loop-verifier"] as const;
+const RUNTIME_SKILLS = ["loop-triage"] as const;
 
-async function writeDefaultLoopMd(
+async function writeLoopMd(
   dir: string,
-  name: string,
-  projectId: string | undefined,
-  agent: string | undefined,
-  settingsSvc?: SettingsService,
+  input: {
+    name: string;
+    goal: string;
+    action: string;
+    acceptance: string;
+    projectId?: string;
+    agent?: string;
+    settingsSvc?: SettingsService;
+  },
 ): Promise<void> {
   // LOOP.md stores the FULL canonical model ID (<provider>/<model>) - the
   // same key the Oma catalog validates.
-  const genModel = settingsSvc?.get<string>("loop.generatorModel") ?? "anthropic/claude-sonnet-5";
-  const evalModel = settingsSvc?.get<string>("loop.evaluatorModel") ?? "anthropic/claude-opus-4-8";
-  const acceptance = settingsSvc?.get<string>("loop.defaultAcceptance") ?? "";
-  const dailyCap = settingsSvc?.get<number>("loop.defaultDailyCap") ?? 200000;
-  const denylist = settingsSvc?.get<string[]>("loop.defaultDenylist") ?? [
+  const model =
+    input.settingsSvc?.get<string>("loop.generatorModel") ?? "anthropic/claude-sonnet-5";
+  const dailyCap = input.settingsSvc?.get<number>("loop.defaultDailyCap") ?? 200000;
+  const denylist = input.settingsSvc?.get<string[]>("loop.defaultDenylist") ?? [
     ".env",
     "auth/",
     "payments/",
@@ -424,19 +496,22 @@ async function writeDefaultLoopMd(
   ];
 
   const denylistYaml = denylist.map((d) => `        - ${d}`).join("\n");
+  const q = JSON.stringify;
+  // Workflow-first: fix/verify prompts are rendered here from the four
+  // elements; loopStep seeds the per-item script from these.
+  const fixPrompt = `负责这个 Loop 的修复执行。目标: ${input.goal}。动作: ${input.action}。最小 diff,不提交,遵守 denylist。`;
+  const verifyPrompt = `按验收标准验证修复: ${input.acceptance}。先运行相关测试/命令,把输出作为 evidence,再判定 PASS/REJECT/ESCALATE。`;
   await Bun.write(
     `${dir}/LOOP.md`,
     [
       "---",
-      `projectId: ${projectId ?? ""}`,
-      `agent: ${agent ?? "default"}`,
-      "generator:",
-      `  model: ${genModel}`,
-      '  systemPrompt: ""',
-      "evaluator:",
-      `  model: ${evalModel}`,
-      '  systemPrompt: ""',
-      `acceptance: "${acceptance}"`,
+      `projectId: ${input.projectId ?? ""}`,
+      `agent: ${input.agent ?? "default"}`,
+      `model: ${model}`,
+      `acceptance: ${q(input.acceptance)}`,
+      "workflow:",
+      `  fixPrompt: ${q(fixPrompt)}`,
+      `  verifyPrompt: ${q(verifyPrompt)}`,
       "safety:",
       "  denylist:",
       denylistYaml,
@@ -446,7 +521,17 @@ async function writeDefaultLoopMd(
       `  dailyCap: ${dailyCap}`,
       "---",
       "",
-      `# ${name}`,
+      `# ${input.name}`,
+      "",
+      "## Goal",
+      input.goal,
+      "",
+      "## Action",
+      input.action,
+      "",
+      "## Acceptance",
+      input.acceptance,
+      "",
     ].join("\n"),
   );
 }

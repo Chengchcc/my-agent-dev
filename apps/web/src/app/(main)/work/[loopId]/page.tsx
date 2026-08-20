@@ -196,6 +196,31 @@ export default function LoopDetailPage() {
         }
       />
       <PageBody className="space-y-6">
+        {loop.config && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Configuration</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-(--mute)">Model</div>
+                <div className="font-mono text-xs">{loop.config.model}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-(--mute)">Acceptance</div>
+                <div className="text-xs">{loop.config.acceptance || "—"}</div>
+              </div>
+              <div className="sm:col-span-2">
+                <div className="text-[10px] uppercase tracking-wider text-(--mute)">
+                  Workflow — verify 段
+                </div>
+                <pre className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap rounded border border-(--hairline) bg-(--canvas-soft) p-2 text-xs">
+                  {loop.config.verifyPrompt}
+                </pre>
+              </div>
+            </CardContent>
+          </Card>
+        )}
         {view === "list" ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:h-[calc(100dvh-15rem)]">
             {/* Left: item list grouped by step */}
