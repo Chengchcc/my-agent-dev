@@ -37,6 +37,11 @@ export type ActivateLoopResult = ApiReturn<typeof api.activateLoop>;
 export type SettingsMap = ApiReturn<typeof api.getSettings>["settings"];
 export type McpServerRow = ApiReturn<typeof api.listMcpServers>["mcpServers"][number];
 export type PendingInput = ApiReturn<typeof api.listConversationInputs>["inputs"][number];
+export type AgentMemory = {
+  memories: Array<{ file: string; content: string }>;
+  memSummary: string | null;
+  memoryMd: string | null;
+};
 
 export type ChatModelOverride = {
   backendKind: string;
@@ -323,6 +328,21 @@ export const api = {
   // Memory
   getAgentMemory: (agentId: string) =>
     fetch(`/api/bff/agents/${agentId}/memory`, { credentials: "include" }).then((r) => r.json()),
+  updateAgentMemory: (
+    agentId: string,
+    body: {
+      memSummary?: string;
+      memoryMd?: string;
+      facts?: Array<{ file: string; content: string }>;
+      deleteFacts?: string[];
+    },
+  ) =>
+    fetch(`/api/bff/agents/${agentId}/memory`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      credentials: "include",
+    }).then((r) => r.json()),
   // Workspace (read-only file browser, ADR 0003)
   listWorkspaceEntries: (agentId: string, path: string) =>
     fetch(`/api/bff/agents/${agentId}/workspace/entries?path=${encodeURIComponent(path)}`, {
