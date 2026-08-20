@@ -29,6 +29,7 @@
 | 0021 | one-conversation-one-agent-member(session 投影) | Accepted |
 | 0022 | mcp-catalog-and-knowledge-packs | Accepted |
 | 0023 | project-worktree-workspace(多对多 worktree 桥接) | Proposed |
+| 0025 | loop-workflow-first-execution(Workflow 一等执行) | Accepted |
 > 编号历史:0002/0003 曾各有两个文件(早期 loop 类与近期 backend-kinds 类重号);2026-08-13 统一后,backend-kinds 类顺延为 0019/0020。
 
 ## 架构级决策文档(非 ADR,但同属决策面)
