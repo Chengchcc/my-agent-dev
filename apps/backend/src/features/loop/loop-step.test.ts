@@ -653,6 +653,47 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
       await cleanup();
     }
   });
+
+  test("verifyCommands are rendered as mandatory steps in the verify subagent prompt", async () => {
+    const { dataDir, projectPort, cleanup } = await setupGitDataDir();
+    try {
+      const store = createTestStore();
+      stateWithFixingItem(store);
+      const dir = await initLoopDir("test-project");
+      await Bun.write(
+        `${dir}/LOOP.md`,
+        `---
+projectId: test-project
+model: gen-model
+acceptance: "tests pass"
+workflow:
+  verifyCommands:
+    - bun test
+    - bun run typecheck
+---
+`,
+      );
+      const gitRunner: GitRunner = {
+        revParse: () => Promise.resolve({ text: () => "abc123" }),
+        diff: () => Promise.resolve({ text: () => "" }),
+        resetHard: () => Promise.resolve({ text: () => "" }),
+      };
+      const { enqueues } = await runStep({
+        store,
+        dir,
+        dataDir,
+        projectPort,
+        gitRunner,
+        script: {},
+      });
+      const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"))!;
+      expect(gen.workflow?.script).toContain("bun test");
+      expect(gen.workflow?.script).toContain("bun run typecheck");
+      expect(gen.workflow?.script).toContain("No output for a command");
+    } finally {
+      await cleanup();
+    }
+  });
 });
 
 /** Commit a change on the bare fixture origin via a scratch worktree

@@ -278,12 +278,18 @@ function renderLoopWorkflow(
     `Fix the loop item. Summary: ${item.summary}. Source: ${item.source}. Smallest possible diff; do not commit.${gitCtx}`;
   const verifyPrompt =
     cfg.workflow.verifyPrompt ||
-    (cfg.acceptance
-      ? `Verify the fix for item ${item.id} against the acceptance criteria: ${cfg.acceptance}. ` +
-        `Run the relevant tests/commands first, capture their output, then return JSON: ` +
-        `{"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"<command output>"}.`
-      : `Verify the fix for item ${item.id}. Run the relevant tests and return JSON: ` +
-        `{"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"..."}.`);
+    (cfg.workflow.verifyCommands.length > 0
+      ? `Verify the fix for item ${item.id}. Acceptance: ${cfg.acceptance}. ` +
+        `Run EVERY command below (bash, in the repo), and paste each command's full output into evidence. ` +
+        `No output for a command = that check did not happen = the verdict must be REJECT. ` +
+        `Commands:\n${cfg.workflow.verifyCommands.map((c, i) => `${i + 1}. ${c}`).join("\n")}\n` +
+        `Then return JSON: {"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"<full command outputs>"}.`
+      : cfg.acceptance
+        ? `Verify the fix for item ${item.id} against the acceptance criteria: ${cfg.acceptance}. ` +
+          `Run the relevant tests/commands first, capture their output, then return JSON: ` +
+          `{"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"<command output>"}.`
+        : `Verify the fix for item ${item.id}. Run the relevant tests and return JSON: ` +
+          `{"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"..."}.`);
   return `// Loop workflow (product-rendered per item). fix then verify.
 const item = args.item;
 const fix = await agent(${JSON.stringify(fixPrompt)}, { label: "fix" });

@@ -314,7 +314,13 @@ export interface LoopConfig {
   denylist: string[];
   /** Optional per-loop workflow prompt templates; when empty the backend
    *  renders defaults from goal/action/acceptance. */
-  workflow: { fixPrompt: string; verifyPrompt: string };
+  workflow: {
+    fixPrompt: string;
+    verifyPrompt: string;
+    /** Structured acceptance commands: the verify subagent MUST run each
+     *  command and paste its output into evidence; no output = no PASS. */
+    verifyCommands: string[];
+  };
 }
 
 function toStringArray(value: unknown): string[] {
@@ -349,6 +355,7 @@ export function parseLoopConfig(md: string): LoopConfig | null {
     workflow: {
       fixPrompt: String(wfRaw?.fixPrompt ?? ""),
       verifyPrompt: String(wfRaw?.verifyPrompt ?? ""),
+      verifyCommands: toStringArray(wfRaw?.verifyCommands),
     },
   };
 }

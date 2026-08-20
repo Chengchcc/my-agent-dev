@@ -27,6 +27,7 @@ export function useCreateLoop() {
       goal?: string;
       action?: string;
       acceptance?: string;
+      verifyCommands?: string[];
       projectId?: string;
       agent?: string;
       cronExpr?: string;

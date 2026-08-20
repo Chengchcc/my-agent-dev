@@ -217,6 +217,23 @@ export default function LoopDetailPage() {
                 <pre className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap rounded border border-(--hairline) bg-(--canvas-soft) p-2 text-xs">
                   {loop.config.verifyPrompt}
                 </pre>
+                {loop.config.verifyCommands.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-[10px] uppercase tracking-wider text-(--mute)">
+                      Verify commands(强制执行)
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {loop.config.verifyCommands.map((c) => (
+                        <code
+                          key={c}
+                          className="rounded border border-(--hairline) bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[11px]"
+                        >
+                          {c}
+                        </code>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

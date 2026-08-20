@@ -122,6 +122,7 @@ describe("loop HTTP routes", () => {
           goal: "每天汇总git issue",
           action: "生成报告,不改代码",
           acceptance: "报告包含新增/进行中/阻塞三节",
+          verifyCommands: ["bun run typecheck"],
         }),
       });
       const resp = await app.handle(req);

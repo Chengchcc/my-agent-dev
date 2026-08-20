@@ -57,10 +57,18 @@ interface LoopForm {
   goal: string;
   action: string;
   acceptance: string;
+  verifyCommands: string;
   cronExpr: string;
 }
 
-const EMPTY: LoopForm = { name: "", goal: "", action: "", acceptance: "", cronExpr: "" };
+const EMPTY: LoopForm = {
+  name: "",
+  goal: "",
+  action: "",
+  acceptance: "",
+  verifyCommands: "",
+  cronExpr: "",
+};
 
 export default function NewLoopPage() {
   const router = useRouter();
@@ -99,6 +107,10 @@ export default function NewLoopPage() {
         goal: form.goal,
         action: form.action,
         acceptance: form.acceptance,
+        verifyCommands: form.verifyCommands
+          .split("\n")
+          .map((c) => c.trim())
+          .filter(Boolean),
         cronExpr: form.cronExpr || undefined,
       },
       {
@@ -214,6 +226,17 @@ export default function NewLoopPage() {
                   onChange={(e) => set("acceptance", e.target.value)}
                   rows={2}
                   placeholder="e.g. 相关测试全绿(会被渲染进 verify 步骤并真实执行)"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">
+                  Verify commands(每行一条,verify 必须执行并把输出作为 evidence)
+                </label>
+                <Textarea
+                  value={form.verifyCommands}
+                  onChange={(e) => set("verifyCommands", e.target.value)}
+                  rows={3}
+                  placeholder={"bun test\nbun run typecheck"}
                 />
               </div>
               <div className="space-y-1">

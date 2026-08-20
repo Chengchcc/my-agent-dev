@@ -60,6 +60,7 @@ export interface LoopDetail {
     acceptance: string;
     fixPrompt: string;
     verifyPrompt: string;
+    verifyCommands: string[];
   } | null;
 }
 
@@ -175,6 +176,7 @@ export function getLoopDetail(
           acceptance: parsed.acceptance,
           fixPrompt: parsed.workflow.fixPrompt,
           verifyPrompt: parsed.workflow.verifyPrompt,
+          verifyCommands: parsed.workflow.verifyCommands,
         };
       }
     } catch {
@@ -205,6 +207,9 @@ export interface CreateLoopInput {
   goal?: string;
   action?: string;
   acceptance?: string;
+  /** Structured acceptance commands: the verify subagent MUST run each and
+   *  paste output into evidence. Empty = prompt-only verification. */
+  verifyCommands?: string[];
   projectId?: string;
   agent?: string;
   /** Cron expression; empty = manual loop. */
@@ -297,6 +302,7 @@ export async function createLoop(
     goal: input.goal!,
     action: input.action!,
     acceptance: input.acceptance!,
+    verifyCommands: input.verifyCommands ?? [],
     projectId: input.projectId,
     agent: input.agent,
     settingsSvc,
@@ -478,6 +484,7 @@ async function writeLoopMd(
     goal: string;
     action: string;
     acceptance: string;
+    verifyCommands?: string[];
     projectId?: string;
     agent?: string;
     settingsSvc?: SettingsService;
@@ -512,6 +519,9 @@ async function writeLoopMd(
       "workflow:",
       `  fixPrompt: ${q(fixPrompt)}`,
       `  verifyPrompt: ${q(verifyPrompt)}`,
+      ...(input.verifyCommands && input.verifyCommands.length > 0
+        ? ["  verifyCommands:", ...input.verifyCommands.map((c) => `    - ${q(c)}`)]
+        : []),
       "safety:",
       "  denylist:",
       denylistYaml,

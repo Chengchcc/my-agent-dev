@@ -470,6 +470,9 @@ describe("parseLoopConfig", () => {
       "workflow:",
       "  fixPrompt: fix it",
       "  verifyPrompt: verify it",
+      "  verifyCommands:",
+      "    - bun test",
+      "    - bun run typecheck",
       "---",
     ].join("\n");
     const cfg = parseLoopConfig(md);
@@ -479,6 +482,7 @@ describe("parseLoopConfig", () => {
     expect(cfg!.acceptance).toBe("tests pass");
     expect(cfg!.workflow.fixPrompt).toBe("fix it");
     expect(cfg!.workflow.verifyPrompt).toBe("verify it");
+    expect(cfg!.workflow.verifyCommands).toEqual(["bun test", "bun run typecheck"]);
   });
 
   test("missing model → null", () => {
