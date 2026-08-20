@@ -80,11 +80,21 @@ export async function readSession(cookieHeader: string | null): Promise<SessionP
   if (dotIdx < 0) return null;
   const encodedPayload = value.slice(0, dotIdx);
   const sig = value.slice(dotIdx + 1);
-  const jsonBuf = await decodeBase64Url(encodedPayload);
-  const json = new TextDecoder().decode(jsonBuf);
+  let json: string;
+  try {
+    const jsonBuf = await decodeBase64Url(encodedPayload);
+    json = new TextDecoder().decode(jsonBuf);
+  } catch {
+    return null; // malformed cookie → 401, not 500
+  }
   if (!(await verify(json, sig))) return null;
-  const payload = JSON.parse(json) as SessionPayload;
-  if (Date.now() > payload.exp) return null;
+  let payload: SessionPayload;
+  try {
+    payload = JSON.parse(json) as SessionPayload;
+  } catch {
+    return null;
+  }
+  if (typeof payload.exp !== "number" || Date.now() > payload.exp) return null;
   return payload;
 }
 

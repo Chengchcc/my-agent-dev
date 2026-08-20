@@ -28,8 +28,8 @@ const HOP_BY_HOP = new Set([
 
 const PASSTHROUGH_RESPONSE = new Set([
   "content-type",
-  "content-length",
-  "content-encoding",
+  // content-length/content-encoding are NOT forwarded: undici transparently
+  // decompresses the body, so the originals would mismatch the re-sent bytes.
   "cache-control",
   "etag",
   "last-modified",

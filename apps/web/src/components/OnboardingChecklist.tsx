@@ -1,14 +1,16 @@
 "use client";
 
-import { Bot, CheckCircle2, MessageSquare, Package } from "lucide-react";
+import { Bot, CheckCircle2, KeyRound, MessageSquare, Package } from "lucide-react";
 import Link from "next/link";
 import { useAgentList } from "@/features/agents/hooks";
+import { useModelList } from "@/features/models/hooks";
 import { useSkillPackList } from "@/features/skill-packs/hooks";
 
-/** First-run checklist: agent → skill pack → first chat. Steps auto-check
- *  as their data appears. Shown in empty states only. */
+/** First-run checklist: agent → model → skill pack → first chat. Steps
+ *  auto-check as their data appears. Shown in empty states only. */
 export function OnboardingChecklist() {
   const { data: agents } = useAgentList();
+  const { data: models } = useModelList();
   const { data: packs } = useSkillPackList();
 
   const steps = [
@@ -18,6 +20,15 @@ export function OnboardingChecklist() {
       title: "Create an agent",
       desc: "Give it a persona, model, and workspace.",
       href: "/team",
+    },
+    {
+      // An agent row exists even with the unconfigured seed model — only a
+      // reachable provider catalog means runs can actually start (T3-1).
+      done: (models?.providers ?? []).length > 0,
+      icon: KeyRound,
+      title: "Configure a model",
+      desc: "Add a provider key so the agent can actually run.",
+      href: "/system/settings",
     },
     {
       done: (packs ?? []).some((p) => p.status === "ready"),

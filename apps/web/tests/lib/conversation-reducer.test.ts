@@ -46,14 +46,6 @@ describe("bootstrap", () => {
     expect(s.roster["agent-1"]?.displayName).toBe("Bot");
     expect(s.roster["human-1"]?.displayName).toBe("User");
     expect(s.viewerMemberId).toBe("human-1");
-    expect(s.triggerMode).toBe("auto"); // 1 agent → "auto"
-  });
-
-  test("mention trigger when multiple agents", () => {
-    const a2: SenderRef = { memberId: "agent-2", kind: "agent", displayName: "Bot2" };
-    const h: SenderRef = { memberId: "human-1", kind: "human" };
-    const s = bootstrap({ members: [h, { memberId: "agent-1", kind: "agent" }, a2] });
-    expect(s.triggerMode).toBe("mention");
   });
 });
 
@@ -122,22 +114,8 @@ describe("isBusy", () => {
   });
 });
 
-describe("toggleTriggerMode", () => {
-  test("toggles auto ↔ mention", () => {
-    let s = bootstrap({
-      members: [
-        { memberId: "agent-1", kind: "agent" },
-        { memberId: "agent-2", kind: "agent" },
-        { memberId: "human-1", kind: "human" },
-      ],
-    });
-    expect(s.triggerMode).toBe("mention");
-    s = reducer(s, { type: "toggleTriggerMode" });
-    expect(s.triggerMode).toBe("auto");
-    s = reducer(s, { type: "toggleTriggerMode" });
-    expect(s.triggerMode).toBe("mention");
-  });
-});
+// toggleTriggerMode was removed with the auto/mention toggle (b401777f);
+// triggerMode is no longer part of the reducer state.
 
 describe("todo/update", () => {
   // todo/update was removed with the Conversation-ledger todo path; todos

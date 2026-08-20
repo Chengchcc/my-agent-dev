@@ -88,6 +88,7 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   const [results, setResults] = useState<Hit[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [searchFailed, setSearchFailed] = useState(false);
 
   const { data: conversationsData } = useRecentConversations();
   const recent = (conversationsData ?? []).slice(0, 5);
@@ -106,18 +107,26 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
     if (!query.trim()) {
       setResults([]);
       setActiveIndex(-1);
+      setSearchFailed(false);
       return;
     }
     setIsLoading(true);
+    setSearchFailed(false);
     debounceRef.current = setTimeout(async () => {
       const q = query.trim().toLowerCase();
+      let failed = false;
+      const fail = <T,>(fallback: T): T => {
+        failed = true;
+        return fallback;
+      };
       try {
         const [conv, agents, loops, projects] = await Promise.all([
-          api.searchConversations(query.trim()).catch(() => ({ results: [] })),
-          api.listAgents().catch(() => [] as Awaited<ReturnType<typeof api.listAgents>>),
-          api.listLoops().catch(() => ({ loops: [] })),
-          api.listProjects().catch(() => ({ projects: [] })),
+          api.searchConversations(query.trim()).catch(() => fail({ results: [] })),
+          api.listAgents().catch(() => fail([] as Awaited<ReturnType<typeof api.listAgents>>)),
+          api.listLoops().catch(() => fail({ loops: [] })),
+          api.listProjects().catch(() => fail({ projects: [] })),
         ]);
+        setSearchFailed(failed);
         const agentList = Array.isArray(agents) ? agents : [];
         const hits: Hit[] = [
           ...(conv.results ?? []).slice(0, 5).map(
@@ -167,6 +176,7 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
         setResults(hits);
         setActiveIndex(hits.length > 0 ? 0 : -1);
       } catch {
+        setSearchFailed(true);
         setResults([]);
       } finally {
         setIsLoading(false);
@@ -277,10 +287,14 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
             </div>
           )}
 
-          {/* No results */}
+          {/* No results / backend failure — the two are not the same (T3-4) */}
           {!isLoading && query.trim() !== "" && results.length === 0 && (
             <div className="py-12 text-center text-sm text-(--mute)">
-              No results for &ldquo;{query}&rdquo;
+              {searchFailed ? (
+                <span className="text-(--err)">Search failed — check the backend connection</span>
+              ) : (
+                <>No results for &ldquo;{query}&rdquo;</>
+              )}
             </div>
           )}
 

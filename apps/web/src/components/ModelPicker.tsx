@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -63,6 +64,15 @@ export function ModelPicker({
         >
           Agent default
         </DropdownMenuItem>
+        {providers.length === 0 && (
+          <div className="px-3 py-2 text-xs/relaxed text-(--mute)">
+            No models configured. Add a provider key in{" "}
+            <Link href="/system/settings" className="text-(--primary) underline">
+              Settings
+            </Link>
+            .
+          </div>
+        )}
         {providers.map((p) => (
           <div key={p.id}>
             <DropdownMenuSeparator />

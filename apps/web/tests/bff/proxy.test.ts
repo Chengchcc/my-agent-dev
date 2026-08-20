@@ -36,12 +36,15 @@ describe("passthroughHeaders", () => {
     const h = new Headers({
       "content-type": "application/json",
       "content-length": "100",
+      "content-encoding": "gzip",
       "cache-control": "no-cache",
     });
     const out = passthroughHeaders(h);
     expect(out.get("content-type")).toBe("application/json");
-    expect(out.get("content-length")).toBe("100");
     expect(out.get("cache-control")).toBe("no-cache");
+    // undici transparently decodes the body; originals would mismatch.
+    expect(out.get("content-length")).toBeNull();
+    expect(out.get("content-encoding")).toBeNull();
   });
 
   test("filters out non-allowlisted response headers", () => {

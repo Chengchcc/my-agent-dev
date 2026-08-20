@@ -318,6 +318,7 @@ export function Composer({
                   className="relative size-12 rounded-md border border-(--hairline) overflow-hidden"
                   title="Attached image"
                 >
+                  {/* biome-ignore lint/performance/noImgElement: data: URI — next/image cannot optimize inline base64 */}
                   <img
                     src={`data:${a.mediaType};base64,${a.base64}`}
                     alt="attached"

@@ -79,6 +79,7 @@ export function renderContentBlocks(
     }
     if (block.type === "image" && typeof block.base64 === "string" && block.mediaType) {
       return (
+        // biome-ignore lint/performance/noImgElement: data: URI — next/image cannot optimize inline base64
         <img
           key={`img-${i}`}
           src={`data:${block.mediaType};base64,${block.base64}`}
