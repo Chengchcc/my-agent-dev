@@ -63,6 +63,8 @@ export interface AgentRunService {
     permissionMode?: string;
     /** Optional workflow budget (tokens) frozen on the Run. */
     workflowBudgetTokens?: number;
+    /** Oma workflow-mode input: execute this script instead of a loop. */
+    workflow?: { script: string; args?: unknown };
   }): Promise<{
     acquired: boolean;
     queued: boolean;
@@ -185,6 +187,7 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
         skillRoots,
         permissionMode,
         workflowBudgetTokens: input.workflowBudgetTokens,
+        workflow: input.workflow,
       });
     },
 

@@ -380,6 +380,7 @@ export function createAgentRunExecutionService(
         message: bridge ? { ...input.message, text: `${bridge}\n\n${inputText}` } : input.message,
       },
       run: runSnapshot,
+      ...(run.workflow ? { workflow: run.workflow } : {}),
       workspace,
       productToolsToken,
       metadata: {

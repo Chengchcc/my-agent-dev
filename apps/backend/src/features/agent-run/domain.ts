@@ -62,6 +62,9 @@ export interface AgentRun {
   readonly todoSnapshot: string | null;
   /** Optional workflow budget (tokens), frozen at Run creation. */
   readonly workflowBudgetTokens: number | null;
+  /** Oma workflow-mode input ({ script, args? }); Loop items execute a
+   *  script directly instead of an interactive loop. */
+  readonly workflow: { readonly script: string; readonly args?: unknown } | null;
   readonly createdAt: number;
   readonly terminalAt: number | null;
 }
@@ -142,6 +145,8 @@ export interface AcquireAgentRunCommand {
   readonly permissionMode?: string;
   /** Optional workflow budget (tokens) for this Run; null = no gate. */
   readonly workflowBudgetTokens?: number;
+  /** Oma workflow-mode input: execute this script instead of a loop. */
+  readonly workflow?: { readonly script: string; readonly args?: unknown };
 }
 export interface AcquireAgentRunResult {
   readonly acquired: boolean;

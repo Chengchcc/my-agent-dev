@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { BackendModelRef, BackendRunOutcome } from "@chengchenccc/agent-backend";
 import type { LoopConfig, LoopState, Verdict } from "@chengchenccc/loop";
-import { loopReducer, parseLoopConfig, validateLoopMetaPatch } from "@chengchenccc/loop";
+import { loopReducer, parseLoopConfig } from "@chengchenccc/loop";
 import { isTerminalStatus } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
@@ -263,115 +263,73 @@ function actionToReducer(action: ReviewAction) {
   }
 }
 
-/** The workflow script the Loop seeds per item. The meta block carries
- *  the item's state (seeded as JSON); the model updates it after the run
- *  via the write tool, and the product validates the writeback with
- *  validateLoopMetaPatch before applying the verdict. */
-const LOOP_WORKFLOW_TEMPLATE = `// Loop workflow (product-seeded). Update the meta block after the run
-// with the item's new step (a legal transition) and its verdict result.
-export const meta = __META_JSON__;
-
-const item = Object.values(meta.items)[0];
-const fix = await agent(
-  \`Fix the loop item. Summary: \${item.summary}. Source: \${item.source}. Smallest possible diff; do not commit.\`,
-  { label: \`\${item.id}-fix\` },
-);
-const verdict = await agent(
-  \`Verify the fix for item \${item.id}. Run the relevant tests and return JSON: {"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"..."}.\`,
-  {
-    label: \`\${item.id}-verify\`,
-    schema: {
-      type: "object",
-      properties: {
-        verdict: { type: "string", enum: ["PASS", "REJECT", "ESCALATE"] },
-        reasons: { type: "array" },
-        evidence: { type: "string" },
-      },
-      required: ["verdict", "evidence"],
+/** Render the per-item workflow script: fix then verify, both as subagents.
+ *  Prompts come from LOOP.md workflow.fixPrompt/verifyPrompt when set, else
+ *  defaults derived from the item + acceptance criteria (workflow-first:
+ *  the script IS the generator/evaluator, no outer agent role). */
+function renderLoopWorkflow(
+  item: LoopState["items"][string],
+  cfg: LoopConfig,
+  ctx?: { gitLog?: string },
+): string {
+  const gitCtx = ctx?.gitLog ? `\nRecent changes:\n${ctx.gitLog}` : "";
+  const fixPrompt =
+    cfg.workflow.fixPrompt ||
+    `Fix the loop item. Summary: ${item.summary}. Source: ${item.source}. Smallest possible diff; do not commit.${gitCtx}`;
+  const verifyPrompt =
+    cfg.workflow.verifyPrompt ||
+    (cfg.acceptance
+      ? `Verify the fix for item ${item.id} against the acceptance criteria: ${cfg.acceptance}. ` +
+        `Run the relevant tests/commands first, capture their output, then return JSON: ` +
+        `{"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"<command output>"}.`
+      : `Verify the fix for item ${item.id}. Run the relevant tests and return JSON: ` +
+        `{"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"..."}.`);
+  return `// Loop workflow (product-rendered per item). fix then verify.
+const item = args.item;
+const fix = await agent(${JSON.stringify(fixPrompt)}, { label: "fix" });
+const verdict = await agent(${JSON.stringify(verifyPrompt)}, {
+  label: "verify",
+  schema: {
+    type: "object",
+    properties: {
+      verdict: { type: "string", enum: ["PASS", "REJECT", "ESCALATE"] },
+      reasons: { type: "array" },
+      evidence: { type: "string" },
     },
+    required: ["verdict", "evidence"],
   },
-);
-// After this workflow, use the write tool to update the meta block above:
-// the item's step (legal edge) and result (the verdict JSON above).
+});
 return { id: item.id, verdict: verdict.output, fixText: fix.text };
 `;
-
-function seedLoopWorkflowScript(item: LoopState["items"][string]): string {
-  const metaJson = JSON.stringify({ items: { [item.id]: item } });
-  return LOOP_WORKFLOW_TEMPLATE.replace("__META_JSON__", metaJson);
 }
 
-/** Extract the model-edited meta block: a REAL balanced-brace scan that
- *  skips string literals, so a `};` inside an evidence/reason code snippet
- *  cannot truncate the object (Bug 3). Lenient JSON after capture (line
- *  comments + trailing commas stripped). Null = unparseable. */
-export function extractLoopWorkflowMeta(script: string): LoopState | null {
-  const m = script.match(/export const meta\s*=\s*(\{)/);
-  if (m?.index === undefined) return null;
-  const start = m.index + m[0].length - 1; // index of the opening brace
-  let depth = 0;
-  let inStr: '"' | "'" | "`" | null = null;
-  let escaped = false;
-  for (let i = start; i < script.length; i++) {
-    const c = script[i]!;
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (c === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (inStr) {
-      if (c === inStr) inStr = null;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") {
-      inStr = c;
-      continue;
-    }
-    if (c === "{") depth++;
-    else if (c === "}") {
-      depth--;
-      if (depth === 0) {
-        const raw = script.slice(start, i + 1);
-        const cleaned = raw.replace(/\/\/[^\n]*/g, "").replace(/,\s*([}\]])/g, "$1");
-        try {
-          const parsed = JSON.parse(cleaned) as { items?: LoopState["items"] };
-          if (!parsed.items || typeof parsed.items !== "object") return null;
-          return { loopId: "", lastRun: null, items: parsed.items };
-        } catch {
-          return null;
-        }
-      }
-    }
+/** Normalize a workflow script's return value into a Verdict. Malformed
+ *  output escalates (the worktree keeps changes for human review). */
+function verdictFromWorkflow(
+  value: unknown,
+  changed: boolean,
+  changedFiles: string[],
+  fallbackReason: string,
+): Verdict {
+  const raw =
+    value && typeof value === "object"
+      ? (value as { verdict?: unknown; evidence?: unknown; reasons?: unknown })
+      : null;
+  const v = raw?.verdict;
+  const evidence = typeof raw?.evidence === "string" ? raw.evidence : "";
+  const reasons = Array.isArray(raw?.reasons) ? raw.reasons.map(String) : [];
+  if (v === "PASS") return { verdict: "PASS", evidence };
+  if (v === "REJECT") return { verdict: "REJECT", reasons, evidence };
+  if (v === "ESCALATE") return { verdict: "ESCALATE", reasons, evidence };
+  // Bug 4 semantics: changed work with an unusable verdict must NOT be
+  // rolled back silently — route it to human review via PASS-with-evidence.
+  if (changed) {
+    return {
+      verdict: "PASS",
+      evidence: `${fallbackReason}; changed: ${changedFiles.join(", ")}`,
+    };
   }
-  return null; // unbalanced braces
-}
-
-function buildGeneratorPrompt(
-  item: LoopState["items"][string],
-  template: string,
-  context?: { repoPath?: string; gitLog?: string },
-): string {
-  // The user prompt ALWAYS carries the item facts: summary, source,
-  // rejection note and project context. The LOOP.md systemPrompt is only an
-  // extra behavioral constraint (frozen into the Run as systemPrompt), so a
-  // template that omits placeholders can never starve the agent of the item.
-  let note = "";
-  if (item.result && "reasons" in item.result) {
-    note = `- 上次被拒原因: ${item.result.reasons.join("; ")}`;
-  }
-  const ctx = context?.repoPath
-    ? `\n\n## Project Context\n- Repo: ${context.repoPath}\n${context.gitLog ? `- Recent changes:\n${context.gitLog}\n` : ""}`
-    : "";
-  const core = [
-    `# Task\n${item.summary}`,
-    `# Source\n${item.source}`,
-    ...(note ? [note] : []),
-  ].join("\n\n");
-  const extra = template.trim();
-  return `${core}${extra ? `\n\n# Additional Instructions\n${extra}` : ""}${ctx}`;
+  return { verdict: "ESCALATE", reasons: [fallbackReason], evidence: "" };
 }
 
 export async function loopStep(params: LoopStepParams): Promise<LoopState> {
@@ -413,8 +371,6 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     });
   }
 
-  const genModel = cfg.generator.model;
-  const genPrompt = cfg.generator.systemPrompt;
   const denylist: string[] = cfg.denylist;
   const dailyCap = cfg.budget?.dailyCap ?? 0;
 
@@ -553,10 +509,10 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
 
     const baseSha = (await git.revParse(repoCwd)).text().trim();
 
-    // ── Generator: one Agent Run per item, workflow-driven ──
-    // The Loop seeds the workflow script (meta = this item's state); the
-    // generator runs it (fix fan-out + self-verification) and writes the
-    // verdict back into the script's meta via the write tool.
+    // ── Generator: one workflow-mode Agent Run per item ──
+    // Workflow-first: the script IS fix + verify (subagents); the run
+    // executes it directly and returns { verdict, evidence } as
+    // outcome.workflow.value. No outer agent role, no meta writeback.
     const genConversationId = loopGeneratorConversationId(params.loopId);
     const genMemberId = loopGeneratorMemberId(params.loopId);
     await ensureLoopScope(params.convPort, genConversationId, genMemberId, cfg.agent || "default");
@@ -565,36 +521,20 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       .quiet()
       .text()
       .catch(() => "");
-    await Bun.write(`${repoCwd}/.workflows/loop.js`, seedLoopWorkflowScript(item)).catch(() => {});
-    const genPromptFull = [
-      buildGeneratorPrompt(item, genPrompt, { repoPath: repoCwd, gitLog }),
-      `# Workflow\nThe script at .workflows/loop.js carries this item's state in its meta block. ` +
-        `Run it with the workflow_run tool (pass the script text). After the workflow completes, ` +
-        `use the write tool to update the meta block in .workflows/loop.js: the item's step must ` +
-        `follow a legal transition and its result must be the verdict JSON from the verify agent.`,
-    ].join("\n\n");
-    const genSkillRoots = params.builtinSkillsDir
-      ? [params.builtinSkillsDir, `${params.loopConfigPath}/skills`]
-      : [`${params.loopConfigPath}/skills`];
+    const workflowScript = renderLoopWorkflow(item, cfg, { gitLog });
+    const workflowArgs = { item };
     let genAcquire = await params.agentRunService.enqueueAndAcquire({
       conversationId: genConversationId,
       agentMemberId: genMemberId,
       backendKind: "oma",
       mode: "normal",
-      message: {
-        role: "user",
-        text: genPromptFull,
-      },
-      defaultModel: await params.resolveModel(genModel),
+      message: { role: "user", text: `Loop item ${item.id}: ${item.summary}` },
+      defaultModel: await params.resolveModel(cfg.model),
       configRevision: 1,
       idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}`,
-      // LOOP.md generator systemPrompt is the frozen Run system prompt;
-      // skills live in the loop config's skills/ dir + the builtin docs.
-      systemPrompt: genPrompt || undefined,
-      skillRoots: genSkillRoots,
-      // Workspace is a Run execution fact: the Generator MUST run in the
-      // cloned repo, not the loop-agent's own workspace.
+      // The workflow runs in the cloned repo; subagents get file tools there.
       workspace: { root: repoCwd, access: "read_write" },
+      workflow: { script: workflowScript, args: workflowArgs },
       // Freeze the remaining daily budget on the Run: the child's workflow
       // executor gates subagent spawns against it.
       ...(dailyCap > 0 ? { workflowBudgetTokens: Math.max(0, dailyCap - spent) } : {}),
@@ -613,11 +553,8 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         agentMemberId: genMemberId,
         backendKind: "oma",
         mode: "normal",
-        message: {
-          role: "user",
-          text: genPromptFull,
-        },
-        defaultModel: await params.resolveModel(genModel),
+        message: { role: "user", text: `Loop item ${item.id}: ${item.summary}` },
+        defaultModel: await params.resolveModel(cfg.model),
         configRevision: 1,
         // A retry is a FRESH attempt after a failure - replay safety is the
         // wrong invariant here. A static suffix replays the same dead run
@@ -626,8 +563,6 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         // any verdict) would reuse the same key across ticks. Date.now()
         // is the monotonic component: one fresh run per tick after failure.
         idempotencyKey: `loop-gen:${params.loopId}:${item.id}:${baseSha}:retry:${Date.now()}`,
-        systemPrompt: genPrompt || undefined,
-        skillRoots: genSkillRoots,
         workspace: { root: repoCwd, access: "read_write" },
         ...(dailyCap > 0 ? { workflowBudgetTokens: Math.max(0, dailyCap - spent) } : {}),
       });
@@ -678,54 +613,26 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       continue;
     }
 
-    // ── Workflow verdict: the script's meta carries the result ──
-    // The model wrote the verdict into .workflows/loop.js; the product
-    // validates the writeback against the pure reducer invariants and
-    // applies the EVALUATOR_VERDICT transition. No separate evaluator Run.
-    const scriptText = await Bun.file(`${cwd}/.workflows/loop.js`)
-      .text()
-      .catch(() => "");
-    const writtenMeta = extractLoopWorkflowMeta(scriptText);
-    const seedMeta: LoopState = {
-      loopId: params.loopId,
-      lastRun: null,
-      items: { [item.id]: item },
-    };
-    const noVerdict = (reason: string): Verdict => ({
-      verdict: "ESCALATE",
-      reasons: [reason],
-      evidence: "",
-    });
-    let verdict: Verdict;
-    // Bug 4: when the generator changed real files but the meta is missing
-    // or unparseable, the work must NOT be rolled back. ESCALATE routes to
-    // inbox (reducer) which the rollback guard below treats as rollback, so
-    // changed work uses a PASS verdict (with the changed paths as evidence)
-    // to land in awaiting_review with the worktree intact. Only a no-change
-    // run with a broken meta is a pure ESCALATE (nothing to preserve).
+    // ── Workflow verdict: the script's return value is the result ──
+    // outcome.workflow.value carries { verdict, evidence } from the verify
+    // subagent (schema-parsed). Malformed output escalates; changed work is
+    // preserved for human review (Bug 4 semantics).
+    const wf =
+      genRun.terminalResult?.status === "completed" ? genRun.terminalResult.workflow : undefined;
     const changed = changedFiles.length > 0;
-    if (!writtenMeta) {
-      verdict = changed
-        ? {
-            verdict: "PASS",
-            evidence: `workflow meta 不可解析但 generator 有改动，转人工 review; changed: ${changedFiles.join(", ")}`,
-          }
-        : noVerdict("workflow script has no parseable meta block");
-    } else {
-      const validation = validateLoopMetaPatch(seedMeta, writtenMeta);
-      if (!validation.ok) {
-        verdict = noVerdict(`workflow meta writeback invalid: ${validation.reason}`);
-      } else {
-        verdict = writtenMeta.items[item.id]?.result ?? noVerdict("workflow wrote no verdict");
-      }
-    }
+    const verdict = verdictFromWorkflow(
+      wf?.value,
+      changed,
+      changedFiles,
+      `workflow run ${generatorRunId} returned no valid verdict`,
+    );
     state = loopReducer(state, {
       type: "EVALUATOR_VERDICT",
       itemId: item.id,
       verdict,
     });
 
-    // Rollback on REJECT/ESCALATE. Bug 4: changed-without-meta now routes
+    // Rollback on REJECT/ESCALATE. Bug 4: changed-without-verdict now routes
     // through a PASS verdict to awaiting_review, so the rollback guard only
     // fires when the item actually returned to inbox/fixing (REJECT /
     // pure ESCALATE) — the worktree keeps changes for the human to review.
@@ -736,14 +643,9 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       await Bun.$`git -C ${repoCwd} clean -fd`.quiet();
     } else if (verdict.verdict === "PASS" && cwd) {
       // PASS: commit the approved work onto the agent branch (H2 from the
-      // landing review) — the model is told not to commit, so the product
-      // layer does it. Without this the next step's clean-start reset
-      // would destroy the approved changes and ahead would stay 0.
-      // A2: the workflow scratch never enters the final state — unstage
-      // it (the child may have committed it) and delete the file before
-      // the product commit; the committed tree drops it.
-      await Bun.$`git -C ${cwd} rm -q -r --cached --ignore-unmatch .workflows`.nothrow().quiet();
-      await Bun.$`rm -rf ${cwd}/.workflows`.quiet();
+      // landing review) — the fix subagent is told not to commit, so the
+      // product layer does it. Without this the next step's clean-start
+      // reset would destroy the approved changes and ahead would stay 0.
       const staged = await Bun.$`git -C ${cwd} status --porcelain`.quiet().text();
       if (staged.trim()) {
         await Bun.$`git -C ${cwd} add -A`.quiet();

@@ -66,6 +66,7 @@ function makeRunsFakes(script: {
         permissionMode: null,
         todoSnapshot: null,
         workflowBudgetTokens: null,
+        workflow: null,
         workspace: null,
         createdAt: 0,
         terminalAt: null,

@@ -15,7 +15,7 @@ import type { ProjectPort } from "../project/ports.js";
 import { createWorkspaceLockRegistry } from "../project/workspace-lock.js";
 import { createLoopStateStore, type LoopStateStore } from "./loop-state-store.js";
 import type { GitRunner } from "./loop-step.js";
-import { extractLoopWorkflowMeta, loopCleanStart, loopStep } from "./loop-step.js";
+import { loopCleanStart, loopStep } from "./loop-step.js";
 
 // Every test gets its own mkdtemp dirs — no shared fixed /tmp paths, so the
 // file is safe under full-suite parallel execution (a shared dir would let one
@@ -51,10 +51,8 @@ async function initLoopDir(
   const denylistYaml = denylist ? `denylist:\n${denylist}\n` : "";
   const budget = budgetYaml ? `budget:\n${budgetYaml}\n` : "";
   const frontMatter = `---
-generator:
-  model: gen-model
-evaluator:
-  model: eval-model
+model: gen-model
+acceptance: "tests pass"
 ${projectId ? `projectId: ${projectId}\n` : ""}
 ${denylistYaml}${budget}---
 `;
@@ -127,10 +125,13 @@ function emptyState(): LoopState {
 
 interface RunScript {
   genStatus?: "completed" | "failed" | "commit_failed";
-  /** The workflow meta the fake generator "writes back" to
-   *  .workflows/loop.js. undefined = a default PASS meta; null = no file
-   *  (the no-writeback path). */
-  workflowMeta?: Record<string, unknown> | null;
+  /** The verdict the fake workflow run "returns" as outcome.workflow.value.
+   *  undefined = a default PASS verdict; null = no usable verdict. */
+  workflowVerdict?: {
+    verdict: "PASS" | "REJECT" | "ESCALATE";
+    evidence?: string;
+    reasons?: string[];
+  } | null;
   /** Real files the fake generator touches inside the worktree (A2:
    *  denylist sees untracked files through porcelain). */
   touchFiles?: string[];
@@ -141,9 +142,6 @@ interface RunScript {
   /** first generator enqueue REPLAYS a terminal failed run; the retry-scoped
    *  key must then acquire a FRESH run. */
   genReplayTerminal?: boolean;
-  /** Simulate the model deleting/corrupting .workflows/loop.js so the
-   *  product sees NO parseable meta writeback. */
-  deleteWorkflowScript?: boolean;
   /** Observe every enqueue (idempotency keys) even when loopStep throws. */
   onEnqueue?: (e: { agentMemberId: string; idempotencyKey: string }) => void;
 }
@@ -155,6 +153,7 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
     mode: string;
     idempotencyKey: string;
     message: { text?: string };
+    workflow?: { script: string };
   }> = [];
   let runSeq = 0;
   const runs = new Map<string, AgentRun>();
@@ -178,6 +177,7 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
       todoSnapshot: null,
       workspace: null,
       workflowBudgetTokens: null,
+      workflow: null,
       createdAt: 0,
       terminalAt: null,
     };
@@ -193,6 +193,7 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
         mode: input.mode,
         idempotencyKey: input.idempotencyKey,
         message: input.message as { text?: string },
+        ...(input.workflow ? { workflow: { script: input.workflow.script } } : {}),
       });
       script.onEnqueue?.({
         agentMemberId: input.agentMemberId,
@@ -266,35 +267,23 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
           /* fixture without a worktree */
         });
       }
-      if (script.deleteWorkflowScript) {
-        await rm(join(workDir, ".workflows", "loop.js"), { force: true }).catch(() => {});
-      }
       const status = script.genStatus ?? "completed";
       (run as { status: AgentRun["status"] }).status = status;
+      const verdict =
+        script.workflowVerdict === undefined
+          ? { verdict: "PASS" as const, evidence: "e" }
+          : script.workflowVerdict;
       (run as { terminalResult: BackendRunOutcome | null }).terminalResult = {
         status: status === "completed" ? "completed" : status,
+        ...(status === "completed"
+          ? {
+              workflow: { ok: verdict !== null, value: verdict },
+            }
+          : {}),
         ...(script.usageTokens !== undefined
           ? { usage: { inputTokens: script.usageTokens, outputTokens: 0 } }
           : {}),
       } as BackendRunOutcome;
-      // The fake model writes the workflow meta back to the script file.
-      if (script.workflowMeta !== null) {
-        const meta =
-          script.workflowMeta ??
-          ({
-            "item-1": {
-              id: "item-1",
-              step: "verifying",
-              result: { verdict: "PASS", evidence: "e" },
-            },
-          } as Record<string, unknown>);
-        const dir = `${workDir}/.workflows`;
-        await mkdir(dir, { recursive: true });
-        await Bun.write(
-          `${dir}/loop.js`,
-          `export const meta = ${JSON.stringify({ items: meta })};`,
-        );
-      }
     },
     async recover() {},
     async injectSteer() {},
@@ -401,23 +390,18 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     expect(gen!.conversationId).toBe(genConversationId("test"));
     expect(gen!.mode).toBe("normal");
     expect(gen!.idempotencyKey).toContain("loop-gen:test:item-1:");
-    // the seeded workflow instruction rides the prompt
-    expect(gen!.message?.text).toContain(".workflows/loop.js");
+    // the workflow script is the run's product: fix + verify subagents
+    expect(gen!.workflow?.script).toContain('agent("Fix the loop item');
+    expect(gen!.workflow?.script).toContain("Verify the fix");
   });
 
-  test("PASS verdict via workflow meta → awaiting_review; generatorRunId persisted", async () => {
+  test("PASS verdict via workflow run → awaiting_review; generatorRunId persisted", async () => {
     const store = createTestStore();
     stateWithFixingItem(store);
     await runStep({
       store,
       script: {
-        workflowMeta: {
-          "item-1": {
-            id: "item-1",
-            step: "verifying",
-            result: { verdict: "PASS", evidence: "tests green" },
-          },
-        },
+        workflowVerdict: { verdict: "PASS", evidence: "tests green" },
       },
     });
 
@@ -509,7 +493,6 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
       const script = {
         genReplayTerminal: true,
         genStatus: "failed" as const,
-        workflowMeta: null,
         onEnqueue: (e: { idempotencyKey: string }) => seen.push(e.idempotencyKey),
       };
       // Generator fails after the retry enqueue: loopStep throws BEFORE any
@@ -549,13 +532,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
       store,
       gitRunner,
       script: {
-        workflowMeta: {
-          "item-1": {
-            id: "item-1",
-            step: "verifying",
-            result: { verdict: "REJECT", reasons: ["not good"], evidence: "e" },
-          },
-        },
+        workflowVerdict: { verdict: "REJECT", reasons: ["not good"], evidence: "e" },
       },
     });
     const item = result.items["item-1"]!;
@@ -578,16 +555,16 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     expect(result.items["item-1"]!.result?.verdict).toBe("REJECT");
   });
 
-  test("no workflow meta writeback → ESCALATE to inbox", async () => {
+  test("no usable workflow verdict → ESCALATE to inbox", async () => {
     const store = createTestStore();
     stateWithFixingItem(store);
-    const { result } = await runStep({ store, script: { workflowMeta: null } });
+    const { result } = await runStep({ store, script: { workflowVerdict: null } });
     const item = result.items["item-1"]!;
     expect(item.step).toBe("inbox");
     expect(item.result?.verdict).toBe("ESCALATE");
   });
 
-  test("Bug 4: meta missing but files changed → PASS/awaiting_review, work preserved", async () => {
+  test("Bug 4: no verdict but files changed → PASS/awaiting_review, work preserved", async () => {
     const fixture = await setupGitDataDir();
     try {
       const store = createTestStore();
@@ -596,7 +573,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
         store,
         dataDir: fixture.dataDir,
         projectPort: fixture.projectPort,
-        script: { workflowMeta: null, deleteWorkflowScript: true, touchFiles: ["CHANGE.txt"] },
+        script: { workflowVerdict: null, touchFiles: ["CHANGE.txt"] },
       });
       const item = result.items["item-1"]!;
       // PASS (with evidence) routes to awaiting_review, NOT inbox — the
@@ -649,7 +626,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     expect(spent).toBe(1500); // one generator run (the evaluator Run is gone)
   });
 
-  test("generator prompt includes repo path + git log context", async () => {
+  test("workflow script carries repo path + git log context to the fix subagent", async () => {
     const { dataDir, projectPort, cleanup } = await setupGitDataDir();
     try {
       const store = createTestStore();
@@ -669,11 +646,9 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
         script: {},
       });
       const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"))!;
-      expect(gen.message.text).toContain(
-        join(dataDir, "loop-agent-ws", "projects", "test-project"),
-      );
-      expect(gen.message.text).toContain("Project Context");
-      expect(gen.message.text).toContain("Recent changes");
+      expect(gen.workflow?.script).toContain("Recent changes");
+      expect(gen.workflow?.script).toContain('label: "fix"');
+      expect(gen.workflow?.script).toContain('label: "verify"');
     } finally {
       await cleanup();
     }
@@ -793,29 +768,11 @@ describe("loopCleanStart (A1): branch lifecycle", () => {
   }, 20_000);
 });
 
-describe("extractLoopWorkflowMeta", () => {
-  test("parses meta with `};` inside evidence strings (Bug 3)", () => {
-    const script = `export const meta = {
-  "items": {
-    "item-1": {
-      "result": {
-        "verdict": "PASS",
-        "evidence": "code: function(){ return x; }; rest",
-        "reasons": ["ok"]
-      }
-    }
-  }
-};`;
-    const state = extractLoopWorkflowMeta(script);
-    const result = state?.items["item-1"]?.result;
-    expect(result?.verdict).toBe("PASS");
-    if (result?.verdict === "PASS") {
-      expect(result.evidence).toBe("code: function(){ return x; }; rest");
-    }
-  });
-
-  test("unbalanced braces return null", () => {
-    const script = `export const meta = { items: {};`;
-    expect(extractLoopWorkflowMeta(script)).toBeNull();
+describe("verdictFromWorkflow shape guard", () => {
+  test("malformed workflow output with no changes escalates", async () => {
+    const store = createTestStore();
+    stateWithFixingItem(store);
+    const { result } = await runStep({ store, script: { workflowVerdict: null } });
+    expect(result.items["item-1"]!.result?.verdict).toBe("ESCALATE");
   });
 });

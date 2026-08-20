@@ -58,6 +58,7 @@ function parseRun(row: typeof schema.agentRun.$inferSelect): AgentRun {
     permissionMode: row.permissionMode,
     todoSnapshot: row.todoSnapshot,
     workflowBudgetTokens: row.workflowBudgetTokens,
+    workflow: row.workflow ? (JSON.parse(row.workflow) as AgentRun["workflow"]) : null,
     createdAt: row.createdAt,
     terminalAt: row.terminalAt,
   };
@@ -385,6 +386,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             systemPrompt: command.systemPrompt ?? null,
             skillRoots: command.skillRoots ? JSON.stringify(command.skillRoots) : null,
             permissionMode: command.permissionMode ?? null,
+            workflow: command.workflow ? JSON.stringify(command.workflow) : null,
             createdAt: now,
           })
           .run();

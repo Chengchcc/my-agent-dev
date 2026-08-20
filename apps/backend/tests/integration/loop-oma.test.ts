@@ -55,36 +55,17 @@ let execution: AgentRunExecutionService;
 /** runId → observed Backend events (captured around dispatch). */
 const eventLog = new Map<string, BackendEvent<"oma">[]>();
 
-/** The scripted tool script: ONE branch for both roles, decided by the
- *  workspace state:
- *  - generator (changes.txt missing): commit a change to the clone;
- *  - verifier (changes.txt present): write the workflow meta verdict.
- *  The second entry proves the real child loaded <loopConfigPath>/skills:
- *  skill_load must resolve the loop-skill body (visible in events). */
-const LOOP_META_JSON = JSON.stringify({
-  items: {
-    [ITEM_ID]: {
-      id: ITEM_ID,
-      step: "verifying",
-      result: { verdict: "PASS", evidence: "loop-e2e" },
-    },
-  },
-});
+/** The scripted tool script: the fix subagent commits a real change to the
+ *  clone. The verify subagent gets no scripted tool and returns the fake
+ *  provider's plain text (not JSON) — the product then treats changed work
+ *  with an unusable verdict as PASS-with-evidence and commits it (Bug 4). */
 const FAKE_TOOL_SCRIPT = JSON.stringify([
   {
     name: "bash",
     input: {
-      command:
-        "echo phase5 >> changes.txt && git add -A && git -c user.name=loop -c user.email=loop@test commit -m phase5-change",
-    },
-  },
-  { name: "skill_load", input: { name: "loop-skill" } },
-  {
-    name: "bash",
-    input: {
-      command: `cat > .workflows/loop.js <<'WFE'
-export const meta = ${LOOP_META_JSON};
-WFE`,
+      // The fix subagent edits the repo but does NOT commit (per the
+      // rendered workflow prompt); the product layer commits on PASS.
+      command: "echo phase5 >> changes.txt",
     },
   },
 ]);
@@ -107,29 +88,18 @@ async function setupRemoteRepo(): Promise<string> {
 
 async function setupLoopDir(): Promise<void> {
   loopDir = mkdtempSync(join(tmpdir(), "loop-e2e-"));
-  // Distinct models are REQUIRED by parseLoopConfig; both exist in the fake
-  // provider catalog.
+  // Workflow-first LOOP.md: single model (subagents share it), acceptance
+  // drives the verify prompt. The model must exist in the fake catalog.
   writeFileSync(
     join(loopDir, "LOOP.md"),
     `---
 projectId: test-project
-generator:
-  model: fake/echo
-  systemPrompt: "Fix the item. Commit your changes."
-evaluator:
-  model: fake/echo2
-  systemPrompt: "Review the diff and write VERDICT.md."
+model: fake/echo
 acceptance: "the change is committed"
 denylist:
   - secrets/**
 ---
 `,
-  );
-  // The skills dir the child must load: skillRoots = <loopConfigPath>/skills.
-  mkdirSync(join(loopDir, "skills", "loop-skill"), { recursive: true });
-  writeFileSync(
-    join(loopDir, "skills", "loop-skill", "SKILL.md"),
-    "---\nname: loop-skill\ndescription: Loop integration test skill\n---\n\nLOOP SKILL BODY MARKER\n",
   );
 }
 
@@ -264,20 +234,19 @@ describe("Loop with a REAL oma child", () => {
       withWorkspaceLock: createWorkspaceLockRegistry().withLock.bind(createWorkspaceLockRegistry()),
     });
 
-    // ── State machine: generator + evaluator ran, verdict PASS ──
+    // ── State machine: workflow ran, changed work → PASS (Bug 4) ──
     const item = result.items[ITEM_ID]!;
 
     expect(item.generatorRunId).toBeTruthy();
     expect(item.evaluatorRunId).toBeFalsy();
     expect(item.result?.verdict).toBe("PASS");
 
-    // ── The generator REALLY modified the worktree; on PASS the product
+    // ── The fix subagent REALLY modified the worktree; on PASS the product
     //    layer commits everything onto the agent branch (H2) ──
     const clone = join(dataDir, "loop-agent-ws", "projects", "test-project");
     const log = await Bun.$`git -C ${clone} log --oneline -3`.quiet().text();
-    expect(log).toContain("phase5-change");
     expect(log).toContain("loop loop-e2e item item-1");
-    const diff = await Bun.$`git -C ${clone} diff HEAD~2..HEAD --name-only`.quiet().text();
+    const diff = await Bun.$`git -C ${clone} diff HEAD~1..HEAD --name-only`.quiet().text();
     expect(diff).toContain("changes.txt");
 
     // H2: the PASS commit landed on the agent branch — the mirror's base
@@ -285,32 +254,16 @@ describe("Loop with a REAL oma child", () => {
     const branch = await Bun.$`git -C ${clone} rev-parse --abbrev-ref HEAD`.quiet().text();
     expect(branch.trim()).toMatch(/^agent\//);
 
-    // A2: the workflow scratch file is deleted at PASS (never committed);
-    // the verdict lives in the run state instead.
+    // Workflow-first: no .workflows scratch file is ever written (the run
+    // executes the script in the sandbox; the verdict lives in the outcome).
     expect(existsSync(join(clone, ".workflows", "loop.js"))).toBe(false);
-    // A2: the FINAL TREE (not just the latest commit message) drops the
-    // scratch — the child may commit it, the product commit removes it.
-    const treeFiles = await Bun.$`git -C ${clone} ls-tree -r --name-only HEAD`.quiet().text();
-    expect(treeFiles).not.toContain(".workflows/");
 
-    // ── The real child loaded <loopConfigPath>/skills: skill_load
-    //    resolved the loop-skill body (observable in the run events) ──
+    // ── The real child ran the workflow: subagents executed, workflow
+    //    lifecycle events were observed on the run stream ──
     const genEvents = eventLog.get(item.generatorRunId!) ?? [];
-    const skillLoad = genEvents.find(
-      (e) =>
-        e.type === "native_tool_completed" &&
-        (e as { toolName?: string }).toolName === "skill_load",
-    );
-    expect(skillLoad).toBeDefined();
-    const body = (skillLoad as { result?: { body?: string } }).result?.body ?? "";
-    expect(body).toContain("LOOP SKILL BODY MARKER");
-
-    // ── The bash commit went through the real child's native tool ──
-    expect(
-      genEvents.some(
-        (e) =>
-          e.type === "native_tool_completed" && (e as { toolName?: string }).toolName === "bash",
-      ),
-    ).toBe(true);
+    expect(genEvents.some((e) => e.type === "workflow_started")).toBe(true);
+    expect(genEvents.some((e) => e.type === "workflow_agent_started")).toBe(true);
+    expect(genEvents.some((e) => e.type === "workflow_agent_completed")).toBe(true);
+    expect(genEvents.some((e) => e.type === "workflow_completed")).toBe(true);
   }, 60_000);
 });
