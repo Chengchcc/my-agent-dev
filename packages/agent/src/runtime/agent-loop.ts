@@ -492,14 +492,12 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                 }
               }
             }
-            // max_tokens truncation semantics: the model
-            // ran out of output budget mid-answer — force one continuation
-            // when capacity remains, bounded by maxForceContinues.
-            if (
-              stopped &&
-              turn.stopReason === "max_tokens" &&
-              forceContinues < opts.maxForceContinues
-            ) {
+            // max_tokens/pause_turn truncation semantics: the model ran out
+            // of output budget (or paused a long turn) mid-answer — force
+            // one continuation when capacity remains, bounded by
+            // maxForceContinues.
+            const truncated = turn.stopReason === "max_tokens" || turn.stopReason === "pause_turn";
+            if (stopped && truncated && forceContinues < opts.maxForceContinues) {
               forceContinues++;
               stopped = false;
             }

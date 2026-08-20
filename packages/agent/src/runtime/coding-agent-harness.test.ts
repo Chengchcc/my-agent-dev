@@ -1639,6 +1639,35 @@ function testHarness(
       expect(afterRunCalls).toBe(1);
     });
 
+    test("pause_turn forces one continuation like max_tokens", async () => {
+      const store = storeFactory("h21");
+      await createSession(store, "h21");
+      let modelCalls = 0;
+
+      const loop = createOmaSession({
+        sessionId: "h21",
+        store,
+        plugins: [],
+        maxSteps: 3,
+        maxForceContinues: 1,
+        summarize: fakeSummarize,
+        modelStream: async function* () {
+          modelCalls++;
+          if (modelCalls === 1) {
+            yield { delta: { type: "text", text: "partial" } };
+            yield { stopReason: "pause_turn" };
+          } else {
+            yield { delta: { type: "text", text: "rest" } };
+            yield { stopReason: "end_turn" };
+          }
+        },
+      });
+      await loop.startLoop(loopInput({ message: "go" }));
+
+      expect(modelCalls).toBe(2);
+      expect(loop.status).toBe("completed");
+    });
+
     afterAll(() => cleanup?.());
   });
 }

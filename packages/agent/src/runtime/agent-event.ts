@@ -42,6 +42,7 @@ export type OmaLoopEvent =
       ok: boolean;
       agentCount: number;
       totalTokens: number;
-    };
+    }
+  | { type: "workflow_failed"; workflowId: string; error: string };
 
 export type AgentLoopListener = (event: OmaLoopEvent) => void | Promise<void>;
