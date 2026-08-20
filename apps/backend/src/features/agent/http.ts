@@ -1,4 +1,13 @@
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join as pathJoin, resolve as pathResolve, sep } from "node:path";
 import { BACKEND_KINDS } from "@chengchenccc/agent-backend";
 import { Elysia, t } from "elysia";
@@ -15,6 +24,9 @@ import { AgentBusyError, AgentNotFoundError } from "./service.js";
 const backendKindUnion = t.Enum(
   Object.fromEntries(BACKEND_KINDS.map((k) => [k, k])) as Record<string, string>,
 );
+
+/** Bare memory fact filename: no separators, no traversal (memory write API). */
+const FACT_FILE_RE = /^[A-Za-z0-9._-]+\.md$/;
 
 // ── Response types (inferred by Elysia from handler return values) ──
 
@@ -269,6 +281,50 @@ export function agentRoutes(
         memoryMd: existsSync(mdPath) ? readFileSync(mdPath, "utf-8") : null,
       };
     })
+    .post(
+      "/api/agents/:id/memory",
+      async ({ params: { id }, body }) => {
+        let root: string;
+        try {
+          root = (await svc.getById(id)).workspacePath;
+        } catch {
+          return Response.json({ error: "Not found" }, { status: 404 });
+        }
+        const memDir = pathJoin(root, "memory");
+        mkdirSync(memDir, { recursive: true });
+        if (typeof body.memSummary === "string") {
+          writeFileSync(pathJoin(memDir, "memory_summary.md"), body.memSummary, "utf-8");
+        }
+        if (typeof body.memoryMd === "string") {
+          writeFileSync(pathJoin(memDir, "MEMORY.md"), body.memoryMd, "utf-8");
+        }
+        const factsDir = pathJoin(memDir, "facts");
+        if (body.facts) {
+          mkdirSync(factsDir, { recursive: true });
+          for (const f of body.facts) {
+            if (!FACT_FILE_RE.test(f.file))
+              return Response.json({ error: `invalid fact file: ${f.file}` }, { status: 400 });
+            writeFileSync(pathJoin(factsDir, f.file), f.content, "utf-8");
+          }
+        }
+        if (body.deleteFacts) {
+          for (const file of body.deleteFacts) {
+            if (!FACT_FILE_RE.test(file))
+              return Response.json({ error: `invalid fact file: ${file}` }, { status: 400 });
+            rmSync(pathJoin(factsDir, file), { force: true });
+          }
+        }
+        return { ok: true };
+      },
+      {
+        body: t.Object({
+          memSummary: t.Optional(t.String()),
+          memoryMd: t.Optional(t.String()),
+          facts: t.Optional(t.Array(t.Object({ file: t.String(), content: t.String() }))),
+          deleteFacts: t.Optional(t.Array(t.String())),
+        }),
+      },
+    )
     .get(
       "/api/agents/:id/workspace/entries",
       async ({ params: { id }, query }) => {

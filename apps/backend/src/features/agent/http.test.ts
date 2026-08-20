@@ -200,4 +200,49 @@ describe("agent HTTP routes", () => {
     );
     expect(escapeResp.status).toBe(403);
   });
+
+  test("POST /api/agents/:id/memory writes summary and facts; traversal rejected", async () => {
+    const app = makeSvc();
+    const createResp = await app.handle(
+      new Request("http://localhost/api/agents", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "mem", model: { provider: "anthropic", model: "claude" } }),
+      }),
+    );
+    const created = (await readJson(createResp)) as { id: string };
+
+    const writeResp = await app.handle(
+      new Request(`http://localhost/api/agents/${created.id}/memory`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          memSummary: "## Key Decisions\n- JWT expiry 15m",
+          facts: [{ file: "run-1.md", content: "- JWT expiry is 15m" }],
+        }),
+      }),
+    );
+    expect(writeResp.status).toBe(200);
+
+    const readResp = await app.handle(
+      new Request(`http://localhost/api/agents/${created.id}/memory`),
+    );
+    const body = (await readJson(readResp)) as {
+      memories: Array<{ file: string; content: string }>;
+      memSummary: string | null;
+    };
+    expect(body.memSummary).toContain("JWT expiry 15m");
+    expect(body.memories).toHaveLength(1);
+    expect(body.memories[0]!.file).toBe("run-1.md");
+
+    // Path traversal in a fact filename is rejected.
+    const evilResp = await app.handle(
+      new Request(`http://localhost/api/agents/${created.id}/memory`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ facts: [{ file: "../evil.md", content: "x" }] }),
+      }),
+    );
+    expect(evilResp.status).toBe(400);
+  });
 });
