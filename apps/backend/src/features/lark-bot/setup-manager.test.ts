@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { LarkProfileProvisioner, LarkProfileSetupResult } from "./provisioner.js";
+import type { LarkProfileProvisioner } from "./provisioner.js";
 import { LarkSetupManager } from "./setup-manager.js";
 
 const SETUP_URL = "https://open.larkoffice.cn/setup?token=abc123";
@@ -9,19 +9,17 @@ function fakeProvisioner(): LarkProfileProvisioner {
     kind: "cli_setup",
     async start(input) {
       const timer = setTimeout(() => input.onUrl?.(SETUP_URL), 50);
-      const result: LarkProfileSetupResult = {
+      const { promise: waitForCompletion, resolve: resolveUrl } = Promise.withResolvers<string>();
+      setTimeout(() => {
+        clearTimeout(timer);
+        resolveUrl(SETUP_URL);
+      }, 200);
+      return {
         setupId: `setup_${input.agentId}`,
         profileRef: input.profileRef,
-        url: "",
-        waitForCompletion: new Promise((resolve) => {
-          setTimeout(() => {
-            clearTimeout(timer);
-            resolve(SETUP_URL);
-          }, 200);
-        }),
+        waitForCompletion,
         cancel: async () => clearTimeout(timer),
       };
-      return result;
     },
     async probe() {
       return "not_ready";

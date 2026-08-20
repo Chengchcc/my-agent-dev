@@ -97,11 +97,10 @@ export class DevLarkBotRegistry implements LarkBotRegistry {
     if (larkProfile) {
       args.push("--lark-profile", larkProfile);
     }
-    // Pass backend auth token so lark-bot can authenticate its HTTP requests
-    args.push("--backend-auth-token", _env.BACKEND_AUTH_TOKEN);
-
     const child = spawn("bun", args, {
       stdio: ["pipe", "pipe", "pipe"],
+      // Backend auth token travels via env, never argv (ps-readable).
+      env: { ...process.env, BACKEND_AUTH_TOKEN: _env.BACKEND_AUTH_TOKEN },
     });
 
     child.stdout?.on("data", (d: Buffer) => {

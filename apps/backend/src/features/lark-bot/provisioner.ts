@@ -11,7 +11,6 @@ export type LarkProfileProvisionerKind = "cli_setup" | "mira_managed" | "legacy_
 export interface LarkProfileSetupResult {
   setupId: string;
   profileRef: string;
-  url: string; // set after waitForCompletion resolves
   waitForCompletion: Promise<string>; // resolves with the setup URL
   cancel(): Promise<void>;
 }
@@ -78,7 +77,6 @@ export class CliSetupProvisioner implements LarkProfileProvisioner {
 
     // URL is parsed from the combined buffer in the exit handler (after all
     // data has arrived); the streaming onUrl above surfaces it earlier.
-    let url = "";
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -90,11 +88,10 @@ export class CliSetupProvisioner implements LarkProfileProvisioner {
         clearTimeout(timer);
         // Parse URL now that all data has arrived
         const match = buf.match(SETUP_URL_PATTERN);
-        url = match?.[0] ?? "";
         if (timedOut) {
           reject(new Error("setup timed out"));
         } else if (code === 0) {
-          resolve(url);
+          resolve(match?.[0] ?? "");
         } else {
           reject(new Error(`lark-cli config init exited ${code}: ${stderr.slice(0, 200)}`));
         }
@@ -114,7 +111,6 @@ export class CliSetupProvisioner implements LarkProfileProvisioner {
     return {
       setupId: `setup_${crypto.randomUUID()}`,
       profileRef,
-      url, // resolved after waitForCompletion settles — caller reads via get(setupId)
       waitForCompletion,
       async cancel() {
         clearTimeout(timer);
@@ -132,17 +128,21 @@ export class CliSetupProvisioner implements LarkProfileProvisioner {
         stdio: ["ignore", "pipe", "pipe"],
       });
 
+      const timer = setTimeout(() => {
+        child.kill("SIGTERM");
+        resolve("not_ready");
+      }, 5000);
+
       child.on("exit", (code) => {
+        clearTimeout(timer);
         if (code === 0) resolve("ready");
         else resolve("not_ready");
       });
 
-      child.on("error", () => resolve("not_ready"));
-
-      setTimeout(() => {
-        child.kill("SIGTERM");
+      child.on("error", () => {
+        clearTimeout(timer);
         resolve("not_ready");
-      }, 5000);
+      });
     });
   }
 }
@@ -178,35 +178,4 @@ export function probeCliSetupCapability(): Promise<boolean> {
       resolve(false);
     }, 5000);
   });
-}
-
-// ─── Sanitization ───
-
-/**
- * Scrub secrets and sensitive data from lark-cli output before logging.
- * Replacements are exact-match first, then regex fallback for secret-like patterns.
- */
-export function sanitizeLarkCliOutput(text: string, secrets: string[]): string {
-  let out = text;
-
-  // Exact secret values
-  for (const s of secrets) {
-    if (s.length < 4) continue;
-    // Escape special regex chars
-    const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    out = out.replace(new RegExp(escaped, "g"), "[REDACTED]");
-  }
-
-  // URL tokens in query params
-  out = out.replace(/[?&](token|secret|key|code)=[^&\s]+/gi, "$1=[REDACTED]");
-
-  // Authorization header-like strings
-  out = out.replace(/Bearer\s+\S+/gi, "Bearer [REDACTED]");
-
-  // Truncate for safety
-  if (out.length > 500) {
-    out = `${out.slice(0, 500)}...`;
-  }
-
-  return out;
 }

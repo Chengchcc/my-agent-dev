@@ -41,7 +41,7 @@ afterAll(() => {
 
 describe("CliSetupProvisioner URL capture", () => {
   test("URL on stderr (piped stdout) is streamed via onUrl before exit", async () => {
-    installFakeCli({ stream: "stderr", delayMs: 300 });
+    installFakeCli({ stream: "stderr", delayMs: 1000 });
     const provisioner = new CliSetupProvisioner();
     const urls: string[] = [];
     const result = await provisioner.start({
@@ -52,13 +52,16 @@ describe("CliSetupProvisioner URL capture", () => {
       onUrl: (url) => urls.push(url),
     });
 
-    await Bun.sleep(100);
+    // Poll instead of a fixed sleep: the child prints immediately and stays
+    // alive for 1s, so a busy event loop under parallel CI cannot flake.
+    const deadline = Date.now() + 2000;
+    while (urls.length === 0 && Date.now() < deadline) await Bun.sleep(20);
     expect(urls).toEqual([SETUP_URL]); // streamed while the child is still alive
     await expect(result.waitForCompletion).resolves.toBe(SETUP_URL);
   });
 
   test("URL on stdout still resolved via onUrl", async () => {
-    installFakeCli({ stream: "stdout", delayMs: 300 });
+    installFakeCli({ stream: "stdout", delayMs: 1000 });
     const provisioner = new CliSetupProvisioner();
     const urls: string[] = [];
     const result = await provisioner.start({
@@ -69,7 +72,8 @@ describe("CliSetupProvisioner URL capture", () => {
       onUrl: (url) => urls.push(url),
     });
 
-    await Bun.sleep(100);
+    const deadline = Date.now() + 2000;
+    while (urls.length === 0 && Date.now() < deadline) await Bun.sleep(20);
     expect(urls).toEqual([SETUP_URL]);
     await expect(result.waitForCompletion).resolves.toBe(SETUP_URL);
   });
