@@ -102,9 +102,12 @@ async function resolveMemoryModel(modelRuntime: ModelRuntime, runModelId: string
     const catalog = await modelRuntime.getCatalog();
     const candidates = catalog.models.filter((m) => m.available !== false);
     if (candidates.length > 0) {
-      const cheapest = candidates.reduce((a, b) =>
-        a.cost.input + a.cost.output <= b.cost.input + b.cost.output ? a : b,
-      );
+      const costOf = (m: (typeof candidates)[number]) => m.cost.input + m.cost.output;
+      const cheapest = candidates.reduce((a, b) => (costOf(a) <= costOf(b) ? a : b));
+      // On a cost tie prefer the Run's own model: never surprise-upgrade
+      // (or downgrade) the memory model when the catalog gives no reason.
+      const runEntry = candidates.find((m) => `${m.providerId}/${m.modelId}` === runModelId);
+      if (runEntry && costOf(runEntry) <= costOf(cheapest)) return runModelId;
       return `${cheapest.providerId}/${cheapest.modelId}`;
     }
   } catch {
