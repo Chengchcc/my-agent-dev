@@ -30,6 +30,7 @@ function createTestStore(): LoopStateStore {
       step TEXT NOT NULL, attempt INTEGER NOT NULL,
       priority INTEGER NOT NULL, result TEXT,
       generator_run_id TEXT, evaluator_run_id TEXT,
+      task_class TEXT, defer TEXT,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY(loop_id, item_id)
     );
@@ -652,6 +653,25 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     } finally {
       await cleanup();
     }
+  });
+
+  test("taskClass drives the fix subagent guidance", async () => {
+    const store = createTestStore();
+    const state = loopReducer(emptyState(), {
+      type: "ADD_ITEM",
+      item: {
+        id: "item-1",
+        source: "issue",
+        summary: "investigate flaky auth",
+        taskClass: "research",
+      },
+      priority: 3,
+    });
+    store.save("test", state, {});
+    const { enqueues } = await runStep({ store, script: {} });
+    const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"))!;
+    expect(gen.workflow?.script).toContain("调研任务");
+    expect(gen.workflow?.script).toContain("默认不改代码");
   });
 
   test("verifyCommands are rendered as mandatory steps in the verify subagent prompt", async () => {

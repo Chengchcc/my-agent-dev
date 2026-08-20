@@ -1,4 +1,4 @@
-import type { ItemState, ItemStep, LoopState, Verdict } from "./types.js";
+import type { ItemState, ItemStep, LoopState, TaskClass, Verdict } from "./types.js";
 
 // ============================================================
 // Lightweight YAML helpers (two levels: result + reasons array)
@@ -68,6 +68,18 @@ function itemStateToYaml(item: ItemState): string {
   if (item.evaluatorRunId) {
     lines.push(`evaluatorRunId: ${yamlEscape(item.evaluatorRunId)}`);
   }
+  if (item.taskClass) {
+    lines.push(`taskClass: ${item.taskClass}`);
+  }
+  if (item.defer) {
+    lines.push("defer:");
+    lines.push(`  reason: ${yamlEscape(item.defer.reason)}`);
+    if (item.defer.until !== undefined) lines.push(`  until: ${item.defer.until}`);
+    if (item.defer.after && item.defer.after.length > 0) {
+      lines.push("  after:");
+      for (const dep of item.defer.after) lines.push(`    - ${dep}`);
+    }
+  }
   if (item.result !== null) {
     lines.push("result:");
     lines.push(formatVerdict(item.result, 1));
@@ -90,7 +102,19 @@ function parseItemYaml(id: string, lines: string[]): ItemState {
         : null,
     generatorRunId: data.generatorRunId ? String(data.generatorRunId) : undefined,
     evaluatorRunId: data.evaluatorRunId ? String(data.evaluatorRunId) : undefined,
+    taskClass: data.taskClass ? (String(data.taskClass) as TaskClass) : undefined,
+    defer: parseDefer(data.defer),
   };
+}
+
+function parseDefer(raw: unknown): ItemState["defer"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const d = raw as Record<string, YamlValue>;
+  if (typeof d.reason !== "string") return undefined;
+  const defer: NonNullable<ItemState["defer"]> = { reason: d.reason };
+  if (typeof d.until === "number") defer.until = d.until;
+  if (Array.isArray(d.after)) defer.after = d.after.map(String);
+  return defer;
 }
 
 // ============================================================

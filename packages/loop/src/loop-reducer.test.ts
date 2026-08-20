@@ -567,3 +567,71 @@ describe("validateLoopMetaPatch", () => {
     expect(validateLoopMetaPatch(base, badVerdict).ok).toBe(false);
   });
 });
+
+// ============================================================
+// DEFER / UNDEFER / TICK with deferral
+// ============================================================
+describe("loopReducer — defer", () => {
+  const triaged = { id: "01", source: "ci", summary: "a", step: "triaged" as const, attempt: 1, priority: 0, result: null };
+
+  test("DEFER parks a triaged item; TICK skips it", () => {
+    const s = stateWith({ "01": triaged });
+    const deferred = loopReducer(s, {
+      type: "DEFER",
+      itemId: "01",
+      reason: "waiting for upstream",
+    });
+    expect(deferred.items["01"]!.defer?.reason).toBe("waiting for upstream");
+    const next = loopReducer(deferred, { type: "TICK" });
+    expect(next.items["01"]!.step).toBe("triaged");
+  });
+
+  test("DEFER on an active item drops it back to triaged", () => {
+    const s = stateWith({ "01": { ...triaged, step: "fixing" as const } });
+    const next = loopReducer(s, {
+      type: "DEFER",
+      itemId: "01",
+      reason: "blocked",
+      until: 999,
+    });
+    expect(next.items["01"]!.step).toBe("triaged");
+    expect(next.items["01"]!.defer).toEqual({ reason: "blocked", until: 999 });
+  });
+
+  test("TICK resumes when until expires (opts.now)", () => {
+    const s = stateWith({
+      "01": { ...triaged, defer: { reason: "r", until: 1000 } },
+    });
+    const still = loopReducer(s, { type: "TICK" }, { now: 999 });
+    expect(still.items["01"]!.step).toBe("triaged");
+    const resumed = loopReducer(s, { type: "TICK" }, { now: 1001 });
+    expect(resumed.items["01"]!.step).toBe("fixing");
+    expect(resumed.items["01"]!.defer).toBeUndefined();
+  });
+
+  test("TICK resumes when after-dependencies are resolved", () => {
+    const s = stateWith({
+      "01": { ...triaged, defer: { reason: "r", after: ["02"] } },
+      "02": { id: "02", source: "ci", summary: "b", step: "resolved" as const, attempt: 1, priority: 0, result: null },
+    });
+    const next = loopReducer(s, { type: "TICK" });
+    expect(next.items["01"]!.step).toBe("fixing");
+    expect(next.items["01"]!.defer).toBeUndefined();
+  });
+
+  test("UNDEFER resumes immediately", () => {
+    const s = stateWith({
+      "01": { ...triaged, defer: { reason: "r" } },
+    });
+    const next = loopReducer(s, { type: "UNDEFER", itemId: "01" });
+    expect(next.items["01"]!.defer).toBeUndefined();
+  });
+
+  test("DEFER on resolved item is a no-op", () => {
+    const s = stateWith({
+      "01": { ...triaged, step: "resolved" as const },
+    });
+    const next = loopReducer(s, { type: "DEFER", itemId: "01", reason: "x" });
+    expect(next.items["01"]!.defer).toBeUndefined();
+  });
+});

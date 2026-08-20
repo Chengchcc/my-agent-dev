@@ -45,6 +45,7 @@ function makeApp(activeRuns = false) {
       step TEXT NOT NULL, attempt INTEGER NOT NULL,
       priority INTEGER NOT NULL, result TEXT,
       generator_run_id TEXT, evaluator_run_id TEXT,
+      task_class TEXT, defer TEXT,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY(loop_id, item_id)
     );

@@ -14,5 +14,6 @@ export type {
   ItemStep,
   LoopAction,
   LoopState,
+  TaskClass,
   Verdict,
 } from "./types.js";

@@ -11,6 +11,9 @@ export type ItemStep =
   | "inbox"
   | "promoted";
 
+// === Item task class (drives per-class workflow prompts) ===
+export type TaskClass = "bugfix" | "feature" | "refactor" | "research" | "review" | "chore";
+
 // === Evaluator verdict ===
 export type Verdict =
   | { verdict: "PASS"; evidence: string }
@@ -28,6 +31,11 @@ export type ItemState = {
   result: Verdict | null;
   generatorRunId?: string;
   evaluatorRunId?: string;
+  /** Task class: drives per-class fix/verify prompt templates. */
+  taskClass?: TaskClass;
+  /** Explicit deferral: parked with a reason until a time/dependency frees
+   *  it. TICK skips deferred items; expired or dependency-met items resume. */
+  defer?: { reason: string; until?: number; after?: string[] };
 };
 
 // === Loop state ===
@@ -47,6 +55,8 @@ export type LoopAction =
   | { type: "PROMOTE"; itemId: ItemId }
   | { type: "RETRY"; itemId: ItemId }
   | { type: "DISMISS"; itemId: ItemId }
+  | { type: "DEFER"; itemId: ItemId; reason: string; until?: number; after?: string[] }
+  | { type: "UNDEFER"; itemId: ItemId }
   | {
       type: "ADD_ITEM";
       item: Omit<ItemState, "step" | "attempt" | "priority" | "result">;

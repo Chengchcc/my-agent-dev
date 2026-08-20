@@ -202,7 +202,12 @@ export function loopRoutes(input: {
         const itemId = body.itemId ?? crypto.randomUUID();
         const newState = loopReducer(state, {
           type: "ADD_ITEM",
-          item: { id: itemId, source: body.source, summary: body.summary },
+          item: {
+            id: itemId,
+            source: body.source,
+            summary: body.summary,
+            ...(body.taskClass ? { taskClass: body.taskClass } : {}),
+          },
           priority: body.priority,
         });
         store.save(id, newState, {});
@@ -216,9 +221,64 @@ export function loopRoutes(input: {
           source: t.String({ minLength: 1 }),
           summary: t.String({ minLength: 1 }),
           priority: t.Optional(t.Number()),
+          taskClass: t.Optional(
+            t.Union([
+              t.Literal("bugfix"),
+              t.Literal("feature"),
+              t.Literal("refactor"),
+              t.Literal("research"),
+              t.Literal("review"),
+              t.Literal("chore"),
+            ]),
+          ),
         }),
       },
     )
+    .post(
+      "/api/loops/:id/items/:itemId/defer",
+      async ({ params: { id, itemId }, body, set }) => {
+        const job = cronSvc.getById(id);
+        if (!job?.loopConfigPath) {
+          set.status = 404;
+          return { error: "Not a loop" };
+        }
+        const state = store.load(id);
+        const deferAction: {
+          type: "DEFER";
+          itemId: string;
+          reason: string;
+          until?: number;
+          after?: string[];
+        } = {
+          type: "DEFER",
+          itemId,
+          reason: body.reason,
+        };
+        if (body.until !== undefined) deferAction.until = body.until;
+        if (body.after !== undefined) deferAction.after = body.after;
+        const newState = loopReducer(state, deferAction);
+        store.save(id, newState, {});
+        return { item: newState.items[itemId] ?? null };
+      },
+      {
+        body: t.Object({
+          reason: t.String({ minLength: 1 }),
+          until: t.Optional(t.Number()),
+          after: t.Optional(t.Array(t.String())),
+        }),
+      },
+    )
+    .post("/api/loops/:id/items/:itemId/undefer", async ({ params: { id, itemId }, set }) => {
+      const job = cronSvc.getById(id);
+      if (!job?.loopConfigPath) {
+        set.status = 404;
+        return { error: "Not a loop" };
+      }
+      const state = store.load(id);
+      const newState = loopReducer(state, { type: "UNDEFER", itemId });
+      store.save(id, newState, {});
+      return { item: newState.items[itemId] ?? null };
+    })
     .delete("/api/loops/:id", async ({ params: { id }, set }) => {
       const job = cronSvc.getById(id);
       if (!job) {

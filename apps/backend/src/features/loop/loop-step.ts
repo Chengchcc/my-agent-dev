@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { BackendModelRef, BackendRunOutcome } from "@chengchenccc/agent-backend";
-import type { LoopConfig, LoopState, Verdict } from "@chengchenccc/loop";
+import type { LoopConfig, LoopState, TaskClass, Verdict } from "@chengchenccc/loop";
 import { loopReducer, parseLoopConfig } from "@chengchenccc/loop";
 import { isTerminalStatus } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
@@ -267,29 +267,49 @@ function actionToReducer(action: ReviewAction) {
  *  Prompts come from LOOP.md workflow.fixPrompt/verifyPrompt when set, else
  *  defaults derived from the item + acceptance criteria (workflow-first:
  *  the script IS the generator/evaluator, no outer agent role). */
+/** Per-class fix guidance appended to the default fix prompt (workflow
+ *  renders the class-specific approach; LOOP.md fixPrompt overrides all). */
+const TASK_CLASS_GUIDANCE: Record<TaskClass, string> = {
+  bugfix: "这是一个 bug 修复:先复现/确认失败,做最小改动,并补回归测试。",
+  feature: "这是一个功能开发:先对照验收标准,只实现所需行为,不改无关代码。",
+  refactor: "这是一个重构:保持行为不变,只改进结构,确保测试全绿。",
+  research: "这是一个调研任务:只读探索并输出结论,默认不改代码。",
+  review: "这是一个审查任务:检查相关代码并输出发现,不改代码。",
+  chore: "这是一个杂项任务:按 acceptance 完成,保持最小 diff。",
+};
+
 function renderLoopWorkflow(
   item: LoopState["items"][string],
   cfg: LoopConfig,
   ctx?: { gitLog?: string },
 ): string {
   const gitCtx = ctx?.gitLog ? `\nRecent changes:\n${ctx.gitLog}` : "";
+  const classGuide = item.taskClass ? TASK_CLASS_GUIDANCE[item.taskClass] : undefined;
   const fixPrompt =
     cfg.workflow.fixPrompt ||
-    `Fix the loop item. Summary: ${item.summary}. Source: ${item.source}. Smallest possible diff; do not commit.${gitCtx}`;
-  const verifyPrompt =
-    cfg.workflow.verifyPrompt ||
-    (cfg.workflow.verifyCommands.length > 0
-      ? `Verify the fix for item ${item.id}. Acceptance: ${cfg.acceptance}. ` +
+    `Fix the loop item. Summary: ${item.summary}. Source: ${item.source}. Smallest possible diff; do not commit.${gitCtx}${
+      classGuide ? `\n${classGuide}` : ""
+    }`;
+  let verifyPrompt = cfg.workflow.verifyPrompt;
+  if (!verifyPrompt) {
+    if (cfg.workflow.verifyCommands.length > 0) {
+      verifyPrompt =
+        `Verify the fix for item ${item.id}. Acceptance: ${cfg.acceptance}. ` +
         `Run EVERY command below (bash, in the repo), and paste each command's full output into evidence. ` +
         `No output for a command = that check did not happen = the verdict must be REJECT. ` +
         `Commands:\n${cfg.workflow.verifyCommands.map((c, i) => `${i + 1}. ${c}`).join("\n")}\n` +
-        `Then return JSON: {"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"<full command outputs>"}.`
-      : cfg.acceptance
-        ? `Verify the fix for item ${item.id} against the acceptance criteria: ${cfg.acceptance}. ` +
-          `Run the relevant tests/commands first, capture their output, then return JSON: ` +
-          `{"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"<command output>"}.`
-        : `Verify the fix for item ${item.id}. Run the relevant tests and return JSON: ` +
-          `{"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"..."}.`);
+        `Then return JSON: {"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"<full command outputs>"}.`;
+    } else if (cfg.acceptance) {
+      verifyPrompt =
+        `Verify the fix for item ${item.id} against the acceptance criteria: ${cfg.acceptance}. ` +
+        `Run the relevant tests/commands first, capture their output, then return JSON: ` +
+        `{"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"<command output>"}.`;
+    } else {
+      verifyPrompt =
+        `Verify the fix for item ${item.id}. Run the relevant tests and return JSON: ` +
+        `{"verdict":"PASS"|"REJECT"|"ESCALATE","reasons":[],"evidence":"..."}.`;
+    }
+  }
   return `// Loop workflow (product-rendered per item). fix then verify.
 const item = args.item;
 const fix = await agent(${JSON.stringify(fixPrompt)}, { label: "fix" });
@@ -392,7 +412,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
           item: { id: item.id, source: item.source, summary: item.summary },
           priority: item.priority,
         });
-        state = loopReducer(state, { type: "TICK" });
+        state = loopReducer(state, { type: "TICK" }, { now: Date.now() });
         delete inboxItems[action.itemId];
       }
     } else if (action.verdict === "dismiss") {
@@ -455,7 +475,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
   }
 
   // 3. Cron TICK — Generator → Evaluator
-  state = loopReducer(state, { type: "TICK" });
+  state = loopReducer(state, { type: "TICK" }, { now: Date.now() });
 
   const fixingItems = Object.values(state.items).filter((i) => i.step === "fixing");
 

@@ -253,6 +253,13 @@
       "when": 1787700000000,
       "tag": "0035_agent_run_workflow",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1787800000000,
+      "tag": "0036_loop_item_task_class_defer",
+      "breakpoints": true
     }
   ]
 }

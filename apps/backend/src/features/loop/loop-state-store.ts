@@ -24,11 +24,13 @@ export function createLoopStateStore(db: Database): LoopStateStore {
       result: string | null;
       generator_run_id: string | null;
       evaluator_run_id: string | null;
+      task_class: string | null;
+      defer: string | null;
       updated_at: number;
     },
     [string]
   >(
-    "SELECT item_id, source, summary, step, attempt, priority, result, generator_run_id, evaluator_run_id, updated_at FROM loop_item WHERE loop_id = ?",
+    "SELECT item_id, source, summary, step, attempt, priority, result, generator_run_id, evaluator_run_id, task_class, defer, updated_at FROM loop_item WHERE loop_id = ?",
   );
 
   const upsertItem = db.query<
@@ -44,15 +46,18 @@ export function createLoopStateStore(db: Database): LoopStateStore {
       string | null,
       string | null,
       string | null,
+      string | null,
+      string | null,
       number,
     ]
   >(
-    `INSERT INTO loop_item(loop_id, item_id, source, summary, step, attempt, priority, result, generator_run_id, evaluator_run_id, updated_at)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO loop_item(loop_id, item_id, source, summary, step, attempt, priority, result, generator_run_id, evaluator_run_id, task_class, defer, updated_at)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(loop_id, item_id) DO UPDATE SET
        step=excluded.step, attempt=excluded.attempt, priority=excluded.priority,
        result=excluded.result, generator_run_id=excluded.generator_run_id,
-       evaluator_run_id=excluded.evaluator_run_id, updated_at=excluded.updated_at`,
+       evaluator_run_id=excluded.evaluator_run_id, task_class=excluded.task_class,
+       defer=excluded.defer, updated_at=excluded.updated_at`,
   );
 
   const deleteItem = db.query<void, [string, string]>(
@@ -83,11 +88,21 @@ export function createLoopStateStore(db: Database): LoopStateStore {
     result: string | null;
     generator_run_id: string | null;
     evaluator_run_id: string | null;
+    task_class: string | null;
+    defer: string | null;
   }): ItemState {
     let result: Verdict | null = null;
     if (row.result) {
       try {
         result = JSON.parse(row.result) as Verdict;
+      } catch {
+        /* ignore */
+      }
+    }
+    let defer: ItemState["defer"];
+    if (row.defer) {
+      try {
+        defer = JSON.parse(row.defer) as ItemState["defer"];
       } catch {
         /* ignore */
       }
@@ -102,6 +117,8 @@ export function createLoopStateStore(db: Database): LoopStateStore {
       result,
       generatorRunId: row.generator_run_id ?? undefined,
       evaluatorRunId: row.evaluator_run_id ?? undefined,
+      taskClass: (row.task_class as ItemState["taskClass"]) ?? undefined,
+      defer,
     };
   }
 
@@ -150,6 +167,8 @@ export function createLoopStateStore(db: Database): LoopStateStore {
             item.result ? JSON.stringify(item.result) : null,
             item.generatorRunId ?? null,
             item.evaluatorRunId ?? null,
+            item.taskClass ?? null,
+            item.defer ? JSON.stringify(item.defer) : null,
             now,
           );
         }
@@ -166,6 +185,8 @@ export function createLoopStateStore(db: Database): LoopStateStore {
             item.result ? JSON.stringify(item.result) : null,
             item.generatorRunId ?? null,
             item.evaluatorRunId ?? null,
+            item.taskClass ?? null,
+            item.defer ? JSON.stringify(item.defer) : null,
             now,
           );
         }

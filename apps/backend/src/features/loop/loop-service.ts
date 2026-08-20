@@ -41,6 +41,8 @@ export interface LoopDetailItem {
   result: Verdict | null;
   generatorRunId?: string;
   evaluatorRunId?: string;
+  taskClass?: ItemState["taskClass"];
+  defer?: ItemState["defer"];
 }
 
 export interface LoopDetail {
@@ -164,6 +166,8 @@ export function getLoopDetail(
     result: item.result,
     generatorRunId: item.generatorRunId,
     evaluatorRunId: item.evaluatorRunId,
+    taskClass: item.taskClass,
+    defer: item.defer,
   }));
   let config: LoopDetail["config"] = null;
   if (dataDir) {

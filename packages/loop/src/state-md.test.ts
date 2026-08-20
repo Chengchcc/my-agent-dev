@@ -525,3 +525,26 @@ describe("parseLoopConfig agent field (ADR 0023 P2)", () => {
     expect(cfg?.agent).toBe("default");
   });
 });
+
+describe("state-md taskClass + defer round-trip", () => {
+  test("taskClass and defer survive format/parse", () => {
+    const s = sampleState();
+    s.items["01"]!.taskClass = "research";
+    s.items["01"]!.defer = { reason: "waiting for upstream", until: 12345, after: ["02"] };
+    const md = formatStateMd(s);
+    const parsed = parseStateMd(md);
+    expect(parsed.items["01"]!.taskClass).toBe("research");
+    expect(parsed.items["01"]!.defer).toEqual({
+      reason: "waiting for upstream",
+      until: 12345,
+      after: ["02"],
+    });
+  });
+
+  test("defer without until/after parses", () => {
+    const s = sampleState();
+    s.items["01"]!.defer = { reason: "manual park" };
+    const parsed = parseStateMd(formatStateMd(s));
+    expect(parsed.items["01"]!.defer).toEqual({ reason: "manual park" });
+  });
+});

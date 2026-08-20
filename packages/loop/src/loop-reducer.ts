@@ -1,8 +1,10 @@
-import type { ItemStep, LoopAction, LoopState } from "./types.js";
+import type { ItemState, ItemStep, LoopAction, LoopState } from "./types.js";
 
 type ReducerOpts = {
   maxRetries?: number;
   autoResolve?: boolean;
+  /** Wall clock for defer.until expiry checks in TICK. */
+  now?: number;
 };
 
 const DEFAULT_MAX_RETRIES = 3;
@@ -21,10 +23,27 @@ export function loopReducer(state: LoopState, action: LoopAction, opts?: Reducer
   const items = cloneItems(state.items);
 
   switch (action.type) {
-    // --- TICK: all triaged → fixing ---
+    // --- TICK: all triaged → fixing (deferred items skipped until their
+    //     time/dependency frees them; then they resume this same tick) ---
     case "TICK": {
+      const now = opts?.now;
       for (const id of Object.keys(items)) {
         const item = items[id]!;
+        if (item.defer) {
+          const untilDue = now != null && item.defer.until != null && item.defer.until <= now;
+          const depsMet =
+            item.defer.after != null &&
+            item.defer.after.length > 0 &&
+            !item.defer.after.some((dep) => items[dep] && items[dep]!.step !== "resolved");
+          const autoResume =
+            (item.defer.until != null && untilDue) || (item.defer.after != null && depsMet);
+          if (!autoResume) continue; // still parked
+          items[id] = { ...item, defer: undefined };
+          if (items[id]!.step === "triaged") {
+            items[id] = { ...items[id]!, step: "fixing" };
+          }
+          continue;
+        }
         if (item.step === "triaged") {
           items[id] = { ...item, step: "fixing" };
         }
@@ -157,6 +176,30 @@ export function loopReducer(state: LoopState, action: LoopAction, opts?: Reducer
       if (item?.step === "inbox") {
         delete items[action.itemId];
       }
+      break;
+    }
+
+    // --- DEFER: park a non-terminal item with a reason. Active items drop
+    //     back to triaged so the next TICK skips them. ---
+    case "DEFER": {
+      const item = items[action.itemId];
+      if (!item || item.step === "resolved" || item.step === "promoted") break;
+      const defer: NonNullable<ItemState["defer"]> = { reason: action.reason };
+      if (action.until !== undefined) defer.until = action.until;
+      if (action.after !== undefined) defer.after = action.after;
+      items[action.itemId] = {
+        ...item,
+        defer,
+        step: item.step === "fixing" || item.step === "verifying" ? "triaged" : item.step,
+      };
+      break;
+    }
+
+    // --- UNDEFER: resume a parked item (next TICK promotes it). ---
+    case "UNDEFER": {
+      const item = items[action.itemId];
+      if (!item?.defer) break;
+      items[action.itemId] = { ...item, defer: undefined };
       break;
     }
 
