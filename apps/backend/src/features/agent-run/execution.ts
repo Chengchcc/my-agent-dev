@@ -12,6 +12,7 @@ import type {
 import { BACKEND_KINDS, type BackendKind, debugLog } from "@chengchenccc/agent-backend";
 import { resolveModelAlias } from "@chengchenccc/ai";
 import type { ContentBlock, Message } from "@chengchenccc/message";
+import { DomainError } from "../../infra/domain-errors.js";
 import type {
   AgentContextPort,
   IdGenerator,
@@ -70,6 +71,15 @@ export interface AgentRunExecutionDeps {
    *  retryTerminalCommit replay - consumers must be idempotent per
    *  (runId, ...). Used by Conversation for the mention cascade. */
   readonly onRunCommitted?: (runId: string, output: Message | undefined) => void;
+  /** Called after a failed/aborted/timeout run settles, so the surface can
+   *  persist an assistant error message (T3-2: failures survive refresh).
+   *  Fired once per terminal settle; consumers must be idempotent per runId. */
+  readonly onRunFailed?: (input: {
+    runId: string;
+    conversationId: string;
+    agentMemberId: string;
+    error: string;
+  }) => void;
   /** Durable telemetry sink for normalized run events (tool calls, status,
    *  workflow steps). Wired to the RuntimeOps event store; failures are
    *  swallowed — telemetry never affects the run. */
@@ -229,9 +239,12 @@ export function createAgentRunExecutionService(
   async function assertModelAvailable(modelRef: BackendModelRef): Promise<void> {
     const entry = entryFor(modelRef.backendKind);
     if (!entry) {
-      throw new Error(
+      // T3-3: config problems are known business errors — the unified
+      // onError surfaces the message instead of swallowing it as 500.
+      throw new DomainError(
         `unknown or unregistered backend kind "${modelRef.backendKind}" ` +
           `(known: ${BACKEND_KINDS.join(", ")})`,
+        422,
       );
     }
     const catalog = await entry.catalog.list();
@@ -239,8 +252,9 @@ export function createAgentRunExecutionService(
     // (e.g. claude-sonnet-4-20250514 → claude-sonnet-5).
     const model = catalog.models.find((m) => m.id === resolveModelAlias(modelRef.modelId));
     if (!model || model.available === false) {
-      throw new Error(
+      throw new DomainError(
         `model ${modelRef.backendKind}/${modelRef.modelId} not available in ${modelRef.backendKind} catalog`,
+        422,
       );
     }
   }
@@ -524,9 +538,15 @@ export function createAgentRunExecutionService(
       return;
     }
     // Live subscribers learn WHY the run died (the error text) before the
-    // stream closes; failed runs persist no assistant message, so this
-    // status event is the only live failure record for the UI.
+    // stream closes; the onRunFailed hook persists an assistant error
+    // message so the failure survives refresh (T3-2).
     broadcast(run.runId, { type: "status", status: outcome.status, error: outcome.error });
+    deps.onRunFailed?.({
+      runId: run.runId,
+      conversationId: run.conversationId,
+      agentMemberId: run.agentMemberId,
+      error: outcome.error ?? `Run ${outcome.status}`,
+    });
     await runPort.finalizeRun(run.runId, outcome);
   }
 
@@ -626,6 +646,12 @@ export function createAgentRunExecutionService(
           // pre-child failures (spawn, catalog, projection) leave no
           // assistant message, so the status event carries the error text.
           broadcast(runId, { type: "status", status: "failed", error: detail });
+          deps.onRunFailed?.({
+            runId,
+            conversationId: run.conversationId,
+            agentMemberId: run.agentMemberId,
+            error: detail,
+          });
           await runPort
             .finalizeRun(runId, { status: "failed", error: detail })
             .catch((e) => console.error(`[agent-run] finalize failed for ${runId}:`, e));

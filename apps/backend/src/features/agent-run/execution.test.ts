@@ -135,6 +135,12 @@ function makeExecution(
   },
   contextPortOverride?: Partial<typeof contextPort>,
   tokenRegistry?: RunTokenRegistry,
+  onRunFailed?: (input: {
+    runId: string;
+    conversationId: string;
+    agentMemberId: string;
+    error: string;
+  }) => void,
 ) {
   const activeRunPort = runPortOverride ?? runPort;
   const ledgerResolver = {
@@ -171,6 +177,7 @@ function makeExecution(
     productToolsEntrypoint: "sse:http://127.0.0.1:1/mcp",
     workspaceLocks: createWorkspaceLockRegistry(),
     productToolsTokenRegistry: tokenRegistry ?? createRunTokenRegistry(),
+    ...(onRunFailed ? { onRunFailed } : {}),
   });
 }
 
@@ -465,6 +472,32 @@ describe("agent run execution (Run-centric)", () => {
         }),
       ]),
     ).resolves.toEqual([{ type: "status", status: "failed", error: "catalog down" }]);
+  }, 15_000);
+
+  test("failed dispatch fires onRunFailed with the error (T3-2)", async () => {
+    const fake = createFakeDaemon();
+    const failures: Array<{ runId: string; error: string }> = [];
+    const execution = makeExecution(
+      fake,
+      undefined,
+      {
+        list: async () => {
+          throw new Error("catalog down");
+        },
+      },
+      undefined,
+      undefined,
+      (input) => {
+        failures.push({ runId: input.runId, error: input.error });
+      },
+    );
+
+    const acquired = await enqueue("normal", "fail-hook", "hello");
+    const runId = acquired.run!.runId;
+    await expect(execution.dispatch(runId)).rejects.toThrow("catalog down");
+    // The surface hook receives the failure so it can persist an assistant
+    // error message (T3-2) — the failure survives refresh.
+    expect(failures).toEqual([{ runId, error: "catalog down" }]);
   }, 15_000);
 
   test("spawn failure is permanent: run finalized failed, delivering input cancelled, subscribers closed", async () => {
