@@ -31,6 +31,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Audit contracts and docs
+        run: bun run audit
+
       - name: Build
         run: bun run build
 
