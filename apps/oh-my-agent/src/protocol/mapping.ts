@@ -120,6 +120,7 @@ export function mapRunOutcome(outcome: {
   usage?: unknown;
   title?: string;
   cliSessionRef?: string;
+  workflow?: unknown;
 }): BackendRunOutcome {
   // The child's session reference (ADR 0003) survives every terminal status:
   // the product round-trips it into branch.cliSessionRef for the next run.
@@ -130,6 +131,7 @@ export function mapRunOutcome(outcome: {
       messages: outcome.messages as never,
       usage: outcome.usage as never,
       ...(outcome.title ? { title: outcome.title } : {}),
+      ...(outcome.workflow !== undefined ? { workflow: outcome.workflow as never } : {}),
       ...ref,
     };
   }

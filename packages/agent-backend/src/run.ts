@@ -35,6 +35,10 @@ export interface BackendRunInput<K extends string = string> {
   /** Per-run product-tools bearer. Backends deliver it to their child
    *  (spawn env). Absent = no product tools for this run. */
   readonly productToolsToken?: string;
+  /** Oma-only execution mode: run the workflow SCRIPT directly (vm sandbox,
+   *  agent() subagents) instead of an interactive loop. The script's return
+   *  value becomes `outcome.workflow.value`. Other backends ignore it. */
+  readonly workflow?: { readonly script: string; readonly args?: unknown };
   readonly metadata: {
     readonly conversationId: string;
     readonly agentMemberId: string;
@@ -76,6 +80,13 @@ export type BackendRunOutcome =
        *  branch (agent_context_branch.cli_session_ref) as the runtime
        *  truth for context continuation. */
       readonly cliSessionRef?: string;
+      /** Oma workflow-mode result: the script's return value + aggregate
+       *  subagent usage. Present when the run executed via input.workflow. */
+      readonly workflow?: {
+        readonly ok: boolean;
+        readonly value: unknown;
+        readonly usage?: Usage;
+      };
     }
   | {
       readonly status: "failed" | "aborted" | "timeout";

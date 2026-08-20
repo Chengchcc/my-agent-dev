@@ -98,6 +98,13 @@ export interface RunRuntime {
   readonly contextBudget: ContextBudget | undefined;
   /** Set before startLoop so modelStream resolves the run's model. */
   setActiveRun(run: AgentRunSnapshot<"oma"> | null): void;
+  /** Workflow mode: execute a vm-sandboxed script (agent() subagents) and
+   *  return its value. Used directly by create-runtime when the Run input
+   *  carries `workflow`, and by the workflow_run tool otherwise. */
+  executeWorkflow(input: {
+    script: string;
+    args?: unknown;
+  }): Promise<{ ok: boolean; totalTokens: number; value: unknown }>;
   /** Close MCP clients etc. Call after the run settles. */
   close(): Promise<void>;
 }
@@ -579,6 +586,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     setActiveRun(run) {
       activeRun = run;
     },
+    executeWorkflow: (input) => runScript(input),
     async close() {
       // Tear down every MCP client (Product Tool transports) so no child
       // process or connection outlives the Run. Each close is BOUNDED: a

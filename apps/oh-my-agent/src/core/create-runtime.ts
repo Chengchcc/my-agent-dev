@@ -147,6 +147,20 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
       rt.setActiveRun(input.run as never);
       const outcomePromise = (async (): Promise<BackendRunOutcome> => {
         try {
+          // Workflow mode: the input IS a script to execute (Loop items).
+          // No interactive loop, no messages — the script's return value is
+          // the run's product (outcome.workflow.value).
+          if (input.workflow) {
+            const result = await rt.executeWorkflow(input.workflow);
+            return {
+              status: "completed",
+              workflow: {
+                ok: result.ok,
+                value: result.value,
+                usage: { inputTokens: 0, outputTokens: result.totalTokens },
+              },
+            };
+          }
           const result = await rt.session.startLoop({
             history: options.sessionTranscript ?? [],
             input: input.input,

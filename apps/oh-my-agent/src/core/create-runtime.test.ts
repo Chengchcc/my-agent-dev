@@ -477,4 +477,57 @@ describe("createOmaRuntime", () => {
     const saved = await Bun.file(join(tmp, ".workflows", "audit.js")).text();
     expect(saved).toBe(script);
   });
+
+  test("workflow-mode run (input.workflow) executes the script and returns its value", async () => {
+    const requests: string[] = [];
+    const provider: Provider = {
+      id: "fake",
+      name: "Fake",
+      getModels: () => [FAKE_MODEL],
+      async *stream(model, messages): AsyncIterable<AIMessageChunk> {
+        void model;
+        const system = messages.find((m) => m.role === "system");
+        if (system?.text.includes("You are a subagent")) {
+          requests.push("subagent");
+          yield { delta: { type: "text", text: "fixed" } };
+          yield { stopReason: "end_turn" };
+          return;
+        }
+        yield { delta: { type: "text", text: "unused" } };
+        yield { stopReason: "end_turn" };
+      },
+    };
+    const modelRuntime = createModelRuntime();
+    modelRuntime.registerProvider(provider);
+    const rt = await createOmaRuntime({
+      runId: "r-wf-mode",
+      modelId: "fake/echo",
+      workspaceRoot: tmp,
+      workspaceAccess: "read_write",
+      modelRuntime,
+      skillRoots: [],
+    });
+    const input: BackendRunInput<"oma"> = {
+      input: { inputId: "in-wf", message: { role: "user", text: "" } },
+      run: {
+        runId: "r-wf-mode",
+        model: { backendKind: "oma", modelId: "fake/echo" },
+        configRevision: 1,
+      },
+      workspace: { root: tmp, access: "read_write" },
+      metadata: { conversationId: "c", agentMemberId: "m", branchId: "b" },
+      workflow: {
+        script: 'const a = await agent("fix it"); return { verdict: "PASS", evidence: a.text };',
+      },
+    };
+    const segment = await rt.run(input);
+    const outcome = await segment.outcome;
+    await rt.close();
+
+    expect(outcome.status).toBe("completed");
+    expect(outcome.workflow?.ok).toBe(true);
+    expect(outcome.workflow?.value).toEqual({ verdict: "PASS", evidence: "fixed" });
+    // No main loop call — only the subagent streamed.
+    expect(requests).toEqual(["subagent"]);
+  });
 });

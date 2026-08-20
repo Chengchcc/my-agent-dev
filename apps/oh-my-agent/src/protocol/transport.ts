@@ -56,6 +56,13 @@ export const executeRunInputSchema = z.object({
     agentMemberId: agentMemberIdSchema,
     branchId: branchIdSchema,
   }),
+  /** Oma workflow-mode: run the script directly instead of a loop. */
+  workflow: z
+    .object({
+      script: z.string().min(1).max(32768),
+      args: z.unknown().optional(),
+    })
+    .optional(),
 });
 export type ExecuteRunInput = z.infer<typeof executeRunInputSchema>;
 
@@ -140,6 +147,21 @@ export const outcomeOutputSchema = z.object({
       .optional(),
     title: z.string().optional(),
     cliSessionRef: z.string().optional(),
+    workflow: z
+      .object({
+        ok: z.boolean(),
+        value: z.unknown(),
+        usage: z
+          .object({
+            inputTokens: z.number().optional(),
+            outputTokens: z.number().optional(),
+            cacheReadTokens: z.number().optional(),
+            cacheWriteTokens: z.number().optional(),
+            costUsd: z.number().optional(),
+          })
+          .optional(),
+      })
+      .optional(),
   }),
 });
 export type OutcomeOutput = z.infer<typeof outcomeOutputSchema>;
