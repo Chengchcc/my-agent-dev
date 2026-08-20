@@ -179,7 +179,7 @@ export function createLoopStateStore(db: Database): LoopStateStore {
             item.id,
             item.source,
             item.summary,
-            "inbox",
+            item.step,
             item.attempt,
             item.priority,
             item.result ? JSON.stringify(item.result) : null,

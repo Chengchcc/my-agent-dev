@@ -501,7 +501,7 @@ const verify = async () => {
     },
   });
   if (!v.ok) {
-    v = await agent(${JSON.stringify(verifyPrompt + "\n\n注意:上次输出不是合法 JSON。只返回 JSON,不要任何其他文字。")}, {
+    v = await agent(${JSON.stringify(`${verifyPrompt}\n\n注意:上次输出不是合法 JSON。只返回 JSON,不要任何其他文字。`)}, {
       label: "verify",
       schema: {
         type: "object",
@@ -845,15 +845,18 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       await params.agentRunExecution.dispatch(generatorRunId);
     }
     const genRun = await params.agentRunService.getRun(generatorRunId);
-    if (genRun?.status !== "completed") {
-      throw new Error(`loopStep: generator run ${generatorRunId} ended ${genRun?.status}`);
-    }
+    // Count spend on ANY terminal outcome, not just completed: a failed
+    // generator still burned tokens (T5 — one ledger). The status check
+    // below still fails the tick.
     if (dailyCap > 0) {
       spent = params.store.addBudget(
         params.loopId,
         today,
-        usageTokens(genRun.terminalResult?.usage),
+        usageTokens(genRun?.terminalResult?.usage),
       );
+    }
+    if (genRun?.status !== "completed") {
+      throw new Error(`loopStep: generator run ${generatorRunId} ended ${genRun?.status}`);
     }
 
     state = loopReducer(state, {
@@ -877,6 +880,8 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       });
       await git.resetHard(repoCwd, baseSha);
       await Bun.$`git -C ${repoCwd} clean -fd`.quiet();
+      // Per-item checkpoint (T4): persist this verdict before the next item.
+      params.store.save(params.loopId, state, inboxItems);
       continue;
     }
 
@@ -919,6 +924,11 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
         await Bun.$`git -C ${cwd} -c user.email=loop@agent -c user.name=loop commit -qm ${`loop ${params.loopId} item ${item.id}`}`.quiet();
       }
     }
+    // Per-item checkpoint (T4): the tick's reducer output for THIS item is
+    // durable before the next item runs — a crash mid-tick loses at most
+    // the current item's in-flight work, never earlier verdicts. The tail
+    // save below stays as a final idempotent write.
+    params.store.save(params.loopId, state, inboxItems);
   }
 
   // 4. Write back

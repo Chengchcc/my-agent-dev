@@ -16,16 +16,18 @@ export function createLoopLockRegistry(): LoopLockRegistry {
   return {
     async withLoopLock<T>(loopId: string, fn: () => Promise<T>): Promise<T> {
       const prev = tails.get(loopId) ?? Promise.resolve();
-      const tail = prev.then(
-        () => undefined,
-        () => undefined,
-      );
+      const { promise: gate, resolve: open } = Promise.withResolvers<void>();
+      const tail = prev.then(() => gate);
       tails.set(loopId, tail);
-      await tail;
+      await prev.catch(() => {
+        /* a failed predecessor must not fail this waiter */
+      });
       try {
         return await fn();
       } finally {
+        // Only drop the chain entry when no newer waiter replaced it.
         if (tails.get(loopId) === tail) tails.delete(loopId);
+        open();
       }
     },
   };

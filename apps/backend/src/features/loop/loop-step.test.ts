@@ -126,6 +126,9 @@ function emptyState(): LoopState {
 
 interface RunScript {
   genStatus?: "completed" | "failed" | "commit_failed";
+  /** Fail the Nth generator dispatch and every later one (per-item
+   *  checkpoint tests: earlier items complete, a later one throws). */
+  genFailAfter?: number;
   /** The verdict the fake workflow run "returns" as outcome.workflow.value.
    *  undefined = a default PASS verdict; null = no usable verdict. */
   workflowVerdict?: {
@@ -260,10 +263,22 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
     },
   };
 
+  let genDispatches = 0;
   const agentRunExecution: AgentRunExecutionService = {
     async dispatch(runId) {
       const run = runs.get(runId);
       if (!run) return;
+      if (run.agentMemberId.startsWith("loop-generator")) {
+        genDispatches++;
+        if (script.genFailAfter !== undefined && genDispatches > script.genFailAfter) {
+          (run as { status: AgentRun["status"] }).status = "failed";
+          (run as { terminalResult: BackendRunOutcome | null }).terminalResult = {
+            status: "failed",
+            error: "boom",
+          } as BackendRunOutcome;
+          return;
+        }
+      }
       // A2: touch files at dispatch time — the worktree exists now and
       // porcelain picks them up as untracked.
       for (const rel of script.touchFiles ?? []) {
@@ -416,6 +431,31 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     expect(item.generatorRunId).toMatch(/^run-\d+$/);
     expect(item.evaluatorRunId).toBeFalsy();
     expect(item.result?.verdict).toBe("PASS");
+  });
+
+  test("state is checkpointed after each item (T4: mid-tick crash loses at most the current item)", async () => {
+    const store = createTestStore();
+    let state = loopReducer(emptyState(), {
+      type: "ADD_ITEM",
+      item: { id: "item-1", source: "issue", summary: "fix a" },
+      priority: 3,
+    });
+    state = loopReducer(state, {
+      type: "ADD_ITEM",
+      item: { id: "item-2", source: "issue", summary: "fix b" },
+      priority: 3,
+    });
+    store.save("test", state, {});
+    const dir = await initLoopDir("test-project");
+    // Item 1's generator completes (PASS); item 2's generator fails, so the
+    // tick throws BEFORE the tail save. Only the per-item checkpoint
+    // persisted item 1's verdict.
+    await expect(runStep({ store, dir, script: { genFailAfter: 1 } })).rejects.toThrow(
+      /ended failed/,
+    );
+    const saved = store.load("test");
+    expect(saved.items["item-1"]?.step).toBe("awaiting_review");
+    expect(saved.items["item-2"]?.step).toBe("fixing");
   });
 
   test("generator run queued → loopStep fails (no dispatch of a second run)", async () => {
@@ -630,6 +670,17 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     await runStep({ store, dir, script: { usageTokens: 1500 } });
     const spent = store.getBudget("test", new Date().toISOString().slice(0, 10));
     expect(spent).toBe(1500); // one generator run (the evaluator Run is gone)
+  });
+
+  test("failed generator runs still count usage against the daily budget", async () => {
+    const store = createTestStore();
+    stateWithFixingItem(store);
+    const dir = await initLoopDir("test-project", undefined, "  dailyCap: 10000");
+    await expect(
+      runStep({ store, dir, script: { genStatus: "failed", usageTokens: 900 } }),
+    ).rejects.toThrow();
+    const spent = store.getBudget("test", new Date().toISOString().slice(0, 10));
+    expect(spent).toBe(900); // tokens burned by the failed run are not free
   });
 
   test("workflow script carries repo path + git log context to the fix subagent", async () => {
