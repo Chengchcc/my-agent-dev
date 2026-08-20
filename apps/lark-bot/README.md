@@ -10,13 +10,13 @@ lark-bot 不跑模型,也不持有会话状态——它只做转译和投递。�
 
 **出站(backend → 飞书)。** 每个已绑定会话对应一个 `sse-watcher.ts` 监听器,订阅 `/api/conversations/:id/events`,从 `pushedSeq` 之后接收 ledger 条目。它会过滤已推送条目、非 message 类型、系统消息、以及本 chat 人类成员的回声;`surface.control` 里的 `lark.start_new_conversation` 触发会话重绑(`onRebind`)。需要推送的 agent 回复经 `render.ts` 抽取成纯文本后投递,并推进 `pushedSeq`(投递失败时抛错以阻止 seq 前进,保证不丢消息)。
 
-**流式卡片。** 一旦某条入站消息触发了 run,`run-delta-watcher.ts` 会订阅 `/api/runs/:runId/stream`,先发一张"思考中"占位卡(`card-renderer.ts` 产出 Lark Card JSON 2.0,开启 streaming_mode),再按节流(约 150ms 或累计约 120 字)增量 `updateCard` 刷新内容,run 结束时查 `/api/runs/:runId` 元数据收尾为"已完成/回复中断"。卡片发送或更新失败会落到 `fallback_text`:通过 `onFallback` 走普通文本路径兜底,确保用户至少收到回复。卡片收发都通过 `lark-cli`(`card-sender.ts` 调 `im +messages-send --msg-type interactive` 和 `api PATCH /open-apis/im/v1/messages/<id>`)。
+> 当前 = 文本桥:流式卡片能力已移除于 M17(`run-delta-watcher`/`card-renderer`/`card-sender` 均不存在),回复统一走纯文本。
 
 ## 数据流与状态存储
 
-一次完整往返:飞书消息 → lark-cli stdout → parse → ingest 转发 backend → backend 触发 run → run-delta-watcher 流式刷卡 / sse-watcher 推 ledger 文本 → 飞书。
+一次完整往返:飞书消息 → lark-cli stdout → parse → ingest 转发 backend → backend 触发 run → sse-watcher 推 ledger 文本 → 飞书。
 
-所有绑定关系和流式状态都存在本地 SQLite(`bindings-sqlite.ts`,每个 agent 一个 `bindings.sqlite`):`chat_binding` 记录飞书 chatId↔backend conversationId 及 `pushed_seq`;`member_binding` 记录飞书发送者↔会话成员;`inbound_message` 做入站幂等;`run_stream` 持久化每个 run 的流式进度(便于重启恢复)。
+所有绑定关系都存在本地 SQLite(`bindings-sqlite.ts`,每个 agent 一个 `bindings.sqlite`):`chat_binding` 记录飞书 chatId↔backend conversationId 及 `pushed_seq`;`member_binding` 记录飞书发送者↔会话成员;`inbound_message` 做入站幂等。
 
 ## 启动与生命周期
 

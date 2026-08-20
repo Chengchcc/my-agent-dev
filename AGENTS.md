@@ -28,7 +28,7 @@ Every response has two parts:
 # Repository Guidelines
 ## Project Overview
 
-`my-agent-team` is a monorepo for building multi-agent AI systems. It spans from a protocol-level agent runtime (`packages/core`, `packages/framework`) through a production backend (`apps/backend`) and web UI (`apps/web`), plus a Loop automation engine that subsumes issue triage and cron-based work.
+`my-agent-team` is a monorepo for building multi-agent AI systems. It spans from a protocol-level agent runtime (`packages/core`, `packages/agent`) through a production backend (`apps/backend`) and web UI (`apps/web`), plus a Loop automation engine that subsumes issue triage and cron-based work.
 
 **Tech stack:** Bun 1.3.14 runtime, TypeScript 6.x (ESM, `NodeNext`), Turborepo v2, Elysia HTTP, Drizzle ORM + SQLite, Next.js 15 App Router, React Query v5, shadcn/ui + Tailwind CSS v4, Biome + ESLint.
 
@@ -44,8 +44,8 @@ L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock
 **Package dependency graph:**
 - Leaves: `@chengchenccc/message`, `@chengchenccc/config`, `@chengchenccc/loop`
 - Core: `@chengchenccc/core` -> `@chengchenccc/agent`
-- Plugins: 5 packages under `packages/plugin-*` (identity, fs-memory, progressive-skill, task-guard, conversation-context)
-- Apps: `@chengchenccc/backend` (consumes all), `@chengchenccc/web` (Next.js), `@chengchenccc/lark-bot`
+- Plugins: 3 packages under `packages/plugin-*` (progressive-skill, recap, todo)
+- Apps: `@chengchenccc/backend` (consumes all), `@chengchenccc/web` (Next.js), `@chengchenccc/lark-bot`, `@chengchenccc/oh-my-agent` (oma CLI)
 
 **Data flow:** Backend is the single truth source. Frontend uses Eden Treaty typed client to call BFF proxy (`/api/bff/[...path]`) which forwards to backend with auth headers. SSE events from backend flow through Next.js BFF to React Query subscriptions.
 
@@ -53,16 +53,17 @@ L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock
 
 | Directory | Purpose |
 |---|---|
-| `packages/core/` | Protocol types + `run()` + `collectStream()` |
+| `packages/core/` | Protocol types (`Message`/`ChatModel`/`Tool`) + stream utils |
 | `packages/agent/` | Agent lifecycle, `createAgentSession()`, plugins, context pipeline, split persistence (MessageStore/EventLog/InterruptStore) |
 | `packages/loop/` | Pure state machine (reducer, STATE.md I/O, config parsing) |
 | `packages/ai/` | Provider + Model registry, AnthropicChatModel, model metadata |
 | `packages/tools-common/` | read/write/edit/bash/grep/glob/web tools |
 | `packages/test-helpers/` | `echoModel()` for deterministic test doubles |
-| `packages/plugin-*/` | 5 plugins (identity, fs-memory, progressive-skill, task-guard, conversation-context) |
+| `packages/plugin-*/` | 3 plugins (progressive-skill, recap, todo) |
 | `apps/backend/` | Elysia server: all services, routes, cron, Loop orchestration |
 | `apps/web/` | Next.js 15 App Router: agents, conversations, issues, loops, ops, skill-packs |
 | `apps/lark-bot/` | Lark/Feishu IM bot integration |
+| `apps/oh-my-agent/` | Oma CLI agent runtime (spawned `--mode rpc` by backend adapters) |
 | `skills/` | Skill packs (SKILL.md + registry.yaml) for agent runtime |
 | `docs/` | Architecture docs, ADRs, superpowers (specs/plans) |
 
@@ -79,7 +80,7 @@ bun run test                   # Run all tests (turbo)
 bun test                       # Run tests at root
 
 # Scoped commands:
-cd packages/framework && bun test --test-name-pattern="createAgent"
+cd packages/agent && bun test --test-name-pattern="agent-loop"
 cd apps/backend && bun run typecheck
 ```
 
@@ -103,49 +104,48 @@ index.ts           — Barrel re-exports
 ```
 
 ### Agent Session Creation
-`buildSessionSpec(params)` in `session-factory.ts` assembles a `SessionSpec`:
+`createOmaSession(opts)` in `packages/agent/src/runtime/agent-loop.ts` materializes an Oma session:
 ```typescript
 {
-  agentId: string;
-  cwd: string;           // tools sandbox root
-  model: ChatModel;
-  modelName: string;
-  plugins: Plugin[];
-  tools: Tool[];         // read/write/edit/bash/glob/grep by default
-  messageStore?: MessageStore;
-  eventLog?: EventLog;
-  interruptStore?: InterruptStore;
-  contextManager?: ContextPipeline;
+  sessionId: string;
+  store: SessionStore;      // in-memory or persisted (message store)
+  plugins: Plugin[];        // hooks + tools (progressive-skill/recap/todo)
+  maxSteps: number;
+  maxForceContinues: number;
+  modelStream: (messages, signal?, tools?) => AsyncIterable<AIMessageChunk>;
+  tools?: PluginTool[];     // per-run resolved tool table
 }
 ```
-
-Use `createAgentSession()` (SDK entry point) or `sessionFactory.getOrCreate(sessionId, spec)` to materialize or reuse an `Agent`.
+Backend run dispatch (`apps/backend/src/features/agent-run/execution.ts`) enqueues inputs, spawns the oma child through `packages/adapter-oma-agent`, and persists canonical messages via the conversation ledger.
 
 ### Plugin System
-Plugins contribute tools and hooks. Six lifecycle points fire in registration order:
+Plugins are plain objects `{ name, hooks?, tools?, meta? }` contributing tools, lifecycle hooks, and meta sections (see `Plugin` in `packages/agent/src/runtime/plugin.ts`):
 ```typescript
 interface PluginHooks {
-  beforeRun?(ctx, messages) → Message[];
-  beforeModel?(ctx, messages) → Message[];    // inject system prompts here
-  afterModel?(ctx, messages) → void;
-  beforeTool?(ctx, call, messages) → { skip?, input?, result? };
-  afterTool?(ctx, call, result, messages) → void;
-  beforeStop?(ctx, messages) → StopDecision;   // veto stop, force-continue
+  beforeRun?(messages, rt): void;
+  afterRun?(status, messages, rt): void | Promise<void>;
+  beforeModel?(messages, rt): readonly Message[];
+  afterModel?(messages, rt): void;
+  beforeTool?(toolName, input, rt): { block?, reason? } | undefined;
+  afterTool?(toolName, result, rt): OmaLoopEvent | { content?, isError?, terminate? } | undefined;
+  transformToolArgs?(toolName, input, rt): unknown;
+  beforeStop?(cancel, rt): void;
+  afterStop?(vetoed, rt): void;
 }
 ```
 
-Use `definePlugin({ name, hooks, tools? })` to create plugins. `validatePlugins()` checks tool name collisions.
+`validatePlugins()` checks name/tool collisions; `collectTools()` and `renderMeta()` assemble the per-run tool table and meta sections.
 
 ### ChatModel is the only integration point
 Core has no LLM dependency. `ChatModel.stream(messages, opts?) → AsyncIterable<AIMessageChunk>` is the contract. Tests use `echoModel()` from `@chengchenccc/test-helpers`.
 
 ### Loop System
-Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop orchestration** (AgentSession dispatch, git rollback, budget tracking).
+Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop orchestration** (workflow-first run dispatch, git rollback, budget tracking).
 
-- `loopReducer(state, action, opts?) → state` — pure function, 9 action types, 7 item steps
+- `loopReducer(state, action, opts?) → state` — pure reducer in `packages/loop`
 - STATE.md / INBOX.md / LOOP.md — file formats with YAML frontmatter
-- `loopStep()` — Generator AgentSession → Evaluator AgentSession → verdict → writeback
-- Per-loop Promise-chain write lock serializes cron + manual + review entry points
+- `loopStep()` — workflow-first item execution (`apps/backend/src/features/loop/loop-step.ts`); verdicts come from workflow output (`verdictFromWorkflow`), never trusted empty
+- Per-loop write lock (`withLoopLock`) serializes cron + HTTP + review + doctor entry points
 
 ### File Naming
 - Source: `*.ts`, tests: `*.test.ts` (beside source, no `__tests__` dirs)
@@ -164,13 +164,13 @@ Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop
 |---|---|
 | `apps/backend/src/main.ts` | Composition root — wires all services, adapters, routes |
 | `apps/backend/src/app.ts` | Elysia app factory — mounts all feature routers |
-| `apps/backend/src/features/span/session-factory.ts` | `buildSessionSpec()` + `SessionFactory` |
-| `apps/backend/src/infra/db/schema.ts` | Drizzle schema — 18 tables, single SQLite file |
-| `packages/framework/src/create-agent.ts` | `createAgent()` — the agent runtime |
-| `packages/framework/src/plugin.ts` | `definePlugin()` + `PluginHooks` |
-| `packages/core/src/run.ts` | `run()` — synchronous agent loop |
+| `apps/backend/src/features/agent-run/execution.ts` | Run dispatch, transient SSE subscription, terminalize |
+| `apps/backend/src/infra/db/schema.ts` | Drizzle schema — 21 tables, single SQLite file |
+| `packages/agent/src/runtime/agent-loop.ts` | `createOmaSession()` — the agent loop |
+| `packages/agent/src/runtime/plugin.ts` | `Plugin`/`PluginHooks`, `validatePlugins()` |
+| `packages/core/src/chat-model.ts` | `ChatModel` contract |
 | `packages/loop/src/loop-reducer.ts` | Pure reducer for Loop item state machine |
-| `packages/ai/src/providers/anthropic-chat-model.ts` | Anthropic SDK -> ChatModel |
+| `packages/ai/src/providers/anthropic-messages.ts` | Anthropic Messages API adapter |
 | `apps/web/src/lib/api.ts` | Typed API client (Eden Treaty) |
 | `apps/web/src/lib/client.ts` | BFF client + `unwrap()` helper |
 | `biome.json` | Formatter (space/2/100) + linter config |
@@ -197,7 +197,7 @@ Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop
 - **Location:** `*.test.ts` files beside source
 - **Model mocking:** Define scripted `ChatModel` implementations that yield predetermined turns. `echoModel()` from `@chengchenccc/test-helpers` provides a reusable factory.
 - **Core mocking primitives:** `inMemoryPersistence()`, `consoleLogger({ level: "silent" })`, `passthroughContextManager()`
-- **Integration tests:** Use `createAgentSession()` with real plugins (identity, memory, progressive-skill) and scripted models
-- **Loop tests:** `mockSessionFactory(verdictMd)` — creates a `SessionFactory` that writes VERDICT.md when evaluator runs
+- **Integration tests:** Use `createOmaSession()` with real plugins (progressive-skill, recap) and scripted models
+- **Loop tests:** `loop-step.test.ts` / `loop-doctor.test.ts` — scripted run fakes with workflow verdicts
 - **Coverage:** No enforced threshold; tests should cover behavior (conditional branches, invariants, error handling), not plumbing
 - **Test helpers:** `@chengchenccc/test-helpers` exports `echoModel()` with `EchoScript` type for deterministic model responses
