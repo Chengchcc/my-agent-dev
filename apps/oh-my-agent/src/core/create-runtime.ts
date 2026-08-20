@@ -9,6 +9,7 @@ import type {
 import type { ModelRuntime } from "@chengchenccc/ai";
 import type { RunEventEnvelope } from "../protocol/index.js";
 import { mapRunEvent } from "../protocol/index.js";
+import { extractAutonomousMemory } from "./autonomous-memory.js";
 import { assembleRunRuntime, type RunRuntime } from "./run-runtime.js";
 
 /** The single Runtime assembly entry point for the Oma product.
@@ -153,6 +154,24 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
             workspace: input.workspace,
             metadata: input.metadata,
           });
+          if (result.status === "completed") {
+            // Autonomous memory: extract durable facts from this Run's
+            // transcript + compaction summaries, persist to the workspace.
+            // Best-effort — never affects the outcome.
+            const branch = await rt.store.readBranch(options.runId);
+            const compactions: string[] = [];
+            for (const entry of branch) {
+              if (entry.type === "compaction" && entry.summary) compactions.push(entry.summary);
+            }
+            await extractAutonomousMemory({
+              modelRuntime: options.modelRuntime,
+              modelId: options.modelId,
+              workspaceRoot: options.workspaceRoot,
+              runId: options.runId,
+              messages: result.messages ?? [],
+              compactions,
+            });
+          }
           return mapLoopResult(result);
         } catch (caught) {
           const errObj = caught instanceof Error ? caught : new Error(String(caught));
