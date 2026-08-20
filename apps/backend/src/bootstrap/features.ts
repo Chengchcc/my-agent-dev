@@ -9,7 +9,7 @@ import type {
   BackendRegistryEntry,
 } from "@chengchenccc/agent-backend";
 import { resolveModelAlias } from "@chengchenccc/ai";
-import type { Message } from "@chengchenccc/message";
+import { type Message, serializeMessageRevision } from "@chengchenccc/message";
 import type { FeatureSet } from "../app.js";
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
@@ -352,6 +352,35 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   // child process (one Run = one spawn). When the executable is missing,
   // startup continues - /api/models errors and Run dispatch keeps the input
   // unaccepted until the executable exists.
+  // T3-2: failed/aborted/timeout runs persist an assistant error message so
+  // the failure survives refresh (transient bubbles die with the page).
+  const onRunFailed = (input: {
+    runId: string;
+    conversationId: string;
+    agentMemberId: string;
+    error: string;
+  }): void => {
+    void (async () => {
+      const msg = {
+        messageId: `run:${input.runId}:error`,
+        state: "error" as const,
+        role: "assistant" as const,
+        text: input.error,
+        visibility: "conversation" as const,
+        conversationId: input.conversationId,
+        updatedAt: Date.now(),
+        error: { message: input.error },
+      };
+      conv.convPort.appendLedgerEntry({
+        conversationId: input.conversationId,
+        senderMemberId: input.agentMemberId,
+        addressedTo: [],
+        kind: "message",
+        content: serializeMessageRevision(msg),
+        ts: Date.now(),
+      });
+    })().catch((err) => console.error(`[bootstrap] onRunFailed failed for ${input.runId}:`, err));
+  };
   const onRunCommitted = (runId: string, output: Message | undefined): void => {
     void (async () => {
       const run = await agentRunPort.getRun(runId);
@@ -441,6 +470,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       ? `sse:${config.productToolsMcpUrl}`
       : "stdio:/nonexistent",
     onRunCommitted,
+    onRunFailed,
     persistRunEvent: (runId, event) => {
       services.opsStore.appendRunEvent(
         runId,
@@ -869,7 +899,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   // ─── Lifecycle ──────────────────────────────────────────────
 
-  let doctorTimer: ReturnType<typeof setInterval> | null = null;
+  let doctorTimer: ReturnType<typeof setInterval> | undefined;
+  let doctorAllRunning: Promise<void> | null = null;
 
   async function start(): Promise<void> {
     cronScheduler.start();
@@ -895,8 +926,14 @@ export async function installFeatures(services: BackendServices): Promise<Instal
         }
       }
     };
-    void doctorAll();
-    doctorTimer = setInterval(() => void doctorAll(), 5 * 60_000);
+    const runDoctor = (): void => {
+      const p = doctorAll().finally(() => {
+        if (doctorAllRunning === p) doctorAllRunning = null;
+      });
+      doctorAllRunning = p;
+    };
+    runDoctor();
+    doctorTimer = setInterval(runDoctor, 5 * 60_000);
 
     const allAgents = await agentSvc.list(true);
     for (const agent of allAgents) {
@@ -921,8 +958,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     // Agent child and drain in-flight dispatches (the DB must not close
     // mid-finalize), THEN close surfaces that children may still call
     // (Product Tools MCP) and finally Lark/setup.
-    cronScheduler.dispose(); // no new Runs
-    if (doctorTimer) clearInterval(doctorTimer);
+    await cronScheduler.dispose(); // stop handles, drain in-flight fire chains
+    clearInterval(doctorTimer);
+    if (doctorAllRunning) await doctorAllRunning;
     await agentRunExecution.dispose(); // abort/SIGTERM/SIGKILL children + drain
     await larkBotRegistry.dispose();
     setupManager?.dispose();
