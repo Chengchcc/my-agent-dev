@@ -105,6 +105,15 @@ export interface RunRuntime {
     script: string;
     args?: unknown;
   }): Promise<{ ok: boolean; totalTokens: number; value: unknown }>;
+  /** Subagent usage accumulated across workflow_agent_completed events
+   *  (T5/B6: the run's outcome merges it so fan-out spend reaches the
+   *  product ledger, not just the advisory gate). */
+  workflowUsage(): {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+  };
   /** Close MCP clients etc. Call after the run settles. */
   close(): Promise<void>;
 }
@@ -390,6 +399,12 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   // usage estimate exceeds it. Advisory - the product dailyCap stays the
   // hard gate. No budget on the run = no gate.
   let workflowSpentTokens = 0;
+  const workflowUsageAccum = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  };
   const workflowBudgetGate = (): { allowed: boolean; reason?: string } => {
     const budget = activeRun?.workflowBudgetTokens;
     if (budget == null) return { allowed: true };
@@ -399,7 +414,8 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     return { allowed: true };
   };
   const workflowExecutor = createWorkflowExecutor({
-    makeSubagentStream: () => streamModel,
+    makeSubagentStream: (_sessionId, modelIdOverride) => (messages, signal, tools) =>
+      streamModel(messages, signal, tools, modelIdOverride),
     modelId: deps.modelId,
     summarize,
     contextBudget,
@@ -412,11 +428,16 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
         const usage = event.usage;
         if (typeof usage === "object") {
           const tokens = (v: unknown): number => (typeof v === "number" && v > 0 ? v : 0);
+          const u = usage as Record<string, unknown>;
           workflowSpentTokens +=
-            tokens((usage as Record<string, unknown>).inputTokens) +
-            tokens((usage as Record<string, unknown>).outputTokens) +
-            tokens((usage as Record<string, unknown>).cacheReadTokens) +
-            tokens((usage as Record<string, unknown>).cacheWriteTokens);
+            tokens(u.inputTokens) +
+            tokens(u.outputTokens) +
+            tokens(u.cacheReadTokens) +
+            tokens(u.cacheWriteTokens);
+          workflowUsageAccum.inputTokens += tokens(u.inputTokens);
+          workflowUsageAccum.outputTokens += tokens(u.outputTokens);
+          workflowUsageAccum.cacheReadTokens += tokens(u.cacheReadTokens);
+          workflowUsageAccum.cacheWriteTokens += tokens(u.cacheWriteTokens);
         }
       }
       sessionEmit?.(event);
@@ -433,7 +454,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     script: string;
     args?: unknown;
   }): Promise<{ ok: boolean; totalTokens: number; value: unknown }> => {
-    const workflowId = `wf-${Date.now().toString(36)}`;
+    const workflowId = `wf-${crypto.randomUUID()}`;
     const results: WorkflowAgentResult[] = [];
     sessionEmit?.({
       type: "workflow_started",
@@ -496,6 +517,36 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
         mkdirSync(dir, { recursive: true });
         writeFileSync(join(dir, `${name}.js`), content);
       },
+      readScript: async (name) => {
+        if (!isValidWorkflowName(name)) return null;
+        try {
+          return await Bun.file(join(deps.workspaceRoot, ".workflows", `${name}.js`)).text();
+        } catch {
+          return null;
+        }
+      },
+      runSubagent: (spec, signal) =>
+        workflowExecutor.runSubagent(
+          {
+            ...spec,
+            workflowId: `sub-${crypto.randomUUID()}`,
+            agentId: spec.label ?? "sub",
+          },
+          signal,
+        ),
+      readAgentDefinition: async (name) => {
+        if (!isValidWorkflowName(name)) return null;
+        // read_only workspaces have no local agent definitions — builtins only.
+        if (deps.workspaceAccess !== "read_write") return null;
+        try {
+          return await Bun.file(join(deps.workspaceRoot, ".oma", "agents", `${name}.md`)).text();
+        } catch {
+          return null;
+        }
+      },
+      listSubagents: () => workflowExecutor.listSubagents(),
+      getSubagentOutput: (handle) => workflowExecutor.getSubagentOutput(handle),
+      stopSubagent: (handle) => workflowExecutor.stopSubagent(handle),
     }),
   });
   const pluginRuntime: PluginRuntime = {
@@ -515,14 +566,19 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     messages: readonly Message[],
     signal?: AbortSignal,
     tools?: readonly PluginTool[],
+    modelIdOverride?: string,
   ): AsyncIterable<AIMessageChunk> {
     const run = activeRun;
     if (!run) throw new Error("no active run: model unresolved");
+    // 3.4: role-pinned model override resolves through the SAME catalog —
+    // an unknown/absent model throws here, which is the authorization
+    // boundary (no bypassing the catalog to mint expensive models).
+    const modelId = modelIdOverride ?? run.model.modelId;
     const catalog = await deps.modelRuntime.getCatalog();
     const model = catalog.models.find(
-      (m) => `${m.providerId}/${m.modelId}` === resolveModelAlias(run.model.modelId),
+      (m) => `${m.providerId}/${m.modelId}` === resolveModelAlias(modelId),
     );
-    if (!model) throw new Error(`model not found: ${run.model.modelId}`);
+    if (!model) throw new Error(`model not found: ${modelId}`);
     const timeoutSignal = AbortSignal.timeout(modelTimeoutMs);
     const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
     const reasoningEffort = (run.model as { reasoningEffort?: string }).reasoningEffort;
@@ -587,7 +643,10 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       activeRun = run;
     },
     executeWorkflow: (input) => runScript(input),
+    workflowUsage: () => ({ ...workflowUsageAccum }),
     async close() {
+      // 3.4 Phase 3: background subagents must not outlive the Run.
+      workflowExecutor.abortAllSubagents();
       // Tear down every MCP client (Product Tool transports) so no child
       // process or connection outlives the Run. Each close is BOUNDED: a
       // stuck transport (e.g. an SSE socket that never answers close) must

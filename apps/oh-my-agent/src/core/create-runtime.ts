@@ -53,6 +53,27 @@ export interface OmaRuntime {
   compactions(): Promise<string[]>;
 }
 
+/** Add workflow (subagent) usage into a run's terminal usage. Missing
+ *  fields default to 0; an all-zero workflow side leaves the base alone. */
+function mergeWorkflowUsage(
+  base: BackendRunOutcome["usage"],
+  wf: BackendRunOutcome["usage"],
+): BackendRunOutcome["usage"] {
+  const zero = (v: number | undefined): number => v ?? 0;
+  const total =
+    zero(wf?.inputTokens) +
+    zero(wf?.outputTokens) +
+    zero(wf?.cacheReadTokens) +
+    zero(wf?.cacheWriteTokens);
+  if (total === 0) return base;
+  return {
+    inputTokens: zero(base?.inputTokens) + zero(wf?.inputTokens),
+    outputTokens: zero(base?.outputTokens) + zero(wf?.outputTokens),
+    cacheReadTokens: zero(base?.cacheReadTokens) + zero(wf?.cacheReadTokens),
+    cacheWriteTokens: zero(base?.cacheWriteTokens) + zero(wf?.cacheWriteTokens),
+  };
+}
+
 function mapLoopResult(result: OmaLoopResult): BackendRunOutcome {
   if (result.status === "completed") {
     // No fabricated output: when the loop persisted no canonical messages,
@@ -152,13 +173,13 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
           // the run's product (outcome.workflow.value).
           if (input.workflow) {
             const result = await rt.executeWorkflow(input.workflow);
+            // Top-level usage so product accounting (usage totals, Loop
+            // budget) sees the subagent spend; workflow.usage mirrors it.
+            const usage = { inputTokens: 0, outputTokens: result.totalTokens };
             return {
               status: "completed",
-              workflow: {
-                ok: result.ok,
-                value: result.value,
-                usage: { inputTokens: 0, outputTokens: result.totalTokens },
-              },
+              usage,
+              workflow: { ok: result.ok, value: result.value, usage },
             };
           }
           const result = await rt.session.startLoop({
@@ -186,7 +207,13 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
               compactions,
             });
           }
-          return mapLoopResult(result);
+          const outcome = mapLoopResult(result);
+          if (outcome.status === "completed") {
+            // Fan-out spend (run_workflow / workflow_run subagents) merges
+            // into the run's terminal usage (B6).
+            return { ...outcome, usage: mergeWorkflowUsage(outcome.usage, rt.workflowUsage()) };
+          }
+          return outcome;
         } catch (caught) {
           const errObj = caught instanceof Error ? caught : new Error(String(caught));
           return { status: "failed", error: errObj.message };

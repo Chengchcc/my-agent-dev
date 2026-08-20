@@ -419,6 +419,14 @@ describe("createOmaRuntime", () => {
     expect(events).toContain("workflow_agent_started");
     expect(events).toContain("workflow_agent_completed");
     expect(events).toContain("workflow_completed");
+    // Fan-out spend merges into the run's terminal usage (B6): 2 subagents
+    // + 1 final main turn (the tool_use turn emits no usage) × (10/3/1).
+    expect(outcome.usage).toEqual({
+      inputTokens: 30,
+      outputTokens: 9,
+      cacheReadTokens: 3,
+      cacheWriteTokens: 0,
+    });
   });
   test("workflow_run evaluates a script, fans out agents, and persists .workflows", async () => {
     const requests: string[] = [];
@@ -490,6 +498,7 @@ describe("createOmaRuntime", () => {
         if (system?.text.includes("You are a subagent")) {
           requests.push("subagent");
           yield { delta: { type: "text", text: "fixed" } };
+          yield { usage: { input: 10, output: 3, cacheRead: 1, cacheCreate: 0 } };
           yield { stopReason: "end_turn" };
           return;
         }
@@ -527,7 +536,9 @@ describe("createOmaRuntime", () => {
     expect(outcome.status).toBe("completed");
     expect(outcome.workflow?.ok).toBe(true);
     expect(outcome.workflow?.value).toEqual({ verdict: "PASS", evidence: "fixed" });
-    // No main loop call — only the subagent streamed.
+    // No main loop call — only the subagent streamed; its usage is exposed
+    // as top-level run usage so product accounting sees it (B6).
     expect(requests).toEqual(["subagent"]);
+    expect(outcome.usage).toEqual({ inputTokens: 0, outputTokens: 14 });
   });
 });
