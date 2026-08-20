@@ -6,7 +6,7 @@ import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";
 import type { CronJobService } from "../cron/service.js";
-import { loopStep } from "../loop/loop-step.js";
+import { discoverItems, loopStep } from "../loop/loop-step.js";
 import type { ProjectPort } from "../project/ports.js";
 import type { SettingsService } from "../settings/index.js";
 import type { LoopStateStore } from "./loop-state-store.js";
@@ -413,6 +413,50 @@ export async function runLoop(
     withWorkspaceLock: deps.withWorkspaceLock,
     ...(deps.withLoopLock ? { withLoopLock: deps.withLoopLock } : {}),
   });
+}
+
+export interface TriageResult {
+  added: Array<{ id: string; summary: string }>;
+}
+
+/** Discovery entry point (manual /triage + webhook landing): delegates to
+ *  loopStep.discoverItems with the loop's resolved paths. */
+export async function runTriage(
+  deps: {
+    cronSvc: CronJobService;
+    dataDir: string;
+    projectPort?: ProjectPort;
+    store: LoopStateStore;
+    convPort: ConversationPort;
+    agentRunService: AgentRunService;
+    agentRunExecution: AgentRunExecutionService;
+    resolveModel: (modelName: string) => Promise<BackendModelRef>;
+    agentWorkspaceOf: (agentId: string) => Promise<string | null>;
+    withWorkspaceLock: <T>(root: string, fn: () => Promise<T>) => Promise<T>;
+    withLoopLock?: <T>(loopId: string, fn: () => Promise<T>) => Promise<T>;
+  },
+  id: string,
+  sources: readonly string[] = [],
+): Promise<TriageResult | null> {
+  const job = deps.cronSvc.getById(id);
+  if (!job?.loopConfigPath) return null;
+  const loopConfigPath = resolveLoopPaths(job, deps.dataDir).loopConfigPath;
+  return discoverItems(
+    {
+      loopConfigPath,
+      store: deps.store,
+      loopId: id,
+      convPort: deps.convPort,
+      agentRunService: deps.agentRunService,
+      agentRunExecution: deps.agentRunExecution,
+      resolveModel: deps.resolveModel,
+      projectPort: deps.projectPort,
+      dataDir: deps.dataDir,
+      agentWorkspaceOf: deps.agentWorkspaceOf,
+      withWorkspaceLock: deps.withWorkspaceLock,
+    },
+    sources,
+  );
 }
 
 export interface ReviewInput {

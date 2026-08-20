@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { BackendModelRef, BackendRunOutcome } from "@chengchenccc/agent-backend";
-import type { LoopConfig, LoopState, TaskClass, Verdict } from "@chengchenccc/loop";
+import type { ItemState, LoopConfig, LoopState, TaskClass, Verdict } from "@chengchenccc/loop";
 import { loopReducer, parseLoopConfig } from "@chengchenccc/loop";
 import { isTerminalStatus } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
@@ -270,8 +270,179 @@ function actionToReducer(action: ReviewAction) {
  *  Prompts come from LOOP.md workflow.fixPrompt/verifyPrompt when set, else
  *  defaults derived from the item + acceptance criteria (workflow-first:
  *  the script IS the generator/evaluator, no outer agent role). */
-/** Per-class fix guidance appended to the default fix prompt (workflow
- *  renders the class-specific approach; LOOP.md fixPrompt overrides all). */
+/** Render a discovery workflow: one triage subagent scans the collected
+ *  signals (repo commits, agent-branch diffs, pasted text) and returns
+ *  actionable findings JSON. Consumed by runTriage → ADD_ITEM. */
+export function renderTriageWorkflow(sources: readonly string[]): string {
+  const signalText = sources.map((s, i) => `### Signal ${i + 1}\n${s}`).join("\n\n");
+  const prompt =
+    `你是 Loop 的发现 agent。扫描以下信号,提炼出值得 Loop 处理的待办项。` +
+    `只输出可执行的发现;噪音(已合并历史、无关提交)丢弃。` +
+    `返回 STRICT JSON: {"findings":[{"source":"ci|repo|manual","summary":"一行描述","taskClass":"bugfix|feature|refactor|research|review|chore","priority":0-3}]}` +
+    `无发现时返回 {"findings":[]}。\n\n<signals>\n${signalText}\n</signals>`;
+  return `// Loop discovery workflow (product-rendered).
+const result = await agent(${JSON.stringify(prompt)}, {
+  label: "triage",
+  schema: {
+    type: "object",
+    properties: {
+      findings: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            source: { type: "string" },
+            summary: { type: "string" },
+            taskClass: { type: "string", enum: ["bugfix", "feature", "refactor", "research", "review", "chore"] },
+            priority: { type: "number" },
+          },
+          required: ["source", "summary", "taskClass", "priority"],
+        },
+      },
+    },
+    required: ["findings"],
+  },
+});
+return { findings: result.output?.findings ?? [] };
+`;
+}
+
+export interface TriageFinding {
+  source: string;
+  summary: string;
+  taskClass?: string;
+  priority?: number;
+}
+
+export interface DiscoverResult {
+  added: Array<{ id: string; summary: string }>;
+}
+
+/** Discovery: collect signals (repo mirror + pasted text), run a triage
+ *  workflow, ADD_ITEM each finding. Idempotent: itemId derives from the
+ *  summary hash. Shared by the manual /triage endpoint and loopStep's
+ *  auto-discovery when a loop has no items yet. */
+export async function discoverItems(
+  params: {
+    loopConfigPath: string;
+    store: LoopStateStore;
+    loopId: string;
+    convPort: ConversationPort;
+    agentRunService: AgentRunService;
+    agentRunExecution: AgentRunExecutionService;
+    resolveModel: (modelName: string) => Promise<BackendModelRef>;
+    projectPort?: ProjectPort;
+    dataDir?: string;
+    agentWorkspaceOf: (agentId: string) => Promise<string | null>;
+    withWorkspaceLock: <T>(root: string, fn: () => Promise<T>) => Promise<T>;
+  },
+  sources: readonly string[] = [],
+): Promise<DiscoverResult> {
+  // 1. Signals: repo mirror state + caller-provided text.
+  const repoSignals: string[] = [];
+  if (params.dataDir) {
+    const resolved = await resolveLoopWorktree(params.loopConfigPath, {
+      projectPort: params.projectPort,
+      dataDir: params.dataDir,
+      agentWorkspaceOf: params.agentWorkspaceOf,
+    });
+    if (resolved) {
+      const log = await Bun.$`git -C ${resolved.mirror} log --oneline -10 ${resolved.base}`
+        .nothrow()
+        .quiet()
+        .text()
+        .catch(() => "");
+      if (log.trim()) repoSignals.push(`最近提交(base ${resolved.base}):\n${log.trim()}`);
+      const branches =
+        await Bun.$`git -C ${resolved.mirror} for-each-ref --format='%(refname:short)' refs/heads/agent/`
+          .nothrow()
+          .quiet()
+          .text()
+          .catch(() => "");
+      if (branches.trim()) repoSignals.push(`agent 分支:\n${branches.trim()}`);
+    }
+  }
+  const allSources = [...repoSignals, ...sources];
+  if (allSources.length === 0) return { added: [] };
+
+  // 2. Model + agent from LOOP.md.
+  let model: string;
+  let agentId: string;
+  try {
+    const parsed = parseLoopConfig(await Bun.file(`${params.loopConfigPath}/LOOP.md`).text());
+    if (!parsed) throw new Error("LOOP.md unparseable");
+    model = parsed.model;
+    agentId = parsed.agent || "default";
+  } catch (err) {
+    throw new Error(
+      `discover: cannot read LOOP.md config: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
+
+  // 3. Run the triage workflow (same workflow-mode execution as fix/verify).
+  const conversationId = loopGeneratorConversationId(params.loopId);
+  const memberId = loopGeneratorMemberId(params.loopId);
+  await ensureLoopScope(params.convPort, conversationId, memberId, agentId);
+  const script = renderTriageWorkflow(allSources);
+  const acquire = await params.agentRunService.enqueueAndAcquire({
+    conversationId,
+    agentMemberId: memberId,
+    backendKind: "oma",
+    mode: "normal",
+    message: { role: "user", text: `triage ${params.loopId}` },
+    defaultModel: await params.resolveModel(model),
+    configRevision: 1,
+    idempotencyKey: `loop-triage:${params.loopId}:${Date.now()}`,
+    workflow: { script, args: {} },
+  });
+  if (!acquire.acquired || !acquire.run) {
+    throw new Error(`discover: could not acquire a run for loop ${params.loopId}`);
+  }
+  await params.agentRunExecution.dispatch(acquire.run.runId);
+  const run = await params.agentRunService.getRun(acquire.run.runId);
+  const value =
+    run?.terminalResult?.status === "completed" ? run.terminalResult.workflow?.value : undefined;
+  const findings: TriageFinding[] =
+    value && typeof value === "object" && Array.isArray((value as { findings?: unknown }).findings)
+      ? ((value as { findings: unknown }).findings as TriageFinding[])
+      : [];
+
+  // 4. ADD_ITEM each finding (idempotent by summary hash).
+  const state = params.store.load(params.loopId);
+  const added: DiscoverResult["added"] = [];
+  let changed = false;
+  for (const f of findings) {
+    if (!f.summary?.trim()) continue;
+    const itemId = `triage-${simpleHash(f.summary)}`;
+    if (state.items[itemId]) continue;
+    state.items[itemId] = {
+      id: itemId,
+      source: String(f.source ?? "manual"),
+      summary: f.summary.trim(),
+      step: "triaged",
+      attempt: 1,
+      priority: Number(f.priority ?? 0),
+      result: null,
+    };
+    if (f.taskClass) state.items[itemId]!.taskClass = f.taskClass as ItemState["taskClass"];
+    added.push({ id: itemId, summary: f.summary.trim() });
+    changed = true;
+  }
+  if (changed) params.store.save(params.loopId, state, {});
+  return { added };
+}
+
+function simpleHash(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h << 5) - h + s.charCodeAt(i);
+    h |= 0;
+  }
+  return Math.abs(h).toString(36);
+}
+
+/** Per-class fix guidance appended to the default fix prompt (workflow *  renders the class-specific approach; LOOP.md fixPrompt overrides all). */
 const TASK_CLASS_GUIDANCE: Record<TaskClass, string> = {
   bugfix: "这是一个 bug 修复:先复现/确认失败,做最小改动,并补回归测试。",
   feature: "这是一个功能开发:先对照验收标准,只实现所需行为,不改无关代码。",
@@ -474,6 +645,41 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       }
       await params.store.save(params.loopId, state, inboxItems);
       return state;
+    }
+  }
+
+  // 2b. Auto-discovery: an empty loop scans repo signals first, so the
+  // cron-triggered tick finds work instead of no-oping. Best-effort — a
+  // triage failure must not kill the tick.
+  if (Object.keys(state.items).length === 0 && params.dataDir) {
+    try {
+      await discoverItems(
+        {
+          loopConfigPath: params.loopConfigPath,
+          store: params.store,
+          loopId: params.loopId,
+          convPort: params.convPort,
+          agentRunService: params.agentRunService,
+          agentRunExecution: params.agentRunExecution,
+          resolveModel: params.resolveModel,
+          projectPort: params.projectPort,
+          dataDir: params.dataDir,
+          agentWorkspaceOf: params.agentWorkspaceOf,
+          withWorkspaceLock: params.withWorkspaceLock,
+        },
+        [],
+      );
+      state = params.store.load(params.loopId);
+      const discoveredInbox: LoopState["items"] = {};
+      const discoveredActive: LoopState["items"] = {};
+      for (const [id, item] of Object.entries(state.items)) {
+        if (item.step === "inbox") discoveredInbox[id] = item;
+        else discoveredActive[id] = item;
+      }
+      state = { ...state, items: discoveredActive };
+      Object.assign(inboxItems, discoveredInbox);
+    } catch (err) {
+      console.error(`[loop] auto-triage failed for ${params.loopId}:`, err);
     }
   }
 

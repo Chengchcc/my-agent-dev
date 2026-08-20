@@ -20,6 +20,7 @@ import {
   refineLoop,
   reviewLoop,
   runLoop,
+  runTriage,
 } from "./loop-service.js";
 import type { LoopStateStore } from "./loop-state-store.js";
 import { loopGeneratorConversationId } from "./loop-step.js";
@@ -170,6 +171,18 @@ export function loopRoutes(input: {
       );
       return { report };
     })
+    .post(
+      "/api/loops/:id/triage",
+      async ({ params: { id }, body, set }) => {
+        const result = await runTriage({ cronSvc, ...loopStepDeps }, id, body.sources ?? []);
+        if (!result) {
+          set.status = 404;
+          return { error: "Not a loop" };
+        }
+        return result;
+      },
+      { body: t.Object({ sources: t.Optional(t.Array(t.String())) }) },
+    )
     .post(
       "/api/loops/:id/review",
       async ({ params: { id }, body, set }) => {
