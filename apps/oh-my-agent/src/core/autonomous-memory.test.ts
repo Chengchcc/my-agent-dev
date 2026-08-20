@@ -193,4 +193,68 @@ describe("extractAutonomousMemory", () => {
     expect(readdirSync(factsDir)).toEqual(["run-6.md"]);
     expect(readFileSync(join(factsDir, "run-6.md"), "utf-8")).toContain("fact b");
   });
+
+  test("uses the cheapest catalog model, not the run model", async () => {
+    const usedModels: string[] = [];
+    const cheap: Provider = {
+      id: "cheap",
+      name: "Cheap",
+      getModels: () => [
+        {
+          ...FAKE_MODEL,
+          id: "cheap-m",
+          provider: "cheap",
+          cost: { input: 0.1, output: 0.2, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+      async *stream(model, messages): AsyncIterable<AIMessageChunk> {
+        usedModels.push(`${model.provider}/${model.id}`);
+        yield {
+          delta: {
+            type: "text",
+            text: JSON.stringify({ facts: [{ content: "cheap fact" }] }),
+          },
+        };
+        yield { stopReason: "end_turn" };
+        void messages;
+      },
+    };
+    const expensive: Provider = {
+      id: "exp",
+      name: "Expensive",
+      getModels: () => [
+        {
+          ...FAKE_MODEL,
+          id: "exp-m",
+          provider: "exp",
+          cost: { input: 10, output: 25, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+      async *stream(model, messages): AsyncIterable<AIMessageChunk> {
+        usedModels.push(`${model.provider}/${model.id}`);
+        yield { delta: { type: "text", text: "summary" } };
+        yield { stopReason: "end_turn" };
+        void messages;
+      },
+    };
+    const runtime = createModelRuntime();
+    runtime.registerProvider(cheap);
+    runtime.registerProvider(expensive);
+    const root = freshWorkspace();
+
+    await extractAutonomousMemory({
+      modelRuntime: runtime,
+      modelId: "exp/exp-m", // the Run itself uses the expensive model
+      workspaceRoot: root,
+      runId: "run-cheap",
+      messages: MESSAGES,
+      compactions: [],
+    });
+
+    // extract + consolidate both ran on the cheap model
+    expect(usedModels).toEqual(["cheap/cheap-m", "cheap/cheap-m"]);
+    expect(readFileSync(join(root, "memory", "facts", "run-cheap.md"), "utf-8")).toContain(
+      "cheap fact",
+    );
+  });
 });

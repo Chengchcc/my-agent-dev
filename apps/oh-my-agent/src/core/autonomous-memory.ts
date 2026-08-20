@@ -58,7 +58,10 @@ export interface AutonomousMemoryInput {
 export async function extractAutonomousMemory(input: AutonomousMemoryInput): Promise<void> {
   try {
     if (process.env.OMA_MEMORY_EXTRACT === "0") return;
-    const modelRef = process.env.OMA_MEMORY_MODEL ?? input.modelId;
+    // Default: the cheapest available catalog model (memory extraction is
+    // quality-tolerant); OMA_MEMORY_MODEL explicitly overrides; fall back to
+    // the Run's own model when the catalog is empty/unreadable.
+    const modelRef = await resolveMemoryModel(input.modelRuntime, input.modelId);
     const transcript = buildTranscript(input.messages, input.compactions);
     if (transcript.trim().length === 0) return;
 
@@ -90,6 +93,24 @@ export async function extractAutonomousMemory(input: AutonomousMemoryInput): Pro
       err instanceof Error ? err.message : String(err),
     );
   }
+}
+
+async function resolveMemoryModel(modelRuntime: ModelRuntime, runModelId: string): Promise<string> {
+  const explicit = process.env.OMA_MEMORY_MODEL;
+  if (explicit) return explicit;
+  try {
+    const catalog = await modelRuntime.getCatalog();
+    const candidates = catalog.models.filter((m) => m.available !== false);
+    if (candidates.length > 0) {
+      const cheapest = candidates.reduce((a, b) =>
+        a.cost.input + a.cost.output <= b.cost.input + b.cost.output ? a : b,
+      );
+      return `${cheapest.providerId}/${cheapest.modelId}`;
+    }
+  } catch {
+    /* unreadable catalog — fall back to the Run's model */
+  }
+  return runModelId;
 }
 
 function buildTranscript(messages: readonly Message[], compactions: readonly string[]): string {
