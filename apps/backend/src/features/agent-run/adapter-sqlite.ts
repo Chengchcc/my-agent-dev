@@ -1128,6 +1128,21 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
       return rows.length > 0;
     },
 
+    async listActiveRunsForConversations(conversationIds) {
+      if (conversationIds.length === 0) return [];
+      const rows = d
+        .select()
+        .from(schema.agentRun)
+        .where(
+          and(
+            inArray(schema.agentRun.conversationId, [...conversationIds]),
+            inArray(schema.agentRun.status, [...ACTIVE_RUN_STATUSES]),
+          ),
+        )
+        .all();
+      return rows.map(parseRun);
+    },
+
     async getActiveRun(branchId) {
       const row = d
         .select()

@@ -11,6 +11,7 @@ import type { CronJobService } from "../cron/service.js";
 import { resolveLoopPaths } from "../loop/resolve-paths.js";
 import type { ProjectPort } from "../project/ports.js";
 import type { SettingsService } from "../settings/index.js";
+import { runLoopDoctor } from "./loop-doctor.js";
 import {
   createLoop,
   getLoopDetail,
@@ -161,6 +162,13 @@ export function loopRoutes(input: {
         return { error: "Not a loop" };
       }
       return { state };
+    })
+    .post("/api/loops/:id/doctor", async ({ params: { id } }) => {
+      const report = await runLoopDoctor(
+        { cronSvc, store, agentRunService, agentRunExecution },
+        id,
+      );
+      return { report };
     })
     .post(
       "/api/loops/:id/review",

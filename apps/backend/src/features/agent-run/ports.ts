@@ -120,6 +120,9 @@ export interface AgentRunPort {
    *  waiting / commit_failed). Used by Loop delete to reject deletion
    *  while its generator/evaluator scopes are live. */
   hasActiveRunForConversations(conversationIds: readonly string[]): Promise<boolean>;
+  /** Active Runs across the given conversations (Loop Doctor uses it to
+   *  find zombie runs that lost their live child). */
+  listActiveRunsForConversations(conversationIds: readonly string[]): Promise<AgentRun[]>;
   listInputs(branchId: string): Promise<BranchInput[]>;
 
   /** Get a single queued input by id (queue management UI). */

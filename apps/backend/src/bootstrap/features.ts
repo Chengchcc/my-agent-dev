@@ -42,6 +42,7 @@ import {
 } from "../features/knowledge/index.js";
 import { CliSetupProvisioner, LarkSetupManager } from "../features/lark-bot/index.js";
 import { loopRoutes } from "../features/loop/http.js";
+import { runLoopDoctor } from "../features/loop/loop-doctor.js";
 import { createLoopLockRegistry } from "../features/loop/loop-lock.js";
 import { createMcpService, fileMcpServerAdapter, mcpRoutes } from "../features/mcp/index.js";
 import { modelRoutes } from "../features/models/index.js";
@@ -868,8 +869,34 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   // ─── Lifecycle ──────────────────────────────────────────────
 
+  let doctorTimer: ReturnType<typeof setInterval> | null = null;
+
   async function start(): Promise<void> {
     cronScheduler.start();
+
+    // Loop Doctor: startup sweep + periodic patrol for zombie runs and
+    // stale items. Every enabled loop is checked; repairs are serialized
+    // with loopStep via the per-loop lock.
+    const doctorDeps = {
+      cronSvc,
+      store: loopStore,
+      agentRunService,
+      agentRunExecution,
+    };
+    const doctorAll = async (): Promise<void> => {
+      for (const job of cronSvc.port.listEnabledCronJobs()) {
+        if (!job.loopConfigPath) continue;
+        try {
+          await loopLocks.withLoopLock(job.cronJobId, () =>
+            runLoopDoctor(doctorDeps, job.cronJobId),
+          );
+        } catch (err) {
+          console.error(`[loop-doctor] check failed for ${job.cronJobId}:`, err);
+        }
+      }
+    };
+    void doctorAll();
+    doctorTimer = setInterval(() => void doctorAll(), 5 * 60_000);
 
     const allAgents = await agentSvc.list(true);
     for (const agent of allAgents) {
@@ -895,6 +922,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     // mid-finalize), THEN close surfaces that children may still call
     // (Product Tools MCP) and finally Lark/setup.
     cronScheduler.dispose(); // no new Runs
+    if (doctorTimer) clearInterval(doctorTimer);
     await agentRunExecution.dispose(); // abort/SIGTERM/SIGKILL children + drain
     await larkBotRegistry.dispose();
     setupManager?.dispose();

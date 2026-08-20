@@ -255,6 +255,9 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
     async hasActiveRunForConversations() {
       return false;
     },
+    async listActiveRunsForConversations() {
+      return [];
+    },
   };
 
   const agentRunExecution: AgentRunExecutionService = {

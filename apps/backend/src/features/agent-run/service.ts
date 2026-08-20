@@ -90,6 +90,7 @@ export interface AgentRunService {
   getRun(runId: string): Promise<AgentRun | null>;
   getActiveRun(branchId: string): Promise<AgentRun | null>;
   hasActiveRunForConversations(conversationIds: readonly string[]): Promise<boolean>;
+  listActiveRunsForConversations(conversationIds: readonly string[]): Promise<AgentRun[]>;
   listInputs(branchId: string): Promise<BranchInput[]>;
   getInput(inputId: string): Promise<BranchInput | null>;
   /** Pending inputs across every branch of a conversation (queue UI). */
@@ -217,6 +218,10 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
     },
     async hasActiveRunForConversations(conversationIds) {
       return port.hasActiveRunForConversations(conversationIds);
+    },
+
+    async listActiveRunsForConversations(conversationIds) {
+      return port.listActiveRunsForConversations(conversationIds);
     },
 
     async listInputs(branchId) {

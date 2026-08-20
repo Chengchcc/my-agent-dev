@@ -162,6 +162,9 @@ function makeRunService(): AgentRunService {
     async hasActiveRunForConversations() {
       return false;
     },
+    async listActiveRunsForConversations() {
+      return [];
+    },
   };
 }
 
