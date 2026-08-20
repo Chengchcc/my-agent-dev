@@ -1,3 +1,4 @@
+import { childEnv } from "@chengchenccc/agent-backend";
 import type { Subprocess } from "bun";
 import { collectSecrets, createStderrTail, redactText, type StderrTail } from "./stderr-tail.js";
 
@@ -82,15 +83,16 @@ export class ProcessSpawnError extends Error {
 const DEBUG_ENABLED = process.env.OMA_DEBUG === "1";
 
 /** Spawn the oma executable. `cwd` is the Run's workspace root (the
- *  child's tools are rooted there). The child inherits the process env with
- *  the command's env applied on top. */
+ *  child's tools are rooted there). The child gets only a curated allowlist
+ *  of parent env vars (PATH/HOME/locale + provider keys) plus the command's
+ *  own env (provider keys, OMA_HOME, per-run product-tools token). */
 export function spawnOmaProcess(cfg: OmaCommandConfig, opts: { cwd: string }): SpawnedOmaProcess {
   let child: Subprocess;
   try {
     child = Bun.spawn({
       cmd: [cfg.executable, ...(cfg.args ?? [])],
       cwd: opts.cwd,
-      env: { ...process.env, ...cfg.env },
+      env: childEnv(cfg.env),
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",

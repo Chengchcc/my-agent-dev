@@ -2,7 +2,7 @@
  *  written, then stdin closes (`-p` mode reads stdin and exits). Same
  *  LF-framed stdout reader + bounded stderr tail as the other adapters. */
 
-import { collectSecrets, redactText } from "@chengchenccc/agent-backend";
+import { childEnv, collectSecrets, redactText } from "@chengchenccc/agent-backend";
 import type { FileSink, Subprocess } from "bun";
 
 export interface ClaudeCommandConfig {
@@ -58,7 +58,7 @@ export function spawnClaudeProcess(
   const proc: Subprocess = Bun.spawn({
     cmd: [cfg.executable, ...(cfg.args ?? [])],
     cwd: opts.cwd,
-    env: { ...process.env, ...cfg.env },
+    env: childEnv(cfg.env),
     stdout: "pipe",
     stderr: "pipe",
     stdin: "pipe",

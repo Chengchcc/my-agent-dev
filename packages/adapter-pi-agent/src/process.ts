@@ -2,7 +2,7 @@
  *  (LF-framed stdout lines, bounded stderr tail) but no secrets redaction —
  *  pi has no token-bearing env vars of its own. */
 
-import { collectSecrets, redactText } from "@chengchenccc/agent-backend";
+import { childEnv, collectSecrets, redactText } from "@chengchenccc/agent-backend";
 import type { Subprocess } from "bun";
 
 export interface PiCommandConfig {
@@ -50,12 +50,9 @@ export function spawnPiProcess(cfg: PiCommandConfig, opts: { cwd: string }): Spa
   // Secrets captured from the child env: a crashed CLI echoing its
   // environment must never leak keys into the persistent tail.
   const secrets = collectSecrets(cfg.env ?? {});
-  // The pi CLI speaks the omp daemon protocol: a leaked OMP_DAEMON_* pair
-  // (from the harness hosting this backend) routes its worker at the wrong
-  // daemon and hangs the run forever. Scrub before inheriting.
-  const env: Record<string, string | undefined> = { ...process.env, ...cfg.env };
-  delete env.OMP_DAEMON_PROJECT_DIR;
-  delete env.OMP_DAEMON_RUNTIME_DIR;
+  // Allowlisted env only: parent OMP_DAEMON_* handles never reach the child
+  // (they would route the pi worker at the wrong daemon and hang the run).
+  const env = childEnv(cfg.env);
   const proc: Subprocess = Bun.spawn({
     cmd: [cfg.executable, ...(cfg.args ?? [])],
     cwd: opts.cwd,
