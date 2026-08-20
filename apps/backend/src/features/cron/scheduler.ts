@@ -58,6 +58,9 @@ export function createCronScheduler(deps: {
    *  + any retries) settles; a natural trigger that arrives meanwhile is
    *  skipped, preserving the no-overlap guarantee. */
   const inFlight = new Set<string>();
+  /** The fire-chain promises themselves, so dispose() can drain them
+   *  before the DB closes (a settling run may still finalize rows). */
+  const inflightPromises = new Set<Promise<void>>();
 
   /** Idempotently ensure the deterministic Conversation + Agent Member
    *  (branch is lazily created by enqueueAndAcquire). */
@@ -245,9 +248,13 @@ export function createCronScheduler(deps: {
         sched.schedule(job.cronExpr, () => {
           if (inFlight.has(job.cronJobId)) return;
           inFlight.add(job.cronJobId);
-          void fire(job)
+          const p = fire(job)
             .catch((err) => console.error(`[cron] fire failed for ${job.cronJobId}:`, err))
-            .finally(() => inFlight.delete(job.cronJobId));
+            .finally(() => {
+              inFlight.delete(job.cronJobId);
+              inflightPromises.delete(p);
+            });
+          inflightPromises.add(p);
         }),
       );
     },
@@ -262,10 +269,12 @@ export function createCronScheduler(deps: {
       inFlight.delete(cronJobId);
     },
 
-    dispose() {
+    async dispose() {
       for (const h of handles.values()) h.stop();
       handles.clear();
       inFlight.clear();
+      await Promise.allSettled(inflightPromises);
+      inflightPromises.clear();
     },
   };
 }
