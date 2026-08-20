@@ -1,4 +1,5 @@
 "use client";
+import { useQuery } from "@tanstack/react-query";
 import { Activity, CalendarClock, CheckCircle2, CircleAlert, Trash2, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -13,8 +14,9 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCronList, useDeleteCronJob, useSetCronEnabled } from "@/features/cron/hooks";
 import { useAgentRuns, useCancelAgentRun, useSurfaces } from "@/features/ops/hooks";
+import { api } from "@/lib/api";
 
-type Tab = "surfaces" | "runs" | "cron";
+type Tab = "surfaces" | "runs" | "cron" | "telemetry";
 
 function SummaryCard({
   icon: Icon,
@@ -54,6 +56,10 @@ export default function SystemPage() {
   const deleteCron = useDeleteCronJob();
   const setCronEnabled = useSetCronEnabled();
   const cancelRun = useCancelAgentRun();
+  const telemetryQuery = useQuery({
+    queryKey: ["telemetry-summary"],
+    queryFn: () => api.getTelemetrySummary(),
+  });
   const [confirmingJobId, setConfirmingJobId] = useState<string | null>(null);
 
   const surfaces = surfacesQuery.data ?? [];
@@ -109,6 +115,7 @@ export default function SystemPage() {
             <TabsTrigger value="surfaces">Surfaces</TabsTrigger>
             <TabsTrigger value="runs">Agent Runs</TabsTrigger>
             <TabsTrigger value="cron">Schedules</TabsTrigger>
+            <TabsTrigger value="telemetry">Telemetry</TabsTrigger>
           </TabsList>
 
           <TabsContent value="surfaces" className="w-full min-w-0 pt-4">
@@ -242,8 +249,90 @@ export default function SystemPage() {
               )}
             </QueryState>
           </TabsContent>
+
+          <TabsContent value="telemetry" className="w-full min-w-0 pt-4">
+            <QueryState
+              query={telemetryQuery}
+              empty={(d) => d.runs === 0}
+              emptyTitle="No telemetry yet"
+              emptyDescription="Run telemetry (tokens, tool calls, duration) appears after Agent Runs execute."
+              emptyIcon={Activity}
+            >
+              {(d) => (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <SummaryCard
+                      icon={Activity}
+                      label="Runs (24h)"
+                      value={String(d.runs)}
+                      tone="default"
+                    />
+                    <SummaryCard
+                      icon={CircleAlert}
+                      label="Tokens"
+                      value={`${formatTokens(d.inputTokens + d.outputTokens)}`}
+                      tone="default"
+                    />
+                    <SummaryCard
+                      icon={CheckCircle2}
+                      label="Tool calls"
+                      value={String(d.toolCalls)}
+                      tone="default"
+                    />
+                    <SummaryCard
+                      icon={CalendarClock}
+                      label="Cost"
+                      value={`$${d.costUsd.toFixed(4)}`}
+                      tone="default"
+                    />
+                  </div>
+                  <div className="overflow-x-auto rounded-lg border border-(--hairline)">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-(--hairline) text-left text-[10px] uppercase tracking-wider text-(--mute)">
+                          <th className="px-3 py-2 font-semibold">Run</th>
+                          <th className="px-3 py-2 font-semibold">Status</th>
+                          <th className="px-3 py-2 font-semibold">Model</th>
+                          <th className="px-3 py-2 font-semibold text-right">Tokens</th>
+                          <th className="px-3 py-2 font-semibold text-right">Tools</th>
+                          <th className="px-3 py-2 font-semibold text-right">Duration</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {d.recent.map((r) => (
+                          <tr
+                            key={r.runId}
+                            className="border-b border-(--hairline) last:border-b-0"
+                          >
+                            <td className="px-3 py-2 font-mono text-xs">{r.runId.slice(0, 12)}</td>
+                            <td className="px-3 py-2">
+                              <Badge variant="outline">{r.status}</Badge>
+                            </td>
+                            <td className="px-3 py-2 text-xs text-(--mute)">{r.modelId}</td>
+                            <td className="px-3 py-2 text-right text-xs">
+                              {formatTokens(r.inputTokens + r.outputTokens)}
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs">{r.toolCalls}</td>
+                            <td className="px-3 py-2 text-right text-xs">
+                              {r.durationMs != null ? `${(r.durationMs / 1000).toFixed(1)}s` : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </QueryState>
+          </TabsContent>
         </Tabs>
       </PageBody>
     </Page>
   );
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
 }

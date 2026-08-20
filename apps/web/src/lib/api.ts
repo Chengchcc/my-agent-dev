@@ -42,6 +42,25 @@ export type AgentMemory = {
   memSummary: string | null;
   memoryMd: string | null;
 };
+export type TelemetrySummary = {
+  since: number;
+  runs: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  toolCalls: number;
+  avgDurationMs: number;
+  recent: Array<{
+    runId: string;
+    status: string;
+    modelId: string;
+    createdAt: number;
+    durationMs: number | null;
+    toolCalls: number;
+    inputTokens: number;
+    outputTokens: number;
+  }>;
+};
 
 export type ChatModelOverride = {
   backendKind: string;
@@ -167,6 +186,14 @@ export const api = {
   getAgentRuntime: (agentId: string) =>
     unwrap(client.api.ops.agents({ id: agentId }).runtime.get()),
   listSurfaces: () => unwrap(client.api.ops.surfaces.get()),
+  getTelemetrySummary: (since?: number) =>
+    fetch(`/api/bff/telemetry/summary${since ? `?since=${since}` : ""}`, {
+      credentials: "include",
+    }).then((r) => r.json()) as Promise<TelemetrySummary>,
+  getRunTelemetry: (runId: string) =>
+    fetch(`/api/bff/agent-runs/${runId}/telemetry`, { credentials: "include" }).then((r) =>
+      r.json(),
+    ),
   // Projects
   listProjects: () => unwrap(client.api.projects.get()),
   getProject: (id: string) => unwrap(client.api.projects({ id }).get()),
