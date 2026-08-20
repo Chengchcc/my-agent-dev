@@ -194,6 +194,44 @@ describe("extractAutonomousMemory", () => {
     expect(readFileSync(join(factsDir, "run-6.md"), "utf-8")).toContain("fact b");
   });
 
+  test("duplicate facts across runs are not persisted twice", async () => {
+    const { runtime, calls } = makeRuntime([
+      JSON.stringify({ facts: [{ content: "JWT expiry is 15m" }] }),
+      "summary a",
+      JSON.stringify({
+        facts: [{ content: "JWT expiry is 15m" }, { content: "Rate limit is 100/min" }],
+      }),
+      "summary b",
+    ]);
+    const root = freshWorkspace();
+
+    await extractAutonomousMemory({
+      modelRuntime: runtime,
+      modelId: "fake/m",
+      workspaceRoot: root,
+      runId: "run-d1",
+      messages: MESSAGES,
+      compactions: [],
+    });
+    await extractAutonomousMemory({
+      modelRuntime: runtime,
+      modelId: "fake/m",
+      workspaceRoot: root,
+      runId: "run-d2",
+      messages: MESSAGES,
+      compactions: [],
+    });
+
+    const first = readFileSync(join(root, "memory", "facts", "run-d1.md"), "utf-8");
+    const second = readFileSync(join(root, "memory", "facts", "run-d2.md"), "utf-8");
+    expect(first).toContain("JWT expiry is 15m");
+    // run 2 kept only the NEW fact; the duplicate was dropped
+    expect(second).not.toContain("JWT expiry is 15m");
+    expect(second).toContain("Rate limit is 100/min");
+    // consolidation ran for both runs (each produced fresh facts)
+    expect(calls).toHaveLength(4);
+  });
+
   test("uses the cheapest catalog model, not the run model", async () => {
     const usedModels: string[] = [];
     const cheap: Provider = {

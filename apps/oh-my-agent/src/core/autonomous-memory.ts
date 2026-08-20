@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { extractText, type Message } from "@chengchenccc/message";
@@ -76,14 +76,21 @@ export async function extractAutonomousMemory(input: AutonomousMemoryInput): Pro
 
     const memDir = join(input.workspaceRoot, "memory");
     const factsDir = join(memDir, "facts");
+    // Cross-run dedup: only genuinely NEW facts are persisted per run (and
+    // fed to consolidation). Repeated learnings from later runs are dropped,
+    // so memory/facts/*.md stays a unique-facts set, not an append log.
+    const existing = readExistingFactContents(factsDir);
+    const fresh = facts.filter((f) => !existing.has(normalizeFact(f.content)));
+    if (fresh.length === 0) return;
+
     mkdirSync(factsDir, { recursive: true });
-    writeFileSync(join(factsDir, `${input.runId}.md`), renderFacts(input.runId, facts), "utf-8");
+    writeFileSync(join(factsDir, `${input.runId}.md`), renderFacts(input.runId, fresh), "utf-8");
 
     const oldSummary = readTextOrNull(join(memDir, "memory_summary.md"));
     const newSummary = await callModel(
       input.modelRuntime,
       modelRef,
-      `${CONSOLIDATE_PROMPT}\n\n<existing_summary>\n${oldSummary ?? "(none)"}\n</existing_summary>\n\n<new_facts>\n${renderFacts(input.runId, facts)}\n</new_facts>`,
+      `${CONSOLIDATE_PROMPT}\n\n<existing_summary>\n${oldSummary ?? "(none)"}\n</existing_summary>\n\n<new_facts>\n${renderFacts(input.runId, fresh)}\n</new_facts>`,
     );
     if (newSummary) writeFileSync(join(memDir, "memory_summary.md"), newSummary, "utf-8");
   } catch (err) {
@@ -174,6 +181,41 @@ function renderFacts(runId: string, facts: readonly ExtractedFact[]): string {
     );
   }
   return `${lines.join("\n")}\n`;
+}
+
+/** Normalized fact identity: trimmed, case-folded bullet content. */
+function normalizeFact(content: string): string {
+  return content.trim().toLowerCase();
+}
+
+/** Every fact bullet already persisted across all facts/*.md files
+ *  (pipeline and agent-written alike), best-effort parse of `- ` lines. */
+function readExistingFactContents(factsDir: string): Set<string> {
+  const set = new Set<string>();
+  let files: string[];
+  try {
+    files = readdirSync(factsDir).filter((f) => f.endsWith(".md"));
+  } catch {
+    return set;
+  }
+  for (const file of files) {
+    let text: string;
+    try {
+      text = readFileSync(join(factsDir, file), "utf-8");
+    } catch {
+      continue;
+    }
+    for (const line of text.split("\n")) {
+      const t = line.trim();
+      if (!t.startsWith("- ")) continue;
+      const content = t
+        .slice(2)
+        .replace(/^\*\*[^*]+\*\*\s*/, "")
+        .trim();
+      if (content) set.add(normalizeFact(content));
+    }
+  }
+  return set;
 }
 
 function readTextOrNull(path: string): string | null {
