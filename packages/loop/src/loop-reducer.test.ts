@@ -572,7 +572,15 @@ describe("validateLoopMetaPatch", () => {
 // DEFER / UNDEFER / TICK with deferral
 // ============================================================
 describe("loopReducer — defer", () => {
-  const triaged = { id: "01", source: "ci", summary: "a", step: "triaged" as const, attempt: 1, priority: 0, result: null };
+  const triaged = {
+    id: "01",
+    source: "ci",
+    summary: "a",
+    step: "triaged" as const,
+    attempt: 1,
+    priority: 0,
+    result: null,
+  };
 
   test("DEFER parks a triaged item; TICK skips it", () => {
     const s = stateWith({ "01": triaged });
@@ -612,7 +620,15 @@ describe("loopReducer — defer", () => {
   test("TICK resumes when after-dependencies are resolved", () => {
     const s = stateWith({
       "01": { ...triaged, defer: { reason: "r", after: ["02"] } },
-      "02": { id: "02", source: "ci", summary: "b", step: "resolved" as const, attempt: 1, priority: 0, result: null },
+      "02": {
+        id: "02",
+        source: "ci",
+        summary: "b",
+        step: "resolved" as const,
+        attempt: 1,
+        priority: 0,
+        result: null,
+      },
     });
     const next = loopReducer(s, { type: "TICK" });
     expect(next.items["01"]!.step).toBe("fixing");

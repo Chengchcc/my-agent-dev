@@ -78,7 +78,13 @@ export function fakeProvider(
         return;
       }
       // Model-dependent text makes `--model` observable end to end.
-      yield { delta: { type: "text", text: model.id === "echo2" ? "done2" : "done" } };
+      // OMA_FAKE_TEXT overrides it (e.g. a JSON workflow verdict).
+      yield {
+        delta: {
+          type: "text",
+          text: env.OMA_FAKE_TEXT ?? (model.id === "echo2" ? "done2" : "done"),
+        },
+      };
       yield { usage: { input: 10, output: 3, cacheRead: 1, cacheCreate: 0 } };
       yield { stopReason: "end_turn" };
     },

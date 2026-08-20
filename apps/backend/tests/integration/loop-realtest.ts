@@ -185,7 +185,7 @@ const result = await loopStep({
 });
 console.log(`=== loopStep finished in ${((Date.now() - t0) / 1000).toFixed(1)}s ===`);
 
-const item = result.items[ITEM_ID];
+const item = result.items[ITEM_ID]!;
 console.log("item.step:", item.step);
 console.log("item.result:", JSON.stringify(item.result, null, 2));
 

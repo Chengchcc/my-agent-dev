@@ -56,9 +56,10 @@ let execution: AgentRunExecutionService;
 const eventLog = new Map<string, BackendEvent<"oma">[]>();
 
 /** The scripted tool script: the fix subagent commits a real change to the
- *  clone. The verify subagent gets no scripted tool and returns the fake
- *  provider's plain text (not JSON) — the product then treats changed work
- *  with an unusable verdict as PASS-with-evidence and commits it (Bug 4). */
+ *  clone. The verify subagent gets no scripted tool and returns
+ *  OMA_FAKE_TEXT — a legal schema JSON verdict — so the workflow run ends
+ *  with a real PASS and the product layer commits the verified change
+ *  (H2). */
 const FAKE_TOOL_SCRIPT = JSON.stringify([
   {
     name: "bash",
@@ -69,6 +70,11 @@ const FAKE_TOOL_SCRIPT = JSON.stringify([
     },
   },
 ]);
+const FAKE_VERIFY_VERDICT = JSON.stringify({
+  verdict: "PASS",
+  evidence: "fake e2e evidence: changes.txt touched by fix subagent",
+  reasons: [],
+});
 
 async function setupRemoteRepo(): Promise<string> {
   const bare = join(dataDir, "remote.git");
@@ -143,6 +149,7 @@ beforeAll(async () => {
     env: {
       OMA_FAKE_PROVIDER: "1",
       OMA_FAKE_TOOL: FAKE_TOOL_SCRIPT,
+      OMA_FAKE_TEXT: FAKE_VERIFY_VERDICT,
     },
   };
   const realExecution = createAgentRunExecutionService({
@@ -234,7 +241,7 @@ describe("Loop with a REAL oma child", () => {
       withWorkspaceLock: createWorkspaceLockRegistry().withLock.bind(createWorkspaceLockRegistry()),
     });
 
-    // ── State machine: workflow ran, changed work → PASS (Bug 4) ──
+    // ── State machine: workflow ran, verified change → PASS ──
     const item = result.items[ITEM_ID]!;
 
     expect(item.generatorRunId).toBeTruthy();

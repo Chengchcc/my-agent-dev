@@ -487,19 +487,37 @@ function renderLoopWorkflow(
   return `// Loop workflow (product-rendered per item). fix then verify.
 const item = args.item;
 const fix = await agent(${JSON.stringify(fixPrompt)}, { label: "fix" });
-const verdict = await agent(${JSON.stringify(verifyPrompt)}, {
-  label: "verify",
-  schema: {
-    type: "object",
-    properties: {
-      verdict: { type: "string", enum: ["PASS", "REJECT", "ESCALATE"] },
-      reasons: { type: "array" },
-      evidence: { type: "string" },
+const verify = async () => {
+  let v = await agent(${JSON.stringify(verifyPrompt)}, {
+    label: "verify",
+    schema: {
+      type: "object",
+      properties: {
+        verdict: { type: "string", enum: ["PASS", "REJECT", "ESCALATE"] },
+        reasons: { type: "array" },
+        evidence: { type: "string" },
+      },
+      required: ["verdict", "evidence"],
     },
-    required: ["verdict", "evidence"],
-  },
-});
-return { id: item.id, verdict: verdict.output, fixText: fix.text };
+  });
+  if (!v.ok) {
+    v = await agent(${JSON.stringify(verifyPrompt + "\n\n注意:上次输出不是合法 JSON。只返回 JSON,不要任何其他文字。")}, {
+      label: "verify",
+      schema: {
+        type: "object",
+        properties: {
+          verdict: { type: "string", enum: ["PASS", "REJECT", "ESCALATE"] },
+          reasons: { type: "array" },
+          evidence: { type: "string" },
+        },
+        required: ["verdict", "evidence"],
+      },
+    });
+  }
+  return v;
+};
+const verdict = await verify();
+return { id: item.id, ...verdict.output, fixText: fix.text };
 `;
 }
 
@@ -521,15 +539,14 @@ function verdictFromWorkflow(
   if (v === "PASS") return { verdict: "PASS", evidence };
   if (v === "REJECT") return { verdict: "REJECT", reasons, evidence };
   if (v === "ESCALATE") return { verdict: "ESCALATE", reasons, evidence };
-  // Bug 4 semantics: changed work with an unusable verdict must NOT be
-  // rolled back silently — route it to human review via PASS-with-evidence.
-  if (changed) {
-    return {
-      verdict: "PASS",
-      evidence: `${fallbackReason}; changed: ${changedFiles.join(", ")}`,
-    };
-  }
-  return { verdict: "ESCALATE", reasons: [fallbackReason], evidence: "" };
+  // Hardened evaluation: no usable verdict = acceptance was NOT executed.
+  // Changed work is REJECTed (rollback), never silently PASSed — a changed
+  // fallback would let verification-free changes through (real-model bug).
+  return {
+    verdict: "REJECT",
+    reasons: [fallbackReason],
+    evidence: changed ? `changed: ${changedFiles.join(", ")}` : "",
+  };
 }
 
 export async function loopStep(params: LoopStepParams): Promise<LoopState> {
@@ -882,10 +899,10 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       verdict,
     });
 
-    // Rollback on REJECT/ESCALATE. Bug 4: changed-without-verdict now routes
-    // through a PASS verdict to awaiting_review, so the rollback guard only
-    // fires when the item actually returned to inbox/fixing (REJECT /
-    // pure ESCALATE) — the worktree keeps changes for the human to review.
+    // Rollback on REJECT/ESCALATE. Hardened evaluation: a missing usable
+    // verdict always REJECTs (never PASSes), so changed work is rolled back
+    // and the next attempt re-fixes from a clean tree — unverified changes
+    // never reach awaiting_review.
     const updatedItem = state.items[item.id];
     const rolledBack = updatedItem?.step === "fixing" || updatedItem?.step === "inbox";
     if (rolledBack) {

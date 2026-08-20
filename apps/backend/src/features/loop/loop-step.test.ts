@@ -559,16 +559,16 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     expect(result.items["item-1"]!.result?.verdict).toBe("REJECT");
   });
 
-  test("no usable workflow verdict → ESCALATE to inbox", async () => {
+  test("no usable workflow verdict → REJECT (acceptance never ran)", async () => {
     const store = createTestStore();
     stateWithFixingItem(store);
     const { result } = await runStep({ store, script: { workflowVerdict: null } });
     const item = result.items["item-1"]!;
-    expect(item.step).toBe("inbox");
-    expect(item.result?.verdict).toBe("ESCALATE");
+    expect(item.step).toBe("fixing");
+    expect(item.result?.verdict).toBe("REJECT");
   });
 
-  test("Bug 4: no verdict but files changed → PASS/awaiting_review, work preserved", async () => {
+  test("no verdict but files changed → REJECT + rollback, work NOT preserved", async () => {
     const fixture = await setupGitDataDir();
     try {
       const store = createTestStore();
@@ -580,15 +580,17 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
         script: { workflowVerdict: null, touchFiles: ["CHANGE.txt"] },
       });
       const item = result.items["item-1"]!;
-      // PASS (with evidence) routes to awaiting_review, NOT inbox — the
-      // rollback guard stays false and the worktree is not reset.
-      expect(item.step).toBe("awaiting_review");
-      expect(item.result?.verdict).toBe("PASS");
+      // Hardened evaluation: no usable verdict = verification never ran.
+      // Changed work is REJECTed and rolled back — never silently PASSed
+      // into awaiting_review with unverified changes.
+      expect(item.step).toBe("fixing");
+      expect(item.result?.verdict).toBe("REJECT");
       const evidence = item.result && "evidence" in item.result ? item.result.evidence : "";
       expect(evidence).toContain("CHANGE.txt");
-      // The PASS commit branch committed the change onto the agent branch.
+      // REJECT → resetHard: the change is gone, no PASS commit exists.
+      expect(existsSync(join(worktreeRoot, "CHANGE.txt"))).toBe(false);
       const log = await Bun.$`git -C ${worktreeRoot} log --oneline -3`.quiet().text();
-      expect(log).toMatch(/loop test item item-1/);
+      expect(log).not.toMatch(/loop test item item-1/);
     } finally {
       await fixture.cleanup();
     }
@@ -833,10 +835,10 @@ describe("loopCleanStart (A1): branch lifecycle", () => {
 });
 
 describe("verdictFromWorkflow shape guard", () => {
-  test("malformed workflow output with no changes escalates", async () => {
+  test("malformed workflow output with no changes rejects", async () => {
     const store = createTestStore();
     stateWithFixingItem(store);
     const { result } = await runStep({ store, script: { workflowVerdict: null } });
-    expect(result.items["item-1"]!.result?.verdict).toBe("ESCALATE");
+    expect(result.items["item-1"]!.result?.verdict).toBe("REJECT");
   });
 });
