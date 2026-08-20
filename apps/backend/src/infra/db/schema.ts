@@ -380,6 +380,9 @@ export const agentRun = sqliteTable(
     /** Optional workflow budget (tokens): the Loop freezes the remaining
      *  daily budget at dispatch; the child gates subagent spawns on it. */
     workflowBudgetTokens: integer("workflow_budget_tokens"),
+    /** JSON: oma workflow-mode input ({ script, args? }); the child executes
+     *  the script directly instead of an interactive loop. Loop items only. */
+    workflow: text("workflow"),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     terminalAt: integer("terminal_at", { mode: "number" }),
   },

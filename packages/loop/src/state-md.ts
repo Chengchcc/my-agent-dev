@@ -306,11 +306,15 @@ export interface LoopConfig {
   /** The agent whose (agent, project) worktree runs this loop's steps
    *  (ADR 0023 P2). Empty string = "default" (back-compat). */
   agent: string;
-  generator: { model: string; systemPrompt: string };
-  evaluator: { model: string; systemPrompt: string };
+  /** Workflow subagent model (fix/verify share it in v1). Legacy
+   *  generator.model is accepted for back-compat. */
+  model: string;
   acceptance: string;
   budget: { dailyCap: number } | null;
   denylist: string[];
+  /** Optional per-loop workflow prompt templates; when empty the backend
+   *  renders defaults from goal/action/acceptance. */
+  workflow: { fixPrompt: string; verifyPrompt: string };
 }
 
 function toStringArray(value: unknown): string[] {
@@ -325,17 +329,12 @@ export function parseLoopConfig(md: string): LoopConfig | null {
   if (!fmMatch?.[1]) return null;
 
   const frontmatter = parseYamlBlock(fmMatch[1].split("\n"));
-  const gen = frontmatter.generator as Record<string, unknown> | undefined;
-  const eval_ = frontmatter.evaluator as Record<string, unknown> | undefined;
+  // Workflow-first: `model` is the single subagent model. Legacy
+  // generator/evaluator LOOP.md is NOT supported.
+  const model = String(frontmatter.model ?? "");
+  if (!model) return null;
 
-  if (!gen?.model || !eval_?.model) return null;
-
-  if (gen.model === eval_.model) {
-    throw new Error(
-      `parseLoopConfig: generator.model ("${String(gen.model)}") must differ from evaluator.model`,
-    );
-  }
-
+  const wfRaw = frontmatter.workflow as Record<string, unknown> | undefined;
   const budgetRaw = frontmatter.budget as Record<string, unknown> | undefined;
   const dailyCap = Number(budgetRaw?.dailyCap ?? 0);
   const budget = Number.isFinite(dailyCap) && dailyCap > 0 ? { dailyCap } : null;
@@ -343,16 +342,13 @@ export function parseLoopConfig(md: string): LoopConfig | null {
   return {
     projectId: String(frontmatter.projectId ?? ""),
     agent: String(frontmatter.agent ?? "default") || "default",
-    generator: {
-      model: String(gen.model),
-      systemPrompt: String(gen.systemPrompt ?? ""),
-    },
-    evaluator: {
-      model: String(eval_.model),
-      systemPrompt: String(eval_.systemPrompt ?? ""),
-    },
+    model,
     acceptance: String(frontmatter.acceptance ?? ""),
     budget,
     denylist: toStringArray(frontmatter.denylist),
+    workflow: {
+      fixPrompt: String(wfRaw?.fixPrompt ?? ""),
+      verifyPrompt: String(wfRaw?.verifyPrompt ?? ""),
+    },
   };
 }

@@ -461,54 +461,42 @@ describe("parseVerdictMd", () => {
   });
 });
 describe("parseLoopConfig", () => {
-  test("parses full LOOP.md", () => {
+  test("parses workflow-first LOOP.md", () => {
     const md = [
       "---",
-      `projectId: proj-abc`,
-      "generator:",
-      "  model: claude-sonnet-4",
-      "  systemPrompt: fix bugs",
-      "evaluator:",
-      "  model: claude-opus-4",
-      "  systemPrompt: verify",
+      "projectId: proj-abc",
+      "model: claude-sonnet-4",
       "acceptance: tests pass",
+      "workflow:",
+      "  fixPrompt: fix it",
+      "  verifyPrompt: verify it",
       "---",
     ].join("\n");
     const cfg = parseLoopConfig(md);
     expect(cfg).not.toBeNull();
     expect(cfg!.projectId).toBe("proj-abc");
-    expect(cfg!.generator.model).toBe("claude-sonnet-4");
-    expect(cfg!.generator.systemPrompt).toBe("fix bugs");
-    expect(cfg!.projectId).toBe("proj-abc");
+    expect(cfg!.model).toBe("claude-sonnet-4");
     expect(cfg!.acceptance).toBe("tests pass");
+    expect(cfg!.workflow.fixPrompt).toBe("fix it");
+    expect(cfg!.workflow.verifyPrompt).toBe("verify it");
   });
 
   test("missing model → null", () => {
-    const md = [
-      "---",
-      "generator:",
-      "  systemPrompt: fix",
-      "evaluator:",
-      "  systemPrompt: verify",
-      "---",
-    ].join("\n");
+    const md = ["---", "projectId: x", "acceptance: ok", "---"].join("\n");
     expect(parseLoopConfig(md)).toBeNull();
   });
 
-  test("generator.model equals evaluator.model → throws", () => {
+  test("legacy generator/evaluator format is NOT supported", () => {
     const md = [
       "---",
-      `projectId: test`,
       "generator:",
       "  model: claude-sonnet-4",
-      `  systemPrompt: "fix it"`,
       "evaluator:",
-      "  model: claude-sonnet-4",
-      `  systemPrompt: "verify it"`,
-      `acceptance: "tests pass"`,
+      "  model: claude-opus-4",
+      "acceptance: tests pass",
       "---",
     ].join("\n");
-    expect(() => parseLoopConfig(md)).toThrow(/must differ/);
+    expect(parseLoopConfig(md)).toBeNull();
   });
 
   test("empty → null", () => {
@@ -521,16 +509,7 @@ describe("parseLoopConfig", () => {
 });
 
 describe("parseLoopConfig agent field (ADR 0023 P2)", () => {
-  const base = [
-    "---",
-    "projectId: proj-x",
-    "generator:",
-    "  model: claude-sonnet-4",
-    "  systemPrompt: fix",
-    "evaluator:",
-    "  model: claude-opus-4",
-    "  systemPrompt: verify",
-  ];
+  const base = ["---", "projectId: proj-x", "model: claude-sonnet-4", "acceptance: tests pass"];
 
   test("reads the agent field when present", () => {
     const cfg = parseLoopConfig([...base, "agent: coder-1", "---"].join("\n"));
