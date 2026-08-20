@@ -92,6 +92,18 @@ export function createRuntimeOpsService(deps: {
         lastError: body.lastError,
       });
     },
+
+    appendRunEvent(runId: string, type: string, data: Record<string, unknown>): void {
+      opsStore.appendRunEvent(runId, type, data);
+    },
+
+    listRunEvents(runId: string, limit?: number) {
+      return opsStore.listRunEvents(runId, limit);
+    },
+
+    telemetrySummary(since?: number) {
+      return opsStore.telemetrySummary(since);
+    },
   };
 }
 

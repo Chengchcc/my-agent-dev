@@ -72,4 +72,68 @@ describe("RuntimeOpsStore", () => {
       expect(rows.map((r) => `${r.agentId}/${r.surface}`)).toEqual(["a/lark", "a/web", "b/lark"]);
     });
   });
+
+  describe("agent_run_event / telemetry", () => {
+    beforeEach(() => {
+      // These tests insert agent_run rows directly; the FK chain (member ->
+      // tree -> branch -> run) is out of scope for store unit tests.
+      db.exec("PRAGMA foreign_keys = OFF");
+    });
+
+    afterEach(() => db.exec("PRAGMA foreign_keys = ON"));
+
+    test("appendRunEvent + listRunEvents round-trip", () => {
+      store.appendRunEvent("r1", "native_tool_started", { toolName: "bash" });
+      store.appendRunEvent("r1", "status", { status: "completed" });
+
+      const events = store.listRunEvents("r1");
+      expect(events).toHaveLength(2);
+      expect(events[0]!.type).toBe("native_tool_started");
+      expect(events[0]!.data).toEqual({ toolName: "bash" });
+      expect(events[0]!.ts).toBeGreaterThan(0);
+    });
+
+    test("telemetrySummary aggregates runs, usage and tool calls", () => {
+      const now = Date.now();
+      db.query(
+        `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, terminal_result, created_at, terminal_at)
+         VALUES (?, 'b1', 'c1', 'm1', ?, 'completed', 'k1', 1, ?, ?, ?)`,
+      ).run(
+        "r-agg",
+        JSON.stringify({ backendKind: "oma", modelId: "fake/m" }),
+        JSON.stringify({
+          status: "completed",
+          usage: { inputTokens: 100, outputTokens: 50, costUsd: 0.01 },
+        }),
+        now - 5_000,
+        now,
+      );
+      store.appendRunEvent("r-agg", "native_tool_started", { toolName: "bash" });
+      store.appendRunEvent("r-agg", "native_tool_started", { toolName: "grep" });
+      store.appendRunEvent("r-agg", "text_delta", { text: "ignored" }); // not counted
+
+      const summary = store.telemetrySummary(now - 60_000);
+      expect(summary.runs).toBe(1);
+      expect(summary.inputTokens).toBe(100);
+      expect(summary.outputTokens).toBe(50);
+      expect(summary.costUsd).toBeCloseTo(0.01);
+      expect(summary.toolCalls).toBe(2); // text_delta not counted
+      expect(summary.avgDurationMs).toBe(5000);
+      expect(summary.recent).toHaveLength(1);
+      expect(summary.recent[0]!.modelId).toBe("fake/m");
+      expect(summary.recent[0]!.toolCalls).toBe(2);
+      expect(summary.recent[0]!.durationMs).toBe(5000);
+    });
+
+    test("telemetrySummary respects the since window", () => {
+      const now = Date.now();
+      db.query(
+        `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, created_at)
+         VALUES (?, 'b2', 'c2', 'm2', ?, 'completed', 'k2', 1, ?)`,
+      ).run("old", JSON.stringify({ backendKind: "oma", modelId: "fake/m" }), now - 86_400_000 * 2);
+
+      const summary = store.telemetrySummary(now - 86_400_000);
+      expect(summary.runs).toBe(0);
+    });
+  });
 });

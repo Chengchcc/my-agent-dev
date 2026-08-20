@@ -9,9 +9,11 @@ import type { SurfaceHealthRow } from "./types.js";
  *  the agent-run feature — Agent Run is the sole execution identity. */
 export class RuntimeOpsStore {
   #d: ReturnType<typeof drizzle<typeof schema>>;
+  #db: Database;
 
   constructor(db: Database) {
     this.#d = drizzle(db, { schema, casing: "snake_case" });
+    this.#db = db;
   }
 
   // ─── surface_health ───
@@ -75,5 +77,133 @@ export class RuntimeOpsStore {
       .orderBy(schema.surfaceHealth.agentId, schema.surfaceHealth.surface)
       .all()
       .map((r) => surfaceHealthSelectSchema.parse(r));
+  }
+
+  // ─── agent_run_event (run telemetry) ───
+
+  appendRunEvent(runId: string, type: string, data: Record<string, unknown>): void {
+    this.#d
+      .insert(schema.agentRunEvent)
+      .values({ runId, type, data: JSON.stringify(data), ts: Date.now() })
+      .run();
+  }
+
+  listRunEvents(
+    runId: string,
+    limit = 500,
+  ): Array<{
+    seq: number;
+    type: string;
+    data: Record<string, unknown>;
+    ts: number;
+  }> {
+    return this.#d
+      .select()
+      .from(schema.agentRunEvent)
+      .where(eq(schema.agentRunEvent.runId, runId))
+      .orderBy(schema.agentRunEvent.seq)
+      .limit(limit)
+      .all()
+      .map((r) => ({
+        seq: r.seq,
+        type: r.type,
+        data: JSON.parse(r.data) as Record<string, unknown>,
+        ts: r.ts,
+      }));
+  }
+
+  /** Aggregate run telemetry since `sinceMs` (default 24h): totals +
+   *  per-run rows for the /system Telemetry card. */
+  telemetrySummary(sinceMs?: number): {
+    since: number;
+    runs: number;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+    toolCalls: number;
+    avgDurationMs: number;
+    recent: Array<{
+      runId: string;
+      status: string;
+      modelId: string;
+      createdAt: number;
+      durationMs: number | null;
+      toolCalls: number;
+      inputTokens: number;
+      outputTokens: number;
+    }>;
+  } {
+    const since = sinceMs ?? Date.now() - 86_400_000;
+    const totals = this.#db
+      .query(
+        `SELECT COUNT(*) AS runs,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.inputTokens') AS REAL)), 0) AS inputTokens,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.outputTokens') AS REAL)), 0) AS outputTokens,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.costUsd') AS REAL)), 0) AS costUsd,
+                COALESCE(SUM((
+                  SELECT COUNT(*) FROM agent_run_event e
+                   WHERE e.run_id = ar.run_id
+                     AND e.type IN ('native_tool_started','product_tool_started')
+                )), 0) AS toolCalls,
+                AVG(CASE WHEN ar.terminal_at IS NOT NULL THEN ar.terminal_at - ar.created_at END) AS avgDurationMs
+           FROM agent_run ar
+          WHERE ar.created_at >= ?`,
+      )
+      .get(since) as {
+      runs: number;
+      inputTokens: number;
+      outputTokens: number;
+      costUsd: number;
+      toolCalls: number;
+      avgDurationMs: number | null;
+    };
+
+    const recent = this.#db
+      .query(
+        `SELECT ar.run_id AS runId,
+                ar.status,
+                ar.model_ref AS modelRef,
+                ar.created_at AS createdAt,
+                ar.terminal_at AS terminalAt,
+                COUNT(CASE WHEN e.type IN ('native_tool_started','product_tool_started') THEN 1 END) AS toolCalls,
+                COALESCE(CAST(json_extract(ar.terminal_result, '$.usage.inputTokens') AS REAL), 0) AS inputTokens,
+                COALESCE(CAST(json_extract(ar.terminal_result, '$.usage.outputTokens') AS REAL), 0) AS outputTokens
+           FROM agent_run ar
+           LEFT JOIN agent_run_event e ON e.run_id = ar.run_id
+          WHERE ar.created_at >= ?
+          GROUP BY ar.run_id
+          ORDER BY ar.created_at DESC
+          LIMIT 50`,
+      )
+      .all(since) as Array<{
+      runId: string;
+      status: string;
+      modelRef: string;
+      createdAt: number;
+      terminalAt: number | null;
+      toolCalls: number;
+      inputTokens: number;
+      outputTokens: number;
+    }>;
+
+    return {
+      since,
+      runs: totals.runs,
+      inputTokens: totals.inputTokens,
+      outputTokens: totals.outputTokens,
+      costUsd: totals.costUsd,
+      toolCalls: totals.toolCalls,
+      avgDurationMs: totals.avgDurationMs ?? 0,
+      recent: recent.map((r) => ({
+        runId: r.runId,
+        status: r.status,
+        modelId: (JSON.parse(r.modelRef) as { modelId?: string }).modelId ?? r.modelRef,
+        createdAt: r.createdAt,
+        durationMs: r.terminalAt != null ? r.terminalAt - r.createdAt : null,
+        toolCalls: Number(r.toolCalls ?? 0),
+        inputTokens: Number(r.inputTokens ?? 0),
+        outputTokens: Number(r.outputTokens ?? 0),
+      })),
+    };
   }
 }

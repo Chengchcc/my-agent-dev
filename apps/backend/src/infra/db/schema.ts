@@ -394,6 +394,24 @@ export const agentRun = sqliteTable(
   ],
 );
 
+// Run telemetry: durable normalized backend events (tool calls, status,
+// workflow steps). Transient text deltas are NOT persisted; usage lives on
+// agent_run.terminal_result. Written by the execution broadcast fan-out.
+export const agentRunEvent = sqliteTable(
+  "agent_run_event",
+  {
+    seq: integer().primaryKey({ autoIncrement: true }),
+    runId: text("run_id")
+      .notNull()
+      .references(() => agentRun.runId, { onDelete: "cascade" }),
+    type: text().notNull(),
+    /** JSON: the normalized BackendEvent payload. */
+    data: text().notNull(),
+    ts: integer({ mode: "number" }).notNull(),
+  },
+  (table) => [index("idx_agent_run_event_run").on(table.runId, table.seq)],
+);
+
 // Branch Input Queue: durable normal/steer/follow_up inputs.
 export const branchInputQueue = sqliteTable(
   "branch_input_queue",

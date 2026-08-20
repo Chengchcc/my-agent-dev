@@ -70,6 +70,10 @@ export interface AgentRunExecutionDeps {
    *  retryTerminalCommit replay - consumers must be idempotent per
    *  (runId, ...). Used by Conversation for the mention cascade. */
   readonly onRunCommitted?: (runId: string, output: Message | undefined) => void;
+  /** Durable telemetry sink for normalized run events (tool calls, status,
+   *  workflow steps). Wired to the RuntimeOps event store; failures are
+   *  swallowed — telemetry never affects the run. */
+  readonly persistRunEvent?: (runId: string, event: BackendEvent) => Promise<void>;
 }
 
 interface LiveRun {
@@ -141,6 +145,20 @@ export function runEventStreamFor(
   })();
 }
 
+/** Normalized events worth persisting for telemetry. Text/thinking deltas
+ *  are transient and large; usage lives on agent_run.terminal_result. */
+const TELEMETRY_EVENT_TYPES = new Set([
+  "status",
+  "native_tool_started",
+  "native_tool_completed",
+  "product_tool_started",
+  "product_tool_completed",
+  "workflow_started",
+  "workflow_agent_started",
+  "workflow_agent_completed",
+  "workflow_completed",
+]);
+
 export function createAgentRunExecutionService(
   deps: AgentRunExecutionDeps,
 ): AgentRunExecutionService {
@@ -158,6 +176,13 @@ export function createAgentRunExecutionService(
   const subscribers = new Map<string, Set<(e: BackendEvent) => void>>();
 
   function broadcast(runId: string, event: BackendEvent): void {
+    // Durable telemetry: persist the normalized event log (tool calls,
+    // status, workflow steps). Transient text/thinking deltas are skipped.
+    if (deps.persistRunEvent && TELEMETRY_EVENT_TYPES.has(event.type)) {
+      void deps.persistRunEvent(runId, event).catch(() => {
+        /* telemetry is best-effort */
+      });
+    }
     const set = subscribers.get(runId);
     if (!set) return;
     for (const fn of set) {

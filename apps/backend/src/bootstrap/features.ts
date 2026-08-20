@@ -440,6 +440,14 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       ? `sse:${config.productToolsMcpUrl}`
       : "stdio:/nonexistent",
     onRunCommitted,
+    persistRunEvent: (runId, event) => {
+      services.opsStore.appendRunEvent(
+        runId,
+        event.type,
+        event as unknown as Record<string, unknown>,
+      );
+      return Promise.resolve();
+    },
   });
 
   dispatchRun.fn = (runId: string) => agentRunExecution.dispatch(runId);
