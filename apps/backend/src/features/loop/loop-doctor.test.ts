@@ -1,9 +1,7 @@
 import { Database } from "bun:sqlite";
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { AgentRun } from "../agent-run/domain.js";
-import type { AgentRunExecutionService } from "../agent-run/execution.js";
-import type { AgentRunService } from "../agent-run/service.js";
-import type { CronJobService } from "../cron/service.js";
+import type { LoopDoctorDeps } from "./loop-doctor.js";
 import { runLoopDoctor } from "./loop-doctor.js";
 import { createLoopStateStore, type LoopStateStore } from "./loop-state-store.js";
 
@@ -31,83 +29,79 @@ function makeStore(): LoopStateStore {
 
 interface DoctorHarness {
   store: LoopStateStore;
-  cronSvc: CronJobService;
-  agentRunService: AgentRunService;
-  agentRunExecution: AgentRunExecutionService;
+  deps: LoopDoctorDeps;
   aborted: string[];
-  now: () => number;
+  activeRuns: AgentRun[];
+  runById: Map<string, AgentRun | null>;
 }
 
-function makeHarness(loopEnabled = true): DoctorHarness {
+function makeHarness(): DoctorHarness {
   const store = makeStore();
-  const cronSvc = {
-    getById: (id: string) =>
-      id === "loop-1" && loopEnabled
-        ? ({
-            cronJobId: "loop-1",
-            name: "l1",
-            cronExpr: "*/5 * * * *",
-            enabled: true,
-            loopConfigPath: "loops/l1",
-          } as never)
-        : null,
-    port: { listCronJobs: () => [] },
-  } as unknown as CronJobService;
   const aborted: string[] = [];
-  const runs = new Map<string, AgentRun>();
-  const agentRunService = {
-    async listActiveRunsForConversations() {
-      return [];
+  const activeRuns: AgentRun[] = [];
+  const runById = new Map<string, AgentRun | null>();
+  const deps: LoopDoctorDeps = {
+    cronSvc: {
+      getById: (id: string) =>
+        id === "loop-1"
+          ? ({
+              cronJobId: "loop-1",
+              name: "l1",
+              cronExpr: "*/5 * * * *",
+              enabled: true,
+              loopConfigPath: "loops/l1",
+            } as never)
+          : null,
     },
-    async getRun(runId: string) {
-      return runs.get(runId) ?? null;
+    store,
+    agentRunService: {
+      async listActiveRunsForConversations() {
+        return activeRuns;
+      },
+      async getRun(runId: string) {
+        return runById.get(runId) ?? null;
+      },
     },
-  } as unknown as AgentRunService;
-  const agentRunExecution = {
-    isLive: () => false,
-    isInflight: () => false,
-    async abortStaleRun(runId: string) {
-      aborted.push(runId);
+    agentRunExecution: {
+      isLive: () => false,
+      isInflight: () => false,
+      async abortStaleRun(runId: string) {
+        aborted.push(runId);
+      },
     },
-  } as unknown as AgentRunExecutionService;
-  return { store, cronSvc, agentRunService, agentRunExecution, aborted, now: () => 1000 };
+    now: () => 1000,
+  };
+  return { store, deps, aborted, activeRuns, runById };
 }
-describe("runLoopDoctor", () => {
-  afterEach(() => {
-    // no-op: each harness owns its DB
-  });
 
+const makeRun = (runId: string): AgentRun => ({
+  runId,
+  branchId: "b",
+  conversationId: "loop:loop-1:generator",
+  agentMemberId: "loop-generator:loop-1",
+  modelRef: { backendKind: "oma", modelId: "m" },
+  status: "running",
+  idempotencyKey: "k",
+  terminalResult: null,
+  configRevision: 1,
+  productTools: null,
+  systemPrompt: null,
+  skillRoots: null,
+  permissionMode: null,
+  todoSnapshot: null,
+  workspace: null,
+  workflowBudgetTokens: null,
+  workflow: null,
+  createdAt: 0,
+  terminalAt: null,
+});
+
+describe("runLoopDoctor", () => {
   test("zombie run without a live child is aborted and reported", async () => {
     const h = makeHarness();
-    const run: AgentRun = {
-      runId: "run-z",
-      branchId: "b",
-      conversationId: "loop:loop-1:generator",
-      agentMemberId: "loop-generator:loop-1",
-      modelRef: { backendKind: "oma", modelId: "m" },
-      status: "running",
-      idempotencyKey: "k",
-      terminalResult: null,
-      configRevision: 1,
-      productTools: null,
-      systemPrompt: null,
-      skillRoots: null,
-      permissionMode: null,
-      todoSnapshot: null,
-      workspace: null,
-      workflowBudgetTokens: null,
-      workflow: null,
-      createdAt: 0,
-      terminalAt: null,
-    };
-    (
-      h.agentRunService as { listActiveRunsForConversations: () => Promise<AgentRun[]> }
-    ).listActiveRunsForConversations = async () => [run];
+    h.activeRuns.push(makeRun("run-z"));
 
-    const report = await runLoopDoctor(
-      { ...h, agentRunService: h.agentRunService, agentRunExecution: h.agentRunExecution },
-      "loop-1",
-    );
+    const report = await runLoopDoctor(h.deps, "loop-1");
 
     expect(h.aborted).toEqual(["run-z"]);
     expect(report.issues.some((i) => i.kind === "zombie_run")).toBe(true);
@@ -116,30 +110,29 @@ describe("runLoopDoctor", () => {
 
   test("stale item whose generator run is terminal is escalated to inbox", async () => {
     const h = makeHarness();
-    const state = {
-      loopId: "loop-1",
-      lastRun: null,
-      items: {
-        "item-1": {
-          id: "item-1",
-          source: "ci",
-          summary: "s",
-          step: "fixing" as const,
-          attempt: 1,
-          priority: 0,
-          result: null,
-          generatorRunId: "run-dead",
+    h.store.save(
+      "loop-1",
+      {
+        loopId: "loop-1",
+        lastRun: null,
+        items: {
+          "item-1": {
+            id: "item-1",
+            source: "ci",
+            summary: "s",
+            step: "fixing",
+            attempt: 1,
+            priority: 0,
+            result: null,
+            generatorRunId: "run-dead",
+          },
         },
       },
-    };
-    h.store.save("loop-1", state, {});
-    (h.agentRunService as { getRun: () => Promise<AgentRun | null> }).getRun = async () =>
-      ({ runId: "run-dead", status: "failed" }) as AgentRun;
-
-    const report = await runLoopDoctor(
-      { ...h, agentRunService: h.agentRunService, agentRunExecution: h.agentRunExecution },
-      "loop-1",
+      {},
     );
+    h.runById.set("run-dead", { ...makeRun("run-dead"), status: "failed" });
+
+    const report = await runLoopDoctor(h.deps, "loop-1");
 
     const after = h.store.load("loop-1");
     expect(after.items["item-1"]!.step).toBe("inbox");
@@ -148,28 +141,28 @@ describe("runLoopDoctor", () => {
 
   test("deferred item whose until passed is undeferred", async () => {
     const h = makeHarness();
-    const state = {
-      loopId: "loop-1",
-      lastRun: null,
-      items: {
-        "item-1": {
-          id: "item-1",
-          source: "manual",
-          summary: "s",
-          step: "triaged" as const,
-          attempt: 1,
-          priority: 0,
-          result: null,
-          defer: { reason: "waiting", until: 500 },
+    h.store.save(
+      "loop-1",
+      {
+        loopId: "loop-1",
+        lastRun: null,
+        items: {
+          "item-1": {
+            id: "item-1",
+            source: "manual",
+            summary: "s",
+            step: "triaged",
+            attempt: 1,
+            priority: 0,
+            result: null,
+            defer: { reason: "waiting", until: 500 },
+          },
         },
       },
-    };
-    h.store.save("loop-1", state, {});
-
-    const report = await runLoopDoctor(
-      { ...h, agentRunService: h.agentRunService, agentRunExecution: h.agentRunExecution },
-      "loop-1",
+      {},
     );
+
+    const report = await runLoopDoctor(h.deps, "loop-1");
 
     const after = h.store.load("loop-1");
     expect(after.items["item-1"]!.defer).toBeUndefined();
@@ -178,10 +171,7 @@ describe("runLoopDoctor", () => {
 
   test("unknown loop id yields an empty report", async () => {
     const h = makeHarness();
-    const report = await runLoopDoctor(
-      { ...h, agentRunService: h.agentRunService, agentRunExecution: h.agentRunExecution },
-      "loop-missing",
-    );
+    const report = await runLoopDoctor(h.deps, "loop-missing");
     expect(report.issues).toEqual([]);
     expect(report.fixed).toEqual([]);
   });

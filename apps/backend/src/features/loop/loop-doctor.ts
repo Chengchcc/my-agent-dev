@@ -2,7 +2,7 @@ import type { AgentRun } from "../agent-run/domain.js";
 import { isTerminalStatus } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
-import type { CronJobService } from "../cron/service.js";
+import type { CronJobRow } from "../cron/domain.js";
 import type { LoopStateStore } from "./loop-state-store.js";
 import { loopGeneratorConversationId } from "./loop-step.js";
 
@@ -38,10 +38,10 @@ export interface LoopDoctorReport {
 }
 
 export interface LoopDoctorDeps {
-  cronSvc: CronJobService;
+  cronSvc: { getById(id: string): CronJobRow | null };
   store: LoopStateStore;
-  agentRunService: AgentRunService;
-  agentRunExecution: AgentRunExecutionService;
+  agentRunService: Pick<AgentRunService, "listActiveRunsForConversations" | "getRun">;
+  agentRunExecution: Pick<AgentRunExecutionService, "isLive" | "isInflight" | "abortStaleRun">;
   now?: () => number;
 }
 

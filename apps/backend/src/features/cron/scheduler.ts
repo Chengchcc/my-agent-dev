@@ -177,11 +177,19 @@ export function createCronScheduler(deps: {
     let attempt = 0;
     let currentJob = job;
     for (;;) {
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | null = null;
       try {
+        const stepParams = { ...loopStepParams, signal: controller.signal };
         if (currentJob.timeoutMs > 0) {
-          await withTimeout(loopStep(loopStepParams), currentJob.timeoutMs);
+          // Timeout cancels the loop's live run (not just rejects the
+          // promise): abort → loopStep stops the generator child → branch
+          // releases → the next tick starts clean. withTimeout stays as a
+          // final guard for stalls abort cannot reach.
+          timer = setTimeout(() => controller.abort(), currentJob.timeoutMs);
+          await withTimeout(loopStep(stepParams), currentJob.timeoutMs);
         } else {
-          await loopStep(loopStepParams);
+          await loopStep(stepParams);
         }
         return;
       } catch (err) {
@@ -192,6 +200,8 @@ export function createCronScheduler(deps: {
         if (!fresh) throw err;
         currentJob = fresh;
         await new Promise((r) => setTimeout(r, Math.min(1000 * 2 ** (attempt - 1), 30_000)));
+      } finally {
+        if (timer) clearTimeout(timer);
       }
     }
   }

@@ -56,6 +56,9 @@ export interface LoopStepParams {
    *  ticks, manual run and review (Bug 1). Injected from the composition
    *  root; tests may pass a no-op. */
   withLoopLock?: <T>(loopId: string, fn: () => Promise<T>) => Promise<T>;
+  /** Cancellation: when aborted, the live generator run is stopped so the
+   *  branch releases immediately (cron timeout recovery). */
+  signal?: AbortSignal;
 }
 
 /** Stable deterministic identities - Generator and Evaluator are fully
@@ -602,7 +605,22 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       );
     }
     const generatorRunId = genAcquire.run.runId;
-    await params.agentRunExecution.dispatch(generatorRunId);
+    // Cron-timeout cancellation: when the caller aborts (fireLoop timeout),
+    // stop the live generator run so the branch is released immediately —
+    // the next tick/doctor starts clean instead of colliding with a zombie.
+    if (params.signal) {
+      const onAbort = () => {
+        void params.agentRunExecution.stop(generatorRunId).catch(() => {});
+      };
+      params.signal.addEventListener("abort", onAbort, { once: true });
+      try {
+        await params.agentRunExecution.dispatch(generatorRunId);
+      } finally {
+        params.signal.removeEventListener("abort", onAbort);
+      }
+    } else {
+      await params.agentRunExecution.dispatch(generatorRunId);
+    }
     const genRun = await params.agentRunService.getRun(generatorRunId);
     if (genRun?.status !== "completed") {
       throw new Error(`loopStep: generator run ${generatorRunId} ended ${genRun?.status}`);
