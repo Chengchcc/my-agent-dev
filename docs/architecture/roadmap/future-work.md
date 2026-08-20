@@ -153,6 +153,21 @@ used_by:
 - **删除 transport / heartbeat 残骸**　**已解决。** `attempt` 表的 `pid` / `heartbeat_at` 列已删除（migration 0009），reaper 心跳分支已移除。Phase 6 进一步删除了整个 span/attempt/control_plane_event/span_origin 审计体系（迁移 0020）；Ops 面以 Agent Run 为中心（`/api/agent-runs`），无 session/span 概念。
 - **Harness 运行时加固（M22）**　**历史方案，已随 Phase 5/6 删除。** harness/framework 包与进程内运行循环已不存在；其产物（steering/follow-up、工具并行、压缩管线）以 Oma Runtime 形式保留在 `packages/agent`（per-Run、子进程内），相关当前页面见 [Oma](../runtime/oma.md)。
 
+## Loop 剩余功能（2026-08-20 记录，先测试后补）
+
+Loop 已闭环：发现（auto-triage）/ 创建（四要素+workflow 模板）/ 运行（workflow 一等 fix/verify）/ 评估（verifyCommands 强制验收）/ 恢复（超时取消 + Doctor 巡检）/ 管理（taskClass/defer）。设计见 ADR 0025。以下为**未实现/待验证**项，先做真实运行验证，再按需推进：
+
+| 优先级 | 项 | 说明 |
+|---|---|---|
+| P0 | **真实运行验证** | 用真实模型在真实 repo 跑完整 loop，暴露实际短板（fix 质量 / verify 命令真实性 / triage 发现质量） |
+| P1 | **loop 级监控** | 产出数、验收通过率、烂尾率聚合视图（telemetry 是 run 级，loop 级无统计） |
+| P1 | **inbox 自动清理** | stale/dead item 自动归档或过期（doctor 已把 stale 转 inbox，仍缺自动收尾） |
+| P2 | **webhook 触发** | 外部 CI/issue 推送信号到 `POST /triage`（已预留落点，需 secret） |
+| P2 | **verify 双模型** | fix 用贵模型、verify 用便宜模型（`agent()` per-agent model 扩展） |
+| P2 | **配置演进** | LOOP.md 在线编辑 / refine 真正按新意图重新生成（接 loop-config-generator AI） |
+| P2 | **cron next-run 展示** | UI 显示下次触发时间（Bun.cron 不暴露,需自算） |
+
+
 ## 处理原则
 
 这个项目对技术债的态度是**及时彻底修复，没有任何项目内容不可改动**。因此这一页不是「攒着不还的债务清单」，而是「明确标注、择机推进、改动时一并到位」的方向记录。任何一项推进时，都应连带更新它所依赖页面的当前状态描述，使文档持续与代码对齐。
