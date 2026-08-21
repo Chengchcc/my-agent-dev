@@ -77,10 +77,10 @@ describe("extractAutonomousMemory", () => {
     });
 
     expect(calls).toHaveLength(2);
-    const factsFile = join(root, "memory", "facts", "run-1.md");
+    const factsFile = join(root, ".oma", "memory", "facts", "run-1.md");
     expect(existsSync(factsFile)).toBe(true);
     expect(readFileSync(factsFile, "utf-8")).toContain("JWT expiry is 15m");
-    expect(readFileSync(join(root, "memory", "memory_summary.md"), "utf-8")).toContain(
+    expect(readFileSync(join(root, ".oma", "memory", "memory_summary.md"), "utf-8")).toContain(
       "Key Decisions",
     );
   });
@@ -100,7 +100,7 @@ describe("extractAutonomousMemory", () => {
     });
 
     expect(calls).toHaveLength(0);
-    expect(existsSync(join(root, "memory"))).toBe(false);
+    expect(existsSync(join(root, ".oma", "memory"))).toBe(false);
   });
 
   test("empty facts writes nothing", async () => {
@@ -117,7 +117,7 @@ describe("extractAutonomousMemory", () => {
     });
 
     expect(calls).toHaveLength(1); // extract call only, no consolidate
-    expect(existsSync(join(root, "memory"))).toBe(false);
+    expect(existsSync(join(root, ".oma", "memory"))).toBe(false);
   });
 
   test("invalid JSON output is ignored without throwing", async () => {
@@ -135,7 +135,7 @@ describe("extractAutonomousMemory", () => {
       }),
     ).resolves.toBeUndefined();
     expect(calls).toHaveLength(1);
-    expect(existsSync(join(root, "memory"))).toBe(false);
+    expect(existsSync(join(root, ".oma", "memory"))).toBe(false);
   });
 
   test("model failure never fails the run", async () => {
@@ -160,7 +160,7 @@ describe("extractAutonomousMemory", () => {
         compactions: [],
       }),
     ).resolves.toBeUndefined();
-    expect(existsSync(join(root, "memory"))).toBe(false);
+    expect(existsSync(join(root, ".oma", "memory"))).toBe(false);
   });
 
   test("facts file is deterministic per runId (no duplicates accumulate)", async () => {
@@ -189,7 +189,7 @@ describe("extractAutonomousMemory", () => {
       compactions: [],
     });
 
-    const factsDir = join(root, "memory", "facts");
+    const factsDir = join(root, ".oma", "memory", "facts");
     expect(readdirSync(factsDir)).toEqual(["run-6.md"]);
     expect(readFileSync(join(factsDir, "run-6.md"), "utf-8")).toContain("fact b");
   });
@@ -222,8 +222,8 @@ describe("extractAutonomousMemory", () => {
       compactions: [],
     });
 
-    const first = readFileSync(join(root, "memory", "facts", "run-d1.md"), "utf-8");
-    const second = readFileSync(join(root, "memory", "facts", "run-d2.md"), "utf-8");
+    const first = readFileSync(join(root, ".oma", "memory", "facts", "run-d1.md"), "utf-8");
+    const second = readFileSync(join(root, ".oma", "memory", "facts", "run-d2.md"), "utf-8");
     expect(first).toContain("JWT expiry is 15m");
     // run 2 kept only the NEW fact; the duplicate was dropped
     expect(second).not.toContain("JWT expiry is 15m");
@@ -291,7 +291,7 @@ describe("extractAutonomousMemory", () => {
 
     // extract + consolidate both ran on the cheap model
     expect(usedModels).toEqual(["cheap/cheap-m", "cheap/cheap-m"]);
-    expect(readFileSync(join(root, "memory", "facts", "run-cheap.md"), "utf-8")).toContain(
+    expect(readFileSync(join(root, ".oma", "memory", "facts", "run-cheap.md"), "utf-8")).toContain(
       "cheap fact",
     );
   });

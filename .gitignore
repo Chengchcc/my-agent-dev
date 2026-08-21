@@ -13,3 +13,6 @@ coverage/
 apps/web/tsconfig.tsbuildinfo
 .claude/skills
 .agents
+
+# oma workspace runtime data (memory, product-tools, skills)
+.oma/

@@ -17,7 +17,7 @@
     "dev:backend": "bun run --cwd apps/backend dev",
     "predev:web": "bash scripts/predev.sh",
     "dev:web": "bun run --cwd apps/web dev",
-    "oma": "bun run --cwd apps/oh-my-agent dev",
+    "oma": "bun apps/oh-my-agent/src/cli.ts",
     "format": "biome format --write .",
     "lint": "turbo run lint --concurrency=1",
     "test": "turbo run test --concurrency=1",

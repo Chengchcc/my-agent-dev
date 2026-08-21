@@ -36,7 +36,7 @@ export function buildSystemPrompt(input: {
  *  has never written memories). */
 export function readMemorySummary(cwd: string): string | undefined {
   try {
-    const text = readFileSync(join(cwd, "memory", "memory_summary.md"), "utf-8");
+    const text = readFileSync(join(cwd, ".oma", "memory", "memory_summary.md"), "utf-8");
     return text.trim() || undefined;
   } catch {
     return undefined;

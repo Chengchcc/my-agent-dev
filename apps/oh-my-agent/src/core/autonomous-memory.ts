@@ -8,11 +8,11 @@ import { extractText, type Message } from "@chengchenccc/message";
  *
  * After a COMPLETED oma run the child:
  *   1. asks the model to extract durable facts from the run transcript
- *      (JSON contract, cheap call, 60s cap);
- *   2. writes them to `memory/facts/<runId>.md` (idempotent per run);
- *   3. merges them into `memory/memory_summary.md` (a second call).
+ *   2. writes them to `.oma/memory/facts/<runId>.md` (idempotent per run);
+ *   3. merges them into `.oma/memory/memory_summary.md` (a second call);
+ *   4. prepends the summary to the NEXT Run's system prompt (read side).
  *
- * `memory/MEMORY.md` stays agent-written — the pipeline never touches it.
+ * `.oma/memory/MEMORY.md` stays agent-written — the pipeline never touches it.
  * Every failure is swallowed: memory must never fail or slow the Run.
  * Env: OMA_MEMORY_EXTRACT=0 disables; OMA_MEMORY_MODEL=<provider>/<model>
  * overrides the extract/merge model (default: the Run's own model).
@@ -74,7 +74,7 @@ export async function extractAutonomousMemory(input: AutonomousMemoryInput): Pro
     );
     if (facts.length === 0) return;
 
-    const memDir = join(input.workspaceRoot, "memory");
+    const memDir = join(input.workspaceRoot, ".oma", "memory");
     const factsDir = join(memDir, "facts");
     // Cross-run dedup: only genuinely NEW facts are persisted per run (and
     // fed to consolidation). Repeated learnings from later runs are dropped,
