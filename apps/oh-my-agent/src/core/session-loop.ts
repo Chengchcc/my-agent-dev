@@ -1,4 +1,3 @@
-import type { Message } from "@chengchenccc/message";
 import type { OmaRuntime } from "../core/create-runtime.js";
 import {
   appendSessionCompaction,
@@ -14,32 +13,27 @@ import {
  *  stores only the session id. A completed turn (input + assistant/tool
  *  messages + compaction summaries) is appended after the run. */
 
-/** Persist a completed turn into the session file and return the updated
- *  transcript. No-op (returns the previous transcript) for non-completed
- *  outcomes. */
+/** Finalize a turn in the session file: writes compaction summaries and the
+ *  auto title. Conversational messages are written in REAL TIME via
+ *  createOmaRuntime's onPersistMessages (pi appendMessage) when the caller
+ *  wires it; `messages` is the fallback batch for one-shot modes (print)
+ *  that do not use real-time persistence. */
 export async function persistSessionTurn(opts: {
   sessionId: string;
   cwd: string;
   runtime: OmaRuntime;
-  /** The completed outcome's messages (assistant + tool), wire-loose. */
-  outcomeMessages: readonly unknown[];
-  /** The user input message that produced this turn, wire-loose. */
-  inputMessage: Record<string, unknown> | Message;
-  /** The transcript loaded before this turn. */
-  previousMessages: readonly Record<string, unknown>[];
+  /** Messages not already written by the real-time hook (print mode). */
+  messages?: readonly unknown[];
   /** The run's auto-generated title (outcome.title), when present. */
   title?: string;
-}): Promise<Record<string, unknown>[]> {
-  appendSessionMessages(opts.sessionId, opts.cwd, [opts.inputMessage, ...opts.outcomeMessages]);
+}): Promise<void> {
+  if (opts.messages && opts.messages.length > 0) {
+    appendSessionMessages(opts.sessionId, opts.cwd, opts.messages);
+  }
   for (const summary of await opts.runtime.compactions()) {
     appendSessionCompaction(opts.sessionId, summary);
   }
   if (opts.title) appendSessionTitle(opts.sessionId, opts.title);
-  return [
-    ...opts.previousMessages,
-    opts.inputMessage as Record<string, unknown>,
-    ...(opts.outcomeMessages as Record<string, unknown>[]),
-  ];
 }
 
 /** Resolve the session for a new TUI turn: a --session id resumes that

@@ -53,9 +53,8 @@ export async function runPrintMode(opts: CliRunOptions): Promise<number> {
         sessionId,
         cwd: opts.workspaceRoot,
         runtime,
-        outcomeMessages: outcome.messages ?? [],
-        inputMessage: built.input.message,
-        previousMessages: [],
+        // One-shot mode: no real-time hook, write the whole turn at once.
+        messages: [built.input.message, ...(outcome.messages ?? [])],
       });
       // Final answer = the last assistant message with text in the
       // canonical sequence (ADR 0017).

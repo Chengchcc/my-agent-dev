@@ -9,15 +9,28 @@ import { applyEvent, initialViewState, type TuiViewState } from "./view-state.js
 
 /** Scripted TuiIo: feeds idle inputs sequentially, captures renders.
  *  Live submits (during a run) are recorded and forwarded to the handler. */
-function scriptedIo(inputs: string[]): TuiIo & { renders: TuiViewState[]; live: string[] } {
+function scriptedIo(
+  inputs: string[],
+): TuiIo & { renders: TuiViewState[]; live: string[]; toolRendered: Promise<void> } {
   const renders: TuiViewState[] = [];
   const live: string[] = [];
   let i = 0;
   let liveHandler: ((text: string) => void) | null = null;
+  const { promise: toolRendered, resolve: markToolRendered } = Promise.withResolvers<void>();
   return {
     renders,
     live,
-    render: (state) => renders.push(state),
+    toolRendered,
+    render: (state) => {
+      renders.push(state);
+      // Resolve once a live tool item hit the screen: at that point the
+      // real-time persist hook has already written the turn to the file.
+      if (
+        state.runs.some((run) => run.items.some((item) => item.kind === "tool" && item.streaming))
+      ) {
+        markToolRendered();
+      }
+    },
     waitForInput: () => Promise.resolve(i < inputs.length ? inputs[i++]! : null),
     onLiveInput: (handler) => {
       liveHandler = handler;
@@ -376,6 +389,79 @@ describe("tui session (headless, fake provider)", () => {
     } finally {
       delete process.env.OMA_SESSION_DIR;
       delete process.env.OMA_MAX_STEPS;
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("session file is written in real time while the run is live", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-realtime-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    try {
+      const modelRuntime = createModelRuntime();
+      modelRuntime.registerProvider({
+        id: "probe",
+        name: "Probe",
+        getModels: () => [
+          {
+            id: "m",
+            name: "M",
+            provider: "probe",
+            api: "anthropic-messages",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 200_000,
+            maxTokens: 8192,
+          },
+        ],
+        async *stream(_model, messages) {
+          const hasTool = messages.some((m) => m.role === "tool");
+          if (!hasTool) {
+            yield { delta: { type: "tool_use", id: "t1", name: "bash" } };
+            yield {
+              delta: {
+                type: "input_json_delta",
+                id: "t1",
+                partial_json: JSON.stringify({ command: "echo hi" }),
+              },
+            };
+            yield { usage: { input: 1, output: 1, cacheRead: 0, cacheCreate: 0 } };
+            yield { stopReason: "tool_use" };
+            return;
+          }
+          yield { delta: { type: "text", text: "done" } };
+          yield { usage: { input: 1, output: 1, cacheRead: 0, cacheCreate: 0 } };
+          yield { stopReason: "end_turn" };
+        },
+      });
+      const io = scriptedIo(["do a tool"]);
+      // Run in background; once the run has rendered a live tool event, the
+      // real-time hook has already written the user prompt + tool_use to the
+      // session file (a killed process would still leave the trail).
+      const done = runTuiSession({ modelRuntime, workspaceRoot: sessionDir }, io);
+      const readRoles = (): string[] => {
+        const files = readdirSync(sessionDir).filter((f) => f.endsWith(".jsonl"));
+        if (files.length === 0) return [];
+        // Durable-format boundary: each line is our own JSONL event shape.
+        const events = readFileSync(join(sessionDir, files[0]!), "utf8")
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line) as { message?: { role?: string } });
+        return events.map((e) => e.message?.role ?? "");
+      };
+      // While the tool is executing: the user prompt is already on disk —
+      // killing the process here still leaves the question behind.
+      await io.toolRendered;
+      expect(readRoles()).toContain("user");
+      // After the run settles: the full trail (tool_use + tool_result) is
+      // on disk too.
+      await done;
+      const roles = readRoles();
+      expect(roles).toContain("assistant");
+      expect(roles).toContain("tool");
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
       rmSync(sessionDir, { recursive: true, force: true });
     }
   }, 30_000);

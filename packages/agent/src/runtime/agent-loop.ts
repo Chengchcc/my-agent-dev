@@ -81,6 +81,11 @@ export interface OmaSessionOptions {
    *  each model call — a lighter touch than full compaction. Protected
    *  tools (skills, plans) are never pruned. */
   readonly pruneConfig?: Partial<PruneConfig>;
+  /** Called after each persist of conversational messages (prompt, steer,
+   *  follow_up, assistant, tool_result — never meta/product_history). Lets
+   *  the caller write the session file in real time (pi's appendMessage):
+   *  a killed/failed process still leaves its message trail behind. */
+  readonly onPersistMessages?: (messages: readonly Message[]) => void;
 }
 
 /** Terminal result of a loop. `messages` is the canonical message sequence
@@ -163,7 +168,28 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
     }
   }
 
+  const SESSION_MESSAGE_SOURCES = new Set([
+    "prompt",
+    "steer",
+    "follow_up",
+    "assistant",
+    "tool_result",
+  ]);
+
   function persist(entries: readonly Record<string, unknown>[]): Promise<unknown> {
+    if (opts.onPersistMessages) {
+      const conversational = entries
+        .filter(
+          (e): e is Record<string, unknown> & { source: string; message: Message } =>
+            e.type === "message" &&
+            typeof e.source === "string" &&
+            SESSION_MESSAGE_SOURCES.has(e.source) &&
+            typeof e.message === "object" &&
+            e.message !== null,
+        )
+        .map((e) => e.message);
+      if (conversational.length > 0) opts.onPersistMessages(conversational);
+    }
     return opts.store.appendBatch(opts.sessionId, { entries });
   }
 
@@ -261,7 +287,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
         },
         mode,
       );
-      await opts.store.appendBatch(opts.sessionId, built.batch);
+      await persist(built.batch.entries);
 
       let messages = await readBranchMessages();
       let step = 0;

@@ -18,7 +18,7 @@ import {
 } from "@chengchenccc/tui";
 import { buildCliRunInput } from "../../cli/initial-input.js";
 import { createOmaRuntime, type OmaRuntime } from "../../core/create-runtime.js";
-import { listSessions } from "../../core/session-file.js";
+import { appendSessionMessages, listSessions } from "../../core/session-file.js";
 import { persistSessionTurn, resolveSession } from "../../core/session-loop.js";
 import {
   addUserInput,
@@ -426,7 +426,6 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     }
 
     addUserInput(state, text);
-    const inputMessage = { role: "user", text } as const;
 
     const built = await buildCliRunInput({
       prompt: text,
@@ -453,6 +452,19 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       onEvent: (envelope) => {
         applyEvent(state, envelope.data as OmaLoopEvent);
         io.render(state);
+      },
+      // Real-time session persistence (pi appendMessage): every
+      // conversational persist (user prompt, steer, assistant, tool result)
+      // lands in the session file immediately, so even a killed/failed
+      // process leaves its context for the next turn.
+      onPersistMessages: (messages) => {
+        appendSessionMessages(session.sessionId, opts.workspaceRoot, messages);
+        // The session file is wire-loose; the in-memory transcript keeps the
+        // same loose shape so it round-trips into sessionTranscript verbatim.
+        session.messages = [
+          ...session.messages,
+          ...messages.map((m) => ({ ...m }) as Record<string, unknown>),
+        ];
       },
     });
     io.setBusy?.(true);
@@ -487,21 +499,15 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     applyOutcome(state, outcome);
     io.setBusy?.(false);
 
-    // Persist every terminal status, not just completed: a run that hit
-    // max steps / failed mid-task must leave its message trail behind so
-    // the next turn ("continue") resumes with the full context.
-    if (outcome.messages?.length) {
-      session.messages = await persistSessionTurn({
-        sessionId: session.sessionId,
-        cwd: opts.workspaceRoot,
-        runtime,
-        outcomeMessages: outcome.messages as unknown[],
-        inputMessage,
-        previousMessages: session.messages,
-        ...(outcome.status === "completed" ? { title: outcome.title } : {}),
-      });
-      if (outcome.status === "completed") sessionTitle = outcome.title ?? sessionTitle;
-    }
+    // Messages were persisted in real time (onPersistMessages); only the
+    // end-of-run artifacts (compaction summaries, auto title) remain.
+    await persistSessionTurn({
+      sessionId: session.sessionId,
+      cwd: opts.workspaceRoot,
+      runtime,
+      ...(outcome.status === "completed" ? { title: outcome.title } : {}),
+    });
+    if (outcome.status === "completed") sessionTitle = outcome.title ?? sessionTitle;
     await runtime.close().catch(() => {});
   }
 }

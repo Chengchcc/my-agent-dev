@@ -34,6 +34,10 @@ export interface CreateOmaRuntimeOptions {
    *  the in-process segment stream. Used by RPC mode to forward events to
    *  stdout; print/json modes leave it unset. */
   onEvent?: (envelope: RunEventEnvelope) => void;
+  /** Real-time session-file persistence: fired after every conversational
+   *  persist (pi appendMessage). When set, the caller owns writing these
+   *  messages to its session file as they happen. */
+  onPersistMessages?: (messages: readonly Message[]) => void;
 }
 
 /** One Runtime = one Run. The loop runs directly in-process; steer injects
@@ -115,6 +119,7 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
     modelRuntime: options.modelRuntime,
     modelId: options.modelId,
     skillRoots: options.skillRoots,
+    ...(options.onPersistMessages ? { onPersistMessages: options.onPersistMessages } : {}),
   });
 
   let stopRequested = false;

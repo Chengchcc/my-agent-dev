@@ -88,6 +88,9 @@ export interface RunRuntimeDeps {
   skillRoots: readonly string[];
   webSearch?: WebSearchPort;
   webFetch?: WebFetchPort;
+  /** Real-time session-file persistence (pi appendMessage): fires after
+   *  every conversational persist with the canonical messages written. */
+  onPersistMessages?: (messages: readonly Message[]) => void;
 }
 
 export interface RunRuntime {
@@ -639,6 +642,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     contextBudget,
     resolveModel,
     resolveTools,
+    ...(deps.onPersistMessages ? { onPersistMessages: deps.onPersistMessages } : {}),
   });
 
   // Bind the plugin runtime's emit to the session's emit (two-phase init).
