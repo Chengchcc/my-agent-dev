@@ -31,6 +31,17 @@ async function typeAndSubmit(vt: VirtualTerminal, text: string): Promise<void> {
   await vt.waitForRender();
 }
 
+/** Poll the viewport until a substring appears (event-driven alternative to
+ *  fixed sleeps for async run transitions). */
+async function waitForText(vt: VirtualTerminal, needle: string, ms: number): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (screen(vt).includes(needle)) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error(`timed out waiting for text: ${needle}`);
+}
+
 describe("tui e2e: model I/O on a virtual terminal", () => {
   test("user input echoes, assistant answer renders, session persists", async () => {
     const dir = mkdtempSync(join(tmpdir(), "oma-e2e-"));
@@ -275,7 +286,9 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       { name: "bash", input: { description: "probe", command: "seq 1 60" } },
     ]);
     try {
-      const vt = new VirtualTerminal(100, 30);
+      // Tall viewport: expanded pretty JSON plus the token status line must
+      // fit without scrolling the top of the output off screen.
+      const vt = new VirtualTerminal(100, 45);
       const io = createTerminalIo(vt);
       const sessionDone = runTuiSession(
         { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
@@ -392,6 +405,48 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("busy Enter queues a follow-up; empty Enter sends it as steer", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-followup-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-followup-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    // A slow tool keeps the run live while we queue the follow-up.
+    process.env.OMA_FAKE_TOOL = JSON.stringify([{ name: "bash", input: { command: "sleep 1" } }]);
+    try {
+      const vt = new VirtualTerminal(100, 30);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
+        io,
+      );
+
+      await typeAndSubmit(vt, "go");
+      await waitForText(vt, "sleep 1", 5_000); // tool running -> live
+
+      // Busy: type + Enter queues the follow-up (shown, NOT sent yet).
+      vt.sendInput("continue the work");
+      await vt.waitForRender();
+      vt.sendInput("\r");
+      await vt.waitForRender();
+      const queued = screen(vt);
+      expect(queued).toContain("follow-up");
+      expect(queued).toContain("continue the work");
+
+      // Empty Enter sends the queue; the steer echo lands in the transcript
+      // and the run completes.
+      vt.sendInput("\r");
+      await waitForText(vt, "done", 5_000);
+      expect(screen(vt)).toContain("> continue the work");
+
+      await typeAndSubmit(vt, "/exit");
+      expect(await sessionDone).toBe(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      delete process.env.OMA_FAKE_TOOL;
       rmSync(dir, { recursive: true, force: true });
       rmSync(sessDir, { recursive: true, force: true });
     }

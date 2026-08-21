@@ -166,6 +166,18 @@ export function applyOutcome(state: TuiViewState, outcome: BackendRunOutcome): v
       items: [{ kind: "status", text: "aborted", streaming: false }],
       running: false,
     });
+  } else if (outcome.status === "completed" && outcome.usage) {
+    const u = outcome.usage;
+    const parts: string[] = [];
+    if (u.inputTokens) parts.push(`↑${u.inputTokens}`);
+    if (u.outputTokens) parts.push(`↓${u.outputTokens}`);
+    if (u.cacheReadTokens) parts.push(`cache ${u.cacheReadTokens}`);
+    if (parts.length > 0) {
+      runs.push({
+        items: [{ kind: "status", text: `tokens: ${parts.join(" ")}`, streaming: false }],
+        running: false,
+      });
+    }
   }
 }
 

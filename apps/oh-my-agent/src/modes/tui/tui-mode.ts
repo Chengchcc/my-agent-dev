@@ -36,8 +36,9 @@ import {
 
 /** TUI mode: oma's standalone interactive surface. One process = N
  *  consecutive Runs over ONE session file; each Run is its own Runtime
- *  (one Runtime = one Run invariant preserved). Enter submits; a submit
- *  while a Run is live steers it; Esc aborts the live Run; ctrl+t toggles
+ *  (one Runtime = one Run invariant preserved). Enter submits; while a Run
+ *  is live, Enter queues a follow-up (shown above the spinner) and Enter on
+ *  an empty editor sends the queue as steers; Esc aborts; ctrl+t toggles
  *  thinking blocks; ctrl+o toggles tool detail; /exit quits.
  *
  *  All terminal wiring lives behind the TerminalIo seam so tests can drive
@@ -486,7 +487,14 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     let outcome: BackendRunOutcome;
     try {
       // Steer: a submit while the run is live routes into runtime.steer().
+      // Echo it into the live run's transcript so the user sees their
+      // insertion point (pi's pending-message display).
       const steerHandler = (text: string): void => {
+        const live = state.runs.at(-1);
+        if (live?.running) {
+          live.items.push({ kind: "user", text, streaming: false });
+          io.render(state);
+        }
         void runtime
           .steer({
             inputId: `steer-${randomUUID()}`,
@@ -541,10 +549,57 @@ export function createTerminalIo(
   let liveHandler: ((text: string) => void) | null = null;
   let commandHandler: ((cmd: TuiCommand) => void) | null = null;
   let loader: Loader | null = null;
+  // Follow-up queue: while a run is live, Enter queues the editor text and
+  // shows it; Enter on an EMPTY editor sends the whole queue as steer
+  // messages (pi's queued follow-ups). Esc still aborts.
+  let followUpQueue: string[] = [];
+
+  function renderFollowUpQueue(): void {
+    if (!busy) return;
+    statusContainer.clear();
+    if (loader) {
+      loader.stop();
+      loader = null;
+    }
+    if (followUpQueue.length === 0) {
+      // Rebuild the plain loader when the last queued item was sent.
+      loader = new Loader(
+        tui,
+        (s) => `\u001b[36m${s}\u001b[0m`,
+        (s) => `\u001b[2m${s}\u001b[0m`,
+        "working… (esc to abort)",
+      );
+      loader.start();
+      statusContainer.addChild(loader);
+      return;
+    }
+    statusContainer.addChild(
+      new Text(
+        `  📥 follow-up: ${followUpQueue.map((q) => `"${q}"`).join(", ")} — enter to send`,
+        0,
+        0,
+      ),
+    );
+    tui.requestRender();
+  }
 
   editor.onSubmit = (text) => {
     if (busy) {
-      if (liveHandler && text.trim()) liveHandler(text.trim());
+      const trimmed = text.trim();
+      if (trimmed) {
+        // Queue it and show it; the run keeps going until the user sends.
+        followUpQueue.push(trimmed);
+        editor.setText("");
+        renderFollowUpQueue();
+        return;
+      }
+      // Empty Enter while a run is live: send the queued follow-ups.
+      if (followUpQueue.length > 0 && liveHandler) {
+        const queued = followUpQueue;
+        followUpQueue = [];
+        for (const message of queued) liveHandler(message);
+      }
+      renderFollowUpQueue();
       return;
     }
     if (!pending) return;
@@ -557,6 +612,11 @@ export function createTerminalIo(
   // Esc/ctrl+t/ctrl+o are intercepted before the editor sees them. Esc
   // aborts a live run (pi's app.interrupt); ctrl+t and ctrl+o toggle the
   // thinking-block and tool-detail views globally.
+  let scrollOffset = 0;
+  // Transcript viewport height: terminal rows minus editor/status chrome.
+  // Editor renders ~3 rows (border + input + border), status 1.
+  const viewportLines = (): number => Math.max(1, tui.terminal.rows - 4);
+
   tui.addInputListener((data) => {
     if (matchesKey(data, "escape") && busy) {
       if (commandHandler) commandHandler("abort");
@@ -570,6 +630,27 @@ export function createTerminalIo(
       if (commandHandler) commandHandler("toggleToolDetail");
       return { consume: true };
     }
+    // Transcript scroll: PageUp/PageDown step by a viewport; ctrl+c clears
+    // the editor when idle and aborts the live run when busy.
+    if (matchesKey(data, "pageUp")) {
+      scrollOffset += viewportLines();
+      tui.requestRender();
+      return { consume: true };
+    }
+    if (matchesKey(data, "pageDown")) {
+      scrollOffset = Math.max(0, scrollOffset - viewportLines());
+      tui.requestRender();
+      return { consume: true };
+    }
+    if (matchesKey(data, "ctrl+c")) {
+      if (busy) {
+        if (commandHandler) commandHandler("abort");
+      } else {
+        editor.setText("");
+      }
+      tui.requestRender();
+      return { consume: true };
+    }
     return undefined;
   });
 
@@ -579,7 +660,12 @@ export function createTerminalIo(
     for (const run of state.runs) {
       for (const item of run.items) lines.push(...renderItem(item, state));
     }
-    for (const line of lines) transcript.addChild(new Text(line, undefined, 1));
+    // Scrolling: show only the trailing window (TUI anchors to the bottom
+    // of the buffer), i.e. lines[0 .. total - scrollOffset]. New events
+    // re-render and clamp the offset so it cannot scroll past the content.
+    scrollOffset = Math.min(scrollOffset, Math.max(0, lines.length - viewportLines()));
+    const visible = scrollOffset > 0 ? lines.slice(0, lines.length - scrollOffset) : lines;
+    for (const line of visible) transcript.addChild(new Text(line, undefined, 1));
     tui.requestRender();
   }
 
@@ -663,11 +749,13 @@ export function createTerminalIo(
     },
     setBusy(next: boolean) {
       busy = next;
+      if (!next) followUpQueue = [];
       // The animated status line: a braille spinner + "working" while a
       // run is live, removed when it settles. Loader drives its own timer
-      // and calls requestRender on every frame.
+      // and calls requestRender on every frame. Follow-up queue lines sit
+      // above it while the user has queued steer messages.
+      statusContainer.clear();
       if (next) {
-        statusContainer.clear();
         loader = new Loader(
           tui,
           (s) => `\u001b[36m${s}\u001b[0m`,
@@ -676,12 +764,12 @@ export function createTerminalIo(
         );
         loader.start();
         statusContainer.addChild(loader);
+        if (followUpQueue.length > 0) renderFollowUpQueue();
       } else {
         if (loader) {
           loader.stop();
           loader = null;
         }
-        statusContainer.clear();
       }
       tui.requestRender();
     },
