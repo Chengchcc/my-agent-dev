@@ -619,12 +619,16 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     }
   }
 
+  // pi's loop has no step cap: termination is the model's natural stop or
+  // user abort. We keep a high safety ceiling (runaway-cost guard) that is
+  // env-overridable; 32 was far too small for real tasks.
+  const maxSteps = Number(process.env.OMA_MAX_STEPS) || 500;
   const session = createOmaSession({
     sessionId: deps.runId,
     store,
     plugins,
     pluginRuntime,
-    maxSteps: 32,
+    maxSteps,
     maxForceContinues: 4,
     modelStream: streamModel,
     summarize,

@@ -3,6 +3,7 @@ import type { OmaRuntime } from "../core/create-runtime.js";
 import {
   appendSessionCompaction,
   appendSessionMessages,
+  appendSessionTitle,
   loadSessionMessages,
   newSessionId,
 } from "./session-file.js";
@@ -26,11 +27,14 @@ export async function persistSessionTurn(opts: {
   inputMessage: Record<string, unknown> | Message;
   /** The transcript loaded before this turn. */
   previousMessages: readonly Record<string, unknown>[];
+  /** The run's auto-generated title (outcome.title), when present. */
+  title?: string;
 }): Promise<Record<string, unknown>[]> {
   appendSessionMessages(opts.sessionId, opts.cwd, [opts.inputMessage, ...opts.outcomeMessages]);
   for (const summary of await opts.runtime.compactions()) {
     appendSessionCompaction(opts.sessionId, summary);
   }
+  if (opts.title) appendSessionTitle(opts.sessionId, opts.title);
   return [
     ...opts.previousMessages,
     opts.inputMessage as Record<string, unknown>,

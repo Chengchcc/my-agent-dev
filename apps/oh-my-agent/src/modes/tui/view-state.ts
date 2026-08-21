@@ -11,6 +11,10 @@ export interface TranscriptItem {
   text: string;
   /** Streaming items grow in place; settled items are immutable. */
   streaming: boolean;
+  /** Tool items only: the model call args (from tool_execution_start). */
+  input?: Readonly<Record<string, unknown>>;
+  /** Tool items only: the execution result (from tool_execution_end). */
+  result?: Readonly<Record<string, unknown>>;
 }
 
 /** One completed or in-flight run as shown in the transcript. */
@@ -23,10 +27,14 @@ export interface RunViewState {
 
 export interface TuiViewState {
   runs: RunViewState[];
+  /** ctrl+t: show full thinking blocks (default: collapsed first line). */
+  showThinking: boolean;
+  /** ctrl+o: show full tool args/result JSON (default: one-line previews). */
+  showToolDetail: boolean;
 }
 
 export function initialViewState(): TuiViewState {
-  return { runs: [] };
+  return { runs: [], showThinking: false, showToolDetail: false };
 }
 
 function currentRun(state: TuiViewState): RunViewState | undefined {
@@ -83,15 +91,23 @@ export function applyEvent(state: TuiViewState, event: OmaLoopEvent): void {
     case "turn_end":
     case "compaction_end":
     case "retry_end": {
+      // A finished assistant message settles its thinking block: the next
+      // turn's reasoning must not append to the previous turn's.
+      const run = currentRun(state);
+      for (const item of run?.items ?? []) {
+        if (item.kind === "thinking") item.streaming = false;
+      }
       break;
     }
     case "tool_execution_start": {
       const run = ensureRunningRun(state);
-      run.items.push({
+      const item: TranscriptItem = {
         kind: "tool",
         text: `${event.toolName}…`,
         streaming: true,
-      });
+      };
+      if (event.input !== undefined) item.input = event.input;
+      run.items.push(item);
       break;
     }
     case "tool_execution_end": {
@@ -102,6 +118,7 @@ export function applyEvent(state: TuiViewState, event: OmaLoopEvent): void {
         if (item.kind === "tool" && item.streaming) {
           item.streaming = false;
           item.text = `${event.toolName}`;
+          if (event.result !== undefined) item.result = event.result;
           break;
         }
       }

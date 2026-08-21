@@ -3,6 +3,8 @@ import { mkdirSync, rmSync } from "node:fs";
 import {
   appendSessionCompaction,
   appendSessionMessages,
+  appendSessionTitle,
+  listSessions,
   loadSessionMessages,
 } from "./session-file.js";
 
@@ -37,5 +39,27 @@ describe("session-file compaction round-trip", () => {
       { role: "assistant", text: "a" },
     ]);
     expect(loadSessionMessages("s2")).toHaveLength(2);
+  });
+});
+
+describe("session-file title", () => {
+  test("title event surfaces in listSessions; last one wins; preview falls back", () => {
+    appendSessionMessages("t1", dir, [{ role: "user", text: "fix the login bug" }]);
+    appendSessionTitle("t1", "Fix login bug");
+    appendSessionTitle("t1", "Fix login button on mobile");
+
+    const listed = listSessions().find((s) => s.id === "t1");
+    expect(listed?.title).toBe("Fix login button on mobile");
+    expect(listed?.preview).toBe("fix the login bug");
+
+    // The title event is not a message: replay is unaffected.
+    expect(loadSessionMessages("t1")).toHaveLength(1);
+  });
+
+  test("session without title event lists with preview only", () => {
+    appendSessionMessages("t2", dir, [{ role: "user", text: "hello" }]);
+    const listed = listSessions().find((s) => s.id === "t2");
+    expect(listed?.title).toBeUndefined();
+    expect(listed?.preview).toBe("hello");
   });
 });

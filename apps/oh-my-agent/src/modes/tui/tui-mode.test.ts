@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createModelRuntime } from "@chengchenccc/ai";
 import { registerBuiltinProviders } from "../../core/run-runtime.js";
 import { runTuiSession, type TuiIo } from "./tui-mode.js";
-import { applyEvent, applyOutcome, initialViewState, type TuiViewState } from "./view-state.js";
+import { applyEvent, initialViewState, type TuiViewState } from "./view-state.js";
 
 /** Scripted TuiIo: feeds idle inputs sequentially, captures renders.
  *  Live submits (during a run) are recorded and forwarded to the handler. */
@@ -84,10 +84,24 @@ describe("view-state folding", () => {
     });
   });
 
-  test("failed outcome appends an error run", () => {
+  test("message_end settles thinking so the next turn starts a fresh block", () => {
     const state = initialViewState();
-    applyOutcome(state, { status: "failed", error: "boom" });
-    expect(state.runs.at(-1)?.items[0]?.kind).toBe("error");
+    applyEvent(state, { type: "agent_start" });
+    applyEvent(state, { type: "thinking_update", text: "turn one reasoning" });
+    applyEvent(state, { type: "message_start" });
+    applyEvent(state, { type: "message_update", text: "answer" });
+    applyEvent(state, { type: "message_end" });
+    applyEvent(state, { type: "thinking_update", text: "turn two reasoning" });
+    const thinking = state.runs[0]!.items.filter((i) => i.kind === "thinking");
+    expect(thinking).toHaveLength(2);
+    expect(thinking[0]).toMatchObject({ text: "turn one reasoning", streaming: false });
+    expect(thinking[1]).toMatchObject({ text: "turn two reasoning", streaming: true });
+  });
+
+  test("initial view state hides thinking detail and tool detail", () => {
+    const state = initialViewState();
+    expect(state.showThinking).toBe(false);
+    expect(state.showToolDetail).toBe(false);
   });
 });
 
@@ -207,6 +221,102 @@ describe("tui session (headless, fake provider)", () => {
       expect(statuses.length).toBeGreaterThan(0);
       // no runs started beyond the command echoes
       expect(last.runs.every((r) => r.running === false)).toBe(true);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  test("slash commands: help lists, unknown hints, /model lists catalog", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-cmd-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    const registered: number[] = [];
+    try {
+      const base = scriptedIo(["/help", "/nonsense", "/model", "/model fake/missing", "/exit"]);
+      const io: TuiIo = {
+        ...base,
+        setSlashCommands: (commands) => registered.push(commands.length),
+      };
+      const code = await runTuiSession(
+        { modelRuntime: testModelRuntime(), workspaceRoot: sessionDir },
+        io,
+      );
+      expect(code).toBe(0);
+      // The command table reached the autocomplete seam once.
+      expect(registered).toEqual([11]);
+      const statuses = base.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
+        .map((i) => i.text);
+      // /help lists the commands
+      expect(statuses.some((t) => t.includes("/help"))).toBe(true);
+      expect(statuses.some((t) => t.includes("/abort"))).toBe(true);
+      // unknown command hints at /help
+      expect(statuses.some((t) => t.includes("unknown command /nonsense"))).toBe(true);
+      // /model without args lists the catalog, fake/echo present
+      expect(statuses.some((t) => t.includes("fake/echo"))).toBe(true);
+      // /model with an id not in the catalog is rejected
+      expect(statuses.some((t) => t.includes("unknown model: fake/missing"))).toBe(true);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  test("/resume lists saved sessions and resumes by unique prefix", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-resume-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    try {
+      // Seed one saved session with a recognizable first user message.
+      const seed = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(
+        join(sessionDir, `${seed}.jsonl`),
+        [
+          JSON.stringify({
+            type: "message",
+            id: "m1",
+            message: { role: "user", text: "hello resume" },
+          }),
+          JSON.stringify({
+            type: "title",
+            timestamp: "2026-08-21T00:00:00Z",
+            title: "Greet resume",
+          }),
+          JSON.stringify({
+            type: "message",
+            id: "m2",
+            message: { role: "assistant", text: "hi" },
+          }),
+        ].join("\n"),
+      );
+      // Phase 1: unknown prefix is rejected (nothing cleared yet).
+      const miss = scriptedIo(["/resume zzz", "/exit"]);
+      await runTuiSession({ modelRuntime: testModelRuntime(), workspaceRoot: sessionDir }, miss);
+      const missStatuses = miss.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
+        .map((i) => i.text);
+      expect(missStatuses.some((t) => t.includes("no session matches: zzz"))).toBe(true);
+
+      // Phase 2: resume by unique prefix (clears the transcript), then list
+      // last so the listing statuses survive in the final state.
+      const io = scriptedIo(["/resume aaaaaaaa", "/resume", "/exit"]);
+      const code = await runTuiSession(
+        { modelRuntime: testModelRuntime(), workspaceRoot: sessionDir },
+        io,
+      );
+      expect(code).toBe(0);
+      const statuses = io.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
+        .map((i) => i.text);
+      // Listing shows the seeded id; the auto title replaces the raw preview
+      expect(statuses.some((t) => t.includes(seed))).toBe(true);
+      expect(statuses.some((t) => t.includes("Greet resume"))).toBe(true);
+      expect(statuses.some((t) => t.includes("hello resume"))).toBe(false);
+      // Unique prefix resumes: 2 messages loaded (title event is not a message)
+      expect(statuses.some((t) => t.includes(`resumed session: ${seed} (2 messages)`))).toBe(true);
     } finally {
       delete process.env.OMA_SESSION_DIR;
       rmSync(sessionDir, { recursive: true, force: true });

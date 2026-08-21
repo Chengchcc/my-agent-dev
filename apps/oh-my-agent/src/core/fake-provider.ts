@@ -77,6 +77,13 @@ export function fakeProvider(
         yield { stopReason: "tool_use" };
         return;
       }
+
+      // OMA_FAKE_THINKING emits a reasoning delta before the text so the
+      // thinking-transcript path (thinking_update events, TUI ctrl+t) is
+      // testable end to end.
+      if (env.OMA_FAKE_THINKING) {
+        yield { delta: { type: "reasoning", text: env.OMA_FAKE_THINKING } };
+      }
       // Model-dependent text makes `--model` observable end to end.
       // OMA_FAKE_TEXT overrides it (e.g. a JSON workflow verdict).
       yield {
