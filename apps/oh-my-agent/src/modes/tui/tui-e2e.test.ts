@@ -451,4 +451,43 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       rmSync(sessDir, { recursive: true, force: true });
     }
   }, 30_000);
+
+  test("fixed header banner, idle footer and ctrl+p model picker", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-header-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-header-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    try {
+      const vt = new VirtualTerminal(100, 45);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
+        io,
+      );
+
+      await vt.waitForRender();
+      const boot = screen(vt);
+      // Claude-style header: ASCII wordmark + model/session line.
+      expect(boot).toContain("█");
+      expect(boot).toMatch(/session \S+/);
+      // Idle footer with key hints.
+      expect(boot).toContain("ctrl+p model");
+
+      // ctrl+p opens the model picker overlay with the catalog.
+      vt.sendInput("\x10");
+      await vt.waitForRender();
+      const overlay = screen(vt);
+      expect(overlay).toContain("pick model");
+      expect(overlay).toContain("fake/echo");
+
+      // Esc cancels; /exit quits.
+      vt.sendInput("\x1b");
+      await vt.waitForRender();
+      await typeAndSubmit(vt, "/exit");
+      expect(await sessionDone).toBe(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

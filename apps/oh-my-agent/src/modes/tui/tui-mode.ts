@@ -53,8 +53,8 @@ export interface TuiModeOptions {
   sessionId?: string;
 }
 
-/** View/abort commands from the terminal (Esc abort, ctrl+t, ctrl+o). */
-export type TuiCommand = "toggleThinking" | "toggleToolDetail" | "abort";
+/** View/abort commands from the terminal (Esc abort, ctrl+t, ctrl+o, ctrl+p). */
+export type TuiCommand = "toggleThinking" | "toggleToolDetail" | "abort" | "pickModel";
 
 export interface TuiIo {
   /** Render the current view state. */
@@ -82,6 +82,13 @@ export interface TuiIo {
       workspace?: string;
     }>,
   ): Promise<string | null>;
+  /** Interactive model picker overlay (ctrl+p); resolves the chosen
+   *  canonical `<provider>/<model>` id, or null when cancelled. */
+  pickModel?(
+    models: ReadonlyArray<{ id: string; label: string; description?: string }>,
+  ): Promise<string | null>;
+  /** Update the fixed header's model/session line. */
+  setHeader?(info: { model?: string; sessionId?: string }): void;
   /** Stop the terminal (restore modes). */
   close(): void;
 }
@@ -215,6 +222,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     state.runs.push({ items, running: false });
   }
 
+  io.setHeader?.({ model: modelId, sessionId: session.sessionId });
+
   // One command handler for the whole session: toggles work between runs,
   // abort only while a run is live.
   io.onCommand?.((cmd) => {
@@ -222,6 +231,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       state.showThinking = !state.showThinking;
     } else if (cmd === "toggleToolDetail") {
       state.showToolDetail = !state.showToolDetail;
+    } else if (cmd === "pickModel") {
+      void pickModelInteractive();
     } else if (liveRuntime) {
       void liveRuntime.stop().catch(() => {});
     }
@@ -233,26 +244,52 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     return catalog.models.map((m) => `${m.providerId}/${m.modelId}`);
   }
 
+  /** ctrl+p: interactive model picker overlay. */
+  async function pickModelInteractive(): Promise<void> {
+    if (!io.pickModel) return;
+    const catalog = await opts.modelRuntime.getCatalog();
+    const picked = await io.pickModel(
+      catalog.models.map((m) => ({
+        id: `${m.providerId}/${m.modelId}`,
+        label: `${m.providerId}/${m.modelId}`,
+        description: m.displayName,
+      })),
+    );
+    if (!picked) return;
+    modelId = picked;
+    io.setHeader?.({ model: modelId, sessionId: session.sessionId });
+    pushStatus(`model: ${modelId}`);
+    io.render(state);
+  }
+
   const commands: ReadonlyArray<{
     name: string;
     description: string;
     argumentHint?: string;
+    group: string;
     run: (args: string) => void | Promise<void>;
   }> = [
     {
       name: "help",
       description: "list slash commands",
+      group: "general",
       run: () => {
+        const groups: Array<[string, string[]]> = [];
+        for (const c of commands) {
+          const entry = `/${c.name}${c.argumentHint ? ` ${c.argumentHint}` : ""} — ${c.description}`;
+          const found = groups.find(([name]) => name === c.group);
+          if (found) found[1].push(entry);
+          else groups.push([c.group, [entry]]);
+        }
         pushStatus(
-          commands.map(
-            (c) => `/${c.name}${c.argumentHint ? ` ${c.argumentHint}` : ""} — ${c.description}`,
-          ),
+          groups.flatMap(([group, entries]) => [`[${group}]`, ...entries.map((e) => `  ${e}`)]),
         );
       },
     },
     {
       name: "exit",
       description: "quit the session",
+      group: "general",
       run: () => {
         quitting = true;
       },
@@ -260,6 +297,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     {
       name: "quit",
       description: "alias of /exit",
+      group: "general",
       run: () => {
         quitting = true;
       },
@@ -267,6 +305,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     {
       name: "session",
       description: "show the current session id and title",
+      group: "session",
       run: () => {
         pushStatus(`session: ${session.sessionId}${sessionTitle ? ` — ${sessionTitle}` : ""}`);
       },
@@ -275,6 +314,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       name: "model",
       description: "show or switch the model",
       argumentHint: "<provider/model>",
+      group: "model",
       run: async (args) => {
         if (!args) {
           const models = await listModels();
@@ -291,6 +331,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
           return;
         }
         modelId = args;
+        io.setHeader?.({ model: modelId, sessionId: session.sessionId });
         pushStatus(`model: ${modelId}`);
       },
     },
@@ -298,6 +339,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       name: "resume",
       description: "list/resume sessions (all = every workspace)",
       argumentHint: "<session>",
+      group: "session",
       run: async (args) => {
         // "all" = cross-workspace listing (pi's session selector "all"
         // scope); any other arg is an id/prefix within this workspace.
@@ -320,6 +362,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
             session = resolveSession(picked, dir);
             sessionTitle = summary?.title;
             state.runs.length = 0;
+            io.setHeader?.({ model: modelId, sessionId: session.sessionId });
             pushStatus(
               `resumed session: ${session.sessionId} (${session.messages.length} messages)`,
             );
@@ -347,22 +390,26 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
         session = resolveSession(matches[0]!.id, dir);
         sessionTitle = matches[0]!.title;
         state.runs.length = 0;
+        io.setHeader?.({ model: modelId, sessionId: session.sessionId });
         pushStatus(`resumed session: ${session.sessionId} (${session.messages.length} messages)`);
       },
     },
     {
       name: "new",
       description: "start a fresh session (clears the transcript)",
+      group: "session",
       run: () => {
         session = resolveSession();
         sessionTitle = undefined;
         state.runs.length = 0;
+        io.setHeader?.({ model: modelId, sessionId: session.sessionId });
         pushStatus(`new session: ${session.sessionId}`);
       },
     },
     {
       name: "clear",
       description: "clear the transcript view (keeps the session)",
+      group: "view",
       run: () => {
         state.runs.length = 0;
       },
@@ -370,6 +417,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     {
       name: "thinking",
       description: "toggle thinking blocks (ctrl+t)",
+      group: "view",
       run: () => {
         state.showThinking = !state.showThinking;
         pushStatus(`thinking ${state.showThinking ? "expanded" : "collapsed"}`);
@@ -378,6 +426,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     {
       name: "tools",
       description: "toggle tool detail (ctrl+o)",
+      group: "view",
       run: () => {
         state.showToolDetail = !state.showToolDetail;
         pushStatus(`tool detail ${state.showToolDetail ? "expanded" : "collapsed"}`);
@@ -386,6 +435,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     {
       name: "abort",
       description: "abort the live run (esc)",
+      group: "view",
       run: () => {
         if (liveRuntime) void liveRuntime.stop().catch(() => {});
         else pushStatus("no live run");
@@ -541,9 +591,33 @@ export function createTerminalIo(
   workspaceRoot: string = process.cwd(),
 ): TuiIo {
   const tui = new TUI(terminal);
+  const headerContainer = new Container();
   const transcript = new Container();
   const statusContainer = new Container();
   const editor = new Editor(tui, EDITOR_THEME);
+  let headerInfo = "oma";
+  let headerModel = "";
+  let headerSession = "";
+
+  // Claude-style fixed header: ASCII wordmark banner + model/session line +
+  // separator. Rendered once and updated via setHeader; transcript scrolls
+  // below it independently.
+  function renderHeader(): void {
+    headerContainer.clear();
+    const lines = [
+      "\u001b[36m  ██████╗ ███╗   ███╗ █████╗ \u001b[0m",
+      "\u001b[36m ██╔═══██╗████╗ ████║██╔══██╗\u001b[0m",
+      "\u001b[36m ██║   ██║██╔████╔██║███████║\u001b[0m",
+      "\u001b[36m ██║   ██║██║╚██╔╝██║██╔══██║\u001b[0m",
+      "\u001b[36m ╚██████╔╝██║ ╚═╝ ██║██║  ██║\u001b[0m",
+      "\u001b[36m  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝\u001b[0m",
+      `\u001b[2m  ${headerInfo}${headerModel ? ` · model ${headerModel}` : ""}${headerSession ? ` · session ${headerSession.slice(0, 8)}` : ""}\u001b[0m`,
+      "\u001b[2m  ─────────────────────────────────────────────────────────────\u001b[0m",
+    ];
+    for (const line of lines) headerContainer.addChild(new Text(line, undefined, 1));
+  }
+
+  renderHeader();
   let pending: ((value: string | null) => void) | null = null;
   let busy = false;
   let liveHandler: ((text: string) => void) | null = null;
@@ -630,6 +704,10 @@ export function createTerminalIo(
       if (commandHandler) commandHandler("toggleToolDetail");
       return { consume: true };
     }
+    if (matchesKey(data, "ctrl+p")) {
+      if (commandHandler) commandHandler("pickModel");
+      return { consume: true };
+    }
     // Transcript scroll: PageUp/PageDown step by a viewport; ctrl+c clears
     // the editor when idle and aborts the live run when busy.
     if (matchesKey(data, "pageUp")) {
@@ -654,6 +732,17 @@ export function createTerminalIo(
     return undefined;
   });
 
+  function renderIdleFooter(): void {
+    if (busy || statusContainer.children.length > 0) return;
+    statusContainer.addChild(
+      new Text(
+        "  enter send · esc abort · ctrl+t thinking · ctrl+o tools · ctrl+p model · /help",
+        0,
+        0,
+      ),
+    );
+  }
+
   function render(state: TuiViewState): void {
     transcript.clear();
     const lines: string[] = [];
@@ -666,6 +755,7 @@ export function createTerminalIo(
     scrollOffset = Math.min(scrollOffset, Math.max(0, lines.length - viewportLines()));
     const visible = scrollOffset > 0 ? lines.slice(0, lines.length - scrollOffset) : lines;
     for (const line of visible) transcript.addChild(new Text(line, undefined, 1));
+    renderIdleFooter();
     tui.requestRender();
   }
 
@@ -734,6 +824,7 @@ export function createTerminalIo(
     return lines;
   }
 
+  tui.addChild(headerContainer);
   tui.addChild(transcript);
   tui.addChild(statusContainer);
   tui.addChild(editor);
@@ -770,6 +861,7 @@ export function createTerminalIo(
           loader.stop();
           loader = null;
         }
+        renderIdleFooter();
       }
       tui.requestRender();
     },
@@ -815,6 +907,39 @@ export function createTerminalIo(
         resolve(null);
       };
       return promise;
+    },
+    pickModel(models) {
+      const { promise, resolve } = Promise.withResolvers<string | null>();
+      const items = models.map((m) => ({
+        value: m.id,
+        label: m.id,
+        description: m.description,
+      }));
+      const list = new SelectList(items, 10, EDITOR_THEME.selectList, {
+        minPrimaryColumnWidth: 12,
+        maxPrimaryColumnWidth: 32,
+      });
+      const overlayBox = new PickerOverlay(
+        new Text("  pick model — ↑/↓ select, enter confirm, esc cancel", 0, 0),
+        list,
+      );
+      const overlay = tui.showOverlay(overlayBox, { width: "60%", anchor: "center" });
+      list.onSelect = (item) => {
+        overlay.hide();
+        resolve(item.value);
+      };
+      list.onCancel = () => {
+        overlay.hide();
+        resolve(null);
+      };
+      return promise;
+    },
+    setHeader(info) {
+      headerInfo = "oma";
+      headerModel = info.model ?? "";
+      headerSession = info.sessionId ?? "";
+      renderHeader();
+      tui.requestRender();
     },
     close() {
       if (loader) loader.stop();
