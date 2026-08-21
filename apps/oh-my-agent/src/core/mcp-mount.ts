@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PluginTool } from "@chengchenccc/agent";
+import { killProcessTree } from "./process-tree.js";
 
 /** Generic .mcp.json mounting (ADR 0022): the workspace bridge writes one
  *  .mcp.json (user servers + product-tools + knowledge); the child mounts
@@ -43,27 +44,6 @@ function loadMcpConfig(workspaceRoot: string): Record<string, McpJsonServer> {
   } catch {
     return {};
   }
-}
-
-/** Recursively collect every descendant pid of `pid` (pgrep -P walk). */
-function collectDescendants(pid: number): number[] {
-  const descendants: number[] = [];
-  const queue = [pid];
-  while (queue.length > 0) {
-    const parent = queue.shift()!;
-    const out = Bun.spawnSync(["pgrep", "-P", String(parent)], { stdout: "pipe" })
-      .stdout.toString()
-      .trim();
-    if (!out) continue;
-    for (const line of out.split("\n")) {
-      const child = Number(line);
-      if (child > 0) {
-        descendants.push(child);
-        queue.push(child);
-      }
-    }
-  }
-  return descendants;
 }
 
 async function connectServer(name: string, server: McpJsonServer): Promise<McpClientLike | null> {
@@ -109,20 +89,8 @@ async function connectServer(name: string, server: McpJsonServer): Promise<McpCl
       callTool,
       listTools,
       async close() {
-        // Collect the tree BEFORE the SDK close: once the direct child is
-        // SIGKILLed, its children are reparented to init and pgrep -P can
-        // no longer find them. The npx/shadcn grandchildren inherit the
-        // stdio pipes and would otherwise keep the oma process alive.
-        const tree =
-          stdioRootPid === null ? [] : [stdioRootPid, ...collectDescendants(stdioRootPid)];
         await closeSdk();
-        for (const pid of tree) {
-          try {
-            process.kill(pid, "SIGKILL");
-          } catch {
-            /* already gone */
-          }
-        }
+        if (stdioRootPid !== null) killProcessTree(stdioRootPid);
       },
     };
   } catch (err) {

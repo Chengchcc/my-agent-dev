@@ -21,7 +21,6 @@ import type { AIMessageChunk, JsonSchema } from "@chengchenccc/core";
 import type { Message } from "@chengchenccc/message";
 import { createProgressiveSkillPlugin } from "@chengchenccc/plugin-progressive-skill";
 import { createRecapPlugin } from "@chengchenccc/plugin-recap";
-
 import {
   createBashTool,
   createDdgWebSearchPort,
@@ -40,6 +39,7 @@ import {
 } from "@chengchenccc/tools-common";
 import { fakeProvider } from "./fake-provider.js";
 import { mountWorkspaceMcpServers } from "./mcp-mount.js";
+import { killProcessTree } from "./process-tree.js";
 
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { readProductToolsManifest } from "./product-tools-manifest.js";
@@ -202,13 +202,27 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   // single executable path - never shell-split). Identity is injected per
   // call; timeout/abort close the transport so a canceled call cannot produce
   // a late side effect.
-  const clients = new Map<string, unknown>();
+  const clients = new Map<string, { client: unknown; stdioRootPid: number | null }>();
+
+  /** Close an MCP client and, for stdio servers, the whole descendant
+   *  process tree (npm-wrapped product tools leave grandchildren that
+   *  inherit the stdio pipes and keep oma alive). */
+  async function closeProductTool(entry: {
+    client: unknown;
+    stdioRootPid: number | null;
+  }): Promise<void> {
+    const mcp = entry.client as { close?: () => Promise<void> };
+    await mcp.close?.().catch(() => {});
+    if (entry.stdioRootPid !== null) killProcessTree(entry.stdioRootPid);
+  }
+
   const caller: ProductToolCaller = {
     async callTool(p) {
-      let client = clients.get(p.entrypoint);
-      if (!client) {
+      let entry = clients.get(p.entrypoint);
+      if (!entry) {
         const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
         let transport: unknown;
+        let stdioRootPid: number | null = null;
         if (p.entrypoint.startsWith("sse:")) {
           const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
           // Service-token auth for remote Product Tools endpoints: the token
@@ -234,10 +248,14 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
         }
         const c = new Client({ name: "oma", version: "0.1.0" }, { capabilities: {} });
         await c.connect(transport as never);
-        client = c;
-        clients.set(p.entrypoint, c);
+        if (p.entrypoint.startsWith("stdio:")) {
+          const stdio = transport as { pid?: number | null };
+          stdioRootPid = stdio.pid ?? null;
+        }
+        entry = { client: c, stdioRootPid };
+        clients.set(p.entrypoint, entry);
       }
-      const mcpClient = client as {
+      const mcpClient = entry.client as {
         callTool(params: {
           name: string;
           arguments?: unknown;
@@ -247,7 +265,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       };
       const cancel = (): void => {
         clients.delete(p.entrypoint);
-        void mcpClient.close().catch(() => {});
+        void closeProductTool(entry!).catch(() => {});
       };
       p.signal?.addEventListener("abort", cancel, { once: true });
       try {
@@ -669,13 +687,9 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       const closeWithTimeout = (p: Promise<unknown>): Promise<unknown> =>
         Promise.race([p, new Promise((r) => setTimeout(r, 2000))]);
       const closePromises: Promise<unknown>[] = [];
-      for (const [entrypoint, c] of clients) {
+      for (const [entrypoint, entry] of clients) {
         clients.delete(entrypoint);
-        closePromises.push(
-          closeWithTimeout(
-            (c as { close?: () => Promise<void> }).close?.().catch(() => {}) ?? Promise.resolve(),
-          ),
-        );
+        closePromises.push(closeWithTimeout(closeProductTool(entry)));
       }
       closePromises.push(closeWithTimeout(closeMounted()));
       closePromises.push(closeWithTimeout(store.close()));
