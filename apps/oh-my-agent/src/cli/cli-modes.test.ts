@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { OmaOutput } from "../protocol/index.js";
@@ -83,6 +83,24 @@ describe("oma CLI (spawned)", () => {
     expect(res2.stdout).toBe("done2\n");
     // failures and logs go to stderr, never stdout
     expect(res.stdout.split("\n").length).toBe(2);
+  }, 15_000);
+
+  test("print mode persists the completed turn to a session file", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-sess-"));
+    const res = await spawnCli(["-p", "fix this"], { OMA_SESSION_DIR: sessionDir });
+    expect(res.exitCode).toBe(0);
+    const files = readdirSync(sessionDir).filter((f) => f.endsWith(".jsonl"));
+    expect(files).toHaveLength(1);
+    const lines = readFileSync(join(sessionDir, files[0]!), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { type: string; message?: { role: string } });
+    expect(lines[0]?.type).toBe("session");
+    const msgs = lines.filter((l) => l.type === "message");
+    // input (user) + final assistant message are persisted
+    expect(msgs[0]?.message?.role).toBe("user");
+    expect(msgs.some((m) => m.message?.role === "assistant")).toBe(true);
+    rmSync(sessionDir, { recursive: true, force: true });
   }, 15_000);
 
   test("json mode (--mode json): all events + exactly one outcome as JSONL, exit 0", async () => {

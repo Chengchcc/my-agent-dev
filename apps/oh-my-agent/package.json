@@ -32,7 +32,8 @@
     "@chengchenccc/plugin-todo": "workspace:*",
     "@chengchenccc/plugin-recap": "workspace:*",
     "@chengchenccc/tools-common": "workspace:*",
-    "zod": "^3.23.0"
+    "zod": "^3.23.0",
+    "@chengchenccc/tui": "workspace:*"
   },
   "devDependencies": {
     "@chengchenccc/test-helpers": "workspace:*",

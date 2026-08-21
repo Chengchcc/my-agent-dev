@@ -6,6 +6,7 @@ import { registerBuiltinProviders } from "./core/run-runtime.js";
 import { runJsonMode } from "./modes/json-mode.js";
 import { runPrintMode } from "./modes/print-mode.js";
 import { runRpcMode } from "./modes/rpc/rpc-mode.js";
+import { runTuiMode } from "./modes/tui/tui-mode.js";
 
 export const OMA_VERSION = "0.1.0";
 
@@ -41,6 +42,26 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       process.off("SIGTERM", onSignal);
       process.off("SIGINT", onSignal);
     }
+  }
+
+  if (args.mode === "tui") {
+    return runTuiMode({
+      modelRuntime,
+      workspaceRoot: process.cwd(),
+      model: args.model,
+      sessionId: args.session,
+    });
+  }
+
+  // Standalone default: bare interactive `oma` on a TTY (no prompt, no
+  // pipe) opens the TUI; explicit -p/print or a pipe stays one-shot.
+  if (!args.prompt && process.stdin.isTTY) {
+    return runTuiMode({
+      modelRuntime,
+      workspaceRoot: process.cwd(),
+      model: args.model,
+      sessionId: args.session,
+    });
   }
 
   const prompt = mergeInitialInput({

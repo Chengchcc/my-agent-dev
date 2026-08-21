@@ -49,10 +49,37 @@
       }
     }
   },
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "css": {
     "parser": {
       "tailwindDirectives": true
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "packages/tui/**"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noControlCharactersInRegex": "off"
+          },
+          "complexity": {
+            "noUselessEmptyExport": "off"
+          },
+          "style": {
+            "noNonNullAssertion": "off",
+            "useNodejsImportProtocol": "off"
+          }
+        }
+      }
+    }
+  ]
 }

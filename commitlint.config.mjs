@@ -25,7 +25,7 @@ export default {
         "ai",
         "loop",
         "tools-common",
-        "test-helpers",
+        "tui",
         // Plugins
         "plugin-progressive-skill",
         "plugin-todo",

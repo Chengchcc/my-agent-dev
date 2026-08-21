@@ -2,6 +2,8 @@ import type { ModelRuntime } from "@chengchenccc/ai";
 import type { Message } from "@chengchenccc/message";
 import { buildCliRunInput } from "../cli/initial-input.js";
 import { createOmaRuntime } from "../core/create-runtime.js";
+import { newSessionId } from "../core/session-file.js";
+import { persistSessionTurn } from "../core/session-loop.js";
 
 export interface CliRunOptions {
   prompt: string;
@@ -10,7 +12,6 @@ export interface CliRunOptions {
   /** Canonical `<provider>/<model>` id; undefined = first available. */
   model?: string;
 }
-
 /** Final assistant text of an outcome Message: the plain `text` field, or the
  *  concatenated text blocks. Never falls back to placeholder text. */
 export function assistantText(message: Message | undefined): string {
@@ -26,7 +27,8 @@ export function assistantText(message: Message | undefined): string {
 }
 
 /** Print mode: one Run, one prompt; stdout gets ONLY the final assistant
- *  text; failures go to stderr with a non-zero exit code. */
+ *  text; failures go to stderr with a non-zero exit code. The completed
+ *  turn is persisted to a fresh session file (stdout stays clean). */
 export async function runPrintMode(opts: CliRunOptions): Promise<number> {
   const built = await buildCliRunInput({
     prompt: opts.prompt,
@@ -34,6 +36,7 @@ export async function runPrintMode(opts: CliRunOptions): Promise<number> {
     modelRuntime: opts.modelRuntime,
     modelId: opts.model,
   });
+  const sessionId = newSessionId();
   const runtime = await createOmaRuntime({
     runId: built.run.runId,
     modelId: built.run.model.modelId,
@@ -46,6 +49,14 @@ export async function runPrintMode(opts: CliRunOptions): Promise<number> {
     const segment = await runtime.run(built);
     const outcome = await segment.outcome;
     if (outcome.status === "completed") {
+      await persistSessionTurn({
+        sessionId,
+        cwd: opts.workspaceRoot,
+        runtime,
+        outcomeMessages: outcome.messages ?? [],
+        inputMessage: built.input.message,
+        previousMessages: [],
+      });
       // Final answer = the last assistant message with text in the
       // canonical sequence (ADR 0017).
       const finalAnswer = [...(outcome.messages ?? [])]

@@ -1,6 +1,7 @@
 // Vendored terminal library: control-character regexes are the protocol itself.
-import root from "../../eslint.config.js";
+
 import tseslint from "typescript-eslint";
+import root from "../../eslint.config.js";
 
 export default tseslint.config(root, {
   files: ["src/**/*.ts"],

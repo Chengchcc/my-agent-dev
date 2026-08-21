@@ -59,8 +59,12 @@ describe("parseArgs (syntax only)", () => {
     expect(() => parseArgs(["--json"])).toThrow(UsageError);
   });
 
+  test("--session without a value is a usage error", () => {
+    expect(() => parseArgs(["--session"])).toThrow(UsageError);
+  });
+
   test("unknown options are rejected", () => {
-    expect(() => parseArgs(["--session"])).toThrow(/unknown option/);
+    expect(() => parseArgs(["--nope"])).toThrow(/unknown option/);
   });
 });
 
