@@ -30,7 +30,6 @@ export async function* retryStream(
   while (attempt < opts.maxAttempts) {
     if (signal?.aborted) throw new Error("Aborted");
     attempt++;
-    await opts.onRetryStart?.(attempt);
     let committed = false; // becomes true on the first forwarded chunk
     try {
       for await (const chunk of streamFactory(signal)) {
@@ -46,8 +45,10 @@ export async function* retryStream(
       const canRetry =
         !committed && err instanceof ProviderError && err.retryable && attempt < opts.maxAttempts;
       if (canRetry) {
+        // The retry callback fires only for an actual retry - attempt 1 is
+        // the normal path and must not surface as a retry status.
+        await opts.onRetryStart?.(attempt + 1);
         // Server-requested delay (Retry-After header) takes precedence over
-        // our own backoff. Fall back to full-jitter exponential
         // backoff capped at 60s when the server doesn't suggest a delay.
         const serverDelay = err.retryAfterMs;
         const backoff = opts.baseDelayMs * 2 ** (attempt - 1);

@@ -727,6 +727,9 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
         toolName: call.name,
         kind: tool?.kind ?? "native",
         callId: call.id,
+        // Original model call args (pre-plugin-transform) so the transcript
+        // can show what the model asked for.
+        input: call.input,
       });
       let result: unknown;
       let isError = false;

@@ -10,7 +10,14 @@ export type OmaLoopEvent =
   | { type: "message_update"; text: string }
   | { type: "thinking_update"; text: string }
   | { type: "message_end" }
-  | { type: "tool_execution_start"; toolName: string; kind?: "native" | "product"; callId: string }
+  | {
+      type: "tool_execution_start";
+      toolName: string;
+      kind?: "native" | "product";
+      callId: string;
+      /** The tool's resolved input (model call args), for transcript display. */
+      input?: Readonly<Record<string, unknown>>;
+    }
   | {
       type: "tool_execution_end";
       toolName: string;
