@@ -483,12 +483,14 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
           // same handle back (no new handle on follow-ups).
           ...(existing ? {} : { handle }),
         };
-        // A1: best-effort per-subagent state dump — the audit trail survives
-        // a crash/abort that the in-memory store cannot.
+        // A1/F2: best-effort per-subagent state dump — the audit trail
+        // survives a crash/abort that the in-memory store cannot. Includes
+        // the pinned spec snapshot so a verdict dispute can be traced to
+        // exactly what the subagent was asked to do.
         const safeName = (s: string): boolean => /^[A-Za-z0-9-]+$/.test(s);
         if (opts.workspaceAccess === "read_write" && safeName(workflowId) && safeName(agentId)) {
           try {
-            const rel = `.workflows/${workflowId}/${agentId}.state.json`;
+            const rel = `.workflows/${workflowId}/${agentId}.session.json`;
             const abs = join(opts.workspaceRoot, rel);
             mkdirSync(dirname(abs), { recursive: true });
             writeFileSync(
@@ -501,6 +503,14 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
                   ok: agentResult.ok,
                   ...(agentResult.error ? { error: agentResult.error } : {}),
                   status: result.status,
+                  spec: {
+                    prompt: spec.prompt,
+                    ...(spec.label ? { label: spec.label } : {}),
+                    ...(spec.systemPrompt ? { systemPrompt: spec.systemPrompt } : {}),
+                    ...(spec.toolNames ? { toolNames: spec.toolNames } : {}),
+                    ...(spec.modelId ? { modelId: spec.modelId } : {}),
+                    ...(spec.schema ? { schema: spec.schema } : {}),
+                  },
                   ...(result.usage ? { usage: result.usage } : {}),
                   ...(artifacts.length > 0 ? { artifacts } : {}),
                   messages: result.messages ?? [],
@@ -513,6 +523,10 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
           } catch (err) {
             console.error(`[workflow] state dump failed for ${input.agentId}:`, err);
           }
+        } else if (opts.workspaceAccess !== "read_write") {
+          console.warn(
+            `[workflow] read_only workspace: subagent session not dumped for ${agentId}`,
+          );
         }
         opts.emit({
           type: "workflow_agent_completed",

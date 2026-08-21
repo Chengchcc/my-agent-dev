@@ -374,7 +374,7 @@ describe("createWorkflowExecutor", () => {
     }
   });
 
-  test("subagent state dumps to .workflows/<wfId>/<agentId>.state.json (A1)", async () => {
+  test("subagent state dumps spec + transcript to .session.json (A1/F2)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "wf-state-"));
     const exec = createWorkflowExecutor({
       ...makeDeps(),
@@ -386,13 +386,22 @@ describe("createWorkflowExecutor", () => {
         workflowId: "wf-state",
         agentId: "a1",
         prompt: "go",
+        systemPrompt: "ROLE BODY",
+        toolNames: ["read"],
       });
       expect(result.ok).toBe(true);
       const state = JSON.parse(
-        readFileSync(join(dir, ".workflows/wf-state/a1.state.json"), "utf8"),
-      ) as { agentId?: string; messages?: unknown[] };
+        readFileSync(join(dir, ".workflows/wf-state/a1.session.json"), "utf8"),
+      ) as {
+        agentId?: string;
+        messages?: unknown[];
+        spec?: { prompt?: string; systemPrompt?: string; toolNames?: string[] };
+      };
       expect(state.agentId).toBe("a1");
       expect(Array.isArray(state.messages)).toBe(true);
+      expect(state.spec?.prompt).toBe("go");
+      expect(state.spec?.systemPrompt).toBe("ROLE BODY");
+      expect(state.spec?.toolNames).toEqual(["read"]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
