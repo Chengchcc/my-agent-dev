@@ -19,8 +19,14 @@ import { join } from "node:path";
  *  wire-loose shape. Strict `Message` typing is the runtime's job, applied
  *  where the loop consumes them, so this module performs no type bypass. */
 
+/** Default session store, isolated per workspace (pi's model): sessions
+ *  live under ~/.oma/sessions/--<cwd-encoded>--/ so different workspaces
+ *  never see each other's sessions. OMA_SESSION_DIR overrides entirely. */
 export function sessionDir(): string {
-  return process.env.OMA_SESSION_DIR ?? join(homedir(), ".oma", "sessions");
+  if (process.env.OMA_SESSION_DIR) return process.env.OMA_SESSION_DIR;
+  const cwd = process.cwd();
+  const safePath = `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+  return join(homedir(), ".oma", "sessions", safePath);
 }
 
 export function sessionPath(id: string): string {
