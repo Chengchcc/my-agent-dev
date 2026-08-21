@@ -1,0 +1,20 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+  "files": {
+    "includes": ["src/**", "!dist/**"]
+  },
+  "linter": {
+    "rules": {
+      "suspicious": {
+        "noControlCharactersInRegex": "off"
+      },
+      "complexity": {
+        "noUselessEmptyExport": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "off",
+        "useNodejsImportProtocol": "off"
+      }
+    }
+  }
+}

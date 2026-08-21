@@ -1,0 +1,33 @@
+{
+  "name": "@chengchenccc/tui",
+  "version": "0.1.0",
+  "description": "Terminal UI library with differential rendering (vendored from @earendil-works/pi-tui, MIT)",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/virtual-terminal.d.ts",
+      "default": "./dist/virtual-terminal.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "biome check . && eslint .",
+    "test": "bun test --pass-with-no-tests",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit"
+  },
+  "dependencies": {
+    "get-east-asian-width": "^1.6.0",
+    "marked": "^18.0.5"
+  },
+  "devDependencies": {
+    "@xterm/headless": "5.5.0"
+  }
+}

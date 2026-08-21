@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "allowImportingTsExtensions": true,
+    "noUncheckedIndexedAccess": false,
+    "target": "ES2024",
+    "rewriteRelativeImportExtensions": true,
+    "noEmit": false,
+    "types": ["bun"]
+  },
+  "include": ["src/**/*.ts"]
+}
