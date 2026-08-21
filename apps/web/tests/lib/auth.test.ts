@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
+// parseEnv requires BACKEND_AUTH_TOKEN; login's success path signs with
+// SESSION_SECRET. CI has no .env, so the test must be self-contained.
+process.env.BACKEND_AUTH_TOKEN = "test-token";
+process.env.SESSION_SECRET = "test-secret";
+
 /** Fresh module instances per case so the module-level env cache does not
  *  leak between scenarios. Bun treats the query string as a distinct
  *  module URL. */
