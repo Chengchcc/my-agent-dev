@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { api, type ChatModelOverride } from "@/lib/api";
+import { useModelList } from "@/features/models/hooks";
+import type { ChatModelOverride } from "@/lib/api";
 
 export type { ChatModelOverride };
 
@@ -33,7 +33,7 @@ export function ModelPicker({
   value: ChatModelOverride | null;
   onChange: (v: ChatModelOverride | null) => void;
 }) {
-  const { data } = useQuery({ queryKey: ["models"], queryFn: () => api.listModels() });
+  const { data } = useModelList();
 
   const providers = data?.providers ?? [];
   const selectedModel = providers

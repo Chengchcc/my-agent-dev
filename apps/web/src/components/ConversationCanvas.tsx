@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, Download, Pause, Play, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAgentList } from "@/features/agents/hooks";
+import { useConversationGoal } from "@/features/conversations/hooks";
+import { conversationKeys } from "@/features/conversations/query-keys";
 import { useConversation } from "@/hooks/useConversation";
 import type { ConversationSnapshot } from "@/lib/api";
 import { api } from "@/lib/api";
@@ -225,7 +227,8 @@ export function ConversationCanvas({
               : toast.success(msg),
         currentRunId,
         router: { push: router.push },
-        refreshGoal: () => qc.invalidateQueries({ queryKey: ["goal", conversationId] }),
+        refreshGoal: () =>
+          qc.invalidateQueries({ queryKey: conversationKeys.goal(conversationId) }),
       };
       await cmd.execute(ctx);
     },
@@ -494,10 +497,7 @@ export function ConversationCanvas({
 
 function GoalStatusBar({ conversationId }: { conversationId: string }) {
   const qc = useQueryClient();
-  const { data: goal } = useQuery({
-    queryKey: ["goal", conversationId],
-    queryFn: () => api.getGoal(conversationId),
-  });
+  const { data: goal } = useConversationGoal(conversationId);
 
   if (!goal?.condition) return null;
 
@@ -526,7 +526,7 @@ function GoalStatusBar({ conversationId }: { conversationId: string }) {
             className="h-6 px-2 text-[10px]"
             onClick={() => {
               api.setGoal(conversationId, { action: "resume" }).then(() => {
-                qc.invalidateQueries({ queryKey: ["goal", conversationId] });
+                qc.invalidateQueries({ queryKey: conversationKeys.goal(conversationId) });
                 toast.success("Goal resumed");
               });
             }}
@@ -540,7 +540,7 @@ function GoalStatusBar({ conversationId }: { conversationId: string }) {
             className="h-6 px-2 text-[10px]"
             onClick={() => {
               api.setGoal(conversationId, { action: "pause" }).then(() => {
-                qc.invalidateQueries({ queryKey: ["goal", conversationId] });
+                qc.invalidateQueries({ queryKey: conversationKeys.goal(conversationId) });
                 toast.success("Goal paused");
               });
             }}
@@ -554,7 +554,7 @@ function GoalStatusBar({ conversationId }: { conversationId: string }) {
           className="h-6 px-2 text-[10px] text-destructive hover:text-destructive"
           onClick={() => {
             api.setGoal(conversationId, { action: "clear" }).then(() => {
-              qc.invalidateQueries({ queryKey: ["goal", conversationId] });
+              qc.invalidateQueries({ queryKey: conversationKeys.goal(conversationId) });
               toast.success("Goal cleared");
             });
           }}

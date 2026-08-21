@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUp,
   Check,
@@ -17,6 +17,8 @@ import { type ChatModelOverride, ModelPicker } from "@/components/ModelPicker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useConversationInputs } from "@/features/conversations/hooks";
+import { conversationKeys } from "@/features/conversations/query-keys";
 import { api, type PendingInput } from "@/lib/api";
 import type { SenderRef } from "@/lib/conversation-reducer";
 import { slashCommands } from "@/lib/slash-commands";
@@ -82,13 +84,9 @@ export function Composer({
   // Pending input queue: backend branch_input_queue for this conversation.
   // Polls only while something is waiting; mutations refetch immediately.
   const qc = useQueryClient();
-  const inputsQuery = useQuery({
-    queryKey: ["conversation-inputs", conversationId],
-    queryFn: () => api.listConversationInputs(conversationId),
-    refetchInterval: (query) => (query.state.data?.inputs.length ? 2000 : false),
-  });
+  const inputsQuery = useConversationInputs(conversationId);
   const invalidateQueue = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ["conversation-inputs", conversationId] });
+    qc.invalidateQueries({ queryKey: conversationKeys.inputs(conversationId) });
   }, [qc, conversationId]);
   const steerMut = useMutation({
     mutationFn: (inputId: string) => api.steerConversationInput(conversationId, inputId),

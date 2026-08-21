@@ -11,8 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useAgentList } from "@/features/agents/hooks";
-import { useCreateConversation, useRecentConversations } from "@/features/conversations/hooks";
-import { type AgentRow, api, getForkSourceId } from "@/lib/api";
+import {
+  useConversationSearch,
+  useCreateConversation,
+  useRecentConversations,
+} from "@/features/conversations/hooks";
+import { conversationDetailQuery } from "@/features/conversations/queries";
+import { useProjectList } from "@/features/projects/hooks";
+import { type AgentRow, getForkSourceId } from "@/lib/api";
 
 function relativeTime(ts: number | null | undefined): string {
   if (!ts) return "";
@@ -26,8 +32,7 @@ function relativeTime(ts: number | null | undefined): string {
 /** Lazy "forked from X" marker - fetches source conversation title on demand. */
 function ForkSourceMarker({ sourceId, createdAt }: { sourceId: string; createdAt: number }) {
   const { data: sourceConv } = useQuery({
-    queryKey: ["conv", sourceId],
-    queryFn: () => api.getConversation(sourceId),
+    ...conversationDetailQuery(sourceId),
     staleTime: 60_000,
   });
   const sourceTitle = sourceConv?.title ?? `Conversation ${sourceId.slice(0, 8)}`;
@@ -48,10 +53,7 @@ export default function ChatOverviewPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const { data: agents } = useAgentList() as { data?: AgentRow[] };
-  const { data: projects } = useQuery({
-    queryKey: ["projects"],
-    queryFn: () => api.listProjects(),
-  });
+  const { data: projects } = useProjectList();
   const [agentId, setAgentId] = useState("default");
   const [projectId, setProjectId] = useState("");
   const selectedAgent = agents?.find((a) => a.id === agentId);
@@ -61,11 +63,7 @@ export default function ChatOverviewPage() {
     return () => clearTimeout(t);
   }, [searchQuery]);
 
-  const { data: searchResults } = useQuery({
-    queryKey: ["conversations", "search", debouncedQuery],
-    queryFn: () => api.searchConversations(debouncedQuery),
-    enabled: !!debouncedQuery,
-  });
+  const { data: searchResults } = useConversationSearch(debouncedQuery, !!debouncedQuery);
 
   function handleCreate() {
     if (!input.trim()) return;

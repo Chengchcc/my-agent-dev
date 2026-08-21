@@ -1,36 +1,22 @@
 /**
  * e2e-contract-rules.md §3 — executable contract audit.
  *
- * Hard rules fail on ANY hit. Baseline rules fail only when a NEW file
- * joins the known-debt set: delete the entry from the BASELINE set once the
- * file is fixed, so the debt visibly shrinks instead of silently growing.
+ * F1: the inline-query and raw-EventSource debt baselines are fully
+ * digested, so those checks are now zero-tolerance hard rules. Remaining
+ * baselines (lark casts, env bridges) stay tracked until their follow-ups.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
 
-/** Inline query definitions that still bypass features/<x>/queries.ts. */
-const QUERY_FN_DEBT = new Set([
-  "apps/web/src/app/(main)/chat/page.tsx",
-  "apps/web/src/app/(main)/system/page.tsx",
-  "apps/web/src/app/(main)/team/_components/agent-projects-panel.tsx",
-  "apps/web/src/app/(main)/team/knowledge/page.tsx",
-  "apps/web/src/app/(main)/team/mcp/page.tsx",
-  "apps/web/src/app/(main)/team/projects/[id]/page.tsx",
-  "apps/web/src/app/(main)/team/projects/_components/worktree-card.tsx",
-  "apps/web/src/components/Composer.tsx",
-  "apps/web/src/components/ConversationCanvas.tsx",
-  "apps/web/src/components/KnowledgePackPanel.tsx",
-  "apps/web/src/components/McpServerPanel.tsx",
-  "apps/web/src/components/MemoryPanel.tsx",
-  "apps/web/src/components/ModelPicker.tsx",
-  "apps/web/src/components/NavRail.tsx",
-  "apps/web/src/components/RosterList.tsx",
-]);
+/** Inline query definitions must live in features/<x>/queries.ts — zero
+ *  tolerance (F1 digested the previous 15-file baseline). */
+const QUERY_FN_DEBT = new Set<string>();
 
-/** Direct EventSource bypassing typedSource; needs runEvents contract wiring. */
-const EVENT_SOURCE_DEBT = new Set(["apps/web/src/hooks/useConversation.ts"]);
+/** Direct EventSource bypassing typedSource — zero tolerance (F1 wired the
+ *  run events through the api-contract registry). */
+const EVENT_SOURCE_DEBT = new Set<string>();
 
 /** Known lark-bot bare casts. ingest.ts needs api-contract response schemas;
  *  bindings-sqlite.ts / render.ts are local type narrowings, not contract
@@ -132,11 +118,10 @@ if (failures.length > 0) {
   console.error(`audit:contracts FAILED (${failures.length})`);
   for (const f of failures) console.error(`  - ${f}`);
   console.error(
-    `Known debt tracked in scripts/audit-contracts.ts: ${QUERY_FN_DEBT.size} inline queryFn files, ` +
-      `${EVENT_SOURCE_DEBT.size} EventSource bypass. Fix them and delete the baseline entries.`,
+    `audit:contracts FAILED — fix the violations above (queryFn/EventSource are zero-tolerance).`,
   );
   process.exit(1);
 }
 console.log(
-  `audit:contracts OK (${QUERY_FN_DEBT.size} queryFn + ${EVENT_SOURCE_DEBT.size} EventSource debt entries still tracked)`,
+  "audit:contracts OK (queryFn/EventSource zero-tolerance; lark casts + env bridges still tracked)",
 );

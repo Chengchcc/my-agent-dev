@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Page, PageBody, PageHeader } from "@/components/page";
@@ -15,21 +15,15 @@ import {
   SectionKicker,
   StatCard,
 } from "@/components/ui/polish";
+import { useKnowledgePacks } from "@/features/knowledge/hooks";
+import type { KnowledgePackRow } from "@/features/knowledge/queries";
+import { knowledgePackKeys } from "@/features/knowledge/query-keys";
 import { api } from "@/lib/api";
 
 /** Knowledge pack pool (ADR 0022): install builtin/git packs here; agent
  *  switches live on the agent pages (knowledge checkboxes). */
 
-interface PackRow {
-  id: string;
-  name: string;
-  description: string;
-  sourceKind: "builtin" | "git" | "zip";
-  status: "pending" | "installing" | "ready" | "failed" | "syncing";
-  error: string | null;
-}
-
-function statusLabel(status: PackRow["status"]): string {
+function statusLabel(status: KnowledgePackRow["status"]): string {
   if (status === "pending") return "Pending";
   if (status === "installing") return "Installing…";
   if (status === "syncing") return "Syncing…";
@@ -40,10 +34,7 @@ function statusLabel(status: PackRow["status"]): string {
 
 export default function KnowledgePackPage() {
   const qc = useQueryClient();
-  const { data, refetch } = useQuery({
-    queryKey: ["knowledge-packs"],
-    queryFn: () => api.listKnowledgePacks() as Promise<{ packs: PackRow[] }>,
-  });
+  const { data, refetch } = useKnowledgePacks();
   const [query, setQuery] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -66,13 +57,13 @@ export default function KnowledgePackPage() {
       setName("");
       setDescription("");
       setSourceUrl("");
-      void qc.invalidateQueries({ queryKey: ["knowledge-packs"] });
+      void qc.invalidateQueries({ queryKey: knowledgePackKeys.all });
     },
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.deleteKnowledgePack(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["knowledge-packs"] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: knowledgePackKeys.all }),
   });
 
   const packs = useMemo(() => data?.packs ?? [], [data]);

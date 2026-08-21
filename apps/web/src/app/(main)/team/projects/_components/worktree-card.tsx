@@ -1,11 +1,14 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { FastForward, GitBranch, GitMerge } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ListRowCard } from "@/components/ui/polish";
+import { useAgentList } from "@/features/agents/hooks";
+import { useProjectWorktreeDiff } from "@/features/projects/hooks";
+import { projectKeys } from "@/features/projects/query-keys";
 import { api } from "@/lib/api";
 
 export interface WorktreeRow {
@@ -23,13 +26,9 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
   const [open, setOpen] = useState(false);
   const [push, setPush] = useState(false);
   const [acting, setActing] = useState<"fast-forward" | "merge" | null>(null);
-  const { data: agents } = useQuery({ queryKey: ["agents"], queryFn: () => api.listAgents() });
+  const { data: agents } = useAgentList();
   const agentName = agents?.find((a) => a.id === row.agentId)?.name ?? row.agentId;
-  const { data: diff } = useQuery({
-    queryKey: ["project-worktree-diff", projectId, row.agentId],
-    queryFn: () => api.projectWorktreeDiff(projectId, row.agentId),
-    enabled: open,
-  });
+  const { data: diff } = useProjectWorktreeDiff(projectId, row.agentId, open);
 
   async function act(kind: "fast-forward" | "merge") {
     if (acting) return; // P2: no double submission
@@ -46,8 +45,8 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
         await api.projectWorktreeMerge(projectId, row.agentId, push);
       }
       // P2: the diff must refresh with the new base too.
-      await qc.invalidateQueries({ queryKey: ["project-worktrees", projectId] });
-      await qc.invalidateQueries({ queryKey: ["project-worktree-diff", projectId, row.agentId] });
+      await qc.invalidateQueries({ queryKey: projectKeys.worktrees(projectId) });
+      await qc.invalidateQueries({ queryKey: projectKeys.worktreeDiff(projectId, row.agentId) });
       toast.success(kind === "merge" ? "Merged" : "Fast-forwarded");
     } catch (err) {
       toast.error(`Failed to ${kind}`, {

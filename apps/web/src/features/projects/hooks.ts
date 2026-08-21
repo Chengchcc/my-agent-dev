@@ -1,11 +1,29 @@
-import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import {
+  projectDetailQuery,
+  projectListQuery,
+  projectWorktreeDiffQuery,
+  projectWorktreesQuery,
+} from "./queries";
 import { projectKeys } from "./query-keys";
 
-const listQuery = () => queryOptions({ queryKey: projectKeys.all, queryFn: api.listProjects });
 export function useProjectList() {
-  return useQuery(listQuery());
+  return useQuery(projectListQuery());
 }
+
+export function useProjectDetail(projectId: string) {
+  return useQuery(projectDetailQuery(projectId));
+}
+
+export function useProjectWorktrees(projectId: string) {
+  return useQuery(projectWorktreesQuery(projectId));
+}
+
+export function useProjectWorktreeDiff(projectId: string, agentId: string, enabled: boolean) {
+  return useQuery({ ...projectWorktreeDiffQuery(projectId, agentId), enabled });
+}
+
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
@@ -28,4 +46,5 @@ export function useUpdateProject() {
     onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.all }),
   });
 }
-export { projectKeys };
+
+export { projectKeys } from "./query-keys";

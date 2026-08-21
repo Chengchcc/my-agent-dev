@@ -1,12 +1,12 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { FolderGit2 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { EmptyState } from "@/components/ui/empty-state";
-import { api } from "@/lib/api";
+import { useLoopList } from "@/features/loop/hooks";
+import { useProjectDetail, useProjectWorktrees } from "@/features/projects/hooks";
 import { WorktreeCard } from "../_components/worktree-card";
 
 /** Project aggregate (ADR 0023 P2): the project's loops and every attached
@@ -14,22 +14,9 @@ import { WorktreeCard } from "../_components/worktree-card";
 export default function ProjectDetailPage() {
   const params = useParams<{ id: string }>();
   const projectId = params.id;
-  const {
-    data: projectRes,
-    error: projectErr,
-    isError,
-  } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => api.getProject(projectId),
-  });
-  const { data: wtRes, error: wtErr } = useQuery({
-    queryKey: ["project-worktrees", projectId],
-    queryFn: () => api.listProjectWorktrees(projectId),
-  });
-  const { data: loopsRes } = useQuery({
-    queryKey: ["loops"],
-    queryFn: () => api.listLoops(),
-  });
+  const { data: projectRes, error: projectErr, isError } = useProjectDetail(projectId);
+  const { data: wtRes, error: wtErr } = useProjectWorktrees(projectId);
+  const { data: loopsRes } = useLoopList();
 
   const project = projectRes?.project;
   const worktrees = wtRes?.worktrees ?? [];

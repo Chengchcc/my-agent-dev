@@ -29,3 +29,10 @@ export function surfacesQuery() {
     queryFn: () => api.listSurfaces(),
   });
 }
+
+export function telemetrySummaryQuery() {
+  return queryOptions({
+    queryKey: opsKeys.telemetrySummary(),
+    queryFn: () => api.getTelemetrySummary(),
+  });
+}

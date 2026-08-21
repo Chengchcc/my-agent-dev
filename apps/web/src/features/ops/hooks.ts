@@ -1,10 +1,27 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { agentRunDetailQuery, agentRunsQuery, agentRuntimeQuery, surfacesQuery } from "./queries";
+import {
+  agentRunDetailQuery,
+  agentRunsQuery,
+  agentRuntimeQuery,
+  surfacesQuery,
+  telemetrySummaryQuery,
+} from "./queries";
 import { opsKeys } from "./query-keys";
 
 export function useAgentRuns(params?: Parameters<typeof api.listAgentRuns>[0]) {
   return useQuery(agentRunsQuery(params));
+}
+
+export function useRunningAgentRuns() {
+  return useQuery({
+    ...agentRunsQuery({ status: "running", limit: 200 }),
+    refetchInterval: 5_000,
+  });
+}
+
+export function useTelemetrySummary() {
+  return useQuery(telemetrySummaryQuery());
 }
 
 export function useAgentRunDetail(runId: string) {

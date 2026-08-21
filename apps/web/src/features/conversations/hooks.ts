@@ -1,27 +1,30 @@
-import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { ChatModelOverride } from "@/lib/api";
 import { api, type ConversationSnapshot } from "@/lib/api";
+import {
+  conversationGoalQuery,
+  conversationInputsQuery,
+  conversationListQuery,
+  recentConversationsQuery,
+} from "./queries";
 import { conversationKeys } from "./query-keys";
 
-function listByAgentQuery(agentId: string) {
-  return queryOptions({
-    queryKey: conversationKeys.byAgent(agentId),
-    queryFn: () => api.listConversations(agentId),
-    enabled: !!agentId,
-    staleTime: 10_000,
-  });
-}
 export function useConversationList(agentId: string) {
-  return useQuery(listByAgentQuery(agentId));
+  return useQuery(conversationListQuery(agentId));
 }
 
 export function useRecentConversations() {
+  return useQuery(recentConversationsQuery());
+}
+
+/** All conversations (unscoped) — the chat rail, no agent filtering. */
+export function useAllConversations() {
   return useQuery({
-    queryKey: conversationKeys.recent(),
+    queryKey: conversationKeys.all,
     queryFn: () => api.listConversations(),
-    refetchInterval: 10_000,
+    staleTime: 10_000,
   });
 }
 
@@ -76,11 +79,33 @@ export function useConversationSnapshot(
   conversationId: string,
   initialData?: ConversationSnapshot | null,
 ) {
+  // Inline on purpose: the pre-fetched snapshot type is looser than the
+  // query's strict return, and this hook lives outside component land.
   return useQuery({
     queryKey: conversationKeys.detail(conversationId),
     queryFn: () => api.getConversation(conversationId),
     initialData: initialData ?? undefined,
   });
+}
+
+export function useConversationSearch(q: string, enabled: boolean) {
+  return useQuery({
+    queryKey: conversationKeys.search(q),
+    queryFn: () => api.searchConversations(q),
+    enabled,
+  });
+}
+
+export function useConversationInputs(conversationId: string) {
+  return useQuery({
+    ...conversationInputsQuery(conversationId),
+    refetchInterval: (query: { state: { data?: { inputs?: unknown[] } } }) =>
+      query.state.data?.inputs?.length ? 2000 : false,
+  });
+}
+
+export function useConversationGoal(conversationId: string) {
+  return useQuery(conversationGoalQuery(conversationId));
 }
 export function usePostConversationMessage(conversationId: string) {
   return useMutation({

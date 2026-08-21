@@ -1,10 +1,12 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { type AgentMemory, api } from "@/lib/api";
+import { useAgentMemory } from "@/features/agents/hooks";
+import { agentKeys } from "@/features/agents/query-keys";
+import { api } from "@/lib/api";
 
 interface EditableBlockProps {
   title: string;
@@ -40,10 +42,7 @@ function EditableBlock({ title, value, hint, onChange, onSave, saving }: Editabl
  *  memory/facts/*.md (auto-extracted facts, one file per run). */
 export function MemoryPanel({ agentId }: { agentId: string }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
-    queryKey: ["agent-memory", agentId],
-    queryFn: () => api.getAgentMemory(agentId) as Promise<AgentMemory>,
-  });
+  const { data, isLoading } = useAgentMemory(agentId);
 
   const [summary, setSummary] = useState("");
   const [memoryMd, setMemoryMd] = useState("");
@@ -61,7 +60,7 @@ export function MemoryPanel({ agentId }: { agentId: string }) {
       api.updateAgentMemory(agentId, body),
     onSuccess: () => {
       setSynced(false);
-      void qc.invalidateQueries({ queryKey: ["agent-memory", agentId] });
+      void qc.invalidateQueries({ queryKey: agentKeys.memory(agentId) });
     },
   });
   const saving = saveMut.isPending;

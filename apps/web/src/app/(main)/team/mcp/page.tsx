@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plug, RefreshCw, Server } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -18,22 +18,15 @@ import {
   SubTabs,
 } from "@/components/ui/polish";
 import { Textarea } from "@/components/ui/textarea";
+import { useMcpCatalog } from "@/features/mcp/hooks";
+import type { McpCatalogRow } from "@/features/mcp/queries";
+import { mcpKeys } from "@/features/mcp/query-keys";
 import { api } from "@/lib/api";
 
 /** Global MCP catalog (ADR 0022): server definitions live in
  *  <dataDir>/mcp-servers.json (file-first). Agent switches live on the
  *  agent pages (MCP tab). */
-interface CatalogRow {
-  serverId: string;
-  name: string;
-  transport: "stdio" | "sse";
-  command: string | null;
-  url: string | null;
-  status?: string;
-  toolsCount?: number;
-}
-
-type EditMcpRow = CatalogRow & {
+type EditMcpRow = McpCatalogRow & {
   args?: string[];
   env?: Record<string, string>;
   headers?: Record<string, string>;
@@ -65,10 +58,7 @@ function parsePairs(raw: string): Record<string, string> {
 
 export default function McpCatalogPage() {
   const qc = useQueryClient();
-  const { data, refetch } = useQuery({
-    queryKey: ["mcp-catalog"],
-    queryFn: () => api.listMcpServers() as Promise<{ mcpServers: CatalogRow[] }>,
-  });
+  const { data, refetch } = useMcpCatalog();
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"form" | "json">("form");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -83,7 +73,7 @@ export default function McpCatalogPage() {
   const [jsonError, setJsonError] = useState<string | null>(null);
   const remove = useMutation({
     mutationFn: (serverId: string) => api.deleteMcpServer(serverId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["mcp-catalog"] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: mcpKeys.all }),
   });
 
   const test = useMutation({
@@ -93,7 +83,7 @@ export default function McpCatalogPage() {
       toast.success(`Test complete: ${result.status} (${result.toolsCount} tools)`, {
         description: serverId,
       });
-      void qc.invalidateQueries({ queryKey: ["mcp-catalog"] });
+      void qc.invalidateQueries({ queryKey: mcpKeys.all });
     },
     onError: (err) => {
       toast.error("Test failed", {
@@ -114,7 +104,7 @@ export default function McpCatalogPage() {
     mutationFn: (body: CreateMcpBody) => api.createMcpServer(body),
     onSuccess: () => {
       resetForm();
-      void qc.invalidateQueries({ queryKey: ["mcp-catalog"] });
+      void qc.invalidateQueries({ queryKey: mcpKeys.all });
     },
     onError: (err) => {
       setJsonError(err instanceof Error ? err.message : "Failed to add server");
@@ -175,7 +165,7 @@ export default function McpCatalogPage() {
     },
     onSuccess: () => {
       resetForm();
-      void qc.invalidateQueries({ queryKey: ["mcp-catalog"] });
+      void qc.invalidateQueries({ queryKey: mcpKeys.all });
     },
     onError: (err) => {
       setJsonError(err instanceof Error ? err.message : "Failed to save server");

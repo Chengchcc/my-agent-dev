@@ -1,6 +1,6 @@
 "use client";
 
-import { conversationEvents } from "@chengchenccc/api-contract";
+import { conversationEvents, runEvents, sseEndpoints } from "@chengchenccc/api-contract";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { ChatModelOverride } from "@/components/ModelPicker";
@@ -370,7 +370,12 @@ export function useConversation(
       // One stream per run, tracked centrally so unmount can close all.
       const existing = runStreamsRef.current.get(runId);
       existing?.close();
-      const es = new EventSource(`/api/bff/agent-runs/${runId}/events`);
+      // Contract-bound stream: URL from the sseEndpoints registry, opened
+      // through typedSource (the only permitted raw stream constructor).
+      const { es } = typedSource(
+        `/api/bff${sseEndpoints.agentRunEvents.path({ runId })}`,
+        runEvents,
+      );
       runStreamsRef.current.set(runId, es);
       const finish = () => {
         runStreamsRef.current.get(runId)?.close();

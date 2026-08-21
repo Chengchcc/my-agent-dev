@@ -1,5 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { type AgentMemory, api } from "@/lib/api";
 import { agentKeys } from "./query-keys";
 
 export function agentListQuery(filters?: Record<string, unknown>) {
@@ -20,5 +20,12 @@ export function agentIdentityQuery(id: string) {
   return queryOptions({
     queryKey: agentKeys.identity(id),
     queryFn: () => api.getIdentity(id),
+  });
+}
+
+export function agentMemoryQuery(id: string) {
+  return queryOptions({
+    queryKey: agentKeys.memory(id),
+    queryFn: () => api.getAgentMemory(id) as Promise<AgentMemory>,
   });
 }

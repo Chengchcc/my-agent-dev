@@ -4,5 +4,6 @@ export type { SSEEndpoint, SSEEndpoints, SSEEventMap } from "./sse.js";
 export {
   conversationEvents,
   createSseEncoder,
+  runEvents,
   sseEndpoints,
 } from "./sse.js";

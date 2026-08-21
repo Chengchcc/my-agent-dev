@@ -1,26 +1,17 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Server } from "lucide-react";
 import { ListRowCard } from "@/components/ui/polish";
 import { Switch } from "@/components/ui/switch";
 import { useAgentDetail } from "@/features/agents/hooks";
 import { agentKeys } from "@/features/agents/query-keys";
+import { useMcpCatalog } from "@/features/mcp/hooks";
 import { type AgentRow, api } from "@/lib/api";
 
 /** Agent-side MCP switches (ADR 0022): the GLOBAL catalog is the pool;
  *  this panel toggles the agent's subset, persisted to agent.yml via the
  *  agent update API (file-first). Server CRUD lives at /team/mcp. */
-
-export interface McpCatalogRow {
-  serverId: string;
-  name: string;
-  transport: "stdio" | "sse";
-  command: string | null;
-  url: string | null;
-  status?: "pending" | "connected" | "failed";
-  toolsCount?: number;
-}
 
 export interface AgentMcpSwitch {
   serverId: string;
@@ -36,10 +27,7 @@ function rowStatus(status?: string): "ok" | "err" | undefined {
 export function McpServerPanel({ agentId }: { agentId: string }) {
   const qc = useQueryClient();
   const { data: agent } = useAgentDetail(agentId) as { data?: AgentRow };
-  const { data: catalogData } = useQuery({
-    queryKey: ["mcp-catalog"],
-    queryFn: () => api.listMcpServers() as Promise<{ mcpServers: McpCatalogRow[] }>,
-  });
+  const { data: catalogData } = useMcpCatalog();
 
   const servers = catalogData?.mcpServers ?? [];
   const switches = new Map(

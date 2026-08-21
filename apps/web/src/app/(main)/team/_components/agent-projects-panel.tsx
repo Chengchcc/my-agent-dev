@@ -1,17 +1,18 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { FolderGit2 } from "lucide-react";
 import { toast } from "sonner";
 import { ListRowCard } from "@/components/ui/polish";
 import { agentKeys } from "@/features/agents/query-keys";
+import { useProjectList } from "@/features/projects/hooks";
 import { type AgentRow, api } from "@/lib/api";
 
 /** Projects tab (ADR 0023): toggle which projects this agent attaches to.
  *  Attachment materializes a git worktree under the agent workspace. */
 export function AgentProjectsPanel({ agent }: { agent: AgentRow }) {
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["projects"], queryFn: () => api.listProjects() });
+  const { data } = useProjectList();
   const attached = agent.projects ?? [];
 
   async function toggle(projectId: string) {

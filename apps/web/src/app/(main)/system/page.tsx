@@ -1,5 +1,4 @@
 "use client";
-import { useQuery } from "@tanstack/react-query";
 import { Activity, CalendarClock, CheckCircle2, CircleAlert, Trash2, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -13,8 +12,12 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCronList, useDeleteCronJob, useSetCronEnabled } from "@/features/cron/hooks";
-import { useAgentRuns, useCancelAgentRun, useSurfaces } from "@/features/ops/hooks";
-import { api } from "@/lib/api";
+import {
+  useAgentRuns,
+  useCancelAgentRun,
+  useSurfaces,
+  useTelemetrySummary,
+} from "@/features/ops/hooks";
 
 type Tab = "surfaces" | "runs" | "cron" | "telemetry";
 
@@ -56,10 +59,7 @@ export default function SystemPage() {
   const deleteCron = useDeleteCronJob();
   const setCronEnabled = useSetCronEnabled();
   const cancelRun = useCancelAgentRun();
-  const telemetryQuery = useQuery({
-    queryKey: ["telemetry-summary"],
-    queryFn: () => api.getTelemetrySummary(),
-  });
+  const telemetryQuery = useTelemetrySummary();
   const [confirmingJobId, setConfirmingJobId] = useState<string | null>(null);
 
   const surfaces = surfacesQuery.data ?? [];

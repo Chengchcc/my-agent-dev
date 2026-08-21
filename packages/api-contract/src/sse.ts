@@ -1,5 +1,5 @@
 import { LedgerEntry } from "@chengchenccc/conversation";
-import type { z } from "zod";
+import { z } from "zod";
 
 // ── SSE event maps (event name → zod schema) ──
 
@@ -9,6 +9,83 @@ export const conversationEvents = {
   "member.left": LedgerEntry,
   todo: LedgerEntry,
   undo: LedgerEntry,
+} as const satisfies SSEEventMap;
+
+/** Agent-run live update stream (`/agent-runs/:runId/events`). Payloads are
+ *  the BackendEvent objects the execution service broadcasts — core events
+ *  carry fields at top level, oma extensions carry `{ payload }`. Schemas
+ *  are intentionally loose on opaque payloads (todo items, workflow usage). */
+export const runEvents = {
+  status: z.object({
+    type: z.literal("status"),
+    status: z.string(),
+    error: z.string().optional(),
+  }),
+  text_delta: z.object({ type: z.literal("text_delta"), text: z.string() }),
+  thinking_delta: z.object({ type: z.literal("thinking_delta"), text: z.string() }),
+  native_tool_started: z.object({
+    type: z.literal("native_tool_started"),
+    toolName: z.string().optional(),
+    callId: z.string().optional(),
+  }),
+  native_tool_completed: z.object({
+    type: z.literal("native_tool_completed"),
+    toolName: z.string().optional(),
+    callId: z.string().optional(),
+    result: z.unknown().optional(),
+  }),
+  product_tool_started: z.object({
+    type: z.literal("product_tool_started"),
+    toolName: z.string().optional(),
+    callId: z.string().optional(),
+  }),
+  product_tool_completed: z.object({
+    type: z.literal("product_tool_completed"),
+    toolName: z.string().optional(),
+    callId: z.string().optional(),
+    result: z.unknown().optional(),
+  }),
+  "backend.oma.todo_update": z.object({
+    type: z.literal("backend.oma.todo_update"),
+    payload: z.object({ items: z.array(z.unknown()).optional() }).optional(),
+  }),
+  "backend.oma.recap_update": z.object({
+    type: z.literal("backend.oma.recap_update"),
+    payload: z.object({ text: z.string().optional(), turn: z.number().optional() }).optional(),
+  }),
+  workflow_started: z.object({
+    type: z.literal("workflow_started"),
+    workflowId: z.string().optional(),
+    label: z.string().optional(),
+    agentCount: z.number().optional(),
+  }),
+  workflow_agent_started: z.object({
+    type: z.literal("workflow_agent_started"),
+    workflowId: z.string().optional(),
+    agentId: z.string().optional(),
+    label: z.string().optional(),
+  }),
+  workflow_agent_completed: z.object({
+    type: z.literal("workflow_agent_completed"),
+    workflowId: z.string().optional(),
+    agentId: z.string().optional(),
+    label: z.string().optional(),
+    ok: z.boolean().optional(),
+    error: z.string().optional(),
+    usage: z.unknown().optional(),
+  }),
+  workflow_completed: z.object({
+    type: z.literal("workflow_completed"),
+    workflowId: z.string().optional(),
+    ok: z.boolean().optional(),
+    agentCount: z.number().optional(),
+    totalTokens: z.number().optional(),
+  }),
+  workflow_failed: z.object({
+    type: z.literal("workflow_failed"),
+    workflowId: z.string().optional(),
+    error: z.string().optional(),
+  }),
 } as const satisfies SSEEventMap;
 
 // ── SSE endpoint registry (path template + event map, single source) ──
@@ -22,6 +99,10 @@ export const sseEndpoints = {
   conversationEvents: {
     path: (p: { id: string }) => `/conversations/${p.id}/events`,
     events: conversationEvents,
+  },
+  agentRunEvents: {
+    path: (p: { runId: string }) => `/agent-runs/${p.runId}/events`,
+    events: runEvents,
   },
 } as const;
 

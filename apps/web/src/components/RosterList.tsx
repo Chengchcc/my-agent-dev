@@ -1,11 +1,9 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { Bot, UserCircle, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { opsKeys } from "@/features/ops/query-keys";
-import { api } from "@/lib/api";
+import { useRunningAgentRuns } from "@/features/ops/hooks";
 import type { SenderRef } from "@/lib/conversation-reducer";
 
 interface RosterListProps {
@@ -21,11 +19,7 @@ export function RosterList({ roster, viewerMemberId, onClose }: RosterListProps)
   const router = useRouter();
   const members = Object.values(roster);
 
-  const { data: running } = useQuery({
-    queryKey: opsKeys.runs({ status: "running" }),
-    queryFn: () => api.listAgentRuns({ status: "running", limit: 200 }),
-    refetchInterval: 5_000,
-  });
+  const { data: running } = useRunningAgentRuns();
   const busyAgents = new Set(
     (running?.runs ?? []).map((r) => r.agentId).filter((id): id is string => !!id),
   );

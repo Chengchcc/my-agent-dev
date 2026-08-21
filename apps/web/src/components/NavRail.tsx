@@ -1,5 +1,5 @@
 "use client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ActivityIcon,
@@ -45,10 +45,10 @@ import {
 } from "@/components/ui/sidebar";
 import {
   conversationKeys,
+  useAllConversations,
   useCreateConversation,
   useDeleteConversation,
 } from "@/features/conversations/hooks";
-import { api } from "@/lib/api";
 
 function NavContent() {
   const pathname = usePathname();
@@ -57,11 +57,7 @@ function NavContent() {
   const queryClient = useQueryClient();
 
   // ponytail: global recent conversations — no agent scoping in the rail anymore
-  const { data: conversations } = useQuery({
-    queryKey: conversationKeys.all,
-    queryFn: () => api.listConversations(),
-    staleTime: 10_000,
-  });
+  const { data: conversations } = useAllConversations();
   // Loop/Cron conversations belong in Work, not Chat — exclude them from the rail.
   const chatConversations = (conversations ?? []).filter(
     (c) => "origin" in c && c.origin !== "loop" && c.origin !== "cron",
