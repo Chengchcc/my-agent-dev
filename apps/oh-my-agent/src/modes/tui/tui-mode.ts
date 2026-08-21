@@ -18,7 +18,12 @@ import {
 } from "@chengchenccc/tui";
 import { buildCliRunInput } from "../../cli/initial-input.js";
 import { createOmaRuntime, type OmaRuntime } from "../../core/create-runtime.js";
-import { appendSessionMessages, listSessions } from "../../core/session-file.js";
+import {
+  appendSessionMessages,
+  listAllSessions,
+  listSessions,
+  sessionDirFor,
+} from "../../core/session-file.js";
 import { persistSessionTurn, resolveSession } from "../../core/session-loop.js";
 import {
   addUserInput,
@@ -73,6 +78,7 @@ export interface TuiIo {
       title?: string;
       preview: string;
       modifiedAt: number;
+      workspace?: string;
     }>,
   ): Promise<string | null>;
   /** Stop the terminal (restore modes). */
@@ -289,15 +295,18 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     },
     {
       name: "resume",
-      description: "list sessions, or resume one by id/prefix",
+      description: "list/resume sessions (all = every workspace)",
       argumentHint: "<session>",
       run: async (args) => {
-        const sessions = listSessions();
+        // "all" = cross-workspace listing (pi's session selector "all"
+        // scope); any other arg is an id/prefix within this workspace.
+        const all = args === "all";
+        const sessions = all ? listAllSessions() : listSessions();
         if (sessions.length === 0) {
-          pushStatus("no saved sessions");
+          pushStatus(all ? "no sessions in any workspace" : "no saved sessions");
           return;
         }
-        if (!args) {
+        if (!args || all) {
           // Interactive overlay when the io supports it; text list otherwise.
           if (io.pickSession) {
             const picked = await io.pickSession(sessions.slice(0, 20));
@@ -305,8 +314,10 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
               pushStatus("resume cancelled");
               return;
             }
-            session = resolveSession(picked);
-            sessionTitle = sessions.find((s) => s.id === picked)?.title;
+            const summary = sessions.find((s) => s.id === picked);
+            const dir = summary?.workspace ? sessionDirFor(summary.workspace) : undefined;
+            session = resolveSession(picked, dir);
+            sessionTitle = summary?.title;
             state.runs.length = 0;
             pushStatus(
               `resumed session: ${session.sessionId} (${session.messages.length} messages)`,
@@ -316,7 +327,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
           pushStatus(
             sessions.slice(0, 20).map((s) => {
               const when = new Date(s.modifiedAt).toISOString().slice(0, 16).replace("T", " ");
-              return `${when}  ${s.id}  ${s.title ?? s.preview}`;
+              const workspace = s.workspace ? ` [${s.workspace}]` : "";
+              return `${when}  ${s.id}${workspace}  ${s.title ?? s.preview}`;
             }),
           );
           return;
@@ -330,7 +342,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
           pushStatus(matches.map((s) => `${s.id}  ${s.title ?? s.preview}`));
           return;
         }
-        session = resolveSession(matches[0]!.id);
+        const dir = matches[0]!.workspace ? sessionDirFor(matches[0]!.workspace) : undefined;
+        session = resolveSession(matches[0]!.id, dir);
         sessionTitle = matches[0]!.title;
         state.runs.length = 0;
         pushStatus(`resumed session: ${session.sessionId} (${session.messages.length} messages)`);
@@ -458,7 +471,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       // lands in the session file immediately, so even a killed/failed
       // process leaves its context for the next turn.
       onPersistMessages: (messages) => {
-        appendSessionMessages(session.sessionId, opts.workspaceRoot, messages);
+        appendSessionMessages(session.sessionId, opts.workspaceRoot, messages, session.dir);
         // The session file is wire-loose; the in-memory transcript keeps the
         // same loose shape so it round-trips into sessionTranscript verbatim.
         session.messages = [
@@ -505,6 +518,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       sessionId: session.sessionId,
       cwd: opts.workspaceRoot,
       runtime,
+      dir: session.dir,
       ...(outcome.status === "completed" ? { title: outcome.title } : {}),
     });
     if (outcome.status === "completed") sessionTitle = outcome.title ?? sessionTitle;
@@ -686,11 +700,15 @@ export function createTerminalIo(
     },
     pickSession(sessions) {
       const { promise, resolve } = Promise.withResolvers<string | null>();
-      const items = sessions.map((s) => ({
-        value: s.id,
-        label: relativeTime(s.modifiedAt),
-        description: s.title ?? (s.preview || s.id.slice(0, 8)),
-      }));
+      const items = sessions.map((s) => {
+        const base = s.title ?? (s.preview || s.id.slice(0, 8));
+        const workspace = s.workspace ? ` [${s.workspace}]` : "";
+        return {
+          value: s.id,
+          label: relativeTime(s.modifiedAt),
+          description: `${base}${workspace}`,
+        };
+      });
       const list = new SelectList(items, 10, EDITOR_THEME.selectList, {
         minPrimaryColumnWidth: 6,
         maxPrimaryColumnWidth: 8,

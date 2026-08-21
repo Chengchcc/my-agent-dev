@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createModelRuntime } from "@chengchenccc/ai";
 import { registerBuiltinProviders } from "../../core/run-runtime.js";
+import { sessionDirFor } from "../../core/session-file.js";
 import { runTuiSession, type TuiIo } from "./tui-mode.js";
 import { applyEvent, initialViewState, type TuiViewState } from "./view-state.js";
 
@@ -465,4 +466,47 @@ describe("tui session (headless, fake provider)", () => {
       rmSync(sessionDir, { recursive: true, force: true });
     }
   }, 30_000);
+
+  test("/resume all lists sessions from other workspaces", async () => {
+    const agentRoot = mkdtempSync(join(tmpdir(), "oma-tui-resume-all-"));
+    const savedSessionDir = process.env.OMA_SESSION_DIR;
+    delete process.env.OMA_SESSION_DIR; // exercise the default per-workspace layout
+    process.env.OMA_CODING_AGENT_DIR = agentRoot;
+    const currentCwd = process.cwd();
+    const foreignCwd = "/tmp/foreign-workspace";
+    try {
+      const localSeed = "local-0000-0000-0000-000000000001";
+      const foreignSeed = "foreign-0000-0000-0000-000000000002";
+      const localDir = sessionDirFor(currentCwd);
+      const foreignDir = sessionDirFor(foreignCwd);
+      mkdirSync(localDir, { recursive: true });
+      mkdirSync(foreignDir, { recursive: true });
+      writeFileSync(
+        join(localDir, `${localSeed}.jsonl`),
+        `${JSON.stringify({ type: "session", version: 3, id: localSeed, timestamp: new Date().toISOString(), cwd: currentCwd })}\n${JSON.stringify({ type: "message", id: "m1", message: { role: "user", text: "local question" } })}\n`,
+      );
+      writeFileSync(
+        join(foreignDir, `${foreignSeed}.jsonl`),
+        `${JSON.stringify({ type: "session", version: 3, id: foreignSeed, timestamp: new Date().toISOString(), cwd: foreignCwd })}\n${JSON.stringify({ type: "message", id: "m1", message: { role: "user", text: "foreign question" } })}\n`,
+      );
+
+      // /resume all falls back to the text listing (scriptedIo has no
+      // pickSession) and must show the foreign workspace marker.
+      const io = scriptedIo(["/resume all", "/exit"]);
+      await runTuiSession({ modelRuntime: testModelRuntime(), workspaceRoot: currentCwd }, io);
+      const statuses = io.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
+        .map((i) => i.text);
+      const listing = statuses.find((t) => t.includes(foreignSeed));
+      expect(listing).toBeDefined();
+      expect(listing).toContain(`[${foreignCwd}]`);
+      expect(listing).toContain("foreign question");
+    } finally {
+      delete process.env.OMA_CODING_AGENT_DIR;
+      if (savedSessionDir === undefined) delete process.env.OMA_SESSION_DIR;
+      else process.env.OMA_SESSION_DIR = savedSessionDir;
+      rmSync(agentRoot, { recursive: true, force: true });
+    }
+  }, 15_000);
 });

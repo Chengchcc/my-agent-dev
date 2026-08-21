@@ -5,6 +5,7 @@ import {
   appendSessionTitle,
   loadSessionMessages,
   newSessionId,
+  sessionDir,
 } from "./session-file.js";
 
 /** Shared session persistence for the interactive CLI modes (TUI) and the
@@ -26,22 +27,32 @@ export async function persistSessionTurn(opts: {
   messages?: readonly unknown[];
   /** The run's auto-generated title (outcome.title), when present. */
   title?: string;
+  /** Session directory; defaults to the current workspace. Cross-workspace
+   *  resumes pass the source workspace's dir so new turns append there. */
+  dir?: string;
 }): Promise<void> {
   if (opts.messages && opts.messages.length > 0) {
-    appendSessionMessages(opts.sessionId, opts.cwd, opts.messages);
+    appendSessionMessages(opts.sessionId, opts.cwd, opts.messages, opts.dir);
   }
   for (const summary of await opts.runtime.compactions()) {
-    appendSessionCompaction(opts.sessionId, summary);
+    appendSessionCompaction(opts.sessionId, summary, opts.dir);
   }
-  if (opts.title) appendSessionTitle(opts.sessionId, opts.title);
+  if (opts.title) appendSessionTitle(opts.sessionId, opts.title, opts.dir);
 }
 
 /** Resolve the session for a new TUI turn: a --session id resumes that
- *  file (missing/corrupt file degrades to fresh); otherwise a new id. */
-export function resolveSession(sessionId?: string): {
+ *  file (missing/corrupt file degrades to fresh); otherwise a new id.
+ *  `dir` is the session directory the file lives in (current workspace by
+ *  default; cross-workspace resumes pass their own workspace dir). */
+export function resolveSession(
+  sessionId?: string,
+  dir?: string,
+): {
   sessionId: string;
   messages: Record<string, unknown>[];
+  dir: string;
 } {
   const id = sessionId ?? newSessionId();
-  return { sessionId: id, messages: loadSessionMessages(id) };
+  const resolvedDir = dir ?? sessionDir();
+  return { sessionId: id, messages: loadSessionMessages(id, resolvedDir), dir: resolvedDir };
 }
