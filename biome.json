@@ -63,9 +63,7 @@
   },
   "overrides": [
     {
-      "includes": [
-        "packages/tui/**"
-      ],
+      "includes": ["packages/tui/**"],
       "linter": {
         "rules": {
           "suspicious": {

@@ -55,20 +55,33 @@ describe("view-state folding", () => {
     expect(state.runs[0]!.running).toBe(false);
   });
 
-  test("tool start/end renders one line each", () => {
+  test("tool start/end keeps one item carrying args and result", () => {
     const state = initialViewState();
     applyEvent(state, { type: "agent_start" });
-    applyEvent(state, { type: "tool_execution_start", toolName: "bash", callId: "c1" });
+    applyEvent(state, {
+      type: "tool_execution_start",
+      toolName: "bash",
+      callId: "c1",
+      input: { command: "ls -la" },
+    });
     applyEvent(state, {
       type: "tool_execution_end",
       toolName: "bash",
       callId: "c1",
-      result: {},
+      result: { content: "total 0\n[exit: 0]", isError: false },
     });
     applyEvent(state, { type: "agent_end", status: "completed" });
     const items = state.runs[0]!.items;
+    const tool = items.find((i) => i.kind === "tool");
     expect(items.filter((i) => i.kind === "tool")).toHaveLength(1);
-    expect(items.find((i) => i.kind === "tool")?.streaming).toBe(false);
+    expect(tool?.streaming).toBe(false);
+    // Args (from start) and result (from end) survive on the settled item so
+    // the renderer can draw them under the tool name.
+    expect(tool).toMatchObject({
+      text: "bash",
+      input: { command: "ls -la" },
+      result: { content: "total 0\n[exit: 0]", isError: false },
+    });
   });
 
   test("failed outcome appends an error run", () => {
@@ -79,6 +92,74 @@ describe("view-state folding", () => {
 });
 
 describe("tui session (headless, fake provider)", () => {
+  test("assistant text renders incrementally while the run streams", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-stream-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    try {
+      // Chunked provider: yields two text deltas so message_update fires
+      // twice; the fake provider yields a single chunk and would not prove
+      // incremental rendering.
+      const modelRuntime = createModelRuntime();
+      modelRuntime.registerProvider({
+        id: "chunky",
+        name: "Chunky",
+        getModels: () => [
+          {
+            id: "stream",
+            name: "Stream",
+            provider: "chunky",
+            api: "anthropic-messages",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 200_000,
+            maxTokens: 8192,
+          },
+        ],
+        async *stream() {
+          yield { delta: { type: "text", text: "hel" } };
+          yield { delta: { type: "text", text: "lo" } };
+          yield { usage: { input: 10, output: 3, cacheRead: 1, cacheCreate: 0 } };
+          yield { stopReason: "end_turn" };
+        },
+      });
+
+      // Snapshot each render so intermediate states are observable (the
+      // scriptedIo above records the same mutable state object by reference).
+      const snapshots: TuiViewState[] = [];
+      let i = 0;
+      const inputs = ["hi", "/exit"];
+      const io: TuiIo = {
+        render: (state) => snapshots.push(JSON.parse(JSON.stringify(state)) as TuiViewState),
+        waitForInput: () => Promise.resolve(i < inputs.length ? inputs[i++]! : null),
+        setBusy: () => {},
+        onLiveInput: () => {},
+        close: () => {},
+      };
+      const code = await runTuiSession({ modelRuntime, workspaceRoot: sessionDir }, io);
+      expect(code).toBe(0);
+
+      // The run rendered while live (not only after it settled).
+      const liveRenders = snapshots.filter((s) => s.runs.some((r) => r.running));
+      expect(liveRenders.length).toBeGreaterThan(0);
+
+      // An intermediate render carries the partial text, proving chunks hit
+      // the screen before the run finished.
+      const partial = liveRenders.some((s) =>
+        s.runs.some((r) => r.items.some((it) => it.kind === "assistant" && it.text === "hel")),
+      );
+      expect(partial).toBe(true);
+
+      // The final render carries the full accumulated text.
+      const last = snapshots.at(-1)!;
+      const texts = last.runs.flatMap((r) => r.items.map((it) => it.text)).join("");
+      expect(texts).toContain("hello");
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   test("multi-turn session persists both turns to one session file", async () => {
     const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-"));
     process.env.OMA_SESSION_DIR = sessionDir;

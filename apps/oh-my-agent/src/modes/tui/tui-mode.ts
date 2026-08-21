@@ -56,6 +56,18 @@ export interface TuiIo {
   close(): void;
 }
 
+/** Tool display caps: args are short; results get truncated so a huge tool
+ *  output (e.g. a big bash stdout) cannot flood the transcript. */
+const MAX_TOOL_ARGS = 200;
+const MAX_TOOL_RESULT = 2_000;
+
+/** Compact JSON for the tool header; pretty JSON (multi-line) for results so
+ *  nested fields stay readable. Truncated with an ellipsis marker. */
+function compactJson(value: unknown, max: number): string {
+  const json = JSON.stringify(value, null, 2) ?? String(value);
+  return json.length > max ? `${json.slice(0, max)}…` : json;
+}
+
 const EDITOR_THEME: EditorTheme = {
   borderColor: (s) => s,
   // ponytail: selectList theme is required by the type but unused without
@@ -115,7 +127,13 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
             message: m as never,
           }))
         : undefined,
-      onEvent: (envelope) => applyEvent(state, envelope.data as OmaLoopEvent),
+      // Render on every event so model chunks (message_update) hit the
+      // screen incrementally; the TUI's requestRender throttles/coalesces,
+      // so high-frequency chunk events are safe here.
+      onEvent: (envelope) => {
+        applyEvent(state, envelope.data as OmaLoopEvent);
+        io.render(state);
+      },
     });
 
     io.setBusy?.(true);
@@ -199,9 +217,20 @@ export function createTerminalIo(terminal: Terminal = new ProcessTerminal()): Tu
       case "assistant":
         return item.text ? [item.text] : [];
       case "thinking":
-        return item.text ? [`\u001b[2m${item.text.slice(0, 200)}\u001b[0m`] : [];
-      case "tool":
-        return [`\u001b[33m  \u2022 ${item.text}\u001b[0m`];
+        // Full thinking text; the Text component wraps long lines. No
+        // truncation - a one-line dim preview hid the reasoning.
+        return item.text ? [`\u001b[2m${item.text}\u001b[0m`] : [];
+      case "tool": {
+        const args = item.input !== undefined ? ` ${compactJson(item.input, MAX_TOOL_ARGS)}` : "";
+        const lines = [`\u001b[33m  \u2022 ${item.text}${args}\u001b[0m`];
+        if (item.result !== undefined) {
+          const result = compactJson(item.result, MAX_TOOL_RESULT);
+          for (const line of result.split("\n")) {
+            lines.push(`\u001b[2m    ${line}\u001b[0m`);
+          }
+        }
+        return lines;
+      }
       case "status":
         return [`\u001b[2m  [${item.text}]\u001b[0m`];
       case "error":
