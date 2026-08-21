@@ -82,6 +82,9 @@ if (existsSync(manifestPath)) {
 // ── active-zone helpers (architecture + prd; adr is decision archive) ──
 const ACTIVE_ROOTS = ["docs/architecture", "docs/prd"];
 function walkDocs(dir: string): string[] {
+  // Git does not track empty directories: a root like docs/prd disappears
+  // from a fresh clone after its last file is moved away.
+  if (!existsSync(dir)) return [];
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, entry.name);
@@ -107,7 +110,7 @@ for (const root of ACTIVE_ROOTS) {
       if (link.startsWith("http") || link.startsWith("#") || link.startsWith("mailto:")) continue;
       const target = normalize(join(dirname(file), link.split("#")[0]!.trim()));
       if (!existsSync(target)) {
-        fail(`dead link in ${file.replace(ROOT + "/", "")}: ${m[1]}`);
+        fail(`dead link in ${file.replace(`${ROOT}/`, "")}: ${m[1]}`);
       }
     }
   }
@@ -131,7 +134,7 @@ for (const root of ACTIVE_ROOTS) {
     const src = readFileSync(file, "utf8");
     for (const phrase of STALE_NARRATIVES) {
       if (src.includes(phrase)) {
-        fail(`stale narrative "${phrase}" in ${file.replace(ROOT + "/", "")}`);
+        fail(`stale narrative "${phrase}" in ${file.replace(`${ROOT}/`, "")}`);
       }
     }
   }
