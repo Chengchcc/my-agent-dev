@@ -1,10 +1,10 @@
 # ADR 0006: Loop 粒度写锁、原子预算、并发池 — MVP 不做
 
-> ⚠ **状态更新(2026-08-13)**:本文末的"三项约束完整落地"已再次失效——后续 loop 重建(loop-service/loop-step 现结构)中写锁与并发池被移除,仅预算保留(LOOP.md `budget.dailyCap`)。当前无写锁;并发入口已收敛为单,决策回到 deferred 事实态。
+> ⚠ **状态更新(2026-08-21,第三次翻转)**:workflow-first 重写(ADR 0025)后三项事实为——**写锁已落地**(`loop-lock.ts` Map-based Promise chain,`withLoopLock` 串行化 cron/manual/review 三入口,含 HTTP/cron 调用点);**原子预算已落地**(`loop_budget` 表 + workflow run 冻结 `workflowBudgetTokens`);**并发池未做**(loopStep 对 fixing items 逐个串行执行,预算闸门内——多 item 并行无需求,以串行替代)。
 
 ## 状态
 
-Deferred(曾落地后回退)
+Implemented(写锁+预算;并发池以串行替代)
 
 ## 上下文
 

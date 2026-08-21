@@ -1,12 +1,11 @@
 ---
 id: flows.e2e-loop-verification
 title: Loop 验证端到端
-status: design
+status: current
 owners: architecture
-last_verified_against_code: 2026-07-01
-summary: "一次触发里 loopStep() 读 STATE.md 判断当前 step、对 fixing item 起 Generator Agent 干活、再起独立 Evaluator Agent 动手验证「产出是否满足 config 的 acceptance」、evaluator 的结构化 verdict 经 loopReducer 转移 item.step 的完整时序。核心：loopStep() 在 evaluator 跑完后不看 run 成功与否，而读 verdict 内容转移 step——PASS 进 awaiting_review 等人拍板，REJECT 回 fixing 带反馈返工或耗尽 attempt 进 inbox。附并发写 STATE.md、非代码类无靶子等失败模式。"
+last_verified_against_code: 2026-08-21
+summary: "一次触发里 loopStep() 在 per-loop 写锁内从 DB load 状态、对 fixing item 渲染 workflow 脚本（fix + verify 子 agent）交给 oma 子进程执行、从 outcome.workflow.value 硬化解析 verdict 经 loopReducer 转移 item.step 的完整时序。核心：step 转移看 verdict 内容不看 run 终态——verifyCommands 强制逐条执行并贴输出，无输出 = 未验证 = REJECT；verdict 缺失/无 evidence 一律不 PASS。附 zombie/stale/deferred 恢复与预算熔断等失败模式。"
 depends_on:
-  - foundations.loop-engineering
   - foundations.loop
   - backend.loop-runner
 used_by:
@@ -14,103 +13,106 @@ used_by:
 
 # Loop 验证端到端
 
-这页画一次触发里 [loopStep()](../backend/loop-runner.md) 读 [STATE.md](../foundations/loop.md)、对 `fixing` item 起 Generator 干活、再起**独立 Evaluator** 动手验证「产出是否满足 config 的 `acceptance`」、evaluator 的结构化 verdict 经 `loopReducer` 转移 `item.step` 的完整时序。它是 [Loop Engineering](../foundations/loop-engineering.md) 验证动作的运行时视角。先读 [Loop Engineering](../foundations/loop-engineering.md) 拿到内层/外层 loop、五动作、maker-checker 的定义，再读 [Loop](../foundations/loop.md) 拿 item step 状态机，本页只讲它们在一次 `loopStep()` 调用里怎么串起来。
+这页画一次触发里 [loopStep()](../backend/loop-runner.md) 在 per-loop 写锁内 load [DB 状态](../foundations/loop.md)、对 `fixing` item 渲染 **workflow 脚本**（fix + verify 两个子 agent）交给 oma 子进程执行、从 `outcome.workflow.value` 硬化解析 verdict 经 `loopReducer` 转移 `item.step` 的完整时序。先读 [Loop](../foundations/loop.md) 拿状态机与 LOOP.md 契约，再读 [LoopRunner](../backend/loop-runner.md) 拿 loopStep 签名，本页只讲它们在一次 `loopStep()` 调用里怎么串起来。
 
-> `status: design`：尚未进代码。
+> 执行模型为 workflow-first（[ADR 0025](../../adr/0025-loop-workflow-first-execution.md)）：Generator/Evaluator 双 Agent 角色已删除。
 
 ## 时序图
 
 ```mermaid
 sequenceDiagram
-  participant T as 触发（cron TICK / 人 review）
-  participant LS as loopStep()（无状态）
-  participant ST as STATE.md（唯一状态源）
+  participant T as 触发（cron TICK / 人 review / doctor）
+  participant LS as loopStep()（per-loop 写锁内）
+  participant DB as loop_item / loop_budget
   participant RED as loopReducer（纯函数）
-  participant G as Generator Agent
-  participant EV as Evaluator Agent（独立线，≠ generator model）
+  participant W as workflow run（oma 子进程）
+  participant F as fix 子 agent
+  participant V as verify 子 agent（structured output）
   participant H as 人（review queue）
 
-  T->>LS: loopStep({loopConfigPath, action?})
-  LS->>LS: 拿 loop 粒度写锁（cron/manual/review 三入口共用）
-  LS->>ST: 读 STATE.md + config.yml + constraints.md
+  T->>LS: loopStep({loopConfigPath, loopId, action?})
+  LS->>LS: withLoopLock(loopId)（cron/manual/review 共用）
+  LS->>DB: load state + inbox
 
-  alt cron TICK
+  alt human review action
+    LS->>RED: reducer(state, {type:APPROVE|REJECT_HUMAN|PROMOTE|RETRY|DISMISS})
+    RED-->>LS: awaiting_review → resolved / inbox / promoted
+    LS->>DB: save
+  else cron TICK
+    LS->>LS: resolve worktree + loopCleanStart（workspace lock 内）
+    alt 空 loop 且 dataDir 可用
+      LS->>W: discoverItems（triage workflow，幂等 ADD_ITEM）
+    end
     LS->>RED: reducer(state, {type:TICK})
     RED-->>LS: triaged → fixing
-    loop 每个 fixing item（受 maxParallelFindings 限）
-      LS->>LS: 预算闸门：查 per-loop 原子计数，未超 cap
-      LS->>G: 起 Generator（model=config.generator.model，注入 denylist）
-      G->>G: runLoop 干活（共享工作区）
-      G-->>LS: 完成 → item.step = verifying
-      LS->>EV: 起 Evaluator（model≠generator，怀疑姿态，装 verificationGuidance + acceptance）
-      EV->>EV: runLoop：动手验证（跑测试/点按钮），对照 acceptance
-      EV-->>LS: 结构化 verdict（PASS / REJECT: reasons + evidence）
-      Note over LS: 关键：读 verdict 内容，不看 run 成功与否
-      LS->>RED: reducer(state, {type:VERDICT, itemId, verdict})
-      alt verdict = PASS
+    loop 每个 fixing item（预算闸门内）
+      LS->>W: enqueueAndAcquire({workflow: renderLoopWorkflow(item, cfg)})
+      W->>F: fix 子 agent（taskClass 指导，最小 diff）
+      F-->>W: fix 完成
+      W->>V: verify 子 agent（verifyCommands/acceptance，JSON schema 约束）
+      V-->>W: {verdict, reasons, evidence}
+      W-->>LS: outcome.workflow.value
+      LS->>LS: verdictFromWorkflow（无 verdict → REJECT）
+      LS->>RED: reducer(state, {type:EVALUATOR_VERDICT, itemId, verdict})
+      alt verdict = PASS（且 evidence 非空）
         RED-->>LS: item.step = awaiting_review
       else verdict = REJECT
-        RED-->>LS: attempt<max → fixing（带 reason）；耗尽 → inbox
+        RED-->>LS: attempt<max → fixing；耗尽 → inbox
+      else verdict = ESCALATE / 缺 evidence
+        RED-->>LS: inbox（人工兜底）
       end
     end
-    LS->>ST: 写回 STATE.md（原子）；prune 已终结 item
-    LS->>LS: 释放写锁 → 返回
-  else 人 review action（几小时后，独立调用）
-    LS->>RED: reducer(state, {type:APPROVE|REJECT_HUMAN|PROMOTE, itemId})
-    RED-->>LS: awaiting_review → resolved / inbox / promoted
-    LS->>ST: 写回 STATE.md
-    LS->>LS: 释放写锁 → 返回
-    Note over H,ST: 状态在文件里，跨进程重启不丢；gate 不依赖进程存活
+    LS->>DB: save（原子）
   end
 ```
 
 ## 一步的流程
 
-1. **拿锁 + 读状态**：`loopStep()` 先拿 loop 粒度写锁（三条入口共用），读 STATE.md + config.yml + constraints.md。
-2. **cron TICK → 起 Generator**：`loopReducer` 把 `triaged` 推到 `fixing`；对每个 `fixing` item，先过预算闸门（查 per-loop 原子计数），再起 Generator Agent 干活。generator 完成 → `item.step = verifying`。
-3. **独立 Evaluator**：在**另一条 Agent**（≠ generator model、不 fork 生成者上下文）上起怀疑姿态 Agent，装配 `verificationGuidance()` + config 的 `acceptance`，靠动手（跑测试、点按钮）验证。
-4. **verdict 转移 step**：Evaluator 产出结构化 verdict。loopStep **不看 run 成功与否**，读 verdict 内容喂 `loopReducer`：
-   - `PASS` → `item.step = awaiting_review`，等人拍板。
-   - `REJECT` 且 `attempt < maxRetries` → 回 `fixing`（reason 作返工反馈）；attempt 耗尽 → `inbox`。
-5. **写回 + prune**：写回 STATE.md，prune 已终结（resolved/inbox/promoted）item，释放锁返回。
-6. **人 review（独立调用）**：几小时后人在 review queue 拍板，`loopStep({action})` 独立调用一次，`loopReducer` 把 `awaiting_review` 转成 `resolved`/`inbox`/`promoted`。因为状态全在 STATE.md，中间进程重启不影响。
+1. **拿锁 + 读状态**：`loopStep()` 先拿 per-loop 写锁（三入口共用，见 [loop-lock.ts](../../../apps/backend/src/features/loop/loop-lock.ts)），从 DB load state + inbox。
+2. **cron TICK → workflow run**：空 loop 先 auto-triage；`loopReducer(TICK)` 把 `triaged` 推到 `fixing`；对每个 `fixing` item，过预算闸门（`loop_budget` 计数），渲染 workflow 脚本并 `enqueueAndAcquire`。脚本内 fix 子 agent 干活，随后 verify 子 agent 对照 `acceptance`/`verifyCommands` 动手验证。
+3. **verdict 硬化解析**：workflow 返回 `{ verdict, reasons, evidence }`。`verdictFromWorkflow()` 只认 `PASS`/`REJECT`/`ESCALATE`；**无可用 verdict = 验收未执行 = REJECT**（变化即回滚）；`verifyCommands` 存在时每条命令必须有完整输出，无输出 = 未验证。
+4. **verdict 转移 step**：loopStep **不看 run 终态**，读 verdict 喂 `loopReducer(EVALUATOR_VERDICT)`：
+   - `PASS` + evidence 非空 → `awaiting_review`，等人拍板。
+   - `PASS` 但 evidence 空 → **inbox**（reducer 的 PASS-without-evidence gate，防点头回路）。
+   - `REJECT` 且 `attempt < maxRetries` → 回 `fixing`（reason 作返工反馈）；耗尽 → `inbox`。
+   - `ESCALATE` → `inbox`。
+5. **写回 DB**：save（原子）；中间进程重启不影响——状态在 DB。
+6. **人 review（独立调用）**：几小时后人在 review queue 拍板，`loopStep({action})` 独立调用一次，`loopReducer` 把 `awaiting_review` 转成 `resolved`/`inbox`/`promoted`。中间进程重启不影响。
 
 ## 为什么读 verdict 而不是读 run 终态
 
-这是整条流的关键判断。对 evaluator 这一步，run succeeded 只意味着**验证者这个进程跑完了**，不意味着**产出满足了 acceptance**——验证者完全可以跑完并判定「没达标」。
+这是整条流的关键判断。run succeeded 只意味着**执行进程跑完了**，不意味着**产出满足了 acceptance**——验证者完全可以跑完并判定「没达标」。
 
-所以 step 的推进从「run 终态」换成「verdict 内容」：run 是执行事实，verdict 是对照 `acceptance` 的业务裁决。这守住[设计哲学](../design-philosophy.md)「terminal state 在业务本体上表达，不靠旁路事件推断」——「这件 item 达标没有」落在 verdict + acceptance 上，不靠 run 状态硬猜。这也是点头回路的治本处：checker 终于有了显式对照的靶子（config.yml 的 `acceptance` 字段，见 [Loop Engineering](../foundations/loop-engineering.md)「Goal 是过渡态」）。
+所以 step 的推进从「run 终态」换成「verdict 内容」：run 是执行事实，verdict 是对照 `acceptance` 的业务裁决。这守住[设计哲学](../design-philosophy.md)「terminal state 在业务本体上表达，不靠旁路事件推断」。workflow-first 把这条内建进执行模型：verdict 是 workflow 脚本的**返回值**（structured output 约束），不再靠外层模型用 write tool 改 meta 文件（ADR 0025 修掉的脆弱写回链）。
 
-这一判断有内层视角的独立佐证：Claude Code 的一次 agent run 结束时，`ResultMessage.subtype` / `stop_reason` 只描述**内层循环为何停**（自认干完 / 撞 maxSteps / 被中断），并不承诺**任务达标**——正对应本设计「run succeeded ≠ item 达标」。内层的「停」和外层的「达标」是两码事，把它们混成一个信号就是点头回路的技术根因。
+### 为什么 verify 是脚本内子 agent，而不是独立外层 Evaluator
 
-### Evaluator 为什么是独立 Agent，而不是 Stop 钩子或 subagent
-
-- **不能放进 Stop 钩子**：Stop 钩子与生成者同进程、同上下文，等于让写代码的人自己判自己的活——违反 maker-checker。验证必须换一条独立线。
-- **比 subagent 更隔离**：Claude Code 的 subagent 仍活在父 run 的生命周期里、结果以 `tool_result` 回灌父上下文；本设计的 Evaluator 是一条**平级的独立 Agent Run**（idempotency key `loop:<loopId>:eval:<itemId>:<attempt>`、独立子进程、可绑不同更小模型），不 fork 生成者上下文，结果落成结构化 verdict 供 loopReducer 转移 step。两者都避免自评，但本设计隔离更彻底——评审者看不到生成者的思维链，只对照产出与 `acceptance`。
+- **maker-checker 保留**：verify 子 agent 与 fix 子 agent 是同一 workflow 脚本内的两条独立子 agent 线，验证者不看生成者的思维链，只对照产出与 `acceptance`——比外层 Evaluator 更简单：不需要第二条 Agent Run、不需要 meta 写回链、verdict 是函数返回值。
+- **structured verifyCommands**：验收命令进 LOOP.md（`workflow.verifyCommands`），verify 子 agent 被强制逐条执行并贴完整输出——「验证了什么」可审计。
 
 ## 返工回路怎么闭合
 
-`REJECT` 把 item 送回 `fixing`，同时把 verdict 的 `reason` 作为返工反馈带上；下一轮 generator 的 prompt 注入这条反馈，据此改。整条 REJECT 路径与人工驳回（`REJECT_HUMAN`）复用**同一套 loopReducer 转移**，不为验证单开一条通道。attempt 耗尽则进 `inbox` 挂起，等人处理——不静默死循环。
+`REJECT` 把 item 送回 `fixing`，verdict 的 `reason` 作为返工反馈注入下一轮 fix prompt。整条 REJECT 路径与人工驳回（`REJECT_HUMAN`）复用同一套 loopReducer 转移。attempt 耗尽则进 `inbox` 挂起，等人处理——不静默死循环。
 
 ## 失败模式（带严重度）
 
-按「撞上会有多糟」排：S1 = 静默烧钱 / 静默错交 / 数据丢失，S2 = 回路卡死或退化，S3 = 局部瑕疵。前两行是四轮 grilling 直接落下来的结论。
+S1 = 静默烧钱 / 静默错交 / 数据丢失，S2 = 回路卡死或退化，S3 = 局部瑕疵。
 
 | 严重度 | 失败模式 | 触发场景 | 缓解 |
 |---|---|---|---|
-| **S1** | **STATE.md 并发写丢更新（grill Round 1）** | cron 正跑时人点 Run Now 或提交 review，两路各读旧 STATE.md、各写回，后写覆盖先写 | **loop 粒度写锁**串行化 cron/manual/review 三入口——**不能只靠 [CronJob 单飞锁](../foundations/cron-job.md)，它只在自然 cron 触发时拿 `inFlight` 锁，手动/review 不经过 `CronScheduler.fire()`** |
-| **S1** | **预算 cap 被冲穿（无声烧钱）** | 「读已用 token → 加本轮 → 比 cap」是非原子 read-modify-write，落 STATE.md 必然竞态，cron 与手动并发各放行一轮 | token 计数**不落 STATE.md**，走带锁/CAS 的 per-loop 原子计数器；超 cap 熔断 |
-| **S1** | **Verifier Theater（假验证）** | evaluator 光读不动手，或产出空 `evidence` 就判 PASS | `verificationGuidance()` 怀疑姿态 + `evidence` 字段强制交出「跑了什么」；evidence 空一律视为未验证，不许 PASS |
-| **S1** | **非代码类无靶子（grill Round 4）** | changelog / 依赖升级这类 item，acceptance 写不出「可跑的测试」，evaluator 退化回点头 | config.yml 每类 item 的 `acceptance` 必填**可观测的完成定义**；写不出可验收标准的 item 类型先只跑到 L1 报告、不自动 resolve |
-| **S1** | **Escalation Failure（升级失灵）** | budget_exceeded 或 verdict 缺失后回路默默停住，没人知道 | 熔断必须留一扇门：暂停调度 + 追加 run-log + 给人开 review / 发通知，绝不静默死掉 |
-| **S2** | **State Rot（状态腐烂）** | STATE.md 堆满已 resolved/inbox 的陈旧 item，新一轮据此误判 | 每轮写回前 prune 已终结 item；投影层（看板/review queue）按 step 过滤 |
-| **S2** | **verdict 缺失** | evaluator run 成功但没吐出可解析 verdict | 视为「未裁决」，item 停在 `verifying` 等人，不盲目转 step |
-| **S3** | **同 item 重入撞键** | 返工重入同一 item | run idempotency key 带 `:<attempt>` 序号，不撞 |
+| **S1** | **Verifier Theater（假验证）** | verify 子 agent 光读不动手，或产出空 `evidence` 就判 PASS | `verifyCommands` 强制逐条执行 + 完整输出贴 evidence；PASS-without-evidence → inbox；无 verdict → REJECT |
+| **S1** | **预算 cap 被冲穿（无声烧钱）** | 多入口并发各放行一轮 | `loop_budget` 表原子计数 + per-loop 写锁；workflow run 冻结 `workflowBudgetTokens`，子进程内子 agent spawn 受闸门约束；超限熔断 + Ledger 通知 |
+| **S1** | **非代码类无靶子** | changelog / 依赖升级这类 item，acceptance 写不出「可跑的测试」，verify 退化回点头 | acceptance 必填**可观测的完成定义**；写不出可验收标准的 item 类型只先跑到报告、不自动 resolve |
+| **S1** | **Escalation Failure（升级失灵）** | budget_exceeded 或 verdict 缺失后回路默默停住，没人知道 | 熔断留门：暂停调度 + Ledger run-log + 给人开 review / 发通知，绝不静默死掉 |
+| **S2** | **Zombie Run（坏死 run 占 branch）** | active run 已死但 branch 未释放，后续 tick 撞上 | Loop Doctor `abortStaleRun` 释放 branch；cron 超时 abort 立即释放；`withTimeout`/`runTimeoutMs` 兜底 |
+| **S2** | **Stale Item（状态腐烂）** | run 已 terminal 但 item 卡 fixing/verifying | Doctor 巡检 ESCALATE → inbox；投影层（看板/review queue）按 step 过滤 |
+| **S2** | **verdict 缺失** | workflow run 成功但没吐出可解析 verdict | 视为「未裁决」：REJECT（有变化回滚）或 ESCALATE，不盲目 PASS |
+| **S3** | **同 item 重入撞键** | 返工重入同一 item | idempotency key 带 `:<baseSha>` 序号；replay 短路对 terminal 非 completed 发 fresh run |
 
 ## 关联页面
 
-- [Loop Engineering](../foundations/loop-engineering.md) — 第一性原理入口
-- [Loop](../foundations/loop.md) — item step 状态机、STATE.md 格式
+- [Loop](../foundations/loop.md) — item step 状态机、LOOP.md 契约、DB 持久化
 - [LoopRunner](../backend/loop-runner.md) — `loopStep()` 与 loopReducer
 - [定时任务](../foundations/cron-job.md) — 调度者与单飞锁的边界
+- [ADR 0025](../../adr/0025-loop-workflow-first-execution.md) — workflow-first 决策
 - [架构设计哲学](../design-philosophy.md)

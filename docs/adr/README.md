@@ -9,9 +9,9 @@
 | 0001 | loop-prune-is-post-processing | Accepted |
 | 0002 | config-generation-is-builtin-skill | Accepted |
 | 0003 | state-md-single-writer | Accepted |
-| 0004 | discovery-is-agent-session | **Obsolete**(discovery 已从 loopStep 移除) |
+| 0004 | discovery-is-agent-session | **Superseded**(发现环节以 triage workflow 回归,ADR 0025) |
 | 0005 | mcp-deferred-for-loop | Deferred 维持(MCP 已落地,loop 未接入) |
-| 0006 | loop-lock-deferred | Deferred(曾落地后回退) |
+| 0006 | loop-lock-deferred | **Implemented**(写锁+原子预算落地;并发池以串行替代) |
 | 0007 | span-canonical-run-user-facing | **Superseded**(span 已删,Phase 6) |
 | 0008 | collapse-harness-invocation-layer | **Implemented**(Phase 5/6) |
 | 0009 | session-layer-owns-identity-features-own-binding | **Superseded**(framework 已删) |
@@ -29,8 +29,10 @@
 | 0021 | one-conversation-one-agent-member(session 投影) | Accepted |
 | 0022 | mcp-catalog-and-knowledge-packs | Accepted |
 | 0023 | project-worktree-workspace(多对多 worktree 桥接) | Proposed |
+| 0024 | oma-wire-protocol-fixture-contract | Accepted |
 | 0025 | loop-workflow-first-execution(Workflow 一等执行) | Accepted |
 > 编号历史:0002/0003 曾各有两个文件(早期 loop 类与近期 backend-kinds 类重号);2026-08-13 统一后,backend-kinds 类顺延为 0019/0020。
+> 状态翻转纪律:任何 ADR 状态变更(Obsolete/Superseded/Deferred→Implemented 等)**必须同 PR 更新本索引**,避免索引与正文失配(2026-08-21 修复 0004/0006/0024 时立规)。
 
 ## 架构级决策文档(非 ADR,但同属决策面)
 

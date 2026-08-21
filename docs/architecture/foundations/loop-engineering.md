@@ -1,7 +1,7 @@
 ---
 id: foundations.loop-engineering
 title: Loop Engineering
-status: design
+status: deprecated
 owners: architecture
 last_verified_against_code: 2026-07-28
 summary: "agent 之上的第四层：不再一遍遍手写 prompt，而是设计出「替你 prompt agent 的 loop」。本页从第一性原理讲这层--内层 loop（一次 run）与外层 loop（跨轮工作）的区别、发现/交接/验证/持久化/调度五个动作、以及 maker-checker 为什么要拆成两条独立 Agent。本体不落数据库：配置在 .loop/ 文件、item 状态在 STATE.md、CronJob 只当调度者、loopStep() 无状态。Goal 是创建对话框里的过渡态，落地后消失，验收标准降为 config.yml 的 acceptance 字段。末尾「迁移说明」讲 MVP 如何把 Issue/Kanban 吸收成 Loop 的入口（入口统一、数据未统一）。"
@@ -18,9 +18,7 @@ used_by:
 ---
 
 # Loop Engineering
-> ⚠ **部分过时(2026-08-13)**:五动作中的 Discovery 已从实现移除(ADR 0004 Obsolete),Loop 现为 generator/evaluator 两段;Issue/Orchestrator 页面已不存在(0011 后 Issue 退役)。实现见 `apps/backend/src/features/loop/`。
-
-> 本页 `status: design`：描述一版**grilling 后锁定、尚未进代码**的设计。它是 Loop 这套设计的**第一性原理入口**——讲「为什么要有这层、它靠什么自转」；具体的实体、编排函数、模板分别在 [Loop](./loop.md)、[LoopRunner](../backend/loop-runner.md)、[Loop Pattern](./loop-pattern.md) 三页展开。本页不重复它们的字段定义，只把它们串成一个可解释的整体。若你要看现状代码怎么跑，见 `status: current` 的 [Issue](./issue.md)、[Orchestrator](../backend/orchestrator.md)。
+> ⚠ **tombstone（2026-08-21）**：本页描述的是 loop-engineering 第一性原理设计稿（内层/外层 loop、五动作、maker-checker 双 Agent 角色），其执行模型已被 [ADR 0025](../../adr/0025-loop-workflow-first-execution.md) 的 workflow-first 重写取代——Generator/Evaluator 分离角色已删除，状态落库（loop_item/loop_budget），不再有 STATE.md 唯一状态源。**新设计与代码一律以 [Loop](./loop.md)、[LoopRunner](../backend/loop-runner.md)、[Loop Pattern](./loop-pattern.md) 与 [ADR 0025](../../adr/0025-loop-workflow-first-execution.md) 为准**；本页仅保留历史设计推演，供理解「为什么当初这么想」。
 
 Loop Engineering 是 agent 之上的第四层。前三层是 **Prompt（怎么说一句话）-> Context（怎么组织一次对话的上下文）-> Agent（怎么跑一次 run）**；这一层再往上退一步：**不再由人一遍遍给 agent 写 prompt，而是把「谁来提示 agent」这件事本身自动化掉**。一个 loop 从发现工作、交接上下文、验证产出、持久化状态、按时调度五个动作里自转，人只在明确的检查点介入。业界把这层的判断说得很直白--「你不该再手写 prompt 了，你该设计出替你 prompt agent 的 loop」[[Loop Engineering]](https://github.com/cobusgreyling/loop-engineering)。
 
@@ -167,7 +165,7 @@ STATE.md 是 item 状态的**唯一源**，但同时有三条都会写它的入�
 
 > 以下面向**了解现状代码**的读者。只想理解 Loop Engineering 本身，读到上一节即可停。
 
-现状有两个独立实体：[Issue](./issue.md) 管手动工作流、[CronJob](./cron-job.md) 管定时触发一次 run。两者都不表达「按调度自动发现工作 + 多步流水线推进 + 跨轮状态持久」。Loop 把这两个概念统一：CronJob 退成调度者、Issue 的工作流被 Loop 的 step 状态机吸收、手动工作 = `trigger=manual` 的 Loop。
+历史上有两个独立实体：Issue（已删除）管手动工作流、[CronJob](./cron-job.md) 管定时触发一次 run。两者都不表达「按调度自动发现工作 + 多步流水线推进 + 跨轮状态持久」。Loop 把这两个概念统一：CronJob 退成调度者、Issue 的工作流被 Loop 的 step 状态机吸收、手动工作 = `trigger=manual` 的 Loop。
 
 **但 MVP 是入口统一、数据未统一，这是已知代价**：本设计只把 `/issues` 从导航移除、Issue 表保持**只读且不迁移**（迁移工具列入未来 P2）。所以底层仍有 Issue 表与 Loop 的 STATE.md 两处状态并存；`/loops` 成为和 `/conversations` 并列的用户可见工作入口，但这不代表底层数据已收敛。真正的单一数据源要等 Issue 迁移工具落地。
 
@@ -187,5 +185,4 @@ STATE.md 是 item 状态的**唯一源**，但同时有三条都会写它的入�
 - [未来工作](../roadmap/future-work.md)
 - [文件型记忆插件](../plugins/fs-memory.md)
 - [Agent 运行循环](../runtime/framework.md)
-- 现状对照：[Issue](./issue.md)、[Orchestrator](../backend/orchestrator.md)
 - 外部参考：[Loop Engineering 参考库（cobusgreyling）](https://github.com/cobusgreyling/loop-engineering)、[Claude Code agent-loop](https://code.claude.com/docs/en/agent-sdk/agent-loop.md)

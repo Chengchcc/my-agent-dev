@@ -155,7 +155,7 @@
       "title": "Oma Session",
       "status": "current",
       "owners": "architecture",
-      "path": "docs/architecture/runtime/oma-session.md",
+      "path": "docs/architecture/runtime/coding-agent-session.md",
       "summary": "Runtime 的 SessionStore 是 per-Run、in-memory 执行缓存：seed full Product history + meta + input，Run 结束销毁；无 SQLite session、无 worker、无跨 Run 恢复。",
       "depends_on": ["runtime.oma"],
       "used_by": ["runtime.oma-prompt"]
@@ -165,7 +165,7 @@
       "title": "Oma Prompt 与 Context",
       "status": "current",
       "owners": "architecture",
-      "path": "docs/architecture/runtime/oma-prompt.md",
+      "path": "docs/architecture/runtime/coding-agent-prompt.md",
       "summary": "每个 Run 使用 Run 快照冻结的 systemPrompt + Meta User Message + 真实 Prompt，随 full Product history seed 进 SessionStore。",
       "depends_on": ["runtime.oma", "runtime.oma-session"],
       "used_by": []
@@ -175,7 +175,7 @@
       "title": "Oma Provider 与 ModelRuntime",
       "status": "current",
       "owners": "architecture",
-      "path": "docs/architecture/runtime/oma-models.md",
+      "path": "docs/architecture/runtime/coding-agent-models.md",
       "summary": "模型系统由 packages/ai（Provider 注册制 + ModelRuntime）提供；Product Backend 只保存 BackendModelRef，子进程内解析并 stream。",
       "depends_on": ["runtime.oma"],
       "used_by": ["runtime.oma-prompt"]

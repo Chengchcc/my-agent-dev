@@ -1,59 +1,60 @@
 ---
 id: foundations.loop
 title: Loop
-status: design
+status: current
 owners: architecture
-last_verified_against_code: 2026-07-28
-summary: "Loop 是统一的工作系统--所有工作（自动发现或手动添加）的入口。Loop 不需要新数据库表：配置在 .loop/ 目录的文件里，运行时 item 状态在 STATE.md 里。CronJob 通过 loop_config_path 调用 Loop。手动工作池是 trigger=manual 的 Loop 特例。/issues Kanban 被 Loop 吸收，/loops 成为和 /conversations 并列的唯一工作入口。"
+last_verified_against_code: 2026-08-21
+summary: "Loop 是统一的工作系统——自动发现（auto-triage）或手动添加的 item 经 workflow-first 流水线执行：每 item 渲染 fix+verify 子 agent 的 workflow 脚本，在子进程 vm sandbox 执行，返回 { verdict, evidence } 进状态机。状态持久化在 DB（loop_item/loop_budget 两表），STATE.md 仅剩一次性迁移读取（migrate-legacy.ts）。per-loop 写锁串行化 cron/manual/review；Loop Doctor 巡检 zombie run/stale item/deferred_due。taskClass 驱动差异化 fix 指导，defer 支持延期。"
 depends_on:
-  - foundations.issue
   - foundations.cron-job
   - agent.oma
 used_by:
   - backend.loop-runner
+  - flows.e2e-loop-verification
 ---
 
 # Loop
-> ⚠ **部分过时(2026-08-13)**:本页为 design 态;Loop 现已实现(generator/evaluator 两段,ADR 0004 的 discovery 已移除,0006 的锁/池未落地,0011 后 Issue 退役)。实现见 `apps/backend/src/features/loop/` 与 `packages/loop/`。
 
-> 本页 `status: design`：grilling 后锁定的设计，尚未进代码。Issue 和 Loop 的关系已收敛：Loop 是统一的工作系统，Issue/Kanban 被吸收为 Loop 的特例。
+Loop 是**按意图生成的工作流水线**。用户说"每天早上检查 CI，修简单失败"，系统生成 LOOP.md 配置，CronJob 到点调 `loopStep()`，Loop 自动发现工作、执行、验证、等人拍板。手动工作也一样——人往里加 item，同一套流水线。
 
-Loop 是**按意图生成的工作流水线**。用户说"每天早上检查 CI，修简单失败"，系统生成配置，然后 Loop 按调度自动发现工作、执行、验证、等人拍板。手动工作也一样——人往里加 item，同一套流水线。
+> 执行模型在 2026-08-20 由 [ADR 0025](../../adr/0025-loop-workflow-first-execution.md) 重写为 **workflow-first**：Generator/Evaluator 双 Agent 角色已删除。本文描述当前实现，代码见 `apps/backend/src/features/loop/` + `packages/loop/`。
 
-## 这页解决什么问题
+## 执行模型：Workflow 是唯一执行单元
 
-[Issue](./issue.md) 和 [CronJob](./cron-job.md) 是两个独立实体：Issue 管手动工作流，CronJob 管定时触发一次 Agent 运行。两者都不表达"按调度自动发现工作 + 多步流水线推进 + 跨轮状态持久"。
+每个 item 的执行 = 一段 workflow 脚本，由 `renderLoopWorkflow(item, cfg)` 渲染，作为 `BackendRunInput.workflow` 直接交给子进程执行：
 
-Loop 统一这两个概念：
-- CronJob 是调度者（到点调用 Loop）
-- Issue 的工作流被 Loop 的 step 状态机吸收
-- 手动工作 = trigger=manual 的 Loop
-
-## Loop 没有自己的数据库表
-
-Loop 的配置在文件系统，运行时状态在 STATE.md。唯一 DB 改动：CronJob 表加 `loop_config_path TEXT`。
-
-```
-.loop/
-  config.yml       — generator/evaluator model + prompt + safety
-  constraints.md   — denylist, budget cap, auto-merge policy
-  skills/          — discovery SKILL.md
-  STATE.md         — 运行时状态（首次运行时创建）
+```text
+loopStep(TICK)
+  → 对每个 fixing item：renderLoopWorkflow(item, cfg)
+  → enqueueAndAcquire({ workflow: { script, args: { item } }, ... })
+  → oma 子进程 vm sandbox 执行脚本
+      → fix 子 agent（按 goal/action/taskClass 渲染 prompt）
+      → verify 子 agent（按 acceptance/verifyCommands 渲染 prompt，structured output 约束）
+      → return { verdict: PASS|REJECT|ESCALATE, reasons, evidence }
+  → verdictFromWorkflow(value) 硬化解析
+  → loopReducer(state, { type: "EVALUATOR_VERDICT", ... })
 ```
 
-STATE.md 格式：
-```markdown
-# Loop State — Morning Triage
-Last run: 2026-07-01T08:05:00Z
+要点：
 
-## Items
-| id | source | summary | step | attempt | result |
-|----|--------|---------|------|---------|--------|
-| f-1 | ci/4821| auth flaky | awaiting_review | 1 | PASS |
-| f-2 | issue/92| null deref | fixing | 2 | REJECT: scope drift |
-```
+- **没有外层 generator/evaluator Agent 角色**。fix/verify 是脚本内两个子 agent；外层模型只执行脚本 + 返回 verdict，不再有自己的 skill/systemPrompt（已删除 `loop-generator`/`loop-verifier`）。
+- **verdict 硬化**：`verdictFromWorkflow()` 对无验收输出的变化一律 REJECT（带 fallback reason），绝不静默 PASS；`verifyCommands` 存在时 verify 子 agent 被强制逐条执行并把完整输出贴进 evidence，某命令无输出 = 未验证 = REJECT。
+- **structured output**：verify 子 agent 的 schema 是 `{ verdict: enum[PASS,REJECT,ESCALATE], reasons: array, evidence: string }`，非法 JSON 自动重试一次（追加"只返回 JSON"提示）。
+- **PASS 且 evidence 为空** → reducer 路由 inbox（既有 gate），人工兜底。
+- 旧 LOOP.md 格式（generator/evaluator 双段）**不再解析**——`parseLoopConfig` 返回 null，既有 loop 需重写（ADR 0025 §2 显式不兼容）。
 
-一个文件，三个消费者：discovery agent 写、LoopRunner 读、人在 review queue 看。
+## 状态与持久化：DB 是唯一状态源
+
+Loop 状态**在数据库**，不在文件：
+
+| 表 | 内容 |
+|---|---|
+| `loop_item`（schema.ts:176） | item 状态机行（step/attempt/result/task_class/defer 列） |
+| `loop_budget`（schema.ts:196） | per-loop 每日预算计数（原子读改） |
+
+- `STATE.md` / `INBOX.md` 只被一次性迁移脚本 `migrate-legacy.ts` 读取（`bun run .../migrate-legacy.ts <loopsDir> <dbPath>` 把旧文件状态灌进 DB），**不再是运行时状态源**。
+- 配置仍在文件：LOOP.md（契约见下）+ 工作区（project worktree mirror）。
+- 跨进程重启不丢——human gate 依赖 DB 持久化，不依赖进程存活。
 
 ## Item step 状态机
 
@@ -63,41 +64,75 @@ triaged → fixing → verifying → awaiting_review
                          resolved  inbox  promoted
 ```
 
-- `triaged`：discovery 产出或人手添加，等待处理
-- `fixing`：generator Agent 在修
-- `verifying`：evaluator Agent 在审
-- `awaiting_review`：等人拍板。状态在 STATE.md 里，跨进程重启不丢
+- `triaged`：auto-triage 产出或人手添加，等待处理
+- `fixing`：item 的 workflow run 在跑（fix 子 agent 干活）
+- `verifying`：workflow 内 verify 子 agent 在审（fix 完成后脚本自动进入）
+- `awaiting_review`：等人拍板
 - `resolved`：人通过了
-- `inbox`：人不确定或 evaluator 反复失败，挂起
-- `promoted`：人决定进更深的工作流（创建另一个 Loop 的 item）
+- `inbox`：人不确定 / evaluator 反复失败 / verdict 缺失 / PASS 无 evidence——挂起
+- `promoted`：人决定进更深的工作流
 
-evaluator 拒绝且 attempt < maxRetries → 回 `fixing`（带拒绝理由）。attempt 耗尽 → `inbox`。
+reducer 动作（`packages/loop/src/loop-reducer.ts`，11 case）：`TICK`、`ADD_ITEM`、`EVALUATOR_VERDICT`、`APPROVE`、`REJECT_HUMAN`、`PROMOTE`、`RETRY`、`DISMISS`、`DEFER`、`UNDEFER`（`GENERATOR_DONE` 保留兼容，当前执行路径不再发出）。REJECT 且 attempt < maxRetries → 回 `fixing`（带拒绝理由）；attempt 耗尽 → `inbox`。
 
-## Generator 和 Evaluator 是分离的 Agent
+### taskClass 与 defer（ADR 0025 §4）
 
-不同 model、不同 system prompt、不同的 Agent Run（各自 spawn 独立 oma 子进程，run idempotency key 区分）。Evaluator 默认立场："ASSUME broken until proven otherwise"。验证通过执行测试和操作页面（MCP），不只读代码。
+- `ItemState.taskClass`：`bugfix | feature | refactor | research | review | chore`。`renderLoopWorkflow` 按类注入 `TASK_CLASS_GUIDANCE` 差异化 fix 指导（bugfix 先复现/最小改动/补回归；research/review 只读不改码等）。LOOP.md `workflow.fixPrompt` 覆盖全部。
+- `ItemState.defer { reason, until?, after? }`：`DEFER`/`UNDEFER` action；TICK 跳过 defer 项，`until` 到期（`opts.now`）或 `after` 依赖 resolved 自动恢复。
+- 持久化：`loop_item` 表 `task_class` / `defer` 列（迁移 0036）。
 
-结构化 verdict（PASS/REJECT + 证据）解析后写入 item 的 result 字段，在 review card 里展示。
+## 调度、锁与预算
 
-## Loop 的创建：自然语言意图
+- **CronJob 是调度者**：Loop = `cron_job(loopConfigPath)`；cron 到点 `fireLoop → loopStep(TICK)`。手动 loop 没有 CronJob，直接 HTTP 调 loopStep。
+- **per-loop 写锁**：`loop-lock.ts`（Map-based Promise chain）串行化 cron/manual/review 三入口——`loopStep` 的 `withLoopLock(loopId, fn)` 保证 load → reducer → save 不交错（ADR 0006 已落地；8 个调用点含 cron scheduler + HTTP）。
+- **工作区锁**：worktree 操作走 `withWorkspaceLock`，per-step clean start（`loopCleanStart`），live run 先 settle。
+- **预算**：`loop_budget` 表每日计数，`budget.dailyCap` 超限熔断 + 通知（Ledger `budget_exceeded` 消息）；workflow run 冻结 `workflowBudgetTokens = dailyCap - spent`，子进程内子 agent spawn 受闸门约束。
 
-用户不选 pattern，不填表单。输入"每天早上检查 CI 失败，自动修简单的"，系统翻译成 Loop 配置，用户预览确认。Goal 是创建对话框里的过渡态——Loop 创建后 Goal 消失。
+## 发现（auto-triage）
 
-## 与 CronJob 的关系
+`discoverItems()`（loop-step.ts:325）扫 repo mirror 信号（新提交 / agent 分支待合并产出 / 粘贴文本），跑 triage workflow（与 fix/verify 同构的 workflow 执行），产出结构化 `{ findings: [{ source, summary, taskClass, priority }] }`，按 summary hash 幂等 `ADD_ITEM`。触发：cron tick 遇到空 loop（loop-step.ts:671 自动跑，best-effort 失败不 kill tick）+ 手动 `POST /triage`。webhook 留 v2。
 
-CronJob 调度 Loop——不是 Loop 持有 schedule。CronJob 的 `loop_config_path` 指向 `.loop/` 目录，cron 触发时调 `loopStep(loopConfigPath)`。手动 Loop 没有 CronJob——通过 API 直接调 `loopStep`。
+## 恢复（Loop Doctor）
+
+`loop-doctor.ts` 巡检三类问题（启动补扫 + 每 5 分钟 + 手动 `POST /doctor`）：
+
+| kind | 发现 | 动作 |
+|---|---|---|
+| `zombie_run` | active run 已死但 branch 未释放 | `abortStaleRun`（释放 branch） |
+| `stale_item` | run 已 terminal 但 item 卡 fixing/verifying | `ESCALATE` → inbox |
+| `deferred_due` | defer 的 until/after 条件已满足但无 tick 跑 | `UNDEFER` |
+
+预防侧：cron 超时 → `AbortController.abort` → loopStep 停止 live run、branch 立即释放；`withTimeout` 兜底卡死；`runTimeoutMs` watchdog 最后防线。
+
+## LOOP.md 契约（workflow-first）
+
+```yaml
+projectId: ...
+agent: default
+model: ...            # 单一 model，子 agent 共享（不再有 generator/evaluator 双段）
+acceptance: ...       # 完成定义
+safety:
+  denylist: [...]
+budget:
+  dailyCap: ...
+workflow:
+  fixPrompt: ...       # 缺省由 goal/action/taskClass 渲染
+  verifyPrompt: ...    # 缺省由 acceptance/verifyCommands 渲染
+  verifyCommands: [...] # 结构化验收命令清单
+```
 
 ## 不变量
 
-1. Loop 没有自己的数据库表——配置在文件，状态在 STATE.md。
-2. CronJob 是调度者，Loop 是被调度者——Loop 不持有 schedule 字段。
-3. Generator 和 Evaluator 是不同 Agent，不同 model。
-4. Item 状态在 STATE.md，跨进程重启不丢——human gate 不需要进程存活。
-5. Loop 吸收 Issue/Kanban——手动工作 = trigger=manual 的 Loop。
+1. Workflow 是唯一执行单元——无外层 generator/evaluator 角色（ADR 0025）。
+2. 状态在 DB（loop_item/loop_budget），STATE.md 不是运行时状态源。
+3. per-loop 写锁串行化 cron/manual/review 三入口。
+4. verdict 内容驱动 step 转移，不靠 run 终态推断；无验收输出一律 REJECT。
+5. CronJob 是调度者，Loop 是被调度者——Loop 不持有 schedule 字段。
+6. Loop 吸收 Issue/Kanban——手动工作 = trigger=manual 的 Loop。
+7. taskClass/defer/doctor/triage 是生产主路径，不是规划。
 
 ## 关联页面
 
 - [LoopRunner](../backend/loop-runner.md) — loopStep() 编排函数
 - [CronJob](./cron-job.md) — Loop 的调度者
-- [Issue](./issue.md) — 被 Loop 吸收的原有工作流实体
-- [Agent](../harness/harness.md) - Loop 调用的 Agent 胶水
+- [Loop 验证端到端](../flows/e2e-loop-verification.md) — 一次 tick 的完整时序
+- [ADR 0025](../../adr/0025-loop-workflow-first-execution.md) — workflow-first 决策正典

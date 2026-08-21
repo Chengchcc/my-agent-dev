@@ -1,10 +1,10 @@
 # ADR 0004: Discovery 是 loopStep() 内的独立 AgentSession
 
-> ⚠ **已过期(2026-08-13)**:discovery 阶段已从 loopStep 移除——现 Loop 只有 generator/evaluator 两段,无独立 Discovery AgentSession。本文保留为历史设计。
+> ⚠ **已取代(2026-08-21)**:发现环节已回归,但形态不是独立 AgentSession——ADR 0025 的 workflow-first 把 discovery 实现为 **triage workflow**(`discoverItems()` 扫 repo mirror 信号 → triage 子 agent → 幂等 ADD_ITEM,见 `loop-step.ts`)。本文的"独立 Discovery AgentSession + loop-triage skill"设计保留为历史。
 
 ## 状态
 
-Obsolete(was Accepted)
+Superseded by ADR 0025 (was Accepted, then wrongly marked Obsolete 2026-08-13 — discovery was never removed, only re-shaped)
 
 ## 上下文
 

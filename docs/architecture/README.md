@@ -53,9 +53,9 @@ Product Backend
 1. [Agent 工作区与多后端](./agents/workspace-and-backends.md)
 2. [Agent Backend](./execution/agent-backend.md)
 3. [Oma](./runtime/oma.md)
-4. [Oma Session](./runtime/oma-session.md)
-5. [Oma Prompt 与 Context](./runtime/oma-prompt.md)
-6. [Oma Provider 与 ModelRuntime](./runtime/oma-models.md)
+4. [Oma Session](./runtime/coding-agent-session.md)
+5. [Oma Prompt 与 Context](./runtime/coding-agent-prompt.md)
+6. [Oma Provider 与 ModelRuntime](./runtime/coding-agent-models.md)
 
 ### Task / Cron / Loop
 

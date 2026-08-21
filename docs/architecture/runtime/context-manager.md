@@ -15,4 +15,4 @@ used_by: []
 
 产品侧对应的概念是 Product Summary（Agent Context 的 `summary` entry），由 Product Policy 决定，只改变投影，不删除原始历史。见 [事实与投影](../foundations/facts-and-projections.md)。
 
-相关当前页面：[Oma](./oma.md)、[Oma Session](./oma-session.md)。
+相关当前页面：[Oma](./oma.md)、[Oma Session](./coding-agent-session.md)。

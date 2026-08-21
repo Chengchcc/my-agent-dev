@@ -31,5 +31,4 @@ Deferred(维持;was 等 MCP 支持)
 
 ## 关联
 
-- [loop-engineering 参考 MCP server](/root/loop-engineering/tools/mcp-server/README.md)
-- [M1 loopReducer spec](../../../docs/superpowers/specs/2026-07-01-m1-loop-reducer.md)
+- [M1 loopReducer spec](../superpowers/specs/2026-07-01-m1-loop-reducer.md)

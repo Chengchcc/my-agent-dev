@@ -1,6 +1,6 @@
 # 打包清单
 
-- `docs/adr/README.md`(索引;0001–0021 全部 ADR 在此目录)
+- `docs/adr/README.md`(索引;0001–0026 全部 ADR 在此目录)
 - `docs/adr/0001-loop-prune-is-post-processing.md`
 - `README.md`
 - `docs/architecture/README.md`
@@ -35,9 +35,9 @@
 - `docs/architecture/runtime/plugin.md`（tombstone）
 - `docs/architecture/runtime/context-manager.md`（tombstone）
 - `docs/architecture/runtime/oma.md`
-- `docs/architecture/runtime/oma-session.md`
-- `docs/architecture/runtime/oma-prompt.md`
-- `docs/architecture/runtime/oma-models.md`
+- `docs/architecture/runtime/coding-agent-session.md`
+- `docs/architecture/runtime/coding-agent-prompt.md`
+- `docs/architecture/runtime/coding-agent-models.md`
 - `docs/architecture/runtime/compaction.md`
 - `docs/architecture/runtime/memory.md`（tombstone）
 - `docs/architecture/security/overview.md`

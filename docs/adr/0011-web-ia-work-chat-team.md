@@ -135,6 +135,6 @@ SYSTEM—— 系统健康与全局检索（低调，给运维，不占一级心�
 ## 关联
 
 - [ADR 0008](./0008-collapse-harness-invocation-layer.md) — 塌缩 harness 调用层（后端同源"减概念"思路）
-- [Loop PRD](../prd/loop-engineering.md) — Loop 生命周期、文件模型、Phase 规划
+- [Loop PRD](../superpowers/plans/loop-engineering.md) — Loop 生命周期、文件模型、Phase 规划
 - [设计哲学](../architecture/design-philosophy.md) — 暴露业务、隐藏机制；边界要硬、概念要少
 - 配套 spec：`docs/superpowers/specs/2026-07-07-web-ia-work-chat-team.md` — 路由映射表、重定向清单、退役步骤、验收标准

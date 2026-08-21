@@ -87,5 +87,5 @@ child crash    → 当前 Run failed；下一个输入 = 新 Run = 新子进程 
 ## 关联页面
 
 - [Oma](./oma.md)
-- [Oma Prompt 与 Context](./oma-prompt.md)
+- [Oma Prompt 与 Context](./coding-agent-prompt.md)
 - [Agent Context](../agents/context.md)

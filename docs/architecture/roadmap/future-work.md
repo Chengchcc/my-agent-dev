@@ -8,10 +8,9 @@ summary: "这一页是唯一谈「还没做 / 想做」的地方——刻意和�
 depends_on:
   - runs.output-and-live-updates
   - surfaces.lark
-  - runtime.framework
-  - backend.orchestrator
-  - foundations.issue
-  - foundations.issue-workflow
+  - runtime.oma
+  - foundations.loop
+  - backend.loop-runner
 used_by:
 ---
 
@@ -31,34 +30,9 @@ used_by:
 - **更细的投影可见性策略**　当前 assistant 消息经 `onRunMessage` 直写账本，projection bridge只做 best-effort fan-out。未来可引入更细的可见性规则（按成员、按事件子类型），但任何扩展都应保持「assistant 消息与人类消息同一入口直写账本」「账本为唯一对话事实」这两条不变式。依赖：[会话投影](../runs/output-and-live-updates.md)、[事实与投影](../foundations/facts-and-projections.md)。
 - **端去重的统一化**　**已解决。** 飞书侧的 `canSkipFinalLedgerText` 及相关 dedup 逻辑已随 Lark 重构移除，SSE 事件直接渲染。当前仅 Web + Lark 两端，各自无去重负担。若未来接入更多端再考虑共享去重层。
 - **恢复语义的强化**　**历史方案，已随 Phase 5/6 删除。** checkpointer 的 saveInterrupt / consumeInterrupt 与整个 session 持久化体系已不存在。当前语义：中断/崩溃 = 当前 Agent Run failed；下一个输入 = 新 Run = 从 Agent Context full projection 重建，无恢复路径。
-- **Issue 协作工作流演进**　**已被 Loop Engineering 取代。** Issue 本体与 Orchestrator 模块已删除（无 `features/orchestrator/`、无 Issue CRUD），工作流编排能力由 Loop 系统承接（Generator -> Evaluator -> Human Gate）。M18.3-M18.7 里程碑失效，Project 实体化已独立落地（`features/project/` CRUD 已完成）。旧 `span_origin` 表（含 issueId 列）已随 Phase 6 迁移 0020 删除。
+- **Issue 协作工作流演进**　**已被 Loop 取代。** Issue 本体与 Orchestrator 模块已删除（无 `features/orchestrator/`、无 Issue CRUD），工作流编排能力由 Loop 系统承接（workflow-first：fix/verify 子 agent + human gate，见 [ADR 0025](../../adr/0025-loop-workflow-first-execution.md)）。M18.3-M18.7 里程碑失效，Project 实体化已独立落地（`features/project/` CRUD 已完成）。旧 `span_origin` 表（含 issueId 列）已随 Phase 6 迁移 0020 删除。
 - **@提及收编进编排**　**已解决。** Orchestrator 已删除，@提及自动触发（`conversation/service.ts` 的 `#forkAgentRuns`）是唯一驱动来源。两套驱动的问题不存在了。
-- **Loop Engineering（统一工作系统，把半个回路补成完整回路）**　现有 Issue/CronJob 覆盖了 loop 五动作里的交接、持久化、半个调度，但两个概念各管一半、都不表达「按调度自动发现工作 + 多步流水线推进 + 跨轮状态持久」。Loop 把它们统一成一个**文件态**工作系统：配置在 `.loop/` 文件、item 状态在 STATE.md、CronJob 退成调度者、`loopStep()` 无状态推进。**Goal 是创建对话框里的过渡态，翻译成 config 后消失，验收标准沉淀为 config.yml 的 `acceptance` 字段——不新增 Goal/Step/Edge 数据库实体**。完整设计与不变量收拢在 [Loop Engineering](../foundations/loop-engineering.md)（第一性原理入口）、[Loop](../foundations/loop.md)、[LoopRunner](../backend/loop-runner.md)、[Loop Pattern](../foundations/loop-pattern.md)、[Loop 验证端到端](../flows/e2e-loop-verification.md)；本节只记**落地顺序**。核心判断：这是**最小 DB 改动**（唯一加 `cron_job.loop_config_path` 一列）+ 文件态本体，不是 schema 大重构；MVP 是**入口统一、数据未统一**——`/issues` 移除、Issue 表只读**不迁移**（迁移列入 Phase 3）。落地顺序、并发一致性、预算等硬约束以 [PRD](../../prd/loop-engineering.md) 为准。依赖：[Loop Engineering](../foundations/loop-engineering.md)、[定时任务](../foundations/cron-job.md)、[Agent Backend](../execution/agent-backend.md)、[LoopRunner](../backend/loop-runner.md)。
-
-  里程碑切法（对齐 [PRD](../../prd/loop-engineering.md) §8 的 Phase 1/2/3；**检查先于并行**——验证第一，并行最后）：
-
-  | Phase | 内容 | 为什么排这个位置 |
-  |---|---|---|
-  | **Phase 1（MVP）　文件态本体 + 单 Loop 编排** | `loopReducer()` 纯函数 + 测试；`loopStep()` 无状态编排（discovery → generator → evaluator → human gate，STATE.md 持久）；`.loop/` 目录结构 + STATE.md 读写；CronJob 加 `loop_config_path` 列 + handler 集成；Loop CRUD API + 自然语言创建对话框（intent→config 翻译 + 预览 + scaffold）；Web 仪表盘 + 详情页 review queue；预算保护 + denylist 强制执行。**同棒硬约束**：per-loop 写锁（三入口共用，不能只靠 CronJob 单飞锁）、原子预算计数（不落 STATE.md）、`maxParallelFindings` + 进程级 Agent 池（**当前不存在，须新建**）。 | 地基：把「配置在文件、状态在 STATE.md、Goal 是过渡态」这套文件态本体立起来，最小 DB 改动。所有后续能力依赖它。验证（独立 Evaluator + acceptance 靶子）在 MVP 就一等落地，因为治点头回路是整套设计的核心动机。 |
-  | **Phase 2　增强体验** | SSE 实时进度推送（Loop 运行时间线）；Evaluator 通过 MCP 操作浏览器（截图验证前端改动）；Post-run critique 展示和编辑；手动 item 添加 UI；多 Loop 仪表盘性能优化（分页、缓存）。 | 单 Loop 编排跑通后，才谈得上把验证从「跑测试」扩到「操作浏览器」、把进度实时化。不改本体，只加体验与验证广度。 |
-  | **Phase 3　高级能力 + 数据收敛** | Loop 之间 item 移动（promote）；**已有 Issue 数据迁移工具**（把 MVP 遗留的只读 Issue 表收敛进 Loop，真正做到单一数据源）；Loop Ready Score 展示；多 Loop 协调与去重。 | 迁移刻意排最后：MVP 先用「入口统一、数据并存」把 Loop 立稳、验证文件态模型跑得通，再动风险最大的 Issue→STATE.md 数据迁移。并行/多 Loop 协调也在此档，守「检查先于并行」。 |
-
-  > 排序铁律「检查先于并行」来自 Loop Engineering 概念本身：在验证被证明可靠之前绝不加并发。多 Loop 协调 / 并行是这条线的**最后**一步——先把单条回路的文件态本体、独立验证、断路、发现跑通。
-
-  > **Phase 1/2/3 是实现顺序，不是自主度**：这三档说的是「按什么顺序把这套本体建出来」。一条**已经建好**的 loop 还有另一条正交的放权轴——L1 报告 → L2 辅助 → L3 无人值守（每档等上一档证明价值后再放开，创建默认 L1），详见 [Loop Engineering](../foundations/loop-engineering.md) 的「运营成熟度」与 [Loop Pattern](../foundations/loop-pattern.md) 的信任层级。别把「Phase 实现顺序」和「L 自主度」两条轴混为一谈。
-
-
-  **当前 Loop 实现缺口（2026-07-22 审计）**　Phase 1 的「文件态本体 + 单 Loop 编排」已有基础落地，但以下能力缺失：
-
-  | 缺口 | 现状 | 影响 | 成本 |
-  |---|---|---|---|
-  | **带 feedback 重试** | evaluator 只能 ACCEPT/REJECT，无法给 generator 修改建议。Item 被 reject 后无法带着 critique 重跑 | 循环断裂——验证发现了问题但没法解决 | 1 天 |
-  | **多 attempt 追溯** | 每个 item 只有单次运行，无 attempt 历史。判断"这个 item 试了几次才过"需要翻 STATE.md 时间线反推 | 无法评估生成质量，无法发现"反复不过"的问题 item | 0.5 天 |
-  | **Evaluator 结构化输出** | evaluator 输出是自由文本 VERDICT.md，generator 下次运行看不到 evaluator 的 critique | evaluator 的验证结果无法被 generator 消费 | 0.5 天 |
-  | **优先级感知** | 所有 item 平等对待，无"这个 critical，多试几次"的概念。maxAttempts 全局统一 | 关键任务和次要任务消耗同样的资源 | 0.5 天 |
-
-  这些不改变 Loop 的架构（文件态 + 无状态编排 + Generator/Evaluator 分离），只是让当前回路真正「闭环」——验证发现问题后能带着信息回到生成环节。成本合计 2.5 天。
-  原则：每个 Phase 落地时，同步回填它所触及的 `status: current` 页（[Issue](../foundations/issue.md)、[Orchestrator](../backend/orchestrator.md)、[CronJob](../foundations/cron-job.md)），并把 [Loop](../foundations/loop.md)、[LoopRunner](../backend/loop-runner.md)、[Loop Engineering](../foundations/loop-engineering.md) 对应小节从 `design` 推进为现状。
+- **Loop Engineering（统一工作系统）**　**历史方案，已由 workflow-first 取代（ADR 0025，2026-08-20）。** 本节记录的是 2026-08-13 前的设计推演（文件态：配置在 `.loop/`、运行状态放文件、Goal 是过渡态、不新增 DB 实体）——该执行模型已删除：状态落 `loop_item`/`loop_budget` 表，workflow 是唯一执行单元，Generator/Evaluator 角色已删，`verifyCommands`/taskClass/defer/Doctor/triage 已落地。**当前设计与现状见 [Loop](../foundations/loop.md)、[LoopRunner](../backend/loop-runner.md)、[Loop 验证端到端](../flows/e2e-loop-verification.md)、[ADR 0025](../../adr/0025-loop-workflow-first-execution.md)**；旧 PRD 归档在 [superpowers/plans/loop-engineering.md](../../superpowers/plans/loop-engineering.md)。本节下方案表格仅作历史记录，不再作为实现顺序。原 Phase 1/2/3 切法（文件态本体 → 增强体验 → 数据收敛）大部分已在 workflow-first 重写中一次性落地或明确否决；当前未实现项见文末「Loop 剩余功能」表。
 - **产品力审查发现（2026-07-13）**　从业务故事线（在场协作 / 离场托付 / 系统管理）出发的全面审查，识别出以下产品缺口。**大部分已于 2026-07-14 修复**，标注 ✅ 已完成 / ⏳ 待办。
 
   | 优先级 | 缺口 | 故事线 | 状态 | 修复内容 |

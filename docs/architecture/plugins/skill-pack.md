@@ -150,4 +150,4 @@ Elysia 将每条路由拆成独立交叉类型成员。`skill-packs` 有 7 条�
 
 - [渐进式技能插件](../plugins/progressive-skill.md) - 消费引擎
 - [数据模型](../backend/data-model.md) - skill_pack + agent_skill_pack 表
-- [CONTEXT.md](../../CONTEXT.md) - 领域词汇
+- [CONTEXT.md](../../../CONTEXT.md) - 领域词汇

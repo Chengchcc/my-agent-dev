@@ -77,6 +77,6 @@ Memory 由 Product Backend 拥有。Adapter/Product 将高价值摘要和索引�
 ## 关联页面
 
 - [Oma](./oma.md)
-- [Oma Session](./oma-session.md)
-- [Oma Provider 与 ModelRuntime](./oma-models.md)
+- [Oma Session](./coding-agent-session.md)
+- [Oma Provider 与 ModelRuntime](./coding-agent-models.md)
 - [Agent Backend](../execution/agent-backend.md)

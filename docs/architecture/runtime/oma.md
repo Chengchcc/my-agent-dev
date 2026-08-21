@@ -72,7 +72,7 @@ Runtime 内部由 `packages/agent` 提供：OmaSession（模型/工具循环、r
 
 ## 关联页面
 
-- [Oma Session](./oma-session.md)
-- [Oma Prompt 与 Context](./oma-prompt.md)
-- [Oma Provider 与 ModelRuntime](./oma-models.md)
+- [Oma Session](./coding-agent-session.md)
+- [Oma Prompt 与 Context](./coding-agent-prompt.md)
+- [Oma Provider 与 ModelRuntime](./coding-agent-models.md)
 - [Agent Backend](../execution/agent-backend.md)

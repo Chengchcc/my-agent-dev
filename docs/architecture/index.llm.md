@@ -2,6 +2,16 @@
 
 本目录主 Wiki 描述当前架构:Product Backend 拥有产品事实,四 Agent Backend(oma/claude/pi/omp)为每个 Agent Run spawn 一次性子进程执行;Agent 配置与记忆住在工作区文件里。页面可独立阅读;`status: deprecated` 表示 tombstone(历史概念,新设计不要引用);带 ⚠ banner 的页面部分过时。
 
+## 文档分区(2026-08-21,T6)
+
+| 区 | 路径 | 语义 |
+|---|---|---|
+| 活区-现状 | `docs/architecture/`(本目录) | 描述代码此刻真实样子,`last_verified_against_code` 可核对 |
+| 活区-决策 | `docs/adr/` | 决策档案;ADR 状态翻转必须同 PR 更新 `README.md` 索引 |
+| 归档 | `docs/superpowers/` | 历史 spec/plan/retro,**不代表当前架构**;死链/旧术语豁免 |
+
+`audit:docs` 门禁:活区相对链接必须存在(死链 >0 即红)、MANIFEST 收编文件必须存在、活区不得教已删除概念(词表见 `scripts/audit-docs.ts`)。
+
 ## 整体架构
 
 1. `system-overview.md`
@@ -72,9 +82,9 @@ Runtime 原生工具由子进程自己执行。History、审批等 Product Tool 
 ## 自研 Runtime
 
 1. `runtime/oma.md`
-2. `runtime/oma-session.md`
-3. `runtime/oma-prompt.md`
-4. `runtime/oma-models.md`
+2. `runtime/coding-agent-session.md`
+3. `runtime/coding-agent-prompt.md`
+4. `runtime/coding-agent-models.md`
 
 Oma 是无 UI 的一次性 CLI（print/json/rpc），由 Adapter 按 Run spawn。其 in-memory SessionStore 是单次 Run 的执行缓存，不是 Agent Context。
 

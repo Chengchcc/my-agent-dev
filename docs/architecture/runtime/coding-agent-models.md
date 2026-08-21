@@ -45,6 +45,6 @@ Context Branch 的 `model_change` entry 决定下一个 Agent Run 的 effective 
 ## 关联页面
 
 - [Oma](./oma.md)
-- [Oma Prompt 与 Context](./oma-prompt.md)
-- [Oma Session](./oma-session.md)
+- [Oma Prompt 与 Context](./coding-agent-prompt.md)
+- [Oma Session](./coding-agent-session.md)
 - [Agent Backend](../execution/agent-backend.md)

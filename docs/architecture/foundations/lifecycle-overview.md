@@ -41,7 +41,7 @@ sequenceDiagram
 
 ## 分阶段说明
 
-**1. 发起**　Product Backend 收到触发信号（人发消息 / cron 到点 / Loop Generator/Evaluator），写入输入与 Run 快照。
+**1. 发起**　Product Backend 收到触发信号（人发消息 / cron 到点 / Loop 调度触发），写入输入与 Run 快照。
 
 **2. 排队与 acquire**　输入进入 `branch_input_queue`。同一 branch 最多一个 active Run：空闲则立即 acquire，忙则排队（steer 可注入 live Run，follow_up 等 terminal）。
 
