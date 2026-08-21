@@ -22,11 +22,14 @@ interface McpCallResult {
   isError?: boolean;
 }
 
+type ToolArguments = Record<string, unknown>;
+
 interface McpClientLike {
-  callTool(params: { name: string; arguments?: unknown }): Promise<McpCallResult>;
+  callTool(params: { name: string; arguments?: ToolArguments }): Promise<McpCallResult>;
   listTools(): Promise<{
     tools: Array<{ name: string; description?: string; inputSchema?: unknown }>;
   }>;
+  close(): Promise<void>;
 }
 
 function loadMcpConfig(workspaceRoot: string): Record<string, McpJsonServer> {
@@ -42,29 +45,86 @@ function loadMcpConfig(workspaceRoot: string): Record<string, McpJsonServer> {
   }
 }
 
+/** Recursively collect every descendant pid of `pid` (pgrep -P walk). */
+function collectDescendants(pid: number): number[] {
+  const descendants: number[] = [];
+  const queue = [pid];
+  while (queue.length > 0) {
+    const parent = queue.shift()!;
+    const out = Bun.spawnSync(["pgrep", "-P", String(parent)], { stdout: "pipe" })
+      .stdout.toString()
+      .trim();
+    if (!out) continue;
+    for (const line of out.split("\n")) {
+      const child = Number(line);
+      if (child > 0) {
+        descendants.push(child);
+        queue.push(child);
+      }
+    }
+  }
+  return descendants;
+}
+
 async function connectServer(name: string, server: McpJsonServer): Promise<McpClientLike | null> {
   try {
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-    let transport: unknown;
+    let stdioRootPid: number | null = null;
+    let closeSdk: () => Promise<void>;
+    let callTool: McpClientLike["callTool"];
+    let listTools: McpClientLike["listTools"];
     if (server.url) {
       const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
-      transport = new SSEClientTransport(
+      const transport = new SSEClientTransport(
         new URL(server.url),
         server.headers ? { requestInit: { headers: server.headers } } : undefined,
       );
+      const client = new Client({ name: "oma", version: "0.1.0" }, { capabilities: {} });
+      await client.connect(transport);
+      callTool = (params) =>
+        // MCP wire boundary: the SDK returns a wide content union; our
+        // consumer only reads text blocks and isError.
+        client.callTool(params) as Promise<McpCallResult>;
+      listTools = () => client.listTools();
+      closeSdk = () => client.close();
     } else if (server.command) {
       const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
-      transport = new StdioClientTransport({
+      const transport = new StdioClientTransport({
         command: server.command,
         args: server.args ?? [],
         env: server.env,
       });
+      const client = new Client({ name: "oma", version: "0.1.0" }, { capabilities: {} });
+      await client.connect(transport);
+      stdioRootPid = transport.pid;
+      callTool = (params) =>
+        // MCP wire boundary: see the sse branch above.
+        client.callTool(params) as Promise<McpCallResult>;
+      listTools = () => client.listTools();
+      closeSdk = () => client.close();
     } else {
       return null;
     }
-    const client = new Client({ name: "oma", version: "0.1.0" }, { capabilities: {} });
-    await client.connect(transport as never);
-    return client as unknown as McpClientLike;
+    return {
+      callTool,
+      listTools,
+      async close() {
+        // Collect the tree BEFORE the SDK close: once the direct child is
+        // SIGKILLed, its children are reparented to init and pgrep -P can
+        // no longer find them. The npx/shadcn grandchildren inherit the
+        // stdio pipes and would otherwise keep the oma process alive.
+        const tree =
+          stdioRootPid === null ? [] : [stdioRootPid, ...collectDescendants(stdioRootPid)];
+        await closeSdk();
+        for (const pid of tree) {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {
+            /* already gone */
+          }
+        }
+      },
+    };
   } catch (err) {
     console.error(`[mcp-mount] server ${name} failed:`, err instanceof Error ? err.message : err);
     return null;
@@ -73,16 +133,24 @@ async function connectServer(name: string, server: McpJsonServer): Promise<McpCl
 
 /** Mount the workspace .mcp.json servers as plugin tools. Never throws;
  *  per-server failures degrade to "server absent". */
+export interface MountedMcpServers {
+  tools: PluginTool[];
+  /** Close every mounted server's transport (kills stdio children). */
+  close(): Promise<void>;
+}
+
 export async function mountWorkspaceMcpServers(
   workspaceRoot: string,
   nativeNames: ReadonlySet<string>,
-): Promise<PluginTool[]> {
+): Promise<MountedMcpServers> {
   const servers = loadMcpConfig(workspaceRoot);
   const tools: PluginTool[] = [];
+  const clients: McpClientLike[] = [];
   for (const [name, server] of Object.entries(servers)) {
     if (name === "product-tools") continue; // manifest path owns it (identity)
     const client = await connectServer(name, server);
     if (!client) continue;
+    clients.push(client);
     let listed: Array<{ name: string; description?: string; inputSchema?: unknown }>;
     try {
       listed = (await client.listTools()).tools;
@@ -111,5 +179,10 @@ export async function mountWorkspaceMcpServers(
       } as PluginTool);
     }
   }
-  return tools;
+  return {
+    tools,
+    async close() {
+      await Promise.allSettled(clients.map((c) => c.close().catch(() => {})));
+    },
+  };
 }

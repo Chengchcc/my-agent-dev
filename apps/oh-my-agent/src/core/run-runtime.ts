@@ -162,10 +162,14 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   }
   // Generic .mcp.json mounting (ADR 0022): user servers + knowledge.
   // Skips "product-tools" (the manifest path owns it) and names that
-  // collide with the native table.
-  fileTools.push(
-    ...(await mountWorkspaceMcpServers(deps.workspaceRoot, new Set(fileTools.map((t) => t.name)))),
+  // collide with the native table. The mounted clients join the run's
+  // teardown set so stdio children never outlive the run.
+  const mounted = await mountWorkspaceMcpServers(
+    deps.workspaceRoot,
+    new Set(fileTools.map((t) => t.name)),
   );
+  fileTools.push(...mounted.tools);
+  const closeMounted = mounted.close;
   // Web tools default ON via the std ports (DDG search + guarded fetch);
   // OMA_DISABLE_WEB=1 opts out for air-gapped workspaces.
   if (process.env.OMA_DISABLE_WEB !== "1") {
@@ -669,6 +673,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
           ),
         );
       }
+      closePromises.push(closeWithTimeout(closeMounted()));
       closePromises.push(closeWithTimeout(store.close()));
       await Promise.allSettled(closePromises);
     },
