@@ -7,6 +7,7 @@ import type {
   ProjectedHistoryItem,
 } from "@chengchenccc/agent-backend";
 import type { ModelRuntime } from "@chengchenccc/ai";
+import type { Message } from "@chengchenccc/message";
 import type { RunEventEnvelope } from "../protocol/index.js";
 import { mapRunEvent } from "../protocol/index.js";
 import { extractAutonomousMemory } from "./autonomous-memory.js";
@@ -74,21 +75,36 @@ function mergeWorkflowUsage(
   };
 }
 
+/** Attach the persisted message trail when present. A failed/aborted run
+ *  still surfaces what it did so the caller can persist it for the next
+ *  turn ("continue" resumes the context). */
+function withMessages(
+  outcome: BackendRunOutcome,
+  messages: readonly Message[] | undefined,
+): BackendRunOutcome {
+  return messages && messages.length > 0 ? { ...outcome, messages } : outcome;
+}
+
 function mapLoopResult(result: OmaLoopResult): BackendRunOutcome {
   if (result.status === "completed") {
     // No fabricated output: when the loop persisted no canonical messages,
     // omit them rather than inventing an empty sequence.
-    return {
-      status: "completed",
-      ...(result.messages && result.messages.length > 0 ? { messages: result.messages } : {}),
-      ...(result.usage ? { usage: result.usage } : {}),
-      ...(result.title ? { title: result.title } : {}),
-    };
+    return withMessages(
+      {
+        status: "completed",
+        ...(result.usage ? { usage: result.usage } : {}),
+        ...(result.title ? { title: result.title } : {}),
+      },
+      result.messages,
+    );
   }
   if (result.status === "stopped") {
-    return { status: "aborted", error: result.error ?? "stopped by user" };
+    return withMessages(
+      { status: "aborted", error: result.error ?? "stopped by user" },
+      result.messages,
+    );
   }
-  return { status: "failed", error: result.error ?? "loop failed" };
+  return withMessages({ status: "failed", error: result.error ?? "loop failed" }, result.messages);
 }
 
 export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promise<OmaRuntime> {

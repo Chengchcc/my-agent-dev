@@ -93,6 +93,9 @@ export type BackendRunOutcome =
       readonly error?: string;
       readonly usage?: Usage;
       readonly cliSessionRef?: string;
+      /** Messages persisted before the terminal failure (max steps,
+       *  mid-task error) — lets a follow-up turn resume the context. */
+      readonly messages?: readonly Message[];
     };
 
 /** A single run segment: an event stream plus a terminal outcome promise.

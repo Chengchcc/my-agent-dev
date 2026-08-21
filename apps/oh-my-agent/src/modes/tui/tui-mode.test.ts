@@ -322,4 +322,61 @@ describe("tui session (headless, fake provider)", () => {
       rmSync(sessionDir, { recursive: true, force: true });
     }
   }, 15_000);
+
+  test("failed first turn (max steps) persists context for the next turn", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-maxstep-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    process.env.OMA_MAX_STEPS = "2"; // first turn fails with max steps exceeded
+    const seen: string[][][] = [];
+    try {
+      const modelRuntime = createModelRuntime();
+      modelRuntime.registerProvider({
+        id: "probe",
+        name: "Probe",
+        getModels: () => [
+          {
+            id: "m",
+            name: "M",
+            provider: "probe",
+            api: "anthropic-messages",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 200_000,
+            maxTokens: 8192,
+          },
+        ],
+        async *stream(_model, messages) {
+          seen.push(messages.map((m) => [m.role, m.text ?? ""]));
+          const toolCount = messages.filter((m) => m.role === "assistant" && m.text === "").length;
+          yield { delta: { type: "tool_use", id: `t${toolCount}`, name: "bash" } };
+          yield {
+            delta: {
+              type: "input_json_delta",
+              id: `t${toolCount}`,
+              partial_json: JSON.stringify({ command: "echo hi" }),
+            },
+          };
+          yield { usage: { input: 1, output: 1, cacheRead: 0, cacheCreate: 0 } };
+          yield { stopReason: "tool_use" };
+        },
+      });
+      const io = scriptedIo(["first task", "continue"]);
+      const code = await runTuiSession({ modelRuntime, workspaceRoot: sessionDir }, io);
+      expect(code).toBe(0);
+      // The second turn's model input carries the first turn's tool trail
+      // (assistant tool_use + tool_result), not just the user prompt.
+      const second = seen.find((msgs) =>
+        msgs.some(([role, text]) => role === "user" && text === "continue"),
+      );
+      expect(second).toBeDefined();
+      const roles = second?.map(([role]) => role) ?? [];
+      expect(roles).toContain("tool");
+      expect(roles.filter((r) => r === "assistant").length).toBeGreaterThan(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      delete process.env.OMA_MAX_STEPS;
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

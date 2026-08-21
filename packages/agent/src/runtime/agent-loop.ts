@@ -600,16 +600,16 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
 
       await emit({ type: "agent_end", status });
       // Canonical output (ADR 0017): the run's full message sequence.
-      let runMessages: readonly Message[] | undefined;
-      if (status === "completed") {
-        const entries = await opts.store.readBranch(opts.sessionId);
-        runMessages = entries
-          .filter(
-            (e): e is MessageEntry =>
-              e.type === "message" && (e.source === "assistant" || e.source === "tool_result"),
-          )
-          .map((e) => e.message);
-      }
+      // Every terminal status returns the persisted assistant/tool messages:
+      // a failed run (e.g. max steps exceeded) must still surface what it
+      // did so a follow-up turn ("continue") has the context.
+      const entries = await opts.store.readBranch(opts.sessionId);
+      const runMessages = entries
+        .filter(
+          (e): e is MessageEntry =>
+            e.type === "message" && (e.source === "assistant" || e.source === "tool_result"),
+        )
+        .map((e) => e.message);
       return { status, messages: runMessages, usage: runUsage, error: runError, title };
     } catch (err) {
       // Setup/persistence failure: settle to a terminal state so listeners

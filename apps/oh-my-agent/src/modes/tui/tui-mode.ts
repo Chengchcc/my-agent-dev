@@ -487,7 +487,10 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     applyOutcome(state, outcome);
     io.setBusy?.(false);
 
-    if (outcome.status === "completed" && outcome.messages?.length) {
+    // Persist every terminal status, not just completed: a run that hit
+    // max steps / failed mid-task must leave its message trail behind so
+    // the next turn ("continue") resumes with the full context.
+    if (outcome.messages?.length) {
       session.messages = await persistSessionTurn({
         sessionId: session.sessionId,
         cwd: opts.workspaceRoot,
@@ -495,9 +498,9 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
         outcomeMessages: outcome.messages as unknown[],
         inputMessage,
         previousMessages: session.messages,
-        title: outcome.title,
+        ...(outcome.status === "completed" ? { title: outcome.title } : {}),
       });
-      sessionTitle = outcome.title ?? sessionTitle;
+      if (outcome.status === "completed") sessionTitle = outcome.title ?? sessionTitle;
     }
     await runtime.close().catch(() => {});
   }
