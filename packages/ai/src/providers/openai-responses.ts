@@ -145,6 +145,18 @@ function buildRequest(
       strict: false,
     }));
 
+  // F5 structured output: Responses API text.format JSON Schema mode.
+  if (opts?.responseFormat) {
+    body.text = {
+      format: {
+        type: "json_schema",
+        name: opts.responseFormat.name,
+        schema: opts.responseFormat.schema,
+        strict: opts.responseFormat.strict ?? true,
+      },
+    };
+  }
+
   return {
     url: "/responses",
     headers: { "Content-Type": "application/json", Authorization: "Bearer {apiKey}" },

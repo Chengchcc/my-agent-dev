@@ -1,4 +1,4 @@
-export type { AIMessageChunk, ChatModel, ChatModelOptions } from "./chat-model.js";
+export type { AIMessageChunk, ChatModel, ChatModelOptions, JsonSchema } from "./chat-model.js";
 export type {
   ContentBlock,
   TextBlock,

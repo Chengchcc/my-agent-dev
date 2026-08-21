@@ -658,6 +658,28 @@ describe("createWorkflowExecutor", () => {
     ).rejects.toThrow(/budget exhausted/);
   });
 
+  test("spec schema is passed as responseFormat to the subagent stream (F5)", async () => {
+    const seen: Array<{ modelId?: string; responseFormat?: unknown }> = [];
+    const exec = createWorkflowExecutor({
+      ...makeDeps(),
+      makeSubagentStream: (_sessionId, modelId, responseFormat) => {
+        seen.push({ modelId, responseFormat });
+        return createEchoModelStream("ok");
+      },
+    });
+    await exec.runSubagent({
+      workflowId: "wf-f5",
+      agentId: "a1",
+      prompt: "go",
+      schema: { type: "object" },
+    });
+    expect(seen[0]?.responseFormat).toEqual({
+      name: "result",
+      schema: { type: "object" },
+      strict: true,
+    });
+  });
+
   test("perAgentTimeoutMs stops a subagent that exceeds its deadline", async () => {
     const exec = createWorkflowExecutor({
       ...makeDeps(),

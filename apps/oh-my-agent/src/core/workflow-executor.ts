@@ -10,7 +10,7 @@ import {
   type PluginTool,
 } from "@chengchenccc/agent";
 import type { ProjectedHistoryItem, Usage } from "@chengchenccc/agent-backend";
-import type { AIMessageChunk } from "@chengchenccc/core";
+import type { AIMessageChunk, JsonSchema } from "@chengchenccc/core";
 import type { Message } from "@chengchenccc/message";
 import subagentPrompt from "../prompts/agents/subagent.md" with { type: "text" };
 
@@ -64,18 +64,24 @@ export interface WorkflowRunResult {
 
 /** Same shape as the session's modelStream option: the subagent session calls
  *  it with its own messages/signal/tools. The `modelId` override comes from
- *  the role definition (3.4) and must resolve in the runtime catalog. */
+ *  the role definition (3.4) and must resolve in the runtime catalog;
+ *  `responseFormat` (F5) asks the provider for schema-conformant JSON. */
 export type SubagentModelStream = (
   messages: readonly Message[],
   signal?: AbortSignal,
   tools?: readonly PluginTool[],
   modelId?: string,
+  responseFormat?: JsonSchema,
 ) => AsyncIterable<AIMessageChunk>;
 
 export interface WorkflowExecutorOptions {
   /** Build the subagent model stream (same model + reasoning as the run,
    *  unless the role pins a `modelId` override). */
-  readonly makeSubagentStream: (sessionId: string, modelId?: string) => SubagentModelStream;
+  readonly makeSubagentStream: (
+    sessionId: string,
+    modelId?: string,
+    responseFormat?: JsonSchema,
+  ) => SubagentModelStream;
   readonly modelId: string;
   readonly summarize: ContextSummarizer;
   readonly contextBudget: ContextBudget;
@@ -352,7 +358,11 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
           maxForceContinues: 2,
           // Transient model failures (429/timeout) retry via the loop's
           // default retryStream policy (maxAttempts 3).
-          modelStream: opts.makeSubagentStream(sessionId, modelId),
+          modelStream: opts.makeSubagentStream(
+            sessionId,
+            modelId,
+            spec.schema ? { name: "result", schema: spec.schema, strict: true } : undefined,
+          ),
           summarize: opts.summarize,
           contextBudget: opts.contextBudget,
         });

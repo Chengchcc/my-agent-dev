@@ -13,9 +13,18 @@ export interface AIMessageChunk {
   usage?: { input?: number; output: number; cacheCreate?: number; cacheRead?: number };
 }
 
+/** Structured-output request (F5): ask the provider to generate JSON
+ *  conforming to `schema` instead of free text. */
+export interface JsonSchema {
+  readonly name: string;
+  readonly schema: Readonly<Record<string, unknown>>;
+  readonly strict?: boolean;
+}
+
 export interface ChatModelOptions {
   signal?: AbortSignal;
   tools?: readonly Tool[];
+  responseFormat?: JsonSchema;
 }
 
 export interface ChatModel {

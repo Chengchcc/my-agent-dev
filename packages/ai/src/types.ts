@@ -1,4 +1,4 @@
-import type { AIMessageChunk } from "@chengchenccc/core";
+import type { AIMessageChunk, JsonSchema } from "@chengchenccc/core";
 import type { Message } from "@chengchenccc/message";
 
 // ─── Modalities + Cost ───
@@ -103,6 +103,8 @@ export interface ProviderStreamOptions {
   headers?: Record<string, string>;
   signal?: AbortSignal;
   tools?: readonly ProviderToolSchema[];
+  /** F5: structured-output request (provider-specific wire mapping). */
+  responseFormat?: JsonSchema;
   thinking?: {
     type: "adaptive" | "enabled" | "disabled";
     display?: "summarized" | "omitted";

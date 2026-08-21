@@ -58,6 +58,19 @@ function buildRequest(
     return tool;
   });
   if (tools) request.tools = tools;
+  // F5 structured output: Anthropic has no native JSON mode, so a
+  // report_result tool is injected carrying the caller's schema. tool_choice
+  // is deliberately NOT forced — subagents must still call their file tools
+  // first; the A2 validator backstops the final shape.
+  if (opts?.responseFormat) {
+    const toolList = tools ? [...tools] : [];
+    toolList.push({
+      name: "report_result",
+      description: "Report the final result conforming to the required output schema",
+      input_schema: opts.responseFormat.schema as Record<string, unknown>,
+    });
+    request.tools = toolList;
+  }
   // Thinking control: forceAdaptiveThinking (Sonnet 4.6+) overrides
   // caller's type to "adaptive" — the model requires it.
   if (opts?.thinking) {

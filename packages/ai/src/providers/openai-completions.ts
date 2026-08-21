@@ -145,6 +145,36 @@ function buildRequest(
       },
     }));
   }
+  // F5 structured output: Chat Completions JSON Schema mode. DeepSeek does
+  // not support json_schema yet (real API returns 400), so its dialect
+  // degrades to json_object — shape conformance is backstopped by the A2
+  // validator on the consuming side.
+  if (opts?.responseFormat) {
+    if (compat.thinkingFormat === "deepseek") {
+      body.response_format = { type: "json_object" };
+      // DeepSeek rejects json_object unless the prompt contains the word
+      // "json" — inject a system hint (the A2 validator still owns shape).
+      const messages = body.messages as Array<Record<string, unknown>>;
+      const sys = messages.find((m) => m.role === "system" || m.role === "developer");
+      const jsonHint = " Output valid JSON only, matching the requested schema.";
+      if (sys && typeof sys.content === "string") sys.content += jsonHint;
+      else if (sys && Array.isArray(sys.content))
+        (sys.content as Array<Record<string, unknown>>).push({
+          type: "text",
+          text: jsonHint.trim(),
+        });
+      else messages.unshift({ role: "system", content: jsonHint.trim() });
+    } else {
+      body.response_format = {
+        type: "json_schema",
+        json_schema: {
+          name: opts.responseFormat.name,
+          schema: opts.responseFormat.schema,
+          strict: opts.responseFormat.strict ?? true,
+        },
+      };
+    }
+  }
 
   return {
     url: "/chat/completions",

@@ -610,6 +610,80 @@ describe("Provider contract — wire serialization", () => {
     });
   });
 
+  test("openai-completions serializes responseFormat as response_format (F5)", async () => {
+    const provider = makeProvider(openaiModel);
+    const capture = mockFetchCapture(sseRes([DONE]));
+    const schema = { type: "object", properties: { ok: { type: "boolean" } } };
+    await collectChunks(
+      provider.stream(openaiModel, [{ role: "user", text: "hi" }], {
+        apiKey: "test-key",
+        responseFormat: { name: "result", schema },
+      }),
+    );
+    capture.restore();
+    const body = capture.getBody();
+    expect(body!.response_format).toEqual({
+      type: "json_schema",
+      json_schema: { name: "result", schema, strict: true },
+    });
+  });
+
+  test("openai-completions degrades responseFormat to json_object on DeepSeek (F5)", async () => {
+    const deepseekModel: Model = {
+      ...openaiModel,
+      compat: { thinkingFormat: "deepseek" as const, maxTokensField: "max_tokens" as const },
+    };
+    const provider = makeProvider(deepseekModel);
+    const capture = mockFetchCapture(sseRes([DONE]));
+    await collectChunks(
+      provider.stream(deepseekModel, [{ role: "user", text: "hi" }], {
+        apiKey: "test-key",
+        responseFormat: { name: "result", schema: { type: "object" } },
+      }),
+    );
+    capture.restore();
+    const body = capture.getBody();
+    expect(body!.response_format).toEqual({ type: "json_object" });
+  });
+
+  test("openai-responses serializes responseFormat as text.format (F5)", async () => {
+    const responsesModel: Model = { ...openaiModel, api: "openai-responses" };
+    const provider = makeProvider(responsesModel);
+    const capture = mockFetchCapture(sseRes([DONE]));
+    const schema = { type: "object", properties: { ok: { type: "boolean" } } };
+    await collectChunks(
+      provider.stream(responsesModel, [{ role: "user", text: "hi" }], {
+        apiKey: "test-key",
+        responseFormat: { name: "result", schema },
+      }),
+    );
+    capture.restore();
+    const body = capture.getBody();
+    expect(body!.text).toEqual({
+      format: { type: "json_schema", name: "result", schema, strict: true },
+    });
+  });
+
+  test("anthropic injects a report_result tool for responseFormat (F5)", async () => {
+    const provider = makeProvider(anthropicModel);
+    const capture = mockFetchCapture(sseRes([DONE]));
+    const schema = { type: "object", properties: { ok: { type: "boolean" } } };
+    await collectChunks(
+      provider.stream(anthropicModel, [{ role: "user", text: "hi" }], {
+        apiKey: "test-key",
+        responseFormat: { name: "result", schema },
+      }),
+    );
+    capture.restore();
+    const body = capture.getBody();
+    const tools = body!.tools as Array<Record<string, unknown>>;
+    expect(tools).toContainEqual({
+      name: "report_result",
+      description: "Report the final result conforming to the required output schema",
+      input_schema: schema,
+    });
+  });
+
   test("anthropic serializes tool schemas, defaults missing inputSchema to {}", async () => {
     const provider = makeProvider(anthropicModel);
     const capture = mockFetchCapture(sseRes([DONE]));

@@ -17,7 +17,7 @@ import {
 } from "@chengchenccc/agent";
 import type { AgentRunSnapshot, ProjectedHistoryItem } from "@chengchenccc/agent-backend";
 import { type ModelRuntime, resolveModelAlias } from "@chengchenccc/ai";
-import type { AIMessageChunk } from "@chengchenccc/core";
+import type { AIMessageChunk, JsonSchema } from "@chengchenccc/core";
 import type { Message } from "@chengchenccc/message";
 import { createProgressiveSkillPlugin } from "@chengchenccc/plugin-progressive-skill";
 import { createRecapPlugin } from "@chengchenccc/plugin-recap";
@@ -414,8 +414,9 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     return { allowed: true };
   };
   const workflowExecutor = createWorkflowExecutor({
-    makeSubagentStream: (_sessionId, modelIdOverride) => (messages, signal, tools) =>
-      streamModel(messages, signal, tools, modelIdOverride),
+    makeSubagentStream:
+      (_sessionId, modelIdOverride, responseFormat) => (messages, signal, tools) =>
+        streamModel(messages, signal, tools, modelIdOverride, responseFormat),
     modelId: deps.modelId,
     summarize,
     contextBudget,
@@ -567,6 +568,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     signal?: AbortSignal,
     tools?: readonly PluginTool[],
     modelIdOverride?: string,
+    responseFormat?: JsonSchema,
   ): AsyncIterable<AIMessageChunk> {
     const run = activeRun;
     if (!run) throw new Error("no active run: model unresolved");
@@ -598,6 +600,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       signal: combined,
       cacheControl: true,
       ...reasoningOpts,
+      ...(responseFormat ? { responseFormat } : {}),
       tools: tools?.map((t) => ({
         name: t.name,
         description: t.description,
