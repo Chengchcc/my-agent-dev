@@ -25,6 +25,13 @@ export type OmaLoopEvent =
       callId: string;
       result?: Readonly<Record<string, unknown>>;
     }
+  | {
+      /** Streaming partial output from a running tool (bash stdout). */
+      type: "tool_output";
+      toolName: string;
+      callId: string;
+      text: string;
+    }
   | { type: "retry_start"; attempt: number }
   | { type: "retry_end" }
   | { type: "compaction_start" }

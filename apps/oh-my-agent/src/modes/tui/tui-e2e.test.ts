@@ -31,15 +31,21 @@ async function typeAndSubmit(vt: VirtualTerminal, text: string): Promise<void> {
   await vt.waitForRender();
 }
 
-/** Poll the viewport until a substring appears (event-driven alternative to
- *  fixed sleeps for async run transitions). */
-async function waitForText(vt: VirtualTerminal, needle: string, ms: number): Promise<void> {
+/** Poll the viewport until a substring/regex appears (event-driven
+ *  alternative to fixed sleeps for async run transitions). */
+async function waitForText(
+  vt: VirtualTerminal,
+  needle: string | RegExp,
+  ms: number,
+): Promise<void> {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
-    if (screen(vt).includes(needle)) return;
+    const haystack = screen(vt);
+    const hit = needle instanceof RegExp ? needle.test(haystack) : haystack.includes(needle);
+    if (hit) return;
     await new Promise((r) => setTimeout(r, 50));
   }
-  throw new Error(`timed out waiting for text: ${needle}`);
+  throw new Error(`timed out waiting for text: ${String(needle)}`);
 }
 
 describe("tui e2e: model I/O on a virtual terminal", () => {
@@ -515,6 +521,51 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("long tool output streams live; run duration ticks in the spinner", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-live-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-live-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    // A 2-second bash command emits distinct markers so the test can assert
+    // intermediate output reached the screen BEFORE the tool finished.
+    process.env.OMA_FAKE_TOOL = JSON.stringify([
+      {
+        name: "bash",
+        input: {
+          description: "live output",
+          command: "echo start; sleep 1; echo middle; sleep 1; echo end",
+        },
+      },
+    ]);
+    try {
+      const vt = new VirtualTerminal(100, 30);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
+        io,
+      );
+
+      await typeAndSubmit(vt, "run");
+      // mid-run: "middle" is on screen while the tool is still executing,
+      // and the spinner carries an elapsed-seconds counter (tick at 1s).
+      await waitForText(vt, "middle", 5_000);
+      await waitForText(vt, /working… \(\d+s/, 3_000);
+      const mid = screen(vt);
+      expect(mid).toContain("start");
+      expect(mid).toContain("middle");
+
+      await waitForText(vt, "done", 5_000);
+      const end = screen(vt);
+      expect(end).toContain("end");
+      await typeAndSubmit(vt, "/exit");
+      expect(await sessionDone).toBe(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      delete process.env.OMA_FAKE_TOOL;
       rmSync(dir, { recursive: true, force: true });
       rmSync(sessDir, { recursive: true, force: true });
     }

@@ -630,10 +630,21 @@ export function createTerminalIo(
   let liveHandler: ((text: string) => void) | null = null;
   let commandHandler: ((cmd: TuiCommand) => void) | null = null;
   let loader: Loader | null = null;
+  let busySince = 0;
   // Follow-up queue: while a run is live, Enter queues the editor text and
   // shows it; Enter on an EMPTY editor sends the whole queue as steer
   // messages (pi's queued follow-ups). Esc still aborts.
   let followUpQueue: string[] = [];
+  let elapsedTimer: ReturnType<typeof setInterval> | undefined;
+
+  function startElapsedTimer(): void {
+    clearInterval(elapsedTimer);
+    elapsedTimer = setInterval(() => {
+      if (!busy) return;
+      const seconds = Math.floor((Date.now() - busySince) / 1000);
+      loader?.setMessage(`working… (${seconds}s, esc to abort)`);
+    }, 1000);
+  }
 
   function renderFollowUpQueue(): void {
     if (!busy) return;
@@ -652,6 +663,7 @@ export function createTerminalIo(
       );
       loader.start();
       statusContainer.addChild(loader);
+      startElapsedTimer();
       return;
     }
     statusContainer.addChild(
@@ -825,6 +837,14 @@ export function createTerminalIo(
     // `read src/foo.ts:40-80`), not raw JSON; result as first line + count.
     const args = item.input !== undefined ? ` ${summarizeToolArgs(toolName, item.input)}` : "";
     lines.push(`\u001b[${color}m  ${mark} \u001b[0m${boldName}\u001b[2m${args}\u001b[0m`);
+    // Live streaming output (bash stdout): show the tail so long commands
+    // give progress without flooding the transcript.
+    if (item.output && item.streaming) {
+      const tail = item.output.slice(-600);
+      for (const line of tail.split("\n").slice(-4)) {
+        if (line.trim()) lines.push(`\u001b[2m    ${line}\u001b[0m`);
+      }
+    }
     if (item.result !== undefined) {
       lines.push(`\u001b[2m    ${summarizeResult(item.result)}\u001b[0m`);
     }
@@ -848,12 +868,13 @@ export function createTerminalIo(
     setBusy(next: boolean) {
       busy = next;
       if (!next) followUpQueue = [];
-      // The animated status line: a braille spinner + "working" while a
-      // run is live, removed when it settles. Loader drives its own timer
-      // and calls requestRender on every frame. Follow-up queue lines sit
-      // above it while the user has queued steer messages.
+      // The animated status line: a braille spinner + "working (Ns)" while
+      // a run is live, removed when it settles. Loader drives its own timer
+      // and calls requestRender on every frame; the elapsed timer ticks the
+      // seconds. Follow-up queue lines sit above it while queued.
       statusContainer.clear();
       if (next) {
+        busySince = Date.now();
         loader = new Loader(
           tui,
           (s) => `\u001b[36m${s}\u001b[0m`,
@@ -862,8 +883,10 @@ export function createTerminalIo(
         );
         loader.start();
         statusContainer.addChild(loader);
+        startElapsedTimer();
         if (followUpQueue.length > 0) renderFollowUpQueue();
       } else {
+        clearInterval(elapsedTimer);
         if (loader) {
           loader.stop();
           loader = null;
@@ -953,6 +976,7 @@ export function createTerminalIo(
       tui.requestRender();
     },
     close() {
+      clearInterval(elapsedTimer);
       if (loader) loader.stop();
       tui.stop();
     },

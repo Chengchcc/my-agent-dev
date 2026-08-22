@@ -33,7 +33,7 @@ export function createBashTool(opts: { workspaceRoot: string }): Tool {
       },
       required: ["description", "command"],
     },
-    async execute(input, signal?: AbortSignal) {
+    async execute(input, signal?: AbortSignal, options?: { onOutput?: (s: string) => void }) {
       const {
         command,
         timeout = 30_000,
@@ -80,10 +80,22 @@ export function createBashTool(opts: { workspaceRoot: string }): Tool {
       signal?.addEventListener("abort", onAbort, { once: true });
 
       try {
-        const [stdout, stderr] = await Promise.all([
-          new Response(proc.stdout).text(),
-          new Response(proc.stderr).text(),
-        ]);
+        const stderrPromise = new Response(proc.stderr).text();
+        let stdout = "";
+        if (options?.onOutput) {
+          // Stream stdout line-by-line so long commands show live output.
+          const reader = proc.stdout.getReader();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = new TextDecoder().decode(value);
+            stdout += chunk;
+            options.onOutput(chunk);
+          }
+        } else {
+          stdout = await new Response(proc.stdout).text();
+        }
+        const stderr = await stderrPromise;
         const exitCode = await proc.exited;
         return {
           content: `${stdout}\n[exit: ${exitCode}]${stderr ? `\n${stderr}` : ""}`,

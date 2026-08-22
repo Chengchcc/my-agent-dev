@@ -17,6 +17,10 @@ export interface Tool {
     signal?: AbortSignal,
     /** Per-call execution context from the loop: the model tool-use id when
      *  the call originated from the model (stable idempotency identity). */
-    options?: { callId?: string },
+    options?: {
+      callId?: string;
+      /** Streaming partial output (e.g. bash stdout) for live display. */
+      onOutput?: (partial: string) => void;
+    },
   ): ToolExecuteResult | Promise<ToolExecuteResult>;
 }

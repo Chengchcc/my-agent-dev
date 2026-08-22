@@ -799,7 +799,17 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
           isError = true;
         } else {
           try {
-            result = await tool.execute(input, controller?.signal, { callId: call.id });
+            result = await tool.execute(input, controller?.signal, {
+              callId: call.id,
+              onOutput: (text) => {
+                void emit({
+                  type: "tool_output",
+                  toolName: call.name,
+                  callId: call.id,
+                  text,
+                });
+              },
+            });
             if (result && typeof result === "object") {
               if ("isError" in result) {
                 isError = Boolean((result as { isError?: unknown }).isError);

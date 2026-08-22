@@ -17,7 +17,11 @@ export interface PluginTool {
     signal?: AbortSignal,
     /** Per-call execution context: the model tool-use id (stable per-run
      *  idempotency identity for Product Tools). */
-    options?: { callId?: string },
+    options?: {
+      callId?: string;
+      /** Streaming partial output (e.g. bash stdout) for live display. */
+      onOutput?: (partial: string) => void;
+    },
   ): Promise<Readonly<Record<string, unknown>>>;
 }
 

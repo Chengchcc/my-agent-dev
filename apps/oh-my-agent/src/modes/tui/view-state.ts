@@ -15,6 +15,8 @@ export interface TranscriptItem {
   input?: Readonly<Record<string, unknown>>;
   /** Tool items only: the execution result (from tool_execution_end). */
   result?: Readonly<Record<string, unknown>>;
+  /** Tool items only: streaming partial output while executing. */
+  output?: string;
 }
 
 /** One completed or in-flight run as shown in the transcript. */
@@ -119,6 +121,18 @@ export function applyEvent(state: TuiViewState, event: OmaLoopEvent): void {
           item.streaming = false;
           item.text = `${event.toolName}`;
           if (event.result !== undefined) item.result = event.result;
+          break;
+        }
+      }
+      break;
+    }
+    case "tool_output": {
+      const run = currentRun(state);
+      // Append live output to the streaming tool item with the same callId.
+      for (let i = run?.items.length ? run.items.length - 1 : -1; i >= 0; i--) {
+        const item = run!.items[i]!;
+        if (item.kind === "tool" && item.streaming && item.text.startsWith(event.toolName)) {
+          item.output = `${item.output ?? ""}${event.text}`;
           break;
         }
       }
