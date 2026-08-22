@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createModelRuntime } from "@chengchenccc/ai";
 import { registerBuiltinProviders } from "../../core/run-runtime.js";
 import { sessionDirFor } from "../../core/session-file.js";
-import { runTuiSession, type TuiIo } from "./tui-mode.js";
+import { formatModelMeta, runTuiSession, type TuiIo } from "./tui-mode.js";
 import { applyEvent, initialViewState, type TuiViewState } from "./view-state.js";
 
 /** Scripted TuiIo: feeds idle inputs sequentially, captures renders.
@@ -141,6 +141,26 @@ describe("view-state folding", () => {
   });
 });
 
+describe("formatModelMeta", () => {
+  const base = { displayName: "Fake Echo", contextWindow: 200_000 };
+
+  test("name, context window, free when cost legs are zero", () => {
+    expect(formatModelMeta(base)).toBe("Fake Echo · ctx 200k · free");
+    expect(formatModelMeta({ ...base, cost: { input: 3, output: 15 } })).toBe(
+      "Fake Echo · ctx 200k · $3/15",
+    );
+  });
+
+  test("current mark and over-context warning", () => {
+    expect(formatModelMeta(base, { current: true })).toContain("current");
+    expect(formatModelMeta({ ...base, contextWindow: 1_000 }, { contextTokens: 2_000 })).toContain(
+      "over current context!",
+    );
+    // Window larger than the session: no warning.
+    expect(formatModelMeta(base, { contextTokens: 2_000 })).not.toContain("over current context");
+  });
+});
+
 describe("tui session (headless, fake provider)", () => {
   test("assistant text renders incrementally while the run streams", async () => {
     const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-stream-"));
@@ -271,7 +291,7 @@ describe("tui session (headless, fake provider)", () => {
       const base = scriptedIo([
         "/help",
         "/nonsense",
-        "/model",
+        "/models",
         "/model fake/missing",
         "/exit",
         "/exit",
@@ -296,8 +316,10 @@ describe("tui session (headless, fake provider)", () => {
       expect(statuses.some((t) => t.includes("/abort"))).toBe(true);
       // unknown command hints at /help
       expect(statuses.some((t) => t.includes("unknown command /nonsense"))).toBe(true);
-      // /model without args lists the catalog, fake/echo present
+      // /models (alias) lists the catalog with the meta line (ctx + free)
       expect(statuses.some((t) => t.includes("fake/echo"))).toBe(true);
+      expect(statuses.some((t) => t.includes("ctx 200k"))).toBe(true);
+      expect(statuses.some((t) => t.includes("free"))).toBe(true);
       // /model with an id not in the catalog is rejected
       expect(statuses.some((t) => t.includes("unknown model: fake/missing"))).toBe(true);
     } finally {

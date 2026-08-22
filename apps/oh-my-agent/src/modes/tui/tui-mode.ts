@@ -260,6 +260,29 @@ function formatTokens(n: number): string {
   return `${n}`;
 }
 
+/** Compact model meta line (pi's ModelBrowser columns): display name,
+ *  context window, $in/out per-million cost (free when both legs are zero),
+ *  current-model mark, and an over-context warning when the session's
+ *  estimated tokens exceed the model's window. */
+export function formatModelMeta(
+  model: {
+    displayName: string;
+    contextWindow: number;
+    cost?: { input: number; output: number };
+  },
+  opts: { current?: boolean; contextTokens?: number } = {},
+): string {
+  const input = model.cost?.input ?? 0;
+  const output = model.cost?.output ?? 0;
+  const cost = input <= 0 && output <= 0 ? "free" : `$${input}/${output}`;
+  const parts = [model.displayName, `ctx ${formatTokens(model.contextWindow)}`, cost];
+  if (opts.current) parts.push("current");
+  if (opts.contextTokens !== undefined && model.contextWindow < opts.contextTokens) {
+    parts.push("over current context!");
+  }
+  return parts.join(" · ");
+}
+
 /** Overlay root for the session picker: renders title + list and routes
  *  key input to the list (a plain Container has no handleInput). */
 class PickerOverlay extends Container {
@@ -354,6 +377,9 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
   let sessionTitle: string | undefined;
   let quitting = false;
   let exitArmed = false;
+  /** Estimated context tokens after the last run: drives the picker's
+   *  over-context warning (pi grays out models smaller than the session). */
+  let lastContextTokens: number | undefined;
 
   function pushStatus(lines: string | readonly string[]): void {
     const items = (typeof lines === "string" ? [lines] : lines).map((text) => ({
@@ -388,16 +414,30 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     return catalog.models.map((m) => `${m.providerId}/${m.modelId}`);
   }
 
+  /** Catalog rows with the pi-browser meta line (ctx / cost / marks). */
+  async function listModelRows(): Promise<
+    Array<{ id: string; meta: string; contextWindow: number }>
+  > {
+    const catalog = await opts.modelRuntime.getCatalog();
+    return catalog.models.map((m) => {
+      const id = `${m.providerId}/${m.modelId}`;
+      return {
+        id,
+        contextWindow: m.contextWindow,
+        meta: formatModelMeta(m, {
+          current: id === modelId,
+          contextTokens: lastContextTokens,
+        }),
+      };
+    });
+  }
+
   /** ctrl+p: interactive model picker overlay. */
   async function pickModelInteractive(): Promise<void> {
     if (!io.pickModel) return;
-    const catalog = await opts.modelRuntime.getCatalog();
+    const rows = await listModelRows();
     const picked = await io.pickModel(
-      catalog.models.map((m) => ({
-        id: `${m.providerId}/${m.modelId}`,
-        label: `${m.providerId}/${m.modelId}`,
-        description: m.displayName,
-      })),
+      rows.map((r) => ({ id: r.id, label: r.id, description: r.meta })),
     );
     if (!picked) return;
     modelId = picked;
@@ -411,6 +451,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     description: string;
     argumentHint?: string;
     group: string;
+    /** Alternate names accepted for this command (pi's /models alias). */
+    aliases?: readonly string[];
     /** Safe to execute while a run is live (pi's LiveCommandController
      *  scope); session-mutating commands refuse until the run settles. */
     live?: boolean;
@@ -473,28 +515,36 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     },
     {
       name: "model",
+      aliases: ["models"],
       description: "show or switch the model",
       argumentHint: "<provider/model>",
       group: "model",
       live: true,
       run: async (args) => {
         if (!args) {
-          const models = await listModels();
-          const current = modelId ?? models[0] ?? "(none)";
+          // TUI: the interactive picker IS the listing (pi's /model opens the
+          // selector); the text list is the headless fallback.
+          if (io.pickModel) {
+            await pickModelInteractive();
+            return;
+          }
+          const rows = await listModelRows();
+          const current = modelId ?? rows[0]?.id ?? "(none)";
           pushStatus([
             `current model: ${current}`,
-            ...models.map((m) => `  ${m === current ? "*" : " "} ${m}`),
+            ...rows.map((r) => `  ${r.id === current ? "*" : " "} ${r.id} — ${r.meta}`),
           ]);
           return;
         }
-        const models = await listModels();
-        if (!models.includes(args)) {
+        const rows = await listModelRows();
+        const row = rows.find((r) => r.id === args);
+        if (!row) {
           pushStatus(`unknown model: ${args} (see /model for the list)`);
           return;
         }
         modelId = args;
         io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
-        pushStatus(`model: ${modelId}`);
+        pushStatus(`model: ${modelId} · ctx ${formatTokens(row.contextWindow)}`);
       },
     },
     {
@@ -727,7 +777,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     const space = text.indexOf(" ");
     const name = space === -1 ? text.slice(1) : text.slice(1, space);
     const args = space === -1 ? "" : text.slice(space + 1).trim();
-    const command = commands.find((c) => c.name === name);
+    const command =
+      commands.find((c) => c.name === name) ?? commands.find((c) => c.aliases?.includes(name));
     if (!command) {
       pushStatus(`unknown command /${name} — try /help`);
       return;
@@ -876,6 +927,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     // Context footprint of the settled branch under the run model's window
     // (pi's context-usage display); read BEFORE close() like compactions().
     const usage = await runtime.contextUsage().catch(() => undefined);
+    if (usage) lastContextTokens = usage.estimatedTokens;
     if (usage && usage.limit > 0) {
       const pct = Math.min(100, Math.round((usage.estimatedTokens / usage.limit) * 100));
       io.setHeader?.({

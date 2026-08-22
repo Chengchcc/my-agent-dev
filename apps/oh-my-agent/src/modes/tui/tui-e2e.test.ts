@@ -775,6 +775,9 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       const overlay = screen(vt);
       expect(overlay).toContain("pick model");
       expect(overlay).toContain("fake/echo");
+      // Rows carry the pi-browser meta: context window + cost.
+      expect(overlay).toContain("ctx 200k");
+      expect(overlay).toContain("free");
 
       // Esc cancels; /exit quits.
       vt.sendInput("\x1b");
