@@ -37,6 +37,7 @@ export type OmaLoopEvent =
   | { type: "compaction_start" }
   | { type: "compaction_end" }
   | { type: "queue_update" }
+  | { type: "stream_rule_triggered"; rule: string }
   | { type: "recap_update"; text: string; turn: number }
   | { type: "todo_update"; items: readonly TodoItem[] }
   | { type: "workflow_started"; workflowId: string; label: string; agentCount: number }

@@ -26,6 +26,7 @@ export type {
   OmaLoopResult,
   OmaSession,
   OmaSessionOptions,
+  StreamRule,
 } from "./runtime/agent-loop.js";
 export { createOmaSession } from "./runtime/agent-loop.js";
 export type { CompactionResult } from "./runtime/compaction.js";

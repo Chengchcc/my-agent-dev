@@ -218,6 +218,20 @@ function convertMessages(
     }
     // else: empty message — skip (API rejects empty content).
   }
+  // Merge consecutive user wire messages into one: stream-rule reminders
+  // and steer inputs can follow a user prompt or a tool_result batch, and
+  // strict role alternation rejects back-to-back user turns. Text blocks
+  // concatenate (tool_result blocks + trailing text is a valid user turn).
+  for (let i = 1; i < wire.length; ) {
+    const prev = wire[i - 1]!;
+    const cur = wire[i]!;
+    if (prev.role === "user" && cur.role === "user") {
+      prev.content = [...toUserBlocks(prev.content), ...toUserBlocks(cur.content)];
+      wire.splice(i, 1);
+    } else {
+      i++;
+    }
+  }
 
   // Cache conversation history: when cacheControl is enabled, put an
   // ephemeral breakpoint on the LAST user message's last content block.
@@ -377,3 +391,8 @@ function createChunkConverter(): (raw: Record<string, unknown>) => Generator<AIM
 }
 
 registerApi("anthropic-messages", { buildRequest, createChunkConverter });
+
+function toUserBlocks(content: unknown): WireBlock[] {
+  if (typeof content === "string") return [{ type: "text", text: content }];
+  return Array.isArray(content) ? (content as WireBlock[]) : [];
+}

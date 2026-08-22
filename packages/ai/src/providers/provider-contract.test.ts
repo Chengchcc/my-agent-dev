@@ -402,6 +402,43 @@ describe("Provider contract — wire serialization", () => {
     expect(toolMsg.content).toEqual([{ type: "tool_result", tool_use_id: "t1", content: "ok" }]);
   });
 
+  test("anthropic merges consecutive user messages into one wire message", async () => {
+    const provider = makeProvider(anthropicModel);
+    const capture = mockFetchCapture(sseRes([DONE]));
+    await collectChunks(
+      provider.stream(
+        anthropicModel,
+        [
+          {
+            role: "assistant",
+            text: "",
+            blocks: [{ type: "tool_use", id: "t1", name: "read", input: {} }],
+          },
+          {
+            role: "tool",
+            text: "ok",
+            blocks: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }],
+          },
+          // Stream-rule reminder / steer lands as a user text message right
+          // after the tool-result batch — must merge, not alternate-break.
+          { role: "user", text: "<system-reminder>fix and retry</system-reminder>" },
+        ],
+        { apiKey: "test-key" },
+      ),
+    );
+    capture.restore();
+
+    const body = capture.getBody();
+    const msgs = body!.messages as Array<{ role: string; content: unknown }>;
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]!.role).toBe("assistant");
+    expect(msgs[1]!.role).toBe("user");
+    expect(msgs[1]!.content).toEqual([
+      { type: "tool_result", tool_use_id: "t1", content: "ok" },
+      { type: "text", text: "<system-reminder>fix and retry</system-reminder>" },
+    ]);
+  });
+
   test("openai-completions serializes image blocks as image_url parts", async () => {
     const provider = makeProvider(openaiModel);
     const capture = mockFetchCapture(sseRes([DONE]));

@@ -148,11 +148,16 @@ export function applyEvent(state: TuiViewState, event: OmaLoopEvent): void {
       }
       break;
     }
-    case "retry_start": {
+    case "stream_rule_triggered": {
       const run = ensureRunningRun(state);
+      // The interrupted partial assistant item will never settle on its
+      // own (the retry opens a NEW item on message_start): settle it now.
+      for (const item of run.items) {
+        if (item.kind === "assistant") item.streaming = false;
+      }
       run.items.push({
         kind: "status",
-        text: `retry (attempt ${event.attempt})`,
+        text: `⚠ stream rule "${event.rule}" matched — discarding output, injecting reminder`,
         streaming: false,
       });
       break;

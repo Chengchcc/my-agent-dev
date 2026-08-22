@@ -40,10 +40,10 @@ import {
 import { fakeProvider } from "./fake-provider.js";
 import { mountWorkspaceMcpServers } from "./mcp-mount.js";
 import { killProcessTree } from "./process-tree.js";
-
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { readProductToolsManifest } from "./product-tools-manifest.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
+import { loadStreamRules } from "./stream-rules.js";
 import { evaluateWorkflowScript } from "./workflow-evaluator.js";
 import { createWorkflowExecutor, type WorkflowAgentResult } from "./workflow-executor.js";
 import { createWorkflowTools, isValidWorkflowName } from "./workflow-tools.js";
@@ -656,6 +656,8 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   // user abort. We keep a high safety ceiling (runaway-cost guard) that is
   // env-overridable; 32 was far too small for real tasks.
   const maxSteps = Number(process.env.OMA_MAX_STEPS) || 500;
+  // TTSR-style stream rules from .oma/rules/*.md (workspace-scoped).
+  const streamRules = loadStreamRules(deps.workspaceRoot);
   const session = createOmaSession({
     sessionId: deps.runId,
     store,
@@ -668,6 +670,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     contextBudget,
     resolveModel,
     resolveTools,
+    ...(streamRules.length > 0 ? { streamRules } : {}),
     ...(deps.onPersistMessages ? { onPersistMessages: deps.onPersistMessages } : {}),
   });
 

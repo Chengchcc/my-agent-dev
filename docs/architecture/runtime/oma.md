@@ -55,7 +55,8 @@ Runtime 内部由 `packages/agent` 提供：OmaSession（模型/工具循环、r
 - compaction（token 预算内摘要，Run-local）；
 - Run-local todo（`todo` 工具）；
 - progressive skill loading（`packages/plugin-progressive-skill`，按 Run 冻结的 `skillRoots` 扫描 SKILL.md）；
-- Product Tools MCP 客户端（调用 Product Backend 的产品能力，身份/权限/审计归 Product）。
+- stream rules（TTSR，吸收自 oh-my-pi）：`.oma/rules/*.md`（frontmatter `condition:` 正则）在 assistant 文本流上匹配；命中即中止本轮、丢弃部分输出、注入 `<system-reminder>` 用户消息后同轮重试（每规则默认每 Run 一次）。只匹配文本流——tool 参数原始 JSON 转义不可靠（pi 需要 per-tool matcherDigest 才做到）；
+- 工具失败 system reminder：失败 tool_result 的 content 前置 `<system-reminder>`（修因重试，勿装作成功）；in-band 使其随 canonical ledger 跨 Run 存留。`toolFailureReminder: false` 关闭。
 
 ## 事件与终态
 

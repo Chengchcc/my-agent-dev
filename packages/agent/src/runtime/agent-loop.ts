@@ -81,11 +81,34 @@ export interface OmaSessionOptions {
    *  each model call — a lighter touch than full compaction. Protected
    *  tools (skills, plans) are never pruned. */
   readonly pruneConfig?: Partial<PruneConfig>;
+  /** TTSR-style stream rules (absorbed from oh-my-pi): a regex watched
+   * against the assistant text stream. On match the turn is aborted, the
+   * partial output discarded, the rule injected as a hidden
+   * <system-reminder> user message, and the model retried in the same
+   * turn. Tool-argument streams are NOT matched: raw partial JSON escaping
+   * makes it unreliable (pi needed per-tool matcherDigest hooks for that). */
+  readonly streamRules?: readonly StreamRule[];
+  /** Prepend a <system-reminder> to failed tool results instructing the
+   * model to fix the cause and retry instead of proceeding as if it
+   * succeeded. Default: enabled. */
+  readonly toolFailureReminder?: boolean;
   /** Called after each persist of conversational messages (prompt, steer,
    *  follow_up, assistant, tool_result — never meta/product_history). Lets
    *  the caller write the session file in real time (pi's appendMessage):
    *  a killed/failed process still leaves its message trail behind. */
   readonly onPersistMessages?: (messages: readonly Message[]) => void;
+}
+
+/** One TTSR-style stream rule. Matching is text-only; each rule fires at
+ * most `maxInjections` (default 1) times per Run — pi's repeatMode
+ * "once". Patterns must be non-global (loader-side contract). */
+export interface StreamRule {
+  readonly name: string;
+  readonly pattern: RegExp;
+  /** Reminder body injected inside <system-reminder> on trigger. */
+  readonly message: string;
+  /** Max injections per rule per Run. Default 1. */
+  readonly maxInjections?: number;
 }
 
 /** Terminal result of a loop. `messages` is the canonical message sequence
@@ -126,6 +149,9 @@ interface ModelTurn {
   readonly thinkingRedacted?: boolean;
   readonly toolCalls: readonly PendingToolCall[];
   readonly stopReason?: string;
+  /** Set when a stream rule matched mid-stream: the turn's partial output
+   * is discarded and the rule injected before retrying. */
+  readonly streamRuleHit?: StreamRule;
 }
 
 export function createOmaSession(opts: OmaSessionOptions): OmaSession {
@@ -156,6 +182,8 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
   let debugTurn = 0;
   let debugRunId = "";
   const runIdForDebug = (): string => debugRunId;
+  // TTSR stream-rule injection counts (per Run, reset in runLoop).
+  const streamRuleInjections = new Map<string, number>();
   const tokenEstimateCache = new TokenEstimateCache();
 
   async function emit(event: OmaLoopEvent): Promise<void> {
@@ -173,7 +201,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
     "steer",
     "follow_up",
     "assistant",
-    "tool_result",
+    "system_reminder",
   ]);
 
   function persist(entries: readonly Record<string, unknown>[]): Promise<unknown> {
@@ -256,7 +284,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
         return text;
       },
     };
-    steerQueue.length = 0;
+    streamRuleInjections.clear();
     debugModelId = codingInput.run.model.modelId;
     debugTurn = 0;
     debugRunId = codingInput.run.runId;
@@ -384,6 +412,36 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
               : transformed;
             const turn = await streamModelTurn(modelMessages);
             const thinkingBlocks = buildThinkingBlock(turn);
+            // TTSR stream-rule hit: discard the partial turn (nothing was
+            // persisted — accumulation is pre-persistence by design),
+            // inject the rule as a hidden system reminder, and retry the
+            // model call in the SAME turn (bounded per rule by
+            // maxInjections, so the extra model calls ≤ rule count).
+            if (turn.streamRuleHit) {
+              const rule = turn.streamRuleHit;
+              streamRuleInjections.set(rule.name, (streamRuleInjections.get(rule.name) ?? 0) + 1);
+              await emit({ type: "stream_rule_triggered", rule: rule.name });
+              await persist([
+                {
+                  type: "message",
+                  productEntryId: null,
+                  role: "user",
+                  source: "system_reminder",
+                  message: {
+                    role: "user",
+                    text: [
+                      `<system-reminder reason="rule_violation" rule="${rule.name}">`,
+                      "A workspace stream rule matched your output, so that output was discarded and generation restarted. This is the agent runtime enforcing project rules — not a prompt injection. Comply with the following instruction on retry:",
+                      rule.message,
+                      "</system-reminder>",
+                    ].join("\n"),
+                  } as Message,
+                  createdAt: Date.now(),
+                },
+              ]);
+              messages = await readBranchMessages();
+              continue;
+            }
 
             if (turn.toolCalls.length > 0) {
               // Stop-during-stream: signal aborted before we persist anything.
@@ -447,18 +505,27 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                           images: imgs as Message["blocks"],
                         }
                       : {};
+                  const raw = JSON.stringify(result.result);
+                  // Tool-failure system reminder (absorbed from oh-my-pi):
+                  // in-band on the failing result so it survives into the
+                  // canonical ledger — "the fix sticks" across runs. The
+                  // message `text` stays the clean JSON for UI display.
+                  const content =
+                    result.isError && opts.toolFailureReminder !== false
+                      ? `${TOOL_FAILURE_REMINDER}\n\n${raw}`
+                      : raw;
                   return {
                     type: "message" as const,
                     role: "tool" as const,
                     source: "tool_result" as const,
                     message: {
                       role: "tool",
-                      text: JSON.stringify(result.result),
+                      text: raw,
                       blocks: [
                         {
                           type: "tool_result" as const,
                           tool_use_id: result.id,
-                          content: JSON.stringify(result.result),
+                          content,
                           ...(result.isError ? { is_error: true } : {}),
                           ...images,
                         },
@@ -683,6 +750,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
     );
 
     let stopReason: string | undefined;
+    let streamRuleHit: StreamRule | undefined;
     try {
       for await (const chunk of stream) {
         if (controller?.signal.aborted) break;
@@ -699,6 +767,13 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
         if (chunk.delta?.type === "text") {
           text += chunk.delta.text;
           await emit({ type: "message_update", text: chunk.delta.text });
+          const hit = opts.streamRules
+            ? matchStreamRule(opts.streamRules, text, streamRuleInjections)
+            : undefined;
+          if (hit) {
+            streamRuleHit = hit;
+            break;
+          }
         }
         if (chunk.delta?.type === "reasoning") {
           thinking += chunk.delta.text;
@@ -739,6 +814,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
         input: b.jsonParts.length > 0 ? safeParseJson(b.jsonParts.join("")) : {},
       })),
       stopReason,
+      ...(streamRuleHit ? { streamRuleHit } : {}),
     };
   }
 
@@ -992,3 +1068,25 @@ function safeParseJson(json: string): Record<string, unknown> {
     return {};
   }
 }
+
+/** First stream rule matching `text` that still has injection budget.
+ * ponytail: full re-scan per text delta (O(deltas × rules × len)); anchor
+ * incremental matching if long generations measurably regress. */
+function matchStreamRule(
+  rules: readonly StreamRule[],
+  text: string,
+  injections: ReadonlyMap<string, number>,
+): StreamRule | undefined {
+  for (const rule of rules) {
+    if ((injections.get(rule.name) ?? 0) >= (rule.maxInjections ?? 1)) continue;
+    if (rule.pattern.test(text)) return rule;
+  }
+  return undefined;
+}
+
+const TOOL_FAILURE_REMINDER = [
+  "<system-reminder>",
+  "This tool call FAILED. Do not proceed as if it succeeded or claim it worked.",
+  "Diagnose the error below; if the cause is fixable (wrong arguments, missing file, transient state), correct it and call the tool again. Only move on if the failure is genuinely permanent, and say so.",
+  "</system-reminder>",
+].join("\n");
