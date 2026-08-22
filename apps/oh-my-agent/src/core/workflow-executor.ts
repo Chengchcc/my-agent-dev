@@ -388,7 +388,6 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
           configRevision: 0,
         },
         workspace: { root: opts.workspaceRoot, access: opts.workspaceAccess },
-        metadata: { conversationId: "", agentMemberId: "", branchId: "" },
       };
       // startFollowUp is the resume primitive: same session, no Meta re-send.
       const launch = (

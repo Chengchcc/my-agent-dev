@@ -127,6 +127,15 @@ describe("buildCliRunInput model selection", () => {
       }),
     ).rejects.toThrow(/model not found/);
   });
+
+  test("standalone CLI runs carry no product identity", async () => {
+    const input = await buildCliRunInput({
+      prompt: "x",
+      workspaceRoot: "/tmp",
+      modelRuntime: runtime(),
+    });
+    expect(input.metadata).toBeUndefined();
+  });
 });
 
 describe("readPipedStdin", () => {

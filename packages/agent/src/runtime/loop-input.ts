@@ -18,7 +18,9 @@ export interface CodingLoopInput {
   readonly input: BackendInputMessage;
   readonly run: AgentRunSnapshot<"oma">;
   readonly workspace: WorkspaceBinding;
-  readonly metadata: {
+  /** Product-run identity, when this run is product-driven (RPC path).
+   *  Standalone CLI runs omit it: the agent has no product identity. */
+  readonly metadata?: {
     readonly conversationId: string;
     readonly agentMemberId: string;
     readonly branchId: string;

@@ -39,7 +39,10 @@ export interface BackendRunInput<K extends string = string> {
    *  agent() subagents) instead of an interactive loop. The script's return
    *  value becomes `outcome.workflow.value`. Other backends ignore it. */
   readonly workflow?: { readonly script: string; readonly args?: unknown };
-  readonly metadata: {
+  /** Product-run identity (conversation/agent/branch). Optional: the RPC
+   *  product path always sends it (wire schema requires it); standalone CLI
+   *  runs (TUI/print) omit it and carry no product identity. */
+  readonly metadata?: {
     readonly conversationId: string;
     readonly agentMemberId: string;
     readonly branchId: string;

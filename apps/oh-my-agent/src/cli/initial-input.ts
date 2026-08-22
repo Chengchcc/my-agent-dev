@@ -90,6 +90,6 @@ export async function buildCliRunInput(opts: {
       configRevision: 0,
     },
     workspace: { root: opts.workspaceRoot, access: "read_write" },
-    metadata: { conversationId: "cli", agentMemberId: "cli", branchId: "cli" },
+    // Standalone agent: no product conversation/agent/branch identity.
   };
 }

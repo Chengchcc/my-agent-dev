@@ -31,7 +31,7 @@ class FakeBackend implements AgentBackend<"fake"> {
   async execute(input: BackendRunInput<"fake">): Promise<BackendRunSegment<"fake">> {
     expect(input.run.runId).toBe("run-1");
     expect(input.workspace.root).toBe("/tmp");
-    expect(input.metadata.branchId).toBe("b1");
+    expect(input.metadata?.branchId).toBe("b1");
     return completedSegment();
   }
 
@@ -83,8 +83,8 @@ describe("agent-backend contracts", () => {
     expect(RUN_INPUT.input.message).toBe(INPUT.message);
     expect(RUN_INPUT.run.runId).toBe("run-1");
     expect(RUN_INPUT.workspace.access).toBe("read_write");
-    expect(RUN_INPUT.metadata.conversationId).toBe("c1");
-    expect(RUN_INPUT.metadata.agentMemberId).toBe("m1");
+    expect(RUN_INPUT.metadata?.conversationId).toBe("c1");
+    expect(RUN_INPUT.metadata?.agentMemberId).toBe("m1");
   });
 
   test("input is the sole actual prompt; history is NOT part of the contract", () => {

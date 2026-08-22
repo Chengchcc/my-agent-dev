@@ -293,13 +293,21 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     // timeout path is testable without waiting 30s.
     const rawTimeout = process.env.OMA_PRODUCT_TOOL_TIMEOUT_MS;
     const timeoutMs = rawTimeout ? Number(rawTimeout) || 30_000 : 30_000;
+    const identity: {
+      runId: string;
+      conversationId?: string;
+      agentMemberId?: string;
+      branchId?: string;
+    } = { runId: input.run.runId };
+    // Product-driven runs carry the conversation/agent/branch identity;
+    // standalone CLI runs (TUI/print) have none.
+    if (input.metadata) {
+      identity.conversationId = input.metadata.conversationId;
+      identity.agentMemberId = input.metadata.agentMemberId;
+      identity.branchId = input.metadata.branchId;
+    }
     const tools = buildProductTools(manifest, {
-      identity: {
-        runId: input.run.runId,
-        conversationId: input.metadata.conversationId,
-        agentMemberId: input.metadata.agentMemberId,
-        branchId: input.metadata.branchId,
-      },
+      identity,
       caller,
       timeoutMs,
     }) as unknown as PluginTool[];

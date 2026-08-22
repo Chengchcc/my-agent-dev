@@ -6,9 +6,11 @@ import type { ProductToolDescriptor } from "./product-tools-manifest.js";
  *  Worker from the run snapshot + metadata - never by the caller. */
 export interface ProductToolCallIdentity {
   readonly runId: string;
-  readonly conversationId: string;
-  readonly agentMemberId: string;
-  readonly branchId: string;
+  /** Present only on product-driven runs (RPC path); standalone CLI runs
+   *  (TUI/print) carry no conversation/agent/branch identity. */
+  readonly conversationId?: string;
+  readonly agentMemberId?: string;
+  readonly branchId?: string;
   readonly callId: string;
   /** Stable per-run idempotency key for the Product Backend
    *  (`${runId}:${callId}`). callId is monotonic per run, so retries within
