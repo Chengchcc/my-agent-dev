@@ -91,7 +91,7 @@ export interface TuiIo {
     models: ReadonlyArray<{ id: string; label: string; description?: string }>,
   ): Promise<string | null>;
   /** Update the fixed header's model/session line. */
-  setHeader?(info: { model?: string; sessionId?: string }): void;
+  setHeader?(info: { model?: string; sessionId?: string; title?: string }): void;
   /** Prefill the editor text (used for `oma "<prompt>"`). */
   setInputText?(text: string): void;
   /** Stop the terminal (restore modes). */
@@ -228,7 +228,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     state.runs.push({ items, running: false });
   }
 
-  io.setHeader?.({ model: modelId, sessionId: session.sessionId });
+  io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
   // `oma "<prompt>"` opens the TUI with the prompt prefilled in the editor.
   if (opts.initialPrompt) io.setInputText?.(opts.initialPrompt);
 
@@ -265,7 +265,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     );
     if (!picked) return;
     modelId = picked;
-    io.setHeader?.({ model: modelId, sessionId: session.sessionId });
+    io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
     pushStatus(`model: ${modelId}`);
     io.render(state);
   }
@@ -349,7 +349,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
           return;
         }
         modelId = args;
-        io.setHeader?.({ model: modelId, sessionId: session.sessionId });
+        io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
         pushStatus(`model: ${modelId}`);
       },
     },
@@ -380,7 +380,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
             session = resolveSession(picked, dir);
             sessionTitle = summary?.title;
             state.runs.length = 0;
-            io.setHeader?.({ model: modelId, sessionId: session.sessionId });
+            io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
             pushStatus(
               `resumed session: ${session.sessionId} (${session.messages.length} messages)`,
             );
@@ -408,7 +408,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
         session = resolveSession(matches[0]!.id, dir);
         sessionTitle = matches[0]!.title;
         state.runs.length = 0;
-        io.setHeader?.({ model: modelId, sessionId: session.sessionId });
+        io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
         pushStatus(`resumed session: ${session.sessionId} (${session.messages.length} messages)`);
       },
     },
@@ -420,7 +420,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
         session = resolveSession();
         sessionTitle = undefined;
         state.runs.length = 0;
-        io.setHeader?.({ model: modelId, sessionId: session.sessionId });
+        io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
         pushStatus(`new session: ${session.sessionId}`);
       },
     },
@@ -597,7 +597,10 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       dir: session.dir,
       ...(outcome.status === "completed" ? { title: outcome.title } : {}),
     });
-    if (outcome.status === "completed") sessionTitle = outcome.title ?? sessionTitle;
+    if (outcome.status === "completed") {
+      sessionTitle = outcome.title ?? sessionTitle;
+      io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
+    }
     await runtime.close().catch(() => {});
   }
 }
@@ -616,21 +619,25 @@ export function createTerminalIo(
   let headerInfo = "oma";
   let headerModel = "";
   let headerSession = "";
+  let headerTitle = "";
 
   // Claude-style fixed header: ASCII wordmark banner + model/session line +
   // separator. Rendered once and updated via setHeader; transcript scrolls
-  // below it independently.
+  // below it independently. Centered so a wide terminal does not leave the
+  // banner hugging the left edge.
   function renderHeader(): void {
     headerContainer.clear();
+    const bannerWidth = 31; // banner glyphs + built-in 2-space margin
+    const pad = " ".repeat(Math.max(0, Math.floor((tui.terminal.columns - bannerWidth) / 2)));
     const lines = [
-      "\u001b[36m  ██████╗ ███╗   ███╗ █████╗ \u001b[0m",
-      "\u001b[36m ██╔═══██╗████╗ ████║██╔══██╗\u001b[0m",
-      "\u001b[36m ██║   ██║██╔████╔██║███████║\u001b[0m",
-      "\u001b[36m ██║   ██║██║╚██╔╝██║██╔══██║\u001b[0m",
-      "\u001b[36m ╚██████╔╝██║ ╚═╝ ██║██║  ██║\u001b[0m",
-      "\u001b[36m  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝\u001b[0m",
-      `\u001b[2m  ${headerInfo}${headerModel ? ` · model ${headerModel}` : ""}${headerSession ? ` · session ${headerSession.slice(0, 8)}` : ""}\u001b[0m`,
-      "\u001b[2m  ─────────────────────────────────────────────────────────────\u001b[0m",
+      `${pad}\u001b[36m  ██████╗ ███╗   ███╗ █████╗ \u001b[0m`,
+      `${pad}\u001b[36m ██╔═══██╗████╗ ████║██╔══██╗\u001b[0m`,
+      `${pad}\u001b[36m ██║   ██║██╔████╔██║███████║\u001b[0m`,
+      `${pad}\u001b[36m ██║   ██║██║╚██╔╝██║██╔══██║\u001b[0m`,
+      `${pad}\u001b[36m ╚██████╔╝██║ ╚═╝ ██║██║  ██║\u001b[0m`,
+      `${pad}\u001b[36m  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝\u001b[0m`,
+      `${pad}\u001b[2m  ${headerInfo}${headerTitle ? ` — ${headerTitle}` : ""}${headerModel ? ` · model ${headerModel}` : ""}${headerSession ? ` · session ${headerSession.slice(0, 8)}` : ""}\u001b[0m`,
+      `${pad}\u001b[2m  ─────────────────────────────────────────────────────────────\u001b[0m`,
     ];
     for (const line of lines) headerContainer.addChild(new Text(line, undefined, 1));
   }
@@ -740,8 +747,8 @@ export function createTerminalIo(
       return { consume: true };
     }
     // Transcript scroll: PageUp/PageDown step by a viewport, Home jumps to
-    // the top, End returns to the latest; ctrl+c clears the editor when
-    // idle and aborts the live run when busy.
+    // the top, End returns to the latest; ctrl+c aborts the live run when
+    // busy and quits when idle.
     if (matchesKey(data, "pageUp")) {
       scrollOffset += viewportLines();
       tui.requestRender();
@@ -765,8 +772,11 @@ export function createTerminalIo(
     if (matchesKey(data, "ctrl+c")) {
       if (busy) {
         if (commandHandler) commandHandler("abort");
-      } else {
-        editor.setText("");
+      } else if (pending) {
+        // Idle: Ctrl-C quits (like Ctrl-D), restoring the terminal.
+        const resolve = pending;
+        pending = null;
+        resolve(null);
       }
       tui.requestRender();
       return { consume: true };
@@ -999,6 +1009,7 @@ export function createTerminalIo(
       headerInfo = "oma";
       headerModel = info.model ?? "";
       headerSession = info.sessionId ?? "";
+      headerTitle = info.title ?? "";
       renderHeader();
       tui.requestRender();
     },

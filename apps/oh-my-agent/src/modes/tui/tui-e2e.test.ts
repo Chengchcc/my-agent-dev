@@ -576,4 +576,35 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       rmSync(sessDir, { recursive: true, force: true });
     }
   }, 30_000);
+
+  test("ctrl+c aborts a live run and quits when idle", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-ctrlc-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-ctrlc-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    process.env.OMA_FAKE_TOOL = JSON.stringify([{ name: "bash", input: { command: "sleep 2" } }]);
+    try {
+      const vt = new VirtualTerminal(100, 30);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
+        io,
+      );
+
+      // Busy: ctrl+c aborts the live run.
+      await typeAndSubmit(vt, "go");
+      await waitForText(vt, "sleep 2", 5_000);
+      vt.sendInput("\x03");
+      await waitForText(vt, "aborted", 5_000);
+      expect(screen(vt)).toContain("aborted");
+
+      // Idle: ctrl+c quits the session (exit code 0).
+      vt.sendInput("\x03");
+      expect(await sessionDone).toBe(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      delete process.env.OMA_FAKE_TOOL;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
