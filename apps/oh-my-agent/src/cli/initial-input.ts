@@ -1,9 +1,24 @@
 import { randomUUID } from "node:crypto";
+import { existsSync, statSync } from "node:fs";
+import { join } from "node:path";
 import type { BackendRunInput } from "@chengchenccc/agent-backend";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { buildSystemPrompt, readMemorySummary } from "../core/prompts.js";
+import { agentDir } from "../core/session-file.js";
 import { readWorkspaceSystemPrompt } from "../core/workspace-context.js";
 import { UsageError } from "./args.js";
+
+/** Standalone skill roots (the Product passes its own via the run snapshot):
+ *  <workspace>/skills first, then the user-global <agentDir>/skills. Only
+ *  directories that exist are returned. */
+export function resolveStandaloneSkillRoots(workspaceRoot: string): string[] {
+  const candidates = [join(workspaceRoot, "skills"), join(agentDir(), "skills")];
+  const roots: string[] = [];
+  for (const dir of candidates) {
+    if (existsSync(dir) && statSync(dir).isDirectory()) roots.push(dir);
+  }
+  return roots;
+}
 
 /** One-shot CLI stdin bound: a hostile `cat huge-file | oma -p`
  *  must not balloon memory. */
@@ -74,7 +89,8 @@ export async function buildCliRunInput(opts: {
   }
   const modelId = `${model.providerId}/${model.modelId}`;
   const runId = `cli-${randomUUID()}`;
-  return {
+  const skillRoots = resolveStandaloneSkillRoots(opts.workspaceRoot);
+  const input: BackendRunInput<"oma"> = {
     input: {
       inputId: `cli-in-${randomUUID()}`,
       message: { role: "user", text: opts.prompt },
@@ -92,4 +108,6 @@ export async function buildCliRunInput(opts: {
     workspace: { root: opts.workspaceRoot, access: "read_write" },
     // Standalone agent: no product conversation/agent/branch identity.
   };
+  if (skillRoots.length === 0) return input;
+  return { ...input, run: { ...input.run, skillRoots } };
 }

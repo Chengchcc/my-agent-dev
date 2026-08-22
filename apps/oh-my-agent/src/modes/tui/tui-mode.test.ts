@@ -134,6 +134,42 @@ describe("view-state folding", () => {
     expect(thinking[1]).toMatchObject({ text: "turn two reasoning", streaming: true });
   });
 
+  test("workflow events fold into transcript statuses", () => {
+    const state = initialViewState();
+    applyEvent(state, { type: "agent_start" });
+    applyEvent(state, { type: "workflow_started", workflowId: "w", label: "audit", agentCount: 3 });
+    applyEvent(state, {
+      type: "workflow_agent_completed",
+      workflowId: "w",
+      agentId: "a",
+      label: "one",
+      ok: true,
+    });
+    applyEvent(state, {
+      type: "workflow_agent_completed",
+      workflowId: "w",
+      agentId: "b",
+      label: "two",
+      ok: false,
+      error: "boom",
+    });
+    applyEvent(state, {
+      type: "workflow_completed",
+      workflowId: "w",
+      ok: true,
+      agentCount: 2,
+      totalTokens: 123,
+    });
+    applyEvent(state, { type: "agent_end", status: "completed" });
+    const statuses = state.runs[0]!.items.filter(
+      (i) => i.kind === "status" || i.kind === "error",
+    ).map((i) => i.text);
+    expect(statuses.some((t) => t.includes("audit (3 agents)"))).toBe(true);
+    expect(statuses.some((t) => t.includes("one"))).toBe(true);
+    expect(statuses.some((t) => t.includes("two: boom"))).toBe(true);
+    expect(statuses.some((t) => t.includes("123 tokens"))).toBe(true);
+  });
+
   test("initial view state hides thinking detail and tool detail", () => {
     const state = initialViewState();
     expect(state.showThinking).toBe(false);
@@ -286,6 +322,10 @@ describe("tui session (headless, fake provider)", () => {
   test("slash commands: help lists, unknown hints, /model lists catalog", async () => {
     const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-cmd-"));
     process.env.OMA_SESSION_DIR = sessionDir;
+    // Pin the agent dir so a developer's ~/.oma/skills cannot change the
+    // auto-registered skill command count.
+    const agentDir = mkdtempSync(join(tmpdir(), "oma-tui-cmd-agent-"));
+    process.env.OMA_CODING_AGENT_DIR = agentDir;
     const registered: number[] = [];
     try {
       const base = scriptedIo([
@@ -306,7 +346,9 @@ describe("tui session (headless, fake provider)", () => {
       );
       expect(code).toBe(0);
       // The command table reached the autocomplete seam once.
-      expect(registered).toEqual([14]);
+      // 17 static commands (incl. /mcp, /skill, /workflow); the pinned
+      // agent dir guarantees zero auto-registered skills.
+      expect(registered).toEqual([17]);
       const statuses = base.renders
         .at(-1)!
         .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
@@ -324,9 +366,109 @@ describe("tui session (headless, fake provider)", () => {
       expect(statuses.some((t) => t.includes("unknown model: fake/missing"))).toBe(true);
     } finally {
       delete process.env.OMA_SESSION_DIR;
+      delete process.env.OMA_CODING_AGENT_DIR;
       rmSync(sessionDir, { recursive: true, force: true });
+      rmSync(agentDir, { recursive: true, force: true });
     }
   }, 15_000);
+
+  test("/skill lists and auto-registers skill commands", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "oma-tui-skills-"));
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-skills-sess-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    process.env.OMA_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), "oma-tui-skills-agent-"));
+    try {
+      mkdirSync(join(workspace, "skills", "demo"), { recursive: true });
+      writeFileSync(
+        join(workspace, "skills", "demo", "SKILL.md"),
+        "---\nname: demo\ndescription: Demo skill for tests\n---\nBody.\n",
+        "utf8",
+      );
+      const io = scriptedIo(["/skill", "/skill:demo do the thing", "/exit", "/exit"]);
+      await runTuiSession({ modelRuntime: testModelRuntime(), workspaceRoot: workspace }, io);
+      const statuses = io.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
+        .map((i) => i.text);
+      expect(statuses.some((t) => t.includes("/skill:demo — Demo skill for tests"))).toBe(true);
+      // The auto-registered command submitted a real run pointing at the skill.
+      const texts = io.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.map((i) => i.text))
+        .join("");
+      expect(texts).toContain('follow the "demo" skill');
+      expect(texts).toContain("done");
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      delete process.env.OMA_CODING_AGENT_DIR;
+      rmSync(workspace, { recursive: true, force: true });
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("/workflow runs an inline vm script and renders the result", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "oma-tui-wf-"));
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-wf-sess-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    process.env.OMA_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), "oma-tui-wf-agent-"));
+    try {
+      const io = scriptedIo(["/workflow return 40+2", "/exit", "/exit"]);
+      await runTuiSession({ modelRuntime: testModelRuntime(), workspaceRoot: workspace }, io);
+      const statuses = io.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
+        .map((i) => i.text);
+      expect(statuses.some((t) => t.includes("workflow: script"))).toBe(true);
+      expect(statuses.some((t) => t.includes("workflow done"))).toBe(true);
+      expect(statuses.some((t) => t.includes("workflow result: 42"))).toBe(true);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      delete process.env.OMA_CODING_AGENT_DIR;
+      rmSync(workspace, { recursive: true, force: true });
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("/mcp lists .mcp.json servers and tests one", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "oma-tui-mcp-"));
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-mcp-sess-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    process.env.OMA_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), "oma-tui-mcp-agent-"));
+    const serverPath = join(import.meta.dir, "../../core/__fixtures__/mcp-echo-server.ts");
+    try {
+      writeFileSync(
+        join(workspace, ".mcp.json"),
+        JSON.stringify({
+          mcpServers: {
+            "echo-server": { command: "bun", args: [serverPath] },
+            broken: { nope: true },
+          },
+        }),
+        "utf8",
+      );
+      const io = scriptedIo([
+        "/mcp",
+        "/mcp test echo-server",
+        "/mcp test missing",
+        "/exit",
+        "/exit",
+      ]);
+      await runTuiSession({ modelRuntime: testModelRuntime(), workspaceRoot: workspace }, io);
+      const statuses = io.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
+        .map((i) => i.text);
+      expect(statuses.some((t) => t.includes("echo-server [stdio]"))).toBe(true);
+      expect(statuses.some((t) => t.includes("broken [invalid]"))).toBe(true);
+      expect(statuses.some((t) => t.includes("echo-server: ok · 1 tools (echo)"))).toBe(true);
+      expect(statuses.some((t) => t.includes("missing: FAILED"))).toBe(true);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      delete process.env.OMA_CODING_AGENT_DIR;
+      rmSync(workspace, { recursive: true, force: true });
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 30_000);
 
   test("/resume lists saved sessions and resumes by unique prefix", async () => {
     const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-resume-"));

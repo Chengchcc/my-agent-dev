@@ -99,6 +99,79 @@ async function connectServer(name: string, server: McpJsonServer): Promise<McpCl
   }
 }
 
+/** One configured server as a listing row (pi's /mcp list). */
+export interface McpServerInfo {
+  name: string;
+  kind: "stdio" | "url" | "invalid";
+  detail: string;
+}
+
+/** Configured servers from the workspace .mcp.json, sorted by name.
+ *  Never throws — a corrupt file yields []. */
+export function listMcpServers(workspaceRoot: string): McpServerInfo[] {
+  const servers = loadMcpConfig(workspaceRoot);
+  return Object.entries(servers)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, server]) => {
+      if (server.url) return { name, kind: "url" as const, detail: server.url };
+      if (server.command) {
+        return {
+          name,
+          kind: "stdio" as const,
+          detail: [server.command, ...(server.args ?? [])].join(" "),
+        };
+      }
+      return { name, kind: "invalid" as const, detail: "no command or url" };
+    });
+}
+
+const MCP_TEST_TIMEOUT_MS = 10_000;
+
+/** Live-connect one configured server and list its tools (pi's /mcp test).
+ *  Reports failure reasons; never throws.
+ *  ponytail: a connect that hangs past the timeout leaves the stdio child
+ *  running (connectServer exposes no pid) — rare in practice, pkill by
+ *  command if it bites. */
+export async function testMcpServer(
+  workspaceRoot: string,
+  name: string,
+): Promise<{ ok: boolean; tools: string[]; error?: string }> {
+  const servers = loadMcpConfig(workspaceRoot);
+  const server = servers[name];
+  if (!server) {
+    return { ok: false, tools: [], error: `no server named "${name}" in .mcp.json` };
+  }
+  let timer: Timer | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), MCP_TEST_TIMEOUT_MS);
+  });
+  let client: McpClientLike | null;
+  try {
+    client = await Promise.race([connectServer(name, server), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!client) {
+    return {
+      ok: false,
+      tools: [],
+      error: `connect failed or timed out (${MCP_TEST_TIMEOUT_MS / 1000}s)`,
+    };
+  }
+  try {
+    const { tools } = await client.listTools();
+    return { ok: true, tools: tools.map((t) => t.name) };
+  } catch (err) {
+    return {
+      ok: false,
+      tools: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
 /** Mount the workspace .mcp.json servers as plugin tools. Never throws;
  *  per-server failures degrade to "server absent". */
 export interface MountedMcpServers {

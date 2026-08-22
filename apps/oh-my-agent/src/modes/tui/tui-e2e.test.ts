@@ -387,9 +387,9 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       // /help echoes the command table into the transcript (grouped).
       const rendered = screen(vt);
       // The listing is longer than the viewport now: assert on the tail
-      // groups (view) that always fit the sliced window.
-      expect(rendered).toContain("[view]");
-      expect(rendered).toContain("/tools — toggle tool detail (ctrl+o)");
+      // groups (workflow is last) that always fit the sliced window.
+      expect(rendered).toContain("[workflow]");
+      expect(rendered).toContain("/workflow <path|script>");
 
       await quitTui(vt);
       expect(await sessionDone).toBe(0);
@@ -650,7 +650,8 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       );
 
       await typeAndSubmit(vt, "/help");
-      await waitForText(vt, "toggle tool detail", 5_000);
+      // /workflow lives in the LAST group: its entry always fits the tail.
+      await waitForText(vt, "run a workflow script", 5_000);
       // SGR wheel-up (button 64): three per notch-equivalent steps reveal the
       // scroll indicator; wheel-down (65) walks it back.
       for (let i = 0; i < 6; i++) vt.sendInput("\x1b[<64;10;10M");
@@ -684,7 +685,8 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
 
       await typeAndSubmit(vt, "/help");
       // The listing's tail fits the viewport; early groups sit above it.
-      await waitForText(vt, "toggle tool detail", 5_000);
+      // /workflow lives in the LAST group, so it always makes the tail.
+      await waitForText(vt, "run a workflow script", 5_000);
       vt.sendInput("\x1b[5~"); // PageUp
       await waitForText(vt, "lines above", 2_000);
       // End returns to the latest; the indicator disappears.

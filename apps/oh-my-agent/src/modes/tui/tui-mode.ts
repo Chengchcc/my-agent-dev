@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import type { OmaLoopEvent } from "@chengchenccc/agent";
 import type { BackendRunInput, BackendRunOutcome } from "@chengchenccc/agent-backend";
 import type { ModelRuntime } from "@chengchenccc/ai";
+import { buildSkillIndex } from "@chengchenccc/plugin-progressive-skill";
 import {
   CombinedAutocompleteProvider,
   Container,
@@ -22,13 +25,14 @@ import {
   Text,
   TUI,
 } from "@chengchenccc/tui";
-import { buildCliRunInput } from "../../cli/initial-input.js";
+import { buildCliRunInput, resolveStandaloneSkillRoots } from "../../cli/initial-input.js";
 import { createOmaRuntime, type OmaRuntime } from "../../core/create-runtime.js";
 import {
   appendInputHistory,
   loadInputHistory,
   saveInputHistory,
 } from "../../core/input-history.js";
+import { listMcpServers, testMcpServer } from "../../core/mcp-mount.js";
 import {
   appendSessionMessages,
   deleteSession,
@@ -380,6 +384,11 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
   /** Estimated context tokens after the last run: drives the picker's
    *  over-context warning (pi grays out models smaller than the session). */
   let lastContextTokens: number | undefined;
+  /** Prompt queued by a command (skill invocations): submitted as the next
+   *  normal run. */
+  let pendingPrompt: string | undefined;
+  /** Workflow script queued by /workflow: injected into the next run input. */
+  let pendingWorkflowScript: string | undefined;
 
   function pushStatus(lines: string | readonly string[]): void {
     const items = (typeof lines === "string" ? [lines] : lines).map((text) => ({
@@ -465,8 +474,9 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       live: true,
       run: () => {
         const groups: Array<[string, string[]]> = [];
-        for (const c of commands) {
-          const entry = `/${c.name}${c.argumentHint ? ` ${c.argumentHint}` : ""} — ${c.description}`;
+        for (const c of commandsWithSkills) {
+          const aliases = c.aliases?.length ? `|${c.aliases.join("|")}` : "";
+          const entry = `/${c.name}${aliases}${c.argumentHint ? ` ${c.argumentHint}` : ""} — ${c.description}`;
           const found = groups.find(([name]) => name === c.group);
           if (found) found[1].push(entry);
           else groups.push([c.group, [entry]]);
@@ -709,6 +719,89 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       },
     },
     {
+      name: "mcp",
+      description: "list .mcp.json servers, or test one",
+      argumentHint: "test <name>",
+      group: "mcp",
+      live: true,
+      run: async (args) => {
+        const space = args.indexOf(" ");
+        const sub = (space === -1 ? args : args.slice(0, space)).trim();
+        const name = space === -1 ? "" : args.slice(space + 1).trim();
+        if (sub === "test") {
+          if (!name) {
+            pushStatus("usage: /mcp test <name>");
+            return;
+          }
+          pushStatus(`testing ${name}…`);
+          io.render(state);
+          const result = await testMcpServer(opts.workspaceRoot, name);
+          if (result.ok) {
+            const tools = result.tools.slice(0, 8).join(", ");
+            const more = result.tools.length > 8 ? `, +${result.tools.length - 8} more` : "";
+            pushStatus(`${name}: ok · ${result.tools.length} tools (${tools}${more})`);
+          } else {
+            pushStatus(`${name}: FAILED — ${result.error}`);
+          }
+          return;
+        }
+        if (sub) {
+          pushStatus(`unknown subcommand "${sub}" — /mcp lists, /mcp test <name> tests`);
+          return;
+        }
+        const servers = listMcpServers(opts.workspaceRoot);
+        if (servers.length === 0) {
+          pushStatus(`no .mcp.json servers in ${opts.workspaceRoot}`);
+          return;
+        }
+        pushStatus([
+          `mcp servers (${servers.length}) — mounted at run start:`,
+          ...servers.map((s) => `  ${s.name} [${s.kind}] ${s.detail}`),
+        ]);
+      },
+    },
+    {
+      name: "skill",
+      description: "list installed skills",
+      group: "skill",
+      live: true,
+      run: () => {
+        const skills = buildSkillIndex(resolveStandaloneSkillRoots(opts.workspaceRoot));
+        if (skills.length === 0) {
+          pushStatus(`no skills found (looked in ${join(opts.workspaceRoot, "skills")})`);
+          return;
+        }
+        pushStatus([
+          `skills (${skills.length}):`,
+          ...skills.map((sk) => `  /skill:${sk.name} — ${sk.description || "(no description)"}`),
+        ]);
+      },
+    },
+    {
+      name: "workflow",
+      description: "run a workflow script (file path or inline JS)",
+      argumentHint: "<path|script>",
+      group: "workflow",
+      run: (args) => {
+        if (!args) {
+          pushStatus("usage: /workflow <path-or-inline-script>");
+          return;
+        }
+        const firstToken = args.split(/\s+/)[0] ?? "";
+        let script: string;
+        let label: string;
+        if (existsSync(firstToken) && statSync(firstToken).isFile()) {
+          script = readFileSync(firstToken, "utf8");
+          label = firstToken;
+        } else {
+          script = args;
+          label = "inline";
+        }
+        pendingPrompt = `workflow ${label}`;
+        pendingWorkflowScript = script;
+      },
+    },
+    {
       name: "rename",
       description: "rename a session's title",
       argumentHint: "<session> <title>",
@@ -745,8 +838,33 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     },
   ];
 
-  // Autocomplete: the editor already triggers on "/" — hand it the table.
-  const slashCommands: SlashCommand[] = commands.map((c) => {
+  // Auto-registered skill commands (pi's /skill:<name> pattern): every
+  // discovered skill becomes a slash command that submits a prompt pointing
+  // the model at the skill (progressive disclosure — skill_load fetches the
+  // body, the command itself stays one line).
+  const skillCommands: ReadonlyArray<{
+    name: string;
+    description: string;
+    argumentHint?: string;
+    group: string;
+    live?: boolean;
+    aliases?: readonly string[];
+    run: (args: string) => void;
+  }> = buildSkillIndex(resolveStandaloneSkillRoots(opts.workspaceRoot)).map((sk) => ({
+    name: `skill:${sk.name}`,
+    description: sk.description || `invoke the ${sk.name} skill`,
+    group: "skill",
+    run: (args: string) => {
+      pendingPrompt = args
+        ? `${args}\n\n(follow the "${sk.name}" skill — skill_load "${sk.name}" first)`
+        : `Follow the "${sk.name}" skill (skill_load "${sk.name}" first).`;
+    },
+  }));
+  const commandsWithSkills = [...commands, ...skillCommands];
+
+  // Autocomplete: the editor already triggers on "/" — hand it the table
+  // (static commands + auto-registered skill commands).
+  const slashCommands: SlashCommand[] = commandsWithSkills.map((c) => {
     const command: SlashCommand = { name: c.name, description: c.description };
     if (c.argumentHint) command.argumentHint = c.argumentHint;
     if (c.name === "model") {
@@ -778,7 +896,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     const name = space === -1 ? text.slice(1) : text.slice(1, space);
     const args = space === -1 ? "" : text.slice(space + 1).trim();
     const command =
-      commands.find((c) => c.name === name) ?? commands.find((c) => c.aliases?.includes(name));
+      commandsWithSkills.find((c) => c.name === name) ??
+      commandsWithSkills.find((c) => c.aliases?.includes(name));
     if (!command) {
       pushStatus(`unknown command /${name} — try /help`);
       return;
@@ -815,7 +934,11 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     if (text.startsWith("/")) {
       await runCommandText(text);
       if (quitting) return 0;
-      continue;
+      // A command queued a prompt (skill invocation, workflow): submit it as
+      // the next run instead of returning to the editor.
+      if (pendingPrompt === undefined) continue;
+      text = pendingPrompt;
+      pendingPrompt = undefined;
     }
 
     addUserInput(state, text);
@@ -826,6 +949,13 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       modelRuntime: opts.modelRuntime,
       modelId,
     });
+    // /workflow queued a script: this run executes the vm workflow instead
+    // of a conversational loop (create-runtime branches on input.workflow).
+    let runInput: BackendRunInput<"oma"> = built;
+    if (pendingWorkflowScript !== undefined) {
+      runInput = { ...built, workflow: { script: pendingWorkflowScript } };
+      pendingWorkflowScript = undefined;
+    }
     const runtime = await createOmaRuntime({
       runId: `tui-${randomUUID()}`,
       modelId: built.run.model.modelId,
@@ -885,7 +1015,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
           });
       };
       io.onLiveInput?.(steerHandler);
-      const segment = await runtime.run(built as BackendRunInput<"oma">);
+      const segment = await runtime.run(runInput);
       outcome = await segment.outcome;
       io.onLiveInput?.(null);
     } catch (err) {

@@ -162,6 +162,40 @@ export function applyEvent(state: TuiViewState, event: OmaLoopEvent): void {
       run.items.push({ kind: "status", text: "compacting context…", streaming: false });
       break;
     }
+    case "workflow_started": {
+      const run = ensureRunningRun(state);
+      run.items.push({
+        kind: "status",
+        text: `workflow: ${event.label} (${event.agentCount} agents)`,
+        streaming: false,
+      });
+      break;
+    }
+    case "workflow_agent_completed": {
+      const run = ensureRunningRun(state);
+      run.items.push({
+        kind: "status",
+        text: event.ok
+          ? `  \u2714 ${event.label}`
+          : `  \u2718 ${event.label}: ${event.error ?? "failed"}`,
+        streaming: false,
+      });
+      break;
+    }
+    case "workflow_completed": {
+      const run = ensureRunningRun(state);
+      run.items.push({
+        kind: "status",
+        text: `workflow done \u00b7 ${event.totalTokens} tokens`,
+        streaming: false,
+      });
+      break;
+    }
+    case "workflow_failed": {
+      const run = ensureRunningRun(state);
+      run.items.push({ kind: "error", text: `workflow: ${event.error}`, streaming: false });
+      break;
+    }
     case "agent_end": {
       const run = currentRun(state);
       if (run) run.running = false;
@@ -188,6 +222,18 @@ export function applyOutcome(state: TuiViewState, outcome: BackendRunOutcome): v
   } else if (outcome.status === "aborted") {
     runs.push({
       items: [{ kind: "status", text: "aborted", streaming: false }],
+      running: false,
+    });
+  } else if (outcome.status === "completed" && outcome.workflow) {
+    const value = JSON.stringify(outcome.workflow.value) ?? "undefined";
+    runs.push({
+      items: [
+        {
+          kind: "status",
+          text: `workflow result: ${value.slice(0, 200)}${value.length > 200 ? "\u2026" : ""}`,
+          streaming: false,
+        },
+      ],
       running: false,
     });
   } else if (outcome.status === "completed" && outcome.usage) {
