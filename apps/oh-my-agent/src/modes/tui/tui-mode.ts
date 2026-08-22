@@ -51,6 +51,9 @@ export interface TuiModeOptions {
   model?: string;
   /** Resume a specific session file instead of starting fresh. */
   sessionId?: string;
+  /** Prefill the editor with this text on boot (`oma "prompt"`). The user
+   *  hits Enter to send it like any other input. */
+  initialPrompt?: string;
 }
 
 /** View/abort commands from the terminal (Esc abort, ctrl+t, ctrl+o, ctrl+p). */
@@ -89,6 +92,8 @@ export interface TuiIo {
   ): Promise<string | null>;
   /** Update the fixed header's model/session line. */
   setHeader?(info: { model?: string; sessionId?: string }): void;
+  /** Prefill the editor text (used for `oma "<prompt>"`). */
+  setInputText?(text: string): void;
   /** Stop the terminal (restore modes). */
   close(): void;
 }
@@ -223,6 +228,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
   }
 
   io.setHeader?.({ model: modelId, sessionId: session.sessionId });
+  // `oma "<prompt>"` opens the TUI with the prompt prefilled in the editor.
+  if (opts.initialPrompt) io.setInputText?.(opts.initialPrompt);
 
   // One command handler for the whole session: toggles work between runs,
   // abort only while a run is live.
@@ -939,6 +946,10 @@ export function createTerminalIo(
       headerModel = info.model ?? "";
       headerSession = info.sessionId ?? "";
       renderHeader();
+      tui.requestRender();
+    },
+    setInputText(text) {
+      editor.setText(text);
       tui.requestRender();
     },
     close() {

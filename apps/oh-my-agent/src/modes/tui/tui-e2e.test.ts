@@ -43,6 +43,35 @@ async function waitForText(vt: VirtualTerminal, needle: string, ms: number): Pro
 }
 
 describe("tui e2e: model I/O on a virtual terminal", () => {
+  test("initialPrompt prefills the editor and submits on Enter", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-init-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-init-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    try {
+      const vt = new VirtualTerminal(100, 30);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir, initialPrompt: "123" },
+        io,
+      );
+
+      await vt.waitForRender();
+      // The editor shows the prefilled prompt (`oma "123"` boot).
+      expect(screen(vt)).toContain("123");
+      // Enter sends it as a normal first turn.
+      vt.sendInput("\r");
+      await waitForText(vt, "done", 5_000);
+      expect(screen(vt)).toContain("> 123");
+
+      await typeAndSubmit(vt, "/exit");
+      expect(await sessionDone).toBe(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   test("user input echoes, assistant answer renders, session persists", async () => {
     const dir = mkdtempSync(join(tmpdir(), "oma-e2e-"));
     const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-sess-"));

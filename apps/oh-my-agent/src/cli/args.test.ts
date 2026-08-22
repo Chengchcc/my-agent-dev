@@ -8,14 +8,16 @@ describe("parseArgs (syntax only)", () => {
   test("-p sets print mode with the positional prompt", () => {
     expect(parseArgs(["-p", "fix this"])).toEqual({
       mode: "print",
+      modeExplicit: true,
       prompt: "fix this",
       listModels: false,
     });
   });
 
-  test("a bare positional prompt is the print shorthand", () => {
+  test("a bare positional prompt stays implicit (TUI prefill in a TTY)", () => {
     expect(parseArgs(["fix this"])).toEqual({
       mode: "print",
+      modeExplicit: false,
       prompt: "fix this",
       listModels: false,
     });
@@ -32,6 +34,7 @@ describe("parseArgs (syntax only)", () => {
   test("--list-models needs no prompt", () => {
     expect(parseArgs(["--list-models"])).toEqual({
       mode: "print",
+      modeExplicit: false,
       prompt: "",
       listModels: true,
       model: undefined,
@@ -52,7 +55,12 @@ describe("parseArgs (syntax only)", () => {
   });
 
   test("empty argv is syntactically valid (input validation lives in main)", () => {
-    expect(parseArgs([])).toEqual({ mode: "print", prompt: "", listModels: false });
+    expect(parseArgs([])).toEqual({
+      mode: "print",
+      modeExplicit: false,
+      prompt: "",
+      listModels: false,
+    });
   });
 
   test("the standalone --json flag is gone (unknown option)", () => {

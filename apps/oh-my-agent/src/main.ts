@@ -53,14 +53,16 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     });
   }
 
-  // Standalone default: bare interactive `oma` on a TTY (no prompt, no
-  // pipe) opens the TUI; explicit -p/print or a pipe stays one-shot.
-  if (!args.prompt && process.stdin.isTTY) {
+  // Standalone default: `oma` (or `oma "<prompt>"`) on a TTY opens the
+  // TUI, with the positional prompt prefilled into the editor. Explicit
+  // -p/--mode or a pipe stays one-shot print/json.
+  if (!args.modeExplicit && process.stdin.isTTY) {
     return runTuiMode({
       modelRuntime,
       workspaceRoot: process.cwd(),
       model: args.model,
       sessionId: args.session,
+      ...(args.prompt ? { initialPrompt: args.prompt } : {}),
     });
   }
 
@@ -69,7 +71,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     piped: await readPipedStdin(),
   });
   if (!prompt) {
-    throw new UsageError("no prompt or piped stdin given");
+    throw new UsageError(
+      'bare oma opens the interactive TUI - run it in a terminal. Outside a terminal, give a prompt: oma -p "<prompt>" (or piped stdin)',
+    );
   }
 
   const opts = { prompt, workspaceRoot: process.cwd(), modelRuntime, model: args.model };

@@ -195,7 +195,8 @@ describe("oma CLI (spawned)", () => {
   test("no prompt and no piped stdin fails with exit 2", async () => {
     const res = await spawnCli(["-p"], {}, "");
     expect(res.exitCode).toBe(2);
-    expect(res.stderr).toContain("no prompt or piped stdin");
+    expect(res.stderr).toContain("interactive TUI");
+    expect(res.stderr).toContain("oma -p");
     expect(res.stdout).toBe("");
   }, 15_000);
 

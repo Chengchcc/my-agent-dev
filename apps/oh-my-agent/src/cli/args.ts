@@ -2,6 +2,9 @@ export type CliMode = "print" | "json" | "rpc" | "tui";
 
 export interface CliArgs {
   mode: CliMode;
+  /** True when -p/--mode was given explicitly; a bare positional prompt
+   *  keeps this false so main() can open the TUI with it prefilled. */
+  modeExplicit: boolean;
   prompt: string;
   listModels: boolean;
   /** Canonical `<provider>/<model>` id; undefined = first available model. */
@@ -12,9 +15,11 @@ export interface CliArgs {
 
 export class UsageError extends Error {}
 
-const USAGE = `oma - Oma product CLI
+const USAGE = `oma - Oma coding agent
 
 Usage:
+  oma                            interactive TUI (default in a terminal)
+  oma --session <id>             resume a session in the TUI
   oma -p "<prompt>"              print mode: one Run, final text on stdout
   oma "<prompt>"                 print mode shorthand
   oma --mode json "<prompt>"     json mode: all events + one outcome as JSONL
@@ -35,7 +40,12 @@ const MODES = ["print", "json", "rpc", "tui"];
 /** Parse argv SYNTAX only: whether a run actually has an input (prompt or
  *  piped stdin) is decided in main() after stdin is read. */
 export function parseArgs(argv: readonly string[]): CliArgs {
-  const args: CliArgs = { mode: "print", prompt: "", listModels: false };
+  const args: CliArgs = {
+    mode: "print",
+    modeExplicit: false,
+    prompt: "",
+    listModels: false,
+  };
   const positional: string[] = [];
   let modeFlag: string | null = null;
   let i = 0;
@@ -43,12 +53,14 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     const arg = argv[i]!;
     if (arg === "-p") {
       modeFlag = "print";
+      args.modeExplicit = true;
     } else if (arg === "--mode") {
       const value = argv[i + 1];
       if (!value || !MODES.includes(value)) {
         throw new UsageError(`--mode requires one of: ${MODES.join(" | ")}`);
       }
       modeFlag = value;
+      args.modeExplicit = true;
       i++;
     } else if (arg.startsWith("--mode=")) {
       const value = arg.slice("--mode=".length);
@@ -56,6 +68,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
         throw new UsageError(`--mode requires one of: ${MODES.join(" | ")}`);
       }
       modeFlag = value;
+      args.modeExplicit = true;
     } else if (arg === "--list-models") {
       args.listModels = true;
     } else if (arg === "--model") {
