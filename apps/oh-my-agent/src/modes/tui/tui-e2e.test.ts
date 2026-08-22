@@ -516,6 +516,41 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
     }
   }, 30_000);
 
+  test("edit tool renders capped +/- diff lines", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-diff-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-diff-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    process.env.OMA_FAKE_TOOL = JSON.stringify([
+      {
+        name: "edit",
+        input: { path: `${dir}/old.txt`, old_string: "before line", new_string: "after line" },
+      },
+    ]);
+    try {
+      const vt = new VirtualTerminal(100, 30);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
+        io,
+      );
+
+      await typeAndSubmit(vt, "go");
+      // The change itself is visible: red - old, green + new.
+      await waitForText(vt, "after line", 5_000);
+      const rendered = screen(vt);
+      expect(rendered).toContain("- before line");
+      expect(rendered).toContain("+ after line");
+
+      await quitTui(vt);
+      expect(await sessionDone).toBe(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      delete process.env.OMA_FAKE_TOOL;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   test("mouse wheel scrolls the transcript like PageUp", async () => {
     const dir = mkdtempSync(join(tmpdir(), "oma-e2e-wheel-"));
     const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-wheel-sess-"));

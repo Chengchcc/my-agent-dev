@@ -108,6 +108,11 @@ export interface TuiIo {
   setHeader?(info: { model?: string; sessionId?: string; title?: string; context?: string }): void;
   /** Prefill the editor text (used for `oma "<prompt>"`). */
   setInputText?(text: string): void;
+  /** True while the terminal window holds focus (CSI 1004 reporting).
+   *  Absent = always considered focused. */
+  isFocused?(): boolean;
+  /** Best-effort completion ping (BEL). Absent = silent. */
+  notify?(): void;
   /** Stop the terminal (restore modes). */
   close(): void;
 }
@@ -118,6 +123,8 @@ export interface TuiIo {
  *  to MAX_TOOL_DETAIL chars. */
 const MAX_TOOL_ARGS = 200;
 const MAX_TOOL_DETAIL = 8_000;
+/** Edit-tool diff lines per side in the collapsed tool view. */
+const MAX_DIFF_LINES = 6;
 
 /** Compact single-line JSON, truncated with an ellipsis marker. */
 function compactJson(value: unknown, max: number): string {
@@ -708,6 +715,12 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
 
     applyOutcome(state, outcome);
     io.setBusy?.(false);
+    // Long runs often outlast the user's attention: ping when the terminal
+    // lost focus so switching back is prompted (pi's desktop-notify analog).
+    if (io.isFocused?.() === false) {
+      pushStatus("run finished — terminal was unfocused");
+      io.notify?.();
+    }
 
     // Messages were persisted in real time (onPersistMessages); only the
     // end-of-run artifacts (compaction summaries, auto title) remain.
@@ -792,6 +805,12 @@ export function createTerminalIo(
   let loader: Loader | null = null;
   let busySince = 0;
   let elapsedTimer: Timer | undefined;
+  // Terminal focus (CSI 1004 reporting): a completion ping fires only when
+  // the user is looking elsewhere. Default focused — a terminal that never
+  // reports focus never pings falsely... actually it never pings at all,
+  // which is the safe default.
+  let focused = true;
+
   // Idle Ctrl-C quits only on a SECOND press within 2s (a stray press must
   // not kill the session); busy Ctrl-C stays single-press because aborting
   // a run is not destructive. Ctrl-D remains an instant quit.
@@ -890,6 +909,15 @@ export function createTerminalIo(
       return true;
     });
     if (mouseConsumed) return { consume: true };
+    // Focus reporting (CSI 1004): ESC[I focused, ESC[O unfocused.
+    if (data === "\x1b[I") {
+      focused = true;
+      return { consume: true };
+    }
+    if (data === "\x1b[O") {
+      focused = false;
+      return { consume: true };
+    }
     if (matchesKey(data, "escape") && busy) {
       if (commandHandler) commandHandler("abort");
       return { consume: true };
@@ -1092,6 +1120,17 @@ export function createTerminalIo(
     lines.push(
       `\u001b[${color}m  ${mark} \u001b[0m${boldName}\u001b[2m${args}${duration}\u001b[0m`,
     );
+    // Edit tool: the actual change as capped +/- lines (pi's diff rendering,
+    // collapsed form) — WHAT changed, not just the path.
+    if (toolName === "edit" && item.input !== undefined) {
+      const str = (v: unknown): string => (typeof v === "string" ? v : "");
+      for (const line of str(item.input.old_string).split("\n").slice(0, MAX_DIFF_LINES)) {
+        lines.push(`\u001b[31m    - ${line.slice(0, 90)}\u001b[0m`);
+      }
+      for (const line of str(item.input.new_string).split("\n").slice(0, MAX_DIFF_LINES)) {
+        lines.push(`\u001b[32m    + ${line.slice(0, 90)}\u001b[0m`);
+      }
+    }
     // Live streaming output (bash stdout): show the tail so long commands
     // give progress without flooding the transcript.
     if (item.output && item.streaming) {
@@ -1115,7 +1154,7 @@ export function createTerminalIo(
   // Mouse tracking (normal tracking + SGR encoding): the wheel scrolls the
   // transcript. Restored in close(); Shift bypasses capture for text
   // selection.
-  tui.terminal.write("\x1b[?1000h\x1b[?1006h");
+  tui.terminal.write("\x1b[?1000h\x1b[?1006h\x1b[?1004h");
 
   return {
     render,
@@ -1239,12 +1278,18 @@ export function createTerminalIo(
       editor.setText(text);
       tui.requestRender();
     },
+    isFocused() {
+      return focused;
+    },
+    notify() {
+      tui.terminal.write("\x07");
+    },
     close() {
       clearInterval(elapsedTimer);
       clearTimeout(quitTimer);
       dismissQuitHint();
       if (loader) loader.stop();
-      tui.terminal.write("\x1b[?1000l\x1b[?1006l");
+      tui.terminal.write("\x1b[?1000l\x1b[?1006l\x1b[?1004l");
       tui.stop();
     },
   };

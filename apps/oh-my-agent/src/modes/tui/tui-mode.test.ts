@@ -627,6 +627,32 @@ describe("tui session (headless, fake provider)", () => {
     }
   }, 30_000);
 
+  test("completion pings when the terminal is unfocused", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-focus-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    try {
+      const pings: number[] = [];
+      const base = scriptedIo(["hi", "/exit", "/exit"]);
+      const io: TuiIo = {
+        ...base,
+        isFocused: () => false,
+        notify: () => {
+          pings.push(1);
+        },
+      };
+      await runTuiSession({ modelRuntime: testModelRuntime(), workspaceRoot: sessionDir }, io);
+      const statuses = base.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
+        .map((i) => i.text);
+      expect(statuses.some((t) => t.includes("terminal was unfocused"))).toBe(true);
+      expect(pings.length).toBeGreaterThan(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   test("header carries context usage after each run", async () => {
     const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-ctx-"));
     process.env.OMA_SESSION_DIR = sessionDir;
