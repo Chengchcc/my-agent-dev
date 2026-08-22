@@ -73,7 +73,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       // Enter sends it as a normal first turn.
       vt.sendInput("\r");
       await waitForText(vt, "done", 5_000);
-      expect(screen(vt)).toContain("> 123");
+      expect(screen(vt)).toContain("123");
 
       await quitTui(vt);
       expect(await sessionDone).toBe(0);
@@ -108,7 +108,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       await vt.waitForRender();
       const rendered = screen(vt);
       // 3. The user's input is echoed in the transcript (cyan "> " prefix).
-      expect(rendered).toContain("> what is 2+2");
+      expect(rendered).toContain("what is 2+2");
       // 4. The assistant's final answer is rendered (markdown-free text).
       expect(rendered).toContain("done");
 
@@ -225,8 +225,8 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
 
       // Both turns are on screen (scrollback viewport is 40 rows).
       const final = screen(vt);
-      expect(final).toContain("> first question");
-      expect(final).toContain("> second question");
+      expect(final).toContain("first question");
+      expect(final).toContain("second question");
 
       // One session file, two user messages, at least two assistant messages.
       const files = readdirSync(sessDir).filter((f) => f.endsWith(".jsonl"));
@@ -451,11 +451,11 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
     }
   }, 30_000);
 
-  test("busy Enter queues a follow-up; empty Enter sends it as steer", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-followup-"));
-    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-followup-sess-"));
+  test("busy Enter steers immediately with a dim » echo", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-steer-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-steer-sess-"));
     process.env.OMA_SESSION_DIR = sessDir;
-    // A slow tool keeps the run live while we queue the follow-up.
+    // A slow tool keeps the run live while the steer lands.
     process.env.OMA_FAKE_TOOL = JSON.stringify([{ name: "bash", input: { command: "sleep 1" } }]);
     try {
       const vt = new VirtualTerminal(100, 30);
@@ -468,26 +468,129 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       await typeAndSubmit(vt, "go");
       await waitForText(vt, "sleep 1", 5_000); // tool running -> live
 
-      // Busy: type + Enter queues the follow-up (shown, NOT sent yet).
+      // Busy: type + Enter STEERS immediately (pi streamingBehavior:"steer") —
+      // no queue, no empty-Enter flush gesture. The echo is a dim » item.
       vt.sendInput("continue the work");
       await vt.waitForRender();
       vt.sendInput("\r");
-      await vt.waitForRender();
-      const queued = screen(vt);
-      expect(queued).toContain("follow-up");
-      expect(queued).toContain("continue the work");
+      await waitForText(vt, "\u00bb continue the work", 5_000);
+      // The old queue panel is gone.
+      expect(screen(vt)).not.toContain("follow-up");
 
-      // Empty Enter sends the queue; the steer echo lands in the transcript
-      // and the run completes.
-      vt.sendInput("\r");
+      // The loop consumed the steer and completed the run.
       await waitForText(vt, "done", 5_000);
-      expect(screen(vt)).toContain("> continue the work");
 
       await quitTui(vt);
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;
       delete process.env.OMA_FAKE_TOOL;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("idle ctrl+c arms a hint; the second press quits", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-ctrlc-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-ctrlc-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    try {
+      const vt = new VirtualTerminal(100, 30);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
+        io,
+      );
+
+      await vt.waitForRender();
+      // First press only arms: the session is still alive.
+      vt.sendInput("\x03");
+      await waitForText(vt, "press ctrl+c again to quit", 2_000);
+      // Second press within 2s quits.
+      vt.sendInput("\x03");
+      expect(await sessionDone).toBe(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("PageUp shows a scroll indicator inside the viewport; End returns", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-scroll-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-scroll-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    try {
+      // 24-row terminal: /help's ~20 status lines overflow the viewport.
+      const vt = new VirtualTerminal(100, 24);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
+        io,
+      );
+
+      await typeAndSubmit(vt, "/help");
+      // The listing's tail fits the viewport; early groups sit above it.
+      await waitForText(vt, "toggle tool detail", 5_000);
+      vt.sendInput("\x1b[5~"); // PageUp
+      await waitForText(vt, "lines above", 2_000);
+      // End returns to the latest; the indicator disappears.
+      vt.sendInput("\x1b[F");
+      await vt.waitForRender();
+      await vt.waitForRender();
+      expect(screen(vt)).not.toContain("lines above");
+
+      await quitTui(vt);
+      expect(await sessionDone).toBe(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("assistant markdown renders as styled text, not raw fences", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-md-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-md-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    try {
+      const modelRuntime = createModelRuntime();
+      modelRuntime.registerProvider({
+        id: "md",
+        name: "MD",
+        getModels: () => [
+          {
+            id: "m",
+            name: "M",
+            provider: "md",
+            api: "anthropic-messages",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 200_000,
+            maxTokens: 8192,
+          },
+        ],
+        async *stream() {
+          yield { delta: { type: "text", text: "intro line\n\n**bold words**" } };
+          yield { usage: { input: 1, output: 1, cacheRead: 0, cacheCreate: 0 } };
+          yield { stopReason: "end_turn" };
+        },
+      });
+      const vt = new VirtualTerminal(100, 30);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession({ modelRuntime, workspaceRoot: dir }, io);
+
+      await typeAndSubmit(vt, "hi");
+      // Markdown renders bold emphasis: the words appear, the raw ** markers
+      // do not (the run title takes line 1, so the header cannot leak them).
+      await waitForText(vt, "bold words", 5_000);
+      expect(screen(vt)).not.toContain("**bold words**");
+
+      await quitTui(vt);
+      expect(await sessionDone).toBe(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
       rmSync(dir, { recursive: true, force: true });
       rmSync(sessDir, { recursive: true, force: true });
     }
@@ -597,7 +700,9 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       await waitForText(vt, "aborted", 5_000);
       expect(screen(vt)).toContain("aborted");
 
-      // Idle: ctrl+c quits the session (exit code 0).
+      // Idle: ctrl+c now needs a second press within 2s (exit code 0).
+      vt.sendInput("\x03");
+      await waitForText(vt, "press ctrl+c again to quit", 2_000);
       vt.sendInput("\x03");
       expect(await sessionDone).toBe(0);
     } finally {

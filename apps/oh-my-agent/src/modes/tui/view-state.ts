@@ -11,12 +11,20 @@ export interface TranscriptItem {
   text: string;
   /** Streaming items grow in place; settled items are immutable. */
   streaming: boolean;
+  /** User items only: true while the message is steered into a live run or
+   *  queued for the next one (rendered dim with a » marker, pi's steering
+   *  display) — distinguishes injections from fresh prompts. */
+  pending?: boolean;
   /** Tool items only: the model call args (from tool_execution_start). */
   input?: Readonly<Record<string, unknown>>;
   /** Tool items only: the execution result (from tool_execution_end). */
   result?: Readonly<Record<string, unknown>>;
   /** Tool items only: streaming partial output while executing. */
   output?: string;
+  /** Tool items only: wall-clock start (set on tool_execution_start). */
+  startedAt?: number;
+  /** Tool items only: execution duration (set on tool_execution_end). */
+  durationMs?: number;
 }
 
 /** One completed or in-flight run as shown in the transcript. */
@@ -107,6 +115,7 @@ export function applyEvent(state: TuiViewState, event: OmaLoopEvent): void {
         kind: "tool",
         text: `${event.toolName}…`,
         streaming: true,
+        startedAt: Date.now(),
       };
       if (event.input !== undefined) item.input = event.input;
       run.items.push(item);
@@ -120,6 +129,7 @@ export function applyEvent(state: TuiViewState, event: OmaLoopEvent): void {
         if (item.kind === "tool" && item.streaming) {
           item.streaming = false;
           item.text = `${event.toolName}`;
+          if (item.startedAt !== undefined) item.durationMs = Date.now() - item.startedAt;
           if (event.result !== undefined) item.result = event.result;
           break;
         }
@@ -195,9 +205,12 @@ export function applyOutcome(state: TuiViewState, outcome: BackendRunOutcome): v
   }
 }
 
-/** Add the user's input echo to the transcript before a run starts. */
-export function addUserInput(state: TuiViewState, text: string): void {
-  state.runs.push({ items: [{ kind: "user", text, streaming: false }], running: false });
+/** Add the user's input echo to the transcript before a run starts.
+ *  `pending` marks steered/queued injections (rendered dim with »). */
+export function addUserInput(state: TuiViewState, text: string, pending = false): void {
+  const item: TranscriptItem = { kind: "user", text, streaming: false };
+  if (pending) item.pending = true;
+  state.runs.push({ items: [item], running: false });
 }
 
 /** True while the last run is live (editor submits become steer). */

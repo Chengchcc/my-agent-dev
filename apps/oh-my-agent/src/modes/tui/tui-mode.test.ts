@@ -10,17 +10,29 @@ import { applyEvent, initialViewState, type TuiViewState } from "./view-state.js
 
 /** Scripted TuiIo: feeds idle inputs sequentially, captures renders.
  *  Live submits (during a run) are recorded and forwarded to the handler. */
-function scriptedIo(
-  inputs: string[],
-): TuiIo & { renders: TuiViewState[]; live: string[]; toolRendered: Promise<void> } {
+function scriptedIo(inputs: string[]): TuiIo & {
+  renders: TuiViewState[];
+  live: string[];
+  liveCommands: string[];
+  headers: Array<{ model?: string; sessionId?: string; title?: string; context?: string }>;
+  toolRendered: Promise<void>;
+  submitLive: (text: string) => void;
+  sendLiveCommand: (text: string) => void;
+} {
   const renders: TuiViewState[] = [];
   const live: string[] = [];
+  const liveCommands: string[] = [];
+  const headers: Array<{ model?: string; sessionId?: string; title?: string; context?: string }> =
+    [];
   let i = 0;
   let liveHandler: ((text: string) => void) | null = null;
+  let liveCommandHandler: ((text: string) => void) | null = null;
   const { promise: toolRendered, resolve: markToolRendered } = Promise.withResolvers<void>();
   return {
     renders,
     live,
+    liveCommands,
+    headers,
     toolRendered,
     render: (state) => {
       renders.push(state);
@@ -36,11 +48,21 @@ function scriptedIo(
     onLiveInput: (handler) => {
       liveHandler = handler;
     },
+    onLiveCommand: (handler) => {
+      liveCommandHandler = handler;
+    },
+    setHeader: (info) => {
+      headers.push(info);
+    },
     // ponytail: tests push live submits through this hook rather than
     // simulating keystroke timing.
     submitLive: (text: string) => {
       live.push(text);
       liveHandler?.(text);
+    },
+    sendLiveCommand: (text: string) => {
+      liveCommands.push(text);
+      liveCommandHandler?.(text);
     },
     close: () => {},
   };
@@ -540,4 +562,84 @@ describe("tui session (headless, fake provider)", () => {
       rmSync(sessionDir, { recursive: true, force: true });
     }
   }, 15_000);
+
+  test("live submit steers immediately and echoes a pending item", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-steer-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    // A slow tool keeps the run live while the steer lands.
+    process.env.OMA_FAKE_TOOL = JSON.stringify([{ name: "bash", input: { command: "sleep 1" } }]);
+    try {
+      const io = scriptedIo(["go"]);
+      const done = runTuiSession(
+        { modelRuntime: testModelRuntime(), workspaceRoot: sessionDir },
+        io,
+      );
+      await io.toolRendered;
+      io.submitLive("mid-run correction");
+      await done;
+      // The steer was echoed as a pending user item (pi's » steering marker).
+      const pending = io.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.filter((i) => i.kind === "user"))
+        .find((i) => i.text === "mid-run correction");
+      expect(pending).toMatchObject({ pending: true });
+      // The loop consumed the steer and answered — the message was not lost.
+      const texts = io.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.map((i) => i.text))
+        .join("");
+      expect(texts).toContain("done");
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      delete process.env.OMA_FAKE_TOOL;
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("slash commands during a live run execute; mutating ones refuse", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-livecmd-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    process.env.OMA_FAKE_TOOL = JSON.stringify([{ name: "bash", input: { command: "sleep 1" } }]);
+    try {
+      const io = scriptedIo(["go"]);
+      const done = runTuiSession(
+        { modelRuntime: testModelRuntime(), workspaceRoot: sessionDir },
+        io,
+      );
+      await io.toolRendered;
+      // Safe commands run live instead of being steered into the model.
+      io.sendLiveCommand("/thinking");
+      // Session-mutating commands refuse while the run is live.
+      io.sendLiveCommand("/new");
+      await done;
+      const statuses = io.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
+        .map((i) => i.text);
+      expect(statuses.some((t) => t.includes("thinking expanded"))).toBe(true);
+      expect(statuses.some((t) => t.includes("/new is not available while a run is live"))).toBe(
+        true,
+      );
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      delete process.env.OMA_FAKE_TOOL;
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("header carries context usage after each run", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-ctx-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    try {
+      const io = scriptedIo(["hi", "/exit", "/exit"]);
+      await runTuiSession({ modelRuntime: testModelRuntime(), workspaceRoot: sessionDir }, io);
+      const ctx = io.headers.find((h) => h.context !== undefined);
+      expect(ctx).toBeDefined();
+      expect(ctx?.context).toContain("ctx ");
+      expect(ctx?.context).toContain("/");
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

@@ -5,9 +5,12 @@ import type { ModelRuntime } from "@chengchenccc/ai";
 import {
   CombinedAutocompleteProvider,
   Container,
+  type DefaultTextStyle,
   Editor,
   type EditorTheme,
   Loader,
+  Markdown,
+  type MarkdownTheme,
   matchesKey,
   ProcessTerminal,
   SelectList,
@@ -39,9 +42,12 @@ import {
 /** TUI mode: oma's standalone interactive surface. One process = N
  *  consecutive Runs over ONE session file; each Run is its own Runtime
  *  (one Runtime = one Run invariant preserved). Enter submits; while a Run
- *  is live, Enter queues a follow-up (shown above the spinner) and Enter on
- *  an empty editor sends the queue as steers; Esc aborts; ctrl+t toggles
- *  thinking blocks; ctrl+o toggles tool detail; /exit quits.
+ *  is live, Enter STEERS the message into the loop immediately (pi's
+ *  streamingBehavior:"steer") and a steer rejected because the loop is
+ *  settling falls back to a queue that auto-drains as the next Run's input
+ *  (pi's AgentBusyError -> followUp) — no message is ever dropped. Esc
+ *  aborts; ctrl+t toggles thinking; ctrl+o toggles tool detail; /exit
+ *  quits.
  *
  *  All terminal wiring lives behind the TerminalIo seam so tests can drive
  *  the whole loop headlessly. */
@@ -72,6 +78,10 @@ export interface TuiIo {
   setBusy?(busy: boolean): void;
   /** Subscriber for inputs submitted while a run is live (steer). */
   onLiveInput?(handler: ((text: string) => void) | null): void;
+  /** Subscriber for slash commands submitted while a run is live; the
+   *  session loop executes them instead of steering the text (pi's
+   *  LiveCommandController). */
+  onLiveCommand?(handler: ((text: string) => void) | null): void;
   /** Subscriber for view/abort commands (Esc, ctrl+t, ctrl+o). */
   onCommand?(handler: ((cmd: TuiCommand) => void) | null): void;
   /** Register the slash-command list for editor autocomplete. */
@@ -92,8 +102,9 @@ export interface TuiIo {
   pickModel?(
     models: ReadonlyArray<{ id: string; label: string; description?: string }>,
   ): Promise<string | null>;
-  /** Update the fixed header's model/session line. */
-  setHeader?(info: { model?: string; sessionId?: string; title?: string }): void;
+  /** Update the fixed header's model/session line. `context` is sticky:
+   *  once set it stays until the next value arrives. */
+  setHeader?(info: { model?: string; sessionId?: string; title?: string; context?: string }): void;
   /** Prefill the editor text (used for `oma "<prompt>"`). */
   setInputText?(text: string): void;
   /** Stop the terminal (restore modes). */
@@ -194,6 +205,40 @@ function relativeTime(modifiedAt: number): string {
   return `${Math.floor(days / 30)}mo`;
 }
 
+/** Markdown theme for assistant output: plain readable text with ANSI
+ *  emphasis — bold/italic/links/code styled, headings bold, no colors
+ *  beyond dim (pi renders through its theme; oma keeps it monochrome+dim
+ *  so the cyan user bubble stays the only saturated element). */
+const MARKDOWN_THEME: MarkdownTheme = {
+  heading: (s) => `\u001b[1m${s}\u001b[0m`,
+  link: (s) => `\u001b[4m${s}\u001b[0m`,
+  linkUrl: (s) => `\u001b[2m${s}\u001b[0m`,
+  code: (s) => `\u001b[36m${s}\u001b[0m`,
+  codeBlock: (s) => `\u001b[36m${s}\u001b[0m`,
+  codeBlockBorder: (s) => `\u001b[2m${s}\u001b[0m`,
+  quote: (s) => `\u001b[2m${s}\u001b[0m`,
+  quoteBorder: (s) => `\u001b[2m${s}\u001b[0m`,
+  hr: (s) => `\u001b[2m${s}\u001b[0m`,
+  listBullet: (s) => `\u001b[36m${s}\u001b[0m`,
+  bold: (s) => `\u001b[1m${s}\u001b[0m`,
+  italic: (s) => `\u001b[3m${s}\u001b[0m`,
+  strikethrough: (s) => `\u001b[9m${s}\u001b[0m`,
+  underline: (s) => `\u001b[4m${s}\u001b[0m`,
+};
+
+/** User bubble: markdown text on a deep-blue background tint with cyan
+ *  text (pi's UserMessageComponent look). */
+const USER_TEXT_STYLE: DefaultTextStyle = {
+  color: (s) => `\u001b[36m${s}\u001b[0m`,
+  bgColor: (s) => `\u001b[48;5;24m${s}\u001b[0m`,
+};
+
+/** Compact token count for the header: 12k / 200k. */
+function formatTokens(n: number): string {
+  if (n >= 1000) return `${Math.round(n / 1000)}k`;
+  return `${n}`;
+}
+
 /** Overlay root for the session picker: renders title + list and routes
  *  key input to the list (a plain Container has no handleInput). */
 class PickerOverlay extends Container {
@@ -277,12 +322,16 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     description: string;
     argumentHint?: string;
     group: string;
+    /** Safe to execute while a run is live (pi's LiveCommandController
+     *  scope); session-mutating commands refuse until the run settles. */
+    live?: boolean;
     run: (args: string) => void | Promise<void>;
   }> = [
     {
       name: "help",
       description: "list slash commands",
       group: "general",
+      live: true,
       run: () => {
         const groups: Array<[string, string[]]> = [];
         for (const c of commands) {
@@ -300,6 +349,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       name: "exit",
       description: "quit the session (twice to confirm)",
       group: "general",
+      live: true,
       run: () => {
         if (exitArmed) {
           quitting = true;
@@ -313,6 +363,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       name: "quit",
       description: "alias of /exit",
       group: "general",
+      live: true,
       run: () => {
         if (exitArmed) {
           quitting = true;
@@ -326,6 +377,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       name: "session",
       description: "show the current session id and title",
       group: "session",
+      live: true,
       run: () => {
         pushStatus(`session: ${session.sessionId}${sessionTitle ? ` — ${sessionTitle}` : ""}`);
       },
@@ -335,6 +387,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       description: "show or switch the model",
       argumentHint: "<provider/model>",
       group: "model",
+      live: true,
       run: async (args) => {
         if (!args) {
           const models = await listModels();
@@ -438,6 +491,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       name: "thinking",
       description: "toggle thinking blocks (ctrl+t)",
       group: "view",
+      live: true,
       run: () => {
         state.showThinking = !state.showThinking;
         pushStatus(`thinking ${state.showThinking ? "expanded" : "collapsed"}`);
@@ -447,6 +501,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       name: "tools",
       description: "toggle tool detail (ctrl+o)",
       group: "view",
+      live: true,
       run: () => {
         state.showToolDetail = !state.showToolDetail;
         pushStatus(`tool detail ${state.showToolDetail ? "expanded" : "collapsed"}`);
@@ -456,6 +511,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       name: "abort",
       description: "abort the live run (esc)",
       group: "view",
+      live: true,
       run: () => {
         if (liveRuntime) void liveRuntime.stop().catch(() => {});
         else pushStatus("no live run");
@@ -523,23 +579,49 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
   });
   io.setSlashCommands?.(slashCommands);
 
+  /** Slash-command dispatch shared by the idle loop and live submissions
+   *  (pi's LiveCommandController: /commands execute even mid-run instead of
+   *  being steered into the model as literal text). */
+  async function runCommandText(text: string): Promise<void> {
+    const space = text.indexOf(" ");
+    const name = space === -1 ? text.slice(1) : text.slice(1, space);
+    const args = space === -1 ? "" : text.slice(space + 1).trim();
+    const command = commands.find((c) => c.name === name);
+    if (!command) {
+      pushStatus(`unknown command /${name} — try /help`);
+      return;
+    }
+    if (liveRuntime && !command.live) {
+      pushStatus(`/${name} is not available while a run is live`);
+      return;
+    }
+    await command.run(args);
+  }
+
+  io.onLiveCommand?.((text) => {
+    void runCommandText(text).then(() => io.render(state));
+  });
+
+  /** Steers rejected while the loop was settling; drained as the next
+   *  Run's prompt when the current Run ends (pi's followUp fallback). */
+  const pendingFollowUps: string[] = [];
+
   for (;;) {
     io.render(state);
-    const input = await io.waitForInput();
-    if (input === null) return 0;
-    const text = input.trim();
-    if (!text) continue;
+    // Steers that arrived while the previous loop was settling are drained
+    // here as the next Run's prompt (already echoed as » items — no re-echo).
+    let text: string;
+    if (pendingFollowUps.length > 0) {
+      text = pendingFollowUps.splice(0).join("\n\n");
+    } else {
+      const input = await io.waitForInput();
+      if (input === null) return 0;
+      text = input.trim();
+      if (!text) continue;
+    }
 
     if (text.startsWith("/")) {
-      const space = text.indexOf(" ");
-      const name = space === -1 ? text.slice(1) : text.slice(1, space);
-      const args = space === -1 ? "" : text.slice(space + 1).trim();
-      const command = commands.find((c) => c.name === name);
-      if (!command) {
-        pushStatus(`unknown command /${name} — try /help`);
-        continue;
-      }
-      await command.run(args);
+      await runCommandText(text);
       if (quitting) return 0;
       continue;
     }
@@ -591,22 +673,23 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
 
     let outcome: BackendRunOutcome;
     try {
-      // Steer: a submit while the run is live routes into runtime.steer().
-      // Echo it into the live run's transcript so the user sees their
-      // insertion point (pi's pending-message display).
+      // Steer: a submit while the run is live injects immediately (pi's
+      // streamingBehavior:"steer" — the loop buffers to a safe boundary).
+      // A steer rejected because the loop is settling falls back to the
+      // follow-up queue and is delivered as the next Run's input — the
+      // message is never dropped (pi's AgentBusyError -> followUp).
       const steerHandler = (text: string): void => {
-        const live = state.runs.at(-1);
-        if (live?.running) {
-          live.items.push({ kind: "user", text, streaming: false });
-          io.render(state);
-        }
-        void runtime
+        addUserInput(state, text, true);
+        io.render(state);
+        runtime
           .steer({
             inputId: `steer-${randomUUID()}`,
             message: { role: "user", text },
           })
           .catch(() => {
-            /* loop not accepting steer (settling): drop */
+            pendingFollowUps.push(text);
+            pushStatus("queued: run is settling — sends when it ends");
+            io.render(state);
           });
       };
       io.onLiveInput?.(steerHandler);
@@ -643,7 +726,22 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     for (const summary of await runtime.compactions()) {
       pushStatus(`compacted: ${summary.slice(0, 160)}${summary.length > 160 ? "…" : ""}`);
     }
+    // Context footprint of the settled branch under the run model's window
+    // (pi's context-usage display); read BEFORE close() like compactions().
+    const usage = await runtime.contextUsage().catch(() => undefined);
+    if (usage && usage.limit > 0) {
+      const pct = Math.min(100, Math.round((usage.estimatedTokens / usage.limit) * 100));
+      io.setHeader?.({
+        model: modelId,
+        sessionId: session.sessionId,
+        title: sessionTitle,
+        context: `ctx ${formatTokens(usage.estimatedTokens)}/${formatTokens(usage.limit)} · ${pct}%`,
+      });
+    }
     await runtime.close().catch(() => {});
+    // /exit (or a second ctrl+c path) may have run via the live-command
+    // channel while the Run was live — honor it now that the Run settled.
+    if (quitting) return 0;
   }
 }
 
@@ -662,6 +760,7 @@ export function createTerminalIo(
   let headerModel = "";
   let headerSession = "";
   let headerTitle = "";
+  let headerContext = "";
 
   // Claude-style fixed header: ASCII wordmark banner + model/session line +
   // separator, all left-aligned. Rendered once and updated via setHeader;
@@ -677,7 +776,7 @@ export function createTerminalIo(
       "\u001b[36m ██║   ██║██║╚██╔╝██║██╔══██║\u001b[0m",
       "\u001b[36m ╚██████╔╝██║ ╚═╝ ██║██║  ██║\u001b[0m",
       "\u001b[36m  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝\u001b[0m",
-      `\u001b[2m  ${headerInfo}${headerTitle ? ` — ${headerTitle.slice(0, 24)}` : ""}${headerModel ? ` · model ${headerModel}` : ""}${headerSession ? ` · session ${headerSession.slice(0, 8)}` : ""}\u001b[0m`,
+      `\u001b[2m  ${headerInfo}${headerTitle ? ` — ${headerTitle.slice(0, 24)}` : ""}${headerModel ? ` · model ${headerModel}` : ""}${headerSession ? ` · session ${headerSession.slice(0, 8)}` : ""}${headerContext ? ` · ${headerContext}` : ""}\u001b[0m`,
       `\u001b[2m  ${"─".repeat(27)}\u001b[0m`,
     ];
     for (const line of lines) headerContainer.addChild(new Text(line, 0, 0));
@@ -687,14 +786,17 @@ export function createTerminalIo(
   let pending: ((value: string | null) => void) | null = null;
   let busy = false;
   let liveHandler: ((text: string) => void) | null = null;
+  let liveCommandHandler: ((text: string) => void) | null = null;
   let commandHandler: ((cmd: TuiCommand) => void) | null = null;
   let loader: Loader | null = null;
   let busySince = 0;
-  // Follow-up queue: while a run is live, Enter queues the editor text and
-  // shows it; Enter on an EMPTY editor sends the whole queue as steer
-  // messages (pi's queued follow-ups). Esc still aborts.
-  let followUpQueue: string[] = [];
-  let elapsedTimer: ReturnType<typeof setInterval> | undefined;
+  let elapsedTimer: Timer | undefined;
+  // Idle Ctrl-C quits only on a SECOND press within 2s (a stray press must
+  // not kill the session); busy Ctrl-C stays single-press because aborting
+  // a run is not destructive. Ctrl-D remains an instant quit.
+  let quitArmed = false;
+  let quitHint: Text | null = null;
+  let quitTimer: Timer | undefined;
 
   function startElapsedTimer(): void {
     clearInterval(elapsedTimer);
@@ -705,55 +807,42 @@ export function createTerminalIo(
     }, 1000);
   }
 
-  function renderFollowUpQueue(): void {
-    if (!busy) return;
-    statusContainer.clear();
-    if (loader) {
-      loader.stop();
-      loader = null;
+  function dismissQuitHint(): void {
+    quitArmed = false;
+    clearTimeout(quitTimer);
+    if (quitHint) {
+      statusContainer.removeChild(quitHint);
+      quitHint = null;
     }
-    if (followUpQueue.length === 0) {
-      // Rebuild the plain loader when the last queued item was sent.
-      loader = new Loader(
-        tui,
-        (s) => `\u001b[36m${s}\u001b[0m`,
-        (s) => `\u001b[2m${s}\u001b[0m`,
-        "working… (esc to abort)",
-      );
-      loader.start();
-      statusContainer.addChild(loader);
-      startElapsedTimer();
-      return;
-    }
-    statusContainer.addChild(
-      new Text(
-        `  📥 follow-up: ${followUpQueue.map((q) => `"${q}"`).join(", ")} — enter to send`,
-        0,
-        0,
-      ),
-    );
+  }
+
+  function armQuit(): void {
+    quitArmed = true;
+    quitHint = new Text("\u001b[33m  press ctrl+c again to quit\u001b[0m", 0, 0);
+    statusContainer.addChild(quitHint);
     tui.requestRender();
+    quitTimer = setTimeout(() => {
+      dismissQuitHint();
+      tui.requestRender();
+    }, 2_000);
   }
 
   editor.onSubmit = (text) => {
     if (busy) {
       const trimmed = text.trim();
-      if (trimmed) {
-        // Queue it and show it; the run keeps going until the user sends.
-        followUpQueue.push(trimmed);
-        editor.setText("");
-        renderFollowUpQueue();
+      // Slash commands execute live (pi's LiveCommandController) instead of
+      // being steered into the model as literal text; anything else steers
+      // immediately — the session loop queues a rejected steer as the next
+      // Run's input, so nothing is lost either way.
+      if (!trimmed) return;
+      if (trimmed.startsWith("/")) {
+        if (liveCommandHandler) liveCommandHandler(trimmed);
         return;
       }
-      // Empty Enter while a run is live: send the queued follow-ups.
-      if (followUpQueue.length > 0 && liveHandler) {
-        const queued = followUpQueue;
-        followUpQueue = [];
-        for (const message of queued) liveHandler(message);
-      }
-      renderFollowUpQueue();
+      if (liveHandler) liveHandler(trimmed);
       return;
     }
+    dismissQuitHint();
     if (!pending) return;
     const resolve = pending;
     pending = null;
@@ -766,9 +855,23 @@ export function createTerminalIo(
   // thinking-block and tool-detail views globally.
   let scrollOffset = 0;
   let totalLines = 0;
-  // Transcript viewport height: terminal rows minus fixed chrome. Header is
-  // 8 compact rows (6 banner + info + separator), status 1, editor ~3.
-  const viewportLines = (): number => Math.max(1, tui.terminal.rows - 12);
+  // Last rendered state: the scroll keys rebuild the window from it (a bare
+  // requestRender would repaint the STALE children — the slice happens in
+  // render(), so scrolling without re-rendering showed nothing at idle).
+  let lastState: TuiViewState | null = null;
+  /** Transcript viewport height: terminal rows minus chrome. Header is 8
+   *  compact rows (6 banner + info + separator), status 1, the editor its
+   *  CURRENT row count (grows with multi-line input — a fixed guess let a
+   *  tall editor push the header off-screen), plus the scroll indicator
+   *  row while history is viewed. */
+  const viewportLines = (): number => {
+    const editorRows = Math.max(1, editor.render(tui.terminal.columns).length);
+    const indicatorRows = scrollOffset > 0 ? 2 : 0;
+    // Every transcript line renders as 2 rows (text + paddingY=1 spacing),
+    // so the line budget is half the row budget: header 8 + status 1.
+    const rowBudget = tui.terminal.rows - 9 - editorRows - indicatorRows;
+    return Math.max(1, Math.floor(rowBudget / 2));
+  };
 
   tui.addInputListener((data) => {
     if (matchesKey(data, "escape") && busy) {
@@ -792,32 +895,37 @@ export function createTerminalIo(
     // busy and quits when idle.
     if (matchesKey(data, "pageUp")) {
       scrollOffset += viewportLines();
-      tui.requestRender();
+      if (lastState) render(lastState);
       return { consume: true };
     }
     if (matchesKey(data, "pageDown")) {
       scrollOffset = Math.max(0, scrollOffset - viewportLines());
-      tui.requestRender();
+      if (lastState) render(lastState);
       return { consume: true };
     }
     if (matchesKey(data, "home")) {
       scrollOffset = Math.max(0, totalLines - viewportLines());
-      tui.requestRender();
+      if (lastState) render(lastState);
       return { consume: true };
     }
     if (matchesKey(data, "end")) {
       scrollOffset = 0;
-      tui.requestRender();
+      if (lastState) render(lastState);
       return { consume: true };
     }
     if (matchesKey(data, "ctrl+c")) {
       if (busy) {
         if (commandHandler) commandHandler("abort");
       } else if (pending) {
-        // Idle: Ctrl-C quits (like Ctrl-D), restoring the terminal.
-        const resolve = pending;
-        pending = null;
-        resolve(null);
+        // Idle: the second press within 2s quits; the first just arms.
+        if (quitArmed) {
+          dismissQuitHint();
+          const resolve = pending;
+          pending = null;
+          resolve(null);
+        } else {
+          armQuit();
+        }
       }
       tui.requestRender();
       return { consume: true };
@@ -835,37 +943,74 @@ export function createTerminalIo(
       ),
     );
   }
-
   function render(state: TuiViewState): void {
+    lastState = state;
     transcript.clear();
     const lines: string[] = [];
     for (const run of state.runs) {
       for (const item of run.items) lines.push(...renderItem(item, state));
     }
     totalLines = lines.length;
-    // Scrolling: show only the trailing window (TUI anchors to the bottom
-    // of the buffer), i.e. lines[0 .. total - scrollOffset]. New events
-    // re-render and clamp the offset so it cannot scroll past the content.
+    // Draw the true viewport window [end - viewport, end) where end =
+    // total - scrollOffset. Slicing here — instead of stacking every line
+    // and letting the TUI clip the buffer bottom — bounds the Text children
+    // by the viewport (a long session no longer re-renders thousands of
+    // rows per event) and keeps the scroll indicator inside the drawn
+    // window where it is actually visible.
     scrollOffset = Math.min(scrollOffset, Math.max(0, lines.length - viewportLines()));
-    const visible = scrollOffset > 0 ? lines.slice(0, lines.length - scrollOffset) : lines;
-    // Scroll indicator while viewing history: tells the user they are not
-    // at the latest and how to return (End).
+    const viewport = viewportLines();
+    const end = lines.length - scrollOffset;
+    const start = Math.max(0, end - viewport);
+    // Scroll indicator while viewing history: lines hidden above/below and
+    // how to return (End).
     if (scrollOffset > 0) {
       transcript.addChild(
-        new Text(`\u001b[2m  ↑ ${scrollOffset} lines above — End to return\u001b[0m`, undefined, 1),
+        new Text(
+          `\u001b[2m  ↑ ${start} lines above · ↓ ${scrollOffset} below — End to return\u001b[0m`,
+          undefined,
+          1,
+        ),
       );
     }
-    for (const line of visible) transcript.addChild(new Text(line, undefined, 1));
+    for (const line of lines.slice(start, end)) transcript.addChild(new Text(line, undefined, 1));
     renderIdleFooter();
     tui.requestRender();
+  }
+  /** Per-item Markdown components memoized on the item reference: settled
+   *  items re-render from the component's width/text cache instead of
+   *  re-parsing markdown on every frame; streaming items invalidate via
+   *  setText. */
+  const markdownCache = new WeakMap<TranscriptItem, Markdown>();
+
+  /** Render one item's text as markdown (assistant prose / user bubble). */
+  function markdownLines(
+    item: TranscriptItem,
+    paddingX: number,
+    style?: DefaultTextStyle,
+  ): string[] {
+    let md = markdownCache.get(item);
+    if (!md) {
+      md = new Markdown(item.text, paddingX, 0, MARKDOWN_THEME, style);
+      markdownCache.set(item, md);
+    } else {
+      md.setText(item.text);
+    }
+    return md.render(Math.max(20, tui.terminal.columns - 4));
   }
 
   function renderItem(item: TranscriptItem, state: TuiViewState): string[] {
     switch (item.kind) {
       case "user":
-        return [`\u001b[36m> ${item.text}\u001b[0m`];
+        if (!item.text) return [];
+        if (item.pending) {
+          // Steered/queued injection (pi's steering display): dim » so it
+          // reads as an interruption, not a fresh prompt.
+          return [`\u001b[2m  » ${item.text.replace(/\r?\n/g, " ↵ ")}\u001b[0m`];
+        }
+        // Fresh prompt: markdown on a bg bubble (pi's UserMessageComponent).
+        return markdownLines(item, 1, USER_TEXT_STYLE);
       case "assistant":
-        return item.text ? [item.text] : [];
+        return item.text ? markdownLines(item, 0) : [];
       case "thinking":
         return renderThinking(item, state.showThinking);
       case "tool":
@@ -897,8 +1042,15 @@ export function createTerminalIo(
     const failed =
       item.result !== undefined &&
       (item.result.isError === true || item.result.error !== undefined);
-    const mark = item.streaming ? "\u25cf" : failed ? "\u2718" : "\u2714";
-    const color = item.streaming ? "33" : failed ? "31" : "32";
+    let mark = "\u2714";
+    let color = "32";
+    if (item.streaming) {
+      mark = "\u25cf";
+      color = "33";
+    } else if (failed) {
+      mark = "\u2718";
+      color = "31";
+    }
     const boldName = `\u001b[1m${toolName}\u001b[22m`;
     if (expanded) {
       // Full pretty JSON for args and result, dimmed under the header.
@@ -916,9 +1068,14 @@ export function createTerminalIo(
       return lines;
     }
     // Collapsed: pi-style arg summary sentence (e.g. `$ echo hi`,
-    // `read src/foo.ts:40-80`), not raw JSON; result as first line + count.
+    // `read src/foo.ts:40-80`), not raw JSON; result as first line + count;
+    // wall-clock duration as trailing meta (pi status-line meta).
     const args = item.input !== undefined ? ` ${summarizeToolArgs(toolName, item.input)}` : "";
-    lines.push(`\u001b[${color}m  ${mark} \u001b[0m${boldName}\u001b[2m${args}\u001b[0m`);
+    const duration =
+      item.durationMs !== undefined ? ` · ${(item.durationMs / 1000).toFixed(1)}s` : "";
+    lines.push(
+      `\u001b[${color}m  ${mark} \u001b[0m${boldName}\u001b[2m${args}${duration}\u001b[0m`,
+    );
     // Live streaming output (bash stdout): show the tail so long commands
     // give progress without flooding the transcript.
     if (item.output && item.streaming) {
@@ -949,11 +1106,10 @@ export function createTerminalIo(
     },
     setBusy(next: boolean) {
       busy = next;
-      if (!next) followUpQueue = [];
       // The animated status line: a braille spinner + "working (Ns)" while
       // a run is live, removed when it settles. Loader drives its own timer
       // and calls requestRender on every frame; the elapsed timer ticks the
-      // seconds. Follow-up queue lines sit above it while queued.
+      // seconds.
       statusContainer.clear();
       if (next) {
         busySince = Date.now();
@@ -966,7 +1122,6 @@ export function createTerminalIo(
         loader.start();
         statusContainer.addChild(loader);
         startElapsedTimer();
-        if (followUpQueue.length > 0) renderFollowUpQueue();
       } else {
         clearInterval(elapsedTimer);
         if (loader) {
@@ -979,6 +1134,9 @@ export function createTerminalIo(
     },
     onLiveInput(handler) {
       liveHandler = handler;
+    },
+    onLiveCommand(handler) {
+      liveCommandHandler = handler;
     },
     onCommand(handler) {
       commandHandler = handler;
@@ -1051,6 +1209,9 @@ export function createTerminalIo(
       headerModel = info.model ?? "";
       headerSession = info.sessionId ?? "";
       headerTitle = info.title ?? "";
+      // Context usage is sticky: callers that only update the title keep
+      // the last reading until a fresh one arrives.
+      if (info.context !== undefined) headerContext = info.context;
       renderHeader();
       tui.requestRender();
     },
@@ -1060,6 +1221,8 @@ export function createTerminalIo(
     },
     close() {
       clearInterval(elapsedTimer);
+      clearTimeout(quitTimer);
+      dismissQuitHint();
       if (loader) loader.stop();
       tui.stop();
     },

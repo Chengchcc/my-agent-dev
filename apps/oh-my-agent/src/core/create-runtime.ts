@@ -56,6 +56,10 @@ export interface OmaRuntime {
   close(): Promise<void>;
   /** Compaction summaries from this run's loop; read before close(). */
   compactions(): Promise<string[]>;
+  /** Estimated context footprint of the run's branch under the run model's
+   *  window — the same estimate/limit pair the compactor decides on. Read
+   *  before close(). */
+  contextUsage(): Promise<{ estimatedTokens: number; limit: number } | undefined>;
 }
 
 /** Add workflow (subagent) usage into a run's terminal usage. Missing
@@ -291,6 +295,20 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
         if (entry.type === "compaction" && entry.summary) summaries.push(entry.summary);
       }
       return summaries;
+    },
+
+    /** Estimated context footprint under the run model's window (the same
+     *  estimate/limit the compactor uses). Read before close(). */
+    async contextUsage() {
+      const budget = rt.contextBudget;
+      if (!budget) return undefined;
+      const branch = await rt.store.readBranch(options.runId);
+      let estimatedTokens = 0;
+      for (const entry of branch) {
+        if (entry.type !== "message") continue;
+        estimatedTokens += budget.estimate(entry.message);
+      }
+      return { estimatedTokens, limit: budget.limit };
     },
   };
 }
