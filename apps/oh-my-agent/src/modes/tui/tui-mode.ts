@@ -13,6 +13,7 @@ import {
   type MarkdownTheme,
   matchesKey,
   ProcessTerminal,
+  routeSgrMouseInput,
   SelectList,
   type SlashCommand,
   type Terminal,
@@ -874,6 +875,21 @@ export function createTerminalIo(
   };
 
   tui.addInputListener((data) => {
+    // Mouse (SGR): the wheel scrolls the transcript window (native
+    // scrollback holds no session copy — oma owns all history). All mouse
+    // reports are consumed so clicks never reach the editor; plain
+    // click-drag text selection needs Shift while the session runs.
+    const mouseConsumed = routeSgrMouseInput(data, (event) => {
+      if (event.wheel === -1) {
+        scrollOffset = Math.min(scrollOffset + 3, Math.max(0, totalLines - viewportLines()));
+        if (lastState) render(lastState);
+      } else if (event.wheel === 1) {
+        scrollOffset = Math.max(0, scrollOffset - 3);
+        if (lastState) render(lastState);
+      }
+      return true;
+    });
+    if (mouseConsumed) return { consume: true };
     if (matchesKey(data, "escape") && busy) {
       if (commandHandler) commandHandler("abort");
       return { consume: true };
@@ -1096,6 +1112,10 @@ export function createTerminalIo(
   tui.addChild(editor);
   tui.setFocus(editor);
   tui.start();
+  // Mouse tracking (normal tracking + SGR encoding): the wheel scrolls the
+  // transcript. Restored in close(); Shift bypasses capture for text
+  // selection.
+  tui.terminal.write("\x1b[?1000h\x1b[?1006h");
 
   return {
     render,
@@ -1224,6 +1244,7 @@ export function createTerminalIo(
       clearTimeout(quitTimer);
       dismissQuitHint();
       if (loader) loader.stop();
+      tui.terminal.write("\x1b[?1000l\x1b[?1006l");
       tui.stop();
     },
   };

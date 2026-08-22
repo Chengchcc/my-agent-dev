@@ -63,6 +63,13 @@ export {
   parseKey,
   setKittyProtocolActive,
 } from "./keys.ts";
+// SGR mouse reports (wheel scroll routing)
+export {
+  parseSgrMouse,
+  routeSgrMouseInput,
+  type SgrMouseEvent,
+  type SgrMouseHandler,
+} from "./mouse.ts";
 // Input buffering for batch splitting
 export {
   StdinBuffer,

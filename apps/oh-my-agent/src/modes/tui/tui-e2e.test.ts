@@ -516,6 +516,39 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
     }
   }, 30_000);
 
+  test("mouse wheel scrolls the transcript like PageUp", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-wheel-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-wheel-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    try {
+      // 24-row terminal: /help's listing overflows the viewport.
+      const vt = new VirtualTerminal(100, 24);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
+        io,
+      );
+
+      await typeAndSubmit(vt, "/help");
+      await waitForText(vt, "toggle tool detail", 5_000);
+      // SGR wheel-up (button 64): three per notch-equivalent steps reveal the
+      // scroll indicator; wheel-down (65) walks it back.
+      for (let i = 0; i < 6; i++) vt.sendInput("\x1b[<64;10;10M");
+      await waitForText(vt, "lines above", 2_000);
+      for (let i = 0; i < 6; i++) vt.sendInput("\x1b[<65;10;10M");
+      await vt.waitForRender();
+      await vt.waitForRender();
+      expect(screen(vt)).not.toContain("lines above");
+
+      await quitTui(vt);
+      expect(await sessionDone).toBe(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   test("PageUp shows a scroll indicator inside the viewport; End returns", async () => {
     const dir = mkdtempSync(join(tmpdir(), "oma-e2e-scroll-"));
     const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-scroll-sess-"));
