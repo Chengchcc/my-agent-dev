@@ -101,6 +101,9 @@ export interface SessionSummary {
   /** Workspace root the session was created in (from the file header's
    *  cwd field); present for cross-workspace listings. */
   readonly workspace?: string;
+  /** Present when this session was forked from another: the parent id
+   *  (pi's fork dot in the session selector). */
+  readonly forkOf?: string;
 }
 
 interface SessionFileEvent {
@@ -108,6 +111,7 @@ interface SessionFileEvent {
   title?: string;
   cwd?: string;
   message?: { role?: string; text?: string };
+  parentId?: string;
 }
 
 /** Scan one session directory (all *.jsonl) into summaries. */
@@ -121,6 +125,7 @@ function scanSessionDir(dir: string, workspace?: string): SessionSummary[] {
     let preview = "";
     let title: string | undefined;
     let headerCwd: string | undefined;
+    let forkOf: string | undefined;
     try {
       for (const line of readFileSync(path, "utf8").split("\n")) {
         if (!line.trim()) continue;
@@ -132,6 +137,10 @@ function scanSessionDir(dir: string, workspace?: string): SessionSummary[] {
         }
         if (evt.type === "title" && typeof evt.title === "string") {
           title = evt.title;
+          continue;
+        }
+        if (evt.type === "fork_of" && typeof evt.parentId === "string") {
+          forkOf = evt.parentId;
           continue;
         }
         if (!preview && evt.type === "message" && evt.message?.role === "user") {
@@ -149,10 +158,12 @@ function scanSessionDir(dir: string, workspace?: string): SessionSummary[] {
       preview: string;
       title?: string;
       workspace?: string;
+      forkOf?: string;
     } = { id, modifiedAt: statSync(path).mtimeMs, preview };
     if (title !== undefined) summary.title = title;
     if (workspace !== undefined) summary.workspace = workspace;
     else if (headerCwd !== undefined) summary.workspace = headerCwd;
+    if (forkOf !== undefined) summary.forkOf = forkOf;
     summaries.push(summary);
   }
   return summaries;
@@ -231,6 +242,57 @@ export function appendSessionCompaction(
     })}\n`,
   );
 }
+
+/** Fork a session (pi's /fork): copy every event up to and INCLUDING the
+ *  `ordinal`-th user message (1-based) into a NEW session file, then append
+ *  a fork_of marker naming the parent. The parent file is untouched — /resume
+ *  returns to it; the fork is the branch head. Returns the new session id,
+ *  or null when the file is missing / the ordinal is out of range. */
+export function forkSession(
+  id: string,
+  ordinal: number,
+  dir: string = sessionDir(),
+): string | null {
+  const path = join(dir, `${id}.jsonl`);
+  if (!existsSync(path)) return null;
+  const lines = readFileSync(path, "utf8")
+    .split("\n")
+    .filter((l) => l.trim());
+  let seen = 0;
+  let cutIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    let evt: SessionFileEvent;
+    try {
+      evt = JSON.parse(lines[i]!) as SessionFileEvent;
+    } catch {
+      continue; // corrupt line: not a fork anchor
+    }
+    if (evt.type === "message" && evt.message?.role === "user") {
+      seen += 1;
+      if (seen === ordinal) {
+        cutIndex = i;
+        break;
+      }
+    }
+  }
+  if (cutIndex === -1) return null;
+  const newId = newSessionId();
+  const kept = lines.slice(0, cutIndex + 1);
+  // Rewrite the copied header's id so the new file is self-consistent.
+  try {
+    const header = JSON.parse(kept[0]!) as { type?: string; id?: string };
+    if (header.type === "session") {
+      header.id = newId;
+      kept[0] = JSON.stringify(header);
+    }
+  } catch {
+    /* keep the original header line */
+  }
+  const marker = JSON.stringify({ type: "fork_of", parentId: id, atMessage: ordinal });
+  writeFileSync(join(dir, `${newId}.jsonl`), `${[...kept, marker].join("\n")}\n`);
+  return newId;
+}
+
 /** Append message events to the session file (header written on create;
  *  parentId chains to the file's last message id). The tail scan keeps a
  *  per-process lastId cache — resume reads the file once, steady-state

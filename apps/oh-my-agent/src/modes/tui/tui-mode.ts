@@ -8,6 +8,7 @@ import {
   type DefaultTextStyle,
   Editor,
   type EditorTheme,
+  Input,
   Loader,
   Markdown,
   type MarkdownTheme,
@@ -15,6 +16,7 @@ import {
   ProcessTerminal,
   routeSgrMouseInput,
   SelectList,
+  type SelectListTheme,
   type SlashCommand,
   type Terminal,
   Text,
@@ -23,8 +25,14 @@ import {
 import { buildCliRunInput } from "../../cli/initial-input.js";
 import { createOmaRuntime, type OmaRuntime } from "../../core/create-runtime.js";
 import {
+  appendInputHistory,
+  loadInputHistory,
+  saveInputHistory,
+} from "../../core/input-history.js";
+import {
   appendSessionMessages,
   deleteSession,
+  forkSession,
   listAllSessions,
   listSessions,
   renameSession,
@@ -96,6 +104,7 @@ export interface TuiIo {
       preview: string;
       modifiedAt: number;
       workspace?: string;
+      forkOf?: string;
     }>,
   ): Promise<string | null>;
   /** Interactive model picker overlay (ctrl+p); resolves the chosen
@@ -103,6 +112,10 @@ export interface TuiIo {
   pickModel?(
     models: ReadonlyArray<{ id: string; label: string; description?: string }>,
   ): Promise<string | null>;
+  /** Interactive fork-point picker (pi's user-message selector): lists the
+   *  session's user messages; resolves the chosen 1-based ordinal, or null
+   *  when cancelled. Absent = caller falls back to /fork <n>. */
+  pickForkPoint?(points: ReadonlyArray<{ ordinal: number; text: string }>): Promise<number | null>;
   /** Update the fixed header's model/session line. `context` is sticky:
    *  once set it stays until the next value arrives. */
   setHeader?(info: { model?: string; sessionId?: string; title?: string; context?: string }): void;
@@ -261,6 +274,74 @@ class PickerOverlay extends Container {
 
   handleInput(data: string): void {
     this.list.handleInput(data);
+  }
+}
+
+/** Overlay for ctrl+r history search (pi's HistorySearchComponent, lazy
+ *  form): a query input plus a SelectList rebuilt per keystroke. Navigation
+ *  keys go to the list; everything else edits the query. */
+class HistorySearchOverlay extends Container {
+  private readonly listSlot: Container = new Container();
+  private readonly query: Input;
+  private list: SelectList;
+  private readonly entries: readonly string[];
+  private readonly theme: SelectListTheme;
+
+  private readonly selectCb: (value: string) => void;
+  private readonly cancelCb: () => void;
+
+  constructor(
+    title: Text,
+    entries: readonly string[],
+    theme: SelectListTheme,
+    onSelect: (value: string) => void,
+    onCancel: () => void,
+  ) {
+    super();
+    this.entries = entries;
+    this.theme = theme;
+    this.selectCb = onSelect;
+    this.cancelCb = onCancel;
+    this.query = new Input();
+    this.list = this.buildList();
+    this.addChild(title);
+    this.addChild(this.query);
+    this.addChild(this.listSlot);
+    this.listSlot.addChild(this.list);
+  }
+
+  private buildList(): SelectList {
+    const needle = this.query.getValue().trim().toLowerCase();
+    const matches = this.entries.filter((e) => e.toLowerCase().includes(needle)).slice(0, 100);
+    const items = matches.map((value) => ({
+      value,
+      label: value.length > 48 ? `${value.slice(0, 48)}...` : value,
+    }));
+    const list = new SelectList(items, 10, this.theme);
+    list.onSelect = (item) => this.selectCb(item.value);
+    list.onCancel = () => this.cancelCb();
+    return list;
+  }
+
+  handleInput(data: string): void {
+    const navigates =
+      matchesKey(data, "up") ||
+      matchesKey(data, "down") ||
+      matchesKey(data, "pageUp") ||
+      matchesKey(data, "pageDown") ||
+      matchesKey(data, "enter");
+    if (navigates) {
+      this.list.handleInput(data);
+      return;
+    }
+    if (matchesKey(data, "escape")) {
+      this.list.onCancel?.();
+      return;
+    }
+    this.query.handleInput(data);
+    this.listSlot.clear();
+    this.list = this.buildList();
+    this.listSlot.addChild(this.list);
   }
 }
 
@@ -453,7 +534,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
             sessions.slice(0, 20).map((s) => {
               const when = new Date(s.modifiedAt).toISOString().slice(0, 16).replace("T", " ");
               const workspace = s.workspace ? ` [${s.workspace}]` : "";
-              return `${when}  ${s.id}${workspace}  ${s.title ?? s.preview}`;
+              const fork = s.forkOf ? ` \u2442 ${s.forkOf.slice(0, 8)}` : "";
+              return `${when}  ${s.id}${fork}${workspace}  ${s.title ?? s.preview}`;
             }),
           );
           return;
@@ -523,6 +605,57 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       run: () => {
         if (liveRuntime) void liveRuntime.stop().catch(() => {});
         else pushStatus("no live run");
+      },
+    },
+    {
+      name: "fork",
+      description: "fork the session from an earlier user message",
+      argumentHint: "<n>",
+      group: "session",
+      run: async (args) => {
+        // Anchors: user-role messages in the live transcript. Compaction
+        // summaries carry role user too; they are legitimate fork points.
+        const anchors = session.messages
+          .filter((m) => (m as { role?: string }).role === "user")
+          .map((m) => String((m as { text?: string }).text ?? ""));
+        if (anchors.length === 0) {
+          pushStatus("no user messages to fork from yet");
+          return;
+        }
+        let ordinal: number | undefined;
+        const parsed = Number(args);
+        if (args && Number.isInteger(parsed) && parsed >= 1) {
+          ordinal = parsed;
+        } else if (io.pickForkPoint) {
+          const picked = await io.pickForkPoint(
+            anchors.map((text, i) => ({
+              ordinal: i + 1,
+              text: text.replace(/\s+/g, " ").slice(0, 60),
+            })),
+          );
+          if (picked === null) {
+            pushStatus("fork cancelled");
+            return;
+          }
+          ordinal = picked;
+        } else {
+          pushStatus("usage: /fork <n> (n = user message number)");
+          return;
+        }
+        const parentId = session.sessionId;
+        const newId = forkSession(parentId, ordinal, session.dir);
+        if (newId === null) {
+          pushStatus(`cannot fork: no user message #${ordinal}`);
+          return;
+        }
+        session = resolveSession(newId, session.dir);
+        sessionTitle = undefined;
+        state.runs.length = 0;
+        io.setHeader?.({ model: modelId, sessionId: session.sessionId });
+        pushStatus(
+          `forked ${parentId.slice(0, 8)} @ msg ${ordinal} -> ${newId.slice(0, 8)} ` +
+            `(${session.messages.length} messages)`,
+        );
       },
     },
     {
@@ -811,6 +944,16 @@ export function createTerminalIo(
   // which is the safe default.
   let focused = true;
 
+  // Persistent prompt history (pi's HistoryStorage): loaded newest-first,
+  // fed to the editor (up/down recall, in-memory cap 100) and appended on
+  // every submit — idle prompts AND live steers both pass through
+  // editor.onSubmit, the single choke point. Drained follow-ups were already
+  // recorded at steer time.
+  let historyEntries: readonly string[] = loadInputHistory();
+  for (const prompt of historyEntries.slice(0, 100).reverse()) {
+    editor.addToHistory(prompt);
+  }
+
   // Idle Ctrl-C quits only on a SECOND press within 2s (a stray press must
   // not kill the session); busy Ctrl-C stays single-press because aborting
   // a run is not destructive. Ctrl-D remains an instant quit.
@@ -847,6 +990,14 @@ export function createTerminalIo(
     }, 2_000);
   }
 
+  function recordHistory(prompt: string): void {
+    const next = appendInputHistory(historyEntries, prompt);
+    if (next === historyEntries) return;
+    historyEntries = next;
+    saveInputHistory(historyEntries);
+    editor.addToHistory(prompt);
+  }
+
   editor.onSubmit = (text) => {
     if (busy) {
       const trimmed = text.trim();
@@ -859,6 +1010,7 @@ export function createTerminalIo(
         if (liveCommandHandler) liveCommandHandler(trimmed);
         return;
       }
+      recordHistory(trimmed);
       if (liveHandler) liveHandler(trimmed);
       return;
     }
@@ -866,8 +1018,12 @@ export function createTerminalIo(
     if (!pending) return;
     const resolve = pending;
     pending = null;
-    if (text === "/exit" || text === "/quit") resolve(null);
-    else resolve(text);
+    if (text === "/exit" || text === "/quit") {
+      resolve(null);
+      return;
+    }
+    recordHistory(text);
+    resolve(text);
   };
 
   // Esc/ctrl+t/ctrl+o are intercepted before the editor sees them. Esc
@@ -932,6 +1088,11 @@ export function createTerminalIo(
     }
     if (matchesKey(data, "ctrl+p")) {
       if (commandHandler) commandHandler("pickModel");
+      return { consume: true };
+    }
+    // ctrl+r: search the persistent prompt history (pi's history search).
+    if (matchesKey(data, "ctrl+r")) {
+      openHistorySearch();
       return { consume: true };
     }
     // Transcript scroll: PageUp/PageDown step by a viewport, Home jumps to
@@ -1145,6 +1306,40 @@ export function createTerminalIo(
     return lines;
   }
 
+  /** ctrl+r overlay over the persistent history; a selection lands in the
+   *  editor (not submitted — the user edits first, pi's behavior). */
+  function openHistorySearch(): void {
+    if (historyEntries.length === 0) {
+      const hint = new Text("\u001b[2m  history is empty\u001b[0m", 0, 0);
+      statusContainer.addChild(hint);
+      tui.requestRender();
+      setTimeout(() => {
+        statusContainer.removeChild(hint);
+        tui.requestRender();
+      }, 1_500);
+      return;
+    }
+    const { promise, resolve } = Promise.withResolvers<string | null>();
+    const overlayBox = new HistorySearchOverlay(
+      new Text("  history search — type to filter, enter insert, esc cancel", 0, 0),
+      historyEntries,
+      EDITOR_THEME.selectList,
+      (value) => {
+        overlay.hide();
+        resolve(value);
+      },
+      () => {
+        overlay.hide();
+        resolve(null);
+      },
+    );
+    const overlay = tui.showOverlay(overlayBox, { width: "70%", anchor: "center" });
+    void promise.then((value) => {
+      if (value !== null) editor.setText(value);
+      tui.requestRender();
+    });
+  }
+
   tui.addChild(headerContainer);
   tui.addChild(transcript);
   tui.addChild(statusContainer);
@@ -1211,11 +1406,12 @@ export function createTerminalIo(
       const { promise, resolve } = Promise.withResolvers<string | null>();
       const items = sessions.map((s) => {
         const base = s.title ?? (s.preview || s.id.slice(0, 8));
+        const fork = s.forkOf ? ` \u2442 ${s.forkOf.slice(0, 8)}` : "";
         const workspace = s.workspace ? ` [${s.workspace}]` : "";
         return {
           value: s.id,
           label: relativeTime(s.modifiedAt),
-          description: `${base}${workspace}`,
+          description: `${base}${fork}${workspace}`,
         };
       });
       const list = new SelectList(items, 10, EDITOR_THEME.selectList, {
@@ -1256,6 +1452,32 @@ export function createTerminalIo(
       list.onSelect = (item) => {
         overlay.hide();
         resolve(item.value);
+      };
+      list.onCancel = () => {
+        overlay.hide();
+        resolve(null);
+      };
+      return promise;
+    },
+    pickForkPoint(points) {
+      const { promise, resolve } = Promise.withResolvers<number | null>();
+      const items = points.map((p) => ({
+        value: String(p.ordinal),
+        label: `#${p.ordinal}`,
+        description: p.text,
+      }));
+      const list = new SelectList(items, 10, EDITOR_THEME.selectList, {
+        minPrimaryColumnWidth: 4,
+        maxPrimaryColumnWidth: 6,
+      });
+      const overlayBox = new PickerOverlay(
+        new Text("  fork from message — ↑/↓ select, enter fork, esc cancel", 0, 0),
+        list,
+      );
+      const overlay = tui.showOverlay(overlayBox, { width: "70%", anchor: "center" });
+      list.onSelect = (item) => {
+        overlay.hide();
+        resolve(Number(item.value));
       };
       list.onCancel = () => {
         overlay.hide();

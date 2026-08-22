@@ -286,7 +286,7 @@ describe("tui session (headless, fake provider)", () => {
       );
       expect(code).toBe(0);
       // The command table reached the autocomplete seam once.
-      expect(registered).toEqual([13]);
+      expect(registered).toEqual([14]);
       const statuses = base.renders
         .at(-1)!
         .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
@@ -647,6 +647,33 @@ describe("tui session (headless, fake provider)", () => {
         .map((i) => i.text);
       expect(statuses.some((t) => t.includes("terminal was unfocused"))).toBe(true);
       expect(pings.length).toBeGreaterThan(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("/fork <n> switches to a forked session and /resume shows the marker", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-fork-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    try {
+      // Two turns -> two user messages to fork from.
+      const io = scriptedIo(["one", "two", "/fork 1", "three", "/resume", "/exit", "/exit"]);
+      await runTuiSession({ modelRuntime: testModelRuntime(), workspaceRoot: sessionDir }, io);
+      const statuses = io.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
+        .map((i) => i.text);
+      // The fork switched sessions with a parent + ordinal report.
+      const forkStatus = statuses.find((t) => t.startsWith("forked "));
+      expect(forkStatus).toBeDefined();
+      expect(forkStatus).toContain("@ msg 1");
+      // Three session files now exist: original + fork (turn "three" went
+      // into the fork).
+      const files = readdirSync(sessionDir).filter((f) => f.endsWith(".jsonl"));
+      expect(files).toHaveLength(2);
+      // The /resume text listing marks the fork with the parent id prefix.
+      expect(statuses.some((t) => t.includes("\u2442"))).toBe(true);
     } finally {
       delete process.env.OMA_SESSION_DIR;
       rmSync(sessionDir, { recursive: true, force: true });

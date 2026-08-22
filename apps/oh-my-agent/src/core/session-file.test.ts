@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   appendSessionCompaction,
   appendSessionMessages,
   appendSessionTitle,
   deleteSession,
+  forkSession,
   listAllSessions,
   listSessions,
   loadSessionMessages,
@@ -132,3 +133,48 @@ describe("session workspace isolation", () => {
     expect(renameSession("missing", "x")).toBe(false);
   });
 });
+
+describe("forkSession", () => {
+  test("fork copies events up to the Nth user message and marks the parent", () => {
+    appendSessionMessages("parent", dir, [
+      { role: "user", text: "question one" },
+      { role: "assistant", text: "answer one" },
+    ]);
+    appendSessionMessages("parent", dir, [
+      { role: "user", text: "question two" },
+      { role: "assistant", text: "answer two" },
+    ]);
+
+    const forkId = forkSession("parent", 1);
+    expect(forkId).not.toBeNull();
+    // The fork's transcript ends at (incl.) the first user message.
+    const forkMessages = loadSessionMessages(forkId!);
+    expect(forkMessages).toEqual([{ role: "user", text: "question one" }]);
+    // The parent file is untouched.
+    expect(loadSessionMessages("parent")).toHaveLength(4);
+    // The fork's file header carries its own id.
+    const header = loadSessionEvents(forkId!)[0] as { type?: string; id?: string };
+    expect(header.type).toBe("session");
+    expect(header.id).toBe(forkId);
+    // Listing shows the branch relationship (pi's fork dot).
+    const forkSummary = listSessions().find((s) => s.id === forkId);
+    expect(forkSummary?.forkOf).toBe("parent");
+    // The parent itself is unmarked.
+    const parentSummary = listSessions().find((s) => s.id === "parent");
+    expect(parentSummary?.forkOf).toBeUndefined();
+  });
+
+  test("out-of-range ordinal and missing file return null", () => {
+    appendSessionMessages("p2", dir, [{ role: "user", text: "only" }]);
+    expect(forkSession("p2", 2)).toBeNull();
+    expect(forkSession("missing", 1)).toBeNull();
+  });
+});
+
+/** Read every parsed JSON event of a session file (test helper). */
+function loadSessionEvents(id: string): Record<string, unknown>[] {
+  const lines = readFileSync(join(dir, `${id}.jsonl`), "utf8")
+    .split("\n")
+    .filter(Boolean);
+  return lines.map((l) => JSON.parse(l) as Record<string, unknown>);
+}

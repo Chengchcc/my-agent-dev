@@ -386,8 +386,10 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       await vt.waitForRender();
       // /help echoes the command table into the transcript (grouped).
       const rendered = screen(vt);
-      expect(rendered).toContain("[session]");
-      expect(rendered).toContain("/session — show the current session id and title");
+      // The listing is longer than the viewport now: assert on the tail
+      // groups (view) that always fit the sliced window.
+      expect(rendered).toContain("[view]");
+      expect(rendered).toContain("/tools — toggle tool detail (ctrl+o)");
 
       await quitTui(vt);
       expect(await sessionDone).toBe(0);
@@ -546,6 +548,89 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
     } finally {
       delete process.env.OMA_SESSION_DIR;
       delete process.env.OMA_FAKE_TOOL;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("prompt history persists across sessions; up-arrow recalls it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-hist-"));
+    const agentRoot = mkdtempSync(join(tmpdir(), "oma-e2e-hist-agent-"));
+    process.env.OMA_CODING_AGENT_DIR = agentRoot;
+    // One turn, then quit.
+    {
+      const vt = new VirtualTerminal(100, 30);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
+        io,
+      );
+      await typeAndSubmit(vt, "recall me please");
+      await waitForText(vt, "done", 5_000);
+      await quitTui(vt);
+      expect(await sessionDone).toBe(0);
+      io.close();
+    }
+    // A fresh process: up-arrow recalls the persisted prompt.
+    {
+      const vt = new VirtualTerminal(100, 30);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
+        io,
+      );
+      await vt.waitForRender();
+      vt.sendInput("\x1b[A"); // Up
+      await vt.waitForRender();
+      expect(screen(vt)).toContain("recall me please");
+      // ctrl+r opens the search overlay; typing filters; enter inserts.
+      vt.sendInput("\x12"); // ctrl+r
+      await waitForText(vt, "history search", 2_000);
+      vt.sendInput("recall");
+      await vt.waitForRender();
+      expect(screen(vt)).toContain("recall me please");
+      vt.sendInput("\r");
+      await vt.waitForRender();
+      expect(screen(vt)).toContain("recall me please");
+      // Esc the editor content away and quit.
+      await quitTui(vt);
+      expect(await sessionDone).toBe(0);
+      io.close();
+    }
+  }, 30_000);
+
+  test("/fork opens a message picker and switches to the fork", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-fork-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-fork-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    try {
+      const vt = new VirtualTerminal(100, 30);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
+        io,
+      );
+
+      await typeAndSubmit(vt, "first turn");
+      await waitForText(vt, "done", 5_000);
+      await typeAndSubmit(vt, "second turn");
+      await waitForText(vt, "done", 5_000);
+
+      // /fork opens the picker listing the session's user messages.
+      await typeAndSubmit(vt, "/fork");
+      await waitForText(vt, "fork from message", 5_000);
+      expect(screen(vt)).toContain("first turn");
+      // Enter picks #1: the session switches to the fork.
+      vt.sendInput("\r");
+      await waitForText(vt, "forked ", 5_000);
+
+      await quitTui(vt);
+      expect(await sessionDone).toBe(0);
+      // Two session files: parent + fork.
+      const files = readdirSync(sessDir).filter((f) => f.endsWith(".jsonl"));
+      expect(files).toHaveLength(2);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
       rmSync(dir, { recursive: true, force: true });
       rmSync(sessDir, { recursive: true, force: true });
     }
