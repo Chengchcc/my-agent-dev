@@ -264,7 +264,7 @@ describe("tui session (headless, fake provider)", () => {
       );
       expect(code).toBe(0);
       // The command table reached the autocomplete seam once.
-      expect(registered).toEqual([11]);
+      expect(registered).toEqual([13]);
       const statuses = base.renders
         .at(-1)!
         .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))

@@ -616,7 +616,14 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
       }
 
       let title: string | undefined;
-      if (status === "completed" && process.env.OMA_TITLE_ENABLED !== "0") {
+      // Title is a SESSION-level label: generate it once on the first turn
+      // (no history yet). Every completed turn re-generating it would burn a
+      // model call per turn and last-wins overwrite the session title.
+      if (
+        status === "completed" &&
+        codingInput.history.length === 0 &&
+        process.env.OMA_TITLE_ENABLED !== "0"
+      ) {
         const titleBranch = await readBranchMessages();
         const titleCtx = buildTitleContext(titleBranch);
         if (titleCtx) {

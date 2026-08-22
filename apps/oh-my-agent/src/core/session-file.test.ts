@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   appendSessionCompaction,
   appendSessionMessages,
   appendSessionTitle,
+  deleteSession,
   listAllSessions,
   listSessions,
   loadSessionMessages,
+  renameSession,
   sessionDir,
   sessionDirFor,
 } from "./session-file.js";
@@ -117,5 +119,16 @@ describe("session workspace isolation", () => {
       if (savedSessionDir === undefined) delete process.env.OMA_SESSION_DIR;
       else process.env.OMA_SESSION_DIR = savedSessionDir;
     }
+  });
+
+  test("deleteSession removes the file; renameSession overrides the title", () => {
+    appendSessionMessages("s9", dir, [{ role: "user", text: "hello" }]);
+    expect(renameSession("s9", "Manual title")).toBe(true);
+    expect(listSessions().find((s) => s.id === "s9")?.title).toBe("Manual title");
+    expect(deleteSession("s9")).toBe(true);
+    expect(existsSync(join(dir, "s9.jsonl"))).toBe(false);
+    // Missing session -> false, no throw.
+    expect(deleteSession("missing")).toBe(false);
+    expect(renameSession("missing", "x")).toBe(false);
   });
 });

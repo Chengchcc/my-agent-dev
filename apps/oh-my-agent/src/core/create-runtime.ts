@@ -219,7 +219,9 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
             for (const entry of branch) {
               if (entry.type === "compaction" && entry.summary) compactions.push(entry.summary);
             }
-            await extractAutonomousMemory({
+            // FIRE-AND-FORGET: awaiting here blocks the outcome (and the
+            // TUI busy state) on a second model call the user cannot abort.
+            void extractAutonomousMemory({
               modelRuntime: options.modelRuntime,
               modelId: options.modelId,
               workspaceRoot: options.workspaceRoot,

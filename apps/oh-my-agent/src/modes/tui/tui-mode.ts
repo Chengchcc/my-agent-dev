@@ -20,8 +20,10 @@ import { buildCliRunInput } from "../../cli/initial-input.js";
 import { createOmaRuntime, type OmaRuntime } from "../../core/create-runtime.js";
 import {
   appendSessionMessages,
+  deleteSession,
   listAllSessions,
   listSessions,
+  renameSession,
   sessionDirFor,
 } from "../../core/session-file.js";
 import { persistSessionTurn, resolveSession } from "../../core/session-loop.js";
@@ -459,6 +461,41 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
         else pushStatus("no live run");
       },
     },
+    {
+      name: "rename",
+      description: "rename a session's title",
+      argumentHint: "<session> <title>",
+      group: "session",
+      run: (args) => {
+        const space = args.indexOf(" ");
+        if (space <= 0) {
+          pushStatus("usage: /rename <session-id> <title>");
+          return;
+        }
+        const id = args.slice(0, space).trim();
+        const title = args.slice(space + 1).trim();
+        if (!title) {
+          pushStatus("usage: /rename <session-id> <title>");
+          return;
+        }
+        if (!renameSession(id, title)) pushStatus(`no session: ${id}`);
+        else pushStatus(`renamed ${id} → ${title}`);
+      },
+    },
+    {
+      name: "delete",
+      description: "delete a session file",
+      argumentHint: "<session>",
+      group: "session",
+      run: (args) => {
+        if (!args) {
+          pushStatus("usage: /delete <session-id>");
+          return;
+        }
+        if (!deleteSession(args)) pushStatus(`no session: ${args}`);
+        else pushStatus(`deleted session: ${args}`);
+      },
+    },
   ];
 
   // Autocomplete: the editor already triggers on "/" — hand it the table.
@@ -601,6 +638,11 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       sessionTitle = outcome.title ?? sessionTitle;
       io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
     }
+    // Compaction happened mid-run: surface what was folded away so the
+    // user knows the context was summarized.
+    for (const summary of await runtime.compactions()) {
+      pushStatus(`compacted: ${summary.slice(0, 160)}${summary.length > 160 ? "…" : ""}`);
+    }
     await runtime.close().catch(() => {});
   }
 }
@@ -622,24 +664,23 @@ export function createTerminalIo(
   let headerTitle = "";
 
   // Claude-style fixed header: ASCII wordmark banner + model/session line +
-  // separator. Rendered once and updated via setHeader; transcript scrolls
-  // below it independently. Centered so a wide terminal does not leave the
-  // banner hugging the left edge.
+  // separator, all left-aligned. Rendered once and updated via setHeader;
+  // transcript scrolls below it independently. Zero padding (paddingX/Y=0):
+  // the default paddingY=1 would stack 3 rows per banner line and swallow
+  // most of a 30-row terminal.
   function renderHeader(): void {
     headerContainer.clear();
-    const bannerWidth = 31; // banner glyphs + built-in 2-space margin
-    const pad = " ".repeat(Math.max(0, Math.floor((tui.terminal.columns - bannerWidth) / 2)));
     const lines = [
-      `${pad}\u001b[36m  ██████╗ ███╗   ███╗ █████╗ \u001b[0m`,
-      `${pad}\u001b[36m ██╔═══██╗████╗ ████║██╔══██╗\u001b[0m`,
-      `${pad}\u001b[36m ██║   ██║██╔████╔██║███████║\u001b[0m`,
-      `${pad}\u001b[36m ██║   ██║██║╚██╔╝██║██╔══██║\u001b[0m`,
-      `${pad}\u001b[36m ╚██████╔╝██║ ╚═╝ ██║██║  ██║\u001b[0m`,
-      `${pad}\u001b[36m  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝\u001b[0m`,
-      `${pad}\u001b[2m  ${headerInfo}${headerTitle ? ` — ${headerTitle}` : ""}${headerModel ? ` · model ${headerModel}` : ""}${headerSession ? ` · session ${headerSession.slice(0, 8)}` : ""}\u001b[0m`,
-      `${pad}\u001b[2m  ─────────────────────────────────────────────────────────────\u001b[0m`,
+      "\u001b[36m  ██████╗ ███╗   ███╗ █████╗ \u001b[0m",
+      "\u001b[36m ██╔═══██╗████╗ ████║██╔══██╗\u001b[0m",
+      "\u001b[36m ██║   ██║██╔████╔██║███████║\u001b[0m",
+      "\u001b[36m ██║   ██║██║╚██╔╝██║██╔══██║\u001b[0m",
+      "\u001b[36m ╚██████╔╝██║ ╚═╝ ██║██║  ██║\u001b[0m",
+      "\u001b[36m  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝\u001b[0m",
+      `\u001b[2m  ${headerInfo}${headerTitle ? ` — ${headerTitle.slice(0, 24)}` : ""}${headerModel ? ` · model ${headerModel}` : ""}${headerSession ? ` · session ${headerSession.slice(0, 8)}` : ""}\u001b[0m`,
+      `\u001b[2m  ${"─".repeat(27)}\u001b[0m`,
     ];
-    for (const line of lines) headerContainer.addChild(new Text(line, undefined, 1));
+    for (const line of lines) headerContainer.addChild(new Text(line, 0, 0));
   }
 
   renderHeader();
@@ -725,9 +766,9 @@ export function createTerminalIo(
   // thinking-block and tool-detail views globally.
   let scrollOffset = 0;
   let totalLines = 0;
-  // Transcript viewport height: terminal rows minus editor/status chrome.
-  // Editor renders ~3 rows (border + input + border), status 1.
-  const viewportLines = (): number => Math.max(1, tui.terminal.rows - 4);
+  // Transcript viewport height: terminal rows minus fixed chrome. Header is
+  // 8 compact rows (6 banner + info + separator), status 1, editor ~3.
+  const viewportLines = (): number => Math.max(1, tui.terminal.rows - 12);
 
   tui.addInputListener((data) => {
     if (matchesKey(data, "escape") && busy) {

@@ -384,10 +384,10 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       await vt.waitForRender();
       vt.sendInput("\r");
       await vt.waitForRender();
-      // /help echoes the command table into the transcript.
+      // /help echoes the command table into the transcript (grouped).
       const rendered = screen(vt);
-      expect(rendered).toContain("/abort");
-      expect(rendered).toContain("quit the session");
+      expect(rendered).toContain("[session]");
+      expect(rendered).toContain("/session — show the current session id and title");
 
       await quitTui(vt);
       expect(await sessionDone).toBe(0);
