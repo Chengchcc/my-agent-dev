@@ -31,6 +31,12 @@ async function typeAndSubmit(vt: VirtualTerminal, text: string): Promise<void> {
   await vt.waitForRender();
 }
 
+/** /exit now requires a second confirmation; this sends both. */
+async function quitTui(vt: VirtualTerminal): Promise<void> {
+  await typeAndSubmit(vt, "/exit");
+  await typeAndSubmit(vt, "/exit");
+}
+
 /** Poll the viewport until a substring/regex appears (event-driven
  *  alternative to fixed sleeps for async run transitions). */
 async function waitForText(
@@ -69,7 +75,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       await waitForText(vt, "done", 5_000);
       expect(screen(vt)).toContain("> 123");
 
-      await typeAndSubmit(vt, "/exit");
+      await quitTui(vt);
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;
@@ -107,7 +113,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       expect(rendered).toContain("done");
 
       // 5. /exit ends the session cleanly.
-      await typeAndSubmit(vt, "/exit");
+      await quitTui(vt);
       expect(await sessionDone).toBe(0);
 
       // 6. The turn persisted to the session file: user + assistant.
@@ -155,7 +161,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       expect(rendered).toContain("[exit: 0]");
       expect(rendered).toContain("✔");
 
-      await typeAndSubmit(vt, "/exit");
+      await quitTui(vt);
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;
@@ -188,7 +194,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       expect(rendered).toContain("$ sh -c 'exit 3'");
       expect(rendered).toContain("[exit: 3]");
 
-      await typeAndSubmit(vt, "/exit");
+      await quitTui(vt);
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;
@@ -214,7 +220,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       expect(screen(vt)).toContain("done");
       await typeAndSubmit(vt, "second question");
       await vt.waitForRender();
-      await typeAndSubmit(vt, "/exit");
+      await quitTui(vt);
       expect(await sessionDone).toBe(0);
 
       // Both turns are on screen (scrollback viewport is 40 rows).
@@ -267,7 +273,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       await vt.waitForRender();
       expect(screen(vt)).toContain("aborted");
 
-      await typeAndSubmit(vt, "/exit");
+      await quitTui(vt);
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;
@@ -303,7 +309,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       await vt.waitForRender();
       expect(screen(vt)).toContain("second reasoning line");
 
-      await typeAndSubmit(vt, "/exit");
+      await quitTui(vt);
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;
@@ -345,7 +351,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       expect(expanded).toContain("command");
       expect(expanded).toContain("description");
 
-      await typeAndSubmit(vt, "/exit");
+      await quitTui(vt);
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;
@@ -383,7 +389,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       expect(rendered).toContain("/abort");
       expect(rendered).toContain("quit the session");
 
-      await typeAndSubmit(vt, "/exit");
+      await quitTui(vt);
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;
@@ -436,7 +442,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       await vt.waitForRender();
       expect(screen(vt)).toContain(`resumed session: ${seed} (1 messages)`);
 
-      await typeAndSubmit(vt, "/exit");
+      await quitTui(vt);
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;
@@ -477,7 +483,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       await waitForText(vt, "done", 5_000);
       expect(screen(vt)).toContain("> continue the work");
 
-      await typeAndSubmit(vt, "/exit");
+      await quitTui(vt);
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;
@@ -517,7 +523,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       // Esc cancels; /exit quits.
       vt.sendInput("\x1b");
       await vt.waitForRender();
-      await typeAndSubmit(vt, "/exit");
+      await quitTui(vt);
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;
@@ -561,7 +567,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       await waitForText(vt, "done", 5_000);
       const end = screen(vt);
       expect(end).toContain("end");
-      await typeAndSubmit(vt, "/exit");
+      await quitTui(vt);
       expect(await sessionDone).toBe(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;

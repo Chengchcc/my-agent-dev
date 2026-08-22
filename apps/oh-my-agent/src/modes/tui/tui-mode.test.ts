@@ -156,7 +156,7 @@ describe("tui session (headless, fake provider)", () => {
       // scriptedIo above records the same mutable state object by reference).
       const snapshots: TuiViewState[] = [];
       let i = 0;
-      const inputs = ["hi", "/exit"];
+      const inputs = ["hi", "/exit", "/exit"];
       const io: TuiIo = {
         render: (state) => snapshots.push(JSON.parse(JSON.stringify(state)) as TuiViewState),
         waitForInput: () => Promise.resolve(i < inputs.length ? inputs[i++]! : null),
@@ -224,7 +224,7 @@ describe("tui session (headless, fake provider)", () => {
     const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-"));
     process.env.OMA_SESSION_DIR = sessionDir;
     try {
-      const io = scriptedIo(["/session", "/model fake/echo", "/exit"]);
+      const io = scriptedIo(["/session", "/model fake/echo", "/exit", "/exit"]);
       const code = await runTuiSession(
         { modelRuntime: testModelRuntime(), workspaceRoot: sessionDir },
         io,
@@ -246,7 +246,14 @@ describe("tui session (headless, fake provider)", () => {
     process.env.OMA_SESSION_DIR = sessionDir;
     const registered: number[] = [];
     try {
-      const base = scriptedIo(["/help", "/nonsense", "/model", "/model fake/missing", "/exit"]);
+      const base = scriptedIo([
+        "/help",
+        "/nonsense",
+        "/model",
+        "/model fake/missing",
+        "/exit",
+        "/exit",
+      ]);
       const io: TuiIo = {
         ...base,
         setSlashCommands: (commands) => registered.push(commands.length),
@@ -305,7 +312,7 @@ describe("tui session (headless, fake provider)", () => {
         ].join("\n"),
       );
       // Phase 1: unknown prefix is rejected (nothing cleared yet).
-      const miss = scriptedIo(["/resume zzz", "/exit"]);
+      const miss = scriptedIo(["/resume zzz", "/exit", "/exit"]);
       await runTuiSession({ modelRuntime: testModelRuntime(), workspaceRoot: sessionDir }, miss);
       const missStatuses = miss.renders
         .at(-1)!
@@ -315,7 +322,7 @@ describe("tui session (headless, fake provider)", () => {
 
       // Phase 2: resume by unique prefix (clears the transcript), then list
       // last so the listing statuses survive in the final state.
-      const io = scriptedIo(["/resume aaaaaaaa", "/resume", "/exit"]);
+      const io = scriptedIo(["/resume aaaaaaaa", "/resume", "/exit", "/exit"]);
       const code = await runTuiSession(
         { modelRuntime: testModelRuntime(), workspaceRoot: sessionDir },
         io,
@@ -492,7 +499,7 @@ describe("tui session (headless, fake provider)", () => {
 
       // /resume all falls back to the text listing (scriptedIo has no
       // pickSession) and must show the foreign workspace marker.
-      const io = scriptedIo(["/resume all", "/exit"]);
+      const io = scriptedIo(["/resume all", "/exit", "/exit"]);
       await runTuiSession({ modelRuntime: testModelRuntime(), workspaceRoot: currentCwd }, io);
       const statuses = io.renders
         .at(-1)!
@@ -507,6 +514,30 @@ describe("tui session (headless, fake provider)", () => {
       if (savedSessionDir === undefined) delete process.env.OMA_SESSION_DIR;
       else process.env.OMA_SESSION_DIR = savedSessionDir;
       rmSync(agentRoot, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  test("/exit requires a second confirmation", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-exit-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    try {
+      // First /exit only arms the confirm; the session keeps running.
+      const io = scriptedIo(["/exit", "/session", "/exit", "/exit"]);
+      const code = await runTuiSession(
+        { modelRuntime: testModelRuntime(), workspaceRoot: sessionDir },
+        io,
+      );
+      expect(code).toBe(0);
+      const statuses = io.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
+        .map((i) => i.text);
+      expect(statuses.some((t) => t.includes("type /exit again to quit"))).toBe(true);
+      // /session still worked after the first /exit -> not exited yet.
+      expect(statuses.some((t) => t.includes("session:"))).toBe(true);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(sessionDir, { recursive: true, force: true });
     }
   }, 15_000);
 });

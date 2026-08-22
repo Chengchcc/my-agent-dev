@@ -217,6 +217,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
   let liveRuntime: OmaRuntime | null = null;
   let sessionTitle: string | undefined;
   let quitting = false;
+  let exitArmed = false;
 
   function pushStatus(lines: string | readonly string[]): void {
     const items = (typeof lines === "string" ? [lines] : lines).map((text) => ({
@@ -295,10 +296,15 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     },
     {
       name: "exit",
-      description: "quit the session",
+      description: "quit the session (twice to confirm)",
       group: "general",
       run: () => {
-        quitting = true;
+        if (exitArmed) {
+          quitting = true;
+          return;
+        }
+        exitArmed = true;
+        pushStatus("type /exit again to quit");
       },
     },
     {
@@ -306,7 +312,12 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       description: "alias of /exit",
       group: "general",
       run: () => {
-        quitting = true;
+        if (exitArmed) {
+          quitting = true;
+          return;
+        }
+        exitArmed = true;
+        pushStatus("type /quit again to quit");
       },
     },
     {
@@ -706,6 +717,7 @@ export function createTerminalIo(
   // aborts a live run (pi's app.interrupt); ctrl+t and ctrl+o toggle the
   // thinking-block and tool-detail views globally.
   let scrollOffset = 0;
+  let totalLines = 0;
   // Transcript viewport height: terminal rows minus editor/status chrome.
   // Editor renders ~3 rows (border + input + border), status 1.
   const viewportLines = (): number => Math.max(1, tui.terminal.rows - 4);
@@ -727,8 +739,9 @@ export function createTerminalIo(
       if (commandHandler) commandHandler("pickModel");
       return { consume: true };
     }
-    // Transcript scroll: PageUp/PageDown step by a viewport; ctrl+c clears
-    // the editor when idle and aborts the live run when busy.
+    // Transcript scroll: PageUp/PageDown step by a viewport, Home jumps to
+    // the top, End returns to the latest; ctrl+c clears the editor when
+    // idle and aborts the live run when busy.
     if (matchesKey(data, "pageUp")) {
       scrollOffset += viewportLines();
       tui.requestRender();
@@ -736,6 +749,16 @@ export function createTerminalIo(
     }
     if (matchesKey(data, "pageDown")) {
       scrollOffset = Math.max(0, scrollOffset - viewportLines());
+      tui.requestRender();
+      return { consume: true };
+    }
+    if (matchesKey(data, "home")) {
+      scrollOffset = Math.max(0, totalLines - viewportLines());
+      tui.requestRender();
+      return { consume: true };
+    }
+    if (matchesKey(data, "end")) {
+      scrollOffset = 0;
       tui.requestRender();
       return { consume: true };
     }
@@ -755,7 +778,7 @@ export function createTerminalIo(
     if (busy || statusContainer.children.length > 0) return;
     statusContainer.addChild(
       new Text(
-        "  enter send · esc abort · ctrl+t thinking · ctrl+o tools · ctrl+p model · /help",
+        "  enter send · shift+enter newline · esc abort · ctrl+t thinking · ctrl+o tools · ctrl+p model · /help",
         0,
         0,
       ),
@@ -768,11 +791,19 @@ export function createTerminalIo(
     for (const run of state.runs) {
       for (const item of run.items) lines.push(...renderItem(item, state));
     }
+    totalLines = lines.length;
     // Scrolling: show only the trailing window (TUI anchors to the bottom
     // of the buffer), i.e. lines[0 .. total - scrollOffset]. New events
     // re-render and clamp the offset so it cannot scroll past the content.
     scrollOffset = Math.min(scrollOffset, Math.max(0, lines.length - viewportLines()));
     const visible = scrollOffset > 0 ? lines.slice(0, lines.length - scrollOffset) : lines;
+    // Scroll indicator while viewing history: tells the user they are not
+    // at the latest and how to return (End).
+    if (scrollOffset > 0) {
+      transcript.addChild(
+        new Text(`\u001b[2m  ↑ ${scrollOffset} lines above — End to return\u001b[0m`, undefined, 1),
+      );
+    }
     for (const line of visible) transcript.addChild(new Text(line, undefined, 1));
     renderIdleFooter();
     tui.requestRender();
