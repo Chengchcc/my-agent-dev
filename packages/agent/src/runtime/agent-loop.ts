@@ -366,7 +366,13 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
             })),
           );
           messages = await readBranchMessages();
-          await emit({ type: "queue_update" });
+          const drained = steers
+            .map((s) => (s.message.role === "user" ? (s.message.text ?? "") : ""))
+            .filter((t) => t.length > 0);
+          await emit({
+            type: "queue_update",
+            ...(drained.length > 0 ? { drained } : {}),
+          });
         }
 
         // One step = at most one model call. Overflow recovery stays INSIDE

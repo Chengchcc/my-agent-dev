@@ -189,4 +189,49 @@ describe("agent loop context handling (oh-my-pi absorption)", () => {
     expect(result.status).toBe("completed");
     expect(events).toContain("compaction_start");
   });
+
+  test("steer drain emits queue_update with the drained user texts", async () => {
+    const store = await freshStore("steer-drain");
+    const queueEvents: Array<{ drained?: readonly string[] }> = [];
+    let loopRef: ReturnType<typeof createOmaSession> | null = null;
+    const gateTool = {
+      name: "gate",
+      description: "steers the loop mid-execution",
+      execute() {
+        loopRef?.steer({ inputId: "s1", message: { role: "user", text: "correction" } });
+        return Promise.resolve({ ok: true });
+      },
+    };
+    let calls = 0;
+    const session = createOmaSession({
+      sessionId: "steer-drain",
+      store,
+      plugins: [{ name: "t", tools: [gateTool] }],
+      maxSteps: 4,
+      maxForceContinues: 0,
+      summarize: async () => "[summary]",
+      modelStream: async function* (): AsyncIterable<AIMessageChunk> {
+        calls++;
+        if (calls === 1) {
+          yield { delta: { type: "tool_use", id: "t1", name: "gate" } };
+          return;
+        }
+        yield { delta: { type: "text", text: "done" } };
+        yield { stopReason: "end_turn" };
+      },
+    });
+    loopRef = session;
+    session.onEvent((e) => {
+      if (e.type === "queue_update") queueEvents.push({ drained: e.drained });
+    });
+    const result = await session.startLoop(loopInput("go"));
+    expect(result.status).toBe("completed");
+    expect(calls).toBe(2);
+    // pi's message_start(user) signal: the surface learns the steer was
+    // actually injected, with its text.
+    expect(queueEvents).toEqual([{ drained: ["correction"] }]);
+    const snap = await store.open("steer-drain");
+    const sources = snap.entries.filter((e) => e.type === "message").map((e) => e.source);
+    expect(sources).toContain("steer");
+  });
 });

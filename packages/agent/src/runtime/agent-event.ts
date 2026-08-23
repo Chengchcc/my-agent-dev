@@ -36,7 +36,11 @@ export type OmaLoopEvent =
   | { type: "retry_end" }
   | { type: "compaction_start" }
   | { type: "compaction_end" }
-  | { type: "queue_update" }
+  /** Emitted when the loop drains queued steers at a safe boundary.
+   * `drained` carries the injected user texts (pi's message_start(user) →
+   * addMessageToChat): surfaces render the user message when the loop
+   * actually takes it, not when it was submitted. */
+  | { type: "queue_update"; drained?: readonly string[] }
   | { type: "stream_rule_triggered"; rule: string }
   | { type: "recap_update"; text: string; turn: number }
   | { type: "todo_update"; items: readonly TodoItem[] }

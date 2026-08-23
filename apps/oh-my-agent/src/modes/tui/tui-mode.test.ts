@@ -6,7 +6,7 @@ import { createModelRuntime } from "@chengchenccc/ai";
 import { registerBuiltinProviders } from "../../core/run-runtime.js";
 import { sessionDirFor } from "../../core/session-file.js";
 import { formatModelMeta, runTuiSession, type TuiIo } from "./tui-mode.js";
-import { applyEvent, initialViewState, type TuiViewState } from "./view-state.js";
+import { addUserInput, applyEvent, initialViewState, type TuiViewState } from "./view-state.js";
 
 /** Scripted TuiIo: feeds idle inputs sequentially, captures renders.
  *  Live submits (during a run) are recorded and forwarded to the handler. */
@@ -118,6 +118,45 @@ describe("view-state folding", () => {
       input: { command: "ls -la" },
       result: { content: "total 0\n[exit: 0]", isError: false },
     });
+  });
+
+  test("queue_update settles a steered echo after the tools that ran", () => {
+    const state = initialViewState();
+    applyEvent(state, { type: "agent_start" });
+    // Steer echo submitted mid-run (pending » item in its own run entry).
+    addUserInput(state, "fix the flag", true);
+    // A tool renders after the echo was submitted but before the drain.
+    applyEvent(state, {
+      type: "tool_execution_start",
+      toolName: "bash",
+      callId: "c1",
+      input: { command: "ls" },
+    });
+    applyEvent(state, {
+      type: "tool_execution_end",
+      toolName: "bash",
+      callId: "c1",
+      result: { content: "ok", isError: false },
+    });
+    // The loop drains the steer: the echo settles at the injection point.
+    applyEvent(state, { type: "queue_update", drained: ["fix the flag"] });
+    const users = state.runs.flatMap((r) => r.items.filter((i) => i.kind === "user"));
+    expect(users).toHaveLength(1);
+    expect(users[0]).toMatchObject({ text: "fix the flag" });
+    expect(users[0]?.pending).toBeFalsy();
+    // The settled user item sits AFTER the tool item (pi renders the user
+    // message when the loop takes it, not where it was typed).
+    const flat = state.runs.flatMap((r) => r.items.map((i) => i.kind));
+    expect(flat.indexOf("tool")).toBeLessThan(flat.lastIndexOf("user"));
+  });
+
+  test("queue_update without a matching echo changes nothing", () => {
+    const state = initialViewState();
+    addUserInput(state, "typed", true);
+    applyEvent(state, { type: "queue_update", drained: ["never echoed"] });
+    const users = state.runs.flatMap((r) => r.items.filter((i) => i.kind === "user"));
+    expect(users).toHaveLength(1);
+    expect(users[0]?.pending).toBe(true);
   });
 
   test("message_end settles thinking so the next turn starts a fresh block", () => {
@@ -741,12 +780,15 @@ describe("tui session (headless, fake provider)", () => {
       await io.toolRendered;
       io.submitLive("mid-run correction");
       await done;
-      // The steer was echoed as a pending user item (pi's » steering marker).
-      const pending = io.renders
+      // pi's message_start(user) absorption: while pending the echo shows
+      // the dim » marker, and once the loop drains the steer it settles
+      // into a normal user item — exactly one, no duplicate echo.
+      const echoes = io.renders
         .at(-1)!
         .runs.flatMap((r) => r.items.filter((i) => i.kind === "user"))
-        .find((i) => i.text === "mid-run correction");
-      expect(pending).toMatchObject({ pending: true });
+        .filter((i) => i.text === "mid-run correction");
+      expect(echoes).toHaveLength(1);
+      expect(echoes[0]?.pending).toBeFalsy();
       // The loop consumed the steer and answered — the message was not lost.
       const texts = io.renders
         .at(-1)!

@@ -48,6 +48,7 @@ import {
   applyEvent,
   applyOutcome,
   initialViewState,
+  settleSteeredMessages,
   type TranscriptItem,
   type TuiViewState,
 } from "./view-state.js";
@@ -922,8 +923,14 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     // Steers that arrived while the previous loop was settling are drained
     // here as the next Run's prompt (already echoed as » items — no re-echo).
     let text: string;
+    let fromFollowUp = false;
     if (pendingFollowUps.length > 0) {
-      text = pendingFollowUps.splice(0).join("\n\n");
+      const drained = pendingFollowUps.splice(0);
+      text = drained.join("\n\n");
+      fromFollowUp = true;
+      // Settle the queued » echoes in place — no re-echo (pi moves queued
+      // messages into the chat when they are delivered).
+      settleSteeredMessages(state, drained);
     } else {
       const input = await io.waitForInput();
       if (input === null) return 0;
@@ -941,7 +948,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       pendingPrompt = undefined;
     }
 
-    addUserInput(state, text);
+    if (!fromFollowUp) addUserInput(state, text);
 
     const built = await buildCliRunInput({
       prompt: text,

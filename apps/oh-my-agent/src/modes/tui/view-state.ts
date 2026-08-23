@@ -196,6 +196,13 @@ export function applyEvent(state: TuiViewState, event: OmaLoopEvent): void {
       });
       break;
     }
+    case "queue_update": {
+      // pi's message_start(user): a steered message the loop actually
+      // injected renders as a settled user item at the injection point —
+      // after the tool items that ran before the drain.
+      if (event.drained?.length) settleSteeredMessages(state, event.drained);
+      break;
+    }
     case "workflow_failed": {
       const run = ensureRunningRun(state);
       run.items.push({ kind: "error", text: `workflow: ${event.error}`, streaming: false });
@@ -262,6 +269,27 @@ export function addUserInput(state: TuiViewState, text: string, pending = false)
   const item: TranscriptItem = { kind: "user", text, streaming: false };
   if (pending) item.pending = true;
   state.runs.push({ items: [item], running: false });
+}
+
+/** Settle pending » echoes whose messages the loop has now injected (pi
+ * renders the user message when consumed, not when submitted). The pending
+ * echo entry is removed and a settled user item is appended at the current
+ * transcript position. Texts without a matching echo are ignored (e.g.
+ * surface-injected steers this TUI never echoed). */
+export function settleSteeredMessages(state: TuiViewState, texts: readonly string[]): void {
+  for (const text of texts) {
+    const idx = state.runs.findIndex(
+      (r) =>
+        !r.running &&
+        r.items.length === 1 &&
+        r.items[0]?.kind === "user" &&
+        r.items[0]?.pending === true &&
+        r.items[0]?.text === text,
+    );
+    if (idx < 0) continue;
+    state.runs.splice(idx, 1);
+    state.runs.push({ items: [{ kind: "user", text, streaming: false }], running: false });
+  }
 }
 
 /** True while the last run is live (editor submits become steer). */
