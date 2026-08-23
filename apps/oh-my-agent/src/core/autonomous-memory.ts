@@ -55,15 +55,26 @@ export interface AutonomousMemoryInput {
   compactions: readonly string[];
 }
 
-export async function extractAutonomousMemory(input: AutonomousMemoryInput): Promise<void> {
+/** Result of one memory-learn pass. `ran` is true when the pipeline made
+ * its extraction call (facts may still dedup to zero); false when disabled,
+ * empty, or failed — best-effort semantics, never throws. Surfaces use it
+ * for the omp-style "learn" indicator. */
+export interface MemoryLearnResult {
+  readonly ran: boolean;
+  readonly freshFacts: number;
+}
+
+export async function extractAutonomousMemory(
+  input: AutonomousMemoryInput,
+): Promise<MemoryLearnResult> {
   try {
-    if (process.env.OMA_MEMORY_EXTRACT === "0") return;
+    if (process.env.OMA_MEMORY_EXTRACT === "0") return { ran: false, freshFacts: 0 };
     // Default: the cheapest available catalog model (memory extraction is
     // quality-tolerant); OMA_MEMORY_MODEL explicitly overrides; fall back to
     // the Run's own model when the catalog is empty/unreadable.
     const modelRef = await resolveMemoryModel(input.modelRuntime, input.modelId);
     const transcript = buildTranscript(input.messages, input.compactions);
-    if (transcript.trim().length === 0) return;
+    if (transcript.trim().length === 0) return { ran: false, freshFacts: 0 };
 
     const facts = parseFacts(
       await callModel(
@@ -72,7 +83,7 @@ export async function extractAutonomousMemory(input: AutonomousMemoryInput): Pro
         `${EXTRACT_PROMPT}\n\n<transcript>\n${transcript}\n</transcript>`,
       ),
     );
-    if (facts.length === 0) return;
+    if (facts.length === 0) return { ran: false, freshFacts: 0 };
 
     const memDir = join(input.workspaceRoot, ".oma", "memory");
     const factsDir = join(memDir, "facts");
@@ -81,7 +92,7 @@ export async function extractAutonomousMemory(input: AutonomousMemoryInput): Pro
     // so memory/facts/*.md stays a unique-facts set, not an append log.
     const existing = readExistingFactContents(factsDir);
     const fresh = facts.filter((f) => !existing.has(normalizeFact(f.content)));
-    if (fresh.length === 0) return;
+    if (fresh.length === 0) return { ran: true, freshFacts: 0 };
 
     mkdirSync(factsDir, { recursive: true });
     writeFileSync(join(factsDir, `${input.runId}.md`), renderFacts(input.runId, fresh), "utf-8");
@@ -93,12 +104,14 @@ export async function extractAutonomousMemory(input: AutonomousMemoryInput): Pro
       `${CONSOLIDATE_PROMPT}\n\n<existing_summary>\n${oldSummary ?? "(none)"}\n</existing_summary>\n\n<new_facts>\n${renderFacts(input.runId, fresh)}\n</new_facts>`,
     );
     if (newSummary) writeFileSync(join(memDir, "memory_summary.md"), newSummary, "utf-8");
+    return { ran: true, freshFacts: fresh.length };
   } catch (err) {
     // Memory is best-effort: never fail or slow the Run over it.
     console.error(
       "[oma] autonomous memory skipped:",
       err instanceof Error ? err.message : String(err),
     );
+    return { ran: false, freshFacts: 0 };
   }
 }
 

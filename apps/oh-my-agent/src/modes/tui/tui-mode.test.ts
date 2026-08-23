@@ -699,6 +699,67 @@ describe("tui session (headless, fake provider)", () => {
     }
   }, 30_000);
 
+  test("memory learn indicator shows learning then learned facts", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-learn-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    const savedTitle = process.env.OMA_TITLE_ENABLED;
+    process.env.OMA_TITLE_ENABLED = "0"; // keep model-call count deterministic
+    try {
+      const replies = [
+        "done",
+        JSON.stringify({ facts: [{ content: "JWT expiry is 15m", context: "auth" }] }),
+        "## Key Decisions",
+      ];
+      const modelRuntime = createModelRuntime();
+      modelRuntime.registerProvider({
+        id: "probe",
+        name: "Probe",
+        getModels: () => [
+          {
+            id: "m",
+            name: "M",
+            provider: "probe",
+            api: "anthropic-messages",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 200_000,
+            maxTokens: 8192,
+          },
+        ],
+        async *stream() {
+          const reply = replies.shift() ?? "";
+          yield { delta: { type: "text", text: reply } };
+          yield { stopReason: "end_turn" };
+        },
+      });
+      const io = scriptedIo(["hello"]);
+      await runTuiSession({ modelRuntime, workspaceRoot: sessionDir }, io);
+      const statusTexts = (): string[] =>
+        io.renders
+          .at(-1)!
+          .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
+          .map((i) => i.text);
+      // The learn pass is background fire-and-forget: drain microtasks (the
+      // fake provider resolves without timers) until the result status lands.
+      let statuses = statusTexts();
+      for (let i = 0; i < 5_000; i++) {
+        if (statuses.some((t) => t !== "memory: learning…" && t.startsWith("memory: "))) break;
+        await Promise.resolve();
+        statuses = statusTexts();
+      }
+      // omp AutoLearn-style indicator: learning appears immediately, the
+      // result lands when the background extraction finishes.
+      expect(statuses).toContain("memory: learning…");
+      expect(statuses).toContain("memory: learned 1 fact");
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      if (savedTitle === undefined) delete process.env.OMA_TITLE_ENABLED;
+      else process.env.OMA_TITLE_ENABLED = savedTitle;
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
   test("/resume all lists sessions from other workspaces", async () => {
     const agentRoot = mkdtempSync(join(tmpdir(), "oma-tui-resume-all-"));
     const savedSessionDir = process.env.OMA_SESSION_DIR;

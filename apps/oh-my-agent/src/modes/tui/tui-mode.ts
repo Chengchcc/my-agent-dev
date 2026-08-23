@@ -1061,6 +1061,24 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     for (const summary of await runtime.compactions()) {
       pushStatus(`compacted: ${summary.slice(0, 160)}${summary.length > 160 ? "…" : ""}`);
     }
+    // omp AutoLearn-style indicator: the run's background memory-learn pass
+    // shows on the transcript without blocking the editor (the promise
+    // resolves even after close()).
+    const learning = runtime.memoryLearning();
+    if (learning) {
+      pushStatus("memory: learning…");
+      io.render(state);
+      void learning.then((res) => {
+        pushStatus(
+          res.freshFacts > 0
+            ? `memory: learned ${res.freshFacts} fact${res.freshFacts === 1 ? "" : "s"}`
+            : res.ran
+              ? "memory: nothing new to learn"
+              : "memory: skipped",
+        );
+        io.render(state);
+      });
+    }
     // Context footprint of the settled branch under the run model's window
     // (pi's context-usage display); read BEFORE close() like compactions().
     const usage = await runtime.contextUsage().catch(() => undefined);

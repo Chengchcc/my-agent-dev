@@ -67,7 +67,7 @@ describe("extractAutonomousMemory", () => {
     ]);
     const root = freshWorkspace();
 
-    await extractAutonomousMemory({
+    const result = await extractAutonomousMemory({
       modelRuntime: runtime,
       modelId: "fake/m",
       workspaceRoot: root,
@@ -75,6 +75,8 @@ describe("extractAutonomousMemory", () => {
       messages: MESSAGES,
       compactions: ["fixed the login flow"],
     });
+
+    expect(result).toEqual({ ran: true, freshFacts: 1 });
 
     expect(calls).toHaveLength(2);
     const factsFile = join(root, ".oma", "memory", "facts", "run-1.md");
@@ -90,7 +92,7 @@ describe("extractAutonomousMemory", () => {
     const { runtime, calls } = makeRuntime([JSON.stringify({ facts: [] })]);
     const root = freshWorkspace();
 
-    await extractAutonomousMemory({
+    const result = await extractAutonomousMemory({
       modelRuntime: runtime,
       modelId: "fake/m",
       workspaceRoot: root,
@@ -98,6 +100,8 @@ describe("extractAutonomousMemory", () => {
       messages: MESSAGES,
       compactions: [],
     });
+
+    expect(result).toEqual({ ran: false, freshFacts: 0 });
 
     expect(calls).toHaveLength(0);
     expect(existsSync(join(root, ".oma", "memory"))).toBe(false);
@@ -133,7 +137,7 @@ describe("extractAutonomousMemory", () => {
         messages: MESSAGES,
         compactions: [],
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ ran: false, freshFacts: 0 });
     expect(calls).toHaveLength(1);
     expect(existsSync(join(root, ".oma", "memory"))).toBe(false);
   });
@@ -159,7 +163,7 @@ describe("extractAutonomousMemory", () => {
         messages: MESSAGES,
         compactions: [],
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ ran: false, freshFacts: 0 });
     expect(existsSync(join(root, ".oma", "memory"))).toBe(false);
   });
 

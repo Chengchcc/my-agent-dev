@@ -10,7 +10,7 @@ import type { ModelRuntime } from "@chengchenccc/ai";
 import type { Message } from "@chengchenccc/message";
 import type { RunEventEnvelope } from "../protocol/index.js";
 import { mapRunEvent } from "../protocol/index.js";
-import { extractAutonomousMemory } from "./autonomous-memory.js";
+import { extractAutonomousMemory, type MemoryLearnResult } from "./autonomous-memory.js";
 import { assembleRunRuntime, type RunRuntime } from "./run-runtime.js";
 
 /** The single Runtime assembly entry point for the Oma product.
@@ -60,6 +60,11 @@ export interface OmaRuntime {
    *  window — the same estimate/limit pair the compactor decides on. Read
    *  before close(). */
   contextUsage(): Promise<{ estimatedTokens: number; limit: number } | undefined>;
+  /** The run's background memory-learn pass (omp AutoLearn analog).
+   * Present once the run completed; never rejects; resolves after close()
+   * too (inputs are captured up front). Surfaces use it for the "learn"
+   * indicator. */
+  memoryLearning(): Promise<MemoryLearnResult> | undefined;
 }
 
 /** Add workflow (subagent) usage into a run's terminal usage. Missing
@@ -128,7 +133,7 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
 
   let stopRequested = false;
   let started = false;
-
+  let memoryLearning: Promise<MemoryLearnResult> | undefined;
   return {
     async run(input) {
       if (started) {
@@ -225,7 +230,7 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
             }
             // FIRE-AND-FORGET: awaiting here blocks the outcome (and the
             // TUI busy state) on a second model call the user cannot abort.
-            void extractAutonomousMemory({
+            memoryLearning = extractAutonomousMemory({
               modelRuntime: options.modelRuntime,
               modelId: options.modelId,
               workspaceRoot: options.workspaceRoot,
@@ -309,6 +314,11 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
         estimatedTokens += budget.estimate(entry.message);
       }
       return { estimatedTokens, limit: budget.limit };
+    },
+    /** Background memory-learn pass for the completed run (undefined while
+     * the run has not completed). */
+    memoryLearning(): Promise<MemoryLearnResult> | undefined {
+      return memoryLearning;
     },
   };
 }
