@@ -7,6 +7,13 @@ import type { SessionStore } from "../persistence/session-store.js";
 import type { MessageEntry } from "../persistence/session-tree.js";
 import type { AgentLoopListener, OmaLoopEvent } from "./agent-event.js";
 import { type CompactionBudget, compactSession } from "./compaction.js";
+import {
+  estimateContextTokens,
+  isSilentContextOverflow,
+  type TurnUsage,
+  type UsageAnchor,
+  usageTotalTokens,
+} from "./context-estimate.js";
 import type { CodingLoopInput } from "./loop-input.js";
 import { buildLoopInput } from "./loop-input.js";
 import { TokenEstimateCache } from "./message-cache.js";
@@ -149,6 +156,9 @@ interface ModelTurn {
   readonly thinkingRedacted?: boolean;
   readonly toolCalls: readonly PendingToolCall[];
   readonly stopReason?: string;
+  /** This call's own usage (legs summed over the call's chunks): anchors
+   * context estimation and silent-overflow detection (oh-my-pi). */
+  readonly usage?: TurnUsage;
   /** Set when a stream rule matched mid-stream: the turn's partial output
    * is discarded and the rule injected before retrying. */
   readonly streamRuleHit?: StreamRule;
@@ -201,6 +211,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
     "steer",
     "follow_up",
     "assistant",
+    "tool_result",
     "system_reminder",
   ]);
 
@@ -322,6 +333,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
       let forceContinues = 0;
       let overflowCompacted = false;
       let thresholdCompacted = false;
+      let usageAnchor: UsageAnchor | null = null;
       let naturalStop = false;
 
       for (const p of opts.plugins) {
@@ -368,31 +380,36 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
             ? pruneOldToolResults(messages, opts.pruneConfig).messages
             : messages;
 
-          // Proactive (threshold) compaction. Token estimation is cached
-          // per entry (our TokenEstimateCache): settled messages aren't
-          // re-estimated every turn.
-          if (opts.contextBudget && !thresholdCompacted) {
+          // Snapshot for this model call + proactive (threshold) compaction.
+          // Estimation is anchored on the previous call's real usage
+          // (oh-my-pi): only entries persisted since the anchor boundary are
+          // per-message estimated, so the estimate tracks the provider's
+          // own accounting instead of drifting with chars/4. The
+          // TokenEstimateCache still avoids re-estimating settled entries.
+          let callBoundaryId: string | null = null;
+          if (opts.contextBudget) {
             const branch = await opts.store.readBranch(opts.sessionId);
             const msgEntries = branch.filter((e): e is MessageEntry => e.type === "message");
-            const totalTokens = msgEntries.reduce(
-              (sum, e) =>
-                sum +
+            callBoundaryId = msgEntries.at(-1)?.entryId ?? null;
+            if (!thresholdCompacted) {
+              const totalTokens = estimateContextTokens(msgEntries, usageAnchor, (e) =>
                 tokenEstimateCache.estimate(e.entryId, e.message, opts.contextBudget!.estimate),
-              0,
-            );
-            if (totalTokens > opts.contextBudget.limit * opts.contextBudget.triggerRatio) {
-              thresholdCompacted = true;
-              tokenEstimateCache.clear();
-              await emit({ type: "compaction_start" });
-              await compactSession(
-                opts.store,
-                opts.sessionId,
-                opts.summarize,
-                controller?.signal,
-                opts.contextBudget,
               );
-              await emit({ type: "compaction_end" });
-              messages = await readBranchMessages();
+              if (totalTokens > opts.contextBudget.limit * opts.contextBudget.triggerRatio) {
+                thresholdCompacted = true;
+                usageAnchor = null;
+                tokenEstimateCache.clear();
+                await emit({ type: "compaction_start" });
+                await compactSession(
+                  opts.store,
+                  opts.sessionId,
+                  opts.summarize,
+                  controller?.signal,
+                  opts.contextBudget,
+                );
+                await emit({ type: "compaction_end" });
+                messages = await readBranchMessages();
+              }
             }
           }
 
@@ -412,6 +429,37 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
               : transformed;
             const turn = await streamModelTurn(modelMessages);
             const thinkingBlocks = buildThinkingBlock(turn);
+            // Usage anchor (oh-my-pi): the completed call's real token
+            // total is authoritative for everything persisted before the
+            // call — per-message estimation covers only the delta since.
+            if (turn.usage && usageTotalTokens(turn.usage) > 0) {
+              usageAnchor = { afterEntryId: callBoundaryId, tokens: usageTotalTokens(turn.usage) };
+            }
+            // Silent context overflow (oh-my-pi isContextOverflow): some
+            // providers (zai, Xiaomi-style) accept an oversized request
+            // instead of erroring. Same recovery as the error path: one-shot
+            // compaction, then retry the model call in the SAME turn.
+            if (
+              opts.contextBudget &&
+              !overflowCompacted &&
+              !controller?.signal.aborted &&
+              isSilentContextOverflow(turn.usage, turn.stopReason, opts.contextBudget.limit)
+            ) {
+              overflowCompacted = true;
+              usageAnchor = null;
+              tokenEstimateCache.clear();
+              await emit({ type: "compaction_start" });
+              await compactSession(
+                opts.store,
+                opts.sessionId,
+                opts.summarize,
+                controller?.signal,
+                opts.contextBudget,
+              );
+              await emit({ type: "compaction_end" });
+              messages = await readBranchMessages();
+              continue;
+            }
             // TTSR stream-rule hit: discard the partial turn (nothing was
             // persisted — accumulation is pre-persistence by design),
             // inject the rule as a hidden system reminder, and retry the
@@ -624,6 +672,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
             // Overflow: one-shot compaction recovery inside the same turn.
             if (err instanceof ProviderError && err.kind === "overflow" && !overflowCompacted) {
               overflowCompacted = true;
+              usageAnchor = null;
               tokenEstimateCache.clear();
               await emit({ type: "compaction_start" });
               await compactSession(
@@ -751,17 +800,26 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
 
     let stopReason: string | undefined;
     let streamRuleHit: StreamRule | undefined;
+    let turnUsage: TurnUsage | undefined;
     try {
       for await (const chunk of stream) {
         if (controller?.signal.aborted) break;
         if (chunk.stopReason) stopReason = chunk.stopReason;
         if (chunk.usage) {
-          // Accumulate across all model calls in the Run (not last-wins).
+          // Accumulate across all model calls in the Run (not last-wins)...
           runUsage = {
             inputTokens: (runUsage?.inputTokens ?? 0) + (chunk.usage.input ?? 0),
             outputTokens: (runUsage?.outputTokens ?? 0) + (chunk.usage.output ?? 0),
             cacheReadTokens: (runUsage?.cacheReadTokens ?? 0) + (chunk.usage.cacheRead ?? 0),
             cacheWriteTokens: (runUsage?.cacheWriteTokens ?? 0) + (chunk.usage.cacheCreate ?? 0),
+          };
+          // ...and per turn: this call's own total anchors context
+          // estimation and silent-overflow detection (oh-my-pi).
+          turnUsage = {
+            inputTokens: (turnUsage?.inputTokens ?? 0) + (chunk.usage.input ?? 0),
+            outputTokens: (turnUsage?.outputTokens ?? 0) + (chunk.usage.output ?? 0),
+            cacheReadTokens: (turnUsage?.cacheReadTokens ?? 0) + (chunk.usage.cacheRead ?? 0),
+            cacheWriteTokens: (turnUsage?.cacheWriteTokens ?? 0) + (chunk.usage.cacheCreate ?? 0),
           };
         }
         if (chunk.delta?.type === "text") {
@@ -814,6 +872,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
         input: b.jsonParts.length > 0 ? safeParseJson(b.jsonParts.join("")) : {},
       })),
       stopReason,
+      ...(turnUsage ? { usage: turnUsage } : {}),
       ...(streamRuleHit ? { streamRuleHit } : {}),
     };
   }

@@ -172,6 +172,46 @@ export async function testMcpServer(
   }
 }
 
+/** Per-call timeout for mounted MCP tools (ms). A hung server must never
+ * block the Run forever — product tools already bound theirs. Default 120s
+ * (MCP tools legitimately run longer than file tools); OMA_MCP_TIMEOUT_MS
+ * overrides, 0 disables. */
+export function mcpCallTimeoutMs(): number {
+  const raw = process.env.OMA_MCP_TIMEOUT_MS;
+  if (raw === undefined) return 120_000;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 120_000;
+}
+
+/** Race a tool call against a wall-clock timeout and the run's abort
+ * signal. The losing call keeps running server-side (the MCP SDK's
+ * callTool takes no signal) but its result lands nowhere. The Bun timer
+ * MUST be cleared or the process lingers — hence the finally. */
+export async function withCallTimeout<T>(
+  call: Promise<T>,
+  label: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (signal?.aborted) throw new Error("Aborted");
+  if (timeoutMs <= 0 && !signal) return call;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const bail = new Promise<never>((_, reject) => {
+    if (timeoutMs > 0) {
+      timer = setTimeout(
+        () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+        timeoutMs,
+      );
+    }
+    signal?.addEventListener("abort", () => reject(new Error("Aborted")), { once: true });
+  });
+  try {
+    return await Promise.race([call, bail]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Mount the workspace .mcp.json servers as plugin tools. Never throws;
  *  per-server failures degrade to "server absent". */
 export interface MountedMcpServers {
@@ -208,8 +248,13 @@ export async function mountWorkspaceMcpServers(
         name: t.name,
         description: t.description ?? `MCP tool ${t.name} (server ${name})`,
         inputSchema: (t.inputSchema ?? { type: "object" }) as PluginTool["inputSchema"],
-        async execute(args) {
-          const res = await client.callTool({ name: t.name, arguments: args });
+        async execute(args, signal) {
+          const res = await withCallTimeout(
+            client.callTool({ name: t.name, arguments: args }),
+            `mcp tool ${t.name}`,
+            mcpCallTimeoutMs(),
+            signal,
+          );
           const text = (res.content ?? [])
             .filter((c) => c.type === "text" && c.text)
             .map((c) => c.text!)

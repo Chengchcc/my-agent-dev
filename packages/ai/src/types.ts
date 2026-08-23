@@ -127,6 +127,9 @@ export const ProviderErrorKind = {
   Fatal: "fatal",
   Aborted: "aborted",
   Overflow: "overflow",
+  /** Quota/billing exhaustion (zai 429 code 1308, insufficient_quota...).
+   * Terminal for backoff: waiting seconds will not restore the budget. */
+  Quota: "quota",
 } as const;
 export type ProviderErrorKind = (typeof ProviderErrorKind)[keyof typeof ProviderErrorKind];
 
@@ -151,9 +154,49 @@ export class ProviderError extends Error {
     this.retryable = kind === "transient" || kind === "overload";
   }
 }
+/** Context-overflow error patterns by provider wording (absorbed from
+ * oh-my-pi packages/ai/src/utils/overflow.ts — one entry per known provider
+ * phrasing; the last two are our original generic nets, kept as fallback).
+ * Messages matching NON_OVERFLOW_PATTERNS are excluded even on a partial
+ * match: Bedrock throttling says "Too many tokens, please wait". */
+const OVERFLOW_PATTERNS: readonly RegExp[] = [
+  /prompt is too long/i, // Anthropic token overflow
+  /request_too_large/i, // Anthropic byte-size overflow (HTTP 413)
+  /input is too long for requested model/i, // Amazon Bedrock
+  /exceeds the context window/i, // OpenAI (Completions & Responses)
+  /exceeds (?:the )?(?:model'?s )?maximum context length/i, // OpenAI-compatible proxies
+  /input token count.*exceeds the maximum/i, // Google (Gemini)
+  /maximum prompt length is \d+/i, // xAI (Grok)
+  /reduce the length of the messages/i, // Groq
+  /maximum context length is \d+ tokens/i, // OpenRouter (most backends)
+  /exceeds (?:the )?maximum allowed input length/i, // OpenRouter/Poolside
+  /input \(\d+ tokens\) is longer than the model'?s context length/i, // Together AI
+  /exceeds the limit of \d+/i, // GitHub Copilot
+  /exceeds the available context size/i, // llama.cpp server
+  /greater than the context length/i, // LM Studio
+  /context window exceeds limit/i, // MiniMax
+  /exceeded model token limit/i, // Kimi For Coding
+  /too large for model with \d+ maximum context length/i, // Mistral
+  /model_context_window_exceeded/i, // zai non-standard finish_reason
+  /prompt too long; exceeded (?:max )?context length/i, // Ollama explicit
+  /context[_ ]length[_ ]exceeded/i, // generic fallback
+  /too many tokens/i, // generic fallback
+  /token limit exceeded/i, // generic fallback
+  /context.{0,20}(?:length|window|too long)/i, // our original net
+  /maximum.{0,20}token/i, // our original net
+];
 
-const OVERFLOW_RE =
-  /context.{0,20}(length|window|too long)|maximum.{0,20}token|overflow|token limit|too long/i;
+const NON_OVERFLOW_PATTERNS: readonly RegExp[] = [
+  /^(?:Throttling error|Service unavailable):/i, // AWS Bedrock (formatted)
+  /ThrottlingException/i, // AWS Bedrock (raw)
+  /rate limit/i,
+  /too many requests/i,
+];
+
+/** Quota/billing exhaustion (absorbed from oh-my-pi retry.ts, plus zai's
+ * 429 code 1308 usage-window signal). Never backoff-retried. */
+const QUOTA_RE =
+  /insufficient_quota|quota exceeded|out of budget|billing|usage limit|GoUsageLimitError|FreeUsageLimitError|available balance|code\D{0,4}1308/i;
 
 export function normalizeProviderError(
   err: unknown,
@@ -171,8 +214,13 @@ export function normalizeProviderError(
   }
   const s = msg.match(/status[= ](\d+)/);
   const code = s ? Number(s[1]) : undefined;
-  if (code === 400 || code === 422) {
-    if (OVERFLOW_RE.test(msg)) {
+  if (QUOTA_RE.test(msg)) {
+    return new ProviderError(msg, "quota", { statusCode: code, detail, ...retryOpts });
+  }
+  if (code === 400 || code === 413 || code === 422) {
+    // Skip known non-overflow wordings (throttling) before pattern matching.
+    const nonOverflow = NON_OVERFLOW_PATTERNS.some((p) => p.test(msg));
+    if (!nonOverflow && OVERFLOW_PATTERNS.some((p) => p.test(msg))) {
       return new ProviderError(msg, "overflow", { statusCode: code, detail, ...retryOpts });
     }
     return new ProviderError(msg, "invalid_request", { statusCode: code, detail, ...retryOpts });

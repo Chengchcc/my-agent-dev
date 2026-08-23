@@ -32,6 +32,13 @@ export { createOmaSession } from "./runtime/agent-loop.js";
 export type { CompactionResult } from "./runtime/compaction.js";
 // Compaction + retry
 export { compactSession } from "./runtime/compaction.js";
+export {
+  estimateContextTokens,
+  isSilentContextOverflow,
+  type TurnUsage,
+  type UsageAnchor,
+  usageTotalTokens,
+} from "./runtime/context-estimate.js";
 export type { CodingLoopInput, LoopInputDeps, LoopInputResult } from "./runtime/loop-input.js";
 export { buildLoopInput } from "./runtime/loop-input.js";
 // Plugin
