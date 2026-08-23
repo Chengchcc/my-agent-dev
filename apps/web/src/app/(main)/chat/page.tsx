@@ -58,6 +58,17 @@ export default function ChatOverviewPage() {
   const [projectId, setProjectId] = useState("");
   const selectedAgent = agents?.find((a) => a.id === agentId);
 
+  // The initial "default" may not exist (renamed/deleted/fresh install) or
+  // may be disabled — the select would visually show another option while
+  // the state still points at a dead agent. Reset to the first usable one.
+  useEffect(() => {
+    if (!agents || agents.length === 0) return;
+    const cur = agents.find((a) => a.id === agentId);
+    if (cur && cur.enabled !== false) return;
+    const usable = agents.filter((a) => a.enabled !== false);
+    setAgentId((usable[0] ?? agents[0]!)?.id ?? "default");
+  }, [agents, agentId]);
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(searchQuery), 300);
     return () => clearTimeout(t);

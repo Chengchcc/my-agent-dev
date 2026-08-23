@@ -14,9 +14,19 @@ export interface BlockLike {
   base64?: string;
   mediaType?: string;
 }
+/** Strip model-facing <system-reminder> blocks (TTSR tool reminders,
+ * tool-failure reminders) from tool result content for display. The raw
+ * content stays intact in the ledger — this is presentation-only. */
+export function stripSystemReminders(c: string): string {
+  return c.replace(/<system-reminder[^>]*>[\s\S]*?<\/system-reminder>\s*/g, "").trimStart();
+}
 
 /** Normalize tool_result.content to string. Handles string, ContentBlock[], and null. */
 export function normalizeToolResultContent(c: unknown): string {
+  return stripSystemReminders(rawNormalizeToolResultContent(c));
+}
+
+function rawNormalizeToolResultContent(c: unknown): string {
   if (typeof c === "string") return c;
   if (Array.isArray(c)) {
     return c

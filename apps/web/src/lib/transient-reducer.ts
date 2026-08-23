@@ -8,6 +8,9 @@ export interface TransientRun {
    *  Rendered inside the running trace; never part of the text bubble. */
   thinking: string;
   agentMemberId: string;
+  /** Runtime notices (stream-rule triggers): transient status lines shown
+   * above the run's output; never part of the text bubble. */
+  notices?: string[];
   /** Terminal failure of this run (status event error field). Kept live
    *  because failed runs persist no assistant message. */
   error?: string;
@@ -70,6 +73,25 @@ export function markTransientError(
     thinking: state[runId]?.thinking ?? "",
     agentMemberId,
     error,
+  };
+  return next;
+}
+
+/** Append a runtime notice to runId (creating the entry on first notice).
+ * ponytail: capped at 5 per run — a rule storm must not grow the array. */
+export function pushTransientNotice(
+  state: TransientMap,
+  runId: string,
+  agentMemberId: string,
+  notice: string,
+): TransientMap {
+  const next = { ...state };
+  const notices = [...(state[runId]?.notices ?? []), notice].slice(-5);
+  next[runId] = {
+    text: state[runId]?.text ?? "",
+    thinking: state[runId]?.thinking ?? "",
+    agentMemberId,
+    notices,
   };
   return next;
 }

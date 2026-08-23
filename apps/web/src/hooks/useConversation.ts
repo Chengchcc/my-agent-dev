@@ -26,6 +26,7 @@ import {
   type LiveToolCall,
   type LiveToolMap,
   markTransientError,
+  pushTransientNotice,
   type RunTodoMap,
   removeTransient,
   setRunTodos as setRunTodosMap,
@@ -214,7 +215,13 @@ export function useConversation(
       return next;
     });
   }, []);
-
+  const pushRunNotice = useCallback((runId: string, agentMemberId: string, notice: string) => {
+    setTransients((prev) => {
+      const next = pushTransientNotice(prev, runId, agentMemberId, notice);
+      transientsRef.current = next;
+      return next;
+    });
+  }, []);
   // 1) Snapshot bootstrap (roster + viewerMemberId)
   const snap = useConversationSnapshot(conversationId, preFetchedSnapshot);
   useEffect(() => {
@@ -515,6 +522,20 @@ export function useConversation(
           /* malformed - ignore */
         }
       });
+      es.addEventListener("backend.oma.stream_rule_triggered", (e) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as { payload?: { rule?: string } };
+          if (ev.payload?.rule) {
+            pushRunNotice(
+              runId,
+              agentMemberId,
+              `stream rule "${ev.payload.rule}" matched — output discarded, retrying`,
+            );
+          }
+        } catch {
+          /* malformed - ignore */
+        }
+      });
       const upsertWorkflow = (
         workflowId: string,
         patch: (w: WorkflowRunState | undefined) => WorkflowRunState | undefined,
@@ -591,6 +612,7 @@ export function useConversation(
       completeToolState,
       dropTransient,
       failTransient,
+      pushRunNotice,
       setRunTodosState,
       upsertRunRecap,
       upsertToolState,

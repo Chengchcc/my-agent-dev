@@ -43,12 +43,14 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useAgentList } from "@/features/agents/hooks";
 import {
   conversationKeys,
   useAllConversations,
   useCreateConversation,
   useDeleteConversation,
 } from "@/features/conversations/hooks";
+import type { AgentRow } from "@/lib/api";
 
 function NavContent() {
   const pathname = usePathname();
@@ -56,7 +58,8 @@ function NavContent() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  // ponytail: global recent conversations — no agent scoping in the rail anymore
+  // Quick-create agent resolution: default → first enabled (never a dead id).
+  const { data: agents } = useAgentList() as { data?: AgentRow[] };
   const { data: conversations } = useAllConversations();
   // Loop/Cron conversations belong in Work, not Chat — exclude them from the rail.
   const chatConversations = (conversations ?? []).filter(
@@ -78,10 +81,22 @@ function NavContent() {
 
   function makeConversation() {
     const humanId = `human-${crypto.randomUUID().slice(0, 8)}`;
+    // Quick-create targets the default agent, falling back to the first
+    // enabled one — never a hardcoded dead agent id.
+    const agent =
+      agents?.find((a) => a.id === "default" && a.enabled !== false) ??
+      agents?.find((a) => a.enabled !== false) ??
+      agents?.[agents.length - 1];
+    const agentId = agent?.id ?? "default";
     createConversation.mutate(
       {
         members: [
-          { memberId: "default", kind: "agent", agentId: "default", displayName: "Assistant" },
+          {
+            memberId: agentId,
+            kind: "agent",
+            agentId,
+            displayName: agent?.name ?? "Assistant",
+          },
           { memberId: humanId, kind: "human", displayName: "User" },
         ],
       },

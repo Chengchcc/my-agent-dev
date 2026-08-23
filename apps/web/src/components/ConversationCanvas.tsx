@@ -129,6 +129,7 @@ export function ConversationCanvas({
       sender: SenderRef;
       tools: LiveToolCall[];
       error?: string;
+      notices?: string[];
     }> = [];
     for (const [runId, t] of Object.entries(transients)) {
       const sender = Object.values(roster).find((m) => m.memberId === t.agentMemberId);
@@ -142,6 +143,7 @@ export function ConversationCanvas({
           (tool) => tool.runId === runId && tool.name !== "todo_write",
         ),
         error: t.error,
+        notices: t.notices,
       });
     }
     return bubbles;
