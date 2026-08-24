@@ -1249,6 +1249,8 @@ class OmaTranscriptContainer
   private committedRows = 0;
   private lastLines: string[] = [];
   private lastWidth = -1;
+  private nextBatchId = 1;
+  private offeredBatch: { id: number; end: number } | undefined;
 
   setNativeScrollbackCommittedRows(rows: number): void {
     this.committedRows = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
@@ -1273,15 +1275,33 @@ class OmaTranscriptContainer
     this.lastWidth = -1;
   }
 
+  /** Offer the currently committed prefix as one history batch (omp peek). */
+  peekFinalizedBatch(width: number): { id: number; end: number } | undefined {
+    if (this.offeredBatch !== undefined) return this.offeredBatch;
+    if (this.committedRows <= 0 || this.lastWidth !== width) return undefined;
+    const batch = { id: this.nextBatchId++, end: this.committedRows };
+    this.offeredBatch = batch;
+    return batch;
+  }
+
+  /** Acknowledges the offered batch, advancing the frontier (omp ack). */
+  acknowledgeFinalizedBatch(id: number): void {
+    if (this.offeredBatch === undefined || this.offeredBatch.id !== id) return;
+    this.committedRows = Math.max(this.committedRows, this.offeredBatch.end);
+    this.offeredBatch = undefined;
+  }
+
   /** Replay the committed prefix after a resize/replay (force full re-compose). */
   beginReplay(): void {
+    this.offeredBatch = undefined;
     this.lastLines = [];
     this.lastWidth = -1;
   }
 
-  /** Graceful shutdown flush: the committed prefix is already in terminal
-   *  scrollback; ensure the cache won't try to reuse stale rows. */
+  /** Graceful shutdown flush: offer + ack the committed prefix, then reset. */
   beginHistoryFlush(): void {
+    const batch = this.peekFinalizedBatch(this.lastWidth);
+    if (batch) this.acknowledgeFinalizedBatch(batch.id);
     this.beginReplay();
   }
 
