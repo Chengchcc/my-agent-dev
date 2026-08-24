@@ -170,16 +170,21 @@ function summarizeResult(result: Readonly<Record<string, unknown>>): string {
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (lines.length > 0) {
-      const first = lines[0]!;
-      const exit = lines.find((l) => /^\[exit: \d+\]$/.test(l));
+    const isError = result.isError === true || result.error !== undefined;
+    // Success: strip the `[exit: 0]` notice (omp's stripExitCodeNotice) so
+    // the line stays human; error keeps a red exit marker (renderTool colors it).
+    const contentLines = isError ? lines : lines.filter((l) => !/^\[exit: \d+\]$/.test(l));
+    if (contentLines.length > 0) {
+      const first = contentLines[0]!;
+      const exit = isError ? lines.find((l) => /^\[exit: \d+\]$/.test(l)) : undefined;
       const summary = exit && exit !== first ? `${first} · ${exit}` : first;
-      const remaining = lines.filter((l) => l !== first && l !== exit).length;
+      const remaining = contentLines.filter((l) => l !== first && l !== exit).length;
       const suffix =
         remaining > 0 ? ` (+${remaining} line${remaining === 1 ? "" : "s"}, ctrl+o)` : "";
       const base = summary.length > MAX_TOOL_ARGS ? `${summary.slice(0, MAX_TOOL_ARGS)}…` : summary;
       return `${base}${suffix}`;
     }
+    return "";
   }
   const json = JSON.stringify(result) ?? "";
   if (json.length <= MAX_TOOL_ARGS) return json;
@@ -1589,8 +1594,11 @@ export function createTerminalIo(
       `\u001b[${color}m  ${mark} \u001b[0m${boldName}\u001b[2m${args}${duration}\u001b[0m`,
     );
     if (item.result !== undefined) {
-      const resultColor = failed ? "31" : "2";
-      lines.push(`\u001b[${resultColor}m    ${summarizeResult(item.result)}\u001b[0m`);
+      const summary = summarizeResult(item.result);
+      if (summary) {
+        const resultColor = failed ? "31" : "2";
+        lines.push(`\u001b[${resultColor}m    ${summary}\u001b[0m`);
+      }
     }
     // Edit tool: the actual change as capped +/- lines (pi's diff rendering,
     // collapsed form) — WHAT changed, not just the path.

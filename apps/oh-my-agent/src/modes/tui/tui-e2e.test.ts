@@ -157,8 +157,9 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       // Pi-style presentation: success marker + bold name + `$ cmd` summary.
       expect(rendered).toContain("bash");
       expect(rendered).toContain("$ echo hi");
-      // The settled result is drawn under the tool line (bash content + exit).
-      expect(rendered).toContain("[exit: 0]");
+      // The settled result shows the bash output, not the exit-code notice.
+      expect(rendered).toContain("hi");
+      expect(rendered).not.toContain("[exit: 0]");
       expect(rendered).toContain("✔");
 
       await quitTui(vt);
