@@ -18,7 +18,10 @@ import {
   Markdown,
   type MarkdownTheme,
   matchesKey,
+  type NativeScrollbackCommittedRows,
+  type NativeScrollbackLiveRegion,
   ProcessTerminal,
+  type RenderStablePrefix,
   SelectList,
   type SelectListTheme,
   type SlashCommand,
@@ -1195,6 +1198,28 @@ function gitStatus(workspaceRoot: string): string {
   }
 }
 
+/** Transcript container that reports the native-scrollback committed
+ * boundary. v1 seam = rows already handed to scrollback; the engine may use
+ * it to skip recomposing committed history in future phases. */
+class OmaTranscriptContainer
+  extends Container
+  implements NativeScrollbackCommittedRows, RenderStablePrefix, NativeScrollbackLiveRegion
+{
+  private committedRows = 0;
+
+  setNativeScrollbackCommittedRows(rows: number): void {
+    this.committedRows = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
+  }
+
+  getNativeScrollbackLiveRegionStart(): number | undefined {
+    return this.committedRows;
+  }
+
+  getRenderStablePrefixRows(): number {
+    return this.committedRows;
+  }
+}
+
 /** Production TuiIo over the real terminal. The optional terminal override
  *  is the test seam: e2e tests inject a VirtualTerminal (xterm headless). */
 export function createTerminalIo(
@@ -1203,7 +1228,7 @@ export function createTerminalIo(
 ): TuiIo {
   const tui = new TUI(terminal);
   const headerContainer = new Container();
-  const transcript = new Container();
+  const transcript = new OmaTranscriptContainer();
   const statusContainer = new Container();
   const editor = new Editor(tui, EDITOR_THEME);
   let headerInfo = "oma";

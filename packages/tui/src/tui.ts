@@ -337,7 +337,7 @@ export interface NativeScrollbackReplay {
   prepareNativeScrollbackReplay(): void;
 }
 
-function setNativeScrollbackCommittedRows(component: Component, rows: number): void {
+export function setNativeScrollbackCommittedRows(component: Component, rows: number): void {
   (
     component as Component & Partial<NativeScrollbackCommittedRows>
   ).setNativeScrollbackCommittedRows?.(rows);
