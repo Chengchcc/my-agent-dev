@@ -240,6 +240,8 @@ interface LayoutLine {
 
 export interface EditorTheme {
   borderColor: (str: string) => string;
+  /** Optional custom top border (omp composer: the status line is the top border). */
+  topBorder?: (width: number) => string;
   selectList: SelectListTheme;
 }
 
@@ -539,8 +541,12 @@ export class Editor implements Component, Focusable {
     const leftPadding = " ".repeat(paddingX);
     const rightPadding = leftPadding;
 
-    // Render top border (with scroll indicator if scrolled down)
-    if (this.scrollOffset > 0) {
+    // Render top border (with scroll indicator if scrolled down). omp's
+    // composer uses the status line as the top border when a callback is set.
+    const topBorder = this.theme.topBorder?.(width);
+    if (topBorder !== undefined) {
+      result.push(topBorder);
+    } else if (this.scrollOffset > 0) {
       const indicator = `─── ↑ ${this.scrollOffset} more `;
       const remaining = width - visibleWidth(indicator);
       if (remaining >= 0) {

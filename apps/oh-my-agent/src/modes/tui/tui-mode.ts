@@ -1316,13 +1316,20 @@ export function createTerminalIo(
   const headerContainer = new Container();
   const transcript = new OmaTranscriptContainer();
   const statusContainer = new Container();
-  const editor = new Editor(tui, EDITOR_THEME);
+  const editorTheme: EditorTheme = {
+    ...EDITOR_THEME,
+    topBorder: (width: number): string =>
+      statusLineText || EDITOR_THEME.borderColor("─".repeat(width)),
+  };
+  const editor = new Editor(tui, editorTheme);
   let headerInfo = "oma";
   let headerModel = "";
   let headerSession = "";
   let headerTitle = "";
   let headerContext = "";
   const welcomeTip = WELCOME_TIPS[Math.floor(Math.random() * WELCOME_TIPS.length)] ?? "";
+  // The status line becomes the editor's top border (omp composer pattern).
+  let statusLineText = "";
 
   // Claude-style fixed header: ASCII wordmark banner + model/session line +
   // separator, all left-aligned. Rendered once and updated via setHeader;
@@ -1563,16 +1570,10 @@ export function createTerminalIo(
     if (headerSession) segs.push({ text: headerSession.slice(0, 8), fg: "\u001b[2m" });
     if (headerContext) segs.push({ text: headerContext, fg: contextColor(headerContext) });
     if (segs.length > 0) {
-      statusContainer.addChild(
-        new Text(
-          applyBackgroundToLine(
-            truncateToWidth(renderStatusBar(segs), tui.terminal.columns),
-            tui.terminal.columns,
-            (line) => `\u001b[48;5;234m${line}\u001b[0m`,
-          ),
-          0,
-          0,
-        ),
+      statusLineText = applyBackgroundToLine(
+        truncateToWidth(renderStatusBar(segs), tui.terminal.columns),
+        tui.terminal.columns,
+        (line) => `\u001b[48;5;234m${line}\u001b[0m`,
       );
     }
   }
