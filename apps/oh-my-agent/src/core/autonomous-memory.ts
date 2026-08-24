@@ -98,7 +98,7 @@ export async function extractAutonomousMemory(
         `${EXTRACT_PROMPT}\n\n<transcript>\n${transcript}\n</transcript>`,
       ),
     );
-    if (facts.length === 0) return { ran: false, freshFacts: 0 };
+    if (facts.length === 0) return { ran: true, freshFacts: 0 };
 
     const memDir = join(input.workspaceRoot, ".oma", "memory");
     const factsDir = join(memDir, "facts");

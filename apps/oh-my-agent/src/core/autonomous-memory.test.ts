@@ -137,7 +137,7 @@ describe("extractAutonomousMemory", () => {
         messages: MESSAGES,
         compactions: [],
       }),
-    ).resolves.toEqual({ ran: false, freshFacts: 0 });
+    ).resolves.toEqual({ ran: true, freshFacts: 0 });
     expect(calls).toHaveLength(1);
     expect(existsSync(join(root, ".oma", "memory"))).toBe(false);
   });
