@@ -1900,6 +1900,7 @@ export function createTerminalIo(
     });
   }
 
+  tui.setFrameProvider(transcript);
   tui.addChild(headerContainer);
   tui.addChild(transcript);
   tui.addChild(statusContainer);

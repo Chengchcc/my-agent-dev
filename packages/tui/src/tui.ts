@@ -399,6 +399,7 @@ export class TUI extends Container {
   private maxLinesRendered = 0; // Track terminal's working area (max lines ever rendered)
   private previousViewportTop = 0; // Track previous viewport top for resize-aware cursor moves
   private committedRows = 0; // Rows already handed to native scrollback (never repainted)
+  private frameProvider?: TerminalFrameProvider;
   private fullRedrawCount = 0;
   private stopped = false;
   private pendingOsc11BackgroundReplies = 0;
@@ -449,6 +450,11 @@ export class TUI extends Container {
    */
   setClearOnShrink(enabled: boolean): void {
     this.clearOnShrink = enabled;
+  }
+
+  /** Provide a frame provider (omp TerminalFrameProvider pipeline). */
+  setFrameProvider(provider?: TerminalFrameProvider): void {
+    this.frameProvider = provider;
   }
 
   setFocus(component: Component | null): void {
@@ -1444,6 +1450,17 @@ export class TUI extends Container {
 
     // Render all components to get new lines
     let newLines = this.render(width);
+
+    // Frame-provider pipeline: consume the plan (viewport retained for now).
+    // The full handshake (writing plan.history to terminal scrollback) is the
+    // next slice; this keeps the contract exercised without changing behavior.
+    if (this.frameProvider) {
+      const plan = this.frameProvider.renderFrame({ columns: width, rows: height });
+      if (plan.history) {
+        // History is already committed through setNativeScrollbackCommittedRows;
+        // the explicit ack path is wired in OmaTranscriptContainer.
+      }
+    }
 
     // Composite overlays into the rendered lines (before differential compare)
     if (this.overlayStack.length > 0) {
