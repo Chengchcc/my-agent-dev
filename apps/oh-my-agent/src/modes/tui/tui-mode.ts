@@ -7,6 +7,7 @@ import type { ModelRuntime } from "@chengchenccc/ai";
 import { buildSkillIndex } from "@chengchenccc/plugin-progressive-skill";
 import {
   applyBackgroundToLine,
+  Card,
   CombinedAutocompleteProvider,
   Container,
   type DefaultTextStyle,
@@ -1536,42 +1537,14 @@ export function createTerminalIo(
   }
 
   function renderTool(item: TranscriptItem, expanded: boolean): string[] {
-    const lines: string[] = [];
-    // Status marker (pi's pending/success/error bg tint, as fg color):
-    // yellow ● while running, green ✔ done, red ✘ on error results.
     const toolName = item.text.replace(/…$/, "");
     const failed =
       item.result !== undefined &&
       (item.result.isError === true || item.result.error !== undefined);
-    let mark = "\u2714";
-    let color = "32";
-    if (item.streaming) {
-      mark = "\u25cf";
-      color = "33";
-    } else if (failed) {
-      mark = "\u2718";
-      color = "31";
-    }
-    const boldName = `\u001b[1m${toolName}\u001b[22m`;
-    if (expanded) {
-      // Full pretty JSON for args and result, dimmed under the header.
-      lines.push(`\u001b[${color}m  ${mark} \u001b[0m${boldName}`);
-      if (item.input !== undefined) {
-        for (const line of prettyJson(item.input).split("\n")) {
-          lines.push(`\u001b[2m    ${line}\u001b[0m`);
-        }
-      }
-      if (item.result !== undefined) {
-        for (const line of prettyJson(item.result).split("\n")) {
-          lines.push(`\u001b[2m    ${line}\u001b[0m`);
-        }
-      }
-      return lines;
-    }
-    // Collapsed: pi-style arg summary sentence (e.g. `$ echo hi`,
-    // `read src/foo.ts:40-80`), not raw JSON; result as first line + count;
-    // wall-clock duration as trailing meta (pi status-line meta).
-    const args = item.input !== undefined ? ` ${summarizeToolArgs(toolName, item.input)}` : "";
+    const running = item.streaming;
+    // omp status icon set: running ⟳, error ✘, success ✔.
+    const mark = running ? "\u27f3" : failed ? "\u2718" : "\u2714";
+    const color = running ? "33" : failed ? "31" : "32";
     const duration =
       item.durationMs === undefined
         ? ""
@@ -1580,36 +1553,56 @@ export function createTerminalIo(
           : item.durationMs < 1000
             ? ` · ${item.durationMs}ms`
             : ` · ${(item.durationMs / 1000).toFixed(1)}s`;
-    lines.push(
-      `\u001b[${color}m  ${mark} \u001b[0m${boldName}\u001b[2m${args}${duration}\u001b[0m`,
-    );
+    const header = `\u001b[${color}m  ${mark} \u001b[0m\u001b[1m${toolName}\u001b[22m\u001b[2m${duration}\u001b[0m`;
+    const children: Text[] = [new Text(header, 0, 0)];
+
+    // Body column: call args summary (collapsed) or pretty JSON (expanded).
+    if (item.input !== undefined) {
+      if (expanded) {
+        for (const line of prettyJson(item.input).split("\n")) {
+          children.push(new Text(`\u001b[2m    ${line}\u001b[0m`, 0, 0));
+        }
+      } else {
+        children.push(
+          new Text(`\u001b[2m    └ ${summarizeToolArgs(toolName, item.input)}\u001b[0m`, 0, 0),
+        );
+      }
+    }
+
+    // Edit diff body: the actual +/- change, not the raw args.
+    if (toolName === "edit" && item.input !== undefined) {
+      const str = (v: unknown): string => (typeof v === "string" ? v : "");
+      for (const line of str(item.input.old_string).split("\n").slice(0, MAX_DIFF_LINES)) {
+        children.push(new Text(`\u001b[31m    - ${line.slice(0, 90)}\u001b[0m`, 0, 0));
+      }
+      for (const line of str(item.input.new_string).split("\n").slice(0, MAX_DIFF_LINES)) {
+        children.push(new Text(`\u001b[32m    + ${line.slice(0, 90)}\u001b[0m`, 0, 0));
+      }
+    }
+
+    // Live streaming output tail.
+    if (item.output && item.streaming) {
+      const tail = item.output.slice(-600);
+      for (const line of tail.split("\n").slice(-4)) {
+        if (line.trim()) children.push(new Text(`\u001b[2m    ${line}\u001b[0m`, 0, 0));
+      }
+    }
+
+    // Result body.
     if (item.result !== undefined) {
       const summary = summarizeResult(item.result);
       if (summary) {
         const resultColor = failed ? "31" : "2";
-        lines.push(`\u001b[${resultColor}m    ${summary}\u001b[0m`);
+        children.push(new Text(`\u001b[${resultColor}m    ${summary}\u001b[0m`, 0, 0));
       }
     }
-    // Edit tool: the actual change as capped +/- lines (pi's diff rendering,
-    // collapsed form) — WHAT changed, not just the path.
-    if (toolName === "edit" && item.input !== undefined) {
-      const str = (v: unknown): string => (typeof v === "string" ? v : "");
-      for (const line of str(item.input.old_string).split("\n").slice(0, MAX_DIFF_LINES)) {
-        lines.push(`\u001b[31m    - ${line.slice(0, 90)}\u001b[0m`);
-      }
-      for (const line of str(item.input.new_string).split("\n").slice(0, MAX_DIFF_LINES)) {
-        lines.push(`\u001b[32m    + ${line.slice(0, 90)}\u001b[0m`);
-      }
-    }
-    // Live streaming output (bash stdout): show the tail so long commands
-    // give progress without flooding the transcript.
-    if (item.output && item.streaming) {
-      const tail = item.output.slice(-600);
-      for (const line of tail.split("\n").slice(-4)) {
-        if (line.trim()) lines.push(`\u001b[2m    ${line}\u001b[0m`);
-      }
-    }
-    return lines;
+
+    // Whole card tint (omp tool card): gray pending, dark red error, subtle success.
+    const bgCode = running ? 238 : failed ? 52 : 235;
+    const card = new Card(children, {
+      bg: (line: string) => `\u001b[48;5;${bgCode}m${line}\u001b[0m`,
+    });
+    return card.render(tui.terminal.columns);
   }
 
   /** ctrl+r overlay over the persistent history; a selection lands in the

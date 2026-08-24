@@ -12,6 +12,7 @@ export {
 } from "./autocomplete.ts";
 // Components
 export { Box } from "./components/box.ts";
+export { Card, type CardOptions } from "./components/card.ts";
 export {
   Editor,
   type EditorOptions,
