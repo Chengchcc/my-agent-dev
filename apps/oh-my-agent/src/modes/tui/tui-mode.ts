@@ -1551,13 +1551,9 @@ export function createTerminalIo(
     }
     statusContainer.addChild(
       new Text(
-        applyBackgroundToLine(
-          truncateToWidth(
-            "\u001b[2m  enter send · esc abort · ^t think · ^o tools · ^p model · /help\u001b[0m",
-            tui.terminal.columns,
-          ),
+        truncateToWidth(
+          "\u001b[2m  Tip: enter send · esc abort · ^t think · ^o tools · ^p model · /help\u001b[0m",
           tui.terminal.columns,
-          (line) => `\u001b[48;5;234m${line}\u001b[0m`,
         ),
         0,
         0,
@@ -1733,19 +1729,21 @@ export function createTerminalIo(
       }
     }
 
-    // Result body.
+    // Output result with an omp-style separator label.
     if (item.result !== undefined) {
       const summary = summarizeResult(item.result);
       if (summary) {
+        children.push(new Text(`\u001b[2m    ── Output ──\u001b[0m`, 0, 0));
         const resultColor = failed ? "31" : "2";
         children.push(new Text(`\u001b[${resultColor}m    ${summary}\u001b[0m`, 0, 0));
       }
     }
 
-    // Whole card tint (omp tool card): gray pending, dark red error, subtle success.
-    const bgCode = running ? 238 : failed ? 52 : 235;
+    // Whole card tint: unified with user bubble / status line (48;5;234),
+    // with a dim box-drawing border.
     const card = new Card(children, {
-      bg: (line: string) => `\u001b[48;5;${bgCode}m${line}\u001b[0m`,
+      bg: (line: string) => `\u001b[48;5;234m${line}\u001b[0m`,
+      border: { color: (s: string) => `\u001b[${color}m${s}\u001b[0m` },
     });
     return card.render(tui.terminal.columns);
   }
