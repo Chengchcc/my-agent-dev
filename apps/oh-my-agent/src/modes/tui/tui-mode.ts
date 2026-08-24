@@ -1342,22 +1342,9 @@ export function createTerminalIo(
       "\u001b[36m ╚██████╔╝██║ ╚═╝ ██║██║  ██║\u001b[0m",
       "\u001b[36m  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝\u001b[0m",
     ];
-    const headerSegs: Array<{ text: string; chip?: boolean; fg?: string; bg?: string }> = [
-      { text: headerInfo, fg: "\u001b[1m" },
-    ];
-    const hTitle = cleanHeaderTitle(headerTitle);
-    if (hTitle) headerSegs.push({ text: hTitle, fg: "\u001b[2m" });
-    if (headerModel) headerSegs.push({ text: headerModel, chip: true, bg: "\u001b[48;5;25m" });
-    headerSegs.push({ text: formatWorkspace(workspaceRoot), fg: "\u001b[38;5;39m" });
-    const hGit = gitStatus(workspaceRoot);
-    if (hGit) headerSegs.push({ text: renderGitSegment(hGit) });
-    if (headerSession) headerSegs.push({ text: headerSession.slice(0, 8), fg: "\u001b[2m" });
-    if (headerContext) headerSegs.push({ text: headerContext, fg: contextColor(headerContext) });
-    const infoLine = applyBackgroundToLine(
-      renderStatusBar(headerSegs),
-      tui.terminal.columns,
-      (line) => `\u001b[48;5;234m${line}\u001b[0m`,
-    );
+    // Header is a simple info line; the powerline status bar lives in the
+    // footer only (and stays visible while a run is working).
+    const infoLine = `\u001b[2m  ${headerInfo}${cleanHeaderTitle(headerTitle)}${headerModel ? ` · model ${headerModel}` : ""}${headerSession ? ` · session ${headerSession.slice(0, 8)}` : ""}${headerContext ? ` · ${headerContext}` : ""}\u001b[0m`;
     const separator = `\u001b[2m  ${"─".repeat(Math.max(1, tui.terminal.columns - 2))}\u001b[0m`;
     const lines = currentRunCount === 0 ? [...banner, infoLine, separator] : [infoLine, separator];
     for (const line of lines) {
@@ -1520,8 +1507,8 @@ export function createTerminalIo(
     return undefined;
   });
 
-  function renderIdleFooter(): void {
-    if (busy || statusContainer.children.length > 0) return;
+  /** Add the powerline status bar (model/workspace/git/session/context). */
+  function addStatusBar(): void {
     const git = gitStatus(workspaceRoot);
     const segs: Array<{
       text: string;
@@ -1549,16 +1536,11 @@ export function createTerminalIo(
         ),
       );
     }
-    statusContainer.addChild(
-      new Text(
-        truncateToWidth(
-          "\u001b[2m  Tip: enter send · esc abort · ^t think · ^o tools · ^p model · /help\u001b[0m",
-          tui.terminal.columns,
-        ),
-        0,
-        0,
-      ),
-    );
+  }
+
+  function renderIdleFooter(): void {
+    if (busy || statusContainer.children.length > 0) return;
+    addStatusBar();
   }
   function render(state: TuiViewState): void {
     lastState = state;
@@ -1572,6 +1554,16 @@ export function createTerminalIo(
         if (lines.length > 0) lines.push("");
         lines.push(...itemLines);
       }
+    }
+    // omp-style welcome tip: only in the empty state, not under the status bar.
+    if (state.runs.length === 0) {
+      transcript.addChild(
+        new Text(
+          "\u001b[2m  Tip: enter send · esc abort · ^t think · ^o tools · ^p model · /help\u001b[0m",
+          0,
+          0,
+        ),
+      );
     }
     // Feed the FULL transcript to the TUI: the terminal's own scrollback
     // holds the history, so long sessions scroll naturally and the header
@@ -1826,6 +1818,7 @@ export function createTerminalIo(
       // seconds.
       statusContainer.clear();
       if (next) {
+        addStatusBar();
         busySince = Date.now();
         loader = new Loader(
           tui,
