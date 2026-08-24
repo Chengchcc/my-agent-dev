@@ -1206,6 +1206,8 @@ class OmaTranscriptContainer
   implements NativeScrollbackCommittedRows, RenderStablePrefix, NativeScrollbackLiveRegion
 {
   private committedRows = 0;
+  private lastLines: string[] = [];
+  private lastWidth = -1;
 
   setNativeScrollbackCommittedRows(rows: number): void {
     this.committedRows = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
@@ -1217,6 +1219,33 @@ class OmaTranscriptContainer
 
   getRenderStablePrefixRows(): number {
     return this.committedRows;
+  }
+
+  override clear(): void {
+    super.clear();
+    this.lastLines = [];
+    this.lastWidth = -1;
+  }
+
+  override render(width: number): string[] {
+    // Steady-state frames reuse the committed prefix (rows already in native
+    // scrollback) and only compose children at/after the seam, making each
+    // frame O(live tail) instead of O(history). A width change forces a full
+    // re-layout of the prefix too.
+    if (this.lastWidth !== width || this.children.length === 0) {
+      const all = super.render(width);
+      this.lastLines = all;
+      this.lastWidth = width;
+      return all;
+    }
+    const start = Math.min(this.committedRows, this.children.length);
+    const prefix = this.lastLines.slice(0, Math.max(0, start));
+    const tail: string[] = [];
+    for (let i = start; i < this.children.length; i++) {
+      tail.push(...this.children[i]!.render(width));
+    }
+    this.lastLines = [...prefix, ...tail];
+    return this.lastLines;
   }
 }
 
