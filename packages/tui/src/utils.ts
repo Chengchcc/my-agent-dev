@@ -907,10 +907,15 @@ export function applyBackgroundToLine(
   const visibleLen = visibleWidth(line);
   const paddingNeeded = Math.max(0, width - visibleLen);
   const padding = " ".repeat(paddingNeeded);
-
-  // Apply background to content + padding
   const withPadding = line + padding;
-  return bgFn(withPadding);
+
+  // A style reset inside `line` (e.g. `\x1b[36m...\x1b[0m`) clears the
+  // background too, leaving the padding uncolored. Re-apply bgFn per reset
+  // segment so CJK / styled bubble padding keeps its background.
+  return withPadding
+    .split("\x1b[0m")
+    .map((piece) => (piece ? bgFn(piece) : ""))
+    .join("\x1b[0m");
 }
 
 /**

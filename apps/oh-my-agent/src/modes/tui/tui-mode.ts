@@ -22,11 +22,11 @@ import {
   SelectList,
   type SelectListTheme,
   type SlashCommand,
+  Spacer,
   type Terminal,
   Text,
   TUI,
   truncateToWidth,
-  visibleWidth,
   wrapTextWithAnsi,
 } from "@chengchenccc/tui";
 import { buildCliRunInput, resolveStandaloneSkillRoots } from "../../cli/initial-input.js";
@@ -278,7 +278,7 @@ const MARKDOWN_THEME: MarkdownTheme = {
  *  text (pi's UserMessageComponent look). */
 const USER_TEXT_STYLE: DefaultTextStyle = {
   color: (s) => `\u001b[36m${s}\u001b[0m`,
-  bgColor: (s) => `\u001b[48;5;24m${s}\u001b[0m`,
+  bgColor: (s) => `\u001b[48;5;234m${s}\u001b[0m`,
 };
 
 /** Compact token count for the header: 12k / 200k. */
@@ -321,21 +321,6 @@ function overlayLines(lines: readonly string[], width: number): string[] {
     const content = truncateToWidth(line, innerWidth, "", true);
     return `\u001b[36m\u2502\u001b[0m${applyBackgroundToLine(content, innerWidth, OVERLAY_BG)}\u001b[36m\u2502\u001b[0m`;
   });
-}
-
-/** Re-apply a background after each ANSI SGR reset so a styled bubble's
- *  padding is filled too, not just the text run. */
-function applyBackgroundToLinePersistent(
-  line: string,
-  width: number,
-  bgFn: (s: string) => string,
-): string {
-  const visible = visibleWidth(line);
-  const content = line + " ".repeat(Math.max(0, width - visible));
-  return content
-    .split("\x1b[0m")
-    .map((piece) => (piece ? bgFn(piece) : ""))
-    .join("\x1b[0m");
 }
 
 /** Overlay root for the session picker: renders title + list and routes
@@ -1463,7 +1448,7 @@ export function createTerminalIo(
       for (const item of run.items) {
         const itemLines = renderItem(item, state);
         if (itemLines.length === 0) continue;
-        if (lines.length > 0) lines.push(" ");
+        if (lines.length > 0) lines.push("");
         lines.push(...itemLines);
       }
     }
@@ -1489,7 +1474,9 @@ export function createTerminalIo(
         ),
       );
     }
-    for (const line of lines.slice(start, end)) transcript.addChild(new Text(line, 0, 0));
+    for (const line of lines.slice(start, end)) {
+      transcript.addChild(line === "" ? new Spacer(1) : new Text(line, 0, 0));
+    }
     renderIdleFooter();
     tui.requestRender();
   }
@@ -1503,22 +1490,17 @@ export function createTerminalIo(
   function markdownLines(
     item: TranscriptItem,
     paddingX: number,
+    paddingY: number,
     style?: DefaultTextStyle,
-    widthOverride?: number,
-    bgFn?: (s: string) => string,
   ): string[] {
     let md = markdownCache.get(item);
     if (!md) {
-      md = new Markdown(item.text, paddingX, 0, MARKDOWN_THEME, style);
+      md = new Markdown(item.text, paddingX, paddingY, MARKDOWN_THEME, style);
       markdownCache.set(item, md);
     } else {
       md.setText(item.text);
     }
-    const lines = md.render(widthOverride ?? tui.terminal.columns);
-    if (bgFn) {
-      return lines.map((line) => applyBackgroundToLinePersistent(line, tui.terminal.columns, bgFn));
-    }
-    return lines;
+    return md.render(tui.terminal.columns);
   }
 
   function renderItem(item: TranscriptItem, state: TuiViewState): string[] {
@@ -1531,15 +1513,9 @@ export function createTerminalIo(
           return [`\u001b[2m  » ${item.text.replace(/\r?\n/g, " ↵ ")}\u001b[0m`];
         }
         // Fresh prompt: markdown on a bg bubble (pi's UserMessageComponent).
-        return markdownLines(
-          item,
-          1,
-          { color: USER_TEXT_STYLE.color },
-          tui.terminal.columns,
-          USER_TEXT_STYLE.bgColor,
-        );
+        return markdownLines(item, 1, 1, USER_TEXT_STYLE);
       case "assistant":
-        return item.text ? markdownLines(item, 1) : [];
+        return item.text ? markdownLines(item, 1, 0) : [];
       case "thinking":
         return renderThinking(item, state.showThinking);
       case "tool":

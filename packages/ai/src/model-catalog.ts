@@ -29,6 +29,8 @@ export interface ProviderSpec {
   apiKeyEnv: string;
   /** Inline literal key from models.yml — fallback when apiKeyEnv is unset. */
   apiKey?: string;
+  /** Custom request headers (e.g. Authorization: Bearer ...) from models.yml. */
+  headers?: Record<string, string>;
   models: ModelSpec[];
 }
 
@@ -452,5 +454,17 @@ export function parseCatalogYAML(text: string): CatalogSpec {
     }
   }
   if (!root.providers) throw new Error("models.yml: missing 'providers' key");
-  return root as unknown as CatalogSpec;
+  const providers = root.providers;
+  if (typeof providers !== "object" || providers === null) {
+    throw new Error("models.yml: providers must be an object");
+  }
+  for (const provider of Object.values(providers)) {
+    const p = provider as Record<string, unknown>;
+    if (p.header && !p.headers) p.headers = p.header;
+    delete p.header;
+  }
+  // Parse boundary: root.providers is untrusted YAML; the single cast pins
+  // each provider's shape to the spec the caller already validates through
+  // CatalogSpec.
+  return { providers: providers as Record<string, ProviderSpec> };
 }

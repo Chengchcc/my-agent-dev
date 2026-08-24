@@ -72,7 +72,7 @@ export function registerProvidersFromCatalog(
         id: pid,
         name: pid,
         baseUrl,
-        auth: { apiKey },
+        auth: { apiKey, ...(entry.spec.headers ? { headers: entry.spec.headers } : {}) },
         models: entry.models,
       }),
     );
@@ -106,5 +106,7 @@ function resolveBaseUrl(
   // ponytail: anthropic-specific override, delete when ProviderSpec gets
   // a generic baseUrlEnv field.
   if (pid === "anthropic" && env.ANTHROPIC_BASE_URL) return env.ANTHROPIC_BASE_URL;
-  return specBaseUrl;
+  let url = specBaseUrl.trim().replace(/\/+$/, "");
+  if (!url.endsWith("/v1")) url += "/v1";
+  return url;
 }
