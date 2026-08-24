@@ -1463,7 +1463,15 @@ export function createTerminalIo(
     return md.render(tui.terminal.columns);
   }
 
-  function renderItem(item: TranscriptItem, state: TuiViewState): string[] {
+  /** Settled item render cache (live-region seam): a non-streaming item's
+   *  lines are byte-stable at the current width/toggle state, so re-rendering
+   *  every frame only for the live tail saves O(history) recomposition. */
+  const itemLineCache = new WeakMap<
+    TranscriptItem,
+    { lines: string[]; showThinking: boolean; showToolDetail: boolean; width: number }
+  >();
+
+  function computeRenderItem(item: TranscriptItem, state: TuiViewState): string[] {
     switch (item.kind) {
       case "user":
         if (!item.text) return [];
@@ -1489,6 +1497,29 @@ export function createTerminalIo(
       case "error":
         return [`\u001b[31m  error: ${item.text}\u001b[0m`];
     }
+  }
+
+  function renderItem(item: TranscriptItem, state: TuiViewState): string[] {
+    const cached = itemLineCache.get(item);
+    if (
+      cached &&
+      !item.streaming &&
+      cached.showThinking === state.showThinking &&
+      cached.showToolDetail === state.showToolDetail &&
+      cached.width === tui.terminal.columns
+    ) {
+      return cached.lines;
+    }
+    const lines = computeRenderItem(item, state);
+    if (!item.streaming) {
+      itemLineCache.set(item, {
+        lines,
+        showThinking: state.showThinking,
+        showToolDetail: state.showToolDetail,
+        width: tui.terminal.columns,
+      });
+    }
+    return lines;
   }
 
   function renderThinking(text: string, expanded: boolean): string[] {
