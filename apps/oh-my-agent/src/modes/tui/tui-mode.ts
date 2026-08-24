@@ -13,6 +13,7 @@ import {
   type DefaultTextStyle,
   Editor,
   type EditorTheme,
+  type FramePlan,
   Input,
   Loader,
   Markdown,
@@ -29,6 +30,7 @@ import {
   type SlashCommand,
   Spacer,
   type Terminal,
+  type TerminalFrameProvider,
   Text,
   TUI,
   truncateToWidth,
@@ -1244,7 +1246,8 @@ class OmaTranscriptContainer
     NativeScrollbackCommittedRows,
     NativeScrollbackLiveRegion,
     NativeScrollbackReplay,
-    RenderStablePrefix
+    RenderStablePrefix,
+    TerminalFrameProvider
 {
   private committedRows = 0;
   private lastLines: string[] = [];
@@ -1289,6 +1292,18 @@ class OmaTranscriptContainer
     if (this.offeredBatch === undefined || this.offeredBatch.id !== id) return;
     this.committedRows = Math.max(this.committedRows, this.offeredBatch.end);
     this.offeredBatch = undefined;
+  }
+
+  /** Frame provider viewport = current render; history = committed prefix. */
+  renderFrame(opts: { columns: number; rows: number }): FramePlan {
+    const viewport = this.render(opts.columns);
+    const batch = this.peekFinalizedBatch(opts.columns);
+    return {
+      viewport,
+      history: batch
+        ? { id: batch.id, rows: this.lastLines.slice(0, Math.max(0, batch.end)) }
+        : undefined,
+    };
   }
 
   /** Replay the committed prefix after a resize/replay (force full re-compose). */
