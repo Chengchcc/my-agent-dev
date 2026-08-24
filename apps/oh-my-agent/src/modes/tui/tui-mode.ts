@@ -1273,6 +1273,18 @@ class OmaTranscriptContainer
     this.lastWidth = -1;
   }
 
+  /** Replay the committed prefix after a resize/replay (force full re-compose). */
+  beginReplay(): void {
+    this.lastLines = [];
+    this.lastWidth = -1;
+  }
+
+  /** Graceful shutdown flush: the committed prefix is already in terminal
+   *  scrollback; ensure the cache won't try to reuse stale rows. */
+  beginHistoryFlush(): void {
+    this.beginReplay();
+  }
+
   override render(width: number): string[] {
     // Steady-state frames reuse the committed prefix (rows already in native
     // scrollback) and only compose children at/after the seam, making each
@@ -1857,6 +1869,7 @@ export function createTerminalIo(
     const originalResize = terminalWithResize.resize.bind(terminal);
     terminalWithResize.resize = (c: number, r: number): void => {
       originalResize(c, r);
+      transcript.beginReplay();
       if (lastState) {
         renderHeader();
         if (!busy) statusContainer.clear();

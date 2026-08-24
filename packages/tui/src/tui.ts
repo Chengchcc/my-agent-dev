@@ -776,6 +776,10 @@ export class TUI extends Container {
 
   stop(): void {
     this.stopped = true;
+    // Graceful shutdown: let root components flush any pending history.
+    for (const child of this.children) {
+      (child as Component & { beginHistoryFlush?: () => void }).beginHistoryFlush?.();
+    }
     if (this.renderTimer) {
       clearTimeout(this.renderTimer);
       this.renderTimer = undefined;
