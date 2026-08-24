@@ -308,6 +308,56 @@ export class Container implements Component {
 }
 
 /**
+ * Native scrollback live-region contract (omp engine seam). A component
+ * reports the local row index below which rows are mutable; rows above it
+ * may be committed to native scrollback as final and never repainted.
+ */
+export interface NativeScrollbackLiveRegion {
+  getNativeScrollbackLiveRegionStart(): number | undefined;
+  isNativeScrollbackLiveRegionPinned?(): boolean;
+}
+
+/** Engine tells a component how many of its rows have entered native scrollback. */
+export interface NativeScrollbackCommittedRows {
+  setNativeScrollbackCommittedRows(rows: number): void;
+}
+
+/** A component reports leading rows byte-identical to the previous render. */
+export interface RenderStablePrefix {
+  getRenderStablePrefixRows(): number;
+}
+
+/** Fast path for composing only the visible tail during a resize burst. */
+export interface ViewportTailProvider {
+  renderViewportTail(width: number, maxRows: number): readonly string[];
+}
+
+/** Component hook to rehydrate its full frame after a destructive replay. */
+export interface NativeScrollbackReplay {
+  prepareNativeScrollbackReplay(): void;
+}
+
+function setNativeScrollbackCommittedRows(component: Component, rows: number): void {
+  (
+    component as Component & Partial<NativeScrollbackCommittedRows>
+  ).setNativeScrollbackCommittedRows?.(rows);
+}
+
+export function getNativeScrollbackLiveRegionStart(component: Component): number | undefined {
+  return (
+    component as Component & Partial<NativeScrollbackLiveRegion>
+  ).getNativeScrollbackLiveRegionStart?.();
+}
+
+export function getRenderStablePrefixRows(component: Component): number | undefined {
+  return (component as Component & Partial<RenderStablePrefix>).getRenderStablePrefixRows?.();
+}
+
+export function prepareNativeScrollbackReplay(component: Component): void {
+  (component as Component & Partial<NativeScrollbackReplay>).prepareNativeScrollbackReplay?.();
+}
+
+/**
  * TUI - Main class for managing terminal UI with differential rendering
  */
 export class TUI extends Container {
@@ -331,6 +381,7 @@ export class TUI extends Container {
   private clearOnShrink = process.env.PI_CLEAR_ON_SHRINK === "1"; // Clear empty rows when content shrinks (default: off)
   private maxLinesRendered = 0; // Track terminal's working area (max lines ever rendered)
   private previousViewportTop = 0; // Track previous viewport top for resize-aware cursor moves
+  private committedRows = 0; // Rows already handed to native scrollback (never repainted)
   private fullRedrawCount = 0;
   private stopped = false;
   private pendingOsc11BackgroundReplies = 0;
@@ -1343,6 +1394,14 @@ export class TUI extends Container {
     return null;
   }
 
+  /** Advance the committed boundary and notify root children. */
+  private syncCommittedRows(): void {
+    this.committedRows = Math.max(this.committedRows, this.previousViewportTop);
+    for (const child of this.children) {
+      setNativeScrollbackCommittedRows(child, this.committedRows);
+    }
+  }
+
   private doRender(): void {
     if (this.stopped) return;
     const width = this.terminal.columns;
@@ -1412,6 +1471,7 @@ export class TUI extends Container {
       }
       const bufferLength = Math.max(height, newLines.length);
       this.previousViewportTop = Math.max(0, bufferLength - height);
+      this.syncCommittedRows();
       this.positionHardwareCursor(cursorPos, newLines.length);
       this.previousLines = newLines;
       this.previousKittyImageIds = this.collectKittyImageIds(newLines);
@@ -1501,6 +1561,7 @@ export class TUI extends Container {
     if (firstChanged === -1) {
       this.positionHardwareCursor(cursorPos, newLines.length);
       this.previousViewportTop = prevViewportTop;
+      this.syncCommittedRows();
       this.previousHeight = height;
       return;
     }
@@ -1551,6 +1612,7 @@ export class TUI extends Container {
       this.previousWidth = width;
       this.previousHeight = height;
       this.previousViewportTop = prevViewportTop;
+      this.syncCommittedRows();
       return;
     }
 
@@ -1721,6 +1783,7 @@ export class TUI extends Container {
     // Track terminal's working area (grows but doesn't shrink unless cleared)
     this.maxLinesRendered = Math.max(this.maxLinesRendered, newLines.length);
     this.previousViewportTop = Math.max(prevViewportTop, finalCursorRow - height + 1);
+    this.syncCommittedRows();
 
     // Position hardware cursor for IME
     this.positionHardwareCursor(cursorPos, newLines.length);
