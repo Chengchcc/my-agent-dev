@@ -1755,13 +1755,45 @@ export function createTerminalIo(
       }
     }
 
-    // Output result with an omp-style separator label.
+    // Result body: omp-style actual output lines (4 collapsed / 12 expanded)
+    // with a `… N more lines · (ctrl+o)` hint.
     if (item.result !== undefined) {
-      const summary = summarizeResult(item.result);
-      if (summary) {
-        children.push(new Text(`\u001b[2m    ── Output ──\u001b[0m`, 0, 0));
-        const resultColor = failed ? "31" : "2";
-        children.push(new Text(`\u001b[${resultColor}m    ${summary}\u001b[0m`, 0, 0));
+      const content = typeof item.result.content === "string" ? item.result.content : null;
+      const resultColor = failed ? "31" : "2";
+      if (content !== null) {
+        const textContent = content.trimEnd();
+        // Success strips the `[exit: 0]` notice (omp stripExitCodeNotice);
+        // errors keep the red exit marker.
+        const outputLines = textContent
+          .split("\n")
+          .filter((line) => !(!failed && /\[exit: \d+\]/.test(line)));
+        const maxOut = expanded ? 12 : 4;
+        const display = outputLines.slice(0, maxOut);
+        for (const line of display) {
+          children.push(
+            new Text(
+              `\u001b[${resultColor}m    ${truncateToWidth(line, tui.terminal.columns - 6)}\u001b[0m`,
+              0,
+              0,
+            ),
+          );
+        }
+        if (outputLines.length > maxOut) {
+          children.push(
+            new Text(
+              `\u001b[2m    … ${outputLines.length - maxOut} more lines · (ctrl+o)\u001b[0m`,
+              0,
+              0,
+            ),
+          );
+        } else if (!expanded) {
+          children.push(new Text(`\u001b[2m    · (ctrl+o)\u001b[0m`, 0, 0));
+        }
+      } else {
+        const summary = summarizeResult(item.result);
+        if (summary) {
+          children.push(new Text(`\u001b[${resultColor}m    ${summary}\u001b[0m`, 0, 0));
+        }
       }
     }
 
