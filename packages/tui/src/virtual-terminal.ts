@@ -1,4 +1,4 @@
-import type { Terminal as XtermTerminalType } from "@xterm/headless";
+import type { IBufferCell, IBufferLine, Terminal as XtermTerminalType } from "@xterm/headless";
 import xterm from "@xterm/headless";
 import type { Terminal } from "./terminal.ts";
 
@@ -167,6 +167,34 @@ export class VirtualTerminal implements Terminal {
   /**
    * Get the entire scroll buffer
    */
+  /**
+   * Like getViewport() but re-emits per-cell SGR styling (fg/bg/bold/dim/…)
+   * so snapshot tooling can see colors and backgrounds, not just text.
+   */
+  getViewportAnsi(): string[] {
+    const lines: string[] = [];
+    const buffer = this.xterm.buffer.active;
+    for (let i = 0; i < this.xterm.rows; i++) {
+      const line = buffer.getLine(buffer.viewportY + i);
+      if (!line) {
+        lines.push("");
+        continue;
+      }
+      lines.push(lineToAnsi(line));
+    }
+    return lines;
+  }
+  /** Scrollback + viewport with per-cell SGR re-emitted. */
+  getScrollBufferAnsi(): string[] {
+    const lines: string[] = [];
+    const buffer = this.xterm.buffer.active;
+    for (let i = 0; i < buffer.length; i++) {
+      const line = buffer.getLine(i);
+      lines.push(line ? lineToAnsi(line) : "");
+    }
+    return lines;
+  }
+
   getScrollBuffer(): string[] {
     const lines: string[] = [];
     const buffer = this.xterm.buffer.active;
@@ -215,4 +243,66 @@ export class VirtualTerminal implements Terminal {
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
     await this.flush();
   }
+}
+/** SGR escape for one cell's styling; empty string means default attrs. */
+function cellSgr(cell: IBufferCell): string {
+  const codes: string[] = [];
+  if (cell.isBold()) codes.push("1");
+  if (cell.isDim()) codes.push("2");
+  if (cell.isItalic()) codes.push("3");
+  if (cell.isUnderline()) codes.push("4");
+  if (cell.isInverse()) codes.push("7");
+  if (cell.isStrikethrough()) codes.push("9");
+  const fg = colorCode(cell.getFgColor(), cell.getFgColorMode(), 30);
+  if (fg) codes.push(fg);
+  const bg = colorCode(cell.getBgColor(), cell.getBgColorMode(), 40);
+  if (bg) codes.push(bg);
+  return codes.length > 0 ? `\x1b[${codes.join(";")}m` : "";
+}
+
+/** Map xterm color (palette index or packed rgb) to an SGR parameter. */
+function colorCode(color: number, mode: number, base: number): string | null {
+  // xterm packs the color mode in bits 24-25: 0 = default, 1 = P16 palette,
+  // 2 = P256 palette, 3 = RGB.
+  const kind = mode >>> 24;
+  if (kind === 1) {
+    if (color < 8) return `${base + color}`;
+    return `${base + 60 + color - 8}`;
+  }
+  if (kind === 2) return `${base + 8};5;${color}`;
+  if (kind === 3) {
+    const r = (color >> 16) & 0xff;
+    const g = (color >> 8) & 0xff;
+    const b = color & 0xff;
+    return `${base + 8};2;${r};${g};${b}`;
+  }
+  return null;
+}
+
+/** One buffer row with SGR codes re-emitted between attribute runs. */
+export function lineToAnsi(line: IBufferLine): string {
+  let out = "";
+  let current = "";
+  let x = 0;
+  while (x < line.length) {
+    const cell = line.getCell(x);
+    if (!cell) break;
+    const sgr = cellSgr(cell);
+    if (sgr !== current) {
+      current = sgr;
+      out += "\x1b[0m";
+      out += sgr;
+    }
+    const width = cell.getWidth();
+    if (width === 0) {
+      // Zero-width cell (e.g. after a wide char): escape only, no glyph.
+      out += cell.getChars();
+      x += 1;
+      continue;
+    }
+    out += cell.getChars() || " ";
+    x += width;
+  }
+  if (current) out += "\x1b[0m";
+  return out;
 }

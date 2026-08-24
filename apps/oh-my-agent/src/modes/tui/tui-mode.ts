@@ -6,6 +6,7 @@ import type { BackendRunInput, BackendRunOutcome } from "@chengchenccc/agent-bac
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { buildSkillIndex } from "@chengchenccc/plugin-progressive-skill";
 import {
+  applyBackgroundToLine,
   CombinedAutocompleteProvider,
   Container,
   type DefaultTextStyle,
@@ -24,6 +25,9 @@ import {
   type Terminal,
   Text,
   TUI,
+  truncateToWidth,
+  visibleWidth,
+  wrapTextWithAnsi,
 } from "@chengchenccc/tui";
 import { buildCliRunInput, resolveStandaloneSkillRoots } from "../../cli/initial-input.js";
 import { createOmaRuntime, type OmaRuntime } from "../../core/create-runtime.js";
@@ -156,9 +160,27 @@ function prettyJson(value: unknown): string {
   return json.length > MAX_TOOL_DETAIL ? `${json.slice(0, MAX_TOOL_DETAIL)}…` : json;
 }
 
-/** Collapsed tool-result summary: the full compact JSON when it is short,
- *  otherwise the first meaningful line + remaining char count. */
+/** Collapsed tool-result summary: prefer result.content as a human
+ *  sentence, keeping the exit marker; fall back to compact JSON only
+ *  when content is not a string. */
 function summarizeResult(result: Readonly<Record<string, unknown>>): string {
+  const content = result.content;
+  if (typeof content === "string") {
+    const lines = content
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (lines.length > 0) {
+      const first = lines[0]!;
+      const exit = lines.find((l) => /^\[exit: \d+\]$/.test(l));
+      const summary = exit && exit !== first ? `${first} · ${exit}` : first;
+      const remaining = lines.filter((l) => l !== first && l !== exit).length;
+      const suffix =
+        remaining > 0 ? ` (+${remaining} line${remaining === 1 ? "" : "s"}, ctrl+o)` : "";
+      const base = summary.length > MAX_TOOL_ARGS ? `${summary.slice(0, MAX_TOOL_ARGS)}…` : summary;
+      return `${base}${suffix}`;
+    }
+  }
   const json = JSON.stringify(result) ?? "";
   if (json.length <= MAX_TOOL_ARGS) return json;
   let firstLine = json;
@@ -209,7 +231,7 @@ function summarizeToolArgs(toolName: string, input: Readonly<Record<string, unkn
   return compactJson(input, MAX_TOOL_ARGS);
 }
 const EDITOR_THEME: EditorTheme = {
-  borderColor: (s) => s,
+  borderColor: (s) => `\u001b[2m${s}\u001b[0m`,
   selectList: {
     selectedPrefix: (s) => `\u001b[36m${s}\u001b[0m`,
     selectedText: (s) => `\u001b[1m${s}\u001b[0m`,
@@ -245,7 +267,7 @@ const MARKDOWN_THEME: MarkdownTheme = {
   quote: (s) => `\u001b[2m${s}\u001b[0m`,
   quoteBorder: (s) => `\u001b[2m${s}\u001b[0m`,
   hr: (s) => `\u001b[2m${s}\u001b[0m`,
-  listBullet: (s) => `\u001b[36m${s}\u001b[0m`,
+  listBullet: (s) => `\u001b[2m${s}\u001b[0m`,
   bold: (s) => `\u001b[1m${s}\u001b[0m`,
   italic: (s) => `\u001b[3m${s}\u001b[0m`,
   strikethrough: (s) => `\u001b[9m${s}\u001b[0m`,
@@ -288,6 +310,34 @@ export function formatModelMeta(
   return parts.join(" · ");
 }
 
+const OVERLAY_BG = (s: string): string => `\u001b[48;5;235m${s}\u001b[0m`;
+
+/** Pad + frame overlay lines so they cover the underlying transcript
+ *  (a plain Container's unshaped whitespace lets the base text bleed
+ *  through). */
+function overlayLines(lines: readonly string[], width: number): string[] {
+  const innerWidth = Math.max(1, width - 2);
+  return lines.map((line) => {
+    const content = truncateToWidth(line, innerWidth, "", true);
+    return `\u001b[36m\u2502\u001b[0m${applyBackgroundToLine(content, innerWidth, OVERLAY_BG)}\u001b[36m\u2502\u001b[0m`;
+  });
+}
+
+/** Re-apply a background after each ANSI SGR reset so a styled bubble's
+ *  padding is filled too, not just the text run. */
+function applyBackgroundToLinePersistent(
+  line: string,
+  width: number,
+  bgFn: (s: string) => string,
+): string {
+  const visible = visibleWidth(line);
+  const content = line + " ".repeat(Math.max(0, width - visible));
+  return content
+    .split("\x1b[0m")
+    .map((piece) => (piece ? bgFn(piece) : ""))
+    .join("\x1b[0m");
+}
+
 /** Overlay root for the session picker: renders title + list and routes
  *  key input to the list (a plain Container has no handleInput). */
 class PickerOverlay extends Container {
@@ -302,6 +352,9 @@ class PickerOverlay extends Container {
 
   handleInput(data: string): void {
     this.list.handleInput(data);
+  }
+  override render(width: number): string[] {
+    return overlayLines(super.render(Math.max(1, width - 2)), width);
   }
 }
 
@@ -371,6 +424,9 @@ class HistorySearchOverlay extends Container {
     this.list = this.buildList();
     this.listSlot.addChild(this.list);
   }
+  override render(width: number): string[] {
+    return overlayLines(super.render(Math.max(1, width - 2)), width);
+  }
 }
 
 /** The full interactive session loop, driver-agnostic. */
@@ -391,12 +447,21 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
   /** Workflow script queued by /workflow: injected into the next run input. */
   let pendingWorkflowScript: string | undefined;
 
-  function pushStatus(lines: string | readonly string[]): void {
+  function pushStatus(lines: string | readonly string[], replacePrefix?: string): void {
     const items = (typeof lines === "string" ? [lines] : lines).map((text) => ({
       kind: "status" as const,
       text,
       streaming: false,
     }));
+    if (replacePrefix) {
+      for (let i = state.runs.length - 1; i >= 0; i--) {
+        const first = state.runs[i]!.items[0];
+        if (first?.kind === "status" && first.text.startsWith(replacePrefix)) {
+          state.runs[i] = { items, running: false };
+          return;
+        }
+      }
+    }
     state.runs.push({ items, running: false });
   }
 
@@ -1075,6 +1140,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
             : res.ran
               ? "memory: nothing new to learn"
               : "memory: skipped",
+          "memory: ",
         );
         io.render(state);
       });
@@ -1083,13 +1149,29 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     // (pi's context-usage display); read BEFORE close() like compactions().
     const usage = await runtime.contextUsage().catch(() => undefined);
     if (usage) lastContextTokens = usage.estimatedTokens;
-    if (usage && usage.limit > 0) {
-      const pct = Math.min(100, Math.round((usage.estimatedTokens / usage.limit) * 100));
+    const usageParts: string[] = [];
+    if (outcome.usage) {
+      if (outcome.usage.inputTokens) usageParts.push(`↑${outcome.usage.inputTokens}`);
+      if (outcome.usage.outputTokens) usageParts.push(`↓${outcome.usage.outputTokens}`);
+      if (outcome.usage.cacheReadTokens) usageParts.push(`cache ${outcome.usage.cacheReadTokens}`);
+    }
+    if ((usage && usage.limit > 0) || usageParts.length > 0) {
+      const ctx =
+        usage && usage.limit > 0
+          ? `ctx ${formatTokens(usage.estimatedTokens)}/${formatTokens(usage.limit)}`
+          : "";
+      const pct =
+        usage && usage.limit > 0
+          ? Math.min(100, Math.round((usage.estimatedTokens / usage.limit) * 100))
+          : 0;
+      const context = [ctx, ...(usageParts.length > 0 ? [usageParts.join(" ")] : [])]
+        .filter(Boolean)
+        .join(" · ");
       io.setHeader?.({
         model: modelId,
         sessionId: session.sessionId,
         title: sessionTitle,
-        context: `ctx ${formatTokens(usage.estimatedTokens)}/${formatTokens(usage.limit)} · ${pct}%`,
+        context: pct > 0 ? `${context} · ${pct}%` : context,
       });
     }
     await runtime.close().catch(() => {});
@@ -1115,25 +1197,41 @@ export function createTerminalIo(
   let headerSession = "";
   let headerTitle = "";
   let headerContext = "";
+  let currentRunCount = 0;
 
   // Claude-style fixed header: ASCII wordmark banner + model/session line +
   // separator, all left-aligned. Rendered once and updated via setHeader;
   // transcript scrolls below it independently. Zero padding (paddingX/Y=0):
   // the default paddingY=1 would stack 3 rows per banner line and swallow
   // most of a 30-row terminal.
+  /** Clean a session title for the header line: strip markdown heading
+   *  markers/whitespace, collapse whitespace, cap at 32 chars. */
+  function cleanHeaderTitle(title: string): string {
+    const cleaned = title
+      .replace(/^[#>*\s]+/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!cleaned) return "";
+    const truncated = cleaned.length > 32 ? `${cleaned.slice(0, 32)}…` : cleaned;
+    return ` — ${truncated}`;
+  }
+
   function renderHeader(): void {
     headerContainer.clear();
-    const lines = [
+    const banner = [
       "\u001b[36m  ██████╗ ███╗   ███╗ █████╗ \u001b[0m",
       "\u001b[36m ██╔═══██╗████╗ ████║██╔══██╗\u001b[0m",
       "\u001b[36m ██║   ██║██╔████╔██║███████║\u001b[0m",
       "\u001b[36m ██║   ██║██║╚██╔╝██║██╔══██║\u001b[0m",
       "\u001b[36m ╚██████╔╝██║ ╚═╝ ██║██║  ██║\u001b[0m",
       "\u001b[36m  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝\u001b[0m",
-      `\u001b[2m  ${headerInfo}${headerTitle ? ` — ${headerTitle.slice(0, 24)}` : ""}${headerModel ? ` · model ${headerModel}` : ""}${headerSession ? ` · session ${headerSession.slice(0, 8)}` : ""}${headerContext ? ` · ${headerContext}` : ""}\u001b[0m`,
-      `\u001b[2m  ${"─".repeat(27)}\u001b[0m`,
     ];
-    for (const line of lines) headerContainer.addChild(new Text(line, 0, 0));
+    const infoLine = `\u001b[2m  ${headerInfo}${cleanHeaderTitle(headerTitle)}${headerModel ? ` · model ${headerModel}` : ""}${headerSession ? ` · session ${headerSession.slice(0, 8)}` : ""}${headerContext ? ` · ${headerContext}` : ""}\u001b[0m`;
+    const separator = `\u001b[2m  ${"─".repeat(Math.max(1, tui.terminal.columns - 2))}\u001b[0m`;
+    const lines = currentRunCount === 0 ? [...banner, infoLine, separator] : [infoLine, separator];
+    for (const line of lines) {
+      headerContainer.addChild(new Text(truncateToWidth(line, tui.terminal.columns), 0, 0));
+    }
   }
 
   renderHeader();
@@ -1242,18 +1340,16 @@ export function createTerminalIo(
   // requestRender would repaint the STALE children — the slice happens in
   // render(), so scrolling without re-rendering showed nothing at idle).
   let lastState: TuiViewState | null = null;
-  /** Transcript viewport height: terminal rows minus chrome. Header is 8
-   *  compact rows (6 banner + info + separator), status 1, the editor its
-   *  CURRENT row count (grows with multi-line input — a fixed guess let a
-   *  tall editor push the header off-screen), plus the scroll indicator
-   *  row while history is viewed. */
+  /** Transcript viewport height: terminal rows minus chrome. Header is the
+   *  CURRENT count (8 at boot, 2 after the first run), status 1, the editor
+   *  its CURRENT row count, plus the scroll-indicator row while history is
+   *  viewed. Every transcript line renders as one row (paddingY=0). */
   const viewportLines = (): number => {
     const editorRows = Math.max(1, editor.render(tui.terminal.columns).length);
     const indicatorRows = scrollOffset > 0 ? 2 : 0;
-    // Every transcript line renders as 2 rows (text + paddingY=1 spacing),
-    // so the line budget is half the row budget: header 8 + status 1.
-    const rowBudget = tui.terminal.rows - 9 - editorRows - indicatorRows;
-    return Math.max(1, Math.floor(rowBudget / 2));
+    const headerRows = Math.max(1, headerContainer.children.length);
+    const statusRows = Math.max(1, statusContainer.children.length);
+    return Math.max(1, tui.terminal.rows - headerRows - statusRows - editorRows - indicatorRows);
   };
 
   tui.addInputListener((data) => {
@@ -1349,7 +1445,10 @@ export function createTerminalIo(
     if (busy || statusContainer.children.length > 0) return;
     statusContainer.addChild(
       new Text(
-        "  enter send · shift+enter newline · esc abort · ctrl+t thinking · ctrl+o tools · ctrl+p model · /help",
+        truncateToWidth(
+          "\u001b[2m  enter send · esc abort · ^t think · ^o tools · ^p model · /help\u001b[0m",
+          tui.terminal.columns,
+        ),
         0,
         0,
       ),
@@ -1357,10 +1456,16 @@ export function createTerminalIo(
   }
   function render(state: TuiViewState): void {
     lastState = state;
+    currentRunCount = state.runs.length;
     transcript.clear();
     const lines: string[] = [];
     for (const run of state.runs) {
-      for (const item of run.items) lines.push(...renderItem(item, state));
+      for (const item of run.items) {
+        const itemLines = renderItem(item, state);
+        if (itemLines.length === 0) continue;
+        if (lines.length > 0) lines.push(" ");
+        lines.push(...itemLines);
+      }
     }
     totalLines = lines.length;
     // Draw the true viewport window [end - viewport, end) where end =
@@ -1379,12 +1484,12 @@ export function createTerminalIo(
       transcript.addChild(
         new Text(
           `\u001b[2m  ↑ ${start} lines above · ↓ ${scrollOffset} below — End to return\u001b[0m`,
-          undefined,
-          1,
+          0,
+          0,
         ),
       );
     }
-    for (const line of lines.slice(start, end)) transcript.addChild(new Text(line, undefined, 1));
+    for (const line of lines.slice(start, end)) transcript.addChild(new Text(line, 0, 0));
     renderIdleFooter();
     tui.requestRender();
   }
@@ -1399,6 +1504,8 @@ export function createTerminalIo(
     item: TranscriptItem,
     paddingX: number,
     style?: DefaultTextStyle,
+    widthOverride?: number,
+    bgFn?: (s: string) => string,
   ): string[] {
     let md = markdownCache.get(item);
     if (!md) {
@@ -1407,7 +1514,11 @@ export function createTerminalIo(
     } else {
       md.setText(item.text);
     }
-    return md.render(Math.max(20, tui.terminal.columns - 4));
+    const lines = md.render(widthOverride ?? tui.terminal.columns);
+    if (bgFn) {
+      return lines.map((line) => applyBackgroundToLinePersistent(line, tui.terminal.columns, bgFn));
+    }
+    return lines;
   }
 
   function renderItem(item: TranscriptItem, state: TuiViewState): string[] {
@@ -1420,9 +1531,15 @@ export function createTerminalIo(
           return [`\u001b[2m  » ${item.text.replace(/\r?\n/g, " ↵ ")}\u001b[0m`];
         }
         // Fresh prompt: markdown on a bg bubble (pi's UserMessageComponent).
-        return markdownLines(item, 1, USER_TEXT_STYLE);
+        return markdownLines(
+          item,
+          1,
+          { color: USER_TEXT_STYLE.color },
+          tui.terminal.columns,
+          USER_TEXT_STYLE.bgColor,
+        );
       case "assistant":
-        return item.text ? markdownLines(item, 0) : [];
+        return item.text ? markdownLines(item, 1) : [];
       case "thinking":
         return renderThinking(item, state.showThinking);
       case "tool":
@@ -1443,7 +1560,8 @@ export function createTerminalIo(
       if (item.text.length === firstLine.length) return [dim(`  ~ ${firstLine}`)];
       return [dim(`  ~ ${firstLine} … (ctrl+t)`)];
     }
-    return item.text.split("\n").map((line) => dim(`  ~ ${line}`));
+    const wrapWidth = Math.max(20, tui.terminal.columns - 6);
+    return wrapTextWithAnsi(item.text, wrapWidth).map((line) => dim(`  ~ ${line}`));
   }
 
   function renderTool(item: TranscriptItem, expanded: boolean): string[] {
@@ -1484,10 +1602,20 @@ export function createTerminalIo(
     // wall-clock duration as trailing meta (pi status-line meta).
     const args = item.input !== undefined ? ` ${summarizeToolArgs(toolName, item.input)}` : "";
     const duration =
-      item.durationMs !== undefined ? ` · ${(item.durationMs / 1000).toFixed(1)}s` : "";
+      item.durationMs === undefined
+        ? ""
+        : item.durationMs < 100
+          ? ""
+          : item.durationMs < 1000
+            ? ` · ${item.durationMs}ms`
+            : ` · ${(item.durationMs / 1000).toFixed(1)}s`;
     lines.push(
       `\u001b[${color}m  ${mark} \u001b[0m${boldName}\u001b[2m${args}${duration}\u001b[0m`,
     );
+    if (item.result !== undefined) {
+      const resultColor = failed ? "31" : "2";
+      lines.push(`\u001b[${resultColor}m    ${summarizeResult(item.result)}\u001b[0m`);
+    }
     // Edit tool: the actual change as capped +/- lines (pi's diff rendering,
     // collapsed form) — WHAT changed, not just the path.
     if (toolName === "edit" && item.input !== undefined) {
@@ -1507,9 +1635,6 @@ export function createTerminalIo(
         if (line.trim()) lines.push(`\u001b[2m    ${line}\u001b[0m`);
       }
     }
-    if (item.result !== undefined) {
-      lines.push(`\u001b[2m    ${summarizeResult(item.result)}\u001b[0m`);
-    }
     return lines;
   }
 
@@ -1528,7 +1653,7 @@ export function createTerminalIo(
     }
     const { promise, resolve } = Promise.withResolvers<string | null>();
     const overlayBox = new HistorySearchOverlay(
-      new Text("  history search — type to filter, enter insert, esc cancel", 0, 0),
+      new Text("  history search — filter, enter, esc", 0, 0),
       historyEntries,
       EDITOR_THEME.selectList,
       (value) => {
@@ -1553,6 +1678,24 @@ export function createTerminalIo(
   tui.addChild(editor);
   tui.setFocus(editor);
   tui.start();
+  // Rebuild transcript lines at the new width on terminal resize, so
+  // pre-wrapped thinking/tool output doesn't lose hanging indents when the
+  // terminal shrinks (the TUI's own resize handler only re-renders the
+  // existing Text children).
+  const terminalWithResize = terminal as Terminal & {
+    resize?: (c: number, r: number) => void;
+  };
+  if (terminalWithResize.resize) {
+    const originalResize = terminalWithResize.resize.bind(terminal);
+    terminalWithResize.resize = (c: number, r: number): void => {
+      originalResize(c, r);
+      if (lastState) {
+        renderHeader();
+        if (!busy) statusContainer.clear();
+        render(lastState);
+      }
+    };
+  }
   // Mouse tracking (normal tracking + SGR encoding): the wheel scrolls the
   // transcript. Restored in close(); Shift bypasses capture for text
   // selection.
@@ -1626,7 +1769,7 @@ export function createTerminalIo(
         maxPrimaryColumnWidth: 8,
       });
       const overlayBox = new PickerOverlay(
-        new Text("  resume session — ↑/↓ select, enter resume, esc cancel", 0, 0),
+        new Text("  resume session — select, enter, esc", 0, 0),
         list,
       );
       const overlay = tui.showOverlay(overlayBox, { width: "60%", anchor: "center" });
@@ -1652,7 +1795,7 @@ export function createTerminalIo(
         maxPrimaryColumnWidth: 32,
       });
       const overlayBox = new PickerOverlay(
-        new Text("  pick model — ↑/↓ select, enter confirm, esc cancel", 0, 0),
+        new Text("  pick model — select, enter, esc", 0, 0),
         list,
       );
       const overlay = tui.showOverlay(overlayBox, { width: "60%", anchor: "center" });
@@ -1678,7 +1821,7 @@ export function createTerminalIo(
         maxPrimaryColumnWidth: 6,
       });
       const overlayBox = new PickerOverlay(
-        new Text("  fork from message — ↑/↓ select, enter fork, esc cancel", 0, 0),
+        new Text("  fork from message — select, enter, esc", 0, 0),
         list,
       );
       const overlay = tui.showOverlay(overlayBox, { width: "70%", anchor: "center" });

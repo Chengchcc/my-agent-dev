@@ -748,10 +748,10 @@ describe("tui session (headless, fake provider)", () => {
         await Promise.resolve();
         statuses = statusTexts();
       }
-      // omp AutoLearn-style indicator: learning appears immediately, the
-      // result lands when the background extraction finishes.
-      expect(statuses).toContain("memory: learning…");
+      // omp AutoLearn-style indicator: the result replaces the in-flight
+      // "learning…" line (no fossil left in the permanent transcript).
       expect(statuses).toContain("memory: learned 1 fact");
+      expect(statuses).not.toContain("memory: learning…");
     } finally {
       delete process.env.OMA_SESSION_DIR;
       if (savedTitle === undefined) delete process.env.OMA_TITLE_ENABLED;

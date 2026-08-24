@@ -768,8 +768,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       // Claude-style header: ASCII wordmark + model/session line.
       expect(boot).toContain("█");
       expect(boot).toMatch(/session \S+/);
-      // Idle footer with key hints.
-      expect(boot).toContain("ctrl+p model");
+      expect(boot).toContain("^p model");
 
       // ctrl+p opens the model picker overlay with the catalog.
       vt.sendInput("\x10");

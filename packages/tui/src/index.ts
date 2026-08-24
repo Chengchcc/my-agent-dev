@@ -108,6 +108,7 @@ export {
 } from "./tui.ts";
 // Utilities
 export {
+  applyBackgroundToLine,
   sliceByColumn,
   truncateToWidth,
   visibleWidth,

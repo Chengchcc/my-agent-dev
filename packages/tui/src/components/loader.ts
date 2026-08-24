@@ -41,7 +41,7 @@ export class Loader extends Text {
   }
 
   override render(width: number): string[] {
-    return ["", ...super.render(width)];
+    return super.render(width);
   }
 
   start(): void {
