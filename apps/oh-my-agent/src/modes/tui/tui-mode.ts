@@ -1011,6 +1011,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       modelRuntime: opts.modelRuntime,
       modelId,
     });
+    modelId = built.run.model.modelId;
     // /workflow queued a script: this run executes the vm workflow instead
     // of a conversational loop (create-runtime branches on input.workflow).
     let runInput: BackendRunInput<"oma"> = built;
@@ -1168,6 +1169,29 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     // /exit (or a second ctrl+c path) may have run via the live-command
     // channel while the Run was live — honor it now that the Run settled.
     if (quitting) return 0;
+  }
+}
+
+/** Compact git branch + dirty count for the idle status line. */
+function gitStatus(workspaceRoot: string): string {
+  try {
+    const branchResult = Bun.spawnSync([
+      "git",
+      "-C",
+      workspaceRoot,
+      "rev-parse",
+      "--abbrev-ref",
+      "HEAD",
+    ]);
+    if (branchResult.exitCode !== 0) return "";
+    const branch = branchResult.stdout.toString().trim();
+    if (!branch) return "";
+    const porcelain = Bun.spawnSync(["git", "-C", workspaceRoot, "status", "--porcelain"]);
+    if (porcelain.exitCode !== 0) return branch;
+    const changes = porcelain.stdout.toString().split("\n").filter(Boolean).length;
+    return changes > 0 ? `${branch}+${changes}` : branch;
+  } catch {
+    return "";
   }
 }
 
@@ -1433,15 +1457,18 @@ export function createTerminalIo(
 
   function renderIdleFooter(): void {
     if (busy || statusContainer.children.length > 0) return;
+    const statusParts = [
+      headerModel ? `model ${headerModel}` : "",
+      gitStatus(workspaceRoot),
+      headerSession ? `session ${headerSession.slice(0, 8)}` : "",
+      headerContext,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const hints = "enter send · esc abort · ^t think · ^o tools · ^p model · /help";
+    const text = statusParts ? `${statusParts} · ${hints}` : hints;
     statusContainer.addChild(
-      new Text(
-        truncateToWidth(
-          "\u001b[2m  enter send · esc abort · ^t think · ^o tools · ^p model · /help\u001b[0m",
-          tui.terminal.columns,
-        ),
-        0,
-        0,
-      ),
+      new Text(truncateToWidth(`\u001b[2m  ${text}\u001b[0m`, tui.terminal.columns), 0, 0),
     );
   }
   function render(state: TuiViewState): void {
@@ -1828,6 +1855,10 @@ export function createTerminalIo(
       // the last reading until a fresh one arrives.
       if (info.context !== undefined) headerContext = info.context;
       renderHeader();
+      if (!busy) {
+        statusContainer.clear();
+        renderIdleFooter();
+      }
       tui.requestRender();
     },
     setInputText(text) {
