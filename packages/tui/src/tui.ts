@@ -312,6 +312,27 @@ export interface NativeScrollbackCommittedRows {
   setNativeScrollbackCommittedRows(rows: number): void;
 }
 
+/** One offered history batch (finalized rows for terminal scrollback). */
+export interface HistoryBatch {
+  id: number;
+  rows: readonly string[];
+}
+
+/** A frame plan returned by a terminal frame provider. */
+export interface FramePlan {
+  viewport: readonly string[];
+  history?: HistoryBatch;
+}
+
+/** A provider that composes the terminal frame + offers history batches.
+ *  oma currently uses a simplified renderer; this contract is the target for
+ *  the full omp-compatible pipeline. */
+export interface TerminalFrameProvider {
+  renderFrame(opts: { columns: number; rows: number }): FramePlan;
+  beginHistoryFlush?(): void;
+  beginHistoryReplay?(): void;
+}
+
 /** A component reports the local row index below which rows are mutable. */
 export interface NativeScrollbackLiveRegion {
   getNativeScrollbackLiveRegionStart(): number | undefined;

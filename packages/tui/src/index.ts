@@ -103,8 +103,10 @@ export {
   Container,
   CURSOR_MARKER,
   type Focusable,
+  type FramePlan,
   getNativeScrollbackLiveRegionStart,
   getRenderStablePrefixRows,
+  type HistoryBatch,
   isFocusable,
   type NativeScrollbackCommittedRows,
   type NativeScrollbackLiveRegion,
@@ -118,6 +120,7 @@ export {
   type RenderStablePrefix,
   type SizeValue,
   setNativeScrollbackCommittedRows,
+  type TerminalFrameProvider,
   TUI,
   type ViewportTailProvider,
 } from "./tui.ts";
