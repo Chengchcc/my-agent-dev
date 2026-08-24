@@ -18,7 +18,6 @@ import {
   type MarkdownTheme,
   matchesKey,
   ProcessTerminal,
-  routeSgrMouseInput,
   SelectList,
   type SelectListTheme,
   type SlashCommand,
@@ -1348,40 +1347,10 @@ export function createTerminalIo(
   // Esc/ctrl+t/ctrl+o are intercepted before the editor sees them. Esc
   // aborts a live run (pi's app.interrupt); ctrl+t and ctrl+o toggle the
   // thinking-block and tool-detail views globally.
-  let scrollOffset = 0;
-  let totalLines = 0;
-  // Last rendered state: the scroll keys rebuild the window from it (a bare
-  // requestRender would repaint the STALE children — the slice happens in
-  // render(), so scrolling without re-rendering showed nothing at idle).
+  // Last rendered state: resize/setHeader rebuild the transcript from it.
   let lastState: TuiViewState | null = null;
-  /** Transcript viewport height: terminal rows minus chrome. Header is the
-   *  CURRENT count (8 at boot, 2 after the first run), status 1, the editor
-   *  its CURRENT row count, plus the scroll-indicator row while history is
-   *  viewed. Every transcript line renders as one row (paddingY=0). */
-  const viewportLines = (): number => {
-    const editorRows = Math.max(1, editor.render(tui.terminal.columns).length);
-    const indicatorRows = scrollOffset > 0 ? 2 : 0;
-    const headerRows = Math.max(1, headerContainer.children.length);
-    const statusRows = Math.max(1, statusContainer.children.length);
-    return Math.max(1, tui.terminal.rows - headerRows - statusRows - editorRows - indicatorRows);
-  };
 
   tui.addInputListener((data) => {
-    // Mouse (SGR): the wheel scrolls the transcript window (native
-    // scrollback holds no session copy — oma owns all history). All mouse
-    // reports are consumed so clicks never reach the editor; plain
-    // click-drag text selection needs Shift while the session runs.
-    const mouseConsumed = routeSgrMouseInput(data, (event) => {
-      if (event.wheel === -1) {
-        scrollOffset = Math.min(scrollOffset + 3, Math.max(0, totalLines - viewportLines()));
-        if (lastState) render(lastState);
-      } else if (event.wheel === 1) {
-        scrollOffset = Math.max(0, scrollOffset - 3);
-        if (lastState) render(lastState);
-      }
-      return true;
-    });
-    if (mouseConsumed) return { consume: true };
     // Focus reporting (CSI 1004): ESC[I focused, ESC[O unfocused.
     if (data === "\x1b[I") {
       focused = true;
@@ -1412,29 +1381,7 @@ export function createTerminalIo(
       openHistorySearch();
       return { consume: true };
     }
-    // Transcript scroll: PageUp/PageDown step by a viewport, Home jumps to
-    // the top, End returns to the latest; ctrl+c aborts the live run when
-    // busy and quits when idle.
-    if (matchesKey(data, "pageUp")) {
-      scrollOffset += viewportLines();
-      if (lastState) render(lastState);
-      return { consume: true };
-    }
-    if (matchesKey(data, "pageDown")) {
-      scrollOffset = Math.max(0, scrollOffset - viewportLines());
-      if (lastState) render(lastState);
-      return { consume: true };
-    }
-    if (matchesKey(data, "home")) {
-      scrollOffset = Math.max(0, totalLines - viewportLines());
-      if (lastState) render(lastState);
-      return { consume: true };
-    }
-    if (matchesKey(data, "end")) {
-      scrollOffset = 0;
-      if (lastState) render(lastState);
-      return { consume: true };
-    }
+    // ctrl+c aborts the live run when busy and quits when idle.
     if (matchesKey(data, "ctrl+c")) {
       if (busy) {
         if (commandHandler) commandHandler("abort");
@@ -1484,29 +1431,10 @@ export function createTerminalIo(
         lines.push(...itemLines);
       }
     }
-    totalLines = lines.length;
-    // Draw the true viewport window [end - viewport, end) where end =
-    // total - scrollOffset. Slicing here — instead of stacking every line
-    // and letting the TUI clip the buffer bottom — bounds the Text children
-    // by the viewport (a long session no longer re-renders thousands of
-    // rows per event) and keeps the scroll indicator inside the drawn
-    // window where it is actually visible.
-    scrollOffset = Math.min(scrollOffset, Math.max(0, lines.length - viewportLines()));
-    const viewport = viewportLines();
-    const end = lines.length - scrollOffset;
-    const start = Math.max(0, end - viewport);
-    // Scroll indicator while viewing history: lines hidden above/below and
-    // how to return (End).
-    if (scrollOffset > 0) {
-      transcript.addChild(
-        new Text(
-          `\u001b[2m  ↑ ${start} lines above · ↓ ${scrollOffset} below — End to return\u001b[0m`,
-          0,
-          0,
-        ),
-      );
-    }
-    for (const line of lines.slice(start, end)) {
+    // Feed the FULL transcript to the TUI: the terminal's own scrollback
+    // holds the history, so long sessions scroll naturally and the header
+    // moves up until the terminal swallows it.
+    for (const line of lines) {
       transcript.addChild(line === "" ? new Spacer(1) : new Text(line, 0, 0));
     }
     renderIdleFooter();
@@ -1714,7 +1642,7 @@ export function createTerminalIo(
   // Mouse tracking (normal tracking + SGR encoding): the wheel scrolls the
   // transcript. Restored in close(); Shift bypasses capture for text
   // selection.
-  tui.terminal.write("\x1b[?1000h\x1b[?1006h\x1b[?1004h");
+  tui.terminal.write("\x1b[?1004h");
 
   return {
     render,
@@ -1880,7 +1808,7 @@ export function createTerminalIo(
       clearTimeout(quitTimer);
       dismissQuitHint();
       if (loader) loader.stop();
-      tui.terminal.write("\x1b[?1000l\x1b[?1006l\x1b[?1004l");
+      tui.terminal.write("\x1b[?1004l");
       tui.stop();
     },
   };
