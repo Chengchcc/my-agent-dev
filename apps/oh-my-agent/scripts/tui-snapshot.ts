@@ -17,12 +17,18 @@ const rows = Number(process.env.SNAP_ROWS ?? 32);
 
 process.env.OMA_FAKE_PROVIDER = "1";
 
-/** A workspace the real tools can act on. */
+/** A workspace the real tools can act on — a real temp git repo so the
+ *  status bar's git-branch segment is exercised in the frames. */
 const ws = mkdtempSync(join(tmpdir(), "oma-snap-ws-"));
 writeFileSync(
   join(ws, "demo.ts"),
   "const timeout = 1000;\nexport { timeout };\nconsole.log('hello');\n",
 );
+Bun.spawnSync(["git", "-C", ws, "init", "-q"]);
+Bun.spawnSync(["git", "-C", ws, "config", "user.email", "snap@test"]);
+Bun.spawnSync(["git", "-C", ws, "config", "user.name", "snap"]);
+Bun.spawnSync(["git", "-C", ws, "add", "-A"]);
+Bun.spawnSync(["git", "-C", ws, "commit", "-qm", "init"]);
 
 const RICH_TOOLS = JSON.stringify([
   { name: "bash", input: { command: "ls -la" } },
