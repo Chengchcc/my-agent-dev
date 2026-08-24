@@ -1,3 +1,4 @@
+import { renderMermaidAscii } from "beautiful-mermaid";
 import { Marked, type Token, Tokenizer, type Tokens } from "marked";
 import { getCapabilities, hyperlink, isImageLine } from "../terminal-image.ts";
 import type { Component } from "../tui.ts";
@@ -381,6 +382,23 @@ export class Markdown implements Component {
         break;
 
       case "code": {
+        if (token.lang === "mermaid") {
+          let ascii: string | null = null;
+          try {
+            ascii = renderMermaidAscii(token.text, { colorMode: "none" });
+          } catch {
+            ascii = null;
+          }
+          if (ascii) {
+            for (const line of ascii.split("\n")) {
+              lines.push(this.theme.codeBlock(line));
+            }
+            if (nextTokenType && nextTokenType !== "space") {
+              lines.push("");
+            }
+            break;
+          }
+        }
         const border = this.theme.codeBlockBorder;
         const lang = token.lang || "";
         const innerWidth = Math.max(1, width - 2);
