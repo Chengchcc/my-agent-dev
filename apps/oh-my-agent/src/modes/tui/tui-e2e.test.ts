@@ -761,7 +761,8 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       expect(boot).toContain("█");
       // omp-style header: session id segment, no literal "session" word.
       expect(boot).toMatch(/\b[0-9a-f]{8}\b/);
-      expect(boot).toContain("^p model");
+      // Welcome easter egg appears in the empty transcript.
+      expect(boot).toContain("Tip:");
 
       // ctrl+p opens the model picker overlay with the catalog.
       vt.sendInput("\x10");

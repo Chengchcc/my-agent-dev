@@ -1217,6 +1217,15 @@ function renderGitSegment(git: string): string {
   return `\u001b[38;5;39m${git.slice(0, plus)}\u001b[0m\u001b[38;5;172m${git.slice(plus)}\u001b[0m`;
 }
 
+/** One-time welcome easter eggs, rotated per session (omp welcome tip). */
+const WELCOME_TIPS: readonly string[] = [
+  "Tip: press ctrl+t to expand thinking, ctrl+o for tool detail",
+  "Tip: /mcp test <name> checks a configured MCP server",
+  "Tip: /resume lists saved sessions; /session shows the current id",
+  "Tip: /workflow runs a script with subagents",
+  "Tip: /exit twice quits; /help lists all commands",
+];
+
 /** Threshold color for context percent (omp contextPct). */
 function contextColor(ctx: string): string {
   const m = ctx.match(/(\d+)%/);
@@ -1314,6 +1323,7 @@ export function createTerminalIo(
   let headerTitle = "";
   let headerContext = "";
   let currentRunCount = 0;
+  const welcomeTip = WELCOME_TIPS[Math.floor(Math.random() * WELCOME_TIPS.length)] ?? "";
 
   // Claude-style fixed header: ASCII wordmark banner + model/session line +
   // separator, all left-aligned. Rendered once and updated via setHeader;
@@ -1342,11 +1352,28 @@ export function createTerminalIo(
       "\u001b[36m ╚██████╔╝██║ ╚═╝ ██║██║  ██║\u001b[0m",
       "\u001b[36m  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝\u001b[0m",
     ];
-    // Header is a simple info line; the powerline status bar lives in the
-    // footer only (and stays visible while a run is working).
-    const infoLine = `\u001b[2m  ${headerInfo}${cleanHeaderTitle(headerTitle)}${headerModel ? ` · model ${headerModel}` : ""}${headerSession ? ` · session ${headerSession.slice(0, 8)}` : ""}${headerContext ? ` · ${headerContext}` : ""}\u001b[0m`;
+    // omp-style header: a bordered no-background card/table with the initial
+    // model/workspace/git/session/context info (the status bar in the footer is
+    // the boxed one; the header stays a light card).
+    const headerSegs: Array<{ text: string; chip?: boolean; fg?: string; bg?: string }> = [
+      { text: headerInfo, fg: "\u001b[1m" },
+    ];
+    const hTitle = cleanHeaderTitle(headerTitle);
+    if (hTitle) headerSegs.push({ text: hTitle, fg: "\u001b[2m" });
+    if (headerModel) headerSegs.push({ text: headerModel, chip: true, bg: "\u001b[48;5;25m" });
+    headerSegs.push({ text: formatWorkspace(workspaceRoot), fg: "\u001b[38;5;39m" });
+    const hGit = gitStatus(workspaceRoot);
+    if (hGit) headerSegs.push({ text: renderGitSegment(hGit) });
+    if (headerSession) headerSegs.push({ text: headerSession.slice(0, 8), fg: "\u001b[2m" });
+    if (headerContext) headerSegs.push({ text: headerContext, fg: contextColor(headerContext) });
+    const headerCard = new Card([new Text(renderStatusBar(headerSegs), 0, 0)], {
+      paddingY: 0,
+      border: { color: (s: string) => `\u001b[2m${s}\u001b[0m` },
+    });
+    const infoLines = headerCard.render(tui.terminal.columns);
     const separator = `\u001b[2m  ${"─".repeat(Math.max(1, tui.terminal.columns - 2))}\u001b[0m`;
-    const lines = currentRunCount === 0 ? [...banner, infoLine, separator] : [infoLine, separator];
+    const lines =
+      currentRunCount === 0 ? [...banner, ...infoLines, separator] : [...infoLines, separator];
     for (const line of lines) {
       headerContainer.addChild(new Text(truncateToWidth(line, tui.terminal.columns), 0, 0));
     }
@@ -1555,15 +1582,10 @@ export function createTerminalIo(
         lines.push(...itemLines);
       }
     }
-    // omp-style welcome tip: only in the empty state, not under the status bar.
-    if (state.runs.length === 0) {
-      transcript.addChild(
-        new Text(
-          "\u001b[2m  Tip: enter send · esc abort · ^t think · ^o tools · ^p model · /help\u001b[0m",
-          0,
-          0,
-        ),
-      );
+    // Rotating welcome easter egg: shown only in the empty state, gone after
+    // the first run (omp weights/rotates welcome tips per session).
+    if (state.runs.length === 0 && welcomeTip) {
+      transcript.addChild(new Text(`\u001b[2m  ${welcomeTip}\u001b[0m`, 0, 0));
     }
     // Feed the FULL transcript to the TUI: the terminal's own scrollback
     // holds the history, so long sessions scroll naturally and the header
