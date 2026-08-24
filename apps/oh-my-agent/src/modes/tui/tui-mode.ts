@@ -20,6 +20,7 @@ import {
   matchesKey,
   type NativeScrollbackCommittedRows,
   ProcessTerminal,
+  renderStatusBar,
   SelectList,
   type SelectListTheme,
   type SlashCommand,
@@ -1196,6 +1197,23 @@ function gitStatus(workspaceRoot: string): string {
   }
 }
 
+/** Branch cyan, dirty count ember (omp gitClean/gitDirty colors). */
+function renderGitSegment(git: string): string {
+  if (!git) return "";
+  const plus = git.indexOf("+");
+  if (plus === -1) return `\u001b[38;5;42m${git}\u001b[0m`;
+  return `\u001b[38;5;39m${git.slice(0, plus)}\u001b[0m\u001b[38;5;172m${git.slice(plus)}\u001b[0m`;
+}
+
+/** Threshold color for context percent (omp contextPct). */
+function contextColor(ctx: string): string {
+  const m = ctx.match(/(\d+)%/);
+  const pct = m ? Number(m[1]) : 0;
+  if (pct >= 90) return "\u001b[38;5;196m";
+  if (pct >= 70) return "\u001b[38;5;172m";
+  return "\u001b[2m";
+}
+
 /** Transcript container that reports the native-scrollback committed
  * boundary. v1 seam = rows already handed to scrollback; the engine may use
  * it to skip recomposing committed history in future phases. */
@@ -1457,18 +1475,33 @@ export function createTerminalIo(
 
   function renderIdleFooter(): void {
     if (busy || statusContainer.children.length > 0) return;
-    const statusParts = [
-      headerModel ? `model ${headerModel}` : "",
-      gitStatus(workspaceRoot),
-      headerSession ? `session ${headerSession.slice(0, 8)}` : "",
-      headerContext,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    const hints = "enter send · esc abort · ^t think · ^o tools · ^p model · /help";
-    const text = statusParts ? `${statusParts} · ${hints}` : hints;
+    const git = gitStatus(workspaceRoot);
+    const segs: Array<{
+      text: string;
+      chip?: boolean;
+      fg?: string;
+      bg?: string;
+    }> = [];
+    if (headerModel) {
+      segs.push({ text: headerModel, chip: true, bg: "\u001b[48;5;25m" });
+    }
+    if (git) segs.push({ text: renderGitSegment(git) });
+    if (headerSession) segs.push({ text: headerSession.slice(0, 8), fg: "\u001b[2m" });
+    if (headerContext) segs.push({ text: headerContext, fg: contextColor(headerContext) });
+    if (segs.length > 0) {
+      statusContainer.addChild(
+        new Text(truncateToWidth(renderStatusBar(segs), tui.terminal.columns), 0, 0),
+      );
+    }
     statusContainer.addChild(
-      new Text(truncateToWidth(`\u001b[2m  ${text}\u001b[0m`, tui.terminal.columns), 0, 0),
+      new Text(
+        truncateToWidth(
+          "\u001b[2m  enter send · esc abort · ^t think · ^o tools · ^p model · /help\u001b[0m",
+          tui.terminal.columns,
+        ),
+        0,
+        0,
+      ),
     );
   }
   function render(state: TuiViewState): void {

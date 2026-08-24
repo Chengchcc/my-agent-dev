@@ -34,6 +34,11 @@ export {
   type SelectListTruncatePrimaryContext,
 } from "./components/select-list.ts";
 export { Spacer } from "./components/spacer.ts";
+export {
+  chip,
+  renderStatusBar,
+  type StatusSegment,
+} from "./components/statusline.ts";
 export { Text } from "./components/text.ts";
 export { TruncatedText } from "./components/truncated-text.ts";
 // Editor component interface (for custom editors)
