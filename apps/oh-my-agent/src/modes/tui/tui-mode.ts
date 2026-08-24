@@ -1322,7 +1322,6 @@ export function createTerminalIo(
   let headerSession = "";
   let headerTitle = "";
   let headerContext = "";
-  let currentRunCount = 0;
   const welcomeTip = WELCOME_TIPS[Math.floor(Math.random() * WELCOME_TIPS.length)] ?? "";
 
   // Claude-style fixed header: ASCII wordmark banner + model/session line +
@@ -1352,28 +1351,41 @@ export function createTerminalIo(
       "\u001b[36m ╚██████╔╝██║ ╚═╝ ██║██║  ██║\u001b[0m",
       "\u001b[36m  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝\u001b[0m",
     ];
-    // omp-style header: a bordered no-background card/table with the initial
-    // model/workspace/git/session/context info (the status bar in the footer is
-    // the boxed one; the header stays a light card).
-    const headerSegs: Array<{ text: string; chip?: boolean; fg?: string; bg?: string }> = [
-      { text: headerInfo, fg: "\u001b[1m" },
-    ];
+    // Right-side list of initial info: left banner + right list inside one
+    // bordered no-background card.
+    const infoLines: string[] = [];
+    infoLines.push(`\u001b[1m  ${headerInfo}\u001b[0m`);
     const hTitle = cleanHeaderTitle(headerTitle);
-    if (hTitle) headerSegs.push({ text: hTitle, fg: "\u001b[2m" });
-    if (headerModel) headerSegs.push({ text: headerModel, chip: true, bg: "\u001b[48;5;25m" });
-    headerSegs.push({ text: formatWorkspace(workspaceRoot), fg: "\u001b[38;5;39m" });
+    if (hTitle) infoLines.push(`\u001b[2m  ${hTitle}\u001b[0m`);
+    if (headerModel) {
+      infoLines.push(`\u001b[2m  model:\u001b[0m \u001b[36m${headerModel}\u001b[0m`);
+    }
+    infoLines.push(
+      `\u001b[2m  workspace:\u001b[0m \u001b[38;5;39m${formatWorkspace(workspaceRoot)}\u001b[0m`,
+    );
     const hGit = gitStatus(workspaceRoot);
-    if (hGit) headerSegs.push({ text: renderGitSegment(hGit) });
-    if (headerSession) headerSegs.push({ text: headerSession.slice(0, 8), fg: "\u001b[2m" });
-    if (headerContext) headerSegs.push({ text: headerContext, fg: contextColor(headerContext) });
-    const headerCard = new Card([new Text(renderStatusBar(headerSegs), 0, 0)], {
-      paddingY: 0,
-      border: { color: (s: string) => `\u001b[2m${s}\u001b[0m` },
-    });
-    const infoLines = headerCard.render(tui.terminal.columns);
+    if (hGit) infoLines.push(`\u001b[2m  git:\u001b[0m ${renderGitSegment(hGit)}`);
+    if (headerSession) infoLines.push(`\u001b[2m  session:\u001b[0m ${headerSession.slice(0, 8)}`);
+    if (headerContext) infoLines.push(`\u001b[2m  context:\u001b[0m ${headerContext}`);
+
+    const combined: string[] = [];
+    const rows = Math.max(banner.length, infoLines.length);
+    for (let i = 0; i < rows; i++) {
+      const left = banner[i] ?? "";
+      const right = infoLines[i] ?? "";
+      combined.push(`${left}${left ? "   " : ""}${right}`);
+    }
+    const headerCard = new Card(
+      combined.map((line) => new Text(truncateToWidth(line, tui.terminal.columns - 2), 0, 0)),
+      {
+        paddingX: 0,
+        paddingY: 0,
+        border: { color: (s: string) => `\u001b[2m${s}\u001b[0m` },
+      },
+    );
+    const infoLinesRendered = headerCard.render(tui.terminal.columns);
     const separator = `\u001b[2m  ${"─".repeat(Math.max(1, tui.terminal.columns - 2))}\u001b[0m`;
-    const lines =
-      currentRunCount === 0 ? [...banner, ...infoLines, separator] : [...infoLines, separator];
+    const lines = [...infoLinesRendered, separator];
     for (const line of lines) {
       headerContainer.addChild(new Text(truncateToWidth(line, tui.terminal.columns), 0, 0));
     }
@@ -1571,7 +1583,6 @@ export function createTerminalIo(
   }
   function render(state: TuiViewState): void {
     lastState = state;
-    currentRunCount = state.runs.length;
     transcript.clear();
     const lines: string[] = [];
     for (const run of state.runs) {
