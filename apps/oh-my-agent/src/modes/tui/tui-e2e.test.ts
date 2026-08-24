@@ -759,7 +759,8 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       const boot = screen(vt);
       // Claude-style header: ASCII wordmark + model/session line.
       expect(boot).toContain("█");
-      expect(boot).toMatch(/session \S+/);
+      // omp-style header: session id segment, no literal "session" word.
+      expect(boot).toMatch(/\b[0-9a-f]{8}\b/);
       expect(boot).toContain("^p model");
 
       // ctrl+p opens the model picker overlay with the catalog.

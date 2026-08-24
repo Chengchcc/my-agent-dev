@@ -1197,6 +1197,15 @@ function gitStatus(workspaceRoot: string): string {
   }
 }
 
+/** Shorten the workspace path for display (~/... when under HOME). */
+function formatWorkspace(root: string): string {
+  const home = process.env.HOME;
+  if (home && (root === home || root.startsWith(`${home}/`))) {
+    return root === home ? "~" : `~${root.slice(home.length)}`;
+  }
+  return root;
+}
+
 /** Branch cyan, dirty count ember (omp gitClean/gitDirty colors). */
 function renderGitSegment(git: string): string {
   if (!git) return "";
@@ -1310,7 +1319,18 @@ export function createTerminalIo(
       "\u001b[36m ╚██████╔╝██║ ╚═╝ ██║██║  ██║\u001b[0m",
       "\u001b[36m  ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝\u001b[0m",
     ];
-    const infoLine = `\u001b[2m  ${headerInfo}${cleanHeaderTitle(headerTitle)}${headerModel ? ` · model ${headerModel}` : ""}${headerSession ? ` · session ${headerSession.slice(0, 8)}` : ""}${headerContext ? ` · ${headerContext}` : ""}\u001b[0m`;
+    const headerSegs: Array<{ text: string; chip?: boolean; fg?: string; bg?: string }> = [
+      { text: headerInfo, fg: "\u001b[1m" },
+    ];
+    const hTitle = cleanHeaderTitle(headerTitle);
+    if (hTitle) headerSegs.push({ text: hTitle, fg: "\u001b[2m" });
+    if (headerModel) headerSegs.push({ text: headerModel, chip: true, bg: "\u001b[48;5;25m" });
+    headerSegs.push({ text: formatWorkspace(workspaceRoot), fg: "\u001b[38;5;39m" });
+    const hGit = gitStatus(workspaceRoot);
+    if (hGit) headerSegs.push({ text: renderGitSegment(hGit) });
+    if (headerSession) headerSegs.push({ text: headerSession.slice(0, 8), fg: "\u001b[2m" });
+    if (headerContext) headerSegs.push({ text: headerContext, fg: contextColor(headerContext) });
+    const infoLine = renderStatusBar(headerSegs);
     const separator = `\u001b[2m  ${"─".repeat(Math.max(1, tui.terminal.columns - 2))}\u001b[0m`;
     const lines = currentRunCount === 0 ? [...banner, infoLine, separator] : [infoLine, separator];
     for (const line of lines) {
@@ -1485,6 +1505,7 @@ export function createTerminalIo(
     if (headerModel) {
       segs.push({ text: headerModel, chip: true, bg: "\u001b[48;5;25m" });
     }
+    segs.push({ text: formatWorkspace(workspaceRoot), fg: "\u001b[38;5;39m" });
     if (git) segs.push({ text: renderGitSegment(git) });
     if (headerSession) segs.push({ text: headerSession.slice(0, 8), fg: "\u001b[2m" });
     if (headerContext) segs.push({ text: headerContext, fg: contextColor(headerContext) });
