@@ -1773,7 +1773,16 @@ export function createTerminalIo(
       const content = typeof item.result.content === "string" ? item.result.content : null;
       const resultColor = failed ? "31" : "2";
       if (content !== null) {
-        const textContent = content.trimEnd();
+        let textContent = content.trimEnd();
+        // JSON output renders as a truncated pretty tree (omp JSON tree).
+        const trimmed = textContent.trimStart();
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+          try {
+            textContent = prettyJson(JSON.parse(textContent));
+          } catch {
+            // non-JSON that merely starts with a bracket: keep raw text
+          }
+        }
         // Success strips the `[exit: 0]` notice (omp stripExitCodeNotice);
         // errors keep the red exit marker.
         const outputLines = textContent
