@@ -18,20 +18,35 @@ import { extractText, type Message } from "@chengchenccc/message";
  * overrides the extract/merge model (default: the Run's own model).
  */
 
+// omp AutoLearn bar: capture sparingly, only after the run actually SOLVED
+// or REVEALED something — one strong reusable lesson beats several vague
+// ones, and a run that merely chatted must learn nothing.
 const EXTRACT_PROMPT = `You are a memory extractor for a coding agent.
-Extract durable, reusable facts from the run transcript below.
-A fact is: a project convention, a constraint, a decision with its why,
-a workflow that worked, a pitfall with its fix, or a discovered
-environment detail. NEVER extract transient chatter, task-specific
-details without reuse value, or unverified guesses.
+Extract ONLY lessons that would change how a future run works in this
+workspace: a non-obvious fix, a discovered project convention, a decision
+with its why, a pitfall with its fix, or a workflow that worked.
+
+The bar is HIGH. The run must have actually solved or revealed something;
+a greeting, a question answered from general knowledge, or plain chatter
+has NOTHING to learn — return {"facts":[]} without hesitation.
+
+NEVER extract:
+- static configuration: skill/tool listings, model catalogs, agent
+  capabilities, repository or directory structure — re-derivable any time
+- summaries of what the run did (the transcript already knows that)
+- transient details without reuse value, or unverified guesses
+
+Capture sparingly: one strong, specific lesson beats several vague ones.
+When in doubt, don't write.
+
 Return STRICT JSON only:
-{"facts":[{"content":"one durable fact","context":"where it applies (file/module/scope)"}]}
-Return {"facts":[]} when nothing durable.`;
+{"facts":[{"content":"one durable lesson","context":"where it applies (file/module/scope)"}]}`;
 
 const CONSOLIDATE_PROMPT = `You maintain the agent's long-term memory summary
 (memory/memory_summary.md). Merge the NEW facts into the EXISTING summary,
-keeping it a compact digest of durable knowledge. Drop facts already covered.
-Return the new summary text only (markdown), no preamble.`;
+keeping it a compact digest of durable knowledge. Drop facts already
+covered, and drop anything that is static configuration or re-derivable
+from the repo. Return the new summary text only (markdown), no preamble.`;
 
 const EXTRACT_TIMEOUT_MS = 60_000;
 const TRANSCRIPT_BUDGET_CHARS = 8_000;
