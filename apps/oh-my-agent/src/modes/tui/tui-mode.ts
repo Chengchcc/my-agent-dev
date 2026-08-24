@@ -1856,6 +1856,7 @@ export function createTerminalIo(
     // Whole card tint: unified with user bubble / status line (48;5;234),
     // with a dim box-drawing border.
     const card = new Card(children, {
+      paddingY: 0,
       bg: (line: string) => `\u001b[48;5;234m${line}\u001b[0m`,
       border: { color: (s: string) => `\u001b[${color}m${s}\u001b[0m` },
     });

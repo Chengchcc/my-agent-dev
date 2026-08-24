@@ -14,10 +14,11 @@ export interface StatusSegment {
   bg?: string;
 }
 
-/** One powerline chip: ◀bg label bg▶ using the same color for arrows and fill. */
+/** One powerline chip: ◀bg label bg▶ using the same color for arrows/fill,
+ *  but white bold text inside so the label is readable on the tint. */
 export function chip(text: string, bgAnsi: string): string {
   const fg = bgAnsi.replace("\x1b[48;", "\x1b[38;");
-  return `${fg}◀${bgAnsi}\x1b[1m ${text} \x1b[22m\x1b[0m${fg}▶`;
+  return `${fg}◀${bgAnsi}\x1b[1m \x1b[37m${text} \x1b[22m\x1b[0m${fg}▶`;
 }
 
 /** Join a segment array with the thin smoke separator; chips get their own fill. */
