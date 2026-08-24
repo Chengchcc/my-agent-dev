@@ -1353,7 +1353,11 @@ export function createTerminalIo(
     if (hGit) headerSegs.push({ text: renderGitSegment(hGit) });
     if (headerSession) headerSegs.push({ text: headerSession.slice(0, 8), fg: "\u001b[2m" });
     if (headerContext) headerSegs.push({ text: headerContext, fg: contextColor(headerContext) });
-    const infoLine = renderStatusBar(headerSegs);
+    const infoLine = applyBackgroundToLine(
+      renderStatusBar(headerSegs),
+      tui.terminal.columns,
+      (line) => `\u001b[48;5;234m${line}\u001b[0m`,
+    );
     const separator = `\u001b[2m  ${"─".repeat(Math.max(1, tui.terminal.columns - 2))}\u001b[0m`;
     const lines = currentRunCount === 0 ? [...banner, infoLine, separator] : [infoLine, separator];
     for (const line of lines) {
@@ -1534,14 +1538,26 @@ export function createTerminalIo(
     if (headerContext) segs.push({ text: headerContext, fg: contextColor(headerContext) });
     if (segs.length > 0) {
       statusContainer.addChild(
-        new Text(truncateToWidth(renderStatusBar(segs), tui.terminal.columns), 0, 0),
+        new Text(
+          applyBackgroundToLine(
+            truncateToWidth(renderStatusBar(segs), tui.terminal.columns),
+            tui.terminal.columns,
+            (line) => `\u001b[48;5;234m${line}\u001b[0m`,
+          ),
+          0,
+          0,
+        ),
       );
     }
     statusContainer.addChild(
       new Text(
-        truncateToWidth(
-          "\u001b[2m  enter send · esc abort · ^t think · ^o tools · ^p model · /help\u001b[0m",
+        applyBackgroundToLine(
+          truncateToWidth(
+            "\u001b[2m  enter send · esc abort · ^t think · ^o tools · ^p model · /help\u001b[0m",
+            tui.terminal.columns,
+          ),
           tui.terminal.columns,
+          (line) => `\u001b[48;5;234m${line}\u001b[0m`,
         ),
         0,
         0,
