@@ -307,54 +307,15 @@ export class Container implements Component {
   }
 }
 
-/**
- * Native scrollback live-region contract (omp engine seam). A component
- * reports the local row index below which rows are mutable; rows above it
- * may be committed to native scrollback as final and never repainted.
- */
-export interface NativeScrollbackLiveRegion {
-  getNativeScrollbackLiveRegionStart(): number | undefined;
-  isNativeScrollbackLiveRegionPinned?(): boolean;
-}
-
 /** Engine tells a component how many of its rows have entered native scrollback. */
 export interface NativeScrollbackCommittedRows {
   setNativeScrollbackCommittedRows(rows: number): void;
-}
-
-/** A component reports leading rows byte-identical to the previous render. */
-export interface RenderStablePrefix {
-  getRenderStablePrefixRows(): number;
-}
-
-/** Fast path for composing only the visible tail during a resize burst. */
-export interface ViewportTailProvider {
-  renderViewportTail(width: number, maxRows: number): readonly string[];
-}
-
-/** Component hook to rehydrate its full frame after a destructive replay. */
-export interface NativeScrollbackReplay {
-  prepareNativeScrollbackReplay(): void;
 }
 
 export function setNativeScrollbackCommittedRows(component: Component, rows: number): void {
   (
     component as Component & Partial<NativeScrollbackCommittedRows>
   ).setNativeScrollbackCommittedRows?.(rows);
-}
-
-export function getNativeScrollbackLiveRegionStart(component: Component): number | undefined {
-  return (
-    component as Component & Partial<NativeScrollbackLiveRegion>
-  ).getNativeScrollbackLiveRegionStart?.();
-}
-
-export function getRenderStablePrefixRows(component: Component): number | undefined {
-  return (component as Component & Partial<RenderStablePrefix>).getRenderStablePrefixRows?.();
-}
-
-export function prepareNativeScrollbackReplay(component: Component): void {
-  (component as Component & Partial<NativeScrollbackReplay>).prepareNativeScrollbackReplay?.();
 }
 
 /**

@@ -19,9 +19,7 @@ import {
   type MarkdownTheme,
   matchesKey,
   type NativeScrollbackCommittedRows,
-  type NativeScrollbackLiveRegion,
   ProcessTerminal,
-  type RenderStablePrefix,
   SelectList,
   type SelectListTheme,
   type SlashCommand,
@@ -1201,24 +1199,13 @@ function gitStatus(workspaceRoot: string): string {
 /** Transcript container that reports the native-scrollback committed
  * boundary. v1 seam = rows already handed to scrollback; the engine may use
  * it to skip recomposing committed history in future phases. */
-class OmaTranscriptContainer
-  extends Container
-  implements NativeScrollbackCommittedRows, RenderStablePrefix, NativeScrollbackLiveRegion
-{
+class OmaTranscriptContainer extends Container implements NativeScrollbackCommittedRows {
   private committedRows = 0;
   private lastLines: string[] = [];
   private lastWidth = -1;
 
   setNativeScrollbackCommittedRows(rows: number): void {
     this.committedRows = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
-  }
-
-  getNativeScrollbackLiveRegionStart(): number | undefined {
-    return this.committedRows;
-  }
-
-  getRenderStablePrefixRows(): number {
-    return this.committedRows;
   }
 
   override clear(): void {
@@ -1239,6 +1226,17 @@ class OmaTranscriptContainer
       return all;
     }
     const start = Math.min(this.committedRows, this.children.length);
+    // Cheap committed-prefix audit: the last committed row must still match
+    // its cached bytes, otherwise the prefix drifted and we re-layout fully.
+    if (start > 0) {
+      const audit = this.children[start - 1]?.render(width)?.[0] ?? "";
+      if (audit !== this.lastLines[start - 1]) {
+        const all = super.render(width);
+        this.lastLines = all;
+        this.lastWidth = width;
+        return all;
+      }
+    }
     const prefix = this.lastLines.slice(0, Math.max(0, start));
     const tail: string[] = [];
     for (let i = start; i < this.children.length; i++) {
