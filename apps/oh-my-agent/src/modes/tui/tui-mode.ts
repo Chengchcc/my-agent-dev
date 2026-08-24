@@ -19,7 +19,10 @@ import {
   type MarkdownTheme,
   matchesKey,
   type NativeScrollbackCommittedRows,
+  type NativeScrollbackLiveRegion,
+  type NativeScrollbackReplay,
   ProcessTerminal,
+  type RenderStablePrefix,
   renderStatusBar,
   SelectList,
   type SelectListTheme,
@@ -1226,13 +1229,33 @@ function contextColor(ctx: string): string {
 /** Transcript container that reports the native-scrollback committed
  * boundary. v1 seam = rows already handed to scrollback; the engine may use
  * it to skip recomposing committed history in future phases. */
-class OmaTranscriptContainer extends Container implements NativeScrollbackCommittedRows {
+class OmaTranscriptContainer
+  extends Container
+  implements
+    NativeScrollbackCommittedRows,
+    NativeScrollbackLiveRegion,
+    NativeScrollbackReplay,
+    RenderStablePrefix
+{
   private committedRows = 0;
   private lastLines: string[] = [];
   private lastWidth = -1;
 
   setNativeScrollbackCommittedRows(rows: number): void {
     this.committedRows = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
+  }
+
+  getNativeScrollbackLiveRegionStart(): number | undefined {
+    return this.committedRows;
+  }
+
+  getRenderStablePrefixRows(): number {
+    return this.committedRows;
+  }
+
+  prepareNativeScrollbackReplay(): void {
+    this.lastLines = [];
+    this.lastWidth = -1;
   }
 
   override clear(): void {

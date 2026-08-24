@@ -103,16 +103,23 @@ export {
   Container,
   CURSOR_MARKER,
   type Focusable,
+  getNativeScrollbackLiveRegionStart,
+  getRenderStablePrefixRows,
   isFocusable,
   type NativeScrollbackCommittedRows,
+  type NativeScrollbackLiveRegion,
+  type NativeScrollbackReplay,
   type OverlayAnchor,
   type OverlayHandle,
   type OverlayMargin,
   type OverlayOptions,
   type OverlayUnfocusOptions,
+  prepareNativeScrollbackReplay,
+  type RenderStablePrefix,
   type SizeValue,
   setNativeScrollbackCommittedRows,
   TUI,
+  type ViewportTailProvider,
 } from "./tui.ts";
 // Utilities
 export {

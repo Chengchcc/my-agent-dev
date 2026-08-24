@@ -312,10 +312,45 @@ export interface NativeScrollbackCommittedRows {
   setNativeScrollbackCommittedRows(rows: number): void;
 }
 
+/** A component reports the local row index below which rows are mutable. */
+export interface NativeScrollbackLiveRegion {
+  getNativeScrollbackLiveRegionStart(): number | undefined;
+  isNativeScrollbackLiveRegionPinned?(): boolean;
+}
+
+/** A component reports leading rows byte-identical to the previous render. */
+export interface RenderStablePrefix {
+  getRenderStablePrefixRows(): number;
+}
+
+/** Fast path for composing only the visible tail during a resize burst. */
+export interface ViewportTailProvider {
+  renderViewportTail(width: number, maxRows: number): readonly string[];
+}
+
+/** Hook to rehydrate a component's full frame after a destructive replay. */
+export interface NativeScrollbackReplay {
+  prepareNativeScrollbackReplay(): void;
+}
+
 export function setNativeScrollbackCommittedRows(component: Component, rows: number): void {
   (
     component as Component & Partial<NativeScrollbackCommittedRows>
   ).setNativeScrollbackCommittedRows?.(rows);
+}
+
+export function getNativeScrollbackLiveRegionStart(component: Component): number | undefined {
+  return (
+    component as Component & Partial<NativeScrollbackLiveRegion>
+  ).getNativeScrollbackLiveRegionStart?.();
+}
+
+export function getRenderStablePrefixRows(component: Component): number | undefined {
+  return (component as Component & Partial<RenderStablePrefix>).getRenderStablePrefixRows?.();
+}
+
+export function prepareNativeScrollbackReplay(component: Component): void {
+  (component as Component & Partial<NativeScrollbackReplay>).prepareNativeScrollbackReplay?.();
 }
 
 /**
@@ -1398,6 +1433,10 @@ export class TUI extends Container {
     // Helper to clear scrollback and viewport and render all new lines
     const fullRender = (clear: boolean): void => {
       this.fullRedrawCount += 1;
+      if (clear) {
+        // Destructive replay: let root components rehydrate their frames.
+        for (const child of this.children) prepareNativeScrollbackReplay(child);
+      }
       let buffer = "\x1b[?2026h"; // Begin synchronized output
       if (clear) {
         buffer += this.deleteKittyImages(this.previousKittyImageIds);
