@@ -6,6 +6,9 @@ import type { Model, ProviderStreamOptions } from "../types.js";
 
 // ── Request assembly ──────────────────────────────────────────────
 
+/** Provider/gateway output-token cap (zai/llmbox rejects >131072). */
+const MAX_OUTPUT_TOKENS = 131_072;
+
 function buildRequest(
   model: Model,
   messages: readonly Message[],
@@ -16,7 +19,7 @@ function buildRequest(
   const cacheControl = { type: "ephemeral" } as const;
   const request: Record<string, unknown> = {
     model: model.id,
-    max_tokens: model.maxTokens,
+    max_tokens: Math.min(model.maxTokens, MAX_OUTPUT_TOKENS),
     messages: convertMessages(messages, opts, { allowEmptySignature: compat.allowEmptySignature }),
     stream: true,
   };

@@ -115,6 +115,9 @@ const EFFORT_CLAMP: Record<string, string> = {
   max: "high",
 };
 
+/** Provider/gateway output-token cap (zai/llmbox rejects >131072). */
+const MAX_OUTPUT_TOKENS = 131_072;
+
 function buildRequest(
   model: Model,
   messages: readonly Message[],
@@ -128,7 +131,7 @@ function buildRequest(
     input: convertInput(messages, systemRole),
     stream: true,
     store: false, // do not persist conversations server-side
-    max_output_tokens: model.maxTokens,
+    max_output_tokens: Math.min(model.maxTokens, MAX_OUTPUT_TOKENS),
   };
 
   if (model.reasoning && opts?.effort) {

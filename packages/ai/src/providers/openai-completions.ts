@@ -98,6 +98,9 @@ function mapFinishReason(
 
 // ─── buildRequest ───
 
+/** Provider/gateway output-token cap (zai/llmbox rejects >131072). */
+const MAX_OUTPUT_TOKENS = 131_072;
+
 function buildRequest(
   model: Model,
   messages: readonly Message[],
@@ -108,7 +111,7 @@ function buildRequest(
   const body: Record<string, unknown> = {
     model: model.id,
     messages: convertMessages(messages, compat),
-    [compat.maxTokensField]: model.maxTokens,
+    [compat.maxTokensField]: Math.min(model.maxTokens, MAX_OUTPUT_TOKENS),
     stream: true,
     stream_options: { include_usage: true },
   };
