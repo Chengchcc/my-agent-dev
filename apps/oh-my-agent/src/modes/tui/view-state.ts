@@ -11,6 +11,8 @@ export interface TranscriptItem {
   text: string;
   /** Streaming items grow in place; settled items are immutable. */
   streaming: boolean;
+  /** Assistant items only: omp-style thinking block rendered before text. */
+  thinking?: string;
   /** User items only: true while the message is steered into a live run or
    *  queued for the next one (rendered dim with a » marker, pi's steering
    *  display) — distinguishes injections from fresh prompts. */
@@ -78,7 +80,15 @@ export function applyEvent(state: TuiViewState, event: OmaLoopEvent): void {
     }
     case "message_start": {
       const run = ensureRunningRun(state);
-      run.items.push({ kind: "assistant", text: "", streaming: true });
+      // A thinking-first provider may have already opened an assistant
+      // placeholder via thinking_update; reuse it so thinking stays above
+      // the text instead of becoming a separate item below it.
+      const existing = lastOfKind(run, "assistant");
+      if (existing) {
+        existing.thinking ??= "";
+      } else {
+        run.items.push({ kind: "assistant", text: "", streaming: true, thinking: "" });
+      }
       break;
     }
     case "message_update": {
@@ -89,24 +99,22 @@ export function applyEvent(state: TuiViewState, event: OmaLoopEvent): void {
     }
     case "thinking_update": {
       const run = ensureRunningRun(state);
-      let item = lastOfKind(run, "thinking");
+      let item = lastOfKind(run, "assistant");
       if (!item) {
-        item = { kind: "thinking", text: "", streaming: true };
+        item = { kind: "assistant", text: "", streaming: true, thinking: "" };
         run.items.push(item);
       }
-      item.text += event.text;
+      item.thinking = `${item.thinking ?? ""}${event.text}`;
       break;
     }
     case "message_end":
     case "turn_end":
     case "compaction_end":
     case "retry_end": {
-      // A finished assistant message settles its thinking block: the next
-      // turn's reasoning must not append to the previous turn's.
+      // A finished assistant message settles its items: the next turn's
+      // reasoning must not append to the previous turn's assistant.
       const run = currentRun(state);
-      for (const item of run?.items ?? []) {
-        if (item.kind === "thinking") item.streaming = false;
-      }
+      for (const item of run?.items ?? []) item.streaming = false;
       break;
     }
     case "tool_execution_start": {

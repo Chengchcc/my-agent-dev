@@ -159,7 +159,7 @@ describe("view-state folding", () => {
     expect(users[0]?.pending).toBe(true);
   });
 
-  test("message_end settles thinking so the next turn starts a fresh block", () => {
+  test("thinking merges into assistant; message_end starts a fresh block", () => {
     const state = initialViewState();
     applyEvent(state, { type: "agent_start" });
     applyEvent(state, { type: "thinking_update", text: "turn one reasoning" });
@@ -167,10 +167,18 @@ describe("view-state folding", () => {
     applyEvent(state, { type: "message_update", text: "answer" });
     applyEvent(state, { type: "message_end" });
     applyEvent(state, { type: "thinking_update", text: "turn two reasoning" });
-    const thinking = state.runs[0]!.items.filter((i) => i.kind === "thinking");
-    expect(thinking).toHaveLength(2);
-    expect(thinking[0]).toMatchObject({ text: "turn one reasoning", streaming: false });
-    expect(thinking[1]).toMatchObject({ text: "turn two reasoning", streaming: true });
+    const assistants = state.runs[0]!.items.filter((i) => i.kind === "assistant");
+    expect(assistants).toHaveLength(2);
+    expect(assistants[0]).toMatchObject({
+      text: "answer",
+      thinking: "turn one reasoning",
+      streaming: false,
+    });
+    expect(assistants[1]).toMatchObject({
+      text: "",
+      thinking: "turn two reasoning",
+      streaming: true,
+    });
   });
 
   test("workflow events fold into transcript statuses", () => {

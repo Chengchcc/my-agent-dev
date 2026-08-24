@@ -1546,10 +1546,14 @@ export function createTerminalIo(
         }
         // Fresh prompt: markdown on a bg bubble (pi's UserMessageComponent).
         return markdownLines(item, 1, 1, USER_TEXT_STYLE);
-      case "assistant":
-        return item.text ? markdownLines(item, 1, 0) : [];
+      case "assistant": {
+        const lines: string[] = [];
+        if (item.thinking) lines.push(...renderThinking(item.thinking, state.showThinking));
+        if (item.text) lines.push(...markdownLines(item, 1, 0));
+        return lines;
+      }
       case "thinking":
-        return renderThinking(item, state.showThinking);
+        return renderThinking(item.text, state.showThinking);
       case "tool":
         return renderTool(item, state.showToolDetail);
       case "status":
@@ -1559,17 +1563,17 @@ export function createTerminalIo(
     }
   }
 
-  function renderThinking(item: TranscriptItem, expanded: boolean): string[] {
-    if (!item.text) return [];
-    const firstLine = item.text.split("\n", 1)[0] ?? "";
+  function renderThinking(text: string, expanded: boolean): string[] {
+    if (!text) return [];
+    const firstLine = text.split("\n", 1)[0] ?? "";
     const dim = (s: string): string => `\u001b[2m${s}\u001b[0m`;
     if (!expanded) {
       // Collapsed: one dim line + hint that more exists (ctrl+t expands).
-      if (item.text.length === firstLine.length) return [dim(`  ~ ${firstLine}`)];
+      if (text.length === firstLine.length) return [dim(`  ~ ${firstLine}`)];
       return [dim(`  ~ ${firstLine} … (ctrl+t)`)];
     }
     const wrapWidth = Math.max(20, tui.terminal.columns - 6);
-    return wrapTextWithAnsi(item.text, wrapWidth).map((line) => dim(`  ~ ${line}`));
+    return wrapTextWithAnsi(text, wrapWidth).map((line) => dim(`  ~ ${line}`));
   }
 
   function renderTool(item: TranscriptItem, expanded: boolean): string[] {
