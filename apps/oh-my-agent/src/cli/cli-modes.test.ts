@@ -1,7 +1,9 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createModelRuntime } from "@chengchenccc/ai";
+import { runPrintMode } from "../modes/print-mode.js";
 import type { OmaOutput } from "../protocol/index.js";
 
 /** Spawned-process CLI tests: print mode, json mode, rpc mode and
@@ -263,4 +265,56 @@ describe("oma CLI (spawned)", () => {
     expect(res.stdout).toBe("");
     expect(res.stderr.length).toBeGreaterThan(0);
   }, 15_000);
+});
+
+describe("print mode (in-process): memory persistence", () => {
+  test("awaits the background learn pass before returning", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-print-learn-"));
+    const savedTitle = process.env.OMA_TITLE_ENABLED;
+    process.env.OMA_TITLE_ENABLED = "0"; // keep the model-call count deterministic
+    try {
+      const replies = [
+        "done",
+        JSON.stringify({ facts: [{ content: "print mode learns", context: "cli" }] }),
+        "## Summary",
+      ];
+      const modelRuntime = createModelRuntime();
+      modelRuntime.registerProvider({
+        id: "probe",
+        name: "Probe",
+        getModels: () => [
+          {
+            id: "m",
+            name: "M",
+            provider: "probe",
+            api: "anthropic-messages",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 200_000,
+            maxTokens: 8192,
+          },
+        ],
+        async *stream() {
+          const reply = replies.shift() ?? "";
+          yield { delta: { type: "text", text: reply } };
+          yield { stopReason: "end_turn" };
+        },
+      });
+      const code = await runPrintMode({ prompt: "hello", workspaceRoot: dir, modelRuntime });
+      expect(code).toBe(0);
+      // The one-shot process waited for the fire-and-forget learn pass: the
+      // facts are on disk BEFORE the mode returns (previously the process
+      // could exit first and kill the extraction mid-flight).
+      const factsDir = join(dir, ".oma", "memory", "facts");
+      expect(existsSync(factsDir)).toBe(true);
+      const files = readdirSync(factsDir);
+      expect(files).toHaveLength(1);
+      expect(readFileSync(join(factsDir, files[0]!), "utf8")).toContain("print mode learns");
+    } finally {
+      if (savedTitle === undefined) delete process.env.OMA_TITLE_ENABLED;
+      else process.env.OMA_TITLE_ENABLED = savedTitle;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

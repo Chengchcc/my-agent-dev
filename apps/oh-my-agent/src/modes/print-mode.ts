@@ -69,5 +69,9 @@ export async function runPrintMode(opts: CliRunOptions): Promise<number> {
     return 1;
   } finally {
     await runtime.close().catch(() => {});
+    // The memory-learn pass is fire-and-forget: a one-shot process must not
+    // exit before it settles, or the run's facts are lost (it has its own
+    // 60s bound, so this await cannot hang).
+    await runtime.memoryLearning()?.catch(() => {});
   }
 }

@@ -32,5 +32,7 @@ export async function runJsonMode(opts: CliRunOptions): Promise<number> {
     return outcome.status === "completed" ? 0 : 1;
   } finally {
     await runtime.close().catch(() => {});
+    // One-shot process: wait for the background memory pass (see print mode).
+    await runtime.memoryLearning()?.catch(() => {});
   }
 }
