@@ -1807,6 +1807,9 @@ export function createTerminalIo(
     if (item.result !== undefined) {
       const content = typeof item.result.content === "string" ? item.result.content : null;
       const resultColor = failed ? "31" : "2";
+      if (content !== null || Object.keys(item.result).length > 0) {
+        children.push(new Text(`\u001b[2m    ── Output ──\u001b[0m`, 0, 0));
+      }
       if (content !== null) {
         let textContent = content.trimEnd();
         // JSON output renders as a truncated pretty tree (omp JSON tree).
