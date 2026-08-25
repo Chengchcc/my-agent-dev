@@ -1462,6 +1462,8 @@ export function createTerminalIo(
   let commandHandler: ((cmd: TuiCommand) => void) | null = null;
   let loader: Loader | null = null;
   let busySince = 0;
+  let busySeconds = 0;
+  let currentState: TuiViewState | null = null;
   let elapsedTimer: Timer | undefined;
   // Terminal focus (CSI 1004 reporting): a completion ping fires only when
   // the user is looking elsewhere. Default focused — a terminal that never
@@ -1490,9 +1492,38 @@ export function createTerminalIo(
     clearInterval(elapsedTimer);
     elapsedTimer = setInterval(() => {
       if (!busy) return;
-      const seconds = Math.floor((Date.now() - busySince) / 1000);
-      loader?.setMessage(`working… (${seconds}s, esc to abort)`);
+      busySeconds = Math.floor((Date.now() - busySince) / 1000);
+      updateWorkingMessage();
     }, 1000);
+  }
+
+  /** Derive a short human-readable summary for the currently streaming tool
+   *  (omp's intent/working message: not a fixed "working…" but what the tool
+   *  is actually doing). */
+  function currentToolSummary(): string | undefined {
+    if (!currentState) return undefined;
+    for (let r = currentState.runs.length - 1; r >= 0; r--) {
+      const run = currentState.runs[r]!;
+      for (let i = run.items.length - 1; i >= 0; i--) {
+        const item = run.items[i]!;
+        if (item.kind === "tool" && item.streaming) {
+          const name = item.text.replace(/…$/, "");
+          const summary = item.input !== undefined ? summarizeToolArgs(name, item.input) : "";
+          return summary.trim() ? `${name} · ${summary}` : name;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  function updateWorkingMessage(): void {
+    if (!busy || !loader) return;
+    const summary = currentToolSummary();
+    const seconds = busySeconds > 0 ? ` · ${busySeconds}s` : "";
+    const msg = summary
+      ? `${summary}${seconds} (esc to abort)`
+      : `working…${seconds} (esc to abort)`;
+    loader.setMessage(msg);
   }
 
   function dismissQuitHint(): void {
@@ -1634,6 +1665,8 @@ export function createTerminalIo(
     addStatusBar();
   }
   function render(state: TuiViewState): void {
+    currentState = state;
+    if (busy) updateWorkingMessage();
     transcript.clear();
     const lines: string[] = [];
     for (const run of state.runs) {
@@ -1956,6 +1989,7 @@ export function createTerminalIo(
       if (next) {
         addStatusBar();
         busySince = Date.now();
+        busySeconds = 0;
         loader = new Loader(
           tui,
           (s) => `\u001b[36m${s}\u001b[0m`,
@@ -1964,9 +1998,11 @@ export function createTerminalIo(
         );
         loader.start();
         statusContainer.addChild(loader);
+        updateWorkingMessage();
         startElapsedTimer();
       } else {
         clearInterval(elapsedTimer);
+        busySeconds = 0;
         if (loader) {
           loader.stop();
           loader = null;

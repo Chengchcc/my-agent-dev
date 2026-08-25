@@ -265,10 +265,9 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       );
 
       await typeAndSubmit(vt, "do something slow");
-      await vt.waitForRender();
-      // While the run is live: animated status line is on screen.
-      expect(screen(vt)).toContain("working");
-      expect(screen(vt)).toContain("esc to abort");
+      await waitForText(vt, /bash · \$ sleep 2/, 3_000);
+      const mid = screen(vt);
+      expect(mid).toContain("esc to abort");
       // Esc (raw \x1b) aborts the live Run instead of the editor.
       vt.sendInput("\x1b");
       await vt.waitForRender();
@@ -811,9 +810,10 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
 
       await typeAndSubmit(vt, "run");
       // mid-run: "middle" is on screen while the tool is still executing,
-      // and the spinner carries an elapsed-seconds counter (tick at 1s).
+      // and the working status shows the current tool summary (omp intent),
+      // not a fixed "working…".
       await waitForText(vt, "middle", 5_000);
-      await waitForText(vt, /working… \(\d+s/, 3_000);
+      await waitForText(vt, /bash · \$ echo start/, 3_000);
       const mid = screen(vt);
       expect(mid).toContain("start");
       expect(mid).toContain("middle");

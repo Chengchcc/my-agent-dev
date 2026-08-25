@@ -11,7 +11,7 @@
       "!**/bun.lock",
       "!**/drizzle",
       "!**/dist",
-      "!**/src/vendor/**",
+      "!**/src/vendor",
       "!**/.next",
       "!skills/loop-workflow/workflow.js"
     ]

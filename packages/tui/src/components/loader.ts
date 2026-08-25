@@ -41,7 +41,10 @@ export class Loader extends Text {
   }
 
   override render(width: number): string[] {
-    return super.render(width);
+    // omp's Loader reserves a blank row above the spinner so the working
+    // status does not sit flush against the transcript; add a trailing row
+    // too so it does not crowd the editor's top border.
+    return ["", ...super.render(width), ""];
   }
 
   start(): void {
@@ -57,6 +60,7 @@ export class Loader extends Text {
   }
 
   setMessage(message: string): void {
+    if (message === this.message) return;
     this.message = message;
     this.updateDisplay();
   }
@@ -83,11 +87,33 @@ export class Loader extends Text {
     }, this.intervalMs);
   }
 
+  /** Moving light sweep across the message (omp shimmer-lite). */
+  private animateMessage(message: string): string {
+    if (!message) return "";
+    // Sweep a short accent band across the text; the rest stays in the
+    // base message color so the line stays legible while it moves.
+    const base = this.messageColorFn;
+    const period = message.length + 4;
+    const start = this.currentFrame % period;
+    let out = "";
+    for (let i = 0; i < message.length; i++) {
+      const dist = Math.abs(i - start);
+      if (dist < 1) {
+        out += `\u001b[1m\u001b[36m${message[i]}\u001b[0m`;
+      } else if (dist < 2) {
+        out += `\u001b[36m${message[i]}\u001b[0m`;
+      } else {
+        out += base(message[i]);
+      }
+    }
+    return out;
+  }
+
   private updateDisplay(): void {
     const frame = this.frames[this.currentFrame] ?? "";
     const renderedFrame = this.renderIndicatorVerbatim ? frame : this.spinnerColorFn(frame);
     const indicator = frame.length > 0 ? `${renderedFrame} ` : "";
-    this.setText(`${indicator}${this.messageColorFn(this.message)}`);
+    this.setText(`${indicator}${this.animateMessage(this.message)}`);
     if (this.ui) {
       this.ui.requestRender();
     }
