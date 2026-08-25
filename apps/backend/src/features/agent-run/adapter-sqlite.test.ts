@@ -34,7 +34,6 @@ function freshFixture(prefix: string) {
   conv.createConversation({
     conversationId,
     agentId,
-    triggerMode: "mention",
     createdAt: Date.now(),
   });
   // Add a ledger message

@@ -87,7 +87,6 @@ async function ensureLoopScope(
       convPort.createConversation({
         conversationId,
         agentId,
-        triggerMode: "mention",
         origin: "loop",
         createdAt: Date.now(),
       });

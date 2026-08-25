@@ -199,7 +199,6 @@ function setupConv(id: string) {
     port.createConversation({
       conversationId: id,
       agentId: "a-1",
-      triggerMode: "mention",
       createdAt: Date.now(),
     });
   } catch {

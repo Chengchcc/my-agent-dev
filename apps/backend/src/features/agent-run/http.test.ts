@@ -12,7 +12,7 @@ const app = agentRunRoutes({
 
 function seedConversation(conversationId: string, now: number): void {
   db.query(
-    "INSERT INTO conversation (conversation_id, agent_id, trigger_mode, hop_count, created_at) VALUES (?, 'ag-1', 'mention', 0, ?)",
+    "INSERT INTO conversation (conversation_id, agent_id, hop_count, created_at) VALUES (?, 'ag-1', 0, ?)",
   ).run(conversationId, now);
   db.query(
     "INSERT INTO agent_context_tree (tree_id, conversation_id, created_at) VALUES (?, ?, ?)",

@@ -7,7 +7,6 @@ export interface ConversationRow {
   conversationId: string;
   /** The conversation's agent (1:1 collapse). Nullable on legacy rows. */
   agentId: string | null;
-  triggerMode: string;
   hopCount: number;
   createdAt: number;
   title: string | null;
@@ -25,7 +24,6 @@ export interface CreateConversationInput {
   conversationId: string;
   /** The conversation's agent (required for new conversations). */
   agentId?: string | null;
-  triggerMode?: string;
   origin?: string;
   createdAt: number;
   /** Fork provenance: source conversation id (set when origin='fork'). */

@@ -7,12 +7,12 @@
 
 | 词 | 含义 | 不是 |
 |----|------|------|
-| **Conversation** | 一场多方对话（人+Agent） | 不是 Run 容器 |
+| **Conversation** | 一场 1:1 对话（人 + 唯一 agent，`conversation.agent_id` 绑定） | 不是 Run 容器，不是多方房间（member 概念已删） |
 | **Message** | 对话轮次（`@chengchenccc/message`） | 不是 LedgerEntry（后者是存储 wrapper） |
 | **MessageRevision** | 消息的版本化 envelope（同 messageId 多次写入，state 从 streaming→done） | 不是独立消息 |
+| **ConversationEvent** | SSE wire 载荷（`{seq, kind, message?, payload?, undone?}`，服务端已 parse） | 不是 LedgerEntry（存储行不出 backend） |
 | **Ledger（conversation_ledger）** | 对话可见内容的 canonical fact store；final assistant Message 带 `agent_run_id` 提交标记 | 不是执行日志 |
-| **Agent Context** | 每个 `(conversationId, agentMemberId)` 的语义历史（tree/entry/branch） | 不是 child transcript |
-| **Context Branch** | Agent Context 中一条可 fork/rollback 的历史路径;固定 backendKind | 不是执行 session |
+| **Agent Context** | 每个 conversation 的语义历史（tree/entry/branch；1:1 后 tree 单键） | 不是 child transcript |
 | **CLI Session** | CLI 后端(claude/pi/omp)的运行态会话真理:claude `session_id` / pi·omp 会话文件路径;分支经 `cliSessionRef` 引用 | 不是 Context Branch(后者是产品态历史,可 fork/rollback;CLI session 不可回滚) |
 | **Agent Workspace** | 每个 agent 的可配置运行工作区(绝对路径):`agent.yml` 为唯一真源(identity + runtime_config + lark)、AGENTS.md/CLAUDE.md/SOUL.md/USER.md、knowledge/、`.<kind>/` 配置目录 | 不是 dataDir 里的固定物化目录 |
 | **Workspace Bridge** | 把 dataDir 单点资源(skill/knowledge/mcp)按 agent 分配**桥接**到 workspace 的幂等 reconcile(软链 skills、写 `.mcp.json`) | 不是每种资源一套拷贝逻辑 |
@@ -107,9 +107,8 @@ L1 Contracts    packages/message、packages/core、packages/agent-backend — �
 ## 关键数据流
 
 ```text
-人发消息 → POST → appendLedgerEntry (conversation_ledger)
-         → 触发判定 (mention/all) → 创建 Agent Run（冻结 systemPrompt/skillRoots）
-         → branch_input_queue 入队 → acquire
+人发消息 → POST（身份/路由服务端推导）→ appendLedgerEntry (conversation_ledger)
+         → 触发 conversation 的唯一 agent → 创建 Agent Run（冻结 systemPrompt/skillRoots）
          → Adapter spawn oma --mode rpc → execute command
          → child 事件 → Live Updates → SSE push 到端 → UI 按 messageId upsert
          → outcome envelope → BackendRunOutcome

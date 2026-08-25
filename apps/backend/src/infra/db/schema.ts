@@ -30,7 +30,6 @@ export const conversation = sqliteTable("conversation", {
   /** 1:1 collapse (spec 2026-08-25): the conversation's agent. Nullable on
    *  legacy rows that predate the member table removal. */
   agentId: text("agent_id"),
-  triggerMode: text().notNull().default("mention"),
   hopCount: integer().notNull().default(0),
   title: text(),
   origin: text().notNull().default("user"),

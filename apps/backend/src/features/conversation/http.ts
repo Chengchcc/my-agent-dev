@@ -60,7 +60,6 @@ export function conversationRoutes(
           svc.port.createConversation({
             conversationId,
             agentId: body.agentId,
-            triggerMode: body.triggerMode ?? "mention",
             createdAt: now,
             projectId: body.projectId ?? null,
           });
@@ -72,7 +71,6 @@ export function conversationRoutes(
             conversationId: t.Optional(t.String({ minLength: 1 })),
             projectId: t.Optional(t.String({ minLength: 1 })),
             agentId: t.Optional(t.String({ minLength: 1 })),
-            triggerMode: t.Optional(t.Literal("mention")),
           }),
         },
       )
@@ -96,7 +94,6 @@ export function conversationRoutes(
           conversationId: conv.conversationId,
           agentId: conv.agentId,
           origin: conv.origin,
-          triggerMode: conv.triggerMode,
           hopCount: conv.hopCount,
           title: conv.title,
           createdAt: conv.createdAt,

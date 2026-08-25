@@ -70,7 +70,6 @@ export function createCronScheduler(deps: {
         deps.convPort.createConversation({
           conversationId,
           agentId,
-          triggerMode: "mention",
           origin: "cron",
           createdAt: Date.now(),
         });

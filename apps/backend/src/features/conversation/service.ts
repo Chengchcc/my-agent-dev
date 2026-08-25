@@ -499,7 +499,6 @@ class ConversationServiceImpl implements ConversationService {
     this.port.createConversation({
       conversationId: newConversationId,
       agentId: source?.agentId ?? null,
-      triggerMode: "mention",
       createdAt: Date.now(),
     });
     if (title) {
@@ -553,7 +552,6 @@ class ConversationServiceImpl implements ConversationService {
     this.port.createConversation({
       conversationId: newId,
       agentId: source.agentId,
-      triggerMode: source.triggerMode,
       origin: "fork",
       createdAt: Date.now(),
       forkSource: input.conversationId,

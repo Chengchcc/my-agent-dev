@@ -15,11 +15,9 @@ describe("Conversation CRUD", () => {
   test("create inserts a conversation row", () => {
     const conv = adapter.createConversation({
       conversationId: "conv-1",
-      triggerMode: "mention",
       createdAt: Date.now(),
     });
     expect(conv.conversationId).toBe("conv-1");
-    expect(conv.triggerMode).toBe("mention");
     expect(conv.hopCount).toBe(0);
   });
 
@@ -105,7 +103,6 @@ describe("Ledger CRUD", () => {
   test("getLedgerEntry is exact per conversation", () => {
     adapter.createConversation({
       conversationId: "conv-2",
-      triggerMode: "mention",
       createdAt: Date.now(),
     });
     const seq2 = adapter.appendLedgerEntry({
@@ -146,7 +143,6 @@ describe("lastActivityAt", () => {
   test("getLastActivityAt returns null for conversation with no ledger", () => {
     adapter.createConversation({
       conversationId: "conv-empty",
-      triggerMode: "mention",
       createdAt: Date.now(),
     });
     expect(adapter.getLastActivityAt?.("conv-empty")).toBeNull();
@@ -181,7 +177,6 @@ describe("deleteConversation", () => {
     adapter.createConversation({
       conversationId: id,
       agentId: "ag-del",
-      triggerMode: "mention",
       createdAt: Date.now(),
     });
     return id;

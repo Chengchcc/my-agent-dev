@@ -267,6 +267,13 @@
       "when": 1787900000000,
       "tag": "0037_conversation_agent_id",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1788000000000,
+      "tag": "0038_drop_trigger_mode",
+      "breakpoints": true
     }
   ]
 }

@@ -24,7 +24,6 @@ function freshFixture(prefix: string) {
   conv.createConversation({
     conversationId,
     agentId,
-    triggerMode: "mention",
     createdAt: Date.now(),
   });
   return { conversationId, agentId };

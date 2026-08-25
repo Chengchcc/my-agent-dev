@@ -538,7 +538,7 @@ describe("Phase 1 constraints", () => {
   test("duplicate tree for one conversation fails (1:1, single-key)", () => {
     const db = openDb(":memory:");
     db.exec(
-      "INSERT INTO conversation (conversation_id, trigger_mode, hop_count, created_at) VALUES ('c1', 'mention', 0, 1)",
+      "INSERT INTO conversation (conversation_id, hop_count, created_at) VALUES ('c1', 0, 1)",
     );
     db.exec(
       "INSERT INTO agent_context_tree (tree_id, conversation_id, created_at) VALUES ('t1', 'c1', 1)",
@@ -554,7 +554,7 @@ describe("Phase 1 constraints", () => {
   test("two active runs on one branch fails; terminal historical runs coexist", () => {
     const db = openDb(":memory:");
     db.exec(
-      "INSERT INTO conversation (conversation_id, trigger_mode, hop_count, created_at) VALUES ('c2', 'mention', 0, 1)",
+      "INSERT INTO conversation (conversation_id, hop_count, created_at) VALUES ('c2', 0, 1)",
     );
     db.exec(
       "INSERT INTO agent_context_tree (tree_id, conversation_id, created_at) VALUES ('t2', 'c2', 1)",
@@ -588,7 +588,7 @@ describe("Phase 1 constraints", () => {
   test("duplicate run idempotency key and queue delivery key fail", () => {
     const db = openDb(":memory:");
     db.exec(
-      "INSERT INTO conversation (conversation_id, trigger_mode, hop_count, created_at) VALUES ('c3', 'mention', 0, 1)",
+      "INSERT INTO conversation (conversation_id, hop_count, created_at) VALUES ('c3', 0, 1)",
     );
     db.exec(
       "INSERT INTO agent_context_tree (tree_id, conversation_id, created_at) VALUES ('t3', 'c3', 1)",
@@ -618,7 +618,7 @@ describe("Phase 1 constraints", () => {
   test("deleting a conversation cascades through Agent Context records", () => {
     const db = openDb(":memory:");
     db.exec(
-      "INSERT INTO conversation (conversation_id, trigger_mode, hop_count, created_at) VALUES ('c4', 'mention', 0, 1)",
+      "INSERT INTO conversation (conversation_id, hop_count, created_at) VALUES ('c4', 0, 1)",
     );
     db.exec(
       "INSERT INTO agent_context_tree (tree_id, conversation_id, created_at) VALUES ('t4', 'c4', 1)",

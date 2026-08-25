@@ -49,7 +49,6 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
         .values({
           conversationId: input.conversationId,
           agentId: input.agentId ?? null,
-          triggerMode: input.triggerMode ?? "mention",
           hopCount: 0,
           origin: input.origin ?? "user",
           createdAt: input.createdAt,

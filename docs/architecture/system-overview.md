@@ -126,7 +126,7 @@ completed | failed | aborted | timeout
 ### 两类历史
 
 - **Conversation History**：多人共享会话事实，人类与 Agent 的最终可见 Message、成员事件、产品控制条目。
-- **Agent Context**：每个 `(conversationId, agentMemberId)` 的语义上下文；保存共享 Message ref（ledger_seq）、Product Tool 结果、私有语义、summary 与 Context Branch。
+- **Agent Context**：每个 conversation 的语义上下文（1:1，tree 单键）；保存共享 Message ref（ledger_seq）、Product Tool 结果、私有语义、summary 与 Context Branch。
 
 Agent Run 从 active Context Branch 投影完整线性 `ProjectedHistoryItem[]` 交给子进程 —— **每次都是 full projection**，没有增量恢复。
 
