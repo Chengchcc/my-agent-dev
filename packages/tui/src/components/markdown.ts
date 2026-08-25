@@ -58,6 +58,42 @@ function trimPartialClosingFences(tokens: readonly Token[]): void {
   token.text = token.text.slice(0, -lastLine.length).replace(/\n$/, "");
 }
 
+/** True when `text` ends with an unclosed fenced code block (opening fence
+ *  seen, no matching closer). Used to avoid freezing a streaming prefix at a
+ *  blank line that is actually inside a still-open code block. */
+function textInOpenCodeFence(text: string): boolean {
+  const lines = text.split("\n");
+  let fenceChar = "";
+  let fenceLength = 0;
+  for (const line of lines) {
+    const trimmed = line.trimStart();
+    const indent = line.length - trimmed.length;
+    if (fenceChar !== "") {
+      let closingLength = 0;
+      while (trimmed.charAt(closingLength) === fenceChar) closingLength++;
+      if (
+        indent <= 3 &&
+        closingLength >= fenceLength &&
+        trimmed.slice(closingLength).trim().length === 0
+      ) {
+        fenceChar = "";
+        fenceLength = 0;
+      }
+      continue;
+    }
+    const first = trimmed.charAt(0);
+    if (indent <= 3 && (first === "`" || first === "~")) {
+      let len = 0;
+      while (trimmed.charAt(len) === first) len++;
+      if (len >= 3) {
+        fenceChar = first;
+        fenceLength = len;
+      }
+    }
+  }
+  return fenceChar !== "";
+}
+
 function codeTokenHasClosingFence(token: Token): boolean {
   const raw = "raw" in token && typeof token.raw === "string" ? token.raw : "";
   const firstLineEnd = raw.indexOf("\n");
@@ -165,6 +201,14 @@ export class Markdown implements Component {
   private cachedWidth?: number;
   private cachedLines?: string[];
 
+  // Streaming lex cache: the largest blank-line-bounded prefix whose block
+  // tokens are frozen. marked has no resumable lexer, but block tokenization
+  // is local across a "\n\n" boundary with balanced fences, so lex(prefix) +
+  // lex(tail) === lex(prefix+tail). On append-only growth this re-lexes only
+  // the grown tail, turning O(N^2) reveal cost into O(N) for typical markdown.
+  private streamPrefixText?: string;
+  private streamPrefixTokens?: Token[];
+
   constructor(
     text: string,
     paddingX: number,
@@ -182,6 +226,13 @@ export class Markdown implements Component {
   }
 
   setText(text: string): void {
+    if (text === this.text) return;
+    // A non-append edit invalidates the frozen streaming prefix: the old
+    // prefix is no longer byte-identical to a slice of the new text.
+    if (!(text.length > this.text.length && text.startsWith(this.text))) {
+      this.streamPrefixText = undefined;
+      this.streamPrefixTokens = undefined;
+    }
     this.text = text;
     this.invalidate();
   }
@@ -214,8 +265,9 @@ export class Markdown implements Component {
     // Replace tabs with 3 spaces for consistent rendering
     const normalizedText = this.text.replace(/\t/g, "   ");
 
-    // Parse markdown to HTML-like tokens
-    const tokens = markdownParser.lexer(normalizedText);
+    // Parse markdown to HTML-like tokens (streaming prefix cache reuses the
+    // frozen blank-line-bounded prefix and lexes only the grown tail).
+    const tokens = this.lexTokens(normalizedText);
     trimPartialClosingFences(tokens);
 
     // Convert tokens to styled terminal output
@@ -283,6 +335,59 @@ export class Markdown implements Component {
     this.cachedLines = result;
 
     return result.length > 0 ? result : [""];
+  }
+
+  /** Lex markdown into block tokens, reusing the frozen streaming prefix when
+   *  the text only grew (append-only reveal). Falls back to a full lex on any
+   *  non-append edit, tab normalization, or a prefix that starts inside an
+   *  open code fence. */
+  private lexTokens(text: string): Token[] {
+    const prefixText = this.streamPrefixText;
+    const prefixTokens = this.streamPrefixTokens;
+    if (
+      prefixText !== undefined &&
+      prefixTokens !== undefined &&
+      text.length > prefixText.length &&
+      text.startsWith(prefixText)
+    ) {
+      const tailText = text.slice(prefixText.length);
+      const tailTokens = markdownParser.lexer(tailText);
+      const combined = [...prefixTokens, ...tailTokens];
+      this.freezeStablePrefix(text, combined);
+      return combined;
+    }
+    const tokens = markdownParser.lexer(text);
+    this.freezeStablePrefix(text, tokens);
+    return tokens;
+  }
+
+  /** Freeze the largest blank-line-bounded prefix that is not inside an open
+   *  fenced code block. The frozen prefix is lexed once; later frames lex only
+   *  the growing tail after it. */
+  private freezeStablePrefix(text: string, _tokens: Token[]): void {
+    const boundary = text.lastIndexOf("\n\n");
+    if (boundary <= 0) {
+      this.streamPrefixText = undefined;
+      this.streamPrefixTokens = undefined;
+      return;
+    }
+    const prefixText = text.slice(0, boundary + 2);
+    if (textInOpenCodeFence(prefixText)) {
+      this.streamPrefixText = undefined;
+      this.streamPrefixTokens = undefined;
+      return;
+    }
+    if (this.streamPrefixText === prefixText) return;
+    // Extend the frozen prefix incrementally when the boundary only grew, so a
+    // long document with many blank lines never re-lexes the already-frozen
+    // prefix (which would reintroduce O(N^2) lexing).
+    if (this.streamPrefixText !== undefined && prefixText.startsWith(this.streamPrefixText)) {
+      const extraText = prefixText.slice(this.streamPrefixText.length);
+      this.streamPrefixTokens = [...this.streamPrefixTokens!, ...markdownParser.lexer(extraText)];
+    } else {
+      this.streamPrefixTokens = markdownParser.lexer(prefixText);
+    }
+    this.streamPrefixText = prefixText;
   }
 
   /**
