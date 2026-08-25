@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { BackendRunOutcome } from "@chengchenccc/agent-backend";
+import type { BackendRunOutcome } from "@chengchenccc/agent-contract";
 import {
   assistantMessageId,
   type MessageRevision,

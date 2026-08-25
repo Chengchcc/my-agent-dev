@@ -1,4 +1,4 @@
-import type { BackendRunOutcome } from "@chengchenccc/agent-backend";
+import type { BackendRunOutcome } from "@chengchenccc/agent-contract";
 import { buildCliRunInput } from "../cli/initial-input.js";
 import { createOmaRuntime } from "../core/runtime/create-runtime.js";
 import type { CliRunOptions } from "./print-mode.js";

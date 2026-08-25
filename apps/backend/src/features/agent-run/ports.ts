@@ -1,4 +1,4 @@
-import type { BackendRunOutcome, PendingActionResponse } from "@chengchenccc/agent-backend";
+import type { BackendRunOutcome, PendingActionResponse } from "@chengchenccc/agent-contract";
 import type { Message } from "@chengchenccc/message";
 import type {
   AcquireAgentRunCommand,

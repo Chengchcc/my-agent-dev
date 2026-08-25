@@ -3,8 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createModelRuntime, type Model, type ModelRuntime, type Provider } from "@chengchenccc/ai";
-import type { AIMessageChunk } from "@chengchenccc/core";
-import type { Message } from "@chengchenccc/message";
+import type { AIMessageChunk, Message } from "@chengchenccc/message";
 import { extractAutonomousMemory } from "./autonomous-memory.js";
 
 const FAKE_MODEL: Model = {

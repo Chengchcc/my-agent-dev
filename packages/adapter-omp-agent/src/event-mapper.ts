@@ -3,7 +3,7 @@
  *  per-turn assistant texts). Terminal truth stays with the Run outcome —
  *  events never decide terminal state. */
 
-import type { BackendEvent, Usage } from "@chengchenccc/agent-backend";
+import type { BackendEvent, Usage } from "@chengchenccc/agent-contract";
 import type { Message } from "@chengchenccc/message";
 import type { OmpEvent, OmpMessageEvent } from "./wire.js";
 

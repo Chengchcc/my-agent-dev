@@ -1,8 +1,7 @@
-import type { BackendInputMessage, Usage } from "@chengchenccc/agent-backend";
-import { debugLog } from "@chengchenccc/agent-backend";
+import type { BackendInputMessage, Usage } from "@chengchenccc/agent-contract";
+import { debugLog } from "@chengchenccc/agent-contract";
 import { ProviderError } from "@chengchenccc/ai";
-import type { AIMessageChunk } from "@chengchenccc/core";
-import type { Message } from "@chengchenccc/message";
+import type { AIMessageChunk, Message } from "@chengchenccc/message";
 import type { SessionStore } from "../persistence/session-store.js";
 import type { MessageEntry } from "../persistence/session-tree.js";
 import type { AgentLoopListener, OmaLoopEvent } from "./agent-event.js";

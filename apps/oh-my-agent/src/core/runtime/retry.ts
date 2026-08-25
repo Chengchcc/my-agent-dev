@@ -1,5 +1,5 @@
 import { ProviderError } from "@chengchenccc/ai";
-import type { AIMessageChunk } from "@chengchenccc/core";
+import type { AIMessageChunk } from "@chengchenccc/message";
 
 export interface RetryOptions {
   readonly maxAttempts: number;

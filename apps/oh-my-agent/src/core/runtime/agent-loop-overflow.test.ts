@@ -3,8 +3,8 @@ import type {
   AgentRunSnapshot,
   ProjectedHistoryItem,
   WorkspaceBinding,
-} from "@chengchenccc/agent-backend";
-import type { AIMessageChunk } from "@chengchenccc/core";
+} from "@chengchenccc/agent-contract";
+import type { AIMessageChunk } from "@chengchenccc/message";
 import { createInMemorySessionStore } from "../persistence/in-memory-session-store.js";
 import type { ContextBudget } from "./agent-loop.js";
 import { createOmaSession } from "./agent-loop.js";

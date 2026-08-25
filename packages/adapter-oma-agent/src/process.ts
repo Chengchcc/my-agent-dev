@@ -1,4 +1,4 @@
-import { childEnv } from "@chengchenccc/agent-backend";
+import { childEnv } from "@chengchenccc/agent-contract";
 import type { Subprocess } from "bun";
 import { collectSecrets, createStderrTail, redactText, type StderrTail } from "./stderr-tail.js";
 

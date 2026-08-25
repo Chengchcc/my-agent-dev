@@ -18,8 +18,8 @@ import type {
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
-} from "@chengchenccc/agent-backend";
-import { guardedConsume } from "@chengchenccc/agent-backend";
+} from "@chengchenccc/agent-contract";
+import { guardedConsume } from "@chengchenccc/agent-contract";
 import { buildOutcomeMessages, createPiAccumulator, mapPiEvent } from "./event-mapper.js";
 import { type SpawnedPiProcess, spawnPiProcess } from "./process.js";
 import { parsePiLine } from "./wire.js";

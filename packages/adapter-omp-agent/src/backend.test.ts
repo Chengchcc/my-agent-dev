@@ -6,7 +6,7 @@ import type {
   BackendRunInput,
   BackendRunSegment,
   ProjectedHistoryItem,
-} from "@chengchenccc/agent-backend";
+} from "@chengchenccc/agent-contract";
 import { OmpBackend, OmpBackendError } from "./backend.js";
 
 const FAKE_ENTRY = join(import.meta.dir, "__fixtures__", "fake-omp.ts");

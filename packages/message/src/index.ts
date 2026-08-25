@@ -1,4 +1,5 @@
 export { normalizeCanonicalMessages } from "./canonical.js";
+export type { AIMessageChunk, ChatModel, ChatModelOptions, JsonSchema } from "./chat-model.js";
 export type {
   ContentBlock,
   ImageBlock,
@@ -46,3 +47,5 @@ export {
   ToolUseBlockSchema,
 } from "./parser.js";
 export type { MessageRevision } from "./revision.js";
+export { collectStream, finalizeToolUseInputs, mergeChunkIntoBlocks } from "./stream-utils.js";
+export type { Tool, ToolExecuteResult } from "./tool.js";

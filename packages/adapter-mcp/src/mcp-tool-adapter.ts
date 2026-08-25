@@ -1,4 +1,4 @@
-import type { Tool, ToolExecuteResult } from "@chengchenccc/core";
+import type { Tool, ToolExecuteResult } from "@chengchenccc/message";
 
 export interface McpToolDefinition {
   name: string;

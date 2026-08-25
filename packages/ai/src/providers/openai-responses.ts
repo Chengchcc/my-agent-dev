@@ -1,5 +1,4 @@
-import type { AIMessageChunk } from "@chengchenccc/core";
-import type { Message } from "@chengchenccc/message";
+import type { AIMessageChunk, Message } from "@chengchenccc/message";
 import { registerApi } from "../api-registry.js";
 import { resolveOpenAICompat } from "../compat.js";
 import type { Model, ProviderStreamOptions } from "../types.js";

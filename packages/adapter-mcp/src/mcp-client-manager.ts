@@ -1,5 +1,5 @@
 // ponytail: manager logic untested - dynamic SDK imports make mocking complex; two-map bookkeeping is trivial
-import type { Tool } from "@chengchenccc/core";
+import type { Tool } from "@chengchenccc/message";
 import { adaptMcpTool } from "./mcp-tool-adapter.js";
 import type { McpConnectionEntry, McpConnectionStatus, McpServerConfig } from "./types.js";
 

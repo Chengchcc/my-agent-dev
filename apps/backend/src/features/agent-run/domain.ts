@@ -2,7 +2,7 @@ import type {
   BackendModelRef,
   BackendRunOutcome,
   WorkspaceBinding,
-} from "@chengchenccc/agent-backend";
+} from "@chengchenccc/agent-contract";
 import type { Message } from "@chengchenccc/message";
 
 // ─── Agent Run status ────────────────────────────────────────────

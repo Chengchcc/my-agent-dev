@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { BackendRunInput, BackendRunOutcome } from "@chengchenccc/agent-backend";
+import type { BackendRunInput, BackendRunOutcome } from "@chengchenccc/agent-contract";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { ProcessTerminal, type SlashCommand } from "@chengchenccc/tui";
 import { buildCliRunInput } from "../../cli/initial-input.js";

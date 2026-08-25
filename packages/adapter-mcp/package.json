@@ -21,6 +21,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "@chengchenccc/core": "workspace:*"
+    "@chengchenccc/message": "workspace:*"
   }
 }

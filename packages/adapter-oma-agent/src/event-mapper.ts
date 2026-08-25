@@ -1,4 +1,4 @@
-import type { BackendEvent, BackendRunOutcome } from "@chengchenccc/agent-backend";
+import type { BackendEvent, BackendRunOutcome } from "@chengchenccc/agent-contract";
 
 /** Map Oma transport event envelopes to Backend core events,
  *  namespacing Runtime-specific details under `backend.oma.*`.

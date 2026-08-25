@@ -1,4 +1,4 @@
-import { backendKindSchema } from "@chengchenccc/agent-backend";
+import { backendKindSchema } from "@chengchenccc/agent-contract";
 import { z } from "zod";
 
 /** Frozen stdio JSONL wire contract shared by the Oma RPC mode and

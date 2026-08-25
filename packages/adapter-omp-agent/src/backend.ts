@@ -15,8 +15,8 @@ import type {
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
-} from "@chengchenccc/agent-backend";
-import { guardedConsume } from "@chengchenccc/agent-backend";
+} from "@chengchenccc/agent-contract";
+import { guardedConsume } from "@chengchenccc/agent-contract";
 import { buildOutcomeMessages, createOmpAccumulator, mapOmpEvent } from "./event-mapper.js";
 import { type SpawnedOmpProcess, spawnOmpProcess } from "./process.js";
 import { parseOmpLine } from "./wire.js";

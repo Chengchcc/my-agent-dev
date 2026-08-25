@@ -2,7 +2,7 @@
  *  (LF-framed stdout lines, bounded stderr tail) but no secrets redaction —
  *  omp has no token-bearing env vars of its own. */
 
-import { childEnv, collectSecrets, redactText } from "@chengchenccc/agent-backend";
+import { childEnv, collectSecrets, redactText } from "@chengchenccc/agent-contract";
 import type { Subprocess } from "bun";
 
 export interface OmpCommandConfig {

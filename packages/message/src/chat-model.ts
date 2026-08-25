@@ -1,4 +1,4 @@
-import type { Message } from "@chengchenccc/message";
+import type { Message } from "./message.js";
 import type { Tool } from "./tool.js";
 
 export interface AIMessageChunk {

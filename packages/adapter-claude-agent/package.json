@@ -10,8 +10,8 @@
     "lint": "biome check . && eslint ."
   },
   "dependencies": {
-    "@chengchenccc/agent-backend": "workspace:*",
-    "@chengchenccc/message": "workspace:*"
+    "@chengchenccc/message": "workspace:*",
+    "@chengchenccc/agent-contract": "workspace:*"
   },
   "devDependencies": {
     "bun-types": "latest",

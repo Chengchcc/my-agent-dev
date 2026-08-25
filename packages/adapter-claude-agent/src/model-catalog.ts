@@ -3,7 +3,7 @@
  *  in the canonical `<provider>/<model>` id format. Update when the
  *  provider/model surface changes. */
 
-import type { BackendModel, BackendModelCatalog } from "@chengchenccc/agent-backend";
+import type { BackendModel, BackendModelCatalog } from "@chengchenccc/agent-contract";
 
 export class ClaudeModelCatalog {
   list(): Promise<BackendModelCatalog> {

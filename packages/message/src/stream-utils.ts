@@ -1,5 +1,5 @@
 import type { AIMessageChunk } from "./chat-model.js";
-import type { ContentBlock, ToolUseBlock } from "./message.js";
+import type { ContentBlock, ToolUseBlock } from "./content-block.js";
 
 export async function collectStream(stream: AsyncIterable<AIMessageChunk>): Promise<{
   blocks: ContentBlock[];

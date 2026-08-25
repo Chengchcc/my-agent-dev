@@ -7,7 +7,7 @@ import {
   type OmaCommandConfig,
   OmaModelCatalog,
 } from "@chengchenccc/adapter-oma-agent";
-import type { BackendEvent } from "@chengchenccc/agent-backend";
+import type { BackendEvent } from "@chengchenccc/agent-contract";
 import {
   createAgentContextService,
   sqliteAgentContextAdapter,

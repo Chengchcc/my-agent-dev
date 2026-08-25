@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import type { BackendRunInput } from "@chengchenccc/agent-backend";
+import type { BackendRunInput } from "@chengchenccc/agent-contract";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { enabledPluginSkillRoots } from "../core/plugins/plugin-marketplace.js";
 import { buildSystemPrompt, readMemorySummary } from "../core/runtime/prompts.js";

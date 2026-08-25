@@ -21,7 +21,7 @@
 | **BackendRunOutcome** | child 的唯一终态结果：completed/failed/aborted/timeout | 不是事件流（事件永不决定终态） |
 | **Product Tool** | History 读写、审批等产品能力，由 Product Backend 统一执行（幂等 + 审计） | 不是 native tool（child 自己的文件/Shell 工具） |
 | **Oma** | 无 UI 的一次性 CLI（print/json/rpc），被 Adapter 按 Run spawn | 不是 daemon（无常驻进程） |
-| **Adapter（agent-backend）** | spawn child、stdin/stdout JSONL、steer/abort、并发上限、event/outcome 映射 | 不是执行引擎 |
+| **Adapter（agent-contract）** | spawn child、stdin/stdout JSONL、steer/abort、并发上限、event/outcome 映射 | 不是执行引擎 |
 | **Plugin** | 贡献 tools + hooks 的可组合单元（oma core）；当前真实插件：todo、progressive-skill | 不是 middleware |
 | **Compaction** | child 内 Run-local 摘要压缩，只影响本次 Run 输入 | 不是 Product Summary（后者是 Agent Context entry） |
 | **Skill Pack** | 技能集合的分发单元（git/zip/builtin），物化为目录；Run 冻结 skillRoots | 不是 Skill Root（root 是运行时物化产物） |
@@ -55,16 +55,15 @@ L5 Surfaces     Web / Lark — HTTP/SSE
 L4 Backend      Product Backend（Elysia）：账本、Agent Context、Agent Run、Loop、Product Tools
 L3 Adapter      packages/adapter-* — child 进程边界（spawn/JSONL/steer/abort）
 L2 Runtime      apps/oh-my-agent/src/core — Oma 唯一真实 model/tool loop（agent-loop.ts）
-L1 Contracts    packages/message、packages/core、packages/agent-backend — 类型/协议
+L1 Contracts    packages/message（含原 core 协议）、packages/agent-contract — 类型/协议
 ```
 
 ## 包地图与进出口
 
 | 包 | 层级 | 关键导出 |
 |----|------|----------|
-| `@chengchenccc/core` | L1 | `ChatModel`, `Tool`, `AIMessageChunk`, `ContentBlock`, `collectStream`（无 run loop） |
-| `@chengchenccc/message` | L1 | `Message`, `MessageRevision`, `ContentBlock`, `assistantMessageId(runId, ordinal)` → `run:<runId>:assistant:<n>` |
-| `@chengchenccc/agent-backend` | L1 | `AgentBackend`, `BackendRunInput/Outcome/Segment`, `BackendEvent`, `BackendKind`, `BackendModelRef`（backend 中立契约；不含任何 child wire 协议） |
+| `@chengchenccc/message` | L1 | Message 本体 + ChatModel/Tool/AIMessageChunk/stream-utils 协议（packages/core 已并入；ContentBlock 单本体单定义） |
+| `@chengchenccc/agent-contract` | L1 | `AgentBackend`, `BackendRunInput/Outcome/Segment`, `BackendEvent`, `BackendKind`, `BackendModelRef`（spawn 中立契约，4 个 adapter 实现；原 agent-backend 更名） |
 | `@chengchenccc/adapter-oma-agent` | L3 | `OmaBackend` — spawn/JSONL/steer/abort/concurrency |
 | `@chengchenccc/adapter-omp-agent` | L3 | `OmpBackend` — `omp -p --mode json` 每 turn 短进程;分支钉 session 文件续接 |
 | `@chengchenccc/adapter-pi-agent` | L3 | `PiBackend` — `pi -p --mode json`;`--session` 写+续;pi-mcp-adapter 挂产品工具 |
@@ -88,7 +87,7 @@ L1 Contracts    packages/message、packages/core、packages/agent-backend — �
 ### 跨进程契约（e2e-contract-rules.md）
 - HTTP 请求/响应类型：backend Elysia `App` → `@chengchenccc/api-contract` → web 通过 `treaty<App>` 推导。**禁止**手抄 interface、`apiFetch<T>`、`as`
 - SSE 事件：`SSEEventMap`（zod schema map）→ 后端 `sseEncoder`、前端 `typedSource`。**禁止**裸 `EventSource` + `JSON.parse` + `as`
-- Agent Backend 中立契约：`@chengchenccc/agent-backend` 是唯一真源。**禁止** adapter/backend 各写一套。
+- Agent Backend 中立契约：`@chengchenccc/agent-contract` 是唯一真源。**禁止** adapter/backend 各写一套。
 - Oma wire 协议：`apps/oh-my-agent` 内部闭环，fixture 是契约；`apps/oh-my-agent` 生成 canonical `rpc-*.jsonl`，`packages/adapter-oma-agent` 测试消费。**禁止**共享 wire-schema 包。
 - react-query：`queryOptions(params)` 单源，组件只调 `useXxx`。**禁止**组件内联 `queryKey`/`queryFn`
 
@@ -157,7 +156,7 @@ cd apps/backend && bun run db:check:backend   # drizzle schema/migration 校验
 
 ## 提交规范（commitlint 必过项）
 
-**格式**：`type(scope): subject` — scope **必填**，不可为空。scope 枚举以 `commitlint.config.mjs` 为准（Phase 6 后已收敛：`core` `message` `agent-backend` `adapter-oma-agent` `oma` `api-contract` `ai` `plugin-*` `backend` `web` `lark-bot` `cron` `mcp` `settings` `docs` `test` `lint` `build` `deps` `repo`）。
+**格式**：`type(scope): subject` — scope **必填**，不可为空。scope 枚举以 `commitlint.config.mjs` 为准（Phase 6 后已收敛：`core` `message` `agent-contract` `adapter-oma-agent` `oma` `api-contract` `ai` `plugin-*` `backend` `web` `lark-bot` `cron` `mcp` `settings` `docs` `test` `lint` `build` `deps` `repo`）。
 
 | 规则 | 值 |
 |------|-----|

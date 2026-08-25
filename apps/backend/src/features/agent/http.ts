@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join as pathJoin, resolve as pathResolve, sep } from "node:path";
-import { BACKEND_KINDS } from "@chengchenccc/agent-backend";
+import { BACKEND_KINDS } from "@chengchenccc/agent-contract";
 import { Elysia, t } from "elysia";
 import { probeCliSetupCapability } from "../lark-bot/provisioner.js";
 import type { LarkSetupManager } from "../lark-bot/setup-manager.js";

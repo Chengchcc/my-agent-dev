@@ -1,4 +1,4 @@
-import type { BackendModelRef } from "@chengchenccc/agent-backend";
+import type { BackendModelRef } from "@chengchenccc/agent-contract";
 import type { BackendConfig } from "../../config.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";

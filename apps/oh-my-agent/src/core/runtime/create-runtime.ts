@@ -4,7 +4,7 @@ import type {
   BackendRunOutcome,
   BackendRunSegment,
   ProjectedHistoryItem,
-} from "@chengchenccc/agent-backend";
+} from "@chengchenccc/agent-contract";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import type { Message } from "@chengchenccc/message";
 import type { RunEventEnvelope } from "../../protocol/index.js";

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
-import type { BackendModelRef } from "@chengchenccc/agent-backend";
+import type { BackendModelRef } from "@chengchenccc/agent-contract";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";

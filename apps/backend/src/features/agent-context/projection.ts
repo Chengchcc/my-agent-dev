@@ -1,4 +1,4 @@
-import type { ProjectedHistoryItem } from "@chengchenccc/agent-backend";
+import type { ProjectedHistoryItem } from "@chengchenccc/agent-contract";
 import type {
   AgentContextEntry,
   LedgerMessageEntry,

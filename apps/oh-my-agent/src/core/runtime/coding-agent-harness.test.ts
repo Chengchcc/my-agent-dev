@@ -4,9 +4,9 @@ import type {
   AgentRunSnapshot,
   BackendInputMessage,
   WorkspaceBinding,
-} from "@chengchenccc/agent-backend";
+} from "@chengchenccc/agent-contract";
 import { ProviderError } from "@chengchenccc/ai";
-import type { AIMessageChunk } from "@chengchenccc/core";
+import type { AIMessageChunk } from "@chengchenccc/message";
 import { createInMemorySessionStore } from "../persistence/in-memory-session-store.js";
 import type { SessionStore } from "../persistence/session-store.js";
 import { createOmaSession } from "./agent-loop.js";

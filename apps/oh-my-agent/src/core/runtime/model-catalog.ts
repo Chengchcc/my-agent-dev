@@ -1,4 +1,4 @@
-import type { BackendModel, BackendModelCatalog } from "@chengchenccc/agent-backend";
+import type { BackendModel, BackendModelCatalog } from "@chengchenccc/agent-contract";
 import type { ModelRuntime } from "@chengchenccc/ai";
 
 /** Map the process ModelRuntime catalog to the Backend model contract.

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BackendRunInput } from "@chengchenccc/agent-backend";
+import type { BackendRunInput } from "@chengchenccc/agent-contract";
 import { OmaBackend, OmaProcessError } from "./backend.js";
 import { OmaModelCatalog } from "./model-catalog.js";
 import type { OmaCommandConfig } from "./process.js";

@@ -1,4 +1,4 @@
-import type { BackendModelRef } from "@chengchenccc/agent-backend";
+import type { BackendModelRef } from "@chengchenccc/agent-contract";
 import type { Message } from "@chengchenccc/message";
 import {
   type AgentContextEntry,

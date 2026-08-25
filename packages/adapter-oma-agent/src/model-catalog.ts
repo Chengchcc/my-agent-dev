@@ -1,4 +1,4 @@
-import type { BackendModelCatalog } from "@chengchenccc/agent-backend";
+import type { BackendModelCatalog } from "@chengchenccc/agent-contract";
 import { OmaProcessError } from "./backend.js";
 import { type OmaCommandConfig, type SpawnedOmaProcess, spawnOmaProcess } from "./process.js";
 import { modelCatalogResponseSchema } from "./protocol.js";

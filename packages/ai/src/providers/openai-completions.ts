@@ -1,5 +1,5 @@
-import type { AIMessageChunk } from "@chengchenccc/core";
 import type {
+  AIMessageChunk,
   ImageBlock,
   Message,
   TextBlock,

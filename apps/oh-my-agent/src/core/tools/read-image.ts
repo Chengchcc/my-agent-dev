@@ -1,5 +1,5 @@
 import { readFileSync, statSync } from "node:fs";
-import type { Tool, ToolExecuteResult } from "@chengchenccc/core";
+import type { Tool, ToolExecuteResult } from "@chengchenccc/message";
 import { WorkspaceSandbox } from "./workspace-sandbox.js";
 
 const MEDIA_TYPES: Record<string, "image/png" | "image/jpeg" | "image/gif" | "image/webp"> = {

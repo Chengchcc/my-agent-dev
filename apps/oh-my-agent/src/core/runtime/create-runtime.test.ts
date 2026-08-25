@@ -1,11 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { BackendRunInput, BackendRunSegment } from "@chengchenccc/agent-backend";
+import type { BackendRunInput, BackendRunSegment } from "@chengchenccc/agent-contract";
 import type { Model, Provider } from "@chengchenccc/ai";
 import { createModelRuntime } from "@chengchenccc/ai";
-import type { AIMessageChunk } from "@chengchenccc/core";
-import type { Message } from "@chengchenccc/message";
+import type { AIMessageChunk, Message } from "@chengchenccc/message";
 import { createOmaRuntime } from "./create-runtime.js";
 import { registerBuiltinProviders } from "./run-runtime.js";
 

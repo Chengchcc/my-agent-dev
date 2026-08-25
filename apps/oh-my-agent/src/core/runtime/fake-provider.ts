@@ -1,6 +1,5 @@
 import type { Model, Provider } from "@chengchenccc/ai";
-import type { AIMessageChunk } from "@chengchenccc/core";
-import type { Message } from "@chengchenccc/message";
+import type { AIMessageChunk, Message } from "@chengchenccc/message";
 
 /** Deterministic fake Provider for child-process integration tests. Yields one text
  *  chunk then a natural stop - no network, no credentials. Registered by the

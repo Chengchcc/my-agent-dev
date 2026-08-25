@@ -1,5 +1,4 @@
-import type { AIMessageChunk, JsonSchema } from "@chengchenccc/core";
-import type { Message } from "@chengchenccc/message";
+import type { AIMessageChunk, JsonSchema, Message } from "@chengchenccc/message";
 
 // ─── Modalities + Cost ───
 

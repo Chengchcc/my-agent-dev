@@ -1,6 +1,6 @@
 import { existsSync, statSync } from "node:fs";
-import type { BackendRunOutcome, BackendRunSegment } from "@chengchenccc/agent-backend";
-import { debugLog } from "@chengchenccc/agent-backend";
+import type { BackendRunOutcome, BackendRunSegment } from "@chengchenccc/agent-contract";
+import { debugLog } from "@chengchenccc/agent-contract";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { type Message, MessageSchema } from "@chengchenccc/message";
 import { createOmaRuntime, type OmaRuntime } from "../../core/runtime/create-runtime.js";

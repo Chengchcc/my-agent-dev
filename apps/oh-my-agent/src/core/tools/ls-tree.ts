@@ -1,6 +1,6 @@
 import { type Dirent, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { Tool } from "@chengchenccc/core";
+import type { Tool } from "@chengchenccc/message";
 import { WorkspaceSandbox } from "./workspace-sandbox.js";
 
 const descriptionParam = {

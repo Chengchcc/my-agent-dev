@@ -4,7 +4,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BackendRunOutcome } from "@chengchenccc/agent-backend";
+import type { BackendRunOutcome } from "@chengchenccc/agent-contract";
 import type { AgentRun } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";

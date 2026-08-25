@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { BackendRunOutcome } from "@chengchenccc/agent-backend";
+import type { BackendRunOutcome } from "@chengchenccc/agent-contract";
 import type { AgentRun } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";

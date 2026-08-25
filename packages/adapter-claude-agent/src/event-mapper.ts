@@ -3,7 +3,7 @@
  *  accumulated from the final `result.modelUsage` map (authoritative, per
  *  model); `total_cost_usd` feeds costUsd. */
 
-import type { BackendEvent, Usage } from "@chengchenccc/agent-backend";
+import type { BackendEvent, Usage } from "@chengchenccc/agent-contract";
 import type { Message } from "@chengchenccc/message";
 import type { ClaudeEvent } from "./wire.js";
 

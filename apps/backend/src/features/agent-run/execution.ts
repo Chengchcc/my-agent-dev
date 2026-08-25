@@ -8,8 +8,8 @@ import type {
   BackendRunSegment,
   ProjectedHistoryItem,
   WorkspaceBinding,
-} from "@chengchenccc/agent-backend";
-import { BACKEND_KINDS, type BackendKind, debugLog } from "@chengchenccc/agent-backend";
+} from "@chengchenccc/agent-contract";
+import { BACKEND_KINDS, type BackendKind, debugLog } from "@chengchenccc/agent-contract";
 import { resolveModelAlias } from "@chengchenccc/ai";
 import type { ContentBlock, Message } from "@chengchenccc/message";
 import { DomainError } from "../../infra/domain-errors.js";

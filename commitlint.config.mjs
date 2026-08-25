@@ -15,14 +15,14 @@ export default {
         "message",
         "api-contract",
         "config",
-        "agent-backend",
+        "agent-contract",
+        "tui",
         "adapter-oma-agent",
         "adapter-omp-agent",
         "adapter-pi-agent",
         "adapter-claude-agent",
         "adapter-mcp",
         "ai",
-        "tui",
         // Plugins
         // Apps
         "backend",

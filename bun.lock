@@ -37,7 +37,7 @@
         "@chengchenccc/adapter-oma-agent": "workspace:*",
         "@chengchenccc/adapter-omp-agent": "workspace:*",
         "@chengchenccc/adapter-pi-agent": "workspace:*",
-        "@chengchenccc/agent-backend": "workspace:*",
+        "@chengchenccc/agent-contract": "workspace:*",
         "@chengchenccc/ai": "workspace:*",
         "@chengchenccc/api-contract": "workspace:*",
         "@chengchenccc/config": "workspace:*",
@@ -72,10 +72,9 @@
       },
       "dependencies": {
         "@chengchenccc/adapter-mcp": "workspace:*",
-        "@chengchenccc/agent-backend": "workspace:*",
+        "@chengchenccc/agent-contract": "workspace:*",
         "@chengchenccc/ai": "workspace:*",
         "@chengchenccc/config": "workspace:*",
-        "@chengchenccc/core": "workspace:*",
         "@chengchenccc/message": "workspace:*",
         "@chengchenccc/tui": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.12.1",
@@ -139,7 +138,7 @@
       "name": "@chengchenccc/adapter-claude-agent",
       "version": "0.1.0",
       "dependencies": {
-        "@chengchenccc/agent-backend": "workspace:*",
+        "@chengchenccc/agent-contract": "workspace:*",
         "@chengchenccc/message": "workspace:*",
       },
       "devDependencies": {
@@ -151,7 +150,7 @@
       "name": "@chengchenccc/adapter-mcp",
       "version": "0.1.0",
       "dependencies": {
-        "@chengchenccc/core": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.12.1",
       },
     },
@@ -159,7 +158,7 @@
       "name": "@chengchenccc/adapter-oma-agent",
       "version": "0.1.0",
       "dependencies": {
-        "@chengchenccc/agent-backend": "workspace:*",
+        "@chengchenccc/agent-contract": "workspace:*",
         "zod": "^3.23.0",
       },
       "devDependencies": {
@@ -171,7 +170,7 @@
       "name": "@chengchenccc/adapter-omp-agent",
       "version": "0.1.0",
       "dependencies": {
-        "@chengchenccc/agent-backend": "workspace:*",
+        "@chengchenccc/agent-contract": "workspace:*",
         "@chengchenccc/message": "workspace:*",
       },
       "devDependencies": {
@@ -183,7 +182,7 @@
       "name": "@chengchenccc/adapter-pi-agent",
       "version": "0.1.0",
       "dependencies": {
-        "@chengchenccc/agent-backend": "workspace:*",
+        "@chengchenccc/agent-contract": "workspace:*",
         "@chengchenccc/message": "workspace:*",
       },
       "devDependencies": {
@@ -191,8 +190,8 @@
         "typescript": "^5.7.0",
       },
     },
-    "packages/agent-backend": {
-      "name": "@chengchenccc/agent-backend",
+    "packages/agent-contract": {
+      "name": "@chengchenccc/agent-contract",
       "version": "0.1.0",
       "dependencies": {
         "@chengchenccc/message": "workspace:*",
@@ -203,7 +202,6 @@
       "name": "@chengchenccc/ai",
       "version": "0.1.0",
       "dependencies": {
-        "@chengchenccc/core": "workspace:*",
         "@chengchenccc/message": "workspace:*",
       },
     },
@@ -225,13 +223,6 @@
         "zod": "^3.23.0",
       },
     },
-    "packages/core": {
-      "name": "@chengchenccc/core",
-      "version": "0.1.0",
-      "dependencies": {
-        "@chengchenccc/message": "workspace:*",
-      },
-    },
     "packages/message": {
       "name": "@chengchenccc/message",
       "version": "0.1.0",
@@ -243,7 +234,6 @@
       "name": "@chengchenccc/test-helpers",
       "version": "0.1.0",
       "dependencies": {
-        "@chengchenccc/core": "workspace:*",
         "@chengchenccc/message": "workspace:*",
       },
     },
@@ -354,7 +344,7 @@
 
     "@chengchenccc/adapter-pi-agent": ["@chengchenccc/adapter-pi-agent@workspace:packages/adapter-pi-agent"],
 
-    "@chengchenccc/agent-backend": ["@chengchenccc/agent-backend@workspace:packages/agent-backend"],
+    "@chengchenccc/agent-contract": ["@chengchenccc/agent-contract@workspace:packages/agent-contract"],
 
     "@chengchenccc/ai": ["@chengchenccc/ai@workspace:packages/ai"],
 
@@ -363,8 +353,6 @@
     "@chengchenccc/backend": ["@chengchenccc/backend@workspace:apps/backend"],
 
     "@chengchenccc/config": ["@chengchenccc/config@workspace:packages/config"],
-
-    "@chengchenccc/core": ["@chengchenccc/core@workspace:packages/core"],
 
     "@chengchenccc/lark-bot": ["@chengchenccc/lark-bot@workspace:apps/lark-bot"],
 

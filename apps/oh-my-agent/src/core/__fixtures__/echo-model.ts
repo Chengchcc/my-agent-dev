@@ -1,4 +1,4 @@
-import type { AIMessageChunk } from "@chengchenccc/core";
+import type { AIMessageChunk } from "@chengchenccc/message";
 
 /** Deterministic scripted model stream: yields one assistant text chunk, a
  *  usage record, and end_turn - the minimal shape the agent loop needs to

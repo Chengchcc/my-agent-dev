@@ -1,7 +1,7 @@
 {
-  "name": "@chengchenccc/core",
+  "name": "@chengchenccc/agent-contract",
   "version": "0.1.0",
-  "description": "Core protocol and minimal runtime",
+  "description": "Implementation-independent Agent Backend contracts",
   "type": "module",
   "exports": {
     ".": {
@@ -16,11 +16,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "biome check . && eslint .",
-    "test": "bun test --pass-with-no-tests",
+    "test": "bun test",
     "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
-    "@chengchenccc/message": "workspace:*"
+    "@chengchenccc/message": "workspace:*",
+    "zod": "^3.23.0"
   },
   "devDependencies": {}
 }

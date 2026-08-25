@@ -10,8 +10,8 @@
     "lint": "biome check . && eslint ."
   },
   "dependencies": {
-    "@chengchenccc/agent-backend": "workspace:*",
-    "zod": "^3.23.0"
+    "zod": "^3.23.0",
+    "@chengchenccc/agent-contract": "workspace:*"
   },
   "devDependencies": {
     "bun-types": "latest",

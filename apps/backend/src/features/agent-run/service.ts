@@ -3,8 +3,8 @@ import type {
   BackendRunOutcome,
   PendingActionResponse,
   WorkspaceBinding,
-} from "@chengchenccc/agent-backend";
-import { debugLog } from "@chengchenccc/agent-backend";
+} from "@chengchenccc/agent-contract";
+import { debugLog } from "@chengchenccc/agent-contract";
 import type { Message } from "@chengchenccc/message";
 import { ConflictError } from "../../infra/domain-errors.js";
 import type { IdGenerator, LedgerMessageResolver } from "../agent-context/ports.js";

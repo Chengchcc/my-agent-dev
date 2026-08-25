@@ -1,5 +1,4 @@
-import type { AIMessageChunk } from "@chengchenccc/core";
-import type { Message } from "@chengchenccc/message";
+import type { AIMessageChunk, Message } from "@chengchenccc/message";
 import type { SessionStore } from "../persistence/session-store.js";
 import type { OmaLoopEvent } from "./agent-event.js";
 

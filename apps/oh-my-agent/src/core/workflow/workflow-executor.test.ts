@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProviderError } from "@chengchenccc/ai";
-import type { AIMessageChunk } from "@chengchenccc/core";
+import type { AIMessageChunk } from "@chengchenccc/message";
 import { createEchoModelStream } from "../__fixtures__/echo-model.js";
 import type { PluginTool } from "../agent-runtime.js";
 import { createWorkflowExecutor } from "./workflow-executor.js";

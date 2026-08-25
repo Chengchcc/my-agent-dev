@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { BackendModelRef, BackendRunOutcome } from "@chengchenccc/agent-backend";
+import type { BackendModelRef, BackendRunOutcome } from "@chengchenccc/agent-contract";
 import { isTerminalStatus } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";

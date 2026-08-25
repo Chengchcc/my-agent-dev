@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { extname, resolve } from "node:path";
-import type { Tool } from "@chengchenccc/core";
+import type { Tool } from "@chengchenccc/message";
 import { WorkspaceSandbox } from "./workspace-sandbox.js";
 
 type InputRec = Record<string, unknown>;

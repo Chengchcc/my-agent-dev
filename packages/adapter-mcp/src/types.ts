@@ -1,4 +1,4 @@
-import type { Tool } from "@chengchenccc/core";
+import type { Tool } from "@chengchenccc/message";
 
 export type McpTransport = "stdio" | "sse";
 

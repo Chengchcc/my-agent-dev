@@ -28,7 +28,7 @@ Every response has two parts:
 # Repository Guidelines
 ## Project Overview
 
-`my-agent-team` is a monorepo for building multi-agent AI systems. It spans from a protocol-level agent runtime (`packages/core`, `apps/oh-my-agent/src/core`) through a production backend (`apps/backend`) and web UI (`apps/web`), plus a Loop automation engine that subsumes issue triage and cron-based work.
+`my-agent-team` is a monorepo for building multi-agent AI systems. It spans from a protocol-level agent runtime (`packages/message`, `apps/oh-my-agent/src/core`) through a production backend (`apps/backend`) and web UI (`apps/web`), plus a Loop automation engine that subsumes issue triage and cron-based work.
 
 **Tech stack:** Bun 1.3.14 runtime, TypeScript 6.x (ESM, `NodeNext`), Turborepo v2, Elysia HTTP, Drizzle ORM + SQLite, Next.js 15 App Router, React Query v5, shadcn/ui + Tailwind CSS v4, Biome + ESLint.
 
@@ -53,7 +53,7 @@ L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock
 
 | Directory | Purpose |
 |---|---|
-| `packages/core/` | Protocol types (`Message`/`ChatModel`/`Tool`) + stream utils |
+| `packages/message/` | Protocol layer: Message/MessageRevision + ChatModel/Tool/AIMessageChunk + stream utils (absorbed packages/core) |
 | `apps/oh-my-agent/src/core/` | Oma runtime: `createOmaSession()` (agent-loop), plugins, compaction, persistence (absorbed packages/agent) |
 | `apps/backend/src/features/loop/` | Loop feature incl. the pure state machine (reducer, STATE.md I/O; absorbed packages/loop) |
 | `packages/ai/` | Provider + Model registry, AnthropicChatModel, model metadata |
@@ -168,7 +168,7 @@ Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop
 | `apps/backend/src/infra/db/schema.ts` | Drizzle schema — 21 tables, single SQLite file |
 | `packages/agent/src/runtime/agent-loop.ts` | `createOmaSession()` — the agent loop |
 | `packages/agent/src/runtime/plugin.ts` | `Plugin`/`PluginHooks`, `validatePlugins()` |
-| `packages/core/src/chat-model.ts` | `ChatModel` contract |
+| `packages/message/src/chat-model.ts` | `ChatModel` contract |
 | `packages/loop/src/loop-reducer.ts` | Pure reducer for Loop item state machine |
 | `packages/ai/src/providers/anthropic-messages.ts` | Anthropic Messages API adapter |
 | `apps/web/src/lib/api.ts` | Typed API client (Eden Treaty) |

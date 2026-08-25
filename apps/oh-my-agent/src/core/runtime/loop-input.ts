@@ -3,7 +3,7 @@ import type {
   BackendInputMessage,
   ProjectedHistoryItem,
   WorkspaceBinding,
-} from "@chengchenccc/agent-backend";
+} from "@chengchenccc/agent-contract";
 import type { AppendBatchInput } from "../persistence/session-store.js";
 export interface LoopInputResult {
   readonly batch: AppendBatchInput;

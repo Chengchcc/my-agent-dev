@@ -7,7 +7,7 @@ import type {
   BackendKind,
   BackendRegistry,
   BackendRegistryEntry,
-} from "@chengchenccc/agent-backend";
+} from "@chengchenccc/agent-contract";
 import { resolveModelAlias } from "@chengchenccc/ai";
 import { type Message, serializeMessageRevision } from "@chengchenccc/message";
 import type { FeatureSet } from "../app.js";

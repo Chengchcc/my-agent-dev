@@ -5,8 +5,8 @@ import type {
   BackendRunInput,
   BackendRunOutcome,
   BackendRunSegment,
-} from "@chengchenccc/agent-backend";
-import { debugLog } from "@chengchenccc/agent-backend";
+} from "@chengchenccc/agent-contract";
+import { debugLog } from "@chengchenccc/agent-contract";
 import { mapRunEvent, mapRunOutcome } from "./event-mapper.js";
 import { type OmaCommandConfig, type SpawnedOmaProcess, spawnOmaProcess } from "./process.js";
 import { codingAgentOutputSchema, type OmaOutput, type RunEventEnvelope } from "./protocol.js";
