@@ -32,6 +32,10 @@ my-agent-team 是一个**团队级 Agent 运行时**。每个 Agent 有独立的
 |---|---|---|
 | <img src="docs/screenshots/team.png" width="280" alt="Team agents" /> | <img src="docs/screenshots/mcp.png" width="280" alt="MCP catalog" /> | <img src="docs/screenshots/knowledge.png" width="280" alt="Knowledge packs" /> |
 
+| Oma TUI — real session | Oma TUI — tools | Oma TUI — mermaid |
+|---|---|---|
+| <img src="docs/screenshots/oma-tui-real.png" width="280" alt="Oma TUI real session" /> | <img src="docs/screenshots/oma-tui-tools.png" width="280" alt="Oma TUI tools" /> | <img src="docs/screenshots/oma-tui-mermaid.png" width="280" alt="Oma TUI mermaid" /> |
+
 ## 🚀 快速开始
 
 **前置条件：** [Bun](https://bun.sh) >= 1.3
