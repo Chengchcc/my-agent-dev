@@ -31,7 +31,7 @@ export interface PluginHooks {
    *  turn). Plugins use it for per-Run setup (load state, reset counters). */
   beforeRun?(messages: readonly Message[], rt: PluginRuntime): void;
   /** Called ONCE after the entire agent loop ends (all turns done), before
-   *  agent_end. Plugins use this for per-Run summaries (recap). */
+   *  agent_end. Plugins use this for per-Run summaries. */
   afterRun?(
     status: "completed" | "failed" | "stopped",
     messages: readonly Message[],

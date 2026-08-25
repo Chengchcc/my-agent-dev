@@ -987,7 +987,7 @@ describe("tui session (headless, fake provider)", () => {
         .at(-1)!
         .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
         .map((i) => i.text);
-      expect(statuses.some((t) => t.includes("terminal was unfocused"))).toBe(true);
+      expect(statuses.some((t) => t.includes("switch back for recap"))).toBe(true);
       expect(pings.length).toBeGreaterThan(0);
     } finally {
       delete process.env.OMA_SESSION_DIR;

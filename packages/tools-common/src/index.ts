@@ -8,6 +8,7 @@ export { createGlobTool } from "./glob.js";
 export { createGrepTool } from "./grep.js";
 export { createLsTool, createTreeTool } from "./ls-tree.js";
 export { createReadImageTool } from "./read-image.js";
+export { buildSkillIndex, type SkillIndexEntry } from "./skills.js";
 export type { WebFetchPort, WebSearchPort } from "./web-ports.js";
 export {
   createWebFetchTool as createPortWebFetchTool,

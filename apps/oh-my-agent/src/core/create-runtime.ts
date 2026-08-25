@@ -38,6 +38,10 @@ export interface CreateOmaRuntimeOptions {
    *  persist (pi appendMessage). When set, the caller owns writing these
    *  messages to its session file as they happen. */
   onPersistMessages?: (messages: readonly Message[]) => void;
+  /** Standalone modes (TUI/print/json) expose oma's own todo tools backed by
+   *  `<workspace>/.oma/todo.json`. Backend-invoked RPC mode leaves this off:
+   *  todo comes from the backend-injected product MCP. */
+  enableNativeTodo?: boolean;
 }
 
 /** One Runtime = one Run. The loop runs directly in-process; steer injects
@@ -129,6 +133,7 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
     modelId: options.modelId,
     skillRoots: options.skillRoots,
     ...(options.onPersistMessages ? { onPersistMessages: options.onPersistMessages } : {}),
+    enableNativeTodo: options.enableNativeTodo ?? false,
   });
 
   let stopRequested = false;
@@ -174,8 +179,6 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
       let closed = false;
       let seq = 0;
       const unsubscribe = rt.session.onEvent((event) => {
-        if (event.type === "recap_update")
-          console.error("[create-runtime] onEvent received recap_update");
         if (event.type === "message_start" || event.type === "agent_end") settleLive();
         const envelope: RunEventEnvelope = { id: seq++, type: event.type, data: event as never };
         queue.push(envelope);

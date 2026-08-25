@@ -49,10 +49,6 @@ export const runEvents = {
     type: z.literal("backend.oma.todo_update"),
     payload: z.object({ items: z.array(z.unknown()).optional() }).optional(),
   }),
-  "backend.oma.recap_update": z.object({
-    type: z.literal("backend.oma.recap_update"),
-    payload: z.object({ text: z.string().optional(), turn: z.number().optional() }).optional(),
-  }),
   workflow_started: z.object({
     type: z.literal("workflow_started"),
     workflowId: z.string().optional(),

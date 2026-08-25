@@ -11,7 +11,8 @@ import type { OmaLoopEvent } from "./agent-event.js";
  *  capabilities come from the `rt` argument. */
 export interface PluginRuntime {
   /** Stream a model call (bounded by the same modelTimeoutMs as the main
-   *  loop). Plugins use this for recap/pet - never for the main agent turn. */
+   *  loop). Plugins use this for side-channel summaries - never for the main
+   *  agent turn. */
   readonly streamModel: (
     providerId: string,
     modelId: string,
@@ -25,8 +26,8 @@ export interface PluginRuntime {
    *  text output, and discards any tool calls. The result is NEVER persisted
    *  to the session branch — it's a pure side-channel read.
    *
-   *  An ephemeral side-channel turn. Used by recap/title
-   *  so plugins don't need to manually construct messages or know the model
+   *  An ephemeral side-channel turn. Used by title/summary features so
+   *  plugins don't need to manually construct messages or know the model
    *  ref. One call: `const text = await rt.runEphemeralTurn(prompt);` */
   /** Set by the loop (not by external code). Optional on the interface
    *  so run-runtime/tests don't need a stub. */

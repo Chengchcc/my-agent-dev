@@ -12,7 +12,7 @@
  *    <body becomes the system prompt>
  *
  *  Frontmatter is parsed by hand (line regexes, no YAML dependency) — same
- *  precedent as plugin-progressive-skill's parseFrontmatter.
+ *  precedent as tools-common's skills parseFrontmatter.
  */
 
 export interface SubagentRegistryEntry {

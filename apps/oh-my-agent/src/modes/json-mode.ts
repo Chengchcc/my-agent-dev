@@ -18,6 +18,7 @@ export async function runJsonMode(opts: CliRunOptions): Promise<number> {
     workspaceAccess: built.workspace.access,
     modelRuntime: opts.modelRuntime,
     skillRoots: built.run.skillRoots ?? [],
+    enableNativeTodo: true,
     onEvent: (envelope) => {
       // Raw runtime event object, e.g. {"type":"agent_start"}.
       process.stdout.write(`${JSON.stringify({ type: "event", event: envelope.data })}\n`);

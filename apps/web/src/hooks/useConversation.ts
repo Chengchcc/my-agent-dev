@@ -19,7 +19,6 @@ import {
 import {
   appendThinking,
   appendTransient,
-  clearRunRecaps,
   clearRunTodos,
   clearRunTools,
   completeTool,
@@ -49,8 +48,6 @@ export interface WorkflowRunState {
   readonly ok: boolean | null;
   readonly totalTokens: number;
 }
-
-const RECAP_STORAGE_PREFIX = "mat:recap:";
 
 function safeParse(raw: string): unknown {
   try {
@@ -93,10 +90,6 @@ export function useConversation(
   const [transientTools, setTransientTools] = useState<LiveToolMap>({});
   /** Latest todo snapshot per run (todo_write replaces the whole list). */
   const [runTodos, setRunTodos] = useState<RunTodoMap>({});
-  /** Latest recap text per run (one-line summary, replaced each turn). */
-  const [runRecaps, setRunRecapsState] = useState<Record<string, { text: string; turn: number }>>(
-    {},
-  );
   /** Live workflow runs (transient progress, cleared with the SSE stream). */
   const [workflows, setWorkflows] = useState<ReadonlyMap<string, WorkflowRunState>>(new Map());
 
@@ -118,31 +111,6 @@ export function useConversation(
   const clearRunTodosState = useCallback((runId: string) => {
     setRunTodos((prev) => clearRunTodos(prev, runId));
   }, []);
-  const upsertRunRecap = useCallback(
-    (runId: string, text: string, turn: number) => {
-      setRunRecapsState((prev) => ({ ...prev, [runId]: { text, turn } }));
-      try {
-        localStorage.setItem(
-          `${RECAP_STORAGE_PREFIX}${conversationId}:${runId}`,
-          JSON.stringify({ text, turn, ts: Date.now() }),
-        );
-      } catch {
-        /* localStorage full or disabled — non-critical */
-      }
-    },
-    [conversationId],
-  );
-  const clearRunRecap = useCallback(
-    (runId: string) => {
-      setRunRecapsState((prev) => clearRunRecaps(prev, runId));
-      try {
-        localStorage.removeItem(`${RECAP_STORAGE_PREFIX}${conversationId}:${runId}`);
-      } catch {
-        /* non-critical */
-      }
-    },
-    [conversationId],
-  );
 
   // Leaving the conversation closes every run EventSource and clears all
   // transient state — a switched conversation must never inherit the
@@ -158,34 +126,8 @@ export function useConversation(
       transientsRef.current = {};
       setTransientTools({});
       setRunTodos({});
-      setRunRecapsState({});
       setWorkflows(new Map());
     };
-  }, [conversationId]);
-
-  // Restore recaps from localStorage on conversation load (best-effort:
-  // recap is not persisted server-side, so localStorage is the only way
-  // to survive page refresh).
-  useEffect(() => {
-    if (!conversationId) return;
-    const prefix = `${RECAP_STORAGE_PREFIX}${conversationId}:`;
-    const restored: Record<string, { text: string; turn: number }> = {};
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!key?.startsWith(prefix)) continue;
-        const runId = key.slice(prefix.length);
-        const raw = localStorage.getItem(key);
-        if (!raw) continue;
-        const parsed = JSON.parse(raw) as { text: string; turn: number };
-        restored[runId] = { text: parsed.text, turn: parsed.turn };
-      }
-      if (Object.keys(restored).length > 0) {
-        setRunRecapsState(restored);
-      }
-    } catch {
-      /* localStorage access failed — non-critical, start empty */
-    }
   }, [conversationId]);
   const upsertTransient = useCallback((runId: string, agentMemberId: string, text: string) => {
     setTransients((prev) => {
@@ -404,7 +346,6 @@ export function useConversation(
       const drop = () => {
         finish();
         dropTransient(runId);
-        clearRunRecap(runId);
       };
       es.onerror = () => drop();
       es.addEventListener("status", (e) => {
@@ -510,18 +451,6 @@ export function useConversation(
           /* malformed - ignore */
         }
       });
-      es.addEventListener("backend.oma.recap_update", (e) => {
-        try {
-          const ev = JSON.parse((e as MessageEvent).data) as {
-            payload?: { text?: string; turn?: number };
-          };
-          if (ev.payload?.text) {
-            upsertRunRecap(runId, ev.payload.text, ev.payload?.turn ?? 0);
-          }
-        } catch {
-          /* malformed - ignore */
-        }
-      });
       es.addEventListener("backend.oma.stream_rule_triggered", (e) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as { payload?: { rule?: string } };
@@ -606,7 +535,6 @@ export function useConversation(
       es.addEventListener("workflow_completed", workflowEvent("completed"));
     },
     [
-      clearRunRecap,
       clearRunToolsState,
       clearRunTodosState,
       completeToolState,
@@ -614,7 +542,6 @@ export function useConversation(
       failTransient,
       pushRunNotice,
       setRunTodosState,
-      upsertRunRecap,
       upsertToolState,
       upsertTransient,
       upsertThinking,
@@ -675,7 +602,6 @@ export function useConversation(
     transients,
     transientTools,
     runTodos,
-    runRecaps,
     workflows,
   };
 }

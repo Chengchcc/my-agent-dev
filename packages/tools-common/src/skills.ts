@@ -1,6 +1,12 @@
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
-import type { MetaSectionProvider, Plugin, PluginTool } from "@chengchenccc/agent";
+import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+export interface SkillIndexEntry {
+  readonly name: string;
+  readonly description: string;
+  readonly root: string;
+  readonly relativePath: string;
+}
 
 function isWithinRoot(root: string, target: string): boolean {
   try {
@@ -23,16 +29,9 @@ function canonicalRoot(root: string): string | null {
   }
 }
 
-export interface SkillIndexEntry {
-  readonly name: string;
-  readonly description: string;
-  readonly root: string;
-  readonly relativePath: string;
-}
-
-export interface ProgressiveSkillOptions {
-  readonly roots: readonly string[];
-}
+/** Safety bound: symlink containment + total entry count, not directory
+ *  depth — deep but bounded trees are legitimate skill packs. */
+const MAX_ENTRIES = 1000;
 
 /** Scan configured roots for SKILL.md files, parse frontmatter for
  *  name + description. Deterministic order by root then name. */
@@ -42,8 +41,6 @@ export function buildSkillIndex(roots: readonly string[]): SkillIndexEntry[] {
   // the same skill name; the final index keeps exactly one entry per name.
   const byName = new Map<string, SkillIndexEntry>();
   for (const root of roots) {
-    // Canonical root is the containment authority; entries store it so
-    // skill_load re-validates against the same realpath.
     const canonical = canonicalRoot(root);
     if (!canonical) continue;
     const scanned: SkillIndexEntry[] = [];
@@ -55,9 +52,6 @@ export function buildSkillIndex(roots: readonly string[]): SkillIndexEntry[] {
   // Deterministic Meta order: sort by name.
   return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
-/** Safety bound: symlink containment + total entry count, not directory
- *  depth — deep but bounded trees are legitimate skill packs. */
-const MAX_ENTRIES = 1000;
 
 function scanDir(root: string, currentDir: string, entries: SkillIndexEntry[]): void {
   let items: string[];
@@ -72,7 +66,6 @@ function scanDir(root: string, currentDir: string, entries: SkillIndexEntry[]): 
       throw new Error("skill pack contains too many skills (limit 1000)");
     }
     const fullPath = join(currentDir, item);
-    // Skip symlinks/dirs pointing outside root
     if (!isWithinRoot(root, fullPath)) continue;
 
     if (item === "SKILL.md") {
@@ -87,7 +80,6 @@ function scanDir(root: string, currentDir: string, entries: SkillIndexEntry[]): 
       }
       continue;
     }
-    // Recurse into subdirectories (bounded by MAX_ENTRIES, not depth).
     try {
       if (statSync(fullPath).isDirectory()) scanDir(root, fullPath, entries);
     } catch {
@@ -125,60 +117,4 @@ function parseDescription(frontmatter: string): string {
     body.push(l.trim());
   }
   return body.join(" ");
-}
-
-/** Create the progressive-skill Plugin: Meta index + skill_load tool. */
-export function createProgressiveSkillPlugin(opts: ProgressiveSkillOptions): Plugin {
-  const index = buildSkillIndex(opts.roots);
-
-  const metaProvider: MetaSectionProvider = {
-    name: "Skills",
-    render(): string {
-      if (index.length === 0) return "No skills available.";
-      return index.map((s) => `- **${s.name}**: ${s.description}`).join("\n");
-    },
-  };
-
-  const skillLoadTool: PluginTool = {
-    name: "skill_load",
-    description:
-      "Load the full body of a skill by name. Only the name/description is in the index; use this to read the actual instructions. Relative paths in the body resolve against the returned `dir`.",
-    inputSchema: {
-      type: "object",
-      properties: { name: { type: "string", description: "Skill name from the index" } },
-      required: ["name"],
-    },
-    async execute(
-      args: Readonly<Record<string, unknown>>,
-    ): Promise<Readonly<Record<string, unknown>>> {
-      const name = args.name as string;
-      const entry = index.find((s) => s.name === name);
-      if (!entry) return { error: `Skill "${name}" not found` };
-
-      // Resolve and validate path within canonical root using realpath.
-      // entry.root is already canonicalized by buildSkillIndex.
-      const fullPath = resolve(entry.root, entry.relativePath);
-      if (!isWithinRoot(entry.root, fullPath)) {
-        return { error: "Path escape detected" };
-      }
-      if (!existsSync(fullPath)) return { error: `Skill file not found` };
-
-      const content = readFileSync(fullPath, "utf8");
-      // Strip frontmatter, resolve ${SKILL_DIR}
-      const body = content.replace(/^---\n[\s\S]*?\n---\n?/, "");
-      const skillDir = fullPath.slice(0, fullPath.lastIndexOf("/"));
-      return {
-        name: entry.name,
-        dir: skillDir,
-        hint: "Resolve relative paths and scripts against `dir`.",
-        body: body.replaceAll("${SKILL_DIR}", skillDir),
-      } as unknown as Readonly<Record<string, unknown>>;
-    },
-  };
-
-  return {
-    name: "progressive-skill",
-    tools: [skillLoadTool],
-    meta: [metaProvider],
-  };
 }

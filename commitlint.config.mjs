@@ -27,9 +27,6 @@ export default {
         "tools-common",
         "tui",
         // Plugins
-        "plugin-progressive-skill",
-        "plugin-todo",
-        "plugin-recap",
         // Apps
         "backend",
         "oh-my-agent",

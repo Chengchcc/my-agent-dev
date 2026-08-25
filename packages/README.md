@@ -33,10 +33,9 @@ Product Backend (apps/backend)
 - [`adapter-oma-agent`](./adapter-oma-agent/)：`OmaBackend`——spawn child、stdin/stdout JSONL、steer/abort、并发上限、stderr 脱敏、child recycle。
 - [`ai`](./ai/)：Provider 注册制 + Model 元数据 + `createModelRuntime()` + `AnthropicChatModel`——全仓唯一直接 import 模型 SDK 的地方。
 
-**插件（Oma 加载的真实能力）**
+**Oma 本地能力**
 
-- [`plugin-progressive-skill`](./plugin-progressive-skill/)：SKILL.md 渐进式加载，按 Run 冻结的 `skillRoots` 扫描，按需分页喂给模型。
-- [`plugin-todo`](./plugin-todo/)：Run-local todo 跟踪（规划 + 进度 + 停止前把关）。
+- todo / skill 已吸收进 `apps/oh-my-agent/src/core/`（`todo.ts`、`skill.ts`），不再有独立 plugin 包；recap 改为 TUI focus-resume 摘要提示；后续对齐 Claude plugin marketplace 概念。
 
 **工具与适配器**
 
@@ -54,6 +53,6 @@ Product Backend (apps/backend)
 ## 从哪读起
 
 - **想理解整体**：`core` → `agent-backend` → `adapter-oma-agent`，这条线就是执行链。
-- **想加插件**：先看 `agent` 的插件契约，再照着 `plugin-todo` / `plugin-progressive-skill` 抄结构。
+- **想加 Oma 能力**：先看 `agent` 的插件契约，再照着 `apps/oh-my-agent/src/core/todo.ts` / `skill.ts` 的结构；recap 在 TUI focus-resume 逻辑里实现。
 - **想接新模型厂商**：看 `ai` 的 Provider 接口，照着 `AnthropicChatModel` 写适配器。
 - **在做后端**：`agent-backend`（契约）→ `adapter-oma-agent`（child 边界）→ `apps/backend` 的 agent-run feature（执行编排）。

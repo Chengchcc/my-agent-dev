@@ -44,6 +44,7 @@ export async function runPrintMode(opts: CliRunOptions): Promise<number> {
     workspaceAccess: built.workspace.access,
     modelRuntime: opts.modelRuntime,
     skillRoots: built.run.skillRoots ?? [],
+    enableNativeTodo: true,
   });
   try {
     const segment = await runtime.run(built);

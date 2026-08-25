@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { buildSkillIndex } from "@chengchenccc/plugin-progressive-skill";
+import { buildSkillIndex } from "@chengchenccc/tools-common";
 import { Elysia, t } from "elysia";
 import type { SkillPackRow } from "./entities.js";
 import { installPath, posixSkillRoot } from "./entities.js";

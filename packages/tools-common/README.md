@@ -34,4 +34,4 @@ const result = await read.execute({ path: "output.txt" });
 
 ## 依赖
 
-tools-common 只依赖 core（拿 `Tool` 类型）。被 harness、plugin-fs-memory、plugin-progressive-skill 使用。
+tools-common 只依赖 core（拿 `Tool` 类型）。被 oma / backend / harness 使用；`skills.ts` 提供共享的 SKILL.md 索引。

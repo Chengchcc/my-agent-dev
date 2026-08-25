@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { OmaLoopEvent } from "@chengchenccc/agent";
 import type { BackendRunInput, BackendRunOutcome } from "@chengchenccc/agent-backend";
 import type { ModelRuntime } from "@chengchenccc/ai";
-import { buildSkillIndex } from "@chengchenccc/plugin-progressive-skill";
+import { buildSkillIndex } from "@chengchenccc/tools-common";
 import {
   applyBackgroundToLine,
   CachedOutputBlock,
@@ -152,6 +152,8 @@ export interface TuiIo {
   /** True while the terminal window holds focus (CSI 1004 reporting).
    *  Absent = always considered focused. */
   isFocused?(): boolean;
+  /** Subscriber for terminal focus transitions (CSI 1004 reporting). */
+  onFocus?(handler: ((focused: boolean) => void) | null): void;
   /** Best-effort completion ping (BEL). Absent = silent. */
   notify?(): void;
   /** Stop the terminal (restore modes). */
@@ -473,6 +475,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
   /** Estimated context tokens after the last run: drives the picker's
    *  over-context warning (pi grays out models smaller than the session). */
   let lastContextTokens: number | undefined;
+  /** Recap shown when the terminal regains focus after an unfocused run. */
+  let pendingFocusRecap: string | undefined;
   /** Prompt queued by a command (skill invocations): submitted as the next
    *  normal run. */
   let pendingPrompt: string | undefined;
@@ -497,6 +501,20 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     state.runs.push({ items, running: false });
   }
 
+  /** Compact recap text for the most recent run: last assistant message
+   *  first line, falling back to the auto title. */
+  function lastRunRecap(): string | undefined {
+    const run = state.runs.at(-1);
+    if (!run) return undefined;
+    for (let i = run.items.length - 1; i >= 0; i--) {
+      const item = run.items[i]!;
+      if (item.kind === "assistant" && item.text.trim()) {
+        return item.text.replace(/\s+/g, " ").trim().slice(0, 120);
+      }
+    }
+    return sessionTitle;
+  }
+
   io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
   // `oma "<prompt>"` opens the TUI with the prompt prefilled in the editor.
   if (opts.initialPrompt) io.setInputText?.(opts.initialPrompt);
@@ -515,6 +533,14 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     } else if (liveRuntime) {
       void liveRuntime.stop().catch(() => {});
     }
+    io.render(state);
+  });
+  io.onFocus?.((focusedNow) => {
+    if (!focusedNow) return;
+    if (!pendingFocusRecap) return;
+    const recap = pendingFocusRecap;
+    pendingFocusRecap = undefined;
+    pushStatus(`recap: ${recap}`);
     io.render(state);
   });
 
@@ -1113,6 +1139,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       workspaceAccess: "read_write",
       modelRuntime: opts.modelRuntime,
       skillRoots: built.run.skillRoots ?? [],
+      enableNativeTodo: true,
       sessionTranscript: session.messages.length
         ? session.messages.map((m, i) => ({
             productEntryId: `session:${i}`,
@@ -1182,7 +1209,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     // Long runs often outlast the user's attention: ping when the terminal
     // lost focus so switching back is prompted (pi's desktop-notify analog).
     if (io.isFocused?.() === false) {
-      pushStatus("run finished — terminal was unfocused");
+      pendingFocusRecap = lastRunRecap();
+      pushStatus("run finished — switch back for recap");
       io.notify?.();
     }
 
@@ -1545,6 +1573,7 @@ export function createTerminalIo(
   let liveHandler: ((text: string) => void) | null = null;
   let liveCommandHandler: ((text: string) => void) | null = null;
   let commandHandler: ((cmd: TuiCommand) => void) | null = null;
+  let focusHandler: ((focused: boolean) => void) | null = null;
   let loader: Loader | null = null;
   let busySince = 0;
   let busySeconds = 0;
@@ -1691,10 +1720,12 @@ ${item.text ?? ""}`;
     // Focus reporting (CSI 1004): ESC[I focused, ESC[O unfocused.
     if (data === "\x1b[I") {
       focused = true;
+      focusHandler?.(true);
       return { consume: true };
     }
     if (data === "\x1b[O") {
       focused = false;
+      focusHandler?.(false);
       return { consume: true };
     }
     if (matchesKey(data, "escape")) {
@@ -1703,10 +1734,6 @@ ${item.text ?? ""}`;
         return { consume: true };
       }
       if (!tui.hasOverlay() && !editor.isShowingAutocomplete() && commandHandler) {
-        commandHandler("forkTree");
-        return { consume: true };
-      }
-      if (!tui.hasOverlay() && commandHandler) {
         commandHandler("forkTree");
         return { consume: true };
       }
@@ -2140,6 +2167,9 @@ ${item.text ?? ""}`;
     },
     onCommand(handler) {
       commandHandler = handler;
+    },
+    onFocus(handler) {
+      focusHandler = handler;
     },
     setSlashCommands(commands) {
       // Registers slash-command autocomplete; also enables @-file completion

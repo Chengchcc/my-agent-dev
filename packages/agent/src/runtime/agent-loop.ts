@@ -268,7 +268,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
     status = "running";
     controller = new AbortController();
     // Bind rt.signal to THIS run's controller so plugin model calls
-    // (recap/pet) honor stop()/abort().
+    // (side-channel summaries) honor stop()/abort().
     rt = {
       ...rt,
       signal: controller.signal,
@@ -702,8 +702,8 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
           }
         }
 
-        // afterModel hook (recap/pet): after the turn's output + tool
-        // results are persisted, before turn_end.
+        // afterModel hook: after the turn's output + tool results are
+        // persisted, before turn_end.
         for (const p of opts.plugins) {
           if (p.hooks?.afterModel) {
             try {

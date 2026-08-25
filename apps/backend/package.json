@@ -31,7 +31,6 @@
     "@chengchenccc/conversation": "workspace:*",
     "@chengchenccc/loop": "workspace:*",
     "@chengchenccc/message": "workspace:*",
-    "@chengchenccc/plugin-progressive-skill": "workspace:*",
     "@chengchenccc/tools-common": "workspace:*",
     "drizzle-orm": "^0.44.0",
     "elysia": "^1.0.0",

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { BackendRunInput, BackendRunSegment } from "@chengchenccc/agent-backend";
 import type { Model, Provider } from "@chengchenccc/ai";
@@ -7,6 +7,7 @@ import { createModelRuntime } from "@chengchenccc/ai";
 import type { AIMessageChunk } from "@chengchenccc/core";
 import type { Message } from "@chengchenccc/message";
 import { createOmaRuntime } from "./create-runtime.js";
+import { registerBuiltinProviders } from "./run-runtime.js";
 
 const tmp = `/tmp/runtime-test-${Math.random().toString(36).slice(2, 8)}`;
 mkdirSync(tmp, { recursive: true });
@@ -540,5 +541,39 @@ describe("createOmaRuntime", () => {
     // as top-level run usage so product accounting sees it (B6).
     expect(requests).toEqual(["subagent"]);
     expect(outcome.usage).toEqual({ inputTokens: 0, outputTokens: 14 });
+  });
+  test("enableNativeTodo exposes todo_write backed by .oma/todo.json", async () => {
+    const savedFake = process.env.OMA_FAKE_PROVIDER;
+    const savedTool = process.env.OMA_FAKE_TOOL;
+    process.env.OMA_FAKE_PROVIDER = "1";
+    process.env.OMA_FAKE_TOOL = JSON.stringify([
+      { name: "todo_write", input: { items: [{ id: "t1", text: "plan", status: "pending" }] } },
+    ]);
+    try {
+      const modelRuntime = createModelRuntime();
+      registerBuiltinProviders(modelRuntime, process.env);
+      const rt = await createOmaRuntime({
+        runId: "r-todo-native",
+        modelId: "fake/echo",
+        workspaceRoot: tmp,
+        workspaceAccess: "read_write",
+        modelRuntime,
+        skillRoots: [],
+        enableNativeTodo: true,
+      });
+      const segment = await rt.run(runInput("r-todo-native"));
+      const outcome = await segment.outcome;
+      await rt.close();
+      expect(outcome.status).toBe("completed");
+      const todo = JSON.parse(readFileSync(join(tmp, ".oma", "todo.json"), "utf8")) as {
+        items: Array<{ id: string; text: string; status: string }>;
+      };
+      expect(todo.items).toEqual([{ id: "t1", text: "plan", status: "pending" }]);
+    } finally {
+      if (savedFake === undefined) delete process.env.OMA_FAKE_PROVIDER;
+      else process.env.OMA_FAKE_PROVIDER = savedFake;
+      if (savedTool === undefined) delete process.env.OMA_FAKE_TOOL;
+      else process.env.OMA_FAKE_TOOL = savedTool;
+    }
   });
 });

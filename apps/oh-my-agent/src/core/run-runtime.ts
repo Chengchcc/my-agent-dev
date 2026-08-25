@@ -19,8 +19,6 @@ import type { AgentRunSnapshot, ProjectedHistoryItem } from "@chengchenccc/agent
 import { type ModelRuntime, resolveModelAlias } from "@chengchenccc/ai";
 import type { AIMessageChunk, JsonSchema } from "@chengchenccc/core";
 import type { Message } from "@chengchenccc/message";
-import { createProgressiveSkillPlugin } from "@chengchenccc/plugin-progressive-skill";
-import { createRecapPlugin } from "@chengchenccc/plugin-recap";
 import {
   createBashTool,
   createDdgWebSearchPort,
@@ -43,7 +41,10 @@ import { killProcessTree } from "./process-tree.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { readProductToolsManifest } from "./product-tools-manifest.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
+import { createSkill } from "./skill.js";
 import { loadStreamRules } from "./stream-rules.js";
+import { createTodo, createTodoReadTool } from "./todo.js";
+import { createFileTodoStore, readTodoFile } from "./todo-store.js";
 import { evaluateWorkflowScript } from "./workflow-evaluator.js";
 import { createWorkflowExecutor, type WorkflowAgentResult } from "./workflow-executor.js";
 import { createWorkflowTools, isValidWorkflowName } from "./workflow-tools.js";
@@ -91,6 +92,10 @@ export interface RunRuntimeDeps {
   /** Real-time session-file persistence (pi appendMessage): fires after
    *  every conversational persist with the canonical messages written. */
   onPersistMessages?: (messages: readonly Message[]) => void;
+  /** Standalone modes (TUI/print/json) expose oma's own todo tools backed by
+   *  `<workspace>/.oma/todo.json`. Backend-invoked RPC mode leaves this off:
+   *  todo comes from the backend-injected product MCP. */
+  enableNativeTodo?: boolean;
 }
 
 export interface RunRuntime {
@@ -183,14 +188,37 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   }
 
   const nativeToolsPlugin: Plugin = { name: "native-tools", tools: fileTools };
-  const plugins: Plugin[] = [
-    nativeToolsPlugin,
-    createRecapPlugin({
-      recapModelRef: { providerId: "", modelId: "" },
-      enabled: process.env.OMA_RECAP_ENABLED === "1",
-    }),
-    createProgressiveSkillPlugin({ roots: deps.skillRoots }),
-  ];
+  const plugins: Plugin[] = [nativeToolsPlugin, createSkill({ roots: deps.skillRoots })];
+  if (deps.enableNativeTodo) {
+    const todoStore = createFileTodoStore(deps.workspaceRoot);
+    const todoBase = createTodo({ sessionId: deps.runId, store: todoStore });
+    plugins.push({
+      name: todoBase.name,
+      hooks: todoBase.hooks,
+      tools: [
+        ...(todoBase.tools ?? []),
+        createTodoReadTool({ sessionId: deps.runId, store: todoStore }),
+      ],
+      meta: [
+        {
+          name: "Current Tasks",
+          render: () => {
+            const items = readTodoFile(deps.workspaceRoot);
+            if (items.length === 0) return "None yet. Use todo_write to track tasks.";
+            const marks: Record<string, string> = {
+              pending: "- [ ]",
+              in_progress: "- [~]",
+              done: "- [x]",
+              cancelled: "- [ ]",
+            };
+            return items
+              .map((t) => `${marks[t.status] ?? "- [ ]"} ${t.text} (id: ${t.id})`)
+              .join("\n");
+          },
+        },
+      ],
+    });
+  }
 
   // Product Tools are resolved PER RUN from the AgentRunSnapshot manifest:
   // resolveTools builds the tool table from input.run.productTools + the run's

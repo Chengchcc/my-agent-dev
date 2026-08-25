@@ -16,8 +16,6 @@
     { "path": "./packages/core" },
     { "path": "./packages/loop" },
     { "path": "./packages/message" },
-    { "path": "./packages/plugin-progressive-skill" },
-    { "path": "./packages/plugin-todo" },
     { "path": "./packages/test-helpers" },
     { "path": "./packages/tools-common" }
   ]
