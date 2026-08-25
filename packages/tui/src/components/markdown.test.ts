@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderMermaidAscii } from "beautiful-mermaid";
+import { resolveMermaidAscii } from "../mermaid.ts";
 import { visibleWidth } from "../utils.ts";
 import { Markdown, type MarkdownTheme } from "./markdown.ts";
 
@@ -29,13 +29,18 @@ const wideDiagram = `graph LR
 describe("markdown mermaid", () => {
   test("clips wide mermaid ASCII rows instead of wrapping them", () => {
     const md = new Markdown(`\`\`\`mermaid\n${wideDiagram}\n\`\`\``, 0, 0, theme);
-    const natural = renderMermaidAscii(wideDiagram, { colorMode: "none" });
-    const naturalLines = natural.split("\n");
-    expect(Math.max(...naturalLines.map(visibleWidth))).toBeGreaterThan(40);
+    const resolved = resolveMermaidAscii(wideDiagram, { maxWidth: 40 });
+    expect(resolved).not.toBeNull();
+    const resolvedLines = resolved!.split("\n");
+    // Re-fit can pick a taller TD layout when the base LR graph overflows.
 
     const rendered = md.render(40);
-    // Each preformatted row stays one line; the wrap pass must not fragment it.
-    expect(rendered.length).toBe(naturalLines.length);
+    // Every preformatted row stays exactly one row; the wrap pass must not
+    // fragment the box-drawing canvas.
+    expect(rendered.length).toBe(resolvedLines.length);
+    for (const line of rendered) {
+      expect(visibleWidth(line)).toBeLessThanOrEqual(40);
+    }
     for (const line of rendered) {
       expect(visibleWidth(line)).toBeLessThanOrEqual(40);
     }

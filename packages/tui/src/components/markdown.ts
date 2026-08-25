@@ -1,5 +1,5 @@
-import { renderMermaidAscii } from "beautiful-mermaid";
 import { Marked, type Token, Tokenizer, type Tokens } from "marked";
+import { resolveMermaidAscii } from "../mermaid.ts";
 import { getCapabilities, hyperlink, isImageLine } from "../terminal-image.ts";
 import type { Component } from "../tui.ts";
 import {
@@ -390,7 +390,7 @@ export class Markdown implements Component {
         if (token.lang === "mermaid") {
           let ascii: string | null = null;
           try {
-            ascii = renderMermaidAscii(token.text, { colorMode: "none" });
+            ascii = resolveMermaidAscii(token.text, { maxWidth: width });
           } catch {
             ascii = null;
           }
