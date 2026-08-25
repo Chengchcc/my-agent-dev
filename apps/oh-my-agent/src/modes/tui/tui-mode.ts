@@ -1259,8 +1259,17 @@ class OmaTranscriptContainer
   private lastWidth = -1;
   private nextBatchId = 1;
   private offeredBatch: { id: number; end: number } | undefined;
+  private deferCommit = false;
+
+  /** While a run is live, mermaid/code rows may still re-layout on a later
+   *  chunk; don't advance the scrollback frontier until the run settles
+   *  (omp defers native-scrollback settling wholesale for live blocks). */
+  setDeferCommit(defer: boolean): void {
+    this.deferCommit = defer;
+  }
 
   setNativeScrollbackCommittedRows(rows: number): void {
+    if (this.deferCommit) return;
     this.committedRows = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
   }
 
@@ -1285,6 +1294,7 @@ class OmaTranscriptContainer
 
   /** Offer the currently committed prefix as one history batch (omp peek). */
   peekFinalizedBatch(width: number): { id: number; end: number } | undefined {
+    if (this.deferCommit) return undefined;
     if (this.offeredBatch !== undefined) return this.offeredBatch;
     if (this.committedRows <= 0 || this.lastWidth !== width) return undefined;
     const batch = { id: this.nextBatchId++, end: this.committedRows };
@@ -1668,6 +1678,17 @@ export function createTerminalIo(
   }
   function render(state: TuiViewState): void {
     currentState = state;
+    transcript.setDeferCommit(
+      state.runs.some(
+        (r) =>
+          r.running &&
+          r.items.some(
+            (i) =>
+              i.kind === "assistant" &&
+              (i.text.includes("```mermaid") || i.text.includes("~~~mermaid")),
+          ),
+      ),
+    );
     if (busy) updateWorkingMessage();
     transcript.clear();
     const lines: string[] = [];

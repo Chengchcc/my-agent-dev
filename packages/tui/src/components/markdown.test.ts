@@ -45,4 +45,13 @@ describe("markdown mermaid", () => {
       expect(visibleWidth(line)).toBeLessThanOrEqual(40);
     }
   });
+
+  test("open mermaid fence stays a code fence until the closing fence arrives", () => {
+    const md = new Markdown(`\`\`\`mermaid\n${wideDiagram}`, 0, 0, theme);
+    const rendered = md.render(80).join("\n");
+    // No ASCII diagram while the fence is still streaming (would re-layout every
+    // chunk and stall the TUI); render the raw fence instead.
+    expect(rendered).toContain("```mermaid");
+    expect(rendered).not.toContain("┌");
+  });
 });

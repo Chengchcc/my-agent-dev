@@ -58,6 +58,41 @@ function trimPartialClosingFences(tokens: readonly Token[]): void {
   token.text = token.text.slice(0, -lastLine.length).replace(/\n$/, "");
 }
 
+function codeTokenHasClosingFence(token: Token): boolean {
+  const raw = "raw" in token && typeof token.raw === "string" ? token.raw : "";
+  const firstLineEnd = raw.indexOf("\n");
+  if (firstLineEnd < 0) return false;
+  const openingLine = raw.slice(0, firstLineEnd);
+  const openingTrimmed = openingLine.trimStart();
+  const openingIndent = openingLine.length - openingTrimmed.length;
+  if (openingIndent > 3) return false;
+  const fenceChar = openingTrimmed.charAt(0);
+  if (fenceChar !== "`" && fenceChar !== "~") return false;
+  let fenceLength = 0;
+  while (openingTrimmed.charAt(fenceLength) === fenceChar) fenceLength++;
+  if (fenceLength < 3) return false;
+
+  let lineStart = firstLineEnd + 1;
+  while (lineStart <= raw.length) {
+    const lineEnd = raw.indexOf("\n", lineStart);
+    const line = lineEnd >= 0 ? raw.slice(lineStart, lineEnd) : raw.slice(lineStart);
+    const trimmed = line.trimStart();
+    const indent = line.length - trimmed.length;
+    let closingLength = 0;
+    while (trimmed.charAt(closingLength) === fenceChar) closingLength++;
+    if (
+      indent <= 3 &&
+      closingLength >= fenceLength &&
+      trimmed.slice(closingLength).trim().length === 0
+    ) {
+      return true;
+    }
+    if (lineEnd < 0) break;
+    lineStart = lineEnd + 1;
+  }
+  return false;
+}
+
 const markdownParser = new Marked();
 markdownParser.setOptions({
   tokenizer: new StrictStrikethroughTokenizer(),
@@ -387,7 +422,7 @@ export class Markdown implements Component {
         break;
 
       case "code": {
-        if (token.lang === "mermaid") {
+        if (token.lang === "mermaid" && codeTokenHasClosingFence(token)) {
           let ascii: string | null = null;
           try {
             ascii = resolveMermaidAscii(token.text, { maxWidth: width });
