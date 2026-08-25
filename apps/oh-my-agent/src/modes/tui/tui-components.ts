@@ -112,7 +112,10 @@ export class OmaTranscriptContainer
     RenderStablePrefix,
     TerminalFrameProvider
 {
+  /** Rows already written to native scrollback (acknowledged frontier). */
   private committedRows = 0;
+  /** Desired commit boundary set by the render shell each frame. */
+  private targetCommittedRows = 0;
   private lastLines: string[] = [];
   private lastWidth = -1;
   private nextBatchId = 1;
@@ -126,9 +129,13 @@ export class OmaTranscriptContainer
     this.deferCommit = defer;
   }
 
+  /** Records the desired commit boundary; `peekFinalizedBatch` turns it into
+   *  an incremental history packet only when it is behind the frontier. */
   setNativeScrollbackCommittedRows(rows: number): void {
     if (this.deferCommit) return;
-    this.committedRows = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
+    this.targetCommittedRows = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
+    if (this.targetCommittedRows < this.committedRows)
+      this.targetCommittedRows = this.committedRows;
   }
 
   getNativeScrollbackLiveRegionStart(): number | undefined {
@@ -148,14 +155,59 @@ export class OmaTranscriptContainer
     super.clear();
     this.lastLines = [];
     this.lastWidth = -1;
+    this.committedRows = 0;
+    this.targetCommittedRows = 0;
+    this.offeredBatch = undefined;
   }
 
-  /** Offer the currently committed prefix as one history batch (omp peek). */
+  /** Total rows currently in the live (not-yet-committed) tail. */
+  liveRowCount(width: number): number {
+    this.ensureFullRender(width);
+    let rows = 0;
+    for (
+      let i = Math.min(this.committedRows, this.children.length);
+      i < this.children.length;
+      i++
+    ) {
+      rows += this.children[i]!.render(width).length;
+    }
+    return rows;
+  }
+
+  /** Render only the live tail, keeping the most recent `maxRows`. */
+  renderViewport(width: number, maxRows: number): string[] {
+    this.ensureFullRender(width);
+    const live: string[] = [];
+    for (
+      let i = Math.min(this.committedRows, this.children.length);
+      i < this.children.length;
+      i++
+    ) {
+      const childLines = this.children[i]!.render(width);
+      for (const line of childLines) live.push(line);
+    }
+    if (live.length > maxRows) return live.slice(live.length - maxRows);
+    return live;
+  }
+
+  /** Populate the cached full-render baseline on first paint or a width change. */
+  private ensureFullRender(width: number): void {
+    if (this.lastWidth !== width || this.lastLines.length === 0) {
+      this.lastLines = super.render(width);
+      this.lastWidth = width;
+    }
+  }
+
+  /** Offer the next uncommitted prefix as one history batch (omp peek).
+   *  Returns only the *new* rows (from the frontier), never the cumulative
+   *  prefix, so the terminal appends each packet exactly once. */
   peekFinalizedBatch(width: number): { id: number; end: number } | undefined {
     if (this.deferCommit) return undefined;
     if (this.offeredBatch !== undefined) return this.offeredBatch;
-    if (this.committedRows <= 0 || this.lastWidth !== width) return undefined;
-    const batch = { id: this.nextBatchId++, end: this.committedRows };
+    if (this.targetCommittedRows <= this.committedRows || this.lastWidth !== width)
+      return undefined;
+    const end = this.targetCommittedRows;
+    const batch = { id: this.nextBatchId++, end };
     this.offeredBatch = batch;
     return batch;
   }
@@ -167,14 +219,32 @@ export class OmaTranscriptContainer
     this.offeredBatch = undefined;
   }
 
-  /** Frame provider viewport = current render; history = committed prefix. */
+  /** Render the currently-offered history packet rows (no full re-render). */
+  renderOfferedHistory(width: number): { id: number; rows: string[] } | undefined {
+    const batch = this.peekFinalizedBatch(width);
+    if (!batch) return undefined;
+    return { id: batch.id, rows: this.renderRange(this.committedRows, batch.end, width) };
+  }
+
+  /** Render the children in `[start, end)` as rows (used for history packets). */
+  renderRange(start: number, end: number, width: number): string[] {
+    const out: string[] = [];
+    for (let i = start; i < Math.min(end, this.children.length); i++) {
+      const childLines = this.children[i]!.render(width);
+      for (const line of childLines) out.push(line);
+    }
+    return out;
+  }
+
+  /** Frame provider viewport = full render; history = uncommitted frontier
+   *  rows to append to native scrollback. */
   renderFrame(opts: { columns: number; rows: number }): FramePlan {
     const viewport = this.render(opts.columns);
     const batch = this.peekFinalizedBatch(opts.columns);
     return {
       viewport,
       history: batch
-        ? { id: batch.id, rows: this.lastLines.slice(0, Math.max(0, batch.end)) }
+        ? { id: batch.id, rows: this.renderRange(this.committedRows, batch.end, opts.columns) }
         : undefined,
     };
   }
@@ -182,6 +252,8 @@ export class OmaTranscriptContainer
   /** Replay the committed prefix after a resize/replay (force full re-compose). */
   beginReplay(): void {
     this.offeredBatch = undefined;
+    this.committedRows = 0;
+    this.targetCommittedRows = 0;
     this.lastLines = [];
     this.lastWidth = -1;
   }

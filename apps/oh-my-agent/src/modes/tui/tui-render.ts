@@ -8,7 +8,6 @@ import {
   type OutputBlockSection,
   renderStatusBar,
   renderToolHeader,
-  Spacer,
   Text,
   type TUI,
   truncateToWidth,
@@ -29,6 +28,7 @@ import {
   USER_TEXT_STYLE,
 } from "./tui-format.js";
 import { renderTaskTool, renderTodoTool } from "./tui-tool-render.js";
+import { TuiTranscriptReconciler } from "./tui-transcript-reconciler.js";
 import type { TranscriptItem, TuiViewState } from "./view-state.js";
 
 /** Renders transcript items to display lines, memoizing markdown/tool blocks.
@@ -257,6 +257,9 @@ export class TuiRenderShell {
   private currentState: TuiViewState | null = null;
   statusLineText = "";
   private readonly itemRenderer: TuiItemRenderer;
+  private readonly reconciler: TuiTranscriptReconciler;
+  lastLiveStartRow = 0;
+  lastTotalRows = 0;
 
   constructor(
     private readonly tui: TUI,
@@ -267,6 +270,7 @@ export class TuiRenderShell {
     private readonly welcomeTip: string,
   ) {
     this.itemRenderer = new TuiItemRenderer(tui);
+    this.reconciler = new TuiTranscriptReconciler();
   }
 
   setHeader(model: string, session: string, title: string, context?: string): void {
@@ -436,23 +440,19 @@ ${item.text ?? ""}`;
       ),
     );
     if (this.busy) this.updateWorkingMessage();
-    this.transcript.clear();
-    const lines: string[] = [];
-    for (const run of state.runs) {
-      for (const item of run.items) {
-        const itemLines = this.itemRenderer.renderItem(item, state);
-        if (itemLines.length === 0) continue;
-        if (lines.length > 0) lines.push("");
-        lines.push(...itemLines);
-      }
-    }
-    if (state.runs.length === 0 && this.welcomeTip) {
+    const result = this.reconciler.reconcile(this.transcript, state.runs, state, (item) =>
+      this.itemRenderer.renderItem(item, state),
+    );
+    this.lastLiveStartRow = result.liveStartRow;
+    this.lastTotalRows = result.totalRows;
+    if (state.runs.length === 0 && this.welcomeTip && this.transcript.children.length === 0) {
       this.transcript.addChild(new Text(`\u001b[33m  ${this.welcomeTip}\u001b[0m`, 0, 0));
     }
-    for (const line of lines) {
-      this.transcript.addChild(line === "" ? new Spacer(1) : new Text(line, 0, 0));
-    }
     this.renderIdleFooter();
-    this.tui.requestRender();
+    if (result.didReset) {
+      this.tui.requestRender(true);
+    } else {
+      this.tui.requestRender();
+    }
   }
 }

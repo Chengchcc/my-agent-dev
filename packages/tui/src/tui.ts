@@ -329,6 +329,7 @@ export interface FramePlan {
  *  the full omp-compatible pipeline. */
 export interface TerminalFrameProvider {
   renderFrame(opts: { columns: number; rows: number }): FramePlan;
+  acknowledgeHistory?(id: number): void;
   beginHistoryFlush?(): void;
   beginHistoryReplay?(): void;
 }
@@ -400,6 +401,10 @@ export class TUI extends Container {
   private previousViewportTop = 0; // Track previous viewport top for resize-aware cursor moves
   private committedRows = 0; // Rows already handed to native scrollback (never repainted)
   private frameProvider?: TerminalFrameProvider;
+  private providerViewportTop = 0;
+  private providerWindow: string[] = [];
+  private acceptedHistoryBatchId = 0;
+  private providerForceRepaint = false;
   private fullRedrawCount = 0;
   private stopped = false;
   private pendingOsc11BackgroundReplies = 0;
@@ -1429,10 +1434,88 @@ export class TUI extends Container {
     }
   }
 
+  /** Provider frame path: append committed history to native scrollback and
+   *  repaint the bounded mutable viewport. When a terminal frame provider is
+   *  installed this replaces the full-frame differential renderer so old rows
+   *  scroll into the terminal's own scrollback instead of being covered. */
+  private renderProviderFrame(width: number, height: number): void {
+    const provider = this.frameProvider;
+    if (!provider || width <= 0 || height <= 0) return;
+    const plan = provider.renderFrame({ columns: width, rows: height });
+    let viewport = [...plan.viewport];
+    if (viewport.length > height) viewport = viewport.slice(0, height);
+    if (this.overlayStack.length > 0) {
+      while (viewport.length < height) viewport.push("");
+      viewport = this.compositeOverlays(viewport, width, height);
+    }
+    const cursorPos = this.extractCursorPosition(viewport, height);
+    viewport = this.applyLineResets(viewport);
+    const rows = viewport.length;
+    // A batch we already accepted is not pending; ack so the provider can drain.
+    if (plan.history && plan.history.id <= this.acceptedHistoryBatchId) {
+      provider.acknowledgeHistory?.(plan.history.id);
+    }
+    const history =
+      plan.history && plan.history.id > this.acceptedHistoryBatchId ? plan.history : undefined;
+    const historyRows = history?.rows ?? [];
+    const widthChanged = this.previousWidth !== 0 && this.previousWidth !== width;
+    const destructiveReset = widthChanged || this.providerForceRepaint;
+    if (destructiveReset) {
+      this.providerViewportTop = 0;
+      this.providerWindow = [];
+    }
+    const startTop = destructiveReset
+      ? 0
+      : Math.min(this.providerViewportTop, Math.max(0, height - 1));
+    const newTop = Math.max(0, Math.min(startTop + historyRows.length, height - rows));
+    let buffer = "\x1b[?2026h";
+    if (destructiveReset) buffer += "\x1b[H\x1b[3J\x1b[2J";
+    const pushed = Math.max(0, startTop + historyRows.length + rows - height);
+    if (pushed > this.providerViewportTop && this.providerWindow.length > 0) {
+      buffer += `\x1b[${this.providerViewportTop + 1};1H\x1b[J`;
+    }
+    buffer += `\x1b[${startTop + 1};1H`;
+    let screenRow = startTop;
+    for (const line of historyRows) {
+      if (screenRow > startTop) buffer += "\r\n";
+      buffer += `\x1b[2K${line}`;
+      screenRow++;
+    }
+    for (let index = 0; index < rows; index++) {
+      if (index > 0 || screenRow > startTop) buffer += "\r\n";
+      buffer += `\x1b[2K${viewport[index] ?? ""}`;
+      screenRow++;
+    }
+    if (newTop + rows < height) buffer += `\x1b[${newTop + rows + 1};1H\x1b[J`;
+    if (cursorPos !== null && rows > 0) {
+      const targetRow = newTop + Math.min(cursorPos.row, rows - 1);
+      buffer += `\x1b[${targetRow + 1};${cursorPos.col + 1}H`;
+    } else {
+      buffer += `\x1b[${newTop + 1};1H`;
+    }
+    buffer += "\x1b[?2026l";
+    this.terminal.write(buffer);
+    this.providerWindow = viewport;
+    this.providerViewportTop = newTop;
+    this.previousWidth = width;
+    this.previousHeight = height;
+    this.fullRedrawCount += destructiveReset ? 1 : 0;
+    if (history) {
+      this.acceptedHistoryBatchId = history.id;
+      provider.acknowledgeHistory?.(history.id);
+      this.requestRender();
+    }
+    this.providerForceRepaint = false;
+  }
+
   private doRender(): void {
     if (this.stopped) return;
     const width = this.terminal.columns;
     const height = this.terminal.rows;
+    if (this.frameProvider) {
+      this.renderProviderFrame(width, height);
+      return;
+    }
     const widthChanged = this.previousWidth !== 0 && this.previousWidth !== width;
     const heightChanged = this.previousHeight !== 0 && this.previousHeight !== height;
     const previousBufferLength =
@@ -1450,25 +1533,6 @@ export class TUI extends Container {
 
     // Render all components to get new lines
     let newLines = this.render(width);
-
-    // Frame-provider pipeline: when a provider offers a viewport, that IS the
-    // live region to render (the terminal's own scrollback holds history).
-    // Otherwise fall back to the full-frame render and use the history batch
-    // as a stable floor for the differential scan.
-    let frameStableFloor = 0;
-    if (this.frameProvider) {
-      const plan = this.frameProvider.renderFrame({ columns: width, rows: height });
-      if (plan.viewport.length > 0) {
-        newLines = [...plan.viewport];
-        frameStableFloor = 0;
-      } else if (plan.history) {
-        frameStableFloor = Math.min(
-          plan.history.rows.length,
-          newLines.length,
-          this.previousLines.length,
-        );
-      }
-    }
 
     // Composite overlays into the rendered lines (before differential compare)
     if (this.overlayStack.length > 0) {
@@ -1581,7 +1645,7 @@ export class TUI extends Container {
     let firstChanged = -1;
     let lastChanged = -1;
     const maxLines = Math.max(newLines.length, this.previousLines.length);
-    for (let i = frameStableFloor; i < maxLines; i++) {
+    for (let i = 0; i < maxLines; i++) {
       const oldLine = i < this.previousLines.length ? this.previousLines[i] : "";
       const newLine = i < newLines.length ? newLines[i] : "";
 

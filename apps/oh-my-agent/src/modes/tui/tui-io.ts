@@ -22,6 +22,7 @@ import type { ProjectSettings } from "../../core/settings/project-settings.js";
 import { SettingsOverlay } from "./settings-overlay.js";
 import { HistorySearchOverlay, OmaTranscriptContainer, PickerOverlay } from "./tui-components.js";
 import { EDITOR_THEME, relativeTime, WELCOME_TIPS } from "./tui-format.js";
+import { createOmaFrameProvider } from "./tui-frame-provider.js";
 import type { TuiCommand, TuiIo } from "./tui-mode.js";
 import { TuiRenderShell } from "./tui-render.js";
 import type { TuiViewState } from "./view-state.js";
@@ -257,14 +258,15 @@ export function createTerminalIo(
     });
   }
 
-  tui.setFrameProvider({
-    renderFrame({ columns, rows }) {
-      const allLines = tui.render(columns);
-      const transcriptPlan = transcript.renderFrame({ columns, rows });
-      const viewport = transcriptPlan.history ? allLines.slice(-rows) : allLines;
-      return { viewport, history: transcriptPlan.history };
-    },
-  });
+  tui.setFrameProvider(
+    createOmaFrameProvider({
+      headerContainer,
+      transcript,
+      statusContainer,
+      editor,
+      shell,
+    }),
+  );
   tui.addChild(headerContainer);
   tui.addChild(transcript);
   tui.addChild(statusContainer);

@@ -907,4 +907,34 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       rmSync(sessDir, { recursive: true, force: true });
     }
   }, 30_000);
+
+  test("long sessions push history into terminal native scrollback", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-scroll-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-scroll-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    try {
+      const vt = new VirtualTerminal(80, 20);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
+        io,
+      );
+      await vt.waitForRender();
+      const prompts = ["first-turn-history", "second-turn-history", "third-turn-history"];
+      for (const prompt of prompts) {
+        await typeAndSubmit(vt, prompt);
+        await waitForText(vt, "done", 5_000);
+      }
+      const scroll = vt.getScrollBuffer().join("\n");
+      const view = screen(vt);
+      expect(scroll).toContain("first-turn-history");
+      expect(view).not.toContain("first-turn-history");
+      await quitTui(vt);
+      expect(await sessionDone).toBe(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
