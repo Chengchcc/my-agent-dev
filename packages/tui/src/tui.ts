@@ -1451,12 +1451,17 @@ export class TUI extends Container {
     // Render all components to get new lines
     let newLines = this.render(width);
 
-    // Frame-provider pipeline: the offered history batch marks the committed
-    // prefix, which the differential can skip scanning/rewriting entirely.
+    // Frame-provider pipeline: when a provider offers a viewport, that IS the
+    // live region to render (the terminal's own scrollback holds history).
+    // Otherwise fall back to the full-frame render and use the history batch
+    // as a stable floor for the differential scan.
     let frameStableFloor = 0;
     if (this.frameProvider) {
       const plan = this.frameProvider.renderFrame({ columns: width, rows: height });
-      if (plan.history) {
+      if (plan.viewport.length > 0) {
+        newLines = [...plan.viewport];
+        frameStableFloor = 0;
+      } else if (plan.history) {
         frameStableFloor = Math.min(
           plan.history.rows.length,
           newLines.length,

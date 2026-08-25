@@ -1900,7 +1900,17 @@ export function createTerminalIo(
     });
   }
 
-  tui.setFrameProvider(transcript);
+  // Composite frame provider: composes header + transcript + status + editor,
+  // then hands TUI the live viewport (tail once history is committed, full
+  // frame before the first scroll). This is the omp TerminalFrameProvider seam.
+  tui.setFrameProvider({
+    renderFrame({ columns, rows }) {
+      const allLines = tui.render(columns);
+      const transcriptPlan = transcript.renderFrame({ columns, rows });
+      const viewport = transcriptPlan.history ? allLines.slice(-rows) : allLines;
+      return { viewport, history: transcriptPlan.history };
+    },
+  });
   tui.addChild(headerContainer);
   tui.addChild(transcript);
   tui.addChild(statusContainer);
