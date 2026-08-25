@@ -44,7 +44,7 @@ L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock
 **Package dependency graph:**
 - Leaves: `@chengchenccc/message`, `@chengchenccc/config`, `@chengchenccc/loop`
 - Core: `@chengchenccc/core` -> `@chengchenccc/agent`
-- Plugins: 3 packages under `packages/plugin-*` (progressive-skill, recap, todo)
+- Plugins: 0 plugins as standalone packages; oma-native todo/progressive-skill live in `apps/oh-my-agent/src/core`
 - Apps: `@chengchenccc/backend` (consumes all), `@chengchenccc/web` (Next.js), `@chengchenccc/lark-bot`, `@chengchenccc/oh-my-agent` (oma CLI)
 
 **Data flow:** Backend is the single truth source. Frontend uses Eden Treaty typed client to call BFF proxy (`/api/bff/[...path]`) which forwards to backend with auth headers. SSE events from backend flow through Next.js BFF to React Query subscriptions.
@@ -59,7 +59,7 @@ L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock
 | `packages/ai/` | Provider + Model registry, AnthropicChatModel, model metadata |
 | `packages/tools-common/` | read/write/edit/bash/grep/glob/web tools |
 | `packages/test-helpers/` | `echoModel()` for deterministic test doubles |
-| `packages/plugin-*/` | 3 plugins (progressive-skill, recap, todo) |
+| `apps/oh-my-agent/src/core/` | Oma-native tools/plugins absorbed from the standalone plugin packages (todo, progressive-skill) |
 | `apps/backend/` | Elysia server: all services, routes, cron, Loop orchestration |
 | `apps/web/` | Next.js 15 App Router: agents, conversations, issues, loops, ops, skill-packs |
 | `apps/lark-bot/` | Lark/Feishu IM bot integration |
@@ -109,7 +109,7 @@ index.ts           — Barrel re-exports
 {
   sessionId: string;
   store: SessionStore;      // in-memory or persisted (message store)
-  plugins: Plugin[];        // hooks + tools (progressive-skill/recap/todo)
+  plugins: Plugin[];        // hooks + tools (oma-native plugins in apps/oh-my-agent)
   maxSteps: number;
   maxForceContinues: number;
   modelStream: (messages, signal?, tools?) => AsyncIterable<AIMessageChunk>;
@@ -197,7 +197,7 @@ Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop
 - **Location:** `*.test.ts` files beside source
 - **Model mocking:** Define scripted `ChatModel` implementations that yield predetermined turns. `echoModel()` from `@chengchenccc/test-helpers` provides a reusable factory.
 - **Core mocking primitives:** `inMemoryPersistence()`, `consoleLogger({ level: "silent" })`, `passthroughContextManager()`
-- **Integration tests:** Use `createOmaSession()` with real plugins (progressive-skill, recap) and scripted models
+- **Integration tests:** Use `createOmaSession()` with real plugin hooks and scripted models
 - **Loop tests:** `loop-step.test.ts` / `loop-doctor.test.ts` — scripted run fakes with workflow verdicts
 - **Coverage:** No enforced threshold; tests should cover behavior (conditional branches, invariants, error handling), not plumbing
 - **Test helpers:** `@chengchenccc/test-helpers` exports `echoModel()` with `EchoScript` type for deterministic model responses
