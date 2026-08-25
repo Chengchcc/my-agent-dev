@@ -52,9 +52,12 @@ import {
   appendSessionMessages,
   deleteSession,
   forkSession,
+  forkSessionAtEvent,
   listAllSessions,
   listSessions,
+  loadSessionBranchNodes,
   renameSession,
+  type SessionBranchNode,
   sessionDirFor,
 } from "../../core/session-file.js";
 import { persistSessionTurn, resolveSession } from "../../core/session-loop.js";
@@ -95,7 +98,7 @@ export interface TuiModeOptions {
 }
 
 /** View/abort commands from the terminal (Esc abort, ctrl+t, ctrl+o, ctrl+p). */
-export type TuiCommand = "toggleThinking" | "toggleToolDetail" | "abort" | "pickModel";
+export type TuiCommand = "toggleThinking" | "toggleToolDetail" | "abort" | "pickModel" | "forkTree";
 
 export interface TuiIo {
   /** Render the current view state. */
@@ -137,6 +140,10 @@ export interface TuiIo {
    *  session's user messages; resolves the chosen 1-based ordinal, or null
    *  when cancelled. Absent = caller falls back to /fork <n>. */
   pickForkPoint?(points: ReadonlyArray<{ ordinal: number; text: string }>): Promise<number | null>;
+  /** Interactive branch-tree fork picker: lists the session's parentId-
+   *  chained message nodes; resolves the chosen node id, or null when
+   *  cancelled. Absent = caller falls back to the /fork text path. */
+  pickBranchTree?(nodes: ReadonlyArray<SessionBranchNode>): Promise<string | null>;
   /** Update the fixed header's model/session line. `context` is sticky:
    *  once set it stays until the next value arrives. */
   setHeader?(info: { model?: string; sessionId?: string; title?: string; context?: string }): void;
@@ -503,6 +510,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       state.showToolDetail = !state.showToolDetail;
     } else if (cmd === "pickModel") {
       void pickModelInteractive();
+    } else if (cmd === "forkTree") {
+      void forkTreeInteractive();
     } else if (liveRuntime) {
       void liveRuntime.stop().catch(() => {});
     }
@@ -544,6 +553,47 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     saveProjectModel(opts.workspaceRoot, modelId);
     io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
     pushStatus(`model: ${modelId}`);
+    io.render(state);
+  }
+
+  /** Idle Esc: interactive branch-tree fork (omp tree-selector-inspired). */
+  async function forkTreeInteractive(): Promise<void> {
+    if (liveRuntime) {
+      pushStatus("cannot fork while a run is live");
+      io.render(state);
+      return;
+    }
+    if (!io.pickBranchTree) {
+      await runCommandText("/fork");
+      return;
+    }
+    const nodes = loadSessionBranchNodes(session.sessionId, session.dir);
+    if (nodes.length === 0) {
+      pushStatus("no branch nodes to fork from yet");
+      io.render(state);
+      return;
+    }
+    const picked = await io.pickBranchTree(nodes);
+    if (picked === null) {
+      pushStatus("fork cancelled");
+      io.render(state);
+      return;
+    }
+    const parentId = session.sessionId;
+    const newId = forkSessionAtEvent(parentId, picked, session.dir);
+    if (newId === null) {
+      pushStatus("cannot fork at that node");
+      io.render(state);
+      return;
+    }
+    session = resolveSession(newId, session.dir);
+    sessionTitle = undefined;
+    hydrateTranscript(state, session.messages);
+    io.setHeader?.({ model: modelId, sessionId: session.sessionId });
+    pushStatus(
+      `forked ${parentId.slice(0, 8)} @ node ${picked.slice(0, 8)} -> ${newId.slice(0, 8)} ` +
+        `(${session.messages.length} messages)`,
+    );
     io.render(state);
   }
 
@@ -1647,9 +1697,19 @@ ${item.text ?? ""}`;
       focused = false;
       return { consume: true };
     }
-    if (matchesKey(data, "escape") && busy) {
-      if (commandHandler) commandHandler("abort");
-      return { consume: true };
+    if (matchesKey(data, "escape")) {
+      if (busy) {
+        if (commandHandler) commandHandler("abort");
+        return { consume: true };
+      }
+      if (!tui.hasOverlay() && !editor.isShowingAutocomplete() && commandHandler) {
+        commandHandler("forkTree");
+        return { consume: true };
+      }
+      if (!tui.hasOverlay() && commandHandler) {
+        commandHandler("forkTree");
+        return { consume: true };
+      }
     }
     if (matchesKey(data, "ctrl+t")) {
       if (commandHandler) commandHandler("toggleThinking");
@@ -2164,6 +2224,38 @@ ${item.text ?? ""}`;
       list.onSelect = (item) => {
         overlay.hide();
         resolve(Number(item.value));
+      };
+      list.onCancel = () => {
+        overlay.hide();
+        resolve(null);
+      };
+      return promise;
+    },
+    pickBranchTree(nodes) {
+      const { promise, resolve } = Promise.withResolvers<string | null>();
+      // Cap the list; the overlay scrolls, but thousands of nodes would just
+      // waste memory on a long session.
+      const items = nodes.slice(0, 200).map((n) => {
+        const indent = "  ".repeat(Math.min(n.depth, 8));
+        const ordinal = n.ordinal !== undefined ? ` #${n.ordinal}` : "";
+        return {
+          value: n.id,
+          label: `${indent}${n.role}${ordinal}`,
+          description: n.text.replace(/\s+/g, " ").slice(0, 60),
+        };
+      });
+      const list = new SelectList(items, 12, EDITOR_THEME.selectList, {
+        minPrimaryColumnWidth: 14,
+        maxPrimaryColumnWidth: 32,
+      });
+      const overlayBox = new PickerOverlay(
+        new Text("  fork from branch node — select, enter, esc", 0, 0),
+        list,
+      );
+      const overlay = tui.showOverlay(overlayBox, { width: "75%", anchor: "center" });
+      list.onSelect = (item) => {
+        overlay.hide();
+        resolve(item.value);
       };
       list.onCancel = () => {
         overlay.hide();

@@ -4,8 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createModelRuntime } from "@chengchenccc/ai";
 import { registerBuiltinProviders } from "../../core/run-runtime.js";
-import { sessionDirFor } from "../../core/session-file.js";
-import { formatModelMeta, runTuiSession, type TuiIo } from "./tui-mode.js";
+import {
+  appendSessionMessages,
+  loadSessionBranchNodes,
+  sessionDirFor,
+} from "../../core/session-file.js";
+import { formatModelMeta, runTuiSession, type TuiCommand, type TuiIo } from "./tui-mode.js";
 import { addUserInput, applyEvent, initialViewState, type TuiViewState } from "./view-state.js";
 
 /** Scripted TuiIo: feeds idle inputs sequentially, captures renders.
@@ -18,6 +22,7 @@ function scriptedIo(inputs: string[]): TuiIo & {
   toolRendered: Promise<void>;
   submitLive: (text: string) => void;
   sendLiveCommand: (text: string) => void;
+  sendCommand: (cmd: TuiCommand) => void;
 } {
   const renders: TuiViewState[] = [];
   const live: string[] = [];
@@ -27,6 +32,7 @@ function scriptedIo(inputs: string[]): TuiIo & {
   let i = 0;
   let liveHandler: ((text: string) => void) | null = null;
   let liveCommandHandler: ((text: string) => void) | null = null;
+  let commandHandler: ((cmd: TuiCommand) => void) | null = null;
   const { promise: toolRendered, resolve: markToolRendered } = Promise.withResolvers<void>();
   return {
     renders,
@@ -51,6 +57,9 @@ function scriptedIo(inputs: string[]): TuiIo & {
     onLiveCommand: (handler) => {
       liveCommandHandler = handler;
     },
+    onCommand: (handler) => {
+      commandHandler = handler;
+    },
     setHeader: (info) => {
       headers.push(info);
     },
@@ -64,6 +73,10 @@ function scriptedIo(inputs: string[]): TuiIo & {
       liveCommands.push(text);
       liveCommandHandler?.(text);
     },
+    sendCommand: (cmd: TuiCommand) => {
+      commandHandler?.(cmd);
+    },
+    pickBranchTree: async () => null,
     close: () => {},
   };
 }
@@ -1003,6 +1016,42 @@ describe("tui session (headless, fake provider)", () => {
       expect(files).toHaveLength(2);
       // The /resume text listing marks the fork with the parent id prefix.
       expect(statuses.some((t) => t.includes("\u2442"))).toBe(true);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+  test("idle forkTree command forks at a selected branch node", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-tree-fork-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    try {
+      const seedId = "11111111-1111-1111-1111-111111111111";
+      appendSessionMessages(
+        seedId,
+        sessionDir,
+        [
+          { role: "user", text: "one" },
+          { role: "assistant", text: "answer one" },
+          { role: "tool", text: "out" },
+        ],
+        sessionDir,
+      );
+      const io = scriptedIo(["/exit", "/exit"]);
+      const assistant = loadSessionBranchNodes(seedId, sessionDir)[1]!;
+      io.pickBranchTree = async () => assistant.id;
+      const done = runTuiSession(
+        { modelRuntime: testModelRuntime(), workspaceRoot: sessionDir, sessionId: seedId },
+        io,
+      );
+      io.sendCommand("forkTree");
+      await done;
+      const statuses = io.renders
+        .at(-1)!
+        .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
+        .map((i) => i.text);
+      expect(statuses.some((t) => t.startsWith("forked "))).toBe(true);
+      const files = readdirSync(sessionDir).filter((f) => f.endsWith(".jsonl"));
+      expect(files).toHaveLength(2);
     } finally {
       delete process.env.OMA_SESSION_DIR;
       rmSync(sessionDir, { recursive: true, force: true });

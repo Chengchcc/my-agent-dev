@@ -243,11 +243,119 @@ export function appendSessionCompaction(
   );
 }
 
-/** Fork a session (pi's /fork): copy every event up to and INCLUDING the
- *  `ordinal`-th user message (1-based) into a NEW session file, then append
- *  a fork_of marker naming the parent. The parent file is untouched — /resume
- *  returns to it; the fork is the branch head. Returns the new session id,
- *  or null when the file is missing / the ordinal is out of range. */
+export interface SessionBranchNode {
+  readonly id: string;
+  readonly parentId: string | null;
+  readonly role: string;
+  readonly text: string;
+  readonly depth: number;
+  /** 1-based user-message ordinal when this node is a user message (fork anchor). */
+  readonly ordinal?: number;
+}
+
+/** Read the durable event tree of one session as parentId-chained message
+ *  nodes (used by the TUI branch-tree fork overlay). Only message events
+ *  carry an id; corrupt lines are skipped. */
+export function loadSessionBranchNodes(
+  id: string,
+  dir: string = sessionDir(),
+): SessionBranchNode[] {
+  const path = join(dir, `${id}.jsonl`);
+  if (!existsSync(path)) return [];
+  const lines = readFileSync(path, "utf8")
+    .split("\n")
+    .filter((l) => l.trim());
+  const parents = new Map<string, string | null>();
+  const nodes: Array<{
+    id: string;
+    parentId: string | null;
+    role: string;
+    text: string;
+    ordinal?: number;
+  }> = [];
+  let userOrdinal = 0;
+  for (const line of lines) {
+    let evt: {
+      type?: string;
+      id?: string;
+      parentId?: string | null;
+      message?: { role?: string; text?: string };
+    };
+    try {
+      evt = JSON.parse(line) as typeof evt;
+    } catch {
+      continue;
+    }
+    if (evt.type !== "message" || !evt.id || !evt.message?.role) continue;
+    const role = evt.message.role;
+    const parentId = evt.parentId ?? null;
+    parents.set(evt.id, parentId);
+    if (role === "user") userOrdinal += 1;
+    const node: {
+      id: string;
+      parentId: string | null;
+      role: string;
+      text: string;
+      ordinal?: number;
+    } = {
+      id: evt.id,
+      parentId,
+      role,
+      text: typeof evt.message.text === "string" ? evt.message.text : "",
+    };
+    if (role === "user") node.ordinal = userOrdinal;
+    nodes.push(node);
+  }
+  const depthOf = (id: string): number => {
+    let depth = 0;
+    let cur: string | null | undefined = id;
+    const seen = new Set<string>();
+    while (cur) {
+      if (seen.has(cur)) break;
+      seen.add(cur);
+      const parent: string | null = parents.get(cur) ?? null;
+      if (parent === null) break;
+      depth += 1;
+      cur = parent;
+    }
+    return depth;
+  };
+  return nodes.map((n) => ({ ...n, depth: depthOf(n.id) }));
+}
+
+/** Copy a session file through the line at `cutIndex` into a NEW file with a
+ *  fork_of marker. Shared by the ordinal and event-id fork paths. */
+function copySessionThrough(
+  id: string,
+  cutIndex: number,
+  dir: string,
+  markerFields: Record<string, unknown>,
+): string | null {
+  const path = join(dir, `${id}.jsonl`);
+  if (!existsSync(path)) return null;
+  const lines = readFileSync(path, "utf8")
+    .split("\n")
+    .filter((l) => l.trim());
+  if (cutIndex < 0 || cutIndex >= lines.length) return null;
+  const newId = newSessionId();
+  const kept = lines.slice(0, cutIndex + 1);
+  // Rewrite the copied header's id so the new file is self-consistent.
+  try {
+    const header = JSON.parse(kept[0]!) as { type?: string; id?: string };
+    if (header.type === "session") {
+      header.id = newId;
+      kept[0] = JSON.stringify(header);
+    }
+  } catch {
+    /* keep the original header line */
+  }
+  const marker = JSON.stringify({ type: "fork_of", parentId: id, ...markerFields });
+  writeFileSync(join(dir, `${newId}.jsonl`), `${[...kept, marker].join("\n")}\n`);
+  return newId;
+}
+
+/** Fork a session at the Nth user message (1-based) — the existing /fork
+ *  semantics. */
 export function forkSession(
   id: string,
   ordinal: number,
@@ -276,21 +384,36 @@ export function forkSession(
     }
   }
   if (cutIndex === -1) return null;
-  const newId = newSessionId();
-  const kept = lines.slice(0, cutIndex + 1);
-  // Rewrite the copied header's id so the new file is self-consistent.
-  try {
-    const header = JSON.parse(kept[0]!) as { type?: string; id?: string };
-    if (header.type === "session") {
-      header.id = newId;
-      kept[0] = JSON.stringify(header);
+  return copySessionThrough(id, cutIndex, dir, { atMessage: ordinal });
+}
+
+/** Fork a session through a specific branch node (message event id). The new
+ *  session contains every event up to and INCLUDING that node. */
+export function forkSessionAtEvent(
+  id: string,
+  eventId: string,
+  dir: string = sessionDir(),
+): string | null {
+  const path = join(dir, `${id}.jsonl`);
+  if (!existsSync(path)) return null;
+  const lines = readFileSync(path, "utf8")
+    .split("\n")
+    .filter((l) => l.trim());
+  let cutIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    let evt: { id?: string };
+    try {
+      evt = JSON.parse(lines[i]!) as { id?: string };
+    } catch {
+      continue;
     }
-  } catch {
-    /* keep the original header line */
+    if (evt.id === eventId) {
+      cutIndex = i;
+      break;
+    }
   }
-  const marker = JSON.stringify({ type: "fork_of", parentId: id, atMessage: ordinal });
-  writeFileSync(join(dir, `${newId}.jsonl`), `${[...kept, marker].join("\n")}\n`);
-  return newId;
+  if (cutIndex === -1) return null;
+  return copySessionThrough(id, cutIndex, dir, { atEvent: eventId });
 }
 
 /** Append message events to the session file (header written on create;

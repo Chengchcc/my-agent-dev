@@ -7,8 +7,10 @@ import {
   appendSessionTitle,
   deleteSession,
   forkSession,
+  forkSessionAtEvent,
   listAllSessions,
   listSessions,
+  loadSessionBranchNodes,
   loadSessionMessages,
   renameSession,
   sessionDir,
@@ -168,6 +170,42 @@ describe("forkSession", () => {
     appendSessionMessages("p2", dir, [{ role: "user", text: "only" }]);
     expect(forkSession("p2", 2)).toBeNull();
     expect(forkSession("missing", 1)).toBeNull();
+  });
+});
+describe("session branch tree", () => {
+  test("loadSessionBranchNodes returns parentId-chained nodes with depth and ordinal", () => {
+    appendSessionMessages("tree", dir, [
+      { role: "user", text: "first" },
+      { role: "assistant", text: "answer" },
+      { role: "tool", text: "output" },
+    ]);
+    appendSessionMessages("tree", dir, [{ role: "user", text: "second" }]);
+
+    const nodes = loadSessionBranchNodes("tree");
+    expect(nodes.map((n) => n.role)).toEqual(["user", "assistant", "tool", "user"]);
+    expect(nodes[0]?.depth).toBe(0);
+    expect(nodes[1]?.depth).toBe(1);
+    expect(nodes[0]?.ordinal).toBe(1);
+    expect(nodes[1]?.ordinal).toBeUndefined();
+    expect(nodes[3]?.ordinal).toBe(2);
+  });
+
+  test("forkSessionAtEvent forks through a specific node", () => {
+    appendSessionMessages("tree2", dir, [
+      { role: "user", text: "one" },
+      { role: "assistant", text: "answer" },
+    ]);
+
+    const nodes = loadSessionBranchNodes("tree2");
+    const assistant = nodes[1]!;
+    const forkId = forkSessionAtEvent("tree2", assistant.id);
+    expect(forkId).not.toBeNull();
+    expect(loadSessionMessages(forkId!)).toEqual([
+      { role: "user", text: "one" },
+      { role: "assistant", text: "answer" },
+    ]);
+    // Missing event id returns null.
+    expect(forkSessionAtEvent("tree2", "no-such-id")).toBeNull();
   });
 });
 

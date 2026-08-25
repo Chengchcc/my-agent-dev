@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createModelRuntime } from "@chengchenccc/ai";
 import { VirtualTerminal } from "@chengchenccc/tui";
 import { registerBuiltinProviders } from "../../core/run-runtime.js";
+import { appendSessionMessages } from "../../core/session-file.js";
 import { createTerminalIo, runTuiSession } from "./tui-mode.js";
 
 /** E2E: the model's input/output behavior as shown ON SCREEN, through a
@@ -776,6 +777,47 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       expect(overlay).toContain("free");
 
       // Esc cancels; /exit quits.
+      vt.sendInput("\x1b");
+      await vt.waitForRender();
+      await quitTui(vt);
+      expect(await sessionDone).toBe(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+  test("idle Esc opens branch-tree fork overlay", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-tree-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-tree-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    try {
+      const seedId = "22222222-2222-2222-2222-222222222222";
+      appendSessionMessages(
+        seedId,
+        dir,
+        [
+          { role: "user", text: "seed question" },
+          { role: "assistant", text: "seed answer" },
+        ],
+        sessDir,
+      );
+      const vt = new VirtualTerminal(100, 45);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir, sessionId: seedId },
+        io,
+      );
+
+      await vt.waitForRender();
+      vt.sendInput("\x1b");
+      await vt.waitForRender();
+      const overlay = screen(vt);
+      expect(overlay).toContain("fork from branch node");
+      expect(overlay).toContain("user");
+      expect(overlay).toContain("assistant");
+
+      // Esc again cancels the overlay; /exit quits.
       vt.sendInput("\x1b");
       await vt.waitForRender();
       await quitTui(vt);
