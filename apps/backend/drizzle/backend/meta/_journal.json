@@ -274,6 +274,13 @@
       "when": 1788000000000,
       "tag": "0038_drop_trigger_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1788100000000,
+      "tag": "0039_repair_plain_breakpoint_drops",
+      "breakpoints": true
     }
   ]
 }
