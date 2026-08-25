@@ -1,18 +1,50 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import type { BackendRunInput } from "@chengchenccc/agent-backend";
 import type { ModelRuntime } from "@chengchenccc/ai";
+import { loadProjectSettings } from "../core/project-settings.js";
 import { buildSystemPrompt, readMemorySummary } from "../core/prompts.js";
 import { agentDir } from "../core/session-file.js";
 import { readWorkspaceSystemPrompt } from "../core/workspace-context.js";
 import { UsageError } from "./args.js";
 
 /** Standalone skill roots (the Product passes its own via the run snapshot):
- *  <workspace>/skills first, then the user-global <agentDir>/skills. Only
- *  directories that exist are returned. */
+ *  `<workspace>/.oma/skills` first, then the user-global `<agentDir>/skills`.
+ *  `skills` in `.oma/settings.json` overrides the defaults (absolute paths,
+ *  or relative to the workspace root). The `enableClaude` / `enableCodex` /
+ *  `enableAgents` toggles add Claude / Codex / agent skill dirs to the
+ *  defaults. Only existing directories are returned. */
 export function resolveStandaloneSkillRoots(workspaceRoot: string): string[] {
-  const candidates = [join(workspaceRoot, "skills"), join(agentDir(), "skills")];
+  const settings = loadProjectSettings(workspaceRoot);
+  const configured = settings.skills;
+  const candidates: string[] = [];
+  if (configured && configured.length > 0) {
+    for (const p of configured) {
+      candidates.push(isAbsolute(p) ? p : join(workspaceRoot, p));
+    }
+  } else {
+    candidates.push(join(workspaceRoot, ".oma", "skills"));
+    candidates.push(join(agentDir(), "skills"));
+    if (settings.enableClaude) {
+      candidates.push(
+        join(workspaceRoot, ".claude", "skills"),
+        join(homedir(), ".claude", "skills"),
+      );
+    }
+    if (settings.enableCodex) {
+      candidates.push(join(workspaceRoot, ".codex", "skills"), join(homedir(), ".codex", "skills"));
+    }
+    if (settings.enableAgents) {
+      candidates.push(
+        join(workspaceRoot, ".agent", "skills"),
+        join(workspaceRoot, ".agents", "skills"),
+        join(homedir(), ".agent", "skills"),
+        join(homedir(), ".agents", "skills"),
+      );
+    }
+  }
   const roots: string[] = [];
   for (const dir of candidates) {
     if (existsSync(dir) && statSync(dir).isDirectory()) roots.push(dir);

@@ -408,7 +408,7 @@ describe("tui session (headless, fake provider)", () => {
       // The command table reached the autocomplete seam once.
       // 17 static commands (incl. /mcp, /skill, /workflow); the pinned
       // agent dir guarantees zero auto-registered skills.
-      expect(registered).toEqual([17]);
+      expect(registered).toEqual([18]);
       const statuses = base.renders
         .at(-1)!
         .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))
@@ -488,9 +488,9 @@ describe("tui session (headless, fake provider)", () => {
     process.env.OMA_SESSION_DIR = sessionDir;
     process.env.OMA_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), "oma-tui-skills-agent-"));
     try {
-      mkdirSync(join(workspace, "skills", "demo"), { recursive: true });
+      mkdirSync(join(workspace, ".oma", "skills", "demo"), { recursive: true });
       writeFileSync(
-        join(workspace, "skills", "demo", "SKILL.md"),
+        join(workspace, ".oma", "skills", "demo", "SKILL.md"),
         "---\nname: demo\ndescription: Demo skill for tests\n---\nBody.\n",
         "utf8",
       );

@@ -40,6 +40,7 @@ import { mountWorkspaceMcpServers } from "./mcp-mount.js";
 import { killProcessTree } from "./process-tree.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { readProductToolsManifest } from "./product-tools-manifest.js";
+import { loadProjectSettings } from "./project-settings.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
 import { createSkill } from "./skill.js";
 import { loadStreamRules } from "./stream-rules.js";
@@ -146,6 +147,31 @@ export function registerBuiltinProviders(
  *  the model is resolved per run from the AgentRunSnapshot. */
 export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRuntime> {
   const store = createInMemorySessionStore();
+  // `.oma/settings.json` P0 knobs are normalized into the process env for
+  // the compatibility shim: the existing env-reading code paths pick them up
+  // without threading a settings object through every consumer.
+  // ponytail: per-process shim; a future refactor can pass settings as a dep.
+  const projectSettings = loadProjectSettings(deps.workspaceRoot);
+  if (projectSettings.maxSteps !== undefined)
+    process.env.OMA_MAX_STEPS = String(projectSettings.maxSteps);
+  if (projectSettings.modelTimeoutMs !== undefined) {
+    process.env.OMA_MODEL_TIMEOUT_MS = String(projectSettings.modelTimeoutMs);
+  }
+  if (projectSettings.mcpTimeoutMs !== undefined) {
+    process.env.OMA_MCP_TIMEOUT_MS = String(projectSettings.mcpTimeoutMs);
+  }
+  if (projectSettings.disableWeb !== undefined) {
+    process.env.OMA_DISABLE_WEB = projectSettings.disableWeb ? "1" : "0";
+  }
+  if (projectSettings.titleEnabled !== undefined) {
+    process.env.OMA_TITLE_ENABLED = projectSettings.titleEnabled ? "1" : "0";
+  }
+  if (projectSettings.memoryExtract !== undefined) {
+    process.env.OMA_MEMORY_EXTRACT = projectSettings.memoryExtract ? "1" : "0";
+  }
+  if (projectSettings.memoryModel !== undefined) {
+    process.env.OMA_MEMORY_MODEL = projectSettings.memoryModel;
+  }
   const catalog = await deps.modelRuntime.getCatalog();
   // The Run's model is the ONLY budget/summarizer authority. A catalog-first
   // model with a different window would compact at the wrong threshold or

@@ -28,4 +28,72 @@ describe("project settings", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test("reads configured skills array", () => {
+    const root = mkdtempSync(join(tmpdir(), "oma-ps-"));
+    try {
+      mkdirSync(join(root, ".oma"), { recursive: true });
+      writeFileSync(
+        join(root, ".oma", "settings.json"),
+        JSON.stringify({ model: "fake/echo", skills: ["skills", "/abs/skills"] }),
+        "utf8",
+      );
+      expect(loadProjectSettings(root)).toEqual({
+        model: "fake/echo",
+        skills: ["skills", "/abs/skills"],
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reads skill source toggles", () => {
+    const root = mkdtempSync(join(tmpdir(), "oma-ps-"));
+    try {
+      mkdirSync(join(root, ".oma"), { recursive: true });
+      writeFileSync(
+        join(root, ".oma", "settings.json"),
+        JSON.stringify({ enableClaude: true, enableCodex: false, enableAgents: true }),
+        "utf8",
+      );
+      expect(loadProjectSettings(root)).toEqual({
+        enableClaude: true,
+        enableCodex: false,
+        enableAgents: true,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reads P0 numeric/boolean knobs", () => {
+    const root = mkdtempSync(join(tmpdir(), "oma-ps-"));
+    try {
+      mkdirSync(join(root, ".oma"), { recursive: true });
+      writeFileSync(
+        join(root, ".oma", "settings.json"),
+        JSON.stringify({
+          maxSteps: 42,
+          modelTimeoutMs: 1000,
+          mcpTimeoutMs: 2000,
+          disableWeb: true,
+          titleEnabled: false,
+          memoryExtract: true,
+          memoryModel: "fake/echo",
+        }),
+        "utf8",
+      );
+      expect(loadProjectSettings(root)).toEqual({
+        maxSteps: 42,
+        modelTimeoutMs: 1000,
+        mcpTimeoutMs: 2000,
+        disableWeb: true,
+        titleEnabled: false,
+        memoryExtract: true,
+        memoryModel: "fake/echo",
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

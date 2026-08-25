@@ -47,7 +47,12 @@ import {
   saveInputHistory,
 } from "../../core/input-history.js";
 import { listMcpServers, testMcpServer } from "../../core/mcp-mount.js";
-import { loadProjectSettings, saveProjectModel } from "../../core/project-settings.js";
+import {
+  loadProjectSettings,
+  type ProjectSettings,
+  saveProjectModel,
+  saveProjectSettings,
+} from "../../core/project-settings.js";
 import {
   appendSessionMessages,
   deleteSession,
@@ -61,6 +66,7 @@ import {
   sessionDirFor,
 } from "../../core/session-file.js";
 import { persistSessionTurn, resolveSession } from "../../core/session-loop.js";
+import { SettingsOverlay } from "./settings-overlay.js";
 import {
   addUserInput,
   applyEvent,
@@ -144,6 +150,9 @@ export interface TuiIo {
    *  chained message nodes; resolves the chosen node id, or null when
    *  cancelled. Absent = caller falls back to the /fork text path. */
   pickBranchTree?(nodes: ReadonlyArray<SessionBranchNode>): Promise<string | null>;
+  /** Interactive settings editor; resolves the updated settings or null on
+   *  cancel. Absent = caller falls back to text status. */
+  editSettings?(settings: ProjectSettings): Promise<ProjectSettings | null>;
   /** Update the fixed header's model/session line. `context` is sticky:
    *  once set it stays until the next value arrives. */
   setHeader?(info: { model?: string; sessionId?: string; title?: string; context?: string }): void;
@@ -689,6 +698,25 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       live: true,
       run: () => {
         pushStatus(`session: ${session.sessionId}${sessionTitle ? ` — ${sessionTitle}` : ""}`);
+      },
+    },
+    {
+      name: "settings",
+      description: "edit project settings (.oma/settings.json)",
+      group: "settings",
+      run: async () => {
+        if (!io.editSettings) {
+          pushStatus("settings editor not supported");
+          return;
+        }
+        const updated = await io.editSettings(loadProjectSettings(opts.workspaceRoot));
+        if (!updated) {
+          pushStatus("settings edit cancelled");
+          return;
+        }
+        saveProjectSettings(opts.workspaceRoot, updated);
+        pushStatus("settings saved");
+        io.render(state);
       },
     },
     {
@@ -2291,6 +2319,15 @@ ${item.text ?? ""}`;
         overlay.hide();
         resolve(null);
       };
+      return promise;
+    },
+    editSettings(settings) {
+      const { promise, resolve } = Promise.withResolvers<ProjectSettings | null>();
+      const box = new SettingsOverlay(settings, () => {
+        handle.hide();
+        resolve(box.getSettings());
+      });
+      const handle = tui.showOverlay(box, { width: "70%", anchor: "center" });
       return promise;
     },
     setHeader(info) {
