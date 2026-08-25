@@ -265,7 +265,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       );
 
       await typeAndSubmit(vt, "do something slow");
-      await waitForText(vt, /bash · \$ sleep 2/, 3_000);
+      await waitForText(vt, /bash · slow/, 3_000);
       const mid = screen(vt);
       expect(mid).toContain("esc to abort");
       // Esc (raw \x1b) aborts the live Run instead of the editor.
@@ -815,7 +815,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       // and the working status shows the current tool summary (omp intent),
       // not a fixed "working…".
       await waitForText(vt, "middle", 5_000);
-      await waitForText(vt, /bash · \$ echo start/, 3_000);
+      await waitForText(vt, /bash · live output/, 3_000);
       const mid = screen(vt);
       expect(mid).toContain("start");
       expect(mid).toContain("middle");

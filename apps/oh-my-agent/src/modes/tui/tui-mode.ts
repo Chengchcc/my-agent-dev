@@ -1532,10 +1532,11 @@ export function createTerminalIo(
     }, 1000);
   }
 
-  /** Derive a short human-readable summary for the currently streaming tool
-   *  (omp's intent/working message: not a fixed "working…" but what the tool
-   *  is actually doing). */
-  function currentToolSummary(): string | undefined {
+  /** Derive a short human-readable summary for the currently streaming
+   *  activity (omp's intent/working message). Prefer a live tool intent;
+   *  when the model is composing a response, surface the first line of its
+   *  thinking or output so the composer is never just "working…". */
+  function currentActivitySummary(): string | undefined {
     if (!currentState) return undefined;
     for (let r = currentState.runs.length - 1; r >= 0; r--) {
       const run = currentState.runs[r]!;
@@ -1543,8 +1544,22 @@ export function createTerminalIo(
         const item = run.items[i]!;
         if (item.kind === "tool" && item.streaming) {
           const name = item.text.replace(/…$/, "");
-          const summary = item.input !== undefined ? summarizeToolArgs(name, item.input) : "";
+          // omp-style intent: the model's own `description` is the most
+          // human working message; fall back to synthesized arg summary.
+          const description =
+            typeof item.input?.description === "string" ? item.input.description.trim() : "";
+          const summary = description
+            ? description
+            : item.input !== undefined
+              ? summarizeToolArgs(name, item.input)
+              : "";
           return summary.trim() ? `${name} · ${summary}` : name;
+        }
+        if (item.kind === "assistant" && item.streaming) {
+          const source = `${item.thinking ?? ""}
+${item.text ?? ""}`;
+          const first = source.split("\n", 1)[0]?.trim() ?? "";
+          if (first) return first.length > 80 ? `${first.slice(0, 80)}…` : first;
         }
       }
     }
@@ -1553,7 +1568,7 @@ export function createTerminalIo(
 
   function updateWorkingMessage(): void {
     if (!busy || !loader) return;
-    const summary = currentToolSummary();
+    const summary = currentActivitySummary();
     const seconds = busySeconds > 0 ? ` · ${busySeconds}s` : "";
     const msg = summary
       ? `${summary}${seconds} (esc to abort)`
