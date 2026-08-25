@@ -267,6 +267,102 @@ export function addUserInput(state: TuiViewState, text: string, pending = false)
   state.runs.push({ items: [item], running: false });
 }
 
+/** Rebuild the transcript view from a session's persisted messages
+ *  (resume/fork). User/assistant text render like live items; tool_use and
+ *  tool_result blocks are paired so resumed tool calls show args/output.
+ *  Compacted summaries are already a user bubble in the session file. */
+export function hydrateTranscript(
+  state: TuiViewState,
+  messages: readonly Record<string, unknown>[],
+): void {
+  const runs: RunViewState[] = [];
+  const pendingTools: Array<{ id: string; item: TranscriptItem }> = [];
+
+  for (const raw of messages) {
+    const role = raw.role;
+    const text = typeof raw.text === "string" ? raw.text : "";
+    if (role === "user") {
+      runs.push({ items: [{ kind: "user", text, streaming: false }], running: false });
+      continue;
+    }
+    if (role === "assistant") {
+      const blocks = Array.isArray(raw.blocks)
+        ? (raw.blocks as Array<Record<string, unknown>>)
+        : [];
+      const items: TranscriptItem[] = [];
+      const thinking = blocks
+        .filter((b) => b.type === "thinking")
+        .map((b) => (typeof b.text === "string" ? b.text : ""))
+        .join("\n");
+      if (text) {
+        const item: TranscriptItem = { kind: "assistant", text, streaming: false };
+        if (thinking) item.thinking = thinking;
+        items.push(item);
+      } else if (thinking) {
+        items.push({ kind: "assistant", text: "", streaming: false, thinking });
+      }
+      for (const b of blocks) {
+        if (b.type !== "tool_use") continue;
+        const item: TranscriptItem = {
+          kind: "tool",
+          text: typeof b.name === "string" ? b.name : "",
+          streaming: false,
+        };
+        if (b.input !== null && typeof b.input === "object") {
+          item.input = b.input as Record<string, unknown>;
+        }
+        items.push(item);
+        pendingTools.push({ id: String(b.id ?? ""), item });
+      }
+      if (items.length > 0) runs.push({ items, running: false });
+      continue;
+    }
+    if (role === "tool") {
+      const blocks = Array.isArray(raw.blocks)
+        ? (raw.blocks as Array<Record<string, unknown>>)
+        : [];
+      let attached = false;
+      for (const b of blocks) {
+        if (b.type !== "tool_result") continue;
+        const toolUseId = String(b.tool_use_id ?? "");
+        const target = pendingTools.find((p) => p.id === toolUseId);
+        const content = typeof b.content === "string" ? b.content : text;
+        if (target) {
+          attached = true;
+          const result: Record<string, unknown> = { content };
+          if (b.is_error === true) result.isError = true;
+          target.item.result = result;
+        } else if (content) {
+          attached = true;
+          runs.push({
+            items: [
+              {
+                kind: "status",
+                text: `tool result: ${content.slice(0, 120)}`,
+                streaming: false,
+              },
+            ],
+            running: false,
+          });
+        }
+      }
+      if (!attached && text) {
+        runs.push({
+          items: [
+            {
+              kind: "status",
+              text: `tool result: ${text.slice(0, 120)}`,
+              streaming: false,
+            },
+          ],
+          running: false,
+        });
+      }
+    }
+  }
+  state.runs = runs;
+}
+
 /** Settle pending » echoes whose messages the loop has now injected (pi
  * renders the user message when consumed, not when submitted). The pending
  * echo entry is removed and a settled user item is appended at the current

@@ -571,6 +571,10 @@ describe("tui session (headless, fake provider)", () => {
       expect(statuses.some((t) => t.includes("hello resume"))).toBe(false);
       // Unique prefix resumes: 2 messages loaded (title event is not a message)
       expect(statuses.some((t) => t.includes(`resumed session: ${seed} (2 messages)`))).toBe(true);
+      // The resumed transcript surfaces the saved history (user + assistant).
+      const resumedItems = io.renders.at(-1)!.runs.flatMap((r) => r.items);
+      expect(resumedItems.some((i) => i.kind === "user" && i.text === "hello resume")).toBe(true);
+      expect(resumedItems.some((i) => i.kind === "assistant" && i.text === "hi")).toBe(true);
     } finally {
       delete process.env.OMA_SESSION_DIR;
       rmSync(sessionDir, { recursive: true, force: true });

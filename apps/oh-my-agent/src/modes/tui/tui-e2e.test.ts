@@ -443,6 +443,8 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       vt.sendInput("\r");
       await vt.waitForRender();
       expect(screen(vt)).toContain(`resumed session: ${seed} (1 messages)`);
+      // Resumed history is rendered in the transcript, not just a status.
+      expect(screen(vt)).toContain("hello resume");
 
       await quitTui(vt);
       expect(await sessionDone).toBe(0);

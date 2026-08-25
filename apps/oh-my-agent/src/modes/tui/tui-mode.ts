@@ -61,6 +61,7 @@ import {
   addUserInput,
   applyEvent,
   applyOutcome,
+  hydrateTranscript,
   initialViewState,
   settleSteeredMessages,
   type TranscriptItem,
@@ -433,6 +434,7 @@ class HistorySearchOverlay extends Container {
 export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<number> {
   let session = resolveSession(opts.sessionId);
   const state = initialViewState();
+  hydrateTranscript(state, session.messages);
   let modelId = opts.model;
   let liveRuntime: OmaRuntime | null = null;
   let sessionTitle: string | undefined;
@@ -649,7 +651,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
             const dir = summary?.workspace ? sessionDirFor(summary.workspace) : undefined;
             session = resolveSession(picked, dir);
             sessionTitle = summary?.title;
-            state.runs.length = 0;
+            hydrateTranscript(state, session.messages);
             io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
             pushStatus(
               `resumed session: ${session.sessionId} (${session.messages.length} messages)`,
@@ -678,7 +680,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
         const dir = matches[0]!.workspace ? sessionDirFor(matches[0]!.workspace) : undefined;
         session = resolveSession(matches[0]!.id, dir);
         sessionTitle = matches[0]!.title;
-        state.runs.length = 0;
+        hydrateTranscript(state, session.messages);
         io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
         pushStatus(`resumed session: ${session.sessionId} (${session.messages.length} messages)`);
       },
@@ -690,7 +692,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       run: () => {
         session = resolveSession();
         sessionTitle = undefined;
-        state.runs.length = 0;
+        hydrateTranscript(state, session.messages);
         io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
         pushStatus(`new session: ${session.sessionId}`);
       },
@@ -776,7 +778,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
         }
         session = resolveSession(newId, session.dir);
         sessionTitle = undefined;
-        state.runs.length = 0;
+        hydrateTranscript(state, session.messages);
         io.setHeader?.({ model: modelId, sessionId: session.sessionId });
         pushStatus(
           `forked ${parentId.slice(0, 8)} @ msg ${ordinal} -> ${newId.slice(0, 8)} ` +
