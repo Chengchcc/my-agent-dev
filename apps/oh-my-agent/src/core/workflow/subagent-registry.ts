@@ -12,7 +12,7 @@
  *    <body becomes the system prompt>
  *
  *  Frontmatter is parsed by hand (line regexes, no YAML dependency) — same
- *  precedent as tools-common's skills parseFrontmatter.
+ *  precedent as the oma tools skills parseFrontmatter.
  */
 
 export interface SubagentRegistryEntry {

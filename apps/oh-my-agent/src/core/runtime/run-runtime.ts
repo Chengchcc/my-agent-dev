@@ -18,6 +18,7 @@ import type { AgentRunSnapshot, ProjectedHistoryItem } from "@chengchenccc/agent
 import { type ModelRuntime, resolveModelAlias } from "@chengchenccc/ai";
 import type { AIMessageChunk, JsonSchema } from "@chengchenccc/core";
 import type { Message } from "@chengchenccc/message";
+import { loadProjectSettings } from "../settings/project-settings.js";
 import {
   createBashTool,
   createDdgWebSearchPort,
@@ -33,8 +34,7 @@ import {
   createWriteTool,
   type WebFetchPort,
   type WebSearchPort,
-} from "@chengchenccc/tools-common";
-import { loadProjectSettings } from "../settings/project-settings.js";
+} from "../tools/index.js";
 import { mountWorkspaceMcpServers, withCallTimeout } from "../tools/mcp-mount.js";
 import { createSkill } from "../tools/skill.js";
 import { createTodo, createTodoReadTool } from "../tools/todo.js";

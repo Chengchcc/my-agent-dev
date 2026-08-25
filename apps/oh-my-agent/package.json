@@ -28,7 +28,6 @@
     "@chengchenccc/config": "workspace:*",
     "@chengchenccc/message": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "@chengchenccc/tools-common": "workspace:*",
     "zod": "^3.23.0",
     "@chengchenccc/tui": "workspace:*"
   },

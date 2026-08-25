@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { AgentFsLike } from "@chengchenccc/tools-common";
+import type { AgentFsLike } from "./agent-fs-like.js";
 
 /**
  * Create a cwd-locked filesystem adapter.

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import type { MetaSectionProvider, Plugin, PluginTool } from "@chengchenccc/agent";
-import { buildSkillIndex, type SkillIndexEntry } from "@chengchenccc/tools-common";
+import { buildSkillIndex, type SkillIndexEntry } from "./index.js";
 
 export interface SkillOptions {
   readonly roots: readonly string[];
@@ -18,7 +18,7 @@ function isWithinRoot(root: string, target: string): boolean {
 
 /** Create the oma skill module: Meta index + skill_load tool.
  *  Absorbed from @chengchenccc/plugin-progressive-skill; the shared index
- *  builder now lives in @chengchenccc/tools-common. Skill loading is
+ *  builder now lives in ./skills.ts (tools-common merged into oma). Skill loading is
  *  progressive by definition: the index stays in context, the body loads
  *  on demand. */
 export function createSkill(opts: SkillOptions): Plugin {

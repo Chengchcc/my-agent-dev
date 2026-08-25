@@ -43,7 +43,6 @@
         "@chengchenccc/config": "workspace:*",
         "@chengchenccc/loop": "workspace:*",
         "@chengchenccc/message": "workspace:*",
-        "@chengchenccc/tools-common": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.12.1",
         "drizzle-orm": "^0.44.0",
         "elysia": "^1.0.0",
@@ -80,7 +79,6 @@
         "@chengchenccc/config": "workspace:*",
         "@chengchenccc/core": "workspace:*",
         "@chengchenccc/message": "workspace:*",
-        "@chengchenccc/tools-common": "workspace:*",
         "@chengchenccc/tui": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.12.1",
         "zod": "^3.23.0",
@@ -273,13 +271,6 @@
         "@chengchenccc/message": "workspace:*",
       },
     },
-    "packages/tools-common": {
-      "name": "@chengchenccc/tools-common",
-      "version": "0.1.0",
-      "dependencies": {
-        "@chengchenccc/core": "workspace:*",
-      },
-    },
     "packages/tui": {
       "name": "@chengchenccc/tui",
       "version": "0.1.0",
@@ -410,8 +401,6 @@
     "@chengchenccc/oh-my-agent": ["@chengchenccc/oh-my-agent@workspace:apps/oh-my-agent"],
 
     "@chengchenccc/test-helpers": ["@chengchenccc/test-helpers@workspace:packages/test-helpers"],
-
-    "@chengchenccc/tools-common": ["@chengchenccc/tools-common@workspace:packages/tools-common"],
 
     "@chengchenccc/tui": ["@chengchenccc/tui@workspace:packages/tui"],
 

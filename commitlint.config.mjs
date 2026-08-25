@@ -24,7 +24,6 @@ export default {
         "adapter-mcp",
         "ai",
         "loop",
-        "tools-common",
         "tui",
         // Plugins
         // Apps

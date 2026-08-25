@@ -73,7 +73,7 @@ L1 Contracts    packages/message、packages/core、packages/agent-backend — �
 | `@chengchenccc/loop` | L2 | `loopReducer()` 纯函数, `LoopState`, `LoopAction` |
 | `@chengchenccc/api-contract` | 跨层 | Elysia `App` 类型真源（HTTP/SSE 契约），`SSEEventMap` |
 | `@chengchenccc/ai` | adapter | `Provider`, `Model`, `ModelRegistry`, `createModelRuntime`, `AnthropicChatModel` |
-| `@chengchenccc/tools-common` | tools | bash/grep/glob/edit/write/read/web 工具工厂 |
+| `apps/oh-my-agent/src/core/tools/` | oma-native | bash/grep/glob/edit/write/read/web 工具工厂、skill 索引（tools-common 已并入） |
 | `apps/oh-my-agent/src/core/todo.ts` / `skill.ts` | oma-native | todo / progressive-skill（已从独立 plugin 包吸收，后续对齐 Claude plugin marketplace） |
 | TUI focus-resume recap | oma TUI | terminal regain focus 后展示上次结果摘要；recap_update 事件已删除 |
 | `@chengchenccc/test-helpers` | test | `echoModel()` 确定性 ChatModel 测试替身 |
@@ -158,7 +158,7 @@ cd apps/backend && bun run db:check:backend   # drizzle schema/migration 校验
 
 ## 提交规范（commitlint 必过项）
 
-**格式**：`type(scope): subject` — scope **必填**，不可为空。scope 枚举以 `commitlint.config.mjs` 为准（Phase 6 后已收敛：`core` `message` `agent` `agent-backend` `adapter-oma-agent` `oma` `conversation` `api-contract` `ai` `loop` `tools-common` `plugin-*` `backend` `web` `lark-bot` `cron` `mcp` `settings` `docs` `test` `lint` `build` `deps` `repo`）。
+**格式**：`type(scope): subject` — scope **必填**，不可为空。scope 枚举以 `commitlint.config.mjs` 为准（Phase 6 后已收敛：`core` `message` `agent` `agent-backend` `adapter-oma-agent` `oma` `api-contract` `ai` `loop` `plugin-*` `backend` `web` `lark-bot` `cron` `mcp` `settings` `docs` `test` `lint` `build` `deps` `repo`）。
 
 | 规则 | 值 |
 |------|-----|

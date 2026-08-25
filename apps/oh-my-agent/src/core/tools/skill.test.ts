@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildSkillIndex } from "@chengchenccc/tools-common";
+import { buildSkillIndex } from "./index.js";
 import { createSkill } from "./skill.js";
 
 function tmpDir(label: string): string {

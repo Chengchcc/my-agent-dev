@@ -1,12 +1,12 @@
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { buildSkillIndex } from "@chengchenccc/tools-common";
 import { Elysia, t } from "elysia";
 import type { SkillPackRow } from "./entities.js";
 import { installPath, posixSkillRoot } from "./entities.js";
 import { nodeFsAdapter } from "./fs-adapter.js";
 import type { SkillPackService } from "./service.js";
 import { BuiltinPackImmutableError } from "./service.js";
+import { buildSkillIndex } from "./skill-index.js";
 import { assertSafeEntry } from "./tools.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
-import { buildSkillIndex } from "@chengchenccc/tools-common";
+import { buildSkillIndex } from "./skill-index.js";
 
 // ─── validation helpers ──────────────────────────────────────────────────────────
 

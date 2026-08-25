@@ -1,6 +1,6 @@
-import { buildSkillIndex } from "@chengchenccc/tools-common";
 import type { SlashCommand } from "@chengchenccc/tui";
 import { resolveStandaloneSkillRoots } from "../../cli/initial-input.js";
+import { buildSkillIndex } from "../../core/tools/index.js";
 import type { CommandDef, TuiSessionContext } from "./tui-commands.js";
 
 export interface SlashSystem {

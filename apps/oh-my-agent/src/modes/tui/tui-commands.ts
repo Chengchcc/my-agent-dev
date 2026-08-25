@@ -1,6 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { buildSkillIndex } from "@chengchenccc/tools-common";
 import { resolveStandaloneSkillRoots } from "../../cli/initial-input.js";
 import {
   addMarketplace,
@@ -17,6 +16,7 @@ import {
   saveProjectModel,
   saveProjectSettings,
 } from "../../core/settings/project-settings.js";
+import { buildSkillIndex } from "../../core/tools/index.js";
 import { listMcpServers, testMcpServer } from "../../core/tools/mcp-mount.js";
 import { buildSessionCommands } from "./tui-commands-session.js";
 import { formatTokens } from "./tui-format.js";
