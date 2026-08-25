@@ -1459,9 +1459,7 @@ export function createTerminalIo(
       },
     );
     const infoLinesRendered = headerCard.render(tui.terminal.columns);
-    const separator = `\u001b[2m  ${"─".repeat(Math.max(1, tui.terminal.columns - 2))}\u001b[0m`;
-    const lines = [...infoLinesRendered, separator];
-    for (const line of lines) {
+    for (const line of infoLinesRendered) {
       headerContainer.addChild(new Text(truncateToWidth(line, tui.terminal.columns), 0, 0));
     }
   }
@@ -1703,7 +1701,7 @@ export function createTerminalIo(
     // Rotating welcome easter egg: shown only in the empty state, gone after
     // the first run (omp weights/rotates welcome tips per session).
     if (state.runs.length === 0 && welcomeTip) {
-      transcript.addChild(new Text(`\u001b[2m  ${welcomeTip}\u001b[0m`, 0, 0));
+      transcript.addChild(new Text(`\u001b[33m  ${welcomeTip}\u001b[0m`, 0, 0));
     }
     // Feed the FULL transcript to the TUI: the terminal's own scrollback
     // holds the history, so long sessions scroll naturally and the header
