@@ -1842,8 +1842,16 @@ export function createTerminalIo(
           .filter((line) => !(!failed && /\[exit: \d+\]/.test(line)));
         const maxOut = expanded ? 12 : 4;
         const display = outputLines.slice(0, maxOut);
+        // omp renderCodeCell colors read/write file content as code, not the
+        // generic dim tool-output color.
+        const isCodeResult = toolName === "read" || toolName === "write";
         for (const line of display) {
-          lines.push(`${resultColor}${truncateToWidth(line, tui.terminal.columns - 6)}\u001b[0m`);
+          const truncated = truncateToWidth(line, tui.terminal.columns - 6);
+          lines.push(
+            isCodeResult && !failed
+              ? MARKDOWN_THEME.codeBlock(truncated)
+              : `${resultColor}${truncated}\u001b[0m`,
+          );
         }
         if (outputLines.length > maxOut) {
           lines.push(`\u001b[2m… ${outputLines.length - maxOut} more lines · (ctrl+o)\u001b[0m`);
