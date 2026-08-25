@@ -904,6 +904,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
         // Original model call args (pre-plugin-transform) so the transcript
         // can show what the model asked for.
         input: call.input,
+        ...(tool?.timeoutMs !== undefined ? { timeoutMs: tool.timeoutMs } : {}),
       });
       let result: unknown;
       let isError = false;

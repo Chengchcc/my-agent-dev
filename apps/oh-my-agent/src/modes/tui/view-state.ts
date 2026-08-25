@@ -27,6 +27,8 @@ export interface TranscriptItem {
   startedAt?: number;
   /** Tool items only: execution duration (set on tool_execution_end). */
   durationMs?: number;
+  /** Tool items only: wall-clock timeout ms (0 = disabled). */
+  timeoutMs?: number;
 }
 
 /** One completed or in-flight run as shown in the transcript. */
@@ -126,6 +128,7 @@ export function applyEvent(state: TuiViewState, event: OmaLoopEvent): void {
         startedAt: Date.now(),
       };
       if (event.input !== undefined) item.input = event.input;
+      if (event.timeoutMs !== undefined) item.timeoutMs = event.timeoutMs;
       run.items.push(item);
       break;
     }

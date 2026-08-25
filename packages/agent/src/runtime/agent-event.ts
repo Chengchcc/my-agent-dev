@@ -17,6 +17,8 @@ export type OmaLoopEvent =
       callId: string;
       /** The tool's resolved input (model call args), for transcript display. */
       input?: Readonly<Record<string, unknown>>;
+      /** Wall-clock timeout for this tool (ms, 0 = disabled). */
+      timeoutMs?: number;
     }
   | {
       type: "tool_execution_end";

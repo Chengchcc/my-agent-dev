@@ -17,13 +17,18 @@ import {
 import type { OmaTranscriptContainer } from "./tui-components.js";
 import {
   cleanHeaderTitle,
+  contextColor,
+  formatWorkspace,
+  gitStatus,
   MARKDOWN_THEME,
   MAX_DIFF_LINES,
   prettyJson,
+  renderGitSegment,
   summarizeResult,
   summarizeToolArgs,
   USER_TEXT_STYLE,
 } from "./tui-format.js";
+import { renderTaskTool, renderTodoTool } from "./tui-tool-render.js";
 import type { TranscriptItem, TuiViewState } from "./view-state.js";
 
 /** Renders transcript items to display lines, memoizing markdown/tool blocks.
@@ -116,6 +121,12 @@ export class TuiItemRenderer {
 
   private renderTool(item: TranscriptItem, expanded: boolean): string[] {
     const toolName = item.text.replace(/…$/, "");
+    if (toolName === "todo" || toolName === "todo_read" || toolName === "todo_write") {
+      return renderTodoTool(item, expanded);
+    }
+    if (toolName === "task" || toolName === "task_list" || toolName === "task_output") {
+      return renderTaskTool(item, expanded);
+    }
     const failed =
       item.result !== undefined &&
       (item.result.isError === true || item.result.error !== undefined);
@@ -124,18 +135,14 @@ export class TuiItemRenderer {
     const state = running ? "running" : failed ? "error" : "success";
     const titleColor =
       state === "running" ? "\u001b[33m" : state === "error" ? "\u001b[31m" : "\u001b[32m";
-    const duration =
-      item.durationMs === undefined
-        ? ""
-        : item.durationMs < 100
-          ? ""
-          : item.durationMs < 1000
-            ? ` · ${item.durationMs}ms`
-            : ` · ${(item.durationMs / 1000).toFixed(1)}s`;
+    const wallMs = item.durationMs;
+    const wall = wallMs === undefined ? "—" : `${(wallMs / 1000).toFixed(2)}s`;
+    const timeoutMs = item.timeoutMs;
+    const timeout = timeoutMs === undefined ? "—" : `${(timeoutMs / 1000).toFixed(0)}s`;
     const header = renderToolHeader({
       icon: mark,
       title: toolName,
-      meta: duration ? [duration.replace(/^ · /, "")] : [],
+      meta: [`\u001b[2m⟦Wall: ${wall} | Timeout: ${timeout}⟧\u001b[0m`],
       titleColor,
     });
 
@@ -232,64 +239,6 @@ export class TuiItemRenderer {
     ];
   }
 }
-
-/** Compact git branch + dirty count for the idle status line. */
-export function gitStatus(workspaceRoot: string): string {
-  try {
-    const branchResult = Bun.spawnSync([
-      "git",
-      "-C",
-      workspaceRoot,
-      "rev-parse",
-      "--abbrev-ref",
-      "HEAD",
-    ]);
-    if (branchResult.exitCode !== 0) return "";
-    const branch = branchResult.stdout.toString().trim();
-    if (!branch) return "";
-    const porcelain = Bun.spawnSync(["git", "-C", workspaceRoot, "status", "--porcelain"]);
-    if (porcelain.exitCode !== 0) return branch;
-    const changes = porcelain.stdout.toString().split("\n").filter(Boolean).length;
-    return changes > 0 ? `${branch}+${changes}` : branch;
-  } catch {
-    return "";
-  }
-}
-
-/** Shorten the workspace path for display (~/... when under HOME). */
-export function formatWorkspace(root: string): string {
-  const home = process.env.HOME;
-  if (home && (root === home || root.startsWith(`${home}/`))) {
-    return root === home ? "~" : `~${root.slice(home.length)}`;
-  }
-  return root;
-}
-
-/** Branch cyan, dirty count ember (omp gitClean/gitDirty colors). */
-export function renderGitSegment(git: string): string {
-  if (!git) return "";
-  const plus = git.indexOf("+");
-  if (plus === -1) return `\u001b[38;5;42m${git}\u001b[0m`;
-  return `\u001b[38;5;39m${git.slice(0, plus)}\u001b[0m\u001b[38;5;172m${git.slice(plus)}\u001b[0m`;
-}
-
-/** Threshold color for context percent (omp contextPct). */
-export function contextColor(ctx: string): string {
-  const m = ctx.match(/(\d+)%/);
-  const pct = m ? Number(m[1]) : 0;
-  if (pct >= 90) return "\u001b[38;5;196m";
-  if (pct >= 70) return "\u001b[38;5;172m";
-  return "\u001b[2m";
-}
-
-/** One-time welcome easter eggs, rotated per session (omp welcome tip). */
-export const WELCOME_TIPS: readonly string[] = [
-  "Tip: press ctrl+t to expand thinking, ctrl+o for tool detail",
-  "Tip: /mcp test <name> checks a configured MCP server",
-  "Tip: /resume lists saved sessions; /session shows the current id",
-  "Tip: /workflow runs a script with subagents",
-  "Tip: /exit twice quits; /help lists all commands",
-];
 
 /** Header/status/transcript render shell for createTerminalIo. Owns the
  *  display-only mutable state (header fields, busy, status line) so the io
@@ -402,10 +351,14 @@ export class TuiRenderShell {
         const item = run.items[i]!;
         if (item.kind === "tool" && item.streaming) {
           const name = item.text.replace(/…$/, "");
-          const description =
-            typeof item.input?.description === "string" ? item.input.description.trim() : "";
-          const summary = description
-            ? description
+          const intent =
+            typeof item.input?.intent === "string"
+              ? item.input.intent.trim()
+              : typeof item.input?.description === "string"
+                ? item.input.description.trim()
+                : "";
+          const summary = intent
+            ? intent
             : item.input !== undefined
               ? summarizeToolArgs(name, item.input)
               : "";
@@ -417,6 +370,15 @@ ${item.text ?? ""}`;
           const first = source.split("\n", 1)[0]?.trim() ?? "";
           if (first) return first.length > 80 ? `${first.slice(0, 80)}…` : first;
         }
+      }
+    }
+    // Fallback: a busy run with a tool item (even if the streaming flag is
+    // lost) should never read as a bare "working…".
+    for (let r = this.currentState.runs.length - 1; r >= 0; r--) {
+      const run = this.currentState.runs[r]!;
+      for (let i = run.items.length - 1; i >= 0; i--) {
+        const item = run.items[i]!;
+        if (item.kind === "tool" && item.text) return item.text.replace(/…$/, "");
       }
     }
     return undefined;

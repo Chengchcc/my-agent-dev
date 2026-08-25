@@ -260,6 +260,7 @@ export async function mountWorkspaceMcpServers(
         name: t.name,
         description: t.description ?? `MCP tool ${t.name} (server ${name})`,
         inputSchema: (t.inputSchema ?? { type: "object" }) as PluginTool["inputSchema"],
+        timeoutMs: mcpCallTimeoutMs(),
         async execute(args, signal) {
           const res = await withCallTimeout(
             client.callTool({ name: t.name, arguments: args }),

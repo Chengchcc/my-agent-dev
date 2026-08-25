@@ -46,7 +46,7 @@ export function buildSessionCommands(ctx: TuiSessionContext): CommandDef[] {
               return;
             }
             const summary = sessions.find((s) => s.id === picked);
-            const dir = summary?.workspace ? sessionDirFor(summary.workspace) : undefined;
+            const dir = all && summary?.workspace ? sessionDirFor(summary.workspace) : undefined;
             ctx.session = resolveSession(picked, dir);
             ctx.sessionTitle = summary?.title;
             hydrateTranscript(ctx.state, ctx.session.messages);
@@ -79,8 +79,7 @@ export function buildSessionCommands(ctx: TuiSessionContext): CommandDef[] {
           ctx.pushStatus(matches.map((s) => `${s.id}  ${s.title ?? s.preview}`));
           return;
         }
-        const dir = matches[0]!.workspace ? sessionDirFor(matches[0]!.workspace) : undefined;
-        ctx.session = resolveSession(matches[0]!.id, dir);
+        ctx.session = resolveSession(matches[0]!.id, undefined);
         ctx.sessionTitle = matches[0]!.title;
         hydrateTranscript(ctx.state, ctx.session.messages);
         ctx.io.setHeader?.({

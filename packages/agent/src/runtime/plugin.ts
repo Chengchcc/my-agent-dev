@@ -12,6 +12,9 @@ export interface PluginTool {
   /** "native" (default) for runtime tools; "product" for Product Tools so
    *  consumers can map tool events to the right observation stream. */
   readonly kind?: "native" | "product";
+  /** Wall-clock timeout for this tool in ms (0 = disabled). Shown in the
+   *  TUI tool card and surfaced on tool_execution_start for live display. */
+  readonly timeoutMs?: number;
   execute(
     args: Readonly<Record<string, unknown>>,
     signal?: AbortSignal,

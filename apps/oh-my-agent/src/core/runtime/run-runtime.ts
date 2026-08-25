@@ -107,6 +107,7 @@ async function withToolTimeout(
 function wrapNativeTool(tool: PluginTool, defaultMs = DEFAULT_NATIVE_TOOL_TIMEOUT_MS): PluginTool {
   return {
     ...tool,
+    timeoutMs: resolveNativeToolTimeout(defaultMs),
     execute: (input, signal, options) => withToolTimeout(tool, input, signal, options, defaultMs),
   };
 }

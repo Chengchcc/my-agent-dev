@@ -21,14 +21,10 @@ import {
 import type { ProjectSettings } from "../../core/settings/project-settings.js";
 import { SettingsOverlay } from "./settings-overlay.js";
 import { HistorySearchOverlay, OmaTranscriptContainer, PickerOverlay } from "./tui-components.js";
-import { EDITOR_THEME, relativeTime } from "./tui-format.js";
+import { EDITOR_THEME, relativeTime, WELCOME_TIPS } from "./tui-format.js";
 import type { TuiCommand, TuiIo } from "./tui-mode.js";
-import { TuiRenderShell, WELCOME_TIPS } from "./tui-render.js";
+import { TuiRenderShell } from "./tui-render.js";
 import type { TuiViewState } from "./view-state.js";
-
-/** Transcript container that reports the native-scrollback committed
- * boundary. v1 seam = rows already handed to scrollback; the engine may use
- * it to skip recomposing committed history in future phases. */
 
 export function createTerminalIo(
   terminal: Terminal = new ProcessTerminal(),
@@ -70,10 +66,6 @@ export function createTerminalIo(
   let busySince = 0;
   let busySeconds = 0;
   let elapsedTimer: Timer | undefined;
-  // Terminal focus (CSI 1004 reporting): a completion ping fires only when
-  // the user is looking elsewhere. Default focused — a terminal that never
-  // reports focus never pings falsely... actually it never pings at all,
-  // which is the safe default.
   let focused = true;
 
   // Persistent prompt history (pi's HistoryStorage): loaded newest-first,
@@ -182,11 +174,15 @@ export function createTerminalIo(
       return { consume: true };
     }
     if (matchesKey(data, "escape")) {
+      // An overlay must own Esc: abort/forkTree must not steal the key while
+      // the user is trying to cancel the overlay, or it becomes impossible to
+      // close (e.g. branch-tree picker).
+      if (tui.hasOverlay()) return undefined;
       if (busy) {
         if (commandHandler) commandHandler("abort");
         return { consume: true };
       }
-      if (!tui.hasOverlay() && !editor.isShowingAutocomplete() && commandHandler) {
+      if (!editor.isShowingAutocomplete() && commandHandler) {
         commandHandler("forkTree");
         return { consume: true };
       }
@@ -229,7 +225,6 @@ export function createTerminalIo(
     return undefined;
   });
 
-  /** Add the powerline status bar (model/workspace/git/session/context). */
   function openHistorySearch(): void {
     if (historyEntries.length === 0) {
       const hint = new Text("\u001b[2m  history is empty\u001b[0m", 0, 0);
@@ -262,9 +257,6 @@ export function createTerminalIo(
     });
   }
 
-  // Composite frame provider: composes header + transcript + status + editor,
-  // then hands TUI the live viewport (tail once history is committed, full
-  // frame before the first scroll). This is the omp TerminalFrameProvider seam.
   tui.setFrameProvider({
     renderFrame({ columns, rows }) {
       const allLines = tui.render(columns);
@@ -279,9 +271,6 @@ export function createTerminalIo(
   tui.addChild(editor);
   tui.setFocus(editor);
   tui.start();
-  // Mouse tracking (normal tracking + SGR encoding): the wheel scrolls the
-  // transcript. Restored in close(); Shift bypasses capture for text
-  // selection.
   tui.terminal.write("\x1b[?1004h");
 
   return {
@@ -435,12 +424,18 @@ export function createTerminalIo(
       const { promise, resolve } = Promise.withResolvers<string | null>();
       // Cap the list; the overlay scrolls, but thousands of nodes would just
       // waste memory on a long session.
+      const lastChild = new Map<string | null, string>();
+      for (const n of nodes) lastChild.set(n.parentId, n.id);
       const items = nodes.slice(0, 200).map((n) => {
-        const indent = "  ".repeat(Math.min(n.depth, 8));
+        const isLast = lastChild.get(n.parentId) === n.id;
+        const prefix =
+          n.depth > 0 ? "  ".repeat(Math.min(n.depth, 8) - 1) + (isLast ? "└─ " : "├─ ") : "";
+        const roleColor =
+          n.role === "user" ? "\u001b[36m" : n.role === "assistant" ? "\u001b[32m" : "\u001b[2m";
         const ordinal = n.ordinal !== undefined ? ` #${n.ordinal}` : "";
         return {
           value: n.id,
-          label: `${indent}${n.role}${ordinal}`,
+          label: `${prefix}${roleColor}${n.role}${ordinal}\u001b[0m`,
           description: n.text.replace(/\s+/g, " ").slice(0, 60),
         };
       });
