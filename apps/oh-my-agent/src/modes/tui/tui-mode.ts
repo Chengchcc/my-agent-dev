@@ -47,6 +47,7 @@ import {
   saveInputHistory,
 } from "../../core/input-history.js";
 import { listMcpServers, testMcpServer } from "../../core/mcp-mount.js";
+import { loadProjectSettings, saveProjectModel } from "../../core/project-settings.js";
 import {
   appendSessionMessages,
   deleteSession,
@@ -430,12 +431,34 @@ class HistorySearchOverlay extends Container {
   }
 }
 
+/** A saved project model is used only when it still resolves in the catalog;
+ *  a stale provider/model must not brick TUI startup. */
+async function savedModelIsAvailable(
+  modelRuntime: ModelRuntime,
+  modelId: string,
+): Promise<boolean> {
+  try {
+    const catalog = await modelRuntime.getCatalog();
+    return catalog.models.some(
+      (m) => `${m.providerId}/${m.modelId}` === modelId && m.available !== false,
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** The full interactive session loop, driver-agnostic. */
 export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<number> {
   let session = resolveSession(opts.sessionId);
   const state = initialViewState();
   hydrateTranscript(state, session.messages);
-  let modelId = opts.model;
+  let modelId: string | undefined;
+  if (opts.model) {
+    modelId = opts.model;
+  } else {
+    const saved = loadProjectSettings(opts.workspaceRoot).model;
+    modelId = saved && (await savedModelIsAvailable(opts.modelRuntime, saved)) ? saved : undefined;
+  }
   let liveRuntime: OmaRuntime | null = null;
   let sessionTitle: string | undefined;
   let quitting = false;
@@ -518,6 +541,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
     );
     if (!picked) return;
     modelId = picked;
+    saveProjectModel(opts.workspaceRoot, modelId);
     io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
     pushStatus(`model: ${modelId}`);
     io.render(state);
@@ -621,6 +645,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
           return;
         }
         modelId = args;
+        saveProjectModel(opts.workspaceRoot, modelId);
         io.setHeader?.({ model: modelId, sessionId: session.sessionId, title: sessionTitle });
         pushStatus(`model: ${modelId} · ctx ${formatTokens(row.contextWindow)}`);
       },

@@ -419,6 +419,30 @@ describe("tui session (headless, fake provider)", () => {
     }
   }, 15_000);
 
+  test("/model persists the choice to project settings and a fresh session reuses it", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-model-persist-"));
+    const agentDir = mkdtempSync(join(tmpdir(), "oma-tui-model-persist-agent-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    process.env.OMA_CODING_AGENT_DIR = agentDir;
+    try {
+      // Select a model via /model; it must land in .oma/settings.json.
+      const sel = scriptedIo(["/model fake/echo2", "/exit", "/exit"]);
+      await runTuiSession({ modelRuntime: testModelRuntime(), workspaceRoot: sessionDir }, sel);
+      const settings = JSON.parse(readFileSync(join(sessionDir, ".oma", "settings.json"), "utf8"));
+      expect(settings.model).toBe("fake/echo2");
+
+      // A new TUI session reads the saved model as its default header model.
+      const boot = scriptedIo(["/exit", "/exit"]);
+      await runTuiSession({ modelRuntime: testModelRuntime(), workspaceRoot: sessionDir }, boot);
+      expect(boot.headers[0]?.model).toBe("fake/echo2");
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      delete process.env.OMA_CODING_AGENT_DIR;
+      rmSync(sessionDir, { recursive: true, force: true });
+      rmSync(agentDir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
   test("/skill lists and auto-registers skill commands", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "oma-tui-skills-"));
     const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-skills-sess-"));
