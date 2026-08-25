@@ -19,6 +19,7 @@ my-agent-team 是一个**团队级 Agent 运行时**。每个 Agent 有独立的
 - **一个对话一个 Agent** — 对话是 Agent session 的产品态投影;多 Agent 协作 = 多个对话投影到同一件事情(Work)上(ADR 0021)
 - **多 Provider 多协议** — 支持 Anthropic Messages、OpenAI Chat Completions、OpenAI Responses 三种 API 协议;builtin provider 只需环境有 API Key 即自动生效;用户通过 `~/.oma/models.yml` 添加自定义 provider
 - **Thinking/Reasoning** — 全链路支持 Anthropic extended thinking、DeepSeek reasoning_content、OpenAI reasoning_effort;Web UI 可选 thinking level
+- **终端 TUI（oma）** — 独立交互式终端:流式渲染、工具调用/结果、thinking 与 tool detail 切换、mermaid ASCII 图、`/resume` 与 `/fork`、模型选择持久化到项目 `.oma/settings.json`,composer loader 实时摘要当前动作
 - **双端同步** — Web 控制台 + 飞书(Lark IM)Bot,同一条对话两边实时可见
 - **对话账本** — canonical conversation store(conversation_ledger),所有消息经单一入口写入,端只做渲染
 - **Agent Run 执行链** — 每个 Run 由 Agent Backend spawn 一次性子进程(stdin/stdout JSONL RPC),BackendRunOutcome 是唯一终态,terminal commit 原子写入 History + Context
