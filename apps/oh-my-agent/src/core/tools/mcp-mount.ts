@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { PluginTool } from "@chengchenccc/agent";
+import type { PluginTool } from "../agent-runtime.js";
 import { killProcessTree } from "../runtime/process-tree.js";
 
 /** Generic .mcp.json mounting (ADR 0022): the workspace bridge writes one

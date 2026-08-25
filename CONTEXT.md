@@ -22,7 +22,7 @@
 | **Product Tool** | History 读写、审批等产品能力，由 Product Backend 统一执行（幂等 + 审计） | 不是 native tool（child 自己的文件/Shell 工具） |
 | **Oma** | 无 UI 的一次性 CLI（print/json/rpc），被 Adapter 按 Run spawn | 不是 daemon（无常驻进程） |
 | **Adapter（agent-backend）** | spawn child、stdin/stdout JSONL、steer/abort、并发上限、event/outcome 映射 | 不是执行引擎 |
-| **Plugin** | 贡献 tools + hooks 的可组合单元（packages/agent）；当前真实插件：todo、progressive-skill | 不是 middleware |
+| **Plugin** | 贡献 tools + hooks 的可组合单元（oma core）；当前真实插件：todo、progressive-skill | 不是 middleware |
 | **Compaction** | child 内 Run-local 摘要压缩，只影响本次 Run 输入 | 不是 Product Summary（后者是 Agent Context entry） |
 | **Skill Pack** | 技能集合的分发单元（git/zip/builtin），物化为目录；Run 冻结 skillRoots | 不是 Skill Root（root 是运行时物化产物） |
 | **CronJob** | 按时间表触发的定时规则；到点创建 Agent Run（或调 `loopStep()`） | 不是 Loop 本身 |
@@ -37,7 +37,7 @@ Product Backend
 → full Product Context projection
 → Agent Backend (按 backendKind 选: adapter-oma-agent / adapter-claude-agent / adapter-pi-agent / adapter-omp-agent)
 → spawn one-shot oma child (--mode rpc, stdin/stdout JSONL)
-→ per-Run Oma Runtime (packages/agent)
+→ per-Run Oma Runtime (oma core)
 → BackendRunOutcome
 → atomic Product terminal commit
 ```
@@ -54,7 +54,7 @@ Product Backend
 L5 Surfaces     Web / Lark — HTTP/SSE
 L4 Backend      Product Backend（Elysia）：账本、Agent Context、Agent Run、Loop、Product Tools
 L3 Adapter      packages/adapter-* — child 进程边界（spawn/JSONL/steer/abort）
-L2 Runtime      packages/agent — Oma 唯一真实 model/tool loop（agent-loop.ts）
+L2 Runtime      apps/oh-my-agent/src/core — Oma 唯一真实 model/tool loop（agent-loop.ts）
 L1 Contracts    packages/message、packages/core、packages/agent-backend — 类型/协议
 ```
 
@@ -65,14 +65,13 @@ L1 Contracts    packages/message、packages/core、packages/agent-backend — �
 | `@chengchenccc/core` | L1 | `ChatModel`, `Tool`, `AIMessageChunk`, `ContentBlock`, `collectStream`（无 run loop） |
 | `@chengchenccc/message` | L1 | `Message`, `MessageRevision`, `ContentBlock`, `assistantMessageId(runId, ordinal)` → `run:<runId>:assistant:<n>` |
 | `@chengchenccc/agent-backend` | L1 | `AgentBackend`, `BackendRunInput/Outcome/Segment`, `BackendEvent`, `BackendKind`, `BackendModelRef`（backend 中立契约；不含任何 child wire 协议） |
-| `@chengchenccc/agent` | L2 | Oma Runtime：`createOmaSession()`, plugin.ts, in-memory SessionStore, compaction, todo |
 | `@chengchenccc/adapter-oma-agent` | L3 | `OmaBackend` — spawn/JSONL/steer/abort/concurrency |
 | `@chengchenccc/adapter-omp-agent` | L3 | `OmpBackend` — `omp -p --mode json` 每 turn 短进程;分支钉 session 文件续接 |
 | `@chengchenccc/adapter-pi-agent` | L3 | `PiBackend` — `pi -p --mode json`;`--session` 写+续;pi-mcp-adapter 挂产品工具 |
 | `@chengchenccc/adapter-claude-agent` | L3 | `ClaudeBackend` — stream-json per-turn + `--resume`;result.modelUsage 提取 |
-| `@chengchenccc/loop` | L2 | `loopReducer()` 纯函数, `LoopState`, `LoopAction` |
 | `@chengchenccc/api-contract` | 跨层 | Elysia `App` 类型真源（HTTP/SSE 契约），`SSEEventMap` |
 | `@chengchenccc/ai` | adapter | `Provider`, `Model`, `ModelRegistry`, `createModelRuntime`, `AnthropicChatModel` |
+| `apps/oh-my-agent/src/core/agent-runtime.ts` + `runtime/` + `persistence/` | oma-native | Oma Runtime：`createOmaSession()`、plugins、compaction（packages/agent 已并入） |
 | `apps/oh-my-agent/src/core/tools/` | oma-native | bash/grep/glob/edit/write/read/web 工具工厂、skill 索引（tools-common 已并入） |
 | `apps/oh-my-agent/src/core/todo.ts` / `skill.ts` | oma-native | todo / progressive-skill（已从独立 plugin 包吸收，后续对齐 Claude plugin marketplace） |
 | TUI focus-resume recap | oma TUI | terminal regain focus 后展示上次结果摘要；recap_update 事件已删除 |
@@ -127,7 +126,7 @@ L1 Contracts    packages/message、packages/core、packages/agent-backend — �
 7. BackendRunOutcome 是终态唯一依据；事件流永不决定终态
 8. 同一 Context Branch 最多一个 active Agent Run
 9. 每个 Run 以产品投影为输入;oma 是全量投影重建,CLI backends(claude/pi/omp)的上下文续接依赖 CLI 自身 session(`cliSessionRef`)——双轨真理,见 ADR 0019;CLI session 不可回滚,重放=以最新输入重开 turn
-10. 依赖只能向下：`core` -> `message`/`agent` -> `backend`，不可反向
+10. 依赖只能向下：`core` -> `message`/-> `backend`，不可反向
 
 ## 常用命令
 
@@ -142,7 +141,7 @@ bun run dev          # 启动 backend + web
 cd apps/backend && bun run db:check:backend   # drizzle schema/migration 校验
 ```
 
-单包测试：`cd packages/agent && bun test`
+单包测试：`cd apps/oh-my-agent && bun test`
 集成测试：`bun test apps/backend/tests/integration/agent-run-oma.test.ts`（真实 child）
 
 ## 工具链
@@ -158,7 +157,7 @@ cd apps/backend && bun run db:check:backend   # drizzle schema/migration 校验
 
 ## 提交规范（commitlint 必过项）
 
-**格式**：`type(scope): subject` — scope **必填**，不可为空。scope 枚举以 `commitlint.config.mjs` 为准（Phase 6 后已收敛：`core` `message` `agent` `agent-backend` `adapter-oma-agent` `oma` `api-contract` `ai` `loop` `plugin-*` `backend` `web` `lark-bot` `cron` `mcp` `settings` `docs` `test` `lint` `build` `deps` `repo`）。
+**格式**：`type(scope): subject` — scope **必填**，不可为空。scope 枚举以 `commitlint.config.mjs` 为准（Phase 6 后已收敛：`core` `message` `agent-backend` `adapter-oma-agent` `oma` `api-contract` `ai` `plugin-*` `backend` `web` `lark-bot` `cron` `mcp` `settings` `docs` `test` `lint` `build` `deps` `repo`）。
 
 | 规则 | 值 |
 |------|-----|

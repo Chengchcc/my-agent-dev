@@ -1,5 +1,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { ProjectedHistoryItem, Usage } from "@chengchenccc/agent-backend";
+import type { AIMessageChunk, JsonSchema } from "@chengchenccc/core";
+import type { Message } from "@chengchenccc/message";
+import subagentPrompt from "../../prompts/agents/subagent.md" with { type: "text" };
 import {
   type ContextBudget,
   type ContextSummarizer,
@@ -8,11 +12,7 @@ import {
   type OmaLoopEvent,
   type OmaSession,
   type PluginTool,
-} from "@chengchenccc/agent";
-import type { ProjectedHistoryItem, Usage } from "@chengchenccc/agent-backend";
-import type { AIMessageChunk, JsonSchema } from "@chengchenccc/core";
-import type { Message } from "@chengchenccc/message";
-import subagentPrompt from "../../prompts/agents/subagent.md" with { type: "text" };
+} from "../agent-runtime.js";
 
 export interface WorkflowAgentSpec {
   readonly prompt: string;

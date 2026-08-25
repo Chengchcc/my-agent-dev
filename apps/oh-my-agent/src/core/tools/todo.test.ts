@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createInMemorySessionStore, readTodo } from "@chengchenccc/agent";
+import { createInMemorySessionStore, readTodo } from "../agent-runtime.js";
 import { createTodo } from "./todo.js";
 
 describe("todo", () => {

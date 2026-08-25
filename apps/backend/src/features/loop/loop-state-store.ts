@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { ItemState, LoopState, Verdict } from "@chengchenccc/loop";
+import type { ItemState, LoopState, Verdict } from "./loop-core.js";
 
 export interface LoopStateStore {
   load(loopId: string): LoopState;

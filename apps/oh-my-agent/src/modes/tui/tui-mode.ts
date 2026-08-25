@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { OmaLoopEvent } from "@chengchenccc/agent";
 import type { BackendRunInput, BackendRunOutcome } from "@chengchenccc/agent-backend";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { ProcessTerminal, type SlashCommand } from "@chengchenccc/tui";
 import { buildCliRunInput } from "../../cli/initial-input.js";
+import type { OmaLoopEvent } from "../../core/agent-runtime.js";
 import { createOmaRuntime, type OmaRuntime } from "../../core/runtime/create-runtime.js";
 import {
   appendSessionMessages,

@@ -5,7 +5,7 @@ import type {
   CodingSessionSnapshot,
   SessionStore,
   TodoItem,
-} from "@chengchenccc/agent";
+} from "../agent-runtime.js";
 
 /** Standalone oma's local todo store: a single `.oma/todo.json` in the
  *  workspace, so todo_write persists across TUI runs (unlike the per-Run

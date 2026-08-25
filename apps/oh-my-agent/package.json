@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@chengchenccc/adapter-mcp": "workspace:*",
-    "@chengchenccc/agent": "workspace:*",
     "@chengchenccc/agent-backend": "workspace:*",
     "@chengchenccc/ai": "workspace:*",
     "@chengchenccc/core": "workspace:*",

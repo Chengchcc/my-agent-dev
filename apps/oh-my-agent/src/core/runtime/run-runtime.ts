@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-
+import type { AgentRunSnapshot, ProjectedHistoryItem } from "@chengchenccc/agent-backend";
+import { type ModelRuntime, resolveModelAlias } from "@chengchenccc/ai";
+import type { AIMessageChunk, JsonSchema } from "@chengchenccc/core";
+import type { Message } from "@chengchenccc/message";
 import {
   type ContextBudget,
   type ContextSummarizer,
@@ -13,11 +16,7 @@ import {
   type PluginRuntime,
   type PluginTool,
   type SessionStore,
-} from "@chengchenccc/agent";
-import type { AgentRunSnapshot, ProjectedHistoryItem } from "@chengchenccc/agent-backend";
-import { type ModelRuntime, resolveModelAlias } from "@chengchenccc/ai";
-import type { AIMessageChunk, JsonSchema } from "@chengchenccc/core";
-import type { Message } from "@chengchenccc/message";
+} from "../agent-runtime.js";
 import { loadProjectSettings } from "../settings/project-settings.js";
 import {
   createBashTool,

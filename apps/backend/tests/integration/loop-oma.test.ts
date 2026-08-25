@@ -8,8 +8,6 @@ import {
   OmaModelCatalog,
 } from "@chengchenccc/adapter-oma-agent";
 import type { BackendEvent } from "@chengchenccc/agent-backend";
-import type { LoopState } from "@chengchenccc/loop";
-import { loopReducer } from "@chengchenccc/loop";
 import {
   createAgentContextService,
   sqliteAgentContextAdapter,
@@ -19,6 +17,8 @@ import type { AgentRunExecutionService } from "../../src/features/agent-run/exec
 import { createAgentRunExecutionService } from "../../src/features/agent-run/execution.js";
 import { createAgentRunService } from "../../src/features/agent-run/service.js";
 import { sqliteConversationAdapter } from "../../src/features/conversation/adapter-sqlite.js";
+import type { LoopState } from "../../src/features/loop/loop-core.js";
+import { loopReducer } from "../../src/features/loop/loop-core.js";
 import {
   createLoopStateStore,
   type LoopStateStore,

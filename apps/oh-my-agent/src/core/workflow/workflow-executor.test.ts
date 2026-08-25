@@ -2,10 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PluginTool } from "@chengchenccc/agent";
 import { ProviderError } from "@chengchenccc/ai";
 import type { AIMessageChunk } from "@chengchenccc/core";
 import { createEchoModelStream } from "../__fixtures__/echo-model.js";
+import type { PluginTool } from "../agent-runtime.js";
 import { createWorkflowExecutor } from "./workflow-executor.js";
 
 const events: Array<{ type: string }> = [];

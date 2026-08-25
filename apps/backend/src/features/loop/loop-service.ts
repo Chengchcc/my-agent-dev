@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import type { BackendModelRef } from "@chengchenccc/agent-backend";
-import { type ItemState, type LoopState, parseLoopConfig, type Verdict } from "@chengchenccc/loop";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";
@@ -9,6 +8,7 @@ import type { CronJobService } from "../cron/service.js";
 import { discoverItems, loopStep } from "../loop/loop-step.js";
 import type { ProjectPort } from "../project/ports.js";
 import type { SettingsService } from "../settings/index.js";
+import { type ItemState, type LoopState, parseLoopConfig, type Verdict } from "./loop-core.js";
 import type { LoopStateStore } from "./loop-state-store.js";
 import { resolveLoopPaths } from "./resolve-paths.js";
 

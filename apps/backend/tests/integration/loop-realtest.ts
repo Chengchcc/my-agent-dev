@@ -16,7 +16,6 @@ import {
   type OmaCommandConfig,
   OmaModelCatalog,
 } from "@chengchenccc/adapter-oma-agent";
-import { loopReducer } from "@chengchenccc/loop";
 import {
   createAgentContextService,
   sqliteAgentContextAdapter,
@@ -25,6 +24,7 @@ import { sqliteAgentRunAdapter } from "../../src/features/agent-run/adapter-sqli
 import { createAgentRunExecutionService } from "../../src/features/agent-run/execution.js";
 import { createAgentRunService } from "../../src/features/agent-run/service.js";
 import { sqliteConversationAdapter } from "../../src/features/conversation/adapter-sqlite.js";
+import { loopReducer } from "../../src/features/loop/loop-core.js";
 import { createLoopStateStore } from "../../src/features/loop/loop-state-store.js";
 import { loopStep } from "../../src/features/loop/loop-step.js";
 import { createRunTokenRegistry } from "../../src/features/product-tools/run-token-registry.js";

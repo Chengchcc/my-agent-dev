@@ -1,6 +1,5 @@
 import { rename, rm } from "node:fs/promises";
 import type { BackendModelRef } from "@chengchenccc/agent-backend";
-import { loopReducer } from "@chengchenccc/loop";
 import { Elysia, t } from "elysia";
 import { ConflictError } from "../../infra/domain-errors.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
@@ -11,6 +10,7 @@ import type { CronJobService } from "../cron/service.js";
 import { resolveLoopPaths } from "../loop/resolve-paths.js";
 import type { ProjectPort } from "../project/ports.js";
 import type { SettingsService } from "../settings/index.js";
+import { loopReducer } from "./loop-core.js";
 import { runLoopDoctor } from "./loop-doctor.js";
 import {
   createLoop,

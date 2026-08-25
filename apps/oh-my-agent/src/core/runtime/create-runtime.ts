@@ -1,4 +1,3 @@
-import type { OmaLoopResult } from "@chengchenccc/agent";
 import type {
   BackendInputMessage,
   BackendRunInput,
@@ -10,6 +9,7 @@ import type { ModelRuntime } from "@chengchenccc/ai";
 import type { Message } from "@chengchenccc/message";
 import type { RunEventEnvelope } from "../../protocol/index.js";
 import { mapRunEvent } from "../../protocol/index.js";
+import type { OmaLoopResult } from "../agent-runtime.js";
 import { extractAutonomousMemory, type MemoryLearnResult } from "../memory/autonomous-memory.js";
 import { assembleRunRuntime, type RunRuntime } from "./run-runtime.js";
 

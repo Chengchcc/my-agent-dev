@@ -28,7 +28,7 @@ Every response has two parts:
 # Repository Guidelines
 ## Project Overview
 
-`my-agent-team` is a monorepo for building multi-agent AI systems. It spans from a protocol-level agent runtime (`packages/core`, `packages/agent`) through a production backend (`apps/backend`) and web UI (`apps/web`), plus a Loop automation engine that subsumes issue triage and cron-based work.
+`my-agent-team` is a monorepo for building multi-agent AI systems. It spans from a protocol-level agent runtime (`packages/core`, `apps/oh-my-agent/src/core`) through a production backend (`apps/backend`) and web UI (`apps/web`), plus a Loop automation engine that subsumes issue triage and cron-based work.
 
 **Tech stack:** Bun 1.3.14 runtime, TypeScript 6.x (ESM, `NodeNext`), Turborepo v2, Elysia HTTP, Drizzle ORM + SQLite, Next.js 15 App Router, React Query v5, shadcn/ui + Tailwind CSS v4, Biome + ESLint.
 
@@ -43,7 +43,7 @@ L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock
 
 **Package dependency graph:**
 - Leaves: `@chengchenccc/message`, `@chengchenccc/config`, `@chengchenccc/loop`
-- Core: `@chengchenccc/core` -> `@chengchenccc/agent`
+- Core: `@chengchenccc/core` -> apps consume it directly
 - Plugins: 0 plugins as standalone packages; oma-native todo/progressive-skill live in `apps/oh-my-agent/src/core`
 - Apps: `@chengchenccc/backend` (consumes all), `@chengchenccc/web` (Next.js), `@chengchenccc/lark-bot`, `@chengchenccc/oh-my-agent` (oma CLI)
 
@@ -54,8 +54,8 @@ L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock
 | Directory | Purpose |
 |---|---|
 | `packages/core/` | Protocol types (`Message`/`ChatModel`/`Tool`) + stream utils |
-| `packages/agent/` | Agent lifecycle, `createAgentSession()`, plugins, context pipeline, split persistence (MessageStore/EventLog/InterruptStore) |
-| `packages/loop/` | Pure state machine (reducer, STATE.md I/O, config parsing) |
+| `apps/oh-my-agent/src/core/` | Oma runtime: `createOmaSession()` (agent-loop), plugins, compaction, persistence (absorbed packages/agent) |
+| `apps/backend/src/features/loop/` | Loop feature incl. the pure state machine (reducer, STATE.md I/O; absorbed packages/loop) |
 | `packages/ai/` | Provider + Model registry, AnthropicChatModel, model metadata |
 | `packages/tools-common/` | read/write/edit/bash/grep/glob/web tools |
 | `packages/test-helpers/` | `echoModel()` for deterministic test doubles |
@@ -80,7 +80,7 @@ bun run test                   # Run all tests (turbo)
 bun test                       # Run tests at root
 
 # Scoped commands:
-cd packages/agent && bun test --test-name-pattern="agent-loop"
+cd apps/oh-my-agent && bun test --test-name-pattern="agent-loop"
 cd apps/backend && bun run typecheck
 ```
 

@@ -1,13 +1,13 @@
 import { join } from "node:path";
 import type { BackendModelRef, BackendRunOutcome } from "@chengchenccc/agent-backend";
-import type { ItemState, LoopConfig, LoopState, TaskClass, Verdict } from "@chengchenccc/loop";
-import { loopReducer, parseLoopConfig } from "@chengchenccc/loop";
 import { isTerminalStatus } from "../agent-run/domain.js";
 import type { AgentRunExecutionService } from "../agent-run/execution.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort } from "../conversation/ports.js";
 import type { ProjectPort } from "../project/ports.js";
 import { ensureMirror, ensureWorktree } from "../project/worktree.js";
+import type { ItemState, LoopConfig, LoopState, TaskClass, Verdict } from "./loop-core.js";
+import { loopReducer, parseLoopConfig } from "./loop-core.js";
 import type { LoopStateStore } from "./loop-state-store.js";
 
 type ReviewAction = {

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
-import type { MetaSectionProvider, Plugin, PluginTool } from "@chengchenccc/agent";
+import type { MetaSectionProvider, Plugin, PluginTool } from "../agent-runtime.js";
 import { buildSkillIndex, type SkillIndexEntry } from "./index.js";
 
 export interface SkillOptions {

@@ -3,7 +3,7 @@
 import { Database } from "bun:sqlite";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
-import { parseInboxMd, parseStateMd } from "@chengchenccc/loop";
+import { parseInboxMd, parseStateMd } from "./loop-core.js";
 import { createLoopStateStore } from "./loop-state-store.js";
 
 const loopsDir = process.argv[2];

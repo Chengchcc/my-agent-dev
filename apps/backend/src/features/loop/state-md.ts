@@ -14,15 +14,6 @@ function yamlEscape(value: string): string {
   return value;
 }
 
-function yamlFormatScalar(value: YamlValue): string {
-  if (value === null) return "null";
-  if (typeof value === "boolean") return String(value);
-  if (typeof value === "number") return String(value);
-  if (typeof value === "string") return yamlEscape(value);
-  if (Array.isArray(value)) return value.map(yamlFormatScalar).join(", ");
-  return JSON.stringify(value);
-}
-
 // ============================================================
 // Verdict ↔ YAML
 // ============================================================

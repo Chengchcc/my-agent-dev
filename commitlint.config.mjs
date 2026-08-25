@@ -15,7 +15,6 @@ export default {
         "message",
         "api-contract",
         "config",
-        "agent",
         "agent-backend",
         "adapter-oma-agent",
         "adapter-omp-agent",
@@ -23,7 +22,6 @@ export default {
         "adapter-claude-agent",
         "adapter-mcp",
         "ai",
-        "loop",
         "tui",
         // Plugins
         // Apps

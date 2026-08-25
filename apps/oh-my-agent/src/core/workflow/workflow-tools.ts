@@ -1,4 +1,4 @@
-import type { PluginTool } from "@chengchenccc/agent";
+import type { PluginTool } from "../agent-runtime.js";
 import { builtinAgentNames, isValidWorkflowName, resolveAgent } from "./subagent-registry.js";
 import type {
   WorkflowAgentResult,

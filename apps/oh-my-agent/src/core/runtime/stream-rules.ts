@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import type { StreamRule } from "@chengchenccc/agent";
+import type { StreamRule } from "../agent-runtime.js";
 
 /** Load TTSR-style stream rules (absorbed from oh-my-pi) from
  * `<root>/.oma/rules/*.md`. Frontmatter `condition: <regex>` is required;
