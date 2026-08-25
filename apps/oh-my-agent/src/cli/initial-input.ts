@@ -4,10 +4,11 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { BackendRunInput } from "@chengchenccc/agent-backend";
 import type { ModelRuntime } from "@chengchenccc/ai";
-import { loadProjectSettings } from "../core/project-settings.js";
-import { buildSystemPrompt, readMemorySummary } from "../core/prompts.js";
-import { agentDir } from "../core/session-file.js";
-import { readWorkspaceSystemPrompt } from "../core/workspace-context.js";
+import { enabledPluginSkillRoots } from "../core/plugins/plugin-marketplace.js";
+import { buildSystemPrompt, readMemorySummary } from "../core/runtime/prompts.js";
+import { agentDir } from "../core/session/session-file.js";
+import { loadProjectSettings } from "../core/settings/project-settings.js";
+import { readWorkspaceSystemPrompt } from "../core/settings/workspace-context.js";
 import { UsageError } from "./args.js";
 
 /** Standalone skill roots (the Product passes its own via the run snapshot):
@@ -48,6 +49,9 @@ export function resolveStandaloneSkillRoots(workspaceRoot: string): string[] {
   const roots: string[] = [];
   for (const dir of candidates) {
     if (existsSync(dir) && statSync(dir).isDirectory()) roots.push(dir);
+  }
+  for (const dir of enabledPluginSkillRoots(workspaceRoot)) {
+    if (!roots.includes(dir)) roots.push(dir);
   }
   return roots;
 }

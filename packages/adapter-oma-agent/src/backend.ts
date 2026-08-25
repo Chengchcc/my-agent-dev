@@ -181,6 +181,7 @@ export class OmaBackend implements AgentBackend<"oma"> {
               env: {
                 ...this.command.env,
                 OMA_PRODUCT_TOOL_TOKEN: input.productToolsToken,
+                PRODUCT_TOOLS_RUN_TOKEN: input.productToolsToken,
               },
             }
           : this.command,

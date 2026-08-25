@@ -8,9 +8,9 @@ import type {
 } from "@chengchenccc/agent-backend";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import type { Message } from "@chengchenccc/message";
-import type { RunEventEnvelope } from "../protocol/index.js";
-import { mapRunEvent } from "../protocol/index.js";
-import { extractAutonomousMemory, type MemoryLearnResult } from "./autonomous-memory.js";
+import type { RunEventEnvelope } from "../../protocol/index.js";
+import { mapRunEvent } from "../../protocol/index.js";
+import { extractAutonomousMemory, type MemoryLearnResult } from "../memory/autonomous-memory.js";
 import { assembleRunRuntime, type RunRuntime } from "./run-runtime.js";
 
 /** The single Runtime assembly entry point for the Oma product.

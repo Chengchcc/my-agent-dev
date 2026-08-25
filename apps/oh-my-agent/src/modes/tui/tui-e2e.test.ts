@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createModelRuntime } from "@chengchenccc/ai";
 import { VirtualTerminal } from "@chengchenccc/tui";
-import { registerBuiltinProviders } from "../../core/run-runtime.js";
-import { appendSessionMessages } from "../../core/session-file.js";
+import { registerBuiltinProviders } from "../../core/runtime/run-runtime.js";
+import { appendSessionMessages } from "../../core/session/session-file.js";
 import { createTerminalIo, runTuiSession } from "./tui-mode.js";
 
 /** E2E: the model's input/output behavior as shown ON SCREEN, through a

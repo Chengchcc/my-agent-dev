@@ -211,9 +211,11 @@ describe("Phase 5 acceptance: Product Backend -> Oma child -> Product Tools MCP"
     // Live updates flowed transiently (adapter-mapped events).
     expect(events).toContain("text_delta");
     // The Product Tool call went through the REAL MCP chain (the child's
-    // scripted model called history_recent once).
-    expect(events).toContain("product_tool_started");
-    expect(events).toContain("product_tool_completed");
+    // scripted model called history_recent once). Oma mounts product tools
+    // as ordinary MCP servers like other CLI backends, so the event is a
+    // native_tool_started (product_tool_started was the old special path).
+    expect(events).toContain("native_tool_started");
+    expect(events).toContain("native_tool_completed");
 
     // Conversation History: the Run's full canonical sequence (ADR 0017) —
     // assistant(tool_use) + tool(tool_result) + assistant(text) — committed

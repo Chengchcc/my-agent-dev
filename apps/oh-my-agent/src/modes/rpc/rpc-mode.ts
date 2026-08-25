@@ -3,18 +3,18 @@ import type { BackendRunOutcome, BackendRunSegment } from "@chengchenccc/agent-b
 import { debugLog } from "@chengchenccc/agent-backend";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { type Message, MessageSchema } from "@chengchenccc/message";
-import { createOmaRuntime, type OmaRuntime } from "../../core/create-runtime.js";
-import { buildSystemPrompt, readMemorySummary } from "../../core/prompts.js";
+import { createOmaRuntime, type OmaRuntime } from "../../core/runtime/create-runtime.js";
+import { buildSystemPrompt, readMemorySummary } from "../../core/runtime/prompts.js";
 import {
   appendSessionCompaction,
   appendSessionMessages,
   loadSessionMessages,
   newSessionId,
-} from "../../core/session-file.js";
+} from "../../core/session/session-file.js";
 import {
   readWorkspaceSystemPrompt,
   scanWorkspaceSkillRoots,
-} from "../../core/workspace-context.js";
+} from "../../core/settings/workspace-context.js";
 import type {
   AbortCommand,
   ExecuteCommand,

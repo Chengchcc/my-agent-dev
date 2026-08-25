@@ -1,6 +1,6 @@
 import type { BackendRunOutcome } from "@chengchenccc/agent-backend";
 import { buildCliRunInput } from "../cli/initial-input.js";
-import { createOmaRuntime } from "../core/create-runtime.js";
+import { createOmaRuntime } from "../core/runtime/create-runtime.js";
 import type { CliRunOptions } from "./print-mode.js";
 
 /** JSON mode: one Run; stdout gets ALL events as JSONL plus exactly one

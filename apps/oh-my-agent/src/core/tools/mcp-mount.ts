@@ -1,14 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PluginTool } from "@chengchenccc/agent";
-import { killProcessTree } from "./process-tree.js";
+import { killProcessTree } from "../runtime/process-tree.js";
 
 /** Generic .mcp.json mounting (ADR 0022): the workspace bridge writes one
  *  .mcp.json (user servers + product-tools + knowledge); the child mounts
- *  every server EXCEPT "product-tools" (that one rides the run-scoped
- *  manifest path with identity injection). Tool names that collide with
- *  the native tool table are skipped (the native table wins). One client
- *  per server, kept alive for the run. */
+ *  every server. Tool names that collide with the native tool table are
+ *  skipped (the native table wins). One client per server, kept alive for
+ *  the run. */
 
 interface McpJsonServer {
   command?: string;
@@ -46,6 +45,11 @@ function loadMcpConfig(workspaceRoot: string): Record<string, McpJsonServer> {
   }
 }
 
+/** Expand `${VAR}` placeholders in .mcp.json headers/env from process.env. */
+function expandEnvVars(value: string): string {
+  return value.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (_, name: string) => process.env[name] ?? "");
+}
+
 async function connectServer(name: string, server: McpJsonServer): Promise<McpClientLike | null> {
   try {
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
@@ -55,9 +59,12 @@ async function connectServer(name: string, server: McpJsonServer): Promise<McpCl
     let listTools: McpClientLike["listTools"];
     if (server.url) {
       const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
+      const headers = server.headers
+        ? Object.fromEntries(Object.entries(server.headers).map(([k, v]) => [k, expandEnvVars(v)]))
+        : undefined;
       const transport = new SSEClientTransport(
         new URL(server.url),
-        server.headers ? { requestInit: { headers: server.headers } } : undefined,
+        headers ? { requestInit: { headers } } : undefined,
       );
       const client = new Client({ name: "oma", version: "0.1.0" }, { capabilities: {} });
       await client.connect(transport);
@@ -69,10 +76,13 @@ async function connectServer(name: string, server: McpJsonServer): Promise<McpCl
       closeSdk = () => client.close();
     } else if (server.command) {
       const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+      const env = server.env
+        ? Object.fromEntries(Object.entries(server.env).map(([k, v]) => [k, expandEnvVars(v)]))
+        : undefined;
       const transport = new StdioClientTransport({
         command: server.command,
         args: server.args ?? [],
-        env: server.env,
+        env,
       });
       const client = new Client({ name: "oma", version: "0.1.0" }, { capabilities: {} });
       await client.connect(transport);
@@ -231,7 +241,6 @@ export async function mountWorkspaceMcpServers(
   const tools: PluginTool[] = [];
   const clients: McpClientLike[] = [];
   for (const [name, server] of Object.entries(servers)) {
-    if (name === "product-tools") continue; // manifest path owns it (identity)
     const client = await connectServer(name, server);
     if (!client) continue;
     clients.push(client);

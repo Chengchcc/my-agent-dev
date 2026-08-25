@@ -1,4 +1,4 @@
-import type { OmaRuntime } from "../core/create-runtime.js";
+import type { OmaRuntime } from "../runtime/create-runtime.js";
 import {
   appendSessionCompaction,
   appendSessionMessages,

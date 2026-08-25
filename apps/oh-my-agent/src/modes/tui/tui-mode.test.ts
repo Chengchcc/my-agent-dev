@@ -3,12 +3,12 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createModelRuntime } from "@chengchenccc/ai";
-import { registerBuiltinProviders } from "../../core/run-runtime.js";
+import { registerBuiltinProviders } from "../../core/runtime/run-runtime.js";
 import {
   appendSessionMessages,
   loadSessionBranchNodes,
   sessionDirFor,
-} from "../../core/session-file.js";
+} from "../../core/session/session-file.js";
 import { formatModelMeta, runTuiSession, type TuiCommand, type TuiIo } from "./tui-mode.js";
 import { addUserInput, applyEvent, initialViewState, type TuiViewState } from "./view-state.js";
 
@@ -408,7 +408,7 @@ describe("tui session (headless, fake provider)", () => {
       // The command table reached the autocomplete seam once.
       // 17 static commands (incl. /mcp, /skill, /workflow); the pinned
       // agent dir guarantees zero auto-registered skills.
-      expect(registered).toEqual([18]);
+      expect(registered).toEqual([20]);
       const statuses = base.renders
         .at(-1)!
         .runs.flatMap((r) => r.items.filter((i) => i.kind === "status"))

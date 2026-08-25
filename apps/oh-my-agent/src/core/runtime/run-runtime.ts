@@ -3,7 +3,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
-  type CodingLoopInput,
   type ContextBudget,
   type ContextSummarizer,
   createInMemorySessionStore,
@@ -35,20 +34,17 @@ import {
   type WebFetchPort,
   type WebSearchPort,
 } from "@chengchenccc/tools-common";
+import { loadProjectSettings } from "../settings/project-settings.js";
+import { mountWorkspaceMcpServers, withCallTimeout } from "../tools/mcp-mount.js";
+import { createSkill } from "../tools/skill.js";
+import { createTodo, createTodoReadTool } from "../tools/todo.js";
+import { createFileTodoStore, readTodoFile } from "../tools/todo-store.js";
+import { evaluateWorkflowScript } from "../workflow/workflow-evaluator.js";
+import { createWorkflowExecutor, type WorkflowAgentResult } from "../workflow/workflow-executor.js";
+import { createWorkflowTools, isValidWorkflowName } from "../workflow/workflow-tools.js";
 import { fakeProvider } from "./fake-provider.js";
-import { mountWorkspaceMcpServers, withCallTimeout } from "./mcp-mount.js";
-import { killProcessTree } from "./process-tree.js";
-import type { ProductToolCaller } from "./product-tool-transport.js";
-import { readProductToolsManifest } from "./product-tools-manifest.js";
-import { loadProjectSettings } from "./project-settings.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
-import { createSkill } from "./skill.js";
 import { loadStreamRules } from "./stream-rules.js";
-import { createTodo, createTodoReadTool } from "./todo.js";
-import { createFileTodoStore, readTodoFile } from "./todo-store.js";
-import { evaluateWorkflowScript } from "./workflow-evaluator.js";
-import { createWorkflowExecutor, type WorkflowAgentResult } from "./workflow-executor.js";
-import { createWorkflowTools, isValidWorkflowName } from "./workflow-tools.js";
 
 /** Token estimation via content char/4 (approx 1 token per 4 chars of
  *  English/code). More accurate than JSON.stringify char/4 which includes
@@ -303,133 +299,6 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       ],
     });
   }
-
-  // Product Tools are resolved PER RUN from the AgentRunSnapshot manifest:
-  // resolveTools builds the tool table from input.run.productTools + the run's
-  // identity (runId + metadata). Every call carries identity + abort +
-  // timeout through the transport.
-  const { buildProductTools } = await import("./product-tool-transport.js");
-  // Direct MCP client per ENTRYPOINT; the tool NAME is the MCP tool name.
-  // entrypoint is a structured URI: `sse:<url>` or `stdio:<executable>` (a
-  // single executable path - never shell-split). Identity is injected per
-  // call; timeout/abort close the transport so a canceled call cannot produce
-  // a late side effect.
-  const clients = new Map<string, { client: unknown; stdioRootPid: number | null }>();
-
-  /** Close an MCP client and, for stdio servers, the whole descendant
-   *  process tree (npm-wrapped product tools leave grandchildren that
-   *  inherit the stdio pipes and keep oma alive). */
-  async function closeProductTool(entry: {
-    client: unknown;
-    stdioRootPid: number | null;
-  }): Promise<void> {
-    const mcp = entry.client as { close?: () => Promise<void> };
-    await mcp.close?.().catch(() => {});
-    if (entry.stdioRootPid !== null) killProcessTree(entry.stdioRootPid);
-  }
-
-  const caller: ProductToolCaller = {
-    async callTool(p) {
-      let entry = clients.get(p.entrypoint);
-      if (!entry) {
-        const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-        let transport: unknown;
-        let stdioRootPid: number | null = null;
-        if (p.entrypoint.startsWith("sse:")) {
-          const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
-          // Service-token auth for remote Product Tools endpoints: the token
-          // is process configuration (OMA_PRODUCT_TOOL_TOKEN), never
-          // part of the entrypoint URI or MCP arguments.
-          const token = process.env.OMA_PRODUCT_TOOL_TOKEN;
-          transport = new SSEClientTransport(
-            new URL(p.entrypoint.slice(4)),
-            token ? { requestInit: { headers: { Authorization: `Bearer ${token}` } } } : undefined,
-          );
-        } else if (p.entrypoint.startsWith("stdio:")) {
-          const { StdioClientTransport } = await import(
-            "@modelcontextprotocol/sdk/client/stdio.js"
-          );
-          transport = new StdioClientTransport({
-            command: p.entrypoint.slice(6),
-            args: [],
-          });
-        } else {
-          throw new Error(
-            `invalid product tool entrypoint (expected sse:<url> or stdio:<executable>): ${p.entrypoint}`,
-          );
-        }
-        const c = new Client({ name: "oma", version: "0.1.0" }, { capabilities: {} });
-        await c.connect(transport as never);
-        if (p.entrypoint.startsWith("stdio:")) {
-          const stdio = transport as { pid?: number | null };
-          stdioRootPid = stdio.pid ?? null;
-        }
-        entry = { client: c, stdioRootPid };
-        clients.set(p.entrypoint, entry);
-      }
-      const mcpClient = entry.client as {
-        callTool(params: {
-          name: string;
-          arguments?: unknown;
-          _meta?: { identity: unknown };
-        }): Promise<{ content: unknown }>;
-        close(): Promise<void>;
-      };
-      const cancel = (): void => {
-        clients.delete(p.entrypoint);
-        void closeProductTool(entry!).catch(() => {});
-      };
-      p.signal?.addEventListener("abort", cancel, { once: true });
-      try {
-        const res = await mcpClient.callTool({
-          name: p.name,
-          arguments: p.arguments,
-          _meta: { identity: p.identity },
-        });
-        return { content: res.content };
-      } catch (err) {
-        cancel();
-        throw err;
-      } finally {
-        p.signal?.removeEventListener("abort", cancel);
-      }
-    },
-  };
-  const resolveTools = async (input: CodingLoopInput): Promise<readonly PluginTool[]> => {
-    // ADR 0003 decision 6: the manifest lives in the workspace files
-    // (.oma/product-tools.json, written by the workspace bridge), never
-    // in the run input.
-    const manifest = readProductToolsManifest(input.workspace.root);
-    if (manifest.length === 0) return [];
-    // Per-call timeout: default 30s, overridable via env so the real MCP
-    // timeout path is testable without waiting 30s.
-    const rawTimeout = process.env.OMA_PRODUCT_TOOL_TIMEOUT_MS;
-    const timeoutMs = rawTimeout ? Number(rawTimeout) || 30_000 : 30_000;
-    const identity: {
-      runId: string;
-      conversationId?: string;
-      agentMemberId?: string;
-      branchId?: string;
-    } = { runId: input.run.runId };
-    // Product-driven runs carry the conversation/agent/branch identity;
-    // standalone CLI runs (TUI/print) have none.
-    if (input.metadata) {
-      identity.conversationId = input.metadata.conversationId;
-      identity.agentMemberId = input.metadata.agentMemberId;
-      identity.branchId = input.metadata.branchId;
-    }
-    const tools = buildProductTools(manifest, {
-      identity,
-      caller,
-      timeoutMs,
-    }) as unknown as PluginTool[];
-    // Mark them so the loop's tool events carry kind="product" and consumers
-    // map them to product_tool_started/completed (not native_tool_*).
-    for (const t of tools) {
-      (t as PluginTool & { kind?: string }).kind = "product";
-    }
-    return tools;
-  };
 
   let activeRun: AgentRunSnapshot<"oma"> | null = null;
 
@@ -781,7 +650,6 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     summarize,
     contextBudget,
     resolveModel,
-    resolveTools,
     ...(streamRules.length > 0 ? { streamRules } : {}),
     ...(deps.onPersistMessages ? { onPersistMessages: deps.onPersistMessages } : {}),
   });
@@ -803,17 +671,12 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     async close() {
       // 3.4 Phase 3: background subagents must not outlive the Run.
       workflowExecutor.abortAllSubagents();
-      // Tear down every MCP client (Product Tool transports) so no child
-      // process or connection outlives the Run. Each close is BOUNDED: a
-      // stuck transport (e.g. an SSE socket that never answers close) must
-      // not wedge the child process.
+      // Tear down mounted MCP clients so no child process or connection
+      // outlives the Run. Each close is BOUNDED: a stuck transport (e.g. an
+      // SSE socket that never answers close) must not wedge the child.
       const closeWithTimeout = (p: Promise<unknown>): Promise<unknown> =>
         Promise.race([p, new Promise((r) => setTimeout(r, 2000))]);
       const closePromises: Promise<unknown>[] = [];
-      for (const [entrypoint, entry] of clients) {
-        clients.delete(entrypoint);
-        closePromises.push(closeWithTimeout(closeProductTool(entry)));
-      }
       closePromises.push(closeWithTimeout(closeMounted()));
       closePromises.push(closeWithTimeout(store.close()));
       await Promise.allSettled(closePromises);

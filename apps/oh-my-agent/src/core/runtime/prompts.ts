@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import basePrompt from "../prompts/system/base.md" with { type: "text" };
-import memoryPrompt from "../prompts/system/memory.md" with { type: "text" };
-import safetyPrompt from "../prompts/system/safety.md" with { type: "text" };
+import basePrompt from "../../prompts/system/base.md" with { type: "text" };
+import memoryPrompt from "../../prompts/system/memory.md" with { type: "text" };
+import safetyPrompt from "../../prompts/system/safety.md" with { type: "text" };
 /** oma's own prompt layer (mirrors omp's src/prompts layout): base
  *  identity + safety + memory discipline live here as md files; workspace
  *  files (AGENTS.md / SOUL.md / USER.md + knowledge index) remain the

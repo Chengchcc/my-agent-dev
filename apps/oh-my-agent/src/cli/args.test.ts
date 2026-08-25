@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createModelRuntime } from "@chengchenccc/ai";
-import { fakeProvider } from "../core/fake-provider.js";
+import { fakeProvider } from "../core/runtime/fake-provider.js";
 import { parseArgs, UsageError } from "./args.js";
 import { buildCliRunInput, mergeInitialInput, readPipedStdin } from "./initial-input.js";
 

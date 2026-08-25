@@ -8,22 +8,18 @@ export {
   type CreateOmaRuntimeOptions,
   createOmaRuntime,
   type OmaRuntime,
-} from "./core/create-runtime.js";
-export { buildBackendModelCatalog, type ModelCatalogOptions } from "./core/model-catalog.js";
+} from "./core/runtime/create-runtime.js";
 export {
-  adaptProductTool,
-  buildProductTools,
-  type ProductToolCaller,
-  type ProductToolCallIdentity,
-  type ProductToolTransportOptions,
-} from "./core/product-tool-transport.js";
+  buildBackendModelCatalog,
+  type ModelCatalogOptions,
+} from "./core/runtime/model-catalog.js";
 export {
   assembleRunRuntime,
   type RunRuntime,
   type RunRuntimeDeps,
   registerBuiltinProviders,
-} from "./core/run-runtime.js";
-export { registerProvidersFromCatalog } from "./core/runtime-catalog.js";
+} from "./core/runtime/run-runtime.js";
+export { registerProvidersFromCatalog } from "./core/runtime/runtime-catalog.js";
 export { runJsonMode } from "./modes/json-mode.js";
 export { assistantText, type CliRunOptions, runPrintMode } from "./modes/print-mode.js";
 export { createJsonlReader, type JsonlReaderOptions } from "./modes/rpc/jsonl.js";

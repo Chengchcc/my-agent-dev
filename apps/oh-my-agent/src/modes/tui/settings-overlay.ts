@@ -6,7 +6,7 @@ import {
   type SelectListTheme,
   truncateToWidth,
 } from "@chengchenccc/tui";
-import type { ProjectSettings } from "../../core/project-settings.js";
+import type { ProjectSettings } from "../../core/settings/project-settings.js";
 
 type SettingKey = keyof ProjectSettings;
 

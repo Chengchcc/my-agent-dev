@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { PluginTool } from "@chengchenccc/agent";
 import { ProviderError } from "@chengchenccc/ai";
 import type { AIMessageChunk } from "@chengchenccc/core";
-import { createEchoModelStream } from "./__fixtures__/echo-model.js";
+import { createEchoModelStream } from "../__fixtures__/echo-model.js";
 import { createWorkflowExecutor } from "./workflow-executor.js";
 
 const events: Array<{ type: string }> = [];

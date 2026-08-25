@@ -1,9 +1,9 @@
 import type { ModelRuntime } from "@chengchenccc/ai";
 import type { Message } from "@chengchenccc/message";
 import { buildCliRunInput } from "../cli/initial-input.js";
-import { createOmaRuntime } from "../core/create-runtime.js";
-import { newSessionId } from "../core/session-file.js";
-import { persistSessionTurn } from "../core/session-loop.js";
+import { createOmaRuntime } from "../core/runtime/create-runtime.js";
+import { newSessionId } from "../core/session/session-file.js";
+import { persistSessionTurn } from "../core/session/session-loop.js";
 
 export interface CliRunOptions {
   prompt: string;

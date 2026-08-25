@@ -6,8 +6,8 @@ import type { Model, Provider } from "@chengchenccc/ai";
 import { createModelRuntime, type ModelRuntime } from "@chengchenccc/ai";
 import type { AIMessageChunk } from "@chengchenccc/core";
 import type { Message } from "@chengchenccc/message";
-import { fakeProvider } from "../../core/fake-provider.js";
-import { loadSessionMessages } from "../../core/session-file.js";
+import { fakeProvider } from "../../core/runtime/fake-provider.js";
+import { loadSessionMessages } from "../../core/session/session-file.js";
 import type { OmaOutput } from "../../protocol/index.js";
 import { runRpcMode } from "./rpc-mode.js";
 

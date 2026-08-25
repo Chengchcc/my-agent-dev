@@ -12,7 +12,7 @@ import {
 import type { ProjectedHistoryItem, Usage } from "@chengchenccc/agent-backend";
 import type { AIMessageChunk, JsonSchema } from "@chengchenccc/core";
 import type { Message } from "@chengchenccc/message";
-import subagentPrompt from "../prompts/agents/subagent.md" with { type: "text" };
+import subagentPrompt from "../../prompts/agents/subagent.md" with { type: "text" };
 
 export interface WorkflowAgentSpec {
   readonly prompt: string;

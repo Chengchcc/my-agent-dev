@@ -1,8 +1,8 @@
 import { createModelRuntime } from "@chengchenccc/ai";
 import { parseArgs, UsageError } from "./cli/args.js";
 import { mergeInitialInput, readPipedStdin } from "./cli/initial-input.js";
-import { buildBackendModelCatalog } from "./core/model-catalog.js";
-import { registerBuiltinProviders } from "./core/run-runtime.js";
+import { buildBackendModelCatalog } from "./core/runtime/model-catalog.js";
+import { registerBuiltinProviders } from "./core/runtime/run-runtime.js";
 import { runJsonMode } from "./modes/json-mode.js";
 import { runPrintMode } from "./modes/print-mode.js";
 import { runRpcMode } from "./modes/rpc/rpc-mode.js";
