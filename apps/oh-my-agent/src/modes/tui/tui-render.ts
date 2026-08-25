@@ -135,7 +135,9 @@ export class TuiItemRenderer {
     const state = running ? "running" : failed ? "error" : "success";
     const titleColor =
       state === "running" ? "\u001b[33m" : state === "error" ? "\u001b[31m" : "\u001b[32m";
-    const wallMs = item.durationMs;
+    const wallMs =
+      item.durationMs ??
+      (item.streaming && item.startedAt !== undefined ? Date.now() - item.startedAt : undefined);
     const wall = wallMs === undefined ? "—" : `${(wallMs / 1000).toFixed(2)}s`;
     const timeoutMs = item.timeoutMs;
     const timeout = timeoutMs === undefined ? "—" : `${(timeoutMs / 1000).toFixed(0)}s`;
