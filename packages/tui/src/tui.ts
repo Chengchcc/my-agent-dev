@@ -1451,14 +1451,17 @@ export class TUI extends Container {
     // Render all components to get new lines
     let newLines = this.render(width);
 
-    // Frame-provider pipeline: consume the plan (viewport retained for now).
-    // The full handshake (writing plan.history to terminal scrollback) is the
-    // next slice; this keeps the contract exercised without changing behavior.
+    // Frame-provider pipeline: the offered history batch marks the committed
+    // prefix, which the differential can skip scanning/rewriting entirely.
+    let frameStableFloor = 0;
     if (this.frameProvider) {
       const plan = this.frameProvider.renderFrame({ columns: width, rows: height });
       if (plan.history) {
-        // History is already committed through setNativeScrollbackCommittedRows;
-        // the explicit ack path is wired in OmaTranscriptContainer.
+        frameStableFloor = Math.min(
+          plan.history.rows.length,
+          newLines.length,
+          this.previousLines.length,
+        );
       }
     }
 
@@ -1569,7 +1572,7 @@ export class TUI extends Container {
     let firstChanged = -1;
     let lastChanged = -1;
     const maxLines = Math.max(newLines.length, this.previousLines.length);
-    for (let i = 0; i < maxLines; i++) {
+    for (let i = frameStableFloor; i < maxLines; i++) {
       const oldLine = i < this.previousLines.length ? this.previousLines[i] : "";
       const newLine = i < newLines.length ? newLines[i] : "";
 
