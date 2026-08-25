@@ -27,6 +27,14 @@ export {
   type MarkdownTheme,
 } from "./components/markdown.ts";
 export {
+  CachedOutputBlock,
+  type OutputBlockOptions,
+  type OutputBlockSection,
+  type OutputBlockState,
+  outputBlockContentWidth,
+  renderOutputBlock,
+} from "./components/output-block.ts";
+export {
   type SelectItem,
   SelectList,
   type SelectListLayoutOptions,
@@ -37,6 +45,7 @@ export { Spacer } from "./components/spacer.ts";
 export {
   chip,
   renderStatusBar,
+  renderToolHeader,
   type StatusSegment,
 } from "./components/statusline.ts";
 export { Text } from "./components/text.ts";

@@ -7,6 +7,7 @@ import type { ModelRuntime } from "@chengchenccc/ai";
 import { buildSkillIndex } from "@chengchenccc/plugin-progressive-skill";
 import {
   applyBackgroundToLine,
+  CachedOutputBlock,
   Card,
   CombinedAutocompleteProvider,
   Container,
@@ -22,9 +23,11 @@ import {
   type NativeScrollbackCommittedRows,
   type NativeScrollbackLiveRegion,
   type NativeScrollbackReplay,
+  type OutputBlockSection,
   ProcessTerminal,
   type RenderStablePrefix,
   renderStatusBar,
+  renderToolHeader,
   SelectList,
   type SelectListTheme,
   type SlashCommand,
@@ -1660,6 +1663,7 @@ export function createTerminalIo(
    *  re-parsing markdown on every frame; streaming items invalidate via
    *  setText. */
   const markdownCache = new WeakMap<TranscriptItem, Markdown>();
+  const toolBlockCache = new WeakMap<TranscriptItem, CachedOutputBlock>();
 
   /** Render one item's text as markdown (assistant prose / user bubble). */
   function markdownLines(
@@ -1758,7 +1762,9 @@ export function createTerminalIo(
     const running = item.streaming;
     // omp status icon set: running ⟳, error ✘, success ✔.
     const mark = running ? "\u27f3" : failed ? "\u2718" : "\u2714";
-    const color = running ? "33" : failed ? "31" : "32";
+    const state = running ? "running" : failed ? "error" : "success";
+    const titleColor =
+      state === "running" ? "\u001b[33m" : state === "error" ? "\u001b[31m" : "\u001b[32m";
     const duration =
       item.durationMs === undefined
         ? ""
@@ -1767,49 +1773,57 @@ export function createTerminalIo(
           : item.durationMs < 1000
             ? ` · ${item.durationMs}ms`
             : ` · ${(item.durationMs / 1000).toFixed(1)}s`;
-    const header = `\u001b[${color}m  ${mark} \u001b[0m\u001b[1m${toolName}\u001b[22m\u001b[2m${duration}\u001b[0m`;
-    const children: Text[] = [new Text(header, 0, 0)];
+    const header = renderToolHeader({
+      icon: mark,
+      title: toolName,
+      meta: duration ? [duration.replace(/^ · /, "")] : [],
+      titleColor,
+    });
+
+    const sections: OutputBlockSection[] = [];
 
     // Body column: call args summary (collapsed) or pretty JSON (expanded).
     if (item.input !== undefined) {
+      const lines: string[] = [];
       if (expanded) {
         for (const line of prettyJson(item.input).split("\n")) {
-          children.push(new Text(`\u001b[2m    ${line}\u001b[0m`, 0, 0));
+          lines.push(`\u001b[2m${line}\u001b[0m`);
         }
       } else {
-        children.push(
-          new Text(`\u001b[2m    └ ${summarizeToolArgs(toolName, item.input)}\u001b[0m`, 0, 0),
-        );
+        lines.push(`\u001b[2m└ ${summarizeToolArgs(toolName, item.input)}\u001b[0m`);
       }
+      sections.push({ lines });
     }
 
     // Edit diff body: the actual +/- change, not the raw args.
     if (toolName === "edit" && item.input !== undefined) {
       const str = (v: unknown): string => (typeof v === "string" ? v : "");
+      const lines: string[] = [];
       for (const line of str(item.input.old_string).split("\n").slice(0, MAX_DIFF_LINES)) {
-        children.push(new Text(`\u001b[31m    - ${line.slice(0, 90)}\u001b[0m`, 0, 0));
+        lines.push(`\u001b[31m- ${line.slice(0, 90)}\u001b[0m`);
       }
       for (const line of str(item.input.new_string).split("\n").slice(0, MAX_DIFF_LINES)) {
-        children.push(new Text(`\u001b[32m    + ${line.slice(0, 90)}\u001b[0m`, 0, 0));
+        lines.push(`\u001b[32m+ ${line.slice(0, 90)}\u001b[0m`);
       }
+      sections.push({ lines });
     }
 
     // Live streaming output tail.
     if (item.output && item.streaming) {
       const tail = item.output.slice(-600);
+      const lines: string[] = [];
       for (const line of tail.split("\n").slice(-4)) {
-        if (line.trim()) children.push(new Text(`\u001b[2m    ${line}\u001b[0m`, 0, 0));
+        if (line.trim()) lines.push(`\u001b[2m${line}\u001b[0m`);
       }
+      sections.push({ lines });
     }
 
     // Result body: omp-style actual output lines (4 collapsed / 12 expanded)
     // with a `… N more lines · (ctrl+o)` hint.
     if (item.result !== undefined) {
       const content = typeof item.result.content === "string" ? item.result.content : null;
-      const resultColor = failed ? "31" : "2";
-      if (content !== null || Object.keys(item.result).length > 0) {
-        children.push(new Text(`\u001b[2m    ── Output ──\u001b[0m`, 0, 0));
-      }
+      const resultColor = failed ? "\u001b[31m" : "\u001b[2m";
+      const lines: string[] = [];
       if (content !== null) {
         let textContent = content.trimEnd();
         // JSON output renders as a truncated pretty tree (omp JSON tree).
@@ -1829,41 +1843,36 @@ export function createTerminalIo(
         const maxOut = expanded ? 12 : 4;
         const display = outputLines.slice(0, maxOut);
         for (const line of display) {
-          children.push(
-            new Text(
-              `\u001b[${resultColor}m    ${truncateToWidth(line, tui.terminal.columns - 6)}\u001b[0m`,
-              0,
-              0,
-            ),
-          );
+          lines.push(`${resultColor}${truncateToWidth(line, tui.terminal.columns - 6)}\u001b[0m`);
         }
         if (outputLines.length > maxOut) {
-          children.push(
-            new Text(
-              `\u001b[2m    … ${outputLines.length - maxOut} more lines · (ctrl+o)\u001b[0m`,
-              0,
-              0,
-            ),
-          );
+          lines.push(`\u001b[2m… ${outputLines.length - maxOut} more lines · (ctrl+o)\u001b[0m`);
         } else if (!expanded) {
-          children.push(new Text(`\u001b[2m    · (ctrl+o)\u001b[0m`, 0, 0));
+          lines.push(`\u001b[2m· (ctrl+o)\u001b[0m`);
         }
       } else {
         const summary = summarizeResult(item.result);
-        if (summary) {
-          children.push(new Text(`\u001b[${resultColor}m    ${summary}\u001b[0m`, 0, 0));
-        }
+        if (summary) lines.push(`${resultColor}${summary}\u001b[0m`);
+      }
+      if (content !== null || Object.keys(item.result).length > 0) {
+        sections.push({ label: "Output", lines });
       }
     }
 
-    // Whole card tint: unified with user bubble / status line (48;5;234),
-    // with a dim box-drawing border.
-    const card = new Card(children, {
-      paddingY: 0,
-      bg: (line: string) => `\u001b[48;5;234m${line}\u001b[0m`,
-      border: { color: (s: string) => `\u001b[${color}m${s}\u001b[0m` },
-    });
-    return card.render(tui.terminal.columns);
+    let block = toolBlockCache.get(item);
+    if (!block) {
+      block = new CachedOutputBlock();
+      toolBlockCache.set(item, block);
+    }
+    return [
+      ...block.render({
+        header,
+        state,
+        sections,
+        width: tui.terminal.columns,
+        bg: (line: string) => `\u001b[48;5;234m${line}\u001b[0m`,
+      }),
+    ];
   }
 
   /** ctrl+r overlay over the persistent history; a selection lands in the

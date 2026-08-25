@@ -36,3 +36,27 @@ export function renderStatusBar(segs: readonly StatusSegment[]): string {
   }
   return out.join("");
 }
+
+/** Compact tool-card header:  icon title · description · meta  */
+export function renderToolHeader(opts: {
+  icon?: string;
+  title: string;
+  description?: string;
+  meta?: string[];
+  spinnerFrame?: number;
+  titleColor?: string;
+  dimColor?: string;
+}): string {
+  const icon = opts.icon ? `${opts.icon} ` : "";
+  const titleColor = opts.titleColor ?? "\u001b[1m";
+  const title = `${titleColor}${icon}${opts.title}\u001b[22m`;
+  const meta = opts.meta?.filter(Boolean) ?? [];
+  const parts: string[] = [];
+  if (opts.description) parts.push(opts.description);
+  if (meta.length > 0) parts.push(meta.join(" · "));
+  if (parts.length > 0) {
+    const dim = opts.dimColor ?? "\u001b[2m";
+    return `${title} ${dim}${parts.join(" · ")}\u001b[0m`;
+  }
+  return title;
+}
