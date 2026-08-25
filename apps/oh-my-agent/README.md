@@ -1,6 +1,6 @@
 # @chengchenccc/oh-my-agent
 
-Oma 是本仓库自研的 Agent 执行引擎：一个无 UI 的一次性 CLI，被 Product Backend 的 Adapter（`@chengchenccc/adapter-oma-agent`）按 **每个 Agent Run** spawn 一次。
+Oma 是本仓库自研的 Agent 执行引擎：既可**独立交互式 TUI**（默认 `oma` 进入终端界面），也可作为无 UI 的一次性 CLI 被 Product Backend 的 Adapter（`@chengchenccc/adapter-oma-agent`）按**每个 Agent Run** spawn 一次。
 
 ```text
 Product Backend → Agent Run → Adapter → spawn oma --mode rpc
@@ -9,10 +9,26 @@ Product Backend → Agent Run → Adapter → spawn oma --mode rpc
 
 **不是 daemon**：一个 Run = 一个子进程 = 一个 Runtime = 一个 outcome。没有常驻进程、没有 session supervisor、没有 worker pool。
 
+## TUI
+
+用 `oma`（或 `oma --session <id>`）在终端直接开始交互式会话。
+
+- 流式渲染 assistant / tool 事件
+- `ctrl+t` 展开 thinking，`ctrl+o` 展开 tool 详情
+- mermaid fence 渲染为终端 ASCII 图
+- `/resume` 列表/恢复 session，`/fork <n>` 分支
+- 模型选择持久化到项目级 `.oma/settings.json`（standalone TUI 专用；backend→oma 仍以 `agent.yml` 为默认，可被 run 参数覆盖）
+- composer loader 实时摘要当前动作（tool intent / thinking 首行）
+
+| Real session | Tools | Mermaid |
+|---|---|---|
+| <img src="../../docs/screenshots/oma-tui-real.png" width="280" alt="Oma TUI real session" /> | <img src="../../docs/screenshots/oma-tui-tools.png" width="280" alt="Oma TUI tools" /> | <img src="../../docs/screenshots/oma-tui-mermaid.png" width="280" alt="Oma TUI mermaid" /> |
+
 ## CLI 模式
 
 | 模式 | 用途 |
 |---|---|
+| `tui` | 默认；交互式终端会话（一个进程 = N 个 Run 共享一个 session 文件） |
 | `print` | 一次 Run；stdout 只有 final assistant text；stderr 日志；非零退出码表示失败 |
 | `json` | 一次 Run；stdout 全部事件 JSONL + 恰好一个 terminal outcome 行 |
 | `rpc` | 每 Run 一次 `execute` + 可选的 `steer`/`abort`；命令走 stdin，`event`/`outcome`/`response` 走 stdout（严格 LF JSONL，stdout 只承载协议） |
@@ -40,6 +56,7 @@ apps/oh-my-agent/dist/cli.js -p "hello"             # built binary
 
 cd apps/oh-my-agent && bun link                     # optional local install
 oma -p "hello"                              # then run from anywhere
+oma                                     # standalone interactive TUI
 ```
 
 - 正常由 Backend 通过 `OMA_BIN` spawn（生产：构建后的 `dist/cli.js` 绝对路径；未配置时 Backend 自动用 Bun + 源码入口，dev 无需全局安装或 `bun link`）。
@@ -52,8 +69,8 @@ src/
   cli.ts                可执行入口（shebang + runCli()）
   main.ts               main()/runCli()：参数解析、模式分发、退出码（无 process.exit）
   cli/                  print/json 模式、初始输入构建、CLI 测试
-  modes/                print-mode / json-mode / rpc-mode
-  core/                 create-runtime.ts（per-Run Runtime 装配）、fake-provider（测试）
+  modes/                tui / print / json / rpc 模式
+  core/                 create-runtime.ts（per-Run Runtime 装配）、project-settings.ts（.oma/settings.json）、fake-provider（测试）
 ```
 
 ## 相关文档
