@@ -1,4 +1,4 @@
-import type { LedgerEntry, Member } from "@chengchenccc/conversation";
+import type { Member } from "@chengchenccc/api-contract";
 import { client, unwrap } from "./client";
 
 // ── Types derived from API treaty (single source: backend App type) ──
@@ -70,7 +70,7 @@ export type ChatModelOverride = {
 
 export type SystemInfo = ApiReturn<typeof api.getSystemInfo>;
 export type MemberInfo = Member;
-export type { LedgerEntry };
+
 /** Extract fork source ID from a conversation snapshot (null when not a fork). */
 export function getForkSourceId(conv: ConversationSnapshot): string | null {
   return typeof conv.forkSource === "string" ? conv.forkSource : null;
@@ -125,8 +125,6 @@ export const api = {
   postConversationMessage: (
     id: string,
     body: {
-      senderMemberId: string;
-      addressedTo: string[];
       content: unknown;
       mode?: "normal" | "steer" | "follow_up";
       model?: ChatModelOverride;
@@ -436,18 +434,12 @@ export const api = {
     });
     return (await resp.json()) as { undoneSeqs: number[] };
   },
-  replayFromMessage: async (
-    id: string,
-    fromSeq: number,
-    editedContent: string,
-    senderMemberId: string,
-    addressedTo: string[],
-  ) => {
+  replayFromMessage: async (id: string, fromSeq: number, editedContent: string) => {
     const resp = await fetch(`/api/bff/conversations/${id}/replay`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fromSeq, editedContent, senderMemberId, addressedTo }),
+      body: JSON.stringify({ fromSeq, editedContent }),
     });
     return (await resp.json()) as { newConversationId: string };
   },

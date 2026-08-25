@@ -110,9 +110,7 @@ export function useConversationGoal(conversationId: string) {
 export function usePostConversationMessage(conversationId: string) {
   return useMutation({
     mutationFn: (params: {
-      senderMemberId: string;
       text: string;
-      addressedTo: string[];
       mode?: "normal" | "steer" | "follow_up";
       model?: ChatModelOverride;
       attachments?: readonly { type: "image"; mediaType: string; base64: string }[];
@@ -124,8 +122,6 @@ export function usePostConversationMessage(conversationId: string) {
           ]
         : undefined;
       return api.postConversationMessage(conversationId, {
-        senderMemberId: params.senderMemberId,
-        addressedTo: params.addressedTo,
         content: blocks ?? params.text,
         mode: params.mode,
         model: params.model,
@@ -158,20 +154,8 @@ export function useUndoMessages() {
 export function useReplayFromMessage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (params: {
-      id: string;
-      fromSeq: number;
-      editedContent: string;
-      senderMemberId: string;
-      addressedTo: string[];
-    }) =>
-      api.replayFromMessage(
-        params.id,
-        params.fromSeq,
-        params.editedContent,
-        params.senderMemberId,
-        params.addressedTo,
-      ),
+    mutationFn: (params: { id: string; fromSeq: number; editedContent: string }) =>
+      api.replayFromMessage(params.id, params.fromSeq, params.editedContent),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: conversationKeys.all });
     },

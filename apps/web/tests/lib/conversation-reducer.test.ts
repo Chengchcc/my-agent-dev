@@ -52,7 +52,7 @@ describe("bootstrap", () => {
 describe("message", () => {
   test("adds a new message", () => {
     let s = bootstrap();
-    s = reducer(s, { type: "message", seq: 1, senderMemberId: "agent-1", content: rev() });
+    s = reducer(s, { type: "message", seq: 1, message: rev() });
     expect(s.items).toHaveLength(1);
     expect(
       (s.items[0] as { content: { id: string; state: string; text?: string } }).content.id,
@@ -64,12 +64,11 @@ describe("message", () => {
 
   test("upserts by messageId — streaming → done", () => {
     let s = bootstrap();
-    s = reducer(s, { type: "message", seq: 1, senderMemberId: "agent-1", content: rev() });
+    s = reducer(s, { type: "message", seq: 1, message: rev() });
     s = reducer(s, {
       type: "message",
       seq: 2,
-      senderMemberId: "agent-1",
-      content: rev({ state: "done", text: "final" }),
+      message: rev({ state: "done", text: "final" }),
     });
     expect(s.items).toHaveLength(1);
     expect(
@@ -87,11 +86,30 @@ describe("message", () => {
     s = reducer(s, {
       type: "message",
       seq: 1,
-      senderMemberId: "human-1",
-      content: { messageId: "s-1", state: "done", role: "user", updatedAt: 1, text: "hi" },
+      message: { messageId: "s-1", state: "done", role: "user", updatedAt: 1, text: "hi" },
     });
     expect(s.items).toHaveLength(1);
     expect(s.items[0]!.id).toBe("s-1");
+  });
+
+  test("system role renders as a notice, not a bubble", () => {
+    let s = bootstrap();
+    s = reducer(s, {
+      type: "message",
+      seq: 3,
+      message: {
+        messageId: "sys-1",
+        state: "done",
+        role: "system",
+        updatedAt: 1,
+        text: "[system] hop cap reached",
+      },
+    });
+    expect(s.items).toHaveLength(1);
+    expect(s.items[0]!.kind).toBe("notice");
+    if (s.items[0]!.kind === "notice") {
+      expect(s.items[0]!.text).toInclude("hop cap");
+    }
   });
 });
 
@@ -107,8 +125,7 @@ describe("isBusy", () => {
     s = reducer(s, {
       type: "message",
       seq: 1,
-      senderMemberId: "agent-1",
-      content: rev({ state: "done" }),
+      message: rev({ state: "done" }),
     });
     expect(isBusy(s)).toBe(false);
   });
@@ -146,14 +163,12 @@ describe("groupTurns", () => {
     s = reducer(s, {
       type: "message",
       seq: 1,
-      senderMemberId: "agent-1",
-      content: rev({ messageId: "m1", text: "msg1", state: "done" }),
+      message: rev({ messageId: "m1", text: "msg1", state: "done" }),
     });
     s = reducer(s, {
       type: "message",
       seq: 2,
-      senderMemberId: "agent-1",
-      content: rev({ messageId: "m2", text: "msg2", state: "done" }),
+      message: rev({ messageId: "m2", text: "msg2", state: "done" }),
     });
     expect(s.items).toHaveLength(2);
   });
@@ -167,7 +182,6 @@ describe("isTurnStart", () => {
       sender: { kind: "human" as const, memberId: "u" },
       seq: 1,
       content: { text: "hi", blocks: [] },
-      addressedTo: [],
     },
   };
   const agent = {
@@ -177,7 +191,6 @@ describe("isTurnStart", () => {
       sender: { kind: "agent" as const, memberId: "ag" },
       seq: 2,
       content: { text: "yo", blocks: [] },
-      addressedTo: [],
     },
   };
   const notice = { kind: "notice" as const, id: "n1", text: "joined" };
@@ -209,7 +222,6 @@ describe("groupTurns with canonical tool messages (ADR 0017)", () => {
     id: "m-tu",
     sender: agentSender,
     seq: 2,
-    addressedTo: [],
     content: {
       messageId: "run:r1:assistant:1",
       role: "assistant" as const,
@@ -224,7 +236,6 @@ describe("groupTurns with canonical tool messages (ADR 0017)", () => {
     id: "m-tr",
     sender: agentSender,
     seq: 3,
-    addressedTo: [],
     content: {
       messageId: "run:r1:tool:1",
       role: "tool" as const,
@@ -239,7 +250,6 @@ describe("groupTurns with canonical tool messages (ADR 0017)", () => {
     id: "m-final",
     sender: agentSender,
     seq: 4,
-    addressedTo: [],
     content: {
       messageId: "run:r1:assistant:0",
       role: "assistant" as const,
@@ -274,7 +284,6 @@ describe("groupTurns with canonical tool messages (ADR 0017)", () => {
       id: "m-user",
       sender: human,
       seq: 1,
-      addressedTo: [],
       content: {
         messageId: "u1",
         role: "user" as const,

@@ -79,7 +79,8 @@ describe("ingest", () => {
     mockFetch([
       { body: { conversationId: "conv_new" } }, // create conversation
       { body: { members: [] } }, // add member
-      { body: { seq: 1 } }, // post message
+      // server-derived 1:1 routing returns the triggered run
+      { body: { seq: 1, triggeredRuns: [{ agentMemberId: "mem-agent", runId: "run-1" }] } },
     ]);
 
     const result = await ingest(baseEvent, {

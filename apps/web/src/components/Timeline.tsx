@@ -400,8 +400,6 @@ function MessageActions({
         id: conversationId,
         fromSeq: item.seq,
         editedContent: text,
-        senderMemberId: item.sender.memberId,
-        addressedTo: item.addressedTo,
       },
       {
         onSuccess: (data) => router.push(`/chat/${data.newConversationId}`),
@@ -412,7 +410,7 @@ function MessageActions({
       },
     );
     setEditing(false);
-  }, [draft, replayMut, conversationId, item.seq, item.sender.memberId, item.addressedTo, router]);
+  }, [draft, replayMut, conversationId, item.seq, router]);
 
   if (editing) {
     return (

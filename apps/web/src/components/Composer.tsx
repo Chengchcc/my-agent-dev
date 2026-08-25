@@ -31,7 +31,6 @@ interface ComposerProps {
   conversationId: string;
   onSend: (
     message: string,
-    addressedTo: string[],
     model?: ChatModelOverride,
     attachments?: readonly { type: "image"; mediaType: string; base64: string }[],
   ) => void;
@@ -105,11 +104,6 @@ export function Composer({
     onError: () => toast.error("Cancel failed"),
   });
 
-  const agentMembers = useMemo(() => {
-    if (!roster) return [];
-    return Object.values(roster).filter((m) => m.kind === "agent");
-  }, [roster]);
-
   const filteredSlash = useMemo(() => {
     const q = value.trim().toLowerCase();
     return slashCommands.filter((c) => c.command.startsWith(q));
@@ -161,11 +155,7 @@ export function Composer({
     el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_H)}px`;
   }, []);
 
-  const resolveAddressedTo = useCallback((): string[] => {
-    // Single-agent conversations: every message goes to the one agent.
-    if (agentMembers.length === 0) return [];
-    return [agentMembers[0]!.memberId];
-  }, [agentMembers]);
+  // (resolveAddressedTo removed with client-side routing — server derives targets)
 
   const handleInput = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -193,8 +183,7 @@ export function Composer({
       }
       return;
     }
-    const addressedTo = resolveAddressedTo();
-    onSend(trimmed, addressedTo, model ?? undefined, attachments);
+    onSend(trimmed, model ?? undefined, attachments);
     setValue("");
     setAttachments([]);
     // Give the backend a beat to persist the queued input, then show it.
@@ -202,16 +191,7 @@ export function Composer({
     if (textareaRef.current) {
       textareaRef.current.style.height = `${COMPOSER_MIN_H}px`;
     }
-  }, [
-    value,
-    disabled,
-    onSend,
-    onSlashCommand,
-    resolveAddressedTo,
-    model,
-    attachments,
-    inputsQuery,
-  ]);
+  }, [value, disabled, onSend, onSlashCommand, model, attachments, inputsQuery]);
 
   const navigateSlash = useCallback(
     (dir: -1 | 1) => {

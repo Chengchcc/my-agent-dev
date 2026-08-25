@@ -1,14 +1,12 @@
 import type { Database } from "bun:sqlite";
-import { type LedgerEntry, parseLedgerEntry } from "@chengchenccc/conversation";
+import { ConversationEvent } from "@chengchenccc/api-contract";
 import {
-  deserializeLedgerContent,
   isTerminalMessageState,
   MessageStateSchema,
-  type parseMessageRevision,
+  parseMessageRevision,
 } from "@chengchenccc/message";
 import { z } from "zod";
 import {
-  getMemberBindingsForChat,
   getMessageDelivery,
   rebindChatConversation,
   updatePushedSeq,
@@ -90,20 +88,21 @@ export function watchConversation(
             currentData += currentData ? `\n${line.slice(6)}` : line.slice(6);
           } else if (line === "" && currentData) {
             try {
-              // M17.3: use codec instead of bare JSON.parse + as
-              const entry = parseLedgerEntry(JSON.parse(currentData));
-              await processEntry(entry, larkChatId, db, afterSeq, {
+              // Wire DTO is zod-validated here (ConversationEvent); message
+              // frames arrive server-parsed — no ledger content dance.
+              const event = ConversationEvent.parse(JSON.parse(currentData));
+              await processEntry(event, conversationId, larkChatId, db, afterSeq, {
                 onSend,
                 onRebind,
                 sendTextOnly,
               });
-              if (entry.seq > afterSeq) afterSeq = entry.seq;
+              if (event.seq > afterSeq) afterSeq = event.seq;
             } catch (err) {
-              // M17.3 fix: ZodError (from parseLedgerEntry) is skippable, same as SyntaxError.
-              // A structurally invalid frame must not trigger a reconnect loop.
+              // ZodError / SyntaxError are skippable — a structurally invalid
+              // frame must not trigger a reconnect loop.
               if (err instanceof SyntaxError || (err as Error)?.name === "ZodError") {
                 console.error(
-                  `[sse-watcher] malformed ledger entry for ${conversationId}, skipping: ${
+                  `[sse-watcher] malformed conversation event for ${conversationId}, skipping: ${
                     (err as Error).message
                   }`,
                 );
@@ -152,9 +151,9 @@ export function watchConversation(
     },
   };
 }
-
 async function processEntry(
-  entry: LedgerEntry,
+  event: z.infer<typeof ConversationEvent>,
+  conversationId: string,
   larkChatId: string,
   db: Database,
   currentSeq: number,
@@ -164,22 +163,22 @@ async function processEntry(
     sendTextOnly?: (chatId: string, text: string) => Promise<void>;
   },
 ): Promise<void> {
-  if (entry.seq <= currentSeq) return;
+  if (event.seq <= currentSeq) return;
 
-  // ─── surface.control (L8: validated with zod) ───
-  if (entry.kind === "surface.control") {
+  // ─── surface.control (payload arrives server-parsed; validated here) ───
+  if (event.kind === "surface.control") {
     const SurfaceControlSchema = z.object({
       type: z.string(),
       oldConversationId: z.string(),
       newConversationId: z.string(),
     });
-    const parsed = SurfaceControlSchema.safeParse(JSON.parse(entry.content));
+    const parsed = SurfaceControlSchema.safeParse(event.payload);
     if (!parsed.success) {
       console.error(
-        `[sse-watcher] malformed surface.control at seq=${entry.seq}:`,
+        `[sse-watcher] malformed surface.control at seq=${event.seq}:`,
         parsed.error.message,
       );
-      updatePushedSeq(db, larkChatId, entry.seq);
+      updatePushedSeq(db, larkChatId, event.seq);
       return;
     }
     const control = parsed.data;
@@ -194,7 +193,7 @@ async function processEntry(
         control.oldConversationId,
         control.newConversationId,
       );
-      updatePushedSeq(db, larkChatId, entry.seq);
+      updatePushedSeq(db, larkChatId, event.seq);
       if (wasRebound) {
         console.log(
           `[sse-watcher] rebind ${larkChatId}: ${control.oldConversationId} → ${control.newConversationId}`,
@@ -203,50 +202,31 @@ async function processEntry(
         if (h.sendTextOnly) void h.sendTextOnly(larkChatId, "已开启新的对话。");
       }
     } else {
-      updatePushedSeq(db, larkChatId, entry.seq);
+      updatePushedSeq(db, larkChatId, event.seq);
     }
     return;
   }
-
-  // Non-message, system → advance seq only
-  if (entry.kind !== "message" || entry.senderMemberId === "__system__") {
-    updatePushedSeq(db, larkChatId, entry.seq);
-    return;
-  }
-
-  // Human echo → skip
-  const isHumanOfThisChat = getMemberBindingsForChat(db, larkChatId).some(
-    (m) => m.memberId === entry.senderMemberId,
-  );
-  if (isHumanOfThisChat) {
-    updatePushedSeq(db, larkChatId, entry.seq);
-    return;
-  }
-
-  // ─── M17.1: Message revision model with error isolation ───
-  // Parse errors are non-retryable data errors — skip the entry and advance seq
-  // so a single bad entry doesn't permanently block the watcher.
-  let revision: ReturnType<typeof parseMessageRevision>;
-  try {
-    const result = deserializeLedgerContent(entry.content);
-    if (!("messageId" in result)) throw new Error("not a message revision");
-    revision = result;
-  } catch (err) {
-    console.error(
-      `[sse-watcher] invalid message revision at seq=${entry.seq}, conversation=${entry.conversationId}, skipping: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-    updatePushedSeq(db, larkChatId, entry.seq);
+  // Non-message frames, system authorship, and human echo (role=user — the
+  // human's own words are already visible in the chat) advance seq only.
+  // parseMessageRevision normalizes the wire zod type (nullable legacy
+  // fields) into the canonical MessageRevision; cannot fail after zod.
+  const revision = event.message ? parseMessageRevision(event.message) : undefined;
+  if (
+    event.kind !== "message" ||
+    !revision ||
+    revision.role === "system" ||
+    revision.role === "user"
+  ) {
+    updatePushedSeq(db, larkChatId, event.seq);
     return;
   }
 
   const messageId = revision.messageId;
 
   // Check delivery state: if already delivered as terminal, skip
-  const delivery = getMessageDelivery(db, entry.conversationId, messageId, larkChatId);
+  const delivery = getMessageDelivery(db, conversationId, messageId, larkChatId);
   if (delivery && isTerminalMessageState(MessageStateSchema.parse(delivery.lastState))) {
-    updatePushedSeq(db, larkChatId, entry.seq);
+    updatePushedSeq(db, larkChatId, event.seq);
     return;
   }
 
@@ -254,18 +234,18 @@ async function processEntry(
   // If onSend throws, the delivery record is already persisted, so reconnection
   // won't re-send (it hits the terminal-state guard above).
   upsertMessageDelivery(db, {
-    conversationId: entry.conversationId,
+    conversationId,
     messageId,
     larkChatId,
     lastState: revision.state,
-    lastSeq: entry.seq,
+    lastSeq: event.seq,
     updatedAt: Date.now(),
   });
 
   // Render and send (canonical History only carries terminal frames; there
   // is no streaming revision path in Phase 5). L6: retry with backoff.
   const text = renderRevision(revision);
-  const idempotencyKey = `${entry.conversationId}:${messageId}:${entry.seq}`;
+  const idempotencyKey = `${conversationId}:${messageId}:${event.seq}`;
 
   let attempt = 0;
   while (attempt < 3) {
@@ -275,12 +255,12 @@ async function processEntry(
     } catch (err) {
       attempt++;
       if (attempt >= 3) {
-        console.error(`[lark] send failed after ${attempt} attempts, skip seq=${entry.seq}`, err);
+        console.error(`[lark] send failed after ${attempt} attempts, skip seq=${event.seq}`, err);
         break; // don't kill the SSE stream
       }
       await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
     }
   }
 
-  updatePushedSeq(db, larkChatId, entry.seq);
+  updatePushedSeq(db, larkChatId, event.seq);
 }

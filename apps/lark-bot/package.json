@@ -17,7 +17,6 @@
     "@chengchenccc/api-contract": "workspace:*",
     "@chengchenccc/backend": "workspace:*",
     "@chengchenccc/config": "workspace:*",
-    "@chengchenccc/conversation": "workspace:*",
     "@chengchenccc/message": "workspace:*",
     "zod": "^3.23.0"
   }

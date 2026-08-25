@@ -36,7 +36,6 @@ export default {
         "agent-run",
         "cron",
         "mcp",
-        "conversation",
         "settings",
         "docs",
         "test",

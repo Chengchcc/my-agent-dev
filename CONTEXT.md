@@ -64,7 +64,6 @@ L1 Contracts    packages/message、packages/core、packages/agent-backend — �
 |----|------|----------|
 | `@chengchenccc/core` | L1 | `ChatModel`, `Tool`, `AIMessageChunk`, `ContentBlock`, `collectStream`（无 run loop） |
 | `@chengchenccc/message` | L1 | `Message`, `MessageRevision`, `ContentBlock`, `assistantMessageId(runId, ordinal)` → `run:<runId>:assistant:<n>` |
-| `@chengchenccc/conversation` | L1 | `LedgerEntry`, `LedgerKind`, `Member`, `Conversation`, `TriggerMode` |
 | `@chengchenccc/agent-backend` | L1 | `AgentBackend`, `BackendRunInput/Outcome/Segment`, `BackendEvent`, `BackendKind`, `BackendModelRef`（backend 中立契约；不含任何 child wire 协议） |
 | `@chengchenccc/agent` | L2 | Oma Runtime：`createOmaSession()`, plugin.ts, in-memory SessionStore, compaction, todo |
 | `@chengchenccc/adapter-oma-agent` | L3 | `OmaBackend` — spawn/JSONL/steer/abort/concurrency |

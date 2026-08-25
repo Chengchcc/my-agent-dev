@@ -1,10 +1,5 @@
 import type { BackendModelRef } from "@chengchenccc/agent-backend";
 import { debugLog } from "@chengchenccc/agent-backend";
-import {
-  type AgentMember,
-  Conversation as ConversationSchema,
-  resolveTriggerTargets,
-} from "@chengchenccc/conversation";
 import type { Message } from "@chengchenccc/message";
 import {
   ContentBlockSchema,
@@ -20,6 +15,51 @@ import type { BranchInputMode } from "../agent-run/domain.js";
 import type { AgentRunService } from "../agent-run/service.js";
 import type { ConversationPort, LedgerEntry, LedgerKind, MemberRow } from "./ports.js";
 import { selectWakeAgentIDs } from "./wake-routing.js";
+
+// ─── Member helpers (local, cut-1; die with the member concept in cut-2) ───
+
+interface ConvAggregate {
+  conversationId: string;
+  members: Array<{
+    kind: "agent" | "human";
+    memberId: string;
+    agentId?: string;
+    userRef?: string;
+    displayName?: string;
+  }>;
+  triggerMode: string;
+  createdAt: number;
+}
+
+function buildAggregate(
+  row: {
+    conversationId: string;
+    triggerMode: string;
+    createdAt: number;
+  },
+  memberRows: MemberRow[],
+): ConvAggregate {
+  return {
+    conversationId: row.conversationId,
+    members: memberRows.map((m) => ({
+      kind: m.kind as "agent" | "human",
+      memberId: m.memberId,
+      agentId: m.agentId ?? undefined,
+      userRef: m.userRef ?? undefined,
+      displayName: m.displayName ?? undefined,
+    })),
+    triggerMode: row.triggerMode,
+    createdAt: row.createdAt,
+  };
+}
+
+/** Resolve addressedTo member ids into agent members (mention routing). */
+function resolveTriggerTargets(conv: ConvAggregate, addressedTo: string[]) {
+  const memberMap = new Map(conv.members.map((m) => [m.memberId, m]));
+  return addressedTo
+    .map((id) => memberMap.get(id))
+    .filter((m): m is ConvAggregate["members"][number] => m?.kind === "agent");
+}
 
 /** Reserved memberId for the conversation owner (the human who owns an
  *  issue-/cron-spawned conversation). */
@@ -75,8 +115,10 @@ export interface ConversationService {
   port: ConversationPort;
   postMessage(input: {
     conversationId: string;
-    senderMemberId: string;
-    addressedTo: string[];
+    /** Optional explicit override (lark group mentions). Derived when absent:
+     *  sender = the human member, targets = all agent members. */
+    senderMemberId?: string;
+    addressedTo?: string[];
     content: unknown;
     /** Optional mode override; default: normal when the branch is idle,
      *  steer when a run is active (the caller wants to influence it). */
@@ -132,8 +174,9 @@ export interface ConversationService {
     conversationId: string;
     fromSeq: number;
     editedContent: string;
-    senderMemberId: string;
-    addressedTo: string[];
+    /** Optional explicit override; derived on the fork when absent. */
+    senderMemberId?: string;
+    addressedTo?: string[];
   }): Promise<{ newConversationId: string }>;
 
   // ─── Pending input queue (Composer queue area) ───
@@ -205,25 +248,6 @@ class ConversationServiceImpl implements ConversationService {
         console.error(`[conversation] subscriber error for ${conversationId}:`, e);
       }
     }
-  }
-
-  /** Load members and build Conversation for pure helpers. */
-  #buildConversation(conversationId: string) {
-    const convRow = this.port.getConversation(conversationId);
-    if (!convRow) return null;
-    const allMembers = this.port.getMembers(conversationId).map((m) => ({
-      kind: m.kind as "agent" | "human",
-      memberId: m.memberId,
-      agentId: m.agentId ?? undefined,
-      userRef: m.userRef ?? undefined,
-      displayName: m.displayName ?? undefined,
-    }));
-    return ConversationSchema.parse({
-      conversationId,
-      members: allMembers,
-      triggerMode: convRow.triggerMode,
-      createdAt: convRow.createdAt,
-    });
   }
 
   /** Append a ledger entry and broadcast it to subscribers. Returns seq.
@@ -377,45 +401,53 @@ class ConversationServiceImpl implements ConversationService {
 
   async postMessage(input: {
     conversationId: string;
-    senderMemberId: string;
-    addressedTo: string[];
+    /** Optional explicit override (lark group mentions). Derived when absent:
+     *  sender = the human member, targets = all agent members. */
+    senderMemberId?: string;
+    addressedTo?: string[];
     content: unknown;
     mode?: BranchInputMode;
     modelOverride?: BackendModelRef;
   }): Promise<{ seq: number; triggeredRuns: TriggeredRun[] }> {
-    const conv = this.#buildConversation(input.conversationId);
-    if (!conv) throw new Error(`Conversation not found: ${input.conversationId}`);
+    const convRow = this.port.getConversation(input.conversationId);
+    if (!convRow) throw new Error(`Conversation not found: ${input.conversationId}`);
 
     const members = this.port.getMembers(input.conversationId);
-    let targets = resolveTriggerTargets(conv, input.addressedTo);
+    const conv = buildAggregate(convRow, members);
+    const senderMemberId =
+      input.senderMemberId ??
+      members.find((m) => m.kind === "human")?.memberId ??
+      members[0]?.memberId ??
+      "__system__";
+    // ponytail: agent fallback covers human-less loop/cron forks on replay
+    const addressedTo =
+      input.addressedTo ?? members.filter((m) => m.kind === "agent").map((m) => m.memberId);
+    let targets = resolveTriggerTargets(conv, addressedTo);
     // Wake routing: when no @mention and triggerMode=all, select the
     // coordinator with no relationship graph (relationships feature removed).
-    if (targets.length === 0 && input.addressedTo.length === 0 && conv.triggerMode === "all") {
+    if (targets.length === 0 && addressedTo.length === 0 && conv.triggerMode === "all") {
       const activeAgentIds = members.filter((m) => m.kind === "agent").map((m) => m.memberId);
       const coordinatorIds = selectWakeAgentIDs(activeAgentIds, [], false);
 
       targets = coordinatorIds
-        .map((id): AgentMember | undefined => {
+        .map((id): ConvAggregate["members"][number] | undefined => {
           const m = conv.members.find((m) => m.memberId === id);
           return m?.kind === "agent" ? m : undefined;
         })
-        .filter((m): m is AgentMember => m !== undefined);
+        .filter((m): m is ConvAggregate["members"][number] => m !== undefined);
     }
 
     // ── Hop count: reset on human/external, increment only for known agent members ──
-    const convRow = this.port.getConversation(input.conversationId);
-    const senderIsAgent = members.some(
-      (m) => m.memberId === input.senderMemberId && m.kind === "agent",
-    );
-    if (isHumanMember(members, input.senderMemberId) || isSystemSender(input.senderMemberId)) {
+    const senderIsAgent = members.some((m) => m.memberId === senderMemberId && m.kind === "agent");
+    if (isHumanMember(members, senderMemberId) || isSystemSender(senderMemberId)) {
       this.port.updateHopCount(input.conversationId, 0);
     } else if (senderIsAgent) {
-      this.port.updateHopCount(input.conversationId, (convRow?.hopCount ?? 0) + 1);
+      this.port.updateHopCount(input.conversationId, (convRow.hopCount ?? 0) + 1);
     }
 
     // ── The human message becomes canonical History FIRST ──
     const userRev = {
-      messageId: humanMessageId(input.conversationId, input.senderMemberId),
+      messageId: humanMessageId(input.conversationId, senderMemberId),
       role: "user" as const,
       state: "done" as const,
       text: typeof input.content === "string" ? input.content : undefined,
@@ -428,8 +460,8 @@ class ConversationServiceImpl implements ConversationService {
     };
     const seq = await this.#appendAndBroadcast({
       conversationId: input.conversationId,
-      senderMemberId: input.senderMemberId,
-      addressedTo: input.addressedTo,
+      senderMemberId,
+      addressedTo,
       kind: "message",
       content: userRev,
     });
@@ -856,8 +888,9 @@ class ConversationServiceImpl implements ConversationService {
     conversationId: string;
     fromSeq: number;
     editedContent: string;
-    senderMemberId: string;
-    addressedTo: string[];
+    /** Optional explicit override; derived on the fork when absent. */
+    senderMemberId?: string;
+    addressedTo?: string[];
   }): Promise<{ newConversationId: string }> {
     const { newConversationId } = await this.forkConversation({
       conversationId: input.conversationId,

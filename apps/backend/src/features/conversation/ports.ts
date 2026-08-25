@@ -1,7 +1,7 @@
-import type { LedgerEntry, LedgerKind, Member } from "@chengchenccc/conversation";
+import type { LedgerEntry, LedgerKind } from "./ledger-codec.js";
 
-// Re-export canonical types from @chengchenccc/conversation
-export type { LedgerKind };
+// Ledger codec is backend-internal (1:1 collapse, spec 2026-08-25).
+export type { LedgerEntry, LedgerKind };
 
 export interface ConversationRow {
   conversationId: string;
@@ -23,16 +23,13 @@ export interface MemberRow {
   memberId: string;
   conversationId: string;
   /** M17.5: Derived from canonical Member.kind (agent|human). */
-  kind: Member["kind"];
+  kind: "agent" | "human";
   agentId: string | null;
   userRef: string | null;
   displayName: string | null;
   joinedAt: number;
 }
-
-// M17.5: LedgerEntry is imported from the canonical @chengchenccc/conversation
-// package (single ontology).
-export type { LedgerEntry };
+// LedgerEntry lives in ledger-codec.ts (re-exported above).
 
 export interface CreateConversationInput {
   conversationId: string;

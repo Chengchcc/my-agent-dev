@@ -1,6 +1,7 @@
 "use client";
 
 import { conversationEvents, runEvents, sseEndpoints } from "@chengchenccc/api-contract";
+import { parseMessageRevision } from "@chengchenccc/message";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { ChatModelOverride } from "@/components/ModelPicker";
@@ -9,13 +10,7 @@ import {
   usePostConversationMessage,
 } from "@/features/conversations/hooks";
 import type { ConversationSnapshot } from "@/lib/api";
-import {
-  type ConvState,
-  initialState,
-  isBusy,
-  reducer,
-  type SenderRef,
-} from "@/lib/conversation-reducer";
+import { initialState, isBusy, reducer, type SenderRef } from "@/lib/conversation-reducer";
 import {
   appendThinking,
   appendTransient,
@@ -49,24 +44,9 @@ export interface WorkflowRunState {
   readonly totalTokens: number;
 }
 
-function safeParse(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
-  }
-}
-
 function resolveViewerMemberId(members: SenderRef[]): string {
   const humans = members.filter((m) => m.kind === "human");
   return humans[0]?.memberId ?? "";
-}
-
-function resolveAddressedTo(s: ConvState): string[] {
-  // Single-agent conversations: every message goes to the one agent.
-  return Object.values(s.roster)
-    .filter((m) => m.kind === "agent")
-    .map((m) => m.memberId);
 }
 
 export function useConversation(
@@ -240,62 +220,41 @@ export function useConversation(
     ts.on("message", (entry) => {
       const seq = guard(entry);
       if (seq === null) return;
-      const content = typeof entry.content === "string" ? safeParse(entry.content) : entry.content;
-      if (entry.senderMemberId === "__system__") {
-        dispatch({
-          type: "member",
-          seq,
-          kind: "member.joined",
-          payload: content,
-        });
-      } else {
-        // The canonical final Message for a transient run replaces the
-        // temporary bubble — match by messageId prefix `run:<runId>:`.
-        if (
-          content &&
-          typeof content === "object" &&
-          "messageId" in content &&
-          typeof content.messageId === "string"
-        ) {
-          const match = /^run:([^:]+):/.exec(content.messageId);
-          if (match?.[1] && match[1] in transientsRef.current) {
-            dropTransient(match[1]);
-          }
-        }
-        dispatch({
-          type: "message",
-          seq,
-          senderMemberId: entry.senderMemberId,
-          addressedTo: entry.addressedTo,
-          content,
-          undone: entry.undone,
-        });
+      if (!entry.message) return; // legacy/raw rows and heartbeat frames
+      // The canonical final Message for a transient run replaces the
+      // temporary bubble — match by messageId prefix `run:<runId>:`.
+      const match = /^run:([^:]+):/.exec(entry.message.messageId);
+      if (match?.[1] && match[1] in transientsRef.current) {
+        dropTransient(match[1]);
       }
+      // Re-parse through the canonical codec: the wire zod type and the
+      // MessageRevision interface are structurally close but not identical
+      // (nullable legacy fields, passthrough blocks); parseMessageRevision
+      // is the single normalization point. Cannot fail — typedSource already
+      // zod-validated the frame.
+      const rev = parseMessageRevision(entry.message);
+      dispatch({ type: "message", seq, message: rev, undone: entry.undone });
     });
 
     ts.on("member.joined", (entry) => {
       const seq = guard(entry);
       if (seq === null) return;
-      const payload = typeof entry.content === "string" ? safeParse(entry.content) : entry.content;
-      dispatch({ type: "member", seq, kind: "member.joined", payload });
+      dispatch({ type: "member", seq, kind: "member.joined", payload: entry.payload });
     });
 
     ts.on("member.left", (entry) => {
       const seq = guard(entry);
       if (seq === null) return;
-      const payload = typeof entry.content === "string" ? safeParse(entry.content) : entry.content;
-      dispatch({ type: "member", seq, kind: "member.left", payload });
+      dispatch({ type: "member", seq, kind: "member.left", payload: entry.payload });
     });
 
     ts.on("undo", (entry) => {
       const seq = guard(entry);
       if (seq === null) return;
-      const payload = typeof entry.content === "string" ? safeParse(entry.content) : entry.content;
-      if (payload && typeof payload === "object" && "undoneSeqs" in payload) {
-        const seqs = payload.undoneSeqs;
-        if (Array.isArray(seqs) && seqs.every((n): n is number => typeof n === "number")) {
-          dispatch({ type: "undo", undoneSeqs: seqs });
-        }
+      const payload = entry.payload as { undoneSeqs?: unknown } | undefined;
+      const seqs = payload?.undoneSeqs;
+      if (Array.isArray(seqs) && seqs.every((n): n is number => typeof n === "number")) {
+        dispatch({ type: "undo", undoneSeqs: seqs });
       }
     });
 
@@ -551,7 +510,6 @@ export function useConversation(
   const send = useCallback(
     (
       text: string,
-      addressedTo?: string[],
       model?: ChatModelOverride,
       attachments?: readonly { type: "image"; mediaType: string; base64: string }[],
     ) => {
@@ -559,7 +517,6 @@ export function useConversation(
         memberId: state.viewerMemberId,
         kind: "human" as const,
       };
-      const resolved = addressedTo ?? [];
       dispatch({ type: "send", text, viewer });
       // While a run is live, messages queue for after it settles (the
       // Composer queue area) instead of being injected as a live steer;
@@ -567,9 +524,7 @@ export function useConversation(
       const queued = isBusy(state) || activeRuns.size > 0;
       sendMut.mutate(
         {
-          senderMemberId: state.viewerMemberId,
           text,
-          addressedTo: resolved.length > 0 ? resolved : resolveAddressedTo(state),
           mode: queued ? "follow_up" : undefined,
           model,
           attachments,

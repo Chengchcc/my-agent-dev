@@ -1,9 +1,8 @@
-import type { LedgerEntry } from "@chengchenccc/conversation";
 import type { Message } from "@chengchenccc/message";
 import type { AgentContextPort, IdGenerator } from "../agent-context/ports.js";
 import { type AgentRun, isActiveStatus } from "../agent-run/domain.js";
 import type { AgentRunPort } from "../agent-run/ports.js";
-import type { ConversationPort } from "../conversation/ports.js";
+import type { ConversationPort, LedgerEntry } from "../conversation/ports.js";
 
 // ─── Product Tool Call identity (mirrors the Oma wire identity) ─
 

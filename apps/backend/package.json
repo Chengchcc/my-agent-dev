@@ -28,7 +28,6 @@
     "@chengchenccc/ai": "workspace:*",
     "@chengchenccc/api-contract": "workspace:*",
     "@chengchenccc/config": "workspace:*",
-    "@chengchenccc/conversation": "workspace:*",
     "@chengchenccc/loop": "workspace:*",
     "@chengchenccc/message": "workspace:*",
     "@chengchenccc/tools-common": "workspace:*",

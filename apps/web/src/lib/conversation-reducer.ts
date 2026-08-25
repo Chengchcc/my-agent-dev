@@ -1,9 +1,9 @@
 import type { Message, MessageRevision } from "@chengchenccc/message";
-import { extractText, mergeMessageRevision, parseMessageRevision } from "@chengchenccc/message";
+import { extractText, mergeMessageRevision } from "@chengchenccc/message";
 
 // ─── Types ────────────────────────────────────────────────
 
-/** Mirrors @chengchenccc/conversation Member.kind exactly.
+/** Mirrors the backend Member payload (cut-2 will collapse this to agent info).
  *  System notices (member join/leave) are NOT messages — they are UiItems of kind "notice". */
 export interface SenderRef {
   memberId: string;
@@ -21,8 +21,6 @@ export type UiItem =
       content: Message;
       /** Ledger seq - needed for fork/undo/replay targeting. */
       seq: number;
-      /** Original addressedTo - needed for replay. */
-      addressedTo: string[];
       /** Soft-delete flag - greyed out when true. */
       undone?: boolean;
     }
@@ -57,11 +55,12 @@ export type Action =
   | { type: "send/error"; message: string }
   | { type: "member"; seq: number; kind: string; payload: unknown }
   | {
+      /** Wire ConversationEvent message (zod-validated at the SSE boundary).
+       *  role is the authorship discriminator: user → viewer side,
+       *  assistant/tool → agent side, system → notice item. */
       type: "message";
       seq: number;
-      senderMemberId: string;
-      addressedTo: string[];
-      content: unknown;
+      message: MessageRevision;
       /** Soft-delete flag from ledger entry (absent = live). */
       undone?: boolean;
     }
@@ -91,6 +90,21 @@ export function isBusy(s: ConvState): boolean {
   return s.pendingSendCount > 0;
 }
 
+/** Role → roster sender. role is the authorship discriminator on the wire:
+ *  user → the viewer (human) member; assistant/tool → the agent member;
+ *  (system never reaches here — the reducer turns it into a notice). */
+function senderForRole(role: MessageRevision["role"], s: ConvState): SenderRef {
+  if (role === "user") {
+    return s.roster[s.viewerMemberId] ?? { memberId: s.viewerMemberId, kind: "human" };
+  }
+  return (
+    Object.values(s.roster).find((m) => m.kind === "agent") ?? {
+      memberId: "agent",
+      kind: "agent",
+    }
+  );
+}
+
 function upsertAuthoritative(
   list: UiItem[],
   id: string,
@@ -98,7 +112,6 @@ function upsertAuthoritative(
   content: Message,
   viewerMemberId: string,
   seq: number,
-  addressedTo: string[],
   undone?: boolean,
 ): UiItem[] {
   const idx = list.findIndex((item) => item.kind === "message" && item.id === id);
@@ -111,7 +124,6 @@ function upsertAuthoritative(
       sender,
       content,
       seq,
-      addressedTo,
       undone: undone ?? (prev.kind === "message" ? prev.undone : undefined),
     };
     return next;
@@ -129,11 +141,11 @@ function upsertAuthoritative(
     if (optIdx >= 0) {
       const real = list.length - 1 - optIdx;
       const next = [...list];
-      next[real] = { kind: "message", id, sender, content, seq, addressedTo, undone };
+      next[real] = { kind: "message", id, sender, content, seq, undone };
       return next;
     }
   }
-  return [...list, { kind: "message", id, sender, content, seq, addressedTo, undone }];
+  return [...list, { kind: "message", id, sender, content, seq, undone }];
 }
 
 // ─── Turn Grouping (pure render-layer) ─────────────────────
@@ -264,26 +276,22 @@ export function reducer(s: ConvState, a: Action): ConvState {
     }
 
     case "message": {
-      let revision: MessageRevision;
-      try {
-        revision = parseMessageRevision(a.content);
-      } catch (err) {
-        console.error(
-          `[reducer] invalid message revision at seq=${a.seq}, skipping:`,
-          err instanceof Error ? err.message : String(err),
-        );
-        return s;
+      const revision = a.message;
+      // System authorship renders as a notice, not a chat bubble.
+      if (revision.role === "system") {
+        const text = extractText({ text: revision.text, blocks: revision.blocks });
+        return {
+          ...s,
+          items: [...s.items, { kind: "notice", id: revision.messageId, text: text || "[system]" }],
+        };
       }
       const existing = s.items.find(
         (it): it is Extract<UiItem, { kind: "message" }> =>
           it.kind === "message" && it.id === revision.messageId,
       );
       const message = mergeMessageRevision(existing?.content ?? null, revision);
-      const id = message.id ?? "";
-      const sender = s.roster[a.senderMemberId] ?? {
-        memberId: a.senderMemberId,
-        kind: "agent" as const,
-      };
+      const id = message.id ?? revision.messageId;
+      const sender = senderForRole(revision.role, s);
       const items = upsertAuthoritative(
         s.items,
         id,
@@ -291,7 +299,6 @@ export function reducer(s: ConvState, a: Action): ConvState {
         message,
         s.viewerMemberId,
         a.seq,
-        a.addressedTo ?? [],
         a.undone,
       );
       // pendingSendCount tracks ONLY the HTTP POST in flight (see
@@ -322,7 +329,6 @@ export function reducer(s: ConvState, a: Action): ConvState {
             sender: a.viewer,
             content: { id, role: "user" as const, state: "done" as const, text: a.text },
             seq: -1, // ponytail: sentinel - replaced when backend echoes authoritative seq
-            addressedTo: [],
           },
         ],
       };

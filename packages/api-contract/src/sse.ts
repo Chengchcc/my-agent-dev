@@ -1,14 +1,66 @@
-import { LedgerEntry } from "@chengchenccc/conversation";
+import type { MessageRevision } from "@chengchenccc/message";
+import { MessageRevisionSchema } from "@chengchenccc/message";
 import { z } from "zod";
+
+// ── Conversation SSE payload (1:1 collapse, spec 2026-08-25) ──
+
+/** Conversation event kinds on the wire. Storage keeps a richer set; this
+ *  is the surface-facing subset ("todo" has zero writers, heartbeat carries
+ *  no payload). */
+export const ConversationEventKind = z.enum([
+  "message",
+  "member.joined",
+  "member.left",
+  "undo",
+  "surface.control",
+]);
+
+export type ConversationEventKind = z.infer<typeof ConversationEventKind>;
+
+/** The conversation SSE payload. The wire unit is the domain event, not the
+ *  storage row: `message` arrives server-parsed and zod-validated (role is
+ *  the authorship discriminator); other kinds carry a `payload`. Legacy
+ *  rows whose content is not a MessageRevision surface as `payload` and are
+ *  skipped by consumers, same as before the collapse. */
+export const ConversationEvent = z.object({
+  /** Ledger seq — SSE event id, replay cursor, undo/fork targeting. */
+  seq: z.number(),
+  kind: ConversationEventKind,
+  /** Present iff kind="message" and content parsed as a MessageRevision. */
+  message: MessageRevisionSchema.optional(),
+  /** Parsed non-message payloads ({ undoneSeqs }, member notices, controls). */
+  payload: z.unknown().optional(),
+  /** Soft-delete flag on replayed rows (greyed-out messages). */
+  undone: z.boolean().optional(),
+});
+
+export interface AgentMember {
+  kind: "agent";
+  memberId: string;
+  agentId?: string;
+  displayName?: string;
+}
+
+export interface HumanMember {
+  kind: "human";
+  memberId: string;
+  userRef?: string;
+  displayName?: string;
+}
+
+export type Member = AgentMember | HumanMember;
+
+/** MessageRevision re-export for consumers that only want the wire shape. */
+export type { MessageRevision };
 
 // ── SSE event maps (event name → zod schema) ──
 
 export const conversationEvents = {
-  message: LedgerEntry,
-  "member.joined": LedgerEntry,
-  "member.left": LedgerEntry,
-  todo: LedgerEntry,
-  undo: LedgerEntry,
+  message: ConversationEvent,
+  "member.joined": ConversationEvent,
+  "member.left": ConversationEvent,
+  undo: ConversationEvent,
+  "surface.control": ConversationEvent,
 } as const satisfies SSEEventMap;
 
 /** Agent-run live update stream (`/agent-runs/:runId/events`). Payloads are

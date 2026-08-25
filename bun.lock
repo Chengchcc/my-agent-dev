@@ -41,7 +41,6 @@
         "@chengchenccc/ai": "workspace:*",
         "@chengchenccc/api-contract": "workspace:*",
         "@chengchenccc/config": "workspace:*",
-        "@chengchenccc/conversation": "workspace:*",
         "@chengchenccc/loop": "workspace:*",
         "@chengchenccc/message": "workspace:*",
         "@chengchenccc/tools-common": "workspace:*",
@@ -61,7 +60,6 @@
         "@chengchenccc/api-contract": "workspace:*",
         "@chengchenccc/backend": "workspace:*",
         "@chengchenccc/config": "workspace:*",
-        "@chengchenccc/conversation": "workspace:*",
         "@chengchenccc/message": "workspace:*",
         "@elysiajs/eden": "^1.0.0",
         "drizzle-orm": "^0.44.0",
@@ -102,7 +100,6 @@
         "@chengchenccc/api-contract": "workspace:*",
         "@chengchenccc/backend": "workspace:*",
         "@chengchenccc/config": "workspace:*",
-        "@chengchenccc/conversation": "workspace:*",
         "@chengchenccc/message": "workspace:*",
         "@dnd-kit/core": "^6.3.1",
         "@dnd-kit/utilities": "^3.2.2",
@@ -233,7 +230,7 @@
       "name": "@chengchenccc/api-contract",
       "version": "0.1.0",
       "dependencies": {
-        "@chengchenccc/conversation": "workspace:*",
+        "@chengchenccc/message": "workspace:*",
         "zod": "^3.23.0",
       },
       "peerDependencies": {
@@ -244,14 +241,6 @@
       "name": "@chengchenccc/config",
       "version": "0.1.0",
       "dependencies": {
-        "zod": "^3.23.0",
-      },
-    },
-    "packages/conversation": {
-      "name": "@chengchenccc/conversation",
-      "version": "0.1.0",
-      "dependencies": {
-        "@chengchenccc/message": "workspace:*",
         "zod": "^3.23.0",
       },
     },
@@ -409,8 +398,6 @@
     "@chengchenccc/backend": ["@chengchenccc/backend@workspace:apps/backend"],
 
     "@chengchenccc/config": ["@chengchenccc/config@workspace:packages/config"],
-
-    "@chengchenccc/conversation": ["@chengchenccc/conversation@workspace:packages/conversation"],
 
     "@chengchenccc/core": ["@chengchenccc/core@workspace:packages/core"],
 

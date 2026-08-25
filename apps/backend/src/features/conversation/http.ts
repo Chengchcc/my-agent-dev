@@ -1,9 +1,39 @@
 import { conversationEvents, createSseEncoder } from "@chengchenccc/api-contract";
-import { extractText } from "@chengchenccc/message";
+import { extractText, MessageRevisionSchema } from "@chengchenccc/message";
 import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
 import type { GoalStateStore } from "./goal-state.js";
+import type { LedgerEntry } from "./ports.js";
 import type { ConversationService } from "./service.js";
+
+/** Map a storage LedgerEntry to the wire ConversationEvent (1:1 collapse:
+ *  content arrives server-parsed; message-kind rows validate as
+ *  MessageRevision, everything else rides as payload). */
+function toConversationEvent(entry: LedgerEntry) {
+  let raw: unknown;
+  try {
+    raw = typeof entry.content === "string" ? JSON.parse(entry.content) : entry.content;
+  } catch {
+    raw = undefined; // heartbeat frames carry content: ""
+  }
+  if (entry.kind === "message" && raw !== undefined && raw !== null) {
+    const rev = MessageRevisionSchema.safeParse(raw);
+    if (rev.success) {
+      return {
+        seq: entry.seq,
+        kind: entry.kind,
+        message: rev.data,
+        ...(entry.undone ? { undone: true } : {}),
+      };
+    }
+  }
+  return {
+    seq: entry.seq,
+    kind: entry.kind,
+    ...(raw === undefined ? {} : { payload: raw }),
+    ...(entry.undone ? { undone: true } : {}),
+  };
+}
 
 export function conversationRoutes(
   svc: ConversationService,
@@ -120,8 +150,8 @@ export function conversationRoutes(
         },
         {
           body: t.Object({
-            senderMemberId: t.String({ minLength: 1 }),
-            addressedTo: t.Array(t.String()),
+            senderMemberId: t.Optional(t.String({ minLength: 1 })),
+            addressedTo: t.Optional(t.Array(t.String())),
             content: t.Any(),
             mode: t.Optional(
               t.Union([t.Literal("normal"), t.Literal("steer"), t.Literal("follow_up")]),
@@ -242,14 +272,10 @@ export function conversationRoutes(
         return sseResponse(
           stream,
           (entry) => {
-            const normalized = {
-              ...entry,
-              content:
-                typeof entry.content === "string" ? entry.content : JSON.stringify(entry.content),
-            };
+            const wire = toConversationEvent(entry);
             return encodeConv(
               entry.kind as keyof typeof conversationEvents,
-              normalized,
+              wire,
               String(entry.seq),
             );
           },
@@ -333,8 +359,8 @@ export function conversationRoutes(
           body: t.Object({
             fromSeq: t.Number(),
             editedContent: t.String(),
-            senderMemberId: t.String(),
-            addressedTo: t.Array(t.String()),
+            senderMemberId: t.Optional(t.String()),
+            addressedTo: t.Optional(t.Array(t.String())),
           }),
         },
       )

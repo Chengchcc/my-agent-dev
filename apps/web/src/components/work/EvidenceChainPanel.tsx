@@ -1,7 +1,7 @@
 "use client";
 
 import { conversationEvents } from "@chengchenccc/api-contract";
-import { deserializeLedgerContent, extractText } from "@chengchenccc/message";
+import { extractText } from "@chengchenccc/message";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -44,10 +44,9 @@ function useGeneratorOutput(loopId: string, generatorRunId: string | null | unde
       }
     }, 1500);
     ts.on("message", (entry) => {
-      const rev = deserializeLedgerContent(entry.content);
-      if ("raw" in rev) return;
-      if (rev.role !== "assistant") return;
-      const t = extractText({ text: rev.text, blocks: rev.blocks });
+      const rev = entry.message;
+      if (rev?.role !== "assistant") return;
+      const t = extractText({ text: rev.text ?? undefined, blocks: rev.blocks ?? undefined });
       if (t) lastAssistant = t;
     });
     return () => {

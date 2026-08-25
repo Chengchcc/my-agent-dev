@@ -145,23 +145,27 @@ export async function ingest(event: LarkMessageEvent, ctx: IngestContext): Promi
     // memberId was already set during the transaction above
   }
 
-  // ─── Step 1: Determine addressedTo ───
-  let addressedTo: string[] = [];
+  // ─── Step 1: addressedTo (group @mention routing only) ───
+  // p2p omits identity/routing params — the server derives sender (the
+  // human member) and targets (the agent member) for 1:1 conversations.
+  // Group chats keep explicit values: multiple humans, @mention fail-closed
+  // (botDisplayName missing → addressedTo=[] → no trigger, spec §六).
+  let addressedTo: string[] | undefined;
+  let senderMemberId: string | undefined;
   if (event.chat_type === "p2p") {
-    addressedTo = [selfAgentId];
-  } else if (event.chat_type === "group" && botDisplayName) {
-    if (isBotMentioned(event.content, botDisplayName)) {
-      addressedTo = [selfAgentId];
-    }
+    addressedTo = undefined;
+  } else if (event.chat_type === "group") {
+    senderMemberId = memberId;
+    addressedTo =
+      botDisplayName && isBotMentioned(event.content, botDisplayName) ? [selfAgentId] : [];
   }
-  // botDisplayName missing in group: addressedTo=[] (fail-closed, spec §六)
 
   // ─── Step 2: POST /messages ───
   try {
     const { data: msgData, error: msgError } = await client.api
       .conversations({ id: conversationId })
       .messages.post({
-        senderMemberId: memberId,
+        senderMemberId,
         addressedTo,
         content: {
           text: event.content,
@@ -191,7 +195,7 @@ export async function ingest(event: LarkMessageEvent, ctx: IngestContext): Promi
       confirmInbound(db, event.event_id, conversationId, seq);
     })();
 
-    const triggered = addressedTo.length > 0;
+    const triggered = (addressedTo?.length ?? 0) > 0 || (triggeredRuns?.length ?? 0) > 0;
     const runs = triggeredRuns ?? [];
 
     // M15.1: Start streaming card lifecycle for each triggered run
