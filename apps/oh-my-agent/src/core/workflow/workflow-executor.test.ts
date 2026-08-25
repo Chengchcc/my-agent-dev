@@ -310,7 +310,7 @@ describe("createWorkflowExecutor", () => {
     expect(result.error).toContain("missing required property");
   });
 
-  test("long item texts spill to .workflows with a resultPath (A3)", async () => {
+  test("long item texts spill to .oma/workflow with a resultPath (A3)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "wf-spill-"));
     const longText = "x".repeat(3000);
     const exec = createWorkflowExecutor({
@@ -326,7 +326,7 @@ describe("createWorkflowExecutor", () => {
         items: [{ prompt: "long" }],
       });
       const item = result.items[0]!;
-      expect(item.resultPath).toBe(".workflows/wf-spill/a0.result.md");
+      expect(item.resultPath).toBe(".oma/workflow/wf-spill/a0.result.md");
       expect(item.text.length).toBe(400);
       expect(readFileSync(join(dir, item.resultPath), "utf8")).toBe(longText);
     } finally {
@@ -367,7 +367,7 @@ describe("createWorkflowExecutor", () => {
       });
       expect(result.items).toHaveLength(9);
       for (const [i, item] of result.items.entries()) {
-        expect(item.resultPath).toBe(`.workflows/wf-fuse/a${i}.result.md`);
+        expect(item.resultPath).toBe(`.oma/workflow/wf-fuse/a${i}.result.md`);
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -391,7 +391,7 @@ describe("createWorkflowExecutor", () => {
       });
       expect(result.ok).toBe(true);
       const state = JSON.parse(
-        readFileSync(join(dir, ".workflows/wf-state/a1.session.json"), "utf8"),
+        readFileSync(join(dir, ".oma/workflow/wf-state/a1.session.json"), "utf8"),
       ) as {
         agentId?: string;
         messages?: unknown[];

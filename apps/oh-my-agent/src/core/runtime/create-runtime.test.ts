@@ -429,7 +429,7 @@ describe("createOmaRuntime", () => {
       cacheWriteTokens: 0,
     });
   });
-  test("workflow_run evaluates a script, fans out agents, and persists .workflows", async () => {
+  test("workflow_run evaluates a script, fans out agents, and persists .oma/workflow", async () => {
     const requests: string[] = [];
     const script =
       'const a = await agent("one"); const b = await agent("two"); return [a.text, b.text];';
@@ -483,7 +483,7 @@ describe("createOmaRuntime", () => {
     expect(events).toContain("workflow_agent_completed");
     expect(events).toContain("workflow_completed");
     // The script persists to the workspace for inspection/re-runs.
-    const saved = await Bun.file(join(tmp, ".workflows", "audit.js")).text();
+    const saved = await Bun.file(join(tmp, ".oma/workflow", "audit.js")).text();
     expect(saved).toBe(script);
   });
 

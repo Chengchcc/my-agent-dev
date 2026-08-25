@@ -261,9 +261,9 @@ describe("Loop with a REAL oma child", () => {
     const branch = await Bun.$`git -C ${clone} rev-parse --abbrev-ref HEAD`.quiet().text();
     expect(branch.trim()).toMatch(/^agent\//);
 
-    // Workflow-first: no .workflows scratch file is ever written (the run
+    // Workflow-first: no .oma/workflow scratch file is ever written (the run
     // executes the script in the sandbox; the verdict lives in the outcome).
-    expect(existsSync(join(clone, ".workflows", "loop.js"))).toBe(false);
+    expect(existsSync(join(clone, ".oma/workflow", "loop.js"))).toBe(false);
 
     // ── The real child ran the workflow: subagents executed, workflow
     //    lifecycle events were observed on the run stream ──

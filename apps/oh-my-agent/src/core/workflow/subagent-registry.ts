@@ -27,7 +27,7 @@ export interface SubagentRegistryEntry {
 }
 
 /** Validate a subagent/script name: a plain label, never a path segment.
- *  Model-supplied names must not escape `.oma/agents` / `.workflows`. */
+ *  Model-supplied names must not escape `.oma/agents` / `.oma/workflow`. */
 export function isValidWorkflowName(name: string): boolean {
   return /^[a-z0-9-]{1,64}$/i.test(name);
 }

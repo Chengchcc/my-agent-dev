@@ -499,7 +499,7 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
         const safeName = (s: string): boolean => /^[A-Za-z0-9-]+$/.test(s);
         if (opts.workspaceAccess === "read_write" && safeName(workflowId) && safeName(agentId)) {
           try {
-            const rel = `.workflows/${workflowId}/${agentId}.session.json`;
+            const rel = `.oma/workflow/${workflowId}/${agentId}.session.json`;
             const abs = join(opts.workspaceRoot, rel);
             mkdirSync(dirname(abs), { recursive: true });
             writeFileSync(
@@ -603,7 +603,7 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
   }
 
   /** A3: keep fan-in results small enough to re-inject into the main loop.
-   *  Long item texts spill to `.workflows/<wfId>/<agentId>.result.md` (the
+   *  Long item texts spill to `.oma/workflow/<wfId>/<agentId>.result.md` (the
    *  main session reads them back with the read tool); read_only workspaces
    *  degrade to inline truncation. The total-inline budget forces spill
    *  even when no single item exceeds the per-item ceiling. */
@@ -619,7 +619,7 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
       if (opts.workspaceAccess !== "read_write") {
         return { ...r, text: `${excerpt}…[truncated]` };
       }
-      const rel = `.workflows/${workflowId}/a${i}.result.md`;
+      const rel = `.oma/workflow/${workflowId}/a${i}.result.md`;
       const abs = join(opts.workspaceRoot, rel);
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, r.text);

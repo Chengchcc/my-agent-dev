@@ -27,7 +27,7 @@ export interface WorkflowToolDeps {
   }) => Promise<WorkflowRunResult>;
   /** Executes an orchestration script in the vm sandbox (Phase 2). */
   readonly runScript: (input: { script: string; args?: unknown }) => Promise<WorkflowScriptResult>;
-  /** Persist a script to `<workspace>/.workflows/<name>.js` for reuse. */
+  /** Persist a script to `<workspace>/.oma/workflow/<name>.js` for reuse. */
   readonly writeScript: (name: string, content: string) => void;
   /** Load a saved script by name (B8: `workflow_run({name})` re-runs a
    *  saved workflow without re-supplying the body). null = not found. */
@@ -121,7 +121,7 @@ export function createWorkflowTools(deps: WorkflowToolDeps): readonly PluginTool
       "Run an orchestration script (top-level-await JS) that fans out subagents " +
       "via agent(prompt, {schema?, label?}) and pipeline(items, fn). Scripts have " +
       "NO fs/network access - agents do the work. Save reusable scripts with the " +
-      "name argument (written to .workflows/<name>.js), then re-run one later " +
+      "name argument (written to .oma/workflow/<name>.js), then re-run one later " +
       "with ONLY the name argument (loads the saved script).",
     executionMode: "serial",
     inputSchema: {
@@ -145,7 +145,7 @@ export function createWorkflowTools(deps: WorkflowToolDeps): readonly PluginTool
       if (!script && name) {
         const saved = await deps.readScript(name);
         if (saved === null) {
-          return { ok: false, error: `workflow "${name}" not found in .workflows` };
+          return { ok: false, error: `workflow "${name}" not found in .oma/workflow` };
         }
         script = saved;
       }

@@ -529,14 +529,14 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
         if (deps.workspaceAccess !== "read_write") {
           throw new Error("workflow scripts cannot be saved in a read_only workspace");
         }
-        const dir = join(deps.workspaceRoot, ".workflows");
+        const dir = join(deps.workspaceRoot, ".oma/workflow");
         mkdirSync(dir, { recursive: true });
         writeFileSync(join(dir, `${name}.js`), content);
       },
       readScript: async (name) => {
         if (!isValidWorkflowName(name)) return null;
         try {
-          return await Bun.file(join(deps.workspaceRoot, ".workflows", `${name}.js`)).text();
+          return await Bun.file(join(deps.workspaceRoot, ".oma/workflow", `${name}.js`)).text();
         } catch {
           return null;
         }
