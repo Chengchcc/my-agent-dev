@@ -1481,7 +1481,7 @@ export class TUI extends Container {
     newLines = this.applyLineResets(newLines);
 
     // Helper to clear scrollback and viewport and render all new lines
-    const fullRender = (clear: boolean): void => {
+    const fullRender = (clear: boolean, clearScrollback = false): void => {
       this.fullRedrawCount += 1;
       if (clear) {
         // Destructive replay: let root components rehydrate their frames.
@@ -1490,7 +1490,11 @@ export class TUI extends Container {
       let buffer = "\x1b[?2026h"; // Begin synchronized output
       if (clear) {
         buffer += this.deleteKittyImages(this.previousKittyImageIds);
-        buffer += "\x1b[2J\x1b[H"; // Clear screen, home; keep native scrollback
+        buffer += "\x1b[2J\x1b[H"; // Clear screen, home
+        // Width changes rewrap the whole transcript; stale scrollback rows at
+        // the old width would misalign above the new-width content, so drop
+        // native scrollback too (omp clearScrollback behavior).
+        if (clearScrollback) buffer += "\x1b[3J";
       }
       for (let i = 0; i < newLines.length; i++) {
         if (i > 0) buffer += "\r\n";
@@ -1547,7 +1551,7 @@ export class TUI extends Container {
     // Width changes always need a full re-render because wrapping changes.
     if (widthChanged) {
       logRedraw(`terminal width changed (${this.previousWidth} -> ${width})`);
-      fullRender(true);
+      fullRender(true, true);
       return;
     }
 

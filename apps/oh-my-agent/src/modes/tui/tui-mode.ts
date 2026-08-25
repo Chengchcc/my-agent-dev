@@ -1549,7 +1549,6 @@ export function createTerminalIo(
   // aborts a live run (pi's app.interrupt); ctrl+t and ctrl+o toggle the
   // thinking-block and tool-detail views globally.
   // Last rendered state: resize/setHeader rebuild the transcript from it.
-  let lastState: TuiViewState | null = null;
 
   tui.addInputListener((data) => {
     // Focus reporting (CSI 1004): ESC[I focused, ESC[O unfocused.
@@ -1633,7 +1632,6 @@ export function createTerminalIo(
     addStatusBar();
   }
   function render(state: TuiViewState): void {
-    lastState = state;
     transcript.clear();
     const lines: string[] = [];
     for (const run of state.runs) {
@@ -1926,25 +1924,6 @@ export function createTerminalIo(
   tui.addChild(editor);
   tui.setFocus(editor);
   tui.start();
-  // Rebuild transcript lines at the new width on terminal resize, so
-  // pre-wrapped thinking/tool output doesn't lose hanging indents when the
-  // terminal shrinks (the TUI's own resize handler only re-renders the
-  // existing Text children).
-  const terminalWithResize = terminal as Terminal & {
-    resize?: (c: number, r: number) => void;
-  };
-  if (terminalWithResize.resize) {
-    const originalResize = terminalWithResize.resize.bind(terminal);
-    terminalWithResize.resize = (c: number, r: number): void => {
-      originalResize(c, r);
-      transcript.beginReplay();
-      if (lastState) {
-        renderHeader();
-        if (!busy) statusContainer.clear();
-        render(lastState);
-      }
-    };
-  }
   // Mouse tracking (normal tracking + SGR encoding): the wheel scrolls the
   // transcript. Restored in close(); Shift bypasses capture for text
   // selection.

@@ -2,7 +2,12 @@ import { renderMermaidAscii } from "beautiful-mermaid";
 import { Marked, type Token, Tokenizer, type Tokens } from "marked";
 import { getCapabilities, hyperlink, isImageLine } from "../terminal-image.ts";
 import type { Component } from "../tui.ts";
-import { applyBackgroundToLine, visibleWidth, wrapTextWithAnsi } from "../utils.ts";
+import {
+  applyBackgroundToLine,
+  truncateToWidth,
+  visibleWidth,
+  wrapTextWithAnsi,
+} from "../utils.ts";
 
 const STRICT_STRIKETHROUGH_REGEX = /^(~~)(?=[^\s~])((?:\\.|[^\\])*?(?:\\.|[^\s~\\]))\1(?=[^~]|$)/;
 
@@ -391,7 +396,11 @@ export class Markdown implements Component {
           }
           if (ascii) {
             for (const line of ascii.split("\n")) {
-              lines.push(this.theme.codeBlock(line));
+              // Mermaid ASCII is preformatted; clip over-wide rows instead of
+              // letting the later wrap pass fragment the box-drawing canvas
+              // (omp markdown ts:2546-2556).
+              const clipped = visibleWidth(line) > width ? truncateToWidth(line, width, "") : line;
+              lines.push(this.theme.codeBlock(clipped));
             }
             if (nextTokenType && nextTokenType !== "space") {
               lines.push("");
