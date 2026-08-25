@@ -23,7 +23,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
 
 interface TimelineProps {
   messages: UiItem[];
-  viewerMemberId: string;
   conversationId: string;
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
   /** Transient streaming outputs — one temporary assistant bubble per
@@ -141,7 +140,6 @@ function extractAnchors(segments: TurnSegment[]): TurnAnchor[] {
 
 export function Timeline({
   messages,
-  viewerMemberId,
   conversationId,
   scrollContainerRef,
   transients,
@@ -267,7 +265,7 @@ export function Timeline({
             }
             // single segment: human / standalone agent (notices rendered above)
             const m = seg.item;
-            const isSelf = m.sender.memberId === viewerMemberId;
+            const isSelf = m.sender.kind === "human";
             const isUndone = m.undone === true;
             const virt = {
               contentVisibility: "auto" as const,

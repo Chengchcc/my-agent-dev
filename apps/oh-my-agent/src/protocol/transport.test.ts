@@ -13,7 +13,7 @@ describe("executeRunInputSchema", () => {
         workflowBudgetTokens: 12000,
       },
       workspace: { root: "/ws", access: "read_write" },
-      metadata: { conversationId: "c", agentMemberId: "m", branchId: "b" },
+      metadata: { conversationId: "c", agentId: "m", branchId: "b" },
     });
     expect(parsed.run.permissionMode).toBe("auto");
     expect(parsed.run.workflowBudgetTokens).toBe(12000);

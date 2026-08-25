@@ -78,7 +78,7 @@ const makeRun = (runId: string): AgentRun => ({
   runId,
   branchId: "b",
   conversationId: "loop:loop-1:generator",
-  agentMemberId: "loop-generator:loop-1",
+  agentId: "loop-generator:loop-1",
   modelRef: { backendKind: "oma", modelId: "m" },
   status: "running",
   idempotencyKey: "k",

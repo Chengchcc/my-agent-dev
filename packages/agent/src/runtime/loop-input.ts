@@ -22,7 +22,7 @@ export interface CodingLoopInput {
    *  Standalone CLI runs omit it: the agent has no product identity. */
   readonly metadata?: {
     readonly conversationId: string;
-    readonly agentMemberId: string;
+    readonly agentId: string;
     readonly branchId: string;
   };
 }

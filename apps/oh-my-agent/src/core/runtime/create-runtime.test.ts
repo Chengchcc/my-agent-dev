@@ -55,7 +55,7 @@ function runInput(runId: string, systemPrompt?: string): BackendRunInput<"oma"> 
       configRevision: 1,
     },
     workspace: { root: tmp, access: "read_write" },
-    metadata: { conversationId: "c", agentMemberId: "m", branchId: "b" },
+    metadata: { conversationId: "c", agentId: "m", branchId: "b" },
   };
 }
 
@@ -297,7 +297,7 @@ describe("createOmaRuntime", () => {
         configRevision: 1,
       },
       workspace: { root: tmp, access: "read_write" },
-      metadata: { conversationId: "c", agentMemberId: "m", branchId: "b" },
+      metadata: { conversationId: "c", agentId: "m", branchId: "b" },
     });
     const outcome = await segment.outcome;
     expect(outcome.status).toBe("completed");
@@ -353,7 +353,7 @@ describe("createOmaRuntime", () => {
         configRevision: 1,
       },
       workspace: { root: tmp, access: "read_write" },
-      metadata: { conversationId: "c", agentMemberId: "m", branchId: "b" },
+      metadata: { conversationId: "c", agentId: "m", branchId: "b" },
     });
     await segment.outcome;
     // No summarizer call: no premature compaction.
@@ -525,7 +525,7 @@ describe("createOmaRuntime", () => {
         configRevision: 1,
       },
       workspace: { root: tmp, access: "read_write" },
-      metadata: { conversationId: "c", agentMemberId: "m", branchId: "b" },
+      metadata: { conversationId: "c", agentId: "m", branchId: "b" },
       workflow: {
         script: 'const a = await agent("fix it"); return { verdict: "PASS", evidence: a.text };',
       },

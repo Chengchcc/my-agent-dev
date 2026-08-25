@@ -82,7 +82,7 @@ const LOOP_RUN: AgentRunSnapshot<"oma"> = {
   configRevision: 1,
 };
 const LOOP_WS: WorkspaceBinding = { root: "/ws", access: "read_write" };
-const LOOP_META = { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 };
+const LOOP_META = { conversationId: "c", agentId: "m", branchId: "b", productRevision: 1 };
 
 /** Build a CodingLoopInput for tests. The Session renders Meta internally, so
  *  callers only provide the driving input (and optional history/run overrides). */

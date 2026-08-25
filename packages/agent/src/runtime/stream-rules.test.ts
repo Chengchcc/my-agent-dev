@@ -26,7 +26,7 @@ function loopInput(message: string): CodingLoopInput {
     input: { inputId: "ti", message: { role: "user", text: message } },
     run: LOOP_RUN,
     workspace: { root: "/ws", access: "read_write" },
-    metadata: { conversationId: "c", agentMemberId: "m", branchId: "b" },
+    metadata: { conversationId: "c", agentId: "m", branchId: "b" },
   };
 }
 

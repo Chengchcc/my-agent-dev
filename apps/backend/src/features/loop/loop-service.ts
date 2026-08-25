@@ -273,15 +273,9 @@ export async function createLoop(
   try {
     convPort?.createConversation({
       conversationId: job.cronJobId,
+      agentId: "default",
       origin: "loop",
       createdAt: Date.now(),
-    });
-    convPort?.addMember({
-      conversationId: job.cronJobId,
-      memberId: "owner",
-      kind: "agent",
-      agentId: "default",
-      joinedAt: Date.now(),
     });
   } catch {
     // best-effort

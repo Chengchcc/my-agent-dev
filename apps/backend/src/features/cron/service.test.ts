@@ -238,7 +238,6 @@ describe("createCronJobService", () => {
           called = true;
           throw new Error("boom");
         },
-        addMember: () => {},
       },
     });
     const job = await svc.createCronJob({
@@ -250,7 +249,7 @@ describe("createCronJobService", () => {
     expect(called).toBe(true); // tried but failed silently
   });
 
-  test("convPort success creates conversation and adds owner member", async () => {
+  test("convPort success creates conversation bound to the agent", async () => {
     const calls: string[] = [];
     const svc = createCronJobService({
       port: mockPort(),
@@ -258,17 +257,14 @@ describe("createCronJobService", () => {
       agentExists: alwaysExists,
       convPort: {
         createConversation: (input) => {
-          calls.push(`conv:${input.conversationId}:${input.title}:${input.origin}`);
-        },
-        addMember: (input) => {
           calls.push(
-            `member:${input.conversationId}:${input.memberId}:${input.kind}:${input.agentId}`,
+            `conv:${input.conversationId}:${input.title}:${input.origin}:${input.agentId}`,
           );
         },
       },
     });
     await svc.createCronJob({ name: "My Job", agentId: "agent-1", cronExpr: "0 9 * * *" });
-    expect(calls).toEqual(["conv:cj-conv:My Job:cron", "member:cj-conv:owner:agent:agent-1"]);
+    expect(calls).toEqual(["conv:cj-conv:My Job:cron:agent-1"]);
   });
 
   test("createCronJob accepts empty cronExpr for a disabled manual loop", async () => {

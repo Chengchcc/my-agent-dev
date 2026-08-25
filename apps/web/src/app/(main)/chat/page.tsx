@@ -81,19 +81,7 @@ export default function ChatOverviewPage() {
     createConv.mutate(
       {
         ...(projectId ? { projectId } : {}),
-        members: [
-          {
-            memberId: agentId,
-            kind: "agent",
-            agentId,
-            displayName: selectedAgent?.name ?? "Assistant",
-          },
-          {
-            memberId: `human-${crypto.randomUUID().slice(0, 8)}`,
-            kind: "human",
-            displayName: "User",
-          },
-        ],
+        agentId,
       },
       {
         onSuccess: (conv) => {
@@ -272,17 +260,14 @@ export default function ChatOverviewPage() {
                   )}
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
                     <div className="flex -space-x-1.5">
-                      {conv.members.slice(0, 4).map((m) => (
-                        <span
-                          key={m.memberId}
-                          className="inline-flex items-center justify-center size-5  rounded-full
-                                     border border-(--canvas) bg-(--canvas-soft)
-                                     text-[9px] font-medium text-(--mute)"
-                          title={m.displayName ?? m.memberId}
-                        >
-                          {(m.displayName ?? m.memberId).charAt(0).toUpperCase()}
-                        </span>
-                      ))}
+                      <span
+                        className="inline-flex items-center justify-center size-5  rounded-full
+                                   border border-(--canvas) bg-(--canvas-soft)
+                                   text-[9px] font-medium text-(--mute)"
+                        title={conv.agentId ?? "agent"}
+                      >
+                        {(conv.agentId ?? "a").charAt(0).toUpperCase()}
+                      </span>
                     </div>
                     <p className="text-[10px] text-(--mute)">
                       {new Date(conv.createdAt).toLocaleString()}

@@ -73,7 +73,6 @@ function makeApp(activeRuns = false) {
         store,
         convPort: {
           createConversation: () => {},
-          addMember: () => {},
         } as never,
         agentRunService: {
           hasActiveRunForConversations: async () => activeRuns,

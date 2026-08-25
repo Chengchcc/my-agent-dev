@@ -30,43 +30,39 @@ const runPort: AgentRunPort = sqliteAgentRunAdapter(db, {
 
 function freshFixture(prefix: string) {
   const conversationId = `conv-run-${prefix}`;
-  const agentMemberId = `mem-run-${prefix}`;
-  conv.createConversation({ conversationId, triggerMode: "mention", createdAt: Date.now() });
-  conv.addMember({
-    memberId: agentMemberId,
+  const agentId = `ag-run-${prefix}`;
+  conv.createConversation({
     conversationId,
-    kind: "agent",
-    agentId: `ag-run-${prefix}`,
-    displayName: `RunAgent-${prefix}`,
-    joinedAt: Date.now(),
+    agentId,
+    triggerMode: "mention",
+    createdAt: Date.now(),
   });
   // Add a ledger message
   conv.appendLedgerEntry({
     conversationId,
-    senderMemberId: agentMemberId,
-    addressedTo: [],
+    senderMemberId: agentId,
     kind: "message",
     content: JSON.stringify({ role: "user", text: `hello-${prefix}` }),
     ts: Date.now(),
   });
-  return { conversationId, agentMemberId };
+  return { conversationId, agentId };
 }
 
 async function setupBranch(prefix: string) {
-  const { conversationId, agentMemberId } = freshFixture(prefix);
-  const tree = await ctxPort.getOrCreateTree(conversationId, agentMemberId);
+  const { conversationId, agentId } = freshFixture(prefix);
+  const tree = await ctxPort.getOrCreateTree(conversationId);
   const branch = await ctxPort.getOrCreateDefaultBranch(tree.treeId, "oma");
-  return { conversationId, agentMemberId, branch };
+  return { conversationId, agentId, branch };
 }
 
 afterAll(() => db.close());
 
 describe("Agent Run: atomic acquire", () => {
   test("acquire succeeds on idle branch and creates active run", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("acq1");
+    const { conversationId, agentId, branch } = await setupBranch("acq1");
     const result = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "run me" },
@@ -85,11 +81,11 @@ describe("Agent Run: atomic acquire", () => {
   });
 
   test("acquire on active branch queues without modifying context", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("acq2");
+    const { conversationId, agentId, branch } = await setupBranch("acq2");
     // First acquire
     await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -104,7 +100,7 @@ describe("Agent Run: atomic acquire", () => {
     // Second acquire: should queue
     const result2 = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "steer",
       message: { role: "user", text: "second" },
@@ -125,13 +121,13 @@ describe("Agent Run: atomic acquire", () => {
   });
 
   test("acquire with new ledger refs appends context refs", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("acq4");
+    const { conversationId, agentId, branch } = await setupBranch("acq4");
 
     // A user message lands in the ledger
     conv.appendLedgerEntry({
       conversationId,
       senderMemberId: "user-1",
-      addressedTo: [agentMemberId],
+      addressedTo: [agentId],
       kind: "message",
       content: JSON.stringify({ role: "user", text: "hello" }),
       ts: Date.now(),
@@ -139,7 +135,7 @@ describe("Agent Run: atomic acquire", () => {
 
     const result = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "hello" },
@@ -158,10 +154,10 @@ describe("Agent Run: atomic acquire", () => {
   });
 
   test("duplicate input idempotency key returns queued", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("acq3");
+    const { conversationId, agentId, branch } = await setupBranch("acq3");
     await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -176,7 +172,7 @@ describe("Agent Run: atomic acquire", () => {
     // Same input idempotency key + same payload = replay
     const result2 = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" }, // same payload
@@ -194,10 +190,10 @@ describe("Agent Run: atomic acquire", () => {
 
 describe("Agent Run: pending input queue (composer)", () => {
   test("listPendingInputsForConversation joins branch->tree; get/update/cancel CAS", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("pq1");
+    const { conversationId, agentId, branch } = await setupBranch("pq1");
     await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -211,7 +207,7 @@ describe("Agent Run: pending input queue (composer)", () => {
 
     const q = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "follow_up",
       message: { role: "user", text: "queued" },
@@ -228,7 +224,7 @@ describe("Agent Run: pending input queue (composer)", () => {
     expect(pending).toHaveLength(1);
     expect(pending[0]!.mode).toBe("follow_up");
     expect((pending[0]!.message as { text: string }).text).toBe("queued");
-    expect(pending[0]!.agentMemberId).toBe(agentMemberId);
+    expect(pending[0]!.agentId).toBe(agentId);
 
     const input = await runPort.getInput(q.inputId);
     expect(input?.status).toBe("pending");
@@ -245,10 +241,10 @@ describe("Agent Run: pending input queue (composer)", () => {
 
 describe("Agent Run: queue delivery", () => {
   test("claimInputForRun returns the run's delivering row", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("q1");
+    const { conversationId, agentId, branch } = await setupBranch("q1");
     await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -269,10 +265,10 @@ describe("Agent Run: queue delivery", () => {
   });
 
   test("markInputAccepted moves delivering to delivered", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("q2");
+    const { conversationId, agentId, branch } = await setupBranch("q2");
     const result = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -293,11 +289,11 @@ describe("Agent Run: queue delivery", () => {
   });
 
   test("markInputAccepted rejects inputs not in delivering state", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("q2b");
+    const { conversationId, agentId, branch } = await setupBranch("q2b");
     // First input acquires the run (delivering)
     const first = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -313,7 +309,7 @@ describe("Agent Run: queue delivery", () => {
     // Second input stays pending because the run slot is occupied
     const second = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "second" },
@@ -336,11 +332,11 @@ describe("Agent Run: queue delivery", () => {
   });
 
   test("restart recovery: delivering item reclaimed before pending", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("q3");
+    const { conversationId, agentId, branch } = await setupBranch("q3");
     // Acquire (creates delivering item)
     const r1 = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -362,10 +358,10 @@ describe("Agent Run: queue delivery", () => {
 
 describe("Agent Run: PendingAction consume-once", () => {
   test("create and consume pending action", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("pa1");
+    const { conversationId, agentId, branch } = await setupBranch("pa1");
     const result = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -391,7 +387,6 @@ describe("Agent Run: PendingAction consume-once", () => {
     expect(waitingRun?.status).toBe("waiting");
 
     // Consume
-    // Consume
     const consumed = await runPort.consumePendingAction(
       `action-pa1`,
       { actionId: `action-pa1`, response: { approved: true } },
@@ -404,10 +399,10 @@ describe("Agent Run: PendingAction consume-once", () => {
     expect(runningRun?.status).toBe("running");
   });
   test("same response idempotency key returns stored result", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("pa2");
+    const { conversationId, agentId, branch } = await setupBranch("pa2");
     const result = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -442,10 +437,10 @@ describe("Agent Run: PendingAction consume-once", () => {
   });
 
   test("conflicting response throws", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("pa3");
+    const { conversationId, agentId, branch } = await setupBranch("pa3");
     const result = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -483,10 +478,10 @@ describe("Agent Run: PendingAction consume-once", () => {
 
 describe("Agent Run: terminal CAS", () => {
   test("finalizeRun sets terminal status and result", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("term1");
+    const { conversationId, agentId, branch } = await setupBranch("term1");
     const result = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -513,10 +508,10 @@ describe("Agent Run: terminal CAS", () => {
   });
 
   test("same terminal replay returns stored result", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("term2");
+    const { conversationId, agentId, branch } = await setupBranch("term2");
     const result = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -536,10 +531,10 @@ describe("Agent Run: terminal CAS", () => {
   });
 
   test("conflicting terminal outcome throws", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("term3");
+    const { conversationId, agentId, branch } = await setupBranch("term3");
     const result = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -559,10 +554,10 @@ describe("Agent Run: terminal CAS", () => {
   });
 
   test("commit_failed keeps active slot and terminal result", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("term4");
+    const { conversationId, agentId, branch } = await setupBranch("term4");
     const result = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -594,10 +589,10 @@ describe("Agent Run: terminal CAS", () => {
 
 describe("Agent Run: Phase 5 config snapshot", () => {
   test("the Run persists systemPrompt + skillRoots frozen at creation", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("snap1");
+    const { conversationId, agentId, branch } = await setupBranch("snap1");
     const result = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "go" },
@@ -621,11 +616,11 @@ describe("Agent Run: Phase 5 config snapshot", () => {
   });
 
   test("a queued input keeps its OWN config snapshot; acquireNextRun promotes with IT, never the previous run's config", async () => {
-    const { conversationId, agentMemberId, branch } = await setupBranch("snap2");
+    const { conversationId, agentId, branch } = await setupBranch("snap2");
     // First run: model-a config.
     const first = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -642,7 +637,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
     // Queued input with a DIFFERENT request-time config.
     const queued = await runPort.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       branchId: branch.branchId,
       mode: "follow_up",
       message: { role: "user", text: "second" },
@@ -677,7 +672,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
     // Branch b: first input acquires a run, second queues (pending, older).
     const bFirst = await runPort.enqueueAndAcquire({
       conversationId: b.conversationId,
-      agentMemberId: b.agentMemberId,
+      agentId: b.agentId,
       branchId: b.branch.branchId,
       mode: "normal",
       message: { role: "user", text: "b-first" },
@@ -691,7 +686,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
     expect(bFirst.acquired).toBe(true);
     await runPort.enqueueAndAcquire({
       conversationId: b.conversationId,
-      agentMemberId: b.agentMemberId,
+      agentId: b.agentId,
       branchId: b.branch.branchId,
       mode: "follow_up",
       message: { role: "user", text: "b-pending" },
@@ -705,7 +700,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
     // Branch a: first input acquires a run, second queues (pending, newer).
     const aFirst = await runPort.enqueueAndAcquire({
       conversationId: a.conversationId,
-      agentMemberId: a.agentMemberId,
+      agentId: a.agentId,
       branchId: a.branch.branchId,
       mode: "normal",
       message: { role: "user", text: "a-first" },
@@ -719,7 +714,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
     expect(aFirst.acquired).toBe(true);
     await runPort.enqueueAndAcquire({
       conversationId: a.conversationId,
-      agentMemberId: a.agentMemberId,
+      agentId: a.agentId,
       branchId: a.branch.branchId,
       mode: "normal",
       message: { role: "user", text: "a-pending" },
@@ -733,7 +728,7 @@ describe("Agent Run: Phase 5 config snapshot", () => {
     // A steer input never counts as a pending promotable input.
     await runPort.enqueueAndAcquire({
       conversationId: a.conversationId,
-      agentMemberId: a.agentMemberId,
+      agentId: a.agentId,
       branchId: a.branch.branchId,
       mode: "steer",
       message: { role: "user", text: "steer" },

@@ -144,15 +144,8 @@ beforeAll(async () => {
     productToolsEntrypoint: `sse:${mcp.url}`,
   });
 
-  convPort.createConversation({ conversationId: CONV, createdAt: Date.now() });
-  convPort.addMember({
-    memberId: MEMBER,
-    conversationId: CONV,
-    kind: "agent",
-    agentId: "a1",
-    joinedAt: Date.now(),
-  });
-  const tree = await contextPort.getOrCreateTree(CONV, MEMBER);
+  convPort.createConversation({ conversationId: CONV, agentId: MEMBER, createdAt: Date.now() });
+  const tree = await contextPort.getOrCreateTree(CONV);
   const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "oma");
   branchId = branch.branchId;
 });
@@ -185,7 +178,7 @@ describe("Phase 5 acceptance: Product Backend -> Oma child -> Product Tools MCP"
 
     const acquired = await backend.enqueueAndAcquire({
       conversationId: CONV,
-      agentMemberId: MEMBER,
+      agentId: MEMBER,
       backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "run this" },
@@ -251,7 +244,7 @@ describe("Phase 5 acceptance: Product Backend -> Oma child -> Product Tools MCP"
   test("a follow-up input chains into a SECOND real child run (one Run / one loop)", async () => {
     const first = await backend.enqueueAndAcquire({
       conversationId: CONV,
-      agentMemberId: MEMBER,
+      agentId: MEMBER,
       backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "chain first" },
@@ -262,7 +255,7 @@ describe("Phase 5 acceptance: Product Backend -> Oma child -> Product Tools MCP"
     expect(first.acquired).toBe(true);
     const followUp = await backend.enqueueAndAcquire({
       conversationId: CONV,
-      agentMemberId: MEMBER,
+      agentId: MEMBER,
       backendKind: "oma",
       mode: "follow_up",
       message: { role: "user", text: "chain second" },

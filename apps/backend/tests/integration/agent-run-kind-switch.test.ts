@@ -28,7 +28,7 @@ import { openDb } from "../../src/infra/sqlite/db.js";
  *  fixture. Both run to terminal via the real execution service. */
 
 const CONV = "conv-switch";
-const HUMAN = "human-1";
+const _HUMAN = "human-1";
 const AGENT_MEMBER = "agent-1";
 
 const OMA_ENTRY = new URL("../../../../apps/oh-my-agent/src/cli.ts", import.meta.url).pathname;
@@ -200,20 +200,10 @@ beforeAll(async () => {
     contextService: contextSvc,
   });
 
-  convPort.createConversation({ conversationId: CONV, createdAt: Date.now() });
-  convPort.addMember({
-    memberId: AGENT_MEMBER,
+  convPort.createConversation({
     conversationId: CONV,
-    kind: "agent",
-    agentId: "a1",
-    joinedAt: Date.now(),
-  });
-  convPort.addMember({
-    memberId: HUMAN,
-    conversationId: CONV,
-    kind: "human",
-    displayName: "User",
-    joinedAt: Date.now(),
+    agentId: AGENT_MEMBER,
+    createdAt: Date.now(),
   });
 });
 
@@ -227,13 +217,11 @@ describe("backend kind switch auto-forks the branch (D2)", () => {
   test("run 1 lands on a oma branch", async () => {
     const { triggeredRuns } = await feature.convSvc.postMessage({
       conversationId: CONV,
-      senderMemberId: HUMAN,
-      addressedTo: [AGENT_MEMBER],
       content: "first message",
     });
     expect(triggeredRuns.length).toBeGreaterThan(0);
     expect(await waitForTerminal(triggeredRuns[0]!.runId)).toBe("completed");
-    const tree = await contextPort.getOrCreateTree(CONV, AGENT_MEMBER);
+    const tree = await contextPort.getOrCreateTree(CONV);
     const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "oma");
     expect(branch.backendKind).toBe("oma");
     codingAgentBranchId = branch.branchId;
@@ -243,14 +231,12 @@ describe("backend kind switch auto-forks the branch (D2)", () => {
     agentKind = "omp";
     const { triggeredRuns } = await feature.convSvc.postMessage({
       conversationId: CONV,
-      senderMemberId: HUMAN,
-      addressedTo: [AGENT_MEMBER],
       content: "second message",
     });
     expect(triggeredRuns.length).toBeGreaterThan(0);
     await waitForTerminal(triggeredRuns[0]!.runId);
 
-    const tree = await contextPort.getOrCreateTree(CONV, AGENT_MEMBER);
+    const tree = await contextPort.getOrCreateTree(CONV);
     const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "omp");
     expect(branch.backendKind).toBe("omp");
     // the new default is a FORK: distinct branch id, old branch untouched

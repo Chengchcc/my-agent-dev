@@ -9,7 +9,7 @@ import type { ConversationPort, LedgerEntry } from "../conversation/ports.js";
 export interface ProductToolCallIdentity {
   readonly runId: string;
   readonly conversationId: string;
-  readonly agentMemberId: string;
+  readonly agentId: string;
   readonly branchId: string;
 }
 
@@ -92,21 +92,21 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
   function assertScope(run: AgentRun, identity: ProductToolCallIdentity): void {
     if (
       run.conversationId !== identity.conversationId ||
-      run.agentMemberId !== identity.agentMemberId ||
+      run.agentId !== identity.agentId ||
       run.branchId !== identity.branchId
     ) {
       throw new ProductToolRejectedError(
-        `tool call identity mismatch for run ${identity.runId}: scope is (${run.conversationId}, ${run.agentMemberId}, ${run.branchId}), got (${identity.conversationId}, ${identity.agentMemberId}, ${identity.branchId})`,
+        `tool call identity mismatch for run ${identity.runId}: scope is (${run.conversationId}, ${run.agentId}, ${run.branchId}), got (${identity.conversationId}, ${identity.agentId}, ${identity.branchId})`,
       );
     }
   }
 
-  /** Messages visible to this agent member: broadcast or addressed to the
-   *  member, or sent by the member; never `visibility: internal`. */
-  function visibleMessages(
-    entries: readonly LedgerEntry[],
-    agentMemberId: string,
-  ): Array<{ seq: number; message: Message }> {
+  /** Messages visible to this agent: everything non-internal in this
+   *  conversation (1:1 collapse — addressedTo/sender routing is gone). */
+  function visibleMessages(entries: readonly LedgerEntry[]): Array<{
+    seq: number;
+    message: Message;
+  }> {
     const out: Array<{ seq: number; message: Message }> = [];
     for (const e of entries) {
       if (e.kind !== "message") continue;
@@ -115,12 +115,7 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
       const message = e.content as unknown as Message;
       if (!message || typeof message !== "object") continue;
       if (message.visibility === "internal") continue;
-      const addressed = e.addressedTo ?? [];
-      const visible =
-        addressed.length === 0 ||
-        addressed.includes(agentMemberId) ||
-        e.senderMemberId === agentMemberId;
-      if (visible) out.push({ seq: e.seq, message });
+      out.push({ seq: e.seq, message });
     }
     return out;
   }
@@ -143,7 +138,7 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
   ): Promise<ProductToolCallResult> {
     const limit = Math.min(Math.max(Number(args.limit ?? 20) || 20, 1), 100);
     const entries = conversationPort.getLedgerEntries(run.conversationId);
-    const visible = visibleMessages(entries, run.agentMemberId);
+    const visible = visibleMessages(entries);
     return toResult(visible.slice(-limit));
   }
 
@@ -176,7 +171,7 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
     const before = Math.min(Math.max(Number(args.before ?? 5) || 5, 0), 50);
     const after = Math.min(Math.max(Number(args.after ?? 5) || 5, 0), 50);
     const entries = conversationPort.getLedgerEntries(run.conversationId);
-    const visible = visibleMessages(entries, run.agentMemberId);
+    const visible = visibleMessages(entries);
     const idx = visible.findIndex((v) => v.seq === seq);
     if (idx === -1) return { content: "[]" };
     return toResult(visible.slice(Math.max(0, idx - before), idx + 1 + after));
@@ -211,7 +206,7 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
     if (!target || target.conversationId !== run.conversationId) {
       throw new ProductToolRejectedError(`message ${seq} not found in conversation`);
     }
-    const visible = visibleMessages([target], run.agentMemberId);
+    const visible = visibleMessages([target]);
     if (visible.length === 0) {
       throw new ProductToolRejectedError(`message ${seq} is not visible to this agent member`);
     }

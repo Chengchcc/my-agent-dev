@@ -46,7 +46,7 @@ export default function RunDetailPage() {
                 </div>
                 <div>
                   <span className="text-xs text-(--mute)">Member</span>
-                  <div className="font-mono text-xs">{run.agentMemberId}</div>
+                  <div className="font-mono text-xs">{run.agentId}</div>
                 </div>
                 <div>
                   <span className="text-xs text-(--mute)">Model</span>

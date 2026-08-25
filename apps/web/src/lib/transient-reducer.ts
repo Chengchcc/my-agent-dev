@@ -7,7 +7,7 @@ export interface TransientRun {
   /** Streaming model thinking (internal monologue), accumulated per run.
    *  Rendered inside the running trace; never part of the text bubble. */
   thinking: string;
-  agentMemberId: string;
+  agentId: string;
   /** Runtime notices (stream-rule triggers): transient status lines shown
    * above the run's output; never part of the text bubble. */
   notices?: string[];
@@ -23,14 +23,14 @@ export type TransientMap = Record<string, TransientRun>;
 export function appendTransient(
   state: TransientMap,
   runId: string,
-  agentMemberId: string,
+  agentId: string,
   delta: string,
 ): TransientMap {
   const next = { ...state };
   next[runId] = {
     text: `${state[runId]?.text ?? ""}${delta}`,
     thinking: state[runId]?.thinking ?? "",
-    agentMemberId,
+    agentId,
   };
   return next;
 }
@@ -39,14 +39,14 @@ export function appendTransient(
 export function appendThinking(
   state: TransientMap,
   runId: string,
-  agentMemberId: string,
+  agentId: string,
   delta: string,
 ): TransientMap {
   const next = { ...state };
   next[runId] = {
     text: state[runId]?.text ?? "",
     thinking: `${state[runId]?.thinking ?? ""}${delta}`,
-    agentMemberId,
+    agentId,
   };
   return next;
 }
@@ -64,14 +64,14 @@ export function removeTransient(state: TransientMap, runId: string): TransientMa
 export function markTransientError(
   state: TransientMap,
   runId: string,
-  agentMemberId: string,
+  agentId: string,
   error: string,
 ): TransientMap {
   const next = { ...state };
   next[runId] = {
     text: state[runId]?.text ?? "",
     thinking: state[runId]?.thinking ?? "",
-    agentMemberId,
+    agentId,
     error,
   };
   return next;
@@ -82,7 +82,7 @@ export function markTransientError(
 export function pushTransientNotice(
   state: TransientMap,
   runId: string,
-  agentMemberId: string,
+  agentId: string,
   notice: string,
 ): TransientMap {
   const next = { ...state };
@@ -90,7 +90,7 @@ export function pushTransientNotice(
   next[runId] = {
     text: state[runId]?.text ?? "",
     thinking: state[runId]?.thinking ?? "",
-    agentMemberId,
+    agentId,
     notices,
   };
   return next;

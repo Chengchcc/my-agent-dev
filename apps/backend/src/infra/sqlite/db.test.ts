@@ -128,7 +128,7 @@ test("foreign_keys and busy_timeout pragmas are enabled", () => {
 
 // ─── Test 5: M10 conversation tables exist ─────────────────────
 
-test("M10 conversation/member/conversation_ledger tables exist after migration", () => {
+test("M10 conversation/conversation_ledger tables exist after migration", () => {
   const tmpPath = `/tmp/test-backend-db-m10-${Math.random().toString(36).slice(2, 8)}.db`;
   const db = openDb(tmpPath);
 
@@ -138,18 +138,11 @@ test("M10 conversation/member/conversation_ledger tables exist after migration",
 
   const names = tables.map((t) => t.name);
   expect(names).toContain("conversation");
-  expect(names).toContain("member");
-  expect(names).toContain("conversation_ledger");
-
-  // Verify conversation table shape
+  // 0037 (1:1 collapse): the member table is dropped, agent binding lives
+  // on conversation.agent_id.
+  expect(names).not.toContain("member");
   const convCols = db.query("PRAGMA table_info('conversation')").all() as { name: string }[];
-  expect(convCols.map((c) => c.name)).toContain("trigger_mode");
-  expect(convCols.map((c) => c.name)).toContain("hop_count");
-
-  // Verify member table shape
-  const memCols = db.query("PRAGMA table_info('member')").all() as { name: string }[];
-  expect(memCols.map((c) => c.name)).toContain("conversation_id");
-  expect(memCols.map((c) => c.name)).toContain("kind");
+  expect(convCols.map((c) => c.name)).toContain("agent_id");
 
   // Verify conversation_ledger shape
   const ledgerCols = db.query("PRAGMA table_info('conversation_ledger')").all() as {
@@ -199,9 +192,8 @@ test("Phase 1: fresh migration creates six tables and active-branch index, drops
   // The Backend Session Binding table is gone (no cross-Run sessions).
   expect(names).not.toContain("backend_session_binding");
 
-  // member.session_id must be gone
-  const memCols = db.query("PRAGMA table_info('member')").all() as { name: string }[];
-  expect(memCols.map((c) => c.name)).not.toContain("session_id");
+  // 0037: the member table itself is gone (agent binding on conversation).
+  expect(names).not.toContain("member");
 
   // active-branch partial unique index exists
   const idx = db
@@ -543,17 +535,17 @@ test("Phase 6: product facts survive 0020 migration, legacy audit deleted, no Co
 });
 
 describe("Phase 1 constraints", () => {
-  test("duplicate (conversation_id, agent_member_id) tree fails", () => {
+  test("duplicate tree for one conversation fails (1:1, single-key)", () => {
     const db = openDb(":memory:");
     db.exec(
       "INSERT INTO conversation (conversation_id, trigger_mode, hop_count, created_at) VALUES ('c1', 'mention', 0, 1)",
     );
     db.exec(
-      "INSERT INTO agent_context_tree (tree_id, conversation_id, agent_member_id, created_at) VALUES ('t1', 'c1', 'm1', 1)",
+      "INSERT INTO agent_context_tree (tree_id, conversation_id, created_at) VALUES ('t1', 'c1', 1)",
     );
     expect(() =>
       db.exec(
-        "INSERT INTO agent_context_tree (tree_id, conversation_id, agent_member_id, created_at) VALUES ('t2', 'c1', 'm1', 2)",
+        "INSERT INTO agent_context_tree (tree_id, conversation_id, created_at) VALUES ('t2', 'c1', 2)",
       ),
     ).toThrow();
     db.close();
@@ -565,25 +557,25 @@ describe("Phase 1 constraints", () => {
       "INSERT INTO conversation (conversation_id, trigger_mode, hop_count, created_at) VALUES ('c2', 'mention', 0, 1)",
     );
     db.exec(
-      "INSERT INTO agent_context_tree (tree_id, conversation_id, agent_member_id, created_at) VALUES ('t2', 'c2', 'm2', 1)",
+      "INSERT INTO agent_context_tree (tree_id, conversation_id, created_at) VALUES ('t2', 'c2', 1)",
     );
     db.exec(
       "INSERT INTO agent_context_branch (branch_id, tree_id, ledger_cursor, backend_kind, is_default, revision, created_at) VALUES ('b2', 't2', 0, 'fake', 1, 1, 1)",
     );
     // First active run
     db.exec(
-      "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, created_at) VALUES ('r1', 'b2', 'c2', 'm2', '{}', 'running', 'k1', 1, 1)",
+      "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_id, model_ref, status, idempotency_key, config_revision, created_at) VALUES ('r1', 'b2', 'c2', 'a2', '{}', 'running', 'k1', 1, 1)",
     );
     // Second active run on same branch must fail
     expect(() =>
       db.exec(
-        "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, created_at) VALUES ('r2', 'b2', 'c2', 'm2', '{}', 'waiting', 'k2', 1, 2)",
+        "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_id, model_ref, status, idempotency_key, config_revision, created_at) VALUES ('r2', 'b2', 'c2', 'a2', '{}', 'waiting', 'k2', 1, 2)",
       ),
     ).toThrow();
     // Terminal the first run, then a new active run should succeed
     db.exec("UPDATE agent_run SET status='completed', terminal_at=2 WHERE run_id='r1'");
     db.exec(
-      "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, created_at) VALUES ('r3', 'b2', 'c2', 'm2', '{}', 'running', 'k3', 1, 3)",
+      "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_id, model_ref, status, idempotency_key, config_revision, created_at) VALUES ('r3', 'b2', 'c2', 'a2', '{}', 'running', 'k3', 1, 3)",
     );
     // Historical terminal run coexists
     const runs = db
@@ -599,17 +591,17 @@ describe("Phase 1 constraints", () => {
       "INSERT INTO conversation (conversation_id, trigger_mode, hop_count, created_at) VALUES ('c3', 'mention', 0, 1)",
     );
     db.exec(
-      "INSERT INTO agent_context_tree (tree_id, conversation_id, agent_member_id, created_at) VALUES ('t3', 'c3', 'm3', 1)",
+      "INSERT INTO agent_context_tree (tree_id, conversation_id, created_at) VALUES ('t3', 'c3', 1)",
     );
     db.exec(
       "INSERT INTO agent_context_branch (branch_id, tree_id, ledger_cursor, backend_kind, is_default, revision, created_at) VALUES ('b3', 't3', 0, 'fake', 1, 1, 1)",
     );
     db.exec(
-      "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, created_at) VALUES ('r3', 'b3', 'c3', 'm3', '{}', 'running', 'dup-key', 1, 1)",
+      "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_id, model_ref, status, idempotency_key, config_revision, created_at) VALUES ('r3', 'b3', 'c3', 'a3', '{}', 'running', 'dup-key', 1, 1)",
     );
     expect(() =>
       db.exec(
-        "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, created_at) VALUES ('r4', 'b3', 'c3', 'm3', '{}', 'running', 'dup-key', 1, 2)",
+        "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_id, model_ref, status, idempotency_key, config_revision, created_at) VALUES ('r4', 'b3', 'c3', 'a3', '{}', 'running', 'dup-key', 1, 2)",
       ),
     ).toThrow();
 
@@ -629,7 +621,7 @@ describe("Phase 1 constraints", () => {
       "INSERT INTO conversation (conversation_id, trigger_mode, hop_count, created_at) VALUES ('c4', 'mention', 0, 1)",
     );
     db.exec(
-      "INSERT INTO agent_context_tree (tree_id, conversation_id, agent_member_id, created_at) VALUES ('t4', 'c4', 'm4', 1)",
+      "INSERT INTO agent_context_tree (tree_id, conversation_id, created_at) VALUES ('t4', 'c4', 1)",
     );
     db.exec(
       "INSERT INTO agent_context_branch (branch_id, tree_id, ledger_cursor, backend_kind, is_default, revision, created_at) VALUES ('b4', 't4', 0, 'fake', 1, 1, 1)",
@@ -638,7 +630,7 @@ describe("Phase 1 constraints", () => {
       "INSERT INTO agent_context_entry (entry_id, tree_id, parent_id, type, payload, created_at) VALUES ('e4', 't4', NULL, 'private_message', '{}', 1)",
     );
     db.exec(
-      "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, created_at) VALUES ('r5', 'b4', 'c4', 'm4', '{}', 'completed', 'k5', 1, 1)",
+      "INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_id, model_ref, status, idempotency_key, config_revision, created_at) VALUES ('r5', 'b4', 'c4', 'a4', '{}', 'completed', 'k5', 1, 1)",
     );
 
     // Delete conversation cascades to tree -> branch -> entry, run

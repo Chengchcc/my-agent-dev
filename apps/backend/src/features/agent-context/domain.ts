@@ -4,11 +4,8 @@ import type { Message } from "@chengchenccc/message";
 // ─── Errors ──────────────────────────────────────────────────────
 
 export class AgentContextNotFoundError extends Error {
-  constructor(
-    readonly conversationId: string,
-    readonly agentMemberId: string,
-  ) {
-    super(`Agent Context not found for (${conversationId}, ${agentMemberId})`);
+  constructor(readonly conversationId: string) {
+    super(`Agent Context not found for ${conversationId}`);
     this.name = "AgentContextNotFoundError";
   }
 }
@@ -42,7 +39,6 @@ export class InvalidContextEntryError extends Error {
 export interface AgentContextTree {
   readonly treeId: string;
   readonly conversationId: string;
-  readonly agentMemberId: string;
   readonly createdAt: number;
 }
 

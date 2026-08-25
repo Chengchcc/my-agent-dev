@@ -13,7 +13,7 @@ import { createRunTokenRegistry, type RunTokenRegistry } from "./run-token-regis
 import { createProductToolsService } from "./service.js";
 
 const CONV = "conv-mcp";
-const MEMBER = "mem-mcp";
+const AGENT = "ag-mcp";
 let registry: RunTokenRegistry;
 let TOKEN: string;
 let dataDir: string;
@@ -65,27 +65,20 @@ beforeEach(async () => {
   registry = createRunTokenRegistry();
   server = await createProductToolsMcpServer({ service, tokenRegistry: registry });
 
-  convPort.createConversation({ conversationId: CONV, createdAt: Date.now() });
-  convPort.addMember({
-    memberId: MEMBER,
-    conversationId: CONV,
-    kind: "agent",
-    agentId: "a1",
-    joinedAt: Date.now(),
-  });
-  const tree = await contextPort.getOrCreateTree(CONV, MEMBER);
+  convPort.createConversation({ conversationId: CONV, agentId: AGENT, createdAt: Date.now() });
+  const tree = await contextPort.getOrCreateTree(CONV);
   const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "oma");
   branchId = branch.branchId;
   convPort.appendLedgerEntry({
     conversationId: CONV,
-    senderMemberId: "human-1",
+    senderMemberId: "user",
     kind: "message",
     content: JSON.stringify({ role: "user", text: "hello mcp" }),
     ts: Date.now(),
   });
   const acq = await backend.enqueueAndAcquire({
     conversationId: CONV,
-    agentMemberId: MEMBER,
+    agentId: AGENT,
     backendKind: "oma",
     mode: "normal",
     message: { role: "user", text: "go" },
@@ -96,7 +89,7 @@ beforeEach(async () => {
   runId = acq.run!.runId;
   // Bearer bound to this test's REAL run (B1: the session authenticates
   // this exact runId; identity args must match).
-  TOKEN = registry.mint({ runId, agentId: "a1", exp: Date.now() + 60_000 });
+  TOKEN = registry.mint({ runId, agentId: AGENT, exp: Date.now() + 60_000 });
   await runPort.setRunProductTools(runId, [
     { name: "history_recent", description: "r", inputSchema: {}, entrypoint: "sse:x" },
     { name: "history_search", description: "s", inputSchema: {}, entrypoint: "sse:x" },
@@ -136,7 +129,7 @@ async function connectClient(token: string) {
 const IDENTITY = {
   runId: "",
   conversationId: CONV,
-  agentMemberId: MEMBER,
+  agentId: AGENT,
   branchId: "",
   callId: "toolu-mcp-1",
   idempotencyKey: "",
@@ -186,7 +179,7 @@ describe("product tools MCP", () => {
         name: "history_recent",
         arguments: {
           limit: 10,
-          identity: { runId, conversationId: CONV, agentMemberId: MEMBER, branchId },
+          identity: { runId, conversationId: CONV, agentId: AGENT, branchId },
         },
       });
       expect(res.isError).not.toBe(true);
@@ -254,7 +247,7 @@ describe("product tools MCP", () => {
       // a post-acquire message to retain
       const seq = convPort.appendLedgerEntry({
         conversationId: CONV,
-        senderMemberId: "human-1",
+        senderMemberId: "user",
         kind: "message",
         content: JSON.stringify({ role: "user", text: "pin me" }),
         ts: Date.now(),
@@ -323,7 +316,7 @@ describe("B1: session binds the authenticated runId", () => {
             runId: "run-other",
             branchId,
             conversationId: CONV,
-            agentMemberId: MEMBER,
+            agentId: AGENT,
           },
         },
       });
@@ -334,7 +327,7 @@ describe("B1: session binds the authenticated runId", () => {
         name: "history_recent",
         arguments: {
           limit: 5,
-          identity: { ...IDENTITY, runId, branchId, conversationId: CONV, agentMemberId: MEMBER },
+          identity: { ...IDENTITY, runId, branchId, conversationId: CONV, agentId: AGENT },
         },
       });
       expect(honest.isError).not.toBe(true);

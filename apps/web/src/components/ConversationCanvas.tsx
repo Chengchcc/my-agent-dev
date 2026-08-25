@@ -43,7 +43,7 @@ export function ConversationCanvas({
   const qc = useQueryClient();
   const { state, busy, send, transients, transientTools, runTodos, activeRuns, workflows } =
     useConversation(conversationId, snapshot);
-  const { viewerMemberId, roster, items, error, streamConn } = state;
+  const { agent, items, error, streamConn } = state;
 
   // W3+W5: use the most recent agent run's status, not first-found.
   // Scan from newest to oldest to get the current run's transient state.
@@ -74,10 +74,10 @@ export function ConversationCanvas({
     for (let i = items.length - 1; i >= 0; i--) {
       const entry = items[i]!;
       if (entry.kind !== "message") continue;
-      if (entry.sender.memberId === viewerMemberId) return extractText(entry.content);
+      if (entry.sender.kind === "human") return extractText(entry.content);
     }
     return null;
-  }, [viewerMemberId, items.length, items]);
+  }, [items.length, items]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLen = useRef(items.length);
@@ -91,13 +91,13 @@ export function ConversationCanvas({
 
   // Auto-send the user's first message passed via ?initial= from chat overview.
   useEffect(() => {
-    if (initialMessage && !initialSent.current && viewerMemberId) {
+    if (initialMessage && !initialSent.current) {
       initialSent.current = true;
       send(initialMessage);
       // Clear ?initial= from URL to prevent re-send on refresh.
       router.replace(`/chat/${conversationId}`);
     }
-  }, [initialMessage, send, viewerMemberId, conversationId, router]);
+  }, [initialMessage, send, conversationId, router]);
 
   useEffect(() => {
     if (items.length > prevLen.current && scrollRef.current) {
@@ -122,8 +122,7 @@ export function ConversationCanvas({
       notices?: string[];
     }> = [];
     for (const [runId, t] of Object.entries(transients)) {
-      const sender = Object.values(roster).find((m) => m.memberId === t.agentMemberId);
-      if (!sender) continue;
+      const sender = agent ?? { memberId: t.agentId, kind: "agent" as const, agentId: t.agentId };
       bubbles.push({
         runId,
         text: t.text,
@@ -137,7 +136,7 @@ export function ConversationCanvas({
       });
     }
     return bubbles;
-  }, [transients, transientTools, roster]);
+  }, [transients, transientTools, agent]);
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
@@ -168,11 +167,8 @@ export function ConversationCanvas({
     }
   }, [anchorSeq]);
 
-  // Resolve the primary agent for header display (first agent in roster)
-  const primaryAgent = useMemo(() => {
-    const agent = Object.values(roster).find((m) => m.kind === "agent");
-    return agent ?? null;
-  }, [roster]);
+  // The conversation's agent (1:1 collapse — exactly one)
+  const primaryAgent = agent;
 
   // Backend kind badge: agentId → agents.backendKind (D2/D3). Drives the
   // header badge; CLI backends (claude/pi/omp) run with CLI-session
@@ -243,7 +239,7 @@ export function ConversationCanvas({
               <>
                 <span className="text-(--hairline)">/</span>
                 <span className="text-[10px] text-(--body) truncate">
-                  {primaryAgent.displayName ?? primaryAgent.memberId}
+                  {primaryAgent?.displayName ?? primaryAgent?.agentId ?? "Agent"}
                 </span>
               </>
             )}
@@ -280,7 +276,7 @@ export function ConversationCanvas({
         {primaryAgent && (
           <div className="flex items-center gap-2 mt-2">
             <span className="text-sm font-medium text-(--ink-strong)">
-              {primaryAgent.displayName ?? primaryAgent.memberId}
+              {primaryAgent?.displayName ?? primaryAgent?.agentId ?? "Agent"}
             </span>
             {primaryKind && (
               <Badge
@@ -324,9 +320,7 @@ export function ConversationCanvas({
         runs={Object.entries(runTodos)
           .map(([runId, items]) => ({
             runId,
-            agent:
-              Object.values(roster).find((m) => m.memberId === transients[runId]?.agentMemberId) ??
-              null,
+            agent: agent ?? null,
             items,
           }))
           .filter(
@@ -361,7 +355,7 @@ export function ConversationCanvas({
               <div className="flex flex-col items-start justify-center py-24">
                 {primaryAgent && (
                   <h1 className="font-sans text-2xl font-normal text-(--ink-strong) mb-3">
-                    {primaryAgent.displayName ?? primaryAgent.memberId}
+                    {primaryAgent?.displayName ?? primaryAgent?.agentId ?? "Agent"}
                   </h1>
                 )}
                 <p className="text-sm text-(--mute) mb-6">Send a message to begin.</p>
@@ -370,7 +364,6 @@ export function ConversationCanvas({
               <div className="py-4">
                 <Timeline
                   messages={items}
-                  viewerMemberId={viewerMemberId}
                   conversationId={conversationId}
                   scrollContainerRef={scrollRef}
                   transients={transientBubbles}
@@ -393,7 +386,7 @@ export function ConversationCanvas({
 
         {/* Roster — desktop sidebar */}
         <aside className="hidden md:block shrink-0 w-56 border-l border-(--hairline) overflow-y-auto p-3">
-          <RosterList roster={roster} viewerMemberId={viewerMemberId} />
+          <RosterList agent={agent} />
           <UsagePanel conversationId={conversationId} />
         </aside>
 
@@ -406,7 +399,7 @@ export function ConversationCanvas({
           aria-expanded={rosterOpen}
           aria-controls="roster-drawer"
         >
-          Members ({Object.values(roster).length})
+          Agent
         </Button>
 
         {/* Roster — mobile drawer overlay */}
@@ -424,11 +417,7 @@ export function ConversationCanvas({
             role="dialog"
             aria-label="Members"
           >
-            <RosterList
-              roster={roster}
-              viewerMemberId={viewerMemberId}
-              onClose={() => setRosterOpen(false)}
-            />
+            <RosterList agent={agent} onClose={() => setRosterOpen(false)} />
             <UsagePanel conversationId={conversationId} />
           </aside>
         </>
@@ -459,7 +448,6 @@ export function ConversationCanvas({
           onSlashCommand={handleSlashCommand}
           disabled={false}
           placeholder={busy ? "Steer the agent..." : "Send a message..."}
-          roster={roster}
           isBusy={busy}
           onStop={
             currentRunId

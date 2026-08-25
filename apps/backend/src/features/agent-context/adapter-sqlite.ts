@@ -77,86 +77,48 @@ export function sqliteAgentContextAdapter(
   const d = drizzle(db, { schema, casing: "snake_case" });
 
   return {
-    async getOrCreateTree(conversationId, agentMemberId) {
+    async getOrCreateTree(conversationId) {
       const existing = d
         .select()
         .from(schema.agentContextTree)
-        .where(
-          and(
-            eq(schema.agentContextTree.conversationId, conversationId),
-            eq(schema.agentContextTree.agentMemberId, agentMemberId),
-          ),
-        )
+        .where(eq(schema.agentContextTree.conversationId, conversationId))
         .get();
       if (existing) {
         return {
           treeId: existing.treeId,
           conversationId: existing.conversationId,
-          agentMemberId: existing.agentMemberId,
           createdAt: existing.createdAt,
         };
-      }
-      const member = d
-        .select()
-        .from(schema.member)
-        .where(
-          and(
-            eq(schema.member.conversationId, conversationId),
-            eq(schema.member.memberId, agentMemberId),
-          ),
-        )
-        .get();
-      if (!member) {
-        throw new Error(`Member not found: (${conversationId}, ${agentMemberId})`);
-      }
-      if (member.kind !== "agent") {
-        throw new Error(`Member is not an agent: (${conversationId}, ${agentMemberId})`);
       }
       const treeId = idGen.ulid();
       try {
         d.insert(schema.agentContextTree)
-          .values({ treeId, conversationId, agentMemberId, createdAt: Date.now() })
+          .values({ treeId, conversationId, createdAt: Date.now() })
           .run();
       } catch {
         const raced = d
           .select()
           .from(schema.agentContextTree)
-          .where(
-            and(
-              eq(schema.agentContextTree.conversationId, conversationId),
-              eq(schema.agentContextTree.agentMemberId, agentMemberId),
-            ),
-          )
+          .where(eq(schema.agentContextTree.conversationId, conversationId))
           .get();
         if (!raced) throw new Error("Tree creation race but not found");
         return {
           treeId: raced.treeId,
           conversationId: raced.conversationId,
-          agentMemberId: raced.agentMemberId,
           createdAt: raced.createdAt,
         };
       }
-      return { treeId, conversationId, agentMemberId, createdAt: Date.now() };
+      return { treeId, conversationId, createdAt: Date.now() };
     },
 
-    async getTree(conversationId, agentMemberId) {
+    async getTree(conversationId) {
       const row = d
         .select()
         .from(schema.agentContextTree)
-        .where(
-          and(
-            eq(schema.agentContextTree.conversationId, conversationId),
-            eq(schema.agentContextTree.agentMemberId, agentMemberId),
-          ),
-        )
+        .where(eq(schema.agentContextTree.conversationId, conversationId))
         .get();
       return row
-        ? {
-            treeId: row.treeId,
-            conversationId: row.conversationId,
-            agentMemberId: row.agentMemberId,
-            createdAt: row.createdAt,
-          }
+        ? { treeId: row.treeId, conversationId: row.conversationId, createdAt: row.createdAt }
         : null;
     },
 
@@ -167,12 +129,7 @@ export function sqliteAgentContextAdapter(
         .where(eq(schema.agentContextTree.treeId, treeId))
         .get();
       return row
-        ? {
-            treeId: row.treeId,
-            conversationId: row.conversationId,
-            agentMemberId: row.agentMemberId,
-            createdAt: row.createdAt,
-          }
+        ? { treeId: row.treeId, conversationId: row.conversationId, createdAt: row.createdAt }
         : null;
     },
 

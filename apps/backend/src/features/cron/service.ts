@@ -1,5 +1,4 @@
 import { NotFoundError, ValidationError } from "../../infra/domain-errors.js";
-import { OWNER_MEMBER_ID } from "../conversation/index.js";
 import type { CronJobRow } from "./domain.js";
 import type { CronJobPort } from "./ports.js";
 
@@ -37,14 +36,9 @@ export interface CronJobServiceDeps {
   convPort?: {
     createConversation: (input: {
       conversationId: string;
+      agentId?: string;
       title?: string;
       origin?: string;
-    }) => void;
-    addMember: (input: {
-      conversationId: string;
-      memberId: string;
-      kind: "human" | "agent";
-      agentId?: string;
     }) => void;
   };
 }
@@ -95,14 +89,9 @@ export function createCronJobService(deps: CronJobServiceDeps) {
       try {
         deps.convPort?.createConversation({
           conversationId: cronJobId,
+          agentId: input.agentId,
           title: input.name,
           origin: "cron",
-        });
-        deps.convPort?.addMember({
-          conversationId: cronJobId,
-          memberId: OWNER_MEMBER_ID,
-          kind: "agent",
-          agentId: input.agentId,
         });
       } catch (e) {
         console.error(`[cron] conv bootstrap failed for ${cronJobId}: ${String(e)}`);

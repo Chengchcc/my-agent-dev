@@ -12,7 +12,7 @@ import type { ProductToolsService } from "./service.js";
 interface WireIdentity {
   runId?: unknown;
   conversationId?: unknown;
-  agentMemberId?: unknown;
+  agentId?: unknown;
   branchId?: unknown;
   callId?: unknown;
   idempotencyKey?: unknown;
@@ -66,7 +66,7 @@ export async function createProductToolsMcpServer(
       properties: {
         runId: { type: "string" },
         conversationId: { type: "string" },
-        agentMemberId: { type: "string" },
+        agentId: { type: "string" },
         branchId: { type: "string" },
       },
     };
@@ -178,7 +178,7 @@ export async function createProductToolsMcpServer(
           identity: {
             runId,
             conversationId: str(identity.conversationId),
-            agentMemberId: str(identity.agentMemberId),
+            agentId: str(identity.agentId),
             branchId: str(identity.branchId),
           },
           callId,

@@ -16,7 +16,7 @@ export type {
 } from "./transport.js";
 export {
   abortCommandSchema,
-  agentMemberIdSchema,
+  agentIdSchema,
   branchIdSchema,
   codingAgentCommandSchema,
   codingAgentOutputSchema,

@@ -44,19 +44,15 @@ export function useCreateConversation() {
 }
 
 /** Create a 1:1 human<->agent conversation and navigate into it. */
-export function useStartChat(agentId: string, agentName?: string) {
+export function useStartChat(agentId: string, _agentName?: string) {
   const router = useRouter();
   const qc = useQueryClient();
   const create = useCreateConversation();
 
   const start = () => {
-    const humanId = `human-${crypto.randomUUID().slice(0, 8)}`;
     create.mutate(
       {
-        members: [
-          { memberId: agentId, kind: "agent", agentId, displayName: agentName },
-          { memberId: humanId, kind: "human", userRef: "__legacy__", displayName: "User" },
-        ],
+        agentId,
       },
       {
         onSuccess: (conv) => {

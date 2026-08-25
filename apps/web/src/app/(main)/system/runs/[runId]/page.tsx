@@ -39,7 +39,7 @@ export default function SystemRunDetailPage() {
                 </div>
                 <div>
                   <span className="text-xs text-(--mute)">Member</span>
-                  <div>{run.agentMemberId}</div>
+                  <div>{run.agentId}</div>
                 </div>
                 <div>
                   <span className="text-xs text-(--mute)">Model</span>

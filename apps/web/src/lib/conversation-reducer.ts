@@ -32,8 +32,8 @@ export type MessageItem = Extract<UiItem, { kind: "message" }>;
 export type StreamConn = "connecting" | "open" | "reconnecting" | "closed";
 
 export interface ConvState {
-  viewerMemberId: string;
-  roster: Record<string, SenderRef>;
+  /** The conversation's agent (1:1 collapse; the human is the viewer). */
+  agent: SenderRef | null;
   items: UiItem[];
   streamConn: StreamConn;
   error: string | null;
@@ -47,7 +47,7 @@ export interface ConvState {
 }
 
 export type Action =
-  | { type: "bootstrap"; viewerMemberId: string; members: SenderRef[] }
+  | { type: "bootstrap"; agent: SenderRef }
   | { type: "send"; text: string; viewer: SenderRef }
   /** POST settled (success OR error): decrement the in-flight counter. */
   | { type: "send/settled" }
@@ -68,8 +68,7 @@ export type Action =
 
 export function initialState(): ConvState {
   return {
-    viewerMemberId: "",
-    roster: {},
+    agent: null,
     items: [],
     streamConn: "connecting",
     error: null,
@@ -90,19 +89,12 @@ export function isBusy(s: ConvState): boolean {
   return s.pendingSendCount > 0;
 }
 
-/** Role → roster sender. role is the authorship discriminator on the wire:
- *  user → the viewer (human) member; assistant/tool → the agent member;
+/** Role → sender. role is the authorship discriminator on the wire:
+ *  user → the viewer (human); assistant/tool → the conversation's agent;
  *  (system never reaches here — the reducer turns it into a notice). */
 function senderForRole(role: MessageRevision["role"], s: ConvState): SenderRef {
-  if (role === "user") {
-    return s.roster[s.viewerMemberId] ?? { memberId: s.viewerMemberId, kind: "human" };
-  }
-  return (
-    Object.values(s.roster).find((m) => m.kind === "agent") ?? {
-      memberId: "agent",
-      kind: "agent",
-    }
-  );
+  if (role === "user") return { memberId: "user", kind: "human" };
+  return s.agent ?? { memberId: "agent", kind: "agent" };
 }
 
 function upsertAuthoritative(
@@ -110,7 +102,6 @@ function upsertAuthoritative(
   id: string,
   sender: SenderRef,
   content: Message,
-  viewerMemberId: string,
   seq: number,
   undone?: boolean,
 ): UiItem[] {
@@ -128,16 +119,11 @@ function upsertAuthoritative(
     };
     return next;
   }
-  // Self echo: replace optimistic self message
-  if (sender.memberId === viewerMemberId) {
+  // Self echo: replace the latest optimistic self message (user role)
+  if (sender.kind === "human") {
     const optIdx = [...list]
       .reverse()
-      .findIndex(
-        (item) =>
-          item.kind === "message" &&
-          item.id.startsWith("opt-") &&
-          item.sender.memberId === viewerMemberId,
-      );
+      .findIndex((item) => item.kind === "message" && item.id.startsWith("opt-"));
     if (optIdx >= 0) {
       const real = list.length - 1 - optIdx;
       const next = [...list];
@@ -244,37 +230,8 @@ function segmentSenderOf(seg: TurnSegment): SenderRef {
 export function reducer(s: ConvState, a: Action): ConvState {
   switch (a.type) {
     case "bootstrap": {
-      const roster: Record<string, SenderRef> = {};
-      for (const m of a.members) roster[m.memberId] = m;
-      return {
-        ...s,
-        viewerMemberId: a.viewerMemberId,
-        roster,
-      };
+      return { ...s, agent: a.agent };
     }
-    case "member": {
-      const payload = a.payload as {
-        members?: Array<{
-          memberId: string;
-          kind: "agent" | "human";
-          displayName?: string;
-          agentId?: string;
-        }>;
-      };
-      const roster = { ...s.roster };
-      for (const m of payload.members ?? []) roster[m.memberId] = { ...m };
-      const verb = a.kind === "member.joined" ? "joined" : "left";
-      const present = (payload.members ?? [])
-        .map((m) => roster[m.memberId]?.displayName ?? m.memberId)
-        .join(", ");
-      const id = `notice-${a.seq}`;
-      const items: UiItem[] = [
-        ...s.items,
-        { kind: "notice", id, text: `[system] Members ${verb}. Present: ${present}` },
-      ];
-      return { ...s, roster, items };
-    }
-
     case "message": {
       const revision = a.message;
       // System authorship renders as a notice, not a chat bubble.
@@ -292,15 +249,7 @@ export function reducer(s: ConvState, a: Action): ConvState {
       const message = mergeMessageRevision(existing?.content ?? null, revision);
       const id = message.id ?? revision.messageId;
       const sender = senderForRole(revision.role, s);
-      const items = upsertAuthoritative(
-        s.items,
-        id,
-        sender,
-        message,
-        s.viewerMemberId,
-        a.seq,
-        a.undone,
-      );
+      const items = upsertAuthoritative(s.items, id, sender, message, a.seq, a.undone);
       // pendingSendCount tracks ONLY the HTTP POST in flight (see
       // send/settled); an agent reply must not fake-clear it.
       return { ...s, items };

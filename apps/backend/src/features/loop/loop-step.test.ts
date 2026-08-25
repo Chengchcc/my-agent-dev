@@ -147,13 +147,13 @@ interface RunScript {
    *  key must then acquire a FRESH run. */
   genReplayTerminal?: boolean;
   /** Observe every enqueue (idempotency keys) even when loopStep throws. */
-  onEnqueue?: (e: { agentMemberId: string; idempotencyKey: string }) => void;
+  onEnqueue?: (e: { agentId: string; idempotencyKey: string }) => void;
 }
 
 function makeFakeRuns(script: RunScript, workDir: string = "") {
   const enqueues: Array<{
     conversationId: string;
-    agentMemberId: string;
+    agentId: string;
     mode: string;
     idempotencyKey: string;
     message: { text?: string };
@@ -168,7 +168,7 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
       runId,
       branchId: `b-${runId}`,
       conversationId: conv,
-      agentMemberId: member,
+      agentId: member,
       modelRef: { backendKind: "oma", modelId: "m" },
       status: "completed",
       idempotencyKey: ikey,
@@ -193,25 +193,25 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
     async enqueueAndAcquire(input) {
       enqueues.push({
         conversationId: input.conversationId,
-        agentMemberId: input.agentMemberId,
+        agentId: input.agentId,
         mode: input.mode,
         idempotencyKey: input.idempotencyKey,
         message: input.message as { text?: string },
         ...(input.workflow ? { workflow: { script: input.workflow.script } } : {}),
       });
       script.onEnqueue?.({
-        agentMemberId: input.agentMemberId,
+        agentId: input.agentId,
         idempotencyKey: input.idempotencyKey,
       });
-      if (script.genQueued && input.agentMemberId.startsWith("loop-generator")) {
+      if (script.genQueued && input.idempotencyKey.startsWith("loop-gen:")) {
         return { acquired: false, queued: true, replayed: false, inputId: "in" };
       }
       if (
         script.genReplayTerminal &&
-        input.agentMemberId.startsWith("loop-generator") &&
+        input.idempotencyKey.startsWith("loop-gen:") &&
         !input.idempotencyKey.includes(":retry")
       ) {
-        const old = makeRun(input.agentMemberId, input.conversationId, input.idempotencyKey);
+        const old = makeRun(input.agentId, input.conversationId, input.idempotencyKey);
         (old as { status: AgentRun["status"] }).status = "failed";
         return {
           acquired: false,
@@ -221,7 +221,7 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
           inputId: `in-${old.runId}`,
         };
       }
-      const run = makeRun(input.agentMemberId, input.conversationId, input.idempotencyKey);
+      const run = makeRun(input.agentId, input.conversationId, input.idempotencyKey);
       return { acquired: true, queued: false, replayed: false, run, inputId: `in-${run.runId}` };
     },
     async markInputAccepted(inputId) {
@@ -268,7 +268,7 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
     async dispatch(runId) {
       const run = runs.get(runId);
       if (!run) return;
-      if (run.agentMemberId.startsWith("loop-generator")) {
+      if (run.idempotencyKey.startsWith("loop-gen:")) {
         genDispatches++;
         if (script.genFailAfter !== undefined && genDispatches > script.genFailAfter) {
           (run as { status: AgentRun["status"] }).status = "failed";
@@ -358,9 +358,7 @@ async function runStep(
         overrides.convPort ??
         ({
           createConversation: () => ({}),
-          addMember: () => ({ member: null, created: true }),
           getConversation: () => null,
-          getMembers: () => [],
           appendLedgerEntry: () => 1,
         } as never),
       projectPort,
@@ -402,9 +400,9 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     stateWithFixingItem(store);
     const { enqueues } = await runStep({ store });
 
-    const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"));
+    const gen = enqueues.find((e) => e.conversationId === genConversationId("test"));
     expect(gen).toBeTruthy();
-    expect(enqueues.some((e) => e.agentMemberId.startsWith("loop-evaluator"))).toBe(false);
+    expect(enqueues).toHaveLength(1);
     // deterministic generator identity
     expect(gen!.conversationId).toBe(genConversationId("test"));
     expect(gen!.mode).toBe("normal");
@@ -486,9 +484,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
             dataDir,
             convPort: {
               createConversation: () => ({}),
-              addMember: () => ({ member: null, created: true }),
               getConversation: () => null,
-              getMembers: () => [],
               appendLedgerEntry: () => 1,
             } as never,
             agentRunService: fake.agentRunService,
@@ -500,7 +496,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
             ),
           }),
         ).rejects.toThrow("generator run");
-        expect(fake.enqueues.some((e) => e.agentMemberId.startsWith("loop-evaluator"))).toBe(false);
+        expect(fake.enqueues).toHaveLength(1);
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
@@ -519,7 +515,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     // first enqueue replayed the terminal run; the retry-scoped key acquired
     // a fresh run and the loop completed normally
     const genKeys = enqueues
-      .filter((e) => e.agentMemberId.startsWith("loop-generator"))
+      .filter((e) => e.conversationId === genConversationId("test"))
       .map((e) => e.idempotencyKey);
     expect(genKeys).toHaveLength(2);
     expect(genKeys[1]).toContain(":retry");
@@ -595,7 +591,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
       dir,
       script: { touchFiles: [".env"] },
     });
-    expect(enqueues.some((e) => e.agentMemberId.startsWith("loop-evaluator"))).toBe(false);
+    expect(enqueues).toHaveLength(1);
     expect(result.items["item-1"]!.result?.verdict).toBe("REJECT");
   });
 
@@ -702,7 +698,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
         gitRunner,
         script: {},
       });
-      const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"))!;
+      const gen = enqueues.find((e) => e.conversationId === genConversationId("test"))!;
       expect(gen.workflow?.script).toContain("Recent changes");
       expect(gen.workflow?.script).toContain('label: "fix"');
       expect(gen.workflow?.script).toContain('label: "verify"');
@@ -725,7 +721,7 @@ describe("loopStep — Generator/Evaluator as Agent Runs", () => {
     });
     store.save("test", state, {});
     const { enqueues } = await runStep({ store, script: {} });
-    const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"))!;
+    const gen = enqueues.find((e) => e.conversationId === genConversationId("test"))!;
     expect(gen.workflow?.script).toContain("调研任务");
     expect(gen.workflow?.script).toContain("默认不改代码");
   });
@@ -762,7 +758,7 @@ workflow:
         gitRunner,
         script: {},
       });
-      const gen = enqueues.find((e) => e.agentMemberId.startsWith("loop-generator"))!;
+      const gen = enqueues.find((e) => e.conversationId === genConversationId("test"))!;
       expect(gen.workflow?.script).toContain("bun test");
       expect(gen.workflow?.script).toContain("bun run typecheck");
       expect(gen.workflow?.script).toContain("No output for a command");

@@ -62,17 +62,14 @@ export function createCronScheduler(deps: {
    *  before the DB closes (a settling run may still finalize rows). */
   const inflightPromises = new Set<Promise<void>>();
 
-  /** Idempotently ensure the deterministic Conversation + Agent Member
-   *  (branch is lazily created by enqueueAndAcquire). */
-  async function ensureCronScope(
-    conversationId: string,
-    agentMemberId: string,
-    agentId: string,
-  ): Promise<void> {
+  /** Idempotently ensure the deterministic Conversation (branch is lazily
+   *  created by enqueueAndAcquire). */
+  async function ensureCronScope(conversationId: string, agentId: string): Promise<void> {
     if (!deps.convPort.getConversation(conversationId)) {
       try {
         deps.convPort.createConversation({
           conversationId,
+          agentId,
           triggerMode: "mention",
           origin: "cron",
           createdAt: Date.now(),
@@ -81,16 +78,6 @@ export function createCronScheduler(deps: {
         /* concurrent create - ignore */
       }
     }
-    const members = deps.convPort.getMembers(conversationId);
-    if (!members.some((m) => m.memberId === agentMemberId)) {
-      deps.convPort.addMember({
-        memberId: agentMemberId,
-        conversationId,
-        kind: "agent",
-        agentId,
-        joinedAt: Date.now(),
-      });
-    }
   }
 
   /** One Agent Run for one fire attempt. Returns true when the run ended
@@ -98,20 +85,20 @@ export function createCronScheduler(deps: {
   async function runCronOnce(
     job: CronJobRow,
     conversationId: string,
-    agentMemberId: string,
+    agentId: string,
     fireKey: string,
     retry: number,
   ): Promise<boolean> {
     const defaultModel = await deps.resolveDefaultModel(job.agentId);
     const { acquired, run } = await deps.agentRunService.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       backendKind: defaultModel.backendKind,
       mode: "normal",
       message: { role: "user", text: job.prompt ?? "", conversationId },
       defaultModel,
       configRevision: 1,
-      idempotencyKey: `${fireKey}:${agentMemberId}:${retry}`,
+      idempotencyKey: `${fireKey}:${agentId}:${retry}`,
     });
     if (!acquired || !run) return true; // queued: input is persisted; nothing to re-fire
 
@@ -142,12 +129,12 @@ export function createCronScheduler(deps: {
     }
 
     const conversationId = cronConversationId(job.cronJobId);
-    const agentMemberId = cronAgentMemberId(job.agentId);
-    await ensureCronScope(conversationId, agentMemberId, job.agentId);
+    const agentId = cronAgentMemberId(job.agentId);
+    await ensureCronScope(conversationId, job.agentId);
     const fireKey = `${job.cronJobId}:${deps.now?.() ?? Date.now()}`;
     const maxRetries = job.maxRetries ?? 0;
     for (let retries = 0; ; retries++) {
-      const timedOut = await runCronOnce(job, conversationId, agentMemberId, fireKey, retries);
+      const timedOut = await runCronOnce(job, conversationId, agentId, fireKey, retries);
       if (timedOut || retries >= maxRetries) break;
       const fresh = deps.cronSvc.port.getCronJob(job.cronJobId);
       if (!fresh || (fresh.maxRetries ?? 0) <= 0) break;

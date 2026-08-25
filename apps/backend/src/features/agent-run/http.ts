@@ -109,29 +109,24 @@ export function agentRunRoutes(input: {
           args.push(query.status);
         }
         if (query.agentId) {
-          where.push("m.agent_id = ?");
+          where.push("ar.agent_id = ?");
           args.push(query.agentId);
         }
-        const sql = `SELECT ar.run_id, ar.conversation_id, ar.agent_member_id, ar.status,
-                            ar.model_ref, ar.created_at, ar.terminal_at, ar.terminal_result,
-                            m.agent_id
+        const sql = `SELECT ar.run_id, ar.conversation_id, ar.agent_id, ar.status,
+                            ar.model_ref, ar.created_at, ar.terminal_at, ar.terminal_result
                        FROM agent_run ar
-                       LEFT JOIN member m
-                         ON m.member_id = ar.agent_member_id
-                        AND m.conversation_id = ar.conversation_id
                        ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
                        ORDER BY ar.created_at DESC
                        LIMIT ?`;
         const rows = db.query(sql).all(...args, limit) as Array<{
           run_id: string;
           conversation_id: string;
-          agent_member_id: string;
+          agent_id: string;
           status: string;
           model_ref: string;
           created_at: number;
           terminal_at: number | null;
           terminal_result: string | null;
-          agent_id: string | null;
         }>;
         return {
           runs: rows.map((r) => {
@@ -141,7 +136,6 @@ export function agentRunRoutes(input: {
             return {
               runId: r.run_id,
               conversationId: r.conversation_id,
-              agentMemberId: r.agent_member_id,
               agentId: r.agent_id,
               status: r.status,
               model: JSON.parse(r.model_ref) as { backendKind: string; modelId: string },
@@ -180,12 +174,7 @@ export function agentRunRoutes(input: {
           conversation: query.conversationId
             ? await usageTotals("AND ar.conversation_id = ?", [query.conversationId])
             : null,
-          agent: query.agentId
-            ? await usageTotals(
-                "AND EXISTS (SELECT 1 FROM member m WHERE m.member_id = ar.agent_member_id AND m.conversation_id = ar.conversation_id AND m.agent_id = ?)",
-                [query.agentId],
-              )
-            : null,
+          agent: query.agentId ? await usageTotals("AND ar.agent_id = ?", [query.agentId]) : null,
           today: await usageTotals("AND ar.created_at >= ?", [startOfDay.getTime()]),
         };
       },
@@ -210,7 +199,7 @@ export function agentRunRoutes(input: {
           runId: run.runId,
           branchId: run.branchId,
           conversationId: run.conversationId,
-          agentMemberId: run.agentMemberId,
+          agentId: run.agentId,
           model: run.modelRef,
           status: run.status,
           verdict: deriveVerdict(run.terminalResult),

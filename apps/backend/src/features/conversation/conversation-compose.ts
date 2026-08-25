@@ -66,7 +66,6 @@ export function createConversationFeature(input: {
     isInflight,
     abortStaleRun,
     contextService,
-    maxConsecutiveAgentHops: () => settingsSvc.get<number>("conversation.maxHops") ?? 8,
     idGen: ulid,
     resolveDefaultModel: async (agentId): Promise<BackendModelRef> => {
       return agentModelRef(await agentSvc.getById(agentId));

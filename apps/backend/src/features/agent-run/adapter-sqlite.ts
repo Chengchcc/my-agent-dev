@@ -38,7 +38,7 @@ function parseRun(row: typeof schema.agentRun.$inferSelect): AgentRun {
     runId: row.runId,
     branchId: row.branchId,
     conversationId: row.conversationId,
-    agentMemberId: row.agentMemberId,
+    agentId: row.agentId,
     modelRef: parseModelRef(row.modelRef),
     status: row.status as AgentRun["status"],
     idempotencyKey: row.idempotencyKey,
@@ -236,8 +236,8 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
         }
 
         // 3. Validate command scope: branch must belong to the claimed
-        //    conversation + agent member, and the default model must match
-        //    the branch's backend kind.
+        //    conversation, and the default model must match the branch's
+        //    backend kind.
         const scopedBranch = d
           .select()
           .from(schema.agentContextBranch)
@@ -250,11 +250,10 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
         if (
           !scopedBranch ||
           scopedBranch.agent_context_tree.conversationId !== command.conversationId ||
-          scopedBranch.agent_context_tree.agentMemberId !== command.agentMemberId ||
           scopedBranch.agent_context_branch.backendKind !== command.defaultModel.backendKind
         ) {
           throw new Error(
-            `Scope mismatch: branch ${command.branchId} does not belong to (${command.conversationId}, ${command.agentMemberId}) or backend kind mismatch`,
+            `Scope mismatch: branch ${command.branchId} does not belong to ${command.conversationId} or backend kind mismatch`,
           );
         }
 
@@ -296,8 +295,8 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           .orderBy(schema.conversationLedger.seq)
           .all();
 
-        // 5. Filter by visibility: non-internal, broadcast or addressed to/sent by member.
-        //    Must deserialize Message to check the visibility field.
+        // 5. Filter by visibility: non-internal messages only (1:1 collapse
+        //    pulled forward from cut 3 — addressedTo/sender routing is gone).
         const eligible = ledgerEntries.filter((e) => {
           if (e.kind !== "message") return false;
           try {
@@ -307,11 +306,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             // Corrupt content: skip to avoid polluting context
             return false;
           }
-          const addressedTo = JSON.parse(e.addressedTo) as string[];
-          const isBroadcast = addressedTo.length === 0;
-          const isAddressedTo = addressedTo.includes(command.agentMemberId);
-          const isSentByMember = e.senderMemberId === command.agentMemberId;
-          return isBroadcast || isAddressedTo || isSentByMember;
+          return true;
         });
 
         // 6. Select latest 20 in ledger order
@@ -376,7 +371,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             runId,
             branchId: command.branchId,
             conversationId: command.conversationId,
-            agentMemberId: command.agentMemberId,
+            agentId: command.agentId,
             modelRef: JSON.stringify(effectiveModel),
             status: "running",
             idempotencyKey: command.runIdempotencyKey,
@@ -521,12 +516,19 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           .get();
         const snapshot = parseInput(input).configSnapshot;
         const runId = deps.idGen.ulid();
+        const conv = tree
+          ? d
+              .select({ agentId: schema.conversation.agentId })
+              .from(schema.conversation)
+              .where(eq(schema.conversation.conversationId, tree.conversationId))
+              .get()
+          : undefined;
         d.insert(schema.agentRun)
           .values({
             runId,
             branchId,
             conversationId: tree?.conversationId ?? "",
-            agentMemberId: tree?.agentMemberId ?? "",
+            agentId: conv?.agentId ?? "",
             modelRef: JSON.stringify(snapshot.modelRef),
             status: "running",
             idempotencyKey: `${input.inputIdempotencyKey}:run`,
@@ -793,11 +795,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           .from(schema.agentContextTree)
           .where(eq(schema.agentContextTree.treeId, branch.treeId))
           .get();
-        if (
-          !tree ||
-          tree.conversationId !== run.conversationId ||
-          tree.agentMemberId !== run.agentMemberId
-        ) {
+        if (!tree || tree.conversationId !== run.conversationId) {
           throw new AgentRunConflictError(runId);
         }
 
@@ -851,7 +849,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
             .insert(schema.conversationLedger)
             .values({
               conversationId: run.conversationId,
-              senderMemberId: run.agentMemberId,
+              senderMemberId: run.agentId,
               addressedTo: "[]",
               kind: "message",
               content: serializeMessageRevision(revision),
@@ -1188,6 +1186,10 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           schema.agentContextTree,
           eq(schema.agentContextBranch.treeId, schema.agentContextTree.treeId),
         )
+        .innerJoin(
+          schema.conversation,
+          eq(schema.agentContextTree.conversationId, schema.conversation.conversationId),
+        )
         .where(
           and(
             eq(schema.agentContextTree.conversationId, conversationId),
@@ -1198,7 +1200,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
         .all();
       return rows.map((r) => ({
         ...parseInput(r.branch_input_queue),
-        agentMemberId: r.agent_context_tree.agentMemberId,
+        agentId: r.conversation.agentId ?? "",
       }));
     },
 

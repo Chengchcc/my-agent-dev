@@ -55,7 +55,7 @@ export interface AgentRunExecutionDeps {
   readonly runTimeoutMs?: number;
   readonly resolveWorkspace: (input: {
     conversationId: string;
-    agentMemberId: string;
+    agentId: string;
   }) => Promise<WorkspaceBinding>;
   /** Product Tools MCP endpoint the Oma child connects to
    *  (`sse:<url>`), from PRODUCT_TOOLS_MCP_URL. */
@@ -77,7 +77,7 @@ export interface AgentRunExecutionDeps {
   readonly onRunFailed?: (input: {
     runId: string;
     conversationId: string;
-    agentMemberId: string;
+    agentId: string;
     error: string;
   }) => void;
   /** Durable telemetry sink for normalized run events (tool calls, status,
@@ -371,7 +371,7 @@ export function createAgentRunExecutionService(
       "as the `identity` argument:",
       `- runId: ${run.runId}`,
       `- conversationId: ${run.conversationId}`,
-      `- agentMemberId: ${run.agentMemberId}`,
+      `- agentId: ${run.agentId}`,
       `- branchId: ${run.branchId}`,
       "",
       renderTodoSection(lastTodo),
@@ -399,7 +399,7 @@ export function createAgentRunExecutionService(
       productToolsToken,
       metadata: {
         conversationId: run.conversationId,
-        agentMemberId: run.agentMemberId,
+        agentId: run.agentId,
         branchId: run.branchId,
       },
     };
@@ -433,7 +433,7 @@ export function createAgentRunExecutionService(
       run.workspace ??
       (await resolveWorkspace({
         conversationId: run.conversationId,
-        agentMemberId: run.agentMemberId,
+        agentId: run.agentId,
       }));
     debugLog(
       "agent-run",
@@ -472,7 +472,7 @@ export function createAgentRunExecutionService(
     // finally (every terminal path). A mint throw is a dispatch failure.
     const productToolsToken = deps.productToolsTokenRegistry.mint({
       runId,
-      agentId: run.agentMemberId,
+      agentId: run.agentId,
     });
     // The branch's CLI session ref is kind-scoped (`<kind>:<ref>`, ADR 0020
     // decision 6): a ref written by another backend is junk to this CLI and
@@ -544,7 +544,7 @@ export function createAgentRunExecutionService(
     deps.onRunFailed?.({
       runId: run.runId,
       conversationId: run.conversationId,
-      agentMemberId: run.agentMemberId,
+      agentId: run.agentId,
       error: outcome.error ?? `Run ${outcome.status}`,
     });
     await runPort.finalizeRun(run.runId, outcome);
@@ -588,7 +588,7 @@ export function createAgentRunExecutionService(
           run.workspace ??
           (await resolveWorkspace({
             conversationId: run.conversationId,
-            agentMemberId: run.agentMemberId,
+            agentId: run.agentId,
           }));
         const deliverResult = await deps.workspaceLocks.withLock(workspace0.root, () =>
           deliverInput(run, claimed, stage),
@@ -649,7 +649,7 @@ export function createAgentRunExecutionService(
           deps.onRunFailed?.({
             runId,
             conversationId: run.conversationId,
-            agentMemberId: run.agentMemberId,
+            agentId: run.agentId,
             error: detail,
           });
           await runPort

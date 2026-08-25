@@ -11,7 +11,7 @@ import { sqliteProductToolCallAdapter } from "./adapter-sqlite.js";
 import { createProductToolsService, ProductToolRejectedError } from "./service.js";
 
 const CONV = "conv-pt";
-const MEMBER = "mem-pt";
+const AGENT = "ag-pt";
 
 let dataDir: string;
 let db: ReturnType<typeof openDb>;
@@ -33,7 +33,7 @@ const TOOL_MANIFEST = [
 async function createRun(messageText: string): Promise<string> {
   const acq = await backend.enqueueAndAcquire({
     conversationId: CONV,
-    agentMemberId: MEMBER,
+    agentId: AGENT,
     backendKind: "oma",
     mode: "normal",
     message: { role: "user", text: messageText },
@@ -49,7 +49,7 @@ function identity(runId: string, overrides: Record<string, string> = {}) {
   return {
     runId,
     conversationId: CONV,
-    agentMemberId: MEMBER,
+    agentId: AGENT,
     branchId,
     ...overrides,
   };
@@ -91,35 +91,28 @@ beforeEach(async () => {
     callPort: sqliteProductToolCallAdapter(db),
     idGen: { ulid: () => `y-${Math.random().toString(36).slice(2, 8)}` },
   });
-  convPort.createConversation({ conversationId: CONV, createdAt: Date.now() });
-  convPort.addMember({
-    memberId: MEMBER,
-    conversationId: CONV,
-    kind: "agent",
-    agentId: "a1",
-    joinedAt: Date.now(),
-  });
-  const tree = await contextPort.getOrCreateTree(CONV, MEMBER);
+  convPort.createConversation({ conversationId: CONV, agentId: AGENT, createdAt: Date.now() });
+  const tree = await contextPort.getOrCreateTree(CONV);
   const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "oma");
   branchId = branch.branchId;
   // seed conversation history (two user messages + one internal)
   convPort.appendLedgerEntry({
     conversationId: CONV,
-    senderMemberId: "human-1",
+    senderMemberId: "user",
     kind: "message",
     content: JSON.stringify({ role: "user", text: "first message" }),
     ts: Date.now(),
   });
   convPort.appendLedgerEntry({
     conversationId: CONV,
-    senderMemberId: "human-1",
+    senderMemberId: "user",
     kind: "message",
     content: JSON.stringify({ role: "user", text: "searchable keyword alpha" }),
     ts: Date.now(),
   });
   convPort.appendLedgerEntry({
     conversationId: CONV,
-    senderMemberId: "human-1",
+    senderMemberId: "user",
     kind: "message",
     content: JSON.stringify({ role: "user", text: "internal note", visibility: "internal" }),
     ts: Date.now(),
@@ -132,7 +125,7 @@ afterEach(() => {
 });
 
 describe("product tools service", () => {
-  test("forged run/conversation/member/branch identity is rejected", async () => {
+  test("forged run/conversation/agent/branch identity is rejected", async () => {
     const runId = await createRun("hi");
     await expect(
       service.call({
@@ -145,7 +138,7 @@ describe("product tools service", () => {
     ).rejects.toThrow(ProductToolRejectedError);
     await expect(
       service.call({
-        identity: identity(runId, { agentMemberId: "other-member" }),
+        identity: identity(runId, { agentId: "other-agent" }),
         callId: "toolu-1",
         idempotencyKey: `${runId}:toolu-1`,
         tool: "history_recent",
@@ -206,15 +199,9 @@ describe("product tools service", () => {
     const runId = await createRun("hi");
     // a second conversation with an identical message must not leak in
     convPort.createConversation({ conversationId: "other-conv", createdAt: Date.now() });
-    convPort.addMember({
-      memberId: "om",
-      conversationId: "other-conv",
-      kind: "human",
-      joinedAt: Date.now(),
-    });
     convPort.appendLedgerEntry({
       conversationId: "other-conv",
-      senderMemberId: "om",
+      senderMemberId: "user",
       kind: "message",
       content: JSON.stringify({ role: "user", text: "leaked secret" }),
       ts: Date.now(),
@@ -235,15 +222,9 @@ describe("product tools service", () => {
   test("history_search is scoped to this conversation", async () => {
     const runId = await createRun("hi");
     convPort.createConversation({ conversationId: "other-conv2", createdAt: Date.now() });
-    convPort.addMember({
-      memberId: "om2",
-      conversationId: "other-conv2",
-      kind: "human",
-      joinedAt: Date.now(),
-    });
     convPort.appendLedgerEntry({
       conversationId: "other-conv2",
-      senderMemberId: "om2",
+      senderMemberId: "user",
       kind: "message",
       content: JSON.stringify({ role: "user", text: "alpha elsewhere" }),
       ts: Date.now(),
@@ -306,7 +287,7 @@ describe("product tools service", () => {
     // a message appended AFTER the run acquired: not yet projected, retainable
     const seq = convPort.appendLedgerEntry({
       conversationId: CONV,
-      senderMemberId: "human-1",
+      senderMemberId: "user",
       kind: "message",
       content: JSON.stringify({ role: "user", text: "post-acquire message" }),
       ts: Date.now(),
@@ -383,7 +364,7 @@ describe("product tools service", () => {
     const runId = await createRun("hi");
     const seq = convPort.appendLedgerEntry({
       conversationId: CONV,
-      senderMemberId: "human-1",
+      senderMemberId: "user",
       kind: "message",
       content: JSON.stringify({ role: "user", text: "concurrent pin" }),
       ts: Date.now(),

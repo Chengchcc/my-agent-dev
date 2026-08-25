@@ -98,7 +98,7 @@ const EXECUTE = {
       skillRoots: [],
     },
     workspace: { root: tmp, access: "read_write" },
-    metadata: { conversationId: "c", agentMemberId: "m", branchId: "b" },
+    metadata: { conversationId: "c", agentId: "m", branchId: "b" },
   },
 };
 

@@ -5,6 +5,8 @@ export type { LedgerEntry, LedgerKind };
 
 export interface ConversationRow {
   conversationId: string;
+  /** The conversation's agent (1:1 collapse). Nullable on legacy rows. */
+  agentId: string | null;
   triggerMode: string;
   hopCount: number;
   createdAt: number;
@@ -19,20 +21,10 @@ export interface ConversationRow {
   projectId: string | null;
 }
 
-export interface MemberRow {
-  memberId: string;
-  conversationId: string;
-  /** M17.5: Derived from canonical Member.kind (agent|human). */
-  kind: "agent" | "human";
-  agentId: string | null;
-  userRef: string | null;
-  displayName: string | null;
-  joinedAt: number;
-}
-// LedgerEntry lives in ledger-codec.ts (re-exported above).
-
 export interface CreateConversationInput {
   conversationId: string;
+  /** The conversation's agent (required for new conversations). */
+  agentId?: string | null;
   triggerMode?: string;
   origin?: string;
   createdAt: number;
@@ -41,16 +33,6 @@ export interface CreateConversationInput {
   /** Fork provenance: source ledger seq the fork was cut from. */
   forkFromSeq?: number | null;
   projectId?: string | null;
-}
-
-export interface CreateMemberInput {
-  memberId: string;
-  conversationId: string;
-  kind: "agent" | "human";
-  agentId?: string | null;
-  userRef?: string | null;
-  displayName?: string | null;
-  joinedAt: number;
 }
 
 export interface AppendLedgerInput {
@@ -62,36 +44,25 @@ export interface AppendLedgerInput {
   ts: number;
 }
 
-export interface ConversationWithMembers {
-  conversationId: string;
-  triggerMode: string;
-  hopCount: number;
-  createdAt: number;
-  title: string | null;
-  /** Fork provenance: source conversation id when this conversation is a fork, else null. */
-  forkSource: string | null;
-  members: MemberRow[];
+/** List projection — no members (1:1: the agent is ConversationRow.agentId). */
+export interface ConversationSummary extends ConversationRow {
   /** Last ledger entry timestamp; null when the conversation has no messages yet. */
   lastActivityAt: number | null;
   lastMessagePreview: string | null;
 }
+
 export interface ConversationPort {
   createConversation(input: CreateConversationInput): ConversationRow;
   deleteConversation(conversationId: string): Promise<boolean>;
   getConversation(conversationId: string): ConversationRow | null;
   setConversationTitle(conversationId: string, title: string): void;
   updateHopCount(conversationId: string, count: number): void;
-  listConversations(): ConversationWithMembers[];
+  listConversations(): ConversationSummary[];
   /** C2: any conversation bound to this project (delete guard). */
   hasProjectBinding?(projectId: string): boolean;
-  listConversationsByAgent(agentId: string): ConversationWithMembers[];
+  listConversationsByAgent(agentId: string): ConversationSummary[];
   getLastMessagePreview?(conversationId: string): string | null;
   getLastActivityAt?(conversationId: string): number | null;
-
-  addMember(input: CreateMemberInput): { member: MemberRow; created: boolean };
-  getMembers(conversationId: string): MemberRow[];
-  getAgentMembers(conversationId: string): MemberRow[];
-  removeMember(conversationId: string, memberId: string): boolean;
 
   appendLedgerEntry(input: AppendLedgerInput): number; // returns seq
   getLedgerEntries(conversationId: string, opts?: { sinceSeq?: number }): LedgerEntry[];

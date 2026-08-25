@@ -21,7 +21,7 @@ const LOOP_RUN: AgentRunSnapshot<"oma"> = {
   configRevision: 1,
 };
 const LOOP_WS: WorkspaceBinding = { root: "/ws", access: "read_write" };
-const LOOP_META = { conversationId: "c", agentMemberId: "m", branchId: "b", productRevision: 1 };
+const LOOP_META = { conversationId: "c", agentId: "m", branchId: "b", productRevision: 1 };
 
 function loopInput(message: string, history?: CodingLoopInput["history"]): CodingLoopInput {
   return {

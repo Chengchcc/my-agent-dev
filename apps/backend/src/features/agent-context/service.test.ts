@@ -20,36 +20,33 @@ const ctx = createAgentContextService({ port: ctxPort, idGen, ledgerResolver });
 
 function freshFixture(prefix: string) {
   const conversationId = `conv-${prefix}`;
-  const agentMemberId = `mem-${prefix}`;
-  conv.createConversation({ conversationId, triggerMode: "mention", createdAt: Date.now() });
-  conv.addMember({
-    memberId: agentMemberId,
+  const agentId = `ag-${prefix}`;
+  conv.createConversation({
     conversationId,
-    kind: "agent",
-    agentId: `ag-${prefix}`,
-    displayName: `Agent-${prefix}`,
-    joinedAt: Date.now(),
+    agentId,
+    triggerMode: "mention",
+    createdAt: Date.now(),
   });
-  return { conversationId, agentMemberId };
+  return { conversationId, agentId };
 }
 
 afterAll(() => db.close());
 
 describe("Agent Context service", () => {
-  test("lazy default branch creation for existing member", async () => {
-    const { conversationId, agentMemberId } = freshFixture("svc1");
-    const branch = await ctx.getOrCreateDefaultBranch(conversationId, agentMemberId, "oma");
+  test("lazy default branch creation for existing conversation", async () => {
+    const { conversationId } = freshFixture("svc1");
+    const branch = await ctx.getOrCreateDefaultBranch(conversationId, "oma");
     expect(branch.backendKind).toBe("oma");
     expect(branch.isDefault).toBe(true);
 
     // Second call returns the same branch
-    const branch2 = await ctx.getOrCreateDefaultBranch(conversationId, agentMemberId, "oma");
+    const branch2 = await ctx.getOrCreateDefaultBranch(conversationId, "oma");
     expect(branch2.branchId).toBe(branch.branchId);
   });
 
   test("model change affects next run, not current snapshot", async () => {
-    const { conversationId, agentMemberId } = freshFixture("svc2");
-    const branch = await ctx.getOrCreateDefaultBranch(conversationId, agentMemberId, "oma");
+    const { conversationId } = freshFixture("svc2");
+    const branch = await ctx.getOrCreateDefaultBranch(conversationId, "oma");
     const defaultModel = { backendKind: "oma", modelId: "model-a" } as const;
 
     // Before change: effective model is default
@@ -68,8 +65,8 @@ describe("Agent Context service", () => {
   });
 
   test("model change rejects mismatched backend kind", async () => {
-    const { conversationId, agentMemberId } = freshFixture("svc3");
-    const branch = await ctx.getOrCreateDefaultBranch(conversationId, agentMemberId, "oma");
+    const { conversationId } = freshFixture("svc3");
+    const branch = await ctx.getOrCreateDefaultBranch(conversationId, "oma");
     expect(
       ctx.changeModel(branch.branchId, 1, {
         backendKind: "claude_code",
@@ -79,8 +76,8 @@ describe("Agent Context service", () => {
   });
 
   test("fork inherits backend kind and preserves entries", async () => {
-    const { conversationId, agentMemberId } = freshFixture("svc4");
-    const branch = await ctx.getOrCreateDefaultBranch(conversationId, agentMemberId, "oma");
+    const { conversationId } = freshFixture("svc4");
+    const branch = await ctx.getOrCreateDefaultBranch(conversationId, "oma");
     const appended = await ctx.appendPrivateMessage(branch.branchId, 1, {
       role: "user",
       text: "original",
@@ -98,8 +95,8 @@ describe("Agent Context service", () => {
   });
 
   test("fork can override backend kind", async () => {
-    const { conversationId, agentMemberId } = freshFixture("svc5");
-    const branch = await ctx.getOrCreateDefaultBranch(conversationId, agentMemberId, "oma");
+    const { conversationId } = freshFixture("svc5");
+    const branch = await ctx.getOrCreateDefaultBranch(conversationId, "oma");
     const appended = await ctx.appendPrivateMessage(branch.branchId, 1, {
       role: "user",
       text: "x",
@@ -115,8 +112,8 @@ describe("Agent Context service", () => {
   });
 
   test("rollback preserves all entries", async () => {
-    const { conversationId, agentMemberId } = freshFixture("svc6");
-    const branch = await ctx.getOrCreateDefaultBranch(conversationId, agentMemberId, "oma");
+    const { conversationId } = freshFixture("svc6");
+    const branch = await ctx.getOrCreateDefaultBranch(conversationId, "oma");
     const r1 = await ctx.appendPrivateMessage(branch.branchId, 1, {
       role: "user",
       text: "first",

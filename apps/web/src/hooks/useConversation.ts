@@ -10,7 +10,7 @@ import {
   usePostConversationMessage,
 } from "@/features/conversations/hooks";
 import type { ConversationSnapshot } from "@/lib/api";
-import { initialState, isBusy, reducer, type SenderRef } from "@/lib/conversation-reducer";
+import { initialState, isBusy, reducer } from "@/lib/conversation-reducer";
 import {
   appendThinking,
   appendTransient,
@@ -42,11 +42,6 @@ export interface WorkflowRunState {
   readonly agents: ReadonlyMap<string, WorkflowAgentState>;
   readonly ok: boolean | null;
   readonly totalTokens: number;
-}
-
-function resolveViewerMemberId(members: SenderRef[]): string {
-  const humans = members.filter((m) => m.kind === "human");
-  return humans[0]?.memberId ?? "";
 }
 
 export function useConversation(
@@ -109,16 +104,16 @@ export function useConversation(
       setWorkflows(new Map());
     };
   }, [conversationId]);
-  const upsertTransient = useCallback((runId: string, agentMemberId: string, text: string) => {
+  const upsertTransient = useCallback((runId: string, agentId: string, text: string) => {
     setTransients((prev) => {
-      const next = appendTransient(prev, runId, agentMemberId, text);
+      const next = appendTransient(prev, runId, agentId, text);
       transientsRef.current = next;
       return next;
     });
   }, []);
-  const upsertThinking = useCallback((runId: string, agentMemberId: string, text: string) => {
+  const upsertThinking = useCallback((runId: string, agentId: string, text: string) => {
     setTransients((prev) => {
-      const next = appendThinking(prev, runId, agentMemberId, text);
+      const next = appendThinking(prev, runId, agentId, text);
       transientsRef.current = next;
       return next;
     });
@@ -130,32 +125,32 @@ export function useConversation(
       return next;
     });
   }, []);
-  const failTransient = useCallback((runId: string, agentMemberId: string, error: string) => {
+  const failTransient = useCallback((runId: string, agentId: string, error: string) => {
     setTransients((prev) => {
-      const next = markTransientError(prev, runId, agentMemberId, error);
+      const next = markTransientError(prev, runId, agentId, error);
       transientsRef.current = next;
       return next;
     });
   }, []);
-  const pushRunNotice = useCallback((runId: string, agentMemberId: string, notice: string) => {
+  const pushRunNotice = useCallback((runId: string, agentId: string, notice: string) => {
     setTransients((prev) => {
-      const next = pushTransientNotice(prev, runId, agentMemberId, notice);
+      const next = pushTransientNotice(prev, runId, agentId, notice);
       transientsRef.current = next;
       return next;
     });
   }, []);
-  // 1) Snapshot bootstrap (roster + viewerMemberId)
+  // 1) Snapshot bootstrap (the conversation's agent)
   const snap = useConversationSnapshot(conversationId, preFetchedSnapshot);
   useEffect(() => {
     if (!snap.data) return;
-    const members: SenderRef[] = snap.data.members.map((m) => ({
-      memberId: m.memberId,
-      kind: m.kind,
-      displayName: m.displayName ?? undefined,
-      agentId: m.agentId ?? undefined,
-    }));
-    const viewerMemberId = resolveViewerMemberId(members);
-    dispatch({ type: "bootstrap", viewerMemberId, members });
+    dispatch({
+      type: "bootstrap",
+      agent: {
+        memberId: snap.data.agentId ?? "agent",
+        kind: "agent",
+        agentId: snap.data.agentId ?? undefined,
+      },
+    });
   }, [snap.data]);
 
   // 2) Conversation event stream — sole message input for Web surface.
@@ -236,18 +231,6 @@ export function useConversation(
       dispatch({ type: "message", seq, message: rev, undone: entry.undone });
     });
 
-    ts.on("member.joined", (entry) => {
-      const seq = guard(entry);
-      if (seq === null) return;
-      dispatch({ type: "member", seq, kind: "member.joined", payload: entry.payload });
-    });
-
-    ts.on("member.left", (entry) => {
-      const seq = guard(entry);
-      if (seq === null) return;
-      dispatch({ type: "member", seq, kind: "member.left", payload: entry.payload });
-    });
-
     ts.on("undo", (entry) => {
       const seq = guard(entry);
       if (seq === null) return;
@@ -273,7 +256,7 @@ export function useConversation(
    *  no canonical assistant Message to swap in, so the pill is the only
    *  failure record until reload. */
   const watchRun = useCallback(
-    (runId: string, agentMemberId: string) => {
+    (runId: string, agentId: string) => {
       setActiveRuns((prev) => new Set(prev).add(runId));
       // One stream per run, tracked centrally so unmount can close all.
       const existing = runStreamsRef.current.get(runId);
@@ -320,7 +303,7 @@ export function useConversation(
           } else if (["failed", "aborted", "timeout"].includes(ev.status ?? "")) {
             // Failed runs persist no canonical message: keep the bubble and
             // attach the error pill as the live failure record.
-            failTransient(runId, agentMemberId, ev.error ?? "Run failed");
+            failTransient(runId, agentId, ev.error ?? "Run failed");
             finish();
           }
         } catch {
@@ -330,7 +313,7 @@ export function useConversation(
       es.addEventListener("text_delta", (e) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as { text?: string };
-          if (ev.text) upsertTransient(runId, agentMemberId, ev.text);
+          if (ev.text) upsertTransient(runId, agentId, ev.text);
         } catch {
           /* malformed - ignore */
         }
@@ -338,7 +321,7 @@ export function useConversation(
       es.addEventListener("thinking_delta", (e) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as { text?: string };
-          if (ev.text) upsertThinking(runId, agentMemberId, ev.text);
+          if (ev.text) upsertThinking(runId, agentId, ev.text);
         } catch {
           /* malformed - ignore */
         }
@@ -416,7 +399,7 @@ export function useConversation(
           if (ev.payload?.rule) {
             pushRunNotice(
               runId,
-              agentMemberId,
+              agentId,
               `stream rule "${ev.payload.rule}" matched — output discarded, retrying`,
             );
           }
@@ -513,11 +496,11 @@ export function useConversation(
       model?: ChatModelOverride,
       attachments?: readonly { type: "image"; mediaType: string; base64: string }[],
     ) => {
-      const viewer = state.roster[state.viewerMemberId] ?? {
-        memberId: state.viewerMemberId,
-        kind: "human" as const,
-      };
-      dispatch({ type: "send", text, viewer });
+      dispatch({
+        type: "send",
+        text,
+        viewer: { memberId: "user", kind: "human" },
+      });
       // While a run is live, messages queue for after it settles (the
       // Composer queue area) instead of being injected as a live steer;
       // each queued item can be steered/edited/cancelled individually.
@@ -532,7 +515,7 @@ export function useConversation(
         {
           onSuccess: (result) => {
             for (const run of result.triggeredRuns ?? []) {
-              if (!run.queued && run.runId) watchRun(run.runId, run.agentMemberId);
+              if (!run.queued && run.runId) watchRun(run.runId, run.agentId);
             }
           },
           onSettled: () => {
@@ -544,7 +527,7 @@ export function useConversation(
         },
       );
     },
-    [sendMut, state.roster, state.viewerMemberId, state, watchRun, activeRuns.size],
+    [sendMut, state, watchRun, activeRuns.size],
   );
 
   const busy = isBusy(state) || activeRuns.size > 0;

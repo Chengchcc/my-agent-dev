@@ -36,7 +36,7 @@ export interface AgentRun {
   readonly runId: string;
   readonly branchId: string;
   readonly conversationId: string;
-  readonly agentMemberId: string;
+  readonly agentId: string;
   readonly modelRef: BackendModelRef;
   readonly status: AgentRunStatus;
   readonly idempotencyKey: string;
@@ -122,7 +122,7 @@ export interface PendingActionRecord {
 
 export interface AcquireAgentRunCommand {
   readonly conversationId: string;
-  readonly agentMemberId: string;
+  readonly agentId: string;
   readonly branchId: string;
   readonly mode: BranchInputMode;
   readonly message: Message;

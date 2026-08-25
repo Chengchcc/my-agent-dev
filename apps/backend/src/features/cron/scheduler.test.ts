@@ -31,7 +31,7 @@ function makeRunsFakes(script: {
 }) {
   const enqueues: Array<{
     conversationId: string;
-    agentMemberId: string;
+    agentId: string;
     mode: string;
     idempotencyKey: string;
   }> = [];
@@ -42,7 +42,7 @@ function makeRunsFakes(script: {
     async enqueueAndAcquire(input) {
       enqueues.push({
         conversationId: input.conversationId,
-        agentMemberId: input.agentMemberId,
+        agentId: input.agentId,
         mode: input.mode,
         idempotencyKey: input.idempotencyKey,
       });
@@ -54,7 +54,7 @@ function makeRunsFakes(script: {
         runId,
         branchId: "b",
         conversationId: input.conversationId,
-        agentMemberId: input.agentMemberId,
+        agentId: input.agentId,
         modelRef: { backendKind: "oma", modelId: "m" },
         status: "running",
         idempotencyKey: input.idempotencyKey,
@@ -176,9 +176,7 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
       config: { dataDir: "/tmp" },
       convPort: {
         createConversation: () => ({}),
-        addMember: () => ({ member: null, created: true }),
         getConversation: () => null,
-        getMembers: () => [],
       },
       agentRunService: fakes.runService,
       agentRunExecution: fakes.execution,
@@ -250,9 +248,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
     const fakes = makeRunsFakes({});
     const conv = {
       createConversation: () => ({}),
-      addMember: () => ({ member: null, created: true }),
       getConversation: () => null,
-      getMembers: () => [],
     };
     let fired: (() => void) | null = null;
     const deps = {
@@ -286,7 +282,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
     expect(fakes.enqueues).toHaveLength(1);
     const e = fakes.enqueues[0]!;
     expect(e.conversationId).toBe("cron:cj-test");
-    expect(e.agentMemberId).toBe("cron-agent:agent-1");
+    expect(e.agentId).toBe("cron-agent:agent-1");
     expect(e.mode).toBe("normal");
     // fire identity is deterministic: cronJobId + scheduledAt
     expect(e.idempotencyKey).toBe(`cj-test:1700000000000:cron-agent:agent-1:0`);
@@ -302,9 +298,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       config: { dataDir: "/tmp" },
       convPort: {
         createConversation: () => ({}),
-        addMember: () => ({}),
         getConversation: () => null,
-        getMembers: () => [],
       },
       agentRunService: fakes.runService,
       agentRunExecution: { ...fakes.execution, dispatch: dispatchSpy },
@@ -339,9 +333,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       config: { dataDir: "/tmp" },
       convPort: {
         createConversation: () => ({}),
-        addMember: () => ({}),
         getConversation: () => null,
-        getMembers: () => [],
       },
       agentRunService: fakes.runService,
       agentRunExecution: { ...fakes.execution, stop: stopSpy },
@@ -381,9 +373,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       config: { dataDir: "/tmp" },
       convPort: {
         createConversation: () => ({}),
-        addMember: () => ({}),
         getConversation: () => null,
-        getMembers: () => [],
       },
       agentRunService: fakes.runService,
       agentRunExecution: fakes.execution,
@@ -426,9 +416,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       config: { dataDir: "/tmp" },
       convPort: {
         createConversation: () => ({}),
-        addMember: () => ({}),
         getConversation: () => null,
-        getMembers: () => [],
       },
       agentRunService: fakes.runService,
       agentRunExecution: fakes.execution,
@@ -464,9 +452,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       config: { dataDir: "/tmp" },
       convPort: {
         createConversation: () => ({}),
-        addMember: () => ({}),
         getConversation: () => null,
-        getMembers: () => [],
       },
       agentRunService: fakes.runService,
       agentRunExecution: fakes.execution,
@@ -501,9 +487,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       config: { dataDir: "/tmp" },
       convPort: {
         createConversation: () => ({}),
-        addMember: () => ({}),
         getConversation: () => null,
-        getMembers: () => [],
       },
       agentRunService: fakes.runService,
       agentRunExecution: fakes.execution,
@@ -534,9 +518,7 @@ describe("createCronScheduler (Agent Run cutover)", () => {
       store: { load: () => ({ loopId: "x", lastRun: null, items: {} }) },
       convPort: {
         createConversation: () => ({}),
-        addMember: () => ({}),
         getConversation: () => null,
-        getMembers: () => [],
       },
     } as unknown as Parameters<typeof createCronScheduler>[0]);
     sched.register(makeJob({ loopConfigPath: "loops/x", cronExpr: "" }));

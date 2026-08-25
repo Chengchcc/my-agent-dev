@@ -132,7 +132,7 @@ export interface AgentRunPort {
    *  with the owning agent member id (queue management UI). */
   listPendingInputsForConversation(
     conversationId: string,
-  ): Promise<Array<BranchInput & { agentMemberId: string }>>;
+  ): Promise<Array<BranchInput & { agentId: string }>>;
 
   /** CAS a pending input's message (queue edit). Returns false when the
    *  input is no longer pending. */

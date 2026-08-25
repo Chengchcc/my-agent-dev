@@ -20,7 +20,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useConversationInputs } from "@/features/conversations/hooks";
 import { conversationKeys } from "@/features/conversations/query-keys";
 import { api, type PendingInput } from "@/lib/api";
-import type { SenderRef } from "@/lib/conversation-reducer";
 import { slashCommands } from "@/lib/slash-commands";
 
 /** Composer metrics (§3): auto height 40–160px, panel bg, radius 8. */
@@ -37,7 +36,6 @@ interface ComposerProps {
   onSlashCommand: (input: string) => void;
   disabled?: boolean;
   placeholder?: string;
-  roster?: Record<string, SenderRef>;
   /** A run is live: the send button becomes the red-dot Stop. */
   isBusy?: boolean;
   onStop?: () => void;
@@ -48,7 +46,6 @@ export function Composer({
   onSlashCommand,
   disabled,
   placeholder = "Type a message…  Ctrl+Enter to send",
-  roster,
   isBusy,
   onStop,
 }: ComposerProps) {
@@ -276,7 +273,7 @@ export function Composer({
               <QueueItem
                 key={input.inputId}
                 input={input}
-                agentName={roster?.[input.agentMemberId]?.displayName ?? input.agentMemberId}
+                agentName={input.agentId}
                 busy={steerMut.isPending || editMut.isPending || cancelMut.isPending}
                 onSteer={() => steerMut.mutate(input.inputId)}
                 onSave={(text) => editMut.mutate({ inputId: input.inputId, text })}

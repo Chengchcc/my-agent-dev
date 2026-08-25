@@ -32,7 +32,7 @@ const INPUT: BackendRunInput<"oma"> = {
     configRevision: 1,
   },
   workspace: { root: tmp, access: "read_write" },
-  metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1" },
+  metadata: { conversationId: "c1", agentId: "m1", branchId: "b1" },
 };
 
 function inputWith(runId: string): BackendRunInput<"oma"> {

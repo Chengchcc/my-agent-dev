@@ -75,18 +75,18 @@ function usageTokens(usage: BackendRunOutcome["usage"] | null | undefined): numb
   return (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
 }
 
-/** Idempotently ensure the deterministic Conversation + Agent Member exist.
- *  The branch is lazily created by enqueueAndAcquire. */
+/** Idempotently ensure the deterministic Conversation exists. The branch
+ *  is lazily created by enqueueAndAcquire. */
 async function ensureLoopScope(
   convPort: ConversationPort,
   conversationId: string,
-  agentMemberId: string,
   agentId: string,
 ): Promise<void> {
   if (!convPort.getConversation(conversationId)) {
     try {
       convPort.createConversation({
         conversationId,
+        agentId,
         triggerMode: "mention",
         origin: "loop",
         createdAt: Date.now(),
@@ -94,16 +94,6 @@ async function ensureLoopScope(
     } catch {
       /* concurrent create - ignore */
     }
-  }
-  const members = convPort.getMembers(conversationId);
-  if (!members.some((m) => m.memberId === agentMemberId)) {
-    convPort.addMember({
-      memberId: agentMemberId,
-      conversationId,
-      kind: "agent",
-      agentId,
-      joinedAt: Date.now(),
-    });
   }
 }
 
@@ -382,12 +372,11 @@ export async function discoverItems(
 
   // 3. Run the triage workflow (same workflow-mode execution as fix/verify).
   const conversationId = loopGeneratorConversationId(params.loopId);
-  const memberId = loopGeneratorMemberId(params.loopId);
-  await ensureLoopScope(params.convPort, conversationId, memberId, agentId);
+  await ensureLoopScope(params.convPort, conversationId, agentId);
   const script = renderTriageWorkflow(allSources);
   const acquire = await params.agentRunService.enqueueAndAcquire({
     conversationId,
-    agentMemberId: memberId,
+    agentId,
     backendKind: "oma",
     mode: "normal",
     message: { role: "user", text: `triage ${params.loopId}` },
@@ -766,8 +755,8 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     // executes it directly and returns { verdict, evidence } as
     // outcome.workflow.value. No outer agent role, no meta writeback.
     const genConversationId = loopGeneratorConversationId(params.loopId);
-    const genMemberId = loopGeneratorMemberId(params.loopId);
-    await ensureLoopScope(params.convPort, genConversationId, genMemberId, cfg.agent || "default");
+    const genAgentId = cfg.agent || "default";
+    await ensureLoopScope(params.convPort, genConversationId, genAgentId);
     const gitLog = await Bun.$`git log --oneline -5`
       .cwd(repoCwd)
       .quiet()
@@ -777,7 +766,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
     const workflowArgs = { item };
     let genAcquire = await params.agentRunService.enqueueAndAcquire({
       conversationId: genConversationId,
-      agentMemberId: genMemberId,
+      agentId: genAgentId,
       backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: `Loop item ${item.id}: ${item.summary}` },
@@ -802,7 +791,7 @@ async function loopStepImpl(params: LoopStepParams): Promise<LoopState> {
       // circuit forever. Issue a fresh run for the retry.
       const retry = await params.agentRunService.enqueueAndAcquire({
         conversationId: genConversationId,
-        agentMemberId: genMemberId,
+        agentId: genAgentId,
         backendKind: "oma",
         mode: "normal",
         message: { role: "user", text: `Loop item ${item.id}: ${item.summary}` },

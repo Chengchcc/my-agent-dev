@@ -80,7 +80,6 @@ function NavContent() {
   }
 
   function makeConversation() {
-    const humanId = `human-${crypto.randomUUID().slice(0, 8)}`;
     // Quick-create targets the default agent, falling back to the first
     // enabled one — never a hardcoded dead agent id.
     const agent =
@@ -90,15 +89,7 @@ function NavContent() {
     const agentId = agent?.id ?? "default";
     createConversation.mutate(
       {
-        members: [
-          {
-            memberId: agentId,
-            kind: "agent",
-            agentId,
-            displayName: agent?.name ?? "Assistant",
-          },
-          { memberId: humanId, kind: "human", displayName: "User" },
-        ],
+        agentId,
       },
       {
         onSuccess: (conv) => {

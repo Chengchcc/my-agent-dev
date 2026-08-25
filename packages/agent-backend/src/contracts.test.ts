@@ -57,7 +57,7 @@ const RUN_INPUT: BackendRunInput<"fake"> = {
   input: INPUT,
   run: RUN_SNAPSHOT,
   workspace: { root: "/tmp", access: "read_write" },
-  metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1" },
+  metadata: { conversationId: "c1", agentId: "m1", branchId: "b1" },
 };
 
 describe("agent-backend contracts", () => {
@@ -84,7 +84,7 @@ describe("agent-backend contracts", () => {
     expect(RUN_INPUT.run.runId).toBe("run-1");
     expect(RUN_INPUT.workspace.access).toBe("read_write");
     expect(RUN_INPUT.metadata?.conversationId).toBe("c1");
-    expect(RUN_INPUT.metadata?.agentMemberId).toBe("m1");
+    expect(RUN_INPUT.metadata?.agentId).toBe("m1");
   });
 
   test("input is the sole actual prompt; history is NOT part of the contract", () => {
@@ -142,7 +142,7 @@ const _noRun: BackendRunInput = { input: INPUT };
 const _noWorkspace: BackendRunInput = {
   input: INPUT,
   run: RUN_SNAPSHOT,
-  metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1" },
+  metadata: { conversationId: "c1", agentId: "m1", branchId: "b1" },
 };
 // @ts-expect-error - missing required `productEntryId` field
 const _noProductEntryId: ProjectedHistoryItem = {
@@ -167,7 +167,7 @@ const claudeInput: BackendRunInput<"claude-code"> = {
   input: INPUT,
   run: { ...RUN_SNAPSHOT, model: { backendKind: "claude-code", modelId: "x" } },
   workspace: { root: "/tmp", access: "read_write" },
-  metadata: { conversationId: "c1", agentMemberId: "m1", branchId: "b1" },
+  metadata: { conversationId: "c1", agentId: "m1", branchId: "b1" },
 };
 // @ts-expect-error - BackendRunInput<"claude-code"> is not assignable to BackendRunInput<"fake">
 const _crossKind: BackendRunInput<"fake"> = claudeInput;

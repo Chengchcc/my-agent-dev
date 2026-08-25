@@ -9,14 +9,9 @@ import {
   type SenderRef,
 } from "@/lib/conversation-reducer";
 
-function bootstrap(overrides: { viewerMemberId?: string; members?: SenderRef[] } = {}) {
+function bootstrap() {
   const a: SenderRef = { memberId: "agent-1", kind: "agent", displayName: "Bot" };
-  const h: SenderRef = { memberId: "human-1", kind: "human", displayName: "User" };
-  return reducer(initialState(), {
-    type: "bootstrap",
-    viewerMemberId: overrides.viewerMemberId ?? h.memberId,
-    members: overrides.members ?? [a, h],
-  });
+  return reducer(initialState(), { type: "bootstrap", agent: a });
 }
 
 function rev(overrides: Record<string, unknown> = {}) {
@@ -41,11 +36,9 @@ describe("initialState", () => {
 });
 
 describe("bootstrap", () => {
-  test("populates roster and sets viewer", () => {
+  test("sets the conversation agent", () => {
     const s = bootstrap();
-    expect(s.roster["agent-1"]?.displayName).toBe("Bot");
-    expect(s.roster["human-1"]?.displayName).toBe("User");
-    expect(s.viewerMemberId).toBe("human-1");
+    expect(s.agent?.displayName).toBe("Bot");
   });
 });
 
@@ -81,7 +74,7 @@ describe("message", () => {
 
   test("replaces optimistic self message", () => {
     let s = bootstrap();
-    s = reducer(s, { type: "send", text: "hi", viewer: s.roster["human-1"]! });
+    s = reducer(s, { type: "send", text: "hi", viewer: { memberId: "user", kind: "human" } });
     expect(s.items[0]!.id).toStartWith("opt-");
     s = reducer(s, {
       type: "message",
@@ -138,22 +131,6 @@ describe("todo/update", () => {
   // todo/update was removed with the Conversation-ledger todo path; todos
   // are Run-local transients delivered over the Run SSE (see transient
   // reducer tests).
-});
-
-describe("member", () => {
-  test("adds system notice for member join", () => {
-    let s = bootstrap();
-    s = reducer(s, {
-      type: "member",
-      seq: 10,
-      kind: "member.joined",
-      payload: { members: [{ memberId: "human-2", kind: "human", displayName: "User2" }] },
-    });
-    expect(s.roster["human-2"]?.displayName).toBe("User2");
-    expect(s.items).toHaveLength(1);
-    expect(s.items[0]!.kind).toBe("notice");
-    if (s.items[0]!.kind === "notice") expect(s.items[0]!.text).toInclude("joined");
-  });
 });
 
 describe("groupTurns", () => {

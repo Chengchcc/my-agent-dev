@@ -13,7 +13,7 @@ export const runIdSchema = z.string().min(1).max(128);
 export const branchIdSchema = z.string().min(1).max(256);
 export const productEntryIdSchema = z.string().min(1).max(256);
 export const conversationIdSchema = z.string().min(1).max(256);
-export const agentMemberIdSchema = z.string().min(1).max(256);
+export const agentIdSchema = z.string().min(1).max(256);
 
 const messageSchema = z.record(z.unknown());
 
@@ -53,7 +53,7 @@ export const executeRunInputSchema = z.object({
   workspace: z.object({ root: z.string(), access: z.enum(["read_only", "read_write"]) }),
   metadata: z.object({
     conversationId: conversationIdSchema,
-    agentMemberId: agentMemberIdSchema,
+    agentId: agentIdSchema,
     branchId: branchIdSchema,
   }),
   /** Oma workflow-mode: run the script directly instead of a loop. */

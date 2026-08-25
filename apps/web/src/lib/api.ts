@@ -1,4 +1,3 @@
-import type { Member } from "@chengchenccc/api-contract";
 import { client, unwrap } from "./client";
 
 // ── Types derived from API treaty (single source: backend App type) ──
@@ -69,7 +68,6 @@ export type ChatModelOverride = {
 };
 
 export type SystemInfo = ApiReturn<typeof api.getSystemInfo>;
-export type MemberInfo = Member;
 
 /** Extract fork source ID from a conversation snapshot (null when not a fork). */
 export function getForkSourceId(conv: ConversationSnapshot): string | null {
@@ -110,17 +108,8 @@ export const api = {
   // Conversations
   listConversations: (agentId?: string) =>
     unwrap(client.api.conversations.get({ query: agentId ? { agentId } : undefined })),
-  createConversation: (body: {
-    conversationId?: string;
-    projectId?: string;
-    members: Array<{
-      memberId?: string;
-      kind: "agent" | "human";
-      agentId?: string;
-      userRef?: string;
-      displayName?: string;
-    }>;
-  }) => unwrap(client.api.conversations.post(body)),
+  createConversation: (body: { conversationId?: string; projectId?: string; agentId: string }) =>
+    unwrap(client.api.conversations.post(body)),
   getConversation: (id: string) => unwrap(client.api.conversations({ id }).get()),
   postConversationMessage: (
     id: string,

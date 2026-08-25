@@ -7,13 +7,7 @@ import { z } from "zod";
 /** Conversation event kinds on the wire. Storage keeps a richer set; this
  *  is the surface-facing subset ("todo" has zero writers, heartbeat carries
  *  no payload). */
-export const ConversationEventKind = z.enum([
-  "message",
-  "member.joined",
-  "member.left",
-  "undo",
-  "surface.control",
-]);
+export const ConversationEventKind = z.enum(["message", "undo", "surface.control"]);
 
 export type ConversationEventKind = z.infer<typeof ConversationEventKind>;
 
@@ -57,8 +51,6 @@ export type { MessageRevision };
 
 export const conversationEvents = {
   message: ConversationEvent,
-  "member.joined": ConversationEvent,
-  "member.left": ConversationEvent,
   undo: ConversationEvent,
   "surface.control": ConversationEvent,
 } as const satisfies SSEEventMap;

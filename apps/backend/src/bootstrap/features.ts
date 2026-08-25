@@ -248,7 +248,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     const row = db
       .query(
         `SELECT 1 FROM agent_run
-         WHERE agent_member_id IN (SELECT member_id FROM member WHERE agent_id = ?)
+         WHERE agent_id = ?
            AND status IN ('running','waiting','commit_failed') LIMIT 1`,
       )
       .get(agentId);
@@ -268,10 +268,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     // Default frozen Run config: the target Agent's identity (SOUL.md +
     // USER.md) and its assigned READY skill packs. Loop scopes pass their
     // own LOOP.md config explicitly and skip this resolver.
-    resolveRunConfig: async ({ conversationId, agentMemberId }) => {
-      const members = conv.convPort.getMembers(conversationId);
-      const member = members.find((m) => m.memberId === agentMemberId);
-      const agentId = member?.agentId;
+    resolveRunConfig: async ({ agentId }) => {
       if (!agentId) return {};
       const identity = await identityStore.getIdentity(agentId);
       const systemPrompt = buildAgentSystemPrompt(identity.soul, identity.user);
@@ -293,10 +290,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       if (agent) result.permissionMode = agent.config.runtime_config.permission_mode;
       return result;
     },
-    resolveAgentEnabled: async ({ conversationId, agentMemberId }) => {
-      const members = conv.convPort.getMembers(conversationId);
-      const member = members.find((m) => m.memberId === agentMemberId);
-      const agentId = member?.agentId;
+    resolveAgentEnabled: async ({ agentId }) => {
       if (!agentId) return true; // loop synthetic scope (no agent row)
       const agent = await agentSvc.getById(agentId).catch(() => null);
       return agent?.config.enabled ?? true;
@@ -357,7 +351,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const onRunFailed = (input: {
     runId: string;
     conversationId: string;
-    agentMemberId: string;
+    agentId: string;
     error: string;
   }): void => {
     void (async () => {
@@ -373,7 +367,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       };
       conv.convPort.appendLedgerEntry({
         conversationId: input.conversationId,
-        senderMemberId: input.agentMemberId,
+        senderMemberId: input.agentId,
         addressedTo: [],
         kind: "message",
         content: serializeMessageRevision(msg),
@@ -385,12 +379,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     void (async () => {
       const run = await agentRunPort.getRun(runId);
       if (!run || !output) return;
-      await conv.convSvc.cascadeMentionedAgents({
-        conversationId: run.conversationId,
-        sourceRunId: runId,
-        senderMemberId: run.agentMemberId,
-        message: output,
-      });
       // Persist auto-generated title (first Run only; !convRow.title guard).
       const convRow = conv.convPort.getConversation(run.conversationId);
       const outcome = run.terminalResult;
@@ -439,12 +427,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     ledgerResolver,
     backends,
     idGen: { ulid },
-    resolveWorkspace: async ({ conversationId, agentMemberId }) => {
-      // Default workspace comes from the agent member's Agent record;
-      // Loop scopes pin their workspace as a Run fact at enqueue time.
-      const members = conv.convPort.getMembers(conversationId);
-      const member = members.find((m) => m.memberId === agentMemberId);
-      const agent = member?.agentId ? await agentSvc.getById(member.agentId) : null;
+    resolveWorkspace: async ({ conversationId, agentId }) => {
+      // Default workspace comes from the Agent record; Loop scopes pin
+      // their workspace as a Run fact at enqueue time.
+      const agent = agentId ? await agentSvc.getById(agentId).catch(() => null) : null;
       const access =
         agent?.config.runtime_config.permission_mode === "ask" ? "read_only" : "read_write";
       // Project-bound conversation (ADR 0023): cwd is the agent's worktree
@@ -454,7 +440,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       if (convRow?.projectId) {
         if (!agent?.config.runtime_config.projects.includes(convRow.projectId)) {
           throw new Error(
-            `agent ${member?.agentId ?? "?"} has not attached project ${convRow.projectId}; ` +
+            `agent ${agentId ?? "?"} has not attached project ${convRow.projectId}; ` +
               `attach it via the agent update API (agent.yml runtime_config.projects)`,
           );
         }
@@ -756,7 +742,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     convPort: {
       createConversation: (input) =>
         conv.convPort.createConversation({ ...input, createdAt: Date.now() }),
-      addMember: (input) => conv.convPort.addMember({ ...input, joinedAt: Date.now() }),
     },
   });
 

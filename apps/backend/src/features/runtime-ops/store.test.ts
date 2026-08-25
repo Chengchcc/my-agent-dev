@@ -96,7 +96,7 @@ describe("RuntimeOpsStore", () => {
     test("telemetrySummary aggregates runs, usage and tool calls", () => {
       const now = Date.now();
       db.query(
-        `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, terminal_result, created_at, terminal_at)
+        `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_id, model_ref, status, idempotency_key, config_revision, terminal_result, created_at, terminal_at)
          VALUES (?, 'b1', 'c1', 'm1', ?, 'completed', 'k1', 1, ?, ?, ?)`,
       ).run(
         "r-agg",
@@ -128,7 +128,7 @@ describe("RuntimeOpsStore", () => {
     test("telemetrySummary respects the since window", () => {
       const now = Date.now();
       db.query(
-        `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, created_at)
+        `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_id, model_ref, status, idempotency_key, config_revision, created_at)
          VALUES (?, 'b2', 'c2', 'm2', ?, 'completed', 'k2', 1, ?)`,
       ).run("old", JSON.stringify({ backendKind: "oma", modelId: "fake/m" }), now - 86_400_000 * 2);
 

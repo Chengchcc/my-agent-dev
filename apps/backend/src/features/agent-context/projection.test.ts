@@ -20,40 +20,35 @@ afterAll(() => db.close());
 
 function freshFixture(prefix: string) {
   const conversationId = `conv-proj-${prefix}`;
-  const agentMemberId = `mem-proj-${prefix}`;
-  conv.createConversation({ conversationId, triggerMode: "mention", createdAt: Date.now() });
-  conv.addMember({
-    memberId: agentMemberId,
+  const agentId = `ag-proj-${prefix}`;
+  conv.createConversation({
     conversationId,
-    kind: "agent",
-    agentId: `ag-proj-${prefix}`,
-    displayName: `ProjAgent-${prefix}`,
-    joinedAt: Date.now(),
+    agentId,
+    triggerMode: "mention",
+    createdAt: Date.now(),
   });
-  return { conversationId, agentMemberId };
+  return { conversationId, agentId };
 }
 
 describe("Agent Context projection", () => {
   test("linear order with stable productEntryId", async () => {
-    const { conversationId, agentMemberId } = freshFixture("1");
+    const { conversationId, agentId } = freshFixture("1");
     conv.appendLedgerEntry({
       conversationId,
-      senderMemberId: agentMemberId,
-      addressedTo: [],
+      senderMemberId: agentId,
       kind: "message",
       content: JSON.stringify({ role: "user", text: "msg-1" }),
       ts: Date.now(),
     });
     conv.appendLedgerEntry({
       conversationId,
-      senderMemberId: agentMemberId,
-      addressedTo: [],
+      senderMemberId: agentId,
       kind: "message",
       content: JSON.stringify({ role: "user", text: "msg-2" }),
       ts: Date.now(),
     });
 
-    const tree = await port.getOrCreateTree(conversationId, agentMemberId);
+    const tree = await port.getOrCreateTree(conversationId);
     const branch = await port.getOrCreateDefaultBranch(tree.treeId, "oma");
     const r1 = await port.appendEntry({
       branchId: branch.branchId,
@@ -83,17 +78,16 @@ describe("Agent Context projection", () => {
   });
 
   test("summary replaces covered entries without deleting them", async () => {
-    const { conversationId, agentMemberId } = freshFixture("2");
+    const { conversationId, agentId } = freshFixture("2");
     conv.appendLedgerEntry({
       conversationId,
-      senderMemberId: agentMemberId,
-      addressedTo: [],
+      senderMemberId: agentId,
       kind: "message",
       content: JSON.stringify({ role: "user", text: "old-msg" }),
       ts: Date.now(),
     });
 
-    const tree = await port.getOrCreateTree(conversationId, agentMemberId);
+    const tree = await port.getOrCreateTree(conversationId);
     const branch = await port.getOrCreateDefaultBranch(tree.treeId, "oma");
     const r1 = await port.appendEntry({
       branchId: branch.branchId,
@@ -128,8 +122,8 @@ describe("Agent Context projection", () => {
   });
 
   test("private messages are projected with stable productEntryId", async () => {
-    const { conversationId, agentMemberId } = freshFixture("4");
-    const tree = await port.getOrCreateTree(conversationId, agentMemberId);
+    const { conversationId } = freshFixture("4");
+    const tree = await port.getOrCreateTree(conversationId);
     const branch = await port.getOrCreateDefaultBranch(tree.treeId, "oma");
     const r1 = await port.appendEntry({
       branchId: branch.branchId,
@@ -149,25 +143,23 @@ describe("Agent Context projection", () => {
   });
 
   test("summary retains uncovered tail entries after coverage point", async () => {
-    const { conversationId, agentMemberId } = freshFixture("tail");
+    const { conversationId, agentId } = freshFixture("tail");
     const seqCovered = conv.appendLedgerEntry({
       conversationId,
-      senderMemberId: agentMemberId,
-      addressedTo: [],
+      senderMemberId: agentId,
       kind: "message",
       content: JSON.stringify({ role: "user", text: "covered-msg" }),
       ts: Date.now(),
     });
     const seqRetained = conv.appendLedgerEntry({
       conversationId,
-      senderMemberId: agentMemberId,
-      addressedTo: [],
+      senderMemberId: agentId,
       kind: "message",
       content: JSON.stringify({ role: "user", text: "retained-msg" }),
       ts: Date.now(),
     });
 
-    const tree = await port.getOrCreateTree(conversationId, agentMemberId);
+    const tree = await port.getOrCreateTree(conversationId);
     const branch = await port.getOrCreateDefaultBranch(tree.treeId, "oma");
     // e1 (covered) -> e2 (retained) -> s1 (summary coversThrough=e1)
     const e1 = await port.appendEntry({
@@ -215,16 +207,14 @@ describe("Agent Context projection", () => {
     // would find B's message; the projection must still resolve A's.
     conv.appendLedgerEntry({
       conversationId: b.conversationId,
-      senderMemberId: b.agentMemberId,
-      addressedTo: [],
+      senderMemberId: b.agentId,
       kind: "message",
       content: JSON.stringify({ role: "user", text: "msg-from-B" }),
       ts: Date.now(),
     });
     const seqA = conv.appendLedgerEntry({
       conversationId: a.conversationId,
-      senderMemberId: a.agentMemberId,
-      addressedTo: [],
+      senderMemberId: a.agentId,
       kind: "message",
       content: JSON.stringify({ role: "user", text: "msg-from-A" }),
       ts: Date.now(),
@@ -239,7 +229,7 @@ describe("Agent Context projection", () => {
       },
     };
 
-    const tree = await port.getOrCreateTree(a.conversationId, a.agentMemberId);
+    const tree = await port.getOrCreateTree(a.conversationId);
     const branch = await port.getOrCreateDefaultBranch(tree.treeId, "oma");
     await port.appendEntry({
       branchId: branch.branchId,

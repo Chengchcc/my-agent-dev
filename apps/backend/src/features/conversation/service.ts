@@ -7,71 +7,12 @@ import {
   humanMessageId,
   MessageRevisionSchema,
   serializeMessageRevision,
-  systemMessageId,
 } from "@chengchenccc/message";
 import { DomainError } from "../../infra/domain-errors.js";
 import type { AgentContextService } from "../agent-context/service.js";
 import type { BranchInputMode } from "../agent-run/domain.js";
 import type { AgentRunService } from "../agent-run/service.js";
-import type { ConversationPort, LedgerEntry, LedgerKind, MemberRow } from "./ports.js";
-import { selectWakeAgentIDs } from "./wake-routing.js";
-
-// ─── Member helpers (local, cut-1; die with the member concept in cut-2) ───
-
-interface ConvAggregate {
-  conversationId: string;
-  members: Array<{
-    kind: "agent" | "human";
-    memberId: string;
-    agentId?: string;
-    userRef?: string;
-    displayName?: string;
-  }>;
-  triggerMode: string;
-  createdAt: number;
-}
-
-function buildAggregate(
-  row: {
-    conversationId: string;
-    triggerMode: string;
-    createdAt: number;
-  },
-  memberRows: MemberRow[],
-): ConvAggregate {
-  return {
-    conversationId: row.conversationId,
-    members: memberRows.map((m) => ({
-      kind: m.kind as "agent" | "human",
-      memberId: m.memberId,
-      agentId: m.agentId ?? undefined,
-      userRef: m.userRef ?? undefined,
-      displayName: m.displayName ?? undefined,
-    })),
-    triggerMode: row.triggerMode,
-    createdAt: row.createdAt,
-  };
-}
-
-/** Resolve addressedTo member ids into agent members (mention routing). */
-function resolveTriggerTargets(conv: ConvAggregate, addressedTo: string[]) {
-  const memberMap = new Map(conv.members.map((m) => [m.memberId, m]));
-  return addressedTo
-    .map((id) => memberMap.get(id))
-    .filter((m): m is ConvAggregate["members"][number] => m?.kind === "agent");
-}
-
-/** Reserved memberId for the conversation owner (the human who owns an
- *  issue-/cron-spawned conversation). */
-export const OWNER_MEMBER_ID = "owner";
-
-function isHumanMember(members: MemberRow[], memberId: string): boolean {
-  return members.some((m) => m.memberId === memberId && m.kind === "human");
-}
-
-function isSystemSender(memberId: string): boolean {
-  return memberId === "__system__";
-}
+import type { ConversationPort, LedgerEntry, LedgerKind } from "./ports.js";
 
 export interface ConversationServiceDeps {
   port: ConversationPort;
@@ -95,18 +36,17 @@ export interface ConversationServiceDeps {
    *  aborted + input cancelled + branch released, before enqueueing a fresh
    *  normal Run. */
   abortStaleRun: (runId: string) => Promise<void>;
-  /** Product Context branch resolution (mode decisions; no scope service -
-   *  scope IS the Conversation/Member/Branch trio). */
+  /** Product Context branch resolution (mode decisions; scope IS the
+   *  Conversation/Branch pair since the 1:1 collapse). */
   contextService: AgentContextService;
-  /** Effective model for a member's Agent record. */
+  /** Effective model for the conversation's Agent record. */
   resolveDefaultModel: (agentId: string) => Promise<BackendModelRef>;
-  maxConsecutiveAgentHops: () => number;
 
   idGen: () => string;
 }
 
 export interface TriggeredRun {
-  agentMemberId: string;
+  agentId: string;
   runId: string;
   queued: boolean;
 }
@@ -116,7 +56,7 @@ export interface ConversationService {
   postMessage(input: {
     conversationId: string;
     /** Optional explicit override (lark group mentions). Derived when absent:
-     *  sender = the human member, targets = all agent members. */
+     *  sender = the constant "user", targets = the conversation's agent. */
     senderMemberId?: string;
     addressedTo?: string[];
     content: unknown;
@@ -126,28 +66,10 @@ export interface ConversationService {
     /** Per-input model override (same-kind guard applies). */
     modelOverride?: BackendModelRef;
   }): Promise<{ seq: number; triggeredRuns: TriggeredRun[] }>;
-  addMember(input: {
-    conversationId: string;
-    memberId: string;
-    kind: "agent" | "human";
-    agentId?: string;
-    userRef?: string;
-    displayName?: string;
-  }): Promise<void>;
-  removeMember(conversationId: string, memberId: string): Promise<void>;
   subscribeConversation(
     conversationId: string,
     opts?: { afterSeq?: number; signal?: AbortSignal; pollMs?: number },
   ): AsyncIterable<LedgerEntry>;
-  /** Mention cascade from a terminal assistant Message: enqueue a run for
-   *  every agent member mentioned in the canonical text. Idempotent per
-   *  (sourceRunId, targetMemberId) - commit replay cannot double-trigger. */
-  cascadeMentionedAgents(input: {
-    conversationId: string;
-    sourceRunId: string;
-    senderMemberId: string;
-    message: Message;
-  }): Promise<TriggeredRun[]>;
   startNewConversationForSurface(input: {
     oldConversationId: string;
     reason: string;
@@ -158,7 +80,7 @@ export interface ConversationService {
   clearConversation(conversationId: string): Promise<void>;
   compactConversation(conversationId: string): Promise<void>;
   /** Fork a conversation from a ledger seq into a new conversation.
-   *  Copies members + live (non-undone) ledger entries with seq <= fromSeq. */
+   *  Copies the agent binding + live (non-undone) ledger entries with seq <= fromSeq. */
   forkConversation(input: {
     conversationId: string;
     fromSeq: number;
@@ -187,7 +109,7 @@ export interface ConversationService {
       branchId: string;
       mode: BranchInputMode;
       text: string;
-      agentMemberId: string;
+      agentId: string;
       createdAt: number;
     }>
   >;
@@ -214,7 +136,6 @@ class ConversationServiceImpl implements ConversationService {
   #abortStaleRun: ConversationServiceDeps["abortStaleRun"];
   #contextService: AgentContextService;
   #resolveDefaultModel: (agentId: string) => Promise<BackendModelRef>;
-  #maxHops: () => number;
 
   #idGen: () => string;
 
@@ -232,7 +153,6 @@ class ConversationServiceImpl implements ConversationService {
     this.#abortStaleRun = deps.abortStaleRun;
     this.#contextService = deps.contextService;
     this.#resolveDefaultModel = deps.resolveDefaultModel;
-    this.#maxHops = deps.maxConsecutiveAgentHops;
     this.#idGen = deps.idGen;
   }
 
@@ -285,13 +205,13 @@ class ConversationServiceImpl implements ConversationService {
     return seq;
   }
 
-  /** Enqueue an input for one agent member and dispatch when acquired.
+  /** Enqueue an input for the conversation's agent and dispatch when acquired.
    *  All modes persist first (normal/steer/follow_up); never calls an
    *  in-memory session. The idempotency key makes replay safe: same
    *  (branch, key) returns the same input/run without duplicates. */
-  async #triggerForMember(input: {
+  async #triggerForAgent(input: {
     conversationId: string;
-    memberId: string;
+    agentId: string;
     message: Message;
     idempotencyKey: string;
     mode?: BranchInputMode;
@@ -299,12 +219,7 @@ class ConversationServiceImpl implements ConversationService {
      *  the agent's default kind (foreign-kind refs would break the branch). */
     modelOverride?: BackendModelRef;
   }): Promise<TriggeredRun> {
-    const members = this.port.getMembers(input.conversationId);
-    const member = members.find((m) => m.memberId === input.memberId);
-    if (!member?.agentId) {
-      throw new Error(`no agent member ${input.memberId} in ${input.conversationId}`);
-    }
-    const resolved = await this.#resolveDefaultModel(member.agentId);
+    const resolved = await this.#resolveDefaultModel(input.agentId);
     const defaultModel =
       input.modelOverride && input.modelOverride.backendKind === resolved.backendKind
         ? input.modelOverride
@@ -313,11 +228,7 @@ class ConversationServiceImpl implements ConversationService {
     // The default branch (with any kind-switch fork, D2) is ensured by
     // AgentRunService.enqueueAndAcquire — the single run-creation choke
     // point (conversation, cron and loop all funnel through it).
-    const branch = await this.#contextService.getOrCreateDefaultBranch(
-      input.conversationId,
-      input.memberId,
-      kind,
-    );
+    const branch = await this.#contextService.getOrCreateDefaultBranch(input.conversationId, kind);
     const active = await this.#agentRuns.getActiveRun(branch.branchId);
     // CLI backends run one short-lived process per turn with no mid-turn
     // steer (ADR 0002): a steer input is queued as the NEXT turn's input
@@ -345,7 +256,7 @@ class ConversationServiceImpl implements ConversationService {
     }
     const { acquired, queued, cancelled, run, inputId } = await this.#agentRuns.enqueueAndAcquire({
       conversationId: input.conversationId,
-      agentMemberId: input.memberId,
+      agentId: input.agentId,
       backendKind: kind,
       mode,
       message: input.message,
@@ -355,7 +266,7 @@ class ConversationServiceImpl implements ConversationService {
     });
     debugLog(
       "conversation",
-      `trigger conversationId=${input.conversationId} agentMemberId=${input.memberId} branchId=${branch.branchId} mode=${mode} inputId=${inputId} runId=${run?.runId ?? ""} acquired=${acquired} queued=${queued}`,
+      `trigger conversationId=${input.conversationId} agentId=${input.agentId} branchId=${branch.branchId} mode=${mode} inputId=${inputId} runId=${run?.runId ?? ""} acquired=${acquired} queued=${queued}`,
     );
     if (acquired && run) {
       void this.#dispatchRun(run.runId).catch((err) => {
@@ -370,31 +281,17 @@ class ConversationServiceImpl implements ConversationService {
         inputId,
         message: input.message,
       }).catch((err) => {
-        console.error(`[conversation] steer injection failed for ${input.memberId}:`, err);
+        console.error(`[conversation] steer injection failed for ${input.agentId}:`, err);
       });
     } else if (cancelled) {
       // A steer with no active Run (race between the active check above and
       // the enqueue): the input was cancelled at enqueue - surface it as an
       // explicit error, never a silent drop.
       throw new Error(
-        `steer rejected: no active run on branch ${branch.branchId} for ${input.memberId}`,
+        `steer rejected: no active run on branch ${branch.branchId} for ${input.agentId}`,
       );
     }
-    return { agentMemberId: input.memberId, runId: run?.runId ?? "", queued };
-  }
-
-  /** Parse @mentions / display-name mentions out of a canonical message. */
-  #findMentionedAgentMembers(text: string, roster: MemberRow[], excludeMemberId: string): string[] {
-    const mentioned: string[] = [];
-    for (const m of roster) {
-      if (m.kind !== "agent" || m.memberId === excludeMemberId) continue;
-      const label = m.displayName ?? m.memberId;
-      const escaped = label.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
-      if (new RegExp(`(^|\\s)@?${escaped}\\b`).test(text) || text.includes(`@${m.memberId}`)) {
-        mentioned.push(m.memberId);
-      }
-    }
-    return mentioned;
+    return { agentId: input.agentId, runId: run?.runId ?? "", queued };
   }
 
   // ─── Public API ─────────────────────────────────────
@@ -402,7 +299,7 @@ class ConversationServiceImpl implements ConversationService {
   async postMessage(input: {
     conversationId: string;
     /** Optional explicit override (lark group mentions). Derived when absent:
-     *  sender = the human member, targets = all agent members. */
+     *  sender = the constant "user", targets = the conversation's agent. */
     senderMemberId?: string;
     addressedTo?: string[];
     content: unknown;
@@ -412,38 +309,11 @@ class ConversationServiceImpl implements ConversationService {
     const convRow = this.port.getConversation(input.conversationId);
     if (!convRow) throw new Error(`Conversation not found: ${input.conversationId}`);
 
-    const members = this.port.getMembers(input.conversationId);
-    const conv = buildAggregate(convRow, members);
-    const senderMemberId =
-      input.senderMemberId ??
-      members.find((m) => m.kind === "human")?.memberId ??
-      members[0]?.memberId ??
-      "__system__";
-    // ponytail: agent fallback covers human-less loop/cron forks on replay
-    const addressedTo =
-      input.addressedTo ?? members.filter((m) => m.kind === "agent").map((m) => m.memberId);
-    let targets = resolveTriggerTargets(conv, addressedTo);
-    // Wake routing: when no @mention and triggerMode=all, select the
-    // coordinator with no relationship graph (relationships feature removed).
-    if (targets.length === 0 && addressedTo.length === 0 && conv.triggerMode === "all") {
-      const activeAgentIds = members.filter((m) => m.kind === "agent").map((m) => m.memberId);
-      const coordinatorIds = selectWakeAgentIDs(activeAgentIds, [], false);
-
-      targets = coordinatorIds
-        .map((id): ConvAggregate["members"][number] | undefined => {
-          const m = conv.members.find((m) => m.memberId === id);
-          return m?.kind === "agent" ? m : undefined;
-        })
-        .filter((m): m is ConvAggregate["members"][number] => m !== undefined);
-    }
-
-    // ── Hop count: reset on human/external, increment only for known agent members ──
-    const senderIsAgent = members.some((m) => m.memberId === senderMemberId && m.kind === "agent");
-    if (isHumanMember(members, senderMemberId) || isSystemSender(senderMemberId)) {
-      this.port.updateHopCount(input.conversationId, 0);
-    } else if (senderIsAgent) {
-      this.port.updateHopCount(input.conversationId, (convRow.hopCount ?? 0) + 1);
-    }
+    const agentId = convRow.agentId;
+    const senderMemberId = input.senderMemberId ?? "user";
+    // 1:1: absent addressedTo targets the conversation's agent; an explicit
+    // override only triggers when it mentions THIS agent (lark group).
+    const trigger = agentId !== null && (input.addressedTo ?? [agentId]).includes(agentId);
 
     // ── The human message becomes canonical History FIRST ──
     const userRev = {
@@ -461,118 +331,35 @@ class ConversationServiceImpl implements ConversationService {
     const seq = await this.#appendAndBroadcast({
       conversationId: input.conversationId,
       senderMemberId,
-      addressedTo,
+      addressedTo: input.addressedTo ?? (agentId ? [agentId] : []),
       kind: "message",
       content: userRev,
     });
 
     const triggeredRuns: TriggeredRun[] = [];
-    const currentHop = this.port.getConversation(input.conversationId)?.hopCount ?? 0;
-    const hopCapped = targets.length > 0 && currentHop > this.#maxHops();
-
-    if (targets.length > 0 && !hopCapped) {
+    if (trigger) {
       const message: Message = { ...userRev, id: userRev.messageId };
-      for (const target of targets) {
-        try {
-          triggeredRuns.push(
-            await this.#triggerForMember({
-              conversationId: input.conversationId,
-              memberId: target.memberId,
-              message,
-              idempotencyKey: `${input.conversationId}:${seq}:${target.memberId}`,
-              mode: input.mode,
-              modelOverride: input.modelOverride,
-            }),
-          );
-        } catch (err) {
-          if (err instanceof DomainError) throw err;
-          console.error(
-            `[conversation] enqueueAndAcquire failed for ${target.memberId}:`,
-            err instanceof Error ? err.message : String(err),
-          );
-        }
+      try {
+        triggeredRuns.push(
+          await this.#triggerForAgent({
+            conversationId: input.conversationId,
+            agentId: agentId!,
+            message,
+            idempotencyKey: `${input.conversationId}:${seq}:${agentId}`,
+            mode: input.mode,
+            modelOverride: input.modelOverride,
+          }),
+        );
+      } catch (err) {
+        if (err instanceof DomainError) throw err;
+        console.error(
+          `[conversation] enqueueAndAcquire failed for ${agentId}:`,
+          err instanceof Error ? err.message : String(err),
+        );
       }
-    } else if (hopCapped) {
-      // Broadcast system message about the cap (no run)
-      const sysRev = {
-        messageId: systemMessageId(input.conversationId, "hopcap"),
-        role: "system" as const,
-        state: "done" as const,
-        text: `[系统] 连续 agent->agent 触发达上限（${this.#maxHops()}），已暂停，等待真人介入。`,
-        visibility: "conversation" as const,
-        updatedAt: Date.now(),
-      };
-      await this.#appendAndBroadcast({
-        conversationId: input.conversationId,
-        senderMemberId: "__system__",
-        addressedTo: [],
-        kind: "message",
-        content: sysRev,
-      });
     }
 
     return { seq, triggeredRuns };
-  }
-
-  // ─── Member join/leave ──────────────────────────
-
-  async addMember(input: {
-    conversationId: string;
-    memberId: string;
-    kind: "agent" | "human";
-    agentId?: string;
-    userRef?: string;
-    displayName?: string;
-  }): Promise<void> {
-    const { created } = this.port.addMember({
-      memberId: input.memberId,
-      conversationId: input.conversationId,
-      kind: input.kind,
-      agentId: input.agentId,
-      userRef: input.userRef,
-      displayName: input.displayName,
-      joinedAt: Date.now(),
-    });
-
-    if (!created) return; // Already a member
-
-    const members = this.port.getMembers(input.conversationId);
-    await this.#appendAndBroadcast({
-      conversationId: input.conversationId,
-      senderMemberId: "__system__",
-      addressedTo: [],
-      kind: "member.joined",
-      content: {
-        memberId: input.memberId,
-        members: members.map((m) => ({
-          memberId: m.memberId,
-          kind: m.kind,
-          displayName: m.displayName,
-        })),
-      },
-    });
-  }
-
-  async removeMember(conversationId: string, memberId: string): Promise<void> {
-    const members = this.port.getMembers(conversationId);
-    this.port.removeMember(conversationId, memberId);
-
-    await this.#appendAndBroadcast({
-      conversationId,
-      senderMemberId: "__system__",
-      addressedTo: [],
-      kind: "member.left",
-      content: {
-        memberId,
-        members: members
-          .filter((m) => m.memberId !== memberId)
-          .map((m) => ({
-            memberId: m.memberId,
-            kind: m.kind,
-            displayName: m.displayName,
-          })),
-      },
-    });
   }
 
   // ─── SSE projection ─────────────────────────────
@@ -661,48 +448,9 @@ class ConversationServiceImpl implements ConversationService {
     }
   }
 
-  /** Mention cascade triggered AFTER a terminal assistant Message is
-   *  committed (explicit callback from the Agent Run execution service).
-   *  Idempotent per (sourceRunId, targetMemberId). */
-  async cascadeMentionedAgents(input: {
-    conversationId: string;
-    sourceRunId: string;
-    senderMemberId: string;
-    message: Message;
-  }): Promise<TriggeredRun[]> {
-    const convRow = this.port.getConversation(input.conversationId);
-    if (!convRow) return [];
-    // Old Runtime behavior: cron-originated conversations do not cascade.
-    if (convRow.origin === "cron") return [];
-    const text = extractText(input.message);
-    if (!text) return [];
-
-    const roster = this.port.getMembers(input.conversationId);
-    const targets = this.#findMentionedAgentMembers(text, roster, input.senderMemberId);
-    const triggered: TriggeredRun[] = [];
-    for (const memberId of targets) {
-      try {
-        triggered.push(
-          await this.#triggerForMember({
-            conversationId: input.conversationId,
-            memberId,
-            message: input.message,
-            idempotencyKey: `${input.sourceRunId}:${memberId}`,
-            mode: "normal",
-          }),
-        );
-      } catch (err) {
-        console.error(
-          `[conversation] mention cascade failed for ${memberId}:`,
-          err instanceof Error ? err.message : String(err),
-        );
-      }
-    }
-    return triggered;
-  }
-
   /** M15.1: Start a fresh conversation from a surface control tool call.
-   *  Copies agent + human members, writes surface.control to old ledger. */
+   *  Copies the agent binding (NOT history), writes surface.control to the
+   *  old ledger; the lark watcher rebinds its own delivery tables. */
   async startNewConversationForSurface(input: {
     oldConversationId: string;
     reason: string;
@@ -745,10 +493,12 @@ class ConversationServiceImpl implements ConversationService {
       );
     }
 
-    // 3. Create new conversation
+    // 3. Create new conversation with the same agent
+    const source = this.port.getConversation(oldConversationId);
     const newConversationId = this.#idGen();
     this.port.createConversation({
       conversationId: newConversationId,
+      agentId: source?.agentId ?? null,
       triggerMode: "mention",
       createdAt: Date.now(),
     });
@@ -756,23 +506,7 @@ class ConversationServiceImpl implements ConversationService {
       this.port.setConversationTitle(newConversationId, title);
     }
 
-    // 4. Copy agent members + Lark human members (NOT history)
-    const members = this.port.getMembers(oldConversationId);
-    for (const m of members) {
-      if (m.kind === "agent" || (m.kind === "human" && m.userRef?.startsWith("lark:"))) {
-        this.port.addMember({
-          memberId: m.memberId,
-          conversationId: newConversationId,
-          kind: m.kind,
-          agentId: m.agentId,
-          userRef: m.userRef,
-          displayName: m.displayName,
-          joinedAt: Date.now(),
-        });
-      }
-    }
-
-    // 5. Write surface.control entry to OLD conversation ledger
+    // 4. Write surface.control entry to OLD conversation ledger
     const control = {
       type: "lark.start_new_conversation",
       oldConversationId,
@@ -818,6 +552,7 @@ class ConversationServiceImpl implements ConversationService {
     const newId = this.#idGen();
     this.port.createConversation({
       conversationId: newId,
+      agentId: source.agentId,
       triggerMode: source.triggerMode,
       origin: "fork",
       createdAt: Date.now(),
@@ -828,18 +563,6 @@ class ConversationServiceImpl implements ConversationService {
       newId,
       input.title ?? `Fork of ${input.conversationId.slice(0, 8)}`,
     );
-
-    for (const m of this.port.getMembers(input.conversationId)) {
-      this.port.addMember({
-        conversationId: newId,
-        memberId: m.memberId,
-        kind: m.kind,
-        agentId: m.agentId,
-        userRef: m.userRef,
-        displayName: m.displayName,
-        joinedAt: Date.now(),
-      });
-    }
 
     const entries = this.port
       .getLedgerEntries(input.conversationId)
@@ -914,7 +637,7 @@ class ConversationServiceImpl implements ConversationService {
       branchId: i.branchId,
       mode: i.mode,
       text: extractText(i.message),
-      agentMemberId: i.agentMemberId,
+      agentId: i.agentId,
       createdAt: i.createdAt,
     }));
   }

@@ -78,9 +78,8 @@ describe("ingest", () => {
 
     mockFetch([
       { body: { conversationId: "conv_new" } }, // create conversation
-      { body: { members: [] } }, // add member
       // server-derived 1:1 routing returns the triggered run
-      { body: { seq: 1, triggeredRuns: [{ agentMemberId: "mem-agent", runId: "run-1" }] } },
+      { body: { seq: 1, triggeredRuns: [{ agentId: "mem-agent", runId: "run-1" }] } },
     ]);
 
     const result = await ingest(baseEvent, {
@@ -126,11 +125,7 @@ describe("ingest", () => {
   test("group message without @bot — posts but doesn't trigger", async () => {
     const db = makeDb();
 
-    mockFetch([
-      { body: { conversationId: "conv_grp" } },
-      { body: { members: [] } },
-      { body: { seq: 2 } },
-    ]);
+    mockFetch([{ body: { conversationId: "conv_grp" } }, { body: { seq: 2 } }]);
 
     const result = await ingest(
       {
@@ -160,11 +155,7 @@ describe("ingest", () => {
   test("group message with @bot — triggers agent", async () => {
     const db = makeDb();
 
-    mockFetch([
-      { body: { conversationId: "conv_grp2" } },
-      { body: { members: [] } },
-      { body: { seq: 3 } },
-    ]);
+    mockFetch([{ body: { conversationId: "conv_grp2" } }, { body: { seq: 3 } }]);
 
     const result = await ingest(
       {
@@ -196,8 +187,7 @@ describe("ingest", () => {
 
     mockFetch([
       { body: { conversationId: "conv_trig" } },
-      { body: { members: [] } },
-      { body: { seq: 4, triggeredRuns: [{ agentMemberId: "agent_123", runId: "run_001" }] } },
+      { body: { seq: 4, triggeredRuns: [{ agentId: "agent_123", runId: "run_001" }] } },
     ]);
 
     const result = await ingest(
@@ -215,7 +205,7 @@ describe("ingest", () => {
     expect(result.action).toBe("consumed");
     expect(result.triggeredRuns).toHaveLength(1);
     expect(result.triggeredRuns[0]!.runId).toBe("run_001");
-    expect(result.triggeredRuns[0]!.agentMemberId).toBe("agent_123");
+    expect(result.triggeredRuns[0]!.agentId).toBe("agent_123");
 
     db.close();
   });
@@ -225,7 +215,6 @@ describe("ingest", () => {
 
     mockFetch([
       { body: { conversationId: "conv_empty" } },
-      { body: { members: [] } },
       { body: { seq: 5, triggeredRuns: [] } },
     ]);
 
@@ -261,8 +250,7 @@ describe("ingest", () => {
 
     mockFetch([
       { body: { conversationId: "conv_cb" } },
-      { body: { members: [] } },
-      { body: { seq: 6, triggeredRuns: [{ agentMemberId: "agent_123", runId: "run_cb1" }] } },
+      { body: { seq: 6, triggeredRuns: [{ agentId: "agent_123", runId: "run_cb1" }] } },
     ]);
 
     await ingest(

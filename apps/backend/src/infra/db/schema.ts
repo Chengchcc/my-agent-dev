@@ -27,6 +27,9 @@ export const agents = sqliteTable(
 // ─── conversation ──────────────────────────────────────────────────
 export const conversation = sqliteTable("conversation", {
   conversationId: text().primaryKey(),
+  /** 1:1 collapse (spec 2026-08-25): the conversation's agent. Nullable on
+   *  legacy rows that predate the member table removal. */
+  agentId: text("agent_id"),
   triggerMode: text().notNull().default("mention"),
   hopCount: integer().notNull().default(0),
   title: text(),
@@ -41,25 +44,7 @@ export const conversation = sqliteTable("conversation", {
   }),
 });
 
-// ─── member ────────────────────────────────────────────────────────
-export const member = sqliteTable(
-  "member",
-  {
-    memberId: text().notNull(),
-    conversationId: text()
-      .notNull()
-      .references(() => conversation.conversationId, { onDelete: "cascade" }),
-    kind: text().notNull(),
-    agentId: text(),
-    userRef: text(),
-    displayName: text(),
-    joinedAt: integer({ mode: "number" }).notNull(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.conversationId, table.memberId] }),
-    index("idx_member_conv").on(table.conversationId),
-  ],
-);
+// (member table removed — 1:1 collapse: participation is conversation.agent_id)
 
 // ─── conversation_ledger ───────────────────────────────────────────
 export const conversationLedger = sqliteTable(
@@ -243,7 +228,6 @@ import { createSelectSchema } from "drizzle-zod";
 
 export const agentsSelectSchema = createSelectSchema(agents);
 export const conversationSelectSchema = createSelectSchema(conversation);
-export const memberSelectSchema = createSelectSchema(member);
 export const skillPackSelectSchema = createSelectSchema(skillPack, {
   sourceKind: (s) => s.transform((v) => v as "builtin" | "git" | "zip"),
   status: (s) => s.transform((v) => v as "pending" | "installing" | "ready" | "failed" | "syncing"),
@@ -278,7 +262,8 @@ export const boolToInt = (v: boolean): number => (v ? 1 : 0);
 // ─── Phase 1: Agent Context, Branches, Runs, Queue, PendingAction ──────────
 // DESTRUCTIVE CLEAN CUTOVER - old session/checkpoint state is intentionally discarded.
 
-// Agent Context Tree: one per (conversation, agent member).
+// Agent Context Tree: one per conversation (1:1 collapse; the per-agent-member
+// dimension is gone — a conversation has exactly one agent).
 export const agentContextTree = sqliteTable(
   "agent_context_tree",
   {
@@ -286,12 +271,11 @@ export const agentContextTree = sqliteTable(
     conversationId: text("conversation_id")
       .notNull()
       .references(() => conversation.conversationId, { onDelete: "cascade" }),
-    agentMemberId: text("agent_member_id").notNull(),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.treeId] }),
-    uniqueIndex("idx_context_tree_member").on(table.conversationId, table.agentMemberId),
+    uniqueIndex("idx_context_tree_conversation").on(table.conversationId),
   ],
 );
 
@@ -353,7 +337,7 @@ export const agentRun = sqliteTable(
       .notNull()
       .references(() => agentContextBranch.branchId, { onDelete: "cascade" }),
     conversationId: text("conversation_id").notNull(),
-    agentMemberId: text("agent_member_id").notNull(),
+    agentId: text("agent_id").notNull(),
     modelRef: text("model_ref").notNull(), // JSON: BackendModelRef
     status: text().notNull().default("running"), // running|waiting|commit_failed|completed|failed|aborted|timeout
     idempotencyKey: text("idempotency_key").notNull(),

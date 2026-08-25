@@ -8,11 +8,9 @@ import type {
   AppendLedgerInput,
   ConversationPort,
   ConversationRow,
-  ConversationWithMembers,
+  ConversationSummary,
   CreateConversationInput,
-  CreateMemberInput,
   LedgerEntry,
-  MemberRow,
 } from "./ports.js";
 
 export function sqliteConversationAdapter(db: Database): ConversationPort {
@@ -50,6 +48,7 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
         .insert(schema.conversation)
         .values({
           conversationId: input.conversationId,
+          agentId: input.agentId ?? null,
           triggerMode: input.triggerMode ?? "mention",
           hopCount: 0,
           origin: input.origin ?? "user",
@@ -97,23 +96,15 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
       return row !== undefined;
     },
 
-    listConversations(): ConversationWithMembers[] {
+    listConversations(): ConversationSummary[] {
       const convs = d
         .select()
         .from(schema.conversation)
         .where(inArray(schema.conversation.origin, ["user", "fork"]))
         .orderBy(desc(schema.conversation.createdAt))
         .all();
-      // N+1: members fetched per conversation - kept as-is for behavior equivalence.
-      // Performance optimization (join/batch) deferred to a separate PR.
       return convs.map((c) => ({
         ...schema.conversationSelectSchema.parse(c),
-        members: d
-          .select()
-          .from(schema.member)
-          .where(eq(schema.member.conversationId, c.conversationId))
-          .all()
-          .map((m) => schema.memberSelectSchema.parse(m) as MemberRow),
         lastActivityAt: lastLedgerTs(c.conversationId),
         lastMessagePreview: lastMessagePreview(c.conversationId),
       }));
@@ -189,97 +180,24 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
       });
     },
 
-    listConversationsByAgent(agentId: string): ConversationWithMembers[] {
-      const memberRows = d
-        .selectDistinct({ conversationId: schema.member.conversationId })
-        .from(schema.member)
-        .where(eq(schema.member.agentId, agentId))
+    listConversationsByAgent(agentId: string): ConversationSummary[] {
+      const convs = d
+        .select()
+        .from(schema.conversation)
+        .where(eq(schema.conversation.agentId, agentId))
+        .orderBy(desc(schema.conversation.createdAt))
         .all();
-      // N+1: conversations and members fetched per conversation - kept as-is.
-      return memberRows
-        .map((mr) => {
-          const c = d
-            .select()
-            .from(schema.conversation)
-            .where(eq(schema.conversation.conversationId, mr.conversationId))
-            .get();
-          if (!c) return null;
-          return {
-            ...schema.conversationSelectSchema.parse(c),
-            members: d
-              .select()
-              .from(schema.member)
-              .where(eq(schema.member.conversationId, c.conversationId))
-              .all()
-              .map((m) => schema.memberSelectSchema.parse(m) as MemberRow),
-            lastActivityAt: lastLedgerTs(c.conversationId),
-            lastMessagePreview: lastMessagePreview(c.conversationId),
-          };
-        })
-        .filter(Boolean) as ConversationWithMembers[];
+      return convs.map((c) => ({
+        ...schema.conversationSelectSchema.parse(c),
+        lastActivityAt: lastLedgerTs(c.conversationId),
+        lastMessagePreview: lastMessagePreview(c.conversationId),
+      }));
     },
     getLastMessagePreview(conversationId: string): string | null {
       return lastMessagePreview(conversationId);
     },
     getLastActivityAt(conversationId: string): number | null {
       return lastLedgerTs(conversationId);
-    },
-    addMember(input: CreateMemberInput): { member: MemberRow; created: boolean } {
-      const rows = d
-        .insert(schema.member)
-        .values({
-          memberId: input.memberId,
-          conversationId: input.conversationId,
-          kind: input.kind,
-          agentId: input.agentId ?? null,
-          userRef: input.userRef ?? null,
-          displayName: input.displayName ?? null,
-          joinedAt: input.joinedAt,
-        })
-        .onConflictDoNothing()
-        .returning()
-        .all();
-      const created = rows.length > 0;
-      const member: MemberRow = created
-        ? (schema.memberSelectSchema.parse(rows[0]) as MemberRow)
-        : ({
-            memberId: input.memberId,
-            conversationId: input.conversationId,
-            kind: input.kind,
-            agentId: input.agentId ?? null,
-            userRef: input.userRef ?? null,
-            displayName: input.displayName ?? null,
-            joinedAt: input.joinedAt,
-          } as MemberRow);
-      return { member, created };
-    },
-
-    getMembers(conversationId: string): MemberRow[] {
-      return d
-        .select()
-        .from(schema.member)
-        .where(eq(schema.member.conversationId, conversationId))
-        .orderBy(schema.member.joinedAt)
-        .all()
-        .map((r) => schema.memberSelectSchema.parse(r) as MemberRow);
-    },
-
-    getAgentMembers(conversationId: string): MemberRow[] {
-      return this.getMembers(conversationId).filter((m) => m.kind === "agent");
-    },
-
-    removeMember(conversationId: string, memberId: string): boolean {
-      const rows = d
-        .delete(schema.member)
-        .where(
-          and(
-            eq(schema.member.conversationId, conversationId),
-            eq(schema.member.memberId, memberId),
-          ),
-        )
-        .returning()
-        .all();
-      return rows.length > 0;
     },
     // ─── Ledger ────────────────────────────────────
 
@@ -361,20 +279,13 @@ export function sqliteConversationAdapter(db: Database): ConversationPort {
           seq: schema.conversationLedger.seq,
           content: schema.conversationLedger.content,
           ts: schema.conversationLedger.ts,
-          senderName: schema.member.displayName,
+          senderName: schema.conversationLedger.senderMemberId,
           conversationTitle: schema.conversation.title,
         })
         .from(schema.conversationLedger)
         .leftJoin(
           schema.conversation,
           eq(schema.conversationLedger.conversationId, schema.conversation.conversationId),
-        )
-        .leftJoin(
-          schema.member,
-          and(
-            eq(schema.conversationLedger.senderMemberId, schema.member.memberId),
-            eq(schema.conversationLedger.conversationId, schema.member.conversationId),
-          ),
         )
         .where(like(schema.conversationLedger.content, `%${keyword}%`))
         .limit(limit)

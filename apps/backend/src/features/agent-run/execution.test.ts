@@ -124,7 +124,7 @@ let backend: ReturnType<typeof createAgentRunService>;
 let runPort: ReturnType<typeof sqliteAgentRunAdapter>;
 
 const conversationId = "conv-1";
-const agentMemberId = "mem-1";
+const agentId = "ag-1";
 let branchId: string;
 
 function makeExecution(
@@ -138,7 +138,7 @@ function makeExecution(
   onRunFailed?: (input: {
     runId: string;
     conversationId: string;
-    agentMemberId: string;
+    agentId: string;
     error: string;
   }) => void,
 ) {
@@ -228,15 +228,8 @@ beforeEach(async () => {
     ledgerResolver,
   });
 
-  convPort.createConversation({ conversationId, createdAt: Date.now() });
-  convPort.addMember({
-    memberId: agentMemberId,
-    conversationId,
-    kind: "agent",
-    agentId: "a1",
-    joinedAt: Date.now(),
-  });
-  const tree = await contextPort.getOrCreateTree(conversationId, agentMemberId);
+  convPort.createConversation({ conversationId, agentId, createdAt: Date.now() });
+  const tree = await contextPort.getOrCreateTree(conversationId);
   const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "oma");
   branchId = branch.branchId;
 });
@@ -249,7 +242,7 @@ afterEach(() => {
 function enqueue(mode: "normal" | "follow_up" | "steer", key: string, text: string) {
   return backend.enqueueAndAcquire({
     conversationId,
-    agentMemberId,
+    agentId,
     backendKind: "oma",
     mode,
     message: { role: "user", text },
@@ -840,7 +833,7 @@ describe("agent run execution (Run-centric)", () => {
     mkdirSync(pinnedWorkspace, { recursive: true });
     const acquired = await backend.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "hello" },
@@ -1045,18 +1038,11 @@ describe("agent run execution (Run-centric)", () => {
       createdAt: Date.now(),
       projectId: "p-attached",
     });
-    convPort.addMember({
-      conversationId: "conv-proj",
-      memberId: agentMemberId,
-      kind: "agent",
-      agentId: "agent-1",
-      joinedAt: Date.now(),
-    });
     const fake = createFakeDaemon();
     const execution = makeExecution(fake);
     const acquired = await backend.enqueueAndAcquire({
       conversationId: "conv-proj",
-      agentMemberId,
+      agentId,
       backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "in project" },
@@ -1089,18 +1075,11 @@ describe("agent run execution (Run-centric)", () => {
       createdAt: Date.now(),
       projectId: "p-other",
     });
-    convPort.addMember({
-      conversationId: "conv-unattached",
-      memberId: agentMemberId,
-      kind: "agent",
-      agentId: "agent-1",
-      joinedAt: Date.now(),
-    });
     const fake = createFakeDaemon();
     const execution = makeExecution(fake);
     const acquired = await backend.enqueueAndAcquire({
       conversationId: "conv-unattached",
-      agentMemberId,
+      agentId,
       backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "nope" },

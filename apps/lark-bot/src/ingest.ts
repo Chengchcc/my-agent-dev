@@ -31,7 +31,7 @@ export interface IngestResult {
   conversationId?: string;
   ledgerSeq?: number;
   triggered: boolean;
-  triggeredRuns: Array<{ agentMemberId: string; runId: string }>;
+  triggeredRuns: Array<{ agentId: string; runId: string }>;
 }
 
 /**
@@ -39,15 +39,7 @@ export interface IngestResult {
  * See spec §4.3 for the full pseudocode and rationale.
  */
 export async function ingest(event: LarkMessageEvent, ctx: IngestContext): Promise<IngestResult> {
-  const {
-    db,
-    selfAgentId,
-    selfAgentName,
-    botDisplayName,
-    backendUrl,
-    backendAuthToken,
-    onNewBinding,
-  } = ctx;
+  const { db, selfAgentId, botDisplayName, backendUrl, backendAuthToken, onNewBinding } = ctx;
   const client = createClient(backendUrl, backendAuthToken);
 
   // ─── Step 0: Idempotent reserve (local sqlite transaction) ───
@@ -94,14 +86,7 @@ export async function ingest(event: LarkMessageEvent, ctx: IngestContext): Promi
   // ─── Create conversation if needed (HTTP call, outside transaction) ───
   if (reserveResult.needCreateConv) {
     const { data: convData, error: convError } = await client.api.conversations.post({
-      members: [
-        {
-          kind: "agent",
-          memberId: selfAgentId,
-          agentId: selfAgentId,
-          displayName: selfAgentName,
-        },
-      ],
+      agentId: selfAgentId,
     });
     if (convError) {
       console.error(`[ingest] create conversation failed: ${JSON.stringify(convError)}`);
@@ -114,26 +99,8 @@ export async function ingest(event: LarkMessageEvent, ctx: IngestContext): Promi
     conversationId = (convData as Record<string, unknown>).conversationId as string;
     memberId = `human:lark:${event.sender_id}`;
 
-    // Add the human member via API FIRST (idempotent per §7.3).
-    try {
-      const { error: memberError } = await client.api
-        .conversations({ id: conversationId })
-        .members.post({
-          kind: "human",
-          memberId,
-          userRef: `lark:${event.sender_id}`,
-          displayName: event.senderDisplayName ?? event.sender_id,
-        });
-      if (memberError) {
-        console.error(`[ingest] add member failed: ${JSON.stringify(memberError)}`);
-        return { action: "error", conversationId, triggered: false, triggeredRuns: [] };
-      }
-    } catch (err) {
-      console.error(`[ingest] add member network error:`, err);
-      return { action: "error", conversationId, triggered: false, triggeredRuns: [] };
-    }
-
-    // Write local bindings only after /members succeeds
+    // Write local bindings (delivery state is lark-surface-local; the
+    // backend no longer tracks human members).
     db.transaction(() => {
       putChatBinding(db, event.chat_id, conversationId, event.chat_type, Date.now());
       putMemberBinding(db, event.chat_id, event.sender_id, memberId);
@@ -186,7 +153,7 @@ export async function ingest(event: LarkMessageEvent, ctx: IngestContext): Promi
     const body = msgData as Record<string, unknown>;
     const seq = body.seq as number;
     const triggeredRuns = (body.triggeredRuns ?? []) as Array<{
-      agentMemberId: string;
+      agentId: string;
       runId: string;
     }>;
 

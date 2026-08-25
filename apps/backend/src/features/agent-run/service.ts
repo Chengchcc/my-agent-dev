@@ -29,13 +29,13 @@ export interface AgentRunServiceDeps {
    *  pass explicit values - Loop scopes pass their own LOOP.md config. */
   readonly resolveRunConfig?: (input: {
     conversationId: string;
-    agentMemberId: string;
+    agentId: string;
   }) => Promise<{ systemPrompt?: string; skillRoots?: readonly string[]; permissionMode?: string }>;
   /** Kill-switch gate: false → AgentDisabledError before any queue/branch
    *  mutation. Chat, cron and loop all funnel through this service. */
   readonly resolveAgentEnabled?: (input: {
     conversationId: string;
-    agentMemberId: string;
+    agentId: string;
   }) => Promise<boolean>;
 }
 
@@ -47,7 +47,7 @@ export interface AgentRunService {
    *  Lazily creates the default Context Branch if needed. */
   enqueueAndAcquire(input: {
     conversationId: string;
-    agentMemberId: string;
+    agentId: string;
     backendKind: string;
     mode: BranchInputMode;
     message: Message;
@@ -96,7 +96,7 @@ export interface AgentRunService {
   /** Pending inputs across every branch of a conversation (queue UI). */
   listPendingInputsForConversation(
     conversationId: string,
-  ): Promise<Array<BranchInput & { agentMemberId: string }>>;
+  ): Promise<Array<BranchInput & { agentId: string }>>;
   /** CAS a pending input's message; false when no longer pending. */
   updateInput(inputId: string, message: Message): Promise<boolean>;
   /** CAS a pending/delivering input to cancelled. */
@@ -111,14 +111,13 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
       if (deps.resolveAgentEnabled) {
         const enabled = await deps.resolveAgentEnabled({
           conversationId: input.conversationId,
-          agentMemberId: input.agentMemberId,
+          agentId: input.agentId,
         });
-        if (!enabled) throw new AgentDisabledError(input.agentMemberId);
+        if (!enabled) throw new AgentDisabledError(input.agentId);
       }
       // Lazily get/create the default branch for this agent member.
       let branch = await contextService.getOrCreateDefaultBranch(
         input.conversationId,
-        input.agentMemberId,
         input.backendKind,
       );
       // D2: the agent's backend kind changed since this branch was created
@@ -145,7 +144,7 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
         debugLog(
           "agent-run",
           `kind_switch conversationId=${input.conversationId} ` +
-            `agentMemberId=${input.agentMemberId} oldKind=${oldKind} ` +
+            `agentId=${input.agentId} oldKind=${oldKind} ` +
             `newKind=${input.backendKind} branchId=${branch.branchId}`,
         );
       }
@@ -164,7 +163,7 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
       ) {
         const resolved = await deps.resolveRunConfig({
           conversationId: input.conversationId,
-          agentMemberId: input.agentMemberId,
+          agentId: input.agentId,
         });
         systemPrompt ??= resolved.systemPrompt;
         skillRoots ??= resolved.skillRoots;
@@ -173,7 +172,7 @@ export function createAgentRunService(deps: AgentRunServiceDeps): AgentRunServic
 
       return port.enqueueAndAcquire({
         conversationId: input.conversationId,
-        agentMemberId: input.agentMemberId,
+        agentId: input.agentId,
         branchId: branch.branchId,
         mode: input.mode,
         message: input.message,

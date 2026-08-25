@@ -37,7 +37,7 @@ let idCount = 0;
 const idGen = () => `e2e-${idCount++}`;
 
 // Track agent runs triggered by postMessage
-const runLog: Array<{ agentMemberId: string; runId: string }> = [];
+const runLog: Array<{ agentId: string; runId: string }> = [];
 
 const deps: ConversationServiceDeps = {
   port,
@@ -48,16 +48,15 @@ const deps: ConversationServiceDeps = {
   isInflight: () => false,
   abortStaleRun: async () => {},
   resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "m" }),
-  maxConsecutiveAgentHops: () => 8,
   idGen,
   agentRunService: {
     async enqueueAndAcquire(input: {
-      agentMemberId: string;
+      agentId: string;
       conversationId: string;
       idempotencyKey: string;
     }) {
       const runId = `run-${runLog.length}`;
-      runLog.push({ agentMemberId: input.agentMemberId, runId });
+      runLog.push({ agentId: input.agentId, runId });
       return {
         acquired: true,
         queued: false,
@@ -66,7 +65,7 @@ const deps: ConversationServiceDeps = {
           runId,
           branchId: "b",
           conversationId: input.conversationId,
-          agentMemberId: input.agentMemberId,
+          agentId: input.agentId,
           modelRef: { backendKind: "oma", modelId: "m" },
           status: "running",
           idempotencyKey: input.idempotencyKey,
@@ -143,18 +142,7 @@ describe("E2E Conversation lifecycle", () => {
       new Request("http://localhost/api/conversations", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          members: [
-            { memberId: "human-1", kind: "human", displayName: "Alice", userRef: "web:alice" },
-            {
-              memberId: "agent-1",
-              kind: "agent",
-              agentId: "test-agent",
-              displayName: "Bot",
-              userRef: "agent:test-agent",
-            },
-          ],
-        }),
+        body: JSON.stringify({ agentId: "test-agent" }),
       }),
     );
     expect(createResp.status).toBe(201);
@@ -165,8 +153,8 @@ describe("E2E Conversation lifecycle", () => {
     // 2. Get conversation
     const getResp = await app.handle(new Request(`http://localhost/api/conversations/${convId}`));
     expect(getResp.status).toBe(200);
-    const conv = (await getResp.json()) as { conversationId: string; members: unknown[] };
-    expect(conv.members.length).toBe(2);
+    const conv = (await getResp.json()) as { conversationId: string; agentId: string | null };
+    expect(conv.agentId).toBe("test-agent");
 
     // 3. List conversations
     const listResp = await app.handle(new Request("http://localhost/api/conversations"));
@@ -180,25 +168,21 @@ describe("E2E Conversation lifecycle", () => {
       new Request(`http://localhost/api/conversations/${convId}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          senderMemberId: "human-1",
-          addressedTo: ["agent-1"],
-          content: "Hello agent!",
-        }),
+        body: JSON.stringify({ content: "Hello agent!" }),
       }),
     );
     expect(msgResp.status).toBe(202);
     const msgResult = (await msgResp.json()) as {
       seq: number;
-      triggeredRuns: Array<{ agentMemberId: string }>;
+      triggeredRuns: Array<{ agentId: string }>;
     };
     expect(msgResult.seq).toBeGreaterThan(0);
     expect(msgResult.triggeredRuns.length).toBe(1);
-    expect(msgResult.triggeredRuns[0]!.agentMemberId).toBe("agent-1");
+    expect(msgResult.triggeredRuns[0]!.agentId).toBe("test-agent");
 
     // Verify the Agent Run was enqueued for the addressed member
     expect(runLog.length).toBe(1);
-    expect(runLog[0]!.agentMemberId).toBe("agent-1");
+    expect(runLog[0]!.agentId).toBe("test-agent");
     expect(runLog[0]!.runId).toBeTruthy();
   });
 
@@ -209,7 +193,7 @@ describe("E2E Conversation lifecycle", () => {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          members: [{ memberId: "h", kind: "human" }],
+          agentId: "test-agent",
         }),
       }),
     );

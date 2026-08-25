@@ -46,59 +46,6 @@ describe("Conversation CRUD", () => {
   });
 });
 
-// ─── Member ────────────────────────────────────────────────
-
-describe("Member CRUD", () => {
-  test("addMember inserts agent member", () => {
-    const { member: mem } = adapter.addMember({
-      memberId: "mem-x1",
-      conversationId: "conv-1",
-      kind: "agent",
-      agentId: "ag-x",
-      displayName: "XAgent",
-      joinedAt: Date.now(),
-    });
-    expect(mem.memberId).toBe("mem-x1");
-    expect(mem.kind).toBe("agent");
-  });
-
-  test("addMember inserts human member", () => {
-    const { member: mem } = adapter.addMember({
-      memberId: "mem-h1",
-      conversationId: "conv-1",
-      kind: "human",
-      userRef: "user-1",
-      displayName: "Alice",
-      joinedAt: Date.now(),
-    });
-    expect(mem.memberId).toBe("mem-h1");
-    expect(mem.kind).toBe("human");
-  });
-
-  test("getMembers returns all members for a conversation", () => {
-    const members = adapter.getMembers("conv-1");
-    expect(members).toHaveLength(2);
-    expect(members.map((m) => m.memberId).sort()).toEqual(["mem-h1", "mem-x1"]);
-  });
-
-  test("removeMember deletes member", () => {
-    const ok = adapter.removeMember("conv-1", "mem-h1");
-    expect(ok).toBe(true);
-    const members = adapter.getMembers("conv-1");
-    expect(members).toHaveLength(1);
-  });
-
-  test("removeMember returns false for nonexistent", () => {
-    expect(adapter.removeMember("conv-1", "nope")).toBe(false);
-  });
-
-  test("getAgentMember returns only agent members", () => {
-    const agents = adapter.getAgentMembers("conv-1");
-    expect(agents).toHaveLength(1);
-    expect(agents[0]?.memberId).toBe("mem-x1");
-  });
-});
-
 describe("Ledger CRUD", () => {
   test("appendLedgerEntry inserts and returns seq", () => {
     const seq = adapter.appendLedgerEntry({
@@ -226,21 +173,6 @@ describe("searchLedger", () => {
   });
 });
 
-describe("no session binding surface", () => {
-  test("member reads expose no session binding", () => {
-    const members = adapter.getMembers("conv-1");
-    for (const m of members) {
-      expect("sessionId" in m).toBe(false);
-      expect("session_id" in m).toBe(false);
-    }
-  });
-
-  test("getMemberSessionId and updateMemberSessionId are not on the adapter", () => {
-    expect("getMemberSessionId" in adapter).toBe(false);
-    expect("updateMemberSessionId" in adapter).toBe(false);
-  });
-});
-
 // ─── deleteConversation ────────────────────────────────────
 
 describe("deleteConversation", () => {
@@ -248,6 +180,7 @@ describe("deleteConversation", () => {
     const id = `del-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     adapter.createConversation({
       conversationId: id,
+      agentId: "ag-del",
       triggerMode: "mention",
       createdAt: Date.now(),
     });
@@ -258,8 +191,8 @@ describe("deleteConversation", () => {
     const id = makeConversation();
     const now = Date.now();
     db.exec(
-      `INSERT INTO agent_context_tree (tree_id, conversation_id, agent_member_id, created_at)
-       VALUES ('tree-${id}', '${id}', 'ag-1', ${now})`,
+      `INSERT INTO agent_context_tree (tree_id, conversation_id, created_at)
+       VALUES ('tree-${id}', '${id}', ${now})`,
     );
     // Linear chain: entry2.parent_id -> entry1, entry3.parent_id -> entry2.
     // The self-referencing FK (RESTRICT by default) breaks the naive cascade.
@@ -286,15 +219,15 @@ describe("deleteConversation", () => {
     const id = makeConversation();
     const now = Date.now();
     db.exec(
-      `INSERT INTO agent_context_tree (tree_id, conversation_id, agent_member_id, created_at)
-       VALUES ('tree-run-${id}', '${id}', 'ag-1', ${now})`,
+      `INSERT INTO agent_context_tree (tree_id, conversation_id, created_at)
+       VALUES ('tree-run-${id}', '${id}', ${now})`,
     );
     db.exec(
       `INSERT INTO agent_context_branch (branch_id, tree_id, ledger_cursor, backend_kind, is_default, revision, created_at)
        VALUES ('br-${id}', 'tree-run-${id}', 0, 'anthropic', 1, 1, ${now})`,
     );
     db.exec(
-      `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, created_at)
+      `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_id, model_ref, status, idempotency_key, config_revision, created_at)
        VALUES ('run-${id}', 'br-${id}', '${id}', 'ag-1', '{}', 'running', 'ik-${id}', 1, ${now})`,
     );
 

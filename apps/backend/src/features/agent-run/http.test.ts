@@ -10,15 +10,12 @@ const app = agentRunRoutes({
   modelCosts: Promise.resolve(new Map()),
 });
 
-function seedDefaultMember(conversationId: string, now: number): void {
+function seedConversation(conversationId: string, now: number): void {
   db.query(
-    "INSERT INTO conversation (conversation_id, trigger_mode, hop_count, created_at) VALUES (?, 'mention', 0, ?)",
+    "INSERT INTO conversation (conversation_id, agent_id, trigger_mode, hop_count, created_at) VALUES (?, 'ag-1', 'mention', 0, ?)",
   ).run(conversationId, now);
   db.query(
-    "INSERT INTO member (member_id, conversation_id, kind, agent_id, display_name, joined_at) VALUES ('default', ?, 'agent', 'ag-1', 'Assistant', ?)",
-  ).run(conversationId, now);
-  db.query(
-    "INSERT INTO agent_context_tree (tree_id, conversation_id, agent_member_id, created_at) VALUES (?, ?, 'default', ?)",
+    "INSERT INTO agent_context_tree (tree_id, conversation_id, created_at) VALUES (?, ?, ?)",
   ).run(`tree-${conversationId}`, conversationId, now);
   db.query(
     "INSERT INTO agent_context_branch (branch_id, tree_id, ledger_cursor, backend_kind, is_default, revision, created_at) VALUES (?, ?, 0, 'anthropic', 1, 1, ?)",
@@ -27,17 +24,15 @@ function seedDefaultMember(conversationId: string, now: number): void {
 
 function seedRun(runId: string, conversationId: string, now: number): void {
   db.query(
-    `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_member_id, model_ref, status, idempotency_key, config_revision, created_at)
-     VALUES (?, ?, ?, 'default', '{"backendKind":"oma","modelId":"fake/echo"}', 'completed', ?, 1, ?)`,
+    `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_id, model_ref, status, idempotency_key, config_revision, created_at)
+     VALUES (?, ?, ?, 'ag-1', '{"backendKind":"oma","modelId":"fake/echo"}', 'completed', ?, 1, ?)`,
   ).run(runId, `br-${conversationId}`, conversationId, `ik-${runId}`, now);
 }
 
 describe("agent run list", () => {
-  test("a run appears once even when memberId exists in multiple conversations", async () => {
+  test("a run appears once in the run list", async () => {
     const now = Date.now();
-    for (const cid of ["c-multi-1", "c-multi-2", "c-multi-3"]) {
-      seedDefaultMember(cid, now);
-    }
+    seedConversation("c-multi-1", now);
     seedRun("run-uniq", "c-multi-1", now);
 
     const resp = await app.handle(new Request("http://localhost/api/agent-runs?limit=50"));
@@ -49,7 +44,7 @@ describe("agent run list", () => {
 
   test("verdict derives from tool_result.is_error, not the model text", async () => {
     const now = Date.now();
-    seedDefaultMember("c-verdict", now);
+    seedConversation("c-verdict", now);
     seedRun("run-verdict", "c-verdict", now);
     db.query("UPDATE agent_run SET terminal_result = ? WHERE run_id = ?").run(
       JSON.stringify({

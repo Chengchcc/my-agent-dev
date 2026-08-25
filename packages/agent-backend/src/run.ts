@@ -44,7 +44,7 @@ export interface BackendRunInput<K extends string = string> {
    *  runs (TUI/print) omit it and carry no product identity. */
   readonly metadata?: {
     readonly conversationId: string;
-    readonly agentMemberId: string;
+    readonly agentId: string;
     readonly branchId: string;
   };
 }

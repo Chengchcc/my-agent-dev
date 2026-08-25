@@ -29,25 +29,21 @@ const runService = createAgentRunService({
 
 function freshFixture(prefix: string) {
   const conversationId = `conv-svc-${prefix}`;
-  const agentMemberId = `mem-svc-${prefix}`;
-  conv.createConversation({ conversationId, triggerMode: "mention", createdAt: Date.now() });
-  conv.addMember({
-    memberId: agentMemberId,
+  const agentId = `ag-svc-${prefix}`;
+  conv.createConversation({
     conversationId,
-    kind: "agent",
-    agentId: `ag-svc-${prefix}`,
-    displayName: `SvcAgent-${prefix}`,
-    joinedAt: Date.now(),
+    agentId,
+    triggerMode: "mention",
+    createdAt: Date.now(),
   });
   conv.appendLedgerEntry({
     conversationId,
-    senderMemberId: agentMemberId,
-    addressedTo: [],
+    senderMemberId: agentId,
     kind: "message",
     content: JSON.stringify({ role: "user", text: `hello-${prefix}` }),
     ts: Date.now(),
   });
-  return { conversationId, agentMemberId };
+  return { conversationId, agentId };
 }
 
 afterAll(() => db.close());
@@ -60,15 +56,15 @@ describe("Agent Run service: frozen Run config", () => {
       contextService: ctxService,
       idGen,
       ledgerResolver,
-      resolveRunConfig: async ({ conversationId, agentMemberId }) => {
-        resolved.push(`${conversationId}|${agentMemberId}`);
+      resolveRunConfig: async ({ conversationId, agentId }) => {
+        resolved.push(`${conversationId}|${agentId}`);
         return { systemPrompt: "soul\n\nUser context:\nuser", skillRoots: ["/packs/a"] };
       },
     });
-    const { conversationId, agentMemberId } = freshFixture("cfg1");
+    const { conversationId, agentId } = freshFixture("cfg1");
     const result = await svc.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "run" },
@@ -77,7 +73,7 @@ describe("Agent Run service: frozen Run config", () => {
       idempotencyKey: `key-cfg1`,
     });
     expect(result.acquired).toBe(true);
-    expect(resolved).toEqual([`${conversationId}|${agentMemberId}`]);
+    expect(resolved).toEqual([`${conversationId}|${agentId}`]);
     expect(result.run?.systemPrompt).toBe("soul\n\nUser context:\nuser");
     expect(result.run?.skillRoots).toEqual(["/packs/a"]);
   });
@@ -92,10 +88,10 @@ describe("Agent Run service: frozen Run config", () => {
         throw new Error("must not be called");
       },
     });
-    const { conversationId, agentMemberId } = freshFixture("cfg2");
+    const { conversationId, agentId } = freshFixture("cfg2");
     const result = await svc.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "run" },
@@ -112,7 +108,7 @@ describe("Agent Run service: frozen Run config", () => {
   });
 
   test("resolveAgentEnabled=false rejects before any branch/queue mutation", async () => {
-    const { conversationId, agentMemberId } = freshFixture("disabled");
+    const { conversationId, agentId } = freshFixture("disabled");
     const svc = createAgentRunService({
       port: runPort,
       contextService: ctxService,
@@ -123,7 +119,7 @@ describe("Agent Run service: frozen Run config", () => {
     await expect(
       svc.enqueueAndAcquire({
         conversationId,
-        agentMemberId,
+        agentId,
         backendKind: "oma",
         mode: "normal",
         message: { role: "user", text: "nope" },
@@ -136,11 +132,11 @@ describe("Agent Run service: frozen Run config", () => {
 });
 
 describe("Agent Run service", () => {
-  test("lazy existing-member acquisition creates branch and run", async () => {
-    const { conversationId, agentMemberId } = freshFixture("s1");
+  test("lazy acquisition creates branch and run", async () => {
+    const { conversationId, agentId } = freshFixture("s1");
     const result = await runService.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "run" },
@@ -153,10 +149,10 @@ describe("Agent Run service", () => {
   });
 
   test("queued failure: second input on active branch is queued", async () => {
-    const { conversationId, agentMemberId } = freshFixture("s2");
+    const { conversationId, agentId } = freshFixture("s2");
     await runService.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -166,7 +162,7 @@ describe("Agent Run service", () => {
     });
     const result2 = await runService.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       backendKind: "oma",
       mode: "steer",
       message: { role: "user", text: "steer" },
@@ -179,11 +175,11 @@ describe("Agent Run service", () => {
   });
 
   test("model change affects next run snapshot", async () => {
-    const { conversationId, agentMemberId } = freshFixture("s3");
+    const { conversationId, agentId } = freshFixture("s3");
     // First run
     const r1 = await runService.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "first" },
@@ -197,7 +193,7 @@ describe("Agent Run service", () => {
     await runService.finalizeRun(r1.run!.runId, { status: "completed" });
 
     // Change model on the branch
-    const branch = await ctxService.getOrCreateDefaultBranch(conversationId, agentMemberId, "oma");
+    const branch = await ctxService.getOrCreateDefaultBranch(conversationId, "oma");
     await ctxService.changeModel(branch.branchId, branch.revision, {
       backendKind: "oma",
       modelId: "model-b",
@@ -206,7 +202,7 @@ describe("Agent Run service", () => {
     // Second run should use the new model
     const r2 = await runService.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "second" },
@@ -219,74 +215,11 @@ describe("Agent Run service", () => {
 });
 
 describe("Agent Run cross-feature scenarios", () => {
-  test("two agent members have isolated trees, branches, and runs", async () => {
-    const conversationId = "conv-iso";
-    conv.createConversation({ conversationId, triggerMode: "mention", createdAt: Date.now() });
-    conv.addMember({
-      memberId: "mem-iso-a",
-      conversationId,
-      kind: "agent",
-      agentId: "ag-iso-a",
-      displayName: "AgentA",
-      joinedAt: Date.now(),
-    });
-    conv.addMember({
-      memberId: "mem-iso-b",
-      conversationId,
-      kind: "agent",
-      agentId: "ag-iso-b",
-      displayName: "AgentB",
-      joinedAt: Date.now(),
-    });
-    conv.appendLedgerEntry({
-      conversationId,
-      senderMemberId: "mem-iso-a",
-      addressedTo: [],
-      kind: "message",
-      content: JSON.stringify({ role: "user", text: "msg-a" }),
-      ts: Date.now(),
-    });
-    conv.appendLedgerEntry({
-      conversationId,
-      senderMemberId: "mem-iso-b",
-      addressedTo: [],
-      kind: "message",
-      content: JSON.stringify({ role: "user", text: "msg-b" }),
-      ts: Date.now(),
-    });
-
-    const r1 = await runService.enqueueAndAcquire({
-      conversationId,
-      agentMemberId: "mem-iso-a",
-      backendKind: "oma",
-      mode: "normal",
-      message: { role: "user", text: "run-a" },
-      defaultModel: { backendKind: "oma", modelId: "model-a" },
-      configRevision: 1,
-      idempotencyKey: `key-iso-a`,
-    });
-    const r2 = await runService.enqueueAndAcquire({
-      conversationId,
-      agentMemberId: "mem-iso-b",
-      backendKind: "oma",
-      mode: "normal",
-      message: { role: "user", text: "run-b" },
-      defaultModel: { backendKind: "oma", modelId: "model-a" },
-      configRevision: 1,
-      idempotencyKey: `key-iso-b`,
-    });
-
-    expect(r1.run?.agentMemberId).toBe("mem-iso-a");
-    expect(r2.run?.agentMemberId).toBe("mem-iso-b");
-    expect(r1.run?.runId).not.toBe(r2.run?.runId);
-    expect(r1.run?.branchId).not.toBe(r2.run?.branchId);
-  });
-
   test("stored Context entries contain ledgerSeq and stable entryId but no copied content", async () => {
-    const { conversationId, agentMemberId } = freshFixture("ref");
+    const { conversationId, agentId } = freshFixture("ref");
     await runService.enqueueAndAcquire({
       conversationId,
-      agentMemberId,
+      agentId,
       backendKind: "oma",
       mode: "normal",
       message: { role: "user", text: "run" },

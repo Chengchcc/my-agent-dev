@@ -30,7 +30,7 @@ function makeInput(branchId = "b1", history: ProjectedHistoryItem[] = []): Backe
       configRevision: 1,
     },
     workspace: { root: "/tmp", access: "read_write" },
-    metadata: { conversationId: "c1", agentMemberId: "m1", branchId },
+    metadata: { conversationId: "c1", agentId: "m1", branchId },
   };
 }
 

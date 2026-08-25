@@ -59,40 +59,19 @@ export function conversationRoutes(
           }
           svc.port.createConversation({
             conversationId,
+            agentId: body.agentId,
             triggerMode: body.triggerMode ?? "mention",
             createdAt: now,
             projectId: body.projectId ?? null,
           });
-          const members = body.members ?? [];
-          for (const m of members) {
-            await svc.addMember({
-              conversationId,
-              memberId: m.memberId ?? idGen(),
-              kind: m.kind,
-              agentId: m.agentId,
-              userRef: m.userRef,
-              displayName: m.displayName,
-            });
-          }
-          const allMembers = svc.port.getMembers(conversationId);
           set.status = 201;
-          return { conversationId, members: allMembers };
+          return { conversationId, agentId: body.agentId };
         },
         {
           body: t.Object({
             conversationId: t.Optional(t.String({ minLength: 1 })),
             projectId: t.Optional(t.String({ minLength: 1 })),
-            members: t.Optional(
-              t.Array(
-                t.Object({
-                  memberId: t.Optional(t.String({ minLength: 1 })),
-                  kind: t.Union([t.Literal("agent"), t.Literal("human")]),
-                  agentId: t.Optional(t.String()),
-                  userRef: t.Optional(t.String()),
-                  displayName: t.Optional(t.String()),
-                }),
-              ),
-            ),
+            agentId: t.Optional(t.String({ minLength: 1 })),
             triggerMode: t.Optional(t.Literal("mention")),
           }),
         },
@@ -113,9 +92,10 @@ export function conversationRoutes(
       .get("/api/conversations/:id", ({ params: { id } }) => {
         const conv = svc.port.getConversation(id);
         if (!conv) return Response.json({ error: "Not found" }, { status: 404 });
-        const members = svc.port.getMembers(id);
         return {
           conversationId: conv.conversationId,
+          agentId: conv.agentId,
+          origin: conv.origin,
           triggerMode: conv.triggerMode,
           hopCount: conv.hopCount,
           title: conv.title,
@@ -125,7 +105,6 @@ export function conversationRoutes(
           forkFromSeq: conv.forkFromSeq,
           lastActivityAt: svc.port.getLastActivityAt?.(id) ?? null,
           lastMessagePreview: svc.port.getLastMessagePreview?.(id) ?? null,
-          members,
         };
       })
       .delete("/api/conversations/:id", async ({ params: { id }, set }) => {
@@ -202,44 +181,6 @@ export function conversationRoutes(
         await svc.cancelInput(inputId);
         return { ok: true };
       })
-      .post(
-        "/api/conversations/:id/members",
-        async ({ params: { id: conversationId }, body }) => {
-          const memberId = body.memberId ?? idGen();
-          await svc.addMember({
-            conversationId,
-            memberId,
-            kind: body.kind,
-            agentId: body.agentId,
-            userRef: body.userRef,
-            displayName: body.displayName,
-          });
-          const members = svc.port.getMembers(conversationId);
-          return { members };
-        },
-        {
-          body: t.Object({
-            memberId: t.Optional(t.String({ minLength: 1 })),
-            kind: t.Union([t.Literal("agent"), t.Literal("human")]),
-            agentId: t.Optional(t.String()),
-            userRef: t.Optional(t.String()),
-            displayName: t.Optional(t.String()),
-          }),
-        },
-      )
-      .delete(
-        "/api/conversations/:id/members",
-        async ({ params: { id: conversationId }, body }) => {
-          await svc.removeMember(conversationId, body.memberId);
-          const members = svc.port.getMembers(conversationId);
-          return { members };
-        },
-        {
-          body: t.Object({
-            memberId: t.String({ minLength: 1 }),
-          }),
-        },
-      )
       .post("/api/conversations/:id/clear", async ({ params: { id } }) => {
         await svc.clearConversation(id);
         return { ok: true };

@@ -18,11 +18,7 @@ export interface AgentContextServiceDeps {
  *  existing agent members, manages branch operations, and resolves the
  *  effective model for the next Agent Run. */
 export interface AgentContextService {
-  getOrCreateDefaultBranch(
-    conversationId: string,
-    agentMemberId: string,
-    backendKind: string,
-  ): Promise<ContextBranch>;
+  getOrCreateDefaultBranch(conversationId: string, backendKind: string): Promise<ContextBranch>;
 
   appendPrivateMessage(
     branchId: string,
@@ -82,8 +78,8 @@ export function createAgentContextService(deps: AgentContextServiceDeps): AgentC
   const { port } = deps;
 
   return {
-    async getOrCreateDefaultBranch(conversationId, agentMemberId, backendKind) {
-      const tree = await port.getOrCreateTree(conversationId, agentMemberId);
+    async getOrCreateDefaultBranch(conversationId, backendKind) {
+      const tree = await port.getOrCreateTree(conversationId);
       return port.getOrCreateDefaultBranch(tree.treeId, backendKind);
     },
 

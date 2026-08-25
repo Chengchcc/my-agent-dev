@@ -78,9 +78,7 @@ export function ConversationList({ agentId, agentName }: { agentId: string; agen
                 <p className="text-sm font-medium text-(--ink-strong) truncate">
                   {conv.title ?? `Conversation ${conv.conversationId.slice(0, 8)}`}
                 </p>
-                <p className="text-[10px] text-(--mute) mt-0.5">
-                  {conv.members.length} member{conv.members.length !== 1 ? "s" : ""}
-                </p>
+                <p className="text-[10px] text-(--mute) mt-0.5">{conv.agentId ?? "agent"}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Button
