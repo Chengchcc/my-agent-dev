@@ -443,6 +443,32 @@ describe("tui session (headless, fake provider)", () => {
     }
   }, 15_000);
 
+  test("/model switch then a normal prompt settles and surfaces output", async () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-model-run-"));
+    const agentDir = mkdtempSync(join(tmpdir(), "oma-tui-model-run-agent-"));
+    process.env.OMA_SESSION_DIR = sessionDir;
+    process.env.OMA_CODING_AGENT_DIR = agentDir;
+    try {
+      const io = scriptedIo(["/model fake/echo2", "hi", "/exit", "/exit"]);
+      const code = await runTuiSession(
+        { modelRuntime: testModelRuntime(), workspaceRoot: sessionDir },
+        io,
+      );
+      expect(code).toBe(0);
+      const last = io.renders.at(-1)!;
+      // No live run remains: the busy "working" state must settle.
+      expect(last.runs.every((r) => r.running === false)).toBe(true);
+      const texts = last.runs.flatMap((r) => r.items.map((i) => i.text));
+      // The assistant output rendered, not just a stuck spinner.
+      expect(texts.some((t) => t.includes("done"))).toBe(true);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      delete process.env.OMA_CODING_AGENT_DIR;
+      rmSync(sessionDir, { recursive: true, force: true });
+      rmSync(agentDir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
   test("/skill lists and auto-registers skill commands", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "oma-tui-skills-"));
     const sessionDir = mkdtempSync(join(tmpdir(), "oma-tui-skills-sess-"));
