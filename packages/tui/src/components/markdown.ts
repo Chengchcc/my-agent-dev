@@ -408,19 +408,23 @@ export class Markdown implements Component {
             break;
           }
         }
-        const border = this.theme.codeBlockBorder;
-        const lang = token.lang || "";
-        const innerWidth = Math.max(1, width - 2);
-        const codeLines = this.theme.highlightCode
-          ? this.theme.highlightCode(token.text, token.lang)
-          : token.text.split("\n");
-        const top = `${lang ? `${lang} ` : ""}${"─".repeat(Math.max(1, innerWidth - (lang ? lang.length + 1 : 0)))}`;
-        lines.push(border(`┌─ ${top}┐`));
-        for (const line of codeLines) {
-          const padded = line + " ".repeat(Math.max(0, innerWidth - visibleWidth(line)));
-          lines.push(border(`│ ${padded}│`));
+        // omp renders fenced Markdown code as plain code lines framed by the
+        // codeBlockBorder fence markers, not a custom box. (The bordered code
+        // box belongs to omp renderCodeCell for tool read/write results.)
+        const indent = this.theme.codeBlockIndent ?? "  ";
+        lines.push(this.theme.codeBlockBorder(`\`\`\`${token.lang || ""}`));
+        if (this.theme.highlightCode) {
+          const highlightedLines = this.theme.highlightCode(token.text, token.lang);
+          for (const hlLine of highlightedLines) {
+            lines.push(`${indent}${hlLine}`);
+          }
+        } else {
+          const codeLines = token.text.split("\n");
+          for (const codeLine of codeLines) {
+            lines.push(`${indent}${this.theme.codeBlock(codeLine)}`);
+          }
         }
-        lines.push(border(`└${"─".repeat(innerWidth + 1)}┘`));
+        lines.push(this.theme.codeBlockBorder("```"));
         if (nextTokenType && nextTokenType !== "space") {
           lines.push(""); // Add spacing after code blocks (unless space token follows)
         }

@@ -1368,8 +1368,14 @@ export function createTerminalIo(
   const statusContainer = new Container();
   const editorTheme: EditorTheme = {
     ...EDITOR_THEME,
-    topBorder: (width: number): string =>
-      statusLineText || EDITOR_THEME.borderColor("─".repeat(width)),
+    topBorder: (width: number): string => {
+      if (!statusLineText) return EDITOR_THEME.borderColor("─".repeat(width));
+      // Re-fit the powerline status bar to the current width. The raw string
+      // is width-independent; addStatusBar must not pre-truncate it, or a
+      // terminal resize leaves a stale-width status line above the editor.
+      const line = truncateToWidth(statusLineText, width, "");
+      return applyBackgroundToLine(line, width, (s) => `\u001b[48;5;234m${s}\u001b[0m`);
+    },
   };
   const editor = new Editor(tui, editorTheme);
   let headerInfo = "oma";
@@ -1619,11 +1625,7 @@ export function createTerminalIo(
     if (headerSession) segs.push({ text: headerSession.slice(0, 8), fg: "\u001b[2m" });
     if (headerContext) segs.push({ text: headerContext, fg: contextColor(headerContext) });
     if (segs.length > 0) {
-      statusLineText = applyBackgroundToLine(
-        truncateToWidth(renderStatusBar(segs), tui.terminal.columns),
-        tui.terminal.columns,
-        (line) => `\u001b[48;5;234m${line}\u001b[0m`,
-      );
+      statusLineText = renderStatusBar(segs);
     }
   }
 

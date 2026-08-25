@@ -51,6 +51,20 @@ const RICH_THINKING =
   "I listed the workspace root, skimmed a file, then traced the package graph.\n" +
   "Long lines force wrapping in the thinking block so the collapsed view can be checked.";
 
+const MERMAID_ANSWER = [
+  "Here is the request flow:",
+  "",
+  "```mermaid",
+  "graph LR",
+  "  Start[Start Request] --> Auth{Auth Valid?}",
+  "  Auth --No--> Deny[401 Unauthorized]",
+  "  Auth --Yes--> Query[Query Service] --> DB[(Database)]",
+  "  Query --> Build[Build Response] --> OK[200 OK]",
+  "```",
+  "",
+  "Sentinel: snapshot-complete.",
+].join("\n");
+
 const RICH_ANSWER = [
   "## Project structure summary",
   "",
@@ -175,6 +189,8 @@ await runScenario("tools", "run the demo", {
 });
 
 // Rich: tools + thinking + markdown, then toggles and a narrow reflow.
+await runScenario("mermaid", "show the diagram", { answer: MERMAID_ANSWER });
+
 await runScenario(
   "rich",
   "scan the repo and summarize",
@@ -200,6 +216,10 @@ await runScenario(
     vt.resize(60, 28); // narrow reflow
     await vt.waitForRender();
     writeFileSync(join(outDir, "oma-snap-rich-narrow.ansi.txt"), vt.getViewportAnsi().join("\n"));
+    writeFileSync(
+      join(outDir, "oma-snap-rich-narrow.full.ansi.txt"),
+      vt.getScrollBufferAnsi().join("\n"),
+    );
     console.log("wrote thinking/tools/narrow frames");
   },
 );
