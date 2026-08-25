@@ -36,7 +36,7 @@ import {
   type WebSearchPort,
 } from "@chengchenccc/tools-common";
 import { fakeProvider } from "./fake-provider.js";
-import { mountWorkspaceMcpServers } from "./mcp-mount.js";
+import { mountWorkspaceMcpServers, withCallTimeout } from "./mcp-mount.js";
 import { killProcessTree } from "./process-tree.js";
 import type { ProductToolCaller } from "./product-tool-transport.js";
 import { readProductToolsManifest } from "./product-tools-manifest.js";
@@ -71,6 +71,51 @@ function estimateMessageTokens(message: Message): number {
   // (role tag, separators — matches Anthropic's documented overhead).
   return Math.ceil(chars / 4) + 4;
 }
+
+/** Default native tool timeout (ms) for file/web/bash unless overridden. */
+const DEFAULT_NATIVE_TOOL_TIMEOUT_MS = 30_000;
+
+function resolveNativeToolTimeout(defaultMs: number): number {
+  const capRaw = process.env.OMA_MAX_TOOL_TIMEOUT_MS;
+  const cap = capRaw ? Number(capRaw) : 0;
+  if (Number.isFinite(cap) && cap > 0) return Math.min(defaultMs, cap);
+  return defaultMs;
+}
+
+async function withToolTimeout(
+  tool: PluginTool,
+  input: Readonly<Record<string, unknown>>,
+  signal: AbortSignal | undefined,
+  options: { callId?: string; onOutput?: (partial: string) => void } | undefined,
+  defaultMs: number,
+): Promise<Readonly<Record<string, unknown>>> {
+  const timeoutMs = resolveNativeToolTimeout(defaultMs);
+  if (timeoutMs <= 0) return tool.execute(input, signal, options);
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  signal?.addEventListener("abort", onAbort, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await withCallTimeout(
+      tool.execute(input, controller.signal, options),
+      tool.name,
+      timeoutMs,
+      signal,
+    );
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+function wrapNativeTool(tool: PluginTool, defaultMs = DEFAULT_NATIVE_TOOL_TIMEOUT_MS): PluginTool {
+  return {
+    ...tool,
+    execute: (input, signal, options) => withToolTimeout(tool, input, signal, options, defaultMs),
+  };
+}
+
+/** Dependencies for ONE Run's runtime assembly. The runtime is per-Run: a
 
 /** Dependencies for ONE Run's runtime assembly. The runtime is per-Run: a
  *  fresh in-memory SessionStore and a fresh OmaSession are created
@@ -172,6 +217,12 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   if (projectSettings.memoryModel !== undefined) {
     process.env.OMA_MEMORY_MODEL = projectSettings.memoryModel;
   }
+  if (projectSettings.bashTimeoutMs !== undefined) {
+    process.env.OMA_BASH_TIMEOUT_MS = String(projectSettings.bashTimeoutMs);
+  }
+  if (projectSettings.maxToolTimeoutMs !== undefined) {
+    process.env.OMA_MAX_TOOL_TIMEOUT_MS = String(projectSettings.maxToolTimeoutMs);
+  }
   const catalog = await deps.modelRuntime.getCatalog();
   // The Run's model is the ONLY budget/summarizer authority. A catalog-first
   // model with a different window would compact at the wrong threshold or
@@ -213,7 +264,14 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     );
   }
 
-  const nativeToolsPlugin: Plugin = { name: "native-tools", tools: fileTools };
+  const bashDefault = Number(process.env.OMA_BASH_TIMEOUT_MS) || DEFAULT_NATIVE_TOOL_TIMEOUT_MS;
+  const nativeTools = fileTools.map((t) =>
+    wrapNativeTool(t, t.name === "bash" ? bashDefault : DEFAULT_NATIVE_TOOL_TIMEOUT_MS),
+  );
+  const nativeToolsPlugin: Plugin = {
+    name: "native-tools",
+    tools: [...nativeTools, ...mounted.tools],
+  };
   const plugins: Plugin[] = [nativeToolsPlugin, createSkill({ roots: deps.skillRoots })];
   if (deps.enableNativeTodo) {
     const todoStore = createFileTodoStore(deps.workspaceRoot);

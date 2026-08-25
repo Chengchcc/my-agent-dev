@@ -7,6 +7,21 @@ const descriptionParam = {
     "Must be the first parameter. A short human-readable summary explaining why this command is being run.",
 };
 
+function envMs(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function defaultBashTimeoutMs(): number {
+  return envMs("OMA_BASH_TIMEOUT_MS", 30_000);
+}
+
+function maxToolTimeoutMs(): number {
+  return envMs("OMA_MAX_TOOL_TIMEOUT_MS", 0);
+}
+
 export function createBashTool(opts: { workspaceRoot: string }): Tool {
   const sandbox = new WorkspaceSandbox(opts.workspaceRoot);
 
@@ -36,7 +51,7 @@ export function createBashTool(opts: { workspaceRoot: string }): Tool {
     async execute(input, signal?: AbortSignal, options?: { onOutput?: (s: string) => void }) {
       const {
         command,
-        timeout = 30_000,
+        timeout = defaultBashTimeoutMs(),
         cwd,
       } = input as {
         command: string;
@@ -58,7 +73,9 @@ export function createBashTool(opts: { workspaceRoot: string }): Tool {
         }
       }
 
-      const clamped = Math.min(Math.max(timeout, 1), 600_000);
+      const upper = maxToolTimeoutMs();
+      const cap = upper > 0 ? Math.min(upper, 600_000) : 600_000;
+      const clamped = Math.min(Math.max(timeout, 1), cap);
       const hasSetsid = Bun.which("setsid") !== null;
       const proc = Bun.spawn(
         hasSetsid ? ["setsid", "bash", "-c", command] : ["bash", "-c", command],
@@ -83,7 +100,6 @@ export function createBashTool(opts: { workspaceRoot: string }): Tool {
         const stderrPromise = new Response(proc.stderr).text();
         let stdout = "";
         if (options?.onOutput) {
-          // Stream stdout line-by-line so long commands show live output.
           const reader = proc.stdout.getReader();
           for (;;) {
             const { done, value } = await reader.read();

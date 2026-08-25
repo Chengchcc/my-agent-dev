@@ -178,9 +178,12 @@ export async function testMcpServer(
  * overrides, 0 disables. */
 export function mcpCallTimeoutMs(): number {
   const raw = process.env.OMA_MCP_TIMEOUT_MS;
-  if (raw === undefined) return 120_000;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : 120_000;
+  let n = raw === undefined ? 120_000 : Number(raw);
+  if (!Number.isFinite(n)) n = 120_000;
+  const capRaw = process.env.OMA_MAX_TOOL_TIMEOUT_MS;
+  const cap = capRaw ? Number(capRaw) : 0;
+  if (Number.isFinite(cap) && cap > 0) n = Math.min(n, cap);
+  return n;
 }
 
 /** Race a tool call against a wall-clock timeout and the run's abort

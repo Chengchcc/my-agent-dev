@@ -32,6 +32,10 @@ export interface ProjectSettings {
   memoryExtract?: boolean;
   /** Memory extraction model (env OMA_MEMORY_MODEL). */
   memoryModel?: string;
+  /** Default bash tool timeout ms (env OMA_BASH_TIMEOUT_MS). */
+  bashTimeoutMs?: number;
+  /** Global cap for any per-tool timeout ms; 0 = no limit (omp tools.maxTimeout). */
+  maxToolTimeoutMs?: number;
 }
 
 function settingsPath(root: string): string {
@@ -77,6 +81,12 @@ export function loadProjectSettings(root: string): ProjectSettings {
     }
     if ("memoryModel" in parsed && typeof parsed.memoryModel === "string") {
       result.memoryModel = parsed.memoryModel;
+    }
+    if ("bashTimeoutMs" in parsed && typeof parsed.bashTimeoutMs === "number") {
+      result.bashTimeoutMs = parsed.bashTimeoutMs;
+    }
+    if ("maxToolTimeoutMs" in parsed && typeof parsed.maxToolTimeoutMs === "number") {
+      result.maxToolTimeoutMs = parsed.maxToolTimeoutMs;
     }
     return result;
   } catch {

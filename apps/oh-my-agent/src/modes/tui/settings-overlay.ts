@@ -38,6 +38,8 @@ const ROWS: SettingRow[] = [
   { key: "maxSteps", label: "maxSteps", kind: "number" },
   { key: "modelTimeoutMs", label: "modelTimeoutMs", kind: "number" },
   { key: "mcpTimeoutMs", label: "mcpTimeoutMs", kind: "number" },
+  { key: "bashTimeoutMs", label: "bashTimeoutMs", kind: "number" },
+  { key: "maxToolTimeoutMs", label: "maxToolTimeoutMs", kind: "number" },
   { key: "memoryExtract", label: "memoryExtract", kind: "boolean" },
   { key: "memoryModel", label: "memoryModel", kind: "string" },
   { key: "titleEnabled", label: "titleEnabled", kind: "boolean" },
