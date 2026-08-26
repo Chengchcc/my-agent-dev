@@ -9,18 +9,31 @@ native dynamic import), tool result `content` contract, plugin `.mcp.json` merge
 (`trusted-plugins.json` hash record, `/plugin trust` command, RPC never loads
 project-scope code), `permissionMode` deny drops plugin code components.
 
+**Follow-ups also shipped (2026-08-26, HITL Phase A):**
+
+- Workspace `.mcp.json` standalone trust gate (`gateWorkspaceMcp` in tui/print/json,
+  `/mcp trust` command, fail-closed when untrusted; fixed a pre-existing duplicate
+  mounted-tools bug that broke any real MCP server mount into a Run).
+- HITL approval pipeline (oma side): `ApprovalHandler` threaded
+  mode->runtime->loop; `permissionMode:"ask"` gates plugin code tools;
+  tools get `options.request`; per-mode resolution - TUI `confirmApproval`
+  overlay, print/json fail-closed deny, RPC wire (`approval_request` event
+  reaches the backend via the `backend.oma.*` passthrough + `resolve_approval`
+  command + `OMA_APPROVAL_TIMEOUT_MS` deadline deny).
+
 **Remaining follow-ups:**
 
-- HITL request slot + TUI approval modal + RPC approval chain (event
-  `approval_request` + command `resolve_approval` + web card; cross-layer, own phase).
-- `permissionMode` "ask" routing (needs the approval pipeline); deny currently
-  covers plugin code components only.
-- Workspace-level `.mcp.json` unconditional auto-mount in standalone TUI (known
-  pre-existing hole; backend mode is product-controlled).
-- Marketplace git/registry sources, cache, version management (omp
-  `source-resolver.ts` as reference).
-- omp `CustomTool`/hook module shape compat — evaluated and rejected 2026-08-26;
-  revisit only if the ecosystem value justifies porting the API surface.
+- HITL Phase B (cross-layer, next phase): backend consumes
+  `backend.oma.approval_request` (conversation SSE) + `POST /runs/:id/approval`
+  endpoint + adapter forwards `resolve_approval` to the child + web approval
+  card. The oma-child wire is ready and tested.
+- `permissionMode` "ask" scope is plugin code tools only; native tools
+  (bash/write/...) are unaffected (a native-tool permission system with
+  allow-rules is a separate design).
+**Older remaining list (superseded where marked above):**
+
+- Marketplace git/registry sources: git clone already works (`marketplaceSourceToRoot`); cache + version management remain (omp `source-resolver.ts` reference).
+- omp `CustomTool`/hook module shape compat - evaluated and rejected 2026-08-26; revisit only if the ecosystem value justifies porting the API surface.
 
 ## oma plugin system: design history (superseded by the shipped MVP above)
 
