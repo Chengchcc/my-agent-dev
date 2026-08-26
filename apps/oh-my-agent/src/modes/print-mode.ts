@@ -48,6 +48,7 @@ export async function runPrintMode(opts: CliRunOptions): Promise<number> {
     modelRuntime: opts.modelRuntime,
     skillRoots: built.run.skillRoots ?? [],
     enableNativeTodo: true,
+    gateWorkspaceMcp: true,
     ...(pluginRt.plugins.length || pluginRt.mcpServers.length
       ? { pluginComponents: { plugins: pluginRt.plugins, mcpServers: pluginRt.mcpServers } }
       : {}),

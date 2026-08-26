@@ -3,8 +3,7 @@ import { join } from "node:path";
 import type { Plugin, PluginHooks, PluginTool } from "../runtime/plugin.js";
 import { loadPluginCode } from "./plugin-code.js";
 import { listInstalledPlugins } from "./plugin-marketplace.js";
-import { isPluginTrusted, readTrustedPlugins } from "./plugin-trust.js";
-
+import { isFileTrusted, isPluginTrusted, readTrustedPlugins } from "./plugin-trust.js";
 export type OmaMode = "tui" | "print" | "json" | "rpc";
 
 export interface CodeEntry {
@@ -97,6 +96,18 @@ export async function assemblePluginRuntime(
 ): Promise<AssembledPluginRuntime> {
   const resolved = resolvePluginComponents(workspaceRoot, mode);
   const warnings = [...resolved.warnings];
+  // Standalone trust gate (spec follow-up): the workspace's own .mcp.json is
+  // repo-controlled; untrusted content mounts nothing (run-runtime enforces)
+  // and the warning tells the user how to approve it. RPC skips this — the
+  // product writes that file.
+  if (mode !== "rpc") {
+    const mcpJsonPath = join(workspaceRoot, ".mcp.json");
+    if (existsSync(mcpJsonPath) && !isFileTrusted(mcpJsonPath, readTrustedPlugins())) {
+      warnings.push(
+        "workspace .mcp.json untrusted: servers not mounted; run /mcp trust to approve this file",
+      );
+    }
+  }
   const plugins: Plugin[] = [];
   for (const entry of resolved.codeEntries) {
     const tools: PluginTool[] = [];

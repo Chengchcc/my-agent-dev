@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AgentRunSnapshot, ProjectedHistoryItem } from "@chengchenccc/agent-contract";
+import {
+  type AgentRunSnapshot,
+  debugLog,
+  type ProjectedHistoryItem,
+} from "@chengchenccc/agent-contract";
 import { type ModelRuntime, resolveModelAlias } from "@chengchenccc/ai";
 import type { AIMessageChunk, JsonSchema, Message } from "@chengchenccc/message";
 import {
@@ -17,6 +21,7 @@ import {
   type SessionStore,
 } from "../agent-runtime.js";
 import type { PluginMcpConfig } from "../plugins/plugin-resolve.js";
+import { isFileTrusted, readTrustedPlugins } from "../plugins/plugin-trust.js";
 import { loadProjectSettings } from "../settings/project-settings.js";
 import {
   createBashTool,
@@ -146,6 +151,12 @@ export interface RunRuntimeDeps {
   /** Frozen Run permissionMode (ADR 0020 decision 7). "deny" drops plugin
    *  code components at assembly; native tools are unaffected (MVP scope). */
   permissionMode?: "ask" | "auto" | "deny";
+  /** Standalone modes (tui/print/json): the workspace's own .mcp.json is
+   *  repo-controlled, so mount it only when content-trusted (record in
+   *  <agentDir>/trusted-plugins.json; /mcp trust records it). Backend RPC
+   *  leaves this unset — the workspace bridge writes that file and the
+   *  product owns it. */
+  gateWorkspaceMcp?: boolean;
 }
 
 export interface RunRuntime {
@@ -253,15 +264,28 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   // Skips "product-tools" (the manifest path owns it) and names that
   // collide with the native table. The mounted clients join the run's
   // teardown set so stdio children never outlive the run.
+  // Standalone gating: an untrusted repo-controlled .mcp.json mounts
+  // nothing (fail-closed) — the mode layer surfaces the warning.
+  let includeWorkspaceMcp = true;
+  if (deps.gateWorkspaceMcp) {
+    const mcpJsonPath = join(deps.workspaceRoot, ".mcp.json");
+    if (existsSync(mcpJsonPath) && !isFileTrusted(mcpJsonPath, readTrustedPlugins())) {
+      includeWorkspaceMcp = false;
+      debugLog("oma", `workspace .mcp.json untrusted; servers not mounted (use /mcp trust)`);
+    }
+  }
   const mounted = await mountWorkspaceMcpServers(
     deps.workspaceRoot,
     new Set(fileTools.map((t) => t.name)),
     deps.pluginMcpServers ?? [],
+    includeWorkspaceMcp,
   );
-  fileTools.push(...mounted.tools);
   const closeMounted = mounted.close;
   // Web tools default ON via the std ports (DDG search + guarded fetch);
-  // OMA_DISABLE_WEB=1 opts out for air-gapped workspaces.
+  // NOTE: mounted MCP tools intentionally do NOT join fileTools — they are
+  // appended once (unwrapped; withCallTimeout already binds their per-call
+  // timeout) to nativeToolsPlugin below. Pushing them here too duplicated
+  // every mounted tool and tripped validatePlugins on real servers.
   if (process.env.OMA_DISABLE_WEB !== "1") {
     fileTools.push(
       createPortWebSearchTool(deps.webSearch ?? createDdgWebSearchPort()) as unknown as PluginTool,

@@ -238,8 +238,11 @@ export async function mountWorkspaceMcpServers(
   workspaceRoot: string,
   nativeNames: ReadonlySet<string>,
   pluginServers: readonly PluginMcpConfig[] = [],
+  includeWorkspace = true,
 ): Promise<MountedMcpServers> {
-  const servers = mergeMcpConfigs(workspaceRoot, pluginServers);
+  const servers = includeWorkspace
+    ? mergeMcpConfigs(workspaceRoot, pluginServers)
+    : mergePluginMcpConfigs(pluginServers);
   const tools: PluginTool[] = [];
   const clients: McpClientLike[] = [];
   for (const [name, server] of Object.entries(servers)) {
@@ -332,6 +335,19 @@ export function mergeMcpConfigs(
         pluginRoot: p.pluginRoot,
         workspaceRoot,
       });
+    }
+  }
+  return merged;
+}
+
+/** Plugin servers only (workspace .mcp.json gated off — standalone trust). */
+function mergePluginMcpConfigs(plugins: readonly PluginMcpConfig[]): Record<string, McpJsonServer> {
+  const merged: Record<string, McpJsonServer> = {};
+  for (const p of plugins) {
+    for (const [name, raw] of Object.entries(p.servers)) {
+      if (name in merged) continue;
+      if (typeof raw !== "object" || raw === null) continue;
+      merged[name] = raw as McpJsonServer;
     }
   }
   return merged;

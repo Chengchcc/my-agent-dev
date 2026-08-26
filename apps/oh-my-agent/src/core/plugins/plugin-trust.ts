@@ -82,3 +82,21 @@ export function isPluginTrusted(pluginRoot: string, trusted: TrustedPlugins): bo
   const rec = trusted.get(pluginRoot);
   return rec !== undefined && rec.hash === computePluginHash(pluginRoot);
 }
+
+/** Content hash of a single file (workspace .mcp.json gating). */
+export function computeFileHash(path: string): string {
+  return `sha256:${createHash("sha256").update(readFileSync(path)).digest("hex")}`;
+}
+
+/** Record explicit user trust for a single file at its current hash. */
+export function trustFile(path: string): void {
+  const map = readTrustedPlugins();
+  map.set(path, { hash: computeFileHash(path), trustedAt: new Date().toISOString() });
+  writeTrustedPlugins(map);
+}
+
+/** File trust decision: recorded hash must match current content. */
+export function isFileTrusted(path: string, trusted: TrustedPlugins): boolean {
+  const rec = trusted.get(path);
+  return rec !== undefined && rec.hash === computeFileHash(path);
+}

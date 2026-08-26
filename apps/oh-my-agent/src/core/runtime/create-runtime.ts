@@ -52,6 +52,9 @@ export interface CreateOmaRuntimeOptions {
   };
   /** Frozen Run permissionMode; "deny" drops plugin code components. */
   permissionMode?: "ask" | "auto" | "deny";
+  /** Standalone modes: gate the repo-controlled workspace .mcp.json behind
+   *  the trust record (spec follow-up #3). */
+  gateWorkspaceMcp?: boolean;
 }
 
 /** One Runtime = one Run. The loop runs directly in-process; steer injects
@@ -147,6 +150,7 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
     ...(options.pluginComponents?.plugins.length
       ? { codePlugins: options.pluginComponents.plugins }
       : {}),
+    ...(options.gateWorkspaceMcp ? { gateWorkspaceMcp: true } : {}),
     ...(options.pluginComponents?.mcpServers?.length
       ? { pluginMcpServers: options.pluginComponents.mcpServers }
       : {}),

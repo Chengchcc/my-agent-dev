@@ -10,7 +10,7 @@ import {
   setPluginEnabled,
   uninstallPlugin,
 } from "../../core/plugins/plugin-marketplace.js";
-import { trustPlugin } from "../../core/plugins/plugin-trust.js";
+import { trustFile, trustPlugin } from "../../core/plugins/plugin-trust.js";
 import type { OmaRuntime } from "../../core/runtime/create-runtime.js";
 import {
   loadProjectSettings,
@@ -351,7 +351,7 @@ export function buildCommands(ctx: TuiSessionContext): CommandDef[] {
     {
       name: "mcp",
       description: "list .mcp.json servers, or test one",
-      argumentHint: "test <name>",
+      argumentHint: "[list|test <name>|trust]",
       group: "mcp",
       live: true,
       run: async (args) => {
@@ -375,8 +375,20 @@ export function buildCommands(ctx: TuiSessionContext): CommandDef[] {
           }
           return;
         }
+        if (sub === "trust") {
+          const path = join(ctx.opts.workspaceRoot, ".mcp.json");
+          if (!existsSync(path)) {
+            ctx.pushStatus(`no .mcp.json in ${ctx.opts.workspaceRoot}`);
+            return;
+          }
+          trustFile(path);
+          ctx.pushStatus("workspace .mcp.json trusted (hash recorded; servers will mount)");
+          return;
+        }
         if (sub) {
-          ctx.pushStatus(`unknown subcommand "${sub}" — /mcp lists, /mcp test <name> tests`);
+          ctx.pushStatus(
+            `unknown subcommand "${sub}" — /mcp lists, /mcp test <name> tests, /mcp trust approves the workspace file`,
+          );
           return;
         }
         const servers = listMcpServers(ctx.opts.workspaceRoot);
