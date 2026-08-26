@@ -89,8 +89,9 @@ hooks?: string;
 ### oma custom tools（加载与校验）
 
 - `loadPluginCode(root, entry)` = `await import(pathToFileURL(join(root, entry)).href)`
-  —— Bun 原生 TS 转译（2026-08-26 实测验证），**无 jiti**（omp 在 Bun 上加载
-  custom tools 也用原生 import；jiti 只是其 extensions 体系的 Node 兼容产物）。
+  —— Bun 原生 TS 转译（2026-08-26 实测验证），**无 jiti**（omp 全线也用原生 Bun
+  import 加载 custom tools 和 extensions，jiti 只剩一处历史注释；它是上游 pi 的
+  Node 机制）。
 - tools 入口校验：导出为数组、每项有 `name`/`description`/`execute` 函数；名字
   冲突按上表矩阵处理。
 - hooks 入口校验：导出为对象、键是已知 `PluginHooks` 键；未知键忽略 + 警告。
@@ -98,6 +99,19 @@ hooks?: string;
 - 入口模块无 API 注入面（无 omp `CustomToolAPI` 等价物）：工具自足；需要
   模型/store 的场景走 `PluginHooks`（已有 `rt: PluginRuntime`）。将来不够再加
   受控注入，YAGNI。
+
+**Tool result 契约**（吸收 omp `AgentToolResult` 的两点，其余不采纳）：
+
+- `isError` / `terminate`：数据驱动报错与终止 —— **oma 循环已支持**
+  （`agent-loop.ts` 检测 result 的 `isError`/`terminate` 字段，throw 转为
+  `{error, isError}`，失败结果前置修复提醒），插件工具直接用，无需新机制。
+- `content?: string`（新增，omp 的模型通道分离）：result 声明 `content` 字符串时，
+  tool_result 文本**原样**用它（工具已格式化好的模型可见内容），其余字段仅供
+  TUI/事件消费，不再整体 JSON dump 进模型上下文。实现 = `agent-loop.ts` 批量落账
+  处 ~5 行（与现有 `images` 透传同模式：特殊字段走特殊通道）。
+- 不采纳：omp `details`（UI-only 通道，成本在 TUI 通用渲染侧，MVP 用不上）、
+  `AgentToolResult` 类型本身、execute 的 `ctx` 大注入面（options 对象已是可扩展
+  ctx，保持薄注入）。
 
 ### Marketplace 兼容
 
@@ -190,11 +204,14 @@ resolvePluginComponents(
 2. oma custom tools：tools 入口加载 + 形状校验（合法数组 / 非法导出 / name 冲突
    native-wins / 插件间冲突后装跳过）、hooks 入口加载 + 未知键忽略、加载失败不炸
    Run 测试。
-3. 端到端：enabled 插件的 tool 出现在 Run 的 tool 表（meta 可见），hook 在
+3. tool result 契约：`isError`/`terminate`/`content` 字段端到端 —— content 原样进
+   tool_result 文本（不 JSON dump），isError 落 `is_error` + 修复提醒，terminate
+   停 loop。
+4. 端到端：enabled 插件的 tool 出现在 Run 的 tool 表（meta 可见），hook 在
    beforeTool/afterTool 触发。
-4. 插件 `.mcp.json` → mcp-mount 挂载，多源合并 + workspace 同名优先 +
+5. 插件 `.mcp.json` → mcp-mount 挂载，多源合并 + workspace 同名优先 +
    `${CLAUDE_PLUGIN_ROOT}` 替换测试。
-5. marketplace 目录 `.claude-plugin/marketplace.json` 回退解析测试。
-6. 信任矩阵：scope × mode（user 全过；project：tui 询问 / hash 变化重问、
+6. marketplace 目录 `.claude-plugin/marketplace.json` 回退解析测试。
+7. 信任矩阵：scope × mode（user 全过；project：tui 询问 / hash 变化重问、
    print/json 只认记录、rpc 全拒；markdown/skills 组件不受门控）测试。
-7. gates：typecheck / lint / `bun test`（apps/oh-my-agent）全绿。
+8. gates：typecheck / lint / `bun test`（apps/oh-my-agent）全绿。
