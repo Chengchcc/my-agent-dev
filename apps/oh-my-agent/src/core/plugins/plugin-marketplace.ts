@@ -10,6 +10,12 @@ export interface PluginManifest {
   readonly skills?: string;
   /** Relative directory containing markdown slash commands (reserved). */
   readonly commands?: string;
+  /** oma code entry (spec): module exporting PluginTool[] (default export ok). */
+  readonly toolsEntry?: string;
+  /** oma code entry (spec): module exporting PluginHooks (default export ok). */
+  readonly hooksEntry?: string;
+  /** Non-fatal conflict/compat notes surfaced to the user (spec conflict matrix). */
+  readonly warnings: readonly string[];
 }
 
 export interface MarketplacePluginEntry {
@@ -38,6 +44,15 @@ export interface InstalledPlugin {
   readonly enabled: boolean;
   readonly root: string;
   readonly skillsDir?: string;
+  /** oma code entry (spec): module exporting PluginTool[]. */
+  readonly toolsEntry?: string;
+  /** oma code entry (spec): module exporting PluginHooks. */
+  readonly hooksEntry?: string;
+  /** Plugin bundles a .mcp.json (mounted via mcp-mount when trusted). */
+  readonly hasMcpJson?: boolean;
+  /** Non-fatal manifest conflict notes (spec conflict matrix); always set by
+   *  listInstalledPlugins, absent in persisted registry records. */
+  readonly manifestWarnings?: readonly string[];
 }
 
 interface PersistedRegistry {
@@ -122,29 +137,85 @@ export function loadMarketplaceManifest(root: string): MarketplaceManifest | nul
   }
 }
 
-export function loadPluginManifest(pluginRoot: string): PluginManifest | null {
-  const path = join(pluginRoot, "plugin.json");
+function readJson(path: string): Record<string, unknown> | null {
   if (!existsSync(path)) return null;
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
-    if (typeof parsed !== "object" || parsed === null) return null;
-    const o = parsed as {
-      name?: unknown;
-      version?: unknown;
-      description?: unknown;
-      skills?: unknown;
-    };
-    if (typeof o.name !== "string") return null;
-    const result: { name: string; version?: string; description?: string; skills?: string } = {
-      name: o.name,
-    };
-    if (typeof o.version === "string") result.version = o.version;
-    if (typeof o.description === "string") result.description = o.description;
-    if (typeof o.skills === "string") result.skills = o.skills;
-    return result;
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : null;
   } catch {
     return null;
   }
+}
+
+function str(o: Record<string, unknown>, key: string): string | undefined {
+  const v = o[key];
+  return typeof v === "string" ? v : undefined;
+}
+
+/** Multi-source manifest read (spec: oma plugin.json → .claude-plugin/plugin.json
+ *  → package.json omp/pi field) with the conflict matrix. */
+export function loadPluginManifest(pluginRoot: string): PluginManifest | null {
+  const warnings: string[] = [];
+  const oma = readJson(join(pluginRoot, "plugin.json"));
+  const claude = readJson(join(pluginRoot, ".claude-plugin", "plugin.json"));
+  const pkg = readJson(join(pluginRoot, "package.json"));
+  const ompField = pkg ? (pkg.omp ?? pkg.pi) : undefined;
+  const omp =
+    typeof ompField === "object" && ompField !== null
+      ? (ompField as Record<string, unknown>)
+      : null;
+
+  const primary = oma ?? claude ?? (pkg && str(pkg, "name") ? { name: str(pkg, "name") } : null);
+  if (!primary || typeof primary.name !== "string") return null;
+
+  if (oma && claude) {
+    warnings.push(
+      "dual manifest: oma plugin.json wins; .claude-plugin/plugin.json fills missing metadata only",
+    );
+  }
+  if (omp) {
+    if (typeof omp.tools === "string" || typeof omp.hooks === "string") {
+      warnings.push(
+        "omp/pi manifest code entries (tools/hooks) are not executed by oma; provide oma plugin.json tools/hooks entries instead",
+      );
+    }
+  }
+  if (claude?.hooks !== undefined) {
+    warnings.push(
+      "claude hooks config detected and ignored: hooks run through the oma hooks entry only",
+    );
+  }
+  if (claude?.commands !== undefined) warnings.push("claude commands/ component ignored");
+  if (claude?.agents !== undefined) warnings.push("claude agents/ component ignored");
+
+  const result: {
+    name: string;
+    version?: string;
+    description?: string;
+    skills?: string;
+    toolsEntry?: string;
+    hooksEntry?: string;
+    warnings: string[];
+  } = { name: primary.name, warnings };
+  const fill = (src: Record<string, unknown> | null) => {
+    if (!src) return;
+    result.version ??= str(src, "version");
+    result.description ??= str(src, "description");
+    result.skills ??= str(src, "skills");
+  };
+  fill(oma);
+  fill(claude);
+  fill(pkg);
+  // oma-only code entries — never sourced from omp/claude fields (spec).
+  if (oma) {
+    const t = str(oma, "tools");
+    if (t) result.toolsEntry = t;
+    const h = str(oma, "hooks");
+    if (h) result.hooksEntry = h;
+  }
+  return result;
 }
 
 function marketplaceSourceToRoot(source: string): { root: string; ok: boolean; error?: string } {
@@ -230,6 +301,10 @@ export function listInstalledPlugins(workspaceRoot: string): InstalledPlugin[] {
       description: manifest?.description,
       version: manifest?.version ?? p.version,
       skillsDir: manifest?.skills ? join(p.root, manifest.skills) : join(p.root, "skills"),
+      toolsEntry: manifest?.toolsEntry,
+      hooksEntry: manifest?.hooksEntry,
+      hasMcpJson: existsSync(join(p.root, ".mcp.json")),
+      manifestWarnings: manifest?.warnings ?? [],
     };
   });
 }
