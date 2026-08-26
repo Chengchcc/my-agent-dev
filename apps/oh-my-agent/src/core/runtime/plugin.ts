@@ -10,9 +10,6 @@ export interface PluginTool {
   /** "serial" (default) = must run alone; "concurrent" = read-only, safe to
    *  run in parallel with other concurrent tools in the same turn. */
   readonly executionMode?: "serial" | "concurrent";
-  /** "native" (default) for runtime tools; "product" for Product Tools so
-   *  consumers can map tool events to the right observation stream. */
-  readonly kind?: "native" | "product";
   /** Wall-clock timeout for this tool in ms (0 = disabled). Shown in the
    *  TUI tool card and surfaced on tool_execution_start for live display. */
   readonly timeoutMs?: number;

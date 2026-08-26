@@ -135,7 +135,6 @@ export interface LiveToolCall {
   runId: string;
   callId: string;
   name: string;
-  kind: "native" | "product";
   state: "running" | "done" | "error";
   result?: unknown;
 }

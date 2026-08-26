@@ -343,7 +343,7 @@ export function useConversation(
           /* malformed - ignore */
         }
       });
-      const toolStarted = (kind: "native" | "product") => (e: Event) => {
+      const toolStarted = (e: Event) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as {
             toolName?: string;
@@ -354,14 +354,13 @@ export function useConversation(
             runId,
             callId: ev.callId,
             name: ev.toolName ?? "tool",
-            kind,
             state: "running",
           });
         } catch {
           /* malformed - ignore */
         }
       };
-      const toolCompleted = (_kind: "native" | "product") => (e: Event) => {
+      const toolCompleted = (e: Event) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as {
             toolName?: string;
@@ -370,10 +369,9 @@ export function useConversation(
           };
           // todo_write replaces the whole run's todo snapshot — same state
           // the backend.oma.todo_update event and the panel read.
-          // todo_write arrives as product_tool_completed on the child
-          // backend and native_tool_completed on CLI backends (their MCP
-          // mount); result shapes differ ({content}/{output} json string
-          // or a direct {items}) — normalize all three.
+          // todo_write arrives as native_tool_completed on the child backend
+          // (their MCP mount); result shapes differ ({content}/{output} json
+          // string or a direct {items}) — normalize all three.
           if (ev.toolName === "todo_write" || ev.toolName?.endsWith("__todo_write")) {
             let payload = ev.result;
             if (payload && typeof payload === "object") {
@@ -395,10 +393,8 @@ export function useConversation(
           /* malformed - ignore */
         }
       };
-      es.addEventListener("native_tool_started", toolStarted("native"));
-      es.addEventListener("native_tool_completed", toolCompleted("native"));
-      es.addEventListener("product_tool_started", toolStarted("product"));
-      es.addEventListener("product_tool_completed", toolCompleted("product"));
+      es.addEventListener("native_tool_started", toolStarted);
+      es.addEventListener("native_tool_completed", toolCompleted);
       es.addEventListener("backend.oma.todo_update", (e) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as {

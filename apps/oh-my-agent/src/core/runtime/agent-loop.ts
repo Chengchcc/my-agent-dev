@@ -916,7 +916,6 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
       await emit({
         type: "tool_execution_start",
         toolName: call.name,
-        kind: tool?.kind ?? "native",
         callId: call.id,
         // Original model call args (pre-plugin-transform) so the transcript
         // can show what the model asked for.
@@ -1026,7 +1025,6 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
       await emit({
         type: "tool_execution_end",
         toolName: call.name,
-        kind: tool?.kind ?? "native",
         callId: call.id,
         result: (result ?? {}) as Readonly<Record<string, unknown>>,
       });

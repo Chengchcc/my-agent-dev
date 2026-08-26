@@ -188,7 +188,7 @@ async function main(): Promise<void> {
             event: {
               id: 1,
               type: "tool_execution_start",
-              data: { toolName: "ls", kind: "native", callId: "call-1" },
+              data: { toolName: "ls", callId: "call-1" },
             },
           });
           out({
@@ -198,7 +198,7 @@ async function main(): Promise<void> {
             event: {
               id: 2,
               type: "tool_execution_end",
-              data: { toolName: "ls", kind: "native", callId: "call-1", result: { empty: true } },
+              data: { toolName: "ls", callId: "call-1", result: { empty: true } },
             },
           });
           out({
