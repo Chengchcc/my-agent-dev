@@ -18,6 +18,7 @@ import { buildLoopInput } from "./loop-input.js";
 import { TokenEstimateCache } from "./message-cache.js";
 import type { Plugin, PluginTool } from "./plugin.js";
 import { collectTools, validatePlugins } from "./plugin.js";
+import type { ApprovalHandler } from "./approval.js";
 import type { PluginRuntime } from "./plugin-runtime.js";
 import { renderLoopMeta } from "./prompt.js";
 import { retryStream } from "./retry.js";
@@ -66,6 +67,10 @@ export interface OmaSessionOptions {
     tools?: readonly PluginTool[],
   ) => AsyncIterable<AIMessageChunk>;
   readonly summarize: ContextSummarizer;
+  /** HITL approval pipeline (spec): resolves options.request calls from
+   *  tools and the ask-mode gate for plugin code tools. Absent = tools see
+   *  no `request` and decide themselves. */
+  readonly approvalHandler?: ApprovalHandler;
   /** Resolve the model display identity for a run's model ref, used to render
    *  the per-loop Meta. Optional: when omitted (tests), Meta omits the model line. */
   readonly resolveModel?: (modelId: string) => Promise<{ provider: string; id: string }>;
@@ -962,6 +967,18 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                   text,
                 });
               },
+              ...(opts.approvalHandler
+                ? {
+                    request: (req: { reason?: string }) =>
+                      opts.approvalHandler({
+                        callId: call.id,
+                        toolName: call.name,
+                        input,
+                        source: "tool",
+                        ...(req.reason ? { reason: req.reason } : {}),
+                      }),
+                  }
+                : {}),
             });
             if (result && typeof result === "object") {
               if ("isError" in result) {
