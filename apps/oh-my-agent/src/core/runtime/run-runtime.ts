@@ -137,6 +137,14 @@ export interface RunRuntimeDeps {
    *  `<workspace>/.oma/todo.json`. Backend-invoked RPC mode leaves this off:
    *  todo comes from the backend-injected product MCP. */
   enableNativeTodo?: boolean;
+  /** Loaded plugin code components (mode layer already applied the trust
+   *  policy); the runtime only mounts them. */
+  codePlugins?: readonly Plugin[];
+  /** Plugin .mcp.json configs (already trust-approved by the mode layer). */
+  pluginMcpServers?: readonly import("../plugins/plugin-resolve.js").PluginMcpConfig[];
+  /** Frozen Run permissionMode (ADR 0020 decision 7). "deny" drops plugin
+   *  code components at assembly; native tools are unaffected (MVP scope). */
+  permissionMode?: "ask" | "auto" | "deny";
 }
 
 export interface RunRuntime {
@@ -247,6 +255,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   const mounted = await mountWorkspaceMcpServers(
     deps.workspaceRoot,
     new Set(fileTools.map((t) => t.name)),
+    deps.pluginMcpServers ?? [],
   );
   fileTools.push(...mounted.tools);
   const closeMounted = mounted.close;
@@ -268,6 +277,22 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     tools: [...nativeTools, ...mounted.tools],
   };
   const plugins: Plugin[] = [nativeToolsPlugin, createSkill({ roots: deps.skillRoots })];
+  if (deps.codePlugins?.length) {
+    if (deps.permissionMode !== "deny") {
+      // Native wins on tool-name conflicts (spec conflict matrix).
+      const nativeNames = new Set(plugins.flatMap((p) => (p.tools ?? []).map((t) => t.name)));
+      for (const cp of deps.codePlugins) {
+        const tools = (cp.tools ?? []).filter((t) => !nativeNames.has(t.name));
+        plugins.push({
+          name: cp.name,
+          ...(cp.hooks ? { hooks: cp.hooks } : {}),
+          ...(tools.length ? { tools } : {}),
+        });
+      }
+    }
+    // permissionMode "deny" drops plugin code components entirely (MVP
+    // enforcement point); native tools are unaffected and the Run proceeds.
+  }
   if (deps.enableNativeTodo) {
     const todoStore = createFileTodoStore(deps.workspaceRoot);
     const todoBase = createTodo({ sessionId: deps.runId, store: todoStore });

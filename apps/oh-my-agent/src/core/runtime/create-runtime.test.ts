@@ -575,4 +575,73 @@ describe("createOmaRuntime", () => {
       else process.env.OMA_FAKE_TOOL = savedTool;
     }
   });
+
+  test("plugin code tools load into the Run; permissionMode deny drops them", async () => {
+    const savedFake = process.env.OMA_FAKE_PROVIDER;
+    const savedTool = process.env.OMA_FAKE_TOOL;
+    process.env.OMA_FAKE_PROVIDER = "1";
+    process.env.OMA_FAKE_TOOL = JSON.stringify([
+      { name: "plug-hello", input: {} },
+      { name: "plug-hello", input: {} },
+    ]);
+    const toolsRecord = join(tmp, "plug-tools-record.json");
+    process.env.OMA_FAKE_TOOLS_RECORD = toolsRecord;
+    try {
+      const mk = (permissionMode?: "ask" | "auto" | "deny") => {
+        const modelRuntime = createModelRuntime();
+        registerBuiltinProviders(modelRuntime, process.env);
+        return createOmaRuntime({
+          runId: `r-plug-${permissionMode ?? "none"}`,
+          modelId: "fake/echo",
+          workspaceRoot: tmp,
+          workspaceAccess: "read_write",
+          modelRuntime,
+          skillRoots: [],
+          pluginComponents: {
+            plugins: [
+              {
+                name: "plugin:plug",
+                tools: [
+                  {
+                    name: "plug-hello",
+                    description: "plugin tool",
+                    executionMode: "concurrent",
+                    async execute() {
+                      return { content: "hello from plugin" };
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          ...(permissionMode ? { permissionMode } : {}),
+        });
+      };
+
+      // Denied first (fake-tool script is module-level state; one entry per
+      // model call): the plugin tool is NOT in the table, so the scripted
+      // call lands as an unknown-tool error result.
+      const denied = await mk("deny");
+      const seg2 = await denied.run(runInput("r-plug-deny"));
+      const out2 = await seg2.outcome;
+      await denied.close();
+      expect(out2.status).toBe("completed"); // deny drops plugin tools; Run fine
+      expect(JSON.stringify(out2.messages)).toContain("Unknown tool: plug-hello");
+
+      // Allowed second: the remaining scripted call executes the plugin tool
+      // and its content lands verbatim (content contract).
+      const allowed = await mk(undefined);
+      const seg1 = await allowed.run(runInput("r-plug-none"));
+      const out1 = await seg1.outcome;
+      await allowed.close();
+      expect(out1.status).toBe("completed");
+      expect(JSON.stringify(out1.messages)).toContain("hello from plugin");
+    } finally {
+      delete process.env.OMA_FAKE_TOOLS_RECORD;
+      if (savedFake === undefined) delete process.env.OMA_FAKE_PROVIDER;
+      else process.env.OMA_FAKE_PROVIDER = savedFake;
+      if (savedTool === undefined) delete process.env.OMA_FAKE_TOOL;
+      else process.env.OMA_FAKE_TOOL = savedTool;
+    }
+  });
 });

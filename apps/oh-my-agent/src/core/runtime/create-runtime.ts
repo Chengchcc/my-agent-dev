@@ -12,6 +12,7 @@ import { mapRunEvent } from "../../protocol/index.js";
 import type { OmaLoopResult } from "../agent-runtime.js";
 import { extractAutonomousMemory, type MemoryLearnResult } from "../memory/autonomous-memory.js";
 import { assembleRunRuntime, type RunRuntime } from "./run-runtime.js";
+import type { Plugin } from "./plugin.js";
 
 /** The single Runtime assembly entry point for the Oma product.
  *  Every mode (print / json / rpc / future TUI) builds the SAME runtime from
@@ -42,6 +43,14 @@ export interface CreateOmaRuntimeOptions {
    *  `<workspace>/.oma/todo.json`. Backend-invoked RPC mode leaves this off:
    *  todo comes from the backend-injected product MCP. */
   enableNativeTodo?: boolean;
+  /** Assembled plugin code components (from assemblePluginRuntime, mode
+   *  layer). The runtime mounts them; it never reads the registry. */
+  pluginComponents?: {
+    plugins: Plugin[];
+    mcpServers?: import("../plugins/plugin-resolve.js").PluginMcpConfig[];
+  };
+  /** Frozen Run permissionMode; "deny" drops plugin code components. */
+  permissionMode?: "ask" | "auto" | "deny";
 }
 
 /** One Runtime = one Run. The loop runs directly in-process; steer injects
@@ -134,6 +143,13 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
     skillRoots: options.skillRoots,
     ...(options.onPersistMessages ? { onPersistMessages: options.onPersistMessages } : {}),
     enableNativeTodo: options.enableNativeTodo ?? false,
+    ...(options.pluginComponents?.plugins.length
+      ? { codePlugins: options.pluginComponents.plugins }
+      : {}),
+    ...(options.pluginComponents?.mcpServers?.length
+      ? { pluginMcpServers: options.pluginComponents.mcpServers }
+      : {}),
+    ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
   });
 
   let stopRequested = false;
