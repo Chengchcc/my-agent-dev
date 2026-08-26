@@ -121,6 +121,33 @@ hooks?: string;
   `AgentToolResult` 类型本身、execute 的 `ctx` 大注入面（options 对象已是可扩展
   ctx，保持薄注入）。
 
+**options 演化纪律**（第三参数按四类槽位扩展，禁止 on-xx 泛滥）：
+
+| 槽位 | 现状 | 未来加法 | 例 |
+|---|---|---|---|
+| 数据（harness 信息） | `callId` | 加字段，非破坏 | `runId`、`permissionMode` |
+| 通知（单向反馈） | `onOutput` | **不加 on-xx**：归一 `emit(OmaToolEvent)` 类型化联合，加 variant 非破坏（loop 的 `emit({type:"tool_output"})` 已存在，`onOutput` 是其窄包装） | 流式输出/进度/artifact |
+| 请求-响应（要拿回决定） | 无（见下 HITL） | 独立 `request(req) => Promise<decision>` 单方法，`req` 也是联合 | 权限审批 |
+| 中止 | `signal` 独立参数 | 不动 | — |
+
+**HITL（request 槽的解析管道）**：现状诚实记录 —— `permissionMode`（ask/auto/deny）
+冻结在 Run 快照但 child 侧无消费者；旧 InterruptSignal 已随 Phase 5/6 删除；Run 内
+HITL 为零。设计：工具 `request({type:"approval", ...})` 挂起 execute，解析按模式：
+
+- **TUI**：模态确认框（overlay 已有）→ resolve；超时默认 deny。
+- **print/json**：fail-closed 直接 deny（可选 `--yes` 预授权，omp `-y` 同款）。
+- **RPC/backend**：事件 `approval_request{callId,...}` → SSE → web 审批卡片 →
+  `POST /runs/:id/approval` → RPC 命令 `resolve_approval{callId,decision}`（command
+  enum `execute|steer|abort` 扩一项，steer 是现成的"中途注入外部输入"先例）。硬点
+  是生命周期：deadline 超时 deny（fail-closed）、等待期预算是否暂停（产品决策）、
+  崩溃不做审批恢复（child 丢 await → Run 失败收口）。
+- **permissionMode 复活**：它是 request 的默认应答策略 —— auto=allow、deny=deny、
+  ask=路由到上述管道。一个机制两种入口，不另造权限系统。
+
+MVP 范围：request 槽类型 + TUI 弹窗 + print/json fail-closed + permissionMode 的
+deny/auto 两档（纯 loop 检查）。RPC 审批链（协议+backend+web，跨四层）是独立一期，
+不挂本 spec。
+
 ### Marketplace 兼容
 
 - 目录解析：现有 marketplace manifest 优先，回退 `.claude-plugin/marketplace.json`
