@@ -23,16 +23,18 @@ project-scope code), `permissionMode` deny drops plugin code components.
 
 **Remaining follow-ups:**
 
-- HITL Phase B (cross-layer, next phase): backend consumes
-  `backend.oma.approval_request` (conversation SSE) + `POST /runs/:id/approval`
-  endpoint + adapter forwards `resolve_approval` to the child + web approval
-  card. The oma-child wire is ready and tested.
+- HITL Phase B shipped (2026-08-26): backend `POST /api/agent-runs/:runId/approval`
+  + `AgentRunExecutionService.resolveApproval`, oma adapter `resolveApproval`
+  JSONL command (id-matched response), web `backend.oma.approval_request` SSE →
+  transient approval card (Allow/Deny) → POST → child resolves. The SSE event was
+  already forwarded by the `backend.oma.*` default mapping — no adapter event
+  change needed.
 - `permissionMode` "ask" scope is plugin code tools only; native tools
   (bash/write/...) are unaffected (a native-tool permission system with
   allow-rules is a separate design).
 **Older remaining list (superseded where marked above):**
 
-- Marketplace git/registry sources: git clone already works (`marketplaceSourceToRoot`); cache + version management remain (omp `source-resolver.ts` reference).
+- Marketplace cache + version management: git clone already works (`marketplaceSourceToRoot`); cache + versions remain (omp `source-resolver.ts` reference).
 - omp `CustomTool`/hook module shape compat - evaluated and rejected 2026-08-26; revisit only if the ecosystem value justifies porting the API surface.
 
 ## oma plugin system: design history (superseded by the shipped MVP above)
