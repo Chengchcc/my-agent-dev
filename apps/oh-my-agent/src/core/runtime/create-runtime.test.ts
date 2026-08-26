@@ -714,4 +714,62 @@ describe("createOmaRuntime", () => {
       else process.env.OMA_FAKE_TOOL = savedTool;
     }
   });
+
+  test("permissionMode gates native bash tool through the approval pipeline", async () => {
+    const savedFake = process.env.OMA_FAKE_PROVIDER;
+    const savedTool = process.env.OMA_FAKE_TOOL;
+    process.env.OMA_FAKE_PROVIDER = "1";
+    const asked: string[] = [];
+    let seq = 0;
+    try {
+      const mk = (permissionMode: "ask" | "deny" | "auto", handler: boolean) => {
+        const rt = createModelRuntime();
+        registerBuiltinProviders(rt, process.env);
+        seq++;
+        return createOmaRuntime({
+          runId: `r-nativegate-${seq}`,
+          modelId: "fake/echo",
+          workspaceRoot: tmp,
+          workspaceAccess: "read_write",
+          modelRuntime: rt,
+          skillRoots: [],
+          permissionMode,
+          ...(handler
+            ? {
+                approvalHandler: async (req: { toolName: string }) => {
+                  asked.push(req.toolName);
+                  return { decision: "deny" };
+                },
+              }
+            : {}),
+        });
+      };
+      const oneRun = async (v: "ask" | "deny" | "auto", handler: boolean) => {
+        process.env.OMA_FAKE_TOOL = JSON.stringify([{ name: "bash", input: { command: "echo hi", timeout: 1000 } }]);
+        const rt = await mk(v, handler);
+        const seg = await rt.run(runInput(`r-nativegate-${seq}`));
+        const out = await seg.outcome;
+        await rt.close();
+        return JSON.stringify(out.messages);
+      };
+
+      // deny: native bash blocked outright (no handler needed).
+      expect(await oneRun("deny", false)).toContain("blocked by permissionMode=deny");
+      // ask + handler returns deny: native bash blocked via approval.
+      expect(await oneRun("ask", true)).toContain("denied");
+      expect(asked).toEqual(["bash"]);
+      // ask + no handler: fail-closed.
+      expect(await oneRun("ask", false)).toContain("no pipeline");
+      // auto: native bash executes (no block text, completed with tool result).
+      const auto = await oneRun("auto", false);
+      expect(auto).not.toContain("blocked by permissionMode");
+      expect(auto).not.toContain("denied");
+    } finally {
+      if (savedFake === undefined) delete process.env.OMA_FAKE_PROVIDER;
+      else process.env.OMA_FAKE_PROVIDER = savedFake;
+      if (savedTool === undefined) delete process.env.OMA_FAKE_TOOL;
+      else process.env.OMA_FAKE_TOOL = savedTool;
+    }
+  });
+
 });

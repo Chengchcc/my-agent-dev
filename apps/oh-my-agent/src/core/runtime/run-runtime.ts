@@ -729,6 +729,44 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   const maxSteps = Number(process.env.OMA_MAX_STEPS) || 500;
   // TTSR-style stream rules from .oma/rules/*.md (workspace-scoped).
   const streamRules = loadStreamRules(deps.workspaceRoot);
+  // Native-tool permission gate (ADR 0020): ask/deny apply to high-risk
+  // native tools. Auto/absent = allow. "deny" blocks outright; "ask" routes
+  // through the SAME approvalHandler as plugin code tools (one pipeline).
+  const HIGH_RISK_NATIVE_TOOLS = new Set([
+    "bash",
+    "write",
+    "edit",
+    "create_file",
+    "mcp__",
+  ]);
+  const permissionGate: ((toolName: string, input: unknown) => Promise<{
+    block: boolean;
+    reason?: string;
+  } | undefined>) | undefined =
+    deps.permissionMode === "auto" || deps.permissionMode === undefined
+      ? undefined
+      : async (toolName, input) => {
+          const isHighRisk =
+            HIGH_RISK_NATIVE_TOOLS.has(toolName) || toolName.startsWith("mcp__");
+          if (!isHighRisk) return undefined;
+          if (deps.permissionMode === "deny") {
+            return { block: true, reason: `${toolName}: blocked by permissionMode=deny` };
+          }
+          // ask
+          if (!deps.approvalHandler) {
+            return { block: true, reason: `${toolName}: approval required but no pipeline configured` };
+          }
+          const verdict = await withApprovalDeadline(
+            deps.approvalHandler({
+              callId: "", toolName, input, source: "permission",
+            }),
+            approvalTimeoutMs(),
+          );
+          if (verdict.decision === "deny") {
+            return { block: true, reason: `${toolName}: denied — ${verdict.reason ?? "user denied"}` };
+          }
+          return undefined;
+        };
   const session = createOmaSession({
     sessionId: deps.runId,
     store,
@@ -742,6 +780,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     resolveModel,
     ...(streamRules.length > 0 ? { streamRules } : {}),
     ...(deps.onPersistMessages ? { onPersistMessages: deps.onPersistMessages } : {}),
+    ...(permissionGate ? { permissionGate } : {}),
   });
 
   // Bind the plugin runtime's emit to the session's emit (two-phase init).

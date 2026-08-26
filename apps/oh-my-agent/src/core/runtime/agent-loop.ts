@@ -71,6 +71,14 @@ export interface OmaSessionOptions {
    *  tools and the ask-mode gate for plugin code tools. Absent = tools see
    *  no `request` and decide themselves. */
   readonly approvalHandler?: ApprovalHandler;
+  /** Native-tool permission gate (run-runtime, ADR 0020 permissionMode): runs
+   *  AFTER plugin beforeTool hooks; a block result prevents execution. Native
+   *  high-risk tools (bash/write/edit/mcp__*) route here so ask/deny apply to
+   *  them too — one pipeline for plugin AND native tools. */
+  readonly permissionGate?: (
+    toolName: string,
+    input: unknown,
+  ) => Promise<{ block: boolean; reason?: string } | undefined>;
   /** Resolve the model display identity for a run's model ref, used to render
    *  the per-loop Meta. Optional: when omitted (tests), Meta omits the model line. */
   readonly resolveModel?: (modelId: string) => Promise<{ provider: string; id: string }>;
@@ -950,6 +958,20 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
             } catch {
               /* plugin errors never block execution */
             }
+          }
+        }
+        // Native-tool permission gate (ADR 0020): runs AFTER plugin
+        // beforeTool hooks so a plugin block always wins; ask/deny here
+        // apply to native high-risk tools too.
+        if (!blocked && opts.permissionGate) {
+          try {
+            const verdict = await opts.permissionGate(call.name, input);
+            if (verdict?.block) {
+              blocked = true;
+              if (verdict.reason) blockReason = verdict.reason;
+            }
+          } catch {
+            /* permission gate errors never crash the run */
           }
         }
         if (blocked) {
