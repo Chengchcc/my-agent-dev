@@ -1,6 +1,28 @@
 # Future Work
 
-## oma plugin system: oma-native code components + Claude/omp ecosystem compatibility (long-term)
+## oma plugin system: implemented MVP (2026-08-26) — remaining follow-ups
+
+**MVP shipped** (commits db428685..36e8e8cd, spec acceptance 1-8 green, 384 tests):
+multi-source manifest with conflict matrix, oma custom tools/hooks entries (Bun
+native dynamic import), tool result `content` contract, plugin `.mcp.json` merge with
+`${CLAUDE_PLUGIN_ROOT}`, Claude marketplace catalog fallback, scope×mode trust matrix
+(`trusted-plugins.json` hash record, `/plugin trust` command, RPC never loads
+project-scope code), `permissionMode` deny drops plugin code components.
+
+**Remaining follow-ups:**
+
+- HITL request slot + TUI approval modal + RPC approval chain (event
+  `approval_request` + command `resolve_approval` + web card; cross-layer, own phase).
+- `permissionMode` "ask" routing (needs the approval pipeline); deny currently
+  covers plugin code components only.
+- Workspace-level `.mcp.json` unconditional auto-mount in standalone TUI (known
+  pre-existing hole; backend mode is product-controlled).
+- Marketplace git/registry sources, cache, version management (omp
+  `source-resolver.ts` as reference).
+- omp `CustomTool`/hook module shape compat — evaluated and rejected 2026-08-26;
+  revisit only if the ecosystem value justifies porting the API surface.
+
+## oma plugin system: design history (superseded by the shipped MVP above)
 
 **Goal**
 
