@@ -27,7 +27,8 @@
     "@chengchenccc/message": "workspace:*",
     "@chengchenccc/tui": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "zod": "^3.23.0"
+    "zod": "^3.23.0",
+    "@chengchenccc/source-fetch": "workspace:*"
   },
   "devDependencies": {
     "@chengchenccc/test-helpers": "workspace:*",

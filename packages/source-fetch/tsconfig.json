@@ -4,11 +4,7 @@
     "rootDir": "src",
     "outDir": "dist",
     "noEmit": true,
-    "types": [
-      "bun"
-    ]
+    "types": ["bun"]
   },
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }

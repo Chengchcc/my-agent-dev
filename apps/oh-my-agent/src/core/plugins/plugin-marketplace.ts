@@ -1,5 +1,6 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fetchGitSourceSync } from "@chengchenccc/source-fetch";
 import { agentDir } from "../session/session-file.js";
 
 export interface PluginManifest {
@@ -33,6 +34,9 @@ export interface MarketplaceRecord {
   readonly name: string;
   readonly source: string;
   readonly root: string;
+  /** Version fingerprint (git HEAD, zip hash) from the base source-fetch.
+   *  Absent for local directories (no immutable source). */
+  readonly version?: string;
 }
 
 export interface InstalledPlugin {
@@ -231,21 +235,30 @@ export function loadPluginManifest(pluginRoot: string): PluginManifest | null {
   return result;
 }
 
-function marketplaceSourceToRoot(source: string): { root: string; ok: boolean; error?: string } {
+function marketplaceSourceToRoot(source: string): {
+  root: string;
+  ok: boolean;
+  error?: string;
+  rev?: string;
+} {
   if (existsSync(source)) {
     return { root: source, ok: true };
   }
   const cacheDir = join(agentDir(), "marketplace-cache");
-  mkdirSync(cacheDir, { recursive: true });
   const slug = source.replace(/[^a-zA-Z0-9_.-]/g, "-").slice(0, 80);
-  const root = join(cacheDir, slug);
-  const proc = Bun.spawnSync(["git", "clone", "--depth", "1", source, root], {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (proc.exitCode !== 0) {
-    return { root, ok: false, error: proc.stderr.toString().trim() || `failed to clone ${source}` };
+  try {
+    // Shared base (spec: marketplace cache reuses the public source-fetch
+    // primitive; no backend coupling). rev is the git HEAD — retained for
+    // future cache keying even though the local registry doesn't store it.
+    const { root, rev } = fetchGitSourceSync({ url: source, dataDir: cacheDir, slug });
+    return { root, ok: true, rev };
+  } catch (err) {
+    return {
+      root: join(cacheDir, slug),
+      ok: false,
+      error: err instanceof Error ? err.message : `failed to clone ${source}`,
+    };
   }
-  return { root, ok: true };
 }
 
 export function listMarketplaces(workspaceRoot: string): MarketplaceRecord[] {
@@ -262,7 +275,9 @@ export function addMarketplace(
   source: string,
   scope: "user" | "project" = "user",
 ): { ok: boolean; error?: string; name?: string } {
-  const { root, ok, error } = marketplaceSourceToRoot(source);
+  // Local dirs have no immutable fingerprint; git/url sources get the
+  // base-fetch rev cached into the record for version display/update.
+  const { root, ok, error, rev: sourceRev } = marketplaceSourceToRoot(source);
   if (!ok) return { ok: false, error };
   const manifest = loadMarketplaceManifest(root);
   if (!manifest) return { ok: false, error: `no marketplace.json in ${root}` };
@@ -271,10 +286,17 @@ export function addMarketplace(
   const existing = registry.marketplaces.find((m) => m.name === manifest.name);
   if (existing) {
     registry.marketplaces = registry.marketplaces.map((m) =>
-      m.name === manifest.name ? { name: m.name, source, root } : m,
+      m.name === manifest.name
+        ? { name: m.name, source, root, ...(sourceRev ? { version: sourceRev } : {}) }
+        : m,
     );
   } else {
-    registry.marketplaces.push({ name: manifest.name, source, root });
+    registry.marketplaces.push({
+      name: manifest.name,
+      source,
+      root,
+      ...(sourceRev ? { version: sourceRev } : {}),
+    });
   }
   writeRegistry(path, registry);
   return { ok: true, name: manifest.name };

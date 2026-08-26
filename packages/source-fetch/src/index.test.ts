@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { directoryFingerprint, fetchGitSource, materializeZipSource } from "./index.js";
+import { directoryFingerprint, fetchGitSource } from "./index.js";
 
 describe("source-fetch", () => {
   test("directoryFingerprint skips node_modules and changes on content edit", () => {
@@ -33,11 +33,13 @@ describe("source-fetch", () => {
       writeFileSync(join(repo, "README.md"), "hello");
       spawnSync("git", ["init", "-b", "main"], { cwd: repo });
       spawnSync("git", ["add", "-A"], { cwd: repo });
-      spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "c1"], { cwd: repo });
+      spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "c1"], {
+        cwd: repo,
+      });
       const fetched = await fetchGitSource({ url: repo, dataDir, slug: "demo" });
       expect(fetched.root).toBe(join(dataDir, "demo"));
       expect(fetched.rev).toMatch(/^[0-9a-f]{40}$/);
-      expect(join(fetched.root, "README.md")).toExist;
+      expect(existsSync(join(fetched.root, "README.md"))).toBe(true);
       writeFileSync(join(dataDir, "demo", "README.md"), "world");
       // refetch replaces atomically (fresh clone)
       const fetched2 = await fetchGitSource({ url: repo, dataDir, slug: "demo" });

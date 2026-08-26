@@ -745,7 +745,9 @@ describe("createOmaRuntime", () => {
         });
       };
       const oneRun = async (v: "ask" | "deny" | "auto", handler: boolean) => {
-        process.env.OMA_FAKE_TOOL = JSON.stringify([{ name: "bash", input: { command: "echo hi", timeout: 1000 } }]);
+        process.env.OMA_FAKE_TOOL = JSON.stringify([
+          { name: "bash", input: { command: "echo hi", timeout: 1000 } },
+        ]);
         const rt = await mk(v, handler);
         const seg = await rt.run(runInput(`r-nativegate-${seq}`));
         const out = await seg.outcome;
@@ -771,5 +773,4 @@ describe("createOmaRuntime", () => {
       else process.env.OMA_FAKE_TOOL = savedTool;
     }
   });
-
 });

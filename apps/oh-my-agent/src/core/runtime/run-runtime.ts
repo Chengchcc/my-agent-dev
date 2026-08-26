@@ -732,38 +732,48 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   // Native-tool permission gate (ADR 0020): ask/deny apply to high-risk
   // native tools. Auto/absent = allow. "deny" blocks outright; "ask" routes
   // through the SAME approvalHandler as plugin code tools (one pipeline).
-  const HIGH_RISK_NATIVE_TOOLS = new Set([
-    "bash",
-    "write",
-    "edit",
-    "create_file",
-    "mcp__",
-  ]);
-  const permissionGate: ((toolName: string, input: unknown) => Promise<{
-    block: boolean;
-    reason?: string;
-  } | undefined>) | undefined =
+  const HIGH_RISK_NATIVE_TOOLS = new Set(["bash", "write", "edit", "create_file", "mcp__"]);
+  const permissionGate:
+    | ((
+        toolName: string,
+        input: unknown,
+      ) => Promise<
+        | {
+            block: boolean;
+            reason?: string;
+          }
+        | undefined
+      >)
+    | undefined =
     deps.permissionMode === "auto" || deps.permissionMode === undefined
       ? undefined
       : async (toolName, input) => {
-          const isHighRisk =
-            HIGH_RISK_NATIVE_TOOLS.has(toolName) || toolName.startsWith("mcp__");
+          const isHighRisk = HIGH_RISK_NATIVE_TOOLS.has(toolName) || toolName.startsWith("mcp__");
           if (!isHighRisk) return undefined;
           if (deps.permissionMode === "deny") {
             return { block: true, reason: `${toolName}: blocked by permissionMode=deny` };
           }
           // ask
           if (!deps.approvalHandler) {
-            return { block: true, reason: `${toolName}: approval required but no pipeline configured` };
+            return {
+              block: true,
+              reason: `${toolName}: approval required but no pipeline configured`,
+            };
           }
           const verdict = await withApprovalDeadline(
             deps.approvalHandler({
-              callId: "", toolName, input, source: "permission",
+              callId: "",
+              toolName,
+              input,
+              source: "permission",
             }),
             approvalTimeoutMs(),
           );
           if (verdict.decision === "deny") {
-            return { block: true, reason: `${toolName}: denied — ${verdict.reason ?? "user denied"}` };
+            return {
+              block: true,
+              reason: `${toolName}: denied — ${verdict.reason ?? "user denied"}`,
+            };
           }
           return undefined;
         };

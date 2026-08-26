@@ -1,8 +1,15 @@
 import { createHash } from "node:crypto";
-import { rmSync, renameSync, writeFileSync } from "node:fs";
-import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
-import * as path from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
+import * as path from "node:path";
 
 /** Fetched source materialized onto disk, with a version fingerprint for
  *  cache keying. Pure mechanical capability — no business semantics. */
@@ -59,10 +66,42 @@ function unzip(zipPath: string, extractDir: string): Promise<{ exitCode: number;
     const proc = Bun.spawn(["unzip", "-q", zipPath, "-d", extractDir], {
       stdio: ["ignore", "pipe", "pipe"],
     });
-    proc.exited.then((code) => resolve({ exitCode: code ?? 1, stderr: "" })).catch(() => {
-      resolve({ exitCode: 1, stderr: "unzip spawn failed" });
-    });
+    proc.exited
+      .then((code) => resolve({ exitCode: code ?? 1, stderr: "" }))
+      .catch(() => {
+        resolve({ exitCode: 1, stderr: "unzip spawn failed" });
+      });
   });
+}
+
+/** Synchronous git fetch (oma marketplace / addMarketplace uses a sync
+ *  install path; the async variant above is for backend skill-pack). */
+export function fetchGitSourceSync(opts: {
+  url: string;
+  dataDir: string;
+  ref?: string;
+  slug?: string;
+}): FetchedSource {
+  const slug = assertSafeSegment(opts.slug ?? slugify(opts.url));
+  const target = path.resolve(opts.dataDir, slug);
+  if (existsSync(target)) rmSync(target, { recursive: true, force: true });
+  mkdirSync(path.resolve(opts.dataDir), { recursive: true });
+  const args = ["clone", "--depth", "1"];
+  if (opts.ref) args.push("--branch", opts.ref);
+  args.push(opts.url, target);
+  const proc = Bun.spawnSync(["git", ...args], {
+    cwd: opts.dataDir,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (proc.exitCode !== 0) {
+    throw new Error(`git clone failed: ${String(proc.stderr ?? "").trim()}`);
+  }
+  const revProc = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
+    cwd: target,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const rev = revProc.exitCode === 0 ? String(revProc.stdout ?? "").trim() : "unknown";
+  return { root: target, rev };
 }
 
 /** Materialize a zip buffer into dataDir/<slug>. Safety: no path escape. */
