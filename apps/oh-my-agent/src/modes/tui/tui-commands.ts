@@ -10,6 +10,7 @@ import {
   setPluginEnabled,
   uninstallPlugin,
 } from "../../core/plugins/plugin-marketplace.js";
+import { trustPlugin } from "../../core/plugins/plugin-trust.js";
 import type { OmaRuntime } from "../../core/runtime/create-runtime.js";
 import {
   loadProjectSettings,
@@ -145,7 +146,8 @@ export function buildCommands(ctx: TuiSessionContext): CommandDef[] {
       name: "plugin",
       aliases: ["plugins"],
       description: "list/install/uninstall/enable/disable plugins",
-      argumentHint: "[list|install <mkt>/<plugin>|uninstall <name>|enable <name>|disable <name>]",
+      argumentHint:
+        "[list|install <mkt>/<plugin>|uninstall <name>|enable <name>|disable <name>|trust <name>]",
       group: "settings",
       run: async (args) => {
         const [sub, ...rest] = args.trim().split(/\s+/);
@@ -206,8 +208,24 @@ export function buildCommands(ctx: TuiSessionContext): CommandDef[] {
           );
           return;
         }
+        if (sub === "trust") {
+          const name = rest[0];
+          if (!name) {
+            ctx.pushStatus("usage: /plugin trust <name>");
+            return;
+          }
+          const plugins = listInstalledPlugins(ctx.opts.workspaceRoot);
+          const target = plugins.find((p) => p.name === name && p.scope === "project");
+          if (!target) {
+            ctx.pushStatus(`no project-scope plugin named "${name}"`);
+            return;
+          }
+          trustPlugin(target.root);
+          ctx.pushStatus(`trusted ${name} (hash recorded; code components will load)`);
+          return;
+        }
         ctx.pushStatus(
-          "usage: /plugin list|install <mkt>/<plugin>|uninstall <name>|enable <name>|disable <name>",
+          "usage: /plugin list|install <mkt>/<plugin>|uninstall <name>|enable <name>|disable <name>|trust <name>",
         );
       },
     },

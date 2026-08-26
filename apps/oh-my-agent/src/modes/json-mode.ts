@@ -1,6 +1,7 @@
 import type { BackendRunOutcome } from "@chengchenccc/agent-contract";
 import { buildCliRunInput } from "../cli/initial-input.js";
 import { createOmaRuntime } from "../core/runtime/create-runtime.js";
+import { assemblePluginRuntime } from "../core/plugins/plugin-resolve.js";
 import type { CliRunOptions } from "./print-mode.js";
 
 /** JSON mode: one Run; stdout gets ALL events as JSONL plus exactly one
@@ -11,6 +12,8 @@ export async function runJsonMode(opts: CliRunOptions): Promise<number> {
     workspaceRoot: opts.workspaceRoot,
     modelRuntime: opts.modelRuntime,
   });
+  const pluginRt = await assemblePluginRuntime(built.workspace.root, "json");
+  for (const w of pluginRt.warnings) console.error(`[plugin] ${w}`);
   const runtime = await createOmaRuntime({
     runId: built.run.runId,
     modelId: built.run.model.modelId,
@@ -19,6 +22,10 @@ export async function runJsonMode(opts: CliRunOptions): Promise<number> {
     modelRuntime: opts.modelRuntime,
     skillRoots: built.run.skillRoots ?? [],
     enableNativeTodo: true,
+    ...(pluginRt.plugins.length || pluginRt.mcpServers.length
+      ? { pluginComponents: { plugins: pluginRt.plugins, mcpServers: pluginRt.mcpServers } }
+      : {}),
+    ...(built.run.permissionMode ? { permissionMode: built.run.permissionMode } : {}),
     onEvent: (envelope) => {
       // Raw runtime event object, e.g. {"type":"agent_start"}.
       process.stdout.write(`${JSON.stringify({ type: "event", event: envelope.data })}\n`);

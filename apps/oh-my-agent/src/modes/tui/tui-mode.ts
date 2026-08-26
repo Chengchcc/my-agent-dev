@@ -5,6 +5,7 @@ import { ProcessTerminal, type SlashCommand } from "@chengchenccc/tui";
 import { buildCliRunInput } from "../../cli/initial-input.js";
 import type { OmaLoopEvent } from "../../core/agent-runtime.js";
 import { createOmaRuntime, type OmaRuntime } from "../../core/runtime/create-runtime.js";
+import { assemblePluginRuntime } from "../../core/plugins/plugin-resolve.js";
 import {
   appendSessionMessages,
   listSessions,
@@ -325,6 +326,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       runInput = { ...built, workflow: { script: pendingWorkflowScript } };
       pendingWorkflowScript = undefined;
     }
+    const pluginRt = await assemblePluginRuntime(opts.workspaceRoot, "tui");
+    for (const w of pluginRt.warnings) pushStatus(`[plugin] ${w}`);
     const runtime = await createOmaRuntime({
       runId: `tui-${randomUUID()}`,
       modelId: built.run.model.modelId,
@@ -333,6 +336,10 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       modelRuntime: opts.modelRuntime,
       skillRoots: built.run.skillRoots ?? [],
       enableNativeTodo: true,
+      ...(pluginRt.plugins.length || pluginRt.mcpServers.length
+        ? { pluginComponents: { plugins: pluginRt.plugins, mcpServers: pluginRt.mcpServers } }
+        : {}),
+      ...(built.run.permissionMode ? { permissionMode: built.run.permissionMode } : {}),
       sessionTranscript: session.messages.length
         ? session.messages.map((m, i) => ({
             productEntryId: `session:${i}`,

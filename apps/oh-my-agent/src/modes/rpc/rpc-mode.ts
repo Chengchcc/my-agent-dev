@@ -4,6 +4,7 @@ import { debugLog } from "@chengchenccc/agent-contract";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { type Message, MessageSchema } from "@chengchenccc/message";
 import { createOmaRuntime, type OmaRuntime } from "../../core/runtime/create-runtime.js";
+import { assemblePluginRuntime } from "../../core/plugins/plugin-resolve.js";
 import { buildSystemPrompt, readMemorySummary } from "../../core/runtime/prompts.js";
 import {
   appendSessionCompaction,
@@ -228,6 +229,10 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
             },
           };
 
+      // Plugin components (spec): policy resolved in the mode layer — RPC
+      // NEVER loads project-scope code; user-scope needs enablement only.
+      const pluginRt = await assemblePluginRuntime(input.workspace.root, "rpc");
+      for (const w of pluginRt.warnings) debugLog("oma", `plugin: ${w}`);
       runtime = await createOmaRuntime({
         runId,
         modelId: input.run.model.modelId,
@@ -235,6 +240,10 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
         workspaceAccess: input.workspace.access,
         modelRuntime: opts.modelRuntime,
         skillRoots: input.run.skillRoots?.length ? input.run.skillRoots : cwdSkills,
+        ...(pluginRt.plugins.length || pluginRt.mcpServers.length
+          ? { pluginComponents: { plugins: pluginRt.plugins, mcpServers: pluginRt.mcpServers } }
+          : {}),
+        ...(input.run.permissionMode ? { permissionMode: input.run.permissionMode } : {}),
         sessionTranscript,
         onEvent: (event) => {
           if (!finished) emit(eventOutputSchema.parse({ type: "event", runId, event }));

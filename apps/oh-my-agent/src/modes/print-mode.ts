@@ -2,6 +2,7 @@ import type { ModelRuntime } from "@chengchenccc/ai";
 import type { Message } from "@chengchenccc/message";
 import { buildCliRunInput } from "../cli/initial-input.js";
 import { createOmaRuntime } from "../core/runtime/create-runtime.js";
+import { assemblePluginRuntime } from "../core/plugins/plugin-resolve.js";
 import { newSessionId } from "../core/session/session-file.js";
 import { persistSessionTurn } from "../core/session/session-loop.js";
 
@@ -37,6 +38,8 @@ export async function runPrintMode(opts: CliRunOptions): Promise<number> {
     modelId: opts.model,
   });
   const sessionId = newSessionId();
+  const pluginRt = await assemblePluginRuntime(built.workspace.root, "print");
+  for (const w of pluginRt.warnings) console.error(`[plugin] ${w}`);
   const runtime = await createOmaRuntime({
     runId: built.run.runId,
     modelId: built.run.model.modelId,
@@ -45,6 +48,10 @@ export async function runPrintMode(opts: CliRunOptions): Promise<number> {
     modelRuntime: opts.modelRuntime,
     skillRoots: built.run.skillRoots ?? [],
     enableNativeTodo: true,
+    ...(pluginRt.plugins.length || pluginRt.mcpServers.length
+      ? { pluginComponents: { plugins: pluginRt.plugins, mcpServers: pluginRt.mcpServers } }
+      : {}),
+    ...(built.run.permissionMode ? { permissionMode: built.run.permissionMode } : {}),
   });
   try {
     const segment = await runtime.run(built);

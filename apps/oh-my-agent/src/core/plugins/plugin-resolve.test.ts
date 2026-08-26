@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Plugin } from "../runtime/plugin.js";
 import { addMarketplace, installPlugin, setPluginEnabled } from "./plugin-marketplace.js";
 import { assemblePluginRuntime, resolvePluginComponents } from "./plugin-resolve.js";
 import { trustPlugin } from "./plugin-trust.js";
-import type { Plugin } from "../runtime/plugin.js";
 
 function makePluginDir(marketRoot: string, name: string, withCode: boolean): string {
   const root = join(marketRoot, name);
@@ -106,4 +106,39 @@ describe("resolvePluginComponents scope x mode matrix", () => {
       rmSync(agent, { recursive: true, force: true });
     }
   });
+});
+
+test("/plugin trust flow: warning before, approved after, rpc still rejects", () => {
+  const workspace = mkdtempSync(join(tmpdir(), "oma-trustflow-ws-"));
+  const agent = mkdtempSync(join(tmpdir(), "oma-trustflow-agent-"));
+  process.env.OMA_CODING_AGENT_DIR = agent;
+  try {
+    const marketRoot = join(workspace, "market");
+    mkdirSync(join(marketRoot, "p", "skills", "p"), { recursive: true });
+    writeFileSync(
+      join(marketRoot, "marketplace.json"),
+      JSON.stringify({ name: "m", plugins: [{ name: "p", path: "p" }] }),
+    );
+    writeFileSync(
+      join(marketRoot, "p", "plugin.json"),
+      JSON.stringify({ name: "p", tools: "./tools.ts" }),
+    );
+    expect(addMarketplace(workspace, marketRoot).ok).toBe(true);
+    expect(installPlugin(workspace, "m/p", "project").ok).toBe(true);
+
+    const before = resolvePluginComponents(workspace, "tui");
+    expect(before.codeEntries).toEqual([]);
+    expect(before.warnings.join(" ")).toContain("/plugin trust p");
+
+    trustPlugin(join(workspace, ".oma", "plugins", "p"));
+    const after = resolvePluginComponents(workspace, "tui");
+    expect(after.codeEntries.map((c) => c.name)).toEqual(["p"]);
+    const rpc = resolvePluginComponents(workspace, "rpc");
+    expect(rpc.codeEntries).toEqual([]);
+    expect(rpc.warnings.join(" ")).toContain("rpc");
+  } finally {
+    delete process.env.OMA_CODING_AGENT_DIR;
+    rmSync(workspace, { recursive: true, force: true });
+    rmSync(agent, { recursive: true, force: true });
+  }
 });
