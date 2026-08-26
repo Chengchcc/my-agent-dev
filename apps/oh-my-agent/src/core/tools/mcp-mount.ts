@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PluginTool } from "../agent-runtime.js";
+import type { PluginMcpConfig } from "../plugins/plugin-resolve.js";
 import { killProcessTree } from "../runtime/process-tree.js";
 
 /** Generic .mcp.json mounting (ADR 0022): the workspace bridge writes one
@@ -236,7 +237,7 @@ export interface MountedMcpServers {
 export async function mountWorkspaceMcpServers(
   workspaceRoot: string,
   nativeNames: ReadonlySet<string>,
-  pluginServers: readonly import("../plugins/plugin-resolve.js").PluginMcpConfig[] = [],
+  pluginServers: readonly PluginMcpConfig[] = [],
 ): Promise<MountedMcpServers> {
   const servers = mergeMcpConfigs(workspaceRoot, pluginServers);
   const tools: PluginTool[] = [];
@@ -320,7 +321,7 @@ export function substitutePluginVars(
  *  plugin servers keep resolver order otherwise. */
 export function mergeMcpConfigs(
   workspaceRoot: string,
-  plugins: readonly import("../plugins/plugin-resolve.js").PluginMcpConfig[],
+  plugins: readonly PluginMcpConfig[],
 ): Record<string, McpJsonServer> {
   const merged: Record<string, McpJsonServer> = loadMcpConfig(workspaceRoot);
   for (const p of plugins) {

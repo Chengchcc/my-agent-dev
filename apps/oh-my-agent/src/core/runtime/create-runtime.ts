@@ -11,8 +11,9 @@ import type { RunEventEnvelope } from "../../protocol/index.js";
 import { mapRunEvent } from "../../protocol/index.js";
 import type { OmaLoopResult } from "../agent-runtime.js";
 import { extractAutonomousMemory, type MemoryLearnResult } from "../memory/autonomous-memory.js";
-import { assembleRunRuntime, type RunRuntime } from "./run-runtime.js";
+import type { PluginMcpConfig } from "../plugins/plugin-resolve.js";
 import type { Plugin } from "./plugin.js";
+import { assembleRunRuntime, type RunRuntime } from "./run-runtime.js";
 
 /** The single Runtime assembly entry point for the Oma product.
  *  Every mode (print / json / rpc / future TUI) builds the SAME runtime from
@@ -46,8 +47,8 @@ export interface CreateOmaRuntimeOptions {
   /** Assembled plugin code components (from assemblePluginRuntime, mode
    *  layer). The runtime mounts them; it never reads the registry. */
   pluginComponents?: {
-    plugins: Plugin[];
-    mcpServers?: import("../plugins/plugin-resolve.js").PluginMcpConfig[];
+    plugins: readonly Plugin[];
+    mcpServers?: readonly PluginMcpConfig[];
   };
   /** Frozen Run permissionMode; "deny" drops plugin code components. */
   permissionMode?: "ask" | "auto" | "deny";

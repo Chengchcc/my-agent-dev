@@ -3,8 +3,8 @@ import type { BackendRunOutcome, BackendRunSegment } from "@chengchenccc/agent-c
 import { debugLog } from "@chengchenccc/agent-contract";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { type Message, MessageSchema } from "@chengchenccc/message";
-import { createOmaRuntime, type OmaRuntime } from "../../core/runtime/create-runtime.js";
 import { assemblePluginRuntime } from "../../core/plugins/plugin-resolve.js";
+import { createOmaRuntime, type OmaRuntime } from "../../core/runtime/create-runtime.js";
 import { buildSystemPrompt, readMemorySummary } from "../../core/runtime/prompts.js";
 import {
   appendSessionCompaction,

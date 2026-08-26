@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addMarketplace, installPlugin, loadPluginManifest } from "./plugin-marketplace.js";
+
 function ws(): string {
   return mkdtempSync(join(tmpdir(), "oma-manifest-"));
 }

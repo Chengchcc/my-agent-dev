@@ -4,8 +4,8 @@ import type { ModelRuntime } from "@chengchenccc/ai";
 import { ProcessTerminal, type SlashCommand } from "@chengchenccc/tui";
 import { buildCliRunInput } from "../../cli/initial-input.js";
 import type { OmaLoopEvent } from "../../core/agent-runtime.js";
-import { createOmaRuntime, type OmaRuntime } from "../../core/runtime/create-runtime.js";
 import { assemblePluginRuntime } from "../../core/plugins/plugin-resolve.js";
+import { createOmaRuntime, type OmaRuntime } from "../../core/runtime/create-runtime.js";
 import {
   appendSessionMessages,
   listSessions,

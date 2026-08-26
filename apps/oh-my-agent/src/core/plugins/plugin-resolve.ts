@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Plugin, PluginHooks, PluginTool } from "../runtime/plugin.js";
-import { listInstalledPlugins } from "./plugin-marketplace.js";
 import { loadPluginCode } from "./plugin-code.js";
+import { listInstalledPlugins } from "./plugin-marketplace.js";
 import { isPluginTrusted, readTrustedPlugins } from "./plugin-trust.js";
 
 export type OmaMode = "tui" | "print" | "json" | "rpc";

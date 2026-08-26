@@ -16,6 +16,7 @@ import {
   type PluginTool,
   type SessionStore,
 } from "../agent-runtime.js";
+import type { PluginMcpConfig } from "../plugins/plugin-resolve.js";
 import { loadProjectSettings } from "../settings/project-settings.js";
 import {
   createBashTool,
@@ -141,7 +142,7 @@ export interface RunRuntimeDeps {
    *  policy); the runtime only mounts them. */
   codePlugins?: readonly Plugin[];
   /** Plugin .mcp.json configs (already trust-approved by the mode layer). */
-  pluginMcpServers?: readonly import("../plugins/plugin-resolve.js").PluginMcpConfig[];
+  pluginMcpServers?: readonly PluginMcpConfig[];
   /** Frozen Run permissionMode (ADR 0020 decision 7). "deny" drops plugin
    *  code components at assembly; native tools are unaffected (MVP scope). */
   permissionMode?: "ask" | "auto" | "deny";
