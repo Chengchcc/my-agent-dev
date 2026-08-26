@@ -261,3 +261,86 @@ describe("RPC mode (in-process)", () => {
     ).toBe(true);
   }, 10_000);
 });
+
+describe("rpc approval wire", () => {
+  test("ask-mode plugin tool emits approval_request; resolve_approval allow executes it", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "rpc-appr-ws-"));
+    const agent = mkdtempSync(join(tmpdir(), "rpc-appr-agent-"));
+    const savedAgentDir = process.env.OMA_CODING_AGENT_DIR;
+    process.env.OMA_CODING_AGENT_DIR = agent;
+    // user-scope plugin with an ask-gated tool; fake provider calls it once.
+    const marketRoot = join(workspace, "market");
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(join(marketRoot, "plug"), { recursive: true });
+    writeFileSync(
+      join(marketRoot, "marketplace.json"),
+      JSON.stringify({ name: "m", plugins: [{ name: "plug", path: "plug" }] }),
+    );
+    writeFileSync(
+      join(marketRoot, "plug", "plugin.json"),
+      JSON.stringify({ name: "plug", tools: "./tools.ts" }),
+    );
+    writeFileSync(
+      join(marketRoot, "plug", "tools.ts"),
+      `export const tools = [{ name: "gated-tool", description: "gated", executionMode: "concurrent", async execute() { return { content: "GATED-OK" }; } }];`,
+    );
+    process.env.OMA_FAKE_TOOL = JSON.stringify([{ name: "gated-tool", input: {} }]);
+    try {
+      const { addMarketplace, installPlugin } = await import(
+        "../../core/plugins/plugin-marketplace.js"
+      );
+      expect(addMarketplace(workspace, marketRoot).ok).toBe(true);
+      expect(installPlugin(workspace, "m/plug", "user").ok).toBe(true);
+
+      const modelRuntime = createModelRuntime();
+      modelRuntime.registerProvider(fakeProvider(process.env));
+      let stdinController: ReadableStreamDefaultController<Uint8Array>;
+      const stdin = new ReadableStream<Uint8Array>({
+        start(c) {
+          stdinController = c;
+        },
+      });
+      const outLines: string[] = [];
+      const ctrl = runRpcMode({
+        modelRuntime,
+        stdin,
+        writeLine: (line) => outLines.push(line),
+        log: () => {},
+      });
+      const encoder = new TextEncoder();
+      const write = (line: string) => stdinController.enqueue(encoder.encode(`${line}\n`));
+      write(
+        JSON.stringify({
+          ...EXECUTE,
+          input: {
+            ...EXECUTE.input,
+            input: { inputId: "in-a", message: { role: "user", text: "go" } },
+            run: { ...EXECUTE.input.run, runId: "r-appr", permissionMode: "ask" },
+          },
+          workspace: { root: workspace, access: "read_write" },
+        }),
+      );
+      await waitFor(() => outLines.some((l) => l.includes("approval_request")));
+      const reqLine = outLines.find((l) => l.includes("approval_request"))!;
+      const req = JSON.parse(reqLine) as { event: { data: { callId: string } } };
+      write(
+        JSON.stringify({
+          id: "ap1",
+          type: "resolve_approval",
+          runId: "r-appr",
+          callId: req.event.data.callId,
+          decision: "allow",
+        }),
+      );
+      await waitFor(() => outLines.some((l) => l.includes("GATED-OK")));
+      ctrl.stop();
+      await ctrl.promise.catch(() => {});
+    } finally {
+      delete process.env.OMA_FAKE_TOOL;
+      if (savedAgentDir === undefined) delete process.env.OMA_CODING_AGENT_DIR;
+      else process.env.OMA_CODING_AGENT_DIR = savedAgentDir;
+      rmSync(workspace, { recursive: true, force: true });
+      rmSync(agent, { recursive: true, force: true });
+    }
+  }, 10_000);
+});

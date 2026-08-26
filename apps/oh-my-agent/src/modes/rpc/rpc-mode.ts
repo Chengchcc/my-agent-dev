@@ -4,6 +4,11 @@ import { debugLog } from "@chengchenccc/agent-contract";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { type Message, MessageSchema } from "@chengchenccc/message";
 import { assemblePluginRuntime } from "../../core/plugins/plugin-resolve.js";
+import {
+  approvalTimeoutMs,
+  withApprovalDeadline,
+  type ApprovalDecision,
+} from "../../core/runtime/approval.js";
 import { createOmaRuntime, type OmaRuntime } from "../../core/runtime/create-runtime.js";
 import { buildSystemPrompt, readMemorySummary } from "../../core/runtime/prompts.js";
 import {
@@ -89,6 +94,9 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
 
   const reader = createJsonlReader(stdin);
 
+  /** runId → (callId → resolver). Late/unknown resolutions fail soft. */
+  const pendingApprovalsByRun = new Map<string, Map<string, (d: ApprovalDecision) => void>>();
+
   const promise = (async (): Promise<number> => {
     try {
       for await (const line of reader.lines) {
@@ -157,6 +165,21 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
           case "abort":
             handleAbort(command);
             break;
+          case "resolve_approval": {
+            const resolve = pendingApprovalsByRun.get(command.runId)?.get(command.callId);
+            if (resolve) {
+              resolve({ decision: command.decision });
+              emitResponse(command.id, "resolve_approval", true);
+            } else {
+              emitResponse(
+                command.id,
+                "resolve_approval",
+                false,
+                `no pending approval ${command.callId}`,
+              );
+            }
+            break;
+          }
         }
       }
       if (!finished) {
@@ -228,11 +251,37 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
               }),
             },
           };
-
       // Plugin components (spec): policy resolved in the mode layer — RPC
       // NEVER loads project-scope code; user-scope needs enablement only.
       const pluginRt = await assemblePluginRuntime(input.workspace.root, "rpc");
       for (const w of pluginRt.warnings) debugLog("oma", `plugin: ${w}`);
+      // HITL approval pipe (spec): emit approval_request on stdout, park the
+      // resolver, resolve on the resolve_approval command; deadline = deny.
+      const pendingApprovals = new Map<string, (d: ApprovalDecision) => void>();
+      pendingApprovalsByRun.set(runId, pendingApprovals);
+      let approvalSeq = 10_000;
+      const rpcApproval: ApprovalHandler = (req) =>
+        new Promise<ApprovalDecision>((resolve) => {
+          pendingApprovals.set(req.callId, resolve);
+          emit(
+            eventOutputSchema.parse({
+              type: "event",
+              runId,
+              // Own id space (10k+): the runtime's envelope seq is internal;
+              // consumers key on type + data.callId, not global id order.
+              event: {
+                id: approvalSeq++,
+                type: "approval_request",
+                data: {
+                  callId: req.callId,
+                  toolName: req.toolName,
+                  reason: req.reason ?? `${req.toolName} requested approval (${req.source})`,
+                  input: req.input,
+                },
+              },
+            }),
+          );
+        });
       runtime = await createOmaRuntime({
         runId,
         modelId: input.run.model.modelId,
@@ -244,7 +293,7 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
           ? { pluginComponents: { plugins: pluginRt.plugins, mcpServers: pluginRt.mcpServers } }
           : {}),
         ...(input.run.permissionMode ? { permissionMode: input.run.permissionMode } : {}),
-        sessionTranscript,
+        approvalHandler: (req) => withApprovalDeadline(rpcApproval(req), approvalTimeoutMs()),
         onEvent: (event) => {
           if (!finished) emit(eventOutputSchema.parse({ type: "event", runId, event }));
         },
