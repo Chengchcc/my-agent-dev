@@ -810,6 +810,9 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       );
 
       await vt.waitForRender();
+      // esc-esc summons the tree (single esc only arms).
+      vt.sendInput("\x1b");
+      await vt.waitForRender();
       vt.sendInput("\x1b");
       await vt.waitForRender();
       const overlay = screen(vt);
@@ -817,7 +820,7 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       expect(overlay).toContain("user");
       expect(overlay).toContain("assistant");
 
-      // Esc again cancels the overlay; /exit quits.
+      // Esc cancels the overlay; /exit quits.
       vt.sendInput("\x1b");
       await vt.waitForRender();
       await quitTui(vt);
@@ -929,6 +932,51 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       const view = screen(vt);
       expect(scroll).toContain("first-turn-history");
       expect(view).not.toContain("first-turn-history");
+      await quitTui(vt);
+      expect(await sessionDone).toBe(0);
+    } finally {
+      delete process.env.OMA_SESSION_DIR;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(sessDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("esc-esc opens the branch tree; esc closes it without reopening", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "oma-e2e-esc-"));
+    const sessDir = mkdtempSync(join(tmpdir(), "oma-e2e-esc-sess-"));
+    process.env.OMA_SESSION_DIR = sessDir;
+    try {
+      const vt = new VirtualTerminal(100, 30);
+      const io = createTerminalIo(vt);
+      const sessionDone = runTuiSession(
+        { modelRuntime: fakeModelRuntime(), workspaceRoot: dir },
+        io,
+      );
+
+      // Complete one turn so the session file has branch nodes.
+      await typeAndSubmit(vt, "seed a turn");
+      await waitForText(vt, "done", 5_000);
+
+      // Single idle esc only arms — no overlay.
+      vt.sendInput("\x1b");
+      await waitForText(vt, "press esc again for branch tree", 2_000);
+      expect(screen(vt)).not.toContain("fork from branch node");
+
+      // Second esc within the window summons the tree.
+      vt.sendInput("\x1b");
+      await waitForText(vt, "fork from branch node", 2_000);
+
+      // Esc while the overlay is open closes it (fork cancelled), and the
+      // same esc must NOT re-summon the tree.
+      vt.sendInput("\x1b");
+      await waitForText(vt, "fork cancelled", 2_000);
+      expect(screen(vt)).not.toContain("fork from branch node");
+
+      // A stray extra esc re-arms but still does not reopen the tree.
+      vt.sendInput("\x1b");
+      await waitForText(vt, "press esc again for branch tree", 2_000);
+      expect(screen(vt)).not.toContain("fork from branch node");
+
       await quitTui(vt);
       expect(await sessionDone).toBe(0);
     } finally {

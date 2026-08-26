@@ -18,6 +18,7 @@ import {
   loadInputHistory,
   saveInputHistory,
 } from "../../core/session/input-history.js";
+import type { SessionBranchNode } from "../../core/session/session-file.js";
 import type { ProjectSettings } from "../../core/settings/project-settings.js";
 import { SettingsOverlay } from "./settings-overlay.js";
 import { HistorySearchOverlay, OmaTranscriptContainer, PickerOverlay } from "./tui-components.js";
@@ -26,6 +27,76 @@ import { createOmaFrameProvider } from "./tui-frame-provider.js";
 import type { TuiCommand, TuiIo } from "./tui-mode.js";
 import { TuiRenderShell } from "./tui-render.js";
 import type { TuiViewState } from "./view-state.js";
+
+/** Pre-order branch-tree rows with git-graph prefixes (pi tree-selector
+ *  semantics): indent grows only at branch points, single-child chains stay
+ *  flat, ancestors leave "│" rails at their fork columns. */
+export function layoutBranchTree(
+  nodes: ReadonlyArray<SessionBranchNode>,
+): Array<{ node: SessionBranchNode; prefix: string }> {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const childrenOf = new Map<string, SessionBranchNode[]>();
+  const roots: SessionBranchNode[] = [];
+  for (const n of nodes) {
+    if (n.parentId && byId.has(n.parentId)) {
+      const arr = childrenOf.get(n.parentId) ?? [];
+      arr.push(n);
+      childrenOf.set(n.parentId, arr);
+    } else {
+      roots.push(n);
+    }
+  }
+  const multipleRoots = roots.length > 1;
+  type Gutter = { position: number; show: boolean };
+  // [node, lane, justBranched, showConnector, isLast, gutters, isVirtualRootChild]
+  type StackItem = [SessionBranchNode, number, boolean, boolean, boolean, Gutter[], boolean];
+  const rows: Array<{ node: SessionBranchNode; prefix: string }> = [];
+  const stack: StackItem[] = [];
+  for (let i = roots.length - 1; i >= 0; i--) {
+    stack.push([
+      roots[i]!,
+      multipleRoots ? 1 : 0,
+      multipleRoots,
+      multipleRoots,
+      i === roots.length - 1,
+      [],
+      multipleRoots,
+    ]);
+  }
+  while (stack.length > 0) {
+    const [node, lane, justBranched, showConnector, isLast, gutters, isVirtualRootChild] =
+      stack.pop()!;
+    const displayIndent = multipleRoots ? Math.max(0, lane - 1) : lane;
+    const connectorLevel = showConnector && !isVirtualRootChild ? displayIndent - 1 : -1;
+    const cells: string[] = [];
+    for (let level = 0; level < displayIndent; level++) {
+      const gutter = gutters.find((g) => g.position === level);
+      if (level === connectorLevel) cells.push(isLast ? "└─ " : "├─ ");
+      else cells.push(gutter?.show ? "│  " : "   ");
+    }
+    rows.push({ node, prefix: cells.join("") });
+
+    const children = childrenOf.get(node.id) ?? [];
+    const multipleChildren = children.length > 1;
+    const childLane = multipleChildren || (justBranched && lane > 0) ? lane + 1 : lane;
+    const connectorDisplayed = showConnector && !isVirtualRootChild;
+    const childGutters = connectorDisplayed
+      ? [...gutters, { position: Math.max(0, displayIndent - 1), show: !isLast }]
+      : gutters;
+    for (let i = children.length - 1; i >= 0; i--) {
+      stack.push([
+        children[i]!,
+        childLane,
+        multipleChildren,
+        multipleChildren,
+        i === children.length - 1,
+        childGutters,
+        false,
+      ]);
+    }
+  }
+  return rows;
+}
 
 export function createTerminalIo(
   terminal: Terminal = new ProcessTerminal(),
@@ -85,6 +156,9 @@ export function createTerminalIo(
   let quitArmed = false;
   let quitHint: Text | null = null;
   let quitTimer: Timer | undefined;
+  let escArmed = false;
+  let escTimer: Timer | undefined;
+  let escHint: Text | null = null;
 
   function startElapsedTimer(): void {
     clearInterval(elapsedTimer);
@@ -120,6 +194,28 @@ export function createTerminalIo(
       tui.requestRender();
     }, 2_000);
   }
+  /** Idle esc-esc opens the branch tree. A single esc only arms so the esc
+   *  that CLOSES an overlay can never immediately re-summon it. */
+  function dismissEscArm(): void {
+    escArmed = false;
+    clearTimeout(escTimer);
+    if (escHint) {
+      statusContainer.removeChild(escHint);
+      escHint = null;
+    }
+  }
+
+  function armEsc(): void {
+    dismissEscArm();
+    escArmed = true;
+    escHint = new Text("\u001b[2m  press esc again for branch tree\u001b[0m", 0, 0);
+    statusContainer.addChild(escHint);
+    tui.requestRender();
+    escTimer = setTimeout(() => {
+      dismissEscArm();
+      tui.requestRender();
+    }, 2_000);
+  }
 
   function recordHistory(prompt: string): void {
     const next = appendInputHistory(historyEntries, prompt);
@@ -145,7 +241,7 @@ export function createTerminalIo(
       if (liveHandler) liveHandler(trimmed);
       return;
     }
-    dismissQuitHint();
+    dismissEscArm();
     if (!pending) return;
     const resolve = pending;
     pending = null;
@@ -184,7 +280,14 @@ export function createTerminalIo(
         return { consume: true };
       }
       if (!editor.isShowingAutocomplete() && commandHandler) {
-        commandHandler("forkTree");
+        // esc-esc summons; the first esc only arms (quit-arm pattern) so an
+        // extra esc while dismissing overlays never reopens the tree.
+        if (escArmed) {
+          dismissEscArm();
+          commandHandler("forkTree");
+        } else {
+          armEsc();
+        }
         return { consume: true };
       }
     }
@@ -424,29 +527,28 @@ export function createTerminalIo(
     },
     pickBranchTree(nodes) {
       const { promise, resolve } = Promise.withResolvers<string | null>();
-      // Cap the list; the overlay scrolls, but thousands of nodes would just
-      // waste memory on a long session.
-      const lastChild = new Map<string | null, string>();
-      for (const n of nodes) lastChild.set(n.parentId, n.id);
-      const items = nodes.slice(0, 200).map((n) => {
-        const isLast = lastChild.get(n.parentId) === n.id;
-        const prefix =
-          n.depth > 0 ? "  ".repeat(Math.min(n.depth, 8) - 1) + (isLast ? "└─ " : "├─ ") : "";
-        const roleColor =
-          n.role === "user" ? "\u001b[36m" : n.role === "assistant" ? "\u001b[32m" : "\u001b[2m";
-        const ordinal = n.ordinal !== undefined ? ` #${n.ordinal}` : "";
-        return {
-          value: n.id,
-          label: `${prefix}${roleColor}${n.role}${ordinal}\u001b[0m`,
-          description: n.text.replace(/\s+/g, " ").slice(0, 60),
-        };
-      });
+      // Git-graph layout (pi tree-selector): a node's indent only grows at
+      // branch points — single-child chains stay flat, so a linear session
+      // renders as one column instead of one-indent-per-message. Rails:
+      // "│" at ancestor fork columns, "├─/└─" for children of a fork.
+      const items = layoutBranchTree(nodes)
+        .slice(0, 200)
+        .map(({ node: n, prefix }) => {
+          const roleColor =
+            n.role === "user" ? "\u001b[36m" : n.role === "assistant" ? "\u001b[32m" : "\u001b[2m";
+          const ordinal = n.ordinal !== undefined ? ` #${n.ordinal}` : "";
+          return {
+            value: n.id,
+            label: `${prefix}${roleColor}${n.role}${ordinal}\u001b[0m`,
+            description: n.text.replace(/\s+/g, " ").slice(0, 60),
+          };
+        });
       const list = new SelectList(items, 12, EDITOR_THEME.selectList, {
         minPrimaryColumnWidth: 14,
         maxPrimaryColumnWidth: 32,
       });
       const overlayBox = new PickerOverlay(
-        new Text("  fork from branch node — select, enter, esc", 0, 0),
+        new Text("  fork from branch node — select, enter, esc-esc to open", 0, 0),
         list,
       );
       const overlay = tui.showOverlay(overlayBox, { width: "75%", anchor: "center" });
@@ -485,7 +587,9 @@ export function createTerminalIo(
     close() {
       clearInterval(elapsedTimer);
       clearTimeout(quitTimer);
+      clearTimeout(escTimer);
       dismissQuitHint();
+      dismissEscArm();
       if (loader) loader.stop();
       tui.terminal.write("\x1b[?1004l");
       tui.stop();

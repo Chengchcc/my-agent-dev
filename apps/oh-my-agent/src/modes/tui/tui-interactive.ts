@@ -59,7 +59,7 @@ export async function pickModelInteractive(ctx: TuiSessionContext): Promise<void
   ctx.io.render(ctx.state);
 }
 
-/** Idle Esc: interactive branch-tree fork (omp tree-selector-inspired). */
+/** Idle esc-esc: interactive branch-tree fork (omp tree-selector-inspired). */
 export async function forkTreeInteractive(ctx: TuiSessionContext): Promise<void> {
   if (ctx.liveRuntime) {
     ctx.pushStatus("cannot fork while a run is live");
