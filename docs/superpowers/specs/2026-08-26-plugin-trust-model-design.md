@@ -100,11 +100,19 @@ hooks?: string;
   模型/store 的场景走 `PluginHooks`（已有 `rt: PluginRuntime`）。将来不够再加
   受控注入，YAGNI。
 
-**Tool result 契约**（吸收 omp `AgentToolResult` 的两点，其余不采纳）：
+**Tool result 契约**（吸收 omp 的错误语义准则与 `content` 通道，其余不采纳）：
 
-- `isError` / `terminate`：数据驱动报错与终止 —— **oma 循环已支持**
-  （`agent-loop.ts` 检测 result 的 `isError`/`terminate` 字段，throw 转为
-  `{error, isError}`，失败结果前置修复提醒），插件工具直接用，无需新机制。
+- **错误语义（throw vs isError，omp 同款准则）**：
+  - **throw/reject** = 该操作无法产生任何有用结果 —— 循环捕获并转为失败 tool
+    result（`{error, isError:true}` → wire `is_error:true` + 修复提醒前置），模型
+    与用户都看到失败。
+  - **`isError: true` + 结构化字段** = 工具自己捕获的领域失败、能给出清晰解释时
+    使用（可与部分结果共存）。
+  - **禁止把失败伪装成成功样子的 `content`**：`content` 与 `isError` 正交——错误
+    结果里的 `content` 是失败解释，不是成功输出；失败提醒的注入保证模型侧失败
+    必可见。
+- `terminate`：数据驱动终止 —— **oma 循环已支持**（检测 result 的 `terminate`
+  字段停 loop），插件工具直接用，无需新机制。
 - `content?: string`（新增，omp 的模型通道分离）：result 声明 `content` 字符串时，
   tool_result 文本**原样**用它（工具已格式化好的模型可见内容），其余字段仅供
   TUI/事件消费，不再整体 JSON dump 进模型上下文。实现 = `agent-loop.ts` 批量落账
