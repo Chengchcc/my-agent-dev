@@ -116,25 +116,38 @@ function writeRegistry(path: string, registry: PersistedRegistry): void {
   writeFileSync(path, `${JSON.stringify(registry, null, 2)}\n`);
 }
 
-export function loadMarketplaceManifest(root: string): MarketplaceManifest | null {
-  const path = join(root, "marketplace.json");
-  if (!existsSync(path)) return null;
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
-    if (typeof parsed !== "object" || parsed === null) return null;
-    const o = parsed as { name?: unknown; plugins?: unknown };
-    if (typeof o.name !== "string" || !Array.isArray(o.plugins)) return null;
-    const plugins = o.plugins.filter(
-      (p): p is MarketplacePluginEntry =>
-        typeof p === "object" &&
-        p !== null &&
-        typeof (p as MarketplacePluginEntry).name === "string" &&
-        typeof (p as MarketplacePluginEntry).path === "string",
-    );
-    return { name: o.name, plugins };
-  } catch {
-    return null;
+function parseMarketplaceCatalog(o: Record<string, unknown>): MarketplaceManifest | null {
+  const name = typeof o.name === "string" ? o.name : null;
+  const rawPlugins = Array.isArray(o.plugins) ? o.plugins : [];
+  const plugins: MarketplacePluginEntry[] = [];
+  for (const entry of rawPlugins) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const e = entry as Record<string, unknown>;
+    const entryName = typeof e.name === "string" ? e.name : null;
+    // oma catalogs use `path`; Claude catalogs use `source` ("./rel" form).
+    const pathLike =
+      typeof e.path === "string"
+        ? e.path
+        : typeof e.source === "string" && e.source.startsWith("./")
+          ? e.source.slice(1)
+          : null;
+    if (!entryName || !pathLike) continue;
+    plugins.push({ name: entryName, path: pathLike });
   }
+  if (!name || plugins.length === 0) return null;
+  return { name, plugins };
+}
+
+export function loadMarketplaceManifest(root: string): MarketplaceManifest | null {
+  // oma catalog first; Claude catalog (`.claude-plugin/marketplace.json`) as
+  // fallback so existing Claude marketplaces keep loading (omp fetcher parity).
+  for (const rel of ["marketplace.json", join(".claude-plugin", "marketplace.json")]) {
+    const parsed = readJson(join(root, rel));
+    if (!parsed) continue;
+    const manifest = parseMarketplaceCatalog(parsed);
+    if (manifest) return manifest;
+  }
+  return null;
 }
 
 function readJson(path: string): Record<string, unknown> | null {

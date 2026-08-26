@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addMarketplace, installPlugin, loadPluginManifest } from "./plugin-marketplace.js";
-
 function ws(): string {
   return mkdtempSync(join(tmpdir(), "oma-manifest-"));
 }
@@ -97,6 +96,37 @@ describe("multi-source plugin manifest", () => {
       expect(loadPluginManifest(root)).toBeNull();
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("claude marketplace catalog fallback", () => {
+  test("addMarketplace reads .claude-plugin/marketplace.json when no marketplace.json exists", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "oma-mkt-ws-"));
+    const agent = mkdtempSync(join(tmpdir(), "oma-mkt-agent-"));
+    const marketRoot = mkdtempSync(join(tmpdir(), "oma-mkt-src-"));
+    process.env.OMA_CODING_AGENT_DIR = agent;
+    try {
+      mkdirSync(join(marketRoot, ".claude-plugin"), { recursive: true });
+      mkdirSync(join(marketRoot, "demo"), { recursive: true });
+      writeFileSync(join(marketRoot, "demo", "plugin.json"), JSON.stringify({ name: "demo" }));
+      writeFileSync(
+        join(marketRoot, ".claude-plugin", "marketplace.json"),
+        JSON.stringify({
+          name: "claude-market",
+          plugins: [{ name: "demo", source: "./demo", description: "from claude catalog" }],
+        }),
+      );
+      const add = addMarketplace(workspace, marketRoot);
+      expect(add.ok).toBe(true);
+      expect(add.name).toBe("claude-market");
+      const install = installPlugin(workspace, "claude-market/demo");
+      expect(install.ok).toBe(true);
+    } finally {
+      delete process.env.OMA_CODING_AGENT_DIR;
+      rmSync(workspace, { recursive: true, force: true });
+      rmSync(agent, { recursive: true, force: true });
+      rmSync(marketRoot, { recursive: true, force: true });
     }
   });
 });
