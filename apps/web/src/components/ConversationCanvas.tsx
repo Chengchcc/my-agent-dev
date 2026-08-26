@@ -41,8 +41,17 @@ export function ConversationCanvas({
 }: ConversationCanvasProps) {
   const router = useRouter();
   const qc = useQueryClient();
-  const { state, busy, send, transients, transientTools, runTodos, activeRuns, workflows } =
-    useConversation(conversationId, snapshot);
+  const {
+    state,
+    busy,
+    send,
+    transients,
+    transientTools,
+    runTodos,
+    activeRuns,
+    workflows,
+    resolveApproval,
+  } = useConversation(conversationId, snapshot);
   const { agent, items, error, streamConn } = state;
 
   // W3+W5: use the most recent agent run's status, not first-found.
@@ -120,6 +129,7 @@ export function ConversationCanvas({
       tools: LiveToolCall[];
       error?: string;
       notices?: string[];
+      approval?: { callId: string; toolName: string; reason: string };
     }> = [];
     for (const [runId, t] of Object.entries(transients)) {
       const sender = agent ?? { memberId: t.agentId, kind: "agent" as const, agentId: t.agentId };
@@ -133,6 +143,7 @@ export function ConversationCanvas({
         ),
         error: t.error,
         notices: t.notices,
+        ...(t.approval ? { approval: t.approval } : {}),
       });
     }
     return bubbles;
@@ -367,6 +378,7 @@ export function ConversationCanvas({
                   conversationId={conversationId}
                   scrollContainerRef={scrollRef}
                   transients={transientBubbles}
+                  onResolveApproval={resolveApproval}
                 />
               </div>
             )}

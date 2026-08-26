@@ -11,6 +11,13 @@ export interface TransientRun {
   /** Runtime notices (stream-rule triggers): transient status lines shown
    * above the run's output; never part of the text bubble. */
   notices?: string[];
+  /** Pending HITL approval (spec: approval pipeline). The web confirm card
+   *  renders from this; resolving or run end clears it. */
+  approval?: {
+    callId: string;
+    toolName: string;
+    reason: string;
+  };
   /** Terminal failure of this run (status event error field). Kept live
    *  because failed runs persist no assistant message. */
   error?: string;
@@ -93,6 +100,34 @@ export function pushTransientNotice(
     agentId,
     notices,
   };
+  return next;
+}
+
+/** Set (or replace) the pending approval on runId. */
+export function setTransientApproval(
+  state: TransientMap,
+  runId: string,
+  agentId: string,
+  approval: { callId: string; toolName: string; reason: string },
+): TransientMap {
+  const next = { ...state };
+  next[runId] = {
+    text: state[runId]?.text ?? "",
+    thinking: state[runId]?.thinking ?? "",
+    agentId,
+    ...(state[runId]?.notices ? { notices: state[runId].notices } : {}),
+    approval,
+  };
+  return next;
+}
+
+/** Clear the pending approval (resolved or run ended). */
+export function clearTransientApproval(state: TransientMap, runId: string): TransientMap {
+  const entry = state[runId];
+  if (!entry?.approval) return state;
+  const next = { ...state };
+  const { approval: _drop, ...rest } = entry;
+  next[runId] = rest;
   return next;
 }
 

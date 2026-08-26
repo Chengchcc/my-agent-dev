@@ -114,6 +114,9 @@ export interface AgentRunExecutionService {
   recover(): Promise<void>;
   retryTerminalCommit(runId: string): Promise<void>;
   stop(runId: string): Promise<void>;
+  /** Resolve a pending HITL approval in the live run (spec: approval
+   *  pipeline Phase B). Explicit failure when no live child exists. */
+  resolveApproval(runId: string, callId: string, decision: "allow" | "deny"): Promise<void>;
   subscribe(runId: string, signal?: AbortSignal): AsyncIterable<BackendEvent>;
 }
 
@@ -799,6 +802,20 @@ export function createAgentRunExecutionService(
       deps.onRunCommitted?.(runId, finalAnswerMessage(outcome.messages));
       liveRuns.delete(runId);
       closeSubscribers(runId);
+    },
+    async resolveApproval(runId, callId, decision) {
+      const live = liveRuns.get(runId);
+      if (!live) {
+        throw new Error(`approval rejected: run ${runId} has no live loop on this process`);
+      }
+      const run = await runPort.getRun(runId);
+      const entry = run ? entryFor(run.modelRef.backendKind) : undefined;
+      if (!entry?.backend.resolveApproval) {
+        throw new Error(
+          `approval rejected: backend "${run?.modelRef.backendKind}" has no approval pipeline`,
+        );
+      }
+      await entry.backend.resolveApproval(runId, callId, decision);
     },
 
     async stop(runId) {

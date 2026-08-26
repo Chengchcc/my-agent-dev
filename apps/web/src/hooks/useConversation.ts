@@ -10,12 +10,14 @@ import {
   usePostConversationMessage,
 } from "@/features/conversations/hooks";
 import type { ConversationSnapshot } from "@/lib/api";
+import { api } from "@/lib/api";
 import { initialState, isBusy, reducer } from "@/lib/conversation-reducer";
 import {
   appendThinking,
   appendTransient,
   clearRunTodos,
   clearRunTools,
+  clearTransientApproval,
   completeTool,
   type LiveToolCall,
   type LiveToolMap,
@@ -24,6 +26,7 @@ import {
   type RunTodoMap,
   removeTransient,
   setRunTodos as setRunTodosMap,
+  setTransientApproval,
   type TodoItem,
   type TransientMap,
   upsertTool,
@@ -125,6 +128,20 @@ export function useConversation(
       return next;
     });
   }, []);
+  /** HITL approval (spec): POST the decision, then clear the pending card. */
+  const resolveApproval = useCallback(
+    async (runId: string, callId: string, decision: "allow" | "deny") => {
+      await api.resolveApproval(runId, callId, decision).catch((err: unknown) => {
+        console.error("approval resolve failed:", err);
+      });
+      setTransients((prev) => {
+        const next = clearTransientApproval(prev, runId);
+        transientsRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
   const failTransient = useCallback((runId: string, agentId: string, error: string) => {
     setTransients((prev) => {
       const next = markTransientError(prev, runId, agentId, error);
@@ -407,6 +424,27 @@ export function useConversation(
           /* malformed - ignore */
         }
       });
+      es.addEventListener("backend.oma.approval_request", (e) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as {
+            payload?: { callId?: string; toolName?: string; reason?: string };
+          };
+          const p = ev.payload;
+          if (typeof p?.callId === "string") {
+            setTransients((prev) => {
+              const next = setTransientApproval(prev, runId, agentId, {
+                callId: p.callId as string,
+                toolName: typeof p.toolName === "string" ? p.toolName : "tool",
+                reason: typeof p.reason === "string" ? p.reason : "",
+              });
+              transientsRef.current = next;
+              return next;
+            });
+          }
+        } catch {
+          /* malformed - ignore */
+        }
+      });
       const upsertWorkflow = (
         workflowId: string,
         patch: (w: WorkflowRunState | undefined) => WorkflowRunState | undefined,
@@ -541,5 +579,6 @@ export function useConversation(
     transientTools,
     runTodos,
     workflows,
+    resolveApproval,
   };
 }

@@ -133,6 +133,7 @@ function makeRunsFakes(script: {
     async recover() {},
     async injectSteer() {},
     async retryTerminalCommit() {},
+    async resolveApproval() {},
     async stop(runId) {
       stops.push(runId);
     },

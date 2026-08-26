@@ -235,6 +235,28 @@ export function agentRunRoutes(input: {
       await agentRunExecution.stop(runId);
       return { ok: true, state: "abort_sent", runId };
     })
+    .post("/api/agent-runs/:runId/approval", async ({ params: { runId }, body, set }) => {
+      const run = await agentRunService.getRun(runId);
+      if (!run) {
+        set.status = 404;
+        return { error: "Run not found" };
+      }
+      const payload = body as { callId?: unknown; decision?: unknown } | undefined;
+      const isTerminal = TERMINAL_STATUSES.includes(run.status);
+      const isAllow = payload?.decision === "allow";
+      const isDeny = payload?.decision === "deny";
+      const hasValidDecision = typeof payload?.callId === "string" && (isAllow || isDeny);
+      if (isTerminal) {
+        set.status = 409;
+        return { error: `Run ${runId} is ${run.status}` };
+      }
+      if (!hasValidDecision) {
+        set.status = 400;
+        return { error: "body must be { callId: string, decision: 'allow' | 'deny' }" };
+      }
+      await agentRunExecution.resolveApproval(runId, payload.callId as string, payload.decision as "allow" | "deny");
+      return { ok: true, runId, callId: payload.callId, decision: payload.decision };
+    })
     .get("/api/agent-runs/:runId/events", async ({ request, params: { runId } }) => {
       const run = await agentRunService.getRun(runId);
       const stream = runEventStreamFor(run, agentRunExecution, runId, request.signal);

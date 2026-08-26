@@ -307,6 +307,7 @@ function makeFakeRuns(script: RunScript, workDir: string = "") {
     async recover() {},
     async injectSteer() {},
     async retryTerminalCommit() {},
+    async resolveApproval() {},
     async stop() {},
     isLive() {
       return false;

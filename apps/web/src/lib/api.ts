@@ -158,6 +158,13 @@ export const api = {
     ),
   getAgentRun: (runId: string) => unwrap(client.api["agent-runs"]({ runId }).get()),
   cancelAgentRun: (runId: string) => unwrap(client.api["agent-runs"]({ runId }).cancel.post()),
+  resolveApproval: (runId: string, callId: string, decision: "allow" | "deny") =>
+    unwrap(
+      client.api["agent-runs"]({ runId }).approval.post({
+        callId,
+        decision,
+      }),
+    ),
   getUsageSummary: (scope: { conversationId?: string; agentId?: string }) =>
     unwrap(
       client.api.usage.summary.get({
