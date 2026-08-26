@@ -1,16 +1,16 @@
 # Future Work
 
-## oma code-backed plugins via runtime import (long-term)
+## oma plugins: adopt the Claude Code plugin ecosystem (long-term)
 
 **Goal**
 
-Align with omp: dynamically load oma plugin code modules (TypeScript/JS) at runtime instead of only declarative bundles.
+Adopt the Claude Code plugin format (`.claude-plugin/plugin.json` + component dirs) so the existing Claude marketplace ecosystem runs on oma — instead of an oma-private plugin format.
 
 **Status**
 
 - Short-term: product tools are ordinary MCP servers via `.mcp.json`; oma no longer has a special product-tool mental model.
-- Long-term: add a plugin module loader so installed plugins can contribute code-backed tools/hooks/commands/extensions.
-- 2026-08-26 correction: the loader primitive is Bun's native dynamic `import()` — verified `await import("x.ts")` transpiles TS natively. **jiti is unnecessary in this Bun-only repo** (jiti is a Node-compat shim; omp needs it, we don't). omp remains the reference for manifest/marketplace/trust shape, not for the loader mechanism.
+- 2026-08-26 decision (three rounds with user): pure Claude format, no oma `entry` field. Claude plugins are declarative component dirs with **no in-process Plugin object** — all code execution is subprocess (hooks shell commands / MCP / LSP). The earlier jiti plan and the `entry`/dynamic-import redesign are both obsolete; no module loader exists at all.
+- MVP components: `skills` (shipped) + `commands` (flat md → TUI slash) + `hooks` (`command` type only, protocol aligned field-by-field with Claude hooks reference, mapped to a compile-time wrapper Plugin) + `.mcp.json` (→ mcp-mount).
 
 **Reference**
 
@@ -22,13 +22,13 @@ Align with omp: dynamically load oma plugin code modules (TypeScript/JS) at runt
 
 | Consumer | What it needs |
 |---|---|
-| oma plugin system | A `PluginManifest` may declare code entry points (`tools`, `hooks`, `commands`, `extensions`) in addition to `skills/` |
-| TUI `/plugin` commands | `install` / `upgrade` / `enable` / `disable` must also load and register plugin modules |
-| Marketplace modules | Install code-backed plugins from a marketplace source (git URL / local dir) |
-| Runtime assembly (`assembleRunRuntime`) | After resolving installed plugins, dynamically import entry modules and merge returned tools/hooks into the Plugin[] list |
-| RPC / backend child | Same custom tools must be available in standalone TUI and backend-invoked RPC modes |
-| Security | Code-backed plugins execute arbitrary code; need permission model / trust gating / sandbox before enabling |
-| Skills / MCP | A plugin may provide `skills/` dirs and MCP server config alongside code tools |
+| oma plugin system | `PluginManifest` adopts the Claude schema subset (`skills`/`commands`/`agents`/`hooks`/`mcpServers`); legacy oma `plugin.json` stays as alias |
+| TUI `/plugin` commands | `install` / `upgrade` / `enable` / `disable` also resolve components (markdown ungated; hooks/MCP gated) |
+| Marketplace modules | Install Claude-format plugins from a marketplace source (git URL / local dir) |
+| Runtime assembly (`assembleRunRuntime`) | Receive approved hooks wrapper + mcp configs via new deps; policy stays in mode layer (`resolvePluginComponents`) |
+| RPC / backend child | user-scope hooks/MCP available; project-scope code components NEVER load in RPC (enforced inside the oma child) |
+| Security | scope = trust boundary: user-scope install-consent (all modes); project-scope hooks/MCP need hash trust record (`<agentDir>/trusted-plugins.json`, TUI ask-once); markdown components ungated |
+| Skills / MCP | `skills/` dirs and `.mcp.json` ship alongside hooks in one plugin |
 
 **Non-goals (for now)**
 
@@ -38,7 +38,7 @@ Align with omp: dynamically load oma plugin code modules (TypeScript/JS) at runt
 
 **Where to start**
 
-1. Define a `plugin.json` code entry shape (`entry` / `tools` / `hooks` / `commands`).
-2. Add a `loadPluginModule(root, entry)` using native dynamic `import()` (runtime-selected path; static import cannot work — but jiti cannot either, per the correction above).
-3. Wire discovered custom tools into `assembleRunRuntime` plugins.
-4. Add a trust/permission gate before enabling code-backed plugins.
+1. Manifest dual-read (`.claude-plugin/plugin.json` first, legacy `plugin.json` fallback) + Claude schema subset parsing.
+2. `claude-hooks.ts` wrapper: config schema, matcher semantics, exec/shell form, stdin/stdout JSON protocol, exit-code semantics, timeout fail-open — per the spec's alignment tables.
+3. PluginHooks async relaxation (`T | Promise<T>`) — the only runtime contract change.
+4. `resolvePluginComponents` + trust record + TUI ask-once dialog; wire into `assembleRunRuntime`.
