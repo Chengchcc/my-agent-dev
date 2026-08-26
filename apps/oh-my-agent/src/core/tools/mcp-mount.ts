@@ -236,8 +236,9 @@ export interface MountedMcpServers {
 export async function mountWorkspaceMcpServers(
   workspaceRoot: string,
   nativeNames: ReadonlySet<string>,
+  pluginServers: readonly import("../plugins/plugin-resolve.js").PluginMcpConfig[] = [],
 ): Promise<MountedMcpServers> {
-  const servers = loadMcpConfig(workspaceRoot);
+  const servers = mergeMcpConfigs(workspaceRoot, pluginServers);
   const tools: PluginTool[] = [];
   const clients: McpClientLike[] = [];
   for (const [name, server] of Object.entries(servers)) {
@@ -284,4 +285,53 @@ export async function mountWorkspaceMcpServers(
       await Promise.allSettled(clients.map((c) => c.close().catch(() => {})));
     },
   };
+}
+
+/** Expand ${CLAUDE_PLUGIN_ROOT}/${CLAUDE_PROJECT_DIR} in a plugin server
+ *  config (spec: Claude plugin .mcp.json compatibility) and export both as
+ *  env vars to the spawned server process. */
+export function substitutePluginVars(
+  server: McpJsonServer,
+  ctx: { pluginRoot: string; workspaceRoot: string },
+): McpJsonServer {
+  const sub = (s: string): string =>
+    s
+      .replaceAll("${CLAUDE_PLUGIN_ROOT}", ctx.pluginRoot)
+      .replaceAll("${CLAUDE_PROJECT_DIR}", ctx.workspaceRoot);
+  const out: McpJsonServer = { ...server };
+  if (server.command) out.command = sub(server.command);
+  if (server.args) out.args = server.args.map(sub);
+  if (server.env) {
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(server.env)) env[k] = sub(String(v));
+    env.CLAUDE_PLUGIN_ROOT = ctx.pluginRoot;
+    env.CLAUDE_PROJECT_DIR = ctx.workspaceRoot;
+    out.env = env;
+  }
+  if (server.headers) {
+    const headers: Record<string, string> = {};
+    for (const [k, v] of Object.entries(server.headers)) headers[k] = sub(String(v));
+    out.headers = headers;
+  }
+  return out;
+}
+
+/** Workspace .mcp.json wins on name conflicts (spec conflict matrix);
+ *  plugin servers keep resolver order otherwise. */
+export function mergeMcpConfigs(
+  workspaceRoot: string,
+  plugins: readonly import("../plugins/plugin-resolve.js").PluginMcpConfig[],
+): Record<string, McpJsonServer> {
+  const merged: Record<string, McpJsonServer> = loadMcpConfig(workspaceRoot);
+  for (const p of plugins) {
+    for (const [name, raw] of Object.entries(p.servers)) {
+      if (name in merged) continue;
+      if (typeof raw !== "object" || raw === null) continue;
+      merged[name] = substitutePluginVars(raw as McpJsonServer, {
+        pluginRoot: p.pluginRoot,
+        workspaceRoot,
+      });
+    }
+  }
+  return merged;
 }
