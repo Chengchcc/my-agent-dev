@@ -22,6 +22,11 @@ import {
 } from "../agent-runtime.js";
 import type { PluginMcpConfig } from "../plugins/plugin-resolve.js";
 import { isFileTrusted, readTrustedPlugins } from "../plugins/plugin-trust.js";
+import {
+  approvalTimeoutMs,
+  withApprovalDeadline,
+  type ApprovalHandler,
+} from "./approval.js";
 import { loadProjectSettings } from "../settings/project-settings.js";
 import {
   createBashTool,
@@ -157,6 +162,9 @@ export interface RunRuntimeDeps {
    *  leaves this unset — the workspace bridge writes that file and the
    *  product owns it. */
   gateWorkspaceMcp?: boolean;
+  /** HITL approval pipeline (spec): resolves the ask-mode gate and
+   *  tools' options.request. Absent + ask = fail-closed error results. */
+  approvalHandler?: ApprovalHandler;
 }
 
 export interface RunRuntime {
@@ -306,8 +314,45 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     if (deps.permissionMode !== "deny") {
       // Native wins on tool-name conflicts (spec conflict matrix).
       const nativeNames = new Set(plugins.flatMap((p) => (p.tools ?? []).map((t) => t.name)));
+      const askGate = deps.permissionMode === "ask";
       for (const cp of deps.codePlugins) {
-        const tools = (cp.tools ?? []).filter((t) => !nativeNames.has(t.name));
+        const tools = (cp.tools ?? [])
+          .filter((t) => !nativeNames.has(t.name))
+          .map((t) =>
+            askGate
+              ? {
+                  ...t,
+                  async execute(
+                    args: Readonly<Record<string, unknown>>,
+                    signal?: AbortSignal,
+                    options?: Parameters<PluginTool["execute"]>[2],
+                  ) {
+                    if (!deps.approvalHandler) {
+                      return {
+                        error: `${t.name}: approval required but no pipeline configured`,
+                        isError: true,
+                      };
+                    }
+                    const verdict = await withApprovalDeadline(
+                      deps.approvalHandler({
+                        callId: options?.callId ?? "",
+                        toolName: t.name,
+                        input: args,
+                        source: "permission",
+                      }),
+                      approvalTimeoutMs(),
+                    );
+                    if (verdict.decision === "deny") {
+                      return {
+                        error: `${t.name}: denied — ${verdict.reason ?? "user denied"}`,
+                        isError: true,
+                      };
+                    }
+                    return t.execute(args, signal, options);
+                  },
+                }
+              : t,
+          );
         plugins.push({
           name: cp.name,
           ...(cp.hooks ? { hooks: cp.hooks } : {}),

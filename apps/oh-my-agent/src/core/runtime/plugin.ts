@@ -1,4 +1,3 @@
-import type { ApprovalDecision } from "./approval.js";
 import type { Message } from "@chengchenccc/message";
 import type { OmaLoopEvent } from "./agent-event.js";
 import type { PluginRuntime } from "./plugin-runtime.js";

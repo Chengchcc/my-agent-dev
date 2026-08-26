@@ -5,6 +5,7 @@ import type { AIMessageChunk, Message } from "@chengchenccc/message";
 import type { SessionStore } from "../persistence/session-store.js";
 import type { MessageEntry } from "../persistence/session-tree.js";
 import type { AgentLoopListener, OmaLoopEvent } from "./agent-event.js";
+import type { ApprovalHandler } from "./approval.js";
 import { type CompactionBudget, compactSession } from "./compaction.js";
 import {
   estimateContextTokens,
@@ -18,7 +19,6 @@ import { buildLoopInput } from "./loop-input.js";
 import { TokenEstimateCache } from "./message-cache.js";
 import type { Plugin, PluginTool } from "./plugin.js";
 import { collectTools, validatePlugins } from "./plugin.js";
-import type { ApprovalHandler } from "./approval.js";
 import type { PluginRuntime } from "./plugin-runtime.js";
 import { renderLoopMeta } from "./prompt.js";
 import { retryStream } from "./retry.js";

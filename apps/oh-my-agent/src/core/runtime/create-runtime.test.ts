@@ -644,4 +644,74 @@ describe("createOmaRuntime", () => {
       else process.env.OMA_FAKE_TOOL = savedTool;
     }
   });
+
+  test("permissionMode ask routes plugin tools through the approval handler", async () => {
+    const savedFake = process.env.OMA_FAKE_PROVIDER;
+    const savedTool = process.env.OMA_FAKE_TOOL;
+    process.env.OMA_FAKE_PROVIDER = "1";
+    const asked: string[] = [];
+    let runSeq = 0;
+    try {
+      const mk = (verdict: "allow" | "deny" | "none") => {
+        const modelRuntime = createModelRuntime();
+        registerBuiltinProviders(modelRuntime, process.env);
+        runSeq++;
+        return createOmaRuntime({
+          runId: `r-ask-${runSeq}`,
+          modelId: "fake/echo",
+          workspaceRoot: tmp,
+          workspaceAccess: "read_write",
+          modelRuntime,
+          skillRoots: [],
+          permissionMode: "ask",
+          ...(verdict !== "none"
+            ? {
+                approvalHandler: async (req: { toolName: string }) => {
+                  asked.push(req.toolName);
+                  return { decision: verdict };
+                },
+              }
+            : {}),
+          pluginComponents: {
+            plugins: [
+              {
+                name: "plugin:plug",
+                tools: [
+                  {
+                    name: "plug-hello",
+                    description: "plugin tool",
+                    executionMode: "concurrent",
+                    async execute() {
+                      return { content: "hello from plugin" };
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        });
+      };
+      const oneRun = async (v: "allow" | "deny" | "none") => {
+        process.env.OMA_FAKE_TOOL = JSON.stringify([{ name: "plug-hello", input: {} }]);
+        const rt = await mk(v);
+        const seg = await rt.run(runInput(`r-ask-${runSeq}`));
+        const out = await seg.outcome;
+        await rt.close();
+        return JSON.stringify(out.messages);
+      };
+
+      // deny: tool never executes; error result names the denial.
+      expect(await oneRun("deny")).toContain("denied");
+      // allow: proceeds (content verbatim).
+      expect(await oneRun("allow")).toContain("hello from plugin");
+      expect(asked).toEqual(["plug-hello", "plug-hello"]);
+      // no handler: fail-closed error, no pipeline.
+      expect(await oneRun("none")).toContain("no pipeline");
+    } finally {
+      if (savedFake === undefined) delete process.env.OMA_FAKE_PROVIDER;
+      else process.env.OMA_FAKE_PROVIDER = savedFake;
+      if (savedTool === undefined) delete process.env.OMA_FAKE_TOOL;
+      else process.env.OMA_FAKE_TOOL = savedTool;
+    }
+  });
 });

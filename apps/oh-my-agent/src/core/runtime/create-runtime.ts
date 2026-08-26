@@ -12,6 +12,7 @@ import { mapRunEvent } from "../../protocol/index.js";
 import type { OmaLoopResult } from "../agent-runtime.js";
 import { extractAutonomousMemory, type MemoryLearnResult } from "../memory/autonomous-memory.js";
 import type { PluginMcpConfig } from "../plugins/plugin-resolve.js";
+import type { ApprovalHandler } from "./approval.js";
 import type { Plugin } from "./plugin.js";
 import { assembleRunRuntime, type RunRuntime } from "./run-runtime.js";
 
@@ -55,6 +56,8 @@ export interface CreateOmaRuntimeOptions {
   /** Standalone modes: gate the repo-controlled workspace .mcp.json behind
    *  the trust record (spec follow-up #3). */
   gateWorkspaceMcp?: boolean;
+  /** HITL approval pipeline; absent + ask = fail-closed. */
+  approvalHandler?: ApprovalHandler;
 }
 
 /** One Runtime = one Run. The loop runs directly in-process; steer injects
@@ -151,6 +154,7 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
       ? { codePlugins: options.pluginComponents.plugins }
       : {}),
     ...(options.gateWorkspaceMcp ? { gateWorkspaceMcp: true } : {}),
+    ...(options.approvalHandler ? { approvalHandler: options.approvalHandler } : {}),
     ...(options.pluginComponents?.mcpServers?.length
       ? { pluginMcpServers: options.pluginComponents.mcpServers }
       : {}),
