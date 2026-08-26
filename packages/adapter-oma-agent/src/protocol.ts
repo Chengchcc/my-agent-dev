@@ -86,10 +86,20 @@ export const abortCommandSchema = z.object({
 });
 export type AbortCommand = z.infer<typeof abortCommandSchema>;
 
+export const resolveApprovalCommandSchema = z.object({
+  id: z.string().min(1).max(64),
+  type: z.literal("resolve_approval"),
+  runId: runIdSchema,
+  callId: z.string().min(1),
+  decision: z.enum(["allow", "deny"]),
+});
+export type ResolveApprovalCommand = z.infer<typeof resolveApprovalCommandSchema>;
+
 export const codingAgentCommandSchema = z.discriminatedUnion("type", [
   executeCommandSchema,
   steerCommandSchema,
   abortCommandSchema,
+  resolveApprovalCommandSchema,
 ]);
 export type OmaCommand = z.infer<typeof codingAgentCommandSchema>;
 
@@ -100,7 +110,7 @@ export const responseOutputSchema = z.object({
   // (no command id exists to echo back).
   id: z.string().max(64),
   type: z.literal("response"),
-  command: z.enum(["execute", "steer", "abort"]),
+  command: z.enum(["execute", "steer", "abort", "resolve_approval"]),
   success: z.boolean(),
   data: z.record(z.unknown()).optional(),
   error: z.string().optional(),

@@ -262,6 +262,26 @@ export class OmaBackend implements AgentBackend<"oma"> {
     }
   }
 
+  /** Resolve a pending HITL approval in the live child (spec: approval
+   *  pipeline Phase B). Unknown callId = the child responds failure. */
+  async resolveApproval(runId: string, callId: string, decision: "allow" | "deny"): Promise<void> {
+    const handle = this.active.get(runId);
+    if (!handle || handle.settled) {
+      throw new OmaProcessError("not_found", `no live child for run: ${runId}`);
+    }
+    const id = `approval-${runId}-${callId}`;
+    const response = await this.sendCommand(handle, id, {
+      id,
+      type: "resolve_approval",
+      runId,
+      callId,
+      decision,
+    });
+    if (!response.success) {
+      throw new OmaProcessError("conflict", `resolve_approval rejected: ${response.error}`);
+    }
+  }
+
   /** Abort the live child: send abort, wait a bounded grace for the outcome,
    *  kill on timeout. The segment's outcome always resolves. A Run still
    *  waiting for a spawn slot is cancelled so it never spawns. */
@@ -319,7 +339,14 @@ export class OmaBackend implements AgentBackend<"oma"> {
   private async sendCommand(
     handle: ActiveHandle,
     id: string,
-    command: { id: string; type: "steer" | "abort"; runId: string; input?: BackendInputMessage },
+    command: {
+      id: string;
+      type: "steer" | "abort" | "resolve_approval";
+      runId: string;
+      input?: BackendInputMessage;
+      callId?: string;
+      decision?: "allow" | "deny";
+    },
   ): Promise<{ success: boolean; error?: string }> {
     const response = new Promise<{ success: boolean; error?: string }>((resolve) => {
       let waiters = this.pendingResponses.get(handle.runId);
