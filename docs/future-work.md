@@ -34,7 +34,7 @@ project-scope code), `permissionMode` deny drops plugin code components.
   allow-rules is a separate design).
 **Older remaining list (superseded where marked above):**
 
-- Marketplace cache + version management: git clone already works (`marketplaceSourceToRoot`); cache + versions remain (omp `source-resolver.ts` reference).
+- Marketplace cache + version management (shipped 2026-08-26): new `packages/source-fetch` is the shared base (fetchGitSource/fetchGitSourceSync/materializeZipSource/directoryFingerprint) — no backend/oma coupling; oma marketplace `marketplaceSourceToRoot` now clones via the base and records the git HEAD rev on `MarketplaceRecord.version` (shown in `/marketplace` list). Backend skill-pack can reuse the same base (its own git/zip clone currently duplicated inline). Remaining: plugin `update` command (re-fetch + re-copy), and migrating skill-pack's inline clone to the base.
 - omp `CustomTool`/hook module shape compat - evaluated and rejected 2026-08-26; revisit only if the ecosystem value justifies porting the API surface.
 
 ## oma plugin system: design history (superseded by the shipped MVP above)
