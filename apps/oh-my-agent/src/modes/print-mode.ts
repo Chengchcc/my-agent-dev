@@ -2,6 +2,7 @@ import type { ModelRuntime } from "@chengchenccc/ai";
 import type { Message } from "@chengchenccc/message";
 import { buildCliRunInput } from "../cli/initial-input.js";
 import { assemblePluginRuntime } from "../core/plugins/plugin-resolve.js";
+import { denyAllApprovals } from "../core/runtime/approval.js";
 import { createOmaRuntime } from "../core/runtime/create-runtime.js";
 import { newSessionId } from "../core/session/session-file.js";
 import { persistSessionTurn } from "../core/session/session-loop.js";
@@ -49,6 +50,7 @@ export async function runPrintMode(opts: CliRunOptions): Promise<number> {
     skillRoots: built.run.skillRoots ?? [],
     enableNativeTodo: true,
     gateWorkspaceMcp: true,
+    approvalHandler: denyAllApprovals,
     ...(pluginRt.plugins.length || pluginRt.mcpServers.length
       ? { pluginComponents: { plugins: pluginRt.plugins, mcpServers: pluginRt.mcpServers } }
       : {}),

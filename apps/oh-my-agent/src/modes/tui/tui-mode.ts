@@ -99,6 +99,9 @@ export interface TuiIo {
   pickModel?(
     models: ReadonlyArray<{ id: string; label: string; description?: string }>,
   ): Promise<string | null>;
+  /** Interactive approval confirm (HITL); resolves "allow"/"deny", null on
+   *  cancel (treated as deny — fail-closed). Absent = deny. */
+  confirmApproval?(req: { toolName: string; reason?: string }): Promise<"allow" | "deny" | null>;
   /** Interactive fork-point picker (pi's user-message selector): lists the
    *  session's user messages; resolves the chosen 1-based ordinal, or null
    *  when cancelled. Absent = caller falls back to /fork <n>. */
@@ -337,6 +340,16 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       skillRoots: built.run.skillRoots ?? [],
       enableNativeTodo: true,
       gateWorkspaceMcp: true,
+      // HITL: interactive approval overlay; absent picker or cancel = deny.
+      approvalHandler: async (req) => {
+        const verdict = await io.confirmApproval?.({
+          toolName: req.toolName,
+          ...(req.reason ? { reason: req.reason } : {}),
+        });
+        return verdict === "allow"
+          ? { decision: "allow" }
+          : { decision: "deny", reason: "user denied" };
+      },
       ...(pluginRt.plugins.length || pluginRt.mcpServers.length
         ? { pluginComponents: { plugins: pluginRt.plugins, mcpServers: pluginRt.mcpServers } }
         : {}),

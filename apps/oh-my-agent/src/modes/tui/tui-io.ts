@@ -499,6 +499,36 @@ export function createTerminalIo(
       };
       return promise;
     },
+    confirmApproval(req) {
+      const { promise, resolve } = Promise.withResolvers<"allow" | "deny" | null>();
+      const list = new SelectList(
+        [
+          { value: "allow", label: "allow", description: "run the tool" },
+          { value: "deny", label: "deny", description: "block with an error result" },
+        ],
+        2,
+        EDITOR_THEME.selectList,
+        { minPrimaryColumnWidth: 6, maxPrimaryColumnWidth: 8 },
+      );
+      const overlayBox = new PickerOverlay(
+        new Text(
+          `  approve ${req.toolName}${req.reason ? ` — ${req.reason}` : ""} — select, enter, esc`,
+          0,
+          0,
+        ),
+        list,
+      );
+      const overlay = tui.showOverlay(overlayBox, { width: "60%", anchor: "center" });
+      list.onSelect = (item) => {
+        overlay.hide();
+        resolve(item.value === "allow" ? "allow" : "deny");
+      };
+      list.onCancel = () => {
+        overlay.hide();
+        resolve(null);
+      };
+      return promise;
+    },
     pickForkPoint(points) {
       const { promise, resolve } = Promise.withResolvers<number | null>();
       const items = points.map((p) => ({

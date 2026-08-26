@@ -1,5 +1,6 @@
 import type { Message } from "@chengchenccc/message";
 import type { OmaLoopEvent } from "./agent-event.js";
+import type { ApprovalDecision } from "./approval.js";
 import type { PluginRuntime } from "./plugin-runtime.js";
 
 export interface PluginTool {
@@ -27,9 +28,7 @@ export interface PluginTool {
       /** HITL: ask the human for an approval decision. Absent = no pipeline
        *  configured (the tool decides; fail closed itself when sensitive).
        *  Resolves null when no verdict could be obtained. */
-      request?: (req: {
-        reason?: string;
-      }) => Promise<import("./approval.js").ApprovalDecision | null>;
+      request?: (req: { reason?: string }) => Promise<ApprovalDecision | null>;
     },
   ): Promise<Readonly<Record<string, unknown>>>;
 }

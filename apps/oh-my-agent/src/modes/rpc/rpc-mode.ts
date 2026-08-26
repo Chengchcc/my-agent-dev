@@ -5,9 +5,10 @@ import type { ModelRuntime } from "@chengchenccc/ai";
 import { type Message, MessageSchema } from "@chengchenccc/message";
 import { assemblePluginRuntime } from "../../core/plugins/plugin-resolve.js";
 import {
+  type ApprovalDecision,
+  type ApprovalHandler,
   approvalTimeoutMs,
   withApprovalDeadline,
-  type ApprovalDecision,
 } from "../../core/runtime/approval.js";
 import { createOmaRuntime, type OmaRuntime } from "../../core/runtime/create-runtime.js";
 import { buildSystemPrompt, readMemorySummary } from "../../core/runtime/prompts.js";
@@ -294,6 +295,7 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
           : {}),
         ...(input.run.permissionMode ? { permissionMode: input.run.permissionMode } : {}),
         approvalHandler: (req) => withApprovalDeadline(rpcApproval(req), approvalTimeoutMs()),
+        sessionTranscript,
         onEvent: (event) => {
           if (!finished) emit(eventOutputSchema.parse({ type: "event", runId, event }));
         },

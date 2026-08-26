@@ -970,7 +970,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
               ...(opts.approvalHandler
                 ? {
                     request: (req: { reason?: string }) =>
-                      opts.approvalHandler({
+                      opts.approvalHandler!({
                         callId: call.id,
                         toolName: call.name,
                         input,

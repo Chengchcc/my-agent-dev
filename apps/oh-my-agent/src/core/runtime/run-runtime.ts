@@ -22,11 +22,6 @@ import {
 } from "../agent-runtime.js";
 import type { PluginMcpConfig } from "../plugins/plugin-resolve.js";
 import { isFileTrusted, readTrustedPlugins } from "../plugins/plugin-trust.js";
-import {
-  approvalTimeoutMs,
-  withApprovalDeadline,
-  type ApprovalHandler,
-} from "./approval.js";
 import { loadProjectSettings } from "../settings/project-settings.js";
 import {
   createBashTool,
@@ -51,6 +46,7 @@ import { createFileTodoStore, readTodoFile } from "../tools/todo-store.js";
 import { evaluateWorkflowScript } from "../workflow/workflow-evaluator.js";
 import { createWorkflowExecutor, type WorkflowAgentResult } from "../workflow/workflow-executor.js";
 import { createWorkflowTools, isValidWorkflowName } from "../workflow/workflow-tools.js";
+import { type ApprovalHandler, approvalTimeoutMs, withApprovalDeadline } from "./approval.js";
 import { fakeProvider } from "./fake-provider.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
 import { loadStreamRules } from "./stream-rules.js";

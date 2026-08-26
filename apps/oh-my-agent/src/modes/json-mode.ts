@@ -1,6 +1,7 @@
 import type { BackendRunOutcome } from "@chengchenccc/agent-contract";
 import { buildCliRunInput } from "../cli/initial-input.js";
 import { assemblePluginRuntime } from "../core/plugins/plugin-resolve.js";
+import { denyAllApprovals } from "../core/runtime/approval.js";
 import { createOmaRuntime } from "../core/runtime/create-runtime.js";
 import type { CliRunOptions } from "./print-mode.js";
 
@@ -23,6 +24,7 @@ export async function runJsonMode(opts: CliRunOptions): Promise<number> {
     skillRoots: built.run.skillRoots ?? [],
     enableNativeTodo: true,
     gateWorkspaceMcp: true,
+    approvalHandler: denyAllApprovals,
     ...(pluginRt.plugins.length || pluginRt.mcpServers.length
       ? { pluginComponents: { plugins: pluginRt.plugins, mcpServers: pluginRt.mcpServers } }
       : {}),
