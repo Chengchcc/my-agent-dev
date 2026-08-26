@@ -558,7 +558,12 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                           images: imgs as Message["blocks"],
                         }
                       : {};
-                  const raw = JSON.stringify(result.result);
+                  // Tool result content contract (spec): a string `content`
+                  // field is the model-visible text verbatim (tool-formatted);
+                  // everything else stays the JSON dump for both model and UI.
+                  const res = result.result as { content?: unknown } | null | undefined;
+                  const raw =
+                    typeof res?.content === "string" ? res.content : JSON.stringify(result.result);
                   // Tool-failure system reminder (absorbed from oh-my-pi):
                   // in-band on the failing result so it survives into the
                   // canonical ledger — "the fix sticks" across runs. The
