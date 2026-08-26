@@ -254,7 +254,11 @@ export function agentRunRoutes(input: {
         set.status = 400;
         return { error: "body must be { callId: string, decision: 'allow' | 'deny' }" };
       }
-      await agentRunExecution.resolveApproval(runId, payload.callId as string, payload.decision as "allow" | "deny");
+      await agentRunExecution.resolveApproval(
+        runId,
+        payload.callId as string,
+        payload.decision as "allow" | "deny",
+      );
       return { ok: true, runId, callId: payload.callId, decision: payload.decision };
     })
     .get("/api/agent-runs/:runId/events", async ({ request, params: { runId } }) => {

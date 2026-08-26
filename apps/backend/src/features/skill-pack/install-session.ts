@@ -1,16 +1,10 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
+import { fetchGitSource, materializeZipSource } from "@chengchenccc/source-fetch";
 import type { SkillPackSource } from "./entities.js";
 import { posixSkillRoot } from "./entities.js";
 import type { SkillPackPort } from "./ports.js";
-import {
-  assertSafeEntry,
-  computeDirChecksum,
-  validateExtractedEntries,
-  validatePackDir,
-} from "./tools.js";
+import { assertSafeEntry, validatePackDir } from "./tools.js";
 
 export interface InstallSessionDeps {
   dataDir: string;
@@ -46,26 +40,11 @@ function git(
   });
 }
 
-function unzip(zipPath: string, extractDir: string): Promise<{ exitCode: number; stderr: string }> {
-  return new Promise((resolve) => {
-    const proc = spawn("unzip", ["-o", zipPath, "-d", extractDir], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stderr = "";
-    proc.stderr?.on("data", (d: Buffer) => {
-      stderr += d.toString();
-    });
-    proc.on("close", (code) => resolve({ exitCode: code ?? 1, stderr }));
-  });
-}
-
 /** Deterministic git install: pending → installing → clone/checkout →
  *  validate → ready; any failure → failed with error persisted. */
 export async function runInstall(source: InstallSource, deps: InstallSessionDeps): Promise<void> {
   const cwd = posixSkillRoot(deps.dataDir);
   const targetDir = source.packId;
-  const targetFull = resolve(cwd, targetDir);
-  let tmpZip: string | null = null;
   try {
     assertSafeEntry(targetDir);
     await deps.port.applyInstallTransition(source.packId, "installing", { now: Date.now() });
@@ -73,34 +52,26 @@ export async function runInstall(source: InstallSource, deps: InstallSessionDeps
     let installedRef = "";
     if (source.sourceKind === "git") {
       if (!source.sourceUrl) throw new Error("git install requires a sourceUrl");
-      const args = ["clone", "--depth", "1"];
-      if (source.versionRef) args.push("--branch", source.versionRef);
-      args.push(source.sourceUrl, targetDir);
-      const result = await git(args, cwd);
-      if (result.exitCode !== 0) throw new Error(`git clone failed: ${result.stderr}`);
-      const rev = await git(["rev-parse", "HEAD"], targetFull);
-      installedRef = rev.exitCode === 0 ? rev.stdout : "unknown";
+      // Shared base (spec: skill-pack git clone reuses source-fetch; same
+      // cached git rev as oma marketplace). slug = packId keeps the target
+      // directory naming the feature already controls.
+      const fetched = await fetchGitSource({
+        url: source.sourceUrl,
+        dataDir: cwd,
+        slug: source.packId,
+        ...(source.versionRef ? { ref: source.versionRef } : {}),
+      });
+      installedRef = fetched.rev;
     } else {
       if (!deps.zipBuffer) throw new Error("zip install requires a zipBuffer");
-      tmpZip = join(tmpdir(), `pack-${source.packId}.zip`);
-      writeFileSync(tmpZip, deps.zipBuffer);
-      const tmpDir = mkdtempSync(join(tmpdir(), "pack-unzip-"));
-      try {
-        const extractDir = join(tmpDir, "extract");
-        const result = await unzip(tmpZip, extractDir);
-        if (result.exitCode !== 0) throw new Error(`unzip failed: ${result.stderr}`);
-        // safety boundary: no symlinks, no path escape
-        validateExtractedEntries(extractDir, extractDir);
-        if (existsSync(targetFull)) rmSync(targetFull, { recursive: true, force: true });
-        renameSync(extractDir, targetFull);
-        installedRef = computeDirChecksum(cwd, targetDir);
-      } finally {
-        try {
-          rmSync(tmpDir, { recursive: true });
-        } catch {
-          /* ignore */
-        }
-      }
+      // Shared base: zip materialize + fingerprint (+ symlink/path-escape
+      // guard) replaces the local unzip/validate/checksum three-step.
+      const fetched = await materializeZipSource({
+        buffer: deps.zipBuffer,
+        dataDir: cwd,
+        slug: source.packId,
+      });
+      installedRef = fetched.rev;
     }
 
     if (!(await validatePackDir(cwd, targetDir))) {
@@ -122,13 +93,7 @@ export async function runInstall(source: InstallSource, deps: InstallSessionDeps
       /* status already terminal */
     }
   } finally {
-    if (tmpZip) {
-      try {
-        unlinkSync(tmpZip);
-      } catch {
-        /* ok */
-      }
-    }
+    // no temp files to clean (base materialize handles its own tmpfs)
   }
 }
 

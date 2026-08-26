@@ -104,6 +104,21 @@ export function fetchGitSourceSync(opts: {
   return { root: target, rev };
 }
 
+/** Reject a zip whose entries escape the extract root — checked BEFORE any
+ *  extraction so a crafty unzip cannot smuggle a file out. Fail-closed. */
+function assertSafeZipEntries(entries: readonly string[]): void {
+  for (const name of entries) {
+    const normalized = name.replace(/\\/g, "/");
+    if (
+      normalized.startsWith("/") ||
+      /^[a-zA-Z]:/.test(normalized) ||
+      normalized.split("/").includes("..")
+    ) {
+      throw new Error(`unsafe zip entry: ${name}`);
+    }
+  }
+}
+
 /** Materialize a zip buffer into dataDir/<slug>. Safety: no path escape. */
 export async function materializeZipSource(opts: {
   buffer: Uint8Array;
@@ -116,6 +131,21 @@ export async function materializeZipSource(opts: {
   const tmpZip = path.join(tmpdir(), `src-${slug}-${Date.now()}.zip`);
   const tmpDir = path.join(tmpdir(), `src-${slug}-unzip-${Date.now()}`);
   writeFileSync(tmpZip, opts.buffer);
+  // Pre-extraction safety: list the zip entries and reject escapes before
+  // unzip ever touches the filesystem (fail-closed, unzip-version-agnostic).
+  const listProc = Bun.spawnSync(["unzip", "-Z1", tmpZip], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (listProc.exitCode === 0) {
+    const entries = String(listProc.stdout ?? "").split("\n").filter((line) => line.length > 0);
+    try {
+      assertSafeZipEntries(entries);
+    } catch (err) {
+      rmSync(tmpZip, { force: true });
+      rmSync(tmpDir, { recursive: true, force: true });
+      throw err;
+    }
+  }
   mkdirSync(tmpDir, { recursive: true });
   try {
     const extractDir = path.join(tmpDir, "extract");
