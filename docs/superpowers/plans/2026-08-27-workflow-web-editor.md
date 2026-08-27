@@ -545,5 +545,20 @@ git commit -m "feat(web): add agentic workflow nav entry"
 
 - **file-first：** `dataDir/workflows/*.workflow.json` 是 v1 本地存储，非 git 仓库；真实 git loader/commit 在后续 plan（换 `loadWorkflow`/`saveWorkflowDefinition` 实现，web 层不变）。
 - **chat 改 DSL（v2）：** 右侧 DSL 面板是 Monaco JSON 编辑；"让 agent 生成补丁"占位。后续接现有 conversation chat（reuse `useConversation`/SSE/send message）让 agent 产出 DSL patch 后回填。
-- **画布：** v1 用 `@xyflow/react`（react-flow）渲染，直接消费 `@chengchenccc/workflow` `toEditorGraph`/`layeredLayout`；`nodesDraggable=false` 只读，v2 开启拖拽连线即可（`nodesDraggable/nodesConnectable=true`）。
-- **测试：** 该 plan 以 typecheck/lint + backend http test 为主；真 DOM 渲染验证（headless Chrome）留到 Plan 3 最终联调的一步，按仓库既有记忆模式。
+- **画布：** v1 用 `@xyflow/react` 渲染，消费 `toEditorGraph`/`layeredLayout`；`nodesDraggable=false` 只读，v2 开启拖拽连线。
+- **测试：** 该 plan 以 typecheck/lint + backend http test 为主；真 DOM 渲染验证（headless Chrome）留到最终联调。
+
+## v2 编辑能力支撑（架构约定，本 plan 起不返工）
+
+React Flow 只是**派生视图**，**DSL 永远唯一真相源**。v2 完整编辑的分工：
+
+1. **不要用有损反向适配器**：`toEditorGraph` 产出的 `EditorGraph` 只是视图（丢了节点完整 config），**不能用来回写 DSL**。v2 编辑走"RF 事件直接改 DSL"：
+   - `onNodeDragStop` → 忽略（位置由 `layeredLayout` 重算，不写 DSL）
+   - `onConnect` → 往 `def.edges` 追加 `{from, to, when: undefined}`（id 由 editor 生成，`NODE_ID_RE` 校验）
+   - `onNodesDelete` → 从 `def.nodes`/`def.edges` 联动删除
+   - 节点创建面板 → 插入该类型默认 config 到 `def.nodes`
+   - 点边 → 属性面板编辑该 DSL edge 的 `when`（JSONLogic JSON），不靠 RF label
+2. **保存前必过 `parseWorkflow`**：必填（`script.code`/`end.status`/`agent` 二选一）、非法 id、环检测都在 `Apply/Save` 拦截，不合格不落盘。
+3. **`EditorEdge` 保留 `when` 只是辅助展示**（v1 就把 `e.when` 放进 `EditorEdge.when`），不作为回写依据。
+
+这样 v2 只需在 web 侧加 RF 事件处理 + 节点类型面板 + 边属性面板，`@chengchenccc/workflow` 的 `toEditorGraph`/`layeredLayout` 保持不变。
