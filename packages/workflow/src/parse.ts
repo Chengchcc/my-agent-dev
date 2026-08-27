@@ -1,5 +1,11 @@
 import { topoSort } from "./graph.js";
-import type { FormField, InputHint, WorkflowDefinition, WorkflowNode } from "./types.js";
+import type {
+  FormField,
+  InputHint,
+  JsonLogicRule,
+  WorkflowDefinition,
+  WorkflowNode,
+} from "./types.js";
 
 export class WorkflowParseError extends Error {
   readonly issues: string[];
@@ -68,7 +74,10 @@ function parseNode(raw: unknown, issues: string[]): WorkflowNode | undefined {
     issues.push(`node "${id ?? "?"}" has unknown type ${String(raw.type)}`);
     return undefined;
   }
-  const node: Record<string, unknown> = { id, type: raw.type };
+  const node: Record<string, unknown> & { id: string; type: WorkflowNode["type"] } = {
+    id: id ?? "",
+    type: raw.type as WorkflowNode["type"],
+  };
   if (isRecord(raw.input)) node.input = raw.input;
   if (isRecord(raw.output)) node.output = raw.output;
   if (typeof raw.retry === "number" && Number.isInteger(raw.retry) && raw.retry >= 0)
@@ -151,7 +160,7 @@ export function parseWorkflow(raw: unknown): WorkflowDefinition {
       }
       const from = nonEmptyString(e.from, "edge.from", issues);
       const to = nonEmptyString(e.to, "edge.to", issues);
-      if (from && to) edges.push({ from, to, when: e.when });
+      if (from && to) edges.push({ from, to, when: e.when as JsonLogicRule | undefined });
     }
   } else {
     issues.push("edges must be an array");
