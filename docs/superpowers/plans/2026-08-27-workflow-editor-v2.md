@@ -674,3 +674,53 @@ git commit -m "test(web): e2e agentic workflow editor"
 - **git 化不做：** workflow 定义仍存 `dataDir/workflows/*.workflow.json`；git loader/commit + agent workspace git 化是后续独立 scope。
 - **DSL 唯一真相源：** 交互编辑（拖拽/连边/删节点/改边条件）全部经 `onConnect`/`onNodesDelete`/`onEdgeClick` **直改 DSL state**，坐标不落 DSL；`Apply/Save` 必经 `parseWorkflow`。
 - **chatAgent 真实实现：** 复用 Plan 2 `runAgentNode` 的 enqueue→dispatch→subscribe→extractOutput 路径，prompt 内嵌当前 DSL + 用户 instruction，要求返回完整 DSL JSON。
+
+---
+
+## 测试计划（Plan 4 收尾验收清单）
+
+### 单元层（`@chengchenccc/workflow`，快，~29 tests）
+
+- `parseWorkflow`：合法/非法（未知节点、重复 id、缺 start、环、agent 二选一、script code 必填、meta 透传、`when:null`→unconditional）
+- `json-logic`：子集算子、var 路径/default、裸对象 not/!!、比较、in、if
+- `graph`：topoSort、routeOutgoing（无条件/条件/nextNode 覆盖/fail-fast）、mergeInputs（全局合并+provenance+nextNode 过滤）
+- `engine.computeNext`：首步 start、branch 路由、AND-join 等待、terminal 多出口、idle、input 默认值
+- `schema.validateBySchema`：object/array/string/enum/边界（required/additionalProperties/items/min-max/minItems）
+- `editor`：layeredLayout 分层、toEditorGraph 节点/边映射
+
+### 后端集成层（features/workflow）
+
+- adapter-sqlite：execution/node_run/pendingHuman/listExecutions CRUD
+- service 循环：线性成功、input schema 违反→failure、human 挂起→resolve→success、agent 节点 JSON output、**fan-out AND-join 服务级、retry→failure、recover(重启重建 completions)、node_failed 事件**
+- http：POST execution、GET 单条/list、def CRUD、human-task resolve、**dry-run、chat-patch、trace 端点**
+- 真实 agent node（1 条慢集成，rpc-fixture）：enqueue→dispatch→subscribe→JSON output
+
+### 前端层
+
+- typecheck/lint 必绿
+- 组件：WorkflowCanvas（RF 节点/边）、AskQuestionRenderer（各 field type）、DslEditorPanel（Apply 过 parseWorkflow）
+- E2E（headless Chrome，生产模式 next build+start）：
+  - 列表页渲染→进详情
+  - 画布节点可见、点节点出属性面板
+  - DSL Apply/Save 往返（PUT def → GET 回读一致）
+  - executions 列表 + trace 时间轴拖动（画布状态随 index 变）
+  - dry-run 无副作用（mock 走完、画布高亮）
+  - human task 表单渲染 + resolve
+  - live SSE：跑一个 execution，边/节点实时点亮
+
+### 门禁（每次改动必过）
+
+```bash
+bun run typecheck          # root 33/33
+cd apps/backend && bun test   # 全量
+cd apps/web && bun run lint
+# 迁移：openDb(":memory:") 套 0040/0041，PRAGMA table_info 核对三表
+```
+
+### 风险/未覆盖
+
+- dry-run 无副作用：断言调用后 `workflow_execution` / `agent_run` 无新增行（dry-run 不写库）。
+- trace 事件持久化：`workflow_execution_event` 行数 = 事件数，store 重放终态 = 库里 `execution.store`。
+- recover 崩溃窗口：running 但节点未完成时 recover 不重复 append（防重复 guard 需测试）。
+- chat-patch（skill）单测用 mock；真 agent 产 DSL 留 1 条慢 E2E。
+- human timeout（spec 决策 #4）未实现，测试不期望它。
