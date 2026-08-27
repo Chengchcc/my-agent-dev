@@ -108,6 +108,55 @@ export const cronJob = sqliteTable(
   (table) => [index("idx_cron_job_enabled").on(table.enabled)],
 );
 
+// ─── workflow_execution (Agentic Workflow) ──────────────────────────
+export const workflowExecution = sqliteTable("workflow_execution", {
+  executionId: text("execution_id").notNull().primaryKey(),
+  workflowId: text("workflow_id").notNull(),
+  definition: text("definition").notNull(), // JSON: WorkflowDefinition snapshot
+  input: text("input").notNull(), // JSON: trigger input vars
+  store: text("store").notNull().default("{}"),
+  status: text().notNull().default("running"), // running | waiting_human | success | failure | custom
+  exit: text(),
+  error: text(),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  terminalAt: integer("terminal_at", { mode: "number" }),
+});
+
+export const workflowNodeRun = sqliteTable(
+  "workflow_node_run",
+  {
+    seq: integer().primaryKey({ autoIncrement: true }),
+    executionId: text("execution_id")
+      .notNull()
+      .references(() => workflowExecution.executionId, { onDelete: "cascade" }),
+    nodeId: text("node_id").notNull(),
+    status: text().notNull().default("running"), // running | waiting_human | completed | failed
+    order: integer().notNull(),
+    output: text(), // JSON
+    routedTo: text(), // JSON string[]
+    error: text(),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+    terminalAt: integer("terminal_at", { mode: "number" }),
+  },
+  (table) => [index("idx_workflow_node_run_exec").on(table.executionId, table.seq)],
+);
+
+export const workflowPendingHuman = sqliteTable(
+  "workflow_pending_human",
+  {
+    executionId: text("execution_id")
+      .notNull()
+      .references(() => workflowExecution.executionId, { onDelete: "cascade" }),
+    nodeId: text("node_id").notNull(),
+    question: text(),
+    form: text(), // JSON Record<string, FormField>
+    status: text().notNull().default("pending"), // pending | resolved
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+    terminalAt: integer("terminal_at", { mode: "number" }),
+  },
+  (table) => [primaryKey({ columns: [table.executionId, table.nodeId] })],
+);
+
 // ── Execution-related tables (merged into single-db under S1 storage convergence) ──
 // Phase 6: span/attempt/control_plane_event/span_origin dropped — Agent Run is
 // the only Product execution identity (agent_run + product_tool_call hold the facts).
