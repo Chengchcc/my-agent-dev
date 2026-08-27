@@ -1,5 +1,5 @@
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
 import { HttpError } from "../../infra/errors.js";
@@ -35,7 +35,7 @@ export function workflowRoutes(deps: {
       const files = readdirSync(dir).filter((f) => f.endsWith(".workflow.json"));
       const definitions: WorkflowDefinitionRow[] = files.map((f) => {
         const workflowId = f.replace(/\.workflow\.json$/, "");
-        let meta: Record<string, unknown> = {};
+        let meta: Record<string, unknown>;
         try {
           meta =
             (JSON.parse(readFileSync(join(dir, f), "utf-8")) as { meta?: Record<string, unknown> })

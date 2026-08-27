@@ -175,6 +175,29 @@ export function createWorkflowExecutionService(
     throw lastError;
   }
 
+  async function runWorkflowNode(
+    node: WorkflowNode,
+    ready: { input: Record<string, unknown> },
+    execution: WorkflowExecutionRow,
+  ): Promise<Record<string, unknown>> {
+    const runner = deps.nodeRunners.script;
+    if (!runner) throw new Error(`no runner for node type ${node.type}`);
+    const storeApi = await storeApiOf(execution.executionId, () => execution.store);
+    const result = await runNodeWithRetry(node, (n) =>
+      runner.run(n, {
+        input: ready.input,
+        store: storeApi,
+        context: {
+          executionId: execution.executionId,
+          nodeId: n.id,
+          workflowId: execution.workflowId,
+          repo: "repo" in n ? n.repo : undefined,
+        },
+      }),
+    );
+    return result.output ?? {};
+  }
+
   async function runAgentNode(
     node: WorkflowNode,
     ready: { input: Record<string, unknown> },
@@ -262,15 +285,13 @@ export function createWorkflowExecutionService(
         status: node.type === "human" ? "waiting_human" : "running",
         order,
       });
-    } else if (existing.status !== "completed") {
-      order = existing.order;
     }
 
     const inputErrors = node.inputSchema ? validateBySchema(ready.input, node.inputSchema) : [];
     if (inputErrors.length > 0)
       throw new Error(`node ${node.id} input invalid: ${inputErrors.join("; ")}`);
 
-    let output: Record<string, unknown> | null = null;
+    let output: Record<string, unknown>;
     if (node.type === "start") {
       output = { ...execution.input };
     } else if (node.type === "human") {
@@ -289,27 +310,10 @@ export function createWorkflowExecutionService(
       return null;
     } else {
       try {
-        if (node.type === "agent") {
-          const result = await runAgentNode(node, ready, execution);
-          output = result.output ?? {};
-        } else {
-          const runner = deps.nodeRunners.script;
-          if (!runner) throw new Error(`no runner for node type ${node.type}`);
-          const storeApi = await storeApiOf(execution.executionId, () => execution.store);
-          const result = await runNodeWithRetry(node, (n) =>
-            runner.run(n, {
-              input: ready.input,
-              store: storeApi,
-              context: {
-                executionId: execution.executionId,
-                nodeId: n.id,
-                workflowId: execution.workflowId,
-                repo: "repo" in n ? n.repo : undefined,
-              },
-            }),
-          );
-          output = result.output ?? {};
-        }
+        output =
+          node.type === "agent"
+            ? ((await runAgentNode(node, ready, execution)).output ?? {})
+            : await runWorkflowNode(node, ready, execution);
       } catch (err) {
         emit(execution.executionId, "node_failed", {
           nodeId: node.id,
@@ -318,7 +322,6 @@ export function createWorkflowExecutionService(
         throw err;
       }
     }
-    if (output === null) throw new Error(`node ${node.id} produced no output`);
 
     const outputErrors = node.outputSchema ? validateBySchema(output, node.outputSchema) : [];
     if (outputErrors.length > 0)
