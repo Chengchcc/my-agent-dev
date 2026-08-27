@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 把 Plan 3 编辑器从"功能骨架"升级为真正可用的 v2：Blueprint 深色视觉、React Flow 交互编辑（拖拽/连边/删节点/节点面板/边条件）、Chat 让 agent 生成 DSL patch、**execution 时间旅行 trace**（可拖时间轴回放每刻画布状态/store 内容/事件日志）。**不做 workflow 仓库 git 化**——git loader/commit 留到后面含 agent workspace git 化的 scope。
+**Goal:** 把 Plan 3 编辑器从"功能骨架"升级为真正可用的 v2：Blueprint 深色视觉、React Flow 交互编辑（拖拽/连边/删节点/节点面板/边条件）、Chat 让 agent 生成 DSL patch、**execution 时间旅行 trace**（可拖时间轴回放每刻画布状态/store 内容/事件日志）、**debug dry-run**（mock 输出走纯引擎，无副作用看路径/条件/结局）。**不做 workflow 仓库 git 化**——git loader/commit 留到后面含 agent workspace git 化的 scope。
 
 **Architecture:** 延续"**DSL 唯一真相源，RF 是派生视图**"约定。RF 事件（`onConnect`/`onNodesDelete`/`onNodeDragStop`）**直接改 DSL state**，坐标不写回 DSL（`layeredLayout` 重算）。Chat LLM 走新后端 `POST /api/workflow-definitions/:id/chat-patch`（复用 agent-run 全生命周期），返回完整 DSL patch，用户 Apply。
 
@@ -513,7 +513,78 @@ git commit -m "feat(workflow): execution time-travel trace"
 
 ---
 
-### Task 5: 全量收口 + E2E DOM 验证
+### Task 5: Debug dry-run（mock 走纯引擎，无副作用）
+
+**Files:**
+- Create: `apps/backend/src/features/workflow/dry-run.ts`（纯逻辑）
+- Modify: `apps/backend/src/features/workflow/service.ts`（+ dryRun）
+- Modify: `apps/backend/src/features/workflow/http.ts`（+ POST /api/workflow-definitions/:id/dry-run）
+- Modify: `apps/web/src/components/workflow/DebugPanel.tsx`（新建）
+- Modify: `apps/web/src/components/workflow/AgenticWorkflowEditor.tsx`
+- Modify: `apps/web/src/lib/api.ts`
+
+- [ ] **Step 1: dry-run.ts 纯驱动**
+
+```typescript
+import { computeNext, routeOutgoing, parseWorkflow, type CompletionRecord, type WorkflowDefinition } from "@chengchenccc/workflow";
+
+export interface DryRunStep { nodeId: string; output: Record<string, unknown>; routedTo: string[]; order: number }
+export interface DryRunResult { exit: string; steps: DryRunStep[]; store: Record<string, unknown> }
+
+export function dryRunWorkflow(
+  rawDefinition: unknown,
+  input: Record<string, unknown>,
+  mockOutputs: Record<string, Record<string, unknown>>,
+): DryRunResult {
+  const def = parseWorkflow(rawDefinition);
+  const store: Record<string, unknown> = {};
+  const completions: CompletionRecord[] = [];
+  const steps: DryRunStep[] = [];
+  let order = 0;
+  for (;;) {
+    const step = computeNext(def, { completions, store, trigger: input });
+    if (step.kind === "terminal") return { exit: step.exit, steps, store };
+    if (step.kind === "idle") throw new Error("stuck: no ready nodes and no terminal");
+    for (const ready of step.ready) {
+      const node = ready.node;
+      const output = node.type === "start" ? { ...input } : (mockOutputs[node.id] ?? {});
+      const routedTo = routeOutgoing(node.id, def, completions, store);
+      completions.push({ nodeId: node.id, output, order, routedTo });
+      steps.push({ nodeId: node.id, output, routedTo, order });
+      order++;
+      // per-node store writes not simulated in v1; mockOutputs only
+    }
+  }
+}
+```
+
+- [ ] **Step 2: service/http 加 dryRun 端点**
+
+`POST /api/workflow-definitions/:workflowId/dry-run` body `{ input?: Record<unknown>, mockOutputs?: Record<string, Record<string, unknown>> }` → `dryRunWorkflow(definition, input ?? {}, mockOutputs ?? {})`。
+
+- [ ] **Step 3: web DebugPanel**
+
+编辑器侧栏 `attrs` Tab 下加一个 "Dry run" 区块：mockOutputs JSON 编辑器 + input JSON + `[Dry run]` → 调 `dryRunWorkflow` → 显示 `exit` + steps（节点/路由）+ 在画布高亮走到的边/节点。
+
+- [ ] **Step 4: api.ts + 测试**
+
+```typescript
+dryRunWorkflow: (workflowId: string, body: { input?: Record<string, unknown>; mockOutputs?: Record<string, Record<string, unknown>> }) =>
+  unwrap(client.api["workflow-definitions"]({ workflowId })["dry-run"].post(body)),
+```
+
+backend http.test 补 dry-run 测试（用真实 service/dry-run，或 fake）。
+
+- [ ] **Step 5: 全量验证 + Commit**
+
+```bash
+git add apps/backend/src/features/workflow/dry-run.ts apps/backend/src/features/workflow apps/web/src/components/workflow/DebugPanel.tsx apps/web/src/lib/api.ts
+git commit -m "feat(workflow): add dry-run debug capability"
+```
+
+---
+
+### Task 6: 全量收口 + E2E DOM 验证
 
 **Files:**
 - Create: `apps/web/tests/agentic-workflow.e2e.ts`（headless Chrome）
