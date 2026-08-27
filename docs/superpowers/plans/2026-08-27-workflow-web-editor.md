@@ -327,73 +327,134 @@ git commit -m "feat(web): add workflow definition api client"
 
 ---
 
-### Task C: web 编辑器页面 + 只读画布
+### Task C: 三层路由 + 列表/详情/execution 页面
 
 **Files:**
 - Create: `apps/web/src/app/(main)/agentic-workflow/page.tsx`
-- Create: `apps/web/src/components/AgenticWorkflowEditor.tsx`
+- Create: `apps/web/src/app/(main)/agentic-workflow/[workflowId]/page.tsx`
+- Create: `apps/web/src/app/(main)/agentic-workflow/[workflowId]/executions/page.tsx`
+- Create: `apps/web/src/components/workflow/WorkflowList.tsx`
+- Create: `apps/web/src/components/workflow/AgenticWorkflowEditor.tsx`
 - Create: `apps/web/src/components/workflow/WorkflowCanvas.tsx`
+- Create: `apps/web/src/components/workflow/ExecutionList.tsx`
 
-- [ ] **Step 1: page.tsx（server SSR）**
+- [ ] **Step 1: 列表页 page.tsx（server SSR）**
 
 ```tsx
 import { parseEnv } from "@chengchenccc/config";
-import { AgenticWorkflowEditor } from "@/components/AgenticWorkflowEditor";
+import { WorkflowList } from "@/components/workflow/WorkflowList";
 import { createServerClient, unwrap } from "@/lib/client";
 
-export default async function AgenticWorkflowPage() {
+export default async function AgenticWorkflowListPage() {
   const env = parseEnv(process.env);
   const client = createServerClient(env.BACKEND_URL, env.BACKEND_AUTH_TOKEN);
   const list = await unwrap(client.api.workflowDefinitions.get()).catch(() => ({
-    definitions: [] as Array<{ workflowId: string; path: string }>,
+    definitions: [] as Array<{ workflowId: string; name?: string; description?: string; tags?: string[]; status?: string; owner?: string; updatedBy?: string }>,
   }));
-  const first = list.definitions[0];
-  const definition = first
-    ? await unwrap(client.api.workflowDefinitions({ workflowId: first.workflowId }).get())
-        .then((r) => r.definition as unknown)
-        .catch(() => null)
-    : null;
-  return <AgenticWorkflowEditor definitions={list.definitions} initial={definition} />;
+  return <WorkflowList definitions={list.definitions} />;
 }
 ```
 
-- [ ] **Step 2: AgenticWorkflowEditor.tsx（client）**
+- [ ] **Step 2: WorkflowList.tsx（client）**
+
+```tsx
+"use client";
+import Link from "next/link";
+import { api } from "@/lib/api";
+
+type Row = { workflowId: string; name?: string; description?: string; tags?: string[]; status?: string };
+
+export function WorkflowList({ definitions }: { definitions: Row[] }) {
+  async function del(id: string) {
+    if (!confirm(`Delete workflow ${id}?`)) return;
+    await api.deleteWorkflowDefinition(id);
+    window.location.reload();
+  }
+  return (
+    <div className="p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-lg font-semibold">Agentic Workflow</h1>
+        <button className="rounded bg-slate-800 px-3 py-1 text-white" onClick={() => window.location.assign("/agentic-workflow/new")}>+ New</button>
+      </div>
+      <div className="space-y-2">
+        {definitions.map((d) => (
+          <div key={d.workflowId} className="flex items-center justify-between rounded-lg border p-3">
+            <div>
+              <Link href={`/agentic-workflow/${d.workflowId}`} className="font-medium hover:underline">{d.name ?? d.workflowId}</Link>
+              {d.description && <div className="text-xs text-muted-foreground">{d.description}</div>}
+              <div className="mt-1 flex gap-1">
+                {d.tags?.map((t) => <span key={t} className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">{t}</span>)}
+                {d.status && <span className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">{d.status}</span>}
+              </div>
+            </div>
+            <div className="flex gap-2 text-xs">
+              <Link href={`/agentic-workflow/${d.workflowId}/executions`} className="text-blue-600 hover:underline">executions</Link>
+              <button className="text-red-600 hover:underline" onClick={() => del(d.workflowId)}>delete</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 3: 详情页 [workflowId]/page.tsx（server SSR）**
+
+```tsx
+import { parseEnv } from "@chengchenccc/config";
+import { AgenticWorkflowEditor } from "@/components/workflow/AgenticWorkflowEditor";
+import { createServerClient, unwrap } from "@/lib/client";
+
+export default async function AgenticWorkflowDetailPage({ params }: { params: Promise<{ workflowId: string }> }) {
+  const { workflowId } = await params;
+  const env = parseEnv(process.env);
+  const client = createServerClient(env.BACKEND_URL, env.BACKEND_AUTH_TOKEN);
+  const row = await unwrap(client.api.workflowDefinitions({ workflowId }).get()).catch(() => null);
+  const definition = (row as { definition?: unknown } | null)?.definition ?? null;
+  return <AgenticWorkflowEditor workflowId={workflowId} initial={definition} />;
+}
+```
+
+- [ ] **Step 4: AgenticWorkflowEditor.tsx（client，侧栏 3 Tab）**
 
 ```tsx
 "use client";
 import { useMemo, useState } from "react";
 import { toEditorGraph } from "@chengchenccc/workflow";
-import { WorkflowCanvas } from "./workflow/WorkflowCanvas";
-import { NodePropertyPanel } from "./workflow/NodePropertyPanel";
-import { DslEditorPanel } from "./workflow/DslEditorPanel";
+import { WorkflowCanvas } from "./WorkflowCanvas";
+import { NodePropertyPanel } from "./NodePropertyPanel";
+import { DslEditorPanel } from "./DslEditorPanel";
+import { ChatPanel } from "./ChatPanel";
 
-export function AgenticWorkflowEditor({
-  definitions,
-  initial,
-}: {
-  definitions: Array<{ workflowId: string; path: string }>;
-  initial: unknown;
-}) {
+type Tab = "attrs" | "dsl" | "chat";
+
+export function AgenticWorkflowEditor({ workflowId, initial }: { workflowId: string; initial: unknown }) {
   const [definition, setDefinition] = useState<unknown>(initial);
+  const [tab, setTab] = useState<Tab>("attrs");
   const [activeId, setActiveId] = useState<string | null>(null);
-  const graph = useMemo(
-    () => (definition ? toEditorGraph(definition as { version: 1; id: string; nodes: any[]; edges: any[] }) : null),
-    [definition],
-  );
+  const graph = useMemo(() => (definition ? toEditorGraph(definition as never) : null), [definition]);
   return (
     <div className="flex h-full">
       <div className="flex-1 border-r">
         {graph ? (
-          <WorkflowCanvas graph={graph} onSelect={(id) => setActiveId(id)} />
+          <WorkflowCanvas graph={graph} onSelect={(id) => { setActiveId(id); setTab("attrs"); }} />
         ) : (
           <div className="p-8 text-muted-foreground">No workflow loaded.</div>
         )}
       </div>
-      <div className="w-80">
-        {activeId && definition ? (
+      <div className="w-80 border-l">
+        <div className="flex border-b">
+          {([["attrs", "属性"], ["dsl", "DSL"], ["chat", "Chat"]] as Array<[Tab, string]>).map(([k, label]) => (
+            <button key={k} className={`flex-1 py-2 text-xs ${tab === k ? "border-b-2 border-amber-500 font-semibold" : "text-muted-foreground"}`} onClick={() => setTab(k)}>{label}</button>
+          ))}
+        </div>
+        {tab === "attrs" && activeId && definition ? (
           <NodePropertyPanel nodeId={activeId} definition={definition} onChange={setDefinition} />
+        ) : tab === "dsl" ? (
+          <DslEditorPanel definition={definition} onChange={setDefinition} workflowId={workflowId} />
         ) : (
-          <DslEditorPanel definition={definition} onChange={setDefinition} initialDefinitions={definitions} />
+          <ChatPanel definition={definition} onChange={setDefinition} />
         )}
       </div>
     </div>
@@ -401,7 +462,7 @@ export function AgenticWorkflowEditor({
 }
 ```
 
-- [ ] **Step 3: WorkflowCanvas.tsx（React Flow）**
+- [ ] **Step 5: WorkflowCanvas.tsx（RF，复用 toEditorGraph）**
 
 ```tsx
 "use client";
@@ -410,61 +471,86 @@ import { ReactFlow, Background, type Edge, type Node } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { EditorGraph } from "@chengchenccc/workflow";
 
-export function WorkflowCanvas({
-  graph,
-  onSelect,
-}: {
-  graph: EditorGraph;
-  onSelect: (id: string) => void;
-}) {
+export function WorkflowCanvas({ graph, onSelect }: { graph: EditorGraph; onSelect: (id: string) => void }) {
   const nodes: Node[] = useMemo(
-    () =>
-      graph.nodes.map((n) => ({
-        id: n.id,
-        position: { x: n.x, y: n.y },
-        data: { label: n.label, type: n.type, layer: n.layer },
-      })),
+    () => graph.nodes.map((n) => ({ id: n.id, position: { x: n.x, y: n.y }, data: { label: n.label, type: n.type, layer: n.layer } })),
     [graph],
   );
   const edges: Edge[] = useMemo(
-    () =>
-      graph.edges.map((e) => ({
-        id: e.id,
-        source: e.from,
-        target: e.to,
-        label: e.label,
-      })),
+    () => graph.edges.map((e) => ({ id: e.id, source: e.from, target: e.to, label: e.label })),
     [graph],
   );
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodesDraggable={false}
-      nodesConnectable={false}
-      elementsSelectable={true}
-      fitView
-      onNodeClick={(_, node) => onSelect(node.id)}
-    >
+    <ReactFlow nodes={nodes} edges={edges} nodesDraggable={false} nodesConnectable={false} fitView onNodeClick={(_, node) => onSelect(node.id)}>
       <Background />
     </ReactFlow>
   );
 }
 ```
 
-- [ ] **Step 4: typecheck + run dev/build**
+- [ ] **Step 6: execution 列表页 [workflowId]/executions/page.tsx + ExecutionList.tsx**
+
+```tsx
+// page.tsx (server)
+import { parseEnv } from "@chengchenccc/config";
+import { ExecutionList } from "@/components/workflow/ExecutionList";
+import { createServerClient, unwrap } from "@/lib/client";
+
+export default async function ExecutionsPage({ params }: { params: Promise<{ workflowId: string }> }) {
+  const { workflowId } = await params;
+  const env = parseEnv(process.env);
+  const client = createServerClient(env.BACKEND_URL, env.BACKEND_AUTH_TOKEN);
+  const list = await unwrap(client.api.workflowExecutions.get({ query: { workflowId } })).catch(() => ({ executions: [] }));
+  return <ExecutionList workflowId={workflowId} executions={list.executions} />;
+}
+```
+
+```tsx
+// ExecutionList.tsx (client)
+"use client";
+import { api } from "@/lib/api";
+
+type Exec = { executionId: string; status: string; exit?: string; createdAt: number };
+
+export function ExecutionList({ workflowId, executions }: { workflowId: string; executions: Exec[] }) {
+  async function run() {
+    const input = prompt("Trigger input JSON (optional):") ?? "{}";
+    await api.startWorkflowExecution({ workflowRef: { repo: "local", path: `${workflowId}.workflow.json` }, input: JSON.parse(input) });
+    window.location.reload();
+  }
+  return (
+    <div className="p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-lg font-semibold">Executions — {workflowId}</h1>
+        <button className="rounded bg-slate-800 px-3 py-1 text-white" onClick={run}>+ Run</button>
+      </div>
+      <table className="w-full text-sm">
+        <thead><tr className="text-left text-xs text-muted-foreground"><th>executionId</th><th>status</th><th>exit</th><th>createdAt</th></tr></thead>
+        <tbody>
+          {executions.map((e) => (
+            <tr key={e.executionId} className="border-t">
+              <td className="py-2">{e.executionId}</td>
+              <td>{e.status}</td>
+              <td>{e.exit ?? "-"}</td>
+              <td>{new Date(e.createdAt).toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 7: typecheck + commit**
 
 Run: `cd apps/web && bun run typecheck`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
-
 ```bash
-git add apps/web/src/app/"(main)"/agentic-workflow/page.tsx apps/web/src/components/AgenticWorkflowEditor.tsx apps/web/src/components/workflow/WorkflowCanvas.tsx
-git commit -m "feat(web): add agentic workflow editor canvas page"
+git add "apps/web/src/app/(main)/agentic-workflow" apps/web/src/components/workflow
+git commit -m "feat(web): add agentic workflow list, editor and executions pages"
 ```
-
----
 
 ### Task D: 节点属性面板
 
