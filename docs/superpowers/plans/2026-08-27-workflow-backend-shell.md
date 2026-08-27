@@ -950,6 +950,18 @@ export function createWorkflowExecutionService(deps: WorkflowExecutionServiceDep
 ```
 
 > 说明：`stepKindStatus`/`lastExit` 需要用缓存最近一次 `computeNext` 的 `step.exit`（当前简化返回 success；执行时把 terminal exit 存到一个 `Map<executionId, string>`，`drive` 末尾读它，不要重算）。`runAgentNode` 在 Task 5b 用 `agentRunService.enqueueAndAcquire` + `agentRunExecution.dispatch/subscribe` 替换 `evaluateAgentPrompt` 注入实现。
+>
+> **input/output schema 校验（`@chengchenccc/workflow` `validateBySchema`）**：`executeNode` 在跑节点前对 `ready.input` 做 `node.inputSchema` 校验，失败即 throw（节点失败→retry→failure）；节点返回后对 output 做 `node.outputSchema` 校验，失败同样 throw。`start`/`human` 节点也适用（human 的 output 是表单答案）。
+>
+> ```typescript
+> import { validateBySchema } from "@chengchenccc/workflow";
+> // executeNode 内，跑节点前：
+> const inputErrors = node.inputSchema ? validateBySchema(ready.input, node.inputSchema) : [];
+> if (inputErrors.length > 0) throw new Error(`node ${node.id} input invalid: ${inputErrors.join("; ")}`);
+> // 节点返回 output 后：
+> const outputErrors = node.outputSchema ? validateBySchema(result.output ?? {}, node.outputSchema) : [];
+> if (outputErrors.length > 0) throw new Error(`node ${node.id} output invalid: ${outputErrors.join("; ")}`);
+> ```
 
 - [ ] **Step 4: 跑测试确认通过**
 

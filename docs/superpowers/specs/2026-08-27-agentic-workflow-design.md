@@ -17,7 +17,7 @@ workflow 取代——DSL 描述 DAG，多节点类型，外部触发器，编辑
 3. **并行**：fan-out 支持，AND-join。
 4. **边条件**：JSONLogic **子集**表达式（语义见 Design），对**来源节点（from）output + store** 求值；跨节点取值经 store 显式中转。
 5. **数据流**：隐式合并 = **全局合并**——下游 input = store 快照 + **全部已完成节点** output（非仅上游），后完成覆盖；并行分支作者需避免 key 相撞（provenance 记录赢家）。
-6. **类型**：轻量——input 只声明可选默认值/必填，output 声明类型提示，不强制校验。
+6. **类型**：轻量 + 可选 JSON Schema 子集校验——节点可声明 `inputSchema`/`outputSchema`，合并 input / 节点 output 校验失败即节点失败（retry→failure）；无 schema 时轻量提示不强制。
 7. **store**：execution 级 KV，仅节点通过 runtime API 显式写。
 8. **human 节点** = "问用户问题"能力（AskUserQuestion 式），问题静态声明或上游动态生成，前端渲染表单，答案 = output。
 9. **存储**：file-first，DSL 是 git 仓库里的 `*.workflow.json`，迁移 = git 搬运（长期 hub 战略）。
@@ -114,6 +114,8 @@ workflow 取代——DSL 描述 DAG，多节点类型，外部触发器，编辑
 | agent | coding agent 运行 prompt | `{agentId}` 或 `{model, prompt}`；可选 `context.repo`；可选 `nextNode` |
 | script | 确定性程序（TS 函数） | `code` + `runtime: "bun"` + `timeoutMs`（默认 30000） |
 | human | 问用户问题，前端渲染表单 | `question`/`form` 静态声明，或缺省（动态：取上游 output 的 `{question, form}`） |
+>
+> 每个节点可选 `inputSchema`/`outputSchema`（JSON Schema 子集，见 `@chengchenccc/workflow` `schema.ts`）；声明则强制校验，违反即节点失败。
 
 **agent 节点**：`agentId` 优先——复用系统 agent 定义（model/skills/system prompt/
 workspace），workflow 文件只存引用；内联模式用于不依赖系统 agent 的一次性任务。
@@ -233,3 +235,4 @@ export default async function run(ctx: ScriptContext) {
 7. 隐式合并为全局合并（全部已完成节点 output），作者避免 key 相撞。
 8. 边条件求值域 = 来源节点 output + store。
 9. 节点失败不走图路由，shell 直接 failure 出口终结。
+10. 节点可声明 inputSchema/outputSchema（JSON Schema 子集），声明则强制校验，失败=节点失败。

@@ -21,8 +21,9 @@ packages/workflow/
   README.md
   src/
     types.ts                   # DSL 领域类型（WorkflowDefinition/WorkflowNode/EdgeDef/FormField）
-    json-logic.ts              # evalJsonLogic —— JSONLogic 子集
-    graph.ts                   # topoSort/routeOutgoing/mergeInputs/CompletionRecord
+      	json-logic.ts              # evalJsonLogic —— JSONLogic 子集
+  	schema.ts                  # validateBySchema —— JSON Schema 子集校验
+  	graph.ts                   # topoSort/routeOutgoing/mergeInputs/CompletionRecord
     engine.ts                  # computeNext —— 纯执行核心
     parse.ts                   # parseWorkflow —— 结构校验 + 归一化
     node-runtime.ts            # NodeContext/StoreApi/ScriptContext/NodeRunner 契约
@@ -400,6 +401,149 @@ Expected: PASS, 5 tests.
 ```bash
 git add packages/workflow/src/types.ts packages/workflow/src/json-logic.ts packages/workflow/src/json-logic.test.ts
 git commit -m "feat(workflow): add dsl types and json-logic evaluator subset"
+```
+
+---
+
+### Task 1b: JSON Schema 子集校验器
+
+**Files:**
+- Create: `packages/workflow/src/schema.test.ts`
+- Create: `packages/workflow/src/schema.ts`
+
+- [ ] **Step 1: 写失败测试 schema.test.ts**
+
+```typescript
+import { describe, expect, test } from "bun:test";
+import { isValidBySchema, validateBySchema } from "./schema.js";
+
+describe("validateBySchema", () => {
+  test("object schema with required/properties/additionalProperties", () => {
+    const schema = {
+      type: "object",
+      properties: { name: { type: "string" }, age: { type: "integer" } },
+      required: ["name"],
+      additionalProperties: false,
+    };
+    expect(validateBySchema({ name: "a", age: 1 }, schema)).toEqual([]);
+    expect(validateBySchema({ age: 1 }, schema)).toEqual(["$.name is required"]);
+    expect(validateBySchema({ name: "a", extra: true }, schema)).toEqual(["$.extra is not allowed"]);
+  });
+
+  test("array with items and minItems", () => {
+    const schema = { type: "array", items: { type: "number" }, minItems: 1 };
+    expect(validateBySchema([1, 2], schema)).toEqual([]);
+    expect(validateBySchema([], schema)).toEqual(["$ must have at least 1 items"]);
+    expect(validateBySchema(["x"], schema)).toEqual(["$[0] must be number"]);
+  });
+
+  test("string length + enum + number bounds", () => {
+    expect(validateBySchema("abc", { type: "string", minLength: 2, maxLength: 5 })).toEqual([]);
+    expect(validateBySchema("a", { type: "string", minLength: 2 })).toEqual(["$ must be at least 2 chars"]);
+    expect(validateBySchema(3, { enum: [1, 2] })).toEqual(["$ must be one of [1,2]"]);
+    expect(validateBySchema(5, { type: "integer", minimum: 0, maximum: 4 })).toEqual(["$ must be <= 4"]);
+    expect(validateBySchema(5.5, { type: "integer" })).toEqual(["$ must be integer"]);
+  });
+
+  test("isValidBySchema shorthand", () => {
+    expect(isValidBySchema({ ok: true }, { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] })).toBe(true);
+    expect(isValidBySchema({ ok: 1 }, { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] })).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 2: 跑测试确认失败**
+
+Run: `cd packages/workflow && bun test src/schema.test.ts`
+Expected: FAIL — `Cannot find module './schema.js'`
+
+- [ ] **Step 3: 创建 schema.ts**
+
+```typescript
+import type { JsonSchema } from "./types.js";
+
+/** JSON Schema 子集（workflow node input/output 校验用）。不含 $ref/oneOf/pattern。 */
+function matchesType(v: unknown, t: NonNullable<JsonSchema["type"]>): boolean {
+  switch (t) {
+    case "string": return typeof v === "string";
+    case "number": return typeof v === "number";
+    case "integer": return typeof v === "number" && Number.isInteger(v);
+    case "boolean": return typeof v === "boolean";
+    case "null": return v === null;
+    case "object": return typeof v === "object" && v !== null && !Array.isArray(v);
+    case "array": return Array.isArray(v);
+  }
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function validate(value: unknown, schema: JsonSchema, path: string, errors: string[]): void {
+  if (schema.type !== undefined && !matchesType(value, schema.type)) {
+    errors.push(`${path} must be ${schema.type}`);
+    return;
+  }
+  if (schema.enum !== undefined && !schema.enum.some((e) => deepEqual(e, value))) {
+    errors.push(`${path} must be one of ${JSON.stringify(schema.enum)}`);
+    return;
+  }
+  if (schema.type === "object") {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return;
+    const obj = value as Record<string, unknown>;
+    for (const k of schema.required ?? []) if (!(k in obj)) errors.push(`${path}.${k} is required`);
+    for (const [k, sub] of Object.entries(schema.properties ?? {})) if (k in obj) validate(obj[k], sub, `${path}.${k}`, errors);
+    if (schema.additionalProperties === false) {
+      const allowed = new Set(Object.keys(schema.properties ?? {}));
+      for (const k of Object.keys(obj)) if (!allowed.has(k)) errors.push(`${path}.${k} is not allowed`);
+    }
+    return;
+  }
+  if (schema.type === "array") {
+    if (!Array.isArray(value)) return;
+    if (schema.minItems !== undefined && value.length < schema.minItems) errors.push(`${path} must have at least ${schema.minItems} items`);
+    if (schema.maxItems !== undefined && value.length > schema.maxItems) errors.push(`${path} must have at most ${schema.maxItems} items`);
+    if (schema.items) value.forEach((item, i) => validate(item, schema.items!, `${path}[${i}]`, errors));
+    return;
+  }
+  if (schema.type === "string") {
+    if (typeof value !== "string") return;
+    if (schema.minLength !== undefined && value.length < schema.minLength) errors.push(`${path} must be at least ${schema.minLength} chars`);
+    if (schema.maxLength !== undefined && value.length > schema.maxLength) errors.push(`${path} must be at most ${schema.maxLength} chars`);
+    return;
+  }
+  if (schema.type === "number" || schema.type === "integer") {
+    if (typeof value !== "number") return;
+    if (schema.type === "integer" && !Number.isInteger(value)) { errors.push(`${path} must be integer`); return; }
+    if (schema.minimum !== undefined && value < schema.minimum) errors.push(`${path} must be >= ${schema.minimum}`);
+    if (schema.maximum !== undefined && value > schema.maximum) errors.push(`${path} must be <= ${schema.maximum}`);
+    return;
+  }
+}
+
+/** Validate `value` against a JSON-Schema-subset schema. Returns [] if valid. */
+export function validateBySchema(value: unknown, schema: JsonSchema): string[] {
+  const errors: string[] = [];
+  validate(value, schema, "$", errors);
+  return errors;
+}
+
+/** Convenience: true when the value conforms. */
+export function isValidBySchema(value: unknown, schema: JsonSchema): boolean {
+  return validateBySchema(value, schema).length === 0;
+}
+```
+
+- [ ] **Step 4: 跑测试确认通过**
+
+Run: `cd packages/workflow && bun test src/schema.test.ts`
+Expected: PASS, 4 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/workflow/src/schema.ts packages/workflow/src/schema.test.ts
+git commit -m "feat(workflow): add json schema subset validator"
 ```
 
 ---
@@ -1408,7 +1552,7 @@ export * from "./editor/graph-model.js";
 - [ ] **Step 2: 全量验证（所有命令在仓库根执行，不要 cd 到子包）**
 
 Run: `cd packages/workflow && bun test`
-	Expected: 全部测试 PASS（json-logic 5 + graph 5 + engine 6 + parse 7 + editor 2 = 25）。
+	Expected: 全部测试 PASS（json-logic 5 + schema 4 + graph 5 + engine 6 + parse 7 + editor 2 = 29）。
 
 Run: `cd packages/workflow && bun run typecheck`
 Expected: PASS（修复后的 json-logic 对 noUncheckedIndexedAccess 安全）。
