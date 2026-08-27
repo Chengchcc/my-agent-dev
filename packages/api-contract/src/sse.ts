@@ -78,17 +78,6 @@ export const runEvents = {
     callId: z.string().optional(),
     result: z.unknown().optional(),
   }),
-  product_tool_started: z.object({
-    type: z.literal("product_tool_started"),
-    toolName: z.string().optional(),
-    callId: z.string().optional(),
-  }),
-  product_tool_completed: z.object({
-    type: z.literal("product_tool_completed"),
-    toolName: z.string().optional(),
-    callId: z.string().optional(),
-    result: z.unknown().optional(),
-  }),
   "backend.oma.todo_update": z.object({
     type: z.literal("backend.oma.todo_update"),
     payload: z.object({ items: z.array(z.unknown()).optional() }).optional(),

@@ -164,8 +164,6 @@ const TELEMETRY_EVENT_TYPES = new Set([
   "status",
   "native_tool_started",
   "native_tool_completed",
-  "product_tool_started",
-  "product_tool_completed",
   "workflow_started",
   "workflow_agent_started",
   "workflow_agent_completed",
