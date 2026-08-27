@@ -76,18 +76,17 @@ export interface WorkflowMeta {
   updatedBy?: string;
 }
 
-export interface WorkflowDefinition {
-  version: 1;
-  id: string;
-  meta?: WorkflowMeta;
-  input?: InputHint;
-  nodes: WorkflowNode[];
-  edges: EdgeDef[];
+export interface EdgeDef {
+  from: NodeId;
+  to: NodeId;
+  /** JSONLogic condition evaluated against the from-node's output + store. */
+  when?: JsonLogicRule;
 }
 
 export interface WorkflowDefinition {
   version: 1;
   id: string;
+  meta?: WorkflowMeta;
   input?: InputHint;
   nodes: WorkflowNode[];
   edges: EdgeDef[];

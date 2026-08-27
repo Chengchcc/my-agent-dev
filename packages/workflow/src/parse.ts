@@ -5,6 +5,7 @@ import type {
   JsonLogicRule,
   JsonSchema,
   WorkflowDefinition,
+  WorkflowMeta,
   WorkflowNode,
 } from "./types.js";
 
@@ -196,8 +197,14 @@ export function parseWorkflow(raw: unknown): WorkflowDefinition {
       if (typeof raw.meta.description === "string") meta.description = raw.meta.description;
       if (typeof raw.meta.owner === "string") meta.owner = raw.meta.owner;
       if (typeof raw.meta.updatedBy === "string") meta.updatedBy = raw.meta.updatedBy;
-      if (Array.isArray(raw.meta.tags) && raw.meta.tags.every((t) => typeof t === "string")) meta.tags = raw.meta.tags;
-      if (raw.meta.status === "draft" || raw.meta.status === "active" || raw.meta.status === "archived") meta.status = raw.meta.status;
+      if (Array.isArray(raw.meta.tags) && raw.meta.tags.every((t) => typeof t === "string"))
+        meta.tags = raw.meta.tags;
+      if (
+        raw.meta.status === "draft" ||
+        raw.meta.status === "active" ||
+        raw.meta.status === "archived"
+      )
+        meta.status = raw.meta.status;
     }
   }
   if (issues.length > 0) throw new WorkflowParseError(issues);
