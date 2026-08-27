@@ -3,6 +3,7 @@ import type {
   FormField,
   InputHint,
   JsonLogicRule,
+  JsonSchema,
   WorkflowDefinition,
   WorkflowNode,
 } from "./types.js";
@@ -80,6 +81,8 @@ function parseNode(raw: unknown, issues: string[]): WorkflowNode | undefined {
   };
   if (isRecord(raw.input)) node.input = raw.input;
   if (isRecord(raw.output)) node.output = raw.output;
+  if (isRecord(raw.inputSchema)) node.inputSchema = raw.inputSchema as JsonSchema;
+  if (isRecord(raw.outputSchema)) node.outputSchema = raw.outputSchema as JsonSchema;
   if (typeof raw.retry === "number" && Number.isInteger(raw.retry) && raw.retry >= 0)
     node.retry = raw.retry;
   switch (raw.type) {

@@ -29,12 +29,32 @@ export type JsonLogicRule =
         | { default?: JsonLogicRule };
     };
 
+/** JSON Schema subset for node input/output validation (see schema.ts). */
+export interface JsonSchema {
+  type?: "object" | "array" | "string" | "number" | "integer" | "boolean" | "null";
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  additionalProperties?: boolean;
+  items?: JsonSchema;
+  enum?: unknown[];
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  minItems?: number;
+  maxItems?: number;
+}
+
 interface NodeCommon {
   id: NodeId;
   /** Light typing: optional input defaults; runtime merged input wins. */
   input?: Record<string, unknown>;
   /** Output type hints for editor autocomplete. */
   output?: Record<string, string>;
+  /** Optional JSON-Schema-subset validation for merged input (fail node on violation). */
+  inputSchema?: JsonSchema;
+  /** Optional JSON-Schema-subset validation for node output (fail node on violation). */
+  outputSchema?: JsonSchema;
   retry?: number;
 }
 
