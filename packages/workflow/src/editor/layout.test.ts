@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { layeredLayout } from "./layout.js";
 import { parseWorkflow } from "../parse.js";
+import { layeredLayout } from "./layout.js";
 
 describe("layeredLayout", () => {
   test("layers and positions", () => {

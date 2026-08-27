@@ -1,5 +1,5 @@
-import { layeredLayout, type PositionedNode } from "./layout.js";
 import type { WorkflowDefinition, WorkflowNode } from "../types.js";
+import { layeredLayout, type PositionedNode } from "./layout.js";
 
 export interface EditorNode extends PositionedNode {
   type: WorkflowNode["type"];

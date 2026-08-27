@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { toEditorGraph } from "./graph-model.js";
 import { parseWorkflow } from "../parse.js";
+import { toEditorGraph } from "./graph-model.js";
 
 describe("toEditorGraph", () => {
   test("maps nodes and edges", () => {

@@ -1,4 +1,4 @@
-import { mergeInputs, type CompletionRecord } from "./graph.js";
+import { type CompletionRecord, mergeInputs } from "./graph.js";
 import type { WorkflowDefinition, WorkflowNode } from "./types.js";
 
 export interface EngineState {
