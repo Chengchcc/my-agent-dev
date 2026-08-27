@@ -43,6 +43,7 @@
         "@chengchenccc/config": "workspace:*",
         "@chengchenccc/message": "workspace:*",
         "@chengchenccc/source-fetch": "workspace:*",
+        "@chengchenccc/workflow": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.12.1",
         "drizzle-orm": "^0.44.0",
         "elysia": "^1.0.0",
