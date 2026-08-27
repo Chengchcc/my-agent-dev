@@ -277,17 +277,21 @@ git commit -m "feat(web): interactive workflow editing"
 
 - [ ] **Step 1: 创建 `skills/agentic-workflow-dsl/SKILL.md`**
 
-把"如何生产/修改 agentic workflow DSL"沉淀成可复用技能，内容覆盖：
+把"生成并校验 Agentic Workflow DSL 合法性"沉淀成可复用技能。SKILL.md 内容覆盖：
 
 ```markdown
 ---
 name: agentic-workflow-dsl
-description: Author or modify an Agentic Workflow DSL (*.workflow.json). Use when asked to create/edit a workflow graph, node, edge condition, or metadata.
+description: Generate or validate an Agentic Workflow DSL (*.workflow.json). Use when asked to author/modify a workflow graph, or to check whether a given DSL is legal.
 ---
 
 # Agentic Workflow DSL
 
-## Shape (must be valid per `parseWorkflow`)
+## Purpose
+
+Two jobs: **generate** a legal DSL, and **validate** a DSL's legality. A legal DSL is one that passes `parseWorkflow`.
+
+## Shape (must be valid per parseWorkflow)
 
 ```jsonc
 {
@@ -300,35 +304,31 @@ description: Author or modify an Agentic Workflow DSL (*.workflow.json). Use whe
 }
 ```
 
-## Node types
+## Generate
 
-| type | required | notes |
-|---|---|---|
-| start | — | entry; output = trigger vars |
-| end | `status` | success/failure/custom; multi-exit |
-| agent | `agentId` OR (`model`+`prompt`) | may return `nextNode` |
-| script | `code` | Bun TS default export; optional `timeoutMs` |
-| human | `form`/`question` | ask-user; answer = output; timeoutMs |
+Given a request, produce the entire updated DSL as a single JSON object (no markdown fence, no explanation).
 
-Each node may carry optional `inputSchema`/`outputSchema` (JSON Schema subset).
+## Validate — legality checklist (mirror parseWorkflow)
 
-## Edges
+Run every item; a violation makes the DSL illegal:
 
-- `{ from, to, when? }`, `when` is JSONLogic **subset** (`{"==": [{"var":"node.output.x"}, "high"]}`).
-- Multi-true edges = parallel fan-out; author must keep branches exclusive.
-- Agent may return `nextNode` to override static edges.
+1. `version` must be `1`.
+2. Exactly one `start` node; node ids `/^[a-zA-Z0-9_-]+$/`, globally unique, non-empty.
+3. `nodes` non-empty; each node `type` in start|end|agent|script|human.
+4. Per-type required:
+   - `end` requires non-empty `status`.
+   - `agent` requires `agentId` OR (`model` AND `prompt`).
+   - `script` requires non-empty `code`; optional `runtime:"bun"`.
+   - `human` optional `question`/`form`.
+5. `edges` reference existing node ids (both from/to).
+6. Graph acyclic (Kahn topo sort must cover all nodes).
+7. `when` (edge condition) is JSONLogic **subset**: `var`/`==`/`!=`/`>`/`>=`/`<`/`<=`/`in`/`and`/`or`/`not`/`if`/`!!`; `{"var":"node.output.x"}` resolves `.` paths; `nextNode` override must target an existing edge.
+8. Optional per-node `inputSchema`/`outputSchema` use JSON Schema subset (`type`/`properties`/`required`/`additionalProperties`/`items`/`enum`/`minimum`/`maximum`/`minLength`/`maxLength`/`minItems`/`maxItems`).
+9. Node `output` hints (if present) are `Record<string, string>` type hints.
+10. Multi-true outgoing edges = parallel fan-out; branches should be mutually exclusive.
 
-## Rules (violations = `parseWorkflow` rejects)
-
-- exactly one `start`; node ids `/^[a-zA-Z0-9_-]+$/`, unique; acyclic.
-- edges reference existing node ids; agent nextNode must target an edge.
-- output/input schemas use JSON Schema subset (type/properties/required/enum/items/min/max).
-
-## Output contract
-
-When asked to author/edit, respond with **the entire updated DSL as a single JSON object** (no markdown fence, no explanation). The caller parses it and applies as a patch.
+Report violations as a numbered list with the offending path ($.nodes[2].status missing). When asked to fix, return the corrected full DSL.
 ```
-
 - [ ] **Step 2: backend chatPatch 接 skill roots**
 
 `createWorkflowExecutionService` deps 加 `workflowDslSkillDir?: string`；`chatPatch(workflowId, definition, instruction)` 走 agent-run：
