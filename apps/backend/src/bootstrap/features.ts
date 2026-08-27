@@ -453,7 +453,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       };
     },
     productToolsEntrypoint: config.productToolsMcpUrl
-      ? `sse:${config.productToolsMcpUrl}`
+      ? `sse:${config.productToolsMcpUrl.endsWith("/sse") ? config.productToolsMcpUrl : `${config.productToolsMcpUrl}/sse`}`
       : "stdio:/nonexistent",
     onRunCommitted,
     onRunFailed,
@@ -671,7 +671,12 @@ export async function installFeatures(services: BackendServices): Promise<Instal
                 {
                   name: "product-tools",
                   transport: "sse" as const,
-                  url: config.productToolsMcpUrl,
+                  // The SSE session endpoint is `<base>/sse` (the child's
+                  // SSEClientTransport GETs the url as-is; the bare base
+                  // 404s). Append only when not already path-suffixed.
+                  url: config.productToolsMcpUrl.endsWith("/sse")
+                    ? config.productToolsMcpUrl
+                    : `${config.productToolsMcpUrl}/sse`,
                   // ENV NAME, not the token: pi (bearerTokenEnv) and omp
                   // (bearer_token_env_var) read this var at connect time;
                   // claude expands the ${VAR} placeholder in headers. The
@@ -700,7 +705,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
             : []),
         ],
         productTools: config.productToolsMcpUrl
-          ? [...buildHistoryTools(`sse:${config.productToolsMcpUrl}`)]
+          ? [...buildHistoryTools(`sse:${config.productToolsMcpUrl.endsWith('/sse') ? config.productToolsMcpUrl : config.productToolsMcpUrl + '/sse'}`)]
           : [],
         knowledgePacks: assignedKnowledge.map((p) => ({
           id: p.id,
