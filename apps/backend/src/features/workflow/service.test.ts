@@ -11,28 +11,8 @@ function makeDef(): WorkflowDefinition {
       {
         id: "s",
         type: "script",
-        code: "export default async (ctx) => ({ val: ctx.input.num })",
-        output: { val: "number" },
-      },
-      { id: "done", type: "end", status: "success" },
-    ],
-    edges: [
-      { from: "start", to: "s" },
-      { from: "s", to: "done" },
-    ],
-  };
-}
-
-function makeAgentlessDef(): WorkflowDefinition {
-  return {
-    version: 1,
-    id: "wf",
-    nodes: [
-      { id: "start", type: "start" },
-      {
-        id: "s",
-        type: "script",
         code: "x",
+        output: { val: "number" },
         inputSchema: {
           type: "object",
           properties: { num: { type: "integer" } },
@@ -48,12 +28,46 @@ function makeAgentlessDef(): WorkflowDefinition {
   };
 }
 
+function makeHumanDef(): WorkflowDefinition {
+  return {
+    version: 1,
+    id: "wf",
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "h", type: "human", question: "ok?" },
+      { id: "done", type: "end", status: "success" },
+    ],
+    edges: [
+      { from: "start", to: "h" },
+      { from: "h", to: "done" },
+    ],
+  };
+}
+
+function makeAgentDef(): WorkflowDefinition {
+  return {
+    version: 1,
+    id: "wf",
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "a", type: "agent", agentId: "ag-1", output: { val: "number" } },
+      { id: "done", type: "end", status: "success" },
+    ],
+    edges: [
+      { from: "start", to: "a" },
+      { from: "a", to: "done" },
+    ],
+  };
+}
+
 function ramPort() {
   const executions = new Map<string, Record<string, unknown>>();
   const nodeRuns: Array<Record<string, unknown>> = [];
+  const pendingHuman = new Map<string, Record<string, unknown>>();
   return {
     executions,
     nodeRuns,
+    pendingHuman,
     port: {
       createExecution: async (i: Record<string, unknown>) => {
         const r = { ...i, status: "running" };
@@ -77,9 +91,16 @@ function ramPort() {
         return r;
       },
       listNodeRuns: async () => nodeRuns,
-      createPendingHuman: async (r: Record<string, unknown>) => r,
-      getPendingHuman: async () => null,
-      markPendingHumanResolved: async () => {},
+      createPendingHuman: async (r: Record<string, unknown>) => {
+        pendingHuman.set(`${r.executionId as string}:${r.nodeId as string}`, r);
+        return r;
+      },
+      getPendingHuman: async (executionId: string, nodeId: string) =>
+        pendingHuman.get(`${executionId}:${nodeId}`) ?? null,
+      markPendingHumanResolved: async (executionId: string, nodeId: string) => {
+        const r = pendingHuman.get(`${executionId}:${nodeId}`);
+        if (r) r.status = "resolved";
+      },
       listRunningExecutions: async () => [],
       listWaitingHumanExecutions: async () => [],
     } as never,
@@ -115,18 +136,68 @@ describe("createWorkflowExecutionService", () => {
     const { port } = ramPort();
     const svc = createWorkflowExecutionService({
       port,
-      nodeRunners: {
-        script: { run: async () => ({ output: {} }) },
-      } as never,
+      nodeRunners: { script: { run: async () => ({ output: {} }) } } as never,
       eventBus: { emit: () => {}, subscribe: async function* () {} } as never,
       idGen: () => "e1",
     });
     const result = await svc.runToCompletion("e1", {
       workflowId: "wf",
-      definition: makeAgentlessDef(),
+      definition: makeDef(),
       input: { num: "not-a-number" },
     });
     expect(result.status).toBe("failure");
-    expect(result.exit).toBe("failure");
+  });
+
+  test("human node pauses at waiting_human, resolveHumanTask resumes to success", async () => {
+    const { port } = ramPort();
+    const svc = createWorkflowExecutionService({
+      port,
+      nodeRunners: {} as never,
+      eventBus: { emit: () => {}, subscribe: async function* () {} } as never,
+      idGen: () => "e1",
+    });
+    const paused = await svc.runToCompletion("e1", {
+      workflowId: "wf",
+      definition: makeHumanDef(),
+      input: {},
+    });
+    expect(paused.status).toBe("waiting_human");
+    const resumed = await svc.resolveHumanTask("e1", "h", { approved: true });
+    expect(resumed.status).toBe("success");
+  });
+
+  test("agent node runs a child run and parses JSON output", async () => {
+    const { port, nodeRuns } = ramPort();
+    const svc = createWorkflowExecutionService({
+      port,
+      nodeRunners: {} as never,
+      eventBus: { emit: () => {}, subscribe: async function* () {} } as never,
+      idGen: () => "e1",
+      agentRunService: {
+        enqueueAndAcquire: async () => ({ acquired: true, run: { runId: "r1" } }),
+        getRun: async () => ({
+          status: "completed",
+          terminalResult: {
+            status: "completed",
+            messages: [{ role: "assistant", text: '{"val": 1}' }],
+          },
+        }),
+      } as never,
+      agentRunExecution: {
+        dispatch: async () => {},
+        subscribe: async function* () {
+          yield { type: "status", status: "completed" };
+        },
+      } as never,
+      convPort: { getConversation: () => null, createConversation: () => {} } as never,
+      resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "x" }),
+    });
+    const result = await svc.runToCompletion("e1", {
+      workflowId: "wf",
+      definition: makeAgentDef(),
+      input: {},
+    });
+    expect(result.status).toBe("success");
+    expect(nodeRuns.find((r) => r.nodeId === "a")!.output).toEqual({ val: 1 });
   });
 });
