@@ -265,60 +265,118 @@ git commit -m "feat(web): interactive workflow editing"
 
 ---
 
-### Task 3: Chat LLM 生成 DSL patch
+### Task 3: Chat LLM 生成 DSL patch（做成 skill）
 
 **Files:**
+- Create: `skills/agentic-workflow-dsl/SKILL.md`
 - Modify: `apps/backend/src/features/workflow/http.ts`
 - Modify: `apps/backend/src/features/workflow/service.ts`
 - Modify: `apps/backend/src/features/workflow/http.test.ts`
 - Modify: `apps/web/src/components/workflow/ChatPanel.tsx`
 - Modify: `apps/web/src/lib/api.ts`
 
-- [ ] **Step 1: backend service 加 `chatPatch`**
+- [ ] **Step 1: 创建 `skills/agentic-workflow-dsl/SKILL.md`**
 
-`createWorkflowExecutionService` deps 加 `chatAgent?: { runPrompt(prompt: string): Promise<string> }`；`chatPatch(workflowId, definition, instruction)` 调用 `chatAgent.runPrompt`，把返回文本 `tryParseJsonObject` 得到 patch，失败抛错。返回 `{ definition }`。
+把"如何生产/修改 agentic workflow DSL"沉淀成可复用技能，内容覆盖：
 
-- [ ] **Step 2: http.ts 加 `POST /api/workflow-definitions/:workflowId/chat-patch`**
+```markdown
+---
+name: agentic-workflow-dsl
+description: Author or modify an Agentic Workflow DSL (*.workflow.json). Use when asked to create/edit a workflow graph, node, edge condition, or metadata.
+---
+
+# Agentic Workflow DSL
+
+## Shape (must be valid per `parseWorkflow`)
+
+```jsonc
+{
+  "version": 1,
+  "id": "oncall-triage",
+  "meta": { "name": "…", "description": "…", "tags": ["…"], "status": "draft|active|archived", "owner": "…", "updatedBy": "…" },
+  "input": { "issueUrl": "string" },
+  "nodes": [ … ],
+  "edges": [ … ]
+}
+```
+
+## Node types
+
+| type | required | notes |
+|---|---|---|
+| start | — | entry; output = trigger vars |
+| end | `status` | success/failure/custom; multi-exit |
+| agent | `agentId` OR (`model`+`prompt`) | may return `nextNode` |
+| script | `code` | Bun TS default export; optional `timeoutMs` |
+| human | `form`/`question` | ask-user; answer = output; timeoutMs |
+
+Each node may carry optional `inputSchema`/`outputSchema` (JSON Schema subset).
+
+## Edges
+
+- `{ from, to, when? }`, `when` is JSONLogic **subset** (`{"==": [{"var":"node.output.x"}, "high"]}`).
+- Multi-true edges = parallel fan-out; author must keep branches exclusive.
+- Agent may return `nextNode` to override static edges.
+
+## Rules (violations = `parseWorkflow` rejects)
+
+- exactly one `start`; node ids `/^[a-zA-Z0-9_-]+$/`, unique; acyclic.
+- edges reference existing node ids; agent nextNode must target an edge.
+- output/input schemas use JSON Schema subset (type/properties/required/enum/items/min/max).
+
+## Output contract
+
+When asked to author/edit, respond with **the entire updated DSL as a single JSON object** (no markdown fence, no explanation). The caller parses it and applies as a patch.
+```
+
+- [ ] **Step 2: backend chatPatch 接 skill roots**
+
+`createWorkflowExecutionService` deps 加 `workflowDslSkillDir?: string`；`chatPatch(workflowId, definition, instruction)` 走 agent-run：
+- `enqueueAndAcquire` 时 `skillRoots: [workflowDslSkillDir]`（像 Loop 的 `builtinSkillsDir`）
+- prompt = "当前 DSL: <JSON>
+需求: <instruction>
+按 agentic-workflow-dsl skill 返回完整更新后的 DSL JSON"
+- `subscribe` 到 terminal → `extractOutput(terminalResult, null)` 取 JSON → `parseWorkflow` 校验 → 返回 `{ definition }`
+
+- [ ] **Step 3: http.ts 加 `POST /api/workflow-definitions/:workflowId/chat-patch`**
 
 ```typescript
 app.post("/api/workflow-definitions/:workflowId/chat-patch", async ({ params, body }) => {
   const raw = await Bun.file(join(dir, `${params.workflowId}.workflow.json`)).text();
   const definition = JSON.parse(raw);
-  const result = await svc.chatPatch(params.workflowId, definition, body.instruction);
-  return result;
+  return await svc.chatPatch(params.workflowId, definition, body.instruction);
 }, {
   body: t.Object({ instruction: t.String({ minLength: 1 }) }),
 });
 ```
 
-- [ ] **Step 3: bootstrap 接 `chatAgent`**
+- [ ] **Step 4: bootstrap 接 `workflowDslSkillDir`**
 
-`chatAgent: { runPrompt: async (prompt) => { /* 复用 agent-run runner：enqueue+dispatch+subscribe 取 text，像 Plan 2 runAgentNode */ } }`——真实实现复用 `agentRunService/agentRunExecution`，spike 已验证 terminal/提取路径。
+`workflowDslSkillDir: join(config.dataDir, "skills/agentic-workflow-dsl")` 或指向 repo `skills/agentic-workflow-dsl`。真实路径按技能安装 dir。
 
-- [ ] **Step 4: web api.ts + ChatPanel**
+- [ ] **Step 5: web api.ts + ChatPanel**
 
 ```typescript
 chatPatchWorkflow: (workflowId: string, instruction: string) =>
   unwrap(client.api["workflow-definitions"]({ workflowId })["chat-patch"].post({ instruction })),
 ```
 
-ChatPanel 改为：textarea 输入 instruction → `chatPatchWorkflow` → 显示返回 `{definition}` → `[Apply patch]` → `onChange(parsed)`；`[Reject]` 清空。
+ChatPanel：textarea 输入 → `chatPatchWorkflow` → 显示返回 `{definition}` → `[Apply patch]` → `onChange(parsed)`；`[Reject]` 清空。
 
-- [ ] **Step 5: http.test.ts 补 chat-patch 测试（fake service 返回 patch）**
+- [ ] **Step 6: http.test.ts 补 chat-patch 测试（fake service 返回 patch）**
 
-- [ ] **Step 6: 全量验证**
+- [ ] **Step 7: 全量验证**
 
 Run: `cd apps/backend && bun test src/features/workflow && cd ../web && bun run typecheck && bun run lint`
 Expected: PASS。
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add apps/backend/src/features/workflow apps/web/src/components/workflow/ChatPanel.tsx apps/web/src/lib/api.ts
-git commit -m "feat(workflow): chat llm generates dsl patch"
+git add skills/agentic-workflow-dsl apps/backend/src/features/workflow apps/web/src/components/workflow/ChatPanel.tsx apps/web/src/lib/api.ts
+git commit -m "feat(workflow): chat llm uses workflow dsl skill to generate patches"
 ```
 
----
 
 ### Task 4: Execution 时间旅行 trace
 
