@@ -15,8 +15,8 @@ workflow 取代——DSL 描述 DAG，多节点类型，外部触发器，编辑
 1. **流转控制权**：静态边为主 + agent 节点可选 `nextNode` 覆盖（混合 C）。
 2. **引擎通用**（B）：workflow 不绑 repo；repo 是节点级可选 context。
 3. **并行**：fan-out 支持，AND-join。
-4. **边条件**：JSONLogic 表达式，对上游 output + store 求值。
-5. **数据流**：隐式合并——下游 input = store 快照 + 已完成上游 output 合并。
+4. **边条件**：JSONLogic **子集**表达式（语义见 Design），对**来源节点（from）output + store** 求值；跨节点取值经 store 显式中转。
+5. **数据流**：隐式合并 = **全局合并**——下游 input = store 快照 + **全部已完成节点** output（非仅上游），后完成覆盖；并行分支作者需避免 key 相撞（provenance 记录赢家）。
 6. **类型**：轻量——input 只声明可选默认值/必填，output 声明类型提示，不强制校验。
 7. **store**：execution 级 KV，仅节点通过 runtime API 显式写。
 8. **human 节点** = "问用户问题"能力（AskUserQuestion 式），问题静态声明或上游动态生成，前端渲染表单，答案 = output。
@@ -84,11 +84,11 @@ workflow 取代——DSL 描述 DAG，多节点类型，外部触发器，编辑
     { "from": "triage", "to": "risk",
       "when": { "==": [{ "var": "triage.output.severity" }, "high"] } },
     { "from": "triage", "to": "notify",
-      "when": { "!=": [{ "var": "triage.output.severity" }, "high"] } },
-    { "from": "risk", "to": "done" },
-    { "from": "notify", "to": "done" },
+      "when": { "==": [{ "var": "triage.output.severity" }, "low"] } },
     { "from": "triage", "to": "abort",
-      "when": { "==": [{ "var": "triage.output.severity" }, "critical"] } }
+      "when": { "==": [{ "var": "triage.output.severity" }, "critical"] } },
+    { "from": "risk", "to": "done" },
+    { "from": "notify", "to": "done" }
   ]
 }
 ```
@@ -98,7 +98,12 @@ workflow 取代——DSL 描述 DAG，多节点类型，外部触发器，编辑
 - **end 多出口**：end 节点带 `status` 标签，`success`/`failure` 是预置值，可自定义
   （如 `escalated`/`dismissed`）；execution 终态记录 `exit: <status>`。
 - **无条件边** = 默认边；同一节点多条出边条件都真 → 并行 fan-out。
-- **agent 节点可选 `nextNode`**：output 里返回 `nextNode: "<nodeId>"` 覆盖静态边。
+  **作者负责保证出边条件互斥**（如示例中的 high/low/critical），不互斥即有意并行。
+- **agent 节点可选 `nextNode`**：output 里返回 `nextNode: "<nodeId>"` 覆盖静态边；
+  指向的节点必须是已有边目标，否则视为路由错误（fail fast）。
+- **JSONLogic 子集语义**（公开文档须自称子集，不照搬官方全部语义）：`==`/`!=` 为
+  JSON 深比较（对象 key 序敏感）；`if` 仅严格三元 `[cond, then, else]`；`not`/`!!`
+  接受数组或裸对象两种形式；`var` 支持 `"a.b"` 路径和 `["a.b", default]`。
 
 ### 节点类型语义
 
@@ -143,8 +148,11 @@ export default async function run(ctx: ScriptContext) {
 
 ### 数据流
 
-- **隐式合并**：下游 input = store 快照 + 全部已完成上游 output 合并，按拓扑序、
-  后完成覆盖先完成；引擎记录每个 key 的 provenance（哪个节点写的），回放可查。
+- **全局合并**：下游 input = store 快照 + **全部已完成节点** output（非仅上游），按
+  完成序、后完成覆盖先完成；引擎记录每个 key 的 provenance（哪个节点写的）。并行
+  分支的 output 会互相可见——作者需保证 key 命名不撞（provenance 可辅助排查）。
+- **边条件求值域**：仅**来源节点（from）的 output + store**，不注入其他节点的
+  output。要引用更早节点的值，须由来源节点显式写进 store 再读。
 - **节点 context**：每节点实例独立——`{executionId, nodeId, workflowId, repo?}` +
   解析后的 input + 节点内 scratch。
 - **store**：execution 级 KV，仅节点通过 `ctx.store.set` 显式写；沿边的是"结果"，
@@ -157,7 +165,13 @@ export default async function run(ctx: ScriptContext) {
   `node_completed`、`node_failed`、`store_write`、`human_task_requested`、
   `execution_terminal`。
 - 并行：AND-join——节点等所有入边完成才执行。
-- 失败语义：节点失败后重试耗尽 → 走 failure 出口；节点级 `retry`/`timeoutMs` 可配。
+- **路由固化**：源节点完成瞬间由引擎算出 routed targets 并固化进 CompletionRecord；
+  之后任何节点的 store 写入都**不能**翻转已固化边的真值。
+- **失败语义**：节点失败（重试耗尽/超时）**不参与图路由**——shell 直接以 failure
+  出口终结 execution（记 `node_failed` 事件），不伪造 output、不走控制字段。
+- **首 end 即终**：任何一步有 end 节点 ready 即终结；多个 end 同时 ready 时按节点
+  定义序取第一个；在途兄弟分支由 shell 发 cancel。并行分支应汇合后再终结。
+- **stuck 检测**：shell 在"无 ready 且无在途节点"时判 stuck → failure 出口。
 - human 挂起/恢复：waiting_human 态持久化，恢复后从该节点继续。
 
 ### 触发器（外部绑定）
@@ -181,8 +195,8 @@ export default async function run(ctx: ScriptContext) {
 ### 架构落点
 
 - 新包 `packages/workflow`（`@chengchenccc/workflow`）：DSL 类型/解析/校验、JSONLogic
-  评估、图拓扑（AND-join/隐式合并/provenance）、节点类型契约、编辑器基础（graph
-  model + 画布渲染基础组件）。纯逻辑 + 可复用 UI 基础，不依赖 backend/web。
+  子集评估、图拓扑（AND-join/路由固化/全局合并/provenance）、节点类型契约、编辑器
+  基础（graph model + 分层布局）。纯逻辑 + 可复用 UI 基础，不依赖 backend/web。
 - backend 新 feature：`apps/backend/src/features/workflow/`（六边形）——执行引擎的
   I/O 壳：agent 派发（复用 `AgentRunExecutionService`）、script 节点 Bun 执行、human
   节点 HITL 传输、store 持久化、事件流、HTTP；消费 `@chengchenccc/workflow` core。
@@ -192,16 +206,18 @@ export default async function run(ctx: ScriptContext) {
 
 ## Error handling
 
-- 节点失败重试耗尽 → failure 出口，execution 终态持久化。
+- 节点失败重试耗尽 → shell 直接以 failure 出口终结（不走图路由），execution 终态持久化。
+- stuck（无 ready 且无在途节点）→ failure 出口。
+- `nextNode` 指向非边目标 → 路由错误，fail fast（记 node_failed + failure 出口）。
 - store 写入不丢：每次写是事件流记录，可回放。
 - human 超时 → failure 出口。
 - 触发器防重叠沿用 cron 现有 single-flight；API 幂等靠 executionId。
 
 ## Testing
 
-- DSL 解析/校验/JSONLogic 评估：单测。
+- DSL 解析/校验/JSONLogic 子集评估：单测。
 - 引擎：scripted fake agent（复用 echoModel/fake 工具模式），覆盖分支、并行 AND-join、
-  隐式合并 provenance、store 显式写、nextNode 覆盖、失败出口。
+  全局合并 provenance、store 显式写、nextNode 覆盖、路由固化、首 end 即终、失败出口。
 - human：复用 HITL 测试模式（approval 管道镜像）。
 - 集成：cron fire → execution → agent/script/human → terminal 全链路。
 - 编辑器：DOM 断言（沿用 headless Chrome 模式）。
@@ -212,3 +228,8 @@ export default async function run(ctx: ScriptContext) {
 2. 节点失败统一走 failure 出口，v1 无 per-node 失败边。
 3. script 节点默认 `timeoutMs: 30000`。
 4. human 超时走 failure 出口，不做超时默认值。
+5. 路由在源节点完成时固化，store 后续写入不翻转已走边。
+6. 首 end 即终，多 end 同 ready 按节点定义序；在途兄弟取消。
+7. 隐式合并为全局合并（全部已完成节点 output），作者避免 key 相撞。
+8. 边条件求值域 = 来源节点 output + store。
+9. 节点失败不走图路由，shell 直接 failure 出口终结。

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 落地 `packages/workflow`（`@chengchenccc/workflow`）纯逻辑核心包：DSL 类型/解析/校验、JSONLogic 子集求值、图拓扑（AND-join/隐式合并/provenance）、执行核心 `computeNext`、节点运行时契约、编辑器基础（分层布局 + graph model）。
+**Goal:** 落地 `packages/workflow`（`@chengchenccc/workflow`）纯逻辑核心包：DSL 类型/解析/校验、JSONLogic 子集求值、图拓扑（AND-join/路由固化/全局合并/provenance）、执行核心 `computeNext`、节点运行时契约、编辑器基础（分层布局 + graph model）。
 
 **Architecture:** 零依赖 leaf package（仿 `packages/source-fetch`），backend/web 后续消费。纯函数无 I/O；引擎核心只算"下一步跑什么"，节点执行留给 Plan 2 的 backend shell。
 
@@ -90,28 +90,26 @@ packages/workflow/
 ```markdown
 # @chengchenccc/workflow
 
-Agentic Workflow 纯逻辑核心：DSL 类型/解析、JSONLogic 子集求值、图拓扑（AND-join/隐式合并）、执行核心、节点运行时契约、编辑器基础布局。
+Agentic Workflow 纯逻辑核心：DSL 类型/解析、JSONLogic 子集求值、图拓扑（AND-join/路由固化/全局合并）、执行核心、节点运行时契约、编辑器基础布局。
 
 零依赖。backend（执行 I/O 壳）与 web（编辑器）消费本包。
 ```
 
 - [ ] **Step 4: commitlint.config.mjs 增加 "workflow" scope**
 
-在 `commitlint.config.mjs` 的 scope-enum 中，`"cron",` 后加一行：
+在 `commitlint.config.mjs` 的 scope-enum 中，`"cron",` 与 `"mcp",` 之间加一行：
 
 ```js
         "workflow",
 ```
 
-（位置：Features 区 `"agent-run", "cron", "mcp", "settings",` 中 `"cron",` 与 `"mcp",` 之间。）
-
 - [ ] **Step 5: 注册 workspace 并验证 scaffold**
 
-Run: `bun install`
+Run: `bun install`（仓库根）
 Expected: 无报错，bun.lock 更新。
 
 Run: `cd packages/workflow && bun run typecheck`
-Expected: PASS（空 src 也通过；若报 no inputs，先建一个空 `src/index.ts` 再跑）。
+Expected: 若报 "No inputs were found"，先创建 `src/index.ts`（内容 `export {};`）再跑；PASS。
 
 - [ ] **Step 6: Commit**
 
@@ -169,14 +167,14 @@ export type WorkflowNode = NodeCommon &
     | { type: "start" }
     | { type: "end"; status: string }
     | { type: "agent"; agentId?: string; model?: string; prompt?: string; repo?: string }
-    | { type: "script"; code: string; timeoutMs?: number }
+    | { type: "script"; code: string; runtime?: "bun"; timeoutMs?: number }
     | { type: "human"; question?: string; form?: Record<string, FormField>; timeoutMs?: number }
   );
 
 export interface EdgeDef {
   from: NodeId;
   to: NodeId;
-  /** JSONLogic condition evaluated against upstream output + store. */
+  /** JSONLogic condition evaluated against the from-node's output + store. */
   when?: JsonLogicRule;
 }
 
@@ -207,6 +205,7 @@ describe("evalJsonLogic", () => {
     expect(evalJsonLogic({ var: "triage.output.severity" }, data)).toBe("high");
     expect(evalJsonLogic({ var: "triage.output.missing" }, data)).toBeNull();
     expect(evalJsonLogic({ var: ["triage.output.missing", "fallback"] }, data)).toBe("fallback");
+    expect(evalJsonLogic(undefined, data)).toBeNull();
   });
 
   test("comparison operators", () => {
@@ -224,7 +223,7 @@ describe("evalJsonLogic", () => {
     expect(evalJsonLogic({ in: ["b", "abc"] }, data)).toBe(true);
   });
 
-  test("logic operators", () => {
+  test("logic operators (array and bare-object forms)", () => {
     expect(
       evalJsonLogic(
         { and: [{ "==": [{ var: "triage.output.severity" }, "high"] }, { ">": [{ var: "triage.output.count" }, 1] }] },
@@ -238,7 +237,9 @@ describe("evalJsonLogic", () => {
       ),
     ).toBe(true);
     expect(evalJsonLogic({ not: [{ "==": [{ var: "triage.output.severity" }, "low"] }] }, data)).toBe(true);
+    expect(evalJsonLogic({ not: { "==": [{ var: "triage.output.severity" }, "low"] } }, data)).toBe(true);
     expect(evalJsonLogic({ "!!": [{ var: "triage.output.severity" }] }, data)).toBe(true);
+    expect(evalJsonLogic({ "!!": { var: "triage.output.severity" } }, data)).toBe(true);
     expect(evalJsonLogic({ if: [{ "==": [{ var: "triage.output.severity" }, "high"] }, "a", "b"] }, data)).toBe("a");
   });
 
@@ -258,7 +259,27 @@ Expected: FAIL — `Cannot find module './json-logic.js'`
 ```typescript
 import type { JsonLogicRule } from "./types.js";
 
-const OPS = new Set(["var", "==", "!=", ">", ">=", "<", "<=", "in", "and", "or", "not", "if", "!!"]);
+/** JSONLogic 子集（公开文档须自称子集，勿照搬官方全部语义）：
+ *  - `==`/`!=` 是 JSON 深比较（对象 key 序敏感）
+ *  - `if` 仅严格三元 [cond, then, else]（无 else-if 链、无二参形式）
+ *  - `not`/`!!` 接受数组或裸对象两种形式
+ *  - `var` 支持 "a.b" 路径与 ["a.b", default]
+ */
+const OPS: Record<string, true> = {
+  var: true,
+  "==": true,
+  "!=": true,
+  ">": true,
+  ">=": true,
+  "<": true,
+  "<=": true,
+  in: true,
+  and: true,
+  or: true,
+  not: true,
+  if: true,
+  "!!": true,
+};
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -266,9 +287,9 @@ function isObject(v: unknown): v is Record<string, unknown> {
 
 function truthy(v: unknown): boolean {
   if (v === null || v === undefined || v === false) return false;
-  if (typeof v === "number" && (v === 0 || Number.isNaN(v))) return false;
-  if (typeof v === "string" && v.length === 0) return false;
-  if (Array.isArray(v) && v.length === 0) return false;
+  if (typeof v === "number") return v !== 0 && !Number.isNaN(v);
+  if (typeof v === "string") return v.length > 0;
+  if (Array.isArray(v)) return v.length > 0;
   return true;
 }
 
@@ -291,16 +312,16 @@ function pathGet(data: unknown, path: string): unknown {
   return cur;
 }
 
-/** Evaluate a JSONLogic rule against `data`.
- *  Supported subset: var, ==, !=, >, >=, <, <=, in, and, or, not, if, !!. */
-export function evalJsonLogic(rule: JsonLogicRule, data: unknown): unknown {
+/** Evaluate a JSONLogic-subset rule against `data`. */
+export function evalJsonLogic(rule: JsonLogicRule | undefined, data: unknown): unknown {
+  if (rule === undefined || rule === null) return null;
   if (Array.isArray(rule)) return rule.map((r) => evalJsonLogic(r, data));
   if (!isObject(rule)) return rule;
   const entries = Object.entries(rule);
   if (entries.length === 1) {
     const [op, rawArgs] = entries[0]!;
-    if (OPS.has(op)) {
-      const args = rawArgs as JsonLogicRule[];
+    if (OPS[op] === true) {
+      const args = Array.isArray(rawArgs) ? (rawArgs as JsonLogicRule[]) : [rawArgs as JsonLogicRule];
       switch (op) {
         case "var": {
           if (typeof rawArgs === "string") return pathGet(data, rawArgs) ?? null;
@@ -311,10 +332,11 @@ export function evalJsonLogic(rule: JsonLogicRule, data: unknown): unknown {
           }
           return null;
         }
-        case "==":
+        case "==": {
+          return deepEqual(evalJsonLogic(args[0], data), evalJsonLogic(args[1], data));
+        }
         case "!=": {
-          const eq = deepEqual(evalJsonLogic(args[0], data), evalJsonLogic(args[1], data));
-          return op === "==" ? eq : !eq;
+          return !deepEqual(evalJsonLogic(args[0], data), evalJsonLogic(args[1], data));
         }
         case ">":
         case ">=":
@@ -335,7 +357,7 @@ export function evalJsonLogic(rule: JsonLogicRule, data: unknown): unknown {
         }
         case "and": {
           let acc: unknown = true;
-          for (const r of args ?? []) {
+          for (const r of args) {
             acc = evalJsonLogic(r, data);
             if (!truthy(acc)) return acc;
           }
@@ -343,7 +365,7 @@ export function evalJsonLogic(rule: JsonLogicRule, data: unknown): unknown {
         }
         case "or": {
           let acc: unknown = false;
-          for (const r of args ?? []) {
+          for (const r of args) {
             acc = evalJsonLogic(r, data);
             if (truthy(acc)) return acc;
           }
@@ -382,7 +404,7 @@ git commit -m "feat(workflow): add dsl types and json-logic evaluator subset"
 
 ---
 
-### Task 2: 图拓扑 + 路由 + 隐式合并
+### Task 2: 图拓扑 + 路由固化 + 全局合并
 
 **Files:**
 - Create: `packages/workflow/src/graph.test.ts`
@@ -420,7 +442,7 @@ describe("graph", () => {
   });
 
   test("routeOutgoing unconditional", () => {
-    expect(routeOutgoing("start", def, [{ nodeId: "start", order: 0 }], {})).toEqual(["a", "b"]);
+    expect(routeOutgoing("start", def, [{ nodeId: "start", order: 0, routedTo: [] }], {})).toEqual(["a", "b"]);
   });
 
   test("routeOutgoing respects when and nextNode override", () => {
@@ -440,22 +462,41 @@ describe("graph", () => {
       ],
     });
     const gone = [
-      { nodeId: "start", order: 0 },
-      { nodeId: "a", order: 1, output: { go: false } },
+      { nodeId: "start", order: 0, routedTo: ["a"] },
+      { nodeId: "a", order: 1, output: { go: false }, routedTo: ["done"] },
     ];
     expect(routeOutgoing("a", condDef, gone, {})).toEqual(["done"]);
     const overridden = [
-      { nodeId: "start", order: 0 },
-      { nodeId: "a", order: 1, output: { go: true, nextNode: "b" } },
+      { nodeId: "start", order: 0, routedTo: ["a"] },
+      { nodeId: "a", order: 1, output: { go: true, nextNode: "b" }, routedTo: ["b"] },
     ];
     expect(routeOutgoing("a", condDef, overridden, {})).toEqual(["b"]);
+  });
+
+  test("routeOutgoing throws on nextNode to non-edge target", () => {
+    const badDef = parseWorkflow({
+      version: 1,
+      id: "wf",
+      nodes: [
+        { id: "start", type: "start" },
+        { id: "a", type: "script", code: "x" },
+        { id: "done", type: "end", status: "success" },
+      ],
+      edges: [
+        { from: "start", to: "a" },
+        { from: "a", to: "done" },
+      ],
+    });
+    expect(() =>
+      routeOutgoing("a", badDef, [{ nodeId: "a", order: 0, output: { nextNode: "nope" }, routedTo: [] }], {}),
+    ).toThrow(/not an edge target/);
   });
 
   test("mergeInputs later wins with provenance", () => {
     const result = mergeInputs(
       [
-        { nodeId: "a", order: 0, output: { x: 1, y: "a" } },
-        { nodeId: "b", order: 1, output: { y: "b" } },
+        { nodeId: "a", order: 0, output: { x: 1, y: "a" }, routedTo: [] },
+        { nodeId: "b", order: 1, output: { y: "b" }, routedTo: [] },
       ],
       { z: "store" },
       { t: "trigger" },
@@ -469,7 +510,7 @@ describe("graph", () => {
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `cd packages/workflow && bun test src/graph.test.ts`
-Expected: FAIL — `Cannot find module './graph.js'`（parse.js 也尚未创建；见 Step 4 说明）。
+Expected: FAIL — `Cannot find module './graph.js'`（parse.js 骨架见 Step 4）。
 
 - [ ] **Step 3: 创建 graph.ts**
 
@@ -480,14 +521,23 @@ import type { JsonLogicRule, WorkflowDefinition } from "./types.js";
 export interface CompletionRecord {
   nodeId: string;
   output?: Record<string, unknown>;
-  /** Completion order index (0-based) for implicit merge. */
+  /** Completion order index (0-based) for global merge. */
   order: number;
+  /** Targets routed at completion time (frozen — later store writes cannot flip). */
+  routedTo: string[];
 }
 
 export class GraphCycleError extends Error {
   constructor() {
     super("cycle detected in workflow graph");
     this.name = "GraphCycleError";
+  }
+}
+
+export class WorkflowRouteError extends Error {
+  constructor(nodeId: string, nextNode: string) {
+    super(`node "${nodeId}" nextNode "${nextNode}" is not an edge target`);
+    this.name = "WorkflowRouteError";
   }
 }
 
@@ -520,7 +570,9 @@ function evalData(nodeId: string, output: Record<string, unknown> | undefined, s
   return { store, [nodeId]: { output } };
 }
 
-/** Targets reachable from a completed node: truthy `when` edges (or unconditional), plus nextNode override. */
+/** Compute a completed node's routed targets at completion time.
+ *  Truthy `when` edges (or unconditional), plus nextNode override.
+ *  The shell stores the result into CompletionRecord.routedTo — never recompute later. */
 export function routeOutgoing(
   nodeId: string,
   def: WorkflowDefinition,
@@ -531,7 +583,8 @@ export function routeOutgoing(
   const override = typeof out?.nextNode === "string" ? (out.nextNode as string) : undefined;
   const edges = def.edges.filter((e) => e.from === nodeId);
   if (override !== undefined) {
-    return edges.some((e) => e.to === override) ? [override] : [];
+    if (!edges.some((e) => e.to === override)) throw new WorkflowRouteError(nodeId, override);
+    return [override];
   }
   const data = evalData(nodeId, out, store);
   return edges
@@ -545,7 +598,7 @@ export interface MergeResult {
   provenance: Record<string, string>;
 }
 
-/** Implicit merge: trigger vars, then store, then upstream outputs in completion order (later wins). */
+/** Global merge: trigger vars, then store, then ALL completed outputs in completion order (later wins). */
 export function mergeInputs(
   completions: CompletionRecord[],
   store: Record<string, unknown>,
@@ -570,7 +623,7 @@ export function mergeInputs(
 }
 ```
 
-- [ ] **Step 4: 先搭 parse.ts 骨架让 graph 测试可跑（Task 3 再补全校验）**
+- [ ] **Step 4: 先搭 parse.ts 骨架让 graph 测试可跑（Task 4 再补全校验）**
 
 创建 `packages/workflow/src/parse.ts` 骨架：
 
@@ -578,7 +631,7 @@ export function mergeInputs(
 import { topoSort } from "./graph.js";
 import type { WorkflowDefinition } from "./types.js";
 
-/** Minimal skeleton — full validation lands in Task 3. */
+/** Minimal skeleton — full validation lands in Task 4. */
 export function parseWorkflow(raw: unknown): WorkflowDefinition {
   return raw as WorkflowDefinition;
 }
@@ -587,13 +640,13 @@ export function parseWorkflow(raw: unknown): WorkflowDefinition {
 - [ ] **Step 5: 跑测试确认通过**
 
 Run: `cd packages/workflow && bun test src/graph.test.ts`
-Expected: PASS, 4 tests.
+Expected: PASS, 5 tests.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add packages/workflow/src/graph.ts packages/workflow/src/graph.test.ts packages/workflow/src/parse.ts
-git commit -m "feat(workflow): add graph topo, routing and implicit merge"
+git commit -m "feat(workflow): add graph topo, frozen routing and global merge"
 ```
 
 ---
@@ -642,8 +695,8 @@ describe("computeNext", () => {
   test("terminal when end ready", () => {
     const step = computeNext(branchDef(), {
       completions: [
-        { nodeId: "start", order: 0, output: {} },
-        { nodeId: "a", order: 1, output: { severity: "high" } },
+        { nodeId: "start", order: 0, output: {}, routedTo: ["a"] },
+        { nodeId: "a", order: 1, output: { severity: "high" }, routedTo: ["done"] },
       ],
       store: {},
       trigger: {},
@@ -654,8 +707,8 @@ describe("computeNext", () => {
   test("condition routes to failure exit", () => {
     const step = computeNext(branchDef(), {
       completions: [
-        { nodeId: "start", order: 0, output: {} },
-        { nodeId: "a", order: 1, output: { severity: "critical" } },
+        { nodeId: "start", order: 0, output: {}, routedTo: ["a"] },
+        { nodeId: "a", order: 1, output: { severity: "critical" }, routedTo: ["abort"] },
       ],
       store: {},
       trigger: {},
@@ -682,13 +735,17 @@ describe("computeNext", () => {
         { from: "join", to: "done" },
       ],
     });
-    const afterStart = computeNext(def, { completions: [{ nodeId: "start", order: 0, output: {} }], store: {}, trigger: {} });
+    const afterStart = computeNext(def, {
+      completions: [{ nodeId: "start", order: 0, output: {}, routedTo: ["a", "b"] }],
+      store: {},
+      trigger: {},
+    });
     if (afterStart.kind !== "run") throw new Error("expected run");
     expect(afterStart.ready.map((r) => r.node.id)).toEqual(["a", "b"]);
     const afterA = computeNext(def, {
       completions: [
-        { nodeId: "start", order: 0, output: {} },
-        { nodeId: "a", order: 1, output: {} },
+        { nodeId: "start", order: 0, output: {}, routedTo: ["a", "b"] },
+        { nodeId: "a", order: 1, output: {}, routedTo: ["join"] },
       ],
       store: {},
       trigger: {},
@@ -696,9 +753,9 @@ describe("computeNext", () => {
     expect(afterA).toEqual({ kind: "idle" });
     const afterBoth = computeNext(def, {
       completions: [
-        { nodeId: "start", order: 0, output: {} },
-        { nodeId: "a", order: 1, output: {} },
-        { nodeId: "b", order: 2, output: {} },
+        { nodeId: "start", order: 0, output: {}, routedTo: ["a", "b"] },
+        { nodeId: "a", order: 1, output: {}, routedTo: ["join"] },
+        { nodeId: "b", order: 2, output: {}, routedTo: ["join"] },
       ],
       store: {},
       trigger: {},
@@ -722,7 +779,7 @@ describe("computeNext", () => {
       ],
     });
     const step = computeNext(def, {
-      completions: [{ nodeId: "start", order: 0, output: { level: "high" } }],
+      completions: [{ nodeId: "start", order: 0, output: { level: "high" }, routedTo: ["a"] }],
       store: {},
       trigger: {},
     });
@@ -740,7 +797,7 @@ Expected: FAIL — `Cannot find module './engine.js'`
 - [ ] **Step 3: 创建 engine.ts**
 
 ```typescript
-import { mergeInputs, routeOutgoing, type CompletionRecord } from "./graph.js";
+import { mergeInputs, type CompletionRecord } from "./graph.js";
 import type { WorkflowDefinition, WorkflowNode } from "./types.js";
 
 export interface EngineState {
@@ -761,15 +818,14 @@ export type EngineStep =
   | { kind: "terminal"; exit: string }
   | { kind: "idle" };
 
-/** Pure execution core: given a definition and state, decide what runs next. */
+/** Pure execution core: given a definition and state, decide what runs next.
+ *  Routing comes from CompletionRecord.routedTo (frozen at completion time) — never recomputed. */
 export function computeNext(def: WorkflowDefinition, state: EngineState): EngineStep {
   const nodeOf = new Map(def.nodes.map((n) => [n.id, n]));
   const completedIds = new Set(state.completions.map((c) => c.nodeId));
 
   const routed = new Map<string, Set<string>>();
-  for (const c of state.completions) {
-    routed.set(c.nodeId, new Set(routeOutgoing(c.nodeId, def, state.completions, state.store)));
-  }
+  for (const c of state.completions) routed.set(c.nodeId, new Set(c.routedTo));
 
   const readyIds: string[] = [];
   if (state.completions.length === 0) {
@@ -876,24 +932,27 @@ describe("parseWorkflow", () => {
     ).toThrow(/cycle/);
   });
 
-  test("normalizes valid agent and human", () => {
+  test("normalizes valid agent, script runtime and human", () => {
     const def = parseWorkflow({
       version: 1,
       id: "wf",
       nodes: [
         { id: "start", type: "start" },
         { id: "a", type: "agent", agentId: "ag-1" },
+        { id: "s", type: "script", code: "x", runtime: "bun" },
         { id: "h", type: "human", question: "ok?", form: { level: { type: "enum", options: ["a", "b"] } } },
         { id: "done", type: "end", status: "success" },
       ],
       edges: [
         { from: "start", to: "a" },
-        { from: "a", to: "h" },
+        { from: "a", to: "s" },
+        { from: "s", to: "h" },
         { from: "h", to: "done" },
       ],
     });
     expect(def.nodes[1]).toMatchObject({ type: "agent", agentId: "ag-1" });
-    expect(def.nodes[2]).toMatchObject({ type: "human", form: { level: { type: "enum", options: ["a", "b"] } } });
+    expect(def.nodes[2]).toMatchObject({ type: "script", code: "x", runtime: "bun" });
+    expect(def.nodes[3]).toMatchObject({ type: "human", form: { level: { type: "enum", options: ["a", "b"] } } });
   });
 });
 ```
@@ -985,6 +1044,7 @@ function parseNode(raw: unknown, issues: string[]): WorkflowNode | undefined {
     case "script": {
       const code = nonEmptyString(raw.code, `node "${id}" code`, issues);
       if (code) node.code = code;
+      if (raw.runtime === "bun") node.runtime = "bun";
       if (typeof raw.timeoutMs === "number" && raw.timeoutMs > 0) node.timeoutMs = raw.timeoutMs;
       break;
     }
@@ -1096,7 +1156,9 @@ export interface NodeContext {
   repo?: string;
 }
 
-/** Execution-scoped store API injected into script nodes. */
+/** Execution-scoped store API injected into script nodes.
+ *  ponytail: get 同步而 set/delete 异步，v1 接受；若脚本重度读 store 再对称化。
+ *  ponytail: 契约无 timeout/cancel 通道，超时靠 shell race；需要可取消长任务时再加。 */
 export interface StoreApi {
   get(key: string): unknown;
   set(key: string, value: unknown): Promise<void>;
@@ -1343,25 +1405,25 @@ export * from "./editor/layout.js";
 export * from "./editor/graph-model.js";
 ```
 
-- [ ] **Step 2: 全量验证**
+- [ ] **Step 2: 全量验证（所有命令在仓库根执行，不要 cd 到子包）**
 
 Run: `cd packages/workflow && bun test`
-Expected: 全部测试 PASS（json-logic 5 + graph 4 + engine 5 + parse 7 + editor 2 = 23）。
+Expected: 全部测试 PASS（json-logic 5 + graph 5 + engine 5 + parse 7 + editor 2 = 24）。
 
 Run: `cd packages/workflow && bun run typecheck`
-Expected: PASS。
+Expected: PASS（修复后的 json-logic 对 noUncheckedIndexedAccess 安全）。
 
 Run: `cd packages/workflow && bun run build`
-Expected: PASS，生成 `dist/`。
+Expected: PASS，生成 `dist/`（dist 在 .gitignore 中，不提交）。
 
-Run: `cd /root/my-agent-team && bun run typecheck`
-Expected: PASS（root 全仓 typecheck 不受影响）。
+Run: `bun run typecheck`（仓库根，全仓）
+Expected: PASS。
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add packages/workflow/src/index.ts packages/workflow/dist
+git add packages/workflow/src/index.ts
 git commit -m "feat(workflow): export workflow core package barrel"
 ```
 
-（若 dist 在 .gitignore 中，只 add `src/index.ts`；commit 后确认 `git status` 干净。）
+（`dist/` 在 .gitignore 中，勿 `git add dist`。）
