@@ -253,6 +253,9 @@
         "@xterm/headless": "5.5.0",
       },
     },
+    "packages/workflow": {
+      "name": "@chengchenccc/workflow",
+    },
   },
   "packages": {
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "https://registry.npmmirror.com/@alloc/quick-lru/-/quick-lru-5.2.0.tgz", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
@@ -372,6 +375,8 @@
     "@chengchenccc/tui": ["@chengchenccc/tui@workspace:packages/tui"],
 
     "@chengchenccc/web": ["@chengchenccc/web@workspace:apps/web"],
+
+    "@chengchenccc/workflow": ["@chengchenccc/workflow@workspace:packages/workflow"],
 
     "@commitlint/cli": ["@commitlint/cli@21.0.2", "https://registry.npmmirror.com/@commitlint/cli/-/cli-21.0.2.tgz", { "dependencies": { "@commitlint/format": "^21.0.1", "@commitlint/lint": "^21.0.2", "@commitlint/load": "^21.0.2", "@commitlint/read": "^21.0.2", "@commitlint/types": "^21.0.1", "tinyexec": "^1.0.0", "yargs": "^18.0.0" }, "bin": { "commitlint": "cli.js" } }, "sha512-YMmfLbqBg+ZRvvmPhc+cilSQFrh/AgzVgCT1U/OifmUZEwPbvCtA8rN//YNaF9d5eoZphxVMGYtmwA2QgQORgg=="],
 

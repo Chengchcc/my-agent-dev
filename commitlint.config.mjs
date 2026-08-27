@@ -32,6 +32,7 @@ export default {
         // Features
         "agent-run",
         "cron",
+        "workflow",
         "mcp",
         "settings",
         "docs",
