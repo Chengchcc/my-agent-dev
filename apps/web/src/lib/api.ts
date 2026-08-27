@@ -439,4 +439,16 @@ export const api = {
     });
     return (await resp.json()) as { newConversationId: string };
   },
+  // Workflow
+  listWorkflowDefinitions: () => unwrap(client.api["workflow-definitions"].get()),
+  getWorkflowDefinition: (workflowId: string) => unwrap(client.api["workflow-definitions"]({ workflowId }).get()),
+  saveWorkflowDefinition: (workflowId: string, definition: Record<string, unknown>) =>
+    unwrap(client.api["workflow-definitions"]({ workflowId }).put({ definition })),
+  deleteWorkflowDefinition: (workflowId: string) => unwrap(client.api["workflow-definitions"]({ workflowId }).delete()),
+  listWorkflowExecutions: (workflowId?: string) =>
+    unwrap(client.api["workflow-executions"].get({ query: workflowId ? { workflowId } : undefined })),
+  startWorkflowExecution: (body: { workflowRef: { repo: string; path: string }; input?: Record<string, unknown> }) =>
+    unwrap(client.api["workflow-executions"].post(body)),
+  resolveWorkflowHumanTask: (executionId: string, body: { nodeId: string; answer?: Record<string, unknown> }) =>
+    unwrap(client.api["workflow-executions"]({ executionId })["human-task"].post(body)),
 };
