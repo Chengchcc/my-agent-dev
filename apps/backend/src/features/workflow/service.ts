@@ -251,12 +251,17 @@ export function createWorkflowExecutionService(
     order: number,
   ): Promise<{ output: Record<string, unknown> } | null> {
     emit(execution.executionId, "node_started", { nodeId: node.id, order });
-    await deps.port.appendNodeRun({
-      executionId: execution.executionId,
-      nodeId: node.id,
-      status: node.type === "human" ? "waiting_human" : "running",
-      order,
-    });
+    const existing = (await deps.port.listNodeRuns(execution.executionId)).find((r) => r.nodeId === node.id);
+    if (!existing) {
+      await deps.port.appendNodeRun({
+        executionId: execution.executionId,
+        nodeId: node.id,
+        status: node.type === "human" ? "waiting_human" : "running",
+        order,
+      });
+    } else if (existing.status !== "completed") {
+      order = existing.order;
+    }
 
     const inputErrors = node.inputSchema ? validateBySchema(ready.input, node.inputSchema) : [];
     if (inputErrors.length > 0)
@@ -279,26 +284,33 @@ export function createWorkflowExecutionService(
       await deps.port.updateExecution(execution.executionId, { status: "waiting_human" });
       emit(execution.executionId, "human_task_requested", { nodeId: node.id, question, form });
       return null;
-    } else if (node.type === "agent") {
-      const result = await runAgentNode(node, ready, execution);
-      output = result.output ?? {};
-    } else if (node.type === "script") {
-      const runner = deps.nodeRunners.script;
-      if (!runner) throw new Error(`no runner for node type ${node.type}`);
-      const storeApi = await storeApiOf(execution.executionId, () => execution.store);
-      const result = await runNodeWithRetry(node, (n) =>
-        runner.run(n, {
-          input: ready.input,
-          store: storeApi,
-          context: {
-            executionId: execution.executionId,
-            nodeId: n.id,
-            workflowId: execution.workflowId,
-            repo: "repo" in n ? n.repo : undefined,
-          },
-        }),
-      );
-      output = result.output ?? {};
+    } else {
+      try {
+        if (node.type === "agent") {
+          const result = await runAgentNode(node, ready, execution);
+          output = result.output ?? {};
+        } else {
+          const runner = deps.nodeRunners.script;
+          if (!runner) throw new Error(`no runner for node type ${node.type}`);
+          const storeApi = await storeApiOf(execution.executionId, () => execution.store);
+          const result = await runNodeWithRetry(node, (n) =>
+            runner.run(n, {
+              input: ready.input,
+              store: storeApi,
+              context: {
+                executionId: execution.executionId,
+                nodeId: n.id,
+                workflowId: execution.workflowId,
+                repo: "repo" in n ? n.repo : undefined,
+              },
+            }),
+          );
+          output = result.output ?? {};
+        }
+      } catch (err) {
+        emit(execution.executionId, "node_failed", { nodeId: node.id, error: (err as Error).message });
+        throw err;
+      }
     }
     if (output === null) throw new Error(`node ${node.id} produced no output`);
 
@@ -404,7 +416,7 @@ export function createWorkflowExecutionService(
         workflowId: input.workflowId,
         definition: input.definition,
         input: input.input,
-        store: { ...input.input },
+        store: {},
         status: "running",
       });
       emit(executionId, "execution_started", {});
@@ -418,7 +430,7 @@ export function createWorkflowExecutionService(
         workflowId: input.workflowId,
         definition: input.definition,
         input: input.input,
-        store: { ...input.input },
+        store: {},
         status: "running",
       });
       emit(executionId, "execution_started", {});
@@ -428,6 +440,7 @@ export function createWorkflowExecutionService(
     async resolveHumanTask(executionId, nodeId, answer) {
       const row = await deps.port.getExecution(executionId);
       if (!row) throw new HttpError("Execution not found", 404);
+      if (row.status !== "waiting_human") throw new HttpError("Execution is not waiting for human", 409);
       const pending = await deps.port.getPendingHuman(executionId, nodeId);
       if (!pending) throw new HttpError("Pending human task not found", 404);
       if (pending.status === "resolved") throw new HttpError("Human task already resolved", 409);

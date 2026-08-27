@@ -33,17 +33,17 @@ class Queue {
 }
 
 export class ExecutionEventBus {
-  private queues = new Map<string, Queue>();
+  private queues = new Map<string, Set<Queue>>();
 
   emit(ev: WorkflowEvent): void {
-    const q = this.queues.get(ev.executionId) ?? new Queue();
-    this.queues.set(ev.executionId, q);
-    q.push(ev);
+    for (const q of this.queues.get(ev.executionId) ?? []) q.push(ev);
   }
 
   subscribe(executionId: string): AsyncIterable<WorkflowEvent> {
-    const q = this.queues.get(executionId) ?? new Queue();
-    this.queues.set(executionId, q);
+    const q = new Queue();
+    const set = this.queues.get(executionId) ?? new Set<Queue>();
+    set.add(q);
+    this.queues.set(executionId, set);
     return q.consume();
   }
 

@@ -802,13 +802,22 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   // ─── Agentic Workflow ───────────────────────────────────
   const workflowPort = sqliteWorkflowExecutionAdapter(db);
-  const workflowNodeRunners = createNodeRunners({ dataDir: config.dataDir });
   const workflowEventBus = new ExecutionEventBus();
+  const workflowNodeRunners = createNodeRunners({
+    dataDir: config.dataDir,
+    onLog: (executionId, data) =>
+      workflowEventBus.emit({ event: "script_log", executionId, ts: Date.now(), data }),
+  });
   const workflowExecutionService = createWorkflowExecutionService({
     port: workflowPort,
     nodeRunners: workflowNodeRunners,
     eventBus: workflowEventBus,
     idGen: ulid,
+    agentRunService,
+    agentRunExecution,
+    convPort,
+    resolveDefaultModel: async (agentId) => agentModelRef(await agentSvc.getById(agentId)),
+    resolveRepoWorkspace: async (repo) => ({ root: join(config.dataDir, "projects", repo), access: "read_write" }),
   });
   const workflowApp = workflowRoutes({
     workflowExecutionService,

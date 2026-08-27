@@ -1,7 +1,6 @@
+import { join, resolve } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type {
-  FormField,
   NodeContext,
   NodeRunResult,
   ScriptContext,
@@ -11,18 +10,8 @@ import type {
 
 export interface NodeRunnerDeps {
   dataDir: string;
-  agentRunService?: {
-    createPendingAction(
-      runId: string,
-      action: { kind: string; payload: Readonly<Record<string, unknown>> },
-    ): Promise<{
-      actionId: string;
-      runId: string;
-      kind: string;
-      payload: Record<string, unknown>;
-      status: string;
-    }>;
-  };
+  /** Emit structured script logs into the execution event stream. */
+  onLog?: (executionId: string, data: Record<string, unknown>) => void;
 }
 
 export function createNodeRunners(deps: NodeRunnerDeps) {
@@ -33,26 +22,12 @@ export function createNodeRunners(deps: NodeRunnerDeps) {
         ctx: { input: Record<string, unknown>; store: StoreApi; context: NodeContext },
       ): Promise<NodeRunResult> {
         if (node.type !== "script") throw new Error(`not a script node: ${node.type}`);
+        const log = (event: string, data?: Record<string, unknown>) =>
+          deps.onLog?.(ctx.context.executionId, { event, data });
         if (node.timeoutMs !== undefined) {
-          return await runWithTimeout(node.code, node.timeoutMs, ctx, deps.dataDir);
+          return await runWithTimeout(node.code, node.timeoutMs, ctx, deps.dataDir, log);
         }
-        return await runScript(node.code, ctx, deps.dataDir);
-      },
-    },
-    human: {
-      async run(
-        node: WorkflowNode,
-        ctx: { input: Record<string, unknown>; store: StoreApi; context: NodeContext },
-      ): Promise<NodeRunResult> {
-        if (node.type !== "human") throw new Error(`not a human node: ${node.type}`);
-        if (!deps.agentRunService) throw new Error("human runner requires agentRunService");
-        const question = (ctx.input.question as string | undefined) ?? node.question ?? "";
-        const form = (ctx.input.form as Record<string, FormField> | undefined) ?? node.form ?? {};
-        await deps.agentRunService.createPendingAction(ctx.context.executionId, {
-          kind: "human_task_requested",
-          payload: { executionId: ctx.context.executionId, nodeId: node.id, question, form },
-        });
-        return { output: { question, form } };
+        return await runScript(node.code, ctx, deps.dataDir, log);
       },
     },
   };
@@ -62,6 +37,7 @@ async function runScript(
   code: string,
   ctx: { input: Record<string, unknown>; store: StoreApi; context: NodeContext },
   dataDir: string,
+  log: (event: string, data?: Record<string, unknown>) => void,
 ): Promise<NodeRunResult> {
   mkdirSync(dataDir, { recursive: true });
   const file = resolve(dataDir, `${ctx.context.executionId}-${ctx.context.nodeId}.ts`);
@@ -72,7 +48,7 @@ async function runScript(
     // import of the temp artifact is the only way to execute it.
     const mod = await import(`${file}?t=${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const fn = mod.default as (c: ScriptContext) => unknown;
-    const scriptCtx: ScriptContext = { ...ctx, log: () => {} };
+    const scriptCtx: ScriptContext = { ...ctx, log };
     const out = (await fn(scriptCtx)) ?? {};
     return { output: out as Record<string, unknown> };
   } finally {
@@ -85,13 +61,11 @@ function runWithTimeout(
   timeoutMs: number,
   ctx: { input: Record<string, unknown>; store: StoreApi; context: NodeContext },
   dataDir: string,
+  log: (event: string, data?: Record<string, unknown>) => void,
 ): Promise<NodeRunResult> {
   const { promise, resolve, reject } = Promise.withResolvers<NodeRunResult>();
-  const timer = setTimeout(
-    () => reject(new Error(`script timed out after ${timeoutMs}ms`)),
-    timeoutMs,
-  );
-  runScript(code, ctx, dataDir).then(
+  const timer = setTimeout(() => reject(new Error(`script timed out after ${timeoutMs}ms`)), timeoutMs);
+  runScript(code, ctx, dataDir, log).then(
     (result) => {
       clearTimeout(timer);
       resolve(result);
