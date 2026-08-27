@@ -11,6 +11,11 @@ export interface CliArgs {
   model?: string;
   /** Resume a session file by id (TUI mode). */
   session?: string;
+  /** Tool filter: comma-separated tool names or groups. Plain names form a
+   *  whitelist (ONLY those tools run); `!name` entries form a blacklist
+   *  (all but those). Applied to the FINAL tool table (native + MCP +
+   *  plugin) at Run assembly. */
+  tools?: string;
 }
 
 export class UsageError extends Error {}
@@ -28,6 +33,8 @@ Usage:
   oma --model <provider/model> -p "<prompt>"
                                           pick a model by canonical id
                                           (default: first available model)
+  oma --tools todo_write,read -p "..."    only these tools enter the Run
+  oma --tools '!todo_write' -p "..."      all tools except todo_write
 
 Piped stdin (print/json modes):
   cat file | oma -p "Review"
@@ -93,6 +100,17 @@ export function parseArgs(argv: readonly string[]): CliArgs {
       const value = arg.slice("--session=".length);
       if (!value) throw new UsageError("--session requires a session id");
       args.session = value;
+    } else if (arg === "--tools") {
+      const value = argv[i + 1];
+      if (!value || value.startsWith("-")) {
+        throw new UsageError("--tools requires a comma-separated tool list");
+      }
+      args.tools = value;
+      i++;
+    } else if (arg.startsWith("--tools=")) {
+      const value = arg.slice("--tools=".length);
+      if (!value) throw new UsageError("--tools requires a comma-separated tool list");
+      args.tools = value;
     } else if (arg === "--help" || arg === "-h") {
       throw new UsageError(USAGE);
     } else if (arg.startsWith("-")) {

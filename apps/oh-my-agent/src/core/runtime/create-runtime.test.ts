@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BackendRunInput, BackendRunSegment } from "@chengchenccc/agent-contract";
 import type { Model, Provider } from "@chengchenccc/ai";
@@ -541,7 +542,7 @@ describe("createOmaRuntime", () => {
     expect(requests).toEqual(["subagent"]);
     expect(outcome.usage).toEqual({ inputTokens: 0, outputTokens: 14 });
   });
-  test("enableNativeTodo exposes todo_write backed by .oma/todo.json", async () => {
+  test("native todo installs when no MCP todo_write is injected (standalone)", async () => {
     const savedFake = process.env.OMA_FAKE_PROVIDER;
     const savedTool = process.env.OMA_FAKE_TOOL;
     process.env.OMA_FAKE_PROVIDER = "1";
@@ -558,7 +559,6 @@ describe("createOmaRuntime", () => {
         workspaceAccess: "read_write",
         modelRuntime,
         skillRoots: [],
-        enableNativeTodo: true,
       });
       const segment = await rt.run(runInput("r-todo-native"));
       const outcome = await segment.outcome;
@@ -773,4 +773,119 @@ describe("createOmaRuntime", () => {
       else process.env.OMA_FAKE_TOOL = savedTool;
     }
   });
+});
+
+test("injected MCP todo_write wins over native todo (backend-injected priority)", async () => {
+  const savedFake = process.env.OMA_FAKE_PROVIDER;
+  const savedTool = process.env.OMA_FAKE_TOOL;
+  process.env.OMA_FAKE_PROVIDER = "1";
+  // Model calls todo_write; the MCP server (echo fixture via .mcp.json)
+  // provides it, so native todo must NOT be installed — the call lands on
+  // the MCP tool (content "ok:todo_write"), and no .oma/todo.json exists.
+  process.env.OMA_FAKE_TOOL = JSON.stringify([{ name: "todo_write", input: { items: [] } }]);
+  const ws = mkdtempSync(join(tmpdir(), "oma-todo-mcp-"));
+  try {
+    process.env.MCP_ECHO_TOOLS = "todo_write";
+    writeFileSync(
+      join(ws, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          "echo-server": {
+            command: "bun",
+            args: [join(import.meta.dir, "../__fixtures__/mcp-echo-server.ts")],
+            env: { MCP_ECHO_TOOLS: "todo_write" },
+          },
+        },
+      }),
+    );
+    const modelRuntime = createModelRuntime();
+    registerBuiltinProviders(modelRuntime, process.env);
+    const rt = await createOmaRuntime({
+      runId: "r-todo-mcp",
+      modelId: "fake/echo",
+      workspaceRoot: ws,
+      workspaceAccess: "read_write",
+      modelRuntime,
+      skillRoots: [],
+    });
+    const segment = await rt.run(runInput("r-todo-mcp"));
+    const outcome = await segment.outcome;
+    await rt.close();
+    expect(outcome.status).toBe("completed");
+    const raw = JSON.stringify(outcome.messages);
+    // The MCP echo server answered (it echoes {name,...}); native todo
+    // would have written .oma/todo.json instead.
+    expect(raw).toContain("todo_write");
+    expect(existsSync(join(ws, ".oma", "todo.json"))).toBe(false);
+  } finally {
+    delete process.env.MCP_ECHO_TOOLS;
+    if (savedFake === undefined) delete process.env.OMA_FAKE_PROVIDER;
+    else process.env.OMA_FAKE_PROVIDER = savedFake;
+    if (savedTool === undefined) delete process.env.OMA_FAKE_TOOL;
+    else process.env.OMA_FAKE_TOOL = savedTool;
+    rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test("--tools filter: whitelist hides unlisted tools from the model", async () => {
+  const savedFake = process.env.OMA_FAKE_PROVIDER;
+  process.env.OMA_FAKE_PROVIDER = "1";
+  process.env.OMA_FAKE_TOOLS_RECORD = join(tmp, "tools-record.json");
+  try {
+    const modelRuntime = createModelRuntime();
+    registerBuiltinProviders(modelRuntime, process.env);
+    const { parseToolFilter } = await import("./tool-filter.js");
+    const rt = await createOmaRuntime({
+      runId: "r-tools-filter",
+      modelId: "fake/echo",
+      workspaceRoot: tmp,
+      workspaceAccess: "read_write",
+      modelRuntime,
+      skillRoots: [],
+      toolFilter: parseToolFilter("read,write"),
+    });
+    const segment = await rt.run(runInput("r-tools-filter"));
+    await segment.outcome;
+    await rt.close();
+    const table = JSON.parse(await Bun.file(join(tmp, "tools-record.json")).text()) as string[];
+    expect(table).toContain("read");
+    expect(table).toContain("write");
+    expect(table).not.toContain("bash");
+    expect(table).not.toContain("web_search");
+  } finally {
+    delete process.env.OMA_FAKE_TOOLS_RECORD;
+    if (savedFake === undefined) delete process.env.OMA_FAKE_PROVIDER;
+    else process.env.OMA_FAKE_PROVIDER = savedFake;
+  }
+});
+
+test("--tools filter: blacklist (!name) keeps everything else", async () => {
+  const savedFake = process.env.OMA_FAKE_PROVIDER;
+  process.env.OMA_FAKE_PROVIDER = "1";
+  process.env.OMA_FAKE_TOOLS_RECORD = join(tmp, "tools-record2.json");
+  try {
+    const modelRuntime = createModelRuntime();
+    registerBuiltinProviders(modelRuntime, process.env);
+    const { parseToolFilter } = await import("./tool-filter.js");
+    const rt = await createOmaRuntime({
+      runId: "r-tools-deny",
+      modelId: "fake/echo",
+      workspaceRoot: tmp,
+      workspaceAccess: "read_write",
+      modelRuntime,
+      skillRoots: [],
+      toolFilter: parseToolFilter("!bash,!web_search"),
+    });
+    const segment = await rt.run(runInput("r-tools-deny"));
+    await segment.outcome;
+    await rt.close();
+    const table = JSON.parse(await Bun.file(join(tmp, "tools-record2.json")).text()) as string[];
+    expect(table).not.toContain("bash");
+    expect(table).not.toContain("web_search");
+    expect(table).toContain("read");
+  } finally {
+    delete process.env.OMA_FAKE_TOOLS_RECORD;
+    if (savedFake === undefined) delete process.env.OMA_FAKE_PROVIDER;
+    else process.env.OMA_FAKE_PROVIDER = savedFake;
+  }
 });

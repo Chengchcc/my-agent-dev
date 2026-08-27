@@ -180,3 +180,15 @@ describe("readPipedStdin", () => {
     expect(readPipedStdin(streamOf([big]))).rejects.toThrow(/16 MiB/);
   });
 });
+
+describe("--tools", () => {
+  test("parses --tools value", () => {
+    expect(parseArgs(["--tools", "read,write", "-p", "hi"]).tools).toBe("read,write");
+    expect(parseArgs(["--tools=!bash", "-p", "hi"]).tools).toBe("!bash");
+  });
+
+  test("--tools requires a value", () => {
+    expect(() => parseArgs(["--tools"])).toThrow(UsageError);
+    expect(() => parseArgs(["--tools=", "-p", "hi"])).toThrow(UsageError);
+  });
+});

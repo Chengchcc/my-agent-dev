@@ -17,9 +17,18 @@ const server = new Server(
   { capabilities: { tools: {} } },
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [{ name: "echo", description: "Echo", inputSchema: { type: "object" } }],
-}));
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  // MCP_ECHO_TOOLS=todo_write,history_recent renames the offered tools
+  // (tests inject "backend-like" product tools); default stays "echo".
+  const names = (process.env.MCP_ECHO_TOOLS ?? "echo").split(",").filter(Boolean);
+  return {
+    tools: names.map((name) => ({
+      name,
+      description: `Echo ${name}`,
+      inputSchema: { type: "object" },
+    })),
+  };
+});
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const name = req.params.name;

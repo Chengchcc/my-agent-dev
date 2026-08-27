@@ -3,6 +3,7 @@ import { parseArgs, UsageError } from "./cli/args.js";
 import { mergeInitialInput, readPipedStdin } from "./cli/initial-input.js";
 import { buildBackendModelCatalog } from "./core/runtime/model-catalog.js";
 import { registerBuiltinProviders } from "./core/runtime/run-runtime.js";
+import { parseToolFilter } from "./core/runtime/tool-filter.js";
 import { runJsonMode } from "./modes/json-mode.js";
 import { runPrintMode } from "./modes/print-mode.js";
 import { runRpcMode } from "./modes/rpc/rpc-mode.js";
@@ -62,6 +63,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       workspaceRoot: process.cwd(),
       model: args.model,
       sessionId: args.session,
+      ...(args.tools ? { toolFilter: parseToolFilter(args.tools) } : {}),
       ...(args.prompt ? { initialPrompt: args.prompt } : {}),
     });
   }
@@ -76,7 +78,13 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     );
   }
 
-  const opts = { prompt, workspaceRoot: process.cwd(), modelRuntime, model: args.model };
+  const opts = {
+    prompt,
+    workspaceRoot: process.cwd(),
+    modelRuntime,
+    model: args.model,
+    ...(args.tools ? { toolFilter: parseToolFilter(args.tools) } : {}),
+  };
   return args.mode === "json" ? runJsonMode(opts) : runPrintMode(opts);
 }
 

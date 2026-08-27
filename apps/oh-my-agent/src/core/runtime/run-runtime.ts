@@ -50,6 +50,7 @@ import { type ApprovalHandler, approvalTimeoutMs, withApprovalDeadline } from ".
 import { fakeProvider } from "./fake-provider.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
 import { loadStreamRules } from "./stream-rules.js";
+import { type ToolFilter, toolFilterAllows } from "./tool-filter.js";
 
 /** Token estimation via content char/4 (approx 1 token per 4 chars of
  *  English/code). More accurate than JSON.stringify char/4 which includes
@@ -140,10 +141,6 @@ export interface RunRuntimeDeps {
   /** Real-time session-file persistence (pi appendMessage): fires after
    *  every conversational persist with the canonical messages written. */
   onPersistMessages?: (messages: readonly Message[]) => void;
-  /** Standalone modes (TUI/print/json) expose oma's own todo tools backed by
-   *  `<workspace>/.oma/todo.json`. Backend-invoked RPC mode leaves this off:
-   *  todo comes from the backend-injected product MCP. */
-  enableNativeTodo?: boolean;
   /** Loaded plugin code components (mode layer already applied the trust
    *  policy); the runtime only mounts them. */
   codePlugins?: readonly Plugin[];
@@ -152,6 +149,9 @@ export interface RunRuntimeDeps {
   /** Frozen Run permissionMode (ADR 0020 decision 7). "deny" drops plugin
    *  code components at assembly; native tools are unaffected (MVP scope). */
   permissionMode?: "ask" | "auto" | "deny";
+  /** --tools filter (CLI): applied to the final tool table (native + MCP +
+   *  plugin) at assembly. Undefined = all tools. */
+  toolFilter?: ToolFilter;
   /** Standalone modes (tui/print/json): the workspace's own .mcp.json is
    *  repo-controlled, so mount it only when content-trusted (record in
    *  <agentDir>/trusted-plugins.json; /mcp trust records it). Backend RPC
@@ -359,7 +359,15 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     // permissionMode "deny" drops plugin code components entirely (MVP
     // enforcement point); native tools are unaffected and the Run proceeds.
   }
-  if (deps.enableNativeTodo) {
+  // Native todo (.oma/todo.json): installed when NOTHING else already
+  // provides todo_write (the backend injects its own MCP todo_write into
+  // RPC workspaces — the specific injection wins over the built-in default;
+  // standalone workspaces get the native one). One rule replaces the old
+  // per-mode enableNativeTodo flag.
+  const hasInjectedTodo = mounted.tools.some((t) => t.name === "todo_write");
+  const todoAllowed = deps.toolFilter ? toolFilterAllows(deps.toolFilter, "todo_write") : true;
+  const nativeTodoWanted = !hasInjectedTodo && todoAllowed;
+  if (nativeTodoWanted) {
     const todoStore = createFileTodoStore(deps.workspaceRoot);
     const todoBase = createTodo({ sessionId: deps.runId, store: todoStore });
     plugins.push({
@@ -777,10 +785,20 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
           }
           return undefined;
         };
+  // --tools filter (CLI): applied ONCE to the final tool table (native +
+  //  MCP + plugin tools) — the model never sees filtered-out tools.
+  const finalPlugins = deps.toolFilter
+    ? plugins.map((p) => ({
+        ...p,
+        ...(p.tools
+          ? { tools: p.tools.filter((t) => toolFilterAllows(deps.toolFilter!, t.name)) }
+          : {}),
+      }))
+    : plugins;
   const session = createOmaSession({
     sessionId: deps.runId,
     store,
-    plugins,
+    plugins: finalPlugins,
     pluginRuntime,
     maxSteps,
     maxForceContinues: 4,

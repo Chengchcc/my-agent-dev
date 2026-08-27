@@ -6,6 +6,7 @@ import { buildCliRunInput } from "../../cli/initial-input.js";
 import type { OmaLoopEvent } from "../../core/agent-runtime.js";
 import { assemblePluginRuntime } from "../../core/plugins/plugin-resolve.js";
 import { createOmaRuntime, type OmaRuntime } from "../../core/runtime/create-runtime.js";
+import type { ToolFilter } from "../../core/runtime/tool-filter.js";
 import {
   appendSessionMessages,
   listSessions,
@@ -58,6 +59,8 @@ export interface TuiModeOptions {
   /** Prefill the editor with this text on boot (`oma "prompt"`). The user
    *  hits Enter to send it like any other input. */
   initialPrompt?: string;
+  /** --tools filter (CLI): applied to the final tool table. */
+  toolFilter?: ToolFilter;
 }
 
 /** View/abort commands from the terminal (Esc abort, ctrl+t, ctrl+o, ctrl+p). */
@@ -338,7 +341,6 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       workspaceAccess: "read_write",
       modelRuntime: opts.modelRuntime,
       skillRoots: built.run.skillRoots ?? [],
-      enableNativeTodo: true,
       gateWorkspaceMcp: true,
       // HITL: interactive approval overlay; absent picker or cancel = deny.
       approvalHandler: async (req) => {
@@ -354,6 +356,7 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
         ? { pluginComponents: { plugins: pluginRt.plugins, mcpServers: pluginRt.mcpServers } }
         : {}),
       ...(built.run.permissionMode ? { permissionMode: built.run.permissionMode } : {}),
+      ...(opts.toolFilter ? { toolFilter: opts.toolFilter } : {}),
       sessionTranscript: session.messages.length
         ? session.messages.map((m, i) => ({
             productEntryId: `session:${i}`,

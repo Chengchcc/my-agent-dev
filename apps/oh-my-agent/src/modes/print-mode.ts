@@ -4,6 +4,7 @@ import { buildCliRunInput } from "../cli/initial-input.js";
 import { assemblePluginRuntime } from "../core/plugins/plugin-resolve.js";
 import { denyAllApprovals } from "../core/runtime/approval.js";
 import { createOmaRuntime } from "../core/runtime/create-runtime.js";
+import type { ToolFilter } from "../core/runtime/tool-filter.js";
 import { newSessionId } from "../core/session/session-file.js";
 import { persistSessionTurn } from "../core/session/session-loop.js";
 
@@ -13,6 +14,8 @@ export interface CliRunOptions {
   modelRuntime: ModelRuntime;
   /** Canonical `<provider>/<model>` id; undefined = first available. */
   model?: string;
+  /** --tools filter (CLI): applied to the final tool table. */
+  toolFilter?: ToolFilter;
 }
 /** Final assistant text of an outcome Message: the plain `text` field, or the
  *  concatenated text blocks. Never falls back to placeholder text. */
@@ -48,13 +51,13 @@ export async function runPrintMode(opts: CliRunOptions): Promise<number> {
     workspaceAccess: built.workspace.access,
     modelRuntime: opts.modelRuntime,
     skillRoots: built.run.skillRoots ?? [],
-    enableNativeTodo: true,
     gateWorkspaceMcp: true,
     approvalHandler: denyAllApprovals,
     ...(pluginRt.plugins.length || pluginRt.mcpServers.length
       ? { pluginComponents: { plugins: pluginRt.plugins, mcpServers: pluginRt.mcpServers } }
       : {}),
     ...(built.run.permissionMode ? { permissionMode: built.run.permissionMode } : {}),
+    ...(opts.toolFilter ? { toolFilter: opts.toolFilter } : {}),
   });
   try {
     const segment = await runtime.run(built);

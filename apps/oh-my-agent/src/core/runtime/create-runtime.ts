@@ -6,6 +6,7 @@ import type {
   ProjectedHistoryItem,
 } from "@chengchenccc/agent-contract";
 import type { ModelRuntime } from "@chengchenccc/ai";
+
 import type { Message } from "@chengchenccc/message";
 import type { RunEventEnvelope } from "../../protocol/index.js";
 import { mapRunEvent } from "../../protocol/index.js";
@@ -15,6 +16,7 @@ import type { PluginMcpConfig } from "../plugins/plugin-resolve.js";
 import type { ApprovalHandler } from "./approval.js";
 import type { Plugin } from "./plugin.js";
 import { assembleRunRuntime, type RunRuntime } from "./run-runtime.js";
+import type { ToolFilter } from "./tool-filter.js";
 
 /** The single Runtime assembly entry point for the Oma product.
  *  Every mode (print / json / rpc / future TUI) builds the SAME runtime from
@@ -41,10 +43,8 @@ export interface CreateOmaRuntimeOptions {
    *  persist (pi appendMessage). When set, the caller owns writing these
    *  messages to its session file as they happen. */
   onPersistMessages?: (messages: readonly Message[]) => void;
-  /** Standalone modes (TUI/print/json) expose oma's own todo tools backed by
-   *  `<workspace>/.oma/todo.json`. Backend-invoked RPC mode leaves this off:
-   *  todo comes from the backend-injected product MCP. */
-  enableNativeTodo?: boolean;
+  /** --tools filter (CLI): applied to the final tool table. */
+  toolFilter?: ToolFilter;
   /** Assembled plugin code components (from assemblePluginRuntime, mode
    *  layer). The runtime mounts them; it never reads the registry. */
   pluginComponents?: {
@@ -149,7 +149,6 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
     modelId: options.modelId,
     skillRoots: options.skillRoots,
     ...(options.onPersistMessages ? { onPersistMessages: options.onPersistMessages } : {}),
-    enableNativeTodo: options.enableNativeTodo ?? false,
     ...(options.pluginComponents?.plugins.length
       ? { codePlugins: options.pluginComponents.plugins }
       : {}),
@@ -159,6 +158,7 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
       ? { pluginMcpServers: options.pluginComponents.mcpServers }
       : {}),
     ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
+    ...(options.toolFilter ? { toolFilter: options.toolFilter } : {}),
   });
 
   let stopRequested = false;
