@@ -34,7 +34,7 @@ workflow 取代——DSL 描述 DAG，多节点类型，外部触发器，编辑
 2. 执行引擎：一次运行 = 一个 execution，节点级 context + 跨节点 store，事件流可观测。
 3. 触发器：现有 CronJob 增加 workflow target；新增 `POST /api/workflow-executions`。
 4. 编辑器 v1：只读画布 + 属性面板 + chat 改 DSL（git 提交）。
-5. 删除 `apps/backend/src/features/loop/`（workflow 取代，不做迁移）。
+5. 删除 `apps/backend/src/features/loop/`（workflow 取代，不做迁移）。连带删除 loop 相关 skills：`skills/loop-engine`、`skills/loop-workflow`；`skills/workflow-authoring` 若变为 loop 独占也一并在 loop 删除时清理（届时逐一核引用）。
 6. engine + editor 基础能力独立成 `@chengchenccc/workflow` 包，backend/web 消费它。
 
 ## Non-goals（v1）
