@@ -584,101 +584,83 @@ git commit -m "feat(workflow): add dry-run debug capability"
 
 ---
 
-### Task 6: HITL human task 表单渲染 + resolve UI
+### Task 6: `askQuestion` tool 能力 + 共享前端渲染器
 
 **Files:**
-- Create: `apps/web/src/components/workflow/WorkflowForm.tsx`
-- Modify: `apps/web/src/components/workflow/ExecutionTraceView.tsx`
+- Create: `apps/oh-my-agent/src/core/tools/ask-question.ts`（oma `askQuestion` tool）
+- Create: `apps/web/src/components/workflow/AskQuestionRenderer.tsx`（共享渲染器）
+- Modify: `apps/backend/src/features/workflow/node-runners.ts`（human 节点走 askQuestion tool）
 - Modify: `apps/backend/src/features/workflow/service.ts`（+ getPendingHuman）
 - Modify: `apps/backend/src/features/workflow/http.ts`（execution detail 带 pendingHuman）
-- Modify: `apps/web/src/lib/api.ts`
+- Modify: `apps/web/src/components/workflow/AgenticWorkflowEditor.tsx`（预览）
+- Modify: `apps/web/src/components/workflow/ExecutionTraceView.tsx`（resolve）
 
-- [ ] **Step 1: WorkflowForm.tsx（form schema 渲染器）**
+- [ ] **Step 1: oma `askQuestion` tool（Claude Code AskUserQuestion 式）**
+
+```typescript
+// apps/oh-my-agent/src/core/tools/ask-question.ts
+export const askQuestionTool = {
+  name: "askQuestion",
+  description: "Ask the user a question and wait for an answer. Returns the submitted value.",
+  inputSchema: {
+    question: { type: "string" },
+    // fields: Record<name, FormField>（string/textarea/number/enum/date/boolean）
+    fields: { type: "object", description: "Optional structured form fields" },
+  },
+};
+```
+
+oma runtime 注册该 tool；调用时 emit `human_task_requested`（executionId/nodeId/question/fields）+ 挂起，`resolve_approval`/`resolve_question` 返回 answer，tool result = answer。后端把每个 "pending human" 关联到一次 `askQuestion` 调用。
+
+- [ ] **Step 2: 共享前端渲染器 `AskQuestionRenderer.tsx`**
 
 ```tsx
 "use client";
-import type { FormField } from "@chengchenccc/workflow";
-
-export function WorkflowForm({
-  form,
+// 唯一 frontend 表达：question + fields（string/textarea/number/enum/date/boolean）
+// 被三处复用：
+//  1) workflow human 节点 resolve（ExecutionTraceView）
+//  2) 编辑器 inspector 预览 human 节点 form
+//  3) 普通 agent 对话中听到 askQuestion tool 调用（未来接 conversation）
+export function AskQuestionRenderer({
+  question,
+  fields,
   values,
   onChange,
   onSubmit,
 }: {
-  form: Record<string, FormField>;
+  question?: string;
+  fields: Record<string, any>;
   values: Record<string, unknown>;
-  onChange: (values: Record<string, unknown>) => void;
+  onChange: (v: Record<string, unknown>) => void;
   onSubmit?: () => void;
-}) {
-  function field(fieldName: string, spec: FormField) {
-    const value = values[fieldName];
-    const common = { className: "w-full rounded border p-1", id: `wf-field-${fieldName}` };
-    switch (spec.type) {
-      case "textarea":
-        return <textarea {...common} rows={4} value={(value as string) ?? ""} onChange={(e) => onChange({ ...values, [fieldName]: e.target.value })} />;
-      case "number":
-        return <input {...common} type="number" value={(value as number) ?? ""} onChange={(e) => onChange({ ...values, [fieldName]: e.target.value === "" ? undefined : Number(e.target.value) })} />;
-      case "enum":
-        return (
-          <select {...common} value={(value as string) ?? ""} onChange={(e) => onChange({ ...values, [fieldName]: e.target.value })}>
-            <option value="">—</option>
-            {(spec.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
-        );
-      case "date":
-        return <input {...common} type="date" value={(value as string) ?? ""} onChange={(e) => onChange({ ...values, [fieldName]: e.target.value })} />;
-      case "boolean":
-        return <input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange({ ...values, [fieldName]: e.target.checked })} />;
-      default:
-        return <input {...common} value={(value as string) ?? ""} onChange={(e) => onChange({ ...values, [fieldName]: e.target.value })} />;
-    }
-  }
-  return (
-    <form onSubmit={(e) => { e.preventDefault(); onSubmit?.(); }} className="space-y-3 p-4">
-      {Object.entries(form).map(([name, spec]) => (
-        <div key={name}>
-          <label className="block text-xs" htmlFor={`wf-field-${name}`}>
-            {spec.label ?? name}{spec.required ? " *" : ""}
-          </label>
-          {field(name, spec)}
-        </div>
-      ))}
-      {onSubmit && <button className="rounded bg-slate-800 px-3 py-1 text-white">Submit</button>}
-    </form>
-  );
-}
+}) { … 按 field.type 渲染，产出 values … }
 ```
 
-- [ ] **Step 2: backend 暴露 pending human form**
+- [ ] **Step 3: human 节点变为"askQuestion 调用"**
 
-`GET /api/workflow-executions/:id` 的响应加 `pendingHuman`（`svc.getPendingHuman(executionId, nodeId?)`，取 `workflow_pending_human`）。service 加 `getPendingHuman(executionId, nodeId?)`。
+不再自建 `WorkflowForm`/`createPendingHuman` 分支——**human 节点 = agent 在该节点调用 `askQuestion` tool**（或后端直接以一个 `askQuestion` 调用模拟）。`askQuestion` payload 的 `fields` 直接来自 node.form（或上游动态 `input.form`）。前端渲染 `AskQuestionRenderer(question, fields)`，提交 → `resolveHumanTask` → answer 作为 node output。
 
-- [ ] **Step 3: ExecutionTraceView 接 human task**
+- [ ] **Step 4: backend 暴露 pendingHuman + api.ts**
 
-当 `execution.status === "waiting_human"` 且存在 `pendingHuman` 时，右侧渲染 `WorkflowForm(form)` 填表 → `api.resolveWorkflowHumanTask(executionId, { nodeId, answer })` → 刷新 trace。
+`GET /api/workflow-executions/:id` 响应带 `pendingHuman`（含 `question/fields/status`）；service 加 `getPendingHuman(executionId, nodeId?)`。web `resolveWorkflowHumanTask` 保留。
 
-- [ ] **Step 4: api.ts**
+- [ ] **Step 5: 预览 + resolve 接线**
 
-```typescript
-resolveWorkflowHumanTask: (executionId: string, body: { nodeId: string; answer?: Record<string, unknown> }) =>
-  unwrap(client.api["workflow-executions"]({ executionId })["human-task"].post(body)),
-```
+- Inspector 选中 human 节点 → 右侧显示 `AskQuestionRenderer`（`node.form` 预览、只读/可编辑 form）。
+- `ExecutionTraceView` 在 `waiting_human` 时渲染 `AskQuestionRenderer`（用 pendingHuman 的 question/fields）→ 提交 `resolveWorkflowHumanTask`。
 
-（已在 Plan 3 加过；确认保留。）
+- [ ] **Step 6: 测试 + 全量验证**
 
-- [ ] **Step 5: 测试 + 全量验证**
-
-Run: `cd apps/backend && bun test src/features/workflow && cd ../web && bun run typecheck && bun run lint`
+Run: `cd apps/backend && bun test src/features/workflow && cd ../web && bun run typecheck && bun run lint && cd ../oh-my-agent && bun test`
 Expected: PASS。
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add apps/web/src/components/workflow/WorkflowForm.tsx apps/backend/src/features/workflow apps/web/src/components/workflow/ExecutionTraceView.tsx apps/web/src/lib/api.ts
-git commit -m "feat(workflow): render human task form schema and resolve hitl"
+git add apps/oh-my-agent/src/core/tools/ask-question.ts apps/web/src/components/workflow/AskQuestionRenderer.tsx apps/backend/src/features/workflow apps/web/src/components/workflow
+git commit -m "feat(workflow): askQuestion tool capability with shared frontend renderer"
 ```
 
----
 
 ### Task 7: 全量收口 + E2E DOM 验证
 
