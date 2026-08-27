@@ -104,7 +104,7 @@ index.ts           — Barrel re-exports
 ```
 
 ### Agent Session Creation
-`createOmaSession(opts)` in `packages/agent/src/runtime/agent-loop.ts` materializes an Oma session:
+`createOmaSession(opts)` in `apps/oh-my-agent/src/core/runtime/agent-loop.ts` materializes an Oma session:
 ```typescript
 {
   sessionId: string;
@@ -119,7 +119,7 @@ index.ts           — Barrel re-exports
 Backend run dispatch (`apps/backend/src/features/agent-run/execution.ts`) enqueues inputs, spawns the oma child through `packages/adapter-oma-agent`, and persists canonical messages via the conversation ledger.
 
 ### Plugin System
-Plugins are plain objects `{ name, hooks?, tools?, meta? }` contributing tools, lifecycle hooks, and meta sections (see `Plugin` in `packages/agent/src/runtime/plugin.ts`):
+Plugins are plain objects `{ name, hooks?, tools?, meta? }` contributing tools, lifecycle hooks, and meta sections (see `Plugin` in `apps/oh-my-agent/src/core/runtime/plugin.ts`):
 ```typescript
 interface PluginHooks {
   beforeRun?(messages, rt): void;
@@ -165,11 +165,11 @@ Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop
 | `apps/backend/src/main.ts` | Composition root — wires all services, adapters, routes |
 | `apps/backend/src/app.ts` | Elysia app factory — mounts all feature routers |
 | `apps/backend/src/features/agent-run/execution.ts` | Run dispatch, transient SSE subscription, terminalize |
-| `apps/backend/src/infra/db/schema.ts` | Drizzle schema — 21 tables, single SQLite file |
-| `packages/agent/src/runtime/agent-loop.ts` | `createOmaSession()` — the agent loop |
-| `packages/agent/src/runtime/plugin.ts` | `Plugin`/`PluginHooks`, `validatePlugins()` |
+| `apps/backend/src/infra/db/schema.ts` | Drizzle schema — 20 tables, single SQLite file |
+| `apps/oh-my-agent/src/core/runtime/agent-loop.ts` | `createOmaSession()` — the agent loop |
+| `apps/oh-my-agent/src/core/runtime/plugin.ts` | `Plugin`/`PluginHooks`, `validatePlugins()` |
 | `packages/message/src/chat-model.ts` | `ChatModel` contract |
-| `packages/loop/src/loop-reducer.ts` | Pure reducer for Loop item state machine |
+| `apps/backend/src/features/loop/loop-reducer.ts` | Pure reducer for Loop item state machine |
 | `packages/ai/src/providers/anthropic-messages.ts` | Anthropic Messages API adapter |
 | `apps/web/src/lib/api.ts` | Typed API client (Eden Treaty) |
 | `apps/web/src/lib/client.ts` | BFF client + `unwrap()` helper |
