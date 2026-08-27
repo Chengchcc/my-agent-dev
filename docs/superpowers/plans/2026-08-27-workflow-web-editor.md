@@ -136,7 +136,11 @@ git commit -m "feat(workflow): add workflow definition read/write endpoints"
 
 - [ ] **Step 1: 加 web 依赖**
 
-`apps/web/package.json` dependencies 加 `"@chengchenccc/workflow": "workspace:*"`，根跑 `bun install`。
+`apps/web/package.json` dependencies 加：
+- `"@chengchenccc/workflow": "workspace:*"`
+- `"@xyflow/react": "^12.0.0"`
+
+根跑 `bun install`。
 
 - [ ] **Step 2: api.ts 加 workflow methods**
 
@@ -247,10 +251,13 @@ export function AgenticWorkflowEditor({
 }
 ```
 
-- [ ] **Step 3: WorkflowCanvas.tsx（只读 SVG）**
+- [ ] **Step 3: WorkflowCanvas.tsx（React Flow）**
 
 ```tsx
 "use client";
+import { useMemo } from "react";
+import { ReactFlow, Background, type Edge, type Node } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import type { EditorGraph } from "@chengchenccc/workflow";
 
 export function WorkflowCanvas({
@@ -260,42 +267,37 @@ export function WorkflowCanvas({
   graph: EditorGraph;
   onSelect: (id: string) => void;
 }) {
-  const width = Math.max(...graph.nodes.map((n) => n.x)) + 260;
-  const height = Math.max(...graph.nodes.map((n) => n.y + 100));
+  const nodes: Node[] = useMemo(
+    () =>
+      graph.nodes.map((n) => ({
+        id: n.id,
+        position: { x: n.x, y: n.y },
+        data: { label: n.label, type: n.type, layer: n.layer },
+      })),
+    [graph],
+  );
+  const edges: Edge[] = useMemo(
+    () =>
+      graph.edges.map((e) => ({
+        id: e.id,
+        source: e.from,
+        target: e.to,
+        label: e.label,
+      })),
+    [graph],
+  );
   return (
-    <svg width={width} height={height} className="block">
-      {graph.edges.map((e) => {
-        const from = graph.nodes.find((n) => n.id === e.from)!;
-        const to = graph.nodes.find((n) => n.id === e.to)!;
-        return (
-          <line
-            key={e.id}
-            x1={from.x + 130}
-            y1={from.y + 50}
-            x2={to.x + 130}
-            y2={to.y + 50}
-            stroke="#94a3b8"
-            strokeWidth={2}
-          />
-        );
-      })}
-      {graph.nodes.map((n) => (
-        <g key={n.id} onClick={() => onSelect(n.id)} className="cursor-pointer">
-          <rect x={n.x} y={n.y} width={260} height={100} rx={12} className="fill-white stroke-slate-300" />
-          <text x={n.x + 12} y={n.y + 24} className="fill-slate-900 text-sm font-medium">
-            {n.label}
-          </text>
-          <text x={n.x + 12} y={n.y + 48} className="fill-slate-500 text-xs">
-            {n.type}
-          </text>
-          {n.layer !== undefined && (
-            <text x={n.x + 12} y={n.y + 76} className="fill-slate-400 text-[10px]">
-              layer {n.layer}
-            </text>
-          )}
-        </g>
-      ))}
-    </svg>
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      nodesDraggable={false}
+      nodesConnectable={false}
+      elementsSelectable={true}
+      fitView
+      onNodeClick={(_, node) => onSelect(node.id)}
+    >
+      <Background />
+    </ReactFlow>
   );
 }
 ```
@@ -543,5 +545,5 @@ git commit -m "feat(web): add agentic workflow nav entry"
 
 - **file-first：** `dataDir/workflows/*.workflow.json` 是 v1 本地存储，非 git 仓库；真实 git loader/commit 在后续 plan（换 `loadWorkflow`/`saveWorkflowDefinition` 实现，web 层不变）。
 - **chat 改 DSL（v2）：** 右侧 DSL 面板是 Monaco JSON 编辑；"让 agent 生成补丁"占位。后续接现有 conversation chat（reuse `useConversation`/SSE/send message）让 agent 产出 DSL patch 后回填。
-- **画布：** v1 纯 SVG 只读，直接消费 `@chengchenccc/workflow` `toEditorGraph`/`layeredLayout`；v2 拖拽连线再引入 `@xyflow/react`。
+- **画布：** v1 用 `@xyflow/react`（react-flow）渲染，直接消费 `@chengchenccc/workflow` `toEditorGraph`/`layeredLayout`；`nodesDraggable=false` 只读，v2 开启拖拽连线即可（`nodesDraggable/nodesConnectable=true`）。
 - **测试：** 该 plan 以 typecheck/lint + backend http test 为主；真 DOM 渲染验证（headless Chrome）留到 Plan 3 最终联调的一步，按仓库既有记忆模式。
