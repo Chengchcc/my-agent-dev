@@ -160,7 +160,12 @@ export function parseWorkflow(raw: unknown): WorkflowDefinition {
       }
       const from = nonEmptyString(e.from, "edge.from", issues);
       const to = nonEmptyString(e.to, "edge.to", issues);
-      if (from && to) edges.push({ from, to, when: e.when as JsonLogicRule | undefined });
+      if (from && to)
+        edges.push({
+          from,
+          to,
+          when: e.when === null ? undefined : (e.when as JsonLogicRule | undefined),
+        });
     }
   } else {
     issues.push("edges must be an array");

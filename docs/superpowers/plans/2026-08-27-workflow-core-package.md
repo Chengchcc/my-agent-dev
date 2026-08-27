@@ -1408,7 +1408,7 @@ export * from "./editor/graph-model.js";
 - [ ] **Step 2: 全量验证（所有命令在仓库根执行，不要 cd 到子包）**
 
 Run: `cd packages/workflow && bun test`
-Expected: 全部测试 PASS（json-logic 5 + graph 5 + engine 5 + parse 7 + editor 2 = 24）。
+	Expected: 全部测试 PASS（json-logic 5 + graph 5 + engine 6 + parse 7 + editor 2 = 25）。
 
 Run: `cd packages/workflow && bun run typecheck`
 Expected: PASS（修复后的 json-logic 对 noUncheckedIndexedAccess 安全）。

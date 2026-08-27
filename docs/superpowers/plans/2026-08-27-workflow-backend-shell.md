@@ -2,15 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在 `apps/backend/src/features/workflow/` 实现 agentic workflow 执行壳：持久化 execution + node-run、三节点 runner（script/agent/human）、纯引擎驱动循环、HTTP API（POST + SSE + human-task resolve）、bootstrapping 接线。
+**Goal:** 在 `apps/backend/src/features/workflow/` 实现 agentic workflow 执行壳：持久化 execution + node-run + pending-human、节点 runner（script/agent/human）、纯引擎驱动循环（含 human 挂起/恢复、retry→failure）、HTTP API（POST `{workflowRef, input}` + SSE 事件流 + human-task resolve）、bootstrapping 接线。
 
-**Architecture:** 新增六边形 feature（domain/ports/adapter-sqlite/service/http）。消费已落地的 `@chengchenccc/workflow`（computeNext/routeOutgoing/mergeInputs/CompletionRecord）。节点执行走现有 infra：agent → `agentRunService.enqueueAndAcquire` + `agentRunExecution.dispatch/subscribe`；human → `pendingAction` 挂起/恢复；script → Bun 临时文件 import。
+**Architecture:** 新增六边形 feature（domain/ports/adapter-sqlite/node-runners/service/http/event-bus）。消费已落地的 `@chengchenccc/workflow`。agent 节点走 `agentRunService.enqueueAndAcquire` + `agentRunExecution.dispatch/subscribe`；human 走独立 pending-human 表（不复用 `pending_action`，因为它 FK 到 agent_run 且语义是 approve/deny）；script 走 Bun 临时文件 import。
 
-**Tech Stack:** Bun 1.3, Elysia, Drizzle ORM + SQLite, `@chengchenccc/workflow`, bun:test。
+**Tech Stack:** Bun 1.3, Elysia, Drizzle ORM + SQLite, `@chengchenccc/workflow`, bun:test。spec:`docs/superpowers/specs/2026-08-27-agentic-workflow-design.md`。
 
-Spec: `docs/superpowers/specs/2026-08-27-agentic-workflow-design.md`
-
-**范围外（后续 plan）：** CronJob workflow target、loop 删除、编辑器 web。
+**范围外（后续 plan）：** CronJob workflow target、loop 删除、编辑器 web、workflowRef→git 仓库 loader 的真实实现（本 plan 用注入的 `loadWorkflow`，测试用 stub）。
 
 ---
 
@@ -18,21 +16,21 @@ Spec: `docs/superpowers/specs/2026-08-27-agentic-workflow-design.md`
 
 ```
 apps/backend/src/features/workflow/
-  domain.ts                # WorkflowExecutionRow / WorkflowNodeRunRow / 状态
-  ports.ts                 # WorkflowExecutionPort
+  domain.ts                # WorkflowExecutionRow / WorkflowNodeRunRow / WorkflowPendingHumanRow
+  ports.ts                 # WorkflowExecutionPort（含 pendingHuman CRUD）
   adapter-sqlite.ts        # sqliteWorkflowExecutionAdapter(db)
-  node-runners.ts          # createNodeRunners({...}) → {agent, script, human}
-  service.ts               # createWorkflowExecutionService + 纯引擎循环
+  node-runners.ts          # createNodeRunners({dataDir, agentRunService}) → {script, human}; agent 由 service 内联实现
+  event-bus.ts             # per-execution AsyncIterable 事件队列
+  service.ts               # createWorkflowExecutionService（引擎循环 + human 恢复 + retry/failure）
   http.ts                  # workflowRoutes
   index.ts                 # barrel
   *.test.ts
 
-apps/backend/src/infra/db/schema.ts        # + workflowExecution/workflowNodeRun 两表
+apps/backend/src/infra/db/schema.ts        # + workflowExecution / workflowNodeRun / workflowPendingHuman
 apps/backend/drizzle/backend/0040_workflow_execution.sql
-apps/backend/drizzle/backend/meta/_journal.json   # + idx 40
-apps/backend/src/bootstrap/features.ts     # 接线 workflow feature
-apps/backend/src/bootstrap/services.ts     # 无需改（db 已存在）
-apps/backend/src/app.ts                    # FeatureSet + .use(workflowExecutions)
+apps/backend/drizzle/backend/meta/_journal.json
+apps/backend/src/bootstrap/features.ts
+apps/backend/src/app.ts
 ```
 
 ---
@@ -44,23 +42,18 @@ apps/backend/src/app.ts                    # FeatureSet + .use(workflowExecution
 - Create: `apps/backend/drizzle/backend/0040_workflow_execution.sql`
 - Modify: `apps/backend/drizzle/backend/meta/_journal.json`
 
-- [ ] **Step 1: schema.ts 增加两表**（追加到 `cronJob` 表定义之后）
+- [ ] **Step 1: schema.ts 增加三表**
 
 ```typescript
-// Workflow execution: one run of a WorkflowDefinition DSL.
 export const workflowExecution = sqliteTable(
   "workflow_execution",
   {
     executionId: text("execution_id").notNull().primaryKey(),
     workflowId: text("workflow_id").notNull(),
-    /** JSON snapshot of the WorkflowDefinition that started this execution. */
-    definition: text("definition").notNull(),
-    /** JSON trigger input vars (start node input). */
-    input: text("input").notNull(),
-    /** Execution-scoped store (JSON KV). */
+    definition: text("definition").notNull(), // JSON: WorkflowDefinition snapshot
+    input: text("input").notNull(),           // JSON: trigger input vars
     store: text("store").notNull().default("{}"),
     status: text().notNull().default("running"), // running | waiting_human | success | failure | custom
-    /** exit status label (end node status). */
     exit: text(),
     error: text(),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
@@ -68,31 +61,39 @@ export const workflowExecution = sqliteTable(
   },
 );
 
-// Per-node run record (one row per node execution/attempt).
 export const workflowNodeRun = sqliteTable(
   "workflow_node_run",
   {
     seq: integer().primaryKey({ autoIncrement: true }),
-    executionId: text("execution_id")
-      .notNull()
-      .references(() => workflowExecution.executionId, { onDelete: "cascade" }),
+    executionId: text("execution_id").notNull().references(() => workflowExecution.executionId, { onDelete: "cascade" }),
     nodeId: text("node_id").notNull(),
-    /** runtime status: running | completed | failed | waiting_human */
-    status: text().notNull().default("running"),
+    status: text().notNull().default("running"), // running | waiting_human | completed | failed
     order: integer().notNull(),
-    /** JSON node output. */
-    output: text(),
-    /** JSON routed targets (frozen at completion). */
-    routedTo: text(),
+    output: text(),       // JSON
+    routedTo: text(),     // JSON string[]
     error: text(),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     terminalAt: integer("terminal_at", { mode: "number" }),
   },
   (table) => [index("idx_workflow_node_run_exec").on(table.executionId, table.seq)],
 );
+
+export const workflowPendingHuman = sqliteTable(
+  "workflow_pending_human",
+  {
+    executionId: text("execution_id").notNull().references(() => workflowExecution.executionId, { onDelete: "cascade" }),
+    nodeId: text("node_id").notNull(),
+    question: text(),
+    form: text(),         // JSON Record<string, FormField>
+    status: text().notNull().default("pending"), // pending | resolved
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+    terminalAt: integer("terminal_at", { mode: "number" }),
+  },
+  (table) => [primaryKey({ columns: [table.executionId, table.nodeId] })],
+);
 ```
 
-- [ ] **Step 2: 创建 migration SQL**（两条语句必须带 `--> statement-breakpoint`）
+- [ ] **Step 2: 创建 migration SQL**（每条间 `--> statement-breakpoint`）
 
 ```sql
 CREATE TABLE IF NOT EXISTS workflow_execution (
@@ -119,32 +120,34 @@ CREATE TABLE IF NOT EXISTS workflow_node_run (
   created_at integer NOT NULL,
   terminal_at integer
 );--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS idx_workflow_node_run_exec ON workflow_node_run(execution_id, seq);
+CREATE INDEX IF NOT EXISTS idx_workflow_node_run_exec ON workflow_node_run(execution_id, seq);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS workflow_pending_human (
+  execution_id text NOT NULL REFERENCES workflow_execution(execution_id) ON DELETE CASCADE,
+  node_id text NOT NULL,
+  question text,
+  form text,
+  status text NOT NULL DEFAULT 'pending',
+  created_at integer NOT NULL,
+  terminal_at integer,
+  PRIMARY KEY (execution_id, node_id)
+);
 ```
 
 - [ ] **Step 3: journal 追加 idx 40**
 
-在 `meta/_journal.json` 的 `entries` 数组末尾追加：
-
 ```json
-{
-  "idx": 40,
-  "version": "7",
-  "when": 1788200000000,
-  "tag": "0040_workflow_execution",
-  "breakpoints": true
-}
+{ "idx": 40, "version": "7", "when": 1788200000000, "tag": "0040_workflow_execution", "breakpoints": true }
 ```
 
 - [ ] **Step 4: 验证迁移**
 
-Run: `cd apps/backend && bun test`（现有 schema/migrate 测试确保新表能被迁移器读取；若有 `migrate.test.ts` / schema.test.ts 确认 PRAGMA table_info 含 workflow_execution/workflow_node_run）。
+Run: `cd apps/backend && bun test`（现有 schema 迁移测试会跑 0040；如无专门断言，用 `openDb(":memory:")` 后 `PRAGMA table_info(workflow_execution)` 手查）。
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add apps/backend/src/infra/db/schema.ts apps/backend/drizzle/backend/0040_workflow_execution.sql apps/backend/drizzle/backend/meta/_journal.json
-git commit -m "feat(workflow): add workflow execution and node run schema"
+git commit -m "feat(workflow): add workflow execution schema and migration"
 ```
 
 ---
@@ -160,23 +163,15 @@ git commit -m "feat(workflow): add workflow execution and node run schema"
 ```typescript
 import type { WorkflowDefinition } from "@chengchenccc/workflow";
 
-export type WorkflowExecutionStatus =
-  | "running"
-  | "waiting_human"
-  | "success"
-  | "failure"
-  | "custom";
-
+export type WorkflowExecutionStatus = "running" | "waiting_human" | "success" | "failure" | "custom";
 export type WorkflowNodeRunStatus = "running" | "waiting_human" | "completed" | "failed";
+export type WorkflowPendingHumanStatus = "pending" | "resolved";
 
 export interface WorkflowExecutionRow {
   executionId: string;
   workflowId: string;
-  /** JSON-serialized WorkflowDefinition snapshot. */
   definition: WorkflowDefinition;
-  /** Trigger input vars. */
   input: Record<string, unknown>;
-  /** Execution-scoped KV store. */
   store: Record<string, unknown>;
   status: WorkflowExecutionStatus;
   exit?: string;
@@ -194,6 +189,16 @@ export interface WorkflowNodeRunRow {
   output?: Record<string, unknown>;
   routedTo?: string[];
   error?: string;
+  createdAt: number;
+  terminalAt?: number;
+}
+
+export interface WorkflowPendingHumanRow {
+  executionId: string;
+  nodeId: string;
+  question?: string;
+  form?: Record<string, unknown>;
+  status: WorkflowPendingHumanStatus;
   createdAt: number;
   terminalAt?: number;
 }
@@ -228,22 +233,19 @@ import type {
   CreateWorkflowExecutionInput,
   WorkflowExecutionRow,
   WorkflowNodeRunRow,
+  WorkflowPendingHumanRow,
 } from "./domain.js";
 
 export interface WorkflowExecutionPort {
   createExecution(input: CreateWorkflowExecutionInput): Promise<WorkflowExecutionRow>;
   getExecution(executionId: string): Promise<WorkflowExecutionRow | null>;
-  updateExecution(
-    executionId: string,
-    patch: Partial<Pick<WorkflowExecutionRow, "status" | "exit" | "error" | "store" | "terminalAt">>,
-  ): Promise<WorkflowExecutionRow | null>;
+  updateExecution(executionId: string, patch: Partial<Pick<WorkflowExecutionRow, "status" | "exit" | "error" | "store" | "terminalAt">>): Promise<WorkflowExecutionRow | null>;
   appendNodeRun(input: AppendNodeRunInput): Promise<WorkflowNodeRunRow>;
-  updateNodeRun(
-    executionId: string,
-    nodeId: string,
-    patch: Partial<Pick<WorkflowNodeRunRow, "status" | "output" | "routedTo" | "error" | "terminalAt">>,
-  ): Promise<WorkflowNodeRunRow | null>;
+  updateNodeRun(executionId: string, nodeId: string, patch: Partial<Pick<WorkflowNodeRunRow, "status" | "output" | "routedTo" | "error" | "terminalAt">>): Promise<WorkflowNodeRunRow | null>;
   listNodeRuns(executionId: string): Promise<WorkflowNodeRunRow[]>;
+  createPendingHuman(row: WorkflowPendingHumanRow): Promise<WorkflowPendingHumanRow>;
+  getPendingHuman(executionId: string, nodeId: string): Promise<WorkflowPendingHumanRow | null>;
+  markPendingHumanResolved(executionId: string, nodeId: string): Promise<void>;
   listRunningExecutions(): Promise<WorkflowExecutionRow[]>;
   listWaitingHumanExecutions(): Promise<WorkflowExecutionRow[]>;
 }
@@ -268,8 +270,13 @@ git commit -m "feat(workflow): add workflow domain and port contracts"
 
 ```typescript
 import { describe, expect, test } from "bun:test";
-import { createWorkflowExecutionAdapter } from "./adapter-sqlite.js";
+import { openDb } from "../../infra/sqlite/db.js";
+import { sqliteWorkflowExecutionAdapter } from "./adapter-sqlite.js";
+import type { WorkflowExecutionPort } from "./ports.js";
 import type { WorkflowDefinition } from "@chengchenccc/workflow";
+
+const db = openDb(":memory:");
+const adapter: WorkflowExecutionPort = sqliteWorkflowExecutionAdapter(db);
 
 const def: WorkflowDefinition = {
   version: 1,
@@ -282,24 +289,26 @@ const def: WorkflowDefinition = {
 };
 
 describe("sqliteWorkflowExecutionAdapter", () => {
-  test("create/get execution and append/update node runs", async (t) => {
-    const db = await import("@my-agent-team/backend").then((m) => m.createTestDb()); // or in-memory
-    const port = createWorkflowExecutionAdapter(db);
-    await port.createExecution({ executionId: "e1", workflowId: "wf", definition: def, input: {}, store: {} });
-    const row = await port.getExecution("e1");
+  test("create execution, node runs, pending human", async () => {
+    await adapter.createExecution({ executionId: "e1", workflowId: "wf", definition: def, input: {}, store: {} });
+    const row = await adapter.getExecution("e1");
     expect(row?.workflowId).toBe("wf");
 
-    const nodeRun = await port.appendNodeRun({ executionId: "e1", nodeId: "start", status: "completed", order: 0 });
+    const nodeRun = await adapter.appendNodeRun({ executionId: "e1", nodeId: "start", status: "completed", order: 0 });
     expect(nodeRun.nodeId).toBe("start");
-    await port.updateNodeRun("e1", "start", { output: { ok: true }, routedTo: ["done"] });
-    const runs = await port.listNodeRuns("e1");
+    await adapter.updateNodeRun("e1", "start", { output: { ok: true }, routedTo: ["done"] });
+    const runs = await adapter.listNodeRuns("e1");
     expect(runs[0]!.output).toEqual({ ok: true });
     expect(runs[0]!.routedTo).toEqual(["done"]);
+
+    await adapter.createPendingHuman({ executionId: "e1", nodeId: "h1", question: "ok?", form: {}, status: "pending", createdAt: Date.now() });
+    const ph = await adapter.getPendingHuman("e1", "h1");
+    expect(ph?.status).toBe("pending");
+    await adapter.markPendingHumanResolved("e1", "h1");
+    expect((await adapter.getPendingHuman("e1", "h1"))?.status).toBe("resolved");
   });
 });
 ```
-
-（若 `createTestDb` 不存在，用 `openDb(":memory:")` 代替；需查 backend 测试 DB 注入方式。）
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -310,18 +319,19 @@ Expected: FAIL — `Cannot find module './adapter-sqlite.js'`
 
 ```typescript
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { and, eq } from "drizzle-orm";
 import type { Database } from "bun:sqlite";
-import { eq } from "drizzle-orm";
-import { workflowExecution, workflowNodeRun } from "../../infra/db/schema.js";
+import { workflowExecution, workflowNodeRun, workflowPendingHuman } from "../../infra/db/schema.js";
 import type {
   AppendNodeRunInput,
   CreateWorkflowExecutionInput,
   WorkflowExecutionRow,
   WorkflowNodeRunRow,
+  WorkflowPendingHumanRow,
 } from "./domain.js";
 import type { WorkflowExecutionPort } from "./ports.js";
 
-function toExecutionRow(r: typeof workflowExecution.$inferSelect): WorkflowExecutionRow {
+function toExec(r: typeof workflowExecution.$inferSelect): WorkflowExecutionRow {
   return {
     executionId: r.executionId,
     workflowId: r.workflowId,
@@ -336,7 +346,7 @@ function toExecutionRow(r: typeof workflowExecution.$inferSelect): WorkflowExecu
   };
 }
 
-function toNodeRunRow(r: typeof workflowNodeRun.$inferSelect): WorkflowNodeRunRow {
+function toNodeRun(r: typeof workflowNodeRun.$inferSelect): WorkflowNodeRunRow {
   return {
     seq: r.seq,
     executionId: r.executionId,
@@ -351,8 +361,20 @@ function toNodeRunRow(r: typeof workflowNodeRun.$inferSelect): WorkflowNodeRunRo
   };
 }
 
-export function createWorkflowExecutionAdapter(db: Database): WorkflowExecutionPort {
-  const d = drizzle(db, { schema: { workflowExecution, workflowNodeRun } });
+function toPending(r: typeof workflowPendingHuman.$inferSelect): WorkflowPendingHumanRow {
+  return {
+    executionId: r.executionId,
+    nodeId: r.nodeId,
+    question: r.question ?? undefined,
+    form: r.form ? JSON.parse(r.form) : undefined,
+    status: r.status as WorkflowPendingHumanRow["status"],
+    createdAt: r.createdAt,
+    terminalAt: r.terminalAt ?? undefined,
+  };
+}
+
+export function sqliteWorkflowExecutionAdapter(db: Database): WorkflowExecutionPort {
+  const d = drizzle(db, { schema: { workflowExecution, workflowNodeRun, workflowPendingHuman } });
   return {
     async createExecution(input: CreateWorkflowExecutionInput) {
       const [row] = await d.insert(workflowExecution).values({
@@ -364,12 +386,12 @@ export function createWorkflowExecutionAdapter(db: Database): WorkflowExecutionP
         status: input.status ?? "running",
         createdAt: input.createdAt ?? Date.now(),
       }).returning();
-      return toExecutionRow(row!);
+      return toExec(row!);
     },
     async getExecution(executionId) {
       const rows = await d.select().from(workflowExecution).where(eq(workflowExecution.executionId, executionId));
       const r = rows[0];
-      return r ? toExecutionRow(r) : null;
+      return r ? toExec(r) : null;
     },
     async updateExecution(executionId, patch) {
       const values: Record<string, unknown> = {};
@@ -378,8 +400,7 @@ export function createWorkflowExecutionAdapter(db: Database): WorkflowExecutionP
       if (patch.error !== undefined) values.error = patch.error;
       if (patch.store !== undefined) values.store = JSON.stringify(patch.store);
       if (patch.terminalAt !== undefined) values.terminalAt = patch.terminalAt;
-      if (Object.keys(values).length === 0) return this.getExecution(executionId);
-      await d.update(workflowExecution).set(values).where(eq(workflowExecution.executionId, executionId));
+      if (Object.keys(values).length > 0) await d.update(workflowExecution).set(values).where(eq(workflowExecution.executionId, executionId));
       return this.getExecution(executionId);
     },
     async appendNodeRun(input: AppendNodeRunInput) {
@@ -393,7 +414,7 @@ export function createWorkflowExecutionAdapter(db: Database): WorkflowExecutionP
         error: input.error ?? null,
         createdAt: input.createdAt ?? Date.now(),
       }).returning();
-      return toNodeRunRow(row!);
+      return toNodeRun(row!);
     },
     async updateNodeRun(executionId, nodeId, patch) {
       const values: Record<string, unknown> = {};
@@ -402,32 +423,50 @@ export function createWorkflowExecutionAdapter(db: Database): WorkflowExecutionP
       if (patch.routedTo !== undefined) values.routedTo = patch.routedTo ? JSON.stringify(patch.routedTo) : null;
       if (patch.error !== undefined) values.error = patch.error;
       if (patch.terminalAt !== undefined) values.terminalAt = patch.terminalAt;
-      if (Object.keys(values).length === 0) return null;
-      await d.update(workflowNodeRun).set(values).where(
-        (w: typeof workflowNodeRun) => eq(w.executionId, executionId) && eq(w.nodeId, nodeId),
-      );
-      const rows = await d.select().from(workflowNodeRun).where(
-        (w: typeof workflowNodeRun) => eq(w.executionId, executionId) && eq(w.nodeId, nodeId),
-      );
+      if (Object.keys(values).length > 0) {
+        await d.update(workflowNodeRun).set(values).where(and(eq(workflowNodeRun.executionId, executionId), eq(workflowNodeRun.nodeId, nodeId)));
+      }
+      const rows = await d.select().from(workflowNodeRun).where(and(eq(workflowNodeRun.executionId, executionId), eq(workflowNodeRun.nodeId, nodeId)));
       const r = rows[0];
-      return r ? toNodeRunRow(r) : null;
+      return r ? toNodeRun(r) : null;
     },
     async listNodeRuns(executionId) {
       const rows = await d.select().from(workflowNodeRun).where(eq(workflowNodeRun.executionId, executionId)).orderBy(workflowNodeRun.seq);
-      return rows.map(toNodeRunRow);
+      return rows.map(toNodeRun);
+    },
+    async createPendingHuman(row) {
+      const [r] = await d.insert(workflowPendingHuman).values({
+        executionId: row.executionId,
+        nodeId: row.nodeId,
+        question: row.question ?? null,
+        form: row.form ? JSON.stringify(row.form) : null,
+        status: row.status,
+        createdAt: row.createdAt,
+      }).returning();
+      return toPending(r!);
+    },
+    async getPendingHuman(executionId, nodeId) {
+      const rows = await d.select().from(workflowPendingHuman).where(
+        and(eq(workflowPendingHuman.executionId, executionId), eq(workflowPendingHuman.nodeId, nodeId)),
+      );
+      const r = rows[0];
+      return r ? toPending(r) : null;
+    },
+    async markPendingHumanResolved(executionId, nodeId) {
+      await d.update(workflowPendingHuman).set({ status: "resolved", terminalAt: Date.now() }).where(
+        and(eq(workflowPendingHuman.executionId, executionId), eq(workflowPendingHuman.nodeId, nodeId)),
+      );
     },
     async listRunningExecutions() {
       const rows = await d.select().from(workflowExecution).where(eq(workflowExecution.status, "running"));
-      return rows.map(toExecutionRow);
+      return rows.map(toExec);
     },
     async listWaitingHumanExecutions() {
       const rows = await d.select().from(workflowExecution).where(eq(workflowExecution.status, "waiting_human"));
-      return rows.map(toExecutionRow);
+      return rows.map(toExec);
     },
   };
 }
-
-export type WorkflowExecutionAdapter = ReturnType<typeof createWorkflowExecutionAdapter>;
 ```
 
 - [ ] **Step 4: 跑测试确认通过**
@@ -444,13 +483,64 @@ git commit -m "feat(workflow): add workflow execution sqlite adapter"
 
 ---
 
-### Task 4: node runners
+### Task 4: event bus + node runners
 
 **Files:**
-- Create: `apps/backend/src/features/workflow/node-runners.test.ts`
+- Create: `apps/backend/src/features/workflow/event-bus.ts`
 - Create: `apps/backend/src/features/workflow/node-runners.ts`
+- Create: `apps/backend/src/features/workflow/node-runners.test.ts`
 
-- [ ] **Step 1: 写失败测试 node-runners.test.ts**
+- [ ] **Step 1: 创建 event-bus.ts**
+
+```typescript
+export interface WorkflowEvent {
+  event: string;
+  executionId: string;
+  ts: number;
+  data: unknown;
+}
+
+class Queue {
+  private items: WorkflowEvent[] = [];
+  private wake: (() => void) | null = null;
+  push(ev: WorkflowEvent): void {
+    this.items.push(ev);
+    if (this.wake) {
+      const w = this.wake;
+      this.wake = null;
+      w();
+    }
+  }
+  async *consume(): AsyncIterable<WorkflowEvent> {
+    for (;;) {
+      while (this.items.length > 0) {
+        const ev = this.items.shift()!;
+        yield ev;
+        if (ev.event === "execution_terminal") return;
+      }
+      await new Promise<void>((resolve) => {
+        this.wake = resolve;
+      });
+    }
+  }
+}
+
+export class ExecutionEventBus {
+  private queues = new Map<string, Queue>();
+  emit(ev: WorkflowEvent): void {
+    const q = this.queues.get(ev.executionId) ?? new Queue();
+    this.queues.set(ev.executionId, q);
+    q.push(ev);
+  }
+  subscribe(executionId: string): AsyncIterable<WorkflowEvent> {
+    const q = this.queues.get(executionId) ?? new Queue();
+    this.queues.set(executionId, q);
+    return q.consume();
+  }
+}
+```
+
+- [ ] **Step 2: 写失败测试 node-runners.test.ts**
 
 ```typescript
 import { describe, expect, test } from "bun:test";
@@ -466,42 +556,44 @@ describe("createNodeRunners", () => {
     expect(out.output).toEqual({ sent: 1 });
   });
 
-  test("human node creates pendingAction", async () => {
-    const created: Array<{ action: { kind: string; payload: Record<string, unknown> } }> = [];
+  test("human node creates pendingAction via agentRunService and uses dynamic form", async () => {
+    let created: string | null = null;
     const runners = createNodeRunners({
       dataDir: ".data",
-      agentRunService: { createPendingAction: async (runId, action) => { created.push(action); return { actionId: "a", runId, kind: action.kind, payload: action.payload, status: "pending" }; } } as any,
+      agentRunService: {
+        createPendingAction: async (_runId: string, action: { kind: string; payload: Record<string, unknown> }) => {
+          created = action.kind;
+          return { actionId: "a", runId: "x", kind: action.kind, payload: action.payload, status: "pending" };
+        },
+      } as never,
     });
     const out = await runners.human.run(
-      { id: "h", type: "human", question: "ok?", form: { level: { type: "enum", options: ["a", "b"] } } },
-      { input: {}, store: {}, context: { executionId: "e", nodeId: "h", workflowId: "wf" } },
+      { id: "h", type: "human", question: "static?" },
+      { input: { question: "dynamic?", form: { x: { type: "string" } } }, store: {}, context: { executionId: "e", nodeId: "h", workflowId: "wf" } },
     );
-    expect(created[0]!.action.kind).toContain("human_task");
+    expect(created).toBe("human_task_requested");
+    expect((out.output as Record<string, unknown>).question).toBe("dynamic?");
   });
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [ ] **Step 3: 跑测试确认失败**
 
 Run: `cd apps/backend && bun test features/workflow/node-runners.test.ts`
 Expected: FAIL — `Cannot find module './node-runners.js'`
 
-- [ ] **Step 3: 创建 node-runners.ts**
+- [ ] **Step 4: 创建 node-runners.ts**
 
 ```typescript
 import { join } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import type { NodeRunResult, NodeContext, StoreApi, WorkflowNode } from "@chengchenccc/workflow";
+import type { NodeRunResult, NodeContext, ScriptContext, StoreApi, WorkflowNode, FormField } from "@chengchenccc/workflow";
 
 export interface NodeRunnerDeps {
   dataDir: string;
   agentRunService?: {
     createPendingAction(runId: string, action: { kind: string; payload: Readonly<Record<string, unknown>> }): Promise<{ actionId: string; runId: string; kind: string; payload: Record<string, unknown>; status: string }>;
   };
-}
-
-function resolved<T>(value: T): Promise<NodeRunResult> {
-  return Promise.resolve({ output: value as Record<string, unknown> });
 }
 
 export function createNodeRunners(deps: NodeRunnerDeps) {
@@ -513,10 +605,10 @@ export function createNodeRunners(deps: NodeRunnerDeps) {
         const file = join(deps.dataDir, `${ctx.context.executionId}-${node.id}.ts`);
         writeFileSync(file, node.code);
         try {
-          const mod = await import(`${file}?t=${Date.now()}${Math.random()}`);
-          const fn = mod.default;
-          const out = await fn(ctx);
-          return { output: out ?? {} };
+          const mod = await import(`${file}?t=${Date.now()}-${Math.random().toString(36).slice(2)}`);
+          const fn = mod.default as (ctx: ScriptContext) => unknown;
+          const out = (await fn(ctx)) ?? {};
+          return { output: out as Record<string, unknown> };
         } finally {
           rmSync(file, { force: true });
         }
@@ -526,21 +618,13 @@ export function createNodeRunners(deps: NodeRunnerDeps) {
       async run(node: WorkflowNode, ctx: { input: Record<string, unknown>; store: StoreApi; context: NodeContext }): Promise<NodeRunResult> {
         if (node.type !== "human") throw new Error(`not a human node: ${node.type}`);
         if (!deps.agentRunService) throw new Error("human runner requires agentRunService");
-        const form = node.form ?? {};
-        const created = await deps.agentRunService.createPendingAction(ctx.context.executionId, {
+        const question = (ctx.input.question as string | undefined) ?? node.question ?? "";
+        const form = (ctx.input.form as Record<string, FormField> | undefined) ?? node.form ?? {};
+        await deps.agentRunService.createPendingAction(ctx.context.executionId, {
           kind: "human_task_requested",
-          payload: { executionId: ctx.context.executionId, nodeId: node.id, question: node.question, form },
+          payload: { executionId: ctx.context.executionId, nodeId: node.id, question, form },
         });
-        // The service pauses; completion of the human node is delivered via
-        // resolveHumanTask (service.ts), which calls `human.complete(...)`.
-        return { output: { pendingActionId: created.actionId } };
-      },
-    },
-    // agent runner is implemented in service.ts as it needs the full
-    // agent-run lifecycle (enqueue+dispatch+subscribe); declared here for symmetry.
-    agent: {
-      async run(): Promise<NodeRunResult> {
-        throw new Error("agent runner implemented in service.ts");
+        return { output: { question, form } };
       },
     },
   };
@@ -549,21 +633,23 @@ export function createNodeRunners(deps: NodeRunnerDeps) {
 export type NodeRunners = ReturnType<typeof createNodeRunners>;
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+> agent 节点 runner 不在这里——它需要完整 agent-run 生命周期，实现在 `service.ts`（见 Task 5 的 `runAgentNode`）。
+
+- [ ] **Step 5: 跑测试确认通过**
 
 Run: `cd apps/backend && bun test features/workflow/node-runners.test.ts`
-Expected: PASS。
+Expected: PASS, 2 tests。
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add apps/backend/src/features/workflow/node-runners.ts apps/backend/src/features/workflow/node-runners.test.ts
-git commit -m "feat(workflow): add script and human node runners"
+git add apps/backend/src/features/workflow/event-bus.ts apps/backend/src/features/workflow/node-runners.ts apps/backend/src/features/workflow/node-runners.test.ts
+git commit -m "feat(workflow): add event bus and script/human node runners"
 ```
 
 ---
 
-### Task 5: 执行 service（纯引擎循环）
+### Task 5: 执行 service
 
 **Files:**
 - Create: `apps/backend/src/features/workflow/service.test.ts`
@@ -592,27 +678,44 @@ function makeDef(): WorkflowDefinition {
   };
 }
 
-describe("createWorkflowExecutionService", () => {
-  test("runs a linear workflow to terminal success", async () => {
-    const store: Map<string, unknown> = new Map();
-    const executions: Array<Record<string, unknown>> = [];
-    const port = {
-      createExecution: async (i: any) => { const r = { ...i, status: "running" }; executions.push(r); return r; },
-      getExecution: async () => null,
-      updateExecution: async (id: string, patch: any) => { const r = executions.find((e) => e.executionId === id); Object.assign(r!, patch); return r; },
-      appendNodeRun: async (i: any) => i,
-      updateNodeRun: async (executionId: string, nodeId: string, patch: any) => { store.set(`${executionId}:${nodeId}`, patch); return { nodeId, ...patch }; },
-      listNodeRuns: async () => [],
+function ramPort() {
+  const executions = new Map<string, any>();
+  const nodeRuns: any[] = [];
+  return {
+    executions,
+    nodeRuns,
+    port: {
+      createExecution: async (i: any) => { const r = { ...i, status: "running" }; executions.set(i.executionId, r); return r; },
+      getExecution: async (id: string) => executions.get(id) ?? null,
+      updateExecution: async (id: string, patch: any) => { const r = executions.get(id); Object.assign(r!, patch); return r; },
+      appendNodeRun: async (i: any) => { const r = { seq: nodeRuns.length + 1, ...i }; nodeRuns.push(r); return r; },
+      updateNodeRun: async (_e: string, nodeId: string, patch: any) => { const r = nodeRuns.find((x) => x.nodeId === nodeId); if (r) Object.assign(r, patch); return r; },
+      listNodeRuns: async () => nodeRuns,
+      createPendingHuman: async (r: any) => r,
+      getPendingHuman: async () => null,
+      markPendingHumanResolved: async () => {},
       listRunningExecutions: async () => [],
       listWaitingHumanExecutions: async () => [],
-    } as any;
+    } as any,
+  };
+}
+
+describe("createWorkflowExecutionService", () => {
+  test("runs a linear workflow to terminal success via runToCompletion", async () => {
+    const { port } = ramPort();
     const svc = createWorkflowExecutionService({
       port,
-      nodeRunners: { script: { run: async (node: any, ctx: any) => ({ output: { val: ctx.input.num } }) }, human: { run: async () => ({ output: {} }) }, agent: { run: async () => ({ output: {} }) } } as any,
+      nodeRunners: {
+        script: { run: async (node: any, ctx: any) => ({ output: { val: ctx.input.num } }) },
+        human: { run: async () => ({ output: {} }) },
+      } as any,
+      eventBus: { emit: () => {}, subscribe: async function* () {} } as any,
+      idGen: () => "e1",
     });
-    const result = await svc.startExecution({ workflowId: "wf", definition: makeDef(), input: { num: 7 } });
+    const result = await svc.runToCompletion("e1", { workflowId: "wf", definition: makeDef(), input: { num: 7 } });
     expect(result.status).toBe("success");
-    expect((executions[0] as any).store).toEqual({ num: 7 });
+    expect(result.exit).toBe("success");
+    expect(port.getExecution("e1")).resolves.toMatchObject({ status: "success" });
   });
 });
 ```
@@ -625,23 +728,29 @@ Expected: FAIL — `Cannot find module './service.js'`
 - [ ] **Step 3: 创建 service.ts**
 
 ```typescript
-import type { EngineState, EngineStep, NodeRunResult, NodeContext, StoreApi, WorkflowDefinition, WorkflowNode, NodeRunner } from "@chengchenccc/workflow";
-import { computeNext } from "@chengchenccc/workflow";
+import { computeNext, parseWorkflow, routeOutgoing, type CompletionRecord, type EngineState, type NodeContext, type NodeRunner, type NodeRunResult, type StoreApi, type WorkflowDefinition, type WorkflowNode } from "@chengchenccc/workflow";
+import type { ExecutionEventBus } from "./event-bus.js";
 import type { WorkflowExecutionPort } from "./ports.js";
 import type { WorkflowExecutionRow, WorkflowNodeRunRow } from "./domain.js";
-import { ulid } from "@chengchenccc/id"; // or codebase's idGen; use a local ULID via crypto helper
-
-function makeId(): string {
-  // minimal ULID-ish; replace with repo's idGen helper (search `ulid()`)
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
 
 export interface WorkflowExecutionServiceDeps {
   port: WorkflowExecutionPort;
-  nodeRunners: Record<"agent" | "script" | "human", NodeRunner>;
+  nodeRunners: Partial<Record<"script" | "human", NodeRunner>>;
+  eventBus: ExecutionEventBus;
+  idGen: () => string;
+  agentRunService?: {
+    conversation: unknown;
+    createPendingAction(runId: string, action: { kind: string; payload: Readonly<Record<string, unknown>> }): Promise<unknown>;
+  };
+  agentRunExecution?: {
+    dispatch(runId: string): Promise<void>;
+    subscribe(runId: string, signal?: AbortSignal): AsyncIterable<{ type: string; data?: unknown }>;
+  };
+  evaluateAgentPrompt?: (node: WorkflowNode, input: Record<string, unknown>, context: NodeContext) => Promise<Record<string, unknown>>;
 }
 
 export interface WorkflowExecutionService {
+  runToCompletion(executionId: string, input: { workflowId: string; definition: WorkflowDefinition; input: Record<string, unknown> }): Promise<WorkflowExecutionRow>;
   startExecution(input: { workflowId: string; definition: WorkflowDefinition; input: Record<string, unknown> }): Promise<WorkflowExecutionRow>;
   resolveHumanTask(executionId: string, nodeId: string, answer: Record<string, unknown>): Promise<WorkflowExecutionRow>;
   getExecution(executionId: string): Promise<WorkflowExecutionRow | null>;
@@ -650,132 +759,202 @@ export interface WorkflowExecutionService {
   dispose(): Promise<void>;
 }
 
-export function createWorkflowExecutionService(deps: WorkflowExecutionServiceDeps): WorkflowExecutionService {
-  /** In-memory completions per execution (order = completion order). */
-  const completions = new Map<string, Array<{ nodeId: string; output?: Record<string, unknown>; order: number; routedTo: string[] }>>();
-  /** pending human answers keyed executionId:nodeId. */
-  const pendingHuman = new Map<string, { resolver: (v: Record<string, unknown>) => void; node: WorkflowNode }>();
+async function runNodeWithRetry(node: WorkflowNode, run: (node: WorkflowNode) => Promise<NodeRunResult>, current: WorkflowExecutionPort, executionId: string): Promise<NodeRunResult> {
+  const retry = node.retry ?? 0;
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retry; attempt++) {
+    try {
+      return await run(node);
+    } catch (err) {
+      lastError = err;
+      if (attempt === retry) throw err;
+    }
+  }
+  throw lastError;
+}
 
-  async function toStoreApi(executionId: string, getStore: () => Record<string, unknown>): Promise<StoreApi> {
+export function createWorkflowExecutionService(deps: WorkflowExecutionServiceDeps): WorkflowExecutionService {
+  const completions = new Map<string, CompletionRecord[]>();
+
+  function emit(executionId: string, event: string, data: unknown) {
+    deps.eventBus.emit({ executionId, event, ts: Date.now(), data });
+  }
+
+  async function storeApiOf(executionId: string, getStore: () => Record<string, unknown>): Promise<StoreApi> {
     return {
       get: (key) => getStore()[key],
       set: async (key, value) => {
         const store = getStore();
         store[key] = value;
         await deps.port.updateExecution(executionId, { store });
+        emit(executionId, "store_write", { key, value });
       },
       delete: async (key) => {
         const store = getStore();
         delete store[key];
         await deps.port.updateExecution(executionId, { store });
+        emit(executionId, "store_write", { key, deleted: true });
       },
     };
   }
 
-  function contextOf(executionId: string, node: WorkflowNode, workflowId: string): NodeContext {
-    return { executionId, nodeId: node.id, workflowId, repo: "repo" in node ? node.repo : undefined };
+  async function runAgentNode(node: WorkflowNode, ready: { input: Record<string, unknown> }, execution: WorkflowExecutionRow): Promise<NodeRunResult> {
+    if (node.type !== "agent") throw new Error(`not agent: ${node.type}`);
+    if (!deps.evaluateAgentPrompt) throw new Error("agent runner requires evaluateAgentPrompt");
+    const output = await deps.evaluateAgentPrompt(node, ready.input, {
+      executionId: execution.executionId,
+      nodeId: node.id,
+      workflowId: execution.workflowId,
+      repo: node.repo,
+    });
+    return { output };
   }
 
-  async function runNode(execution: WorkflowExecutionRow, node: WorkflowNode, order: number): Promise<NodeRunResult> {
+  async function executeNode(execution: WorkflowExecutionRow, node: WorkflowNode, ready: { input: Record<string, unknown> }, order: number): Promise<{ output: Record<string, unknown> } | null> {
+    emit(execution.executionId, "node_started", { nodeId: node.id, order });
+    await deps.port.appendNodeRun({ executionId: execution.executionId, nodeId: node.id, status: node.type === "human" ? "waiting_human" : "running", order });
+
+    if (node.type === "start") {
+      const output = { ...execution.input };
+      return { output };
+    }
+
+    if (node.type === "human") {
+      await deps.port.createPendingHuman({
+        executionId: execution.executionId,
+        nodeId: node.id,
+        question: (ready.input.question as string | undefined) ?? node.question,
+        form: (ready.input.form as Record<string, unknown> | undefined) ?? node.form,
+        status: "pending",
+        createdAt: Date.now(),
+      });
+      await deps.port.updateExecution(execution.executionId, { status: "waiting_human" });
+      emit(execution.executionId, "human_task_requested", { nodeId: node.id, question: node.question, form: node.form });
+      return null; // paused — caller stops driving
+    }
+
     const runner = deps.nodeRunners[node.type];
     if (!runner) throw new Error(`no runner for node type ${node.type}`);
-    const input = { ...(node.input ?? {}), ...execution.input }; // merge trigger (full merge handled below)
-    const storeApi = await toStoreApi(execution.executionId, () => execution.store);
-    const result = await runner.run(node, { input: input as Record<string, unknown>, store: storeApi, context: contextOf(execution.executionId, node, execution.workflowId) });
-    return result;
+    const storeApi = await storeApiOf(execution.executionId, () => execution.store);
+    const result = await runNodeWithRetry(
+      node,
+      (n) => runner.run(n, { input: ready.input, store: storeApi, context: { executionId: execution.executionId, nodeId: n.id, workflowId: execution.workflowId, repo: n.type === "agent" ? n.repo : undefined } }),
+      deps.port,
+      execution.executionId,
+    );
+    return { output: result.output ?? {} };
   }
 
-  async function runOneStep(execution: WorkflowExecutionRow, state: EngineState, order: number): Promise<EngineStep> {
-    const step = computeNext(execution.definition, state);
-    if (step.kind === "terminal") {
-      await deps.port.updateExecution(execution.executionId, { status: step.exit === "failure" ? "failure" : step.exit === "success" ? "success" : "custom", exit: step.exit, terminalAt: Date.now() });
-      return step;
-    }
-    if (step.kind === "idle") {
-      // shell detects stuck: no ready and no in-flight → failure
-      await deps.port.updateExecution(execution.executionId, { status: "failure", error: "stuck (no ready nodes)", terminalAt: Date.now() });
-      return { kind: "terminal", exit: "failure" };
-    }
-    for (const ready of step.ready) {
-      const node = ready.node;
-      await deps.port.appendNodeRun({ executionId: execution.executionId, nodeId: node.id, status: node.type === "human" ? "waiting_human" : "running", order });
-      if (node.type === "human") {
-        // pause execution; wire answer later
-        throw new Error("human node pause implemented in Task 5b (pendingHuman resolve flow)");
-      }
-      const result = await runNode(execution, node, order);
-      const output = result.output ?? {};
-      const completionsArr = completions.get(execution.executionId) ?? [];
-      const routedTo: string[] = await deps.port.listNodeRuns(...).then(() => []);
-      // compute routedTo via routeOutgoing from @chengchenccc/workflow
-      const { routeOutgoing } = await import("@chengchenccc/workflow");
-      const routed = routeOutgoing(node.id, execution.definition, completionsArr.map((c) => ({ nodeId: c.nodeId, output: c.output, order: c.order, routedTo: c.routedTo })), execution.store);
-      completionsArr.push({ nodeId: node.id, output, order, routedTo: routed });
-      completions.set(execution.executionId, completionsArr);
-      await deps.port.updateNodeRun(execution.executionId, node.id, { status: "completed", output, routedTo: routed, terminalAt: Date.now() });
-      // refresh execution store from port
-      const fresh = await deps.port.getExecution(execution.executionId);
-      if (fresh) execution.store = fresh.store;
-    }
-    return { kind: "run", ready: step.ready };
+  function recordCompletion(execution: WorkflowExecutionRow, node: WorkflowNode, output: Record<string, unknown>, order: number): CompletionRecord {
+    const arr = completions.get(execution.executionId) ?? [];
+    const routedTo = routeOutgoing(node.id, execution.definition, arr, execution.store);
+    const record: CompletionRecord = { nodeId: node.id, output, order, routedTo };
+    arr.push(record);
+    completions.set(execution.executionId, arr);
+    return record;
   }
 
-  async function drive(execution: WorkflowExecutionRow) {
-    let order = 0;
-    const state: EngineState = {
-      completions: (completions.get(execution.executionId) ?? []).map((c, i) => ({ nodeId: c.nodeId, output: c.output, order: i, routedTo: c.routedTo })),
-      store: execution.store,
-      trigger: execution.input,
-    };
+  async function drive(execution: WorkflowExecutionRow): Promise<void> {
+    const nodeRuns = await deps.port.listNodeRuns(execution.executionId);
+    if (completions.get(execution.executionId) === undefined) {
+      completions.set(execution.executionId, nodeRuns.map((r, i) => ({ nodeId: r.nodeId, output: r.output ?? {}, order: i, routedTo: r.routedTo ?? [] })));
+    }
+    let order = nodeRuns.length;
     for (;;) {
-      const step = await runOneStep(execution, state, order);
-      if (step.kind === "terminal") return;
-      order += step.ready.length;
-      // recompute state from completed completions
-      const arr = completions.get(execution.executionId) ?? [];
-      state.completions = arr.map((c, i) => ({ nodeId: c.nodeId, output: c.output, order: i, routedTo: c.routedTo }));
-      state.store = execution.store;
+      const state: EngineState = {
+        completions: completions.get(execution.executionId) ?? [],
+        store: execution.store,
+        trigger: execution.input,
+      };
+      const step = computeNext(execution.definition, state);
+      if (step.kind === "terminal") break;
+      if (step.kind === "idle") throw new Error("stuck: no ready nodes and no terminal");
+      let paused = false;
+      for (const ready of step.ready) {
+        const node = ready.node;
+        const res = await executeNode(execution, node, ready, order++);
+        if (res === null) { paused = true; break; } // human
+        const record = recordCompletion(execution, node, res.output, order - 1);
+        await deps.port.updateNodeRun(execution.executionId, node.id, { status: "completed", output: record.output, routedTo: record.routedTo, terminalAt: Date.now() });
+        emit(execution.executionId, "node_completed", { nodeId: node.id, output: record.output, routedTo: record.routedTo });
+        const fresh = await deps.port.getExecution(execution.executionId);
+        if (fresh) execution.store = fresh.store;
+      }
+      if (paused) return;
+      emit(execution.executionId, "execution_status", { status: "running" });
+    }
+    await deps.port.updateExecution(execution.executionId, {
+      status: stepKindStatus(execution.definition, state),
+      exit: lastExit(execution.definition, state),
+      terminalAt: Date.now(),
+    });
+    emit(execution.executionId, "execution_terminal", { exit: lastExit(execution.definition, state) });
+  }
+
+  function stepKindStatus(_def: WorkflowDefinition, _state: EngineState): "success" | "failure" | "custom" {
+    // Computed in the step's terminal exit; re-derived here from the last
+    // terminal exit label via a simple map. The exit label is set to
+    // step.exit below in runToCompletion/startExecution wrapper.
+    return "success";
+  }
+
+  function lastExit(_def: WorkflowDefinition, _state: EngineState): string {
+    return "success";
+  }
+
+  async function runWithCatch(executionId: string, execute: () => Promise<void>): Promise<void> {
+    try {
+      await execute();
+    } catch (err) {
+      await deps.port.updateExecution(executionId, { status: "failure", error: (err as Error).message, terminalAt: Date.now() });
+      emit(executionId, "execution_terminal", { exit: "failure", error: (err as Error).message });
     }
   }
 
   return {
+    async runToCompletion(executionId, input) {
+      const row = await deps.port.createExecution({ executionId, workflowId: input.workflowId, definition: input.definition, input: input.input, store: { ...input.input }, status: "running" });
+      emit(executionId, "execution_started", {});
+      await runWithCatch(executionId, () => drive(row));
+      return (await deps.port.getExecution(executionId))!;
+    },
     async startExecution(input) {
-      const executionId = makeId();
-      const row = await deps.port.createExecution({
-        executionId,
-        workflowId: input.workflowId,
-        definition: input.definition,
-        input: input.input,
-        store: { ...input.input },
-        status: "running",
-      });
-      void drive(row); // fire-and-forget; events via subscribe
+      const executionId = deps.idGen();
+      const row = await deps.port.createExecution({ executionId, workflowId: input.workflowId, definition: input.definition, input: input.input, store: { ...input.input }, status: "running" });
+      emit(executionId, "execution_started", {});
+      void runWithCatch(executionId, () => drive(row));
       return row;
     },
     async resolveHumanTask(executionId, nodeId, answer) {
-      const key = `${executionId}:${nodeId}`;
-      const hang = pendingHuman.get(key);
-      if (hang) hang.resolver(answer);
       const row = await deps.port.getExecution(executionId);
-      return row!;
+      if (!row) throw new Error("Execution not found");
+      await deps.port.markPendingHumanResolved(executionId, nodeId);
+      const arr = completions.get(executionId) ?? [];
+      await deps.port.updateNodeRun(executionId, nodeId, { status: "completed", output: answer, routedTo: [], terminalAt: Date.now() });
+      arr.push({ nodeId, output: answer, order: arr.length, routedTo: [] });
+      completions.set(executionId, arr);
+      await deps.port.updateExecution(executionId, { status: "running" });
+      void runWithCatch(executionId, () => drive(row));
+      return row;
     },
     async getExecution(id) { return deps.port.getExecution(id); },
     async listNodeRuns(id) { return deps.port.listNodeRuns(id); },
     async recover() {
-      // re-drive running + waiting_human executions on reboot
-      for (const e of await deps.port.listRunningExecutions()) void drive(e);
+      for (const e of await deps.port.listRunningExecutions()) void runWithCatch(e.executionId, () => drive(e));
+      // waiting_human: resolver is not in memory after reboot; require a
+      // new resolveHumanTask call (which drives from stored pending row).
     },
     async dispose() {},
   };
 }
 ```
 
-> 注：Task 5 的目标是**最小线性/分支成功路径**。human 挂起/恢复在 Task 5b 补。agent runner 在 Task 5b 补（enqueue+dispatch+subscribe 全生命周期）。
+> 说明：`stepKindStatus`/`lastExit` 需要用缓存最近一次 `computeNext` 的 `step.exit`（当前简化返回 success；执行时把 terminal exit 存到一个 `Map<executionId, string>`，`drive` 末尾读它，不要重算）。`runAgentNode` 在 Task 5b 用 `agentRunService.enqueueAndAcquire` + `agentRunExecution.dispatch/subscribe` 替换 `evaluateAgentPrompt` 注入实现。
 
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `cd apps/backend && bun test features/workflow/service.test.ts`
-Expected: PASS。
+Expected: PASS（linear→success）。
 
 - [ ] **Step 5: Commit**
 
@@ -786,39 +965,33 @@ git commit -m "feat(workflow): add workflow execution service loop"
 
 ---
 
-### Task 5b: human 挂起/恢复 + agent runner
+### Task 5b: human 恢复 + agent 真 runner
 
 **Files:**
 - Modify: `apps/backend/src/features/workflow/service.ts`
 - Modify: `apps/backend/src/features/workflow/service.test.ts`
 
-- [ ] **Step 1: 实现 human 挂起/恢复**
+- [ ] **Step 1: human 挂起→恢复正确续跑**
 
-- human 节点进入 `waiting_human`，把 resolver 存入 `pendingHuman[executionId:nodeId]`，**不再继续 drive**。
-- `resolveHumanTask(executionId, nodeId, answer)` 调 resolver；resolver 把答案作为该节点 output、算 routedTo、写入 completions，然后继续 drive。
+- `executeNode` 对 human 返回 null 后，`drive` 暂停。`resolveHumanTask` 把 answer 作为该节点 output，用 `routeOutgoing` 算 routedTo、写 completions、设 execution `running`，然后重新 `drive`。
+- `recover()` 对 `waiting_human` 执行从 `listNodeRuns` 重建 completions——**不重跑已完成的 start/其他节点**；human 节点仍是 waiting，等下次 `resolveHumanTask` 续跑。执行时注意 human 节点已有一行 `waiting_human` 的 node_run，`drive` 重建 completions 时不应把它的 `nodeId` 当作已完成（filter status==="completed"）。
 
-- [ ] **Step 2: 实现 agent runner**
+- [ ] **Step 2: agent 真 runner**
 
-- agent 节点用 `agentRunService.enqueueAndAcquire({ conversationId, agentId, backendKind, mode:'normal', message, defaultModel, configRevision, idempotencyKey, ... })` 建一个 Run，`agentRunExecution.dispatch(runId)` 触发，`for await (const ev of agentRunExecution.subscribe(runId))` 等 terminal，取最终 assistant text 作为 output。
-- conversationId/memberId 用确定性命名：`workflow:${executionId}:${nodeId}` / `workflow-agent:${executionId}:${nodeId}`。
-- 需在 `createWorkflowExecutionService` deps 中增加 `agentRunService`、`agentRunExecution`、`resolveDefaultModel`、`convPort`、`idGen`。
+用 `agentRunService.enqueueAndAcquire` 建 Run + `agentRunExecution.dispatch` + `for await (const ev of agentRunExecution.subscribe(runId))` 等到 terminal，取最终 assistant text 作为 output。conversationId/memberId 确定命名：`workflow:${executionId}:${nodeId}` / `workflow-agent:${executionId}:${nodeId}`。
+在 `service.ts` 的 deps 加 `agentRunService`、`agentRunExecution`、`convPort`、`resolveDefaultModel`，替换 `evaluateAgentPrompt` 注入。
 
 - [ ] **Step 3: 补测试（agent/human 用 fake）**
 
 - [ ] **Step 4: Commit**
-
-```bash
-git add apps/backend/src/features/workflow/service.ts apps/backend/src/features/workflow/service.test.ts
-git commit -m "feat(workflow): add human pause/resume and agent node runner"
-```
 
 ---
 
 ### Task 6: HTTP + bootstrap 接线
 
 **Files:**
-- Create: `apps/backend/src/features/workflow/http.ts`
 - Create: `apps/backend/src/features/workflow/http.test.ts`
+- Create: `apps/backend/src/features/workflow/http.ts`
 - Modify: `apps/backend/src/features/workflow/index.ts`
 - Modify: `apps/backend/src/app.ts`
 - Modify: `apps/backend/src/bootstrap/features.ts`
@@ -827,54 +1000,53 @@ git commit -m "feat(workflow): add human pause/resume and agent node runner"
 
 ```typescript
 import { Elysia, t } from "elysia";
+import { HttpError } from "../../infra/errors.js";
 import { sseResponse } from "../../http/response.js";
 import type { WorkflowExecutionService } from "./service.js";
 
-export function workflowRoutes(deps: { workflowExecutionService: WorkflowExecutionService }): Elysia {
-  const svc = deps.workflowExecutionService;
-  return new Elysia()
-    .post("/api/workflow-executions", async ({ body }) => {
-      const def = JSON.parse(body.definition);
-      const execution = await svc.startExecution({ workflowId: body.workflowId, definition: def, input: body.input ?? {} });
-      return execution;
-    }, {
-      body: t.Object({
-        workflowId: t.String({ minLength: 1 }),
-        definition: t.String({ minLength: 1 }),
-        input: t.Optional(t.Record(t.Unknown())),
-      }),
-    })
-    .get("/api/workflow-executions/:executionId", async ({ params }) => {
-      const row = await svc.getExecution(params.executionId);
-      if (!row) throw new Error("Execution not found");
-      return row;
-    })
-    .get("/api/workflow-executions/:executionId/events", async ({ request, params }) => {
-      const stream = eventStreamFor(params.executionId, svc);
-      return sseResponse(stream, (ev: { event: string; data: unknown }) => ({ id: params.executionId, event: ev.event, data: ev.data }), request.signal);
-    })
-    .post("/api/workflow-executions/:executionId/human-task", async ({ params, body }) => {
-      const row = await svc.resolveHumanTask(params.executionId, body.nodeId, body.answer ?? {});
-      return row;
-    }, {
-      body: t.Object({ nodeId: t.String({ minLength: 1 }), answer: t.Optional(t.Record(t.Unknown())) }),
-    });
+export interface WorkflowRef {
+  repo: string;
+  path: string;
 }
 
-function eventStreamFor(executionId: string, svc: WorkflowExecutionService): AsyncIterable<{ event: string; data: unknown }> {
-  return (async function* () {
-    // Simplest v1: poll terminal status once per second; a full SSE event
-    // bus can be layered later.
-    for (;;) {
-      const row = await svc.getExecution(executionId);
-      if (!row) return;
-      yield { event: "execution_status", data: { status: row.status, exit: row.exit, store: row.store } };
-      if (row.status === "success" || row.status === "failure" || row.status === "custom") return;
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-  })();
+export function workflowRoutes(deps: {
+  workflowExecutionService: WorkflowExecutionService;
+  loadWorkflow: (ref: WorkflowRef) => Promise<string>; // returns DSL JSON string
+}): Elysia {
+  const svc = deps.workflowExecutionService;
+  const app = new Elysia();
+  app.post("/api/workflow-executions", async ({ body }) => {
+    const ref: WorkflowRef = { repo: body.workflowRef.repo, path: body.workflowRef.path };
+    const raw = await deps.loadWorkflow(ref);
+    const definition = JSON.parse(raw) as Parameters<typeof svc.startExecution>[0]["definition"];
+    const execution = await svc.startExecution({ workflowId: `${ref.repo}/${ref.path}`, definition, input: body.input ?? {} });
+    return execution;
+  }, {
+    body: t.Object({
+      workflowRef: t.Object({ repo: t.String({ minLength: 1 }), path: t.String({ minLength: 1 }) }),
+      input: t.Optional(t.Record(t.String(), t.Unknown())),
+    }),
+  });
+  app.get("/api/workflow-executions/:executionId", async ({ params }) => {
+    const row = await svc.getExecution(params.executionId);
+    if (!row) throw new HttpError(404, "Execution not found");
+    return row;
+  });
+  app.get("/api/workflow-executions/:executionId/events", async ({ request, params }) => {
+    const stream = await svc.subscribeEvents(params.executionId, request.signal);
+    return sseResponse(stream, (ev) => ({ id: params.executionId, event: ev.event, data: ev.data }), request.signal);
+  });
+  app.post("/api/workflow-executions/:executionId/human-task", async ({ params, body }) => {
+    const row = await svc.resolveHumanTask(params.executionId, body.nodeId, body.answer ?? {});
+    return row;
+  }, {
+    body: t.Object({ nodeId: t.String({ minLength: 1 }), answer: t.Optional(t.Record(t.String(), t.Unknown())) }),
+  });
+  return app;
 }
 ```
+
+> `svc.subscribeEvents(executionId, signal)` 需要加在 `WorkflowExecutionService` 上：返回 `deps.eventBus.subscribe(executionId)` 的 AsyncIterable（Task 5 已建 event bus）。
 
 - [ ] **Step 2: 创建 index.ts**
 
@@ -882,6 +1054,7 @@ function eventStreamFor(executionId: string, svc: WorkflowExecutionService): Asy
 export * from "./domain.js";
 export * from "./ports.js";
 export * from "./adapter-sqlite.js";
+export * from "./event-bus.js";
 export * from "./node-runners.js";
 export * from "./service.js";
 export * from "./http.js";
@@ -889,34 +1062,38 @@ export * from "./http.js";
 
 - [ ] **Step 3: app.ts 加 FeatureSet key + .use**
 
-在 `FeatureSet` 加 `workflowExecutions: ReturnType<typeof workflowRoutes>;`；在 `createApp` 解构并 `.use(workflowExecutions)`。
-
-- [ ] **Step 4: bootstrap/features.ts 接线**
+- [ ] **Step 4: bootstrap/features.ts 接线**（在 `agentRunExecution` 之后）
 
 ```typescript
-// 在 installFeatures 内，agentRunExecution 创建后：
-const workflowPort = createWorkflowExecutionAdapter(db);
-const workflowNodeRunners = createNodeRunners({ dataDir: config.dataDir });
-const workflowExecutionService = createWorkflowExecutionService({
+const workflowPort = sqliteWorkflowExecutionAdapter(db);
+const workflowNodeRunners = createNodeRunners({ dataDir: config.dataDir, agentRunService });
+const workflowEventBus = new ExecutionEventBus();
+const workflowService = createWorkflowExecutionService({
   port: workflowPort,
   nodeRunners: workflowNodeRunners,
+  eventBus: workflowEventBus,
+  idGen: ulid,
 });
-const workflowRoutes = workflowRoutes({ workflowExecutionService: workflowExecutionService });
+const workflowApp = workflowRoutes({
+  workflowExecutionService: workflowService,
+  loadWorkflow: (ref) => loadWorkflowDefinition(ref), // 真实 git loader 在后续 plan 实现
+});
 ```
-并把 `workflowExecutions` 加进 `featureSet`、`workflowExecutionService` 加进 `InstalledFeatures`。在 `start()` 内 `await workflowExecutionService.recover()`；`dispose()` 内 `await workflowExecutionService.dispose()`。
+- 把 `workflowExecutions: workflowApp` 加进 `featureSet`；`workflowService` 加进 `InstalledFeatures`；`start()` 内 `await workflowService.recover()`；`dispose()` 内 `await workflowService.dispose()`。
 
 - [ ] **Step 5: 跑测试确认通过**
 
 Run: `cd apps/backend && bun test features/workflow/http.test.ts`
-Expected: PASS（用 fake WorkflowExecutionService 验证 POST /api/workflow-executions 返回 201 行、GET 返回行）。
+Expected: PASS（fake service + fake loadWorkflow 验证 POST/GET/SSE/human-task）。
 
 - [ ] **Step 6: 全量验证**
 
-Run: `cd /root/my-agent-team && bun run typecheck`
-Expected: PASS。
+```bash
+cd apps/backend && bun run build && cd /root/my-agent-team && bun run typecheck && cd apps/backend && bun test
+```
+Expected: typecheck 全绿、backend 测试全绿。
 
-Run: `cd apps/backend && bun test`
-Expected: 现有测试 + 新增 workflow 测试全绿。
+> 注意：从仓库根跑，不要硬编码 `/root/my-agent-team`——写 `bun run typecheck`（在仓库根执行）。
 
 - [ ] **Step 7: Commit**
 
@@ -929,8 +1106,11 @@ git commit -m "feat(workflow): wire workflow http routes and bootstrap"
 
 ## 备注（执行注意事项）
 
-- Task 1 migration 的 `--> statement-breakpoint` 必须保留；用 `sqlite3 apps/backend/.backend-data/backend.db` 查 `PRAGMA table_info(workflow_execution)` 确认。
-- `service.ts` 的 `makeId()` 若仓库已有 `idGen`/`ulid` 辅助，改用之（搜 `idGen` / `crypto.randomUUID` / `ulid`）。
-- `routeOutgoing` 需要 `completions` 为真实 CompletionRecord（含 routedTo）。Task 5 的原始代码用 `listNodeRuns(...)` 是占位，须改为从内存 `completions` 构造真实 record（plan 已注明）。
-- `app.ts` / `features.ts` 改动需注意 dist 构建：改 backend 后要先 `cd apps/backend && bun run build`，web 才吃到 Eden 新类型。
-- commitlint scope：新增 `workflow` 已在 Plan 1 Task 0 加入 enum。
+- **迁移**：0040 的 `--> statement-breakpoint` 必须保留；用 `openDb(":memory:")` + `PRAGMA table_info` 验证三表。
+- **service 核心**：`drive` 必须用 `ready.input`（全局合并），`start` 不调 runner，`end` 由 `computeNext` terminal 短路；human 暂停时 `drive` 结束、`resolveHumanTask` 重新 drive。
+- **recover**：从 `listNodeRuns` 重建 completions（只取 status==="completed" 的行作为 CompletionRecord），重启后不重跑已完成节点。
+- **错误/重试**：`runNodeWithRetry` 包住节点执行；`runWithCatch` 把未捕获 rejection 收敛到 failure。
+- **workflowRef vs inline**：遵循 spec——POST 收 `{workflowRef, input}`，`loadWorkflow` 解析 DSL 并 `parseWorkflow` 校验；不要内联 definition。
+- **human 动态表单**：runner 优先取 `ctx.input.form/question`（上游 agent 输出），否则回退 `node.form/question`。
+- **SSE**：用 `ExecutionEventBus` 发 spec 事件（execution_started/node_started/node_completed/store_write/human_task_requested/execution_terminal），不要 1 秒轮询。
+- commitlint scope `workflow` 已在 Plan 1 Task 0 入 enum。
