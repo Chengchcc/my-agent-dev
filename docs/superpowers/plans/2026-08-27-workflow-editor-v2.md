@@ -595,7 +595,17 @@ git commit -m "feat(workflow): add dry-run debug capability"
 - Modify: `apps/web/src/components/workflow/AgenticWorkflowEditor.tsx`（预览）
 - Modify: `apps/web/src/components/workflow/ExecutionTraceView.tsx`（resolve）
 
-- [ ] **Step 1: oma `askQuestion` tool（Claude Code AskUserQuestion 式）**
+- [ ] **Step 1: native `askQuestion` tool（oma 内建，仿 native todo）**
+
+后台/独立 CLI 里可用。native tool 弹问题、等待回答，emit `human_task_requested` 挂起，answer 返回 tool result。注册进 oma 工具表（像 `todo` 一样）。
+
+- [ ] **Step 1b: backend 注入 `askQuestion`（product-tools MCP，仿 todo_write）**
+
+backend 的 `product-tools` MCP server 增加 `askQuestion` 工具描述符；当 execution 流入一个 human 节点时，backend 经 MCP 注入该 tool（带 `PRODUCT_TOOLS_RUN_TOKEN` 鉴权）。child 的 agent 调用的是**注入版**，路由到 backend HITL 管道（挂起 → 等待 resolve → answer 回传）。
+
+- [ ] **Step 1c: 冲突规则（仿 todo_write）**
+
+`apps/oh-my-agent/src/core/runtime/tool-filter.ts` 里组装 native tool 前检查：`mounted.tools` 是否已含 `askQuestion`（backend 注入的 MCP），有则 **native 让位**（不装 native）；无则装 native。与 `todo_write` 同一套通用冲突规则。
 
 ```typescript
 // apps/oh-my-agent/src/core/tools/ask-question.ts
