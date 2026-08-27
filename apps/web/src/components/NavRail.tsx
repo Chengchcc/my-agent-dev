@@ -8,6 +8,7 @@ import {
   LibraryIcon,
   LogOutIcon,
   MessageSquareIcon,
+  NetworkIcon,
   MoreHorizontalIcon,
   Package,
   PlugIcon,
@@ -137,6 +138,19 @@ function NavContent() {
               >
                 <PlusIcon />
                 <span className="truncate">New Loop</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={pathname.startsWith("/agentic-workflow")}
+                tooltip="Agentic Workflow"
+                onClick={() => {
+                  closeMobile();
+                  router.push("/agentic-workflow");
+                }}
+              >
+                <NetworkIcon />
+                <span className="truncate">Workflows</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
