@@ -1,5 +1,5 @@
-import { join, resolve } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type {
   NodeContext,
   NodeRunResult,
@@ -64,7 +64,10 @@ function runWithTimeout(
   log: (event: string, data?: Record<string, unknown>) => void,
 ): Promise<NodeRunResult> {
   const { promise, resolve, reject } = Promise.withResolvers<NodeRunResult>();
-  const timer = setTimeout(() => reject(new Error(`script timed out after ${timeoutMs}ms`)), timeoutMs);
+  const timer = setTimeout(
+    () => reject(new Error(`script timed out after ${timeoutMs}ms`)),
+    timeoutMs,
+  );
   runScript(code, ctx, dataDir, log).then(
     (result) => {
       clearTimeout(timer);

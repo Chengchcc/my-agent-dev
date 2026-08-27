@@ -28,5 +28,7 @@ export interface WorkflowExecutionPort {
   getPendingHuman(executionId: string, nodeId: string): Promise<WorkflowPendingHumanRow | null>;
   markPendingHumanResolved(executionId: string, nodeId: string): Promise<void>;
   listRunningExecutions(): Promise<WorkflowExecutionRow[]>;
+  listExecutions(workflowId?: string): Promise<WorkflowExecutionRow[]>;
+  listWaitingHumanExecutions(): Promise<WorkflowExecutionRow[]>;
   listWaitingHumanExecutions(): Promise<WorkflowExecutionRow[]>;
 }

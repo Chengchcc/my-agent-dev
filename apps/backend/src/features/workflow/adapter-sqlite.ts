@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { workflowExecution, workflowNodeRun, workflowPendingHuman } from "../../infra/db/schema.js";
 import type {
@@ -190,6 +190,21 @@ export function sqliteWorkflowExecutionAdapter(db: Database): WorkflowExecutionP
         .select()
         .from(workflowExecution)
         .where(eq(workflowExecution.status, "running"));
+      return rows.map(toExec);
+    },
+    async listExecutions(workflowId?: string) {
+      if (workflowId) {
+        const rows = await d
+          .select()
+          .from(workflowExecution)
+          .where(eq(workflowExecution.workflowId, workflowId))
+          .orderBy(desc(workflowExecution.createdAt));
+        return rows.map(toExec);
+      }
+      const rows = await d
+        .select()
+        .from(workflowExecution)
+        .orderBy(desc(workflowExecution.createdAt));
       return rows.map(toExec);
     },
     async listWaitingHumanExecutions() {

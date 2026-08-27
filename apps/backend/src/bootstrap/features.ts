@@ -817,7 +817,10 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     agentRunExecution,
     convPort,
     resolveDefaultModel: async (agentId) => agentModelRef(await agentSvc.getById(agentId)),
-    resolveRepoWorkspace: async (repo) => ({ root: join(config.dataDir, "projects", repo), access: "read_write" }),
+    resolveRepoWorkspace: async (repo) => ({
+      root: join(config.dataDir, "projects", repo),
+      access: "read_write",
+    }),
   });
   const workflowApp = workflowRoutes({
     workflowExecutionService,
@@ -825,6 +828,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       const file = join(config.dataDir, "workflows", ref.path);
       return await Bun.file(file).text();
     },
+    workflowDir: join(config.dataDir, "workflows"),
   });
 
   const featureSet: FeatureSet = {

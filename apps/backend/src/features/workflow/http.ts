@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
 import { HttpError } from "../../infra/errors.js";
@@ -8,12 +10,77 @@ export interface WorkflowRef {
   path: string;
 }
 
+export interface WorkflowDefinitionRow {
+  workflowId: string;
+  name?: string;
+  description?: string;
+  tags?: string[];
+  status?: string;
+  owner?: string;
+  updatedBy?: string;
+  updatedAt: number;
+}
+
 export function workflowRoutes(deps: {
   workflowExecutionService: WorkflowExecutionService;
   loadWorkflow: (ref: WorkflowRef) => Promise<string>;
+  workflowDir: string;
 }) {
   const svc = deps.workflowExecutionService;
+  const dir = deps.workflowDir;
+
   return new Elysia()
+    .get("/api/workflow-definitions", async () => {
+      mkdirSync(dir, { recursive: true });
+      const files = readdirSync(dir).filter((f) => f.endsWith(".workflow.json"));
+      const definitions: WorkflowDefinitionRow[] = files.map((f) => {
+        const workflowId = f.replace(/\.workflow\.json$/, "");
+        let meta: Record<string, unknown> = {};
+        try {
+          meta =
+            (JSON.parse(readFileSync(join(dir, f), "utf-8")) as { meta?: Record<string, unknown> })
+              .meta ?? {};
+        } catch {
+          meta = {};
+        }
+        const mtime = statSync(join(dir, f)).mtimeMs;
+        return {
+          workflowId,
+          name: typeof meta.name === "string" ? meta.name : undefined,
+          description: typeof meta.description === "string" ? meta.description : undefined,
+          tags: Array.isArray(meta.tags) ? (meta.tags as string[]) : undefined,
+          status: typeof meta.status === "string" ? meta.status : undefined,
+          owner: typeof meta.owner === "string" ? meta.owner : undefined,
+          updatedBy: typeof meta.updatedBy === "string" ? meta.updatedBy : undefined,
+          updatedAt: Math.round(mtime),
+        };
+      });
+      return { definitions };
+    })
+    .get("/api/workflow-definitions/:workflowId", async ({ params }) => {
+      const file = join(dir, `${params.workflowId}.workflow.json`);
+      const raw = await Bun.file(file).text();
+      return { definition: JSON.parse(raw) };
+    })
+    .put(
+      "/api/workflow-definitions/:workflowId",
+      async ({ params, body }) => {
+        mkdirSync(dir, { recursive: true });
+        const file = join(dir, `${params.workflowId}.workflow.json`);
+        writeFileSync(file, JSON.stringify(body.definition, null, 2));
+        return { ok: true, definition: body.definition };
+      },
+      {
+        body: t.Object({
+          definition: t.Record(t.String(), t.Unknown()),
+        }),
+      },
+    )
+    .delete("/api/workflow-definitions/:workflowId", async ({ params }) => {
+      const file = join(dir, `${params.workflowId}.workflow.json`);
+      rmSync(file, { force: true });
+      return { ok: true };
+    })
     .post(
       "/api/workflow-executions",
       async ({ body, set }) => {
@@ -35,6 +102,16 @@ export function workflowRoutes(deps: {
           }),
           input: t.Optional(t.Record(t.String(), t.Unknown())),
         }),
+      },
+    )
+    .get(
+      "/api/workflow-executions",
+      async ({ query }) => {
+        const executions = await svc.listExecutions(query.workflowId ?? undefined);
+        return { executions };
+      },
+      {
+        query: t.Object({ workflowId: t.Optional(t.String()) }),
       },
     )
     .get("/api/workflow-executions/:executionId", async ({ params }) => {

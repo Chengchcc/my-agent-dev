@@ -69,6 +69,7 @@ export interface WorkflowExecutionService {
   ): Promise<WorkflowExecutionRow>;
   getExecution(executionId: string): Promise<WorkflowExecutionRow | null>;
   listNodeRuns(executionId: string): Promise<WorkflowNodeRunRow[]>;
+  listExecutions(workflowId?: string): Promise<WorkflowExecutionRow[]>;
   subscribeEvents(executionId: string, signal?: AbortSignal): Promise<AsyncIterable<WorkflowEvent>>;
   recover(): Promise<void>;
   dispose(): Promise<void>;
@@ -251,7 +252,9 @@ export function createWorkflowExecutionService(
     order: number,
   ): Promise<{ output: Record<string, unknown> } | null> {
     emit(execution.executionId, "node_started", { nodeId: node.id, order });
-    const existing = (await deps.port.listNodeRuns(execution.executionId)).find((r) => r.nodeId === node.id);
+    const existing = (await deps.port.listNodeRuns(execution.executionId)).find(
+      (r) => r.nodeId === node.id,
+    );
     if (!existing) {
       await deps.port.appendNodeRun({
         executionId: execution.executionId,
@@ -308,7 +311,10 @@ export function createWorkflowExecutionService(
           output = result.output ?? {};
         }
       } catch (err) {
-        emit(execution.executionId, "node_failed", { nodeId: node.id, error: (err as Error).message });
+        emit(execution.executionId, "node_failed", {
+          nodeId: node.id,
+          error: (err as Error).message,
+        });
         throw err;
       }
     }
@@ -440,7 +446,8 @@ export function createWorkflowExecutionService(
     async resolveHumanTask(executionId, nodeId, answer) {
       const row = await deps.port.getExecution(executionId);
       if (!row) throw new HttpError("Execution not found", 404);
-      if (row.status !== "waiting_human") throw new HttpError("Execution is not waiting for human", 409);
+      if (row.status !== "waiting_human")
+        throw new HttpError("Execution is not waiting for human", 409);
       const pending = await deps.port.getPendingHuman(executionId, nodeId);
       if (!pending) throw new HttpError("Pending human task not found", 404);
       if (pending.status === "resolved") throw new HttpError("Human task already resolved", 409);
@@ -475,6 +482,9 @@ export function createWorkflowExecutionService(
     },
     async listNodeRuns(id) {
       return deps.port.listNodeRuns(id);
+    },
+    async listExecutions(workflowId) {
+      return deps.port.listExecutions(workflowId);
     },
     async subscribeEvents(
       executionId: string,
