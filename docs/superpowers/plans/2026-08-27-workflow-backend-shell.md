@@ -1050,7 +1050,8 @@ async function runAgentNode(node: WorkflowNode, ready: { input: Record<string, u
   const agentId = node.agentId ?? "";
   if (!agentId) throw new Error("agent node requires agentId");
   const conversationId = `workflow:${execution.executionId}:${node.id}`;
-  const prompt = buildAgentPrompt(node, ready.input, execution.store);
+    const prompt = buildAgentPrompt(node, ready.input, execution.store, node.output);
+
 
   if (!deps.convPort.getConversation(conversationId)) {
     try { deps.convPort.createConversation({ conversationId, agentId, origin: "workflow", createdAt: Date.now() }); } catch { /* concurrent */ }
@@ -1078,22 +1079,57 @@ async function runAgentNode(node: WorkflowNode, ready: { input: Record<string, u
     if (ev.type === "status" && ["completed", "failed", "aborted", "commit_failed"].includes((ev as { status?: string }).status)) {
       const run = await deps.agentRunService.getRun(runId);
       if (!run || run.status !== "completed") throw new Error(`agent run ${runId} ended ${run?.status ?? "unknown"}`);
-      const text = extractFinalText(run.terminalResult);
-      emit(execution.executionId, "node_agent_completed", { nodeId: node.id, runId });
-      return { output: { text } };
+      
+  const output = extractOutput(run.terminalResult, node.output);
+  emit(execution.executionId, "node_agent_completed", { nodeId: node.id, runId });
+  return { output };
+
     }
   }
   throw new Error(`agent run ${runId} subscribe returned without terminal`);
 }
+
 
 function extractFinalText(outcome: unknown): string {
   const o = outcome as { messages?: Array<{ role?: string; text?: string }> } | null;
   const last = o?.messages?.slice().reverse().find((m) => m.role === "assistant");
   return last?.text ?? "";
 }
+
+/** 解析 agent node 的结构化 output。
+ *  - 若节点声明了 output 类型提示：强制模型返回 JSON，解析失败 = 节点失败（触发 retry→failure）。
+ *  - 未声明 output：文本兜底为 { text }。 */
+function extractOutput(outcome: unknown, outputHint?: Record<string, string>): Record<string, unknown> {
+  const text = extractFinalText(outcome);
+  if (!text) return outputHint ? {} : { text: "" };
+  const parsed = tryParseJsonObject(text);
+  if (parsed) return parsed;
+  if (outputHint) throw new Error("agent node output must be a JSON object matching declared output hints");
+  return { text };
+}
+
+function tryParseJsonObject(text: string): Record<string, unknown> | null {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    const v = JSON.parse(m[0]);
+    if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+    return null;
+  } catch {
+    return null;
+  }
+}
 ```
 
-`buildAgentPrompt(node, input, store)` = 把 `node.prompt` 里的 `{{...}}` 占位换成 `input`/`store` 值；v1 可先只把 `input` 序列化拼到 prompt 末尾。
+`buildAgentPrompt(node, input, store, outputHint)` = 把 `node.prompt` 里的 `{{...}}` 占位换成 `input`/`store` 值；当 `outputHint` 非空时，在 prompt 末尾注入：
+
+```
+你的最终答复必须是一个 JSON 对象，包含字段：${Object.keys(outputHint).join(", ")}。
+可选项：nextNode(string)。
+不要输出任何其他文字。
+```
+
+v1 可先只把 `input` 序列化拼到 prompt 末尾；`outputHint` 来自节点 `output` 类型提示。
 
 `executeNode` 的 agent 分支改为：
 
@@ -1152,25 +1188,6 @@ function makeAgentDef(): WorkflowDefinition {
 ```bash
 git add apps/backend/src/features/workflow/service.ts apps/backend/src/features/workflow/service.test.ts
 git commit -m "feat(workflow): add human resume and agent node runner"
-```
-
-**Files:**
-- Modify: `apps/backend/src/features/workflow/service.ts`
-- Modify: `apps/backend/src/features/workflow/service.test.ts`
-
-- [ ] **Step 1: human 挂起→恢复正确续跑**
-
-- `executeNode` 对 human 返回 null 后，`drive` 暂停。`resolveHumanTask` 把 answer 作为该节点 output，用 `routeOutgoing` 算 routedTo、写 completions、设 execution `running`，然后重新 `drive`。
-- `recover()` 对 `waiting_human` 执行从 `listNodeRuns` 重建 completions——**不重跑已完成的 start/其他节点**；human 节点仍是 waiting，等下次 `resolveHumanTask` 续跑。执行时注意 human 节点已有一行 `waiting_human` 的 node_run，`drive` 重建 completions 时不应把它的 `nodeId` 当作已完成（filter status==="completed"）。
-
-- [ ] **Step 2: agent 真 runner**
-
-用 `agentRunService.enqueueAndAcquire` 建 Run + `agentRunExecution.dispatch` + `for await (const ev of agentRunExecution.subscribe(runId))` 等到 terminal，取最终 assistant text 作为 output。conversationId/memberId 确定命名：`workflow:${executionId}:${nodeId}` / `workflow-agent:${executionId}:${nodeId}`。
-在 `service.ts` 的 deps 加 `agentRunService`、`agentRunExecution`、`convPort`、`resolveDefaultModel`，替换 `evaluateAgentPrompt` 注入。
-
-- [ ] **Step 3: 补测试（agent/human 用 fake）**
-
-- [ ] **Step 4: Commit**
 
 ---
 
