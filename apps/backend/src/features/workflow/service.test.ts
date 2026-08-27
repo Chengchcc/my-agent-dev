@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createWorkflowExecutionService } from "./service.js";
 import type { WorkflowDefinition } from "@chengchenccc/workflow";
+import { createWorkflowExecutionService } from "./service.js";
 
 function makeDef(): WorkflowDefinition {
   return {

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import type { WorkflowDefinition } from "@chengchenccc/workflow";
 import { openDb } from "../../infra/sqlite/db.js";
 import { sqliteWorkflowExecutionAdapter } from "./adapter-sqlite.js";
 import type { WorkflowExecutionPort } from "./ports.js";
-import type { WorkflowDefinition } from "@chengchenccc/workflow";
 
 const db = openDb(":memory:");
 const adapter: WorkflowExecutionPort = sqliteWorkflowExecutionAdapter(db);

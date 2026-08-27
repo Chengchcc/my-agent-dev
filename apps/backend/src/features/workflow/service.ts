@@ -1,20 +1,19 @@
 import {
-  computeNext,
-  routeOutgoing,
-  validateBySchema,
   type CompletionRecord,
+  computeNext,
   type EngineState,
-  type NodeContext,
   type NodeRunner,
   type NodeRunResult,
+  routeOutgoing,
   type StoreApi,
+  validateBySchema,
   type WorkflowDefinition,
   type WorkflowNode,
 } from "@chengchenccc/workflow";
 import { HttpError } from "../../infra/errors.js";
+import type { WorkflowExecutionRow, WorkflowNodeRunRow } from "./domain.js";
 import type { ExecutionEventBus, WorkflowEvent } from "./event-bus.js";
 import type { WorkflowExecutionPort } from "./ports.js";
-import type { WorkflowExecutionRow, WorkflowNodeRunRow } from "./domain.js";
 
 export interface AgentRunnerDeps {
   agentRunService?: {
@@ -235,7 +234,7 @@ export function createWorkflowExecutionService(
         ["completed", "failed", "aborted", "commit_failed"].includes(ev.status ?? "")
       ) {
         const run = await deps.agentRunService.getRun(runId);
-        if (!run || run.status !== "completed")
+        if (run?.status !== "completed")
           throw new Error(`agent run ${runId} ended ${run?.status ?? "unknown"}`);
         const output = extractOutput(run.terminalResult, node.output);
         emit(execution.executionId, "node_agent_completed", { nodeId: node.id, runId });

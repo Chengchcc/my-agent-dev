@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import type { WorkflowDefinition } from "@chengchenccc/workflow";
 import { workflowRoutes } from "./http.js";
 import type { WorkflowExecutionService } from "./service.js";
-import type { WorkflowDefinition } from "@chengchenccc/workflow";
 
 const def: WorkflowDefinition = {
   version: 1,
@@ -33,7 +33,7 @@ const fakeService: WorkflowExecutionService = {
     status: "running",
     createdAt: 1,
   }),
-  resolveHumanTask: async (executionId, nodeId, answer) => ({
+  resolveHumanTask: async (executionId, _nodeId, _answer) => ({
     executionId,
     workflowId: "wf",
     definition: def,

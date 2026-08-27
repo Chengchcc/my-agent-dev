@@ -36,13 +36,6 @@ import {
   sqliteCronJobAdapter,
 } from "../features/cron/index.js";
 import {
-  createNodeRunners,
-  sqliteWorkflowExecutionAdapter,
-  createWorkflowExecutionService,
-  ExecutionEventBus,
-  workflowRoutes,
-} from "../features/workflow/index.js";
-import {
   createKnowledgeService,
   knowledgeRoutes,
   sqliteKnowledgePackAdapter,
@@ -80,6 +73,13 @@ import {
   skillPackRoutes,
   sqliteSkillPackAdapter,
 } from "../features/skill-pack/index.js";
+import {
+  createNodeRunners,
+  createWorkflowExecutionService,
+  ExecutionEventBus,
+  sqliteWorkflowExecutionAdapter,
+  workflowRoutes,
+} from "../features/workflow/index.js";
 import { ulid } from "../infra/ids.js";
 import { resolveKnowledgeMcpServerEntry } from "../infra/knowledge-mcp-command.js";
 import { resolveOmaCommand } from "../infra/oma-command.js";

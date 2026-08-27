@@ -1,7 +1,7 @@
 import { Elysia, t } from "elysia";
-import { HttpError } from "../../infra/errors.js";
 import { sseResponse } from "../../http/response.js";
-import type { WorkflowExecutionService, WorkflowExecutionServiceDeps } from "./service.js";
+import { HttpError } from "../../infra/errors.js";
+import type { WorkflowExecutionService } from "./service.js";
 
 export interface WorkflowRef {
   repo: string;
