@@ -40,68 +40,83 @@ apps/web/src/app/(main)/agentic-workflow/[workflowId]/page.tsx # 不变
 
 ---
 
-### Task 1: Blueprint 视觉收口
+### Task 1: Blueprint 视觉收口（fancy）
 
 **Files:**
 - Modify: `apps/web/src/app/globals.css`
 - Modify: `apps/web/src/app/(main)/layout.tsx`
 - Create: `apps/web/src/components/workflow/workflow-node.tsx`
+- Modify: `apps/web/src/components/workflow/WorkflowCanvas.tsx`
 
-- [ ] **Step 1: globals.css 加 CSS 变量（蓝图基调）**
+**设计方向（fancy）：** 一张"活体工程蓝图"——深色石墨画布 + 蓝图网格 + 噪点/辉光氛围，玻璃拟态侧栏，节点像精密仪表卡片（类型色带 + 内渐变 + 发光），运行时节点到节点的边像电路一样点亮流动。不是普通后台，是**控制台/仪表**。
+
+### 视觉细节
+
+- **画布底**：`#0b0e14`；每 24px `rgba(56,189,248,0.06)` 细网格 + 每 120px `rgba(56,189,248,0.12)` 粗线；叠加 `radial-gradient` 中央微辉光 + 极淡噪点纹理（data-URI）。
+- **面板**：`#0f172a` + `backdrop-blur(12px)` 玻璃拟态 + 1px `rgba(148,163,184,0.12)` 描边 + 大阴影。
+- **节点卡**：260×100，`#111827` 底 + 内渐变 `linear-gradient(180deg, rgba(255,255,255,0.04), transparent)`；顶部 3px 类型色带（start emerald / end rose / agent cyan / script amber / human violet）；选中= amber 外圈 `box-shadow: 0 0 0 2px var(--wf-accent), 0 0 24px rgba(245,158,11,0.35)`；hover 轻微上浮 + 提升阴影。
+- **边**：基线 `#475569` + 箭头；运行中边 = amber 发光虚线流动（`stroke-dasharray: 8 6` + `@keyframes dash` + `filter: drop-shadow(0 0 6px rgba(245,158,11,0.6))`）；条件边 label 用 mono 小字胶囊。
+- **字体**：Display `Bricolage Grotesque`（节点标题/页面大标）、Mono `IBM Plex Mono`（code/标签/DSL）、Body `Sora`。next/font 引入，`--font-*` 变量。
+- **动效**：页面加载节点 stagger fade-in（`animation-delay`）；边 draw-in（stroke-dashoffset）；保存成功 ✓ 微动画；zoom 控件/minimap 深色化。
+- **光标**：画布 `cursor: crosshair`；可点节点 `cursor: pointer` 悬停放大。
+- **记忆点**：**运行时边流动**——execution 一跑，路径上的边像电路一样 amber 发光流动 + 节点点亮打勾。
+
+- [ ] **Step 1: globals.css 加 CSS 变量 + 键帧**
 
 ```css
 :root {
   --wf-canvas-bg: #0b0e14;
-  --wf-panel-bg: #0f172a;
-  --wf-input-bg: #1e293b;
+  --wf-panel-bg: rgba(15, 23, 42, 0.85);
+  --wf-grid: rgba(56, 189, 248, 0.06);
+  --wf-grid-strong: rgba(56, 189, 248, 0.12);
   --wf-node-bg: #111827;
   --wf-node-border: #1f2937;
   --wf-node-text: #e5e7eb;
-  --wf-grid-line: rgba(56, 189, 248, 0.07);
-  --wf-grid-strong: rgba(56, 189, 248, 0.14);
-  --wf-accent: #f59e0b;         /* amber: active/run/save */
-  --wf-info: #38bdf8;           /* cyan: info/motion */
-  --wf-color-start: #34d399;    /* emerald */
-  --wf-color-end: #fb7185;      /* rose */
-  --wf-color-agent: #38bdf8;    /* cyan */
-  --wf-color-script: #f59e0b;   /* amber */
-  --wf-color-human: #a78bfa;    /* violet */
+  --wf-accent: #f59e0b;
+  --wf-info: #38bdf8;
+  --wf-color-start: #34d399;
+  --wf-color-end: #fb7185;
+  --wf-color-agent: #38bdf8;
+  --wf-color-script: #f59e0b;
+  --wf-color-human: #a78bfa;
+  --font-display: var(--font-bricolage);
+  --font-mono: var(--font-ibm-plex-mono);
+  --font-body: var(--font-sora);
 }
+@keyframes wf-dash { to { stroke-dashoffset: -14; } }
+@keyframes wf-pop { 0% { opacity: 0; transform: translateY(6px); } 100% { opacity: 1; transform: none; } }
 ```
 
-- [ ] **Step 2: layout.tsx 引入字体**
+- [ ] **Step 2: layout.tsx 引字体**
 
 ```tsx
 import { Bricolage_Grotesque, IBM_Plex_Mono, Sora } from "next/font/google";
-const display = Bricolage_Grotesque({ subsets: ["latin"] });
-const mono = IBM_Plex_Mono({ weight: "400", subsets: ["latin"] });
-const body = Sora({ weight: "400", subsets: ["latin"] });
-// html className={`${display.variable} ${mono.variable} ${body.variable}`}
-// globals.css: :root { --font-display / --font-mono / --font-body }
+const bricolage = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-bricolage" });
+const mono = IBM_Plex_Mono({ weight: "400", subsets: ["latin"], variable: "--font-ibm-plex-mono" });
+const sora = Sora({ weight: "400", subsets: ["latin"], variable: "--font-sora" });
+// <html className={`${bricolage.variable} ${mono.variable} ${sora.variable}`}>
 ```
 
-- [ ] **Step 3: workflow-node.tsx（RF 自定义节点）**
+- [ ] **Step 3: workflow-node.tsx（发光节点卡）**
 
 ```tsx
 "use client";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-
 const typeColor: Record<string, string> = {
-  start: "var(--wf-color-start)",
-  end: "var(--wf-color-end)",
-  agent: "var(--wf-color-agent)",
-  script: "var(--wf-color-script)",
-  human: "var(--wf-color-human)",
+  start: "var(--wf-color-start)", end: "var(--wf-color-end)", agent: "var(--wf-color-agent)",
+  script: "var(--wf-color-script)", human: "var(--wf-color-human)",
 };
-
-export function WorkflowNodeCard({ id, data, selected }: NodeProps) {
+export function WorkflowNodeCard({ data, selected }: NodeProps) {
   const t = (data as { type?: string }).type ?? "script";
   return (
-    <div style={{ width: 260, height: 100, background: "var(--wf-node-bg)", border: `1px solid ${selected ? "var(--wf-accent)" : "var(--wf-node-border)"}`, borderRadius: 12, position: "relative" }}>
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: typeColor[t] ?? "var(--wf-info)" }} />
+    <div style={{ width: 260, height: 100, borderRadius: 12, position: "relative",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.04), transparent), var(--wf-node-bg)",
+      border: `1px solid ${selected ? "var(--wf-accent)" : "var(--wf-node-border)"}`,
+      boxShadow: selected ? "0 0 0 2px var(--wf-accent), 0 0 24px rgba(245,158,11,0.35)" : "0 4px 16px rgba(0,0,0,0.4)" }}>
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: typeColor[t] ?? "var(--wf-info)", boxShadow: `0 0 8px ${typeColor[t]}` }} />
       <div style={{ padding: "16px 12px 0" }}>
         <div style={{ color: "var(--wf-node-text)", fontSize: 14, fontWeight: 600 }}>{data.label as string}</div>
-        <div style={{ color: "#94a3b8", fontSize: 12 }}>{t}</div>
+        <div style={{ color: "#94a3b8", fontSize: 12, fontFamily: "var(--font-mono)" }}>{t}</div>
       </div>
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
@@ -110,30 +125,27 @@ export function WorkflowNodeCard({ id, data, selected }: NodeProps) {
 }
 ```
 
-- [ ] **Step 4: WorkflowCanvas.tsx 挂 nodeTypes + 蓝图背景**
+- [ ] **Step 4: WorkflowCanvas.tsx 接 nodeTypes + 蓝图底 + 边流动**
 
 ```tsx
 import { Background, BackgroundVariant, ReactFlow, ... } from "@xyflow/react";
 import { WorkflowNodeCard } from "./workflow-node";
-
 const nodeTypes = { default: WorkflowNodeCard };
-// ReactFlow: nodeTypes={nodeTypes}, 外层 div style={{ background: "var(--wf-canvas-bg)" }}
-// <Background variant={BackgroundVariant.Lines} gap={24} size={1} color="var(--wf-grid-line)" />
+// 外层 div style={{ background: "var(--wf-canvas-bg)", cursor: "crosshair" }}
+// <Background variant={BackgroundVariant.Lines} gap={24} size={1} color="var(--wf-grid)" />
+// 边默认 style={stroke:#475569}；运行中边 style={{ stroke:"var(--wf-accent)", strokeDasharray:"8 6", animation:"wf-dash 1s linear infinite", filter:"drop-shadow(0 0 6px rgba(245,158,11,0.6))" }}
 ```
 
-- [ ] **Step 5: typecheck + lint**
+- [ ] **Step 5: typecheck + lint + commit**
 
 Run: `cd apps/web && bun run typecheck && bun run lint`
 Expected: PASS。
 
-- [ ] **Step 6: Commit**
-
 ```bash
 git add apps/web/src/app/globals.css "apps/web/src/app/(main)/layout.tsx" apps/web/src/components/workflow/workflow-node.tsx apps/web/src/components/workflow/WorkflowCanvas.tsx
-git commit -m "feat(web): blueprint visual system for workflow editor"
+git commit -m "feat(web): fancy blueprint visual system for workflow editor"
 ```
 
----
 
 ### Task 2: RF 交互编辑（拖拽/连边/删节点/节点面板/边条件）
 
