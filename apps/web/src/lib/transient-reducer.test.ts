@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   completeTool,
+  type LiveToolMap,
   markTransientError,
   pushTransientNotice,
   upsertTool,
-  type LiveToolMap,
 } from "./transient-reducer";
 
 describe("markTransientError", () => {
@@ -57,8 +57,18 @@ describe("injected tool display (native_tool_* events -> LiveToolMap)", () => {
 
   test("multiple injected tools (history_recent + todo_write) coexist per callId", () => {
     let state: LiveToolMap = {};
-    state = upsertTool(state, { runId: "r-1", callId: "c-a", name: "history_recent", state: "running" });
-    state = upsertTool(state, { runId: "r-1", callId: "c-b", name: "todo_write", state: "running" });
+    state = upsertTool(state, {
+      runId: "r-1",
+      callId: "c-a",
+      name: "history_recent",
+      state: "running",
+    });
+    state = upsertTool(state, {
+      runId: "r-1",
+      callId: "c-b",
+      name: "todo_write",
+      state: "running",
+    });
     expect(Object.keys(state).sort()).toEqual(["r-1:c-a", "r-1:c-b"]);
     expect(state["r-1:c-a"]?.name).toBe("history_recent");
     expect(state["r-1:c-b"]?.name).toBe("todo_write");

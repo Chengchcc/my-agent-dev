@@ -137,7 +137,9 @@ export async function materializeZipSource(opts: {
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (listProc.exitCode === 0) {
-    const entries = String(listProc.stdout ?? "").split("\n").filter((line) => line.length > 0);
+    const entries = String(listProc.stdout ?? "")
+      .split("\n")
+      .filter((line) => line.length > 0);
     try {
       assertSafeZipEntries(entries);
     } catch (err) {

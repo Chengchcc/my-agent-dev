@@ -705,7 +705,11 @@ export async function installFeatures(services: BackendServices): Promise<Instal
             : []),
         ],
         productTools: config.productToolsMcpUrl
-          ? [...buildHistoryTools(`sse:${config.productToolsMcpUrl.endsWith('/sse') ? config.productToolsMcpUrl : config.productToolsMcpUrl + '/sse'}`)]
+          ? [
+              ...buildHistoryTools(
+                `sse:${config.productToolsMcpUrl.endsWith("/sse") ? config.productToolsMcpUrl : `${config.productToolsMcpUrl}/sse`}`,
+              ),
+            ]
           : [],
         knowledgePacks: assignedKnowledge.map((p) => ({
           id: p.id,
