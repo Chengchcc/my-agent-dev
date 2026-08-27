@@ -36,6 +36,13 @@ import {
   sqliteCronJobAdapter,
 } from "../features/cron/index.js";
 import {
+  createNodeRunners,
+  sqliteWorkflowExecutionAdapter,
+  createWorkflowExecutionService,
+  ExecutionEventBus,
+  workflowRoutes,
+} from "../features/workflow/index.js";
+import {
   createKnowledgeService,
   knowledgeRoutes,
   sqliteKnowledgePackAdapter,
@@ -101,6 +108,7 @@ export interface InstalledFeatures {
   agentRunService: ReturnType<typeof createAgentRunService>;
   agentRunExecution: ReturnType<typeof createAgentRunExecutionService>;
   productTools: ReturnType<typeof createProductToolsService>;
+  workflowExecutionService: ReturnType<typeof createWorkflowExecutionService>;
 
   start(): Promise<void>;
   dispose(): Promise<void>;
@@ -792,6 +800,24 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       })),
   });
 
+  // ─── Agentic Workflow ───────────────────────────────────
+  const workflowPort = sqliteWorkflowExecutionAdapter(db);
+  const workflowNodeRunners = createNodeRunners({ dataDir: config.dataDir });
+  const workflowEventBus = new ExecutionEventBus();
+  const workflowExecutionService = createWorkflowExecutionService({
+    port: workflowPort,
+    nodeRunners: workflowNodeRunners,
+    eventBus: workflowEventBus,
+    idGen: ulid,
+  });
+  const workflowApp = workflowRoutes({
+    workflowExecutionService,
+    loadWorkflow: async (ref) => {
+      const file = join(config.dataDir, "workflows", ref.path);
+      return await Bun.file(file).text();
+    },
+  });
+
   const featureSet: FeatureSet = {
     agents: agentRoutes(
       agentSvc,
@@ -861,6 +887,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     skillPacks: skillPackRoutes(skillPackSvc, config.dataDir),
     mcp: mcpRoutes(mcpSvc),
     knowledge: knowledgeRoutes(knowledgeSvc),
+    workflowExecutions: workflowApp,
     settings: settingsRoutes(settingsSvc),
 
     models: modelRoutes({
@@ -945,6 +972,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     // Phase 5: redeliver durable delivering inputs, promote idle-branch
     // pending inputs, and retry commit_failed runs once at boot.
     await agentRunExecution.recover();
+    await workflowExecutionService.recover();
   }
 
   async function dispose(): Promise<void> {
@@ -956,6 +984,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     clearInterval(doctorTimer);
     if (doctorAllRunning) await doctorAllRunning;
     await agentRunExecution.dispose(); // abort/SIGTERM/SIGKILL children + drain
+    await workflowExecutionService.dispose();
     await larkBotRegistry.dispose();
     setupManager?.dispose();
     await productToolsMcp?.close();
@@ -987,6 +1016,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     agentRunService,
     agentRunExecution,
     productTools,
+    workflowExecutionService,
     start,
     dispose,
   };
