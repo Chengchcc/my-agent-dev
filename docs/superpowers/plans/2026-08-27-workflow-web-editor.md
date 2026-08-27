@@ -14,17 +14,44 @@ Spec: `docs/superpowers/specs/2026-08-27-agentic-workflow-design.md`
 
 **概念：Blueprint / Control Surface。** Workflow 是工程制品，编辑器像一张"活体蓝图"——深色控制台上一张可缩放/平移的逻辑图纸，运行时节点/边发光流动。不是通用后台仪表盘，是"流程图工作台"。
 
-### UX 流程
+### UX 流程（三层 IA：列表 → 详情 → execution）
 
-- **布局（3 区）**：左侧画布（flex-1）+ 右侧固定 360px 侧栏，侧栏分两个 Tab：`属性`（节点/边 inspector）与 `DSL/运行`（Monaco DSL + 保存 + 运行 + 事件流，v2 加 chat）。
-- **进入**：顶栏工作流下拉（`listWorkflowDefinitions`），默认加载第一个；无定义→空态 CTA"创建第一个 workflow"。
-- **选中节点** → 画布点节点 → 右侧切到 `属性`，展示该类型字段（agent/script/human/end 各不同），编辑→画布/DSL 即时联动，产生 dirty 点（未保存圆点）。
-- **选中边** → `属性` 展示该边的 `when`（JSONLogic JSON 编辑）。
-- **DSL Tab** → Monaco JSON 可编辑，`Apply` 应用到画布（过 `parseWorkflow`，不合格提示不落画布），`Save` PUT 到后端。
-- **运行 Tab**（v1 最小）→ workflowRef + input JSON → `POST /api/workflow-executions` → executionId → 订阅 SSE，节点/边状态实时点亮（edge pulse + node check）。
-- **状态**：loading（骨架）、empty、dirty（未保存点）、saving（spinner）、saved（✓ + 时间）、error（banner/toast）。
-- **键盘**：`Cmd/Ctrl+S` 保存，`Esc` 取消选中，方向键跳节点。
-- **无障碍**：画布节点为 focusable button（`tabIndex`），inspector 字段带 `<label>`，对比度 AA。
+路由：
+- `/agentic-workflow` → **workflow 列表页**（管理元数据）
+- `/agentic-workflow/:workflowId` → **编辑详情页**（画布 + 侧栏 属性/DSL/Chat）
+- `/agentic-workflow/:workflowId/executions` → **execution 列表页**（运行记录 + Run）
+
+**列表页**：卡片/表展示 `meta`（name、description、tags、status 徽章、workflowId、owner/updatedBy），动作：打开（进详情）、删除、复制、`+ New`。空态 CTA 创建。
+
+**详情页**：
+- 顶栏：返回列表 + 当前 name/id + dirty/unsaved + `⌘S Save` + 链接 `→ executions`。
+- 左画布（flex-1）Blueprint 网格 + RF。
+- 右侧栏 360px，3 Tab：`属性`（节点/边 inspector）、`DSL`（Monaco JSON + Apply/Save）、`Chat`（v2 占位：自然语言 → agent 生成 DSL patch → Apply patch）。
+- 状态：loading/empty/dirty/saving/saved/error。
+- 键盘：`Cmd/Ctrl+S` 保存，`Esc` 取消选中，方向键跳节点。
+- 无障碍：画布节点 focusable button，inspector 字段带 `<label>`。
+
+**execution 列表页**：
+- 顶栏：返回详情 + `+ Run`（input JSON 弹窗 → POST → 刷新）。
+- 表格：executionId、status 徽章（running/success/failure/custom）、exit、createdAt；点击行为查看事件流（SSE timeline）。
+- 空态：无 execution。
+
+### ASCII 版式（三层 IA）
+
+```text
+/agentic-workflow                        /agentic-workflow/:id                    /agentic-workflow/:id/executions
+┌────────────────────────────┐        ┌──────────────────────────────────────┐  ┌────────────────────────────────────┐
+│ ● Agentic Workflow 列表     │        │ ← 列表   oncall-triage  ● unsaved ⌘S  │  │ ← 详情   oncall-triage  [+ Run]    │
+│ + New                       │        │                                      │  │────────────────────────────────────│
+│ ┌────────────────────────┐  │        │ ┌─ CANVAS ────────────┐ ┌─ Sidebar ─┐│  │ executionId  status    exit  time │
+│ │ oncall-triage           │  │        │ │ ┌────┐ ┌─────┐ ┌────┐│ │[属性][DSL]││  │ 01HSY… running ●  -      12:01  │
+│ │  分诊 · tags[oncall]     │  │        │ │ START│─│agent│─│HUM ││ │[Chat]     ││  │ 01HSZ… success ✓  ok    11:50  │
+│ │  status: draft  owner:me │  │        │ │ └────┘ │cyan │ └────┘│ │ ┌───────┐ ││  │ 01HTA… failure ✗  ×     11:20  │
+│ └────────────────────────┘  │        │ │  └─┘   └─────┘        │ │ │ DSL   │ ││  │  ▸ 查看事件流               │
+│ │ alert-notify  ...         │        │ │   运行中边 amber 流动    │ │ │ JSON  │ ││  │                            │
+│ └────────────────────────┘  │        │ └────────────────────────┘ └─└───────┘ ││  └────────────────────────────┘│
+└────────────────────────────┘        └──────────────────────────────────────┘  └────────────────────────────┘
+```
 
 ### 视觉方向
 
@@ -47,19 +74,25 @@ Spec: `docs/superpowers/specs/2026-08-27-agentic-workflow-design.md`
 ## 文件结构
 
 ```
-apps/backend/src/features/workflow/http.ts        # + /api/workflow-definitions list/get/put + deps.workflowDir
-apps/backend/src/features/workflow/http.test.ts   # + def endpoints tests
+apps/backend/src/features/workflow/http.ts        # + /api/workflow-definitions list/get/put/delete + /api/workflow-executions list
+apps/backend/src/features/workflow/http.test.ts   # + def/exec endpoints tests
 apps/backend/src/bootstrap/features.ts            # workflowRoutes 传 workflowDir
 
-apps/web/package.json                             # + @chengchenccc/workflow
-apps/web/src/lib/api.ts                           # + listWorkflowDefinitions/getWorkflowDefinition/saveWorkflowDefinition + types
-apps/web/src/app/(main)/agentic-workflow/page.tsx # server 组件（SSR 加载定义）
-apps/web/src/components/AgenticWorkflowEditor.tsx # 'use client'：状态 + 三面板布局
-apps/web/src/components/workflow/WorkflowCanvas.tsx  # 只读 SVG 画布（toEditorGraph）
-apps/web/src/components/workflow/NodePropertyPanel.tsx # 属性面板
-apps/web/src/components/workflow/DslEditorPanel.tsx    # Monaco DSL 编辑 + Apply/Save
+apps/web/package.json                             # + @chengchenccc/workflow + @xyflow/react
+apps/web/src/lib/api.ts                           # + workflow definition/execution methods + types
+apps/web/src/app/(main)/agentic-workflow/page.tsx # 列表页（server SSR）
+apps/web/src/app/(main)/agentic-workflow/[workflowId]/page.tsx            # 编辑详情页（server SSR）
+apps/web/src/app/(main)/agentic-workflow/[workflowId]/executions/page.tsx # execution 列表页（server SSR）
+apps/web/src/components/workflow/WorkflowList.tsx        # 列表 client
+apps/web/src/components/workflow/AgenticWorkflowEditor.tsx # 详情 client（画布+侧栏）
+apps/web/src/components/workflow/WorkflowCanvas.tsx       # 只读 RF 画布
+apps/web/src/components/workflow/NodePropertyPanel.tsx    # 节点/边属性
+apps/web/src/components/workflow/DslEditorPanel.tsx       # Monaco DSL + Apply/Save
+apps/web/src/components/workflow/ChatPanel.tsx            # v2 占位
+apps/web/src/components/workflow/ExecutionList.tsx        # execution 列表 client
 apps/web/src/components/NavRail.tsx               # + SidebarMenuItem
 ```
+
 
 ---
 
@@ -158,6 +191,89 @@ git commit -m "feat(workflow): add workflow definition read/write endpoints"
 
 ---
 
+### Task A2: execution 列表 + 删除 workflow 定义
+
+**Files:**
+- Modify: `apps/backend/src/features/workflow/ports.ts`
+- Modify: `apps/backend/src/features/workflow/adapter-sqlite.ts`
+- Modify: `apps/backend/src/features/workflow/service.ts`
+- Modify: `apps/backend/src/features/workflow/http.ts`
+
+- [ ] **Step 1: ports.ts 加 `listExecutions`**
+
+```typescript
+listExecutions(workflowId?: string): Promise<WorkflowExecutionRow[]>;
+```
+
+- [ ] **Step 2: adapter-sqlite.ts 实现**
+
+```typescript
+import { desc } from "drizzle-orm"; // 加到顶部 import
+// return 对象内：
+async listExecutions(workflowId?: string) {
+  const rows = workflowId
+    ? await d.select().from(workflowExecution).where(eq(workflowExecution.workflowId, workflowId)).orderBy(desc(workflowExecution.createdAt))
+    : await d.select().from(workflowExecution).orderBy(desc(workflowExecution.createdAt));
+  return rows.map(toExec);
+},
+```
+
+- [ ] **Step 3: service.ts 加 `listExecutions`**
+
+```typescript
+// interface 加：
+listExecutions(workflowId?: string): Promise<WorkflowExecutionRow[]>;
+// return 对象加：
+async listExecutions(workflowId) { return deps.port.listExecutions(workflowId); },
+```
+
+- [ ] **Step 4: http.ts 加两条路由 + 删除定义**
+
+```typescript
+app.get("/api/workflow-executions", async ({ query }) => {
+  return await svc.listExecutions(query.workflowId);
+}, { query: t.Object({ workflowId: t.Optional(t.String()) }) });
+
+app.delete("/api/workflow-definitions/:workflowId", async ({ params }) => {
+  const file = join(deps.workflowDir, `${params.workflowId}.workflow.json`);
+  rmSync(file, { force: true });
+  return { ok: true };
+});
+```
+
+顶部 `import { rmSync } from "node:fs"`。
+
+- [ ] **Step 5: 补 http.test（执行列表 + 删除）**
+
+```typescript
+test("list executions and delete definition", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "wf-exec-"));
+  const app = workflowRoutes({ workflowExecutionService: fakeService, loadWorkflow: async () => JSON.stringify(def), workflowDir: dir });
+  await app.handle(new Request("http://localhost/api/workflow-definitions/wf", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ definition: def }) }));
+  const list = await app.handle(new Request("http://localhost/api/workflow-executions"));
+  expect((await list.json()) as { executions?: unknown }).executions).toBeDefined();
+  const del = await app.handle(new Request("http://localhost/api/workflow-definitions/wf", { method: "DELETE" }));
+  expect(del.status).toBe(200);
+  rmSync(dir, { recursive: true, force: true });
+});
+```
+
+fakeService 需加 `listExecutions: async () => []`。
+
+- [ ] **Step 6: 跑测试确认通过**
+
+Run: `cd apps/backend && bun test src/features/workflow/http.test.ts`
+Expected: PASS。
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/backend/src/features/workflow
+git commit -m "feat(workflow): add workflow execution list and delete definition"
+```
+
+---
+
 ### Task B: web 依赖 + api.ts workflow 调用
 
 **Files:**
@@ -186,6 +302,10 @@ export const api = {
     unwrap(
       client.api.workflowDefinitions({ workflowId }).put({ definition }),
     ),
+  deleteWorkflowDefinition: (workflowId: string) =>
+    unwrap(client.api.workflowDefinitions({ workflowId }).delete()),
+  listWorkflowExecutions: (workflowId?: string) =>
+    unwrap(client.api.workflowExecutions.get({ query: workflowId ? { workflowId } : undefined })),
   startWorkflowExecution: (body: { workflowRef: { repo: string; path: string }; input?: Record<string, unknown> }) =>
     unwrap(client.api.workflowExecutions.post(body)),
 };

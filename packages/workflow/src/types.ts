@@ -67,11 +67,22 @@ export type WorkflowNode = NodeCommon &
     | { type: "human"; question?: string; form?: Record<string, FormField>; timeoutMs?: number }
   );
 
-export interface EdgeDef {
-  from: NodeId;
-  to: NodeId;
-  /** JSONLogic condition evaluated against the from-node's output + store. */
-  when?: JsonLogicRule;
+export interface WorkflowMeta {
+  name?: string;
+  description?: string;
+  tags?: string[];
+  status?: "draft" | "active" | "archived";
+  owner?: string;
+  updatedBy?: string;
+}
+
+export interface WorkflowDefinition {
+  version: 1;
+  id: string;
+  meta?: WorkflowMeta;
+  input?: InputHint;
+  nodes: WorkflowNode[];
+  edges: EdgeDef[];
 }
 
 export interface WorkflowDefinition {

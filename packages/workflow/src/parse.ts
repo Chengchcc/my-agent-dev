@@ -188,9 +188,22 @@ export function parseWorkflow(raw: unknown): WorkflowDefinition {
       }
     }
   }
+  const meta: WorkflowMeta = {};
+  if (raw.meta !== undefined) {
+    if (!isRecord(raw.meta)) issues.push("meta must be an object");
+    else {
+      if (typeof raw.meta.name === "string") meta.name = raw.meta.name;
+      if (typeof raw.meta.description === "string") meta.description = raw.meta.description;
+      if (typeof raw.meta.owner === "string") meta.owner = raw.meta.owner;
+      if (typeof raw.meta.updatedBy === "string") meta.updatedBy = raw.meta.updatedBy;
+      if (Array.isArray(raw.meta.tags) && raw.meta.tags.every((t) => typeof t === "string")) meta.tags = raw.meta.tags;
+      if (raw.meta.status === "draft" || raw.meta.status === "active" || raw.meta.status === "archived") meta.status = raw.meta.status;
+    }
+  }
   if (issues.length > 0) throw new WorkflowParseError(issues);
   const def: WorkflowDefinition = { version: 1, id: id!, nodes, edges };
   if (Object.keys(input).length > 0) def.input = input;
+  if (Object.keys(meta).length > 0) def.meta = meta;
   topoSort(def); // throws GraphCycleError on cycle
   return def;
 }
