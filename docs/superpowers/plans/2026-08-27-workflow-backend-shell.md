@@ -967,6 +967,193 @@ git commit -m "feat(workflow): add workflow execution service loop"
 
 ### Task 5b: human 恢复 + agent 真 runner
 
+**Spike 结论（已实测 rpc-fixture）**：`agentRunExecution.subscribe(runId)` 流的事件类型为 `status`（payload 带 `status: "agent_start" | "completed"`）、`text_delta`。**terminal 判定** = `ev.type === "status" && ["completed","failed","aborted","commit_failed"].includes(ev.status)`。**最终答复** = `run.terminalResult.messages` 数组最后一个 `role==="assistant"` 的 `.text`（fixture 形状 `{status, messages:[{role,text}]}`）。`enqueueAndAcquire` 的 `backendKind: "oma"`、`defaultModel: {backendKind, modelId}`、`configRevision` 数字。
+
+**Files:**
+- Modify: `apps/backend/src/features/workflow/service.ts`
+- Modify: `apps/backend/src/features/workflow/service.test.ts`
+
+- [ ] **Step 0: 修 Task 5 的 terminal 退出 hack**
+
+删除 `stepKindStatus`/`lastExit` 两个恒返回 success 的函数，`drive` 末尾直接用 `computeNext` 返回的 `step.exit`：
+
+```typescript
+// in drive(), when step.kind === "terminal":
+await deps.port.updateExecution(execution.executionId, {
+  status: exitStatus(step.exit),
+  exit: step.exit,
+  terminalAt: Date.now(),
+});
+emit(execution.executionId, "execution_terminal", { exit: step.exit });
+return;
+
+function exitStatus(exit: string): "success" | "failure" | "custom" {
+  if (exit === "failure") return "failure";
+  if (exit === "success") return "success";
+  return "custom";
+}
+```
+
+- [ ] **Step 1: human 挂起→恢复正确续跑**
+
+`drive` 开头重建 completions 改为**只取 `status==="completed"` 的行**（不把 `waiting_human`/`running` 当已完节点）：
+
+```typescript
+const nodeRuns = await deps.port.listNodeRuns(execution.executionId);
+if (completions.get(execution.executionId) === undefined) {
+  const done = nodeRuns.filter((r) => r.status === "completed");
+  completions.set(
+    execution.executionId,
+    done.map((r, i) => ({ nodeId: r.nodeId, output: r.output ?? {}, order: i, routedTo: r.routedTo ?? [] })),
+  );
+}
+```
+
+`resolveHumanTask` 改为无状态、从 DB 续跑（不在内存 resolver）：
+
+```typescript
+async resolveHumanTask(executionId, nodeId, answer) {
+  const row = await deps.port.getExecution(executionId);
+  if (!row) throw new HttpError(404, "Execution not found");
+  const pending = await deps.port.getPendingHuman(executionId, nodeId);
+  if (!pending) throw new HttpError(404, "Pending human task not found");
+  if (pending.status === "resolved") throw new HttpError(409, "Human task already resolved");
+
+  // build completions from DB (completed only), then compute routedTo from
+  // the ACTUAL prior completions (not empty []).
+  const done = (await deps.port.listNodeRuns(executionId)).filter((r) => r.status === "completed");
+  const arr = done.map((r, i) => ({ nodeId: r.nodeId, output: r.output ?? {}, order: i, routedTo: r.routedTo ?? [] }));
+  const routedTo = routeOutgoing(nodeId, row.definition, arr, row.store);
+  await deps.port.markPendingHumanResolved(executionId, nodeId);
+  await deps.port.updateNodeRun(executionId, nodeId, { status: "completed", output: answer, routedTo, terminalAt: Date.now() });
+  arr.push({ nodeId, output: answer, order: arr.length, routedTo });
+  completions.set(executionId, arr);
+  row.store = (await deps.port.getExecution(executionId))!.store;
+  await deps.port.updateExecution(executionId, { status: "running" });
+  void runWithCatch(executionId, () => drive(row));
+  return row;
+}
+```
+
+`recover()` 对 `waiting_human` **不自动续跑**——等待新的 `resolveHumanTask`（其从 DB 重建，故无需内存 resolver）。对 `running` 自动 `drive`。
+
+- [ ] **Step 2: agent 真 runner（spike 确认的精确实现）**
+
+在 `WorkflowExecutionServiceDeps` 增加：`agentRunService`、`agentRunExecution`、`convPort`、`resolveDefaultModel`、`resolveRepoWorkspace`，删掉 `evaluateAgentPrompt`。实现：
+
+```typescript
+async function runAgentNode(node: WorkflowNode, ready: { input: Record<string, unknown> }, execution: WorkflowExecutionRow): Promise<NodeRunResult> {
+  if (node.type !== "agent") throw new Error(`not agent: ${node.type}`);
+  if (!deps.agentRunService || !deps.agentRunExecution || !deps.convPort || !deps.resolveDefaultModel) {
+    throw new Error("agent runner requires agentRunService/agentRunExecution/convPort/resolveDefaultModel");
+  }
+  const agentId = node.agentId ?? "";
+  if (!agentId) throw new Error("agent node requires agentId");
+  const conversationId = `workflow:${execution.executionId}:${node.id}`;
+  const prompt = buildAgentPrompt(node, ready.input, execution.store);
+
+  if (!deps.convPort.getConversation(conversationId)) {
+    try { deps.convPort.createConversation({ conversationId, agentId, origin: "workflow", createdAt: Date.now() }); } catch { /* concurrent */ }
+  }
+
+  const defaultModel = await deps.resolveDefaultModel(agentId);
+  const workspace = node.repo ? await deps.resolveRepoWorkspace(node.repo, agentId) : undefined;
+  const acquired = await deps.agentRunService.enqueueAndAcquire({
+    conversationId,
+    agentId,
+    backendKind: "oma",
+    mode: "normal",
+    message: { role: "user", text: prompt },
+    defaultModel,
+    configRevision: 1, // spike confirmed; real value from agent configRevision in follow-up
+    idempotencyKey: `wf:${execution.executionId}:${node.id}`,
+    ...(workspace ? { workspace } : {}),
+  });
+  const runId = acquired.run?.runId;
+  if (!runId) throw new Error("agent run not acquired");
+
+  emit(execution.executionId, "node_agent_started", { nodeId: node.id, runId });
+  await deps.agentRunExecution.dispatch(runId);
+  for await (const ev of deps.agentRunExecution.subscribe(runId)) {
+    if (ev.type === "status" && ["completed", "failed", "aborted", "commit_failed"].includes((ev as { status?: string }).status)) {
+      const run = await deps.agentRunService.getRun(runId);
+      if (!run || run.status !== "completed") throw new Error(`agent run ${runId} ended ${run?.status ?? "unknown"}`);
+      const text = extractFinalText(run.terminalResult);
+      emit(execution.executionId, "node_agent_completed", { nodeId: node.id, runId });
+      return { output: { text } };
+    }
+  }
+  throw new Error(`agent run ${runId} subscribe returned without terminal`);
+}
+
+function extractFinalText(outcome: unknown): string {
+  const o = outcome as { messages?: Array<{ role?: string; text?: string }> } | null;
+  const last = o?.messages?.slice().reverse().find((m) => m.role === "assistant");
+  return last?.text ?? "";
+}
+```
+
+`buildAgentPrompt(node, input, store)` = 把 `node.prompt` 里的 `{{...}}` 占位换成 `input`/`store` 值；v1 可先只把 `input` 序列化拼到 prompt 末尾。
+
+`executeNode` 的 agent 分支改为：
+
+```typescript
+if (node.type === "agent") {
+  const result = await runAgentNode(node, ready, execution);
+  return { output: result.output ?? {} };
+}
+```
+
+- [ ] **Step 3: 补测试（agent 用 fake）**
+
+```typescript
+test("agent node runs a child run and extracts text output", async () => {
+  const { port } = ramPort();
+  const svc = createWorkflowExecutionService({
+    port,
+    nodeRunners: { script: { run: async () => ({ output: {} }) }, human: { run: async () => ({ output: {} }) } } as any,
+    eventBus: { emit: () => {}, subscribe: async function* () {} } as any,
+    idGen: () => "e1",
+    agentRunService: {
+      enqueueAndAcquire: async () => ({ acquired: true, run: { runId: "r1" } }),
+      getRun: async () => ({ status: "completed", terminalResult: { status: "completed", messages: [{ role: "assistant", text: "PONG" }] } }),
+    } as any,
+    agentRunExecution: {
+      dispatch: async () => {},
+      subscribe: async function* () { yield { type: "status", status: "completed" }; },
+    } as any,
+    convPort: { getConversation: () => null, createConversation: () => {} } as any,
+    resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "x" }),
+    resolveRepoWorkspace: async () => undefined,
+  });
+  const def = makeAgentDef();
+  const result = await svc.runToCompletion("e1", { workflowId: "wf", definition: def, input: {} });
+  expect(result.status).toBe("success");
+  // assert the agent node_run output.text === "PONG" via port.listNodeRuns
+  const runs = await port.listNodeRuns("e1");
+  expect(runs.find((r: any) => r.nodeId === "s")!.output).toEqual({ text: "PONG" });
+});
+
+function makeAgentDef(): WorkflowDefinition {
+  return {
+    version: 1, id: "wf",
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "s", type: "agent", agentId: "ag-1" },
+      { id: "done", type: "end", status: "success" },
+    ],
+    edges: [{ from: "start", to: "s" }, { from: "s", to: "done" }],
+  };
+}
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add apps/backend/src/features/workflow/service.ts apps/backend/src/features/workflow/service.test.ts
+git commit -m "feat(workflow): add human resume and agent node runner"
+```
+
 **Files:**
 - Modify: `apps/backend/src/features/workflow/service.ts`
 - Modify: `apps/backend/src/features/workflow/service.test.ts`
