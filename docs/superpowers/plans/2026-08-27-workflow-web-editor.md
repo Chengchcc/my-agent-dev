@@ -10,7 +10,37 @@
 
 Spec: `docs/superpowers/specs/2026-08-27-agentic-workflow-design.md`
 
-**范围外（后续 plan）：** 拖拽连线画布（v2）、LLM chat 生成 DSL 补丁（v2）、真实 git 仓库 loader/提交（本 plan 用 `dataDir/workflows` 本地文件读写，注释注明后续换 git）、CronJob workflow target、loop 删除。
+## UX 与视觉方向（设计契约，实现必须遵守）
+
+**概念：Blueprint / Control Surface。** Workflow 是工程制品，编辑器像一张"活体蓝图"——深色控制台上一张可缩放/平移的逻辑图纸，运行时节点/边发光流动。不是通用后台仪表盘，是"流程图工作台"。
+
+### UX 流程
+
+- **布局（3 区）**：左侧画布（flex-1）+ 右侧固定 360px 侧栏，侧栏分两个 Tab：`属性`（节点/边 inspector）与 `DSL/运行`（Monaco DSL + 保存 + 运行 + 事件流，v2 加 chat）。
+- **进入**：顶栏工作流下拉（`listWorkflowDefinitions`），默认加载第一个；无定义→空态 CTA"创建第一个 workflow"。
+- **选中节点** → 画布点节点 → 右侧切到 `属性`，展示该类型字段（agent/script/human/end 各不同），编辑→画布/DSL 即时联动，产生 dirty 点（未保存圆点）。
+- **选中边** → `属性` 展示该边的 `when`（JSONLogic JSON 编辑）。
+- **DSL Tab** → Monaco JSON 可编辑，`Apply` 应用到画布（过 `parseWorkflow`，不合格提示不落画布），`Save` PUT 到后端。
+- **运行 Tab**（v1 最小）→ workflowRef + input JSON → `POST /api/workflow-executions` → executionId → 订阅 SSE，节点/边状态实时点亮（edge pulse + node check）。
+- **状态**：loading（骨架）、empty、dirty（未保存点）、saving（spinner）、saved（✓ + 时间）、error（banner/toast）。
+- **键盘**：`Cmd/Ctrl+S` 保存，`Esc` 取消选中，方向键跳节点。
+- **无障碍**：画布节点为 focusable button（`tabIndex`），inspector 字段带 `<label>`，对比度 AA。
+
+### 视觉方向
+
+- **主题**：深色控制台，非通用浅色 SaaS。/ 画布背景 `#0B0E14`；侧栏 `#0F172A`；输入 `#1E293B`。
+- **画布底纹**：Blueprint 网格——每 24px `rgba(56,189,248,0.07)` 细线，每 120px `rgba(56,189,248,0.14)` 粗线；叠加极淡 `#0B0E14` 噪点纹理。
+- **节点**：近黑卡片 `#111827` 填充 + `#1F2937` 边框 + `#E5E7EB` 文本；**顶部 3px 类型色带**：start=`#34D399`(emerald)、end=`#FB7185`(rose)、agent=`#38BDF8`(cyan)、script=`#F59E0B`(amber)、human=`#A78BFA`(violet)。选中＝amber 外圈 glow。
+- **边**：默认 `#475569` 1.5px 实线 + 箭头；带条件边用 mono 小字标 `when`；**运行中边 = `#F59E0B` 动画虚线流动**（`stroke-dasharray` + keyframes）。
+- **强调色**：`#F59E0B`（active/选中/保存）、`#38BDF8`（信息/进行中）。
+- **字体**（next/font，`layout.tsx` 引入）：Display = `Bricolage Grotesque`（几何、有性格）；代码/标签/DSL = `IBM Plex Mono`；正文 = `Sora`。避免 Inter/system。
+- **动效（gated，CSS-only + RF）**：页面加载时边 `stroke-dashoffset` 画入 + 节点 stagger fade-in；hover 节点 `translateY(-2px)` + 阴影；运行中边 pulse；save 成功 ✓ 形态。
+- **空间**：非对称——画布 ~65%，侧栏固定 360；RF minimap 右下、zoom 控件左下；节点卡片 260×100（扁平圆角 12）。
+- **记忆点**：**运行时的边流动**——execution 一跑，路径上的边像电路一样亮起 amber 虚线，结束节点打勾。这是这款编辑器最让人记住的产品时刻。
+
+### 实现复杂度匹配
+
+中等：RF + CSS keyframes + next/font + shadcn 重样式；不做 3D/大规模动效。所有颜色/字体/网格以 CSS 变量集中定义，方便整体换肤。
 
 ---
 
