@@ -6,7 +6,11 @@ describe("createNodeRunners", () => {
     const runners = createNodeRunners({ dataDir: ".backend-data/workflow-scripts" });
     const out = await runners.script.run(
       { id: "s", type: "script", code: "export default async (ctx) => ({ sent: ctx.input.x })" },
-      { input: { x: 1 }, store: {}, context: { executionId: "e", nodeId: "s", workflowId: "wf" } },
+      {
+        input: { x: 1 },
+        store: { get: () => undefined, set: async () => {}, delete: async () => {} },
+        context: { executionId: "e", nodeId: "s", workflowId: "wf" },
+      },
     );
     expect(out.output).toEqual({ sent: 1 });
   });
@@ -21,13 +25,17 @@ describe("createNodeRunners", () => {
           code: "export default async () => new Promise(() => {})",
           timeoutMs: 50,
         },
-        { input: {}, store: {}, context: { executionId: "e", nodeId: "s", workflowId: "wf" } },
+        {
+          input: {},
+          store: { get: () => undefined, set: async () => {}, delete: async () => {} },
+          context: { executionId: "e", nodeId: "s", workflowId: "wf" },
+        },
       ),
     ).rejects.toThrow(/timed out/);
   });
 
   test("human node creates pendingAction via agentRunService and uses dynamic form", async () => {
-    let created: string | null = null;
+    const created = { value: null as string | null };
     const runners = createNodeRunners({
       dataDir: ".data",
       agentRunService: {
@@ -35,7 +43,7 @@ describe("createNodeRunners", () => {
           _runId: string,
           action: { kind: string; payload: Record<string, unknown> },
         ) => {
-          created = action.kind;
+          created.value = action.kind;
           return {
             actionId: "a",
             runId: "x",
@@ -50,11 +58,11 @@ describe("createNodeRunners", () => {
       { id: "h", type: "human", question: "static?" },
       {
         input: { question: "dynamic?", form: { x: { type: "string" } } },
-        store: {},
+        store: { get: () => undefined, set: async () => {}, delete: async () => {} },
         context: { executionId: "e", nodeId: "h", workflowId: "wf" },
       },
     );
-    expect(created).toBe("human_task_requested");
+    expect(created.value).toBe("human_task_requested");
     expect((out.output as Record<string, unknown>).question).toBe("dynamic?");
   });
 });

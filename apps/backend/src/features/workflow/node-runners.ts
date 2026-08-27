@@ -1,5 +1,5 @@
-import { join, resolve } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type {
   FormField,
   NodeContext,
@@ -72,7 +72,8 @@ async function runScript(
     // import of the temp artifact is the only way to execute it.
     const mod = await import(`${file}?t=${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const fn = mod.default as (c: ScriptContext) => unknown;
-    const out = (await fn(ctx)) ?? {};
+    const scriptCtx: ScriptContext = { ...ctx, log: () => {} };
+    const out = (await fn(scriptCtx)) ?? {};
     return { output: out as Record<string, unknown> };
   } finally {
     rmSync(file, { force: true });
