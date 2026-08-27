@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 把 Plan 3 编辑器从"功能骨架"升级为真正可用的 v2：Blueprint 深色视觉、React Flow 交互编辑（拖拽/连边/删节点/节点面板/边条件）、Chat 让 agent 生成 DSL patch、**execution 时间旅行 trace**（可拖时间轴回放每刻画布状态/store 内容/事件日志）、**debug dry-run**（mock 输出走纯引擎，无副作用看路径/条件/结局）。**不做 workflow 仓库 git 化**——git loader/commit 留到后面含 agent workspace git 化的 scope。
+**Goal:** 把 Plan 3 编辑器从"功能骨架"升级为真正可用的 v2：Blueprint 深色视觉、React Flow 交互编辑（拖拽/连边/删节点/节点面板/边条件）、Chat 让 agent 生成 DSL patch、**execution 时间旅行 trace**（可拖时间轴回放每刻画布状态/store 内容/事件日志）、**debug dry-run**（mock 输出走纯引擎，无副作用看路径/条件/结局）、**human task 表单渲染**（form schema → 可填表单，解决 HITL）。**不做 workflow 仓库 git 化**——git loader/commit 留到后面含 agent workspace git 化的 scope。
 
 **Architecture:** 延续"**DSL 唯一真相源，RF 是派生视图**"约定。RF 事件（`onConnect`/`onNodesDelete`/`onNodeDragStop`）**直接改 DSL state**，坐标不写回 DSL（`layeredLayout` 重算）。Chat LLM 走新后端 `POST /api/workflow-definitions/:id/chat-patch`（复用 agent-run 全生命周期），返回完整 DSL patch，用户 Apply。
 
@@ -584,7 +584,103 @@ git commit -m "feat(workflow): add dry-run debug capability"
 
 ---
 
-### Task 6: 全量收口 + E2E DOM 验证
+### Task 6: HITL human task 表单渲染 + resolve UI
+
+**Files:**
+- Create: `apps/web/src/components/workflow/WorkflowForm.tsx`
+- Modify: `apps/web/src/components/workflow/ExecutionTraceView.tsx`
+- Modify: `apps/backend/src/features/workflow/service.ts`（+ getPendingHuman）
+- Modify: `apps/backend/src/features/workflow/http.ts`（execution detail 带 pendingHuman）
+- Modify: `apps/web/src/lib/api.ts`
+
+- [ ] **Step 1: WorkflowForm.tsx（form schema 渲染器）**
+
+```tsx
+"use client";
+import type { FormField } from "@chengchenccc/workflow";
+
+export function WorkflowForm({
+  form,
+  values,
+  onChange,
+  onSubmit,
+}: {
+  form: Record<string, FormField>;
+  values: Record<string, unknown>;
+  onChange: (values: Record<string, unknown>) => void;
+  onSubmit?: () => void;
+}) {
+  function field(fieldName: string, spec: FormField) {
+    const value = values[fieldName];
+    const common = { className: "w-full rounded border p-1", id: `wf-field-${fieldName}` };
+    switch (spec.type) {
+      case "textarea":
+        return <textarea {...common} rows={4} value={(value as string) ?? ""} onChange={(e) => onChange({ ...values, [fieldName]: e.target.value })} />;
+      case "number":
+        return <input {...common} type="number" value={(value as number) ?? ""} onChange={(e) => onChange({ ...values, [fieldName]: e.target.value === "" ? undefined : Number(e.target.value) })} />;
+      case "enum":
+        return (
+          <select {...common} value={(value as string) ?? ""} onChange={(e) => onChange({ ...values, [fieldName]: e.target.value })}>
+            <option value="">—</option>
+            {(spec.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        );
+      case "date":
+        return <input {...common} type="date" value={(value as string) ?? ""} onChange={(e) => onChange({ ...values, [fieldName]: e.target.value })} />;
+      case "boolean":
+        return <input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange({ ...values, [fieldName]: e.target.checked })} />;
+      default:
+        return <input {...common} value={(value as string) ?? ""} onChange={(e) => onChange({ ...values, [fieldName]: e.target.value })} />;
+    }
+  }
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSubmit?.(); }} className="space-y-3 p-4">
+      {Object.entries(form).map(([name, spec]) => (
+        <div key={name}>
+          <label className="block text-xs" htmlFor={`wf-field-${name}`}>
+            {spec.label ?? name}{spec.required ? " *" : ""}
+          </label>
+          {field(name, spec)}
+        </div>
+      ))}
+      {onSubmit && <button className="rounded bg-slate-800 px-3 py-1 text-white">Submit</button>}
+    </form>
+  );
+}
+```
+
+- [ ] **Step 2: backend 暴露 pending human form**
+
+`GET /api/workflow-executions/:id` 的响应加 `pendingHuman`（`svc.getPendingHuman(executionId, nodeId?)`，取 `workflow_pending_human`）。service 加 `getPendingHuman(executionId, nodeId?)`。
+
+- [ ] **Step 3: ExecutionTraceView 接 human task**
+
+当 `execution.status === "waiting_human"` 且存在 `pendingHuman` 时，右侧渲染 `WorkflowForm(form)` 填表 → `api.resolveWorkflowHumanTask(executionId, { nodeId, answer })` → 刷新 trace。
+
+- [ ] **Step 4: api.ts**
+
+```typescript
+resolveWorkflowHumanTask: (executionId: string, body: { nodeId: string; answer?: Record<string, unknown> }) =>
+  unwrap(client.api["workflow-executions"]({ executionId })["human-task"].post(body)),
+```
+
+（已在 Plan 3 加过；确认保留。）
+
+- [ ] **Step 5: 测试 + 全量验证**
+
+Run: `cd apps/backend && bun test src/features/workflow && cd ../web && bun run typecheck && bun run lint`
+Expected: PASS。
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/web/src/components/workflow/WorkflowForm.tsx apps/backend/src/features/workflow apps/web/src/components/workflow/ExecutionTraceView.tsx apps/web/src/lib/api.ts
+git commit -m "feat(workflow): render human task form schema and resolve hitl"
+```
+
+---
+
+### Task 7: 全量收口 + E2E DOM 验证
 
 **Files:**
 - Create: `apps/web/tests/agentic-workflow.e2e.ts`（headless Chrome）
