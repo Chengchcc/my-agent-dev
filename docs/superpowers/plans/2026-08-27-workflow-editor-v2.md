@@ -400,9 +400,12 @@ git commit -m "feat(workflow): chat llm uses workflow dsl skill to generate patc
 - Modify: `apps/backend/src/features/workflow/service.ts`
 - Modify: `apps/backend/src/features/workflow/http.ts`
 - Create: `apps/web/src/components/workflow/ExecutionTraceView.tsx`
+- Modify: `apps/web/src/components/workflow/ExecutionList.tsx`（行加 trace 链接）
 - Modify: `apps/web/src/lib/api.ts`
 
-- [ ] **Step 1: schema + migration 持久化 execution 事件**
+**分五步子步骤：**
+
+- [ ] **Step 1: 事件持久化底座（schema/migration/ports/adapter/service）**
 
 ```typescript
 export const workflowExecutionEvent = sqliteTable(
@@ -417,113 +420,73 @@ export const workflowExecutionEvent = sqliteTable(
   (table) => [index("idx_workflow_execution_event_exec").on(table.executionId, table.seq)],
 );
 ```
+- 迁移 `0041_workflow_execution_event.sql`（breakpoint）+ journal idx 41。
+- ports：`appendExecutionEvent` / `listExecutionEvents`；adapter 实现；`service.emit()` 里 `void deps.port.appendExecutionEvent(...)` 落库。
+- `GET /api/workflow-executions/:id/trace` → `{ execution, events, nodeRuns }`。
 
-Migration `0041_workflow_execution_event.sql`（带 `--> statement-breakpoint`）+ journal idx 41。
-
-- [ ] **Step 2: ports/adapter/service 加事件持久化**
-
-```typescript
-// ports.ts
-appendExecutionEvent(input: { executionId: string; event: string; data: unknown; ts: number }): Promise<void>;
-listExecutionEvents(executionId: string): Promise<Array<{ seq: number; executionId: string; event: string; data: unknown; ts: number }>>;
-```
-
-`service.ts` 的 `emit(executionId, event, data)` 内追加 `void deps.port.appendExecutionEvent({ executionId, event, data, ts: Date.now() })`（fire-and-forget，事件缓冲不阻塞 drive）。
-
-- [ ] **Step 3: GET /api/workflow-executions/:id/trace**
-
-```typescript
-app.get("/api/workflow-executions/:executionId/trace", async ({ params }) => {
-  const row = await svc.getExecution(params.executionId);
-  if (!row) throw new HttpError("Execution not found", 404);
-  const events = await svc.listExecutionEvents(params.executionId);
-  const nodeRuns = await svc.listNodeRuns(params.executionId);
-  return { execution: row, events, nodeRuns };
-});
-```
-
-- [ ] **Step 4: ExecutionTraceView.tsx（时间旅行）**
+- [ ] **Step 2: 时间轴组件（`ExecutionTimeline`）**
 
 ```tsx
 "use client";
-import { useMemo, useState } from "react";
-import { toEditorGraph } from "@chengchenccc/workflow";
-
-type Ev = { seq: number; event: string; data: unknown; ts: number };
-type Run = { seq: number; nodeId: string; status: string; output?: Record<string, unknown>; routedTo?: string[] };
-
-export function ExecutionTraceView({
-  execution,
-  events,
-  nodeRuns,
-}: {
-  execution: { definition: any; store: Record<string, unknown> };
-  events: Ev[];
-  nodeRuns: Run[];
-}) {
-  const [index, setIndex] = useState(events.length - 1); // 0 = start, max = 终态
-  const completed = useMemo(() => {
-    const done = new Set<string>();
-    for (let i = 0; i <= index; i++) if (events[i]!.event === "node_completed") done.add((events[i]!.data as { nodeId: string }).nodeId);
-    return done;
-  }, [index, events]);
-  const snapshot = useMemo(() => {
-    const store: Record<string, unknown> = {};
-    for (let i = 0; i <= index; i++) {
-      if (events[i]!.event === "store_write") {
-        const d = events[i]!.data as { key: string; value?: unknown; deleted?: boolean };
-        if (d.deleted) delete store[d.key]; else store[d.key] = d.value;
-      }
-    }
-    return store;
-  }, [index, events]);
-
+export function ExecutionTimeline({ index, total, onScrub }: { index: number; total: number; onScrub: (i: number) => void }) {
   return (
-    <div className="flex h-full">
-      <div className="flex-1 border-r">
-        {/* 用 toEditorGraph(execution.definition) 渲染画布；completed 的节点高亮 */}
-        {/* 复用 WorkflowCanvas，但根据完成集传入 node 状态 */}
-      </div>
-      <div className="w-80">
-        <div className="p-4">
-          <label className="text-xs">Time travel</label>
-          <input type="range" min={0} max={events.length - 1} value={index}
-            onChange={(e) => setIndex(Number(e.target.value))} className="w-full" />
-          <button onClick={() => setIndex(Math.max(0, index - 1))}>◀</button>
-          <button onClick={() => setIndex(Math.min(events.length - 1, index + 1))}>▶</button>
-        </div>
-        <div className="overflow-auto p-4 text-xs">
-          <div className="mb-2 font-semibold">Event log</div>
-          {events.slice(0, index + 1).map((e) => (
-            <div key={e.seq} className="border-b py-1">
-              <span className="text-muted-foreground">{new Date(e.ts).toLocaleTimeString()}</span>{" "}{e.event}
-            </div>
-          ))}
-          <div className="mt-2 font-semibold">Store snapshot</div>
-          <pre className="text-[10px]">{JSON.stringify(snapshot, null, 2)}</pre>
-        </div>
-      </div>
+    <div className="flex items-center gap-2 p-3">
+      <button onClick={() => onScrub(Math.max(0, index - 1))}>◀</button>
+      <input type="range" min={0} max={total - 1} value={index} onChange={(e) => onScrub(Number(e.target.value))} className="flex-1" />
+      <button onClick={() => onScrub(Math.min(total - 1, index + 1))}>▶</button>
+      <button onClick={() => onScrub(index + 1)}>⏸/▶</button>
     </div>
   );
 }
 ```
 
-- [ ] **Step 5: 路由挂 trace 视图**
+- [ ] **Step 3: 画布状态映射函数 `stateToGraph`**
 
-`GET /api/workflow-executions/:id/trace` 已在后端；web 在 `executions/page.tsx` 每行加 "trace" 链接 → `/agentic-workflow/:workflowId/executions/:executionId`（新建页面或 `ExecutionTraceView` 内嵌渲染），点击拉 trace 数据。
+```tsx
+// 输入：execution.definition + 截至 index 的 completed set + routed edges
+// 输出：Node[]（每节点带 done/pending/dim 状态） + Edge[]（每边带 lit/unlit）
+function buildGraphState(def, done: Set<string>, litEdges: Set<string>, activeNode?: string) {
+  const g = toEditorGraph(def);
+  return {
+    nodes: g.nodes.map((n) => ({ ...n, status: done.has(n.id) ? "done" : n.id === activeNode ? "active" : "idle" })),
+    edges: g.edges.map((e) => ({ ...e, lit: litEdges.has(`${e.from}->${e.to}`) })),
+  };
+}
+```
 
-- [ ] **Step 6: 测试 + 全量验证**
+- [ ] **Step 4: store 重放器 + 事件日志**
 
-Run: `cd apps/backend && bun test src/features/workflow`（加 trace 端点测试）+ `cd ../web && bun run typecheck && bun run lint`
+```tsx
+function replayStore(events, upto: number): Record<string, unknown> {
+  const store: Record<string, unknown> = {};
+  for (let i = 0; i <= upto; i++) {
+    const e = events[i]!;
+    if (e.event === "store_write") {
+      const d = e.data as { key: string; value?: unknown; deleted?: boolean };
+      if (d.deleted) delete store[d.key]; else store[d.key] = d.value;
+    }
+  }
+  return store;
+}
+// 事件日志：slice(0, index+1) 渲染（ts/event/data 摘要）
+```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: live SSE 订阅 + 边流动 + agent 子 run 跳转**
+
+- `ExecutionTraceView` `useEffect` 用 `typedSource("/api/workflow-executions/:id/events")` 订阅；新事件 append 到 events、推进 index；画布边按 `litEdges` 加 `wf-dash` amber 流动。
+- 点 agent 节点 → 若有对应 `agent_run` id，链接到 `/agent-runs/:runId`（或内嵌其事件流）。
+- 每入 `execution_terminal` 停播，自动回到终态。
+
+- [ ] **Step 6: 测试 + 全量验证 + Commit**
+
+Run: `cd apps/backend && bun test src/features/workflow && cd ../web && bun run typecheck && bun run lint`
+Expected: PASS。
 
 ```bash
-git add apps/backend/src/infra/db/schema.ts apps/backend/drizzle/backend/0041_workflow_execution_event.sql apps/backend/src/features/workflow apps/web/src/components/workflow/ExecutionTraceView.tsx apps/web/src/lib/api.ts
+git add apps/backend/src/infra/db/schema.ts apps/backend/drizzle/backend/0041_workflow_execution_event.sql apps/backend/src/features/workflow apps/web/src/components/workflow/ExecutionTraceView.tsx apps/web/src/components/workflow/ExecutionList.tsx apps/web/src/lib/api.ts
 git commit -m "feat(workflow): execution time-travel trace"
 ```
 
----
 
 ### Task 5: Debug dry-run（mock 走纯引擎，无副作用）
 
