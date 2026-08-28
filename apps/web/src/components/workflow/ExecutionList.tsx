@@ -68,7 +68,6 @@ export function ExecutionList({
   }
 
   async function del(executionId: string) {
-    if (!confirm(`Delete execution ${executionId}?`)) return;
     try {
       await api.deleteWorkflowExecution(executionId);
       window.location.reload();
