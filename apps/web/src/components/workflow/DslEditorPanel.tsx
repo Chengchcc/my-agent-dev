@@ -15,7 +15,13 @@ export function DslEditorPanel({
   onChange: (def: WorkflowDefinition) => void;
 }) {
   const [text, setText] = useState<string>(definition ? JSON.stringify(definition, null, 2) : "");
+  const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // Sync the editor text when the shared definition changes and the local
+  // editor is not dirty (canvas/inspector edits must not be silently rolled
+  // back by a stale text snapshot on Save).
+  const serialized = definition ? JSON.stringify(definition, null, 2) : "";
+  if (!dirty && text !== serialized) setText(serialized);
 
   function parse(): WorkflowDefinition | null {
     try {
@@ -30,6 +36,7 @@ export function DslEditorPanel({
 
   function apply() {
     const parsed = parse();
+    if (parsed) setDirty(false);
     if (parsed) {
       onChange(parsed);
       setMessage("Applied to canvas.");
@@ -55,7 +62,10 @@ export function DslEditorPanel({
         height="60vh"
         defaultLanguage="json"
         value={text}
-        onChange={(v) => setText(v ?? "")}
+        onChange={(v) => {
+          setText(v ?? "");
+          setDirty((v ?? "") !== serialized);
+        }}
         options={{ minimap: { enabled: false }, fontSize: 12 }}
       />
       <div className="mt-2 flex gap-2">
