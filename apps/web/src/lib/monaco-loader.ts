@@ -2,11 +2,9 @@
 
 import { loader } from "@monaco-editor/react";
 
-// Load Monaco from CDN (avoid bundling 98MB of assets). If offline, set
-// NEXT_PUBLIC_MONACO_VS_PATH to a local `/monaco/vs` (or CDN mirror).
-const vs =
-  process.env.NEXT_PUBLIC_MONACO_VS_PATH ??
-  "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
+// Load Monaco from CDN (avoid bundling 98MB of assets). To point at a local
+// /monaco/vs mirror, change the path below.
+const vs = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
 
 loader.config({
   paths: { vs },

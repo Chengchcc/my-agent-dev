@@ -33,9 +33,10 @@ import { EdgePropertyPanel } from "./EdgePropertyPanel";
 import { NodeMenuPopover } from "./NodeMenuPopover";
 import { NodePanel } from "./NodePanel";
 import { NodePropertyPanel } from "./NodePropertyPanel";
+import { TriggerPanel } from "./TriggerPanel";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 
-type InspectorTab = "attrs" | "palette";
+type InspectorTab = "attrs" | "palette" | "triggers";
 
 function makeNodeId(base: string): string {
   return `${base}-${Math.random().toString(36).slice(2, 7)}`;
@@ -343,6 +344,7 @@ export function AgenticWorkflowEditor({
                   [
                     ["attrs", "属性"],
                     ["palette", "节点"],
+                    ["triggers", "定时"],
                   ] as Array<[InspectorTab, string]>
                 ).map(([k, label]) => (
                   <button
@@ -359,7 +361,9 @@ export function AgenticWorkflowEditor({
                 ))}
               </div>
               <div className="min-h-0 flex-1 overflow-auto">
-                {inspectorTab === "palette" ? (
+                {inspectorTab === "triggers" && definition ? (
+                  <TriggerPanel definition={definition} onChange={setDefinitionTracked} />
+                ) : inspectorTab === "palette" ? (
                   <NodePanel
                     onAdd={(node) => {
                       if (!definition) return;
