@@ -453,6 +453,7 @@ export function AgenticWorkflowEditor({
                   />
                 ) : activeId && definition ? (
                   <NodePropertyPanel
+                    workflowId={workflowId}
                     nodeId={activeId}
                     definition={definition}
                     onChange={setDefinitionTracked}

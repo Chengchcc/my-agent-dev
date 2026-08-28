@@ -23,12 +23,22 @@ export function dryRunWorkflow(
   rawDefinition: unknown,
   input: Record<string, unknown>,
   mockOutputs: Record<string, Record<string, unknown>>,
+  startNodeId?: string,
 ): DryRunResult {
   const def: WorkflowDefinition = parseWorkflow(rawDefinition);
   const store: Record<string, unknown> = {};
   const completions: CompletionRecord[] = [];
   const steps: DryRunStep[] = [];
   let order = 0;
+  if (startNodeId) {
+    const startNode = def.nodes.find((n) => n.id === startNodeId);
+    if (!startNode) throw new Error(`start node not found: ${startNodeId}`);
+    const output = { ...input };
+    const routedTo = routeOutgoing(startNodeId, def, completions, store, output);
+    completions.push({ nodeId: startNodeId, output, order, routedTo });
+    steps.push({ nodeId: startNodeId, output, routedTo, order });
+    order++;
+  }
   for (;;) {
     const step = computeNext(def, { completions, store, trigger: input });
     if (step.kind === "terminal") return { exit: step.exit, steps, store };

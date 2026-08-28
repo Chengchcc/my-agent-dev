@@ -399,6 +399,14 @@ export const api = {
       definition: WorkflowDefinition;
     };
   },
+  dryRunWorkflow: (
+    workflowId: string,
+    body: {
+      input?: Record<string, unknown>;
+      mockOutputs?: Record<string, Record<string, unknown>>;
+      startNodeId?: string;
+    },
+  ) => unwrap(client.api["workflow-definitions"]({ workflowId })["dry-run"].post(body)),
   deleteWorkflowDefinition: (workflowId: string) =>
     unwrap(client.api["workflow-definitions"]({ workflowId }).delete()),
   listWorkflowExecutions: (workflowId?: string) =>

@@ -95,12 +95,18 @@ export function workflowRoutes(deps: {
       async ({ params, body }) => {
         const raw = await Bun.file(join(dir, `${params.workflowId}.workflow.json`)).text();
         const definition = JSON.parse(raw);
-        return dryRunWorkflow(definition, body.input ?? {}, body.mockOutputs ?? {});
+        return dryRunWorkflow(
+          definition,
+          body.input ?? {},
+          body.mockOutputs ?? {},
+          body.startNodeId,
+        );
       },
       {
         body: t.Object({
           input: t.Optional(t.Record(t.String(), t.Unknown())),
           mockOutputs: t.Optional(t.Record(t.String(), t.Record(t.String(), t.Unknown()))),
+          startNodeId: t.Optional(t.String()),
         }),
       },
     )

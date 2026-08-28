@@ -4,6 +4,8 @@ import type { WorkflowDefinition, WorkflowNode } from "@chengchenccc/workflow";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import "@/lib/monaco-loader";
 import { HumanFormEditor } from "./HumanFormEditor";
+import { OutputFieldsEditor } from "./OutputFieldsEditor";
 
 const MonacoCodeEditor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
   ssr: false,
@@ -55,16 +58,22 @@ const TYPE_LABEL: Record<string, string> = {
 
 /** Node inspector — edits write straight back to the DSL (live). */
 export function NodePropertyPanel({
+  workflowId,
   nodeId,
   definition,
   onChange,
 }: {
+  workflowId: string;
   nodeId: string;
   definition: Def;
   onChange: (def: Def) => void;
 }) {
   const node = useMemo(() => definition.nodes.find((n) => n.id === nodeId), [definition, nodeId]);
   const [agents, setAgents] = useState<Array<{ id: string; name?: string }>>([]);
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [debugInput, setDebugInput] = useState("");
+  const [debugResult, setDebugResult] = useState<string | null>(null);
+  const [debugBusy, setDebugBusy] = useState(false);
   useEffect(() => {
     api
       .listAgents()
@@ -89,6 +98,12 @@ export function NodePropertyPanel({
         <Badge variant="outline" className="shrink-0 border-(--hairline) text-[10px] text-(--mute)">
           {TYPE_LABEL[node.type] ?? node.type}
         </Badge>
+        <button
+          className="shrink-0 rounded-md border border-(--info)/40 bg-(--info)/10 px-2 py-1 text-[10px] text-(--info) hover:bg-(--info)/20"
+          onClick={() => setDebugOpen(true)}
+        >
+          调试
+        </button>
       </div>
       <div className="mb-4 space-y-1">
         <Label className="text-xs text-(--mute)">name</Label>
@@ -132,6 +147,13 @@ export function NodePropertyPanel({
               className="min-h-24 border-(--hairline) bg-(--canvas) font-mono text-xs"
               value={node.prompt ?? ""}
               onChange={(e) => set({ prompt: e.target.value })}
+            />
+          </div>
+          <div className="mt-3 space-y-1">
+            <Label className="text-xs text-(--mute)">输出字段（边条件可用）</Label>
+            <OutputFieldsEditor
+              output={(node as { output?: Record<string, string> }).output}
+              onChange={(o) => set({ output: o })}
             />
           </div>
         </>
@@ -221,6 +243,52 @@ export function NodePropertyPanel({
           />
         </div>
       )}
+      <Dialog open={debugOpen} onOpenChange={setDebugOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold">调试节点 {nodeId}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Label className="text-xs text-(--mute)">input（JSON，作为该节点输入）</Label>
+            <Textarea
+              className="min-h-24 border-(--hairline) bg-(--canvas) font-mono text-xs"
+              value={debugInput}
+              onChange={(e) => setDebugInput(e.target.value)}
+              placeholder='{"issueUrl":"..."}'
+            />
+            <Button
+              className="w-full"
+              disabled={debugBusy}
+              onClick={async () => {
+                setDebugBusy(true);
+                setDebugResult(null);
+                try {
+                  const input = debugInput.trim() ? JSON.parse(debugInput) : {};
+                  const res = await api.dryRunWorkflow(workflowId, { input, startNodeId: nodeId });
+                  const steps = (res?.steps ?? [])
+                    .map(
+                      (st: { nodeId: string; output: unknown }) =>
+                        `${st.nodeId}: ${JSON.stringify(st.output)}`,
+                    )
+                    .join("\n");
+                  setDebugResult(`exit=${res?.exit}\n${steps}`);
+                } catch (err) {
+                  setDebugResult(`错误: ${err instanceof Error ? err.message : String(err)}`);
+                } finally {
+                  setDebugBusy(false);
+                }
+              }}
+            >
+              {debugBusy ? "运行中…" : "运行此节点"}
+            </Button>
+            {debugResult && (
+              <pre className="max-h-48 overflow-auto rounded bg-(--canvas)/60 p-2 text-[10px] text-(--mute)">
+                {debugResult}
+              </pre>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
