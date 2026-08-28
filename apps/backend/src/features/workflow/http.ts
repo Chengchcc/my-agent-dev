@@ -26,6 +26,7 @@ export function workflowRoutes(deps: {
   workflowExecutionService: WorkflowExecutionService;
   loadWorkflow: (ref: WorkflowRef) => Promise<string>;
   workflowDir: string;
+  resyncTriggers?: () => Promise<void>;
 }) {
   const svc = deps.workflowExecutionService;
   const dir = deps.workflowDir;
@@ -69,6 +70,7 @@ export function workflowRoutes(deps: {
         mkdirSync(dir, { recursive: true });
         const file = join(dir, `${params.workflowId}.workflow.json`);
         writeFileSync(file, JSON.stringify(body.definition, null, 2));
+        void deps.resyncTriggers?.();
         return { ok: true, definition: body.definition };
       },
       {
@@ -105,6 +107,7 @@ export function workflowRoutes(deps: {
     .delete("/api/workflow-definitions/:workflowId", async ({ params }) => {
       const file = join(dir, `${params.workflowId}.workflow.json`);
       rmSync(file, { force: true });
+      void deps.resyncTriggers?.();
       return { ok: true };
     })
     .post(

@@ -11,6 +11,7 @@ import type {
 } from "@chengchenccc/agent-contract";
 import { resolveModelAlias } from "@chengchenccc/ai";
 import { type Message, serializeMessageRevision } from "@chengchenccc/message";
+import type { WorkflowDefinition } from "@chengchenccc/workflow";
 import type { FeatureSet } from "../app.js";
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
@@ -77,6 +78,7 @@ import {
 import {
   createNodeRunners,
   createWorkflowExecutionService,
+  createWorkflowTriggerScheduler,
   ExecutionEventBus,
   sqliteWorkflowExecutionAdapter,
   workflowRoutes,
@@ -854,6 +856,19 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     }
   }
 
+  const workflowTriggerScheduler = createWorkflowTriggerScheduler({
+    workflowDir: join(config.dataDir, "workflows"),
+    schedule: (expr: string, fn: () => void) => {
+      const h = Bun.cron(expr, fn);
+      return { stop: () => h.stop() };
+    },
+    startExecution: (input: {
+      workflowId: string;
+      definition: WorkflowDefinition;
+      input: Record<string, unknown>;
+    }) => workflowExecutionService.startExecution(input),
+  });
+
   const workflowApp = workflowRoutes({
     workflowExecutionService,
     loadWorkflow: async (ref) => {
@@ -861,6 +876,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       return await Bun.file(file).text();
     },
     workflowDir: join(config.dataDir, "workflows"),
+    resyncTriggers: () => workflowTriggerScheduler.sync(),
   });
 
   const featureSet: FeatureSet = {
@@ -1017,6 +1033,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     // Phase 5: redeliver durable delivering inputs, promote idle-branch
     // pending inputs, and retry commit_failed runs once at boot.
     await agentRunExecution.recover();
+    await workflowTriggerScheduler.sync();
     await workflowExecutionService.recover();
   }
 
@@ -1029,6 +1046,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     clearInterval(doctorTimer);
     if (doctorAllRunning) await doctorAllRunning;
     await agentRunExecution.dispose(); // abort/SIGTERM/SIGKILL children + drain
+    await workflowTriggerScheduler.dispose();
     await workflowExecutionService.dispose();
     await larkBotRegistry.dispose();
     setupManager?.dispose();
