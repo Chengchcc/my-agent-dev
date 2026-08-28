@@ -20,7 +20,7 @@ export interface WorkflowExecutionPort {
     executionId: string,
     nodeId: string,
     patch: Partial<
-      Pick<WorkflowNodeRunRow, "status" | "output" | "routedTo" | "error" | "terminalAt">
+      Pick<WorkflowNodeRunRow, "status" | "output" | "routedTo" | "error" | "terminalAt" | "runId">
     >,
   ): Promise<WorkflowNodeRunRow | null>;
   listNodeRuns(executionId: string): Promise<WorkflowNodeRunRow[]>;

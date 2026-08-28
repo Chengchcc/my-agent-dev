@@ -111,6 +111,7 @@ export const workflowNodeRun = sqliteTable(
       .notNull()
       .references(() => workflowExecution.executionId, { onDelete: "cascade" }),
     nodeId: text("node_id").notNull(),
+    runId: text("run_id"), // agent run id for reconnect
     status: text().notNull().default("running"), // running | waiting_human | completed | failed
     order: integer().notNull(),
     output: text(), // JSON

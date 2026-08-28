@@ -319,33 +319,44 @@ export function createWorkflowExecutionService(
       ? { backendKind: "oma", modelId: node.model ?? "" }
       : await deps.resolveDefaultModel(agentId);
 
-    // Post the prompt as a canonical user message: this writes it to the
-    // conversation ledger (so it appears in Chat) and triggers the agent run.
+    // Reconnect: if this node already has a persisted agent runId, poll that
+    // run instead of triggering a new one. This survives workflow/agent
+    // disconnects — the agent may have already completed.
     if (!deps.conversationService) throw new Error("agent runner requires conversationService");
-    const posted = await deps.conversationService.postMessage({
-      conversationId,
-      content: prompt,
-      modelOverride: defaultModel,
-    });
-    const runId = posted.triggeredRuns[0]?.runId;
-    if (!runId) throw new Error("agent run not triggered");
+    const nodeRun = (await deps.port.listNodeRuns(execution.executionId)).find(
+      (r) => r.nodeId === node.id,
+    );
+    let runId: string | undefined | null = nodeRun?.runId;
 
-    emit(execution.executionId, "node_agent_started", { nodeId: node.id, runId });
-    await deps.agentRunExecution.dispatch(runId);
-    for await (const ev of deps.agentRunExecution.subscribe(runId)) {
-      if (
-        ev.type === "status" &&
-        ["completed", "failed", "aborted", "commit_failed"].includes(ev.status ?? "")
-      ) {
-        const run = await deps.agentRunService.getRun(runId);
-        if (run?.status !== "completed")
-          throw new Error(`agent run ${runId} ended ${run?.status ?? "unknown"}`);
-        const output = extractOutput(run.terminalResult, node.output);
-        emit(execution.executionId, "node_agent_completed", { nodeId: node.id, runId });
-        return { output };
-      }
+    if (!runId) {
+      const posted = await deps.conversationService.postMessage({
+        conversationId,
+        content: prompt,
+        modelOverride: defaultModel,
+      });
+      runId = posted.triggeredRuns[0]?.runId;
+      if (!runId) throw new Error("agent run not triggered");
+      await deps.port.updateNodeRun(execution.executionId, node.id, { runId });
+      emit(execution.executionId, "node_agent_started", { nodeId: node.id, runId });
+      await deps.agentRunExecution.dispatch(runId);
     }
-    throw new Error(`agent run ${runId} subscribe returned without terminal`);
+
+    // Poll the run until terminal (reconnect-safe; no long-lived subscribe).
+    const deadline = Date.now() + 600_000;
+    while (Date.now() < deadline) {
+      const run = await deps.agentRunService.getRun(runId);
+      if (run?.status) {
+        if (["completed", "failed", "aborted", "commit_failed", "timeout"].includes(run.status)) {
+          if (run.status !== "completed")
+            throw new Error(`agent run ${runId} ended ${run.status ?? "unknown"}`);
+          const output = extractOutput(run.terminalResult, node.output);
+          emit(execution.executionId, "node_agent_completed", { nodeId: node.id, runId });
+          return { output };
+        }
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    throw new Error(`agent run ${runId} timed out after 600000ms`);
   }
 
   async function executeNode(
@@ -393,7 +404,8 @@ export function createWorkflowExecutionService(
       try {
         output =
           node.type === "agent"
-            ? ((await runAgentNode(node, ready, execution)).output ?? {})
+            ? ((await runNodeWithRetry(node, (n) => runAgentNode(n, ready, execution))).output ??
+              {})
             : await runWorkflowNode(node, ready, execution);
       } catch (err) {
         await deps.port.updateNodeRun(execution.executionId, node.id, {

@@ -36,6 +36,7 @@ function toNodeRun(r: typeof workflowNodeRun.$inferSelect): WorkflowNodeRunRow {
     seq: r.seq,
     executionId: r.executionId,
     nodeId: r.nodeId,
+    runId: r.runId,
     status: r.status as WorkflowNodeRunRow["status"],
     order: r.order,
     output: r.output ? JSON.parse(r.output) : undefined,
@@ -108,6 +109,7 @@ export function sqliteWorkflowExecutionAdapter(db: Database): WorkflowExecutionP
         .values({
           executionId: input.executionId,
           nodeId: input.nodeId,
+          runId: input.runId ?? null,
           status: input.status,
           order: input.order,
           output: input.output ? JSON.stringify(input.output) : null,
@@ -126,6 +128,7 @@ export function sqliteWorkflowExecutionAdapter(db: Database): WorkflowExecutionP
       if (patch.routedTo !== undefined)
         values.routedTo = patch.routedTo ? JSON.stringify(patch.routedTo) : null;
       if (patch.error !== undefined) values.error = patch.error;
+      if (patch.runId !== undefined) values.runId = patch.runId;
       if (patch.terminalAt !== undefined) values.terminalAt = patch.terminalAt;
       if (Object.keys(values).length > 0) {
         await d

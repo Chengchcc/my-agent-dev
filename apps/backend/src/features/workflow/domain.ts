@@ -26,6 +26,7 @@ export interface WorkflowNodeRunRow {
   seq: number;
   executionId: string;
   nodeId: string;
+  runId?: string | null;
   status: WorkflowNodeRunStatus;
   order: number;
   output?: Record<string, unknown>;
@@ -58,6 +59,7 @@ export interface CreateWorkflowExecutionInput {
 export interface AppendNodeRunInput {
   executionId: string;
   nodeId: string;
+  runId?: string | null;
   status: WorkflowNodeRunStatus;
   order: number;
   output?: Record<string, unknown>;
