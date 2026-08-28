@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "id": "self-heal",
+  "meta": {
+    "name": "Self-Heal 工单自愈",
+    "description": "纯 script + human 演示：检测失败重试、人工确认修复方案、走成功/升级出口——无 agent 依赖，开箱即走通 human 表单与分叉边流动",
+    "tags": ["self-heal", "demo", "showcase"],
+    "status": "active",
+    "owner": "builtin",
+    "updatedBy": "oma"
+  },
+  "input": {
+    "issueUrl": "string"
+  },
+  "triggers": [],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start"
+    },
+    {
+      "id": "detect",
+      "type": "script",
+      "runtime": "bun",
+      "code": "export default async (ctx) => {\n  // 模拟检测：根据 issueUrl 判断是否失败（演示分流）\n  const url = String(ctx.input.issueUrl ?? \"\");\n  const isBroken = url.includes(\"broken\");\n  return { broken: isBroken, attempts: 1 };\n}",
+      "output": {
+        "broken": "boolean",
+        "attempts": "number"
+      },
+      "timeoutMs": 5000
+    },
+    {
+      "id": "auto-fix",
+      "type": "script",
+      "runtime": "bun",
+      "code": "export default async (ctx) => {\n  // 自动修复：简单降级逻辑\n  return { fixed: true, resolution: \"auto-degraded\" };\n}",
+      "output": {
+        "fixed": "boolean",
+        "resolution": "string"
+      },
+      "timeoutMs": 5000
+    },
+    {
+      "id": "confirm",
+      "type": "human",
+      "question": "自愈方案需要人工确认：是否接受自动修复结果？",
+      "form": {
+        "action": {
+          "type": "enum",
+          "label": "处理动作",
+          "options": ["accept", "rollback", "manual"],
+          "required": true
+        },
+        "note": {
+          "type": "textarea",
+          "label": "备注"
+        }
+      }
+    },
+    {
+      "id": "done",
+      "type": "end",
+      "status": "success"
+    },
+    {
+      "id": "escalate",
+      "type": "end",
+      "status": "escalated"
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "detect"
+    },
+    {
+      "from": "detect",
+      "to": "auto-fix",
+      "when": { "==": [{ "var": "detect.output.broken" }, true] }
+    },
+    {
+      "from": "detect",
+      "to": "confirm",
+      "when": { "==": [{ "var": "detect.output.broken" }, false] }
+    },
+    {
+      "from": "auto-fix",
+      "to": "confirm"
+    },
+    {
+      "from": "confirm",
+      "to": "done",
+      "when": { "==": [{ "var": "confirm.output.action" }, "accept"] }
+    },
+    {
+      "from": "confirm",
+      "to": "escalate",
+      "when": { "==": [{ "var": "confirm.output.action" }, "manual"] }
+    }
+  ]
+}
