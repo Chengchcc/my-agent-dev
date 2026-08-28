@@ -31,6 +31,7 @@ export type TraceExecution = {
   store: Record<string, unknown>;
   status: string;
   exit?: string;
+  error?: string;
   createdAt: number;
 };
 
@@ -124,6 +125,12 @@ export function ExecutionTraceView({
         </Breadcrumb>
         <span className="ml-auto font-mono text-[10px] text-(--mute)">{execution.status}</span>
       </div>
+      {execution.status === "failure" && execution.error && (
+        <div className="shrink-0 border-b border-(--err)/20 bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
+          <span className="font-semibold">执行失败：</span>
+          {execution.error}
+        </div>
+      )}
       <div className="flex min-h-0 flex-1">
         <div className="flex-1 border-r">
           <WorkflowCanvas

@@ -14,7 +14,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 
-type Exec = { executionId: string; status: string; exit?: string; createdAt: number };
+type Exec = {
+  executionId: string;
+  status: string;
+  exit?: string;
+  error?: string;
+  createdAt: number;
+};
 
 export function ExecutionList({
   workflowId,
@@ -121,7 +127,14 @@ export function ExecutionList({
                   {e.executionId}
                 </Link>
               </td>
-              <td>{e.status}</td>
+              <td>
+                {e.status}
+                {e.status === "failure" && e.error && (
+                  <div className="mt-1 max-w-48 truncate text-[10px] text-(--err)" title={e.error}>
+                    {e.error}
+                  </div>
+                )}
+              </td>
               <td>{e.exit ?? "-"}</td>
               <td>{new Date(e.createdAt).toLocaleString()}</td>
               <td>
