@@ -12,7 +12,7 @@ import { api } from "@/lib/api";
 import { ChatPanel } from "./ChatPanel";
 import { DslEditorPanel } from "./DslEditorPanel";
 import { EdgePropertyPanel } from "./EdgePropertyPanel";
-import { NodePalette } from "./NodePalette";
+import { NodePanel } from "./NodePanel";
 import { NodePropertyPanel } from "./NodePropertyPanel";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 
@@ -141,16 +141,13 @@ export function AgenticWorkflowEditor({
       <div className="flex min-h-0 flex-1">
         {/* Editor: canvas + inspector */}
         <div className="flex min-w-0 flex-1">
+          <NodePanel
+            onAdd={(node) => {
+              if (!definition) return;
+              setDefinition(addNode(definition, { ...node, id: makeNodeId(node.type) }));
+            }}
+          />
           <div className="flex min-w-0 flex-1 flex-col">
-            {definition && (
-              <div className="border-b border-[#1f2937]">
-                <NodePalette
-                  onAdd={(node) =>
-                    setDefinition(addNode(definition, { ...node, id: makeNodeId(node.type) }))
-                  }
-                />
-              </div>
-            )}
             <div className="min-h-0 flex-1">
               {graph && definition ? (
                 <WorkflowCanvas
