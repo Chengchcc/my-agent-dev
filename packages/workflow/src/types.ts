@@ -83,11 +83,21 @@ export interface EdgeDef {
   when?: JsonLogicRule;
 }
 
+export interface CronTrigger {
+  type: "cron";
+  /** 5-field cron expression, UTC. */
+  cron: string;
+  enabled?: boolean;
+}
+export type WorkflowTrigger = CronTrigger;
+
 export interface WorkflowDefinition {
   version: 1;
   id: string;
   meta?: WorkflowMeta;
   input?: InputHint;
+  /** Trigger declarations. API trigger is implicit. */
+  triggers?: WorkflowTrigger[];
   nodes: WorkflowNode[];
   edges: EdgeDef[];
 }

@@ -194,6 +194,20 @@ if (nodes && edges) {
   if (order.length !== nodes.length) errors.push("cycle detected in workflow graph");
 }
 
+// triggers
+if (def.triggers !== undefined) {
+  if (!Array.isArray(def.triggers)) errors.push("$.triggers must be an array");
+  else def.triggers.forEach((t, i) => {
+    const p = `$.triggers[${i}]`;
+    if (!t || typeof t !== "object") errors.push(`${p} must be an object`);
+    else {
+      if (t.type !== "cron") errors.push(`${p}.type must be "cron"`);
+      if (typeof t.cron !== "string" || t.cron.trim() === "") errors.push(`${p}.cron must be a non-empty string`);
+      if (t.enabled !== undefined && typeof t.enabled !== "boolean") errors.push(`${p}.enabled must be boolean`);
+    }
+  });
+}
+
 if (errors.length > 0) {
   console.error(errors.join("\n"));
   process.exit(1);

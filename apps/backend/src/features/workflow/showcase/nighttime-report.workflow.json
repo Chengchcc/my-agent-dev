@@ -1,6 +1,7 @@
 {
   "version": 1,
   "id": "nighttime-report",
+  "triggers": [{ "type": "cron", "cron": "0 2 * * *" }],
   "meta": {
     "name": "Nightly Code Quality Report",
     "description": "每天晚上运行：扫描仓库、汇总 top 3 代码质量问题、格式化为 markdown 报告，人工确认后发送或丢弃",

@@ -1,17 +1,23 @@
 "use client";
 
-import { CheckCircle2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle2, GitBranch, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
-import { QueryState } from "@/components/ops/QueryState";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/badge";
-import { ReviewQueueCard } from "@/components/work/ReviewQueueCard";
-import { useLoopList } from "@/features/loop/hooks";
+import { api } from "@/lib/api";
 import { useAgentRuns } from "@/features/ops/hooks";
-import { useWorkToday } from "@/features/work/hooks";
-import type { LoopRow } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
+
+type ExecutionRow = {
+  executionId: string;
+  workflowId: string;
+  status: string;
+  error?: string;
+  createdAt: number;
+  terminalAt?: number;
+};
 
 function isToday(ts: number | string | undefined) {
   if (ts == null) return false;
@@ -25,29 +31,48 @@ function isToday(ts: number | string | undefined) {
   );
 }
 
+const statusColor: Record<string, string> = {
+  success: "text-emerald-400",
+  failure: "text-red-400",
+  running: "text-amber-400",
+  waiting_human: "text-sky-400",
+};
+
 export default function WorkTodayPage() {
-  const useWorkTodayResult = useWorkToday();
-  const { data } = useWorkTodayResult;
-  const queue = data?.reviewQueue ?? [];
-  const { data: loopsData } = useLoopList();
+  const [executions, setExecutions] = useState<ExecutionRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const { data: runs } = useAgentRuns();
 
-  const draftLoops = (loopsData?.loops ?? []).filter((l: LoopRow) => l.enabled === false);
+  useEffect(() => {
+    api
+      .listWorkflowExecutions()
+      .then((res) => {
+        setExecutions((res?.executions ?? []) as ExecutionRow[]);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const todayExecs = executions.filter((e) => isToday(e.createdAt));
+  const succeeded = todayExecs.filter((e) => e.status === "success").length;
+  const failed = todayExecs.filter((e) => e.status === "failure").length;
+  const running = todayExecs.filter(
+    (e) => e.status === "running" || e.status === "waiting_human",
+  ).length;
 
   const todayRuns = (runs?.runs ?? []).filter((r) => isToday(r.createdAt));
-  const succeeded = todayRuns.filter((r) => r.status === "completed").length;
-  const failed = todayRuns.filter(
+  const runSucceeded = todayRuns.filter((r) => r.status === "completed").length;
+  const runFailed = todayRuns.filter(
     (r) => r.status === "failed" || r.status === "aborted" || r.status === "timeout",
   ).length;
-  const running = todayRuns.filter(
+  const runRunning = todayRuns.filter(
     (r) => r.status === "running" || r.status === "waiting" || r.status === "commit_failed",
   ).length;
+  const totalTokens = todayRuns.reduce(
+    (sum, r) => sum + (r.usage?.inputTokens ?? 0) + (r.usage?.outputTokens ?? 0),
+    0,
+  );
 
-  // Usage totals from Agent Run terminal results (no checkpoint-event pipeline)
-  const totalTokens = (runs?.runs ?? [])
-    .filter((r) => isToday(r.createdAt))
-    .reduce((sum, r) => sum + (r.usage?.inputTokens ?? 0) + (r.usage?.outputTokens ?? 0), 0);
-  const tokensUnavailable = false;
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
     year: "numeric",
@@ -61,83 +86,83 @@ export default function WorkTodayPage() {
       <PageBody size="reading" className="space-y-8">
         <div>
           <h2 className="text-sm font-medium mb-3">
-            Review Queue {queue.length > 0 && `(${queue.length})`}
+            Workflow Executions {todayExecs.length > 0 && `(${todayExecs.length})`}
           </h2>
-          <QueryState
-            query={useWorkTodayResult}
-            empty={(d) => d.reviewQueue.length === 0}
-            emptyTitle="Nothing waiting for review"
-            emptyDescription="Completed Loop steps that need your review will appear here."
-            emptyIcon={CheckCircle2}
-          >
-            {(d) => (
-              <div className="grid gap-3">
-                {d.reviewQueue.map((item) => (
-                  <ReviewQueueCard key={item.id} item={item} />
-                ))}
-              </div>
-            )}
-          </QueryState>
-        </div>
-
-        {draftLoops.length > 0 && (
-          <div>
-            <h2 className="text-sm font-medium mb-3">Draft Loops ({draftLoops.length})</h2>
-            <div className="grid gap-3">
-              {draftLoops.map((loop) => (
+          {loading ? (
+            <div className="flex items-center gap-2 text-xs text-(--mute)">
+              <Loader2 className="size-3.5 animate-spin" />
+              Loading executions…
+            </div>
+          ) : todayExecs.length === 0 ? (
+            <div className="flex items-center gap-2 text-xs text-(--mute)">
+              <CheckCircle2 className="size-4" />
+              No workflow executions today.
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              {todayExecs.slice(0, 12).map((e) => (
                 <Link
-                  key={loop.cronJobId}
-                  href={`/work/${loop.cronJobId}`}
-                  className="block rounded-lg border border-(--hairline) bg-(--canvas-soft) px-4 py-3 hover:border-(--primary) transition-colors"
+                  key={e.executionId}
+                  href={`/agentic-workflow/${encodeURIComponent(e.workflowId)}/executions/${e.executionId}`}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-(--hairline) bg-(--canvas-soft) px-4 py-2.5 hover:border-(--primary) transition-colors"
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-sm font-medium text-(--ink)">
-                        <span className="truncate">{loop.name}</span>
-                        {loop.pendingCount > 0 && (
-                          <Badge variant="default" className="text-xs">
-                            {loop.pendingCount} pending
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="text-xs text-(--mute) font-mono">
-                        {loop.cronExpr || "Manual"}
-                      </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-medium text-(--ink)">
+                      <GitBranch className="size-3.5 shrink-0 text-(--mute)" />
+                      <span className="truncate">{e.workflowId}</span>
                     </div>
-                    <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border border-(--hairline) text-(--mute) uppercase tracking-kicker">
-                      Draft
+                    <div className="truncate font-mono text-[10px] text-(--mute)">
+                      {e.executionId}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {e.status === "failure" && <XCircle className="size-3.5 text-(--err)" />}
+                    <span
+                      className={`text-xs tabular-nums ${statusColor[e.status] ?? "text-(--mute)"}`}
+                    >
+                      {e.status === "waiting_human" ? "waiting human" : e.status}
                     </span>
+                    {e.status === "running" && (
+                      <Loader2 className="size-3.5 animate-spin text-(--primary)" />
+                    )}
                   </div>
                 </Link>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <div>
-          <h2 className="text-sm font-medium mb-3">Today&apos;s Runs</h2>
+          <h2 className="text-sm font-medium mb-3">Today&apos;s Agents</h2>
           <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4 ">
+            <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
               <div className="text-2xl font-semibold text-emerald-400 tabular-nums">
-                {succeeded}
+                {runSucceeded}
               </div>
               <div className="text-xs text-(--mute)">Succeeded</div>
             </div>
-            <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4 ">
-              <div className="text-2xl font-semibold text-red-400 tabular-nums">{failed}</div>
+            <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
+              <div className="text-2xl font-semibold text-red-400 tabular-nums">{runFailed}</div>
               <div className="text-xs text-(--mute)">Failed</div>
             </div>
-            <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4 ">
-              <div className="text-2xl font-semibold text-amber-400 tabular-nums">{running}</div>
+            <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
+              <div className="text-2xl font-semibold text-amber-400 tabular-nums">{runRunning}</div>
               <div className="text-xs text-(--mute)">Running</div>
             </div>
           </div>
-          <div className="mt-3 rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4 text-center">
-            <div className="text-2xl font-semibold text-(--ink) tabular-nums">
-              {tokensUnavailable ? "Token data unavailable" : totalTokens.toLocaleString()}
+          {succeeded + failed + running > 0 && (
+            <div className="mt-3 rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
+              <div className="flex items-center gap-2 text-lg font-semibold text-(--ink) tabular-nums">
+                <Badge variant="outline">{succeeded}</Badge>
+                <Badge variant="outline">{failed}</Badge>
+                <Badge variant="outline">{running}</Badge>
+                <span className="ml-auto text-2xl">{totalTokens.toLocaleString()}</span>
+              </div>
+              <div className="mt-1 text-xs text-(--mute)">
+                Workflow executions today: {succeeded} success / {failed} failed / {running} running
+              </div>
             </div>
-            <div className="text-xs text-(--mute)">Total Tokens</div>
-          </div>
+          )}
         </div>
       </PageBody>
     </Page>

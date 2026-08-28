@@ -7,6 +7,7 @@ import type {
   WorkflowDefinition,
   WorkflowMeta,
   WorkflowNode,
+  WorkflowTrigger,
 } from "./types.js";
 
 export class WorkflowParseError extends Error {
@@ -208,9 +209,39 @@ export function parseWorkflow(raw: unknown): WorkflowDefinition {
     }
   }
   if (issues.length > 0) throw new WorkflowParseError(issues);
+  const triggers: WorkflowTrigger[] = [];
+  if (raw.triggers !== undefined) {
+    if (!Array.isArray(raw.triggers)) issues.push("triggers must be an array");
+    else {
+      for (const [i, t] of raw.triggers.entries()) {
+        if (typeof t !== "object" || t === null) {
+          issues.push(`triggers[${i}] must be an object`);
+          continue;
+        }
+        const tr = t as Record<string, unknown>;
+        if (tr.type !== "cron") {
+          issues.push(`triggers[${i}].type must be "cron"`);
+          continue;
+        }
+        if (typeof tr.cron !== "string" || tr.cron.trim() === "") {
+          issues.push(`triggers[${i}].cron must be a non-empty string`);
+          continue;
+        }
+        const entry: WorkflowTrigger = { type: "cron", cron: tr.cron };
+        if (tr.enabled !== undefined) {
+          if (typeof tr.enabled !== "boolean")
+            issues.push(`triggers[${i}].enabled must be boolean`);
+          else entry.enabled = tr.enabled;
+        }
+        triggers.push(entry);
+      }
+    }
+  }
+  if (issues.length > 0) throw new WorkflowParseError(issues);
   const def: WorkflowDefinition = { version: 1, id: id!, nodes, edges };
   if (Object.keys(input).length > 0) def.input = input;
   if (Object.keys(meta).length > 0) def.meta = meta;
+  if (triggers.length > 0) def.triggers = triggers;
   topoSort(def); // throws GraphCycleError on cycle
   return def;
 }

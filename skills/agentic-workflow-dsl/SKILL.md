@@ -31,10 +31,13 @@ Exit 0 + `VALID <id>` = legal; exit 1 = one violation per line.
   "id": "oncall-triage",
   "meta": { "name": "…", "description": "…", "tags": ["…"], "status": "draft|active|archived", "owner": "…", "updatedBy": "…" },
   "input": { "issueUrl": "string" },
+  "triggers": [ { "type": "cron", "cron": "0 2 * * *", "enabled": true } ],
   "nodes": [ /* see Node types */ ],
   "edges": [ { "from": "a", "to": "b", "when": { "==": [ { "var": "a.output.x" }, "high" ] } } ]
 }
 ```
+
+**Triggers** (optional):  is an array. Each item is . API trigger is implicit — any workflow can be invoked via ; cron triggers only add scheduling.  keeps a trigger registered but paused.
 
 ## Node types
 
