@@ -2,6 +2,7 @@
 
 import type { AskQuestionInput } from "@chengchenccc/agent-contract";
 import { toEditorGraph, type WorkflowDefinition } from "@chengchenccc/workflow";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { api } from "@/lib/api";
@@ -96,6 +97,12 @@ export function ExecutionTraceView({
       </div>
       <div className="w-80 border-l">
         <div className="flex items-center gap-2 border-b p-3">
+          <Link
+            href={`/agentic-workflow/${execution.workflowId}/executions`}
+            className="text-xs text-[var(--info)] hover:text-[var(--primary)]"
+          >
+            ← executions
+          </Link>
           <button className="rounded border px-2" onClick={() => setIndex(Math.max(0, index - 1))}>
             ◀
           </button>

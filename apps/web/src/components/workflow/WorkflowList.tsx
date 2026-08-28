@@ -69,7 +69,9 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
                   </span>
                 ))}
                 {d.status && (
-                  <span className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">{d.status}</span>
+                  <span className="rounded-full border border-[var(--primary)]/40 bg-[var(--primary)]/10 px-2 py-0.5 text-[10px] text-[var(--primary)]">
+                    {d.status}
+                  </span>
                 )}
               </div>
             </div>

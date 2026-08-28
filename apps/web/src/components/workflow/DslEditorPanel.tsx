@@ -1,7 +1,11 @@
 "use client";
 
 import { parseWorkflow, type WorkflowDefinition } from "@chengchenccc/workflow";
-import Editor from "@monaco-editor/react";
+import Editor, { loader } from "@monaco-editor/react";
+import * as monaco from "monaco-editor";
+
+loader.config({ monaco });
+
 import { useState } from "react";
 import { api } from "@/lib/api";
 
@@ -60,6 +64,11 @@ export function DslEditorPanel({
       <div className="mb-2 text-sm font-semibold">Workflow DSL</div>
       <Editor
         height="60vh"
+        loading={
+          <div className="flex h-60 items-center justify-center text-xs text-[var(--mute)]">
+            Loading editor…
+          </div>
+        }
         defaultLanguage="json"
         value={text}
         onChange={(v) => {

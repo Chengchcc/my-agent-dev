@@ -1,5 +1,6 @@
 "use client";
 
+import type { AskQuestionInput } from "@chengchenccc/agent-contract";
 import type { WorkflowDefinition, WorkflowNode } from "@chengchenccc/workflow";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +15,55 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { AskQuestionCard } from "./AskQuestionCard";
 
 type Def = WorkflowDefinition;
+
+function formToQuestions(
+  form: Record<string, unknown> | undefined,
+  question: string | undefined,
+): AskQuestionInput {
+  const questions: AskQuestionInput["questions"] = [];
+  for (const [key, raw] of Object.entries(form ?? {})) {
+    const f = raw as { type?: string; label?: string; options?: string[]; required?: boolean };
+    const label = f.label ?? key;
+    if (f.type === "enum") {
+      questions.push({
+        id: key,
+        kind: "select",
+        question: label,
+        header: question,
+        options: (f.options ?? []).map((v) => ({ value: v, label: v })),
+        validation: { required: f.required !== false },
+      });
+    } else if (f.type === "boolean") {
+      questions.push({
+        id: key,
+        kind: "select",
+        question: label,
+        header: question,
+        options: [
+          { value: "yes", label: "Yes" },
+          { value: "no", label: "No" },
+        ],
+        validation: { required: f.required !== false },
+      });
+    } else {
+      questions.push({
+        id: key,
+        kind: "text",
+        question: label,
+        header: question,
+        multiline: f.type === "textarea",
+        placeholder: f.label,
+        validation: { required: f.required !== false },
+      });
+    }
+  }
+  if (questions.length === 0 && question)
+    questions.push({ id: "answer", kind: "text", question, multiline: true });
+  return { questions };
+}
 
 function patchNode(def: Def, nodeId: string, patch: Record<string, unknown>): Def {
   return {
@@ -130,13 +178,21 @@ export function NodePropertyPanel({
       )}
 
       {node.type === "human" && (
-        <div className="space-y-1">
-          <Label className="text-xs text-[var(--mute)]">question</Label>
-          <Textarea
-            className="min-h-24 border-[var(--hairline)] bg-[var(--canvas)] font-mono text-xs"
-            value={node.question ?? ""}
-            onChange={(e) => set({ question: e.target.value })}
-          />
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label className="text-xs text-[var(--mute)]">question</Label>
+            <Textarea
+              className="min-h-24 border-[var(--hairline)] bg-[var(--canvas)] font-mono text-xs"
+              value={node.question ?? ""}
+              onChange={(e) => set({ question: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-[var(--mute)]">问卷预览</Label>
+            <div className="pointer-events-none overflow-hidden rounded-lg border border-[var(--hairline)]">
+              <AskQuestionCard input={formToQuestions(node.form, node.question)} />
+            </div>
+          </div>
         </div>
       )}
 

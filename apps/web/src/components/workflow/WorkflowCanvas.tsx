@@ -21,6 +21,23 @@ import { WorkflowNodeCard } from "./workflow-node";
 
 export type NodeStatus = "done" | "active" | "idle" | "failed";
 
+function shortWhen(when: unknown): string {
+  try {
+    const w = when as Record<string, unknown> | undefined;
+    if (!w) return "";
+    const op = Object.keys(w)[0] ?? "";
+    const args = (w[op] as unknown[] | undefined) ?? [];
+    if ((op === "==" || op === "!=") && Array.isArray(args) && args.length === 2) {
+      const a = args[0] as { var?: string } | string | undefined;
+      const path = typeof a === "object" && a && "var" in a ? String(a.var) : String(a);
+      return `${path.split(".").pop()} ${op === "==" ? "==" : "!="} ${JSON.stringify(args[1])}`;
+    }
+    return op;
+  } catch {
+    return "";
+  }
+}
+
 function buildGraph(
   graph: EditorGraph,
   nodeStatus: Record<string, NodeStatus> | undefined,

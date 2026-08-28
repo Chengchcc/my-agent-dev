@@ -257,6 +257,14 @@
   --wf-color-script: var(--warn);
   --wf-color-human: var(--info);
 }
+
+/* React Flow: the default node wrapper renders a white card behind our
+   custom node; strip it so only the Blueprint card shows. */
+.react-flow__node-default {
+  background: transparent;
+  padding: 0;
+}
+
 @keyframes wf-dash {
   to {
     stroke-dashoffset: -14;

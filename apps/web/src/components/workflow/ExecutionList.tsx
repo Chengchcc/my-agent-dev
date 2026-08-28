@@ -28,7 +28,15 @@ export function ExecutionList({
   return (
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Executions — {workflowId}</h1>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/agentic-workflow/${workflowId}`}
+            className="text-xs text-[var(--info)] hover:text-[var(--primary)]"
+          >
+            ← 详情
+          </Link>
+          <h1 className="text-lg font-semibold">Executions — {workflowId}</h1>
+        </div>
         <button className="rounded bg-slate-800 px-3 py-1 text-white" onClick={run}>
           + Run
         </button>

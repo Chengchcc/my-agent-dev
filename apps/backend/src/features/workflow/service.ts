@@ -285,7 +285,10 @@ export function createWorkflowExecutionService(
         "agent runner requires agentRunService/agentRunExecution/convPort/resolveDefaultModel",
       );
     }
-    const agentId = node.agentId ?? "";
+    const inline = (node.agentId ?? "").trim() === "";
+    // Inline agents (model+prompt, no system agentId) still need a member id
+    // for the conversation identity; the real model comes from node.model.
+    const agentId = inline ? `inline:${execution.executionId}:${node.id}` : node.agentId!;
     if (!agentId) throw new Error("agent node requires agentId");
     const conversationId = `workflow:${execution.executionId}:${node.id}`;
     const prompt = buildAgentPrompt(node, ready.input, node.output);
@@ -303,7 +306,9 @@ export function createWorkflowExecutionService(
       }
     }
 
-    const defaultModel = await deps.resolveDefaultModel(agentId);
+    const defaultModel = inline
+      ? { backendKind: "oma", modelId: node.model ?? "" }
+      : await deps.resolveDefaultModel(agentId);
     const workspace = node.repo ? await deps.resolveRepoWorkspace?.(node.repo, agentId) : undefined;
     const input: Record<string, unknown> = {
       conversationId,
@@ -387,6 +392,11 @@ export function createWorkflowExecutionService(
             ? ((await runAgentNode(node, ready, execution)).output ?? {})
             : await runWorkflowNode(node, ready, execution);
       } catch (err) {
+        await deps.port.updateNodeRun(execution.executionId, node.id, {
+          status: "failed",
+          error: (err as Error).message,
+          terminalAt: Date.now(),
+        });
         emit(execution.executionId, "node_failed", {
           nodeId: node.id,
           error: (err as Error).message,

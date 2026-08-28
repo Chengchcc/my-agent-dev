@@ -114,8 +114,9 @@ export function workflowRoutes(deps: {
         const raw = await deps.loadWorkflow(ref);
         const definition = JSON.parse(raw);
         set.status = 201;
+        const workflowId = ref.path.replace(/\.workflow\.json$/, "");
         return await svc.startExecution({
-          workflowId: `${ref.repo}/${ref.path}`,
+          workflowId,
           definition,
           input: body.input ?? {},
         });
