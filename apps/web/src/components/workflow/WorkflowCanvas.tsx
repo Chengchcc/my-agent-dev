@@ -326,7 +326,7 @@ export function WorkflowCanvas({
         <button
           onClick={autoLayout}
           title="Auto layout"
-          className="absolute right-4 top-4 z-10 flex size-7 items-center justify-center rounded-md border border-(--hairline) bg-(--panel)/90 text-(--mute) hover:border-(--info)/50 hover:text-(--info)"
+          className="absolute right-4 top-4 z-10 flex h-7 items-center gap-1.5 rounded-md border border-(--hairline) bg-(--panel)/90 px-2.5 text-[11px] text-(--mute) hover:border-(--info)/50 hover:text-(--info)"
         >
           <svg
             width="14"
@@ -342,6 +342,7 @@ export function WorkflowCanvas({
             <path d="M21 7v4h-4" />
             <path d="M3 17v-4h4" />
           </svg>
+          <span>Auto layout</span>
         </button>
       )}
     </div>
