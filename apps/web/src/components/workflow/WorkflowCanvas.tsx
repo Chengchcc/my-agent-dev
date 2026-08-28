@@ -182,10 +182,10 @@ export function WorkflowCanvas({
   } | null>(null);
   const [connectSource, setConnectSource] = useState<string | null>(null);
   const [minimapOpen, setMinimapOpen] = useState(true);
-  const [hintDismissed, setHintDismissed] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem("wf-hint-dismissed") === "1";
-  });
+  const [hintDismissed, setHintDismissed] = useState(true);
+  useEffect(() => {
+    if (localStorage.getItem("wf-hint-dismissed") !== "1") setHintDismissed(false);
+  }, []);
   const connectedRef = useRef(false);
   const nodeTypes = { default: WorkflowNodeCard };
 
