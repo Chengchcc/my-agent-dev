@@ -356,8 +356,8 @@ export function createWorkflowExecutionService(
       const terminalStatus = ["completed", "failed", "aborted", "commit_failed", "timeout"];
       // A run is done when status is terminal OR terminalResult is present
       // (the run may have finished but its status row not yet flushed).
-      if (run && (run.terminalResult !== undefined || terminalStatus.includes(run.status ?? ""))) {
-        if (run.status !== "completed" && !run.terminalResult)
+      if (run && (run.terminalResult != null || terminalStatus.includes(run.status ?? ""))) {
+        if (run.status !== "completed" && run.terminalResult == null)
           throw new Error(`agent run ${runId} ended ${run.status ?? "unknown"}`);
         const output = extractOutput(run.terminalResult, node.output);
         emit(execution.executionId, "node_agent_completed", { nodeId: node.id, runId });
