@@ -19,7 +19,7 @@ import type { EditorGraph } from "@chengchenccc/workflow";
 import { useEffect, useState } from "react";
 import { WorkflowNodeCard } from "./workflow-node";
 
-export type NodeStatus = "done" | "active" | "idle";
+export type NodeStatus = "done" | "active" | "idle" | "failed";
 
 function buildGraph(
   graph: EditorGraph,

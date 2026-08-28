@@ -7,7 +7,7 @@ import {
   type WorkflowNode,
 } from "@chengchenccc/workflow";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { ChatPanel } from "./ChatPanel";
 import { DslEditorPanel } from "./DslEditorPanel";
@@ -46,6 +46,67 @@ export function AgenticWorkflowEditor({
   initial: WorkflowDefinition | null;
 }) {
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(initial);
+  const [past, setPast] = useState<WorkflowDefinition[]>([]);
+  const [future, setFuture] = useState<WorkflowDefinition[]>([]);
+  const definitionRef = useRef<WorkflowDefinition | null>(initial);
+  definitionRef.current = definition;
+
+  // Central setter that records history for undo/redo (except for explicit
+  // `commit: false` calls like initial hydration).
+  const setDefinitionTracked = useCallback(
+    (
+      next: WorkflowDefinition | ((prev: WorkflowDefinition | null) => WorkflowDefinition | null),
+    ) => {
+      const prev = definitionRef.current;
+      const resolved = typeof next === "function" ? next(prev) : next;
+      if (!prev || !resolved || prev === resolved) {
+        setDefinition(resolved);
+        return;
+      }
+      setPast((p) => [...p.slice(-49), prev]);
+      setFuture([]);
+      setDefinition(resolved);
+      definitionRef.current = resolved;
+    },
+    [],
+  );
+
+  const undo = useCallback(() => {
+    setPast((p) => {
+      if (p.length === 0) return p;
+      const prevState = p[p.length - 1]!;
+      const cur = definitionRef.current;
+      setFuture((f) => (cur ? [...f, cur] : f));
+      setPast((pp) => pp.slice(0, -1));
+      setDefinition(prevState);
+      definitionRef.current = prevState;
+      return p;
+    });
+  }, []);
+  const redo = useCallback(() => {
+    setFuture((f) => {
+      if (f.length === 0) return f;
+      const nextState = f[f.length - 1]!;
+      const cur = definitionRef.current;
+      setPast((p) => (cur ? [...p, cur] : p));
+      setFuture((ff) => ff.slice(0, -1));
+      setDefinition(nextState);
+      definitionRef.current = nextState;
+      return f;
+    });
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("attrs");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeEdgeIndex, setActiveEdgeIndex] = useState<number | null>(null);
@@ -111,6 +172,20 @@ export function AgenticWorkflowEditor({
             executions
           </Link>
           <button
+            onClick={undo}
+            disabled={past.length === 0}
+            className="rounded-md border border-[#1f2937] px-2.5 py-1 text-xs text-[#94a3b8] hover:text-[#e5e7eb] disabled:opacity-30"
+          >
+            ↩ Undo
+          </button>
+          <button
+            onClick={redo}
+            disabled={future.length === 0}
+            className="rounded-md border border-[#1f2937] px-2.5 py-1 text-xs text-[#94a3b8] hover:text-[#e5e7eb] disabled:opacity-30"
+          >
+            ↪ Redo
+          </button>
+          <button
             onClick={validate}
             className="rounded-md border border-[#38bdf8]/40 bg-[#38bdf8]/10 px-3 py-1 text-xs text-[#38bdf8] transition-all hover:bg-[#38bdf8]/20 hover:shadow-[0_0_16px_rgba(56,189,248,0.2)]"
           >
@@ -145,7 +220,7 @@ export function AgenticWorkflowEditor({
           <NodePanel
             onAdd={(node) => {
               if (!definition) return;
-              setDefinition(addNode(definition, { ...node, id: makeNodeId(node.type) }));
+              setDefinitionTracked(addNode(definition, { ...node, id: makeNodeId(node.type) }));
             }}
           />
           <div className="flex min-w-0 flex-1 flex-col">
@@ -156,7 +231,7 @@ export function AgenticWorkflowEditor({
                     onPick={(node) => {
                       if (!definition) return;
                       const id = makeNodeId(node.type);
-                      setDefinition(
+                      setDefinitionTracked(
                         addNode(addEdge(definition, menu.sourceId, id), { ...node, id }),
                       );
                     }}
@@ -173,8 +248,8 @@ export function AgenticWorkflowEditor({
                     setActiveEdgeIndex(null);
                     setInspectorTab("attrs");
                   }}
-                  onConnect={(from, to) => setDefinition(addEdge(definition, from, to))}
-                  onNodeDelete={(id) => setDefinition(deleteNode(definition, id))}
+                  onConnect={(from, to) => setDefinitionTracked(addEdge(definition, from, to))}
+                  onNodeDelete={(id) => setDefinitionTracked(deleteNode(definition, id))}
                   onEdgeSelect={(i) => {
                     setActiveEdgeIndex(i);
                     setActiveId(null);
@@ -217,15 +292,15 @@ export function AgenticWorkflowEditor({
                 <DslEditorPanel
                   workflowId={workflowId}
                   definition={definition}
-                  onChange={setDefinition}
+                  onChange={setDefinitionTracked}
                 />
               ) : activeEdgeIndex !== null && definition ? (
                 <EdgePropertyPanel
                   edgeIndex={activeEdgeIndex}
                   definition={definition}
-                  onChange={setDefinition}
+                  onChange={setDefinitionTracked}
                   onDelete={(def) => {
-                    setDefinition(def);
+                    setDefinitionTracked(def);
                     setActiveEdgeIndex(null);
                   }}
                 />
@@ -233,7 +308,7 @@ export function AgenticWorkflowEditor({
                 <NodePropertyPanel
                   nodeId={activeId}
                   definition={definition}
-                  onChange={setDefinition}
+                  onChange={setDefinitionTracked}
                 />
               ) : (
                 <div className="p-4 text-xs text-[#64748b]">

@@ -40,6 +40,7 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
           left: 0,
           right: 0,
           height: 3,
+          ...(status === "failed" ? { background: "#fb7185", boxShadow: "0 0 8px #fb7185" } : {}),
           borderRadius: "12px 12px 0 0",
           background: band,
           boxShadow: `0 0 8px ${band}`,
@@ -60,7 +61,7 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
       <div style={{ padding: "16px 12px 0" }}>
         <div style={{ fontSize: 14, fontWeight: 600 }}>
           {String(data.label)}
-          {status === "done" ? " ✓" : status === "active" ? " ●" : ""}
+          {status === "done" ? " ✓" : status === "active" ? " ●" : status === "failed" ? " ✗" : ""}
         </div>
         <div
           style={{ color: "#94a3b8", fontSize: 12, fontFamily: "var(--font-mono-sf, monospace)" }}
