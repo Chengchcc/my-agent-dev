@@ -112,6 +112,10 @@ export function agentRunRoutes(input: {
           where.push("ar.agent_id = ?");
           args.push(query.agentId);
         }
+        if (query.conversationId) {
+          where.push("ar.conversation_id = ?");
+          args.push(query.conversationId);
+        }
         const sql = `SELECT ar.run_id, ar.conversation_id, ar.agent_id, ar.status,
                             ar.model_ref, ar.created_at, ar.terminal_at, ar.terminal_result
                        FROM agent_run ar
@@ -161,6 +165,7 @@ export function agentRunRoutes(input: {
             ]),
           ),
           agentId: t.Optional(t.String()),
+          conversationId: t.Optional(t.String()),
           limit: t.Optional(t.String()),
         }),
       },

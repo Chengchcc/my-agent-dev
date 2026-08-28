@@ -524,6 +524,37 @@ export function useConversation(
     ],
   );
 
+  // Poll this conversation's active runs and start live streaming for any
+  // run not triggered by a local send (e.g. workflow agent nodes). This
+  // makes workflow-originated agent messages stream like normal chat.
+  useEffect(() => {
+    if (!conversationId) return;
+    let stopped = false;
+    const poll = async () => {
+      if (stopped) return;
+      try {
+        const res = await api.listAgentRuns({ conversationId });
+        for (const run of res?.runs ?? []) {
+          if (
+            !run.runId ||
+            !["running", "waiting", "commit_failed"].includes(run.status) ||
+            runStreamsRef.current.has(run.runId)
+          )
+            continue;
+          watchRun(run.runId, run.agentId);
+        }
+      } catch {
+        /* transient poll failure — next tick retries */
+      }
+    };
+    void poll();
+    const timer = setInterval(poll, 2000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [conversationId, watchRun]);
+
   const send = useCallback(
     (
       text: string,
