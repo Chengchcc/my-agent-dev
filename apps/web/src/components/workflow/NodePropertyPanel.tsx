@@ -265,7 +265,7 @@ export function NodePropertyPanel({
           <Input
             type="number"
             className="border-(--hairline) bg-(--canvas) font-mono text-xs"
-            value={node.retry}
+            value={typeof node.retry === "number" ? node.retry : ""}
             onChange={(e) => set({ retry: Number(e.target.value) })}
           />
         </div>

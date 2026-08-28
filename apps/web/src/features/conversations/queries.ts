@@ -23,6 +23,7 @@ export function conversationDetailQuery(id: string) {
   return queryOptions({
     queryKey: conversationKeys.detail(id),
     queryFn: () => api.getConversation(id),
+    refetchInterval: 3_000,
   });
 }
 
