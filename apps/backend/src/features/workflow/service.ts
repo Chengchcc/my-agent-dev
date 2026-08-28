@@ -119,7 +119,12 @@ function extractFinalText(outcome: unknown): string {
 }
 
 function tryParseJsonObject(text: string): Record<string, unknown> | null {
-  const m = text.match(/\{[\s\S]*\}/);
+  // Strip markdown code fences if present (deepseek often wraps JSON).
+  const stripped = text
+    .replace(/```(?:json)?\s*/g, "")
+    .replace(/```/g, "")
+    .trim();
+  const m = stripped.match(/\{[\s\S]*\}/);
   if (!m) return null;
   try {
     const v = JSON.parse(m[0]);
@@ -149,10 +154,15 @@ function buildAgentPrompt(
   outputHint?: Record<string, string>,
 ): string {
   const base = node.type === "agent" ? (node.prompt ?? "") : "";
-  const suffix =
-    outputHint && Object.keys(outputHint).length > 0
-      ? `\n\nYour final answer MUST be a JSON object with fields: ${Object.keys(outputHint).join(", ")}\nOptional: nextNode (string). Do not output anything else.`
-      : "";
+  const schema = (node as { outputSchema?: unknown }).outputSchema;
+  let suffix = "";
+  if (schema && typeof schema === "object") {
+    suffix = `\n\nYour final answer MUST be a single JSON object that conforms exactly to this JSON Schema:\n${JSON.stringify(schema)}\nRespond with ONLY the JSON object — no markdown fences, no commentary, no text before or after.`;
+  } else if (outputHint && Object.keys(outputHint).length > 0) {
+    suffix = `\n\nYour final answer MUST be a JSON object with fields: ${Object.keys(outputHint).join(", ")}\nRespond with ONLY the JSON object — no markdown fences, no commentary.`;
+  } else {
+    suffix = "";
+  }
   return `${base}\n\nInput: ${JSON.stringify(input)}${suffix}`;
 }
 
