@@ -18,6 +18,12 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { api } from "@/lib/api";
 import { ChatPanel } from "./ChatPanel";
 
@@ -254,26 +260,24 @@ export function AgenticWorkflowEditor({
               saved {new Date(savedAt).toLocaleTimeString()}
             </span>
           )}
-          <Link
-            href={`/agentic-workflow/${workflowId}/executions`}
-            className="rounded-md border border-(--hairline) px-2.5 py-1 text-xs text-(--mute) hover:border-(--info)/50 hover:text-(--info)"
-          >
-            executions
-          </Link>
-          <button
-            onClick={undo}
-            disabled={past.length === 0}
-            className="rounded-md border border-(--hairline) px-2.5 py-1 text-xs text-(--mute) hover:text-(--ink) disabled:opacity-30"
-          >
-            ↩ Undo
-          </button>
-          <button
-            onClick={redo}
-            disabled={future.length === 0}
-            className="rounded-md border border-(--hairline) px-2.5 py-1 text-xs text-(--mute) hover:text-(--ink) disabled:opacity-30"
-          >
-            ↪ Redo
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="rounded-md border border-(--hairline) px-2.5 py-1 text-xs text-(--mute) hover:text-(--ink)">
+              •••
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              <DropdownMenuItem
+                onClick={() => window.location.assign(`/agentic-workflow/${workflowId}/executions`)}
+              >
+                Executions
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={past.length === 0} onClick={undo}>
+                ↩ Undo
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={future.length === 0} onClick={redo}>
+                ↪ Redo
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <div className="flex overflow-hidden rounded-md border border-(--hairline)">
             <button
               onClick={() => setMode("canvas")}
