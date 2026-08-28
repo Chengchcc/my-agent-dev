@@ -12,6 +12,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { api } from "@/lib/api";
 import { type NodeStatus, WorkflowCanvas } from "./WorkflowCanvas";
 
@@ -188,59 +189,69 @@ export function ExecutionTraceView({
               {index + 1}/{events.length}
             </span>
           </div>
-          <div className="max-h-[40vh] overflow-auto p-3 text-xs">
-            <div className="mb-1 font-semibold">Event log</div>
-            {events.slice(0, index + 1).map((e) => (
-              <div key={e.seq} className="border-b py-1">
-                <button
-                  className="flex w-full items-center gap-1 text-left"
-                  onClick={() => setExpandedEvent(expandedEvent === e.seq ? null : e.seq)}
-                >
-                  <span className="text-muted-foreground">
-                    {new Date(e.ts).toLocaleTimeString()}
-                  </span>{" "}
-                  {e.event}
-                </button>
-                {expandedEvent === e.seq && (
-                  <pre className="mt-1 max-h-48 overflow-auto rounded bg-(--canvas)/60 p-2 text-[10px] text-(--mute)">
-                    {JSON.stringify(e.data, null, 2)}
+          <div className="border-t p-3 text-xs">
+            <Collapsible>
+              <CollapsibleTrigger className="flex w-full items-center justify-between text-(--mute) hover:text-(--ink)">
+                <span className="font-semibold">调试</span>
+                <span className="text-[10px]">展开</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-3 pt-2">
+                <div>
+                  <div className="mb-1 font-semibold">Event log</div>
+                  {events.slice(0, index + 1).map((e) => (
+                    <div key={e.seq} className="border-b py-1">
+                      <button
+                        className="flex w-full items-center gap-1 text-left"
+                        onClick={() => setExpandedEvent(expandedEvent === e.seq ? null : e.seq)}
+                      >
+                        <span className="text-muted-foreground">
+                          {new Date(e.ts).toLocaleTimeString()}
+                        </span>{" "}
+                        {e.event}
+                      </button>
+                      {expandedEvent === e.seq && (
+                        <pre className="mt-1 max-h-48 overflow-auto rounded bg-(--canvas)/60 p-2 text-[10px] text-(--mute)">
+                          {JSON.stringify(e.data, null, 2)}
+                        </pre>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <div className="mb-1 font-semibold">Store snapshot</div>
+                  <pre className="max-h-[20vh] overflow-auto text-[10px]">
+                    {JSON.stringify(snapshot, null, 2)}
                   </pre>
+                </div>
+                <div>
+                  <div className="mb-1 font-semibold">Node runs</div>
+                  {nodeRuns.map((r) => (
+                    <div key={r.seq} className="flex justify-between border-b py-0.5">
+                      <span>{r.nodeId}</span>
+                      <span>{r.status}</span>
+                    </div>
+                  ))}
+                </div>
+                {graph.nodes.filter((n) => n.type === "agent").length > 0 && (
+                  <div>
+                    <div className="mb-1 font-semibold">Agent conversations</div>
+                    {graph.nodes
+                      .filter((n) => n.type === "agent")
+                      .map((n) => (
+                        <Link
+                          key={n.id}
+                          href={`/chat/workflow:${execution.executionId}:${n.id}`}
+                          className="flex items-center justify-between border-b py-1 text-(--info) hover:text-(--primary)"
+                        >
+                          <span>{n.label}</span>
+                          <span>查看 →</span>
+                        </Link>
+                      ))}
+                  </div>
                 )}
-              </div>
-            ))}
+              </CollapsibleContent>
+            </Collapsible>
           </div>
-          <div className="border-t p-3 text-xs">
-            <div className="mb-1 font-semibold">Store snapshot</div>
-            <pre className="max-h-[20vh] overflow-auto text-[10px]">
-              {JSON.stringify(snapshot, null, 2)}
-            </pre>
-          </div>
-          <div className="border-t p-3 text-xs">
-            <div className="mb-1 font-semibold">Node runs</div>
-            {nodeRuns.map((r) => (
-              <div key={r.seq} className="flex justify-between border-b py-0.5">
-                <span>{r.nodeId}</span>
-                <span>{r.status}</span>
-              </div>
-            ))}
-          </div>
-          {graph.nodes.filter((n) => n.type === "agent").length > 0 && (
-            <div className="border-t p-3 text-xs">
-              <div className="mb-1 font-semibold">Agent conversations</div>
-              {graph.nodes
-                .filter((n) => n.type === "agent")
-                .map((n) => (
-                  <Link
-                    key={n.id}
-                    href={`/chat/workflow:${execution.executionId}:${n.id}`}
-                    className="flex items-center justify-between border-b py-1 text-(--info) hover:text-(--primary)"
-                  >
-                    <span>{n.label}</span>
-                    <span>View chat →</span>
-                  </Link>
-                ))}
-            </div>
-          )}
         </div>
       </div>
     </div>
