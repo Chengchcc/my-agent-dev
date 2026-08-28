@@ -49,10 +49,43 @@ export function EdgePropertyPanel({
 }) {
   const edge = useMemo(() => definition.edges[edgeIndex], [definition, edgeIndex]);
   const [when, setWhen] = useState<string>(edge?.when ? JSON.stringify(edge.when, null, 2) : "");
-  const [condOp, setCondOp] = useState<"==" | "!=" | ">" | "<" | "exists">("==");
-  const [condLeft, setCondLeft] = useState("");
-  const [condRight, setCondRight] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [combine, setCombine] = useState<"and" | "or">("and");
+  const [conditions, setConditions] = useState<
+    Array<{ op: "==" | "!=" | ">" | "<" | "exists"; left: string; right: string }>
+  >(() => {
+    const w = edge?.when as Record<string, unknown> | undefined;
+    if (!w || Object.keys(w).length === 0) return [];
+    if (w.and && Array.isArray(w.and)) {
+      return (w.and as Array<Record<string, unknown>>).map((c) => {
+        const op = Object.keys(c)[0] ?? "==";
+        const args = (c[op] as unknown[] | undefined) ?? [];
+        const left =
+          typeof args[0] === "object" && args[0]
+            ? String((args[0] as { var?: string }).var ?? "")
+            : String(args[0] ?? "");
+        return { op: op as never, left, right: String(args[1] ?? "") };
+      });
+    }
+    if (w.or && Array.isArray(w.or)) {
+      return (w.or as Array<Record<string, unknown>>).map((c) => {
+        const op = Object.keys(c)[0] ?? "==";
+        const args = (c[op] as unknown[] | undefined) ?? [];
+        const left =
+          typeof args[0] === "object" && args[0]
+            ? String((args[0] as { var?: string }).var ?? "")
+            : String(args[0] ?? "");
+        return { op: op as never, left, right: String(args[1] ?? "") };
+      });
+    }
+    const op = Object.keys(w)[0] ?? "==";
+    const args = (w[op] as unknown[] | undefined) ?? [];
+    const left =
+      typeof args[0] === "object" && args[0]
+        ? String((args[0] as { var?: string }).var ?? "")
+        : String(args[0] ?? "");
+    return [{ op: op as never, left, right: String(args[1] ?? "") }];
+  });
   if (!edge) return null;
 
   const nodeOptions = definition.nodes
@@ -116,42 +149,50 @@ export function EdgePropertyPanel({
       <div className="mt-3 flex-1 space-y-1 overflow-auto">
         <Label className="text-xs text-(--mute)">when（条件，空 = 无条件）</Label>
         <div className="space-y-2 rounded-md border border-(--hairline) bg-(--canvas)/50 p-2">
-          <Select value={condOp} onValueChange={(v) => setCondOp((v ?? "==") as typeof condOp)}>
-            <SelectTrigger className="h-8 w-full border-(--hairline) bg-(--canvas) font-mono text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="==">==</SelectItem>
-              <SelectItem value="!=">!=</SelectItem>
-              <SelectItem value=">">&gt;</SelectItem>
-              <SelectItem value="<">&lt;</SelectItem>
-              <SelectItem value="exists">exists</SelectItem>
-            </SelectContent>
-          </Select>
-          {condOp === "exists" ? (
-            <Select value={condLeft} onValueChange={(v) => setCondLeft(v ?? "")}>
-              <SelectTrigger className="h-8 w-full border-(--hairline) bg-(--canvas) font-mono text-xs">
-                <SelectValue placeholder="选择输出变量" />
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-(--mute)">当</span>
+            <Select value={combine} onValueChange={(v) => setCombine((v ?? "and") as "and" | "or")}>
+              <SelectTrigger className="h-7 w-16 border-(--hairline) bg-(--canvas) text-[10px]">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {definition.nodes
-                  .filter((n) => n.type !== "start" && n.id !== edge.from)
-                  .flatMap((n) =>
-                    Object.keys((n as { output?: Record<string, unknown> }).output ?? {}).map(
-                      (k) => (
-                        <SelectItem key={`${n.id}.output.${k}`} value={`${n.id}.output.${k}`}>
-                          {n.id}.output.{k}
-                        </SelectItem>
-                      ),
-                    ),
-                  )}
+                <SelectItem value="and">且</SelectItem>
+                <SelectItem value="or">或</SelectItem>
               </SelectContent>
             </Select>
-          ) : (
-            <>
-              <Select value={condLeft} onValueChange={(v) => setCondLeft(v ?? "")}>
-                <SelectTrigger className="h-8 w-full border-(--hairline) bg-(--canvas) font-mono text-xs">
-                  <SelectValue placeholder="选择输出变量" />
+            <span className="text-xs text-(--mute)">满足</span>
+          </div>
+          {conditions.map((c, i) => (
+            <div key={i} className="space-y-1 rounded-md border border-(--hairline) p-2">
+              <Select
+                value={c.op}
+                onValueChange={(v) => {
+                  const next = [...conditions];
+                  next[i] = { ...c, op: (v ?? "==") as typeof c.op };
+                  setConditions(next);
+                }}
+              >
+                <SelectTrigger className="h-7 w-full border-(--hairline) bg-(--canvas) font-mono text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="==">==</SelectItem>
+                  <SelectItem value="!=">!=</SelectItem>
+                  <SelectItem value=">">&gt;</SelectItem>
+                  <SelectItem value="<">&lt;</SelectItem>
+                  <SelectItem value="exists">exists</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={c.left}
+                onValueChange={(v) => {
+                  const next = [...conditions];
+                  next[i] = { ...c, left: v ?? "" };
+                  setConditions(next);
+                }}
+              >
+                <SelectTrigger className="h-7 w-full border-(--hairline) bg-(--canvas) font-mono text-xs">
+                  <SelectValue placeholder="输出变量" />
                 </SelectTrigger>
                 <SelectContent>
                   {definition.nodes
@@ -167,40 +208,67 @@ export function EdgePropertyPanel({
                     )}
                 </SelectContent>
               </Select>
-              <Input
-                className="h-8 border-(--hairline) bg-(--canvas) font-mono text-xs"
-                placeholder="常量值（high / yes / 1）"
-                value={condRight}
-                onChange={(e) => setCondRight(e.target.value)}
-              />
-            </>
-          )}
+              {c.op !== "exists" && (
+                <Input
+                  className="h-7 border-(--hairline) bg-(--canvas) font-mono text-xs"
+                  placeholder="常量值"
+                  value={c.right}
+                  onChange={(e) => {
+                    const next = [...conditions];
+                    next[i] = { ...c, right: e.target.value };
+                    setConditions(next);
+                  }}
+                />
+              )}
+              <div className="flex justify-end">
+                <button
+                  className="text-[10px] text-(--err) hover:underline"
+                  onClick={() => setConditions(conditions.filter((_, j) => j !== i))}
+                >
+                  删除条件
+                </button>
+              </div>
+            </div>
+          ))}
+          <Button
+            className="w-full"
+            variant="outline"
+            size="sm"
+            onClick={() => setConditions([...conditions, { op: "==", left: "", right: "" }])}
+          >
+            + 添加条件
+          </Button>
           <Button
             className="w-full"
             onClick={() => {
-              if (!condLeft) return;
-              if (condOp === "exists") {
-                onChange(
-                  updateEdge(definition, edgeIndex, {
-                    when: { [condOp]: [{ var: condLeft }] } as JsonLogicRule,
-                  }),
-                );
-              } else {
-                const right =
-                  condRight.trim() === "true"
-                    ? true
-                    : condRight.trim() === "false"
-                      ? false
-                      : condRight;
-                onChange(
-                  updateEdge(definition, edgeIndex, {
-                    when: { [condOp]: [{ var: condLeft }, right] } as JsonLogicRule,
-                  }),
-                );
+              const conds = conditions.filter((c) => c.left);
+              if (conds.length === 0) {
+                onChange(updateEdge(definition, edgeIndex, { when: undefined }));
+                return;
               }
+              const rules = conds.map(
+                (c): JsonLogicRule =>
+                  c.op === "exists"
+                    ? ({ [c.op]: [{ var: c.left }] } as JsonLogicRule)
+                    : ({
+                        [c.op]: [
+                          { var: c.left },
+                          c.right.trim() === "true"
+                            ? true
+                            : c.right.trim() === "false"
+                              ? false
+                              : c.right,
+                        ],
+                      } as JsonLogicRule),
+              );
+              onChange(
+                updateEdge(definition, edgeIndex, {
+                  when: rules.length === 1 ? rules[0] : ({ [combine]: rules } as JsonLogicRule),
+                }),
+              );
             }}
           >
-            添加条件
+            应用条件
           </Button>
         </div>
         <Label className="mt-2 text-xs text-(--mute)">或直接编辑 JSONLogic</Label>
