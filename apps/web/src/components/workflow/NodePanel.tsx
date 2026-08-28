@@ -13,7 +13,7 @@ export function NodePanel({ onAdd }: { onAdd: (node: WorkflowNode) => void }) {
     [q],
   );
   return (
-    <div className="flex w-52 shrink-0 flex-col border-r border-(--hairline) bg-(--panel)/70">
+    <div className="w-full">
       <div className="border-b border-(--hairline) p-2">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-(--mute)" />

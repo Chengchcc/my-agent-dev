@@ -35,7 +35,7 @@ import { NodePanel } from "./NodePanel";
 import { NodePropertyPanel } from "./NodePropertyPanel";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 
-type InspectorTab = "attrs";
+type InspectorTab = "attrs" | "palette";
 
 function makeNodeId(base: string): string {
   return `${base}-${Math.random().toString(36).slice(2, 7)}`;
@@ -127,6 +127,8 @@ export function AgenticWorkflowEditor({
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("attrs");
+  const [inspectorW, setInspectorW] = useState(288);
+  const [chatW, setChatW] = useState(320);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeEdgeIndex, setActiveEdgeIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -268,12 +270,6 @@ export function AgenticWorkflowEditor({
           </div>
         ) : (
           <div className="flex min-w-0 flex-1">
-            <NodePanel
-              onAdd={(node) => {
-                if (!definition) return;
-                setDefinitionTracked(addNode(definition, { ...node, id: makeNodeId(node.type) }));
-              }}
-            />
             <div className="flex min-w-0 flex-1 flex-col">
               <div className="min-h-0 flex-1">
                 {menu && (
@@ -318,10 +314,36 @@ export function AgenticWorkflowEditor({
               </div>
             </div>
 
+            {/* Resize handle between canvas and inspector */}
+            <div
+              onPointerDown={(e) => {
+                e.preventDefault();
+                const startX = e.clientX;
+                const startW = inspectorW;
+                const move = (ev: PointerEvent) => {
+                  setInspectorW(Math.max(220, startW + ev.clientX - startX));
+                };
+                const up = () => {
+                  window.removeEventListener("pointermove", move);
+                  window.removeEventListener("pointerup", up);
+                };
+                window.addEventListener("pointermove", move);
+                window.addEventListener("pointerup", up);
+              }}
+              className="w-1 cursor-col-resize bg-(--hairline) transition-colors hover:bg-(--info)/50"
+            />
             {/* Inspector column */}
-            <div className="flex w-72 shrink-0 flex-col border-l border-(--hairline) bg-(--panel)/70">
+            <div
+              className="flex shrink-0 flex-col border-l border-(--hairline) bg-(--panel)/70"
+              style={{ width: inspectorW, minWidth: inspectorW }}
+            >
               <div className="flex border-b border-(--hairline)">
-                {([["attrs", "属性"]] as Array<[InspectorTab, string]>).map(([k, label]) => (
+                {(
+                  [
+                    ["attrs", "属性"],
+                    ["palette", "节点"],
+                  ] as Array<[InspectorTab, string]>
+                ).map(([k, label]) => (
                   <button
                     key={k}
                     className={`flex-1 py-2.5 text-xs transition-colors ${
@@ -336,7 +358,18 @@ export function AgenticWorkflowEditor({
                 ))}
               </div>
               <div className="min-h-0 flex-1 overflow-auto">
-                {activeEdgeIndex !== null && definition ? (
+                {inspectorTab === "palette" ? (
+                  <NodePanel
+                    onAdd={(node) => {
+                      if (!definition) return;
+                      const id = makeNodeId(node.type);
+                      setDefinitionTracked(addNode(definition, { ...node, id }));
+                      setActiveId(id);
+                      setActiveEdgeIndex(null);
+                      setInspectorTab("attrs");
+                    }}
+                  />
+                ) : activeEdgeIndex !== null && definition ? (
                   <EdgePropertyPanel
                     edgeIndex={activeEdgeIndex}
                     definition={definition}
@@ -354,15 +387,39 @@ export function AgenticWorkflowEditor({
                   />
                 ) : (
                   <div className="p-4 text-xs text-(--mute)">
-                    点击画布节点或边进行编辑；上方按钮添加节点；拖动节点调整布局。
+                    点击画布节点或边进行编辑；切到「节点」tab
+                    添加，或拖控制线到空白处；拖动节点调整布局。
                   </div>
                 )}
               </div>
             </div>
 
+            {/* Resize handle between inspector and chat */}
+            {definition && (
+              <div
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  const startX = e.clientX;
+                  const startW = chatW;
+                  const move = (ev: PointerEvent) => {
+                    setChatW(Math.max(260, startW - ev.clientX + startX));
+                  };
+                  const up = () => {
+                    window.removeEventListener("pointermove", move);
+                    window.removeEventListener("pointerup", up);
+                  };
+                  window.addEventListener("pointermove", move);
+                  window.addEventListener("pointerup", up);
+                }}
+                className="w-1 cursor-col-resize bg-(--hairline) transition-colors hover:bg-(--info)/50"
+              />
+            )}
             {/* Chat (right, always visible) */}
             {definition && (
-              <div className="flex w-80 shrink-0 flex-col border-l border-(--hairline) bg-(--panel)/70">
+              <div
+                className="flex shrink-0 flex-col border-l border-(--hairline) bg-(--panel)/70"
+                style={{ width: chatW, minWidth: chatW }}
+              >
                 <ChatPanel
                   workflowId={workflowId}
                   definition={definition}

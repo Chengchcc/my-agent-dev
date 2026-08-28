@@ -181,6 +181,11 @@ export function WorkflowCanvas({
     screenToFlowPosition?: (pos: { x: number; y: number }) => { x: number; y: number };
   } | null>(null);
   const [connectSource, setConnectSource] = useState<string | null>(null);
+  const [minimapOpen, setMinimapOpen] = useState(true);
+  const [hintDismissed, setHintDismissed] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("wf-hint-dismissed") === "1";
+  });
   const connectedRef = useRef(false);
   const nodeTypes = { default: WorkflowNodeCard };
 
@@ -281,10 +286,12 @@ export function WorkflowCanvas({
         onInit={(instance) => setRf(instance as never)}
       >
         <Background variant={BackgroundVariant.Lines} gap={24} size={1} color="var(--wf-grid)" />
-        {interactive && (
+        {interactive && minimapOpen && (
           <MiniMap
             pannable
             zoomable
+            bgColor="rgba(11,14,20,0.92)"
+            maskColor="rgba(11,14,20,0.75)"
             nodeColor={(n: Node) => {
               const t = (n.data as unknown as { type?: string }).type;
               return (
@@ -317,9 +324,37 @@ export function WorkflowCanvas({
         )}
       </ReactFlow>
       {interactive && (
-        <div className="pointer-events-none absolute left-4 top-4 z-10 rounded-md border border-(--hairline) bg-(--panel)/90 px-3 py-2 text-[11px] text-(--mute) backdrop-blur">
-          <span className="mr-2 inline-block size-1.5 rounded-full bg-[#38bdf8]" />
-          从节点底部拖出连线到空白处，选择下游节点类型；点击节点可编辑，按 Delete 删除
+        <button
+          onClick={() => setMinimapOpen((v) => !v)}
+          title={minimapOpen ? "Hide minimap" : "Show minimap"}
+          className="absolute bottom-16 right-4 z-10 flex h-7 items-center gap-1 rounded-md border border-(--hairline) bg-(--panel)/90 px-2 text-[10px] text-(--mute) hover:text-(--info)"
+        >
+          {minimapOpen ? "Hide minimap" : "Minimap"}
+        </button>
+      )}
+      {interactive && !hintDismissed && (
+        <div className="absolute left-4 top-4 z-10 flex items-start gap-2 rounded-md border border-(--hairline) bg-(--panel)/90 px-3 py-2 text-[11px] text-(--mute) backdrop-blur">
+          <span className="inline-block size-1.5 translate-y-1 rounded-full bg-[#38bdf8]" />
+          <span>从节点底部拖出连线到空白处，选择下游节点类型；点击节点可编辑，按 Delete 删除</span>
+          <button
+            onClick={() => {
+              setHintDismissed(true);
+              localStorage.setItem("wf-hint-dismissed", "1");
+            }}
+            className="shrink-0 rounded p-0.5 text-(--mute) hover:text-(--ink)"
+            title="Close hint"
+          >
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
       {interactive && (
