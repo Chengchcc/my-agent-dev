@@ -2,6 +2,7 @@
 
 import type { AskQuestionInput } from "@chengchenccc/agent-contract";
 import type { WorkflowDefinition, WorkflowNode } from "@chengchenccc/workflow";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,13 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import "@/lib/monaco-loader";
 import { AskQuestionCard } from "./AskQuestionCard";
+
+const MonacoCodeEditor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
+  ssr: false,
+  loading: () => <div className="p-2 text-xs text-(--mute)">Loading editor…</div>,
+});
 
 type Def = WorkflowDefinition;
 
@@ -154,11 +161,32 @@ export function NodePropertyPanel({
         <>
           <div className="space-y-1">
             <Label className="text-xs text-(--mute)">code</Label>
-            <Textarea
-              className="min-h-32 border-(--hairline) bg-(--canvas) font-mono text-xs"
-              value={node.code ?? ""}
-              onChange={(e) => set({ code: e.target.value })}
-            />
+            <div className="overflow-hidden rounded-md border border-(--hairline)">
+              <MonacoCodeEditor
+                height="300px"
+                defaultLanguage="javascript"
+                value={node.code ?? ""}
+                onChange={(v) => set({ code: v ?? "" })}
+                theme="workflow-dark"
+                beforeMount={(monaco) => {
+                  monaco.editor.defineTheme("workflow-dark", {
+                    base: "vs-dark",
+                    inherit: true,
+                    rules: [],
+                    colors: {
+                      "editor.background": "#0b0e14",
+                      "editor.foreground": "#e2e8f0",
+                      "editor.lineHighlightBackground": "#1a2332",
+                      "editorIndentGuide.background": "#1f2937",
+                      "editorGutter.background": "#0b0e14",
+                      "editorCursor.foreground": "#38bdf8",
+                      "editor.selectionBackground": "#33415588",
+                    },
+                  });
+                }}
+                options={{ minimap: { enabled: false }, fontSize: 12, scrollBeyondLastLine: false }}
+              />
+            </div>
           </div>
           <div className="mt-3 space-y-1">
             <Label className="text-xs text-(--mute)">timeoutMs</Label>
