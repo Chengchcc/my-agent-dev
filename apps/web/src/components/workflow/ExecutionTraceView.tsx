@@ -66,6 +66,7 @@ export function ExecutionTraceView({
 }) {
   const router = useRouter();
   const [index, setIndex] = useState(Math.max(0, events.length - 1));
+  const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
   const graph = useMemo(() => toEditorGraph(execution.definition), [execution.definition]);
 
   const nodeStatus = useMemo(() => {
@@ -77,11 +78,18 @@ export function ExecutionTraceView({
       if (e.event === "node_started") active = (e.data as { nodeId: string }).nodeId;
     }
     if (active && done.has(active)) active = undefined;
+    const failed = new Set(nodeRuns.filter((r) => r.status === "failed").map((r) => r.nodeId));
     const map: Record<string, NodeStatus> = {};
     for (const n of graph.nodes)
-      map[n.id] = done.has(n.id) ? "done" : n.id === active ? "active" : "idle";
+      map[n.id] = failed.has(n.id)
+        ? "failed"
+        : done.has(n.id)
+          ? "done"
+          : n.id === active
+            ? "active"
+            : "idle";
     return map;
-  }, [index, events, graph]);
+  }, [index, events, graph, nodeRuns]);
 
   const litEdges = useMemo(() => {
     const lit = new Set<string>();
@@ -184,8 +192,20 @@ export function ExecutionTraceView({
             <div className="mb-1 font-semibold">Event log</div>
             {events.slice(0, index + 1).map((e) => (
               <div key={e.seq} className="border-b py-1">
-                <span className="text-muted-foreground">{new Date(e.ts).toLocaleTimeString()}</span>{" "}
-                {e.event}
+                <button
+                  className="flex w-full items-center gap-1 text-left"
+                  onClick={() => setExpandedEvent(expandedEvent === e.seq ? null : e.seq)}
+                >
+                  <span className="text-muted-foreground">
+                    {new Date(e.ts).toLocaleTimeString()}
+                  </span>{" "}
+                  {e.event}
+                </button>
+                {expandedEvent === e.seq && (
+                  <pre className="mt-1 max-h-48 overflow-auto rounded bg-(--canvas)/60 p-2 text-[10px] text-(--mute)">
+                    {JSON.stringify(e.data, null, 2)}
+                  </pre>
+                )}
               </div>
             ))}
           </div>
