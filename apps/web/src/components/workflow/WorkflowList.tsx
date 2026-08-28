@@ -1,6 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { api } from "@/lib/api";
 
 type Row = {
@@ -28,13 +39,13 @@ function defaultDraft(id: string) {
 }
 
 export function WorkflowList({ definitions }: { definitions: Row[] }) {
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   async function create() {
     const id = `wf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     await api.saveWorkflowDefinition(id, defaultDraft(id) as Record<string, unknown>);
     window.location.assign(`/agentic-workflow/${id}`);
   }
   async function del(id: string) {
-    if (!confirm(`Delete workflow ${id}?`)) return;
     await api.deleteWorkflowDefinition(id);
     window.location.reload();
   }
@@ -88,7 +99,10 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
               >
                 executions
               </Link>
-              <button className="text-red-600 hover:underline" onClick={() => del(d.workflowId)}>
+              <button
+                className="text-red-600 hover:underline"
+                onClick={() => setConfirmId(d.workflowId)}
+              >
                 delete
               </button>
             </div>
@@ -98,6 +112,29 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
           <div className="text-sm text-muted-foreground">No workflows yet.</div>
         )}
       </div>
+      <AlertDialog
+        open={confirmId !== null}
+        onOpenChange={(o) => {
+          if (!o) setConfirmId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete workflow {confirmId}?</AlertDialogTitle>
+            <AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmId) void del(confirmId);
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

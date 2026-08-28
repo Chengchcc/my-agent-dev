@@ -3,6 +3,16 @@
 import Link from "next/link";
 import { useState } from "react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
@@ -10,6 +20,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
@@ -32,6 +43,8 @@ export function ExecutionList({
   definition?: { input?: Record<string, "string" | "number" | "boolean"> } | null;
 }) {
   const [inputVals, setInputVals] = useState<Record<string, string>>({});
+  const [runOpen, setRunOpen] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const inputHints = definition?.input ?? {};
 
   async function run() {
@@ -81,31 +94,49 @@ export function ExecutionList({
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
-        <button
-          className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink) transition-colors hover:bg-(--panel2)"
-          onClick={run}
-        >
-          + Run
-        </button>
-      </div>
-      {Object.keys(inputHints).length > 0 && (
-        <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-(--hairline) bg-(--panel)/70 p-3">
-          {Object.entries(inputHints).map(([key, hint]) => (
-            <div key={key} className="flex flex-col gap-1">
-              <Label className="text-[11px] text-(--mute)">
-                {key} <span className="text-(--faint)">({hint})</span>
-              </Label>
-              <Input
-                className="h-8 w-48 border-(--hairline) bg-(--canvas) text-xs"
-                type={hint === "number" ? "number" : hint === "boolean" ? "text" : "text"}
-                placeholder={hint === "boolean" ? "true / false" : ""}
-                value={inputVals[key] ?? ""}
-                onChange={(e) => setInputVals((v) => ({ ...v, [key]: e.target.value }))}
-              />
+        <Dialog open={runOpen} onOpenChange={setRunOpen}>
+          <button
+            className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink) transition-colors hover:bg-(--panel2)"
+            onClick={() => setRunOpen(true)}
+          >
+            + Run
+          </button>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-sm font-semibold">运行 {workflowId}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              {Object.keys(inputHints).length === 0 ? (
+                <p className="text-xs text-(--mute)">该 workflow 无输入参数。</p>
+              ) : (
+                Object.entries(inputHints).map(([key, hint]) => (
+                  <div key={key} className="flex flex-col gap-1">
+                    <Label className="text-xs text-(--mute)">
+                      {key} <span className="text-(--faint)">({hint})</span>
+                    </Label>
+                    <Input
+                      className="h-9 border-(--hairline) bg-(--canvas) text-xs"
+                      type={hint === "number" ? "number" : hint === "boolean" ? "text" : "text"}
+                      placeholder={hint === "boolean" ? "true / false" : ""}
+                      value={inputVals[key] ?? ""}
+                      onChange={(e) => setInputVals((v) => ({ ...v, [key]: e.target.value }))}
+                    />
+                  </div>
+                ))
+              )}
+              <button
+                className="w-full rounded-md bg-(--primary) px-3 py-2 text-xs text-(--ink) hover:bg-(--panel2)"
+                onClick={async () => {
+                  await run();
+                  setRunOpen(false);
+                }}
+              >
+                Submit
+              </button>
             </div>
-          ))}
-        </div>
-      )}
+          </DialogContent>
+        </Dialog>
+      </div>
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-muted-foreground">
@@ -140,7 +171,7 @@ export function ExecutionList({
               <td>
                 <button
                   className="text-[11px] text-(--err) hover:underline"
-                  onClick={() => del(e.executionId)}
+                  onClick={() => setConfirmId(e.executionId)}
                 >
                   Delete
                 </button>
@@ -152,6 +183,29 @@ export function ExecutionList({
       {executions.length === 0 && (
         <div className="mt-4 text-sm text-muted-foreground">No executions yet.</div>
       )}
+      <AlertDialog
+        open={confirmId !== null}
+        onOpenChange={(o) => {
+          if (!o) setConfirmId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete execution {confirmId}?</AlertDialogTitle>
+            <AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmId) void del(confirmId);
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

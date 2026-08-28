@@ -2,6 +2,16 @@
 
 import type { JsonLogicRule, WorkflowDefinition } from "@chengchenccc/workflow";
 import { useMemo, useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +52,7 @@ export function EdgePropertyPanel({
   const [condOp, setCondOp] = useState<"==" | "!=" | ">" | "<" | "exists">("==");
   const [condLeft, setCondLeft] = useState("");
   const [condRight, setCondRight] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   if (!edge) return null;
 
   const nodeOptions = definition.nodes
@@ -56,8 +67,7 @@ export function EdgePropertyPanel({
         </h3>
         <button
           onClick={() => {
-            if (!confirm(`删除边 ${edge.from} → ${edge.to}？`)) return;
-            onDelete?.(deleteEdge(definition, edgeIndex));
+            setConfirmDelete(true);
           }}
           className="text-xs text-(--err) hover:underline"
         >
@@ -216,6 +226,22 @@ export function EdgePropertyPanel({
           Apply JSONLogic
         </Button>
       </div>
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              删除边 {edge.from} → {edge.to}？
+            </AlertDialogTitle>
+            <AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => onDelete?.(deleteEdge(definition, edgeIndex))}>
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
