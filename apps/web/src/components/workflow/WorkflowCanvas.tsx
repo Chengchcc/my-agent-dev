@@ -15,6 +15,7 @@ import {
   ReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import type { AskQuestionInput } from "@chengchenccc/agent-contract";
 import type { EditorGraph } from "@chengchenccc/workflow";
 import { useEffect, useRef, useState } from "react";
 import { WorkflowNodeCard } from "./workflow-node";
@@ -38,12 +39,67 @@ function shortWhen(when: unknown): string {
   }
 }
 
+type PendingHuman = {
+  nodeId: string;
+  question?: string;
+  form?: Record<string, unknown>;
+  status: string;
+};
+
+function formToQuestions(
+  form: Record<string, unknown> | undefined,
+  question: string | undefined,
+): AskQuestionInput {
+  const questions: AskQuestionInput["questions"] = [];
+  for (const [key, raw] of Object.entries(form ?? {})) {
+    const f = raw as { type?: string; label?: string; options?: string[]; required?: boolean };
+    const label = f.label ?? key;
+    if (f.type === "enum") {
+      questions.push({
+        id: key,
+        kind: "select",
+        question: label,
+        header: question,
+        options: (f.options ?? []).map((v) => ({ value: v, label: v })),
+        validation: { required: f.required !== false },
+      });
+    } else if (f.type === "boolean") {
+      questions.push({
+        id: key,
+        kind: "select",
+        question: label,
+        header: question,
+        options: [
+          { value: "yes", label: "Yes" },
+          { value: "no", label: "No" },
+        ],
+        validation: { required: f.required !== false },
+      });
+    } else {
+      questions.push({
+        id: key,
+        kind: "text",
+        question: label,
+        header: question,
+        multiline: f.type === "textarea",
+        placeholder: f.label,
+        validation: { required: f.required !== false },
+      });
+    }
+  }
+  if (questions.length === 0 && question)
+    questions.push({ id: "answer", kind: "text", question, multiline: true });
+  return { questions };
+}
+
 function buildGraph(
   graph: EditorGraph,
   nodeStatus: Record<string, NodeStatus> | undefined,
   litEdges: Set<string> | undefined,
   interactive: boolean,
   onNodeDelete: ((id: string) => void) | undefined,
+  pendingHuman?: PendingHuman | null,
+  onSubmitHuman?: (nodeId: string, answer: Record<string, unknown>) => void | Promise<void>,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = graph.nodes.map((n) => {
     const status = nodeStatus?.[n.id] ?? "idle";
@@ -57,6 +113,13 @@ function buildGraph(
         layer: n.layer,
         status,
         ...(interactive && onNodeDelete ? { onDelete: () => onNodeDelete(n.id) } : {}),
+        ...(n.type === "human" && pendingHuman?.nodeId === n.id
+          ? {
+              askQuestion: formToQuestions(pendingHuman.form, pendingHuman.question),
+              onSubmitHuman: async (answer: Record<string, unknown>) =>
+                onSubmitHuman?.(n.id, answer),
+            }
+          : {}),
       },
       opacity: status === "idle" && nodeStatus ? 0.45 : 1,
     };
@@ -104,6 +167,13 @@ export function WorkflowCanvas({
   /** User dragged an edge from a node and dropped on empty canvas → show
    *  the "add downstream node" menu. */
   onNodeMenuRequested?: (sourceId: string, position: { x: number; y: number }) => void;
+  pendingHuman?: {
+    nodeId: string;
+    question?: string;
+    form?: Record<string, unknown>;
+    status: string;
+  } | null;
+  onSubmitHuman?: (nodeId: string, answer: Record<string, unknown>) => void | Promise<void>;
 }) {
   const [rf, setRf] = useState<{
     fitView: (opts?: { padding?: number }) => void;

@@ -1,12 +1,10 @@
 "use client";
 
-import type { AskQuestionInput } from "@chengchenccc/agent-contract";
 import { toEditorGraph, type WorkflowDefinition } from "@chengchenccc/workflow";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import { AskQuestionCard } from "./AskQuestionCard";
 import { type NodeStatus, WorkflowCanvas } from "./WorkflowCanvas";
 
 export type TraceEvent = { seq: number; event: string; data: unknown; ts: number };
@@ -93,7 +91,20 @@ export function ExecutionTraceView({
   return (
     <div className="flex h-full">
       <div className="flex-1 border-r">
-        <WorkflowCanvas graph={graph} nodeStatus={nodeStatus} litEdges={litEdges} />
+        <WorkflowCanvas
+          graph={graph}
+          nodeStatus={nodeStatus}
+          litEdges={litEdges}
+          pendingHuman={pendingHuman ?? null}
+          onSubmitHuman={async (nodeId, answer) => {
+            if (!pendingHuman) return;
+            await api.resolveWorkflowHumanTask(execution.executionId, {
+              nodeId,
+              answer,
+            });
+            router.refresh();
+          }}
+        />
       </div>
       <div className="w-80 border-l">
         <div className="flex items-center gap-2 border-b p-3">
@@ -124,20 +135,6 @@ export function ExecutionTraceView({
             {index + 1}/{events.length}
           </span>
         </div>
-        {execution.status === "waiting_human" && pendingHuman && (
-          <div className="border-b p-3">
-            <AskQuestionCard
-              input={(pendingHuman.form?.questions as AskQuestionInput) ?? { questions: [] }}
-              onSubmit={async (result) => {
-                await api.resolveWorkflowHumanTask(execution.executionId, {
-                  nodeId: pendingHuman.nodeId,
-                  answer: { answers: result.answers } as unknown as Record<string, unknown>,
-                });
-                router.refresh();
-              }}
-            />
-          </div>
-        )}
         <div className="max-h-[40vh] overflow-auto p-3 text-xs">
           <div className="mb-1 font-semibold">Event log</div>
           {events.slice(0, index + 1).map((e) => (

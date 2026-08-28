@@ -1,7 +1,9 @@
 "use client";
 
+import type { AskQuestionInput } from "@chengchenccc/agent-contract";
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import { Bot, Code2, Flag, type LucideIcon, Play, UserRound } from "lucide-react";
+import { AskQuestionCard } from "./AskQuestionCard";
 
 const typeIcon: Record<string, LucideIcon> = {
   start: Play,
@@ -29,7 +31,8 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
     <div
       style={{
         width: 260,
-        height: 100,
+        height:
+          t === "human" && (data as { askQuestion?: AskQuestionInput }).askQuestion ? "auto" : 100,
         borderRadius: 12,
         position: "relative",
         background:
@@ -90,6 +93,18 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
           {t}
         </div>
       </div>
+      {t === "human" && (data as { askQuestion?: AskQuestionInput }).askQuestion && (
+        <div className="pointer-events-auto px-3 pb-3">
+          <AskQuestionCard
+            input={(data as { askQuestion: AskQuestionInput }).askQuestion}
+            onSubmit={async (result) => {
+              await (
+                data as { onSubmitHuman?: (answer: Record<string, unknown>) => Promise<void> }
+              ).onSubmitHuman?.({ answers: result.answers } as Record<string, unknown>);
+            }}
+          />
+        </div>
+      )}
       <span
         className="pointer-events-none absolute inset-x-0 top-0 z-0 h-full"
         style={{

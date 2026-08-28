@@ -1,3 +1,4 @@
+import type { WorkflowDefinition } from "@chengchenccc/workflow";
 import { client, unwrap } from "./client";
 
 // ── Types derived from API treaty (single source: backend App type) ──
@@ -445,6 +446,24 @@ export const api = {
     unwrap(client.api["workflow-definitions"]({ workflowId }).get()),
   saveWorkflowDefinition: (workflowId: string, definition: Record<string, unknown>) =>
     unwrap(client.api["workflow-definitions"]({ workflowId }).put({ definition })),
+  chatPatchWorkflow: async (
+    workflowId: string,
+    definition: unknown,
+    instruction: string,
+  ): Promise<{ definition: WorkflowDefinition }> => {
+    const resp = await fetch(
+      `/api/bff/api/workflow-definitions/${encodeURIComponent(workflowId)}/chat-patch`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ definition, instruction }),
+      },
+    );
+    if (!resp.ok) throw new Error(`chat-patch failed: ${resp.status}`);
+    return (await resp.json()) as {
+      definition: WorkflowDefinition;
+    };
+  },
   deleteWorkflowDefinition: (workflowId: string) =>
     unwrap(client.api["workflow-definitions"]({ workflowId }).delete()),
   listWorkflowExecutions: (workflowId?: string) =>

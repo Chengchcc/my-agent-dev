@@ -17,7 +17,7 @@ import { NodePanel } from "./NodePanel";
 import { NodePropertyPanel } from "./NodePropertyPanel";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 
-type InspectorTab = "attrs" | "chat";
+type InspectorTab = "attrs";
 
 function makeNodeId(base: string): string {
   return `${base}-${Math.random().toString(36).slice(2, 7)}`;
@@ -295,12 +295,7 @@ export function AgenticWorkflowEditor({
             {/* Inspector column */}
             <div className="flex w-72 shrink-0 flex-col border-l border-(--hairline) bg-(--panel)/70">
               <div className="flex border-b border-(--hairline)">
-                {(
-                  [
-                    ["attrs", "属性"],
-                    ["chat", "Chat"],
-                  ] as Array<[InspectorTab, string]>
-                ).map(([k, label]) => (
+                {([["attrs", "属性"]] as Array<[InspectorTab, string]>).map(([k, label]) => (
                   <button
                     key={k}
                     className={`flex-1 py-2.5 text-xs transition-colors ${
@@ -315,9 +310,7 @@ export function AgenticWorkflowEditor({
                 ))}
               </div>
               <div className="min-h-0 flex-1 overflow-auto">
-                {inspectorTab === "chat" ? (
-                  <ChatPanel />
-                ) : activeEdgeIndex !== null && definition ? (
+                {activeEdgeIndex !== null && definition ? (
                   <EdgePropertyPanel
                     edgeIndex={activeEdgeIndex}
                     definition={definition}
@@ -340,6 +333,21 @@ export function AgenticWorkflowEditor({
                 )}
               </div>
             </div>
+
+            {/* Chat (right, always visible) */}
+            {definition && (
+              <div className="flex w-80 shrink-0 flex-col border-l border-(--hairline) bg-(--panel)/70">
+                <ChatPanel
+                  workflowId={workflowId}
+                  definition={definition}
+                  onApply={(def) => {
+                    setDefinitionTracked(def);
+                    setActiveId(null);
+                    setActiveEdgeIndex(null);
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
