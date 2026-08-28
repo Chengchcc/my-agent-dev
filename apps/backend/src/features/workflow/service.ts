@@ -301,9 +301,11 @@ export function createWorkflowExecutionService(
       );
     }
     const inline = (node.agentId ?? "").trim() === "";
-    // Inline agents (model+prompt, no system agentId) still need a member id
-    // for the conversation identity; the real model comes from node.model.
-    const agentId = inline ? `inline:${execution.executionId}:${node.id}` : node.agentId!;
+    // Inline agents (model+prompt, no system agentId) still need a real agent
+    // member for the conversation identity (postMessage triggers through the
+    // agent registry). Use the default agent as the member; the actual model
+    // comes from node.model via modelOverride.
+    const agentId = inline ? "default" : node.agentId!;
     if (!agentId) throw new Error("agent node requires agentId");
     const conversationId = `workflow:${execution.executionId}:${node.id}`;
     const prompt = buildAgentPrompt(node, ready.input, node.output);
