@@ -22,5 +22,14 @@ export default async function ExecutionsPage({
       }>,
     }),
   );
-  return <ExecutionList workflowId={workflowId} executions={list.executions} />;
+  const definition = await unwrap(client.api["workflow-definitions"]({ workflowId }).get()).catch(
+    () => null,
+  );
+  return (
+    <ExecutionList
+      workflowId={workflowId}
+      executions={list.executions}
+      definition={definition?.definition ?? null}
+    />
+  );
 }

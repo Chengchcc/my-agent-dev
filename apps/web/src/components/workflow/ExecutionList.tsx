@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -9,7 +10,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 
 type Exec = { executionId: string; status: string; exit?: string; createdAt: number };
@@ -17,20 +19,42 @@ type Exec = { executionId: string; status: string; exit?: string; createdAt: num
 export function ExecutionList({
   workflowId,
   executions,
+  definition,
 }: {
   workflowId: string;
   executions: Exec[];
+  definition?: { input?: Record<string, "string" | "number" | "boolean"> } | null;
 }) {
+  const [inputVals, setInputVals] = useState<Record<string, string>>({});
+  const inputHints = definition?.input ?? {};
+
   async function run() {
-    const input = prompt("Trigger input JSON (optional):") ?? "{}";
+    const input: Record<string, unknown> = {};
+    for (const [key, hint] of Object.entries(inputHints)) {
+      const raw = inputVals[key] ?? "";
+      if (raw === "") continue;
+      if (hint === "number") input[key] = Number(raw);
+      else if (hint === "boolean") input[key] = raw === "true";
+      else input[key] = raw;
+    }
     try {
       await api.startWorkflowExecution({
         workflowRef: { repo: "local", path: `${workflowId}.workflow.json` },
-        input: JSON.parse(input),
+        input,
       });
       window.location.reload();
     } catch (err) {
       alert(`Run failed: ${(err as Error).message}`);
+    }
+  }
+
+  async function del(executionId: string) {
+    if (!confirm(`Delete execution ${executionId}?`)) return;
+    try {
+      await api.deleteWorkflowExecution(executionId);
+      window.location.reload();
+    } catch (err) {
+      alert(`Delete failed: ${(err as Error).message}`);
     }
   }
   return (
@@ -58,6 +82,24 @@ export function ExecutionList({
           + Run
         </button>
       </div>
+      {Object.keys(inputHints).length > 0 && (
+        <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-(--hairline) bg-(--panel)/70 p-3">
+          {Object.entries(inputHints).map(([key, hint]) => (
+            <div key={key} className="flex flex-col gap-1">
+              <Label className="text-[11px] text-(--mute)">
+                {key} <span className="text-(--faint)">({hint})</span>
+              </Label>
+              <Input
+                className="h-8 w-48 border-(--hairline) bg-(--canvas) text-xs"
+                type={hint === "number" ? "number" : hint === "boolean" ? "text" : "text"}
+                placeholder={hint === "boolean" ? "true / false" : ""}
+                value={inputVals[key] ?? ""}
+                onChange={(e) => setInputVals((v) => ({ ...v, [key]: e.target.value }))}
+              />
+            </div>
+          ))}
+        </div>
+      )}
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-muted-foreground">
@@ -65,6 +107,7 @@ export function ExecutionList({
             <th>status</th>
             <th>exit</th>
             <th>createdAt</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -81,6 +124,14 @@ export function ExecutionList({
               <td>{e.status}</td>
               <td>{e.exit ?? "-"}</td>
               <td>{new Date(e.createdAt).toLocaleString()}</td>
+              <td>
+                <button
+                  className="text-[11px] text-(--err) hover:underline"
+                  onClick={() => del(e.executionId)}
+                >
+                  Delete
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

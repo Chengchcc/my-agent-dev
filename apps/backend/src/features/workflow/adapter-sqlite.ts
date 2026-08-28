@@ -234,6 +234,13 @@ export function sqliteWorkflowExecutionAdapter(db: Database): WorkflowExecutionP
         .orderBy(desc(workflowExecution.createdAt));
       return rows.map(toExec);
     },
+    async deleteExecution(executionId: string) {
+      const rows = await d
+        .delete(workflowExecution)
+        .where(eq(workflowExecution.executionId, executionId))
+        .returning({ executionId: workflowExecution.executionId });
+      return rows.length > 0;
+    },
     async listWaitingHumanExecutions() {
       const rows = await d
         .select()

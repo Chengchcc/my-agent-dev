@@ -73,6 +73,7 @@ export interface WorkflowExecutionService {
   getExecution(executionId: string): Promise<WorkflowExecutionRow | null>;
   listNodeRuns(executionId: string): Promise<WorkflowNodeRunRow[]>;
   listExecutions(workflowId?: string): Promise<WorkflowExecutionRow[]>;
+  deleteExecution(executionId: string): Promise<boolean>;
   listExecutionEvents(
     executionId: string,
   ): Promise<Array<{ seq: number; executionId: string; event: string; data: unknown; ts: number }>>;
@@ -580,6 +581,9 @@ export function createWorkflowExecutionService(
     },
     async listExecutions(workflowId) {
       return deps.port.listExecutions(workflowId);
+    },
+    async deleteExecution(executionId: string) {
+      return deps.port.deleteExecution(executionId);
     },
     async listExecutionEvents(executionId) {
       return deps.port.listExecutionEvents(executionId);

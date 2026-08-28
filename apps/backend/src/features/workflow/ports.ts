@@ -38,6 +38,7 @@ export interface WorkflowExecutionPort {
   ): Promise<Array<{ seq: number; executionId: string; event: string; data: unknown; ts: number }>>;
   listRunningExecutions(): Promise<WorkflowExecutionRow[]>;
   listExecutions(workflowId?: string): Promise<WorkflowExecutionRow[]>;
+  deleteExecution(executionId: string): Promise<boolean>;
   listWaitingHumanExecutions(): Promise<WorkflowExecutionRow[]>;
   listWaitingHumanExecutions(): Promise<WorkflowExecutionRow[]>;
 }
