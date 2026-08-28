@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 import type { agentRoutes } from "./features/agent/http.js";
 import type { agentRunRoutes } from "./features/agent-run/http.js";
+import type { artifactRoutes } from "./features/artifact/http.js";
 import type { conversationRoutes } from "./features/conversation/http.js";
 import type { knowledgeRoutes } from "./features/knowledge/http.js";
 import type { mcpRoutes } from "./features/mcp/http.js";
@@ -25,6 +26,7 @@ export interface FeatureSet {
   settings: ReturnType<typeof settingsRoutes>;
   models: ReturnType<typeof modelRoutes>;
   workflowExecutions: ReturnType<typeof workflowRoutes>;
+  artifacts: ReturnType<typeof artifactRoutes>;
 }
 
 // ── Auth plugin ──
@@ -58,6 +60,7 @@ export function createApp(token: string, features: FeatureSet) {
     models,
     agentRuns,
     workflowExecutions,
+    artifacts,
   } = features;
   const app = new Elysia()
     .get("/health", () => ({ status: "ok" }))
@@ -69,6 +72,7 @@ export function createApp(token: string, features: FeatureSet) {
   return app
     .use(agentRuns)
     .use(workflowExecutions)
+    .use(artifacts)
     .use(projects)
     .use(skillPacks)
     .use(settings)

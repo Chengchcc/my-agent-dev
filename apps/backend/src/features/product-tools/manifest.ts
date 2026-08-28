@@ -15,6 +15,41 @@ export interface ProductToolDescriptor {
 export function buildHistoryTools(entrypoint: string): readonly ProductToolDescriptor[] {
   return [
     {
+      name: "artifact_upload",
+      description:
+        "Upload a single artifact file into backend artifact storage. Returns an artifacts://<folder>/<filename> URL that other agents (or this conversation) can download. Use this to hand off produced files to later workflow steps.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          folder: {
+            type: "string",
+            description: "Logical folder (can be nested, e.g. report/2026)",
+          },
+          filename: { type: "string", description: "File name, e.g. quality.md" },
+          content: {
+            type: "string",
+            description: "File content (UTF-8 text, or base64 when encoding=base64)",
+          },
+          encoding: { type: "string", enum: ["utf8", "base64"], description: "Default utf8" },
+        },
+        required: ["folder", "filename", "content"],
+      },
+      entrypoint,
+    },
+    {
+      name: "artifact_download",
+      description:
+        "Download an artifact file from backend artifact storage by its artifacts://<folder>/<filename> URL. Returns the content (or base64 when the file is binary).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "artifacts://<folder>/<filename>" },
+        },
+        required: ["url"],
+      },
+      entrypoint,
+    },
+    {
       name: "history_recent",
       description:
         "Read the most recent messages visible to this agent member in the conversation. Returns the last N messages with their ledger seq and role.",

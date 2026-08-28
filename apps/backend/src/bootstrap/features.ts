@@ -29,6 +29,11 @@ import {
   createAgentRunService,
   sqliteAgentRunAdapter,
 } from "../features/agent-run/index.js";
+import {
+  artifactRoutes,
+  createArtifactFsAdapter,
+  createArtifactService,
+} from "../features/artifact/index.js";
 import { createConversationFeature } from "../features/conversation/conversation-compose.js";
 import { conversationRoutes, sqliteConversationAdapter } from "../features/conversation/index.js";
 import {
@@ -317,6 +322,11 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     contextService: contextSvc,
   });
 
+  // Artifact storage (shared across agents, workspaces, workflows).
+  const artifactService = createArtifactService(
+    createArtifactFsAdapter(join(config.dataDir, "artifacts")),
+  );
+
   // Product Tools (History) - assembled unconditionally so the MCP endpoint
   // and the execution manifest are consistent; the MCP server only listens
   // when a URL is configured.
@@ -326,6 +336,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     conversationPort: convPort,
     callPort: sqliteProductToolCallAdapter(db),
     idGen: { ulid },
+    artifactService,
   });
   let productToolsMcp: Awaited<ReturnType<typeof createProductToolsMcpServer>> | null = null;
   // Per-run bearer registry: tokens are minted at dispatch and revoked at
@@ -883,6 +894,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     mcp: mcpRoutes(mcpSvc),
     knowledge: knowledgeRoutes(knowledgeSvc),
     workflowExecutions: workflowApp,
+    artifacts: artifactRoutes(artifactService),
     settings: settingsRoutes(settingsSvc),
 
     models: modelRoutes({

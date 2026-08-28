@@ -2,6 +2,7 @@ import type { Message } from "@chengchenccc/message";
 import type { AgentContextPort, IdGenerator } from "../agent-context/ports.js";
 import { type AgentRun, isActiveStatus } from "../agent-run/domain.js";
 import type { AgentRunPort } from "../agent-run/ports.js";
+import type { ArtifactService } from "../artifact/index.js";
 import type { ConversationPort, LedgerEntry } from "../conversation/ports.js";
 
 // ─── Product Tool Call identity (mirrors the Oma wire identity) ─
@@ -78,6 +79,7 @@ export interface ProductToolsServiceDeps {
   readonly conversationPort: ConversationPort;
   readonly callPort: ProductToolCallPort;
   readonly idGen: IdGenerator;
+  readonly artifactService: ArtifactService;
 }
 
 export interface ProductToolsService {
@@ -129,6 +131,44 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
           text: message.text ?? "",
         })),
       ),
+    };
+  }
+
+  async function artifactUpload(
+    _run: AgentRun,
+    input: ProductToolCallInput,
+  ): Promise<ProductToolCallResult> {
+    const args = input.args;
+    const folder = String(args.folder ?? "");
+    const filename = String(args.filename ?? "");
+    const content = String(args.content ?? "");
+    const encoding = args.encoding === "base64" ? "base64" : "utf8";
+    if (!folder || !filename || !content) {
+      throw new ProductToolRejectedError("artifact_upload requires folder, filename, content");
+    }
+    const meta = await deps.artifactService.upload({
+      folder,
+      filename,
+      content,
+      encoding,
+      source: {
+        runId: input.identity.runId,
+        conversationId: input.identity.conversationId,
+        agentId: input.identity.agentId,
+      },
+    });
+    return { content: JSON.stringify({ url: meta.url }) };
+  }
+
+  async function artifactDownload(
+    _run: AgentRun,
+    input: ProductToolCallInput,
+  ): Promise<ProductToolCallResult> {
+    const url = String(input.args.url ?? "");
+    if (!url) throw new ProductToolRejectedError("artifact_download requires url");
+    const a = await deps.artifactService.download(url);
+    return {
+      content: JSON.stringify({ content: a.content, encoding: a.encoding, mimeType: a.mimeType }),
     };
   }
 
@@ -330,6 +370,10 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
           return historyRetain(run, input);
         case "todo_write":
           return todoWrite(run, input);
+        case "artifact_upload":
+          return artifactUpload(run, input);
+        case "artifact_download":
+          return artifactDownload(run, input);
         default:
           throw new ProductToolRejectedError(`tool ${input.tool} is not supported`);
       }

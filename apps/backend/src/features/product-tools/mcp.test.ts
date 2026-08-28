@@ -60,6 +60,10 @@ beforeEach(async () => {
     contextPort,
     conversationPort: convPort,
     callPort: sqliteProductToolCallAdapter(db),
+    artifactService: {
+      upload: async () => ({ url: "artifacts://a/b.txt" }),
+      download: async () => ({ content: "x", encoding: "utf8", mimeType: "text/plain" }),
+    } as never,
     idGen: { ulid: () => `y-${Math.random().toString(36).slice(2, 8)}` },
   });
   registry = createRunTokenRegistry();

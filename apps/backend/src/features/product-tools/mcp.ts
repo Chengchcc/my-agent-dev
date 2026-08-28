@@ -146,6 +146,34 @@ export async function createProductToolsMcpServer(
             required: ["items"],
           },
         },
+        {
+          name: "artifact_upload",
+          description:
+            "Upload a single artifact file into backend artifact storage. Returns an artifacts://<folder>/<filename> URL.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              folder: { type: "string" },
+              filename: { type: "string" },
+              content: { type: "string" },
+              encoding: { type: "string", enum: ["utf8", "base64"] },
+              identity: identitySchema,
+            },
+            required: ["folder", "filename", "content"],
+          },
+        },
+        {
+          name: "artifact_download",
+          description: "Download an artifact file by its artifacts://<folder>/<filename> URL.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              url: { type: "string" },
+              identity: identitySchema,
+            },
+            required: ["url"],
+          },
+        },
       ],
     }));
 
