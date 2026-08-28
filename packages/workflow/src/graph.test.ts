@@ -85,6 +85,27 @@ describe("graph", () => {
     ).toThrow(/not an edge target/);
   });
 
+  test("routeOutgoing uses explicit sourceOutput when node not yet in completions", () => {
+    const condDef = parseWorkflow({
+      version: 1,
+      id: "wf",
+      nodes: [
+        { id: "start", type: "start" },
+        { id: "a", type: "script", code: "x" },
+        { id: "done", type: "end", status: "success" },
+        { id: "abort", type: "end", status: "failure" },
+      ],
+      edges: [
+        { from: "start", to: "a" },
+        { from: "a", to: "done", when: { "==": [{ var: "a.output.go" }, true] } },
+        { from: "a", to: "abort", when: { "!=": [{ var: "a.output.go" }, true] } },
+      ],
+    });
+    const before = [{ nodeId: "start", order: 0, routedTo: ["a"] }];
+    expect(routeOutgoing("a", condDef, before, {}, { go: true })).toEqual(["done"]);
+    expect(routeOutgoing("a", condDef, before, {}, { go: false })).toEqual(["abort"]);
+  });
+
   test("mergeInputs later wins with provenance", () => {
     const result = mergeInputs(
       [

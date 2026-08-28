@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { parseWorkflow } from "@chengchenccc/workflow";
 import type { WorkflowDefinition } from "@chengchenccc/workflow";
 import { createWorkflowExecutionService } from "./service.js";
 
@@ -90,7 +91,7 @@ function ramPort() {
         if (r) Object.assign(r, patch);
         return r;
       },
-      listNodeRuns: async () => nodeRuns,
+      listNodeRuns: async (executionId: string) => nodeRuns.filter((r) => r.executionId === executionId),
       createPendingHuman: async (r: Record<string, unknown>) => {
         pendingHuman.set(`${r.executionId as string}:${r.nodeId as string}`, r);
         return r;
@@ -199,5 +200,36 @@ describe("createWorkflowExecutionService", () => {
     });
     expect(result.status).toBe("success");
     expect(nodeRuns.find((r) => r.nodeId === "a")!.output).toEqual({ val: 1 });
+  });
+
+  test("conditional edge routes by source node output", async () => {
+    const { port } = ramPort();
+    const svc = createWorkflowExecutionService({
+      port,
+      nodeRunners: {
+        script: { run: async (_n: unknown, ctx: { input: Record<string, unknown> }) => ({ output: { severity: ctx.input.severity } }) },
+      } as never,
+      eventBus: { emit: () => {}, subscribe: async function* () {} } as never,
+      idGen: () => "e1",
+    });
+    const def = parseWorkflow({
+      version: 1,
+      id: "wf",
+      nodes: [
+        { id: "start", type: "start" },
+        { id: "a", type: "script", code: "x" },
+        { id: "done", type: "end", status: "success" },
+        { id: "abort", type: "end", status: "failure" },
+      ],
+      edges: [
+        { from: "start", to: "a" },
+        { from: "a", to: "done", when: { "==": [{ var: "a.output.severity" }, "high"] } },
+        { from: "a", to: "abort", when: { "==": [{ var: "a.output.severity" }, "critical"] } },
+      ],
+    });
+    const ok = await svc.runToCompletion("e1", { workflowId: "wf", definition: def, input: { severity: "high" } });
+    expect(ok.exit).toBe("success");
+    const bad = await svc.runToCompletion("e2", { workflowId: "wf", definition: def, input: { severity: "critical" } });
+    expect(bad.exit).toBe("failure");
   });
 });

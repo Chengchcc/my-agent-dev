@@ -65,8 +65,11 @@ export function routeOutgoing(
   def: WorkflowDefinition,
   completions: CompletionRecord[],
   store: Record<string, unknown>,
+  /** The completed node's own output. Pass explicitly at completion time —
+   *  if omitted, the implementation falls back to finding it in `completions`. */
+  sourceOutput?: Record<string, unknown>,
 ): string[] {
-  const out = completions.find((c) => c.nodeId === nodeId)?.output;
+  const out = sourceOutput ?? completions.find((c) => c.nodeId === nodeId)?.output;
   const override = typeof out?.nextNode === "string" ? (out.nextNode as string) : undefined;
   const edges = def.edges.filter((e) => e.from === nodeId);
   if (override !== undefined) {

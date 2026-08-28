@@ -336,7 +336,7 @@ export function createWorkflowExecutionService(
     order: number,
   ): CompletionRecord {
     const arr = completions.get(execution.executionId) ?? [];
-    const routedTo = routeOutgoing(node.id, execution.definition, arr, execution.store);
+    const routedTo = routeOutgoing(node.id, execution.definition, arr, execution.store, output);
     const record: CompletionRecord = { nodeId: node.id, output, order, routedTo };
     arr.push(record);
     completions.set(execution.executionId, arr);
@@ -464,7 +464,7 @@ export function createWorkflowExecutionService(
         order: i,
         routedTo: r.routedTo ?? [],
       }));
-      const routedTo = routeOutgoing(nodeId, row.definition, arr, row.store);
+      const routedTo = routeOutgoing(nodeId, row.definition, arr, row.store, answer);
       await deps.port.markPendingHumanResolved(executionId, nodeId);
       await deps.port.updateNodeRun(executionId, nodeId, {
         status: "completed",
