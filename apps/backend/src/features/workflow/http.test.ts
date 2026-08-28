@@ -168,7 +168,11 @@ describe("workflow http", () => {
   test("GET trace returns execution events and nodeRuns", async () => {
     const resp = await app.handle(new Request("http://localhost/api/workflow-executions/e1/trace"));
     expect(resp.status).toBe(200);
-    const body = (await resp.json()) as { execution: { executionId: string }; events: unknown[]; nodeRuns: unknown[] };
+    const body = (await resp.json()) as {
+      execution: { executionId: string };
+      events: unknown[];
+      nodeRuns: unknown[];
+    };
     expect(body.execution.executionId).toBe("e1");
     expect(Array.isArray(body.events)).toBe(true);
     expect(Array.isArray(body.nodeRuns)).toBe(true);

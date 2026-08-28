@@ -595,36 +595,44 @@ git commit -m "feat(workflow): add dry-run debug capability"
 - Modify: `apps/web/src/components/workflow/AgenticWorkflowEditor.tsx`（预览）
 - Modify: `apps/web/src/components/workflow/ExecutionTraceView.tsx`（resolve）
 
-### `ask_question` 协议（定稿）
+### `ask_question` 协议（定稿：questions + select/text 双 kind）
 
 ```typescript
 // packages/agent-contract/src/ask-question.ts
-export interface AskQuestionField {
-  key: string;
-  type: "string" | "textarea" | "number" | "enum" | "date" | "boolean";
-  label: string;
-  required?: boolean;
-  options?: string[];
+export interface AskQuestionInput { questions: AskQuestionItem[] }
+export interface AskQuestionItem {
+  id: string;
+  kind: "select" | "text";       // select = 选项；text = 自由输入
+  question: string;
+  header?: string;
+  // select
+  multi?: boolean;
+  options?: AskQuestionOption[];
+  recommended?: string;           // option.value，标 (Recommended)
+  allowOther?: boolean;           // "Other (type your own)" 自由输入行
+  allowChat?: boolean;            // "Chat about this" 转对话
+  // text
   placeholder?: string;
-  defaultValue?: unknown;
+  multiline?: boolean;            // textarea
+  validation?: { required?; minLength?; maxLength?; minSelections?; maxSelections? };
 }
-export interface AskQuestionPayload {
-  question_id: string;
-  title: string;
-  description?: string;
-  fields: AskQuestionField[];
-  submit_text?: string;
-  skip_allowed?: boolean;
-}
-export interface AskQuestionAnswer {
-  question_id: string;
-  answers: Record<string, unknown>;
-}
+export interface AskQuestionOption { value: string; label: string; description?: string; preview?: string }
+export interface AskQuestionResult { answers: Array<{ id: string; selectedValues: string[]; freeText?: string }> }
 ```
 
-- **前端收到后**：渲染表单卡片（`AskQuestionRenderer`）。
-- **提交**：回传 `{ question_id, answers }` 给 agent（tool result）。
-- **对话里保留一条结构化消息**："用户已填写表单"（带 `answers`/`question_id`），供 trace/历史回放。
+### HITL 组件族（ask 工具 + workflow human 节点共用）
+
+| 组件 | 职责 |
+|---|---|
+| `AskQuestionCard`（活跃态） | RHF + shadcn 表单卡：问题列表（select 选项行/文本输入）+ recommended 徽标 + allowOther + submit/Chat about this；校验 required/min-max |
+| `QuestionSelectField` | 选项行（radio/checkbox + label + description + Recommended 徽标 + Other 输入） |
+| `QuestionTextField` | Input/Textarea + placeholder + 长度校验 |
+| `AskQuestionAnswered`（已答态，只读） | 问了什么 + 答了什么 + 时间戳；对话历史/trace 回放用 |
+| `AskQuestionPending`（等待态） | "等待你的输入"横幅 + 脉冲；live trace/对话流用 |
+
+- **提交**：回传 `{answers: [{id, selectedValues, freeText}]}`（text 型问题走 freeText）。
+- **对话保留结构化消息**："用户已填写表单"（`AskQuestionFilled`）。
+- **workflow human 节点**：`node.form` 映射成本协议（enum→select、string/textarea→text、number/date→text、boolean→select yes/no），pending_human 存映射后的 `AskQuestionInput`，前端共用同一渲染器。
 
 - [ ] **Step 1: native `askQuestion` tool（oma 内建，仿 native todo，供 agent 对话使用）**
 

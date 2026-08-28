@@ -1,7 +1,12 @@
 import type { Database } from "bun:sqlite";
 import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { workflowExecution, workflowExecutionEvent, workflowNodeRun, workflowPendingHuman } from "../../infra/db/schema.js";
+import {
+  workflowExecution,
+  workflowExecutionEvent,
+  workflowNodeRun,
+  workflowPendingHuman,
+} from "../../infra/db/schema.js";
 import type {
   AppendNodeRunInput,
   CreateWorkflowExecutionInput,
@@ -201,8 +206,18 @@ export function sqliteWorkflowExecutionAdapter(db: Database): WorkflowExecutionP
       });
     },
     async listExecutionEvents(executionId) {
-      const rows = await d.select().from(workflowExecutionEvent).where(eq(workflowExecutionEvent.executionId, executionId)).orderBy(workflowExecutionEvent.seq);
-      return rows.map((r) => ({ seq: r.seq, executionId: r.executionId, event: r.event, data: JSON.parse(r.data), ts: r.ts }));
+      const rows = await d
+        .select()
+        .from(workflowExecutionEvent)
+        .where(eq(workflowExecutionEvent.executionId, executionId))
+        .orderBy(workflowExecutionEvent.seq);
+      return rows.map((r) => ({
+        seq: r.seq,
+        executionId: r.executionId,
+        event: r.event,
+        data: JSON.parse(r.data),
+        ts: r.ts,
+      }));
     },
     async listExecutions(workflowId?: string) {
       if (workflowId) {
