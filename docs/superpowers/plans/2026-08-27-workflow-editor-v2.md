@@ -282,6 +282,8 @@ git commit -m "feat(web): interactive workflow editing"
 
 **Files:**
 - Create: `skills/agentic-workflow-dsl/SKILL.md`
+- Create: `skills/agentic-workflow-dsl/registry.yaml`
+- Create: `skills/agentic-workflow-dsl/reference/validate.js`（自包含 DSL 校验脚本）
 - Modify: `apps/backend/src/features/workflow/http.ts`
 - Modify: `apps/backend/src/features/workflow/service.ts`
 - Modify: `apps/backend/src/features/workflow/http.test.ts`
@@ -342,6 +344,25 @@ Run every item; a violation makes the DSL illegal:
 
 Report violations as a numbered list with the offending path ($.nodes[2].status missing). When asked to fix, return the corrected full DSL.
 ```
+- [ ] **Step 1e: 校验脚本 `reference/validate.js`**
+
+自包含 Bun 脚本，agent 跑 `bun reference/validate.js <*.workflow.json>` 校验 DSL：
+
+```js
+// skill: agentic-workflow-dsl/reference/validate.js
+// 自包含实现 parseWorkflow 合法性规则（唯一 start、node id 合法/唯一、per-type 必填、
+// 边引用存在、无环（Kahn）、when 为 JSONLogic 子集、input/output schema 关键词子集）。
+// 退出码：0=合法并打印 "VALID"；1=违规，打印每条违规路径。
+const file = process.argv[2];
+const def = JSON.parse(require("fs").readFileSync(file, "utf8"));
+const errors = [];
+// ... 检查清单 ...
+if (errors.length) { console.error(errors.join("\n")); process.exit(1); }
+console.log("VALID", def.id);
+```
+
+规则**必须**与 `packages/workflow/src/parse.ts` 一致（两处并行维护，测试计划里加一条"validate.js 与 parseWorkflow 对同一组样例输出一致"）。
+
 - [ ] **Step 2: backend chatPatch 接 skill roots**
 
 `createWorkflowExecutionService` deps 加 `workflowDslSkillDir?: string`；`chatPatch(workflowId, definition, instruction)` 走 agent-run：
