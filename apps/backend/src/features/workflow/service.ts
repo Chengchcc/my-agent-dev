@@ -73,6 +73,10 @@ export interface WorkflowExecutionService {
   listExecutionEvents(
     executionId: string,
   ): Promise<Array<{ seq: number; executionId: string; event: string; data: unknown; ts: number }>>;
+  getPendingHuman(
+    executionId: string,
+    nodeId: string,
+  ): Promise<{ nodeId: string; question?: string; form?: Record<string, unknown>; status: string } | null>;
   subscribeEvents(executionId: string, signal?: AbortSignal): Promise<AsyncIterable<WorkflowEvent>>;
   recover(): Promise<void>;
   dispose(): Promise<void>;
@@ -129,6 +133,29 @@ function buildAgentPrompt(
       ? `\n\nYour final answer MUST be a JSON object with fields: ${Object.keys(outputHint).join(", ")}\nOptional: nextNode (string). Do not output anything else.`
       : "";
   return `${base}\n\nInput: ${JSON.stringify(input)}${suffix}`;
+}
+
+/** Map a human node's FormField form to the ask_question protocol. */
+function formToAskQuestions(
+  form: Record<string, unknown> | undefined,
+  question: string | undefined,
+): Array<Record<string, unknown>> {
+  const questions: Array<Record<string, unknown>> = [];
+  for (const [key, raw] of Object.entries(form ?? {})) {
+    const f = raw as { type?: string; label?: string; options?: string[]; required?: boolean };
+    const label = f.label ?? key;
+    if (f.type === "enum") {
+      questions.push({ id: key, kind: "select", question: label, header: question, options: (f.options ?? []).map((v) => ({ value: v, label: v })), validation: { required: f.required !== false } });
+    } else if (f.type === "boolean") {
+      questions.push({ id: key, kind: "select", question: label, header: question, options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }], validation: { required: f.required !== false } });
+    } else {
+      questions.push({ id: key, kind: "text", question: label, header: question, multiline: f.type === "textarea", placeholder: f.label, validation: { required: f.required !== false } });
+    }
+  }
+  if (questions.length === 0 && question) {
+    questions.push({ id: "answer", kind: "text", question, multiline: true });
+  }
+  return questions;
 }
 
 export function createWorkflowExecutionService(
@@ -303,16 +330,17 @@ export function createWorkflowExecutionService(
     } else if (node.type === "human") {
       const question = (ready.input.question as string | undefined) ?? node.question;
       const form = (ready.input.form as Record<string, unknown> | undefined) ?? node.form;
+      const questions = formToAskQuestions(form, question);
       await deps.port.createPendingHuman({
         executionId: execution.executionId,
         nodeId: node.id,
         question,
-        form,
+        form: { questions },
         status: "pending",
         createdAt: Date.now(),
       });
       await deps.port.updateExecution(execution.executionId, { status: "waiting_human" });
-      emit(execution.executionId, "human_task_requested", { nodeId: node.id, question, form });
+      emit(execution.executionId, "human_task_requested", { nodeId: node.id, question, questions });
       return null;
     } else {
       try {
@@ -497,6 +525,9 @@ export function createWorkflowExecutionService(
     },
     async listExecutionEvents(executionId) {
       return deps.port.listExecutionEvents(executionId);
+    },
+    async getPendingHuman(executionId, nodeId) {
+      return deps.port.getPendingHuman(executionId, nodeId);
     },
     async subscribeEvents(
       executionId: string,

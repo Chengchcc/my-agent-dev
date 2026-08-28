@@ -1,7 +1,11 @@
 "use client";
 
+import type { AskQuestionInput } from "@chengchenccc/agent-contract";
 import { toEditorGraph, type WorkflowDefinition } from "@chengchenccc/workflow";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { api } from "@/lib/api";
+import { AskQuestionCard } from "./AskQuestionCard";
 import { type NodeStatus, WorkflowCanvas } from "./WorkflowCanvas";
 
 export type TraceEvent = { seq: number; event: string; data: unknown; ts: number };
@@ -40,11 +44,19 @@ export function ExecutionTraceView({
   execution,
   events,
   nodeRuns,
+  pendingHuman,
 }: {
   execution: TraceExecution;
   events: TraceEvent[];
   nodeRuns: TraceNodeRun[];
+  pendingHuman?: {
+    nodeId: string;
+    question?: string;
+    form?: Record<string, unknown>;
+    status: string;
+  } | null;
 }) {
+  const router = useRouter();
   const [index, setIndex] = useState(Math.max(0, events.length - 1));
   const graph = useMemo(() => toEditorGraph(execution.definition), [execution.definition]);
 
@@ -105,6 +117,20 @@ export function ExecutionTraceView({
             {index + 1}/{events.length}
           </span>
         </div>
+        {execution.status === "waiting_human" && pendingHuman && (
+          <div className="border-b p-3">
+            <AskQuestionCard
+              input={(pendingHuman.form?.questions as AskQuestionInput) ?? { questions: [] }}
+              onSubmit={async (result) => {
+                await api.resolveWorkflowHumanTask(execution.executionId, {
+                  nodeId: pendingHuman.nodeId,
+                  answer: { answers: result.answers } as unknown as Record<string, unknown>,
+                });
+                router.refresh();
+              }}
+            />
+          </div>
+        )}
         <div className="max-h-[40vh] overflow-auto p-3 text-xs">
           <div className="mb-1 font-semibold">Event log</div>
           {events.slice(0, index + 1).map((e) => (

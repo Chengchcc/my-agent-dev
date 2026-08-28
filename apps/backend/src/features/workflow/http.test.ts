@@ -57,6 +57,7 @@ const fakeService: WorkflowExecutionService = {
   }),
   listNodeRuns: async () => [],
   listExecutionEvents: async () => [],
+  getPendingHuman: async () => null,
   listExecutions: async () => [
     {
       executionId: "e1",

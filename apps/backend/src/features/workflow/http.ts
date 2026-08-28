@@ -134,7 +134,12 @@ export function workflowRoutes(deps: {
       if (!row) throw new HttpError("Execution not found", 404);
       const events = await svc.listExecutionEvents(params.executionId);
       const nodeRuns = await svc.listNodeRuns(params.executionId);
-      return { execution: row, events, nodeRuns };
+      let pendingHuman = null;
+      if (row.status === "waiting_human") {
+        const waiting = nodeRuns.find((r) => r.status === "waiting_human");
+        if (waiting) pendingHuman = await svc.getPendingHuman(params.executionId, waiting.nodeId);
+      }
+      return { execution: row, events, nodeRuns, pendingHuman };
     })
     .get("/api/workflow-executions/:executionId", async ({ params }) => {
       const row = await svc.getExecution(params.executionId);

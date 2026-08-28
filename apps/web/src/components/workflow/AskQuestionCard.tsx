@@ -60,7 +60,7 @@ export function AskQuestionCard({
   const form = useForm<FormValues>({ defaultValues: defaults(input) });
   const hasChat = input.questions.some((q) => q.allowChat);
 
-  function toggle(qid: string, value: string, multi: boolean, current: string[]): string[] {
+  function toggle(_qid: string, value: string, multi: boolean, current: string[]): string[] {
     if (!multi) return current.includes(value) ? [] : [value];
     return current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
   }
