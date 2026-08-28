@@ -16,7 +16,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { EditorGraph } from "@chengchenccc/workflow";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { WorkflowNodeCard } from "./workflow-node";
 
 export type NodeStatus = "done" | "active" | "idle" | "failed";
@@ -110,6 +110,7 @@ export function WorkflowCanvas({
     screenToFlowPosition?: (pos: { x: number; y: number }) => { x: number; y: number };
   } | null>(null);
   const [connectSource, setConnectSource] = useState<string | null>(null);
+  const connectedRef = useRef(false);
   const nodeTypes = { default: WorkflowNodeCard };
 
   const [nodes, setNodes] = useState<Node[]>(
@@ -151,16 +152,15 @@ export function WorkflowCanvas({
   }
   const onConnectEnd: OnConnectEnd = (event) => {
     const source = connectSource;
+    setConnectSource(null);
     if (!source) return;
-    if (
-      "connection" in event &&
-      (event.connection as { target?: string } | null | undefined)?.target
-    )
-      return; // connected to a node
+    if (connectedRef.current) {
+      connectedRef.current = false;
+      return;
+    } // dropped onto a node
     const x = "clientX" in event ? event.clientX : 0;
     const y = "clientY" in event ? event.clientY : 0;
     onNodeMenuRequested?.(source, { x, y });
-    setConnectSource(null);
   };
 
   return (
@@ -184,7 +184,14 @@ export function WorkflowCanvas({
         elementsSelectable={interactive}
         fitView
         onNodeClick={onSelect ? (_, node) => onSelect(node.id) : undefined}
-        onConnect={onConnect ? (c) => onConnect(c.source!, c.target!) : undefined}
+        onConnect={
+          onConnect
+            ? (c) => {
+                connectedRef.current = true;
+                onConnect(c.source!, c.target!);
+              }
+            : undefined
+        }
         onConnectStart={onNodeMenuRequested ? onConnectStart : undefined}
         onConnectEnd={onNodeMenuRequested ? onConnectEnd : undefined}
         onNodesDelete={

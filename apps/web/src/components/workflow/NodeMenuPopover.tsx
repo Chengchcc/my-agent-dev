@@ -1,7 +1,7 @@
 "use client";
 
 import type { WorkflowNode } from "@chengchenccc/workflow";
-import { Bot, Code2, Flag, UserRound } from "lucide-react";
+import { Bot, Code2, Flag, UserRound, X } from "lucide-react";
 
 export interface NodeTypeOption {
   type: WorkflowNode["type"];
@@ -51,8 +51,15 @@ export function NodeMenuPopover({
 }) {
   return (
     <div className="absolute z-50 w-64 rounded-xl border border-(--hairline) bg-(--panel)/95 p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur">
-      <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-(--mute)">
-        添加下游节点
+      <div className="flex items-center justify-between px-2 py-1.5">
+        <span className="text-[10px] uppercase tracking-widest text-(--mute)">添加下游节点</span>
+        <button
+          onClick={onClose}
+          aria-label="Close node menu"
+          className="rounded p-1 text-(--mute) transition-colors hover:bg-(--panel2) hover:text-(--ink)"
+        >
+          <X className="size-3.5" />
+        </button>
       </div>
       {NODE_TYPES.map((opt) => {
         const Icon = opt.icon;
