@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
 import { HttpError } from "../../infra/errors.js";
+import { dryRunWorkflow } from "./dry-run.js";
 import type { WorkflowExecutionService } from "./service.js";
 
 export interface WorkflowRef {
@@ -73,6 +74,20 @@ export function workflowRoutes(deps: {
       {
         body: t.Object({
           definition: t.Record(t.String(), t.Unknown()),
+        }),
+      },
+    )
+    .post(
+      "/api/workflow-definitions/:workflowId/dry-run",
+      async ({ params, body }) => {
+        const raw = await Bun.file(join(dir, `${params.workflowId}.workflow.json`)).text();
+        const definition = JSON.parse(raw);
+        return dryRunWorkflow(definition, body.input ?? {}, body.mockOutputs ?? {});
+      },
+      {
+        body: t.Object({
+          input: t.Optional(t.Record(t.String(), t.Unknown())),
+          mockOutputs: t.Optional(t.Record(t.String(), t.Record(t.String(), t.Unknown()))),
         }),
       },
     )

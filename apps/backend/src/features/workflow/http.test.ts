@@ -2,9 +2,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { WorkflowDefinition } from "@chengchenccc/workflow";
 import { workflowRoutes } from "./http.js";
 import type { WorkflowExecutionService } from "./service.js";
-import type { WorkflowDefinition } from "@chengchenccc/workflow";
 
 const def: WorkflowDefinition = {
   version: 1,
@@ -36,7 +36,7 @@ const fakeService: WorkflowExecutionService = {
     status: "running",
     createdAt: 1,
   }),
-  resolveHumanTask: async (executionId, nodeId, answer) => ({
+  resolveHumanTask: async (executionId, _nodeId, _answer) => ({
     executionId,
     workflowId: "wf",
     definition: def,
@@ -141,5 +141,20 @@ describe("workflow http", () => {
     expect(resp.status).toBe(200);
     const body = (await resp.json()) as { status: string };
     expect(body.status).toBe("success");
+  });
+
+  test("workflow definition dry-run returns exit", async () => {
+    await app.handle(new Request("http://localhost/api/workflow-definitions/wf", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ definition: def }) }));
+    const resp = await app.handle(
+      new Request("http://localhost/api/workflow-definitions/wf/dry-run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ input: {}, mockOutputs: {} }),
+      }),
+    );
+    expect(resp.status).toBe(200);
+    const body = (await resp.json()) as { exit: string; steps: Array<{ nodeId: string }> };
+    expect(body.exit).toBe("success");
+    expect(body.steps.some((st) => st.nodeId === "start")).toBe(true);
   });
 });
