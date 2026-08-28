@@ -3,6 +3,9 @@ import type { WorkflowDefinition } from "@chengchenccc/workflow";
 import { AgenticWorkflowEditor } from "@/components/workflow/AgenticWorkflowEditor";
 import { createServerClient, unwrap } from "@/lib/client";
 
+export const dynamic = "force-dynamic";
+
+
 export default async function AgenticWorkflowDetailPage({
   params,
 }: {
