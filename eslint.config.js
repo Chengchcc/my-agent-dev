@@ -10,7 +10,6 @@ export default tseslint.config(
       "**/.turbo/**",
       "**/.next/**",
       "**/.backend-data/**",
-      "apps/web/public/monaco/**",
       "apps/web/scripts/**",
       "**/next-env.d.ts",
       "bun.lock",

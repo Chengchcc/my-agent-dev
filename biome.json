@@ -12,7 +12,7 @@
       "!**/drizzle",
       "!**/dist",
       "!**/src/vendor",
-      "!**/public/monaco/**",
+      "!**/public/monaco",
       "!**/.next",
       "!skills/loop-workflow/workflow.js"
     ]
