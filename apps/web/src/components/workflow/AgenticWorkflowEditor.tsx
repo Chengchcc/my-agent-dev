@@ -8,7 +8,6 @@ import {
   type WorkflowNode,
 } from "@chengchenccc/workflow";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Breadcrumb,
@@ -37,13 +36,14 @@ const DslEditorPanel = dynamic(() => import("./DslEditorPanel").then((m) => m.Ds
 }>;
 
 import { EdgePropertyPanel } from "./EdgePropertyPanel";
+import { InputPanel } from "./InputPanel";
 import { NodeMenuPopover } from "./NodeMenuPopover";
 import { NodePanel } from "./NodePanel";
 import { NodePropertyPanel } from "./NodePropertyPanel";
 import { TriggerPanel } from "./TriggerPanel";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 
-type InspectorTab = "attrs" | "palette" | "triggers";
+type InspectorTab = "attrs" | "palette" | "triggers" | "input";
 
 function formToQuestions(
   form: Record<string, unknown> | undefined,
@@ -409,6 +409,7 @@ export function AgenticWorkflowEditor({
                     ["attrs", "属性"],
                     ["palette", "节点"],
                     ["triggers", "定时"],
+                    ["input", "输入"],
                   ] as Array<[InspectorTab, string]>
                 ).map(([k, label]) => (
                   <button
@@ -425,7 +426,9 @@ export function AgenticWorkflowEditor({
                 ))}
               </div>
               <div className="min-h-0 flex-1 overflow-auto">
-                {inspectorTab === "triggers" && definition ? (
+                {inspectorTab === "input" && definition ? (
+                  <InputPanel definition={definition} onChange={setDefinitionTracked} />
+                ) : inspectorTab === "triggers" && definition ? (
                   <TriggerPanel definition={definition} onChange={setDefinitionTracked} />
                 ) : inspectorTab === "palette" ? (
                   <NodePanel

@@ -19,5 +19,26 @@ export default async function AgenticWorkflowListPage() {
       updatedAt?: number;
     }>,
   }));
-  return <WorkflowList definitions={list.definitions} />;
+  // Attach the most recent execution to each workflow for a business-focused list.
+  const withLastRun = await Promise.all(
+    list.definitions.map(async (d) => {
+      const execs = await unwrap(
+        client.api["workflow-executions"].get({ query: { workflowId: d.workflowId } }),
+      ).catch(() => ({
+        executions: [] as Array<{
+          status: string;
+          createdAt: number;
+          terminalAt?: number;
+          error?: string;
+        }>,
+      }));
+      return {
+        ...d,
+        lastExecution: execs.executions?.[0] as
+          | { status: string; createdAt: number; terminalAt?: number; error?: string }
+          | undefined,
+      };
+    }),
+  );
+  return <WorkflowList definitions={withLastRun} />;
 }

@@ -26,6 +26,12 @@ type Row = {
   owner?: string;
   updatedBy?: string;
   updatedAt?: number;
+  lastExecution?: {
+    status: string;
+    createdAt: number;
+    terminalAt?: number;
+    error?: string;
+  };
 };
 
 function defaultDraft(id: string) {
@@ -127,6 +133,33 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
                   </span>
                 )}
               </div>
+              {d.lastExecution && (
+                <div className="mt-1 flex items-center gap-2 text-[10px] text-(--mute)">
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 ${
+                      d.lastExecution.status === "success"
+                        ? "bg-(--primary)/10 text-(--primary)"
+                        : d.lastExecution.status === "failure"
+                          ? "bg-(--err)/10 text-(--err)"
+                          : "bg-(--panel2) text-(--mute)"
+                    }`}
+                  >
+                    {d.lastExecution.status === "waiting_human"
+                      ? "等待确认"
+                      : d.lastExecution.status}
+                  </span>
+                  <span>{new Date(d.lastExecution.createdAt).toLocaleString()}</span>
+                  {d.lastExecution.terminalAt && d.lastExecution.createdAt && (
+                    <span>
+                      {Math.max(
+                        0,
+                        Math.round((d.lastExecution.terminalAt - d.lastExecution.createdAt) / 1000),
+                      )}
+                      s
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex shrink-0 gap-2 text-xs">
               <button
