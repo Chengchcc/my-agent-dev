@@ -28,7 +28,7 @@ Every response has two parts:
 # Repository Guidelines
 ## Project Overview
 
-`my-agent-team` is a monorepo for building multi-agent AI systems. It spans from a protocol-level agent runtime (`packages/message`, `apps/oh-my-agent/src/core`) through a production backend (`apps/backend`) and web UI (`apps/web`), plus a Loop automation engine that subsumes issue triage and cron-based work.
+`my-agent-team` is a monorepo for building multi-agent AI systems. It spans from a protocol-level agent runtime (`packages/message`, `apps/oh-my-agent/src/core`) through a production backend (`apps/backend`) and web UI (`apps/web`), plus a Agentic Workflow engine.
 
 **Tech stack:** Bun 1.3.14 runtime, TypeScript 6.x (ESM, `NodeNext`), Turborepo v2, Elysia HTTP, Drizzle ORM + SQLite, Next.js 15 App Router, React Query v5, shadcn/ui + Tailwind CSS v4, Biome + ESLint.
 
@@ -55,13 +55,13 @@ L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock
 |---|---|
 | `packages/message/` | Protocol layer: Message/MessageRevision + ChatModel/Tool/AIMessageChunk + stream utils (absorbed packages/core) |
 | `apps/oh-my-agent/src/core/` | Oma runtime: `createOmaSession()` (agent-loop), plugins, compaction, persistence (absorbed packages/agent) |
-| `apps/backend/src/features/loop/` | Loop feature incl. the pure state machine (reducer, STATE.md I/O; absorbed packages/loop) |
+| `apps/backend/src/features/workflow/` | Agentic Workflow DSL engine: triggers, executions, human tasks |
 | `packages/ai/` | Provider + Model registry, AnthropicChatModel, model metadata |
 | `packages/tools-common/` | read/write/edit/bash/grep/glob/web tools |
 | `packages/test-helpers/` | `echoModel()` for deterministic test doubles |
 | `apps/oh-my-agent/src/core/` | Oma-native tools/plugins absorbed from the standalone plugin packages (todo, progressive-skill) |
-| `apps/backend/` | Elysia server: all services, routes, cron, Loop orchestration |
-| `apps/web/` | Next.js 15 App Router: agents, conversations, issues, loops, ops, skill-packs |
+| `apps/backend/` | Elysia server: all services, routes, workflow trigger scheduling |
+| `apps/web/` | Next.js 15 App Router: agents, conversations, workflow, ops, skill-packs |
 | `apps/lark-bot/` | Lark/Feishu IM bot integration |
 | `apps/oh-my-agent/` | Oma CLI agent runtime (spawned `--mode rpc` by backend adapters) |
 | `skills/` | Skill packs (SKILL.md + registry.yaml) for agent runtime |
@@ -84,12 +84,12 @@ cd apps/oh-my-agent && bun test --test-name-pattern="agent-loop"
 cd apps/backend && bun run typecheck
 ```
 
-**Per-package scripts:** Each package has `build`, `lint`, `test`, `typecheck` scripts (except `@chengchenccc/loop` which has no build — source-only).
+**Per-package scripts:** Each package has `build`, `lint`, `test`, `typecheck` scripts (except `@chengchenccc/workflow` which has no build — source-only) for the workflow engine.
 
 ## Code Conventions & Common Patterns
 
 ### Imports: No deep imports
-Cross-package imports MUST go through the barrel (`index.ts`). `import { loopReducer } from "@chengchenccc/loop"` not `"@chengchenccc/loop/src/loop-reducer.js"`. Enforced by ESLint `consistent-type-imports`.
+Cross-package imports MUST go through the barrel (`index.ts`). `import { parseWorkflow } from "@chengchenccc/workflow"` not `"@chengchenccc/workflow/src/parse.js"`. Enforced by ESLint `consistent-type-imports`.
 
 ### Dependency Injection
 Backend uses **composition-root DI** (no framework): `main.ts` creates adapters, injects them into service factories, then mounts HTTP routes. Every feature follows hexagonal architecture:
@@ -165,11 +165,10 @@ Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop
 | `apps/backend/src/main.ts` | Composition root — wires all services, adapters, routes |
 | `apps/backend/src/app.ts` | Elysia app factory — mounts all feature routers |
 | `apps/backend/src/features/agent-run/execution.ts` | Run dispatch, transient SSE subscription, terminalize |
-| `apps/backend/src/infra/db/schema.ts` | Drizzle schema — 24 tables, single SQLite file |
+| `apps/backend/src/infra/db/schema.ts` | Drizzle schema — 21 tables, single SQLite file |
 | `apps/oh-my-agent/src/core/runtime/agent-loop.ts` | `createOmaSession()` — the agent loop |
 | `apps/oh-my-agent/src/core/runtime/plugin.ts` | `Plugin`/`PluginHooks`, `validatePlugins()` |
 | `packages/message/src/chat-model.ts` | `ChatModel` contract |
-| `apps/backend/src/features/loop/loop-reducer.ts` | Pure reducer for Loop item state machine |
 | `packages/ai/src/providers/anthropic-messages.ts` | Anthropic Messages API adapter |
 | `apps/web/src/lib/api.ts` | Typed API client (Eden Treaty) |
 | `apps/web/src/lib/client.ts` | BFF client + `unwrap()` helper |

@@ -1,7 +1,7 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createWorkflowTriggerScheduler } from "./trigger-scheduler.js";
 
 const cronDef = (id: string, cron: string, enabled?: boolean) => ({

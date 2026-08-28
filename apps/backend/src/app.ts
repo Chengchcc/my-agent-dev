@@ -2,9 +2,7 @@ import { Elysia } from "elysia";
 import type { agentRoutes } from "./features/agent/http.js";
 import type { agentRunRoutes } from "./features/agent-run/http.js";
 import type { conversationRoutes } from "./features/conversation/http.js";
-import type { cronJobRoutes } from "./features/cron/http.js";
 import type { knowledgeRoutes } from "./features/knowledge/http.js";
-import type { loopRoutes } from "./features/loop/http.js";
 import type { mcpRoutes } from "./features/mcp/http.js";
 import type { modelRoutes } from "./features/models/http.js";
 import type { projectRoutes } from "./features/project/http.js";
@@ -20,8 +18,6 @@ export interface FeatureSet {
   conversations: ReturnType<typeof conversationRoutes>;
   ops: ReturnType<typeof opsRoutes>;
   projects: ReturnType<typeof projectRoutes>;
-  cronJobs: ReturnType<typeof cronJobRoutes>;
-  loops: ReturnType<typeof loopRoutes>;
   agentRuns: ReturnType<typeof agentRunRoutes>;
   skillPacks: ReturnType<typeof skillPackRoutes>;
   mcp: ReturnType<typeof mcpRoutes>;
@@ -54,12 +50,10 @@ export function createApp(token: string, features: FeatureSet) {
     conversations,
     ops,
     projects,
-    cronJobs,
     skillPacks,
     mcp,
     knowledge,
 
-    loops,
     settings,
     models,
     agentRuns,
@@ -76,8 +70,6 @@ export function createApp(token: string, features: FeatureSet) {
     .use(agentRuns)
     .use(workflowExecutions)
     .use(projects)
-    .use(cronJobs)
-    .use(loops)
     .use(skillPacks)
     .use(settings)
     .use(mcp)

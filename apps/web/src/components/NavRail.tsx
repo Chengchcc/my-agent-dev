@@ -129,19 +129,6 @@ function NavContent() {
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
-                isActive={pathname.startsWith("/work/new")}
-                tooltip="New Loop"
-                onClick={() => {
-                  closeMobile();
-                  router.push("/work/new");
-                }}
-              >
-                <PlusIcon />
-                <span className="truncate">New Loop</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
                 isActive={pathname.startsWith("/agentic-workflow")}
                 tooltip="Agentic Workflow"
                 onClick={() => {

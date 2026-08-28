@@ -31,7 +31,6 @@ export default {
         "lark-bot",
         // Features
         "agent-run",
-        "cron",
         "workflow",
         "mcp",
         "settings",

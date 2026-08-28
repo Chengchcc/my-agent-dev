@@ -1,29 +1,21 @@
 "use client";
 
 import { FolderGit2 } from "lucide-react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useLoopList } from "@/features/loop/hooks";
 import { useProjectDetail, useProjectWorktrees } from "@/features/projects/hooks";
 import { WorktreeCard } from "../_components/worktree-card";
 
-/** Project aggregate (ADR 0023 P2): the project's loops and every attached
+/** Project aggregate (ADR 0023 P2): the project's every attached
  *  agent's worktree with branch status, diff and merge actions. */
 export default function ProjectDetailPage() {
   const params = useParams<{ id: string }>();
   const projectId = params.id;
   const { data: projectRes, error: projectErr, isError } = useProjectDetail(projectId);
   const { data: wtRes, error: wtErr } = useProjectWorktrees(projectId);
-  const { data: loopsRes } = useLoopList();
-
   const project = projectRes?.project;
   const worktrees = wtRes?.worktrees ?? [];
-  const loops = (loopsRes?.loops ?? []).filter(
-    (l) => "projectId" in l && l.projectId === projectId,
-  );
-
   return (
     <Page>
       <PageHeader
@@ -56,24 +48,6 @@ export default function ProjectDetailPage() {
             </div>
           ) : (
             worktrees.map((w) => <WorktreeCard key={w.agentId} projectId={projectId} row={w} />)
-          )}
-        </section>
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium">Loops</h2>
-          {loops.length === 0 ? (
-            <p className="text-sm text-(--mute)" data-testid="empty-state">
-              No loops reference this project.
-            </p>
-          ) : (
-            loops.map((l) => (
-              <Link
-                key={l.cronJobId}
-                href={`/work/${l.cronJobId}`}
-                className="block rounded-lg border border-(--hairline) bg-(--canvas) px-4 py-3 text-sm text-(--body) hover:border-(--primary) transition-colors"
-              >
-                {l.name}
-              </Link>
-            ))
           )}
         </section>
       </PageBody>

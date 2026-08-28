@@ -32,20 +32,11 @@ import {
 import { createConversationFeature } from "../features/conversation/conversation-compose.js";
 import { conversationRoutes, sqliteConversationAdapter } from "../features/conversation/index.js";
 import {
-  createCronJobService,
-  createCronScheduler,
-  cronJobRoutes,
-  sqliteCronJobAdapter,
-} from "../features/cron/index.js";
-import {
   createKnowledgeService,
   knowledgeRoutes,
   sqliteKnowledgePackAdapter,
 } from "../features/knowledge/index.js";
 import { CliSetupProvisioner, LarkSetupManager } from "../features/lark-bot/index.js";
-import { loopRoutes } from "../features/loop/http.js";
-import { runLoopDoctor } from "../features/loop/loop-doctor.js";
-import { createLoopLockRegistry } from "../features/loop/loop-lock.js";
 import { createMcpService, fileMcpServerAdapter, mcpRoutes } from "../features/mcp/index.js";
 import { modelRoutes } from "../features/models/index.js";
 import {
@@ -106,7 +97,6 @@ export function buildAgentSystemPrompt(
 
 export interface InstalledFeatures {
   featureSet: FeatureSet;
-  cronScheduler: ReturnType<typeof createCronScheduler>;
   /** Phase 5 internal handles (not exposed via HTTP). */
   agentRunService: ReturnType<typeof createAgentRunService>;
   agentRunExecution: ReturnType<typeof createAgentRunExecutionService>;
@@ -118,7 +108,7 @@ export interface InstalledFeatures {
 }
 
 export async function installFeatures(services: BackendServices): Promise<InstalledFeatures> {
-  const { config, db, settingsSvc, mcpClientManager, loopStore, larkBotRegistry } = services;
+  const { config, db, settingsSvc, mcpClientManager, larkBotRegistry } = services;
 
   // ─── Skill Pack (before agentSvc — onCreate depends on it) ──
 
@@ -175,7 +165,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   /** Shared per-worktree lock registry (A4): run dispatch, loop
    *  clean-start/reset and agent detach serialize on the same roots. */
   const workspaceLocks = createWorkspaceLockRegistry();
-  const loopLocks = createLoopLockRegistry();
 
   // Workspace bridge (ADR 0003 decision 3): reconcile skills/mcp into the
   // agent workspace. Late-bound (mcpSvc is created further down).
@@ -755,40 +744,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       );
   }
 
-  const cronSvc = createCronJobService({
-    port: sqliteCronJobAdapter(db),
-    idGen: ulid,
-    agentExists: (id: string) => agentSvc.exists(id),
-    convPort: {
-      createConversation: (input) =>
-        conv.convPort.createConversation({ ...input, createdAt: Date.now() }),
-    },
-  });
-
-  /** LOOP.md agent ids -> agent workspace paths (ADR 0023 P2). */
-  const resolveAgentWorkspace = async (id: string): Promise<string | null> => {
-    const agent = await agentSvc.getById(id).catch(() => null);
-    return agent?.workspacePath ?? null;
-  };
-  console.info(
-    `[bootstrap] loop steps now use per-agent worktrees; legacy clones under ${config.dataDir}/repos are no longer read and may be deleted manually`,
-  );
-  const cronScheduler = createCronScheduler({
-    agentWorkspaceOf: resolveAgentWorkspace,
-    withWorkspaceLock: workspaceLocks.withLock.bind(workspaceLocks),
-    withLoopLock: loopLocks.withLoopLock.bind(loopLocks),
-    cronSvc,
-    config,
-    convPort,
-    agentRunService,
-    agentRunExecution,
-    resolveDefaultModel: async (agentId: string) => {
-      return agentModelRef(await agentSvc.getById(agentId));
-    },
-    store: loopStore,
-    projectPort,
-  });
-
   // ─── FeatureSet ─────────────────────────────────────────────
 
   // Worktree read/merge ops over the project mirrors (ADR 0023 P2).
@@ -923,28 +878,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       })(),
     }),
     projects: projectRoutes(projectSvc, worktreeOps),
-    loops: loopRoutes({
-      cronSvc,
-      agentWorkspaceOf: resolveAgentWorkspace,
-      withWorkspaceLock: workspaceLocks.withLock.bind(workspaceLocks),
-      withLoopLock: loopLocks.withLoopLock.bind(loopLocks),
-      scheduler: cronScheduler,
-      dataDir: config.dataDir,
-      store: loopStore,
-      projectPort,
-      convPort,
-      agentRunService,
-      agentRunExecution,
-      // LOOP.md stores the full canonical model ID; pass it through. Loop
-      // generator/evaluator runs are always oma-scoped (the loop
-      // domain has no agent row to carry a kind — D2 applies to agents).
-      resolveModel: async (modelId: string) => ({
-        backendKind: "oma",
-        modelId,
-      }),
-      settingsSvc,
-    }),
-    cronJobs: cronJobRoutes(cronSvc, cronScheduler),
     skillPacks: skillPackRoutes(skillPackSvc, config.dataDir),
     mcp: mcpRoutes(mcpSvc),
     knowledge: knowledgeRoutes(knowledgeSvc),
@@ -981,58 +914,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   // ─── Lifecycle ──────────────────────────────────────────────
 
-  let doctorTimer: ReturnType<typeof setInterval> | undefined;
-  let doctorAllRunning: Promise<void> | null = null;
-
   async function start(): Promise<void> {
-    cronScheduler.start();
-
-    // Loop Doctor: startup sweep + periodic patrol for zombie runs and
-    // stale items. Every enabled loop is checked; repairs are serialized
-    // with loopStep via the per-loop lock.
-    const doctorDeps = {
-      cronSvc,
-      store: loopStore,
-      agentRunService,
-      agentRunExecution,
-    };
-    const doctorAll = async (): Promise<void> => {
-      for (const job of cronSvc.port.listEnabledCronJobs()) {
-        if (!job.loopConfigPath) continue;
-        try {
-          await loopLocks.withLoopLock(job.cronJobId, () =>
-            runLoopDoctor(doctorDeps, job.cronJobId),
-          );
-        } catch (err) {
-          console.error(`[loop-doctor] check failed for ${job.cronJobId}:`, err);
-        }
-      }
-    };
-    const runDoctor = (): void => {
-      const p = doctorAll().finally(() => {
-        if (doctorAllRunning === p) doctorAllRunning = null;
-      });
-      doctorAllRunning = p;
-    };
-    runDoctor();
-    doctorTimer = setInterval(runDoctor, 5 * 60_000);
-
-    const allAgents = await agentSvc.list(true);
-    for (const agent of allAgents) {
-      if (agent.config.lark.enabled && agent.config.lark.profile_ref) {
-        void larkBotRegistry
-          .ensureLarkBot(
-            agent.id,
-            agent.config.lark.bot_display_name,
-            agent.config.lark.profile_ref,
-          )
-          .catch((err: Error) => console.error(`[lark] failed to start bot for ${agent.id}:`, err));
-      }
-    }
-
-    // Phase 5: redeliver durable delivering inputs, promote idle-branch
-    // pending inputs, and retry commit_failed runs once at boot.
-    await agentRunExecution.recover();
     await workflowTriggerScheduler.sync();
     await workflowExecutionService.recover();
   }
@@ -1042,9 +924,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     // Agent child and drain in-flight dispatches (the DB must not close
     // mid-finalize), THEN close surfaces that children may still call
     // (Product Tools MCP) and finally Lark/setup.
-    await cronScheduler.dispose(); // stop handles, drain in-flight fire chains
-    clearInterval(doctorTimer);
-    if (doctorAllRunning) await doctorAllRunning;
     await agentRunExecution.dispose(); // abort/SIGTERM/SIGKILL children + drain
     await workflowTriggerScheduler.dispose();
     await workflowExecutionService.dispose();
@@ -1075,7 +954,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   return {
     featureSet,
-    cronScheduler,
     agentRunService,
     agentRunExecution,
     productTools,

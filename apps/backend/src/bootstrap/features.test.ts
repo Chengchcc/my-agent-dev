@@ -50,14 +50,11 @@ describe("InstalledFeatures", () => {
     expect(installed.featureSet.conversations).toBeDefined();
     expect(installed.featureSet.ops).toBeDefined();
     expect(installed.featureSet.projects).toBeDefined();
-    expect(installed.featureSet.loops).toBeDefined();
-    expect(installed.featureSet.cronJobs).toBeDefined();
     expect(installed.featureSet.skillPacks).toBeDefined();
     expect(installed.featureSet.agentRuns).toBeDefined();
     expect(installed.featureSet.settings).toBeDefined();
     expect(installed.featureSet.mcp).toBeDefined();
     expect(installed.featureSet.models).toBeDefined();
-    expect(installed.cronScheduler).toBeDefined();
     expect(typeof installed.start).toBe("function");
     expect(typeof installed.dispose).toBe("function");
 

@@ -32,7 +32,6 @@ used_by:
 - **恢复语义的强化**　**历史方案，已随 Phase 5/6 删除。** checkpointer 的 saveInterrupt / consumeInterrupt 与整个 session 持久化体系已不存在。当前语义：中断/崩溃 = 当前 Agent Run failed；下一个输入 = 新 Run = 从 Agent Context full projection 重建，无恢复路径。
 - **Issue 协作工作流演进**　**已被 Loop 取代。** Issue 本体与 Orchestrator 模块已删除（无 `features/orchestrator/`、无 Issue CRUD），工作流编排能力由 Loop 系统承接（workflow-first：fix/verify 子 agent + human gate，见 [ADR 0025](../../adr/0025-loop-workflow-first-execution.md)）。M18.3-M18.7 里程碑失效，Project 实体化已独立落地（`features/project/` CRUD 已完成）。旧 `span_origin` 表（含 issueId 列）已随 Phase 6 迁移 0020 删除。
 - **@提及收编进编排**　**已解决。** Orchestrator 已删除，@提及自动触发（`conversation/service.ts` 的 `#forkAgentRuns`）是唯一驱动来源。两套驱动的问题不存在了。
-- **Loop Engineering（统一工作系统）**　**历史方案，已由 workflow-first 取代（ADR 0025，2026-08-20）。** 本节记录的是 2026-08-13 前的设计推演（文件态：配置在 `.loop/`、运行状态放文件、Goal 是过渡态、不新增 DB 实体）——该执行模型已删除：状态落 `loop_item`/`loop_budget` 表，workflow 是唯一执行单元，Generator/Evaluator 角色已删，`verifyCommands`/taskClass/defer/Doctor/triage 已落地。**当前设计与现状见 [Loop](../foundations/loop.md)、[LoopRunner](../backend/loop-runner.md)、[Loop 验证端到端](../flows/e2e-loop-verification.md)、[ADR 0025](../../adr/0025-loop-workflow-first-execution.md)**；旧 PRD 归档在 [superpowers/plans/loop-engineering.md](../../superpowers/plans/loop-engineering.md)。本节下方案表格仅作历史记录，不再作为实现顺序。原 Phase 1/2/3 切法（文件态本体 → 增强体验 → 数据收敛）大部分已在 workflow-first 重写中一次性落地或明确否决；当前未实现项见文末「Loop 剩余功能」表。
 - **产品力审查发现（2026-07-13）**　从业务故事线（在场协作 / 离场托付 / 系统管理）出发的全面审查，识别出以下产品缺口。**大部分已于 2026-07-14 修复**，标注 ✅ 已完成 / ⏳ 待办。
 
   | 优先级 | 缺口 | 故事线 | 状态 | 修复内容 |

@@ -89,25 +89,6 @@ export const project = sqliteTable(
   (table) => [uniqueIndex("idx_project_name").on(table.name)],
 );
 
-// ─── cron_job (M21) ──────────────────────────────────────────────
-export const cronJob = sqliteTable(
-  "cron_job",
-  {
-    cronJobId: text().primaryKey(),
-    name: text().notNull(),
-    agentId: text().notNull(),
-    cronExpr: text().notNull(),
-    prompt: text().notNull().default(""),
-    enabled: integer().notNull().default(0),
-    timeoutMs: integer({ mode: "number" }).notNull().default(0),
-    maxRetries: integer({ mode: "number" }).notNull().default(0),
-    loopConfigPath: text("loop_config_path"),
-    createdAt: integer({ mode: "number" }).notNull(),
-    updatedAt: integer({ mode: "number" }).notNull(),
-  },
-  (table) => [index("idx_cron_job_enabled").on(table.enabled)],
-);
-
 // ─── workflow_execution (Agentic Workflow) ──────────────────────────
 export const workflowExecution = sqliteTable("workflow_execution", {
   executionId: text("execution_id").notNull().primaryKey(),
@@ -219,37 +200,6 @@ export const agentSkillPack = sqliteTable(
   (table) => [primaryKey({ columns: [table.agentId, table.packId] })],
 );
 
-// ─── loop_item ───
-export const loopItem = sqliteTable(
-  "loop_item",
-  {
-    loopId: text("loop_id").notNull(),
-    itemId: text("item_id").notNull(),
-    source: text().notNull(),
-    summary: text().notNull(),
-    step: text().notNull(),
-    attempt: integer().notNull(),
-    priority: integer().notNull(),
-    result: text(),
-    updatedAt: integer("updated_at", { mode: "number" }).notNull(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.loopId, table.itemId] }),
-    index("idx_loop_item_step").on(table.loopId, table.step),
-  ],
-);
-
-// ─── loop_budget ───
-export const loopBudget = sqliteTable(
-  "loop_budget",
-  {
-    loopId: text("loop_id").notNull(),
-    day: text().notNull(),
-    spent: integer().notNull().default(0),
-  },
-  (table) => [primaryKey({ columns: [table.loopId, table.day] })],
-);
-
 // ─── settings (KV store for runtime-tunable config) ────────────────
 export const settings = sqliteTable("settings", {
   key: text().primaryKey(),
@@ -310,10 +260,6 @@ export const conversationLedgerSelectSchema = createSelectSchema(conversationLed
 });
 
 export const projectSelectSchema = createSelectSchema(project);
-
-export const cronJobSelectSchema = createSelectSchema(cronJob, {
-  enabled: (s) => s.transform((v: number) => v !== 0),
-});
 
 /** Convert boolean to 0|1 for integer columns. Single source of truth
 

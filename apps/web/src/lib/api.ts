@@ -16,9 +16,6 @@ export type AgentRunStatus =
   | "timeout";
 
 export type ProjectRow = ApiReturn<typeof api.listProjects>["projects"][number];
-export type CronJobRow = ApiReturn<typeof api.listCronJobs>["cronJobs"][number];
-export type LoopRow = ApiReturn<typeof api.listLoops>["loops"][number];
-export type LoopDetail = ApiReturn<typeof api.getLoop>["loop"];
 export type LarkSetupSession = ApiReturn<typeof api.larkSetup>;
 export type AgentRow = ApiReturn<typeof api.listAgents>[number] & {
   enabled?: boolean;
@@ -30,10 +27,6 @@ export type AgentRunDetail = ApiReturn<typeof api.getAgentRun>;
 export type AgentRuntimeStatus = ApiReturn<typeof api.getAgentRuntime>;
 export type SurfaceOpsItem = ApiReturn<typeof api.listSurfaces>[number];
 export type ConversationSnapshot = ApiReturn<typeof api.listConversations>[number];
-export type ReviewQueueItem = ApiReturn<typeof api.getWorkToday>["reviewQueue"][number];
-export type CreateLoopResult = ApiReturn<typeof api.createLoop>;
-export type RefineLoopResult = ApiReturn<typeof api.refineLoop>;
-export type ActivateLoopResult = ApiReturn<typeof api.activateLoop>;
 export type SettingsMap = ApiReturn<typeof api.getSettings>["settings"];
 export type McpServerRow = ApiReturn<typeof api.listMcpServers>["mcpServers"][number];
 export type PendingInput = ApiReturn<typeof api.listConversationInputs>["inputs"][number];
@@ -210,70 +203,6 @@ export const api = {
     },
   ) => unwrap(client.api.projects({ id }).patch(body)),
   deleteProject: (id: string) => unwrap(client.api.projects({ id }).delete()),
-  // Cron Jobs
-  listCronJobs: () => unwrap(client.api["cron-jobs"].get()),
-  createCronJob: (body: {
-    name: string;
-    agentId: string;
-    cronExpr: string;
-    prompt?: string;
-    timeoutMs?: number;
-    maxRetries?: number;
-    enabled?: boolean;
-  }) => unwrap(client.api["cron-jobs"].post(body)),
-  updateCronJob: (
-    id: string,
-    body: {
-      name?: string;
-      prompt?: string;
-      cronExpr?: string;
-      timeoutMs?: number;
-      maxRetries?: number;
-      enabled?: boolean;
-    },
-  ) => unwrap(client.api["cron-jobs"]({ id }).patch(body)),
-  setCronJobEnabled: (id: string, enabled: boolean) =>
-    unwrap(client.api["cron-jobs"]({ id }).enable.post({ enabled })),
-  deleteCronJob: (id: string) => unwrap(client.api["cron-jobs"]({ id }).delete()),
-  // Loops
-  listLoops: () => unwrap(client.api.loops.get()),
-  getLoop: (id: string) => unwrap(client.api.loops({ id }).get()),
-  createLoop: (body: { name: string; intent?: string; projectId?: string; cronExpr?: string }) =>
-    unwrap(client.api.loops.post(body)),
-  runLoop: (id: string) => unwrap(client.api.loops({ id }).run.post({})),
-  doctorLoop: (id: string) => unwrap(client.api.loops({ id }).doctor.post({})),
-  triageLoop: (id: string, sources?: string[]) =>
-    unwrap(client.api.loops({ id }).triage.post({ sources: sources ?? [] })),
-  reviewLoopItem: (
-    id: string,
-    body: {
-      verdict: "approve" | "reject" | "promote" | "retry" | "dismiss";
-      itemId: string;
-      feedback?: string;
-    },
-  ) => unwrap(client.api.loops({ id }).review.post(body)),
-  deleteLoop: (id: string) => unwrap(client.api.loops({ id }).delete()),
-  activateLoop: (id: string) => unwrap(client.api.loops({ id }).activate.post()),
-  deactivateLoop: (id: string) => unwrap(client.api.loops({ id }).deactivate.post()),
-  addLoopItem: (
-    loopId: string,
-    body: {
-      source: string;
-      summary: string;
-      priority?: number;
-      taskClass?: "bugfix" | "feature" | "refactor" | "research" | "review" | "chore";
-    },
-  ) => unwrap(client.api.loops({ id: loopId }).items.post(body)),
-  deferLoopItem: (
-    loopId: string,
-    body: { itemId: string; reason: string; until?: number; after?: string[] },
-  ) => unwrap(client.api.loops({ id: loopId }).items({ itemId: body.itemId }).defer.post(body)),
-  undeferLoopItem: (loopId: string, itemId: string) =>
-    unwrap(client.api.loops({ id: loopId }).items({ itemId }).undefer.post()),
-  refineLoop: (id: string, body: { intent: string; clarifyRound?: number }) =>
-    unwrap(client.api.loops({ id }).refine.post(body)),
-  // Work Today
-  getWorkToday: () => unwrap(client.api.work.today.get()),
   // Skill packs
   listSkillPacks: () => unwrap(client.api["skill-packs"].get()),
   getSkillPackSkills: (id: string) => unwrap(client.api["skill-packs"]({ id }).skills.get()),

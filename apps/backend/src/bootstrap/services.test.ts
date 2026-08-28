@@ -31,7 +31,6 @@ describe("BackendServices", () => {
     expect(services.db).toBeDefined();
     expect(services.settingsSvc).toBeDefined();
     expect(services.opsStore).toBeDefined();
-    expect(services.loopStore).toBeDefined();
     expect(services.larkBotRegistry).toBeDefined();
     // Phase 5: composition has no legacy runtime services
     expect("sessionManager" in services).toBe(false);

@@ -62,7 +62,6 @@ Product Backend
 这些产品能力创建 Agent Run,不直接依赖子进程内部实现:
 
 1. [CronJob](./foundations/cron-job.md)
-2. [Loop](./foundations/loop.md)
 
 ## 核心概念
 

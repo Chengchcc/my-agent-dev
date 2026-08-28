@@ -120,10 +120,9 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
         return fallback;
       };
       try {
-        const [conv, agents, loops, projects] = await Promise.all([
+        const [conv, agents, projects] = await Promise.all([
           api.searchConversations(query.trim()).catch(() => fail({ results: [] })),
           api.listAgents().catch(() => fail([] as Awaited<ReturnType<typeof api.listAgents>>)),
-          api.listLoops().catch(() => fail({ loops: [] })),
           api.listProjects().catch(() => fail({ projects: [] })),
         ]);
         setSearchFailed(failed);
@@ -148,17 +147,6 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
                 name: a.name,
                 desc: a.backendKind,
                 href: `/team/agents/${a.id}`,
-              }),
-            ),
-          ...(loops.loops ?? [])
-            .filter((l) => (l.name ?? "").toLowerCase().includes(q))
-            .slice(0, 3)
-            .map(
-              (l): Hit => ({
-                type: "loop",
-                id: l.cronJobId,
-                name: l.name ?? l.cronJobId,
-                href: `/work/${l.cronJobId}`,
               }),
             ),
           ...(projects.projects ?? [])
