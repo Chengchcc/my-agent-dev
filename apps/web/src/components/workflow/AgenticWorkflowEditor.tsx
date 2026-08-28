@@ -9,6 +9,14 @@ import {
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { api } from "@/lib/api";
 import { ChatPanel } from "./ChatPanel";
 
@@ -160,16 +168,24 @@ export function AgenticWorkflowEditor({
     <div className="flex h-full flex-col bg-(--canvas) text-(--ink)">
       {/* Header */}
       <div className="flex h-12 shrink-0 items-center gap-3 border-b border-(--hairline) px-4">
-        <Link href="/agentic-workflow" className="text-xs text-(--info) hover:text-(--primary)">
-          ← workflows
-        </Link>
-        <span className="font-mono text-xs text-(--faint)">/</span>
-        <span className="truncate font-medium">{meta?.name ?? workflowId}</span>
-        {meta?.status && (
-          <span className="rounded-full border border-(--hairline) px-2 py-0.5 text-[10px] text-(--mute)">
-            {meta.status}
-          </span>
-        )}
+        <Breadcrumb className="min-w-0">
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/agentic-workflow">Workflows</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage className="truncate">
+                {meta?.name ?? workflowId}
+                {meta?.status && (
+                  <span className="ml-1.5 rounded-full border border-(--hairline) px-2 py-0.5 text-[10px] text-(--mute)">
+                    {meta.status}
+                  </span>
+                )}
+              </BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
         <div className="ml-auto flex items-center gap-2">
           {savedAt && (
             <span className="font-mono text-[10px] text-(--primary)">

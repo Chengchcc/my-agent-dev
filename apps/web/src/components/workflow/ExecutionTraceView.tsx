@@ -159,6 +159,23 @@ export function ExecutionTraceView({
             </div>
           ))}
         </div>
+        {graph.nodes.filter((n) => n.type === "agent").length > 0 && (
+          <div className="border-t p-3 text-xs">
+            <div className="mb-1 font-semibold">Agent conversations</div>
+            {graph.nodes
+              .filter((n) => n.type === "agent")
+              .map((n) => (
+                <Link
+                  key={n.id}
+                  href={`/chat/workflow:${execution.executionId}:${n.id}`}
+                  className="flex items-center justify-between border-b py-1 text-(--info) hover:text-(--primary)"
+                >
+                  <span>{n.label}</span>
+                  <span>View chat →</span>
+                </Link>
+              ))}
+          </div>
+        )}
       </div>
     </div>
   );

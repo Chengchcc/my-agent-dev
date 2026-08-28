@@ -1,6 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 
 import { api } from "@/lib/api";
 
@@ -28,16 +36,25 @@ export function ExecutionList({
   return (
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/agentic-workflow/${workflowId}`}
-            className="text-xs text-(--info) hover:text-(--primary)"
-          >
-            ← 详情
-          </Link>
-          <h1 className="text-lg font-semibold">Executions — {workflowId}</h1>
-        </div>
-        <button className="rounded bg-slate-800 px-3 py-1 text-white" onClick={run}>
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/agentic-workflow">Workflows</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink href={`/agentic-workflow/${workflowId}`}>{workflowId}</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>Executions</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+        <button
+          className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink) transition-colors hover:bg-(--panel2)"
+          onClick={run}
+        >
           + Run
         </button>
       </div>
