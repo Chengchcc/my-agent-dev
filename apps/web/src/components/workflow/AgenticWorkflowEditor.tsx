@@ -1,6 +1,11 @@
 "use client";
 
-import { toEditorGraph, type WorkflowDefinition, type WorkflowNode } from "@chengchenccc/workflow";
+import {
+  parseWorkflow,
+  toEditorGraph,
+  type WorkflowDefinition,
+  type WorkflowNode,
+} from "@chengchenccc/workflow";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { api } from "@/lib/api";
@@ -45,9 +50,22 @@ export function AgenticWorkflowEditor({
   const [activeEdgeIndex, setActiveEdgeIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [menu, setMenu] = useState<{ sourceId: string; x: number; y: number } | null>(null);
+  const [validation, setValidation] = useState<{ ok: boolean; errors?: string[] } | null>(null);
 
   const graph = useMemo(() => (definition ? toEditorGraph(definition) : null), [definition]);
   const meta = definition?.meta;
+
+  function validate() {
+    if (!definition) return;
+    try {
+      parseWorkflow(definition);
+      setValidation({ ok: true });
+    } catch (err) {
+      const issues = (err as { issues?: string[] }).issues ?? [(err as Error).message];
+      setValidation({ ok: false, errors: issues });
+    }
+  }
 
   async function save() {
     if (!definition) return;
@@ -92,6 +110,12 @@ export function AgenticWorkflowEditor({
             executions
           </Link>
           <button
+            onClick={validate}
+            className="rounded-md border border-[#38bdf8]/40 bg-[#38bdf8]/10 px-3 py-1 text-xs text-[#38bdf8] transition-all hover:bg-[#38bdf8]/20 hover:shadow-[0_0_16px_rgba(56,189,248,0.2)]"
+          >
+            Validate
+          </button>
+          <button
             onClick={save}
             disabled={saving || !definition}
             className="rounded-md border border-[#f59e0b]/40 bg-[#f59e0b]/10 px-3 py-1 text-xs text-[#f59e0b] transition-all hover:bg-[#f59e0b]/20 hover:shadow-[0_0_16px_rgba(245,158,11,0.25)] disabled:opacity-40"
@@ -100,6 +124,18 @@ export function AgenticWorkflowEditor({
           </button>
         </div>
       </div>
+
+      {validation && (
+        <div
+          className={`shrink-0 border-b px-4 py-1.5 text-xs ${
+            validation.ok
+              ? "border-[#34d399]/30 bg-[#34d399]/10 text-[#34d399]"
+              : "border-[#fb7185]/30 bg-[#fb7185]/10 text-[#fb7185]"
+          }`}
+        >
+          {validation.ok ? "✓ DSL 合法" : `✗ 校验失败：${(validation.errors ?? []).join("；")}`}
+        </div>
+      )}
 
       {/* Editor (left) + Chat (right) */}
       <div className="flex min-h-0 flex-1">
