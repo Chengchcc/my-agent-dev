@@ -105,13 +105,10 @@ export function NodePropertyPanel({
   const set = (patch: Record<string, unknown>) => onChange(patchNode(definition, nodeId, patch));
 
   return (
-    <div className="flex h-full flex-col overflow-auto p-4 text-[var(--ink)]">
+    <div className="flex h-full flex-col overflow-auto p-4 text-(--ink)">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="truncate font-mono text-sm font-semibold text-[var(--info)]">{nodeId}</h3>
-        <Badge
-          variant="outline"
-          className="shrink-0 border-[var(--hairline)] text-[10px] text-[var(--mute)]"
-        >
+        <h3 className="truncate font-mono text-sm font-semibold text-(--info)">{nodeId}</h3>
+        <Badge variant="outline" className="shrink-0 border-(--hairline) text-[10px] text-(--mute)">
           {TYPE_LABEL[node.type] ?? node.type}
         </Badge>
       </div>
@@ -119,9 +116,9 @@ export function NodePropertyPanel({
       {node.type === "agent" && (
         <>
           <div className="space-y-1">
-            <Label className="text-xs text-[var(--mute)]">agent（从系统选择）</Label>
+            <Label className="text-xs text-(--mute)">agent（从系统选择）</Label>
             <Select value={node.agentId ?? ""} onValueChange={(v) => set({ agentId: v })}>
-              <SelectTrigger className="h-8 w-full border-[var(--hairline)] bg-[var(--canvas)] font-mono text-xs">
+              <SelectTrigger className="h-8 w-full border-(--hairline) bg-(--canvas) font-mono text-xs">
                 <SelectValue placeholder="选择 agent，或留空内联 model+prompt" />
               </SelectTrigger>
               <SelectContent>
@@ -134,18 +131,18 @@ export function NodePropertyPanel({
             </Select>
           </div>
           <div className="mt-3 space-y-1">
-            <Label className="text-xs text-[var(--mute)]">model</Label>
+            <Label className="text-xs text-(--mute)">model</Label>
             <Input
-              className="border-[var(--hairline)] bg-[var(--canvas)] font-mono text-xs"
+              className="border-(--hairline) bg-(--canvas) font-mono text-xs"
               value={node.model ?? ""}
               placeholder="deepseek/deepseek-v4-flash"
               onChange={(e) => set({ model: e.target.value })}
             />
           </div>
           <div className="mt-3 space-y-1">
-            <Label className="text-xs text-[var(--mute)]">prompt</Label>
+            <Label className="text-xs text-(--mute)">prompt</Label>
             <Textarea
-              className="min-h-24 border-[var(--hairline)] bg-[var(--canvas)] font-mono text-xs"
+              className="min-h-24 border-(--hairline) bg-(--canvas) font-mono text-xs"
               value={node.prompt ?? ""}
               onChange={(e) => set({ prompt: e.target.value })}
             />
@@ -156,18 +153,18 @@ export function NodePropertyPanel({
       {node.type === "script" && (
         <>
           <div className="space-y-1">
-            <Label className="text-xs text-[var(--mute)]">code</Label>
+            <Label className="text-xs text-(--mute)">code</Label>
             <Textarea
-              className="min-h-32 border-[var(--hairline)] bg-[var(--canvas)] font-mono text-xs"
+              className="min-h-32 border-(--hairline) bg-(--canvas) font-mono text-xs"
               value={node.code ?? ""}
               onChange={(e) => set({ code: e.target.value })}
             />
           </div>
           <div className="mt-3 space-y-1">
-            <Label className="text-xs text-[var(--mute)]">timeoutMs</Label>
+            <Label className="text-xs text-(--mute)">timeoutMs</Label>
             <Input
               type="number"
-              className="border-[var(--hairline)] bg-[var(--canvas)] font-mono text-xs"
+              className="border-(--hairline) bg-(--canvas) font-mono text-xs"
               value={node.timeoutMs ?? ""}
               onChange={(e) =>
                 set({ timeoutMs: e.target.value === "" ? undefined : Number(e.target.value) })
@@ -180,16 +177,16 @@ export function NodePropertyPanel({
       {node.type === "human" && (
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label className="text-xs text-[var(--mute)]">question</Label>
+            <Label className="text-xs text-(--mute)">question</Label>
             <Textarea
-              className="min-h-24 border-[var(--hairline)] bg-[var(--canvas)] font-mono text-xs"
+              className="min-h-24 border-(--hairline) bg-(--canvas) font-mono text-xs"
               value={node.question ?? ""}
               onChange={(e) => set({ question: e.target.value })}
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-[var(--mute)]">问卷预览</Label>
-            <div className="pointer-events-none overflow-hidden rounded-lg border border-[var(--hairline)]">
+            <Label className="text-xs text-(--mute)">问卷预览</Label>
+            <div className="pointer-events-none overflow-hidden rounded-lg border border-(--hairline)">
               <AskQuestionCard input={formToQuestions(node.form, node.question)} />
             </div>
           </div>
@@ -198,9 +195,9 @@ export function NodePropertyPanel({
 
       {node.type === "end" && (
         <div className="space-y-1">
-          <Label className="text-xs text-[var(--mute)]">status</Label>
+          <Label className="text-xs text-(--mute)">status</Label>
           <Input
-            className="border-[var(--hairline)] bg-[var(--canvas)] font-mono text-xs"
+            className="border-(--hairline) bg-(--canvas) font-mono text-xs"
             value={node.status ?? ""}
             onChange={(e) => set({ status: e.target.value })}
           />
@@ -209,10 +206,10 @@ export function NodePropertyPanel({
 
       {node.retry !== undefined && (
         <div className="mt-3 space-y-1">
-          <Label className="text-xs text-[var(--mute)]">retry</Label>
+          <Label className="text-xs text-(--mute)">retry</Label>
           <Input
             type="number"
-            className="border-[var(--hairline)] bg-[var(--canvas)] font-mono text-xs"
+            className="border-(--hairline) bg-(--canvas) font-mono text-xs"
             value={node.retry}
             onChange={(e) => set({ retry: Number(e.target.value) })}
           />

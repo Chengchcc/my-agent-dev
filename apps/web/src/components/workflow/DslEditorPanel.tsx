@@ -65,7 +65,7 @@ export function DslEditorPanel({
       <Editor
         height="60vh"
         loading={
-          <div className="flex h-60 items-center justify-center text-xs text-[var(--mute)]">
+          <div className="flex h-60 items-center justify-center text-xs text-(--mute)">
             Loading editor…
           </div>
         }

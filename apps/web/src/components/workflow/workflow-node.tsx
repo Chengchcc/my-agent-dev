@@ -1,6 +1,15 @@
 "use client";
 
 import { Handle, type NodeProps, Position } from "@xyflow/react";
+import { Bot, Code2, Flag, type LucideIcon, Play, UserRound } from "lucide-react";
+
+const typeIcon: Record<string, LucideIcon> = {
+  start: Play,
+  end: Flag,
+  agent: Bot,
+  script: Code2,
+  human: UserRound,
+};
 
 const typeColor: Record<string, string> = {
   start: "var(--wf-color-start)",
@@ -53,15 +62,27 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
             onDelete();
           }}
           title="Delete node"
-          className="absolute -right-2 -top-2 z-10 flex size-5 items-center justify-center rounded-full border border-[var(--hairline)] bg-[var(--canvas)] text-[10px] text-[var(--err)] opacity-0 transition-opacity hover:border-[#fb7185]/60 hover:bg-[var(--panel2)] [.react-flow__node:hover_&]:opacity-100"
+          className="absolute -right-2 -top-2 z-10 flex size-5 items-center justify-center rounded-full border border-(--hairline) bg-(--canvas) text-[10px] text-(--err) opacity-0 transition-opacity hover:border-[#fb7185]/60 hover:bg-(--panel2) [.react-flow__node:hover_&]:opacity-100"
         >
           ✕
         </button>
       )}
       <div style={{ padding: "16px 12px 0" }}>
-        <div style={{ fontSize: 14, fontWeight: 600 }}>
-          {String(data.label)}
-          {status === "done" ? " ✓" : status === "active" ? " ●" : status === "failed" ? " ✗" : ""}
+        <div className="flex items-center gap-2">
+          {(() => {
+            const Icon = typeIcon[t] ?? Bot;
+            return <Icon className="size-4" style={{ color: band }} />;
+          })()}
+          <span style={{ fontSize: 14, fontWeight: 600 }}>
+            {String(data.label)}
+            {status === "done"
+              ? " ✓"
+              : status === "active"
+                ? " ●"
+                : status === "failed"
+                  ? " ✗"
+                  : ""}
+          </span>
         </div>
         <div
           style={{ color: "#94a3b8", fontSize: 12, fontFamily: "var(--font-mono-sf, monospace)" }}
@@ -80,12 +101,12 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
       <Handle
         type="target"
         position={Position.Top}
-        className="!h-2.5 !w-8 !rounded-full !bg-[#475569] !transition-all hover:!bg-[#38bdf8] hover:!shadow-[0_0_8px_rgba(56,189,248,0.6)]"
+        className="h-2.5! w-8! rounded-full! bg-[#475569]! transition-all! hover:bg-[#38bdf8]! hover:shadow-[0_0_8px_rgba(56,189,248,0.6)]!"
       />
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!h-2.5 !w-8 !rounded-full !bg-[#475569] !transition-all hover:!bg-[#38bdf8] hover:!shadow-[0_0_8px_rgba(56,189,248,0.6)]"
+        className="h-2.5! w-8! rounded-full! bg-[#475569]! transition-all! hover:bg-[#38bdf8]! hover:shadow-[0_0_8px_rgba(56,189,248,0.6)]!"
       />
     </div>
   );

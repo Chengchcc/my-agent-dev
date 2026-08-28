@@ -67,7 +67,7 @@ function buildGraph(
       id: e.id,
       source: e.from,
       target: e.to,
-      label: e.label,
+      label: shortWhen(e.label),
       style: lit
         ? {
             stroke: "var(--wf-accent)",
@@ -239,7 +239,7 @@ export function WorkflowCanvas({
         )}
       </ReactFlow>
       {interactive && (
-        <div className="pointer-events-none absolute left-4 top-4 z-10 rounded-md border border-[var(--hairline)] bg-[var(--panel)]/90 px-3 py-2 text-[11px] text-[var(--mute)] backdrop-blur">
+        <div className="pointer-events-none absolute left-4 top-4 z-10 rounded-md border border-(--hairline) bg-(--panel)/90 px-3 py-2 text-[11px] text-(--mute) backdrop-blur">
           <span className="mr-2 inline-block size-1.5 rounded-full bg-[#38bdf8]" />
           从节点底部拖出连线到空白处，选择下游节点类型；点击节点可编辑，按 Delete 删除
         </div>
@@ -248,7 +248,7 @@ export function WorkflowCanvas({
         <button
           onClick={autoLayout}
           title="Auto layout"
-          className="absolute right-4 top-4 z-10 flex size-7 items-center justify-center rounded-md border border-[var(--hairline)] bg-[var(--panel)]/90 text-[var(--mute)] hover:border-[var(--info)]/50 hover:text-[var(--info)]"
+          className="absolute right-4 top-4 z-10 flex size-7 items-center justify-center rounded-md border border-(--hairline) bg-(--panel)/90 text-(--mute) hover:border-(--info)/50 hover:text-(--info)"
         >
           <svg
             width="14"

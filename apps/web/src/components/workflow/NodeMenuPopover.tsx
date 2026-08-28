@@ -50,8 +50,8 @@ export function NodeMenuPopover({
   onClose: () => void;
 }) {
   return (
-    <div className="absolute z-50 w-64 rounded-xl border border-[var(--hairline)] bg-[var(--panel)]/95 p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur">
-      <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-[var(--mute)]">
+    <div className="absolute z-50 w-64 rounded-xl border border-(--hairline) bg-(--panel)/95 p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur">
+      <div className="px-2 py-1.5 text-[10px] uppercase tracking-widest text-(--mute)">
         添加下游节点
       </div>
       {NODE_TYPES.map((opt) => {
@@ -63,16 +63,16 @@ export function NodeMenuPopover({
               onPick(opt.make());
               onClose();
             }}
-            className="group flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--panel2)]"
+            className="group flex w-full items-start gap-2.5 rounded-lg p-2  text-left transition-colors hover:bg-(--panel2)"
           >
-            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border border-[var(--hairline)] bg-[var(--canvas)] text-[var(--info)]">
+            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border border-(--hairline) bg-(--canvas) text-(--info)">
               <Icon className="size-4" />
             </span>
             <span className="min-w-0">
-              <span className="block text-sm font-medium text-[var(--ink)] group-hover:text-[var(--primary)]">
+              <span className="block text-sm font-medium text-(--ink) group-hover:text-(--primary)">
                 {opt.title}
               </span>
-              <span className="block text-xs text-[var(--mute)]">{opt.description}</span>
+              <span className="block text-xs text-(--mute)">{opt.description}</span>
             </span>
           </button>
         );

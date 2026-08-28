@@ -99,7 +99,7 @@ export function ExecutionTraceView({
         <div className="flex items-center gap-2 border-b p-3">
           <Link
             href={`/agentic-workflow/${execution.workflowId}/executions`}
-            className="text-xs text-[var(--info)] hover:text-[var(--primary)]"
+            className="text-xs text-(--info) hover:text-(--primary)"
           >
             ← executions
           </Link>

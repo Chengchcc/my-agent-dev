@@ -31,7 +31,7 @@ export function ExecutionList({
         <div className="flex items-center gap-3">
           <Link
             href={`/agentic-workflow/${workflowId}`}
-            className="text-xs text-[var(--info)] hover:text-[var(--primary)]"
+            className="text-xs text-(--info) hover:text-(--primary)"
           >
             ← 详情
           </Link>
