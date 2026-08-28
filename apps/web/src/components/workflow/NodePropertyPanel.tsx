@@ -1,6 +1,5 @@
 "use client";
 
-import type { AskQuestionInput } from "@chengchenccc/agent-contract";
 import type { WorkflowDefinition, WorkflowNode } from "@chengchenccc/workflow";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
@@ -17,7 +16,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import "@/lib/monaco-loader";
-import { AskQuestionCard } from "./AskQuestionCard";
 
 const MonacoCodeEditor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
   ssr: false,
@@ -25,52 +23,6 @@ const MonacoCodeEditor = dynamic(() => import("@monaco-editor/react").then((m) =
 });
 
 type Def = WorkflowDefinition;
-
-function formToQuestions(
-  form: Record<string, unknown> | undefined,
-  question: string | undefined,
-): AskQuestionInput {
-  const questions: AskQuestionInput["questions"] = [];
-  for (const [key, raw] of Object.entries(form ?? {})) {
-    const f = raw as { type?: string; label?: string; options?: string[]; required?: boolean };
-    const label = f.label ?? key;
-    if (f.type === "enum") {
-      questions.push({
-        id: key,
-        kind: "select",
-        question: label,
-        header: question,
-        options: (f.options ?? []).map((v) => ({ value: v, label: v })),
-        validation: { required: f.required !== false },
-      });
-    } else if (f.type === "boolean") {
-      questions.push({
-        id: key,
-        kind: "select",
-        question: label,
-        header: question,
-        options: [
-          { value: "yes", label: "Yes" },
-          { value: "no", label: "No" },
-        ],
-        validation: { required: f.required !== false },
-      });
-    } else {
-      questions.push({
-        id: key,
-        kind: "text",
-        question: label,
-        header: question,
-        multiline: f.type === "textarea",
-        placeholder: f.label,
-        validation: { required: f.required !== false },
-      });
-    }
-  }
-  if (questions.length === 0 && question)
-    questions.push({ id: "answer", kind: "text", question, multiline: true });
-  return { questions };
-}
 
 function patchNode(def: Def, nodeId: string, patch: Record<string, unknown>): Def {
   return {
@@ -238,12 +190,6 @@ export function NodePropertyPanel({
               value={node.question ?? ""}
               onChange={(e) => set({ question: e.target.value })}
             />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-(--mute)">问卷预览</Label>
-            <div className="pointer-events-none overflow-hidden rounded-lg border border-(--hairline)">
-              <AskQuestionCard input={formToQuestions(node.form, node.question)} />
-            </div>
           </div>
         </div>
       )}

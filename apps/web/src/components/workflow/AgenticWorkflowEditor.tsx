@@ -1,5 +1,6 @@
 "use client";
 
+import type { AskQuestionInput } from "@chengchenccc/agent-contract";
 import {
   parseWorkflow,
   toEditorGraph,
@@ -37,6 +38,52 @@ import { TriggerPanel } from "./TriggerPanel";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 
 type InspectorTab = "attrs" | "palette" | "triggers";
+
+function formToQuestions(
+  form: Record<string, unknown> | undefined,
+  question: string | undefined,
+): AskQuestionInput {
+  const questions: AskQuestionInput["questions"] = [];
+  for (const [key, raw] of Object.entries(form ?? {})) {
+    const f = raw as { type?: string; label?: string; options?: string[]; required?: boolean };
+    const label = f.label ?? key;
+    if (f.type === "enum") {
+      questions.push({
+        id: key,
+        kind: "select",
+        question: label,
+        header: question,
+        options: (f.options ?? []).map((v) => ({ value: v, label: v })),
+        validation: { required: f.required !== false },
+      });
+    } else if (f.type === "boolean") {
+      questions.push({
+        id: key,
+        kind: "select",
+        question: label,
+        header: question,
+        options: [
+          { value: "yes", label: "Yes" },
+          { value: "no", label: "No" },
+        ],
+        validation: { required: f.required !== false },
+      });
+    } else {
+      questions.push({
+        id: key,
+        kind: "text",
+        question: label,
+        header: question,
+        multiline: f.type === "textarea",
+        placeholder: f.label,
+        validation: { required: f.required !== false },
+      });
+    }
+  }
+  if (questions.length === 0 && question)
+    questions.push({ id: "answer", kind: "text", question, multiline: true });
+  return { questions };
+}
 
 function makeNodeId(base: string): string {
   return `${base}-${Math.random().toString(36).slice(2, 7)}`;
@@ -138,6 +185,18 @@ export function AgenticWorkflowEditor({
   const [validation, setValidation] = useState<{ ok: boolean; errors?: string[] } | null>(null);
 
   const graph = useMemo(() => (definition ? toEditorGraph(definition) : null), [definition]);
+  const humanForms = useMemo(() => {
+    const map: Record<string, AskQuestionInput> = {};
+    if (!definition) return map;
+    for (const n of definition.nodes) {
+      if (n.type === "human") {
+        const q = (n as { question?: string }).question;
+        const form = (n as { form?: Record<string, unknown> }).form;
+        if (form || q) map[n.id] = formToQuestions(form, q);
+      }
+    }
+    return map;
+  }, [definition]);
   const meta = definition?.meta;
 
   function validate() {
@@ -306,6 +365,7 @@ export function AgenticWorkflowEditor({
                     onNodeMenuRequested={(sourceId, pos) =>
                       setMenu({ sourceId, x: pos.x, y: pos.y })
                     }
+                    humanForms={humanForms}
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm text-(--mute)">

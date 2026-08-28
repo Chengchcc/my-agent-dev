@@ -101,6 +101,7 @@ function buildGraph(
   onNodeDelete: ((id: string) => void) | undefined,
   pendingHuman?: PendingHuman | null,
   onSubmitHuman?: (nodeId: string, answer: Record<string, unknown>) => void | Promise<void>,
+  humanForms?: Record<string, AskQuestionInput>,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = graph.nodes.map((n) => {
     const status = nodeStatus?.[n.id] ?? "idle";
@@ -114,11 +115,18 @@ function buildGraph(
         layer: n.layer,
         status,
         ...(interactive && onNodeDelete ? { onDelete: () => onNodeDelete(n.id) } : {}),
-        ...(n.type === "human" && pendingHuman?.nodeId === n.id
+        ...(n.type === "human"
           ? {
-              askQuestion: formToQuestions(pendingHuman.form, pendingHuman.question),
-              onSubmitHuman: async (answer: Record<string, unknown>) =>
-                onSubmitHuman?.(n.id, answer),
+              askQuestion:
+                pendingHuman?.nodeId === n.id
+                  ? formToQuestions(pendingHuman.form, pendingHuman.question)
+                  : (humanForms?.[n.id] ?? { questions: [] }),
+              ...(pendingHuman?.nodeId === n.id
+                ? {
+                    onSubmitHuman: async (answer: Record<string, unknown>) =>
+                      onSubmitHuman?.(n.id, answer),
+                  }
+                : {}),
             }
           : {}),
       },
@@ -175,6 +183,7 @@ export function WorkflowCanvas({
     status: string;
   } | null;
   onSubmitHuman?: (nodeId: string, answer: Record<string, unknown>) => void | Promise<void>;
+  humanForms?: Record<string, AskQuestionInput>;
 }) {
   const [rf, setRf] = useState<{
     fitView: (opts?: { padding?: number }) => void;
