@@ -4,6 +4,14 @@ import { toEditorGraph, type WorkflowDefinition } from "@chengchenccc/workflow";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { api } from "@/lib/api";
 import { type NodeStatus, WorkflowCanvas } from "./WorkflowCanvas";
 
@@ -89,93 +97,124 @@ export function ExecutionTraceView({
   const snapshot = useMemo(() => replayStore(events, index), [events, index]);
 
   return (
-    <div className="flex h-full">
-      <div className="flex-1 border-r">
-        <WorkflowCanvas
-          graph={graph}
-          nodeStatus={nodeStatus}
-          litEdges={litEdges}
-          pendingHuman={pendingHuman ?? null}
-          onSubmitHuman={async (nodeId, answer) => {
-            if (!pendingHuman) return;
-            await api.resolveWorkflowHumanTask(execution.executionId, {
-              nodeId,
-              answer,
-            });
-            router.refresh();
-          }}
-        />
+    <div className="flex h-full flex-col">
+      <div className="flex h-12 shrink-0 items-center gap-3 border-b border-(--hairline) px-4">
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/agentic-workflow">Workflows</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink href={`/agentic-workflow/${execution.workflowId}`}>
+                {execution.workflowId}
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink href={`/agentic-workflow/${execution.workflowId}/executions`}>
+                Executions
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{execution.executionId.slice(0, 16)}…</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+        <span className="ml-auto font-mono text-[10px] text-(--mute)">{execution.status}</span>
       </div>
-      <div className="w-80 border-l">
-        <div className="flex items-center gap-2 border-b p-3">
-          <Link
-            href={`/agentic-workflow/${execution.workflowId}/executions`}
-            className="text-xs text-(--info) hover:text-(--primary)"
-          >
-            ← executions
-          </Link>
-          <button className="rounded border px-2" onClick={() => setIndex(Math.max(0, index - 1))}>
-            ◀
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={Math.max(0, events.length - 1)}
-            value={index}
-            onChange={(e) => setIndex(Number(e.target.value))}
-            className="flex-1"
+      <div className="flex min-h-0 flex-1">
+        <div className="flex-1 border-r">
+          <WorkflowCanvas
+            graph={graph}
+            nodeStatus={nodeStatus}
+            litEdges={litEdges}
+            pendingHuman={pendingHuman ?? null}
+            onSubmitHuman={async (nodeId, answer) => {
+              if (!pendingHuman) return;
+              await api.resolveWorkflowHumanTask(execution.executionId, {
+                nodeId,
+                answer,
+              });
+              router.refresh();
+            }}
           />
-          <button
-            className="rounded border px-2"
-            onClick={() => setIndex(Math.min(events.length - 1, index + 1))}
-          >
-            ▶
-          </button>
-          <span className="text-xs text-muted-foreground">
-            {index + 1}/{events.length}
-          </span>
         </div>
-        <div className="max-h-[40vh] overflow-auto p-3 text-xs">
-          <div className="mb-1 font-semibold">Event log</div>
-          {events.slice(0, index + 1).map((e) => (
-            <div key={e.seq} className="border-b py-1">
-              <span className="text-muted-foreground">{new Date(e.ts).toLocaleTimeString()}</span>{" "}
-              {e.event}
-            </div>
-          ))}
-        </div>
-        <div className="border-t p-3 text-xs">
-          <div className="mb-1 font-semibold">Store snapshot</div>
-          <pre className="max-h-[20vh] overflow-auto text-[10px]">
-            {JSON.stringify(snapshot, null, 2)}
-          </pre>
-        </div>
-        <div className="border-t p-3 text-xs">
-          <div className="mb-1 font-semibold">Node runs</div>
-          {nodeRuns.map((r) => (
-            <div key={r.seq} className="flex justify-between border-b py-0.5">
-              <span>{r.nodeId}</span>
-              <span>{r.status}</span>
-            </div>
-          ))}
-        </div>
-        {graph.nodes.filter((n) => n.type === "agent").length > 0 && (
-          <div className="border-t p-3 text-xs">
-            <div className="mb-1 font-semibold">Agent conversations</div>
-            {graph.nodes
-              .filter((n) => n.type === "agent")
-              .map((n) => (
-                <Link
-                  key={n.id}
-                  href={`/chat/workflow:${execution.executionId}:${n.id}`}
-                  className="flex items-center justify-between border-b py-1 text-(--info) hover:text-(--primary)"
-                >
-                  <span>{n.label}</span>
-                  <span>View chat →</span>
-                </Link>
-              ))}
+        <div className="w-80 border-l">
+          <div className="flex items-center gap-2 border-b p-3">
+            <Link
+              href={`/agentic-workflow/${execution.workflowId}/executions`}
+              className="text-xs text-(--info) hover:text-(--primary)"
+            >
+              ← executions
+            </Link>
+            <button
+              className="rounded border px-2"
+              onClick={() => setIndex(Math.max(0, index - 1))}
+            >
+              ◀
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, events.length - 1)}
+              value={index}
+              onChange={(e) => setIndex(Number(e.target.value))}
+              className="flex-1"
+            />
+            <button
+              className="rounded border px-2"
+              onClick={() => setIndex(Math.min(events.length - 1, index + 1))}
+            >
+              ▶
+            </button>
+            <span className="text-xs text-muted-foreground">
+              {index + 1}/{events.length}
+            </span>
           </div>
-        )}
+          <div className="max-h-[40vh] overflow-auto p-3 text-xs">
+            <div className="mb-1 font-semibold">Event log</div>
+            {events.slice(0, index + 1).map((e) => (
+              <div key={e.seq} className="border-b py-1">
+                <span className="text-muted-foreground">{new Date(e.ts).toLocaleTimeString()}</span>{" "}
+                {e.event}
+              </div>
+            ))}
+          </div>
+          <div className="border-t p-3 text-xs">
+            <div className="mb-1 font-semibold">Store snapshot</div>
+            <pre className="max-h-[20vh] overflow-auto text-[10px]">
+              {JSON.stringify(snapshot, null, 2)}
+            </pre>
+          </div>
+          <div className="border-t p-3 text-xs">
+            <div className="mb-1 font-semibold">Node runs</div>
+            {nodeRuns.map((r) => (
+              <div key={r.seq} className="flex justify-between border-b py-0.5">
+                <span>{r.nodeId}</span>
+                <span>{r.status}</span>
+              </div>
+            ))}
+          </div>
+          {graph.nodes.filter((n) => n.type === "agent").length > 0 && (
+            <div className="border-t p-3 text-xs">
+              <div className="mb-1 font-semibold">Agent conversations</div>
+              {graph.nodes
+                .filter((n) => n.type === "agent")
+                .map((n) => (
+                  <Link
+                    key={n.id}
+                    href={`/chat/workflow:${execution.executionId}:${n.id}`}
+                    className="flex items-center justify-between border-b py-1 text-(--info) hover:text-(--primary)"
+                  >
+                    <span>{n.label}</span>
+                    <span>View chat →</span>
+                  </Link>
+                ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
