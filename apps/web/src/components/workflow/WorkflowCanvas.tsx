@@ -102,13 +102,23 @@ export function WorkflowCanvas({
     () => buildGraph(graph, nodeStatus, litEdges, interactive, onNodeDelete).edges,
   );
 
-  // Rebuild when the derived graph changes; local drag positions persist
-  // across re-renders of the same graph (drag is view-only, never in DSL).
+  // Sync graph changes without resetting drag positions: keep existing node
+  // positions, only place new nodes via the derived layout. Auto-layout (button)
+  // is the only thing that repositions the whole graph.
   useEffect(() => {
     const b = buildGraph(graph, nodeStatus, litEdges, interactive, onNodeDelete);
-    setNodes(b.nodes);
+    setNodes((existing) => {
+      const pos = new Map(existing.map((n) => [n.id, n.position]));
+      return b.nodes.map((n) => ({ ...n, position: pos.get(n.id) ?? n.position }));
+    });
     setEdges(b.edges);
   }, [graph, nodeStatus, litEdges, interactive, onNodeDelete]);
+
+  function autoLayout() {
+    const b = buildGraph(graph, nodeStatus, litEdges, interactive, onNodeDelete);
+    setNodes(b.nodes);
+    rf?.fitView({ padding: 0.2 });
+  }
 
   function onNodesChange(changes: NodeChange[]) {
     setNodes((nds) => applyNodeChanges(changes, nds));
@@ -132,8 +142,7 @@ export function WorkflowCanvas({
       return; // connected to a node
     const x = "clientX" in event ? event.clientX : 0;
     const y = "clientY" in event ? event.clientY : 0;
-    const pos = rf?.screenToFlowPosition?.({ x, y }) ?? { x: 0, y: 0 };
-    onNodeMenuRequested?.(source, pos);
+    onNodeMenuRequested?.(source, { x, y });
     setConnectSource(null);
   };
 
@@ -213,17 +222,31 @@ export function WorkflowCanvas({
         )}
       </ReactFlow>
       {interactive && (
-        <div className="pointer-events-none absolute left-4 top-4 z-10 rounded-md border border-[#1f2937] bg-[#111827]/90 px-3 py-2 text-[11px] text-[#94a3b8] backdrop-blur">
+        <div className="pointer-events-none absolute left-4 top-4 z-10 rounded-md border border-[var(--hairline)] bg-[var(--panel)]/90 px-3 py-2 text-[11px] text-[var(--mute)] backdrop-blur">
           <span className="mr-2 inline-block size-1.5 rounded-full bg-[#38bdf8]" />
           从节点底部拖出连线到空白处，选择下游节点类型；点击节点可编辑，按 Delete 删除
         </div>
       )}
       {interactive && (
         <button
-          onClick={() => rf?.fitView({ padding: 0.2 })}
-          className="absolute bottom-4 left-4 z-10 rounded-md border border-[#1f2937] bg-[#111827]/90 px-2.5 py-1 font-mono text-xs text-[#38bdf8] hover:border-[#38bdf8]/50 hover:bg-[#1e293b]"
+          onClick={autoLayout}
+          title="Auto layout"
+          className="absolute right-4 top-4 z-10 flex size-7 items-center justify-center rounded-md border border-[var(--hairline)] bg-[var(--panel)]/90 text-[var(--mute)] hover:border-[var(--info)]/50 hover:text-[var(--info)]"
         >
-          auto layout
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 3 3 21" />
+            <path d="M21 7v4h-4" />
+            <path d="M3 17v-4h4" />
+          </svg>
         </button>
       )}
     </div>

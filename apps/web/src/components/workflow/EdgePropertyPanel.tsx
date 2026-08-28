@@ -45,26 +45,26 @@ export function EdgePropertyPanel({
     .map((n) => ({ value: n.id, label: n.id }));
 
   return (
-    <div className="flex h-full flex-col overflow-auto p-4 text-[#e5e7eb]">
+    <div className="flex h-full flex-col overflow-auto p-4 text-[var(--ink)]">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="truncate font-mono text-sm font-semibold text-[#38bdf8]">
+        <h3 className="truncate font-mono text-sm font-semibold text-[var(--info)]">
           {edge.from} → {edge.to}
         </h3>
         <button
           onClick={() => onDelete?.(deleteEdge(definition, edgeIndex))}
-          className="text-xs text-[#fb7185] hover:underline"
+          className="text-xs text-[var(--err)] hover:underline"
         >
           删除此边
         </button>
       </div>
 
       <div className="space-y-1">
-        <Label className="text-xs text-[#94a3b8]">from</Label>
+        <Label className="text-xs text-[var(--mute)]">from</Label>
         <Select
           value={edge.from}
           onValueChange={(v) => onChange(updateEdge(definition, edgeIndex, { from: v }))}
         >
-          <SelectTrigger className="h-8 border-[#1f2937] bg-[#0b0e14] font-mono text-xs">
+          <SelectTrigger className="h-8 border-[var(--hairline)] bg-[var(--canvas)] font-mono text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -78,12 +78,12 @@ export function EdgePropertyPanel({
       </div>
 
       <div className="mt-3 space-y-1">
-        <Label className="text-xs text-[#94a3b8]">to</Label>
+        <Label className="text-xs text-[var(--mute)]">to</Label>
         <Select
           value={edge.to}
           onValueChange={(v) => onChange(updateEdge(definition, edgeIndex, { to: v }))}
         >
-          <SelectTrigger className="h-8 border-[#1f2937] bg-[#0b0e14] font-mono text-xs">
+          <SelectTrigger className="h-8 border-[var(--hairline)] bg-[var(--canvas)] font-mono text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -97,9 +97,9 @@ export function EdgePropertyPanel({
       </div>
 
       <div className="mt-3 flex flex-1 flex-col space-y-1">
-        <Label className="text-xs text-[#94a3b8]">when（JSONLogic，空 = 无条件）</Label>
+        <Label className="text-xs text-[var(--mute)]">when（JSONLogic，空 = 无条件）</Label>
         <Textarea
-          className="min-h-28 flex-1 border-[#1f2937] bg-[#0b0e14] font-mono text-xs"
+          className="min-h-28 flex-1 border-[var(--hairline)] bg-[var(--canvas)] font-mono text-xs"
           value={when}
           onChange={(e) => setWhen(e.target.value)}
           placeholder='{ "==": [ { "var": "a.output.x" }, "high" ] }'

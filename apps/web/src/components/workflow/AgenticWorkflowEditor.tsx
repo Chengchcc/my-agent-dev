@@ -147,69 +147,72 @@ export function AgenticWorkflowEditor({
   }
 
   return (
-    <div className="flex h-full flex-col bg-[#0b0e14] text-[#e5e7eb]">
+    <div className="flex h-full flex-col bg-[var(--canvas)] text-[var(--ink)]">
       {/* Header */}
-      <div className="flex h-12 shrink-0 items-center gap-3 border-b border-[#1f2937] px-4">
-        <Link href="/agentic-workflow" className="text-xs text-[#38bdf8] hover:text-[#f59e0b]">
+      <div className="flex h-12 shrink-0 items-center gap-3 border-b border-[var(--hairline)] px-4">
+        <Link
+          href="/agentic-workflow"
+          className="text-xs text-[var(--info)] hover:text-[var(--primary)]"
+        >
           ← workflows
         </Link>
-        <span className="font-mono text-xs text-[#475569]">/</span>
+        <span className="font-mono text-xs text-[var(--faint)]">/</span>
         <span className="truncate font-medium">{meta?.name ?? workflowId}</span>
         {meta?.status && (
-          <span className="rounded-full border border-[#1f2937] px-2 py-0.5 text-[10px] text-[#94a3b8]">
+          <span className="rounded-full border border-[var(--hairline)] px-2 py-0.5 text-[10px] text-[var(--mute)]">
             {meta.status}
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
           {savedAt && (
-            <span className="font-mono text-[10px] text-[#34d399]">
+            <span className="font-mono text-[10px] text-[var(--primary)]">
               saved {new Date(savedAt).toLocaleTimeString()}
             </span>
           )}
           <Link
             href={`/agentic-workflow/${workflowId}/executions`}
-            className="rounded-md border border-[#1f2937] px-2.5 py-1 text-xs text-[#94a3b8] hover:border-[#38bdf8]/50 hover:text-[#38bdf8]"
+            className="rounded-md border border-[var(--hairline)] px-2.5 py-1 text-xs text-[var(--mute)] hover:border-[var(--info)]/50 hover:text-[var(--info)]"
           >
             executions
           </Link>
           <button
             onClick={undo}
             disabled={past.length === 0}
-            className="rounded-md border border-[#1f2937] px-2.5 py-1 text-xs text-[#94a3b8] hover:text-[#e5e7eb] disabled:opacity-30"
+            className="rounded-md border border-[var(--hairline)] px-2.5 py-1 text-xs text-[var(--mute)] hover:text-[var(--ink)] disabled:opacity-30"
           >
             ↩ Undo
           </button>
           <button
             onClick={redo}
             disabled={future.length === 0}
-            className="rounded-md border border-[#1f2937] px-2.5 py-1 text-xs text-[#94a3b8] hover:text-[#e5e7eb] disabled:opacity-30"
+            className="rounded-md border border-[var(--hairline)] px-2.5 py-1 text-xs text-[var(--mute)] hover:text-[var(--ink)] disabled:opacity-30"
           >
             ↪ Redo
           </button>
-          <div className="flex overflow-hidden rounded-md border border-[#1f2937]">
+          <div className="flex overflow-hidden rounded-md border border-[var(--hairline)]">
             <button
               onClick={() => setMode("canvas")}
-              className={`px-2.5 py-1 text-xs ${mode === "canvas" ? "bg-[#1e293b] text-[#e5e7eb]" : "text-[#64748b]"}`}
+              className={`px-2.5 py-1 text-xs ${mode === "canvas" ? "bg-[var(--panel2)] text-[var(--ink)]" : "text-[var(--mute)]"}`}
             >
               Canvas
             </button>
             <button
               onClick={() => setMode("dsl")}
-              className={`px-2.5 py-1 text-xs ${mode === "dsl" ? "bg-[#1e293b] text-[#e5e7eb]" : "text-[#64748b]"}`}
+              className={`px-2.5 py-1 text-xs ${mode === "dsl" ? "bg-[var(--panel2)] text-[var(--ink)]" : "text-[var(--mute)]"}`}
             >
               DSL
             </button>
           </div>
           <button
             onClick={validate}
-            className="rounded-md border border-[#38bdf8]/40 bg-[#38bdf8]/10 px-3 py-1 text-xs text-[#38bdf8] transition-all hover:bg-[#38bdf8]/20 hover:shadow-[0_0_16px_rgba(56,189,248,0.2)]"
+            className="rounded-md border border-[#38bdf8]/40 bg-[#38bdf8]/10 px-3 py-1 text-xs text-[var(--info)] transition-all hover:bg-[#38bdf8]/20 hover:shadow-[0_0_16px_rgba(56,189,248,0.2)]"
           >
             Validate
           </button>
           <button
             onClick={save}
             disabled={saving || !definition}
-            className="rounded-md border border-[#f59e0b]/40 bg-[#f59e0b]/10 px-3 py-1 text-xs text-[#f59e0b] transition-all hover:bg-[#f59e0b]/20 hover:shadow-[0_0_16px_rgba(245,158,11,0.25)] disabled:opacity-40"
+            className="rounded-md border border-[var(--primary)]/40 bg-[var(--primary)]/10 px-3 py-1 text-xs text-[var(--primary)] transition-all hover:bg-[var(--primary)]/20 hover:shadow-[0_0_16px_rgba(245,158,11,0.25)] disabled:opacity-40"
           >
             {saving ? "saving…" : "⌘S Save"}
           </button>
@@ -220,8 +223,8 @@ export function AgenticWorkflowEditor({
         <div
           className={`shrink-0 border-b px-4 py-1.5 text-xs ${
             validation.ok
-              ? "border-[#34d399]/30 bg-[#34d399]/10 text-[#34d399]"
-              : "border-[#fb7185]/30 bg-[#fb7185]/10 text-[#fb7185]"
+              ? "border-[var(--primary)]/30 bg-[var(--primary)]/10 text-[var(--primary)]"
+              : "border-[#fb7185]/30 bg-[#fb7185]/10 text-[var(--err)]"
           }`}
         >
           {validation.ok ? "✓ DSL 合法" : `✗ 校验失败：${(validation.errors ?? []).join("；")}`}
@@ -231,7 +234,7 @@ export function AgenticWorkflowEditor({
       {/* Editor (left) + Chat (right) */}
       <div className="flex min-h-0 flex-1">
         {mode === "dsl" ? (
-          <div className="min-w-0 flex-1 bg-[#0b0e14]">
+          <div className="min-w-0 flex-1 bg-[var(--canvas)]">
             {definition && (
               <DslEditorPanel
                 workflowId={workflowId}
@@ -251,7 +254,7 @@ export function AgenticWorkflowEditor({
             <div className="flex min-w-0 flex-1 flex-col">
               <div className="min-h-0 flex-1">
                 {menu && (
-                  <div className="absolute z-20" style={{ left: menu.x, top: menu.y }}>
+                  <div className="fixed z-50" style={{ left: menu.x, top: menu.y }}>
                     <NodeMenuPopover
                       onPick={(node) => {
                         if (!definition) return;
@@ -285,7 +288,7 @@ export function AgenticWorkflowEditor({
                     }
                   />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-[#64748b]">
+                  <div className="flex h-full items-center justify-center text-sm text-[var(--mute)]">
                     No workflow loaded.
                   </div>
                 )}
@@ -293,15 +296,15 @@ export function AgenticWorkflowEditor({
             </div>
 
             {/* Inspector column */}
-            <div className="flex w-72 shrink-0 flex-col border-l border-[#1f2937] bg-[#0f172a]/70">
-              <div className="flex border-b border-[#1f2937]">
+            <div className="flex w-72 shrink-0 flex-col border-l border-[var(--hairline)] bg-[var(--panel)]/70">
+              <div className="flex border-b border-[var(--hairline)]">
                 {([["attrs", "属性"]] as Array<[InspectorTab, string]>).map(([k, label]) => (
                   <button
                     key={k}
                     className={`flex-1 py-2.5 text-xs transition-colors ${
                       inspectorTab === k
-                        ? "border-b-2 border-[#f59e0b] text-[#e5e7eb]"
-                        : "text-[#64748b] hover:text-[#94a3b8]"
+                        ? "border-b-2 border-[var(--primary)] text-[var(--ink)]"
+                        : "text-[var(--mute)] hover:text-[var(--mute)]"
                     }`}
                     onClick={() => setInspectorTab(k)}
                   >
@@ -327,7 +330,7 @@ export function AgenticWorkflowEditor({
                     onChange={setDefinitionTracked}
                   />
                 ) : (
-                  <div className="p-4 text-xs text-[#64748b]">
+                  <div className="p-4 text-xs text-[var(--mute)]">
                     点击画布节点或边进行编辑；上方按钮添加节点；拖动节点调整布局。
                   </div>
                 )}
@@ -336,7 +339,7 @@ export function AgenticWorkflowEditor({
           </div>
         )}
         {/* Chat (right, always visible) */}
-        <div className="flex w-80 shrink-0 flex-col border-l border-[#1f2937] bg-[#0f172a]/70">
+        <div className="flex w-80 shrink-0 flex-col border-l border-[var(--hairline)] bg-[var(--panel)]/70">
           <ChatPanel />
         </div>
       </div>

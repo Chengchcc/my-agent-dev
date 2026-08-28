@@ -53,7 +53,7 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
             onDelete();
           }}
           title="Delete node"
-          className="absolute -right-2 -top-2 z-10 flex size-5 items-center justify-center rounded-full border border-[#1f2937] bg-[#0b0e14] text-[10px] text-[#fb7185] opacity-0 transition-opacity hover:border-[#fb7185]/60 hover:bg-[#1e293b] [.react-flow__node:hover_&]:opacity-100"
+          className="absolute -right-2 -top-2 z-10 flex size-5 items-center justify-center rounded-full border border-[var(--hairline)] bg-[var(--canvas)] text-[10px] text-[var(--err)] opacity-0 transition-opacity hover:border-[#fb7185]/60 hover:bg-[var(--panel2)] [.react-flow__node:hover_&]:opacity-100"
         >
           ✕
         </button>
@@ -69,8 +69,24 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
           {t}
         </div>
       </div>
-      <Handle type="target" position={Position.Top} />
-      <Handle type="source" position={Position.Bottom} />
+      <span
+        className="pointer-events-none absolute inset-x-0 top-0 z-0 h-full"
+        style={{
+          background: `linear-gradient(180deg, ${band}22, transparent 40%)`,
+          opacity: 0,
+          transition: "opacity 0.2s",
+        }}
+      />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!h-2.5 !w-8 !rounded-full !bg-[#475569] !transition-all hover:!bg-[#38bdf8] hover:!shadow-[0_0_8px_rgba(56,189,248,0.6)]"
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!h-2.5 !w-8 !rounded-full !bg-[#475569] !transition-all hover:!bg-[#38bdf8] hover:!shadow-[0_0_8px_rgba(56,189,248,0.6)]"
+      />
     </div>
   );
 }
