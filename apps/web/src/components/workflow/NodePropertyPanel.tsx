@@ -16,6 +16,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import "@/lib/monaco-loader";
+import { HumanFormEditor } from "./HumanFormEditor";
 
 const MonacoCodeEditor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
   ssr: false,
@@ -191,6 +192,10 @@ export function NodePropertyPanel({
               onChange={(e) => set({ question: e.target.value })}
             />
           </div>
+          <HumanFormEditor
+            form={(node as { form?: Record<string, unknown> }).form}
+            onChange={(form) => set({ form })}
+          />
         </div>
       )}
 
