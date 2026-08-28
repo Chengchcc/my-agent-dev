@@ -55,7 +55,18 @@ interface NodeCommon {
   inputSchema?: JsonSchema;
   /** Optional JSON-Schema-subset validation for node output (fail node on violation). */
   outputSchema?: JsonSchema;
-  retry?: number;
+  /** Retry policy: number = max retries after first failure, or a config
+   *  with attempts/interval/backoff. */
+  retry?: number | NodeRetry;
+}
+
+export interface NodeRetry {
+  /** Max retries after the first failure (default 0 = no retry). */
+  maxAttempts?: number;
+  /** Base delay between retries in ms (default 0). */
+  intervalMs?: number;
+  /** Exponential backoff multiplier per retry (default 1 = constant). */
+  backoff?: number;
 }
 
 export type WorkflowNode = NodeCommon &

@@ -241,14 +241,20 @@ export function createWorkflowExecutionService(
     node: WorkflowNode,
     run: (n: WorkflowNode) => Promise<NodeRunResult>,
   ): Promise<NodeRunResult> {
-    const retry = node.retry ?? 0;
+    const cfg = node.retry ?? 0;
+    const maxRetries = typeof cfg === "number" ? cfg : (cfg.maxAttempts ?? 0);
+    const intervalMs = typeof cfg === "number" ? 0 : (cfg.intervalMs ?? 0);
+    const backoff = typeof cfg === "number" ? 1 : (cfg.backoff ?? 1);
     let lastError: unknown;
-    for (let attempt = 0; attempt <= retry; attempt++) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         return await run(node);
       } catch (err) {
         lastError = err;
-        if (attempt === retry) throw err;
+        if (attempt === maxRetries) throw err;
+        // Active retry: wait with exponential backoff before re-running.
+        const wait = intervalMs * Math.pow(backoff, attempt);
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       }
     }
     throw lastError;

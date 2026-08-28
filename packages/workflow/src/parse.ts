@@ -3,6 +3,7 @@ import type {
   FormField,
   InputHint,
   JsonLogicRule,
+  NodeRetry,
   JsonSchema,
   WorkflowDefinition,
   WorkflowMeta,
@@ -87,6 +88,16 @@ function parseNode(raw: unknown, issues: string[]): WorkflowNode | undefined {
   if (isRecord(raw.outputSchema)) node.outputSchema = raw.outputSchema as JsonSchema;
   if (typeof raw.retry === "number" && Number.isInteger(raw.retry) && raw.retry >= 0)
     node.retry = raw.retry;
+  else if (isRecord(raw.retry)) {
+    const cfg: Record<string, unknown> = {};
+    if (typeof raw.retry.maxAttempts === "number" && Number.isInteger(raw.retry.maxAttempts) && raw.retry.maxAttempts >= 0)
+      cfg.maxAttempts = raw.retry.maxAttempts;
+    if (typeof raw.retry.intervalMs === "number" && raw.retry.intervalMs >= 0)
+      cfg.intervalMs = raw.retry.intervalMs;
+    if (typeof raw.retry.backoff === "number" && raw.retry.backoff >= 1)
+      cfg.backoff = raw.retry.backoff;
+    if (Object.keys(cfg).length > 0) node.retry = cfg as NodeRetry;
+  }
   switch (raw.type) {
     case "end": {
       const status = nonEmptyString(raw.status, `node "${id}" status`, issues);
