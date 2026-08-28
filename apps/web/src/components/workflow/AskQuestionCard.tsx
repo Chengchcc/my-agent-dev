@@ -1,51 +1,26 @@
 "use client";
 
 import type { AskQuestionInput, AskQuestionResult } from "@chengchenccc/agent-contract";
-import { useForm } from "react-hook-form";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Questionnaire } from "@shadcn/react/questionnaire";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
 
-type Row = { selected: string[]; freeText: string };
-type FormValues = Record<string, Row>;
+type Items = React.ComponentProps<typeof Questionnaire.Root>["items"];
 
-function defaults(input: AskQuestionInput): FormValues {
-  const v: FormValues = {};
-  for (const q of input.questions) v[q.id] = { selected: [], freeText: "" };
-  return v;
-}
-
-function validateRow(
-  q: AskQuestionInput["questions"][number],
-  row: Row | undefined,
-): string | undefined {
-  const r = q.validation ?? {};
-  const required = r.required !== false;
-  if (q.kind === "text") {
-    const text = (row?.freeText ?? "").trim();
-    if (required && text.length === 0) return "This field is required";
-    if (r.minLength && text.length < r.minLength) return `At least ${r.minLength} characters`;
-    if (r.maxLength && text.length > r.maxLength) return `At most ${r.maxLength} characters`;
-    return undefined;
-  }
-  const n = row?.selected.length ?? 0;
-  if (required && n === 0 && !(row?.freeText ?? "").trim()) return "Pick at least one option";
-  if (r.minSelections && n < r.minSelections) return `Pick at least ${r.minSelections}`;
-  if (r.maxSelections && n > r.maxSelections) return `Pick at most ${r.maxSelections}`;
-  return undefined;
+function buildItems(input: AskQuestionInput): Items {
+  return input.questions.map((q) => {
+    if (q.kind === "text") {
+      return {
+        name: q.id,
+        required: q.validation?.required !== false,
+        choices: q.multiline ? [{ value: "" }] : [],
+      } as const;
+    }
+    return {
+      name: q.id,
+      required: q.validation?.required !== false,
+      choices: (q.options ?? []).map((o) => ({ value: o.value, label: o.label })),
+    } as const;
+  });
 }
 
 export function AskQuestionCard({
@@ -57,142 +32,111 @@ export function AskQuestionCard({
   onSubmit?: (result: AskQuestionResult) => void;
   onChat?: () => void;
 }) {
-  const form = useForm<FormValues>({ defaultValues: defaults(input) });
+  const items = buildItems(input);
   const hasChat = input.questions.some((q) => q.allowChat);
 
-  function toggle(_qid: string, value: string, multi: boolean, current: string[]): string[] {
-    if (!multi) return current.includes(value) ? [] : [value];
-    return current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const answers = input.questions.map((q) => {
+      if (q.kind === "text") {
+        const v = String(formData.get(q.id) ?? "").trim();
+        return { id: q.id, selectedValues: [], freeText: v || undefined };
+      }
+      const selected = formData.getAll(q.id).map(String);
+      const other = String(formData.get(`${q.id}__other`) ?? "").trim();
+      return {
+        id: q.id,
+        selectedValues: selected.filter((v) => v !== "__other__"),
+        freeText: other || undefined,
+      };
+    });
+    onSubmit?.({ answers });
   }
 
   return (
-    <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit((values) => {
-          const errors: Record<string, string> = {};
-          for (const q of input.questions) {
-            const err = validateRow(q, values[q.id]);
-            if (err) errors[q.id] = err;
-          }
-          if (Object.keys(errors).length > 0) {
-            for (const [k, v] of Object.entries(errors)) form.setError(k, { message: v });
-            return;
-          }
-          onSubmit?.({
-            answers: input.questions.map((q) => ({
-              id: q.id,
-              selectedValues: values[q.id]?.selected ?? [],
-              freeText: (values[q.id]?.freeText ?? "").trim() || undefined,
-            })),
-          });
-        })}
-        className="space-y-4"
-      >
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              {input.questions[0]?.header ?? "A few questions"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            {input.questions.map((q) => (
-              <FormField
-                key={q.id}
-                control={form.control}
-                name={q.id}
-                render={({ field }) => {
-                  const row = (field.value as Row) ?? { selected: [], freeText: "" };
-                  return (
-                    <FormItem>
-                      <FormLabel>{q.question}</FormLabel>
-                      {q.kind === "text" ? (
-                        <FormControl>
-                          {q.multiline ? (
-                            <Textarea
-                              rows={4}
-                              placeholder={q.placeholder}
-                              value={row.freeText}
-                              onChange={(e) => field.onChange({ ...row, freeText: e.target.value })}
-                            />
-                          ) : (
-                            <Input
-                              placeholder={q.placeholder}
-                              value={row.freeText}
-                              onChange={(e) => field.onChange({ ...row, freeText: e.target.value })}
-                            />
-                          )}
-                        </FormControl>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {(q.options ?? []).map((o) => {
-                            const checked = row.selected.includes(o.value);
-                            return (
-                              <button
-                                type="button"
-                                key={o.value}
-                                onClick={() =>
-                                  field.onChange({
-                                    ...row,
-                                    selected: toggle(q.id, o.value, Boolean(q.multi), row.selected),
-                                  })
-                                }
-                                className={cn(
-                                  "flex w-full items-start gap-2 rounded-lg border p-2 text-left transition-colors",
-                                  checked
-                                    ? "border-amber-500 bg-amber-50 dark:bg-amber-950/40"
-                                    : "hover:bg-muted/50",
-                                )}
-                              >
-                                <Checkbox
-                                  checked={checked}
-                                  className="mt-0.5 pointer-events-none"
-                                />
-                                <span className="flex-1">
-                                  <span className="text-sm font-medium">
-                                    {o.label}
-                                    {q.recommended === o.value && (
-                                      <Badge variant="outline" className="ml-2 text-[10px]">
-                                        Recommended
-                                      </Badge>
-                                    )}
-                                  </span>
-                                  {o.description && (
-                                    <FormDescription className="mt-0.5">
-                                      {o.description}
-                                    </FormDescription>
-                                  )}
-                                </span>
-                              </button>
-                            );
-                          })}
-                          {q.allowOther && (
-                            <Input
-                              placeholder="Other (type your own)"
-                              value={row.freeText}
-                              onChange={(e) => field.onChange({ ...row, freeText: e.target.value })}
-                            />
-                          )}
-                        </div>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  );
-                }}
-              />
-            ))}
-          </CardContent>
-        </Card>
-        <div className="flex gap-2">
-          <Button type="submit" className="flex-1">
-            Submit
-          </Button>
-          {hasChat && onChat && (
-            <Button type="button" variant="outline" onClick={onChat}>
-              Chat about this
-            </Button>
-          )}
-        </div>
-      </form>
-    </Form>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">
+          {input.questions[0]?.header ?? "A few questions"}
+        </CardTitle>
+        {hasChat && (
+          <button onClick={onChat} className="text-xs text-(--info) hover:text-(--primary)">
+            Chat about this
+          </button>
+        )}
+      </CardHeader>
+      <CardContent>
+        <Questionnaire.Root
+          items={items}
+          onSubmit={handleSubmit}
+          shortcuts="letters"
+          className="space-y-4"
+          noValidate
+        >
+          <Questionnaire.Progress className="h-1 rounded bg-(--hairline)" />
+          {input.questions.map((q) => (
+            <Questionnaire.Item
+              key={q.id}
+              name={q.id}
+              required={q.validation?.required !== false}
+              className="space-y-2"
+            >
+              <Questionnaire.Title className="text-sm font-medium">
+                {q.question}
+              </Questionnaire.Title>
+              {q.kind === "text" ? (
+                <Questionnaire.Input
+                  className="h-9 w-full rounded-md border border-(--hairline) bg-(--canvas) px-3 text-sm"
+                  placeholder={q.placeholder}
+                  type={q.multiline ? "text" : "text"}
+                />
+              ) : (
+                <Questionnaire.Choices className="space-y-1">
+                  {(q.options ?? []).map((o) => (
+                    <Questionnaire.Choice key={o.value} value={o.value}>
+                      <Questionnaire.ChoiceLabel className="flex items-center gap-2 text-sm">
+                        <span className="font-medium">{o.label}</span>
+                        {o.description && (
+                          <span className="text-xs text-(--mute)">{o.description}</span>
+                        )}
+                      </Questionnaire.ChoiceLabel>
+                    </Questionnaire.Choice>
+                  ))}
+                  {q.allowOther && (
+                    <Questionnaire.Choice value="__other__">
+                      <Questionnaire.ChoiceLabel className="text-sm text-(--mute)">
+                        Other
+                      </Questionnaire.ChoiceLabel>
+                      <input
+                        name={`${q.id}__other`}
+                        className="mt-1 h-8 w-full rounded-md border border-(--hairline) bg-(--canvas) px-3 text-sm"
+                        placeholder="Type your own…"
+                        type="text"
+                      />
+                    </Questionnaire.Choice>
+                  )}
+                </Questionnaire.Choices>
+              )}
+              <Questionnaire.Error className="text-xs text-(--err)" />
+            </Questionnaire.Item>
+          ))}
+          <div className="flex flex-wrap gap-2">
+            <Questionnaire.Previous className="rounded-md border border-(--hairline) px-3 py-1.5 text-xs">
+              上一步
+            </Questionnaire.Previous>
+            <Questionnaire.Skip className="rounded-md border border-(--hairline) px-3 py-1.5 text-xs">
+              跳过
+            </Questionnaire.Skip>
+            <Questionnaire.Next className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink)">
+              下一步
+            </Questionnaire.Next>
+            <Questionnaire.Submit className="rounded-md bg-(--info) px-3 py-1.5 text-xs text-(--ink)">
+              提交
+            </Questionnaire.Submit>
+          </div>
+        </Questionnaire.Root>
+      </CardContent>
+    </Card>
   );
 }
