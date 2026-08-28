@@ -165,7 +165,7 @@ Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop
 | `apps/backend/src/main.ts` | Composition root — wires all services, adapters, routes |
 | `apps/backend/src/app.ts` | Elysia app factory — mounts all feature routers |
 | `apps/backend/src/features/agent-run/execution.ts` | Run dispatch, transient SSE subscription, terminalize |
-| `apps/backend/src/infra/db/schema.ts` | Drizzle schema — 20 tables, single SQLite file |
+| `apps/backend/src/infra/db/schema.ts` | Drizzle schema — 24 tables, single SQLite file |
 | `apps/oh-my-agent/src/core/runtime/agent-loop.ts` | `createOmaSession()` — the agent loop |
 | `apps/oh-my-agent/src/core/runtime/plugin.ts` | `Plugin`/`PluginHooks`, `validatePlugins()` |
 | `packages/message/src/chat-model.ts` | `ChatModel` contract |

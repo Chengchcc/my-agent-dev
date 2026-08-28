@@ -29,8 +29,7 @@ function defaultDraft(id: string) {
 
 export function WorkflowList({ definitions }: { definitions: Row[] }) {
   async function create() {
-    const id = prompt("Workflow id (slug):");
-    if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) return;
+    const id = `wf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     await api.saveWorkflowDefinition(id, defaultDraft(id) as Record<string, unknown>);
     window.location.assign(`/agentic-workflow/${id}`);
   }
