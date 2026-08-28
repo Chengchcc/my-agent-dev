@@ -182,7 +182,10 @@ export default function KnowledgePackPage() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => void remove.mutate(p.id)}
+                      onClick={() => {
+                        if (!confirm(`Delete knowledge pack ${p.name ?? p.id}?`)) return;
+                        void remove.mutate(p.id);
+                      }}
                     >
                       Delete
                     </Button>

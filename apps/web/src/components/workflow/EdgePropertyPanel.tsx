@@ -55,7 +55,10 @@ export function EdgePropertyPanel({
           {edge.from} → {edge.to}
         </h3>
         <button
-          onClick={() => onDelete?.(deleteEdge(definition, edgeIndex))}
+          onClick={() => {
+            if (!confirm(`删除边 ${edge.from} → ${edge.to}？`)) return;
+            onDelete?.(deleteEdge(definition, edgeIndex));
+          }}
           className="text-xs text-(--err) hover:underline"
         >
           删除此边

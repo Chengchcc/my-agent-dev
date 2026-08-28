@@ -111,7 +111,10 @@ export function MemoryPanel({ agentId }: { agentId: string }) {
                       variant="ghost"
                       className="h-6 px-2 text-xs text-destructive"
                       disabled={saving}
-                      onClick={() => saveMut.mutate({ deleteFacts: [m.file] })}
+                      onClick={() => {
+                        if (!confirm(`Delete memory ${m.file}?`)) return;
+                        saveMut.mutate({ deleteFacts: [m.file] });
+                      }}
                     >
                       Delete
                     </Button>

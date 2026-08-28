@@ -430,7 +430,10 @@ export default function McpCatalogPage() {
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={() => void remove.mutate(s.serverId)}
+                        onClick={() => {
+                          if (!confirm(`Delete MCP server ${s.serverId}?`)) return;
+                          void remove.mutate(s.serverId);
+                        }}
                       >
                         Delete
                       </Button>

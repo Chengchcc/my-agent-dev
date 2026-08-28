@@ -62,6 +62,7 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
         <button
           onClick={(e) => {
             e.stopPropagation();
+            if (!confirm(`Delete node ${String(data.label)}?`)) return;
             onDelete();
           }}
           title="Delete node"
