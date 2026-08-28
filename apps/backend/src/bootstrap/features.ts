@@ -786,6 +786,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     agentRunExecution,
     convPort,
     conversationService: conv.convSvc,
+    artifactService,
     resolveDefaultModel: async (agentId) => agentModelRef(await agentSvc.getById(agentId)),
     resolveRepoWorkspace: async (repo) => ({
       root: join(config.dataDir, "projects", repo),

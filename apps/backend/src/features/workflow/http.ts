@@ -124,10 +124,12 @@ export function workflowRoutes(deps: {
         const definition = JSON.parse(raw);
         set.status = 201;
         const workflowId = ref.path.replace(/\.workflow\.json$/, "");
+        const input: Record<string, unknown> = { ...(body.input ?? {}) };
+        if (body.artifacts?.length) input.__artifacts = body.artifacts;
         return await svc.startExecution({
           workflowId,
           definition,
-          input: body.input ?? {},
+          input,
         });
       },
       {
@@ -137,6 +139,7 @@ export function workflowRoutes(deps: {
             path: t.String({ minLength: 1 }),
           }),
           input: t.Optional(t.Record(t.String(), t.Unknown())),
+          artifacts: t.Optional(t.Array(t.String())),
         }),
       },
     )

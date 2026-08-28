@@ -45,6 +45,12 @@ export interface JsonSchema {
   maxItems?: number;
 }
 
+export interface ArtifactRef {
+  url: string;
+  /** Default true — missing fails the node. false = warning only. */
+  required?: boolean;
+}
+
 interface NodeCommon {
   id: NodeId;
   /** Light typing: optional input defaults; runtime merged input wins. */
@@ -58,6 +64,12 @@ interface NodeCommon {
   /** Retry policy: number = max retries after first failure, or a config
    *  with attempts/interval/backoff. */
   retry?: number | NodeRetry;
+  /** Artifacts this node consumes (must exist before execution).
+   *  Default required=true. */
+  inputArtifacts?: ArtifactRef[];
+  /** Artifacts this node must produce (must exist after execution).
+   *  Default required=true. */
+  outputArtifacts?: ArtifactRef[];
 }
 
 export interface NodeRetry {
@@ -109,6 +121,8 @@ export interface WorkflowDefinition {
   input?: InputHint;
   /** Trigger declarations. API trigger is implicit. */
   triggers?: WorkflowTrigger[];
+  /** Workflow-run required artifacts (must exist at start). */
+  inputArtifacts?: ArtifactRef[];
   nodes: WorkflowNode[];
   edges: EdgeDef[];
 }

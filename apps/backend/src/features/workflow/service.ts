@@ -46,6 +46,9 @@ export interface AgentRunnerDeps {
       modelOverride?: unknown;
     }): Promise<{ triggeredRuns: Array<{ runId: string; queued: boolean }> }>;
   };
+  artifactService?: {
+    exists(url: string): Promise<boolean>;
+  };
   resolveDefaultModel?: (agentId: string) => Promise<unknown>;
   /** Runs a prompt through an agent and returns the final text. */
   chatAgent?: (prompt: string) => Promise<string>;
@@ -409,10 +412,30 @@ export function createWorkflowExecutionService(
     const inputErrors = node.inputSchema ? validateBySchema(ready.input, node.inputSchema) : [];
     if (inputErrors.length > 0)
       throw new Error(`node ${node.id} input invalid: ${inputErrors.join("; ")}`);
+    if (node.inputArtifacts?.length && deps.artifactService) {
+      for (const a of node.inputArtifacts) {
+        const ok = await deps.artifactService.exists(a.url);
+        if (!ok && a.required !== false) {
+          throw new Error(`node ${node.id} missing required input artifact: ${a.url}`);
+        }
+      }
+    }
 
     let output: Record<string, unknown>;
     if (node.type === "start") {
       output = { ...execution.input };
+      // Workflow-level required input artifacts must exist before running.
+      const wfArtifacts = (
+        execution.definition as { inputArtifacts?: Array<{ url: string; required?: boolean }> }
+      ).inputArtifacts;
+      if (wfArtifacts?.length && deps.artifactService) {
+        for (const a of wfArtifacts) {
+          const ok = await deps.artifactService.exists(a.url);
+          if (!ok && a.required !== false) {
+            throw new Error(`workflow missing required input artifact: ${a.url}`);
+          }
+        }
+      }
     } else if (node.type === "human") {
       const question = (ready.input.question as string | undefined) ?? node.question;
       const form = (ready.input.form as Record<string, unknown> | undefined) ?? node.form;
@@ -460,6 +483,14 @@ export function createWorkflowExecutionService(
     const outputErrors = node.outputSchema ? validateBySchema(output, node.outputSchema) : [];
     if (outputErrors.length > 0)
       throw new Error(`node ${node.id} output invalid: ${outputErrors.join("; ")}`);
+    if (node.outputArtifacts?.length && deps.artifactService) {
+      for (const a of node.outputArtifacts) {
+        const ok = await deps.artifactService.exists(a.url);
+        if (!ok && a.required !== false) {
+          throw new Error(`node ${node.id} missing required output artifact: ${a.url}`);
+        }
+      }
+    }
     return { output };
   }
 
