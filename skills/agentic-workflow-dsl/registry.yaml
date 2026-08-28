@@ -1,0 +1,6 @@
+# agentic-workflow-dsl registry
+# Skills are discovered via SKILL.md; this file carries skill-level metadata.
+skill: agentic-workflow-dsl
+entry: SKILL.md
+reference:
+  validate: reference/validate.js

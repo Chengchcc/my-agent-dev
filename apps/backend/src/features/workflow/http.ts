@@ -78,6 +78,17 @@ export function workflowRoutes(deps: {
       },
     )
     .post(
+      "/api/workflow-definitions/:workflowId/chat-patch",
+      async ({ params, body }) => {
+        const raw = await Bun.file(join(dir, `${params.workflowId}.workflow.json`)).text();
+        const definition = JSON.parse(raw);
+        return await svc.chatPatch(params.workflowId, definition, body.instruction);
+      },
+      {
+        body: t.Object({ instruction: t.String({ minLength: 1 }) }),
+      },
+    )
+    .post(
       "/api/workflow-definitions/:workflowId/dry-run",
       async ({ params, body }) => {
         const raw = await Bun.file(join(dir, `${params.workflowId}.workflow.json`)).text();

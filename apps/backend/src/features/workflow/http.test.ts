@@ -58,6 +58,7 @@ const fakeService: WorkflowExecutionService = {
   listNodeRuns: async () => [],
   listExecutionEvents: async () => [],
   getPendingHuman: async () => null,
+  chatPatch: async () => ({ definition: def }),
   listExecutions: async () => [
     {
       executionId: "e1",
@@ -177,5 +178,18 @@ describe("workflow http", () => {
     expect(body.execution.executionId).toBe("e1");
     expect(Array.isArray(body.events)).toBe(true);
     expect(Array.isArray(body.nodeRuns)).toBe(true);
+  });
+
+  test("chat-patch returns a validated definition", async () => {
+    const resp = await app.handle(
+      new Request("http://localhost/api/workflow-definitions/wf/chat-patch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ instruction: "rename the workflow" }),
+      }),
+    );
+    expect(resp.status).toBe(200);
+    const body = (await resp.json()) as { definition: { id: string } };
+    expect(body.definition.id).toBe("wf");
   });
 });
