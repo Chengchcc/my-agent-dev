@@ -87,7 +87,7 @@ apps/web/src/app/(main)/agentic-workflow/[workflowId]/page.tsx # 不变
 @keyframes wf-pop { 0% { opacity: 0; transform: translateY(6px); } 100% { opacity: 1; transform: none; } }
 ```
 
-- [ ] **Step 2: layout.tsx 引字体**
+- [ ] **Step 2: 根 app/layout.tsx 引字体（注意：`<html>` 只在根 `app/layout.tsx`，不是 `(main)/layout.tsx`）**
 
 ```tsx
 import { Bricolage_Grotesque, IBM_Plex_Mono, Sora } from "next/font/google";
@@ -174,8 +174,9 @@ function deleteNode(def: WorkflowDefinition, id: string): WorkflowDefinition {
     edges: def.edges.filter((e) => e.from !== id && e.to !== id),
   };
 }
-function updateEdgeWhen(def: WorkflowDefinition, edgeId: string, when: unknown): WorkflowDefinition {
-  return { ...def, edges: def.edges.map((e) => (e.id === edgeId ? { ...e, when } : e)) };
+// DSL 边无 id，用 toEditorGraph 的渲染下标 "e{N}"（N = def.edges[N]）
+function updateEdgeWhen(def: WorkflowDefinition, edgeIndex: number, when: unknown): WorkflowDefinition {
+  return { ...def, edges: def.edges.map((e, i) => (i === edgeIndex ? { ...e, when } : e)) };
 }
 ```
 
@@ -234,15 +235,15 @@ function makeNodeId(base: string): string {
 import { useState } from "react";
 
 export function EdgePropertyPanel({
-  edgeId,
+  edgeIndex,
   definition,
   onChange,
 }: {
-  edgeId: string;
+  edgeIndex: number;
   definition: any;
   onChange: (def: any) => void;
 }) {
-  const edge = definition.edges.find((e: any) => e.id === edgeId);
+  const edge = definition.edges[edgeIndex];
   const [when, setWhen] = useState<string>(edge?.when ? JSON.stringify(edge.when, null, 2) : "");
   if (!edge) return null;
   return (
@@ -251,7 +252,7 @@ export function EdgePropertyPanel({
       <label className="block text-xs">when (JSONLogic)</label>
       <textarea className="w-full rounded border p-1 font-mono" rows={6} value={when} onChange={(e) => setWhen(e.target.value)} />
       <button className="w-full rounded bg-slate-800 px-3 py-1 text-white" onClick={() => {
-        try { onChange({ ...definition, edges: definition.edges.map((e: any) => e.id === edgeId ? { ...e, when: when.trim() ? JSON.parse(when) : undefined } : e) }); }
+        try { onChange({ ...definition, edges: definition.edges.map((e: any, i: number) => i === edgeIndex ? { ...e, when: when.trim() ? JSON.parse(when) : undefined } : e) }); }
         catch { alert("Invalid JSONLogic JSON"); }
       }}>Apply</button>
     </div>
@@ -261,7 +262,7 @@ export function EdgePropertyPanel({
 
 - [ ] **Step 6: 侧栏接 edge 选中**
 
-`AgenticWorkflowEditor` 增加 `activeEdgeId`；选中边时 `tab` 切到 `attrs`，侧栏显示 `EdgePropertyPanel`。
+`AgenticWorkflowEditor` 增加 `activeEdgeIndex`（由 RF `onEdgeClick(e)` 的 `e.id` 解析出下标，如 `"e3"`→3）；选中边时 `tab` 切到 `attrs`，侧栏显示 `EdgePropertyPanel(edgeIndex)`。
 
 - [ ] **Step 7: typecheck + lint + 保存校验**
 
@@ -401,6 +402,7 @@ git commit -m "feat(workflow): chat llm uses workflow dsl skill to generate patc
 - Modify: `apps/backend/src/features/workflow/http.ts`
 - Create: `apps/web/src/components/workflow/ExecutionTraceView.tsx`
 - Modify: `apps/web/src/components/workflow/ExecutionList.tsx`（行加 trace 链接）
+- Create: `apps/web/src/app/(main)/agentic-workflow/[workflowId]/executions/[executionId]/page.tsx`（trace 详情页）
 - Modify: `apps/web/src/lib/api.ts`
 
 **分五步子步骤：**
@@ -523,7 +525,7 @@ export function dryRunWorkflow(
     for (const ready of step.ready) {
       const node = ready.node;
       const output = node.type === "start" ? { ...input } : (mockOutputs[node.id] ?? {});
-      const routedTo = routeOutgoing(node.id, def, completions, store);
+      const routedTo = routeOutgoing(node.id, def, completions, store, output);
       completions.push({ nodeId: node.id, output, order, routedTo });
       steps.push({ nodeId: node.id, output, routedTo, order });
       order++;
@@ -570,7 +572,7 @@ git commit -m "feat(workflow): add dry-run debug capability"
 - Modify: `apps/web/src/components/workflow/AgenticWorkflowEditor.tsx`（预览）
 - Modify: `apps/web/src/components/workflow/ExecutionTraceView.tsx`（resolve）
 
-- [ ] **Step 1: native `askQuestion` tool（oma 内建，仿 native todo）**
+- [ ] **Step 1: native `askQuestion` tool（oma 内建，仿 native todo，供 agent 对话使用）**
 
 后台/独立 CLI 里可用。native tool 弹问题、等待回答，emit `human_task_requested` 挂起，answer 返回 tool result。注册进 oma 工具表（像 `todo` 一样）。
 
@@ -623,7 +625,7 @@ export function AskQuestionRenderer({
 
 - [ ] **Step 3: human 节点变为"askQuestion 调用"**
 
-不再自建 `WorkflowForm`/`createPendingHuman` 分支——**human 节点 = agent 在该节点调用 `askQuestion` tool**（或后端直接以一个 `askQuestion` 调用模拟）。`askQuestion` payload 的 `fields` 直接来自 node.form（或上游动态 `input.form`）。前端渲染 `AskQuestionRenderer(question, fields)`，提交 → `resolveHumanTask` → answer 作为 node output。
+**设计决策（并存，不替换）：** human 节点**保持 Plan 2 已上线的直连 `workflow_pending_human` + `resolveHumanTask`** 路径（无需每问一次都背一次 agent 子运行）；`askQuestion` 定位为 **agent 对话内的原生工具**（native + backend 注入 MCP，tool-filter 冲突让位）；两者**共享** `AskQuestionRenderer`（question + fields）作为唯一前端表达。不把 human 节点默默改成"调 askQuestion tool"——那会把传输层替换掉，代价未论证。
 
 - [ ] **Step 4: backend 暴露 pendingHuman + api.ts**
 
@@ -654,7 +656,7 @@ git commit -m "feat(workflow): askQuestion tool capability with shared frontend 
 
 - [ ] **Step 1: 根仓全量**
 
-Run: `cd /root/my-agent-team && bun run typecheck`（33/33）+ `cd apps/backend && bun test` + `cd apps/web && bun run lint`
+Run: `bun run typecheck`（仓库根，33/33）+ `cd apps/backend && bun test` + `cd apps/web && bun run lint`
 
 - [ ] **Step 2: headless Chrome 全链路**
 
@@ -671,6 +673,8 @@ git commit -m "test(web): e2e agentic workflow editor"
 
 ## 备注
 
+- **skill 要点：** `skills/agentic-workflow-dsl/` 需带 `registry.yaml`（比照 `skills/loop-engine/`）；description 需点明"生成/校验 Agentic Workflow DSL（*.workflow.json）"，与既有 `skills/workflow-authoring`（oma 子代理 fan-out/workflow_run 编排，另一码事）区分。
+- **emit 落库容错：** `void deps.port.appendExecutionEvent(...)` 需要 `.catch(() => {})`（事件持久化失败不阻塞 drive）。
 - **git 化不做：** workflow 定义仍存 `dataDir/workflows/*.workflow.json`；git loader/commit + agent workspace git 化是后续独立 scope。
 - **DSL 唯一真相源：** 交互编辑（拖拽/连边/删节点/改边条件）全部经 `onConnect`/`onNodesDelete`/`onEdgeClick` **直改 DSL state**，坐标不落 DSL；`Apply/Save` 必经 `parseWorkflow`。
 - **chatAgent 真实实现：** 复用 Plan 2 `runAgentNode` 的 enqueue→dispatch→subscribe→extractOutput 路径，prompt 内嵌当前 DSL + 用户 instruction，要求返回完整 DSL JSON。
