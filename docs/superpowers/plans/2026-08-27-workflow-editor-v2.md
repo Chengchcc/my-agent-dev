@@ -632,7 +632,7 @@ export const askQuestionTool = {
 
 oma runtime 注册该 tool；调用时 emit `human_task_requested`（executionId/nodeId/question/fields）+ 挂起，`resolve_approval`/`resolve_question` 返回 answer，tool result = answer。后端把每个 "pending human" 关联到一次 `askQuestion` 调用。
 
-- [ ] **Step 1d: OMA TUI 专用渲染（学 omp，非普通 tool card）**
+- [ ] **Step 1d: OMA TUI 专用渲染（学 oh-my-pi，非普通 tool card）**
 
 `apps/oh-my-agent/src/tui/ask-question.ts`：当 agent 调用 `ask_question` 时，TUI **不用普通 tool card**，而是渲染一个**表单卡片**：
 - 标题 = `title`，描述 = `description`。
@@ -640,7 +640,7 @@ oma runtime 注册该 tool；调用时 emit `human_task_requested`（executionId
 - 底部 `submit_text`（默认 "Submit"）+ 若 `skip_allowed` 显示 "Skip"。
 - 提交 → 向 agent 回传 `{ question_id, answers }`（tool result）。
 - **对话保留一条结构化消息**："用户已填写表单（question_id, answers）"，markdown 渲染时显示为一块表单摘要，不塞进流式文本。
-- 学 omp 的视觉：表单卡用边框+标题+字段网格，和普通 tool card 区分。
+- 学 oh-my-pi 的视觉：表单卡用边框+标题+字段网格，和普通 tool card 区分。
 
 - [ ] **Step 2: 共享前端渲染器 `AskQuestionRenderer.tsx`**
 
