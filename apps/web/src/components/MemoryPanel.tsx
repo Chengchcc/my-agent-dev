@@ -2,6 +2,16 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAgentMemory } from "@/features/agents/hooks";
@@ -48,6 +58,7 @@ export function MemoryPanel({ agentId }: { agentId: string }) {
   const [memoryMd, setMemoryMd] = useState("");
   const [factDrafts, setFactDrafts] = useState<Record<string, string>>({});
   const [synced, setSynced] = useState(false);
+  const [confirmFile, setConfirmFile] = useState<string | null>(null);
   if (data && !synced) {
     setSummary(data.memSummary ?? "");
     setMemoryMd(data.memoryMd ?? "");
@@ -112,8 +123,7 @@ export function MemoryPanel({ agentId }: { agentId: string }) {
                       className="h-6 px-2 text-xs text-destructive"
                       disabled={saving}
                       onClick={() => {
-                        if (!confirm(`Delete memory ${m.file}?`)) return;
-                        saveMut.mutate({ deleteFacts: [m.file] });
+                        setConfirmFile(m.file);
                       }}
                     >
                       Delete
@@ -140,6 +150,29 @@ export function MemoryPanel({ agentId }: { agentId: string }) {
         onSave={() => saveMut.mutate({ memoryMd })}
         saving={saving}
       />
+      <AlertDialog
+        open={confirmFile !== null}
+        onOpenChange={(o) => {
+          if (!o) setConfirmFile(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete memory {confirmFile}?</AlertDialogTitle>
+            <AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmFile) saveMut.mutate({ deleteFacts: [confirmFile] });
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

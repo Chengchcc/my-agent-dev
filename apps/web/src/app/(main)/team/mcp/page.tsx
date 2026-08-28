@@ -5,6 +5,16 @@ import { Plug, RefreshCw, Server } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Page, PageBody, PageHeader } from "@/components/page";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -62,6 +72,7 @@ export default function McpCatalogPage() {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"form" | "json">("form");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [confirmServerId, setConfirmServerId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [transport, setTransport] = useState<"stdio" | "sse">("stdio");
   const [command, setCommand] = useState("");
@@ -430,10 +441,7 @@ export default function McpCatalogPage() {
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={() => {
-                          if (!confirm(`Delete MCP server ${s.serverId}?`)) return;
-                          void remove.mutate(s.serverId);
-                        }}
+                        onClick={() => setConfirmServerId(s.serverId)}
                       >
                         Delete
                       </Button>
@@ -454,6 +462,29 @@ export default function McpCatalogPage() {
           </div>
         </div>
       </PageBody>
+      <AlertDialog
+        open={confirmServerId !== null}
+        onOpenChange={(o) => {
+          if (!o) setConfirmServerId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete MCP server {confirmServerId}?</AlertDialogTitle>
+            <AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmServerId) void remove.mutate(confirmServerId);
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Page>
   );
 }

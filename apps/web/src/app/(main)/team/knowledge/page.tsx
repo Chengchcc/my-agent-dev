@@ -4,6 +4,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Page, PageBody, PageHeader } from "@/components/page";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -40,6 +50,7 @@ export default function KnowledgePackPage() {
   const [description, setDescription] = useState("");
   const [sourceKind, setSourceKind] = useState<"builtin" | "git">("git");
   const [sourceUrl, setSourceUrl] = useState("");
+  const [confirmPackId, setConfirmPackId] = useState<string | null>(null);
 
   const install = useMutation({
     mutationFn: () => {
@@ -179,14 +190,7 @@ export default function KnowledgePackPage() {
                   badges={[statusLabel(p.status)]}
                   desc={p.status === "failed" && p.error ? p.error : p.description}
                   actions={
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => {
-                        if (!confirm(`Delete knowledge pack ${p.name ?? p.id}?`)) return;
-                        void remove.mutate(p.id);
-                      }}
-                    >
+                    <Button variant="destructive" size="sm" onClick={() => setConfirmPackId(p.id)}>
                       Delete
                     </Button>
                   }
@@ -205,6 +209,29 @@ export default function KnowledgePackPage() {
           </div>
         </div>
       </PageBody>
+      <AlertDialog
+        open={confirmPackId !== null}
+        onOpenChange={(o) => {
+          if (!o) setConfirmPackId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete knowledge pack {confirmPackId}?</AlertDialogTitle>
+            <AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmPackId) void remove.mutate(confirmPackId);
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Page>
   );
 }
