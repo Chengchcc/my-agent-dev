@@ -70,6 +70,7 @@ export interface WorkflowExecutionService {
   getExecution(executionId: string): Promise<WorkflowExecutionRow | null>;
   listNodeRuns(executionId: string): Promise<WorkflowNodeRunRow[]>;
   listExecutions(workflowId?: string): Promise<WorkflowExecutionRow[]>;
+  listExecutionEvents(executionId: string): Promise<Array<{ seq: number; executionId: string; event: string; data: unknown; ts: number }>>;
   subscribeEvents(executionId: string, signal?: AbortSignal): Promise<AsyncIterable<WorkflowEvent>>;
   recover(): Promise<void>;
   dispose(): Promise<void>;
@@ -135,6 +136,11 @@ export function createWorkflowExecutionService(
 
   function emit(executionId: string, event: string, data: unknown) {
     deps.eventBus.emit({ executionId, event, ts: Date.now(), data });
+    // ponytail: event persistence failure must not block drive; the event bus
+    // copy still fires, the durable trace just misses one row.
+    deps.port
+      .appendExecutionEvent({ executionId, event, data, ts: Date.now() })
+      .catch(() => {});
   }
 
   async function storeApiOf(
@@ -488,6 +494,9 @@ export function createWorkflowExecutionService(
     },
     async listExecutions(workflowId) {
       return deps.port.listExecutions(workflowId);
+    },
+    async listExecutionEvents(executionId) {
+      return deps.port.listExecutionEvents(executionId);
     },
     async subscribeEvents(
       executionId: string,

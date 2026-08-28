@@ -56,6 +56,7 @@ const fakeService: WorkflowExecutionService = {
     createdAt: 1,
   }),
   listNodeRuns: async () => [],
+  listExecutionEvents: async () => [],
   listExecutions: async () => [
     {
       executionId: "e1",
@@ -144,7 +145,13 @@ describe("workflow http", () => {
   });
 
   test("workflow definition dry-run returns exit", async () => {
-    await app.handle(new Request("http://localhost/api/workflow-definitions/wf", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ definition: def }) }));
+    await app.handle(
+      new Request("http://localhost/api/workflow-definitions/wf", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ definition: def }),
+      }),
+    );
     const resp = await app.handle(
       new Request("http://localhost/api/workflow-definitions/wf/dry-run", {
         method: "POST",
@@ -156,5 +163,14 @@ describe("workflow http", () => {
     const body = (await resp.json()) as { exit: string; steps: Array<{ nodeId: string }> };
     expect(body.exit).toBe("success");
     expect(body.steps.some((st) => st.nodeId === "start")).toBe(true);
+  });
+
+  test("GET trace returns execution events and nodeRuns", async () => {
+    const resp = await app.handle(new Request("http://localhost/api/workflow-executions/e1/trace"));
+    expect(resp.status).toBe(200);
+    const body = (await resp.json()) as { execution: { executionId: string }; events: unknown[]; nodeRuns: unknown[] };
+    expect(body.execution.executionId).toBe("e1");
+    expect(Array.isArray(body.events)).toBe(true);
+    expect(Array.isArray(body.nodeRuns)).toBe(true);
   });
 });

@@ -455,6 +455,8 @@ export const api = {
     workflowRef: { repo: string; path: string };
     input?: Record<string, unknown>;
   }) => unwrap(client.api["workflow-executions"].post(body)),
+  getWorkflowExecutionTrace: (executionId: string) =>
+    unwrap(client.api["workflow-executions"]({ executionId }).trace.get()),
   resolveWorkflowHumanTask: (
     executionId: string,
     body: { nodeId: string; answer?: Record<string, unknown> },

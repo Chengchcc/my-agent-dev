@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { parseWorkflow } from "@chengchenccc/workflow";
 import type { WorkflowDefinition } from "@chengchenccc/workflow";
+import { parseWorkflow } from "@chengchenccc/workflow";
 import { createWorkflowExecutionService } from "./service.js";
 
 function makeDef(): WorkflowDefinition {
@@ -91,7 +91,10 @@ function ramPort() {
         if (r) Object.assign(r, patch);
         return r;
       },
-      listNodeRuns: async (executionId: string) => nodeRuns.filter((r) => r.executionId === executionId),
+      listNodeRuns: async (executionId: string) =>
+        nodeRuns.filter((r) => r.executionId === executionId),
+      appendExecutionEvent: async () => {},
+      listExecutionEvents: async () => [],
       createPendingHuman: async (r: Record<string, unknown>) => {
         pendingHuman.set(`${r.executionId as string}:${r.nodeId as string}`, r);
         return r;
@@ -207,7 +210,11 @@ describe("createWorkflowExecutionService", () => {
     const svc = createWorkflowExecutionService({
       port,
       nodeRunners: {
-        script: { run: async (_n: unknown, ctx: { input: Record<string, unknown> }) => ({ output: { severity: ctx.input.severity } }) },
+        script: {
+          run: async (_n: unknown, ctx: { input: Record<string, unknown> }) => ({
+            output: { severity: ctx.input.severity },
+          }),
+        },
       } as never,
       eventBus: { emit: () => {}, subscribe: async function* () {} } as never,
       idGen: () => "e1",
@@ -227,9 +234,17 @@ describe("createWorkflowExecutionService", () => {
         { from: "a", to: "abort", when: { "==": [{ var: "a.output.severity" }, "critical"] } },
       ],
     });
-    const ok = await svc.runToCompletion("e1", { workflowId: "wf", definition: def, input: { severity: "high" } });
+    const ok = await svc.runToCompletion("e1", {
+      workflowId: "wf",
+      definition: def,
+      input: { severity: "high" },
+    });
     expect(ok.exit).toBe("success");
-    const bad = await svc.runToCompletion("e2", { workflowId: "wf", definition: def, input: { severity: "critical" } });
+    const bad = await svc.runToCompletion("e2", {
+      workflowId: "wf",
+      definition: def,
+      input: { severity: "critical" },
+    });
     expect(bad.exit).toBe("failure");
   });
 });

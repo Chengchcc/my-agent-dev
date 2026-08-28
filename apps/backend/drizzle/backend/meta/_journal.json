@@ -288,6 +288,13 @@
       "when": 1788200000000,
       "tag": "0040_workflow_execution",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1788300000000,
+      "tag": "0041_workflow_execution_event",
+      "breakpoints": true
     }
   ]
 }

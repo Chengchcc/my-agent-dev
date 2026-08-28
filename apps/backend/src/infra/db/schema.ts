@@ -141,6 +141,20 @@ export const workflowNodeRun = sqliteTable(
   (table) => [index("idx_workflow_node_run_exec").on(table.executionId, table.seq)],
 );
 
+export const workflowExecutionEvent = sqliteTable(
+  "workflow_execution_event",
+  {
+    seq: integer().primaryKey({ autoIncrement: true }),
+    executionId: text("execution_id")
+      .notNull()
+      .references(() => workflowExecution.executionId, { onDelete: "cascade" }),
+    event: text().notNull(), // node_started | node_completed | node_failed | store_write | human_task_requested | execution_terminal
+    data: text().notNull(), // JSON payload
+    ts: integer({ mode: "number" }).notNull(),
+  },
+  (table) => [index("idx_workflow_execution_event_exec").on(table.executionId, table.seq)],
+);
+
 export const workflowPendingHuman = sqliteTable(
   "workflow_pending_human",
   {

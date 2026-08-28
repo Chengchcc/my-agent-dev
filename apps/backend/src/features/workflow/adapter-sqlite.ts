@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { workflowExecution, workflowNodeRun, workflowPendingHuman } from "../../infra/db/schema.js";
+import { workflowExecution, workflowExecutionEvent, workflowNodeRun, workflowPendingHuman } from "../../infra/db/schema.js";
 import type {
   AppendNodeRunInput,
   CreateWorkflowExecutionInput,
@@ -191,6 +191,18 @@ export function sqliteWorkflowExecutionAdapter(db: Database): WorkflowExecutionP
         .from(workflowExecution)
         .where(eq(workflowExecution.status, "running"));
       return rows.map(toExec);
+    },
+    async appendExecutionEvent(input) {
+      await d.insert(workflowExecutionEvent).values({
+        executionId: input.executionId,
+        event: input.event,
+        data: JSON.stringify(input.data ?? {}),
+        ts: input.ts,
+      });
+    },
+    async listExecutionEvents(executionId) {
+      const rows = await d.select().from(workflowExecutionEvent).where(eq(workflowExecutionEvent.executionId, executionId)).orderBy(workflowExecutionEvent.seq);
+      return rows.map((r) => ({ seq: r.seq, executionId: r.executionId, event: r.event, data: JSON.parse(r.data), ts: r.ts }));
     },
     async listExecutions(workflowId?: string) {
       if (workflowId) {

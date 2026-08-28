@@ -1,8 +1,8 @@
 import {
+  type CompletionRecord,
   computeNext,
   parseWorkflow,
   routeOutgoing,
-  type CompletionRecord,
   type WorkflowDefinition,
 } from "@chengchenccc/workflow";
 

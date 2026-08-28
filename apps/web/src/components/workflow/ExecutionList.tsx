@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { api } from "@/lib/api";
 
 type Exec = { executionId: string; status: string; exit?: string; createdAt: number };
@@ -43,7 +45,14 @@ export function ExecutionList({
         <tbody>
           {executions.map((e) => (
             <tr key={e.executionId} className="border-t">
-              <td className="py-2">{e.executionId}</td>
+              <td className="py-2">
+                <Link
+                  href={`/agentic-workflow/${workflowId}/executions/${e.executionId}`}
+                  className="hover:underline"
+                >
+                  {e.executionId}
+                </Link>
+              </td>
               <td>{e.status}</td>
               <td>{e.exit ?? "-"}</td>
               <td>{new Date(e.createdAt).toLocaleString()}</td>

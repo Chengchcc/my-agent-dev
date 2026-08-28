@@ -129,6 +129,13 @@ export function workflowRoutes(deps: {
         query: t.Object({ workflowId: t.Optional(t.String()) }),
       },
     )
+    .get("/api/workflow-executions/:executionId/trace", async ({ params }) => {
+      const row = await svc.getExecution(params.executionId);
+      if (!row) throw new HttpError("Execution not found", 404);
+      const events = await svc.listExecutionEvents(params.executionId);
+      const nodeRuns = await svc.listNodeRuns(params.executionId);
+      return { execution: row, events, nodeRuns };
+    })
     .get("/api/workflow-executions/:executionId", async ({ params }) => {
       const row = await svc.getExecution(params.executionId);
       if (!row) throw new HttpError("Execution not found", 404);
