@@ -416,6 +416,7 @@ export const api = {
   startWorkflowExecution: (body: {
     workflowRef: { repo: string; path: string };
     input?: Record<string, unknown>;
+    artifacts?: string[];
   }) => unwrap(client.api["workflow-executions"].post(body)),
   getWorkflowExecutionTrace: (executionId: string) =>
     unwrap(client.api["workflow-executions"]({ executionId }).trace.get()),
@@ -425,4 +426,52 @@ export const api = {
     executionId: string,
     body: { nodeId: string; answer?: Record<string, unknown> },
   ) => unwrap(client.api["workflow-executions"]({ executionId })["human-task"].post(body)),
+  listArtifacts: async (folder?: string) => {
+    const qs = folder ? `?folder=${encodeURIComponent(folder)}` : "";
+    const r = await fetch(`/api/bff/api/artifacts${qs}`);
+    if (!r.ok) throw new Error(`list artifacts failed: ${r.status}`);
+    return (await r.json()) as { artifacts: ArtifactMeta[] };
+  },
+  uploadArtifact: async (body: {
+    folder: string;
+    filename: string;
+    content: string;
+    encoding?: "utf8" | "base64";
+  }) => {
+    const r = await fetch("/api/bff/api/artifacts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`upload artifact failed: ${r.status}`);
+    return (await r.json()) as ArtifactMeta;
+  },
+  downloadArtifact: async (url: string) => {
+    const r = await fetch(`/api/bff/api/artifacts/${encodeURIComponent(url)}`);
+    if (!r.ok) throw new Error(`download artifact failed: ${r.status}`);
+    return (await r.json()) as {
+      content: string;
+      encoding: string;
+      mimeType: string;
+      size: number;
+    };
+  },
+  deleteArtifact: async (url: string) => {
+    const r = await fetch(`/api/bff/api/artifacts/${encodeURIComponent(url)}`, {
+      method: "DELETE",
+    });
+    if (!r.ok) throw new Error(`delete artifact failed: ${r.status}`);
+    return (await r.json()) as { ok: boolean };
+  },
+};
+
+export type ArtifactMeta = {
+  url: string;
+  folder: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  encoding: "utf8" | "base64";
+  updatedAt: number;
+  source?: { runId?: string; conversationId?: string; agentId?: string };
 };

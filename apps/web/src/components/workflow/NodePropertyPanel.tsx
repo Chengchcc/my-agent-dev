@@ -1,6 +1,6 @@
 "use client";
 
-import type { WorkflowDefinition, WorkflowNode } from "@chengchenccc/workflow";
+import type { ArtifactRef, WorkflowDefinition, WorkflowNode } from "@chengchenccc/workflow";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import "@/lib/monaco-loader";
+import { ArtifactRefsEditor } from "./ArtifactRefsEditor";
 import { HumanFormEditor } from "./HumanFormEditor";
+import { InputPanel } from "./InputPanel";
 import { OutputFieldsEditor } from "./OutputFieldsEditor";
 
 const MonacoCodeEditor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
@@ -114,6 +116,17 @@ export function NodePropertyPanel({
           onChange={(e) => set({ label: e.target.value })}
         />
       </div>
+
+      {node.type === "start" && (
+        <div className="space-y-3">
+          <InputPanel definition={definition} onChange={onChange} />
+          <ArtifactRefsEditor
+            label="workflow 必须提供的 artifacts（运行校验）"
+            value={(definition as { inputArtifacts?: ArtifactRef[] }).inputArtifacts}
+            onChange={(next) => onChange({ ...definition, inputArtifacts: next })}
+          />
+        </div>
+      )}
 
       {node.type === "agent" && (
         <>

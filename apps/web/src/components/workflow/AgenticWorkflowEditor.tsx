@@ -409,7 +409,6 @@ export function AgenticWorkflowEditor({
                     ["attrs", "属性"],
                     ["palette", "节点"],
                     ["triggers", "定时"],
-                    ["input", "输入"],
                   ] as Array<[InspectorTab, string]>
                 ).map(([k, label]) => (
                   <button
@@ -426,9 +425,7 @@ export function AgenticWorkflowEditor({
                 ))}
               </div>
               <div className="min-h-0 flex-1 overflow-auto">
-                {inspectorTab === "input" && definition ? (
-                  <InputPanel definition={definition} onChange={setDefinitionTracked} />
-                ) : inspectorTab === "triggers" && definition ? (
+                {inspectorTab === "triggers" && definition ? (
                   <TriggerPanel definition={definition} onChange={setDefinitionTracked} />
                 ) : inspectorTab === "palette" ? (
                   <NodePanel

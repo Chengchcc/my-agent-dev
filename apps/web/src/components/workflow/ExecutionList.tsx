@@ -46,6 +46,10 @@ export function ExecutionList({
   const [inputVals, setInputVals] = useState<Record<string, string>>({});
   const [runOpen, setRunOpen] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [artifactUrl, setArtifactUrl] = useState("");
+  const [artifacts, setArtifacts] = useState<string[]>([]);
+  const [artifactSuggestions, setArtifactSuggestions] = useState<string[]>([]);
+  const [artifactError, setArtifactError] = useState<string | null>(null);
   const inputHints = definition?.input ?? {};
 
   async function run() {
@@ -58,9 +62,16 @@ export function ExecutionList({
       else input[key] = raw;
     }
     try {
+      // Validate provided artifacts exist before running.
+      for (const u of artifacts) {
+        await api.downloadArtifact(u).catch(() => {
+          throw new Error(`artifact does not exist: ${u}`);
+        });
+      }
       await api.startWorkflowExecution({
         workflowRef: { repo: "local", path: `${workflowId}.workflow.json` },
         input,
+        artifacts,
       });
       window.location.reload();
     } catch (err) {
@@ -97,7 +108,13 @@ export function ExecutionList({
         <Dialog open={runOpen} onOpenChange={setRunOpen}>
           <button
             className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink) transition-colors hover:bg-(--panel2)"
-            onClick={() => setRunOpen(true)}
+            onClick={() => {
+              setRunOpen(true);
+              api
+                .listArtifacts()
+                .then((r) => setArtifactSuggestions((r.artifacts ?? []).map((a) => a.url)))
+                .catch(() => {});
+            }}
           >
             + Run
           </button>
@@ -124,6 +141,51 @@ export function ExecutionList({
                   </div>
                 ))
               )}
+              <div className="space-y-1">
+                <Label className="text-xs text-(--mute)">
+                  依赖 artifacts（autocomplete，须存在）
+                </Label>
+                <div className="flex gap-1">
+                  <input
+                    list="run-artifact-suggestions"
+                    className="h-9 flex-1 border-(--hairline) bg-(--canvas) px-2 text-xs"
+                    placeholder="artifacts://folder/file"
+                    value={artifactUrl}
+                    onChange={(e) => setArtifactUrl(e.target.value)}
+                  />
+                  <datalist id="run-artifact-suggestions">
+                    {artifactSuggestions.map((u) => (
+                      <option key={u} value={u} />
+                    ))}
+                  </datalist>
+                  <button
+                    className="rounded-md border border-(--hairline) px-2 text-xs"
+                    onClick={() => {
+                      const u = artifactUrl.trim();
+                      if (!u || artifacts.includes(u)) return;
+                      setArtifacts([...artifacts, u]);
+                      setArtifactUrl("");
+                      setArtifactError(null);
+                    }}
+                  >
+                    添加
+                  </button>
+                </div>
+                {artifacts.map((u) => (
+                  <div
+                    key={u}
+                    className="flex items-center gap-2 rounded-md border border-(--hairline) px-2 py-1 text-[10px]"
+                  >
+                    <span className="min-w-0 flex-1 truncate font-mono">{u}</span>
+                    <button
+                      className="text-(--err)"
+                      onClick={() => setArtifacts(artifacts.filter((x) => x !== u))}
+                    >
+                      删除
+                    </button>
+                  </div>
+                ))}
+              </div>
               <button
                 className="w-full rounded-md bg-(--primary) px-3 py-2 text-xs text-(--ink) hover:bg-(--panel2)"
                 onClick={async () => {
