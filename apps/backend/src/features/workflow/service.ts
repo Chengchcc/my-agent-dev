@@ -155,7 +155,7 @@ function buildAgentPrompt(
 ): string {
   const base = node.type === "agent" ? (node.prompt ?? "") : "";
   const schema = (node as { outputSchema?: unknown }).outputSchema;
-  let suffix = "";
+  let suffix: string;
   if (schema && typeof schema === "object") {
     suffix = `\n\nYour final answer MUST be a single JSON object that conforms exactly to this JSON Schema:\n${JSON.stringify(schema)}\nRespond with ONLY the JSON object — no markdown fences, no commentary, no text before or after.`;
   } else if (outputHint && Object.keys(outputHint).length > 0) {
@@ -249,7 +249,7 @@ export function createWorkflowExecutionService(
 
   async function runNodeWithRetry(
     node: WorkflowNode,
-    run: (n: WorkflowNode) => Promise<NodeRunResult>,
+    run: (n: WorkflowNode, lastError?: unknown) => Promise<NodeRunResult>,
   ): Promise<NodeRunResult> {
     const cfg = node.retry ?? 0;
     const maxRetries = typeof cfg === "number" ? cfg : (cfg.maxAttempts ?? 0);
@@ -258,7 +258,7 @@ export function createWorkflowExecutionService(
     let lastError: unknown;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        return await run(node);
+        return await run(node, lastError);
       } catch (err) {
         lastError = err;
         if (attempt === maxRetries) throw err;
@@ -297,6 +297,7 @@ export function createWorkflowExecutionService(
     node: WorkflowNode,
     ready: { input: Record<string, unknown> },
     execution: WorkflowExecutionRow,
+    lastError?: unknown,
   ): Promise<NodeRunResult> {
     if (node.type !== "agent") throw new Error(`not agent: ${node.type}`);
     if (
@@ -318,7 +319,10 @@ export function createWorkflowExecutionService(
     const agentId = inline ? "default" : node.agentId!;
     if (!agentId) throw new Error("agent node requires agentId");
     const conversationId = `workflow:${execution.executionId}:${node.id}`;
-    const prompt = buildAgentPrompt(node, ready.input, node.output);
+    let prompt = buildAgentPrompt(node, ready.input, node.output);
+    if (lastError) {
+      prompt += `\n\nYour previous attempt failed because:\n${lastError instanceof Error ? lastError.message : String(lastError)}\nCorrect the error and reply again with the required JSON only.`;
+    }
 
     if (!deps.convPort.getConversation(conversationId)) {
       try {
@@ -423,8 +427,11 @@ export function createWorkflowExecutionService(
       try {
         output =
           node.type === "agent"
-            ? ((await runNodeWithRetry(node, (n) => runAgentNode(n, ready, execution))).output ??
-              {})
+            ? ((
+                await runNodeWithRetry(node, (n, lastError) =>
+                  runAgentNode(n, ready, execution, lastError),
+                )
+              ).output ?? {})
             : await runWorkflowNode(node, ready, execution);
       } catch (err) {
         await deps.port.updateNodeRun(execution.executionId, node.id, {
