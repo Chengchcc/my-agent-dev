@@ -79,6 +79,19 @@ function patchNode(def: Def, nodeId: string, patch: Record<string, unknown>): De
   };
 }
 
+function renameNode(def: Def, oldId: string, newId: string): Def {
+  if (!oldId || !newId || oldId === newId) return def;
+  return {
+    ...def,
+    nodes: def.nodes.map((n) => (n.id === oldId ? ({ ...n, id: newId } as WorkflowNode) : n)),
+    edges: def.edges.map((e) => ({
+      ...e,
+      from: e.from === oldId ? newId : e.from,
+      to: e.to === oldId ? newId : e.to,
+    })),
+  };
+}
+
 const TYPE_LABEL: Record<string, string> = {
   start: "Start",
   end: "End",
@@ -113,11 +126,25 @@ export function NodePropertyPanel({
 
   return (
     <div className="flex h-full flex-col overflow-auto p-4 text-(--ink)">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="truncate font-mono text-sm font-semibold text-(--info)">{nodeId}</h3>
+      <div className="mb-3 flex items-center justify-between">
+        <Input
+          className="min-w-0 flex-1 border-(--hairline) bg-(--canvas) font-mono text-xs text-(--info)"
+          value={nodeId}
+          placeholder="节点 id"
+          onChange={(e) => onChange(renameNode(definition, nodeId, e.target.value))}
+        />
         <Badge variant="outline" className="shrink-0 border-(--hairline) text-[10px] text-(--mute)">
           {TYPE_LABEL[node.type] ?? node.type}
         </Badge>
+      </div>
+      <div className="mb-4 space-y-1">
+        <Label className="text-xs text-(--mute)">name</Label>
+        <Input
+          className="border-(--hairline) bg-(--canvas) text-xs"
+          value={(node as { label?: string }).label ?? ""}
+          placeholder="节点名称（画布显示）"
+          onChange={(e) => set({ label: e.target.value })}
+        />
       </div>
 
       {node.type === "agent" && (

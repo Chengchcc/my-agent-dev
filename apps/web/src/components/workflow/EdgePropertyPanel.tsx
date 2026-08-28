@@ -3,6 +3,7 @@
 import type { JsonLogicRule, WorkflowDefinition } from "@chengchenccc/workflow";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -38,6 +39,9 @@ export function EdgePropertyPanel({
 }) {
   const edge = useMemo(() => definition.edges[edgeIndex], [definition, edgeIndex]);
   const [when, setWhen] = useState<string>(edge?.when ? JSON.stringify(edge.when, null, 2) : "");
+  const [condOp, setCondOp] = useState<"==" | "!=" | ">" | "<" | "exists">("==");
+  const [condLeft, setCondLeft] = useState("");
+  const [condRight, setCondRight] = useState("");
   if (!edge) return null;
 
   const nodeOptions = definition.nodes
@@ -96,10 +100,99 @@ export function EdgePropertyPanel({
         </Select>
       </div>
 
-      <div className="mt-3 flex flex-1 flex-col space-y-1">
-        <Label className="text-xs text-(--mute)">when（JSONLogic，空 = 无条件）</Label>
+      <div className="mt-3 flex-1 space-y-1 overflow-auto">
+        <Label className="text-xs text-(--mute)">when（条件，空 = 无条件）</Label>
+        <div className="space-y-2 rounded-md border border-(--hairline) bg-(--canvas)/50 p-2">
+          <Select value={condOp} onValueChange={(v) => setCondOp((v ?? "==") as typeof condOp)}>
+            <SelectTrigger className="h-8 w-full border-(--hairline) bg-(--canvas) font-mono text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="==">==</SelectItem>
+              <SelectItem value="!=">!=</SelectItem>
+              <SelectItem value=">">&gt;</SelectItem>
+              <SelectItem value="<">&lt;</SelectItem>
+              <SelectItem value="exists">exists</SelectItem>
+            </SelectContent>
+          </Select>
+          {condOp === "exists" ? (
+            <Select value={condLeft} onValueChange={(v) => setCondLeft(v ?? "")}>
+              <SelectTrigger className="h-8 w-full border-(--hairline) bg-(--canvas) font-mono text-xs">
+                <SelectValue placeholder="选择输出变量" />
+              </SelectTrigger>
+              <SelectContent>
+                {definition.nodes
+                  .filter((n) => n.type !== "start" && n.id !== edge.from)
+                  .flatMap((n) =>
+                    Object.keys((n as { output?: Record<string, unknown> }).output ?? {}).map(
+                      (k) => (
+                        <SelectItem key={`${n.id}.output.${k}`} value={`${n.id}.output.${k}`}>
+                          {n.id}.output.{k}
+                        </SelectItem>
+                      ),
+                    ),
+                  )}
+              </SelectContent>
+            </Select>
+          ) : (
+            <>
+              <Select value={condLeft} onValueChange={(v) => setCondLeft(v ?? "")}>
+                <SelectTrigger className="h-8 w-full border-(--hairline) bg-(--canvas) font-mono text-xs">
+                  <SelectValue placeholder="选择输出变量" />
+                </SelectTrigger>
+                <SelectContent>
+                  {definition.nodes
+                    .filter((n) => n.type !== "start" && n.id !== edge.from)
+                    .flatMap((n) =>
+                      Object.keys((n as { output?: Record<string, unknown> }).output ?? {}).map(
+                        (k) => (
+                          <SelectItem key={`${n.id}.output.${k}`} value={`${n.id}.output.${k}`}>
+                            {n.id}.output.{k}
+                          </SelectItem>
+                        ),
+                      ),
+                    )}
+                </SelectContent>
+              </Select>
+              <Input
+                className="h-8 border-(--hairline) bg-(--canvas) font-mono text-xs"
+                placeholder="常量值（high / yes / 1）"
+                value={condRight}
+                onChange={(e) => setCondRight(e.target.value)}
+              />
+            </>
+          )}
+          <Button
+            className="w-full"
+            onClick={() => {
+              if (!condLeft) return;
+              if (condOp === "exists") {
+                onChange(
+                  updateEdge(definition, edgeIndex, {
+                    when: { [condOp]: [{ var: condLeft }] } as JsonLogicRule,
+                  }),
+                );
+              } else {
+                const right =
+                  condRight.trim() === "true"
+                    ? true
+                    : condRight.trim() === "false"
+                      ? false
+                      : condRight;
+                onChange(
+                  updateEdge(definition, edgeIndex, {
+                    when: { [condOp]: [{ var: condLeft }, right] } as JsonLogicRule,
+                  }),
+                );
+              }
+            }}
+          >
+            添加条件
+          </Button>
+        </div>
+        <Label className="mt-2 text-xs text-(--mute)">或直接编辑 JSONLogic</Label>
         <Textarea
-          className="min-h-28 flex-1 border-(--hairline) bg-(--canvas) font-mono text-xs"
+          className="min-h-24 border-(--hairline) bg-(--canvas) font-mono text-xs"
           value={when}
           onChange={(e) => setWhen(e.target.value)}
           placeholder='{ "==": [ { "var": "a.output.x" }, "high" ] }'
@@ -117,7 +210,7 @@ export function EdgePropertyPanel({
             }
           }}
         >
-          Apply condition
+          Apply JSONLogic
         </Button>
       </div>
     </div>

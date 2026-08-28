@@ -318,19 +318,20 @@ export function AgenticWorkflowEditor({
             <div
               onPointerDown={(e) => {
                 e.preventDefault();
+                e.currentTarget.setPointerCapture(e.pointerId);
                 const startX = e.clientX;
                 const startW = inspectorW;
-                const move = (ev: PointerEvent) => {
+                const move = (ev: React.PointerEvent) => {
                   setInspectorW(Math.max(220, startW + ev.clientX - startX));
                 };
                 const up = () => {
-                  window.removeEventListener("pointermove", move);
-                  window.removeEventListener("pointerup", up);
+                  e.currentTarget.removeEventListener("pointermove", move as never);
+                  e.currentTarget.removeEventListener("pointerup", up as never);
                 };
-                window.addEventListener("pointermove", move);
-                window.addEventListener("pointerup", up);
+                e.currentTarget.addEventListener("pointermove", move as never);
+                e.currentTarget.addEventListener("pointerup", up as never);
               }}
-              className="w-1 cursor-col-resize bg-(--hairline) transition-colors hover:bg-(--info)/50"
+              className="w-1.5 cursor-col-resize bg-(--hairline) transition-colors hover:bg-(--info)/50 touch-none"
             />
             {/* Inspector column */}
             <div
@@ -399,19 +400,20 @@ export function AgenticWorkflowEditor({
               <div
                 onPointerDown={(e) => {
                   e.preventDefault();
+                  e.currentTarget.setPointerCapture(e.pointerId);
                   const startX = e.clientX;
                   const startW = chatW;
-                  const move = (ev: PointerEvent) => {
+                  const move = (ev: React.PointerEvent) => {
                     setChatW(Math.max(260, startW - ev.clientX + startX));
                   };
                   const up = () => {
-                    window.removeEventListener("pointermove", move);
-                    window.removeEventListener("pointerup", up);
+                    e.currentTarget.removeEventListener("pointermove", move as never);
+                    e.currentTarget.removeEventListener("pointerup", up as never);
                   };
-                  window.addEventListener("pointermove", move);
-                  window.addEventListener("pointerup", up);
+                  e.currentTarget.addEventListener("pointermove", move as never);
+                  e.currentTarget.addEventListener("pointerup", up as never);
                 }}
-                className="w-1 cursor-col-resize bg-(--hairline) transition-colors hover:bg-(--info)/50"
+                className="w-1.5 cursor-col-resize bg-(--hairline) transition-colors hover:bg-(--info)/50 touch-none"
               />
             )}
             {/* Chat (right, always visible) */}
