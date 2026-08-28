@@ -8,6 +8,7 @@ import {
   Controls,
   type Edge,
   type EdgeChange,
+  MiniMap,
   type Node,
   type NodeChange,
   type OnConnectEnd,
@@ -176,6 +177,29 @@ export function WorkflowCanvas({
         onInit={(instance) => setRf(instance as never)}
       >
         <Background variant={BackgroundVariant.Lines} gap={24} size={1} color="var(--wf-grid)" />
+        {interactive && (
+          <MiniMap
+            pannable
+            zoomable
+            nodeColor={(n: Node) => {
+              const t = (n.data as unknown as { type?: string }).type;
+              return (
+                {
+                  start: "#34d399",
+                  end: "#fb7185",
+                  agent: "#38bdf8",
+                  script: "#f59e0b",
+                  human: "#a78bfa",
+                }[t ?? ""] ?? "#334155"
+              );
+            }}
+            style={{
+              background: "#0b0e14",
+              border: "1px solid var(--wf-node-border)",
+              borderRadius: 8,
+            }}
+          />
+        )}
         {interactive && (
           <Controls
             showInteractive={false}

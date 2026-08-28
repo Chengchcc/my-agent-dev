@@ -175,6 +175,10 @@ export function AgenticWorkflowEditor({
                   edgeIndex={activeEdgeIndex}
                   definition={definition}
                   onChange={setDefinition}
+                  onDelete={(def) => {
+                    setDefinition(def);
+                    setActiveEdgeIndex(null);
+                  }}
                 />
               ) : activeId && definition ? (
                 <NodePropertyPanel
