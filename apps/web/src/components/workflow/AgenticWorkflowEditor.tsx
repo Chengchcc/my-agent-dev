@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import { ChatPanel } from "./ChatPanel";
 import { DslEditorPanel } from "./DslEditorPanel";
 import { EdgePropertyPanel } from "./EdgePropertyPanel";
+import { NodeMenuPopover } from "./NodeMenuPopover";
 import { NodePanel } from "./NodePanel";
 import { NodePropertyPanel } from "./NodePropertyPanel";
 import { WorkflowCanvas } from "./WorkflowCanvas";
@@ -149,6 +150,20 @@ export function AgenticWorkflowEditor({
           />
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="min-h-0 flex-1">
+              {menu && (
+                <div className="absolute z-20" style={{ left: menu.x, top: menu.y }}>
+                  <NodeMenuPopover
+                    onPick={(node) => {
+                      if (!definition) return;
+                      const id = makeNodeId(node.type);
+                      setDefinition(
+                        addNode(addEdge(definition, menu.sourceId, id), { ...node, id }),
+                      );
+                    }}
+                    onClose={() => setMenu(null)}
+                  />
+                </div>
+              )}
               {graph && definition ? (
                 <WorkflowCanvas
                   graph={graph}
@@ -165,6 +180,7 @@ export function AgenticWorkflowEditor({
                     setActiveId(null);
                     setInspectorTab("attrs");
                   }}
+                  onNodeMenuRequested={(sourceId, pos) => setMenu({ sourceId, x: pos.x, y: pos.y })}
                 />
               ) : (
                 <div className="flex h-full items-center justify-center text-sm text-[#64748b]">

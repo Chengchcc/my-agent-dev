@@ -4,7 +4,6 @@ import { createServerClient, unwrap } from "@/lib/client";
 
 export const dynamic = "force-dynamic";
 
-
 export default async function AgenticWorkflowListPage() {
   const env = parseEnv(process.env);
   const client = createServerClient(env.BACKEND_URL, env.BACKEND_AUTH_TOKEN);
