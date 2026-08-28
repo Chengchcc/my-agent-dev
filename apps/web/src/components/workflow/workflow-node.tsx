@@ -30,7 +30,7 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
   return (
     <div
       style={{
-        width: 260,
+        width: 220,
         height:
           t === "human" && (data as { askQuestion?: AskQuestionInput }).askQuestion ? "auto" : 100,
         borderRadius: 12,

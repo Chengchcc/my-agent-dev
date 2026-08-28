@@ -24,6 +24,7 @@ export type NodeStatus = "done" | "active" | "idle" | "failed";
 
 function shortWhen(when: unknown): string {
   try {
+    if (typeof when === "string" && when.length > 0) when = JSON.parse(when);
     const w = when as Record<string, unknown> | undefined;
     if (!w) return "";
     const op = Object.keys(w)[0] ?? "";
