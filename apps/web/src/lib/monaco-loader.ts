@@ -6,7 +6,7 @@ import { loader } from "@monaco-editor/react";
 // the editor falls back to the @monaco-editor/react Loading placeholder.
 loader.config({
   paths: {
-    vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs",
+    vs: "/monaco/vs",
   },
 });
 
