@@ -8,8 +8,9 @@ export interface PositionedNode {
   layer: number;
 }
 
-const LAYER_GAP_X = 260;
-const NODE_GAP_Y = 120;
+/** Top-bottom layout: layer = row (y grows downward), index-in-layer = column. */
+const LAYER_GAP_Y = 150;
+const NODE_GAP_X = 260;
 
 /** Deterministic layered layout: longest-path layer + per-layer stacking. */
 export function layeredLayout(def: WorkflowDefinition): PositionedNode[] {
@@ -33,7 +34,7 @@ export function layeredLayout(def: WorkflowDefinition): PositionedNode[] {
   return order.map((id) => ({
     id,
     layer: layer.get(id) ?? 0,
-    x: (layer.get(id) ?? 0) * LAYER_GAP_X,
-    y: (indexInLayer.get(id) ?? 0) * NODE_GAP_Y,
+    x: (indexInLayer.get(id) ?? 0) * NODE_GAP_X,
+    y: (layer.get(id) ?? 0) * LAYER_GAP_Y,
   }));
 }

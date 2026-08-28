@@ -14,6 +14,7 @@ const typeColor: Record<string, string> = {
 export function WorkflowNodeCard({ data, selected }: NodeProps) {
   const t = (data as { type?: string }).type ?? "script";
   const status = (data as { status?: string }).status;
+  const onDelete = (data as { onDelete?: () => void }).onDelete;
   const band = typeColor[t] ?? "var(--wf-info)";
   return (
     <div
@@ -44,6 +45,18 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
           boxShadow: `0 0 8px ${band}`,
         }}
       />
+      {onDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          title="Delete node"
+          className="absolute -right-2 -top-2 z-10 flex size-5 items-center justify-center rounded-full border border-[#1f2937] bg-[#0b0e14] text-[10px] text-[#fb7185] opacity-0 transition-opacity hover:border-[#fb7185]/60 hover:bg-[#1e293b] [.react-flow__node:hover_&]:opacity-100"
+        >
+          ✕
+        </button>
+      )}
       <div style={{ padding: "16px 12px 0" }}>
         <div style={{ fontSize: 14, fontWeight: 600 }}>
           {String(data.label)}
@@ -55,8 +68,8 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
           {t}
         </div>
       </div>
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
+      <Handle type="target" position={Position.Top} />
+      <Handle type="source" position={Position.Bottom} />
     </div>
   );
 }
