@@ -31,6 +31,7 @@ type Exec = {
   exit?: string;
   error?: string;
   createdAt: number;
+  terminalAt?: number;
 };
 
 export function ExecutionList({
@@ -136,49 +137,64 @@ export function ExecutionList({
           </DialogContent>
         </Dialog>
       </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-xs text-muted-foreground">
-            <th>executionId</th>
-            <th>status</th>
-            <th>exit</th>
-            <th>createdAt</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {executions.map((e) => (
-            <tr key={e.executionId} className="border-t">
-              <td className="py-2">
+      <div className="space-y-2">
+        {executions.map((e) => {
+          const dur =
+            e.terminalAt && e.createdAt
+              ? Math.max(0, Math.round((e.terminalAt - e.createdAt) / 1000))
+              : undefined;
+          return (
+            <div
+              key={e.executionId}
+              className="flex items-center justify-between gap-3 rounded-xl border border-(--hairline) bg-(--panel)/70 px-4 py-3"
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[10px] ${
+                      e.status === "success"
+                        ? "border-(--primary)/40 bg-(--primary)/10 text-(--primary)"
+                        : e.status === "failure"
+                          ? "border-(--err)/40 bg-(--err)/10 text-(--err)"
+                          : e.status === "waiting_human"
+                            ? "border-(--info)/40 bg-(--info)/10 text-(--info)"
+                            : "border-(--hairline) bg-(--panel2) text-(--mute)"
+                    }`}
+                  >
+                    {e.status === "waiting_human" ? "等待确认" : e.status}
+                  </span>
+                  {dur !== undefined && <span className="text-[10px] text-(--mute)">{dur}s</span>}
+                </div>
                 <Link
                   href={`/agentic-workflow/${workflowId}/executions/${e.executionId}`}
-                  className="hover:underline"
+                  className="mt-1 block truncate text-sm font-medium text-(--ink) hover:text-(--primary)"
                 >
-                  {e.executionId}
+                  {new Date(e.createdAt).toLocaleString()}
                 </Link>
-              </td>
-              <td>
-                {e.status}
-                {e.status === "failure" && e.error && (
-                  <div className="mt-1 max-w-48 truncate text-[10px] text-(--err)" title={e.error}>
-                    {e.error}
-                  </div>
-                )}
-              </td>
-              <td>{e.exit ?? "-"}</td>
-              <td>{new Date(e.createdAt).toLocaleString()}</td>
-              <td>
+              </div>
+              {e.status === "failure" && e.error && (
+                <div className="min-w-0 flex-1 truncate text-xs text-(--err)" title={e.error}>
+                  {e.error}
+                </div>
+              )}
+              <div className="flex shrink-0 items-center gap-2">
+                <Link
+                  href={`/agentic-workflow/${workflowId}/executions/${e.executionId}`}
+                  className="rounded-md border border-(--hairline) px-2.5 py-1 text-xs text-(--info) hover:bg-(--panel2)"
+                >
+                  查看
+                </Link>
                 <button
-                  className="text-[11px] text-(--err) hover:underline"
+                  className="rounded-md px-2 py-1 text-xs text-(--err) hover:bg-(--err)/10"
                   onClick={() => setConfirmId(e.executionId)}
                 >
-                  Delete
+                  删除
                 </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </div>
+            </div>
+          );
+        })}
+      </div>
       {executions.length === 0 && (
         <div className="mt-4 text-sm text-muted-foreground">No executions yet.</div>
       )}

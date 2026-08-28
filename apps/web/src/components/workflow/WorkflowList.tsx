@@ -12,6 +12,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 
 type Row = {
@@ -40,10 +43,43 @@ function defaultDraft(id: string) {
 
 export function WorkflowList({ definitions }: { definitions: Row[] }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [runDef, setRunDef] = useState<{
+    input?: Record<string, "string" | "number" | "boolean">;
+  } | null>(null);
+  const [runVals, setRunVals] = useState<Record<string, string>>({});
   async function create() {
     const id = `wf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     await api.saveWorkflowDefinition(id, defaultDraft(id) as Record<string, unknown>);
     window.location.assign(`/agentic-workflow/${id}`);
+  }
+  async function openRun(id: string) {
+    setRunId(id);
+    setRunVals({});
+    try {
+      const def = await api.getWorkflowDefinition(id);
+      setRunDef(def?.definition ?? null);
+    } catch {
+      setRunDef(null);
+    }
+  }
+  async function run() {
+    if (!runId) return;
+    const input: Record<string, unknown> = {};
+    for (const [key, hint] of Object.entries(runDef?.input ?? {})) {
+      const raw = runVals[key] ?? "";
+      if (!raw) continue;
+      input[key] = hint === "number" ? Number(raw) : hint === "boolean" ? raw === "true" : raw;
+    }
+    try {
+      await api.startWorkflowExecution({
+        workflowRef: { repo: "local", path: `${runId}.workflow.json` },
+        input,
+      });
+      window.location.assign(`/agentic-workflow/${runId}/executions`);
+    } catch (err) {
+      alert(`Run failed: ${(err as Error).message}`);
+    }
   }
   async function del(id: string) {
     await api.deleteWorkflowDefinition(id);
@@ -93,6 +129,12 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
               </div>
             </div>
             <div className="flex shrink-0 gap-2 text-xs">
+              <button
+                className="rounded-md border border-(--primary)/40 bg-(--primary)/10 px-2 py-1 text-(--primary) transition-colors hover:bg-(--primary)/20"
+                onClick={() => openRun(d.workflowId)}
+              >
+                Run
+              </button>
               <Link
                 href={`/agentic-workflow/${d.workflowId}/executions`}
                 className="rounded-md border border-(--hairline) px-2 py-1 text-(--info) transition-colors hover:bg-(--panel2)"
@@ -112,6 +154,44 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
           <div className="text-sm text-muted-foreground">No workflows yet.</div>
         )}
       </div>
+      <Dialog
+        open={runId !== null}
+        onOpenChange={(o) => {
+          if (!o) setRunId(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold">运行 {runId}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {Object.keys(runDef?.input ?? {}).length === 0 ? (
+              <p className="text-xs text-(--mute)">该 workflow 无输入参数。</p>
+            ) : (
+              Object.entries(runDef?.input ?? {}).map(([key, hint]) => (
+                <div key={key} className="flex flex-col gap-1">
+                  <Label className="text-xs text-(--mute)">
+                    {key} <span className="text-(--faint)">({hint})</span>
+                  </Label>
+                  <Input
+                    className="h-9 border-(--hairline) bg-(--canvas) text-xs"
+                    type={hint === "number" ? "number" : hint === "boolean" ? "text" : "text"}
+                    placeholder={hint === "boolean" ? "true / false" : ""}
+                    value={runVals[key] ?? ""}
+                    onChange={(e) => setRunVals((v) => ({ ...v, [key]: e.target.value }))}
+                  />
+                </div>
+              ))
+            )}
+            <button
+              className="w-full rounded-md bg-(--primary) px-3 py-2 text-xs text-(--ink) hover:bg-(--panel2)"
+              onClick={run}
+            >
+              运行
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <AlertDialog
         open={confirmId !== null}
         onOpenChange={(o) => {
