@@ -241,3 +241,34 @@
     transition-duration: 0.01ms;
   }
 }
+
+/* ── Agentic Workflow Blueprint (scoped to workflow editor surfaces) ── */
+:root {
+  --wf-canvas-bg: #0b0e14;
+  --wf-grid: rgba(56, 189, 248, 0.07);
+  --wf-node-bg: #111827;
+  --wf-node-border: #1f2937;
+  --wf-node-text: #e5e7eb;
+  --wf-accent: #f59e0b;
+  --wf-info: #38bdf8;
+  --wf-color-start: #34d399;
+  --wf-color-end: #fb7185;
+  --wf-color-agent: #38bdf8;
+  --wf-color-script: #f59e0b;
+  --wf-color-human: #a78bfa;
+}
+@keyframes wf-dash {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+@keyframes wf-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
