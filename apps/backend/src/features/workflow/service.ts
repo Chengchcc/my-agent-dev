@@ -76,7 +76,12 @@ export interface WorkflowExecutionService {
   getPendingHuman(
     executionId: string,
     nodeId: string,
-  ): Promise<{ nodeId: string; question?: string; form?: Record<string, unknown>; status: string } | null>;
+  ): Promise<{
+    nodeId: string;
+    question?: string;
+    form?: Record<string, unknown>;
+    status: string;
+  } | null>;
   subscribeEvents(executionId: string, signal?: AbortSignal): Promise<AsyncIterable<WorkflowEvent>>;
   recover(): Promise<void>;
   dispose(): Promise<void>;
@@ -145,11 +150,36 @@ function formToAskQuestions(
     const f = raw as { type?: string; label?: string; options?: string[]; required?: boolean };
     const label = f.label ?? key;
     if (f.type === "enum") {
-      questions.push({ id: key, kind: "select", question: label, header: question, options: (f.options ?? []).map((v) => ({ value: v, label: v })), validation: { required: f.required !== false } });
+      questions.push({
+        id: key,
+        kind: "select",
+        question: label,
+        header: question,
+        options: (f.options ?? []).map((v) => ({ value: v, label: v })),
+        validation: { required: f.required !== false },
+      });
     } else if (f.type === "boolean") {
-      questions.push({ id: key, kind: "select", question: label, header: question, options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }], validation: { required: f.required !== false } });
+      questions.push({
+        id: key,
+        kind: "select",
+        question: label,
+        header: question,
+        options: [
+          { value: "yes", label: "Yes" },
+          { value: "no", label: "No" },
+        ],
+        validation: { required: f.required !== false },
+      });
     } else {
-      questions.push({ id: key, kind: "text", question: label, header: question, multiline: f.type === "textarea", placeholder: f.label, validation: { required: f.required !== false } });
+      questions.push({
+        id: key,
+        kind: "text",
+        question: label,
+        header: question,
+        multiline: f.type === "textarea",
+        placeholder: f.label,
+        validation: { required: f.required !== false },
+      });
     }
   }
   if (questions.length === 0 && question) {

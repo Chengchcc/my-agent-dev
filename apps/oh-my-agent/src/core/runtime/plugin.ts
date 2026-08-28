@@ -1,3 +1,4 @@
+import type { AskQuestionInput, AskQuestionResult } from "@chengchenccc/agent-contract";
 import type { Message } from "@chengchenccc/message";
 import type { OmaLoopEvent } from "./agent-event.js";
 import type { ApprovalDecision } from "./approval.js";
@@ -26,6 +27,10 @@ export interface PluginTool {
        *  configured (the tool decides; fail closed itself when sensitive).
        *  Resolves null when no verdict could be obtained. */
       request?: (req: { reason?: string }) => Promise<ApprovalDecision | null>;
+      /** HITL: ask the user structured questions (ask_question tool).
+       *  Absent = no ask pipeline (tool fails closed). Resolves null when
+       *  no answer could be obtained. */
+      ask?: (input: AskQuestionInput) => Promise<AskQuestionResult | null>;
     },
   ): Promise<Readonly<Record<string, unknown>>>;
 }

@@ -98,6 +98,50 @@ export function layoutBranchTree(
   return rows;
 }
 
+/** One-shot SelectList overlay; resolves the picked value or null on esc. */
+function pickOne(
+  tui: TUI,
+  title: string,
+  items: ReadonlyArray<{ value: string; label: string; description?: string }>,
+): Promise<string | null> {
+  const { promise, resolve } = Promise.withResolvers<string | null>();
+  const list = new SelectList([...items], 10, EDITOR_THEME.selectList, {
+    minPrimaryColumnWidth: 6,
+    maxPrimaryColumnWidth: 42,
+  });
+  const overlayBox = new PickerOverlay(new Text(title, 0, 0), list);
+  const overlay = tui.showOverlay(overlayBox, { width: "70%", anchor: "center" });
+  list.onSelect = (item: { value: string }) => {
+    overlay.hide();
+    resolve(item.value);
+  };
+  list.onCancel = () => {
+    overlay.hide();
+    resolve(null);
+  };
+  return promise;
+}
+
+/** Notice-only overlay; resolves true when dismissed, null is not needed. */
+function pickNotice(tui: TUI, title: string): Promise<boolean> {
+  const { promise, resolve } = Promise.withResolvers<boolean>();
+  const list = new SelectList([{ value: "ok", label: "ok" }], 1, EDITOR_THEME.selectList, {
+    minPrimaryColumnWidth: 2,
+    maxPrimaryColumnWidth: 4,
+  });
+  const overlayBox = new PickerOverlay(new Text(title, 0, 0), list);
+  const overlay = tui.showOverlay(overlayBox, { width: "60%", anchor: "center" });
+  list.onSelect = () => {
+    overlay.hide();
+    resolve(true);
+  };
+  list.onCancel = () => {
+    overlay.hide();
+    resolve(true);
+  };
+  return promise;
+}
+
 export function createTerminalIo(
   terminal: Terminal = new ProcessTerminal(),
   workspaceRoot: string = process.cwd(),
@@ -528,6 +572,42 @@ export function createTerminalIo(
         resolve(null);
       };
       return promise;
+    },
+    askQuestions(input) {
+      // ponytail: TUI v1 fully supports single-select questions via the
+      // SelectList overlay; multi/text degrade to a notice overlay resolving
+      // null (tool fails closed). Upgrade path: an Input-based form overlay
+      // (packages/tui Input is Focusable) for text + checkbox rows for multi.
+      return (async () => {
+        const answers: Array<{
+          id: string;
+          selectedValues: string[];
+          freeText?: string;
+        }> = [];
+        for (const q of input.questions) {
+          if (q.kind === "text" || q.multi) {
+            const unsupported = await pickNotice(
+              tui,
+              `  ${q.question} — ${q.kind === "text" ? "text" : "multi-select"} input not supported in TUI yet — esc`,
+            );
+            if (!unsupported) return null;
+            continue;
+          }
+          const options = q.options ?? [];
+          const picked = await pickOne(
+            tui,
+            `  ${q.question} — select, enter, esc${q.header ? ` — ${q.header}` : ""}`,
+            options.map((o) => ({
+              value: o.value,
+              label: o.label + (q.recommended === o.value ? " (Recommended)" : ""),
+              description: o.description,
+            })),
+          );
+          if (picked === null) return null;
+          answers.push({ id: q.id, selectedValues: [picked] });
+        }
+        return { answers };
+      })();
     },
     pickForkPoint(points) {
       const { promise, resolve } = Promise.withResolvers<number | null>();

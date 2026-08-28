@@ -23,6 +23,7 @@ import {
 import type { PluginMcpConfig } from "../plugins/plugin-resolve.js";
 import { isFileTrusted, readTrustedPlugins } from "../plugins/plugin-trust.js";
 import { loadProjectSettings } from "../settings/project-settings.js";
+import { createAskQuestionTool } from "../tools/ask-question.js";
 import {
   createBashTool,
   createDdgWebSearchPort,
@@ -358,6 +359,17 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     }
     // permissionMode "deny" drops plugin code components entirely (MVP
     // enforcement point); native tools are unaffected and the Run proceeds.
+  }
+  // Native ask_question (oh-my-pi style HITL): same conflict rule as todo —
+  // the backend can inject its own MCP ask_question (product surfaces); the
+  // injected one wins, standalone workspaces get the native tool.
+  const hasInjectedAsk = mounted.tools.some((t) => t.name === "ask_question");
+  const askAllowed = deps.toolFilter ? toolFilterAllows(deps.toolFilter, "ask_question") : true;
+  if (!hasInjectedAsk && askAllowed) {
+    plugins.push({
+      name: "oma-native-ask",
+      tools: [createAskQuestionTool()],
+    });
   }
   // Native todo (.oma/todo.json): installed when NOTHING else already
   // provides todo_write (the backend injects its own MCP todo_write into

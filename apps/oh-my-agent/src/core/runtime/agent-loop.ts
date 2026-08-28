@@ -1,4 +1,9 @@
-import type { BackendInputMessage, Usage } from "@chengchenccc/agent-contract";
+import type {
+  AskQuestionInput,
+  AskQuestionResult,
+  BackendInputMessage,
+  Usage,
+} from "@chengchenccc/agent-contract";
 import { debugLog } from "@chengchenccc/agent-contract";
 import { ProviderError } from "@chengchenccc/ai";
 import type { AIMessageChunk, Message } from "@chengchenccc/message";
@@ -71,6 +76,8 @@ export interface OmaSessionOptions {
    *  tools and the ask-mode gate for plugin code tools. Absent = tools see
    *  no `request` and decide themselves. */
   readonly approvalHandler?: ApprovalHandler;
+  /** HITL ask pipeline (ask_question tool): resolves options.ask calls. */
+  readonly askHandler?: (input: AskQuestionInput) => Promise<AskQuestionResult | null>;
   /** Native-tool permission gate (run-runtime, ADR 0020 permissionMode): runs
    *  AFTER plugin beforeTool hooks; a block result prevents execution. Native
    *  high-risk tools (bash/write/edit/mcp__*) route here so ask/deny apply to
@@ -1000,6 +1007,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                       }),
                   }
                 : {}),
+              ...(opts.askHandler ? { ask: opts.askHandler } : {}),
             });
             if (result && typeof result === "object") {
               if ("isError" in result) {

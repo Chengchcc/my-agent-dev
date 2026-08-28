@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { BackendRunInput, BackendRunOutcome } from "@chengchenccc/agent-contract";
+import type {
+  AskQuestionInput,
+  AskQuestionResult,
+  BackendRunInput,
+  BackendRunOutcome,
+} from "@chengchenccc/agent-contract";
 import type { ModelRuntime } from "@chengchenccc/ai";
 import { ProcessTerminal, type SlashCommand } from "@chengchenccc/tui";
 import { buildCliRunInput } from "../../cli/initial-input.js";
@@ -105,6 +110,9 @@ export interface TuiIo {
   /** Interactive approval confirm (HITL); resolves "allow"/"deny", null on
    *  cancel (treated as deny — fail-closed). Absent = deny. */
   confirmApproval?(req: { toolName: string; reason?: string }): Promise<"allow" | "deny" | null>;
+  /** Interactive ask_question form (HITL); resolves answers or null on
+   *  cancel/unsupported question kind (fail-closed). */
+  askQuestions?(input: AskQuestionInput): Promise<AskQuestionResult | null>;
   /** Interactive fork-point picker (pi's user-message selector): lists the
    *  session's user messages; resolves the chosen 1-based ordinal, or null
    *  when cancelled. Absent = caller falls back to /fork <n>. */
@@ -352,6 +360,9 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
           ? { decision: "allow" }
           : { decision: "deny", reason: "user denied" };
       },
+      // HITL ask_question: interactive overlay; absent/cancel = null (tool
+      // fails closed with "no answer").
+      ...(io.askQuestions ? { askHandler: io.askQuestions } : {}),
       ...(pluginRt.plugins.length || pluginRt.mcpServers.length
         ? { pluginComponents: { plugins: pluginRt.plugins, mcpServers: pluginRt.mcpServers } }
         : {}),
