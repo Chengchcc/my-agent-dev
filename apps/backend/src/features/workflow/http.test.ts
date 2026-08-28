@@ -59,6 +59,7 @@ const fakeService: WorkflowExecutionService = {
   listExecutionEvents: async () => [],
   getPendingHuman: async () => null,
   chatPatch: async () => ({ definition: def }),
+  deleteExecution: async () => true,
   listExecutions: async () => [
     {
       executionId: "e1",

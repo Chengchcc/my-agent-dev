@@ -39,6 +39,13 @@ export interface AgentRunnerDeps {
       createdAt: number;
     }): unknown;
   };
+  conversationService?: {
+    postMessage(input: {
+      conversationId: string;
+      content: unknown;
+      modelOverride?: unknown;
+    }): Promise<{ triggeredRuns: Array<{ runId: string; queued: boolean }> }>;
+  };
   resolveDefaultModel?: (agentId: string) => Promise<unknown>;
   /** Runs a prompt through an agent and returns the final text. */
   chatAgent?: (prompt: string) => Promise<string>;
@@ -280,10 +287,11 @@ export function createWorkflowExecutionService(
       !deps.agentRunService ||
       !deps.agentRunExecution ||
       !deps.convPort ||
-      !deps.resolveDefaultModel
+      !deps.resolveDefaultModel ||
+      !deps.conversationService
     ) {
       throw new Error(
-        "agent runner requires agentRunService/agentRunExecution/convPort/resolveDefaultModel",
+        "agent runner requires agentRunService/agentRunExecution/convPort/conversationService/resolveDefaultModel",
       );
     }
     const inline = (node.agentId ?? "").trim() === "";
@@ -310,22 +318,17 @@ export function createWorkflowExecutionService(
     const defaultModel = inline
       ? { backendKind: "oma", modelId: node.model ?? "" }
       : await deps.resolveDefaultModel(agentId);
-    const workspace = node.repo ? await deps.resolveRepoWorkspace?.(node.repo, agentId) : undefined;
-    const input: Record<string, unknown> = {
-      conversationId,
-      agentId,
-      backendKind: "oma",
-      mode: "normal",
-      message: { role: "user", text: prompt },
-      defaultModel,
-      configRevision: 1,
-      idempotencyKey: `wf:${execution.executionId}:${node.id}`,
-    };
-    if (workspace) input.workspace = workspace;
 
-    const acquired = await deps.agentRunService.enqueueAndAcquire(input);
-    const runId = acquired.run?.runId;
-    if (!runId) throw new Error("agent run not acquired");
+    // Post the prompt as a canonical user message: this writes it to the
+    // conversation ledger (so it appears in Chat) and triggers the agent run.
+    if (!deps.conversationService) throw new Error("agent runner requires conversationService");
+    const posted = await deps.conversationService.postMessage({
+      conversationId,
+      content: prompt,
+      modelOverride: defaultModel,
+    });
+    const runId = posted.triggeredRuns[0]?.runId;
+    if (!runId) throw new Error("agent run not triggered");
 
     emit(execution.executionId, "node_agent_started", { nodeId: node.id, runId });
     await deps.agentRunExecution.dispatch(runId);

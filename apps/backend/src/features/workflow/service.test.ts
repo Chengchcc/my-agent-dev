@@ -194,6 +194,9 @@ describe("createWorkflowExecutionService", () => {
         },
       } as never,
       convPort: { getConversation: () => null, createConversation: () => {} } as never,
+      conversationService: {
+        postMessage: async () => ({ triggeredRuns: [{ runId: "r1", queued: true }] }),
+      } as never,
       resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "x" }),
     });
     const result = await svc.runToCompletion("e1", {
