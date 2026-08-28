@@ -208,6 +208,72 @@ describe("createWorkflowExecutionService", () => {
     expect(nodeRuns.find((r) => r.nodeId === "a")!.output).toEqual({ val: 1 });
   });
 
+  test("agent node retries with schema error feedback in prompt", async () => {
+    const { port, nodeRuns } = ramPort();
+    const posted: string[] = [];
+    const svc = createWorkflowExecutionService({
+      port,
+      nodeRunners: {} as never,
+      eventBus: { emit: () => {}, subscribe: async function* () {} } as never,
+      idGen: () => "e1",
+      agentRunService: {
+        getRun: async (runId: string) => ({
+          status: "completed",
+          terminalResult:
+            runId === "r1"
+              ? { status: "completed", messages: [{ role: "assistant", text: '{"wrong": 1}' }] }
+              : { status: "completed", messages: [{ role: "assistant", text: '{"val": 1}' }] },
+        }),
+      } as never,
+      agentRunExecution: {
+        dispatch: async () => {},
+        subscribe: async function* () {
+          yield { type: "status", status: "completed" };
+        },
+      } as never,
+      convPort: { getConversation: () => null, createConversation: () => {} } as never,
+      conversationService: {
+        postMessage: async ({ content }: { content: unknown }) => {
+          posted.push(String(content));
+          return { triggeredRuns: [{ runId: posted.length === 1 ? "r1" : "r2", queued: true }] };
+        },
+      } as never,
+      resolveDefaultModel: async () => ({ backendKind: "oma", modelId: "x" }),
+    });
+    const def = parseWorkflow({
+      version: 1,
+      id: "wf",
+      nodes: [
+        { id: "start", type: "start" },
+        {
+          id: "a",
+          type: "agent",
+          agentId: "ag-1",
+          retry: 1,
+          outputSchema: {
+            type: "object",
+            properties: { val: { type: "number" } },
+            required: ["val"],
+          },
+        },
+        { id: "done", type: "end", status: "success" },
+      ],
+      edges: [
+        { from: "start", to: "a" },
+        { from: "a", to: "done" },
+      ],
+    });
+    const result = await svc.runToCompletion("e1", {
+      workflowId: "wf",
+      definition: def,
+      input: {},
+    });
+    expect(result.status).toBe("success");
+    expect(posted.length).toBe(2);
+    expect(posted[1]).toContain("previous attempt failed");
+    expect(nodeRuns.find((r) => r.nodeId === "a")!.output).toEqual({ val: 1 });
+  });
+
   test("conditional edge routes by source node output", async () => {
     const { port } = ramPort();
     const svc = createWorkflowExecutionService({

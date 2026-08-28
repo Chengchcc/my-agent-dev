@@ -345,6 +345,11 @@ export function createWorkflowExecutionService(
     // run instead of triggering a new one. This survives workflow/agent
     // disconnects — the agent may have already completed.
     if (!deps.conversationService) throw new Error("agent runner requires conversationService");
+    // Retry: clear the stale runId so this attempt starts a fresh run (the
+    // previous attempt's output failed schema validation).
+    if (lastError) {
+      await deps.port.updateNodeRun(execution.executionId, node.id, { runId: null });
+    }
     const nodeRun = (await deps.port.listNodeRuns(execution.executionId)).find(
       (r) => r.nodeId === node.id,
     );
@@ -428,9 +433,14 @@ export function createWorkflowExecutionService(
         output =
           node.type === "agent"
             ? ((
-                await runNodeWithRetry(node, (n, lastError) =>
-                  runAgentNode(n, ready, execution, lastError),
-                )
+                await runNodeWithRetry(node, async (n, lastError) => {
+                  const r = await runAgentNode(n, ready, execution, lastError);
+                  const output = r.output ?? {};
+                  const errs = node.outputSchema ? validateBySchema(output, node.outputSchema) : [];
+                  if (errs.length > 0)
+                    throw new Error(`node ${node.id} output invalid: ${errs.join("; ")}`);
+                  return r;
+                })
               ).output ?? {})
             : await runWorkflowNode(node, ready, execution);
       } catch (err) {
