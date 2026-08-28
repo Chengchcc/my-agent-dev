@@ -12,7 +12,7 @@ function buildItems(input: AskQuestionInput): Items {
       return {
         name: q.id,
         required: q.validation?.required !== false,
-        choices: q.multiline ? [{ value: "" }] : [],
+        choices: [],
       } as const;
     }
     return {
@@ -89,34 +89,39 @@ export function AskQuestionCard({
                 <Questionnaire.Input
                   className="h-9 w-full rounded-md border border-(--hairline) bg-(--canvas) px-3 text-sm"
                   placeholder={q.placeholder}
-                  type={q.multiline ? "text" : "text"}
                 />
               ) : (
-                <Questionnaire.Choices className="space-y-1">
-                  {(q.options ?? []).map((o) => (
-                    <Questionnaire.Choice key={o.value} value={o.value}>
-                      <Questionnaire.ChoiceLabel className="flex items-center gap-2 text-sm">
-                        <span className="font-medium">{o.label}</span>
-                        {o.description && (
-                          <span className="text-xs text-(--mute)">{o.description}</span>
-                        )}
-                      </Questionnaire.ChoiceLabel>
-                    </Questionnaire.Choice>
-                  ))}
+                <>
+                  <Questionnaire.Choices className="space-y-1">
+                    {(q.options ?? []).map((o) => (
+                      <Questionnaire.Choice key={o.value} value={o.value}>
+                        <Questionnaire.ChoiceInput className="hidden" />
+                        <Questionnaire.ChoiceLabel className="flex items-center gap-2 text-sm">
+                          <span className="font-medium">{o.label}</span>
+                          {o.description && (
+                            <span className="text-xs text-(--mute)">{o.description}</span>
+                          )}
+                        </Questionnaire.ChoiceLabel>
+                      </Questionnaire.Choice>
+                    ))}
+                    {q.allowOther && (
+                      <Questionnaire.Choice value="__other__">
+                        <Questionnaire.ChoiceInput className="hidden" />
+                        <Questionnaire.ChoiceLabel className="text-sm text-(--mute)">
+                          Other
+                        </Questionnaire.ChoiceLabel>
+                      </Questionnaire.Choice>
+                    )}
+                  </Questionnaire.Choices>
                   {q.allowOther && (
-                    <Questionnaire.Choice value="__other__">
-                      <Questionnaire.ChoiceLabel className="text-sm text-(--mute)">
-                        Other
-                      </Questionnaire.ChoiceLabel>
-                      <input
-                        name={`${q.id}__other`}
-                        className="mt-1 h-8 w-full rounded-md border border-(--hairline) bg-(--canvas) px-3 text-sm"
-                        placeholder="Type your own…"
-                        type="text"
-                      />
-                    </Questionnaire.Choice>
+                    <input
+                      name={`${q.id}__other`}
+                      className="mt-1 h-8 w-full rounded-md border border-(--hairline) bg-(--canvas) px-3 text-sm"
+                      placeholder="Type your own…"
+                      type="text"
+                    />
                   )}
-                </Questionnaire.Choices>
+                </>
               )}
               <Questionnaire.Error className="text-xs text-(--err)" />
             </Questionnaire.Item>

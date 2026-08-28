@@ -138,7 +138,12 @@ export const api = {
     return resp.text();
   },
   // Ops — Agent Run is the only execution identity
-  listAgentRuns: (params?: { status?: AgentRunStatus; agentId?: string; conversationId?: string; limit?: number }) =>
+  listAgentRuns: (params?: {
+    status?: AgentRunStatus;
+    agentId?: string;
+    conversationId?: string;
+    limit?: number;
+  }) =>
     unwrap(
       client.api["agent-runs"].get({
         query: params
