@@ -253,7 +253,7 @@ export function createWorkflowExecutionService(
         lastError = err;
         if (attempt === maxRetries) throw err;
         // Active retry: wait with exponential backoff before re-running.
-        const wait = intervalMs * Math.pow(backoff, attempt);
+        const wait = intervalMs * backoff ** attempt;
         if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       }
     }
@@ -351,14 +351,15 @@ export function createWorkflowExecutionService(
     const deadline = Date.now() + 600_000;
     while (Date.now() < deadline) {
       const run = await deps.agentRunService.getRun(runId);
-      if (run?.status) {
-        if (["completed", "failed", "aborted", "commit_failed", "timeout"].includes(run.status)) {
-          if (run.status !== "completed")
-            throw new Error(`agent run ${runId} ended ${run.status ?? "unknown"}`);
-          const output = extractOutput(run.terminalResult, node.output);
-          emit(execution.executionId, "node_agent_completed", { nodeId: node.id, runId });
-          return { output };
-        }
+      const terminalStatus = ["completed", "failed", "aborted", "commit_failed", "timeout"];
+      // A run is done when status is terminal OR terminalResult is present
+      // (the run may have finished but its status row not yet flushed).
+      if (run && (run.terminalResult !== undefined || terminalStatus.includes(run.status ?? ""))) {
+        if (run.status !== "completed" && !run.terminalResult)
+          throw new Error(`agent run ${runId} ended ${run.status ?? "unknown"}`);
+        const output = extractOutput(run.terminalResult, node.output);
+        emit(execution.executionId, "node_agent_completed", { nodeId: node.id, runId });
+        return { output };
       }
       await new Promise((r) => setTimeout(r, 1000));
     }

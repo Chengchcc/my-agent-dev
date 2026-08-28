@@ -3,8 +3,8 @@ import type {
   FormField,
   InputHint,
   JsonLogicRule,
-  NodeRetry,
   JsonSchema,
+  NodeRetry,
   WorkflowDefinition,
   WorkflowMeta,
   WorkflowNode,
@@ -90,7 +90,11 @@ function parseNode(raw: unknown, issues: string[]): WorkflowNode | undefined {
     node.retry = raw.retry;
   else if (isRecord(raw.retry)) {
     const cfg: Record<string, unknown> = {};
-    if (typeof raw.retry.maxAttempts === "number" && Number.isInteger(raw.retry.maxAttempts) && raw.retry.maxAttempts >= 0)
+    if (
+      typeof raw.retry.maxAttempts === "number" &&
+      Number.isInteger(raw.retry.maxAttempts) &&
+      raw.retry.maxAttempts >= 0
+    )
       cfg.maxAttempts = raw.retry.maxAttempts;
     if (typeof raw.retry.intervalMs === "number" && raw.retry.intervalMs >= 0)
       cfg.intervalMs = raw.retry.intervalMs;
