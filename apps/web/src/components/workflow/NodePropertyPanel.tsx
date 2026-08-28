@@ -1,11 +1,19 @@
 "use client";
 
 import type { WorkflowDefinition, WorkflowNode } from "@chengchenccc/workflow";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { api } from "@/lib/api";
 
 type Def = WorkflowDefinition;
 
@@ -35,6 +43,15 @@ export function NodePropertyPanel({
   onChange: (def: Def) => void;
 }) {
   const node = useMemo(() => definition.nodes.find((n) => n.id === nodeId), [definition, nodeId]);
+  const [agents, setAgents] = useState<Array<{ id: string; name?: string }>>([]);
+  useEffect(() => {
+    api
+      .listAgents()
+      .then((rows) =>
+        setAgents((rows ?? []).map((a) => ({ id: a.id, name: (a as { name?: string }).name }))),
+      )
+      .catch(() => setAgents([]));
+  }, []);
   if (!node) return null;
 
   const set = (patch: Record<string, unknown>) => onChange(patchNode(definition, nodeId, patch));
@@ -51,13 +68,19 @@ export function NodePropertyPanel({
       {node.type === "agent" && (
         <>
           <div className="space-y-1">
-            <Label className="text-xs text-[#94a3b8]">agentId</Label>
-            <Input
-              className="border-[#1f2937] bg-[#0b0e14] font-mono text-xs"
-              value={node.agentId ?? ""}
-              placeholder="或使用内联 model+prompt"
-              onChange={(e) => set({ agentId: e.target.value })}
-            />
+            <Label className="text-xs text-[#94a3b8]">agent（从系统选择）</Label>
+            <Select value={node.agentId ?? ""} onValueChange={(v) => set({ agentId: v })}>
+              <SelectTrigger className="h-8 w-full border-[#1f2937] bg-[#0b0e14] font-mono text-xs">
+                <SelectValue placeholder="选择 agent，或留空内联 model+prompt" />
+              </SelectTrigger>
+              <SelectContent>
+                {agents.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name ? `${a.name} (${a.id})` : a.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="mt-3 space-y-1">
             <Label className="text-xs text-[#94a3b8]">model</Label>
