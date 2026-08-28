@@ -6,11 +6,21 @@ import {
   type WorkflowDefinition,
   type WorkflowNode,
 } from "@chengchenccc/workflow";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { ChatPanel } from "./ChatPanel";
-import { DslEditorPanel } from "./DslEditorPanel";
+
+const DslEditorPanel = dynamic(() => import("./DslEditorPanel").then((m) => m.DslEditorPanel), {
+  ssr: false,
+  loading: () => <div className="p-4 text-xs text-(--mute)">Loading editor…</div>,
+}) as React.ComponentType<{
+  workflowId: string;
+  definition: WorkflowDefinition;
+  onChange: (next: WorkflowDefinition) => void;
+}>;
+
 import { EdgePropertyPanel } from "./EdgePropertyPanel";
 import { NodeMenuPopover } from "./NodeMenuPopover";
 import { NodePanel } from "./NodePanel";

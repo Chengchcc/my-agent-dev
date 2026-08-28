@@ -42,7 +42,10 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">Agentic Workflow</h1>
-        <button className="rounded bg-slate-800 px-3 py-1 text-white" onClick={create}>
+        <button
+          className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink) transition-colors hover:bg-(--panel2)"
+          onClick={create}
+        >
           + New
         </button>
       </div>
@@ -50,7 +53,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
         {definitions.map((d) => (
           <div
             key={d.workflowId}
-            className="flex items-center justify-between rounded-lg border p-3"
+            className="flex items-center justify-between rounded-xl border border-(--hairline) bg-(--panel)/70 p-3"
           >
             <div>
               <Link
@@ -64,7 +67,10 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
               )}
               <div className="mt-1 flex flex-wrap gap-1">
                 {d.tags?.map((t) => (
-                  <span key={t} className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">
+                  <span
+                    key={t}
+                    className="rounded-md bg-(--panel2) px-1.5 py-0.5 font-mono text-[10px] text-(--info)"
+                  >
                     {t}
                   </span>
                 ))}
@@ -78,7 +84,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
             <div className="flex shrink-0 gap-2 text-xs">
               <Link
                 href={`/agentic-workflow/${d.workflowId}/executions`}
-                className="text-blue-600 hover:underline"
+                className="rounded-md border border-(--hairline) px-2 py-1 text-(--info) transition-colors hover:bg-(--panel2)"
               >
                 executions
               </Link>

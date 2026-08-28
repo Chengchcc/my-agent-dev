@@ -1,10 +1,8 @@
 "use client";
 
 import { parseWorkflow, type WorkflowDefinition } from "@chengchenccc/workflow";
-import Editor, { loader } from "@monaco-editor/react";
-import * as monaco from "monaco-editor";
-
-loader.config({ monaco });
+import "@/lib/monaco-loader";
+import Editor from "@monaco-editor/react";
 
 import { useState } from "react";
 import { api } from "@/lib/api";
