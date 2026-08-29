@@ -2,16 +2,19 @@
   "version": 1,
   "id": "self-heal",
   "meta": {
-    "name": "Self-Heal 工单自愈",
-    "description": "纯 script + human 演示：检测失败重试、人工确认修复方案、走成功/升级出口——无 agent 依赖，开箱即走通 human 表单与分叉边流动",
+    "name": "Self-Heal \u5de5\u5355\u81ea\u6108",
+    "description": "\u7eaf script + human \u6f14\u793a\uff1a\u68c0\u6d4b\u5931\u8d25\u91cd\u8bd5\u3001\u4eba\u5de5\u786e\u8ba4\u4fee\u590d\u65b9\u6848\u3001\u8d70\u6210\u529f/\u5347\u7ea7\u51fa\u53e3\u2014\u2014\u65e0 agent \u4f9d\u8d56\uff0c\u5f00\u7bb1\u5373\u8d70\u901a human \u8868\u5355\u4e0e\u5206\u53c9\u8fb9\u6d41\u52a8",
     "tags": ["self-heal", "demo", "showcase"],
     "status": "active",
     "owner": "builtin",
     "updatedBy": "oma"
   },
-  "input": {
-    "issueUrl": "string"
-  },
+  "input": [
+    {
+      "key": "issueUrl",
+      "type": "string"
+    }
+  ],
   "triggers": [],
   "nodes": [
     {
@@ -22,38 +25,50 @@
       "id": "detect",
       "type": "script",
       "runtime": "bun",
-      "code": "export default async (ctx) => {\n  // 模拟检测：根据 issueUrl 判断是否失败（演示分流）\n  const url = String(ctx.input.issueUrl ?? \"\");\n  const isBroken = url.includes(\"broken\");\n  return { broken: isBroken, attempts: 1 };\n}",
-      "output": {
-        "broken": "boolean",
-        "attempts": "number"
-      },
+      "code": "export default async (ctx) => {\n  // \u6a21\u62df\u68c0\u6d4b\uff1a\u6839\u636e issueUrl \u5224\u65ad\u662f\u5426\u5931\u8d25\uff08\u6f14\u793a\u5206\u6d41\uff09\n  const url = String(ctx.input.issueUrl ?? \"\");\n  const isBroken = url.includes(\"broken\");\n  return { broken: isBroken, attempts: 1 };\n}",
+      "output": [
+        {
+          "key": "broken",
+          "type": "boolean"
+        },
+        {
+          "key": "attempts",
+          "type": "number"
+        }
+      ],
       "timeoutMs": 5000
     },
     {
       "id": "auto-fix",
       "type": "script",
       "runtime": "bun",
-      "code": "export default async (ctx) => {\n  // 自动修复：简单降级逻辑\n  return { fixed: true, resolution: \"auto-degraded\" };\n}",
-      "output": {
-        "fixed": "boolean",
-        "resolution": "string"
-      },
+      "code": "export default async (ctx) => {\n  // \u81ea\u52a8\u4fee\u590d\uff1a\u7b80\u5355\u964d\u7ea7\u903b\u8f91\n  return { fixed: true, resolution: \"auto-degraded\" };\n}",
+      "output": [
+        {
+          "key": "fixed",
+          "type": "boolean"
+        },
+        {
+          "key": "resolution",
+          "type": "string"
+        }
+      ],
       "timeoutMs": 5000
     },
     {
       "id": "confirm",
       "type": "human",
-      "question": "自愈方案需要人工确认：是否接受自动修复结果？",
+      "question": "\u81ea\u6108\u65b9\u6848\u9700\u8981\u4eba\u5de5\u786e\u8ba4\uff1a\u662f\u5426\u63a5\u53d7\u81ea\u52a8\u4fee\u590d\u7ed3\u679c\uff1f",
       "form": {
         "action": {
           "type": "enum",
-          "label": "处理动作",
+          "label": "\u5904\u7406\u52a8\u4f5c",
           "options": ["accept", "rollback", "manual"],
           "required": true
         },
         "note": {
           "type": "textarea",
-          "label": "备注"
+          "label": "\u5907\u6ce8"
         }
       }
     },
@@ -76,12 +91,26 @@
     {
       "from": "detect",
       "to": "auto-fix",
-      "when": { "==": [{ "var": "detect.output.broken" }, true] }
+      "when": {
+        "==": [
+          {
+            "var": "detect.output.broken"
+          },
+          true
+        ]
+      }
     },
     {
       "from": "detect",
       "to": "confirm",
-      "when": { "==": [{ "var": "detect.output.broken" }, false] }
+      "when": {
+        "==": [
+          {
+            "var": "detect.output.broken"
+          },
+          false
+        ]
+      }
     },
     {
       "from": "auto-fix",
@@ -90,12 +119,26 @@
     {
       "from": "confirm",
       "to": "done",
-      "when": { "==": [{ "var": "confirm.output.action" }, "accept"] }
+      "when": {
+        "==": [
+          {
+            "var": "confirm.output.action"
+          },
+          "accept"
+        ]
+      }
     },
     {
       "from": "confirm",
       "to": "escalate",
-      "when": { "==": [{ "var": "confirm.output.action" }, "manual"] }
+      "when": {
+        "==": [
+          {
+            "var": "confirm.output.action"
+          },
+          "manual"
+        ]
+      }
     }
   ]
 }

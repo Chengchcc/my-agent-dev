@@ -15,9 +15,12 @@
     "owner": "platform",
     "updatedBy": "oma"
   },
-  "input": {
-    "repoUrl": "string"
-  },
+  "input": [
+    {
+      "key": "repoUrl",
+      "type": "string"
+    }
+  ],
   "nodes": [
     {
       "id": "start",
@@ -28,9 +31,12 @@
       "type": "agent",
       "model": "deepseek/deepseek-v4-flash",
       "prompt": "\u4f60\u662f\u4ee3\u7801\u8d28\u91cf\u5ba1\u67e5 agent\u3002\u626b\u63cf\u8f93\u5165\u53d8\u91cf repoUrl \u6307\u5411\u7684\u4ed3\u5e93\uff08\u5148\u514b\u9686/\u68c0\u51fa\u5230\u672c\u5730\u518d\u5206\u6790\uff09\uff0c\u4ece\u4ee5\u4e0b\u7ef4\u5ea6\u627e\u51fa\u4ee3\u7801\u8d28\u91cf\u95ee\u9898\uff1abug \u98ce\u9669\u3001\u6027\u80fd\u9690\u60a3\u3001\u53ef\u7ef4\u62a4\u6027\u4e0e\u590d\u6742\u5ea6\u3001\u5b89\u5168\u6f0f\u6d1e\u3001\u6d4b\u8bd5\u8986\u76d6\u3002\u6309\u4e25\u91cd\u7a0b\u5ea6\u6392\u5e8f\uff0c\u603b\u7ed3\u6700\u91cd\u8981\u7684 top 3 \u95ee\u9898\uff1b\u6bcf\u6761\u5305\u542b\u95ee\u9898\u63cf\u8ff0\u3001\u5f71\u54cd\u548c\u4fee\u590d\u5efa\u8bae\u3002\u4ee5 JSON \u8f93\u51fa problems \u6570\u7ec4\uff08\u6570\u7ec4\u5143\u7d20\u4e3a\u5b57\u7b26\u4e32\uff0c\u6bcf\u6761\u4e00\u4e2a\u95ee\u9898\u63cf\u8ff0\uff09\u3002\u82e5\u4ed3\u5e93\u6ca1\u6709\u660e\u663e\u95ee\u9898\uff0c\u8f93\u51fa\u7a7a\u6570\u7ec4\u3002",
-      "output": {
-        "problems": "array"
-      },
+      "output": [
+        {
+          "key": "problems",
+          "type": "string"
+        }
+      ],
       "outputSchema": {
         "type": "object",
         "properties": {
@@ -54,9 +60,12 @@
       "runtime": "bun",
       "timeoutMs": 30000,
       "code": "export default async function run(ctx: ScriptContext) {\n  const { input, context, log } = ctx;\n  const problems: string[] = Array.isArray(input.problems) ? input.problems : [];\n  const lines = problems.length\n    ? problems.map((p, i) => `${i + 1}. ${p}`).join(\"\\n\")\n    : \"- \u672a\u53d1\u73b0\u660e\u663e\u95ee\u9898\u3002\";\n  const report = [\n    \"# Nightly Code Quality Report\",\n    \"\",\n    `- **Repository**: ${input.repoUrl ?? \"n/a\"}`,\n    `- **Generated**: ${new Date().toISOString()}`,\n    \"\",\n    \"## Top Problems\",\n    \"\",\n    lines,\n    \"\",\n  ].join(\"\\n\");\n  log(\"formatted\", { problems: problems.length, workflow: context.workflowId });\n  return { report };\n}",
-      "output": {
-        "report": "string"
-      },
+      "output": [
+        {
+          "key": "report",
+          "type": "string"
+        }
+      ],
       "outputSchema": {
         "type": "object",
         "properties": {
@@ -85,10 +94,16 @@
           "required": false
         }
       },
-      "output": {
-        "approve": "string",
-        "comment": "string"
-      }
+      "output": [
+        {
+          "key": "approve",
+          "type": "string"
+        },
+        {
+          "key": "comment",
+          "type": "string"
+        }
+      ]
     },
     {
       "id": "success",

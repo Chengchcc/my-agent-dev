@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ActivityIcon,
+  ArchiveIcon,
   BotIcon,
   FolderKanbanIcon,
   LibraryIcon,
@@ -138,6 +139,19 @@ function NavContent() {
               >
                 <NetworkIcon />
                 <span className="truncate">Workflows</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={pathname.startsWith("/artifacts")}
+                tooltip="Artifacts"
+                onClick={() => {
+                  closeMobile();
+                  router.push("/artifacts");
+                }}
+              >
+                <ArchiveIcon />
+                <span className="truncate">Artifacts</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
