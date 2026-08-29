@@ -82,8 +82,10 @@ function parseNode(raw: unknown, issues: string[]): WorkflowNode | undefined {
     id: id ?? "",
     type: raw.type as WorkflowNode["type"],
   };
-  if (isRecord(raw.input)) node.input = raw.input;
-  if (isRecord(raw.output)) node.output = raw.output;
+  const nodeInput = parseInputHint(raw.input, `node "${id}" input`, issues);
+  if (nodeInput !== undefined) node.input = nodeInput;
+  const nodeOutput = parseInputHint(raw.output, `node "${id}" output`, issues);
+  if (nodeOutput !== undefined) node.output = nodeOutput;
   if (isRecord(raw.inputSchema)) node.inputSchema = raw.inputSchema as JsonSchema;
   if (isRecord(raw.outputSchema)) node.outputSchema = raw.outputSchema as JsonSchema;
   if (typeof raw.retry === "number" && Number.isInteger(raw.retry) && raw.retry >= 0)
@@ -150,6 +152,33 @@ function parseNode(raw: unknown, issues: string[]): WorkflowNode | undefined {
   return node as WorkflowNode;
 }
 
+function parseInputHint(raw: unknown, label: string, issues: string[]): InputHint | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) {
+    issues.push(`${label} must be an array of { key, type }`);
+    return undefined;
+  }
+  const out: InputHint = [];
+  for (const [i, item] of raw.entries()) {
+    if (typeof item !== "object" || item === null) {
+      issues.push(`${label}[${i}] must be an object`);
+      continue;
+    }
+    const o = item as Record<string, unknown>;
+    if (typeof o.key !== "string" || o.key.trim() === "") {
+      issues.push(`${label}[${i}].key must be a non-empty string`);
+      continue;
+    }
+    const type = o.type;
+    if (type !== "string" && type !== "number" && type !== "boolean" && type !== "artifact") {
+      issues.push(`${label}[${i}].type must be string/number/boolean/artifact`);
+      continue;
+    }
+    out.push({ key: o.key, type });
+  }
+  return out;
+}
+
 export function parseWorkflow(raw: unknown): WorkflowDefinition {
   const issues: string[] = [];
   if (!isRecord(raw)) throw new WorkflowParseError(["workflow must be an object"]);
@@ -194,17 +223,8 @@ export function parseWorkflow(raw: unknown): WorkflowDefinition {
     if (!seen.has(e.from)) issues.push(`edge.from "${e.from}" is not a node id`);
     if (!seen.has(e.to)) issues.push(`edge.to "${e.to}" is not a node id`);
   }
-  const input: InputHint = {};
-  if (raw.input !== undefined) {
-    if (!isRecord(raw.input)) issues.push("input must be an object");
-    else {
-      for (const [k, v] of Object.entries(raw.input)) {
-        if (v !== "string" && v !== "number" && v !== "boolean")
-          issues.push(`input.${k} must be string/number/boolean hint`);
-        else input[k] = v;
-      }
-    }
-  }
+  const parsedWfInput = parseInputHint(raw.input, "input", issues);
+  const input: InputHint = parsedWfInput ?? [];
   const meta: WorkflowMeta = {};
   if (raw.meta !== undefined) {
     if (!isRecord(raw.meta)) issues.push("meta must be an object");

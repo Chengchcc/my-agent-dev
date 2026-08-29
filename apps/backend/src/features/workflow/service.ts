@@ -250,6 +250,29 @@ export function createWorkflowExecutionService(
     };
   }
 
+  function inputHintToRecord(
+    hint: { key: string; type: string }[] | undefined,
+  ): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const f of hint ?? []) out[f.key] = f.type;
+    return out;
+  }
+
+  async function validateArtifactFields(
+    schema: Record<string, unknown> | undefined,
+    values: Record<string, unknown>,
+    where: string,
+  ): Promise<void> {
+    if (!deps.artifactService || !schema) return;
+    for (const [key, type] of Object.entries(schema)) {
+      if (type !== "artifact") continue;
+      const url = values[key];
+      if (typeof url !== "string" || !url.startsWith("artifacts://")) continue;
+      const ok = await deps.artifactService.exists(url);
+      if (!ok) throw new Error(`${where} artifact ${key} does not exist: ${url}`);
+    }
+  }
+
   async function runNodeWithRetry(
     node: WorkflowNode,
     run: (n: WorkflowNode, lastError?: unknown) => Promise<NodeRunResult>,
@@ -322,7 +345,7 @@ export function createWorkflowExecutionService(
     const agentId = inline ? "default" : node.agentId!;
     if (!agentId) throw new Error("agent node requires agentId");
     const conversationId = `workflow:${execution.executionId}:${node.id}`;
-    let prompt = buildAgentPrompt(node, ready.input, node.output);
+    let prompt = buildAgentPrompt(node, ready.input, inputHintToRecord(node.output));
     if (lastError) {
       prompt += `\n\nYour previous attempt failed because:\n${lastError instanceof Error ? lastError.message : String(lastError)}\nCorrect the error and reply again with the required JSON only.`;
     }
@@ -381,7 +404,7 @@ export function createWorkflowExecutionService(
       if (run && (run.terminalResult != null || terminalStatus.includes(run.status ?? ""))) {
         if (run.status !== "completed" && run.terminalResult == null)
           throw new Error(`agent run ${runId} ended ${run.status ?? "unknown"}`);
-        const output = extractOutput(run.terminalResult, node.output);
+        const output = extractOutput(run.terminalResult, inputHintToRecord(node.output));
         emit(execution.executionId, "node_agent_completed", { nodeId: node.id, runId });
         return { output };
       }
@@ -412,30 +435,21 @@ export function createWorkflowExecutionService(
     const inputErrors = node.inputSchema ? validateBySchema(ready.input, node.inputSchema) : [];
     if (inputErrors.length > 0)
       throw new Error(`node ${node.id} input invalid: ${inputErrors.join("; ")}`);
-    if (node.inputArtifacts?.length && deps.artifactService) {
-      for (const a of node.inputArtifacts) {
-        const ok = await deps.artifactService.exists(a.url);
-        if (!ok && a.required !== false) {
-          throw new Error(`node ${node.id} missing required input artifact: ${a.url}`);
-        }
-      }
-    }
+    await validateArtifactFields(
+      inputHintToRecord(node.input),
+      ready.input,
+      `node ${node.id} input`,
+    );
 
     let output: Record<string, unknown>;
     if (node.type === "start") {
       output = { ...execution.input };
       // Workflow-level required input artifacts must exist before running.
-      const wfArtifacts = (
-        execution.definition as { inputArtifacts?: Array<{ url: string; required?: boolean }> }
-      ).inputArtifacts;
-      if (wfArtifacts?.length && deps.artifactService) {
-        for (const a of wfArtifacts) {
-          const ok = await deps.artifactService.exists(a.url);
-          if (!ok && a.required !== false) {
-            throw new Error(`workflow missing required input artifact: ${a.url}`);
-          }
-        }
-      }
+      await validateArtifactFields(
+        inputHintToRecord(execution.definition.input),
+        execution.input,
+        `workflow ${execution.executionId} input`,
+      );
     } else if (node.type === "human") {
       const question = (ready.input.question as string | undefined) ?? node.question;
       const form = (ready.input.form as Record<string, unknown> | undefined) ?? node.form;
@@ -483,14 +497,7 @@ export function createWorkflowExecutionService(
     const outputErrors = node.outputSchema ? validateBySchema(output, node.outputSchema) : [];
     if (outputErrors.length > 0)
       throw new Error(`node ${node.id} output invalid: ${outputErrors.join("; ")}`);
-    if (node.outputArtifacts?.length && deps.artifactService) {
-      for (const a of node.outputArtifacts) {
-        const ok = await deps.artifactService.exists(a.url);
-        if (!ok && a.required !== false) {
-          throw new Error(`node ${node.id} missing required output artifact: ${a.url}`);
-        }
-      }
-    }
+    await validateArtifactFields(inputHintToRecord(node.output), output, `node ${node.id} output`);
     return { output };
   }
 

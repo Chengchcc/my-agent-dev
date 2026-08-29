@@ -1,6 +1,6 @@
 "use client";
 
-import type { WorkflowDefinition } from "@chengchenccc/workflow";
+import type { InputHint, WorkflowDefinition } from "@chengchenccc/workflow";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type InputHint = Record<string, "string" | "number" | "boolean">;
+const TYPES = ["string", "number", "boolean", "artifact"] as const;
 
 export function InputPanel({
   definition,
@@ -23,25 +23,22 @@ export function InputPanel({
   onChange: (def: WorkflowDefinition) => void;
 }) {
   const [key, setKey] = useState("");
-  const [type, setType] = useState<"string" | "number" | "boolean">("string");
-  const input = definition.input ?? {};
+  const [type, setType] = useState<(typeof TYPES)[number]>("string");
+  const input = definition.input ?? [];
 
   function setInput(next: InputHint) {
-    // Only set when non-empty to keep the DSL clean.
-    onChange({ ...definition, input: Object.keys(next).length > 0 ? next : undefined });
+    onChange({ ...definition, input: next.length > 0 ? next : undefined });
   }
 
   function add() {
     const k = key.trim();
     if (!k) return;
-    setInput({ ...input, [k]: type });
+    setInput([...input, { key: k, type }]);
     setKey("");
   }
 
-  function remove(k: string) {
-    const next = { ...input };
-    delete next[k];
-    setInput(next);
+  function remove(i: number) {
+    setInput(input.filter((_, idx) => idx !== i));
   }
 
   return (
@@ -59,13 +56,15 @@ export function InputPanel({
             }}
           />
           <Select value={type} onValueChange={(v) => setType((v ?? "string") as typeof type)}>
-            <SelectTrigger className="h-8 w-24 border-(--hairline) bg-(--canvas) text-xs">
+            <SelectTrigger className="h-8 w-32 border-(--hairline) bg-(--canvas) text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="string">string</SelectItem>
-              <SelectItem value="number">number</SelectItem>
-              <SelectItem value="boolean">boolean</SelectItem>
+              {TYPES.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Button size="sm" onClick={add}>
@@ -73,17 +72,17 @@ export function InputPanel({
           </Button>
         </div>
       </div>
-      {Object.keys(input).length === 0 && <p className="text-xs text-(--mute)">无输入参数。</p>}
-      {Object.keys(input).length > 0 && (
+      {input.length === 0 && <p className="text-xs text-(--mute)">无输入参数。</p>}
+      {input.length > 0 && (
         <div className="space-y-1">
-          {Object.entries(input).map(([k, t]) => (
+          {input.map((f, i) => (
             <div
-              key={k}
+              key={i}
               className="flex items-center gap-2 rounded-md border border-(--hairline) px-2 py-1.5 text-xs"
             >
-              <span className="min-w-0 flex-1 truncate font-mono">{k}</span>
-              <span className="text-(--mute)">{t}</span>
-              <button onClick={() => remove(k)} className="shrink-0 text-(--err) hover:underline">
+              <span className="min-w-0 flex-1 truncate font-mono">{f.key}</span>
+              <span className="text-(--mute)">{f.type}</span>
+              <button onClick={() => remove(i)} className="shrink-0 text-(--err) hover:underline">
                 删除
               </button>
             </div>

@@ -13,7 +13,7 @@ function makeDef(): WorkflowDefinition {
         id: "s",
         type: "script",
         code: "x",
-        output: { val: "number" },
+        output: [{ key: "val", type: "number" }],
         inputSchema: {
           type: "object",
           properties: { num: { type: "integer" } },
@@ -51,7 +51,7 @@ function makeAgentDef(): WorkflowDefinition {
     id: "wf",
     nodes: [
       { id: "start", type: "start" },
-      { id: "a", type: "agent", agentId: "ag-1", output: { val: "number" } },
+      { id: "a", type: "agent", agentId: "ag-1", output: [{ key: "val", type: "number" }] },
       { id: "done", type: "end", status: "success" },
     ],
     edges: [
@@ -119,7 +119,7 @@ describe("createWorkflowExecutionService", () => {
       nodeRunners: {
         script: {
           run: async (_node: unknown, ctx: { input: Record<string, unknown> }) => ({
-            output: { val: ctx.input.num },
+            output: { val: ctx.input.val },
           }),
         },
         human: { run: async () => ({ output: {} }) },

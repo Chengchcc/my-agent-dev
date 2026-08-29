@@ -1,6 +1,6 @@
 "use client";
 
-import type { ArtifactRef, WorkflowDefinition, WorkflowNode } from "@chengchenccc/workflow";
+import type { InputHint, WorkflowDefinition, WorkflowNode } from "@chengchenccc/workflow";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import "@/lib/monaco-loader";
-import { ArtifactRefsEditor } from "./ArtifactRefsEditor";
 import { HumanFormEditor } from "./HumanFormEditor";
 import { InputPanel } from "./InputPanel";
 import { OutputFieldsEditor } from "./OutputFieldsEditor";
@@ -120,11 +119,6 @@ export function NodePropertyPanel({
       {node.type === "start" && (
         <div className="space-y-3">
           <InputPanel definition={definition} onChange={onChange} />
-          <ArtifactRefsEditor
-            label="workflow 必须提供的 artifacts（运行校验）"
-            value={(definition as { inputArtifacts?: ArtifactRef[] }).inputArtifacts}
-            onChange={(next) => onChange({ ...definition, inputArtifacts: next })}
-          />
         </div>
       )}
 
@@ -165,7 +159,7 @@ export function NodePropertyPanel({
           <div className="mt-3 space-y-1">
             <Label className="text-xs text-(--mute)">输出字段（边条件可用）</Label>
             <OutputFieldsEditor
-              output={(node as { output?: Record<string, string> }).output}
+              output={(node as { output?: InputHint }).output}
               onChange={(o) => set({ output: o })}
             />
           </div>

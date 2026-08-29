@@ -3,7 +3,12 @@
 export type NodeId = string;
 
 /** Trigger input variable hints (light typing, not enforced). */
-export type InputHint = Record<string, "string" | "number" | "boolean">;
+export type FieldType = "string" | "number" | "boolean" | "artifact";
+export interface InputField {
+  key: string;
+  type: FieldType;
+}
+export type InputHint = InputField[];
 
 export interface FormField {
   type: "string" | "textarea" | "number" | "enum" | "date" | "boolean";
@@ -45,18 +50,12 @@ export interface JsonSchema {
   maxItems?: number;
 }
 
-export interface ArtifactRef {
-  url: string;
-  /** Default true — missing fails the node. false = warning only. */
-  required?: boolean;
-}
-
 interface NodeCommon {
   id: NodeId;
   /** Light typing: optional input defaults; runtime merged input wins. */
-  input?: Record<string, unknown>;
+  input?: InputHint;
   /** Output type hints for editor autocomplete. */
-  output?: Record<string, string>;
+  output?: InputHint;
   /** Optional JSON-Schema-subset validation for merged input (fail node on violation). */
   inputSchema?: JsonSchema;
   /** Optional JSON-Schema-subset validation for node output (fail node on violation). */
@@ -64,12 +63,6 @@ interface NodeCommon {
   /** Retry policy: number = max retries after first failure, or a config
    *  with attempts/interval/backoff. */
   retry?: number | NodeRetry;
-  /** Artifacts this node consumes (must exist before execution).
-   *  Default required=true. */
-  inputArtifacts?: ArtifactRef[];
-  /** Artifacts this node must produce (must exist after execution).
-   *  Default required=true. */
-  outputArtifacts?: ArtifactRef[];
 }
 
 export interface NodeRetry {
@@ -121,8 +114,6 @@ export interface WorkflowDefinition {
   input?: InputHint;
   /** Trigger declarations. API trigger is implicit. */
   triggers?: WorkflowTrigger[];
-  /** Workflow-run required artifacts (must exist at start). */
-  inputArtifacts?: ArtifactRef[];
   nodes: WorkflowNode[];
   edges: EdgeDef[];
 }

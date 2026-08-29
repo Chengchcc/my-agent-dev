@@ -36,7 +36,6 @@ const DslEditorPanel = dynamic(() => import("./DslEditorPanel").then((m) => m.Ds
 }>;
 
 import { EdgePropertyPanel } from "./EdgePropertyPanel";
-import { InputPanel } from "./InputPanel";
 import { NodeMenuPopover } from "./NodeMenuPopover";
 import { NodePanel } from "./NodePanel";
 import { NodePropertyPanel } from "./NodePropertyPanel";

@@ -52,7 +52,7 @@ export function computeNext(def: WorkflowDefinition, state: EngineState): Engine
   const ready: ReadyRun[] = readyIds.map((id) => {
     const node = nodeOf.get(id)!;
     const { input, provenance } = mergeInputs(state.completions, state.store, state.trigger);
-    return { node, input: { ...(node.input ?? {}), ...input }, provenance };
+    return { node, input: { ...input }, provenance };
   });
   return { kind: "run", ready };
 }

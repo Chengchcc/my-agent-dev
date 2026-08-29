@@ -8,7 +8,7 @@ function branchDef() {
     id: "wf",
     nodes: [
       { id: "start", type: "start" },
-      { id: "a", type: "script", code: "x", output: { severity: "string" } },
+      { id: "a", type: "script", code: "x", output: [{ key: "severity", type: "string" }] },
       { id: "done", type: "end", status: "success" },
       { id: "abort", type: "end", status: "failure" },
     ],
@@ -126,13 +126,13 @@ describe("computeNext", () => {
     expect(step).toEqual({ kind: "idle" });
   });
 
-  test("node input defaults fill missing keys only", () => {
+  test("node input schema is parsed as array of key/type", () => {
     const def = parseWorkflow({
       version: 1,
       id: "wf",
       nodes: [
         { id: "start", type: "start" },
-        { id: "a", type: "script", code: "x", input: { level: "low" } },
+        { id: "a", type: "script", code: "x", input: [{ key: "level", type: "string" }] },
         { id: "done", type: "end", status: "success" },
       ],
       edges: [
@@ -147,5 +147,6 @@ describe("computeNext", () => {
     });
     if (step.kind !== "run") throw new Error("expected run");
     expect(step.ready[0]!.input).toEqual({ level: "high" });
+    expect(def.nodes[1]!.input).toEqual([{ key: "level", type: "string" }]);
   });
 });
