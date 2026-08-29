@@ -41,33 +41,34 @@ export function ExecutionList({
 }: {
   workflowId: string;
   executions: Exec[];
-  definition?: { input?: Record<string, "string" | "number" | "boolean"> } | null;
+  definition?: {
+    input?: Array<{ key: string; type: "string" | "number" | "boolean" | "artifact" }>;
+  } | null;
 }) {
   const [inputVals, setInputVals] = useState<Record<string, string>>({});
   const [runOpen, setRunOpen] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [artifactUrl, setArtifactUrl] = useState("");
-  const [artifacts, setArtifacts] = useState<string[]>([]);
   const [artifactSuggestions, setArtifactSuggestions] = useState<string[]>([]);
-  const [artifactError, setArtifactError] = useState<string | null>(null);
-  const inputHints = definition?.input ?? {};
+  const inputHints = definition?.input ?? [];
 
   async function run() {
     const input: Record<string, unknown> = {};
-    for (const [key, hint] of Object.entries(inputHints)) {
-      const raw = inputVals[key] ?? "";
+    const artifacts: string[] = [];
+    for (const f of inputHints) {
+      const raw = inputVals[f.key] ?? "";
       if (raw === "") continue;
-      if (hint === "number") input[key] = Number(raw);
-      else if (hint === "boolean") input[key] = raw === "true";
-      else input[key] = raw;
+      if (f.type === "artifact") {
+        // Validate artifact URLs exist before running.
+        await api.downloadArtifact(raw).catch(() => {
+          throw new Error(`artifact does not exist: ${f.key} = ${raw}`);
+        });
+        artifacts.push(raw);
+        input[f.key] = raw;
+      } else if (f.type === "number") input[f.key] = Number(raw);
+      else if (f.type === "boolean") input[f.key] = raw === "true";
+      else input[f.key] = raw;
     }
     try {
-      // Validate provided artifacts exist before running.
-      for (const u of artifacts) {
-        await api.downloadArtifact(u).catch(() => {
-          throw new Error(`artifact does not exist: ${u}`);
-        });
-      }
       await api.startWorkflowExecution({
         workflowRef: { repo: "local", path: `${workflowId}.workflow.json` },
         input,
@@ -123,69 +124,43 @@ export function ExecutionList({
               <DialogTitle className="text-sm font-semibold">运行 {workflowId}</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
-              {Object.keys(inputHints).length === 0 ? (
+              {inputHints.length === 0 ? (
                 <p className="text-xs text-(--mute)">该 workflow 无输入参数。</p>
               ) : (
-                Object.entries(inputHints).map(([key, hint]) => (
-                  <div key={key} className="flex flex-col gap-1">
+                inputHints.map((f) => (
+                  <div key={f.key} className="flex flex-col gap-1">
                     <Label className="text-xs text-(--mute)">
-                      {key} <span className="text-(--faint)">({hint})</span>
+                      {f.key} <span className="text-(--faint)">({f.type})</span>
                     </Label>
-                    <Input
-                      className="h-9 border-(--hairline) bg-(--canvas) text-xs"
-                      type={hint === "number" ? "number" : hint === "boolean" ? "text" : "text"}
-                      placeholder={hint === "boolean" ? "true / false" : ""}
-                      value={inputVals[key] ?? ""}
-                      onChange={(e) => setInputVals((v) => ({ ...v, [key]: e.target.value }))}
-                    />
+                    {f.type === "artifact" ? (
+                      <div className="flex gap-1">
+                        <input
+                          list="run-artifact-suggestions"
+                          className="h-9 flex-1 border-(--hairline) bg-(--canvas) px-2 text-xs"
+                          placeholder="artifacts://folder/file"
+                          value={inputVals[f.key] ?? ""}
+                          onChange={(e) => setInputVals((v) => ({ ...v, [f.key]: e.target.value }))}
+                        />
+                        <datalist id="run-artifact-suggestions">
+                          {artifactSuggestions.map((u) => (
+                            <option key={u} value={u} />
+                          ))}
+                        </datalist>
+                      </div>
+                    ) : (
+                      <Input
+                        className="h-9 border-(--hairline) bg-(--canvas) text-xs"
+                        type={
+                          f.type === "number" ? "number" : f.type === "boolean" ? "text" : "text"
+                        }
+                        placeholder={f.type === "boolean" ? "true / false" : ""}
+                        value={inputVals[f.key] ?? ""}
+                        onChange={(e) => setInputVals((v) => ({ ...v, [f.key]: e.target.value }))}
+                      />
+                    )}
                   </div>
                 ))
               )}
-              <div className="space-y-1">
-                <Label className="text-xs text-(--mute)">
-                  依赖 artifacts（autocomplete，须存在）
-                </Label>
-                <div className="flex gap-1">
-                  <input
-                    list="run-artifact-suggestions"
-                    className="h-9 flex-1 border-(--hairline) bg-(--canvas) px-2 text-xs"
-                    placeholder="artifacts://folder/file"
-                    value={artifactUrl}
-                    onChange={(e) => setArtifactUrl(e.target.value)}
-                  />
-                  <datalist id="run-artifact-suggestions">
-                    {artifactSuggestions.map((u) => (
-                      <option key={u} value={u} />
-                    ))}
-                  </datalist>
-                  <button
-                    className="rounded-md border border-(--hairline) px-2 text-xs"
-                    onClick={() => {
-                      const u = artifactUrl.trim();
-                      if (!u || artifacts.includes(u)) return;
-                      setArtifacts([...artifacts, u]);
-                      setArtifactUrl("");
-                      setArtifactError(null);
-                    }}
-                  >
-                    添加
-                  </button>
-                </div>
-                {artifacts.map((u) => (
-                  <div
-                    key={u}
-                    className="flex items-center gap-2 rounded-md border border-(--hairline) px-2 py-1 text-[10px]"
-                  >
-                    <span className="min-w-0 flex-1 truncate font-mono">{u}</span>
-                    <button
-                      className="text-(--err)"
-                      onClick={() => setArtifacts(artifacts.filter((x) => x !== u))}
-                    >
-                      删除
-                    </button>
-                  </div>
-                ))}
-              </div>
               <button
                 className="w-full rounded-md bg-(--primary) px-3 py-2 text-xs text-(--ink) hover:bg-(--panel2)"
                 onClick={async () => {
