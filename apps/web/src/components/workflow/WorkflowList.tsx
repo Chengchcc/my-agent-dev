@@ -12,13 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
@@ -214,6 +208,36 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
           <div className="text-sm text-muted-foreground">No workflows yet.</div>
         )}
       </div>
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-semibold">新建 Workflow</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <button
+              className="w-full rounded-md border border-(--hairline) px-3 py-2 text-left text-xs hover:bg-(--panel2)"
+              onClick={() => void create()}
+            >
+              <div className="font-medium">空白画布</div>
+              <div className="text-[10px] text-(--mute)">start → end，从零搭建</div>
+            </button>
+            <button
+              className="w-full rounded-md border border-(--hairline) px-3 py-2 text-left text-xs hover:bg-(--panel2)"
+              onClick={() => void create("nighttime-report")}
+            >
+              <div className="font-medium">Nightly 代码质量报告</div>
+              <div className="text-[10px] text-(--mute)">Agent 扫描仓库 → 报告 → 人工确认</div>
+            </button>
+            <button
+              className="w-full rounded-md border border-(--hairline) px-3 py-2 text-left text-xs hover:bg-(--panel2)"
+              onClick={() => void create("self-heal")}
+            >
+              <div className="font-medium">工单自愈</div>
+              <div className="text-[10px] text-(--mute)">检测 → 自动修复 → 人工确认 → 分叉出口</div>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={runId !== null}
         onOpenChange={(o) => {
