@@ -3,7 +3,7 @@
 import { toEditorGraph, type WorkflowDefinition } from "@chengchenccc/workflow";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -68,6 +68,9 @@ export function ExecutionTraceView({
   const router = useRouter();
   const [index, setIndex] = useState(Math.max(0, events.length - 1));
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
+  const [upstreamArtifacts, setUpstreamArtifacts] = useState<
+    Array<{ url: string; from: string; content?: string }>
+  >([]);
   const graph = useMemo(() => toEditorGraph(execution.definition), [execution.definition]);
 
   const nodeStatus = useMemo(() => {
@@ -105,6 +108,37 @@ export function ExecutionTraceView({
   }, [index, events]);
 
   const snapshot = useMemo(() => replayStore(events, index), [events, index]);
+
+  // Approval context: artifacts produced by completed nodes (values that are
+  // artifacts:// URLs), fetched so the human can read them before deciding.
+  useEffect(() => {
+    const found: Array<{ url: string; from: string }> = [];
+    for (const r of nodeRuns) {
+      if (r.status !== "completed") continue;
+      for (const v of Object.values(r.output ?? {})) {
+        if (typeof v === "string" && v.startsWith("artifacts://")) {
+          found.push({ url: v, from: r.nodeId });
+        }
+      }
+    }
+    let stopped = false;
+    void (async () => {
+      const withContent = await Promise.all(
+        found.map(async (f) => {
+          try {
+            const d = await api.downloadArtifact(f.url);
+            return { ...f, content: d.encoding === "utf8" ? d.content : undefined };
+          } catch {
+            return f;
+          }
+        }),
+      );
+      if (!stopped) setUpstreamArtifacts(withContent);
+    })();
+    return () => {
+      stopped = true;
+    };
+  }, [nodeRuns]);
 
   return (
     <div className="flex h-full flex-col">
@@ -147,6 +181,7 @@ export function ExecutionTraceView({
             nodeStatus={nodeStatus}
             litEdges={litEdges}
             pendingHuman={pendingHuman ?? null}
+            upstreamArtifacts={upstreamArtifacts}
             onSubmitHuman={async (nodeId, answer) => {
               if (!pendingHuman) return;
               await api.resolveWorkflowHumanTask(execution.executionId, {

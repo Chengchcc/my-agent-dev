@@ -102,6 +102,7 @@ function buildGraph(
   pendingHuman?: PendingHuman | null,
   onSubmitHuman?: (nodeId: string, answer: Record<string, unknown>) => void | Promise<void>,
   humanForms?: Record<string, AskQuestionInput>,
+  upstreamArtifacts?: Array<{ url: string; from: string; content?: string }>,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = graph.nodes.map((n) => {
     const status = nodeStatus?.[n.id] ?? "idle";
@@ -125,6 +126,7 @@ function buildGraph(
                 ? {
                     onSubmitHuman: async (answer: Record<string, unknown>) =>
                       onSubmitHuman?.(n.id, answer),
+                    upstreamArtifacts: upstreamArtifacts ?? [],
                   }
                 : {}),
             }
@@ -164,6 +166,10 @@ export function WorkflowCanvas({
   onNodeDelete,
   onEdgeSelect,
   onNodeMenuRequested,
+  pendingHuman,
+  onSubmitHuman,
+  humanForms,
+  upstreamArtifacts,
 }: {
   graph: EditorGraph;
   onSelect?: (id: string) => void;
@@ -184,6 +190,7 @@ export function WorkflowCanvas({
   } | null;
   onSubmitHuman?: (nodeId: string, answer: Record<string, unknown>) => void | Promise<void>;
   humanForms?: Record<string, AskQuestionInput>;
+  upstreamArtifacts?: Array<{ url: string; from: string; content?: string }>;
 }) {
   const [rf, setRf] = useState<{
     fitView: (opts?: { padding?: number }) => void;
@@ -199,26 +206,78 @@ export function WorkflowCanvas({
   const nodeTypes = { default: WorkflowNodeCard };
 
   const [nodes, setNodes] = useState<Node[]>(
-    () => buildGraph(graph, nodeStatus, litEdges, interactive, onNodeDelete).nodes,
+    () =>
+      buildGraph(
+        graph,
+        nodeStatus,
+        litEdges,
+        interactive,
+        onNodeDelete,
+        pendingHuman,
+        onSubmitHuman,
+        humanForms,
+        upstreamArtifacts,
+      ).nodes,
   );
   const [edges, setEdges] = useState<Edge[]>(
-    () => buildGraph(graph, nodeStatus, litEdges, interactive, onNodeDelete).edges,
+    () =>
+      buildGraph(
+        graph,
+        nodeStatus,
+        litEdges,
+        interactive,
+        onNodeDelete,
+        pendingHuman,
+        onSubmitHuman,
+        humanForms,
+        upstreamArtifacts,
+      ).edges,
   );
 
   // Sync graph changes without resetting drag positions: keep existing node
   // positions, only place new nodes via the derived layout. Auto-layout (button)
   // is the only thing that repositions the whole graph.
   useEffect(() => {
-    const b = buildGraph(graph, nodeStatus, litEdges, interactive, onNodeDelete);
+    const b = buildGraph(
+      graph,
+      nodeStatus,
+      litEdges,
+      interactive,
+      onNodeDelete,
+      pendingHuman,
+      onSubmitHuman,
+      humanForms,
+      upstreamArtifacts,
+    );
     setNodes((existing) => {
       const pos = new Map(existing.map((n) => [n.id, n.position]));
       return b.nodes.map((n) => ({ ...n, position: pos.get(n.id) ?? n.position }));
     });
     setEdges(b.edges);
-  }, [graph, nodeStatus, litEdges, interactive, onNodeDelete]);
+  }, [
+    graph,
+    nodeStatus,
+    litEdges,
+    interactive,
+    onNodeDelete,
+    pendingHuman,
+    onSubmitHuman,
+    humanForms,
+    upstreamArtifacts,
+  ]);
 
   function autoLayout() {
-    const b = buildGraph(graph, nodeStatus, litEdges, interactive, onNodeDelete);
+    const b = buildGraph(
+      graph,
+      nodeStatus,
+      litEdges,
+      interactive,
+      onNodeDelete,
+      pendingHuman,
+      onSubmitHuman,
+      humanForms,
+      upstreamArtifacts,
+    );
     setNodes(b.nodes);
     rf?.fitView({ padding: 0.2 });
   }

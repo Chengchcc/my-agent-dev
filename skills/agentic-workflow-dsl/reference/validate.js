@@ -108,7 +108,10 @@ function checkHints(path, hints) {
   const keys = new Set();
   hints.forEach((h, i) => {
     const hp = `${path}[${i}]`;
-    if (!h || typeof h !== "object") { errors.push(`${hp} must be an object`); return; }
+    if (!h || typeof h !== "object") {
+      errors.push(`${hp} must be an object`);
+      return;
+    }
     if (typeof h.key !== "string" || h.key.trim() === "")
       errors.push(`${hp}.key must be a non-empty string`);
     else if (keys.has(h.key)) errors.push(`${hp}.key "${h.key}" duplicates an earlier key`);

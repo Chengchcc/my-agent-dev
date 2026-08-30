@@ -107,6 +107,34 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
       </div>
       {t === "human" && (data as { askQuestion?: AskQuestionInput }).askQuestion && (
         <div className="pointer-events-auto px-3 pb-3">
+          {(() => {
+            const arts = (
+              data as { upstreamArtifacts?: Array<{ url: string; from: string; content?: string }> }
+            ).upstreamArtifacts;
+            if (!arts?.length) return null;
+            return (
+              <details className="mb-2 rounded-md border border-(--hairline) bg-(--canvas)/60 p-2">
+                <summary className="cursor-pointer text-[10px] text-(--mute)">
+                  上游产出（{arts.length}）— 审批前可展开查看
+                </summary>
+                {arts.map((a) => (
+                  <div
+                    key={a.url}
+                    className="mt-1 border-t border-(--hairline) pt-1 first:border-t-0 first:pt-0"
+                  >
+                    <div className="truncate font-mono text-[10px] text-(--info)" title={a.url}>
+                      {a.from} → {a.url}
+                    </div>
+                    {a.content !== undefined && (
+                      <pre className="mt-0.5 max-h-32 overflow-auto text-[10px] text-(--mute)">
+                        {a.content.slice(0, 2000)}
+                      </pre>
+                    )}
+                  </div>
+                ))}
+              </details>
+            );
+          })()}
           <AskQuestionCard
             input={(data as { askQuestion: AskQuestionInput }).askQuestion}
             onSubmit={async (result) => {
