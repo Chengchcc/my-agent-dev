@@ -224,6 +224,29 @@ export function ExecutionTraceView({
               {index + 1}/{events.length}
             </span>
           </div>
+          {["success", "failure", "custom"].includes(execution.status) &&
+            upstreamArtifacts.length > 0 && (
+              <div className="border-t p-3 text-xs">
+                <div className="mb-1 font-semibold">本次产出（{upstreamArtifacts.length}）</div>
+                {upstreamArtifacts.map((a) => (
+                  <details key={a.url} className="border-b py-1 last:border-b-0">
+                    <summary
+                      className="cursor-pointer truncate font-mono text-[10px] text-(--info)"
+                      title={a.url}
+                    >
+                      {a.from} → {a.url}
+                    </summary>
+                    {a.content !== undefined ? (
+                      <pre className="mt-1 max-h-48 overflow-auto rounded bg-(--canvas)/60 p-2 text-[10px] text-(--mute)">
+                        {a.content.slice(0, 4000)}
+                      </pre>
+                    ) : (
+                      <div className="mt-1 text-[10px] text-(--faint)">二进制产物，不支持预览</div>
+                    )}
+                  </details>
+                ))}
+              </div>
+            )}
           <div className="border-t p-3 text-xs">
             <Collapsible>
               <CollapsibleTrigger className="flex w-full items-center justify-between text-(--mute) hover:text-(--ink)">
