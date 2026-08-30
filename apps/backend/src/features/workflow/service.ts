@@ -90,6 +90,7 @@ export interface WorkflowExecutionService {
   listNodeRuns(executionId: string): Promise<WorkflowNodeRunRow[]>;
   listExecutions(workflowId?: string): Promise<WorkflowExecutionRow[]>;
   deleteExecution(executionId: string): Promise<boolean>;
+  cancelExecution(executionId: string): Promise<WorkflowExecutionRow | null>;
   listExecutionEvents(
     executionId: string,
   ): Promise<Array<{ seq: number; executionId: string; event: string; data: unknown; ts: number }>>;
@@ -116,6 +117,13 @@ function exitStatus(exit: string): "success" | "failure" | "custom" {
   if (exit === "failure") return "failure";
   if (exit === "success") return "success";
   return "custom";
+}
+
+class WorkflowCancelledError extends Error {
+  constructor() {
+    super("cancelled by user");
+    this.name = "WorkflowCancelledError";
+  }
 }
 
 function extractFinalText(outcome: unknown): string {
@@ -227,6 +235,10 @@ export function createWorkflowExecutionService(
   deps: WorkflowExecutionServiceDeps,
 ): WorkflowExecutionService {
   const completions = new Map<string, CompletionRecord[]>();
+  const cancelled = new Set<string>();
+  function throwIfCancelled(executionId: string): void {
+    if (cancelled.has(executionId)) throw new WorkflowCancelledError();
+  }
 
   function emit(executionId: string, event: string, data: unknown) {
     deps.eventBus.emit({ executionId, event, ts: Date.now(), data });
@@ -403,6 +415,7 @@ export function createWorkflowExecutionService(
     // Poll the run until terminal (reconnect-safe; no long-lived subscribe).
     const deadline = Date.now() + 600_000;
     while (Date.now() < deadline) {
+      throwIfCancelled(execution.executionId);
       const run = await deps.agentRunService.getRun(runId);
       const terminalStatus = ["completed", "failed", "aborted", "commit_failed", "timeout"];
       // A run is done when status is terminal OR terminalResult is present
@@ -539,6 +552,7 @@ export function createWorkflowExecutionService(
     }
     let order = completions.get(execution.executionId)!.length;
     for (;;) {
+      throwIfCancelled(execution.executionId);
       const state: EngineState = {
         completions: completions.get(execution.executionId) ?? [],
         store: execution.store,
@@ -586,6 +600,7 @@ export function createWorkflowExecutionService(
     try {
       await execute();
     } catch (err) {
+      if (err instanceof WorkflowCancelledError) cancelled.delete(executionId);
       await deps.port.updateExecution(executionId, {
         status: "failure",
         error: (err as Error).message,
@@ -681,6 +696,26 @@ export function createWorkflowExecutionService(
     },
     async deleteExecution(executionId: string) {
       return deps.port.deleteExecution(executionId);
+    },
+    async cancelExecution(executionId: string) {
+      const row = await deps.port.getExecution(executionId);
+      if (!row || !["running", "waiting_human"].includes(row.status)) return row;
+      cancelled.add(executionId);
+      // waiting_human has no live drive loop to unwind — terminalize directly.
+      if (row.status === "waiting_human") {
+        await deps.port.updateExecution(executionId, {
+          status: "failure",
+          exit: "aborted",
+          error: "cancelled by user",
+          terminalAt: Date.now(),
+        });
+        cancelled.delete(executionId);
+        emit(executionId, "execution_terminal", { exit: "aborted", error: "cancelled by user" });
+        return await deps.port.getExecution(executionId);
+      }
+      // running: the drive/poll loops observe the flag and unwind; mark now
+      // so API consumers see intent immediately.
+      return row;
     },
     async listExecutionEvents(executionId) {
       return deps.port.listExecutionEvents(executionId);

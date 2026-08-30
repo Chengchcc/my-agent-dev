@@ -420,6 +420,8 @@ export const api = {
   }) => unwrap(client.api["workflow-executions"].post(body)),
   getWorkflowExecutionTrace: (executionId: string) =>
     unwrap(client.api["workflow-executions"]({ executionId }).trace.get()),
+  cancelWorkflowExecution: (executionId: string) =>
+    unwrap(client.api["workflow-executions"]({ executionId }).cancel.post({})),
   deleteWorkflowExecution: (executionId: string) =>
     unwrap(client.api["workflow-executions"]({ executionId }).delete()),
   resolveWorkflowHumanTask: (

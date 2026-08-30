@@ -203,6 +203,18 @@ export function ExecutionTraceView({
           </BreadcrumbList>
         </Breadcrumb>
         <span className="ml-auto flex items-center gap-2">
+          {["running", "waiting_human"].includes(execution.status) && (
+            <button
+              className="rounded-md border border-(--err)/40 bg-(--err)/10 px-2 py-0.5 text-[10px] text-(--err) hover:bg-(--err)/20"
+              onClick={async () => {
+                if (!confirm("取消本次执行？")) return;
+                await api.cancelWorkflowExecution(execution.executionId);
+                router.refresh();
+              }}
+            >
+              取消执行
+            </button>
+          )}
           {execution.triggeredBy?.startsWith("cron:") && (
             <span className="rounded-full border border-(--hairline) px-1.5 py-0.5 font-mono text-[9px] text-(--mute)">
               ⏰ {execution.triggeredBy.slice(5)}

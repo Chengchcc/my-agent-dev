@@ -165,6 +165,11 @@ export function workflowRoutes(deps: {
       }
       return { execution: row, events, nodeRuns, pendingHuman };
     })
+    .post("/api/workflow-executions/:executionId/cancel", async ({ params: { executionId } }) => {
+      const row = await svc.cancelExecution(executionId);
+      if (!row) throw new HttpError("Execution not found", 404);
+      return row;
+    })
     .delete("/api/workflow-executions/:executionId", async ({ params }) => {
       const ok = await svc.deleteExecution(params.executionId);
       return { ok };

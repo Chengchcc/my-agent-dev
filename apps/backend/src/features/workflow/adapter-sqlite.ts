@@ -72,7 +72,7 @@ export function sqliteWorkflowExecutionAdapter(db: Database): WorkflowExecutionP
         .values({
           executionId: input.executionId,
           workflowId: input.workflowId,
-        triggeredBy: input.triggeredBy ?? null,
+          triggeredBy: input.triggeredBy ?? null,
           definition: JSON.stringify(input.definition),
           input: JSON.stringify(input.input),
           store: JSON.stringify(input.store),

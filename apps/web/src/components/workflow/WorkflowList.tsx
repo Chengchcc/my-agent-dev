@@ -12,7 +12,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
@@ -50,13 +56,34 @@ function defaultDraft(id: string) {
 export function WorkflowList({ definitions }: { definitions: Row[] }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
   const [runDef, setRunDef] = useState<{
     input?: Record<string, "string" | "number" | "boolean">;
   } | null>(null);
   const [runVals, setRunVals] = useState<Record<string, string>>({});
-  async function create() {
+  async function create(templateId?: string) {
     const id = `wf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    await api.saveWorkflowDefinition(id, defaultDraft(id) as Record<string, unknown>);
+    let def: Record<string, unknown> = defaultDraft(id) as Record<string, unknown>;
+    if (templateId) {
+      try {
+        const t = await api.getWorkflowDefinition(templateId);
+        if (t?.definition) {
+          def = {
+            ...(t.definition as Record<string, unknown>),
+            id,
+            triggers: [],
+            meta: {
+              ...((t.definition as { meta?: Record<string, unknown> }).meta ?? {}),
+              name: `Copy of ${templateId}`,
+              status: "draft",
+            },
+          };
+        }
+      } catch {
+        /* template missing — fall back to blank draft */
+      }
+    }
+    await api.saveWorkflowDefinition(id, def);
     window.location.assign(`/agentic-workflow/${id}`);
   }
   async function openRun(id: string) {
@@ -97,7 +124,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
         <h1 className="text-lg font-semibold">Agentic Workflow</h1>
         <button
           className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink) transition-colors hover:bg-(--panel2)"
-          onClick={create}
+          onClick={() => setNewOpen(true)}
         >
           + New
         </button>
