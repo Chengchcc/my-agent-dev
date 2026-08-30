@@ -42,6 +42,7 @@
         "@chengchenccc/api-contract": "workspace:*",
         "@chengchenccc/config": "workspace:*",
         "@chengchenccc/message": "workspace:*",
+        "@chengchenccc/sandbox": "workspace:*",
         "@chengchenccc/source-fetch": "workspace:*",
         "@chengchenccc/workflow": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.12.1",
@@ -78,6 +79,7 @@
         "@chengchenccc/ai": "workspace:*",
         "@chengchenccc/config": "workspace:*",
         "@chengchenccc/message": "workspace:*",
+        "@chengchenccc/sandbox": "workspace:*",
         "@chengchenccc/source-fetch": "workspace:*",
         "@chengchenccc/tui": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.12.1",
@@ -239,6 +241,10 @@
         "zod": "^3.23.0",
       },
     },
+    "packages/sandbox": {
+      "name": "@chengchenccc/sandbox",
+      "version": "0.1.0",
+    },
     "packages/source-fetch": {
       "name": "@chengchenccc/source-fetch",
     },
@@ -374,6 +380,8 @@
     "@chengchenccc/message": ["@chengchenccc/message@workspace:packages/message"],
 
     "@chengchenccc/oh-my-agent": ["@chengchenccc/oh-my-agent@workspace:apps/oh-my-agent"],
+
+    "@chengchenccc/sandbox": ["@chengchenccc/sandbox@workspace:packages/sandbox"],
 
     "@chengchenccc/source-fetch": ["@chengchenccc/source-fetch@workspace:packages/source-fetch"],
 

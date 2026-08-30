@@ -7,7 +7,7 @@ describe("createNodeRunners", () => {
   test("script node executes TS default export", async () => {
     const runners = createNodeRunners({ dataDir: ".backend-data/workflow-scripts" });
     const out = await runners.script.run(
-      { id: "s", type: "script", code: "export default async (ctx) => ({ sent: ctx.input.x })" },
+      { id: "s", type: "script", code: "export default async (ctx) => ({ sent: ctx.x })" },
       { input: { x: 1 }, store, context: { executionId: "e", nodeId: "s", workflowId: "wf" } },
     );
     expect(out.output).toEqual({ sent: 1 });

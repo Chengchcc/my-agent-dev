@@ -28,6 +28,7 @@ import {
   createBashTool,
   createDdgWebSearchPort,
   createEditTool,
+  createEvalTool,
   createGlobTool,
   createGrepTool,
   createPortWebFetchTool,
@@ -264,6 +265,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     fileTools.push(createWriteTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
     fileTools.push(createEditTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
     fileTools.push(createBashTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool);
+    fileTools.push(createEvalTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool);
   }
   // Generic .mcp.json mounting (ADR 0022): user servers + knowledge.
   // Skips "product-tools" (the manifest path owns it) and names that

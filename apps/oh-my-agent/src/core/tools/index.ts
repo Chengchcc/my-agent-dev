@@ -3,6 +3,7 @@ export { type AgentFsLike, pjoin } from "./agent-fs-like.js";
 
 // standalone tools
 export { createBashTool } from "./bash.js";
+export { createEvalTool } from "./eval.js";
 export { createEditTool, createReadTool, createWriteTool, withDefaultCwd } from "./file-tools.js";
 export { createGlobTool } from "./glob.js";
 export { createGrepTool } from "./grep.js";
