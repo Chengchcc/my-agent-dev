@@ -20,6 +20,7 @@ function toExec(r: typeof workflowExecution.$inferSelect): WorkflowExecutionRow 
   return {
     executionId: r.executionId,
     workflowId: r.workflowId,
+    triggeredBy: r.triggeredBy,
     definition: JSON.parse(r.definition),
     input: JSON.parse(r.input),
     store: JSON.parse(r.store),
@@ -71,6 +72,7 @@ export function sqliteWorkflowExecutionAdapter(db: Database): WorkflowExecutionP
         .values({
           executionId: input.executionId,
           workflowId: input.workflowId,
+        triggeredBy: input.triggeredBy ?? null,
           definition: JSON.stringify(input.definition),
           input: JSON.stringify(input.input),
           store: JSON.stringify(input.store),

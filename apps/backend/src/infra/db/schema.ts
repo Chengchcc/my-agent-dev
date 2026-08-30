@@ -93,6 +93,7 @@ export const project = sqliteTable(
 export const workflowExecution = sqliteTable("workflow_execution", {
   executionId: text("execution_id").notNull().primaryKey(),
   workflowId: text("workflow_id").notNull(),
+  triggeredBy: text("triggered_by"), // manual | cron:<expr>
   definition: text("definition").notNull(), // JSON: WorkflowDefinition snapshot
   input: text("input").notNull(), // JSON: trigger input vars
   store: text("store").notNull().default("{}"),

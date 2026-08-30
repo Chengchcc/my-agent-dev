@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 type ExecutionRow = {
   executionId: string;
   workflowId: string;
+  triggeredBy?: string | null;
   status: string;
   error?: string;
   createdAt: number;
@@ -108,6 +109,11 @@ export default function WorkTodayPage() {
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 text-sm font-medium text-(--ink)">
+                      {e.triggeredBy?.startsWith("cron:") && (
+                        <span title={e.triggeredBy} className="shrink-0 text-[10px]">
+                          ⏰
+                        </span>
+                      )}
                       <GitBranch className="size-3.5 shrink-0 text-(--mute)" />
                       <span className="truncate">{e.workflowId}</span>
                     </div>

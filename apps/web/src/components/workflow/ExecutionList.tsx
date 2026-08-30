@@ -24,9 +24,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import { humanizeWorkflowError } from "./humanize-error";
 
 type Exec = {
   executionId: string;
+  triggeredBy?: string | null;
   status: string;
   exit?: string;
   error?: string;
@@ -187,6 +189,11 @@ export function ExecutionList({
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
+                  {e.triggeredBy?.startsWith("cron:") && (
+                    <span className="rounded-full border border-(--hairline) px-1.5 py-0.5 font-mono text-[9px] text-(--mute)">
+                      ⏰ {e.triggeredBy.slice(5)}
+                    </span>
+                  )}
                   <span
                     className={`rounded-full border px-2 py-0.5 text-[10px] ${
                       e.status === "success"
@@ -211,7 +218,7 @@ export function ExecutionList({
               </div>
               {e.status === "failure" && e.error && (
                 <div className="min-w-0 flex-1 truncate text-xs text-(--err)" title={e.error}>
-                  {e.error}
+                  {humanizeWorkflowError(e.error, [])?.title ?? e.error}
                 </div>
               )}
               <div className="flex shrink-0 items-center gap-2">

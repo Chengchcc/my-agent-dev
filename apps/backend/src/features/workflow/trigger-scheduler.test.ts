@@ -34,6 +34,7 @@ describe("workflow trigger scheduler", () => {
       workflowDir: dir,
       startExecution: async (input) => {
         started.push({ workflowId: input.workflowId });
+        expect(input.triggeredBy).toBe("cron:* * * * *");
       },
       schedule: (cron, fn) => {
         const h = { cron, fn, stop: () => scheduled.splice(scheduled.indexOf(h), 1) };
@@ -82,6 +83,7 @@ describe("workflow trigger scheduler", () => {
       workflowDir: dir,
       startExecution: async (input) => {
         started.push({ workflowId: input.workflowId });
+        expect(input.triggeredBy).toBe("cron:* * * * *");
       },
       schedule: (cron, fn) => {
         const h = { cron, fn, stop: () => scheduled.splice(scheduled.indexOf(h), 1) };

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { api } from "@/lib/api";
+import { humanizeWorkflowError } from "./humanize-error";
 import { type NodeStatus, WorkflowCanvas } from "./WorkflowCanvas";
 
 export type TraceEvent = { seq: number; event: string; data: unknown; ts: number };
@@ -27,6 +28,7 @@ export type TraceNodeRun = {
 export type TraceExecution = {
   executionId: string;
   workflowId: string;
+  triggeredBy?: string | null;
   definition: WorkflowDefinition;
   input: Record<string, unknown>;
   store: Record<string, unknown>;
@@ -200,14 +202,26 @@ export function ExecutionTraceView({
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
-        <span className="ml-auto font-mono text-[10px] text-(--mute)">{execution.status}</span>
+        <span className="ml-auto flex items-center gap-2">
+          {execution.triggeredBy?.startsWith("cron:") && (
+            <span className="rounded-full border border-(--hairline) px-1.5 py-0.5 font-mono text-[9px] text-(--mute)">
+              ⏰ {execution.triggeredBy.slice(5)}
+            </span>
+          )}
+          <span className="font-mono text-[10px] text-(--mute)">{execution.status}</span>
+        </span>
       </div>
-      {execution.status === "failure" && execution.error && (
-        <div className="shrink-0 border-b border-(--err)/20 bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
-          <span className="font-semibold">执行失败：</span>
-          {execution.error}
-        </div>
-      )}
+      {execution.status === "failure" &&
+        execution.error &&
+        (() => {
+          const h = humanizeWorkflowError(execution.error, nodeRuns);
+          return (
+            <div className="shrink-0 space-y-0.5 border-b border-(--err)/20 bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
+              <div className="font-semibold">执行失败：{h?.title}</div>
+              {h?.detail && <div className="text-(--mute)">{h.detail}</div>}
+            </div>
+          );
+        })()}
       <div className="flex min-h-0 flex-1">
         <div className="flex-1 border-r">
           <WorkflowCanvas

@@ -12,6 +12,7 @@ export type WorkflowPendingHumanStatus = "pending" | "resolved";
 export interface WorkflowExecutionRow {
   executionId: string;
   workflowId: string;
+  triggeredBy?: string | null;
   definition: WorkflowDefinition;
   input: Record<string, unknown>;
   store: Record<string, unknown>;
@@ -53,6 +54,7 @@ export interface CreateWorkflowExecutionInput {
   input: Record<string, unknown>;
   store: Record<string, unknown>;
   status?: WorkflowExecutionStatus;
+  triggeredBy?: string | null;
   createdAt?: number;
 }
 

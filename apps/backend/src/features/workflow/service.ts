@@ -68,12 +68,18 @@ export interface WorkflowExecutionServiceDeps extends AgentRunnerDeps {
 export interface WorkflowExecutionService {
   runToCompletion(
     executionId: string,
-    input: { workflowId: string; definition: WorkflowDefinition; input: Record<string, unknown> },
+    input: {
+      workflowId: string;
+      definition: WorkflowDefinition;
+      input: Record<string, unknown>;
+      triggeredBy?: string;
+    },
   ): Promise<WorkflowExecutionRow>;
   startExecution(input: {
     workflowId: string;
     definition: WorkflowDefinition;
     input: Record<string, unknown>;
+    triggeredBy?: string;
   }): Promise<WorkflowExecutionRow>;
   resolveHumanTask(
     executionId: string,
@@ -599,6 +605,7 @@ export function createWorkflowExecutionService(
         input: input.input,
         store: {},
         status: "running",
+        triggeredBy: input.triggeredBy ?? "manual",
       });
       emit(executionId, "execution_started", {});
       await runWithCatch(executionId, () => drive(row));
@@ -613,6 +620,7 @@ export function createWorkflowExecutionService(
         input: input.input,
         store: {},
         status: "running",
+        triggeredBy: input.triggeredBy ?? "manual",
       });
       emit(executionId, "execution_started", {});
       void runWithCatch(executionId, () => drive(row));
