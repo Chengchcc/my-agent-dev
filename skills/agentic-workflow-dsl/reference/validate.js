@@ -98,6 +98,25 @@ if (def.version !== 1) errors.push("$.version must be 1");
 if (typeof def.id !== "string" || def.id.trim() === "")
   errors.push("$.id must be a non-empty string");
 
+const HINT_TYPES = new Set(["string", "number", "boolean", "artifact"]);
+function checkHints(path, hints) {
+  if (hints === undefined) return;
+  if (!Array.isArray(hints)) {
+    errors.push(`${path} must be an array of { key, type }`);
+    return;
+  }
+  const keys = new Set();
+  hints.forEach((h, i) => {
+    const hp = `${path}[${i}]`;
+    if (!h || typeof h !== "object") { errors.push(`${hp} must be an object`); return; }
+    if (typeof h.key !== "string" || h.key.trim() === "")
+      errors.push(`${hp}.key must be a non-empty string`);
+    else if (keys.has(h.key)) errors.push(`${hp}.key "${h.key}" duplicates an earlier key`);
+    else keys.add(h.key);
+    if (!HINT_TYPES.has(h.type)) errors.push(`${hp}.type must be string/number/boolean/artifact`);
+  });
+}
+
 // nodes
 const nodes = Array.isArray(def.nodes) ? def.nodes : null;
 if (!nodes || nodes.length === 0) errors.push("$.nodes must be a non-empty array");
@@ -132,6 +151,8 @@ if (nodes) {
     }
     if (n.type === "script" && (typeof n.code !== "string" || n.code.trim() === ""))
       errors.push(`${p}.code required`);
+    checkHints(`${p}.input`, n.input);
+    checkHints(`${p}.output`, n.output);
     if (n.inputSchema) checkSchema(`${p}.inputSchema`, n.inputSchema);
     if (n.outputSchema) checkSchema(`${p}.outputSchema`, n.outputSchema);
     if (n.form) {
@@ -155,6 +176,9 @@ if (edges) {
     if (e.when !== undefined && e.when !== null) checkWhen(`${p}.when`, e.when);
   });
 }
+
+// workflow input hints
+checkHints("$.input", def.input);
 
 // meta
 if (def.meta !== undefined) {

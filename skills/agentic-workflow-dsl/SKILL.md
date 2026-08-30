@@ -30,14 +30,21 @@ Exit 0 + `VALID <id>` = legal; exit 1 = one violation per line.
   "version": 1,
   "id": "oncall-triage",
   "meta": { "name": "…", "description": "…", "tags": ["…"], "status": "draft|active|archived", "owner": "…", "updatedBy": "…" },
-  "input": { "issueUrl": "string" },
+  "input": [
+    { "key": "issueUrl", "type": "string" },
+    { "key": "report", "type": "artifact" }
+  ],
   "triggers": [ { "type": "cron", "cron": "0 2 * * *", "enabled": true } ],
   "nodes": [ /* see Node types */ ],
   "edges": [ { "from": "a", "to": "b", "when": { "==": [ { "var": "a.output.x" }, "high" ] } } ]
 }
 ```
 
-**Triggers** (optional):  is an array. Each item is . API trigger is implicit — any workflow can be invoked via ; cron triggers only add scheduling.  keeps a trigger registered but paused.
+**Triggers** (optional): `triggers` is an array. Each item is
+`{ "type": "cron", "cron": "<5-field expr UTC>", "enabled": true }`. API trigger
+is implicit — any workflow can be invoked via `POST /api/workflow-executions`;
+cron triggers only add scheduling. `"enabled": false` keeps a trigger
+registered but paused.
 
 ## Node types
 
@@ -50,7 +57,14 @@ Exit 0 + `VALID <id>` = legal; exit 1 = one violation per line.
 | human | optional `question`/`form` | ask-user; answers = output |
 
 Optional per-node `inputSchema`/`outputSchema` (JSON Schema subset), `retry`,
-`input` defaults, `output` type hints.
+and `input`/`output` hints — both are arrays of `{ "key": …, "type": … }` with
+type one of `string | number | boolean | artifact` (same shape as the
+workflow-level `input`).
+
+**artifact type**: a field whose value is an `artifacts://<folder>/<file>`
+URL. Input artifact fields are checked to exist before the node runs; output
+artifact fields must exist after it runs (the node must upload them via the
+`artifact_upload` MCP tool). Use them to hand files between agents.
 
 ## Edges
 
@@ -69,10 +83,13 @@ Optional per-node `inputSchema`/`outputSchema` (JSON Schema subset), `retry`,
 5. `edges` reference existing node ids (both ends).
 6. Graph acyclic (Kahn must cover all nodes).
 7. `when` uses only the JSONLogic subset above.
-8. `inputSchema`/`outputSchema` use only: `type/properties/required/
+8. `input`/`output` (workflow and per-node) are arrays of
+   `{ "key": non-empty string, "type": "string"|"number"|"boolean"|"artifact" }`;
+   keys unique within each array. Object maps are NOT accepted.
+9. `inputSchema`/`outputSchema` use only: `type/properties/required/
    additionalProperties/items/enum/minimum/maximum/minLength/maxLength/
    minItems/maxItems`.
-9. `meta.status` in draft|active|archived; `meta.tags` array of strings.
+10. `meta.status` in draft|active|archived; `meta.tags` array of strings.
 
 Report violations as `$.nodes[2].status missing` style paths; when asked to
 fix, return the corrected full DSL.
