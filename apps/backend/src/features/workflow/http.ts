@@ -169,19 +169,45 @@ export function workflowRoutes(deps: {
       const ok = await svc.deleteExecution(params.executionId);
       return { ok };
     })
+    .get(
+      "/api/workflow-executions/:executionId/events",
+      async ({ request, params: { executionId } }) => {
+        const row = await svc.getExecution(executionId);
+        if (!row) throw new HttpError("Execution not found", 404);
+        async function* merged(): AsyncGenerator<{
+          event: string;
+          executionId: string;
+          ts: number;
+          data: unknown;
+          seq?: number;
+        }> {
+          // Subscribe FIRST (registration is synchronous — events buffer in
+          // the queue), then replay persisted history, then stream live.
+          // This closes the replay gap; consumers tolerate rare duplicates.
+          const bus = await svc.subscribeEvents(executionId);
+          const alreadyTerminal = ["success", "failure", "custom"].includes(row!.status);
+          const history = await svc.listExecutionEvents(executionId);
+          for (const ev of history) {
+            yield { event: ev.event, executionId, ts: ev.ts, data: ev.data, seq: ev.seq };
+          }
+          if (alreadyTerminal) return;
+          for await (const ev of bus) {
+            yield ev;
+          }
+        }
+        return sseResponse(
+          merged(),
+          (ev) => ({ id: String(ev.ts), event: "wf", data: ev }),
+          request.signal,
+        );
+      },
+    )
     .get("/api/workflow-executions/:executionId", async ({ params }) => {
       const row = await svc.getExecution(params.executionId);
       if (!row) throw new HttpError("Execution not found", 404);
       return row;
     })
-    .get("/api/workflow-executions/:executionId/events", async ({ request, params }) => {
-      const stream = await svc.subscribeEvents(params.executionId, request.signal);
-      return sseResponse(
-        stream,
-        (ev) => ({ id: params.executionId, event: ev.event, data: ev.data }),
-        request.signal,
-      );
-    })
+
     .post(
       "/api/workflow-executions/:executionId/human-task",
       async ({ params, body }) => {

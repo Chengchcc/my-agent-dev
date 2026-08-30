@@ -25,7 +25,7 @@
       "id": "detect",
       "type": "script",
       "runtime": "bun",
-      "code": "export default async (ctx) => {\n  // \u6a21\u62df\u68c0\u6d4b\uff1a\u6839\u636e issueUrl \u5224\u65ad\u662f\u5426\u5931\u8d25\uff08\u6f14\u793a\u5206\u6d41\uff09\n  const url = String(ctx.input.issueUrl ?? \"\");\n  const isBroken = url.includes(\"broken\");\n  return { broken: isBroken, attempts: 1 };\n}",
+      "code": "export default async (ctx) => {\n  // \u6a21\u62df\u68c0\u6d4b\uff1a\u6839\u636e issueUrl \u5224\u65ad\u662f\u5426\u5931\u8d25\uff08\u6f14\u793a\u5206\u6d41\uff09\n  const url = String(ctx.issueUrl ?? \"\");\n  const isBroken = url.includes(\"broken\");\n  return { broken: isBroken, attempts: 1 };\n}",
       "output": [
         {
           "key": "broken",

@@ -38,7 +38,10 @@ export function computeNext(def: WorkflowDefinition, state: EngineState): Engine
       if (completedIds.has(n.id)) continue;
       const inEdges = def.edges.filter((e) => e.to === n.id);
       if (inEdges.length === 0) continue; // start already handled
-      if (inEdges.every((e) => routed.get(e.from)?.has(n.id))) readyIds.push(n.id);
+      // Join semantics: a node runs when ANY upstream routed to it. Mutually
+      // exclusive branches converging on one node must not deadlock waiting
+      // for the untaken branch (AND-joins would need an explicit DSL marker).
+      if (inEdges.some((e) => routed.get(e.from)?.has(n.id))) readyIds.push(n.id);
     }
   }
 

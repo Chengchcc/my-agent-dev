@@ -87,7 +87,8 @@ describe("computeNext", () => {
     });
     if (afterA.kind === "idle") throw new Error("expected run");
     expect(afterA.kind).toBe("run");
-    expect(afterA.ready.map((r) => r.node.id)).toEqual(["b"]);
+    // Any-of join: a already routed to join, so join is ready alongside b.
+    expect(afterA.ready.map((r) => r.node.id)).toEqual(["b", "join"]);
     const afterBoth = computeNext(def, {
       completions: [
         { nodeId: "start", order: 0, output: {}, routedTo: ["a", "b"] },
@@ -148,5 +149,40 @@ describe("computeNext", () => {
     if (step.kind !== "run") throw new Error("expected run");
     expect(step.ready[0]!.input).toEqual({ level: "high" });
     expect(def.nodes[1]!.input).toEqual([{ key: "level", type: "string" }]);
+  });
+
+  test("converging branches: any routed edge readies the join node", () => {
+    const def = parseWorkflow({
+      version: 1,
+      id: "wf",
+      nodes: [
+        { id: "start", type: "start" },
+        { id: "a", type: "script", code: "x", output: [{ key: "ok", type: "boolean" }] },
+        { id: "left", type: "script", code: "x" },
+        { id: "right", type: "script", code: "x" },
+        { id: "join", type: "script", code: "x" },
+        { id: "done", type: "end", status: "success" },
+      ],
+      edges: [
+        { from: "start", to: "a" },
+        { from: "a", to: "left", when: { "==": [{ var: "a.output.ok" }, true] } },
+        { from: "a", to: "right", when: { "==": [{ var: "a.output.ok" }, false] } },
+        { from: "left", to: "join" },
+        { from: "right", to: "join" },
+        { from: "join", to: "done" },
+      ],
+    });
+    // Only the "left" branch fired; join must still be ready (any-of).
+    const step = computeNext(def, {
+      completions: [
+        { nodeId: "start", order: 0, output: {}, routedTo: ["a"] },
+        { nodeId: "a", order: 1, output: { ok: true }, routedTo: ["left"] },
+        { nodeId: "left", order: 2, output: {}, routedTo: ["join"] },
+      ],
+      store: {},
+      trigger: {},
+    });
+    if (step.kind !== "run") throw new Error("expected run");
+    expect(step.ready.map((r) => r.node.id)).toContain("join");
   });
 });

@@ -3,7 +3,7 @@
 import { toEditorGraph, type WorkflowDefinition } from "@chengchenccc/workflow";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -67,7 +67,41 @@ export function ExecutionTraceView({
 }) {
   const router = useRouter();
   const [index, setIndex] = useState(Math.max(0, events.length - 1));
+  const followTail = useRef(true);
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
+  const [liveEvents, setLiveEvents] = useState<TraceEvent[]>(events);
+  useEffect(() => setLiveEvents(events), [events]);
+  // Live tail: while following (not scrubbed back), track the newest event.
+  useEffect(() => {
+    if (followTail.current) setIndex(Math.max(0, liveEvents.length - 1));
+  }, [liveEvents]);
+  // Live stream: subscribe to execution events while the run is in flight.
+  const terminal = ["success", "failure", "custom"].includes(execution.status);
+  useEffect(() => {
+    if (terminal) return;
+    const es = new EventSource(
+      `/api/bff/api/workflow-executions/${encodeURIComponent(execution.executionId)}/events`,
+    );
+    es.addEventListener("wf", (e) => {
+      const ev = JSON.parse((e as MessageEvent).data) as {
+        event: string;
+        ts: number;
+        data: unknown;
+      };
+      setLiveEvents((prev) => {
+        // Live events key by ts (huge); reconnect replays table seqs — skip dups.
+        const wf = ev as { seq?: number };
+        const seq = wf.seq ?? ev.ts;
+        if (prev.some((x) => x.seq === seq)) return prev;
+        return [...prev, { seq, event: ev.event, ts: ev.ts, data: ev.data }];
+      });
+      if (ev.event === "execution_terminal") {
+        es.close();
+        router.refresh();
+      }
+    });
+    return () => es.close();
+  }, [execution.executionId, terminal, router]);
   const [upstreamArtifacts, setUpstreamArtifacts] = useState<
     Array<{ url: string; from: string; content?: string }>
   >([]);
@@ -76,8 +110,8 @@ export function ExecutionTraceView({
   const nodeStatus = useMemo(() => {
     const done = new Set<string>();
     let active: string | undefined;
-    for (let i = 0; i <= Math.min(index, events.length - 1); i++) {
-      const e = events[i]!;
+    for (let i = 0; i <= Math.min(index, liveEvents.length - 1); i++) {
+      const e = liveEvents[i]!;
       if (e.event === "node_completed") done.add((e.data as { nodeId: string }).nodeId);
       if (e.event === "node_started") active = (e.data as { nodeId: string }).nodeId;
     }
@@ -93,21 +127,21 @@ export function ExecutionTraceView({
             ? "active"
             : "idle";
     return map;
-  }, [index, events, graph, nodeRuns]);
+  }, [index, liveEvents, graph, nodeRuns]);
 
   const litEdges = useMemo(() => {
     const lit = new Set<string>();
-    for (let i = 0; i <= Math.min(index, events.length - 1); i++) {
-      const e = events[i]!;
+    for (let i = 0; i <= Math.min(index, liveEvents.length - 1); i++) {
+      const e = liveEvents[i]!;
       if (e.event === "node_completed") {
         const d = e.data as { nodeId: string; routedTo?: string[] };
         for (const to of d.routedTo ?? []) lit.add(`${d.nodeId}->${to}`);
       }
     }
     return lit;
-  }, [index, events]);
+  }, [index, liveEvents]);
 
-  const snapshot = useMemo(() => replayStore(events, index), [events, index]);
+  const snapshot = useMemo(() => replayStore(liveEvents, index), [liveEvents, index]);
 
   // Approval context: artifacts produced by completed nodes (values that are
   // artifacts:// URLs), fetched so the human can read them before deciding.
@@ -209,19 +243,19 @@ export function ExecutionTraceView({
             <input
               type="range"
               min={0}
-              max={Math.max(0, events.length - 1)}
+              max={Math.max(0, liveEvents.length - 1)}
               value={index}
               onChange={(e) => setIndex(Number(e.target.value))}
               className="flex-1"
             />
             <button
               className="rounded border px-2"
-              onClick={() => setIndex(Math.min(events.length - 1, index + 1))}
+              onClick={() => setIndex(Math.min(liveEvents.length - 1, index + 1))}
             >
               ▶
             </button>
             <span className="text-xs text-muted-foreground">
-              {index + 1}/{events.length}
+              {index + 1}/{liveEvents.length}
             </span>
           </div>
           {["success", "failure", "custom"].includes(execution.status) &&
@@ -256,7 +290,7 @@ export function ExecutionTraceView({
               <CollapsibleContent className="space-y-3 pt-2">
                 <div>
                   <div className="mb-1 font-semibold">Event log</div>
-                  {events.slice(0, index + 1).map((e) => (
+                  {liveEvents.slice(0, index + 1).map((e) => (
                     <div key={e.seq} className="border-b py-1">
                       <button
                         className="flex w-full items-center gap-1 text-left"
