@@ -174,7 +174,11 @@ export class OmaBackend implements AgentBackend<"oma"> {
         "oma-adapter",
         `spawning runId=${runId} executable=${this.command.executable} cwd=${input.workspace.root}`,
       );
-      const spawnEnv: Record<string, string> = { ...this.command.env };
+      const spawnEnv: Record<string, string> = Object.fromEntries(
+        Object.entries({ ...this.command.env }).filter(
+          (e): e is [string, string] => e[1] !== undefined,
+        ),
+      );
       if (input.productToolsToken) {
         spawnEnv.OMA_PRODUCT_TOOL_TOKEN = input.productToolsToken;
         spawnEnv.PRODUCT_TOOLS_RUN_TOKEN = input.productToolsToken;
