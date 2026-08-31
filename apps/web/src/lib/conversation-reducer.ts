@@ -158,7 +158,11 @@ export function isConclusionMessage(m: MessageItem): boolean {
   const blocks = m.content.blocks;
   if (!blocks || blocks.length === 0) return false;
   const hasToolUse = blocks.some((b: { type: string }) => b.type === "tool_use");
-  return !hasToolUse;
+  if (hasToolUse) return false;
+  // A pure thinking-only skeleton (empty text, no tool_use) is a tool-round
+  // scaffold, not a conclusion — claiming the conclusion slot inflates the
+  // headline count by one and hides the real final answer.
+  return blocks.some((b: { type: string }) => b.type !== "thinking");
 }
 
 export function groupTurns(items: UiItem[]): TurnSegment[] {

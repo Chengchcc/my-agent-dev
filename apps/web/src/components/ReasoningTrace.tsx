@@ -47,7 +47,11 @@ export function ReasoningTrace({
   }, 0);
 
   // Assistant messages in this turn: the working rounds plus the conclusion.
-  const msgCount = rounds.length + (conclusion ? 1 : 0);
+  // Tool-round skeletons (empty text, only thinking/tool_use blocks) are
+  // commands, not messages — they are shown in the commands count, so a
+  // "3 tools + 1 answer" run must read "1 message · 3 commands".
+  const msgCount = rounds.filter((m) => extractText(m.content).trim().length > 0).length +
+    (conclusion ? 1 : 0);
 
   return (
     <div className="my-1">
