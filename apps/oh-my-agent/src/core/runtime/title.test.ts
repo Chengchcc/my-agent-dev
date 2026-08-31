@@ -2,19 +2,22 @@ import { describe, expect, test } from "bun:test";
 import { buildTitleContext, isLowSignalTitleInput, normalizeGeneratedTitle } from "./title.js";
 
 describe("title", () => {
-  test("buildTitleContext extracts first N turns", () => {
+  test("buildTitleContext extracts most recent N turns", () => {
     const ctx = buildTitleContext(
       [
-        { role: "user", text: "帮我修复登录 bug" },
-        { role: "assistant", text: "好的，我来看一下" },
-        { role: "user", text: "还有第三轮" },
-        { role: "user", text: "第四轮" },
-        { role: "user", text: "第五轮不该出现" },
+        { role: "user", text: "第一轮寒暄" },
+        { role: "assistant", text: "" },
+        { role: "user", text: "第二轮的实质问题是什么" },
+        { role: "assistant", text: "" },
+        { role: "user", text: "第三轮的实质问题" },
       ],
       2,
     );
-    expect(ctx).toContain("帮我修复登录 bug");
-    expect(ctx).not.toContain("第五轮");
+    // Recent content wins; early greeting / empty thinking-filler turns must
+    // not crowd out the substantive question that should produce a title.
+    expect(ctx).toContain("第二轮的实质问题");
+    expect(ctx).toContain("第三轮的实质问题");
+    expect(ctx).not.toContain("第一轮寒暄");
   });
 
   test("isLowSignalTitleInput filters greetings", () => {

@@ -93,7 +93,7 @@ export function normalizeGeneratedTitle(raw: string): string | null {
 export function buildTitleContext(msgs: Message[], maxTurns = 4): string {
   return msgs
     .filter((m) => m.role === "user" || m.role === "assistant")
-    .slice(0, maxTurns * 2)
+    .slice(-maxTurns * 2)
     .map((m) => `${m.role === "user" ? "用户" : "助手"}: ${extractText(m)}`)
     .filter((line) => line.length > 3)
     .join("\n");
