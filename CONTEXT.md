@@ -221,6 +221,7 @@ cd apps/backend && bun run db:check:backend   # drizzle schema/migration 校验
 - ADR 索引：`docs/adr/README.md`（0001–0026）。近期关键：0019 CLI 双轨、0020 workspace 桥接、0021 一对话一 agent、0022 MCP+知识包、0023 worktree、0024 oma wire fixture 契约、0025 Loop=Workflow（Loop 现已整体删除）、0026 威胁模型
 - 技能：`skills/`（agentic-workflow-dsl、workflow-authoring、skill-pack-installer、about-skills）
 - 自食知识包：`knowledge-packs/my-agent-team/`
+- 项目 Insight（证据驱动的「为什么+行动」）：`docs/insights.md` — 与本文件（现状）、`docs/future-work.md`（待办）三层分工
 
 ## Tombstones（历史概念，勿引用）
 
