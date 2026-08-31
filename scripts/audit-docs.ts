@@ -227,6 +227,10 @@ for (const rel of activeFiles) {
 const PATH_TOKEN =
   /^(?:packages|apps|docs|skills|scripts|knowledge-packs)(?:\/[A-Za-z0-9._-]+)+\/?$/;
 const PKG_TOKEN = /^@chengchenccc\/([a-z0-9-]+)$/;
+/** Paths that legitimately do not exist on a fresh checkout: production
+ *  build output and boot-created gitignored data dirs referenced by docs. */
+const RUNTIME_PATHS = new Set(["apps/oh-my-agent/dist/cli.js", "apps/backend/.backend-data/"]);
+
 const DOC_FILES = [
   "AGENTS.md",
   "README.md",
@@ -258,6 +262,9 @@ for (const rel of DOC_FILES) {
     }
   }
   for (const token of tokens) {
+    // Runtime/build artifacts are legitimately referenced before they exist
+    // (production dist output, boot-created gitignored data dirs).
+    if (RUNTIME_PATHS.has(token)) continue;
     pathTokens++;
     const pkg = PKG_TOKEN.exec(token);
     const name = pkg?.[1];
