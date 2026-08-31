@@ -93,17 +93,19 @@ function walkDocs(dir: string): string[] {
   }
   return out;
 }
-/** Tombstone pages (`status: deprecated` in frontmatter) keep historical
- *  dead links and stale vocabulary by design — exempt both checks. */
-function isTombstone(file: string): boolean {
+/** Pages that keep stale content by design: tombstones (`status: deprecated`),
+ *  direction archives (`status: future`, e.g. the roadmap page), and gate0
+ *  point-in-time measurement records. Content checks (code-path existence,
+ *  vocabulary) skip all three; link checks still run. */
+function isExemptFromContent(file: string): boolean {
   const head = readFileSync(file, "utf8").slice(0, 600);
-  return /status:\s*deprecated/.test(head);
+  return /status:\s*(deprecated|future)/.test(head) || file.includes("-gate0.md");
 }
 
 // 7. W1: active-zone relative links must resolve.
 for (const root of ACTIVE_ROOTS) {
   for (const file of walkDocs(join(ROOT, root))) {
-    if (isTombstone(file)) continue;
+    if (isExemptFromContent(file)) continue;
     const src = readFileSync(file, "utf8");
     for (const m of src.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
       const link = m[1]!;
@@ -127,16 +129,93 @@ const STALE_NARRATIVES = [
   "Generator -> Evaluator",
   "Generator → Evaluator",
   "generator/evaluator 两段",
+  // Deleted/renamed modules that text phrases catch better than path tokens.
+  // Trailing slashes keep "packages/agent" from matching "packages/agent-contract".
+  "createAgentSession(",
+  "ContextPipeline",
+  "InterruptSignal",
+  "fireLoop(",
+  "loopStep(",
+  "loopReducer",
+  "packages/agent/",
+  "packages/core/",
+  "packages/loop/",
+  "packages/tools-common/",
+  "packages/conversation/",
+  "packages/plugin-",
+  "packages/agent-backend/",
+  "cron/scheduler.ts",
+  "providers/anthropic.ts",
+  "providers/openai-compat.ts",
+  "src/core/workspace-context.ts",
 ] as const;
 for (const root of ACTIVE_ROOTS) {
   for (const file of walkDocs(join(ROOT, root))) {
-    if (isTombstone(file)) continue;
+    if (isExemptFromContent(file)) continue;
     const src = readFileSync(file, "utf8");
     for (const phrase of STALE_NARRATIVES) {
       if (src.includes(phrase)) {
         fail(`stale narrative "${phrase}" in ${file.replace(`${ROOT}/`, "")}`);
       }
     }
+  }
+}
+
+// 11. W7 content check: repo-rooted code-path mentions in active-zone pages
+// must exist. `packages/agent/src/...` teaches a deleted module even when
+// every link resolves. Workspace/runtime files (`.oma/...`, `agentDir/...`)
+// and bare relative names are NOT checked here — they are not repo paths;
+// conceptual rot is covered by the STALE_NARRATIVES phrase list.
+const CODE_FILE_TOKEN = /(?:packages|apps)\/[\w@.-]+(?:\/[\w@.-]+)*\.(?:ts|tsx|mjs|json)\b/g;
+let codePathTokens = 0;
+for (const root of ACTIVE_ROOTS) {
+  for (const file of walkDocs(join(ROOT, root))) {
+    if (isExemptFromContent(file)) continue;
+    const src = readFileSync(file, "utf8");
+    for (const raw of new Set(src.match(CODE_FILE_TOKEN) ?? [])) {
+      codePathTokens++;
+      if (!existsSync(join(ROOT, raw.replace(/[:),;]+$/, "")))) {
+        fail(`dead code path "${raw}" in ${file.replace(`${ROOT}/`, "")}`);
+      }
+    }
+  }
+}
+
+// 12. Obsidian-style graph check: active-zone pages with zero inbound links
+// are orphans - invisible in the wiki graph, i.e. either dead concepts or
+// missing wiring. Entry points (hub/index/map/MANIFEST) count as wired;
+// archives (future/deprecated/gate0) are allowed to be unlinked.
+const ENTRY_PAGES = new Set([
+  "docs/architecture/README.md",
+  "docs/architecture/index.llm.md",
+  "docs/architecture/map.md",
+  "docs/architecture/MANIFEST.md",
+]);
+const activeFiles: string[] = [];
+for (const root of ACTIVE_ROOTS)
+  for (const f of walkDocs(join(ROOT, root))) activeFiles.push(f.replace(`${ROOT}/`, ""));
+const inlinked = new Set<string>();
+for (const rel of activeFiles) {
+  const abs = join(ROOT, rel);
+  if (isExemptFromContent(abs)) continue;
+  const src = readFileSync(abs, "utf8");
+  for (const m of src.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
+    const link = m[1]!;
+    if (link.startsWith("http") || link.startsWith("#") || link.startsWith("mailto:")) continue;
+    inlinked.add(normalize(join(dirname(abs), link.split("#")[0]!.trim())).replace(`${ROOT}/`, ""));
+  }
+  // Backticked relative paths are how index.llm.md wires the routing lists;
+  // count them as inbound references too (agents navigate by them).
+  for (const m of src.matchAll(/`([^`]+\.md)`/g)) {
+    inlinked.add(normalize(join(dirname(abs), m[1]!.trim())).replace(`${ROOT}/`, ""));
+  }
+}
+let orphans = 0;
+for (const rel of activeFiles) {
+  if (ENTRY_PAGES.has(rel) || isExemptFromContent(join(ROOT, rel))) continue;
+  if (!inlinked.has(rel)) {
+    orphans++;
+    fail(`orphan page (no inbound links): ${rel}`);
   }
 }
 
@@ -205,5 +284,6 @@ if (failures.length > 0) {
 console.log(
   `audit:docs OK (${pluginDirs.length} plugins, ${tables} tables, CLAUDE.md symlinked, ` +
     `${manifestEntries ?? 0} MANIFEST entries, active-zone links + vocabulary clean, ` +
-    `${pathTokens} doc path tokens exist, fences balanced)`,
+    `${pathTokens} doc path tokens exist, ${codePathTokens} code paths exist, ` +
+    `fences balanced, 0 orphan pages)`,
 );

@@ -59,7 +59,18 @@ Product Backend
 声明式节点图编排(agent/script/human 节点 + JSON-Logic 边 + cron 触发)与带类型产物:
 
 1. [Agentic Workflow](./workflow.md)
-2. [数据模型](./backend/data-model.md)
+2. [Project 与 Worktree](./agents/projects-and-worktrees.md)
+3. [数据模型](./backend/data-model.md)
+
+### 规则、参考与运维
+
+1. [跨进程契约规则](./e2e-contract-rules.md)
+2. [DB 类型链规则](./db-typesafe-rules.md)
+3. [生命周期总览](./foundations/lifecycle-overview.md)
+4. [Provider 架构](./provider-architecture-spec.md)
+5. [Compaction](./runtime/compaction.md)
+6. [Skill Pack](./plugins/skill-pack.md)
+7. [安全模型](./security/overview.md) / [安全债清单](./security-debt-backlog.md)
 
 ## 核心概念
 

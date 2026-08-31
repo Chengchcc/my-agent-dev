@@ -160,8 +160,8 @@ The factory:
 ## Migration
 
 Old files deleted:
-- `providers/anthropic.ts` → `providers/anthropic-messages.ts`
-- `providers/openai-compat.ts` → `providers/openai-completions.ts`
+- `anthropic.ts`（旧）→ `anthropic-messages.ts`
+- `openai-compat.ts`（旧）→ `openai-completions.ts` / `openai-responses.ts`
 - `builtin-providers.ts` → `model-catalog.ts`
 - `provider-config.ts` → `model-catalog.ts`
 
