@@ -545,15 +545,7 @@ export function AgenticWorkflowEditor({
                 className="flex shrink-0 flex-col border-l border-(--hairline) bg-(--panel)/70"
                 style={{ width: chatW, minWidth: chatW }}
               >
-                <ChatPanel
-                  workflowId={workflowId}
-                  definition={definition}
-                  onApply={(def) => {
-                    setDefinitionTracked(def);
-                    setActiveId(null);
-                    setActiveEdgeIndex(null);
-                  }}
-                />
+                <ChatPanel workflowId={workflowId} />
               </div>
             )}
           </div>
