@@ -140,6 +140,63 @@ for (const root of ACTIVE_ROOTS) {
   }
 }
 
+// 9. W3 (docs/insights.md I3): repo-rooted paths and @chengchenccc/<pkg>
+// names in the agent must-read docs must exist on disk. Word-split scan
+// (not backtick pairs — an unclosed fence swallows those); glob family
+// references (packages/adapter-*) fail the strict token shape and are
+// skipped. CONTEXT.md's Tombstones section intentionally names dead paths.
+const PATH_TOKEN =
+  /^(?:packages|apps|docs|skills|scripts|knowledge-packs)(?:\/[A-Za-z0-9._-]+)+\/?$/;
+const PKG_TOKEN = /^@chengchenccc\/([a-z0-9-]+)$/;
+const DOC_FILES = [
+  "AGENTS.md",
+  "README.md",
+  "CONTEXT.md",
+  "docs/insights.md",
+  ...readdirSync(join(ROOT, "knowledge-packs/my-agent-team"))
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => `knowledge-packs/my-agent-team/${f}`),
+] as const;
+let pathTokens = 0;
+for (const rel of DOC_FILES) {
+  let text = readFileSync(join(ROOT, rel), "utf8");
+  if (rel === "CONTEXT.md") text = text.split("## Tombstones")[0] ?? text;
+  const words = text.split(/[`\s|(),;:[\]"'"“”‘’（）：]+/).map((w) => w.replace(/[.,;。、]+$/, ""));
+  const tokens = new Set(words.filter((w) => PATH_TOKEN.test(w) || PKG_TOKEN.test(w)));
+  // README's repo-structure block lists bare dir names under an apps/ or
+  // packages/ section header — resolve them against the active section.
+  if (rel === "README.md") {
+    const block = text.split("## 📦 仓库结构")[1]?.split(/\n## /)[0] ?? "";
+    let section = "";
+    for (const line of block.split("\n")) {
+      const header = /^(apps|packages)\/$/.exec(line.trim());
+      if (header) {
+        section = `${header[1]}/`;
+        continue;
+      }
+      const entry = section && /^ {2}([a-z0-9-]+)\/\s/.exec(line);
+      if (entry?.[1]) tokens.add(`${section}${entry[1]}`);
+    }
+  }
+  for (const token of tokens) {
+    pathTokens++;
+    const pkg = PKG_TOKEN.exec(token);
+    const name = pkg?.[1];
+    const ok = name
+      ? existsSync(join(ROOT, "packages", name)) || existsSync(join(ROOT, "apps", name))
+      : existsSync(join(ROOT, token));
+    if (!ok) fail(`${rel} references missing path: ${token}`);
+  }
+}
+
+// 10. W3: code fences must balance — an unclosed ``` swallows every
+// following section on the rendered page (bit us in AGENTS.md 2026-08).
+for (const rel of DOC_FILES) {
+  const text = readFileSync(join(ROOT, rel), "utf8");
+  const fences = (text.match(/^```/gm) ?? []).length;
+  if (fences % 2 === 1) fail(`${rel} has ${fences} fence markers (unclosed code block)`);
+}
+
 if (failures.length > 0) {
   console.error(`audit:docs FAILED (${failures.length})`);
   for (const f of failures) console.error(`  - ${f}`);
@@ -147,5 +204,6 @@ if (failures.length > 0) {
 }
 console.log(
   `audit:docs OK (${pluginDirs.length} plugins, ${tables} tables, CLAUDE.md symlinked, ` +
-    `${manifestEntries ?? 0} MANIFEST entries, active-zone links + vocabulary clean)`,
+    `${manifestEntries ?? 0} MANIFEST entries, active-zone links + vocabulary clean, ` +
+    `${pathTokens} doc path tokens exist, fences balanced)`,
 );

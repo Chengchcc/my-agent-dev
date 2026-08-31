@@ -2,7 +2,8 @@
 
 my-agent-team is a TypeScript/Bun monorepo for building multi-agent AI systems.
 It spans a protocol-level agent runtime, a production backend, and a web UI,
-plus a Loop automation engine that subsumes issue triage and cron-based work.
+plus an agentic Workflow engine (node-graph DSL: agent / script / human nodes,
+cron triggers, artifacts).
 
 ## Stack
 
@@ -16,8 +17,8 @@ plus a Loop automation engine that subsumes issue triage and cron-based work.
 
 - L5 Surfaces: web UI and IM bots talk HTTP/SSE to the backend
 - L4 Backend: multi-agent service (Elysia HTTP, auth, tenancy, runner pool)
-- L3 Agent: createAgentSession composes model + tools + plugins + persistence + context pipeline
-- L2 Runtime: run() async generator loops messages -> model stream -> tool execute
+- L3 Adapter: packages/adapter-* — child process boundary (spawn / JSONL RPC / steer / abort / approval)
+- L2 Runtime: apps/oh-my-agent/src/core — createOmaSession(): model/tool loop, plugins, compaction
 - L1 Protocols: Message / ChatModel / Tool / ContentBlock contracts
 
 ## Top-level directories
@@ -26,13 +27,14 @@ plus a Loop automation engine that subsumes issue triage and cron-based work.
 - apps/web: Next.js App Router UI
 - apps/oh-my-agent: Pi-like CLI child process (run-centric RPC)
 - apps/lark-bot: Lark/Feishu IM integration
-- packages/core: protocol types + run/collectStream
-- packages/agent: agent lifecycle, createAgentSession, plugins, context pipeline
-- packages/agent-backend: run-centric backend contracts
-- packages/loop: pure Loop state machine
-- packages/ai: provider/model registry
-- packages/tools-common: read/write/edit/bash/grep/glob/web tools
-- packages/adapter-*: per-backend child-process adapters
+- packages/message: protocol types, ChatModel/Tool contracts, stream utils
+- packages/agent-contract: spawn-neutral AgentBackend contracts (4 adapters implement)
+- packages/workflow: Workflow DSL pure domain (node graph, JSON-Logic, computeNext engine)
+- packages/sandbox: process sandbox for workflow script nodes + oma eval tool
+- packages/ai: provider/model registry (multi-API, ADR 0018)
+- packages/source-fetch: git/zip source materialization base
+- packages/tui: terminal UI toolkit backing the oma TUI
+- packages/adapter-*: per-backend child-process adapters (oma / claude / pi / omp / mcp client)
 - skills/: skill packs (SKILL.md + registry.yaml)
 - knowledge-packs/: builtin knowledge packs
 - docs/: architecture docs, ADRs, superpowers

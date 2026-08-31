@@ -56,12 +56,17 @@ knowledge dir. Assigned packs are symlinked into the workspace; the server is
 launched with --allowed-pack <installRoot> for each pack so search can follow
 the symlink while still rejecting arbitrary escapes.
 
-## Loop system
+## Workflow system
 
 Two layers:
 
-- packages/loop: pure reducer over STATE.md / INBOX.md / LOOP.md with YAML frontmatter
-- apps/backend loop orchestration: AgentSession dispatch, git rollback, budget tracking
+- packages/workflow: pure domain — WorkflowDefinition node graph (start / end /
+  agent / script / human), JSON-Logic edge conditions, computeNext engine
+- apps/backend/src/features/workflow: executions, node runs, human forms,
+  trigger scheduler (Bun.cron over workflows/*.workflow.json), SSE live stream
 
-loopStep() runs Generator AgentSession -> Evaluator AgentSession -> verdict -> writeback.
-A per-loop promise-chain write lock serializes cron + manual + review entry points.
+Agent nodes dispatch ordinary Agent Runs (outputSchema-constrained); script
+nodes run in the process sandbox; human nodes park the execution in
+waiting_human until the web form resolves. Routing is frozen into
+CompletionRecord.routedTo at node completion and never recomputed; join
+semantics are any-of. (The former Loop state machine was removed 2026-08-28.)

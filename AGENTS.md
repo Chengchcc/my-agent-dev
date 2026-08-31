@@ -40,6 +40,7 @@ L4 Backend      Multi-agent service (Elysia HTTP, auth, tenancy, runner pool)
 L3 Adapter      packages/adapter-* - child process boundary (spawn / JSONL RPC / steer / abort / approval)
 L2 Runtime      apps/oh-my-agent/src/core - createOmaSession(): model/tool loop, plugins, compaction, todo
 L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock / WorkflowDefinition (packages/message, agent-contract, workflow)
+```
 
 **Package dependency graph:**
 - Leaves: `@chengchenccc/message`, `@chengchenccc/config`, `@chengchenccc/workflow`, `@chengchenccc/sandbox`, `@chengchenccc/source-fetch`, `@chengchenccc/tui`
@@ -53,8 +54,8 @@ L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock / Work
 
 | Directory | Purpose |
 |---|---|
-| `packages/message/` | Protocol layer: Message/MessageRevision + ChatModel/Tool/AIMessageChunk + stream utils (absorbed packages/core) |
-| `apps/oh-my-agent/src/core/` | Oma runtime: `createOmaSession()` (agent-loop), plugins, compaction, persistence (absorbed packages/agent) |
+| `packages/message/` | Protocol layer: Message/MessageRevision + ChatModel/Tool/AIMessageChunk + stream utils (absorbed the former core package) |
+| `apps/oh-my-agent/src/core/` | Oma runtime: `createOmaSession()` (agent-loop), plugins, compaction, persistence (absorbed the former agent package) |
 | `apps/backend/src/features/workflow/` | Agentic Workflow DSL engine: triggers, executions, human tasks |
 | `packages/ai/` | Provider + Model registry, AnthropicChatModel, model metadata |
 | `packages/workflow/` | Agentic Workflow DSL pure domain: node graph, JSON-Logic routing, computeNext engine |

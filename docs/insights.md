@@ -10,7 +10,7 @@
 - **本项目的「用户」是谁**：① repo owner（决策者 + 唯一运维者 + 产品最终用户，ADR 0026 单用户定位）；② 会话 agent（oma child 与在仓库里工作的 coding agent——文档与契约的消费者）；③ 未来表面的其他使用者（当前不存在，不作为 insight 对象）。
 - **关键不确定性**：迭代为何持续高 fix 率？新能力如何避免建成即删？agent 协作质量靠什么保障？
 - **决策目标**：下一个周期投入哪里——契约加固 / 冒烟 workflow / schema 清扫。
-- **可持续度量指标**（均可由 git + audit 脚本产出）：fix:feat 比、跨边界 fix 占比、死概念残留数、真实 E2E 冒烟通过率、audit:docs/contracts 红绿。
+- **可持续度量指标**（均可由 git + audit 脚本产出）：fix:feat 比、跨边界 fix 占比、死概念残留数、真实 E2E 冒烟通过率、audit:docs / audit:contracts 红绿。
 
 **证据来源与局限**：全部来自 repo 考古——git 统计、commit 主题、ADR、memory 教训。无用户访谈、无 A/B（单人项目）。因此可信度上限为「较高可信」，标注在每条末尾。
 
