@@ -83,7 +83,7 @@ export default function WorkTodayPage() {
 
   return (
     <Page>
-      <PageHeader breadcrumb="Work Today" title="Work Today" description={today} />
+      <PageHeader title="Work Today" description={today} />
       <PageBody size="reading" className="space-y-8">
         <div>
           <h2 className="text-sm font-medium mb-3">
@@ -139,7 +139,7 @@ export default function WorkTodayPage() {
         </div>
 
         <div>
-          <h2 className="text-sm font-medium mb-3">Today&apos;s Agents</h2>
+          <h2 className="text-sm font-medium mb-3">Today&apos;s Runs</h2>
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
               <div className="text-2xl font-semibold text-emerald-400 tabular-nums">
