@@ -73,7 +73,7 @@ export function ChatPanel({ workflowId, goal }: { workflowId: string; goal?: str
         <Sparkles className="size-4 text-(--primary)" />
         Chat
         <span className="text-[10px] font-normal text-(--mute)">
-          （MCP 工具改 DSL，编辑区实时刷新）
+          (MCP tools edit the DSL; the editor refreshes live)
         </span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -82,7 +82,7 @@ export function ChatPanel({ workflowId, goal }: { workflowId: string; goal?: str
       <div className="flex gap-2 border-t border-(--hairline) p-2">
         <textarea
           className="min-h-8 flex-1 resize-none rounded-md border border-(--hairline) bg-(--canvas) px-2 py-1.5 text-xs outline-none focus:border-(--primary)"
-          placeholder="让 agent 修改 workflow…"
+          placeholder="Ask the agent to edit the workflow…"
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
           onKeyDown={(e) => {
@@ -97,7 +97,7 @@ export function ChatPanel({ workflowId, goal }: { workflowId: string; goal?: str
           onClick={submit}
           disabled={!ready || !instruction.trim()}
         >
-          发送
+          Send
         </button>
       </div>
     </div>

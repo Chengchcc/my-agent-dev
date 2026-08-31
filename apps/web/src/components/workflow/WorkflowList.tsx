@@ -109,7 +109,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
       });
       window.location.assign(`/agentic-workflow/${runId}/executions`);
     } catch (err) {
-      toast.error(`运行失败：${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`Run failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   async function del(id: string) {
@@ -150,7 +150,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
               <div className="mt-1 flex flex-wrap gap-1">
                 {d.triggers?.some((t) => t.enabled !== false) && (
                   <span className="rounded-md bg-(--primary)/10 px-1.5 py-0.5 text-[10px] text-(--primary)">
-                    ⏰ 定时 · {d.triggers.find((t) => t.enabled !== false)!.cron}
+                    ⏰ schedule · {d.triggers.find((t) => t.enabled !== false)!.cron}
                   </span>
                 )}
                 {d.tags?.map((t) => (
@@ -179,7 +179,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
                     }`}
                   >
                     {d.lastExecution.status === "waiting_human"
-                      ? "等待确认"
+                      ? "Awaiting confirmation"
                       : d.lastExecution.status}
                   </span>
                   <span>{new Date(d.lastExecution.createdAt).toLocaleString()}</span>
@@ -224,29 +224,33 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-sm font-semibold">新建 Workflow</DialogTitle>
+            <DialogTitle className="text-sm font-semibold">New Workflow</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
             <button
               className="w-full rounded-md border border-(--hairline) px-3 py-2 text-left text-xs hover:bg-(--panel2)"
               onClick={() => void create()}
             >
-              <div className="font-medium">空白画布</div>
-              <div className="text-[10px] text-(--mute)">start → end，从零搭建</div>
+              <div className="font-medium">Blank canvas</div>
+              <div className="text-[10px] text-(--mute)">start → end, build from scratch</div>
             </button>
             <button
               className="w-full rounded-md border border-(--hairline) px-3 py-2 text-left text-xs hover:bg-(--panel2)"
               onClick={() => void create("nighttime-report")}
             >
-              <div className="font-medium">Nightly 代码质量报告</div>
-              <div className="text-[10px] text-(--mute)">Agent 扫描仓库 → 报告 → 人工确认</div>
+              <div className="font-medium">Nightly code quality report</div>
+              <div className="text-[10px] text-(--mute)">
+                Agent scans repo → report → human confirmation
+              </div>
             </button>
             <button
               className="w-full rounded-md border border-(--hairline) px-3 py-2 text-left text-xs hover:bg-(--panel2)"
               onClick={() => void create("self-heal")}
             >
-              <div className="font-medium">工单自愈</div>
-              <div className="text-[10px] text-(--mute)">检测 → 自动修复 → 人工确认 → 分叉出口</div>
+              <div className="font-medium">Issue self-heal</div>
+              <div className="text-[10px] text-(--mute)">
+                Detect → auto-fix → human confirm → fork exit
+              </div>
             </button>
           </div>
         </DialogContent>
@@ -259,11 +263,11 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-sm font-semibold">运行 {runId}</DialogTitle>
+            <DialogTitle className="text-sm font-semibold">Run {runId}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             {Object.keys(runDef?.input ?? {}).length === 0 ? (
-              <p className="text-xs text-(--mute)">该 workflow 无输入参数。</p>
+              <p className="text-xs text-(--mute)">This workflow has no input parameters.</p>
             ) : (
               Object.entries(runDef?.input ?? {}).map(([key, hint]) => (
                 <div key={key} className="flex flex-col gap-1">
@@ -284,7 +288,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
               className="w-full rounded-md bg-(--primary) px-3 py-2 text-xs text-(--ink) hover:bg-(--panel2)"
               onClick={run}
             >
-              运行
+              Run
             </button>
           </div>
         </DialogContent>
@@ -307,7 +311,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
                 if (confirmId) void del(confirmId);
               }}
             >
-              删除
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

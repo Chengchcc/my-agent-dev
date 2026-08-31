@@ -103,7 +103,7 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
             return (
               <details className="mb-2 rounded-md border border-(--hairline) bg-(--canvas)/60 p-2">
                 <summary className="cursor-pointer text-[10px] text-(--mute)">
-                  上游产出（{arts.length}）— 审批前可展开查看
+                  Upstream outputs ({arts.length}) - expandable before approval
                 </summary>
                 {arts.map((a) => (
                   <div

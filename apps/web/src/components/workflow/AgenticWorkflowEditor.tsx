@@ -19,6 +19,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
   DropdownMenu,
@@ -353,10 +354,10 @@ export function AgenticWorkflowEditor({
                 Executions
               </DropdownMenuItem>
               <DropdownMenuItem disabled={past.length === 0} onClick={undo}>
-                ↩ 撤销
+                ↩ Undo
               </DropdownMenuItem>
               <DropdownMenuItem disabled={future.length === 0} onClick={redo}>
-                ↪ 重做
+                ↪ Redo
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -374,19 +375,12 @@ export function AgenticWorkflowEditor({
               DSL
             </button>
           </div>
-          <button
-            onClick={validate}
-            className="rounded-md border border-[#38bdf8]/40 bg-[#38bdf8]/10 px-3 py-1 text-xs text-(--info) transition-all hover:bg-[#38bdf8]/20 hover:shadow-[0_0_16px_rgba(56,189,248,0.2)]"
-          >
+          <Button variant="outline" size="sm" onClick={validate}>
             Validate
-          </button>
-          <button
-            onClick={save}
-            disabled={saving || !definition}
-            className="rounded-md border border-(--primary)/40 bg-(--primary)/10 px-3 py-1 text-xs text-(--primary) transition-all hover:bg-(--primary)/20 hover:shadow-[0_0_16px_rgba(245,158,11,0.25)] disabled:opacity-40"
-          >
-            {saving ? "保存中…" : dirty ? "● ⌘S 保存" : "⌘S 保存"}
-          </button>
+          </Button>
+          <Button size="sm" onClick={save} disabled={saving || !definition}>
+            {saving ? "Saving…" : dirty ? "● ⌘S Save" : "⌘S Save"}
+          </Button>
         </div>
       </div>
 
@@ -398,7 +392,7 @@ export function AgenticWorkflowEditor({
               : "border-[#fb7185]/30 bg-[#fb7185]/10 text-(--err)"
           }`}
         >
-          {validation.ok ? "✓ DSL 合法" : `✗ 校验失败：${(validation.errors ?? []).join("；")}`}
+          {validation.ok ? "✓ Valid DSL" : `✗ Invalid: ${(validation.errors ?? []).join("; ")}`}
         </div>
       )}
 
@@ -488,9 +482,9 @@ export function AgenticWorkflowEditor({
               <div className="flex border-b border-(--hairline)">
                 {(
                   [
-                    ["attrs", "属性"],
-                    ["palette", "节点"],
-                    ["triggers", "触发器"],
+                    ["attrs", "Properties"],
+                    ["palette", "Nodes"],
+                    ["triggers", "Triggers"],
                   ] as Array<[InspectorTab, string]>
                 ).map(([k, label]) => (
                   <button
@@ -539,8 +533,8 @@ export function AgenticWorkflowEditor({
                   />
                 ) : (
                   <div className="p-4 text-xs text-(--mute)">
-                    点击画布节点或边进行编辑；切到「节点」tab
-                    添加，或拖控制线到空白处；拖动节点调整布局。
+                    Click a node or edge to edit; switch to the Nodes tab add, or drag a control
+                    line to empty space; drag nodes to rearrange.
                   </div>
                 )}
               </div>

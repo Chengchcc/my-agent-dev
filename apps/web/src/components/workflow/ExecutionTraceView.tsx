@@ -236,7 +236,7 @@ export function ExecutionTraceView({
                 router.refresh();
               }}
             >
-              取消执行
+              Cancel execution
             </button>
           )}
           {execution.triggeredBy?.startsWith("cron:") && (
@@ -253,7 +253,7 @@ export function ExecutionTraceView({
           const h = humanizeWorkflowError(execution.error, nodeRuns);
           return (
             <div className="shrink-0 space-y-0.5 border-b border-(--err)/20 bg-(--err)/10 px-4 py-2 text-xs text-(--err)">
-              <div className="font-semibold">执行失败：{h?.title}</div>
+              <div className="font-semibold">Execution failed: {h?.title}</div>
               {h?.detail && <div className="text-(--mute)">{h.detail}</div>}
             </div>
           );
@@ -311,7 +311,9 @@ export function ExecutionTraceView({
           {["success", "failure", "custom"].includes(execution.status) &&
             upstreamArtifacts.length > 0 && (
               <div className="border-t p-3 text-xs">
-                <div className="mb-1 font-semibold">本次产出（{upstreamArtifacts.length}）</div>
+                <div className="mb-1 font-semibold">
+                  Outputs of this run ({upstreamArtifacts.length})
+                </div>
                 {upstreamArtifacts.map((a) => (
                   <details key={a.url} className="border-b py-1 last:border-b-0">
                     <summary
@@ -325,7 +327,9 @@ export function ExecutionTraceView({
                         {a.content.slice(0, 4000)}
                       </pre>
                     ) : (
-                      <div className="mt-1 text-[10px] text-(--faint)">二进制产物，不支持预览</div>
+                      <div className="mt-1 text-[10px] text-(--faint)">
+                        Binary artifact, no preview
+                      </div>
                     )}
                   </details>
                 ))}
@@ -334,8 +338,8 @@ export function ExecutionTraceView({
           <div className="border-t p-3 text-xs">
             <Collapsible>
               <CollapsibleTrigger className="flex w-full items-center justify-between text-(--mute) hover:text-(--ink)">
-                <span className="font-semibold">调试</span>
-                <span className="text-[10px]">展开</span>
+                <span className="font-semibold">Debug</span>
+                <span className="text-[10px]">Expand</span>
               </CollapsibleTrigger>
               <CollapsibleContent className="space-y-3 pt-2">
                 <div>
@@ -386,7 +390,7 @@ export function ExecutionTraceView({
                           className="flex items-center justify-between border-b py-1 text-(--info) hover:text-(--primary)"
                         >
                           <span>{n.label}</span>
-                          <span>查看 →</span>
+                          <span>View →</span>
                         </Link>
                       ))}
                   </div>

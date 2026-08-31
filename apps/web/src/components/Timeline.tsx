@@ -482,8 +482,8 @@ function MessageActions({
       {
         onSuccess: () => postMut.mutate({ text: regen.prevUserText }),
         onError: (err) =>
-          toast.error("重新生成失败", {
-            description: err instanceof Error ? err.message : "未知错误",
+          toast.error("Regenerate failed", {
+            description: err instanceof Error ? err.message : "Unknown error",
           }),
       },
     );
@@ -563,12 +563,12 @@ function MessageActions({
             onClick={() => {
               const text = extractText(item.content);
               void navigator.clipboard?.writeText(text).then(
-                () => toast.success("已复制"),
-                () => toast.error("复制失败"),
+                () => toast.success("Copied"),
+                () => toast.error("Copy failed"),
               );
             }}
           >
-            复制
+            Copy
           </Button>
           {isUser ? (
             <Button
@@ -577,7 +577,7 @@ function MessageActions({
               className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
               onClick={handleStartEdit}
             >
-              编辑重发
+              Edit & resend
             </Button>
           ) : (
             <>
@@ -608,7 +608,7 @@ function MessageActions({
                 }
                 disabled={undoMut.isPending}
               >
-                {undoMut.isPending ? "撤销中…" : "撤销"}
+                {undoMut.isPending ? "Undoing…" : "Undo"}
               </Button>
             </>
           )}
@@ -620,7 +620,7 @@ function MessageActions({
               onClick={handleRegenerate}
               disabled={undoMut.isPending || postMut.isPending}
             >
-              重新生成
+              Regenerate
             </Button>
           )}
           <Button
@@ -641,7 +641,7 @@ function MessageActions({
             }
             disabled={forkMut.isPending}
           >
-            {forkMut.isPending ? "分叉中…" : "从此分叉"}
+            {forkMut.isPending ? "Forking…" : "Fork from here"}
           </Button>
         </div>
       )}

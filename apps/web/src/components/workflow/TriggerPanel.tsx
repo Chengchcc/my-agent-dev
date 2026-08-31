@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { formatNextRun, nextCronRun } from "./cron-next";
 
-const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type Mode = "daily" | "hourly" | "weekly" | "weekdays" | "custom";
 
@@ -24,10 +24,10 @@ export function describeCron(expr: string): string {
   if (f.length !== 5) return expr;
   const [min, hour, , , dow] = f;
   const hm = `${String(Number(hour)).padStart(2, "0")}:${String(Number(min)).padStart(2, "0")}`;
-  if (dow === "1-5") return `工作日 ${hm}`;
-  if (/^[0-6]$/.test(dow ?? "")) return `每${WEEKDAYS[Number(dow)] ?? ""} ${hm}`;
-  if (hour === "*") return `每小时的 ${String(Number(min)).padStart(2, "0")} 分`;
-  return `每天 ${hm}`;
+  if (dow === "1-5") return `Weekdays ${hm}`;
+  if (/^[0-6]$/.test(dow ?? "")) return `${WEEKDAYS[Number(dow)] ?? ""} ${hm}`;
+  if (hour === "*") return `Every hour at ${String(Number(min)).padStart(2, "0")} min`;
+  return `Daily ${hm}`;
 }
 
 function buildCron(mode: Mode, time: string, weekday: number): string {
@@ -84,18 +84,18 @@ export function TriggerPanel({
   return (
     <div className="space-y-4 p-4">
       <div className="space-y-2.5 rounded-lg border border-(--hairline) bg-(--canvas)/50 p-3">
-        <Label className="text-xs text-(--mute)">添加定时触发（可选，仅一个）</Label>
+        <Label className="text-xs text-(--mute)">Add schedule (optional, only one)</Label>
         <div className="flex flex-wrap items-center gap-2">
           <Select value={mode} onValueChange={(v) => setMode((v ?? "daily") as Mode)}>
             <SelectTrigger className="h-8 w-26 min-w-0 shrink-0 border-(--hairline) bg-(--canvas) text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="daily">每天</SelectItem>
-              <SelectItem value="hourly">每小时</SelectItem>
-              <SelectItem value="weekly">每周</SelectItem>
-              <SelectItem value="weekdays">工作日</SelectItem>
-              <SelectItem value="custom">自定义</SelectItem>
+              <SelectItem value="daily">Daily</SelectItem>
+              <SelectItem value="hourly">Hourly</SelectItem>
+              <SelectItem value="weekly">Weekly</SelectItem>
+              <SelectItem value="weekdays">Weekdays</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
             </SelectContent>
           </Select>
           {mode === "hourly" ? (
@@ -135,7 +135,7 @@ export function TriggerPanel({
           ) : mode === "custom" ? (
             <Input
               className="h-8 min-w-28 flex-1 border-(--hairline) bg-(--canvas) font-mono text-xs"
-              placeholder="分 时 日 月 周"
+              placeholder="min hour dom mon dow"
               value={custom}
               onChange={(e) => setCustom(e.target.value)}
               onKeyDown={(e) => {
@@ -151,21 +151,23 @@ export function TriggerPanel({
             />
           )}
           <Button size="sm" className="shrink-0" onClick={add}>
-            添加
+            Add
           </Button>
         </div>
         {pendingCron && (
           <div className={`text-[10px] ${preview ? "text-(--mute)" : "text-(--err)"}`}>
             {preview
-              ? `${describeCron(pendingCron)}（${pendingCron}）· 下次运行：${formatNextRun(preview)}`
-              : "cron 表达式无效（需 5 段：分 时 日 月 周）"}
+              ? `${describeCron(pendingCron)} (${pendingCron}) - next run: ${formatNextRun(preview)}`
+              : "Invalid cron expression (5 fields: min hour dom mon dow)"}
           </div>
         )}
       </div>
       <div className="space-y-2 rounded-lg border border-(--hairline) bg-(--canvas)/30 p-3 text-[11px] leading-relaxed text-(--mute)">
         <div>
-          <span className="mr-1 font-medium text-(--body)">手动</span>
-          <span>画布或列表点 Run，或在 executions 页触发，无需配置。</span>
+          <span className="mr-1 font-medium text-(--body)">Manual</span>
+          <span>
+            Run from the canvas or the list, or from the executions page; no config needed.
+          </span>
         </div>
         <div>
           <span className="mr-1 font-medium text-(--body)">API</span>
@@ -173,14 +175,14 @@ export function TriggerPanel({
           <code className="mx-1 block w-fit rounded bg-(--panel2) px-1.5 py-0.5 font-mono text-[10px]">
             /api/workflow-executions
           </code>
-          <span className="mt-1 block">传入</span>
+          <span className="mt-1 block">pass</span>
           <code className="mx-1 block w-fit rounded bg-(--panel2) px-1.5 py-0.5 font-mono text-[10px]">
             {'{ workflowRef: { path: "<id>.workflow.json" }, input }'}
           </code>
-          <span className="mt-1 block">即可触发，无需声明。</span>
+          <span className="mt-1 block">then trigger; no declaration needed.</span>
         </div>
         {triggers.length === 0 && (
-          <p className="text-[10px]">未配置定时触发——手动/API 随时可用。</p>
+          <p className="text-[10px]">No schedule configured - manual/API always available.</p>
         )}
       </div>
       {triggers.length > 0 && (
@@ -193,11 +195,11 @@ export function TriggerPanel({
               <div className="min-w-0 flex-1">
                 <div>{describeCron(t.cron)}</div>
                 <div className="font-mono text-[9px] text-(--faint)">
-                  {t.cron} · 下次 {formatNextRun(nextCronRun(t.cron))}
+                  {t.cron} - next {formatNextRun(nextCronRun(t.cron))}
                 </div>
               </div>
               <button onClick={() => remove(i)} className="shrink-0 text-(--err) hover:underline">
-                删除
+                Delete
               </button>
             </div>
           ))}
