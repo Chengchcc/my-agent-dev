@@ -55,6 +55,7 @@ import {
 } from "@/features/conversations/hooks";
 import type { AgentRow } from "@/lib/api";
 import { conversationDisplayName } from "@/lib/conversation-title";
+import { t } from "@/lib/i18n";
 
 function NavContent() {
   const pathname = usePathname();
@@ -121,40 +122,40 @@ function NavContent() {
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={pathname === "/today"}
-                tooltip="Today"
+                tooltip={t("Today")}
                 onClick={() => {
                   closeMobile();
                   router.push("/today");
                 }}
               >
                 <RefreshCwIcon />
-                <span className="truncate">Today</span>
+                <span className="truncate">{t("Today")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={pathname.startsWith("/workflows")}
-                tooltip="Agentic Workflow"
+                tooltip={t("Workflows")}
                 onClick={() => {
                   closeMobile();
                   router.push("/workflows");
                 }}
               >
                 <NetworkIcon />
-                <span className="truncate">Workflows</span>
+                <span className="truncate">{t("Workflows")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={pathname.startsWith("/artifacts")}
-                tooltip="Artifacts"
+                tooltip={t("Artifacts")}
                 onClick={() => {
                   closeMobile();
                   router.push("/artifacts");
                 }}
               >
                 <ArchiveIcon />
-                <span className="truncate">Artifacts</span>
+                <span className="truncate">{t("Artifacts")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -276,27 +277,27 @@ function NavContent() {
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={pathname === "/team" || pathname.startsWith("/team/agents")}
-                tooltip="Agents"
+                tooltip={t("Agents")}
                 onClick={() => {
                   closeMobile();
                   router.push("/team");
                 }}
               >
                 <BotIcon />
-                <span className="truncate">Agents</span>
+                <span className="truncate">{t("Agents")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={pathname.startsWith("/team/skills")}
-                tooltip="Skill Packs"
+                tooltip={t("Skill Packs")}
                 onClick={() => {
                   closeMobile();
                   router.push("/team/skills");
                 }}
               >
                 <Package />
-                <span className="truncate">Skill Packs</span>
+                <span className="truncate">{t("Skill Packs")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
@@ -309,33 +310,33 @@ function NavContent() {
                 }}
               >
                 <PlugIcon />
-                <span className="truncate">MCP</span>
+                <span className="truncate">{t("MCP")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={pathname.startsWith("/team/knowledge")}
-                tooltip="Knowledge"
+                tooltip={t("Knowledge")}
                 onClick={() => {
                   closeMobile();
                   router.push("/team/knowledge");
                 }}
               >
                 <LibraryIcon />
-                <span className="truncate">Knowledge</span>
+                <span className="truncate">{t("Knowledge")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={pathname.startsWith("/team/projects")}
-                tooltip="Projects"
+                tooltip={t("Projects")}
                 onClick={() => {
                   closeMobile();
                   router.push("/team/projects");
                 }}
               >
                 <FolderKanbanIcon />
-                <span className="truncate">Projects</span>
+                <span className="truncate">{t("Projects")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -366,14 +367,14 @@ function NavContent() {
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={pathname.startsWith("/system/settings")}
-                tooltip="Settings"
+                tooltip={t("Settings")}
                 onClick={() => {
                   closeMobile();
                   router.push("/system/settings");
                 }}
               >
                 <SettingsIcon />
-                <span className="truncate">Settings</span>
+                <span className="truncate">{t("Settings")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

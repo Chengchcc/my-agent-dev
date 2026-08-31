@@ -43,12 +43,17 @@ for (const file of files) {
   // user-visible Chinese belongs in comments only, which this scan skips
   // for files under components/ui (none expected) but checks everywhere
   // else. Zero tolerance, same as the review acceptance.
-  const cjk = (src.match(/[\u4e00-\u9fff]/g) ?? []).length;
-  if (cjk > 0) {
-    failures.push(`CJK in ${relative(ROOT, file)} (${cjk} chars)`);
-    const dir = relative(ROOT, file).split("/").slice(0, 3).join("/");
-    cjkByDir.set(dir, (cjkByDir.get(dir) ?? 0) + cjk);
-    cjkFiles.push(relative(ROOT, file));
+  // EXEMPT: lib/locales/ — that is where i18n translation dictionaries
+  // live by design (see lib/locales/README.md); non-English text there is
+  // the feature, not rot.
+  if (!file.includes(join("lib", "locales"))) {
+    const cjk = (src.match(/[\u4e00-\u9fff]/g) ?? []).length;
+    if (cjk > 0) {
+      failures.push(`CJK in ${relative(ROOT, file)} (${cjk} chars)`);
+      const dir = relative(ROOT, file).split("/").slice(0, 3).join("/");
+      cjkByDir.set(dir, (cjkByDir.get(dir) ?? 0) + cjk);
+      cjkFiles.push(relative(ROOT, file));
+    }
   }
 }
 
