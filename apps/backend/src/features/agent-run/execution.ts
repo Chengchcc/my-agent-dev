@@ -70,7 +70,11 @@ export interface AgentRunExecutionDeps {
    *  Context ref) lands atomically. Fired on the original commit AND on
    *  retryTerminalCommit replay - consumers must be idempotent per
    *  (runId, ...). Used by Conversation for the mention cascade. */
-  readonly onRunCommitted?: (runId: string, output: Message | undefined) => void;
+  readonly onRunCommitted?: (
+    runId: string,
+    output: Message | undefined,
+    committedSeq: readonly number[],
+  ) => void;
   /** Conversation title lookup for the auto-title retry flag. */
   readonly conversationTitleOf?: (conversationId: string) => string | null | undefined;
   /** Called after a failed/aborted/timeout run settles, so the surface can
@@ -523,7 +527,7 @@ export function createAgentRunExecutionService(
     }
     if (outcome.status === "completed") {
       try {
-        await runPort.commitCompletedRun({
+        const { run: committed, seqs } = await runPort.commitCompletedRun({
           runId: run.runId,
           outcome,
           messages: outcome.messages ?? [],
@@ -532,7 +536,7 @@ export function createAgentRunExecutionService(
           "agent-run",
           `terminal_commit runId=${run.runId} messages=${outcome.messages?.length ?? 0}`,
         );
-        deps.onRunCommitted?.(run.runId, finalAnswerMessage(outcome.messages));
+        deps.onRunCommitted?.(run.runId, finalAnswerMessage(outcome.messages), seqs);
       } catch (err) {
         // Backend finished but the Product transaction failed: keep the
         // branch occupied, store the outcome for retryTerminalCommit. The
@@ -797,12 +801,12 @@ export function createAgentRunExecutionService(
         await runPort.finalizeRun(runId, outcome).catch(() => {});
         return;
       }
-      await runPort.commitCompletedRun({
+      const { seqs } = await runPort.commitCompletedRun({
         runId,
         outcome,
         messages: outcome.messages ?? [],
       });
-      deps.onRunCommitted?.(runId, finalAnswerMessage(outcome.messages));
+      deps.onRunCommitted?.(runId, finalAnswerMessage(outcome.messages), seqs);
       liveRuns.delete(runId);
       closeSubscribers(runId);
     },

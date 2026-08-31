@@ -775,7 +775,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
         if (!run) throw new Error(`Agent Run not found: ${runId}`);
 
         // Idempotent replay: already completed -> return, never rewrite.
-        if (run.status === "completed") return parseRun(run);
+        if (run.status === "completed") return { run: parseRun(run), seqs: [] };
 
         // Only a running or commit_failed run may be committed.
         if (run.status !== "running" && run.status !== "commit_failed") {
@@ -815,6 +815,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
         // appends the missing refs and CASes) or completed the CAS (replay
         // finds every ref and skips).
         let parentId = branch.leafEntryId;
+        const seqs: number[] = [];
         let lastSeq: number | null = null;
         // Assistant ordinals run in REVERSE: the final assistant message is
         // `run:<runId>:assistant:0` — the web's transient bubble waits for
@@ -877,6 +878,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
               )
               .get()?.seq;
           if (!seq) throw new Error("ledger insert returned no seq");
+          seqs.push(seq);
           lastSeq = seq;
 
           // Context ref is deduped by (treeId, ledgerSeq): a crash between
@@ -963,7 +965,7 @@ export function sqliteAgentRunAdapter(db: Database, deps: AgentRunAdapterDeps): 
           .returning()
           .get();
         if (!updated) throw new AgentRunConflictError(runId);
-        return parseRun(updated);
+        return { run: parseRun(updated), seqs };
       })();
     },
 

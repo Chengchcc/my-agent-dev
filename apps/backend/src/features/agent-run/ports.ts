@@ -75,7 +75,7 @@ export interface AgentRunPort {
     runId: string;
     outcome: BackendRunOutcome;
     messages: readonly Message[];
-  }): Promise<AgentRun>;
+  }): Promise<{ run: AgentRun; seqs: readonly number[] }>;
 
   /** Mark a run commit_failed (Backend outcome arrived, Product transaction
    *  failed): store the outcome, keep the branch occupied, binding stale.

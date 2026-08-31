@@ -70,6 +70,11 @@ export interface ConversationService {
     conversationId: string,
     opts?: { afterSeq?: number; signal?: AbortSignal; pollMs?: number },
   ): AsyncIterable<LedgerEntry>;
+  /** Push an already-persisted ledger entry (e.g. the agent-run terminal
+   *  commit, which writes conversation_ledger directly) to live SSE
+   *  subscribers. Reads the row back by seq so the wire payload matches
+   *  what #appendAndBroadcast would have emitted. */
+  notifySeq(conversationId: string, seq: number): void;
   startNewConversationForSurface(input: {
     oldConversationId: string;
     reason: string;
@@ -168,6 +173,14 @@ class ConversationServiceImpl implements ConversationService {
         console.error(`[conversation] subscriber error for ${conversationId}:`, e);
       }
     }
+  }
+
+  /** Public push for entries written outside #appendAndBroadcast (the
+   *  agent-run terminal commit). Reads the row back so subscribers get the
+   *  exact persisted payload, matching what the normal append path emits. */
+  notifySeq(conversationId: string, seq: number): void {
+    const entry = this.port.getLedgerEntry(conversationId, seq);
+    if (entry) this.#notify(conversationId, entry);
   }
 
   /** Append a ledger entry and broadcast it to subscribers. Returns seq.
