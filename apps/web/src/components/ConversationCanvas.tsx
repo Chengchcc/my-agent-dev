@@ -71,13 +71,13 @@ export function ConversationCanvas({
     return undefined;
   })();
   const label = isAwaiting
-    ? "等待审批"
+    ? "Awaiting approval"
     : currentRunStatus === "retrying"
-      ? "重试中…"
+      ? "Retrying…"
       : currentRunStatus === "compacting"
-        ? "压缩上下文…"
+        ? "Compacting context…"
         : busy
-          ? "运行中"
+          ? "Running"
           : null;
 
   const lastUserMessage = useMemo(() => {
@@ -275,13 +275,13 @@ export function ConversationCanvas({
                 </span>
               </>
             )}
-            {!label && <span className="text-xs text-(--mute)">空闲</span>}
+            {!label && <span className="text-xs text-(--mute)">Idle</span>}
             <Button
               variant="ghost"
               size="icon"
               className="size-7 "
               onClick={handleExport}
-              title="导出对话"
+              title="Export conversation"
             >
               <Download size={14} />
             </Button>
@@ -320,14 +320,16 @@ export function ConversationCanvas({
               streamConn === "closed" ? "bg-(--err)" : "bg-(--warn)"
             }`}
           />
-          <span className="flex-1">{streamConn === "closed" ? "连接已断开" : "正在重连…"}</span>
+          <span className="flex-1">
+            {streamConn === "closed" ? "Disconnected" : "Reconnecting…"}
+          </span>
           {streamConn === "closed" && (
             <Button
               size="sm"
               className="h-6 px-2 text-[11px]"
               onClick={() => window.location.reload()}
             >
-              重新连接
+              Reconnect
             </Button>
           )}
         </div>
@@ -362,7 +364,7 @@ export function ConversationCanvas({
               onClick={() => send(lastUserMessage)}
               className="text-xs text-(--primary) hover:text-(--primary-soft) transition-colors shrink-0 ml-4"
             >
-              重试
+              Retry
             </Button>
           )}
         </div>
@@ -379,8 +381,12 @@ export function ConversationCanvas({
                     {primaryAgent?.displayName ?? primaryAgent?.agentId ?? "Agent"}
                   </h1>
                 )}
-                <p className="text-sm text-(--mute) mb-1">输入消息开始对话</p>
-                <p className="text-[11px] text-(--faint)">Ctrl+Enter 发送 · Shift+Enter 换行</p>
+                <p className="text-sm text-(--mute) mb-1">
+                  Send a message to start the conversation
+                </p>
+                <p className="text-[11px] text-(--faint)">
+                  Ctrl+Enter to send · Shift+Enter for newline
+                </p>
               </div>
             ) : (
               <div className="py-4">
@@ -401,7 +407,7 @@ export function ConversationCanvas({
           <Button
             onClick={scrollToBottom}
             className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-(--canvas) border border-(--hairline) rounded-full p-2 hover:border-(--primary) transition-colors"
-            title="回到底部"
+            title="Back to bottom"
           >
             <ArrowDown size={14} className="text-(--body)" />
           </Button>
@@ -460,10 +466,10 @@ export function ConversationCanvas({
               className="ml-auto text-[10px] h-4 px-1.5"
             >
               {streamConn === "reconnecting"
-                ? "重连中"
+                ? "Reconnecting"
                 : streamConn === "closed"
-                  ? "已断开"
-                  : "连接中"}
+                  ? "Disconnected"
+                  : "Connecting"}
             </Badge>
           )}
         </div>

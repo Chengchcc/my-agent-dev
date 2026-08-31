@@ -46,7 +46,7 @@ export function ConversationList({ agentId, agentName }: { agentId: string; agen
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-(--mute)">{(conversations ?? []).length} 个对话</p>
+        <p className="text-xs text-(--mute)">{(conversations ?? []).length} conversations</p>
         <Button
           variant="link"
           size="sm"
@@ -61,7 +61,7 @@ export function ConversationList({ agentId, agentName }: { agentId: string; agen
 
       {(conversations ?? []).length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-sm text-(--mute) mb-2">还没有对话</p>
+          <p className="text-sm text-(--mute) mb-2">No conversations yet</p>
           <Button variant="link" size="sm" onClick={() => chat.start()}>
             Create your first conversation
           </Button>
@@ -99,7 +99,7 @@ export function ConversationList({ agentId, agentName }: { agentId: string; agen
                     e.stopPropagation();
                     setConfirmId(conv.conversationId);
                   }}
-                  title="删除对话"
+                  title="Delete conversation"
                 >
                   <Trash2 size={14} />
                 </Button>
@@ -117,28 +117,30 @@ export function ConversationList({ agentId, agentName }: { agentId: string; agen
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除这个对话？</AlertDialogTitle>
-            <AlertDialogDescription>对话历史将一并删除，此操作不可撤销。</AlertDialogDescription>
+            <AlertDialogTitle>Delete this conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The conversation history will be deleted too. This cannot be undone.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (!confirmId) return;
                 deleteConversation.mutate(confirmId, {
                   onSuccess: () => {
-                    toast.success("对话已删除");
+                    toast.success("Conversation deleted");
                     queryClient.invalidateQueries({ queryKey: conversationKeys.byAgent(agentId) });
                   },
                   onError: (err) => {
-                    toast.error("删除对话失败", {
-                      description: err instanceof Error ? err.message : "未知错误",
+                    toast.error("Failed to delete conversation", {
+                      description: err instanceof Error ? err.message : "Unknown error",
                     });
                   },
                 });
               }}
             >
-              删除
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

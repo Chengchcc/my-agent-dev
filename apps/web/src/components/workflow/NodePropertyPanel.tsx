@@ -93,7 +93,7 @@ export function NodePropertyPanel({
         <Input
           className="min-w-0 flex-1 border-(--hairline) bg-(--canvas) font-mono text-xs text-(--info)"
           value={nodeId}
-          placeholder="节点 id"
+          placeholder="Node id"
           onChange={(e) => onChange(renameNode(definition, nodeId, e.target.value))}
         />
         <Badge variant="outline" className="shrink-0 border-(--hairline) text-[10px] text-(--mute)">
@@ -103,7 +103,7 @@ export function NodePropertyPanel({
           className="shrink-0 rounded-md border border-(--info)/40 bg-(--info)/10 px-2 py-1 text-[10px] text-(--info) hover:bg-(--info)/20"
           onClick={() => setDebugOpen(true)}
         >
-          调试
+          Debug
         </button>
       </div>
       <div className="mb-4 space-y-1">
@@ -111,7 +111,7 @@ export function NodePropertyPanel({
         <Input
           className="border-(--hairline) bg-(--canvas) text-xs"
           value={(node as { label?: string }).label ?? ""}
-          placeholder="节点名称（画布显示）"
+          placeholder="Node label (shown on canvas)"
           onChange={(e) => set({ label: e.target.value })}
         />
       </div>
@@ -125,10 +125,10 @@ export function NodePropertyPanel({
       {node.type === "agent" && (
         <>
           <div className="space-y-1">
-            <Label className="text-xs text-(--mute)">agent（从系统选择）</Label>
+            <Label className="text-xs text-(--mute)">Agent (select from system)</Label>
             <Select value={node.agentId ?? ""} onValueChange={(v) => set({ agentId: v })}>
               <SelectTrigger className="h-8 w-full border-(--hairline) bg-(--canvas) font-mono text-xs">
-                <SelectValue placeholder="选择 agent，或留空内联 model+prompt" />
+                <SelectValue placeholder="Select agent, or leave blank to inline model+prompt" />
               </SelectTrigger>
               <SelectContent>
                 {agents.map((a) => (
@@ -157,7 +157,9 @@ export function NodePropertyPanel({
             />
           </div>
           <div className="mt-3 space-y-1">
-            <Label className="text-xs text-(--mute)">输出字段（边条件可用）</Label>
+            <Label className="text-xs text-(--mute)">
+              Output fields (usable in edge conditions)
+            </Label>
             <OutputFieldsEditor
               output={(node as { output?: InputHint }).output}
               onChange={(o) => set({ output: o })}
@@ -253,10 +255,10 @@ export function NodePropertyPanel({
       <Dialog open={debugOpen} onOpenChange={setDebugOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-sm font-semibold">调试节点 {nodeId}</DialogTitle>
+            <DialogTitle className="text-sm font-semibold">Debug node {nodeId}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <Label className="text-xs text-(--mute)">input（JSON，作为该节点输入）</Label>
+            <Label className="text-xs text-(--mute)">input (JSON, as input for this node)</Label>
             <Textarea
               className="min-h-24 border-(--hairline) bg-(--canvas) font-mono text-xs"
               value={debugInput}
@@ -280,13 +282,13 @@ export function NodePropertyPanel({
                     .join("\n");
                   setDebugResult(`exit=${res?.exit}\n${steps}`);
                 } catch (err) {
-                  setDebugResult(`错误: ${err instanceof Error ? err.message : String(err)}`);
+                  setDebugResult(`Error: ${err instanceof Error ? err.message : String(err)}`);
                 } finally {
                   setDebugBusy(false);
                 }
               }}
             >
-              {debugBusy ? "运行中…" : "运行此节点"}
+              {debugBusy ? "Running…" : "Run this node"}
             </Button>
             {debugResult && (
               <pre className="max-h-48 overflow-auto rounded bg-(--canvas)/60 p-2 text-[10px] text-(--mute)">

@@ -78,8 +78,8 @@ export function formatNextRun(d: Date | null): string {
   const now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
   const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  if (sameDay) return `今天 ${hm}`;
+  if (sameDay) return `Today ${hm}`;
   const tomorrow = new Date(now.getTime() + 24 * 3600 * 1000);
-  if (d.toDateString() === tomorrow.toDateString()) return `明天 ${hm}`;
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`;
+  if (d.toDateString() === tomorrow.toDateString()) return `Tomorrow ${hm}`;
+  return `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
 }

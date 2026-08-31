@@ -25,7 +25,8 @@
     "typecheck": "turbo run typecheck --concurrency=1",
     "audit:contracts": "bun run scripts/audit-contracts.ts",
     "audit:docs": "bun run scripts/audit-docs.ts",
-    "audit": "bun run audit:contracts && bun run audit:docs",
+    "audit": "bun run audit:contracts && bun run audit:docs && bun run audit:ui",
+    "audit:ui": "bun run scripts/audit-ui.ts",
     "ci": "turbo run build --concurrency=1 && turbo run typecheck --concurrency=1 && turbo run test --concurrency=1",
     "prepare": "husky"
   },

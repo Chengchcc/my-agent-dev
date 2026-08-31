@@ -54,8 +54,10 @@ export function HumanFormEditor({
 
   return (
     <div className="space-y-2">
-      <Label className="text-xs text-(--mute)">表单字段</Label>
-      {fields.length === 0 && <p className="text-xs text-(--faint)">无字段（仅 question 文本）</p>}
+      <Label className="text-xs text-(--mute)">Form fields</Label>
+      {fields.length === 0 && (
+        <p className="text-xs text-(--faint)">No fields (question text only)</p>
+      )}
       {fields.map(([key, f]) => (
         <div key={key} className="space-y-1 rounded-md border border-(--hairline) p-2">
           <div className="flex items-center gap-1">
@@ -66,7 +68,7 @@ export function HumanFormEditor({
               onClick={() => removeField(key)}
               className="shrink-0 text-[10px] text-(--err) hover:underline"
             >
-              删除
+              Delete
             </button>
           </div>
           <Select
@@ -85,14 +87,14 @@ export function HumanFormEditor({
           </Select>
           <Input
             className="h-7 border-(--hairline) bg-(--canvas) text-xs"
-            placeholder="显示标签"
+            placeholder="Display label"
             value={f.label ?? ""}
             onChange={(e) => setField(key, { label: e.target.value })}
           />
           {f.type === "enum" && (
             <Input
               className="h-7 border-(--hairline) bg-(--canvas) text-xs"
-              placeholder="选项，逗号分隔: a,b,c"
+              placeholder="Options, comma-separated: a,b,c"
               value={(f.options ?? []).join(",")}
               onChange={(e) =>
                 setField(key, {
@@ -109,7 +111,7 @@ export function HumanFormEditor({
       <div className="flex gap-1">
         <Input
           className="h-8 flex-1 border-(--hairline) bg-(--canvas) text-xs"
-          placeholder="新字段名"
+          placeholder="New field name"
           value={newKey}
           onChange={(e) => setNewKey(e.target.value)}
           onKeyDown={(e) => {
@@ -131,7 +133,7 @@ export function HumanFormEditor({
           </SelectContent>
         </Select>
         <Button size="sm" onClick={addField}>
-          添加
+          Add
         </Button>
       </div>
     </div>

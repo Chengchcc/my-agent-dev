@@ -92,7 +92,7 @@ export function EdgePropertyPanel({
           onClick={() => onDelete?.(deleteEdge(definition, edgeIndex))}
           className="text-xs text-(--err) hover:underline"
         >
-          删除此边
+          Delete edge
         </button>
       </div>
 
@@ -135,20 +135,20 @@ export function EdgePropertyPanel({
       </div>
 
       <div className="mt-3 flex-1 space-y-1 overflow-auto">
-        <Label className="text-xs text-(--mute)">when（条件，空 = 无条件）</Label>
+        <Label className="text-xs text-(--mute)">when (condition, empty = unconditional)</Label>
         <div className="space-y-2 rounded-md border border-(--hairline) bg-(--canvas)/50 p-2">
           <div className="flex items-center gap-1">
-            <span className="text-xs text-(--mute)">当</span>
+            <span className="text-xs text-(--mute)">When</span>
             <Select value={combine} onValueChange={(v) => setCombine((v ?? "and") as "and" | "or")}>
               <SelectTrigger className="h-7 w-16 border-(--hairline) bg-(--canvas) text-[10px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="and">且</SelectItem>
-                <SelectItem value="or">或</SelectItem>
+                <SelectItem value="and">and</SelectItem>
+                <SelectItem value="or">or</SelectItem>
               </SelectContent>
             </Select>
-            <span className="text-xs text-(--mute)">满足</span>
+            <span className="text-xs text-(--mute)">satisfied</span>
           </div>
           {conditions.map((c, i) => (
             <div key={i} className="space-y-1 rounded-md border border-(--hairline) p-2">
@@ -180,7 +180,7 @@ export function EdgePropertyPanel({
                 }}
               >
                 <SelectTrigger className="h-7 w-full border-(--hairline) bg-(--canvas) font-mono text-xs">
-                  <SelectValue placeholder="输出变量" />
+                  <SelectValue placeholder="Output variable" />
                 </SelectTrigger>
                 <SelectContent>
                   {definition.nodes
@@ -199,7 +199,7 @@ export function EdgePropertyPanel({
               {c.op !== "exists" && (
                 <Input
                   className="h-7 border-(--hairline) bg-(--canvas) font-mono text-xs"
-                  placeholder="常量值"
+                  placeholder="Constant value"
                   value={c.right}
                   onChange={(e) => {
                     const next = [...conditions];
@@ -213,7 +213,7 @@ export function EdgePropertyPanel({
                   className="text-[10px] text-(--err) hover:underline"
                   onClick={() => setConditions(conditions.filter((_, j) => j !== i))}
                 >
-                  删除条件
+                  Delete condition
                 </button>
               </div>
             </div>
@@ -224,7 +224,7 @@ export function EdgePropertyPanel({
             size="sm"
             onClick={() => setConditions([...conditions, { op: "==", left: "", right: "" }])}
           >
-            + 添加条件
+            + Add condition
           </Button>
           <Button
             className="w-full"
@@ -256,10 +256,10 @@ export function EdgePropertyPanel({
               );
             }}
           >
-            应用条件
+            Apply condition
           </Button>
         </div>
-        <Label className="mt-2 text-xs text-(--mute)">或直接编辑 JSONLogic</Label>
+        <Label className="mt-2 text-xs text-(--mute)">Or edit JSONLogic directly</Label>
         <Textarea
           className="min-h-24 border-(--hairline) bg-(--canvas) font-mono text-xs"
           value={when}
@@ -275,7 +275,7 @@ export function EdgePropertyPanel({
                 : undefined;
               onChange(updateEdge(definition, edgeIndex, { when: parsed }));
             } catch {
-              toast.error("JSONLogic 格式错误");
+              toast.error("Invalid JSONLogic format");
             }
           }}
         >

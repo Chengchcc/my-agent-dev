@@ -36,7 +36,7 @@ function ForkSourceMarker({ sourceId, createdAt }: { sourceId: string; createdAt
     ...conversationDetailQuery(sourceId),
     staleTime: 60_000,
   });
-  const sourceTitle = sourceConv ? conversationDisplayName(sourceConv) : "原对话";
+  const sourceTitle = sourceConv ? conversationDisplayName(sourceConv) : "Original conversation";
   return (
     <p className="text-[10px] text-(--mute) flex items-center gap-1">
       <span>↳</span>

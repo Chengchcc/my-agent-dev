@@ -44,11 +44,13 @@ export function InputPanel({
   return (
     <div className="space-y-3 p-3">
       <div className="space-y-1">
-        <Label className="text-xs text-(--mute)">workflow 输入参数（运行时可填）</Label>
+        <Label className="text-xs text-(--mute)">
+          Workflow input parameters (fillable at run time)
+        </Label>
         <div className="flex gap-1">
           <Input
             className="h-8 flex-1 border-(--hairline) bg-(--canvas) font-mono text-xs"
-            placeholder="参数名"
+            placeholder="Parameter name"
             value={key}
             onChange={(e) => setKey(e.target.value)}
             onKeyDown={(e) => {
@@ -68,11 +70,11 @@ export function InputPanel({
             </SelectContent>
           </Select>
           <Button size="sm" onClick={add}>
-            添加
+            Add
           </Button>
         </div>
       </div>
-      {input.length === 0 && <p className="text-xs text-(--mute)">无输入参数。</p>}
+      {input.length === 0 && <p className="text-xs text-(--mute)">No input parameters.</p>}
       {input.length > 0 && (
         <div className="space-y-1">
           {input.map((f, i) => (
@@ -83,7 +85,7 @@ export function InputPanel({
               <span className="min-w-0 flex-1 truncate font-mono">{f.key}</span>
               <span className="text-(--mute)">{f.type}</span>
               <button onClick={() => remove(i)} className="shrink-0 text-(--err) hover:underline">
-                删除
+                Delete
               </button>
             </div>
           ))}

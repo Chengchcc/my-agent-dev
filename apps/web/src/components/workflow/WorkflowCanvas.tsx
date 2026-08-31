@@ -397,13 +397,16 @@ export function WorkflowCanvas({
           title={minimapOpen ? "Hide minimap" : "Show minimap"}
           className="absolute bottom-16 right-4 z-10 flex h-7 items-center gap-1 rounded-md border border-(--hairline) bg-(--panel)/90 px-2 text-[10px] text-(--mute) hover:text-(--info)"
         >
-          {minimapOpen ? "隐藏小地图" : "小地图"}
+          {minimapOpen ? "Hide minimap" : "Minimap"}
         </button>
       )}
       {interactive && !hintDismissed && (
         <div className="absolute left-4 top-4 z-10 flex items-start gap-2 rounded-md border border-(--hairline) bg-(--panel)/90 px-3 py-2 text-[11px] text-(--mute) backdrop-blur">
           <span className="inline-block size-1.5 translate-y-1 rounded-full bg-[#38bdf8]" />
-          <span>从节点底部拖出连线到空白处，选择下游节点类型；点击节点可编辑，按 Delete 删除</span>
+          <span>
+            Drag a line from the bottom of a node onto empty canvas to pick a downstream node type;
+            click a node to edit, press Delete to remove
+          </span>
           <button
             onClick={() => {
               setHintDismissed(true);
@@ -445,7 +448,7 @@ export function WorkflowCanvas({
             <path d="M21 7v4h-4" />
             <path d="M3 17v-4h4" />
           </svg>
-          <span>自动布局</span>
+          <span>Auto layout</span>
         </button>
       )}
     </div>

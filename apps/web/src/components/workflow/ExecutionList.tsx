@@ -99,7 +99,7 @@ export function ExecutionList({
       });
       window.location.reload();
     } catch (err) {
-      toast.error(`运行失败：${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`Run failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -108,7 +108,7 @@ export function ExecutionList({
       await api.deleteWorkflowExecution(executionId);
       window.location.reload();
     } catch (err) {
-      toast.error(`删除失败：${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   return (
@@ -144,11 +144,11 @@ export function ExecutionList({
           </button>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-sm font-semibold">运行 {workflowId}</DialogTitle>
+              <DialogTitle className="text-sm font-semibold">Run {workflowId}</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
               {inputHints.length === 0 ? (
-                <p className="text-xs text-(--mute)">该 workflow 无输入参数。</p>
+                <p className="text-xs text-(--mute)">This workflow has no input parameters.</p>
               ) : (
                 inputHints.map((f) => (
                   <div key={f.key} className="flex flex-col gap-1">
@@ -226,7 +226,7 @@ export function ExecutionList({
                             : "border-(--hairline) bg-(--panel2) text-(--mute)"
                     }`}
                   >
-                    {e.status === "waiting_human" ? "等待确认" : e.status}
+                    {e.status === "waiting_human" ? "Awaiting confirmation" : e.status}
                   </span>
                   {dur !== undefined && <span className="text-[10px] text-(--mute)">{dur}s</span>}
                 </div>
@@ -247,13 +247,13 @@ export function ExecutionList({
                   href={`/agentic-workflow/${workflowId}/executions/${e.executionId}`}
                   className="rounded-md border border-(--hairline) px-2.5 py-1 text-xs text-(--info) hover:bg-(--panel2)"
                 >
-                  查看
+                  View
                 </Link>
                 <button
                   className="rounded-md px-2 py-1 text-xs text-(--err) hover:bg-(--err)/10"
                   onClick={() => setConfirmId(e.executionId)}
                 >
-                  删除
+                  Delete
                 </button>
               </div>
             </div>
@@ -272,16 +272,16 @@ export function ExecutionList({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete execution {confirmId}?</AlertDialogTitle>
-            <AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (confirmId) void del(confirmId);
               }}
             >
-              删除
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

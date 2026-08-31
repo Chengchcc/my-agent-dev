@@ -20,7 +20,7 @@ export function AgentListColumn({
   onSearch: (v: string) => void;
 }) {
   return (
-    <aside className="flex w-[280px] shrink-0 flex-col border-r border-(--hairline)">
+    <aside className="hidden w-[280px] shrink-0 flex-col border-r border-(--hairline) md:flex">
       <div className="flex items-center justify-between gap-2 border-b border-(--hairline) px-4 py-3">
         <span className="text-(--text-emph) font-semibold text-(--ink)">My Agents</span>
         <AgentForm />

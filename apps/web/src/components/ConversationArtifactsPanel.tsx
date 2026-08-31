@@ -32,13 +32,13 @@ export function ConversationArtifactsPanel({ conversationId }: { conversationId:
     <div className="mt-4 border-t border-(--hairline) pt-3">
       <div className="mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-kicker text-(--mute)">
         <Package size={11} />
-        会话产物 {items.length}
+        Conversation artifacts {items.length}
       </div>
       <div className="space-y-0.5">
         {items.map((a) => (
           <button
             key={a.url}
-            title={`${a.url}（点击复制，可在消息中引用；agent 会自行下载内容）`}
+            title={`${a.url} (click to copy; reference it in a message; the agent downloads the content itself)`}
             className="block w-full truncate rounded px-1.5 py-1 text-left font-mono text-[10px] text-(--info) hover:bg-(--panel2)"
             onClick={() => {
               void navigator.clipboard?.writeText(a.url);
@@ -46,7 +46,7 @@ export function ConversationArtifactsPanel({ conversationId }: { conversationId:
               setTimeout(() => setCopied(null), 1500);
             }}
           >
-            {copied === a.url ? "已复制 ✓" : a.url}
+            {copied === a.url ? "Copied ✓" : a.url}
           </button>
         ))}
       </div>

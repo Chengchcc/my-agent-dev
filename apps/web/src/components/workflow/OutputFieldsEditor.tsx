@@ -42,7 +42,7 @@ export function OutputFieldsEditor({
 
   return (
     <div className="space-y-2">
-      {fields.length === 0 && <p className="text-xs text-(--faint)">无输出字段</p>}
+      {fields.length === 0 && <p className="text-xs text-(--faint)">No output fields</p>}
       {fields.map((f, i) => (
         <div key={i} className="flex items-center gap-1">
           <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-(--info)">
@@ -67,14 +67,14 @@ export function OutputFieldsEditor({
             onClick={() => remove(i)}
             className="shrink-0 text-[10px] text-(--err) hover:underline"
           >
-            删除
+            Delete
           </button>
         </div>
       ))}
       <div className="flex gap-1">
         <Input
           className="h-7 flex-1 border-(--hairline) bg-(--canvas) text-xs"
-          placeholder="字段名"
+          placeholder="Field name"
           value={newKey}
           onChange={(e) => setNewKey(e.target.value)}
           onKeyDown={(e) => {
@@ -97,7 +97,7 @@ export function OutputFieldsEditor({
           </SelectContent>
         </Select>
         <Button size="sm" onClick={add}>
-          添加
+          Add
         </Button>
       </div>
     </div>

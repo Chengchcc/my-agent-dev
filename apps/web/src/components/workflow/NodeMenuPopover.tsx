@@ -16,28 +16,28 @@ export const NODE_TYPES: NodeTypeOption[] = [
     type: "agent",
     icon: Bot,
     title: "Agent",
-    description: "运行 coding agent 执行 prompt，输出结构化 JSON",
+    description: "Run a coding agent to execute the prompt, output structured JSON",
     make: () => ({ id: "", type: "agent", agentId: "", prompt: "" }),
   },
   {
     type: "script",
     icon: Code2,
     title: "Script",
-    description: "执行一段确定性 TS 程序（Bun），返回 output",
+    description: "Run a deterministic TS program (Bun), returns output",
     make: () => ({ id: "", type: "script", code: "export default async () => ({})" }),
   },
   {
     type: "human",
     icon: UserRound,
     title: "Human",
-    description: "暂停并让用户填表确认，答案作为 output",
+    description: "Pause for the user to fill in a form; answers become output",
     make: () => ({ id: "", type: "human", question: "" }),
   },
   {
     type: "end",
     icon: Flag,
     title: "End",
-    description: "workflow 出口，携带成功/失败/自定义状态",
+    description: "Workflow exit, carries success/failure/custom status",
     make: () => ({ id: "", type: "end", status: "success" }),
   },
 ];
@@ -52,7 +52,9 @@ export function NodeMenuPopover({
   return (
     <div className="absolute z-50 w-64 rounded-xl border border-(--hairline) bg-(--panel)/95 p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur">
       <div className="flex items-center justify-between px-2 py-1.5">
-        <span className="text-[10px] uppercase tracking-widest text-(--mute)">添加下游节点</span>
+        <span className="text-[10px] uppercase tracking-widest text-(--mute)">
+          Add downstream node
+        </span>
         <button
           onClick={onClose}
           aria-label="Close node menu"
