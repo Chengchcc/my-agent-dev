@@ -168,9 +168,15 @@ export interface OmaSession {
 
 /** One model turn, accumulated purely from the stream: raw outputs
  *  before any persistence. */
+/** One delta in a turn, in the order it arrived — the only source that can
+ *  reconstruct why a reasoning strand was interrupted by a text passage and
+ *  resumed. Persisting text/thinking as concatenated strings loses this. */
+export type TurnBlock = { type: "text"; text: string } | { type: "thinking"; text: string };
+
 interface ModelTurn {
   readonly text: string;
   readonly thinking: string;
+  readonly ordered: readonly TurnBlock[];
   readonly thinkingSignature?: string;
   readonly thinkingRedacted?: boolean;
   readonly toolCalls: readonly PendingToolCall[];
@@ -259,10 +265,15 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
     turn: ModelTurn,
   ): Array<{ type: "thinking"; text: string; signature?: string; redacted?: boolean }> {
     if (!turn.thinking && !turn.thinkingSignature) return [];
+    // Collapse the interleaved thinking strands into one thinking block for
+    // replay: Anthropic requires a single <thinking> per assistant message,
+    // and signature/redacted attach at the end. Text passages stay in the
+    // ordered blocks when the turn persists them (tool turns keep them).
+    const text = turn.thinkingRedacted ? "[reasoning redacted]" : turn.thinking;
     return [
       {
         type: "thinking",
-        text: turn.thinkingRedacted ? "[reasoning redacted]" : turn.thinking,
+        text,
         ...(turn.thinkingSignature ? { signature: turn.thinkingSignature } : {}),
         ...(turn.thinkingRedacted ? { redacted: true } : {}),
       },
@@ -554,9 +565,23 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                   source: "assistant",
                   message: {
                     role: "assistant",
-                    text: "",
+                    // Keep any narrative text the model emitted alongside
+                    // tool calls (DeepSeek interleaves thinking/text with
+                    // tool_use). The ordered blocks preserve the exact
+                    // interleave for the trace; toWireBlock replays them in
+                    // order.
+                    text: turn.text,
                     blocks: [
-                      ...thinkingBlocks,
+                      ...turn.ordered.map((b) =>
+                        b.type === "thinking"
+                          ? {
+                              type: "thinking" as const,
+                              text: turn.thinkingRedacted ? "[reasoning redacted]" : b.text,
+                              ...(turn.thinkingSignature ? { signature: turn.thinkingSignature } : {}),
+                              ...(turn.thinkingRedacted ? { redacted: true } : {}),
+                            }
+                          : b,
+                      ),
                       ...turn.toolCalls.map((tc) => ({
                         type: "tool_use" as const,
                         id: tc.id,
@@ -637,7 +662,26 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                   message: {
                     role: "assistant",
                     text: turn.text,
-                    blocks: thinkingBlocks.length > 0 ? thinkingBlocks : undefined,
+                    // Preserve the interleaved thinking/text order from the
+                    // stream. The single collapsed thinking block (with
+                    // signature) is still emitted for replay compatibility
+                    // when the stream had a signature, but the ordered list
+                    // keeps the trace faithful.
+                    blocks:
+                      turn.ordered.length > 0
+                        ? turn.ordered.map((b) =>
+                            b.type === "thinking"
+                              ? {
+                                  type: "thinking" as const,
+                                  text: turn.thinkingRedacted ? "[reasoning redacted]" : b.text,
+                                  ...(turn.thinkingSignature ? { signature: turn.thinkingSignature } : {}),
+                                  ...(turn.thinkingRedacted ? { redacted: true } : {}),
+                                }
+                              : b,
+                          )
+                        : thinkingBlocks.length > 0
+                          ? thinkingBlocks
+                          : undefined,
                   },
                   createdAt: Date.now(),
                 },
@@ -811,6 +855,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
   async function streamModelTurn(messages: readonly Message[]): Promise<ModelTurn> {
     let text = "";
     let thinking = "";
+    const ordered: TurnBlock[] = [];
     let thinkingSignature: string | undefined;
     let thinkingRedacted = false;
     const toolCallBuilders = new Map<string, { id: string; name: string; jsonParts: string[] }>();
@@ -855,6 +900,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
         }
         if (chunk.delta?.type === "text") {
           text += chunk.delta.text;
+          ordered.push({ type: "text" as const, text: chunk.delta.text });
           await emit({ type: "message_update", text: chunk.delta.text });
           const hit = opts.streamRules
             ? matchStreamRule(opts.streamRules, text, streamRuleInjections)
@@ -866,6 +912,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
         }
         if (chunk.delta?.type === "reasoning") {
           thinking += chunk.delta.text;
+          ordered.push({ type: "thinking" as const, text: chunk.delta.text });
           await emit({ type: "thinking_update", text: chunk.delta.text });
         }
         if (chunk.delta?.type === "reasoning_signature") {
@@ -895,6 +942,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
     return {
       text,
       thinking,
+      ordered,
       ...(thinkingSignature ? { thinkingSignature } : {}),
       ...(thinkingRedacted ? { thinkingRedacted: true } : {}),
       toolCalls: Array.from(toolCallBuilders.values()).map((b) => ({

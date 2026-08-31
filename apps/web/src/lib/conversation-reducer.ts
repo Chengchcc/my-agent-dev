@@ -153,12 +153,14 @@ export function isConclusionMessage(m: MessageItem): boolean {
   // JSON text payload — without this guard they'd be classified as a
   // final conclusion and rendered as a bubble.
   if (m.content.role === "tool") return false;
-  const text = extractText({ text: m.content.text, blocks: m.content.blocks });
-  if (text.trim().length > 0) return true;
   const blocks = m.content.blocks;
-  if (!blocks || blocks.length === 0) return false;
-  const hasToolUse = blocks.some((b: { type: string }) => b.type === "tool_use");
+  // A round that issued a tool call is a working round, not the conclusion —
+  // even when the model interleaved narrative text with the tool_use.
+  const hasToolUse = blocks?.some((b: { type: string }) => b.type === "tool_use") ?? false;
   if (hasToolUse) return false;
+  const text = extractText({ text: m.content.text, blocks });
+  if (text.trim().length > 0) return true;
+  if (!blocks || blocks.length === 0) return false;
   // A pure thinking-only skeleton (empty text, no tool_use) is a tool-round
   // scaffold, not a conclusion — claiming the conclusion slot inflates the
   // headline count by one and hides the real final answer.

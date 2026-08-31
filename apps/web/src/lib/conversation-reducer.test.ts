@@ -31,9 +31,31 @@ describe("conversation-reducer turn grouping", () => {
     expect(isConclusionMessage(m)).toBe(false);
   });
 
+  test("tool_use with narrative text is still a working round", () => {
+    const m = msg({
+      id: "t1",
+      text: "let me check",
+      blocks: [{ type: "thinking" }, { type: "text", text: "let me check" }, { type: "tool_use", name: "bash" }],
+    });
+    expect(isConclusionMessage(m)).toBe(false);
+  });
+
   test("text-bearing assistant message IS a conclusion", () => {
     const m = msg({ id: "answer", text: "done", blocks: [{ type: "thinking" }] });
     expect(isConclusionMessage(m)).toBe(true);
+  });
+
+  test("turn keeps text-bearing tool rounds in rounds (not the conclusion)", () => {
+    const turn = groupTurns([
+      msg({ id: "t1", text: "checking", blocks: [{ type: "thinking" }, { type: "tool_use", name: "bash" }] }),
+      msg({ id: "final", text: "the answer" }),
+    ]);
+    expect(turn).toHaveLength(1);
+    const seg = turn[0]!;
+    if (seg.kind === "turn") {
+      expect(seg.rounds.map((r) => r.id)).toEqual(["t1"]);
+      expect(seg.conclusion?.id).toBe("final");
+    }
   });
 
   test("turn groups tool skeletons as rounds and the text answer as conclusion", () => {

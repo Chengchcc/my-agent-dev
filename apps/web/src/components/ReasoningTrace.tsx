@@ -50,8 +50,8 @@ export function ReasoningTrace({
   // Tool-round skeletons (empty text, only thinking/tool_use blocks) are
   // commands, not messages — they are shown in the commands count, so a
   // "3 tools + 1 answer" run must read "1 message · 3 commands".
-  const msgCount = rounds.filter((m) => extractText(m.content).trim().length > 0).length +
-    (conclusion ? 1 : 0);
+  const msgCount =
+    rounds.filter((m) => extractText(m.content).trim().length > 0).length + (conclusion ? 1 : 0);
 
   return (
     <div className="my-1">
@@ -85,6 +85,16 @@ export function ReasoningTrace({
                           <div
                             key={`${m.id}:think:${bi}`}
                             className="px-1 py-0.5 text-[12px] italic text-(--mute)"
+                          >
+                            {b.text}
+                          </div>
+                        );
+                      }
+                      if (b.type === "text") {
+                        return (
+                          <div
+                            key={`${m.id}:text:${bi}`}
+                            className="px-1 py-0.5 text-[12px] text-(--body)"
                           >
                             {b.text}
                           </div>
