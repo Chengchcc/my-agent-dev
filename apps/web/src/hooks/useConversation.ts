@@ -306,7 +306,19 @@ export function useConversation(
         finish();
         dropTransient(runId);
       };
-      es.onerror = () => drop();
+      es.onerror = () => {
+        // EventSource fires `error` for BOTH a genuine transport blip
+        // (readyState CONNECTING, it will retry) and a server-side close
+        // (readyState CLOSED, the run settled and the backend closed the
+        // stream). A server close is NOT a failure: the terminal status
+        // event may still be in flight (the dispatch drain is raced with
+        // a 500ms cap before closeSubscribers), so dropping the bubble
+        // here clears a completed answer and leaves a blank frame until
+        // the canonical Message lands on the conversation SSE. Keep the
+        // bubble on CLOSED; drop only on a real reconnect attempt.
+        if (es.readyState === EventSource.CONNECTING) drop();
+        else finish();
+      };
       es.addEventListener("status", (e) => {
         try {
           const ev = JSON.parse((e as MessageEvent).data) as {
