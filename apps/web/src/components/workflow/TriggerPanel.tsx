@@ -82,12 +82,12 @@ export function TriggerPanel({
   }
 
   return (
-    <div className="space-y-3 p-3">
-      <div className="space-y-2 rounded-md border border-(--hairline) bg-(--canvas)/50 p-2">
+    <div className="space-y-4 p-4">
+      <div className="space-y-2.5 rounded-lg border border-(--hairline) bg-(--canvas)/50 p-3">
         <Label className="text-xs text-(--mute)">添加定时触发（可选，仅一个）</Label>
-        <div className="flex gap-1">
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={mode} onValueChange={(v) => setMode((v ?? "daily") as Mode)}>
-            <SelectTrigger className="h-8 w-28 border-(--hairline) bg-(--canvas) text-xs">
+            <SelectTrigger className="h-8 w-26 min-w-0 shrink-0 border-(--hairline) bg-(--canvas) text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -103,7 +103,7 @@ export function TriggerPanel({
               type="number"
               min={0}
               max={59}
-              className="h-8 flex-1 border-(--hairline) bg-(--canvas) text-xs"
+              className="h-8 min-w-28 flex-1 border-(--hairline) bg-(--canvas) text-xs"
               value={time.split(":")[1] ?? "0"}
               onChange={(e) =>
                 setTime(
@@ -114,7 +114,7 @@ export function TriggerPanel({
           ) : mode === "weekly" ? (
             <>
               <Select value={String(weekday)} onValueChange={(v) => setWeekday(Number(v ?? 1))}>
-                <SelectTrigger className="h-8 w-20 border-(--hairline) bg-(--canvas) text-xs">
+                <SelectTrigger className="h-8 w-18 min-w-0 shrink-0 border-(--hairline) bg-(--canvas) text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -127,14 +127,14 @@ export function TriggerPanel({
               </Select>
               <Input
                 type="time"
-                className="h-8 flex-1 border-(--hairline) bg-(--canvas) text-xs"
+                className="h-8 min-w-28 flex-1 border-(--hairline) bg-(--canvas) text-xs"
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
               />
             </>
           ) : mode === "custom" ? (
             <Input
-              className="h-8 flex-1 border-(--hairline) bg-(--canvas) font-mono text-xs"
+              className="h-8 min-w-28 flex-1 border-(--hairline) bg-(--canvas) font-mono text-xs"
               placeholder="分 时 日 月 周"
               value={custom}
               onChange={(e) => setCustom(e.target.value)}
@@ -145,12 +145,12 @@ export function TriggerPanel({
           ) : (
             <Input
               type="time"
-              className="h-8 flex-1 border-(--hairline) bg-(--canvas) text-xs"
+              className="h-8 min-w-28 flex-1 border-(--hairline) bg-(--canvas) text-xs"
               value={time}
               onChange={(e) => setTime(e.target.value)}
             />
           )}
-          <Button size="sm" onClick={add}>
+          <Button size="sm" className="shrink-0" onClick={add}>
             添加
           </Button>
         </div>
@@ -162,35 +162,33 @@ export function TriggerPanel({
           </div>
         )}
       </div>
-      <div className="space-y-1 text-[11px] text-(--mute)">
-        <p className="flex items-center gap-1">
-          <span className="font-medium text-(--body)">手动</span>
-          <span>：画布或列表点 Run / 在 executions 页触发，无需配置。</span>
-        </p>
-        <p className="flex items-center gap-1">
-          <span className="font-medium text-(--body)">API</span>
-          <span>
-            ：POST
-            <code className="mx-1 rounded bg-(--panel2) px-1 font-mono text-[10px]">
-              /api/workflow-executions
-            </code>
-            传入
-            <code className="mx-1 rounded bg-(--panel2) px-1 font-mono text-[10px]">
-              {'{ workflowRef: { path: "<id>.workflow.json" }, input }'}
-            </code>
-            即可触发，无需声明。
-          </span>
-        </p>
+      <div className="space-y-2 rounded-lg border border-(--hairline) bg-(--canvas)/30 p-3 text-[11px] leading-relaxed text-(--mute)">
+        <div>
+          <span className="mr-1 font-medium text-(--body)">手动</span>
+          <span>画布或列表点 Run，或在 executions 页触发，无需配置。</span>
+        </div>
+        <div>
+          <span className="mr-1 font-medium text-(--body)">API</span>
+          <span>POST</span>
+          <code className="mx-1 block w-fit rounded bg-(--panel2) px-1.5 py-0.5 font-mono text-[10px]">
+            /api/workflow-executions
+          </code>
+          <span className="mt-1 block">传入</span>
+          <code className="mx-1 block w-fit rounded bg-(--panel2) px-1.5 py-0.5 font-mono text-[10px]">
+            {'{ workflowRef: { path: "<id>.workflow.json" }, input }'}
+          </code>
+          <span className="mt-1 block">即可触发，无需声明。</span>
+        </div>
         {triggers.length === 0 && (
           <p className="text-[10px]">未配置定时触发——手动/API 随时可用。</p>
         )}
       </div>
       {triggers.length > 0 && (
-        <div className="space-y-1">
+        <div className="space-y-2">
           {triggers.map((t, i) => (
             <div
               key={`${i}-${t.cron}`}
-              className="flex items-center gap-2 rounded-md border border-(--hairline) px-2 py-1.5 text-xs"
+              className="flex items-center gap-2 rounded-lg border border-(--hairline) px-2.5 py-2 text-xs"
             >
               <div className="min-w-0 flex-1">
                 <div>{describeCron(t.cron)}</div>

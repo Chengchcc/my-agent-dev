@@ -148,7 +148,12 @@ export const workflowDefinitionEvent = z.object({
   event: z.literal("changed"),
   workflowId: z.string(),
   ts: z.number(),
-  data: z.object({ trigger: z.enum(["save", "mcp"]) }),
+  data: z.object({
+    trigger: z.enum(["save", "mcp"]),
+    // For trigger="mcp" the proposed DSL rides the event — the editor adopts
+    // it as an unsaved edit without any file write on the backend.
+    definition: z.unknown().optional(),
+  }),
 });
 
 export const workflowDefinitionEvents = {

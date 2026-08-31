@@ -12,7 +12,7 @@ import type { SenderRef } from "@/lib/conversation-reducer";
  *  workflow MCP tools (read/write the DSL); the editor refreshes via the
  *  workflow-definition SSE. This panel is intentionally decoupled from the
  *  editor's onApply — it only sends messages and shows the transcript. */
-export function ChatPanel({ workflowId }: { workflowId: string }) {
+export function ChatPanel({ workflowId, goal }: { workflowId: string; goal?: string }) {
   const conversationId = `workflow:chat:${workflowId}`;
   const { state, send, transients, transientTools } = useConversation(conversationId);
   const [instruction, setInstruction] = useState("");
@@ -49,7 +49,20 @@ export function ChatPanel({ workflowId }: { workflowId: string }) {
   function submit() {
     const text = instruction.trim();
     if (!text || !ready) return;
-    send(text);
+    // The agent needs to know WHICH workflow it is editing and WHAT the
+    // current goal is, or it cannot decide what to modify. Inject this as a
+    // leading XML context block in the sent message (send() has no separate
+    // system channel, so it rides the user message).
+    const ctx = [
+      "<workflow-context>",
+      `<workflowId>${workflowId}</workflowId>`,
+      goal ? `<goal>${goal}</goal>` : "",
+      "</workflow-context>",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const payload = ctx ? `${ctx}\n\n${text}` : text;
+    send(payload);
     setInstruction("");
   }
 

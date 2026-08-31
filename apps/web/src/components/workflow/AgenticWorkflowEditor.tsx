@@ -260,9 +260,25 @@ export function AgenticWorkflowEditor({
       `/api/bff/api/workflow-definitions/${workflowId}/events`,
       workflowDefinitionEvents,
     );
-    ts.on("changed", () => {
+    ts.on("changed", (ev) => {
+      // trigger="mcp": the chat agent proposed a new DSL. Adopt it as an
+      // UNSAVED edit (mark dirty, do not touch savedAt) so the user reviews
+      // the change and commits with (Ctrl/Cmd)S. Never overwrite a local
+      // unsaved edit.
+      // trigger="save": another tab/editor saved — refresh the canonical
+      // definition and clear dirty.
       void (async () => {
         if (dirtyRef.current || savingRef.current) return;
+        const trigger = ev?.data?.trigger;
+        const proposed = ev?.data?.definition;
+        if (trigger === "mcp" && proposed && typeof proposed === "object") {
+          const draftDef = proposed as WorkflowDefinition;
+          setDefinition(draftDef);
+          definitionRef.current = draftDef;
+          setLastEditedAt(Date.now());
+          setSavedAt(null);
+          return;
+        }
         try {
           const r = await api.getWorkflowDefinition(workflowId);
           const remote = r?.definition;
@@ -545,7 +561,7 @@ export function AgenticWorkflowEditor({
                 className="flex shrink-0 flex-col border-l border-(--hairline) bg-(--panel)/70"
                 style={{ width: chatW, minWidth: chatW }}
               >
-                <ChatPanel workflowId={workflowId} />
+                <ChatPanel workflowId={workflowId} goal={meta?.description ?? meta?.name} />
               </div>
             )}
           </div>

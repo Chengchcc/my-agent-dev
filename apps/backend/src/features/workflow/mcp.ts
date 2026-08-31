@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { join } from "node:path";
@@ -97,14 +97,16 @@ export async function createWorkflowMcpServer(
           if (typeof args.definition !== "object" || args.definition === null) {
             throw new Error("definition (object) required");
           }
-          const file = safePath(workflowDir, workflowId);
-          writeFileSync(file, `${JSON.stringify(args.definition, null, 2)}\n`, "utf8");
-          definitionEvents?.emit(workflowId, { trigger: "mcp" });
+          // NO file write. The agent's proposed DSL is pushed to the editor
+          // over the definition SSE; the editor shows it as an unsaved edit
+          // and the user commits it with (Ctrl/Cmd)S. The live file is never
+          // touched until the user saves.
+          definitionEvents?.emit(workflowId, { trigger: "mcp", definition: args.definition });
           return {
             content: [
               {
                 type: "text",
-                text: `wrote ${workflowId}.workflow.json (${randomUUID().slice(0, 8)})`,
+                text: `proposed update for ${workflowId} (${randomUUID().slice(0, 8)}) — review in the editor and save to apply`,
               },
             ],
           };

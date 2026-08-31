@@ -8,7 +8,7 @@ export interface WorkflowDefinitionEvent {
   event: "changed";
   workflowId: string;
   ts: number;
-  data: { trigger: "save" | "mcp" };
+  data: { trigger: "save" | "mcp"; definition?: unknown };
 }
 
 class Queue {
@@ -39,7 +39,7 @@ class Queue {
 export class WorkflowDefinitionEventBus {
   private queues = new Map<string, Set<Queue>>();
 
-  emit(workflowId: string, data: { trigger: "save" | "mcp" }): void {
+  emit(workflowId: string, data: { trigger: "save" | "mcp"; definition?: unknown }): void {
     const ev: WorkflowDefinitionEvent = { event: "changed", workflowId, ts: Date.now(), data };
     for (const q of this.queues.get(workflowId) ?? []) q.push(ev);
   }
