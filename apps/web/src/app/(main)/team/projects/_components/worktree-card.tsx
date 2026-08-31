@@ -5,6 +5,7 @@ import { FastForward, GitBranch, GitMerge } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { ListRowCard } from "@/components/ui/polish";
 import { useAgentList } from "@/features/agents/hooks";
 import { useProjectWorktreeDiff } from "@/features/projects/hooks";
@@ -26,17 +27,20 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
   const [open, setOpen] = useState(false);
   const [push, setPush] = useState(false);
   const [acting, setActing] = useState<"fast-forward" | "merge" | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const { data: agents } = useAgentList();
   const agentName = agents?.find((a) => a.id === row.agentId)?.name ?? row.agentId;
   const { data: diff } = useProjectWorktreeDiff(projectId, row.agentId, open);
 
   async function act(kind: "fast-forward" | "merge") {
     if (acting) return; // P2: no double submission
-    const confirmed = window.confirm(
-      `${kind === "merge" ? "Merge" : "Fast-forward"} ${row.branch} into the base branch` +
+    const ok = await confirm({
+      title:
+        `${kind === "merge" ? "Merge" : "Fast-forward"} ${row.branch} into the base branch` +
         `${push ? " and push to origin" : ""}?`,
-    );
-    if (!confirmed) return;
+      confirmText: kind === "merge" ? "Merge" : "Fast-forward",
+    });
+    if (!ok) return;
     setActing(kind);
     try {
       if (kind === "fast-forward") {
@@ -101,6 +105,7 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
           {(diff?.diff ?? "loading…").split("\n").slice(0, 200).join("\n")}
         </pre>
       )}
+      {confirmDialog}
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+import { Page, PageBody, PageHeader } from "@/components/page";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -116,17 +117,21 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
     window.location.reload();
   }
   return (
-    <div className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Agentic Workflow</h1>
-        <button
-          className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink) transition-colors hover:bg-(--panel2)"
-          onClick={() => setNewOpen(true)}
-        >
-          + New
-        </button>
-      </div>
-      <div className="space-y-2">
+    <Page>
+      <PageHeader
+        breadcrumb="Work"
+        title="Workflows"
+        description="Agentic workflow definitions"
+        action={
+          <button
+            className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink) transition-colors hover:bg-(--panel2)"
+            onClick={() => setNewOpen(true)}
+          >
+            + New
+          </button>
+        }
+      />
+      <PageBody className="space-y-2">
         {definitions.map((d) => (
           <div
             key={d.workflowId}
@@ -215,7 +220,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
         {definitions.length === 0 && (
           <div className="text-sm text-muted-foreground">No workflows yet.</div>
         )}
-      </div>
+      </PageBody>
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -293,10 +298,10 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete workflow {confirmId}?</AlertDialogTitle>
-            <AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (confirmId) void del(confirmId);
@@ -307,6 +312,6 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </Page>
   );
 }

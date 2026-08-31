@@ -22,6 +22,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useRef } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -69,6 +70,7 @@ function NavContent() {
     (c) => "origin" in c && c.origin !== "loop" && c.origin !== "cron",
   );
   const deleteConversation = useDeleteConversation();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const createConversation = useCreateConversation();
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -224,23 +226,31 @@ function NavContent() {
                               variant="destructive"
                               disabled={deleteConversation.isPending}
                               onClick={() => {
-                                if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
-                                deleteConversation.mutate(conv.conversationId, {
-                                  onSuccess: () => {
-                                    queryClient.invalidateQueries({
-                                      queryKey: conversationKeys.all,
-                                    });
-                                    if (pathname === `/chat/${conv.conversationId}`) {
-                                      router.push("/work");
-                                    }
-                                  },
-                                  onError: (err) => {
-                                    toast.error("Failed to delete conversation", {
-                                      description:
-                                        err instanceof Error ? err.message : "Unknown error",
-                                    });
-                                  },
-                                });
+                                void (async () => {
+                                  const ok = await confirm({
+                                    title: `Delete "${title}"?`,
+                                    description: "This cannot be undone.",
+                                    confirmText: "Delete",
+                                    destructive: true,
+                                  });
+                                  if (!ok) return;
+                                  deleteConversation.mutate(conv.conversationId, {
+                                    onSuccess: () => {
+                                      queryClient.invalidateQueries({
+                                        queryKey: conversationKeys.all,
+                                      });
+                                      if (pathname === `/chat/${conv.conversationId}`) {
+                                        router.push("/work");
+                                      }
+                                    },
+                                    onError: (err) => {
+                                      toast.error("Failed to delete conversation", {
+                                        description:
+                                          err instanceof Error ? err.message : "Unknown error",
+                                      });
+                                    },
+                                  });
+                                })();
                               }}
                             >
                               <Trash2Icon />
@@ -369,6 +379,7 @@ function NavContent() {
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
+      {confirmDialog}
     </SidebarContent>
   );
 }

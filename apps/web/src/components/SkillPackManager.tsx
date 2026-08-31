@@ -7,6 +7,7 @@ import { PackFileSearch } from "@/components/PackFileSearch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -122,6 +123,7 @@ export function SkillPackManager() {
 
   const syncMutation = useSyncPack();
   const deleteMutation = useDeletePack();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const { data: skills } = useSkillPackSkills(selectedPack ?? "");
 
   // Auto-refetch while installing/syncing (in useEffect, not render body)
@@ -223,9 +225,15 @@ export function SkillPackManager() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
-                        if (confirm(`Delete pack "${p.name}"?`)) deleteMutation.mutate(p.id);
+                        const ok = await confirm({
+                          title: `Delete pack "${p.name}"?`,
+                          description: "This cannot be undone.",
+                          confirmText: "Delete",
+                          destructive: true,
+                        });
+                        if (ok) deleteMutation.mutate(p.id);
                       }}
                     >
                       <Trash2 className="size-3 mr-1" />
@@ -335,6 +343,7 @@ export function SkillPackManager() {
           </div>
         </SheetContent>
       </Sheet>
+      {confirmDialog}
     </div>
   );
 }

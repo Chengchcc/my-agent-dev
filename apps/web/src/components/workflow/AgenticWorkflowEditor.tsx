@@ -10,6 +10,7 @@ import {
 } from "@chengchenccc/workflow";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -18,6 +19,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -195,6 +197,7 @@ export function AgenticWorkflowEditor({
   dirtyRef.current = dirty;
   const savingRef = useRef(saving);
   savingRef.current = saving;
+  const { confirm, dialog: confirmDialog } = useConfirm();
   // Warn before losing unsaved edits (reload/tab close).
   useEffect(() => {
     if (!dirty) return;
@@ -244,7 +247,7 @@ export function AgenticWorkflowEditor({
       );
       setSavedAt(Date.now());
     } catch (err) {
-      alert(`Save failed: ${(err as Error).message}`);
+      toast.error(`Save failed: ${(err as Error).message}`);
     } finally {
       setSaving(false);
     }
@@ -304,8 +307,17 @@ export function AgenticWorkflowEditor({
               <BreadcrumbLink
                 href="/agentic-workflow"
                 onClick={(e) => {
-                  if (dirty && !confirm("有未保存的修改，离开将丢失。确定离开？"))
-                    e.preventDefault();
+                  if (!dirty) return;
+                  e.preventDefault();
+                  void confirm({
+                    title: "Discard unsaved changes?",
+                    description: "You have unsaved modifications. Leaving will lose them.",
+                    confirmText: "Leave",
+                    cancelText: "Stay",
+                    destructive: true,
+                  }).then((ok) => {
+                    if (ok) window.location.assign("/agentic-workflow");
+                  });
                 }}
               >
                 Workflows
@@ -567,6 +579,7 @@ export function AgenticWorkflowEditor({
           </div>
         )}
       </div>
+      {confirmDialog}
     </div>
   );
 }

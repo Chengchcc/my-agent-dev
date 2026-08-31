@@ -23,7 +23,7 @@ export function PageHeader({
   action,
   actions,
 }: {
-  breadcrumb?: string;
+  breadcrumb?: ReactNode;
   title: string;
   kicker?: string;
   subtitle?: string;

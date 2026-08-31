@@ -583,11 +583,11 @@ function MessageActions({
             <>
               {runIdOf(item) && (
                 <Link
-                  href={`/system/runs/${runIdOf(item)}`}
+                  href={`/system/runs/${runIdOf(item)}?from=${encodeURIComponent(`/chat/${conversationId}`)}`}
                   className="inline-flex h-6 items-center px-2 text-[10px] text-(--mute) hover:text-(--body)"
-                  title="打开运行详情"
+                  title="Open run detail"
                 >
-                  运行详情 ↗
+                  Run detail ↗
                 </Link>
               )}
               <Button

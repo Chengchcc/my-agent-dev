@@ -8,6 +8,7 @@ import { Page, PageBody, PageHeader } from "@/components/page";
 import { dirname, FileContent, FileTree, statusLabel } from "@/components/SkillPackManager";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   InfoBanner,
@@ -135,6 +136,7 @@ export default function SkillPacksPage() {
 
   const syncMutation = useSyncPack();
   const deleteMutation = useDeletePack();
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const list = useMemo(() => (packs ?? []).map((p) => p as unknown as PackEntry), [packs]);
   const filtered = useMemo(() => {
@@ -249,10 +251,15 @@ export default function SkillPacksPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                if (confirm(`Delete pack "${p.name}"?`))
-                                  deleteMutation.mutate(p.id);
+                                const ok = await confirm({
+                                  title: `Delete pack "${p.name}"?`,
+                                  description: "This cannot be undone.",
+                                  confirmText: "Delete",
+                                  destructive: true,
+                                });
+                                if (ok) deleteMutation.mutate(p.id);
                               }}
                             >
                               <Trash2 className="size-3" />
@@ -294,6 +301,7 @@ export default function SkillPacksPage() {
       </Sheet>
 
       {selectedPack && <PackDrawer pack={selectedPack} onClose={() => setSelectedId(null)} />}
+      {confirmDialog}
     </Page>
   );
 }

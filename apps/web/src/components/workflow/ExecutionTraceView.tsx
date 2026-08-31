@@ -14,6 +14,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
 import { typedSource } from "@/lib/typed-source";
 import { humanizeWorkflowError } from "./humanize-error";
@@ -70,6 +71,7 @@ export function ExecutionTraceView({
   } | null;
 }) {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [index, setIndex] = useState(Math.max(0, events.length - 1));
   const followTail = useRef(true);
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
@@ -224,7 +226,12 @@ export function ExecutionTraceView({
             <button
               className="rounded-md border border-(--err)/40 bg-(--err)/10 px-2 py-0.5 text-[10px] text-(--err) hover:bg-(--err)/20"
               onClick={async () => {
-                if (!confirm("取消本次执行？")) return;
+                const ok = await confirm({
+                  title: "Cancel this execution?",
+                  confirmText: "Cancel",
+                  destructive: true,
+                });
+                if (!ok) return;
                 await api.cancelWorkflowExecution(execution.executionId);
                 router.refresh();
               }}
@@ -389,6 +396,7 @@ export function ExecutionTraceView({
           </div>
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }

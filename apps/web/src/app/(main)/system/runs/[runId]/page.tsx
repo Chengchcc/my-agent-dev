@@ -1,6 +1,7 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
 
 export default function SystemRunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
+  const searchParams = useSearchParams();
+  const from = searchParams.get("from");
 
   const detailQuery = useAgentRunDetail(runId);
   const run = detailQuery.data?.run;
@@ -18,7 +21,15 @@ export default function SystemRunDetailPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb="System / Runs"
+        breadcrumb={
+          from ? (
+            <Link href={from} className="text-(--info) hover:underline">
+              ← Back to conversation
+            </Link>
+          ) : (
+            "System / Runs"
+          )
+        }
         title={run ? run.runId.slice(0, 12) : runId.slice(0, 12)}
         action={run ? <Badge>{run.status}</Badge> : undefined}
       />
