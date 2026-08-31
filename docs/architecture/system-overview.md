@@ -3,28 +3,29 @@ id: architecture.system-overview
 title: 系统总览
 status: current
 owners: architecture
-summary: "Product Backend 拥有 Conversation History、Agent Context、Agent Run 与 Product Tools；每个 Agent Run 由 Agent Backend spawn 一个一次性 oma 子进程执行（stdin/stdout JSONL RPC），BackendRunOutcome 是唯一终态依据，terminal commit 原子写入 History + Context。"
+summary: "Product Backend 拥有 Conversation History、Agent Context、Agent Run、Workflow、Artifact 与 Product Tools；每个 Agent Run 由四后端之一（oma/claude/pi/omp）spawn 一次性子进程执行，BackendRunOutcome 是唯一终态依据，terminal commit 原子写入 History + Context。自动化由声明式 Workflow 节点图承载（agent/script/human + cron 触发）。"
 depends_on:
   - foundations.facts-and-projections
 used_by:
   - backend.overview
-  - execution.oma-backend
+  - architecture.workflow
+  - execution.agent-backend
   - agents.context
   - flows.e2e-web-message
 ---
 
 # 系统总览
-> ⚠ **部分过时(2026-08-13)**:执行链已扩展为四 Agent Backend(oma / claude / pi / omp,ADR 0019/0020);对话模型改为单 Agent(ADR 0021)。现行结构见 [Agent 工作区与多后端](./agents/workspace-and-backends.md)。
 
-本页描述**当前架构**：Product Backend 拥有用户和产品能够依赖的全部事实；Agent Backend 负责执行 Agent Run，且当前只有一个执行引擎 —— Oma 子进程。
+本页描述**当前架构**。执行链自 2026-08 起为四后端（ADR 0019/0020），自动化自 2026-08-28 起由 Workflow DSL 承载（Loop/CronJob 已删）。
 
 ## 一句话模型
 
 ```text
 Product Backend 保存 History 和 Context，创建并提交 Agent Run。
-Agent Backend 为每个 Run spawn 一次性 oma 子进程。
+Agent Backend 为每个 Run spawn 一次性子进程（自研 oma 或 CLI 后端）。
 子进程内的 per-Run Runtime 跑模型/工具循环，产出 BackendRunOutcome。
 Product Backend 在 terminal outcome 后原子提交最终 Message 与 Context。
+自动化：Workflow 节点图 → agent 节点派发 Agent Run / script 节点进沙箱 / human 节点挂 Web 表单。
 ```
 
 ## 唯一执行链
@@ -33,14 +34,14 @@ Product Backend 在 terminal outcome 后原子提交最终 Message 与 Context�
 Product Backend
 → durable Agent Run
 → full Product Context projection
-→ Agent Backend (packages/adapter-oma-agent)
-→ spawn one-shot oma child (--mode rpc, stdin/stdout JSONL)
-→ per-Run Oma Runtime (packages/agent)
+→ Agent Backend (按 backendKind 选: oma / claude / pi / omp)
+→ spawn one-shot child (oma: --mode rpc, stdin/stdout JSONL；CLI 后端: 每 turn 短进程 + 原生 session 续接)
+→ per-Run Oma Runtime (apps/oh-my-agent/src/core)
 → BackendRunOutcome
 → atomic Product terminal commit
 ```
 
-一次 Agent Run = 一个子进程 = 一个 Runtime = 一个 outcome。`runId` 是唯一执行身份；不存在跨 Run 的 session、resume 或 daemon。
+一次 Agent Run = 一个子进程（oma）或一组 turn 级短进程（CLI 后端）= 一个 outcome。`runId` 是唯一执行身份；不存在跨 Run 的 session、resume 或 daemon——CLI 后端靠自身原生 session（`cliSessionRef`）续接上下文（ADR 0019 双轨真理）。
 
 ## 容器视图
 
@@ -57,8 +58,9 @@ flowchart TB
     Context[Agent Context]
     Run[Agent Run]
     Queue[Branch Input Queue]
-    Tools[Product Tools]
-    Flow[Task / Cron / Loop]
+    Tools[Product Tools MCP]
+    Workflow[Workflow Executions]
+    Artifact[Artifacts]
   end
 
   subgraph Adapter[Agent Backend / Adapter]
@@ -66,8 +68,13 @@ flowchart TB
     RPC[stdin/stdout JSONL]
   end
 
-  subgraph Child[Oma child process]
-    Runtime[per-Run Runtime<br/>model/tool loop · retry · compaction · todo · skills]
+  subgraph Child[child process]
+    Oma[Oma per-Run Runtime<br/>model/tool loop · retry · compaction · todo · skills · plugins]
+    CLI[CLI backends<br/>claude / pi / omp 原生 session]
+  end
+
+  subgraph Sandbox[进程沙箱]
+    Script[script 节点 / eval 工具]
   end
 
   Web <--> Conversation
@@ -76,11 +83,14 @@ flowchart TB
   Conversation --> Context
   Context --> Run
   Queue --> Run
-  Flow --> Run
+  Workflow --> Run
   Tools --> Run
   Run --> Adapter
   Adapter --> RPC
-  RPC --> Runtime
+  RPC --> Oma
+  Adapter --> CLI
+  Workflow --> Sandbox
+  Workflow --> Artifact
 ```
 
 ## 核心所有权
@@ -90,30 +100,28 @@ flowchart TB
 - Conversation History（conversation_ledger）；
 - Agent Context / Context Branch（agent_context_tree / entry / branch）；
 - Agent Run（agent_run，唯一执行身份）与 branch input queue；
-- Product Tools（权限、身份、幂等、审计，product_tool_call）；
-- Agent 身份与配置、Run 的 systemPrompt/skillRoots 快照；
+- Workflow（definition 文件、execution/node_run/pending_human）与 Artifact（fs 存储 + 元数据）；
+- Product Tools MCP + per-run token（幂等 + 审计，product_tool_call）；
+- Agent 身份与配置、Run 的 systemPrompt/skillRoots/permissionMode 快照；
 - final assistant Message 与 terminal commit（agent_run_id 唯一提交标记）。
 
 ### Oma 拥有（子进程内，每 Run 新建）
 
-- model/tool loop；
-- native tools 与 retry；
-- compaction；
-- Run-local todo 与 progressive skill loading；
-- print / json / rpc 三种 CLI 模式。
+- model/tool loop；native tools 与 retry；compaction；Run-local todo 与 progressive skill 加载；插件加载与信任矩阵；HITL 审批管道；print / json / rpc / TUI 模式。
 
-### Adapter 拥有（packages/adapter-oma-agent）
+### Adapter 拥有（packages/adapter-*）
 
-- spawn 子进程、stdin/stdout JSONL 帧；
-- steer / abort 命令；
-- child 并发上限；
-- stderr 尾部与脱敏、event/outcome 映射、child recycle。
+- spawn 子进程、stdin/stdout JSONL 帧；steer / abort / resolve_approval 命令；child 并发上限；stderr 尾部与脱敏、event/outcome 映射、child recycle。
+
+### Workflow 引擎拥有
+
+- 图推进纯函数（`@chengchenccc/workflow`，无 I/O）；节点执行复用 Agent Run 与沙箱，不自建执行器。
 
 ## 稳定概念
 
 ### Agent Run
 
-Agent Run 是 Product Backend 的持久执行对象。它固定 Agent、Context Branch、model/config snapshot（含 systemPrompt/skillRoots），拥有 running、waiting、commit_failed 与 terminal（completed/failed/aborted/timeout）状态。同一 Context Branch 最多一个 active Run；normal/steer/follow_up 输入先入持久队列，被 Adapter 接受后才标记 delivered。
+Agent Run 是 Product Backend 的持久执行对象。它固定 Agent、Context Branch、model/config snapshot（含 systemPrompt/skillRoots/permissionMode），拥有 running、waiting、commit_failed 与 terminal（completed/failed/aborted/timeout）状态。同一 Context Branch 最多一个 active Run；normal/steer/follow_up 输入先入持久队列，被 Adapter 接受后才标记 delivered。
 
 ### BackendRunOutcome
 
@@ -125,14 +133,18 @@ completed | failed | aborted | timeout
 
 ### 两类历史
 
-- **Conversation History**：多人共享会话事实，人类与 Agent 的最终可见 Message、成员事件、产品控制条目。
+- **Conversation History**：共享会话事实，人类与 Agent 的最终可见 Message、成员事件、产品控制条目。
 - **Agent Context**：每个 conversation 的语义上下文（1:1，tree 单键）；保存共享 Message ref（ledger_seq）、Product Tool 结果、私有语义、summary 与 Context Branch。
 
 Agent Run 从 active Context Branch 投影完整线性 `ProjectedHistoryItem[]` 交给子进程 —— **每次都是 full projection**，没有增量恢复。
 
 ### 工具边界
 
-Oma 在子进程内执行 native tools（文件/Shell/搜索等）。Product Tools 由 Product Backend 统一实现；子进程通过 Product Tools MCP 调用，transport 不改变工具的权限与事实归属。语义相关 call/result 写 `product_tool_call` 与 Agent Context。
+Oma 在子进程内执行 native tools（文件/Shell/搜索等）。Product Tools 由 Product Backend 的 MCP server 统一实现；workspace bridge 把 `.mcp.json` + per-run token 桥接进工作区，child 经 SSEClientTransport 挂载。注入优先：MCP 注入的 `todo_write` 存在时 native todo 让位。transport 不改变工具的权限与事实归属。
+
+### 自动化边界
+
+Workflow 是编排层身份（execution/node_run/pending_human），不是执行身份：agent 节点创建的是普通 Agent Run，script 节点走进程沙箱，human 节点是产品级挂起。详见 [Agentic Workflow](./workflow.md)。
 
 ## 一次 Agent Run 的主流程
 
@@ -143,12 +155,12 @@ sequenceDiagram
   participant H as Conversation History
   participant C as Agent Context
   participant A as Adapter
-  participant K as oma child
+  participant K as child
 
   U->>P: 发送消息
   P->>H: 追加人类 Message
   P->>C: 同步实际消费的 History refs
-  P->>P: 创建 Agent Run（冻结 systemPrompt/skillRoots）
+  P->>P: 创建 Agent Run（冻结 systemPrompt/skillRoots/permissionMode）
   P->>A: execute(full projection + input + run snapshot)
   A->>K: spawn --mode rpc + execute command (JSONL)
   K-->>A: event envelopes (JSONL stdout)
@@ -172,22 +184,26 @@ Live Updates 不写 Agent Context。只有 terminal `BackendRunOutcome` 才允�
 | terminal commit 事务失败 | Run 进入 commit_failed；幂等重试，成功前不释放 branch |
 | Live Updates 推送失败 | 不影响事实；客户端从 Conversation History 恢复 |
 | Product Tool 失败 | 返回标准化 tool result；按语义决定是否写 Agent Context |
+| workflow 节点失败 | 逐节点记录（node_run.error），execution 以 failure 终态；agent 节点先 harness 级 schema retry |
 
 ## 不变量
 
 1. Conversation History 是共享会话事实。
-2. Agent Context 是单 Agent Member 的 canonical context history。
+2. Agent Context 是单 Agent 的 canonical context history。
 3. Agent Run 是唯一 Product execution identity（无 span/attempt/session）。
 4. 同一 Context Branch 同时最多一个 active Agent Run。
 5. Live Updates 不进入 canonical history；terminal outcome 才提交最终 Message。
 6. History Message 与 Context ref 在同一数据库事务中提交。
 7. 每个 Run 是 full Product Context projection，无跨 Run session/resume。
 8. BackendRunOutcome 是 Agent Run 完成的唯一依据。
+9. Workflow 引擎纯函数；路由冻结；script 节点永远经沙箱。
+10. 产品工具凭证只经 env；`.mcp.json` 零密文；Run Token settle 即 revoke。
 
 ## 关联页面
 
 - [事实与投影](./foundations/facts-and-projections.md)
-- [后端总览](./backend/overview.md)
+- [Product Backend 总览](./backend/overview.md)
+- [Agentic Workflow](./workflow.md)
 - [Agent Context](./agents/context.md)
 - [Agent Backend](./execution/agent-backend.md)
 - [Conversation History](./conversation/history.md)

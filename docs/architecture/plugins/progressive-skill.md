@@ -56,5 +56,4 @@ M22 新增 `findSkillByName` 能力，允许用户通过 `/skill:name` 语法显
 
 ## 关联页面
 
-- [运行时插件机制](../runtime/plugin.md)
-- [Agent 默认装配](../runtime/framework.md)
+- [Oma Runtime](../runtime/oma.md)

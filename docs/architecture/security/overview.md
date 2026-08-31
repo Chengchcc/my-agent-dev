@@ -39,5 +39,4 @@ used_by:
 
 ## 关联页面
 
-- [对话与成员](../conversation/conversation-and-members.md)
-- [Agent 默认装配](../harness/harness.md)
+- [Agent 工作区与多后端](../agents/workspace-and-backends.md)

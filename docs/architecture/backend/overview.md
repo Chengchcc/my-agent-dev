@@ -3,33 +3,35 @@ id: backend.overview
 title: Product Backend 总览
 status: current
 owners: backend-runtime
-summary: "Product Backend 是产品事实与 Agent 执行控制面的拥有者：Conversation History、Agent Context、Agent Run、输入队列与 Product Tools。每个 Run 由 Agent Backend spawn 一次性 oma 子进程执行，terminal outcome 原子提交。"
+summary: "Product Backend 是产品事实与执行控制面的拥有者：Conversation History、Agent Context、Agent Run、输入队列、Workflow、Artifact 与 Product Tools MCP。每个 Run 由四后端之一（oma/claude/pi/omp）spawn 一次性子进程执行，terminal outcome 原子提交。"
 depends_on:
   - architecture.system-overview
 used_by:
   - backend.data-model
-  - execution.oma-backend
+  - architecture.workflow
+  - execution.agent-backend
   - agents.context
 ---
 
 # Product Backend 总览
-> ⚠ **部分过时(2026-08-13)**:本页按单引擎(oma 子进程)叙述;现为四后端(claude/pi/omp 同 spawn 模式)+ Agent 工作区文件桥接。另:成员模型按 ADR 0021 简化为单 Agent。现行结构见 [Agent 工作区与多后端](../agents/workspace-and-backends.md)。
 
-Product Backend 是系统的产品核心。它拥有 Conversation、成员、共享消息、Agent Context 分支、Cron、Loop 和面向端的 HTTP/SSE API。执行只有一条链：**Agent Run → Agent Backend → 一次性 oma 子进程**。
+Product Backend 是系统的产品核心。它拥有 Conversation、共享消息、Agent Context 分支、Agent Run、Workflow、Artifact 和面向端的 HTTP/SSE API。执行只有一条链：**Agent Run → Agent Backend → 一次性子进程**；自动化由 Workflow 节点图驱动，agent 节点复用的仍是这条链。
 
 ## Product Backend 拥有什么
 
 | 领域 | Product Backend 的职责 |
 |---|---|
-| Agent | 身份、角色、默认 Model、workspace、权限与产品配置 |
-| Conversation | 成员、触发规则、Conversation History、可见性与 hop control |
-| Agent Context | 每个 Agent Member 实际消费/产生的语义上下文、branch 与 summary |
+| Agent | 身份、角色、默认 Model、workspace、权限与产品配置（agent.yml 为真源） |
+| Conversation | 触发规则、Conversation History、可见性（1:1 单 Agent，ADR 0021） |
+| Agent Context | 每个 Agent 实际消费/产生的语义上下文、branch 与 summary |
 | Agent Run | branch 级单 active run、终态提交、normal/steer/follow-up 队列 |
-| Cron / Loop | 决定何时为哪个 Agent 创建 Run |
-| Product Tools | History 读写、审批等产品能力；权限、幂等、审计 |
+| Workflow | DSL 定义（*.workflow.json）、execution/node_run/pending_human、trigger 调度、SSE live/replay |
+| Artifact | 带类型产物（fs 存储 + 元数据 + MCP 工具 + REST + 依赖校验） |
+| Product Tools | History/todo 等产品能力经 MCP server 暴露；per-run token、幂等、审计 |
 | Live Updates | Run 的实时文本、thinking、tool 和状态更新（可丢） |
+| Workspace Bridge | 把 skill/mcp/product-tools 幂等桥接进工作区文件 |
 
-Product Backend 不拥有子进程内部的模型循环、原生 tools、compaction、retry 或 todo —— 那些属于 Oma。
+Product Backend 不拥有子进程内部的模型循环、原生 tools、compaction、retry、插件加载或 todo —— 那些属于 Oma。
 
 ## 核心关系
 
@@ -37,11 +39,12 @@ Product Backend 不拥有子进程内部的模型循环、原生 tools、compact
 flowchart LR
   Conversation --> History[(Conversation History)]
   Conversation --> Context[(Agent Context)]
-  Task[Task / Cron / Loop] --> Run[Agent Run]
+  Workflow[Workflow] --> Run[Agent Run]
   Conversation --> Run
   Context --> Run
   Run --> Backend[Agent Backend]
-  Tools[Product Tools] --> Run
+  Tools[Product Tools MCP] --> Run
+  Workflow --> Artifact[(Artifacts)]
   Backend --> Updates[Live Updates]
   Backend --> Message[Final Message]
   Message --> History
@@ -50,23 +53,27 @@ flowchart LR
 
 ### Conversation History
 
-所有成员共享的会话事实。它保存人类与 Agent 的最终可见 Message、成员事件和产品控制条目。端从 History 重放，不依赖子进程的私有 transcript。
+共享会话事实。它保存人类与 Agent 的最终可见 Message、成员事件和产品控制条目。端从 History 重放，不依赖子进程的私有 transcript。
 
 ### Agent Context
 
-一个 `(conversationId, agentMemberId)` 对应一份 Agent Context。内部用 parent-linked entries 支持 branch/fork/rollback；公开语义是这个 Agent 实际消费和保留了什么。
+一个 conversation 对应一份 Agent Context（1:1 后 tree 单键）。内部用 parent-linked entries 支持 branch/fork/rollback；公开语义是这个 Agent 实际消费和保留了什么。
 
 ### Agent Runs
 
-Agent Run 是执行控制面的领域对象：固定 Context Branch、model/config snapshot（systemPrompt/skillRoots 冻结）、唯一终态。Product Backend 保证同一 Context Branch 最多一个 active Run，并持久化 normal、steer、follow-up 输入到 `branch_input_queue`。
+Agent Run 是执行控制面的领域对象：固定 Context Branch、model/config snapshot（systemPrompt/skillRoots/permissionMode 冻结）、唯一终态。Product Backend 保证同一 Context Branch 最多一个 active Run，并持久化 normal、steer、follow-up 输入到 `branch_input_queue`。
 
 ### Agent Backend
 
-Agent Run 通过 `backendKind = "oma"` 选择执行引擎。Adapter spawn 一次性 child 进程执行；`runId` 是唯一执行身份。无 daemon、无 session、无 resume。
+Agent Run 通过 `backendKind`（oma / claude / pi / omp）选择执行引擎。Adapter spawn 一次性 child 进程执行；`runId` 是唯一执行身份。无 daemon、无 session、无 resume（CLI 后端靠自身原生 session 续接，ADR 0019）。
+
+### Workflow 与 Artifact
+
+Workflow 是编排层身份（execution/node_run/pending_human），不是执行身份；agent 节点创建普通 Agent Run，script 节点走进程沙箱，human 节点挂起于 Web 表单。Artifact 把「一次运行产出了什么」提为一等数据。详见 [Agentic Workflow](../workflow.md)。
 
 ### Product Tools
 
-Product Tools 由 Product Backend 统一执行并拥有权限、身份、幂等和审计（`product_tool_call` 表）。Product Tools MCP 是 child 的接入方式，不是 Product Tool 的领域身份。
+Product Tools 由 Product Backend 的 MCP server 统一执行并拥有权限、身份、幂等和审计（`product_tool_call` 表）。workspace bridge 写零密文 `.mcp.json`（env 名 + `${VAR}` 占位符），dispatch 时铸 per-run token、settle 时 revoke。MCP 是接入方式，不是 Product Tool 的领域身份。
 
 ## Message 如何进入 History 和 Context
 
@@ -94,7 +101,7 @@ Live Updates 只用于实时展示。子进程返回 terminal `BackendRunOutcome
 Product Backend 不允许同一 branch 并行 Agent Run。新输入根据语义进入：
 
 - normal：branch 空闲时开始；
-- steer：希望尽快影响当前 Run（Adapter 立即转发给 live child）；
+- steer：希望尽快影响当前 Run（Adapter 立即转发给 live child；CLI 后端排队为下一 turn 输入）；
 - follow-up：当前 Agent Run 结束后处理。
 
 三类输入都先进入持久队列；Adapter 明确接受后才标记 delivered。Product Backend crash 后按 branch 内原顺序恢复（`listIdleBranchesWithPendingInputs` 在启动时恢复）。
@@ -108,6 +115,7 @@ Product Backend 不允许同一 branch 并行 Agent Run。新输入根据语义�
 | terminal commit 事务失败 | Run 进入 commit_failed；幂等重试，成功前不释放 branch |
 | Live Updates 推送失败 | 不影响事实；客户端从 Conversation History 恢复 |
 | Product Tool 失败 | 返回标准化 tool result；按语义决定是否写 Agent Context |
+| workflow 节点失败 | 逐节点记录；execution 以 failure 终态（agent 节点先 schema retry） |
 
 ## 不变量
 
@@ -119,10 +127,12 @@ Product Backend 不允许同一 branch 并行 Agent Run。新输入根据语义�
 6. History Message 与 Context ref 必须原子提交。
 7. 每个 Run 是 full Product Context projection，无跨 Run session/resume。
 8. child 私有能力不能污染核心产品协议。
+9. Workflow 是编排身份，不承载对话事实；Artifact 引用在节点边界校验存在性。
 
 ## 关联页面
 
 - [系统总览](../system-overview.md)
+- [Agentic Workflow](../workflow.md)
 - [Agent Context](../agents/context.md)
 - [Agent Backend](../execution/agent-backend.md)
 - [Conversation History](../conversation/history.md)

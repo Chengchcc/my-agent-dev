@@ -3,10 +3,10 @@
     {
       "id": "architecture.index",
       "title": "架构 Wiki 首页",
-      "status": "design",
+      "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/README.md",
-      "summary": "当前架构入口：Product Backend → Agent Run → 一次性 oma 子进程 → BackendRunOutcome → terminal commit。",
+      "summary": "当前架构入口：四 Agent Backend（oma/claude/pi/omp）按 Run spawn 一次性子进程；Workflow 节点图承载自动化；Agent 配置住在工作区文件。",
       "depends_on": [],
       "used_by": []
     },
@@ -16,14 +16,25 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/system-overview.md",
-      "summary": "Product Backend 拥有产品事实；Agent Backend 为每个 Run spawn 一次性 oma 子进程；BackendRunOutcome 是唯一终态。",
-      "depends_on": [],
+      "summary": "Product Backend 拥有产品事实；四后端为每个 Run spawn 一次性子进程；BackendRunOutcome 唯一终态；Workflow/Artifact 承载自动化与产物。",
+      "depends_on": ["foundations.facts-and-projections"],
       "used_by": [
         "backend.overview",
+        "architecture.workflow",
         "execution.oma-backend",
         "agents.context",
         "flows.e2e-web-message"
       ]
+    },
+    {
+      "id": "architecture.workflow",
+      "title": "Agentic Workflow",
+      "status": "current",
+      "owners": "architecture",
+      "path": "docs/architecture/workflow.md",
+      "summary": "声明式节点图编排：start/end/agent/script/human + JSON-Logic 边 + cron 触发；agent 节点派发 Agent Run，script 节点进沙箱，human 节点挂 Web 表单；Artifact 是带类型产物。",
+      "depends_on": ["architecture.system-overview", "backend.overview"],
+      "used_by": ["surfaces.web"]
     },
     {
       "id": "backend.overview",
@@ -31,19 +42,54 @@
       "status": "current",
       "owners": "backend-runtime",
       "path": "docs/architecture/backend/overview.md",
-      "summary": "Product Backend 拥有 Conversation History、Agent Context、Agent Run、输入队列与 Product Tools；执行由一次性 oma 子进程完成。",
+      "summary": "Product Backend 拥有 Conversation History、Agent Context、Agent Run、Workflow、Artifact 与 Product Tools MCP；执行由四后端之一的一次性子进程完成。",
       "depends_on": ["architecture.system-overview"],
-      "used_by": ["backend.data-model", "execution.oma-backend", "agents.context"]
+      "used_by": [
+        "backend.data-model",
+        "architecture.workflow",
+        "execution.oma-backend",
+        "agents.context"
+      ]
     },
     {
       "id": "agents.context",
       "title": "Agent Context",
-      "status": "design",
+      "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/agents/context.md",
-      "summary": "每个 Conversation Agent Member 实际知道什么；保存共享 Message 引用、私有语义、Product Tool 结果、summary 和 Context Branch。",
+      "summary": "单 Agent 实际知道什么；保存共享 Message 引用、私有语义、Product Tool 结果、summary 和 Context Branch。",
       "depends_on": ["conversation.history"],
       "used_by": ["architecture.system-overview", "execution.oma-backend", "flows.e2e-web-message"]
+    },
+    {
+      "id": "agents.workspace-and-backends",
+      "title": "Agent 工作区与多后端",
+      "status": "current",
+      "owners": "architecture",
+      "path": "docs/architecture/agents/workspace-and-backends.md",
+      "summary": "Agent 配置 = 工作区文件（agent.yml/SOUL/USER/.mcp.json）；Workspace Bridge 幂等桥接；四后端原生 session 续接（cliSessionRef）。",
+      "depends_on": ["architecture.system-overview"],
+      "used_by": ["runtime.oma"]
+    },
+    {
+      "id": "agents.projects-and-worktrees",
+      "title": "Project 与 Worktree",
+      "status": "current",
+      "owners": "architecture",
+      "path": "docs/architecture/agents/projects-and-worktrees.md",
+      "summary": "Project 是仓库级实体；每 (agent, project) 物化 git worktree；project 绑定 conversation 的 Run 在 worktree 里跑；per-worktree 锁串行化 run dispatch/clean-start/detach。",
+      "depends_on": ["agents.workspace-and-backends"],
+      "used_by": ["backend.overview"]
+    },
+    {
+      "id": "plugins.oma-plugins",
+      "title": "Oma 插件与 HITL",
+      "status": "current",
+      "owners": "architecture",
+      "path": "docs/architecture/plugins/oma-plugins.md",
+      "summary": "插件系统：多源 manifest + 冲突矩阵、native import 代码加载、sha256 信任矩阵、scope×mode（RPC 永不加载 project-scope 代码）、marketplace；HITL 审批链 + permissionMode + 超时 fail-closed。",
+      "depends_on": ["runtime.oma", "agents.workspace-and-backends"],
+      "used_by": ["architecture.workflow"]
     },
     {
       "id": "execution.oma-backend",
@@ -51,24 +97,24 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/execution/agent-backend.md",
-      "summary": "AgentBackend 协议（execute/steer/abort）与 OmaBackend 实现：每个 Run spawn 一次性 oma 子进程，stdin/stdout JSONL，BackendRunOutcome 唯一终态。",
+      "summary": "AgentBackend 协议（execute/steer/abort/resolve_approval）与四个 adapter 实现：每个 Run spawn 一次性子进程，BackendRunOutcome 唯一终态。",
       "depends_on": ["agents.context"],
       "used_by": ["architecture.system-overview", "backend.overview", "flows.e2e-web-message"]
     },
     {
       "id": "conversation.history",
       "title": "Conversation History",
-      "status": "design",
+      "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/conversation/history.md",
-      "summary": "所有成员共享的 Conversation 事实；人类和 Agent 最终 Message 都进入 History，Agent Context 保存稳定引用。",
+      "summary": "对话的共享会话事实（单 Agent，ADR 0021）；人类和 Agent 最终 Message 都进入 History，Agent Context 保存稳定引用。",
       "depends_on": [],
       "used_by": ["agents.context", "runs.output-and-live-updates", "surfaces.web", "surfaces.lark"]
     },
     {
       "id": "runs.output-and-live-updates",
       "title": "Agent Run 输出与实时更新",
-      "status": "design",
+      "status": "current",
       "owners": "backend-runtime",
       "path": "docs/architecture/runs/output-and-live-updates.md",
       "summary": "Agent Backend 产生 Live Updates 与 outcome；只有 terminal outcome 才原子提交 History Message 与 Agent Context。",
@@ -77,18 +123,18 @@
     },
     {
       "id": "backend.data-model",
-      "title": "目标数据模型",
+      "title": "数据模型",
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/backend/data-model.md",
-      "summary": "conversation_ledger 与 agent_context_* 是产品事实，agent_run + branch_input_queue + product_tool_call 是执行控制面；无 span/attempt/session。",
+      "summary": "conversation_ledger 与 agent_context_* 是产品事实，agent_run + branch_input_queue + product_tool_call 是执行控制面，workflow_* 是编排层；无 span/attempt/session/loop/cron。",
       "depends_on": ["agents.context"],
       "used_by": ["backend.overview", "runs.output-and-live-updates"]
     },
     {
       "id": "flows.e2e-web-message",
       "title": "Web 消息端到端",
-      "status": "design",
+      "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/flows/e2e-web-message.md",
       "summary": "Web 消息从 Conversation History、Agent Context、Agent Run 到 final Message commit 的完整路径。",
@@ -106,7 +152,7 @@
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/surfaces/web.md",
-      "summary": "浏览器对话与运行界面，消费 Conversation History 与 Live Updates，不拥有持久事实。",
+      "summary": "浏览器对话、Workflow 编辑与运行界面，消费 Conversation History 与 Live Updates，不拥有持久事实。",
       "depends_on": ["conversation.history", "runs.output-and-live-updates"],
       "used_by": ["flows.e2e-web-message"]
     },
@@ -121,64 +167,24 @@
       "used_by": []
     },
     {
-      "id": "foundations.cron-job",
-      "title": "CronJob",
+      "id": "foundations.dependency-injection",
+      "title": "依赖注入",
       "status": "current",
       "owners": "architecture",
-      "path": "docs/architecture/foundations/cron-job.md",
-      "summary": "定时触发 Agent 工作的产品实体；目标架构中通过 Agent Runs 选择 Context Branch 和 Agent Backend。",
-      "depends_on": [],
-      "used_by": []
-    },
-    {
-      "id": "foundations.loop",
-      "title": "Loop",
-      "status": "design",
-      "owners": "architecture",
-      "path": "docs/architecture/foundations/loop.md",
-      "summary": "跨 Agent Run 的自动化控制循环，通过 Context Branch 和 Agent Runs 调用可替换 Agent Backend。",
-      "depends_on": [],
-      "used_by": []
+      "path": "docs/architecture/foundations/dependency-injection.md",
+      "summary": "依赖注入手法与判断准则：组合根（bootstrap/features.ts）、feature 工厂、函数式策略、注册表分派。",
+      "depends_on": ["design-philosophy"],
+      "used_by": ["backend.overview", "runtime.oma"]
     },
     {
       "id": "runtime.oma",
-      "title": "Oma",
+      "title": "Oma Runtime",
       "status": "current",
       "owners": "architecture",
       "path": "docs/architecture/runtime/oma.md",
-      "summary": "无 UI 的一次性 CLI 执行引擎（print/json/rpc），由 Adapter 按 Run spawn；子进程内 per-Run Runtime（packages/agent）跑完产出 BackendRunOutcome 后退出。",
+      "summary": "CLI 执行引擎（print/json/rpc 一次性 + TUI 交互终端），Adapter 按 Run spawn 其 rpc 模式；per-Run Runtime：model/tool loop、in-memory SessionStore、compaction、todo、skill 渐进加载、插件与 HITL。",
       "depends_on": ["execution.oma-backend"],
-      "used_by": ["runtime.oma-session", "runtime.oma-prompt", "runtime.oma-models"]
-    },
-    {
-      "id": "runtime.oma-session",
-      "title": "Oma Session",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/runtime/coding-agent-session.md",
-      "summary": "Runtime 的 SessionStore 是 per-Run、in-memory 执行缓存：seed full Product history + meta + input，Run 结束销毁；无 SQLite session、无 worker、无跨 Run 恢复。",
-      "depends_on": ["runtime.oma"],
-      "used_by": ["runtime.oma-prompt"]
-    },
-    {
-      "id": "runtime.oma-prompt",
-      "title": "Oma Prompt 与 Context",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/runtime/coding-agent-prompt.md",
-      "summary": "每个 Run 使用 Run 快照冻结的 systemPrompt + Meta User Message + 真实 Prompt，随 full Product history seed 进 SessionStore。",
-      "depends_on": ["runtime.oma", "runtime.oma-session"],
-      "used_by": []
-    },
-    {
-      "id": "runtime.oma-models",
-      "title": "Oma Provider 与 ModelRuntime",
-      "status": "current",
-      "owners": "architecture",
-      "path": "docs/architecture/runtime/coding-agent-models.md",
-      "summary": "模型系统由 packages/ai（Provider 注册制 + ModelRuntime）提供；Product Backend 只保存 BackendModelRef，子进程内解析并 stream。",
-      "depends_on": ["runtime.oma"],
-      "used_by": ["runtime.oma-prompt"]
+      "used_by": ["agents.context", "architecture.workflow"]
     }
   ]
 }

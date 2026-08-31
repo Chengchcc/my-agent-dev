@@ -125,15 +125,19 @@ product_tool_call
 
 语义变更类 Product Tool（如 history_retain）的幂等与审计。replay 返回存储结果，冲突输入失败。
 
-### PendingAction / Loop / 其余
+### 其余实体表
 
-- `pending_action`：审批/问答等待响应（Product-side 记录，Run 协议本身只有四个终态）。
-- `loop_item` / `loop_budget`：Loop 状态机持久化。
-- `skill_pack` / `agent_skill_pack`：Skill Pack 与 Agent 分配。
-- `surface_health`：Lark 心跳等 audit（RuntimeOpsStore 唯一职责）。
-- `settings`、`cron_job`、`project`、`mcp_server`、`agent_relationship`：各自领域。
+- `workflow_execution` / `workflow_node_run` / `workflow_execution_event` / `workflow_pending_human`：Workflow 编排层身份（definition 冻结、节点运行与路由、事件流、human 挂起）
+- `agent_run_event`：Run 级事件持久化（可选 audit）
+- `pending_action`：审批/问答等待响应（Product-side 记录，Run 协议本身只有四个终态）
+- `skill_pack` / `agent_skill_pack`：Skill Pack 与 Agent 分配
+- `knowledge_pack`：知识库安装记录
+- `agents` / `conversation` / `project`：实体锚点（agent 配置以工作区 agent.yml 为真源，DB 只存缓存）
+- `settings`、`surface_health`：KV 与 Lark 心跳等 audit
 
-**已删除**（Phase 6，迁移 0020）：`span`、`attempt`、`control_plane_event`、`span_origin`。旧 audit 行直接丢弃，不转换。Agent Run 与 Product Tool Call 已提供当前事实；没有新的 audit 表。
+**不是表**：Artifact 走 fs 存储（`features/artifact`，无 SQLite 表）；MCP server 目录走文件（`features/mcp/adapter-file.ts`，非 DB 行）。
+
+**已删除**：`span` / `attempt` / `control_plane_event` / `span_origin`（Phase 6，迁移 0020）；`loop_item` / `loop_budget`（Loop 删除，迁移 0043）；`cron_job`（CronJob 删除，迁移 0042）；`agent_relationship`（迁移 0026）。
 
 ## 哪些写入必须在同一事务
 

@@ -1,9 +1,9 @@
 ---
 id: conversation.history
 title: Conversation History
-status: design
+status: current
 owners: architecture
-summary: "Conversation History 是所有成员共享的会话事实。人类和 Agent 的最终可见 Message 都进入 History；每个 Agent Member 的 Agent Context 保存其实际消费的稳定 Message 引用。"
+summary: "Conversation History 是对话的共享会话事实。人类和 Agent 的最终可见 Message 都进入 History；Agent Context 保存 Agent 实际消费的稳定 Message 引用（1:1 单 Agent，ADR 0021）。"
 depends_on:
 used_by:
   - agents.context
@@ -17,7 +17,7 @@ used_by:
 Conversation History 回答一个问题：
 
 ```text
-这场 Conversation 中，所有成员共同发生了什么？
+这场 Conversation 中发生了什么？
 ```
 
 它保存共享 Message 和明确的 Conversation 事件。Web、Lark 和 API 从 History 恢复用户可见内容；Agent Backend 的私有 session、thinking 或 Live Updates 不能替代它。
@@ -39,9 +39,7 @@ History 不保存：
 - process 状态；
 - Agent Backend 私有 transcript。
 
-## 与 Agent Context 的关系
-
-Conversation History 保存共享 Message 的唯一身份和内容。Agent Context 不复制 Message，只保存稳定引用，表达某个 Agent 在某条 Context Branch 上实际消费了哪些共享历史。
+Conversation History 保存共享 Message 的唯一身份和内容。Agent Context 不复制 Message，只保存稳定引用，表达这个 Agent 在某条 Context Branch 上实际消费了哪些共享历史。
 
 内部可以使用顺序号和 append-only table 实现这个引用关系，但这些字段不是公开领域概念。
 
@@ -49,9 +47,9 @@ Conversation History 保存共享 Message 的唯一身份和内容。Agent Conte
 
 人类 Message 写入 Conversation History 后立即对端可见。它不会立刻进入所有 Agent Context。
 
-某个 Agent 被触发时，Product Backend 根据成员可见性、addressedTo、mention、trigger mode 和 context budget，选择这个 Agent 实际消费的 Message refs，并追加到当前 Context Branch。
+Agent 被触发时，Product Backend 根据可见性、addressedTo、mention、trigger mode 和 context budget，选择这个 Agent 实际消费的 Message refs，并追加到当前 Context Branch。
 
-未触发的 Agent 不积累无关 History。
+未触发的消息不积累无关 History。
 
 ## Agent Message
 

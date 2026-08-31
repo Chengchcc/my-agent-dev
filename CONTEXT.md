@@ -10,7 +10,6 @@
 
 团队级 Agent 运行时：每个 Agent 一个文件即配置的工作区，运行时可在 oma（自研）/
 claude / pi / omp 四后端间切换；对话在 Web + 飞书双端实时同步；自动化由声明式
-Agentic Workflow（agent/script/human 节点图 + Artifact 传递 + cron 触发）承载。
 Product Backend 按 Run 调度一次性 child 进程，账本唯一、终态原子、所有端一致。
 
 ## 领域语言（必背词汇）
@@ -29,7 +28,7 @@ Product Backend 按 Run 调度一次性 child 进程，账本唯一、终态原�
 | **Agent Run** | branch 上的持久产品执行；**唯一执行身份**（agent_run 表） | 不是 span/attempt/session（已删除） |
 | **branch_input_queue** | normal/steer/follow_up 输入的持久队列；每行携带 request-time 配置快照 | 不是内存队列 |
 | **BackendRunOutcome** | child 的唯一终态结果：completed/failed/aborted/timeout | 不是事件流（事件永不决定终态） |
-| **Oma** | 无 UI 的一次性 CLI（print/json/rpc + 交互 TUI），被 Adapter 按 Run spawn | 不是 daemon（无常驻进程） |
+| **Oma** | CLI 执行引擎：print/json/rpc 一次性模式（Adapter 按 Run spawn 的是 rpc）+ 交互 TUI | 不是 daemon（无常驻进程） |
 | **Adapter（agent-contract）** | spawn child、stdin/stdout JSONL、steer/abort/resolve_approval、并发上限、event/outcome 映射 | 不是执行引擎 |
 | **Workflow** | 声明式节点图 DSL（`@chengchenccc/workflow` 纯域层）：start/end/agent/script/human 节点 + 带条件的边 + cron 触发；文件态 `*.workflow.json` | 不是 Loop（已删）、不是 oma 脚本式 workflow executor |
 | **Workflow Execution** | 一次 workflow 运行的持久实例（execution/node_run/pending_human 三表；SSE live + replay；可 cancel） | 不是 Agent Run（agent 节点才创建 Agent Run） |
@@ -223,10 +222,10 @@ cd apps/backend && bun run db:check:backend   # drizzle schema/migration 校验
 - 自食知识包：`knowledge-packs/my-agent-team/`
 - 项目 Insight（证据驱动的「为什么+行动」）：`docs/insights.md` — 与本文件（现状）、`docs/future-work.md`（待办）三层分工
 
-## Tombstones（历史概念，勿引用）
+## 已删除概念（勿引用；文档页已删，历史见 ADR + git）
 
-- **Loop / CronJob / STATE.md / INBOX.md 状态机 / loop-generator / loop-verifier / Loop Doctor** — 功能整体删除，由 Workflow DSL + trigger-scheduler 承接；残留仅 schema 表与 db fixture
-- **独立 plugin 包**（plugin-todo / progressive-skill / recap / pet / fs-memory）— 已吸收进 oma core 或删除；recap_update / pet_bark 事件不存在
+- **Loop / CronJob / STATE.md / INBOX.md 状态机 / loop-generator / loop-verifier / Loop Doctor** — 功能整体删除（d35e7dd6），由 Workflow DSL + trigger-scheduler 承接
+- **独立 plugin 包**（plugin-todo / recap / pet / fs-memory）— 已吸收进 oma core 或删除；recap_update / pet_bark 事件不存在
 - **packages/core / agent / agent-backend / loop / conversation / tools-common** — 并入 message / oma core / agent-contract / backend features / oma tools
-- `runtime/framework.md`、`runtime/context-manager.md`、`runtime/plugin.md`、`harness/harness.md`、`backend/event-log.md` — 文档墓碑
+- **多成员对话模型（roster/@提及/wake routing）** — ADR 0021 收编为单 Agent；文档页已删
 - **PluginTool.kind（native/product 分型）** — 错误抽象已删；工具事件统一 `native_tool_started/completed`，backend 对 oma 透明

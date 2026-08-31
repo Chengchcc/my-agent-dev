@@ -23,13 +23,12 @@ Product Backend
 → atomic Product terminal commit
 ```
 
-## 推荐阅读顺序
-
 1. [系统总览](./system-overview.md):产品事实、Agent Run 与执行链的全景。
 2. [Agent 工作区与多后端](./agents/workspace-and-backends.md):文件即配置、四后端、session 投影(现行模型入口)。
-3. [Conversation History](./conversation/history.md):Conversation 共同发生了什么。
-4. [Agent Context](./agents/context.md):每个 Agent 实际知道什么,以及如何 branch。
-5. [Agent Backend](./execution/agent-backend.md):Agent Run 如何交给子进程。
+3. [Agentic Workflow](./workflow.md):声明式节点图、Artifact、trigger 调度。
+4. [Conversation History](./conversation/history.md):Conversation 共同发生了什么。
+5. [Agent Context](./agents/context.md):每个 Agent 实际知道什么,以及如何 branch。
+6. [Agent Backend](./execution/agent-backend.md):Agent Run 如何交给子进程。
 
 ## 按主题查找
 
@@ -52,21 +51,18 @@ Product Backend
 
 1. [Agent 工作区与多后端](./agents/workspace-and-backends.md)
 2. [Agent Backend](./execution/agent-backend.md)
-3. [Oma](./runtime/oma.md)
-4. [Oma Session](./runtime/coding-agent-session.md)
-5. [Oma Prompt 与 Context](./runtime/coding-agent-prompt.md)
-6. [Oma Provider 与 ModelRuntime](./runtime/coding-agent-models.md)
+3. [Oma Runtime](./runtime/oma.md)
+4. [Oma 插件与 HITL](./plugins/oma-plugins.md)
 
-### Task / Cron / Loop
+### Workflow / Artifact
 
-这些产品能力创建 Agent Run,不直接依赖子进程内部实现:
+声明式节点图编排(agent/script/human 节点 + JSON-Logic 边 + cron 触发)与带类型产物:
 
-1. [CronJob](./foundations/cron-job.md)
+1. [Agentic Workflow](./workflow.md)
+2. [数据模型](./backend/data-model.md)
 
 ## 核心概念
 
-| 术语 | 含义 |
-|---|---|
 | Agent | 身份、角色、Memory、Skills、默认 Model 与 workspace(全部为工作区文件) |
 | Conversation | 单一 Agent 的 session 产品态投影(ADR 0021) |
 | Message | 人类或 Agent 产生的唯一消息领域对象 |
@@ -75,9 +71,11 @@ Product Backend
 | Context Branch | Agent Context 中一条可 fork/rollback 的历史路径 |
 | Agent Run | Context Branch 上的一次持久产品执行(唯一执行身份) |
 | Agent Backend | 执行 Agent Run 的引擎边界(四个实现:oma / claude / pi / omp) |
+| Workflow | 声明式节点图编排:agent/script/human + cron 触发;execution 是编排层身份 |
+| Artifact | 带类型产物(artifacts:// 引用),节点间与聊天中可传递 |
 | Workspace Bridge | 把 skill/mcp/product-tools 幂等桥接进工作区文件的后端机制 |
-| Product Tool | Conversation History、审批等产品能力 |
-| Oma | 本仓库自研、无 UI 的一次性 CLI 执行引擎 |
+| Product Tool | Conversation History、todo 等产品能力(MCP server + per-run token) |
+| Oma | 本仓库自研 CLI 执行引擎:print/json/rpc 一次性模式(Adapter spawn rpc) + TUI 交互终端 |
 
 ## 设计约束
 
@@ -104,4 +102,4 @@ Agent Backend 为每个 Run spawn 一次性子进程,按 kind 选实现。
 
 1. 主 Wiki 只描述当前架构;历史迁移、旧包名和临时兼容路径放 ADR/plan,不放主叙述。
 2. 每篇页面必须独立定义必要上下文。
-3. 已删除的概念(span/attempt/session/daemon/checkpointer/Pet/Recap/relationships)只以 tombstone 或历史 ADR 形式出现。
+3. 已删除的概念(span/attempt/session/daemon/checkpointer/Pet/Recap/relationships/多成员/Loop/CronJob)**不保留文档页**——直接删除文档,历史见 `docs/adr/` 与 git 记录。

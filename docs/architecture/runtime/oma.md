@@ -1,79 +1,110 @@
 ---
 id: runtime.oma
-title: Oma
+title: Oma Runtime
 status: current
 owners: architecture
-summary: "oma 是无 UI 的 CLI 执行引擎（print/json/rpc 三种模式），由 Adapter 按 Run spawn 一次性子进程。子进程内 createOmaRuntime() 构造 per-Run Runtime（packages/agent），跑完产出 BackendRunOutcome 后自行退出。"
+summary: "oma 是 CLI 执行引擎（四种模式：print/json/rpc 一次性 + TUI 交互终端），由 Adapter 按 Run spawn 其 rpc 模式。子进程内 createOmaRuntime() 构造 per-Run Runtime：model/tool loop、in-memory SessionStore、compaction、todo、skill 渐进加载、插件加载与信任、HITL 审批。Run 级 systemPrompt/skillRoots 冻结，Meta+Prompt+full projection 三条 user 消息 seed。"
 depends_on:
-  - execution.oma-backend
+  - execution.agent-backend
 used_by:
-  - runtime.oma-session
-  - runtime.oma-prompt
-  - runtime.oma-models
+  - agents.context
+  - architecture.workflow
 ---
 
-# Oma
+# Oma Runtime
 
-`apps/oh-my-agent` 是当前唯一的 Agent 执行引擎：一个无 UI 的 CLI，被 Product Backend 的 Adapter 按 **每个 Agent Run** spawn 一次。
-
-```text
-Product Backend
-  → Adapter (packages/adapter-oma-agent)
-      → spawn oma --mode rpc
-          → createOmaRuntime()：per-Run Runtime
-              → model/tool loop（packages/agent）
-              → BackendRunOutcome → stdout → exit
+`apps/oh-my-agent` 是自研执行引擎：一个 CLI，四种模式。Product Backend 的 Adapter 按**每个 Agent Run** spawn 其 **rpc 模式**（非交互，stdin/stdout JSONL）；`print`/`json` 同样是一次性模式；**TUI 是面向人的交互式终端**（独立启动，不是 backend 的执行路径）。
+Product Backend → Adapter (packages/adapter-oma-agent)
+  → spawn oma --mode rpc
+    → createOmaRuntime(): per-Run Runtime
+      → model/tool loop（core/runtime/agent-loop.ts）
+      → BackendRunOutcome → stdout → exit
 ```
 
-**不是 daemon**：没有常驻进程、没有 session supervisor、没有 worker pool。一个 Run = 一个子进程 = 一个 Runtime = 一个 outcome。
+**不是 daemon**：无常驻进程、无 worker pool。一个 Run = 一个子进程 = 一个 Runtime = 一个 outcome。
 
 ## CLI 模式
 
 | 模式 | 用途 |
 |---|---|
-| `print` | 一次 Run；stdout 只有 final assistant text；stderr 日志；非零退出码表示失败 |
+| `print` | 一次 Run；stdout 只有 final assistant text |
 | `json` | 一次 Run；stdout 全部事件 JSONL + 恰好一个 terminal outcome 行 |
-| `rpc` | 每 Run 一次 execute + 可选的 steer/abort 命令；命令走 stdin，event/outcome/response 走 stdout |
+| `rpc` | 每 Run 一次 execute + 可选 steer/abort/resolve_approval；stdin 命令、stdout event/outcome/response |
+| TUI | 交互式终端（ESC-ESC 面板、branch-tree、模型选择持久化到 `.oma/settings.json`） |
 
-`--mode rpc` 是 Adapter 使用的模式：严格 LF JSONL 帧，stdout 只承载协议，stderr 只做日志。
+`rpc` 是 Adapter 使用的模式：严格 LF JSONL 帧，stdout 只承载协议。
 
-## per-Run Runtime
+## per-Run 状态：in-memory SessionStore
 
-`createOmaRuntime()`（`src/core/create-runtime.ts`）构造一个 Runtime = 一个 Run：
+Runtime 状态是 **per-Run、in-memory** 的执行缓存（`core/persistence/`），不是产品历史：
 
-- `run(input)` 返回唯一 segment；其 `outcome` 是 Run 的唯一终态；
-- `steer(input)` 注入 live loop；`stop()` 中止它；
-- `close()` 拆除 MCP clients 与 SessionStore。
+```text
+Agent Context  = canonical product context（跨 Run 持久、可 fork/rollback）
+SessionStore   = 单次 Run 执行缓存（messages + todo + compaction 摘要）
+                 子进程退出即销毁；下个 Run 重新 seed full projection
+```
 
-Runtime 内部由 `packages/agent` 提供：OmaSession（模型/工具循环、retry、compaction、beforeModel 插件、todo）与 in-memory SessionStore。SessionStore 在 seed 时把 **full Product history + meta + input** 原子写入，loop 从完整投影开始，Run 结束即销毁 —— 无跨 Run 状态。
+`sessionId = runId`；seed 时原子 appendBatch：
+
+```text
+full Product history（projected entries，带 productEntryId）
++ Meta User Message（source=meta）
++ Actual Prompt（source=prompt）
+→ Agent Loop 在 session 上跑 → outcome 后 close() 销毁
+```
+
+- 同 Run 内 retry 复用同一 session（input batch 不重复追加）；steer 追加 `source=steer` 消息；follow-up 是**新 Run**（新子进程 + 新 session + 新 full seed）
+- `productEntryId` 保证同一 canonical Message 在 Run 内幂等；compaction 写 `CompactionEntry`（summary + 覆盖范围），原始 entries 不删
+
+## 模型每次收到什么
+
+```text
+System Prompt   不写 SessionStore（来自 agent_run.system_prompt 冻结快照）
+Meta User Message  写 SessionStore，source=meta（Runtime Context: 日期/workspace/
+                  Memory 摘要索引/skill index/branch 上下文/todo reminder）
+Actual Prompt   写 SessionStore，source=prompt
+Full history    写 SessionStore，source=product_history
+```
+
+- systemPrompt/skillRoots 是 Run 创建时冻结的快照；SOUL/规则变化从**下一个 Run** 生效
+- 每 Run 恰好一条 Meta；retry/steer 不重新渲染 Meta；follow-up 重新读取最新快照
+- skills 渐进加载：Meta 只注入 `skillRoots` 扫描出的名称/描述/加载规则，`skill_load` 按需读 `SKILL.md` 正文
+
+## 模型系统（packages/ai）
+
+- Provider 注册制 + Model 元数据（cost/contextWindow/maxTokens）+ `createModelRuntime()` 统一解析与 stream
+- Product Backend 只保存 `BackendModelRef { backendKind, modelId }`；凭证经 env 注入子进程，不进 SessionStore/事件/日志
+- Agent Loop 只自动 retry transient error（network/rate_limit/overload/5xx）；context overflow 触发 compaction recovery；auth/4xx 不盲目重试
+- 模型切换：Context Branch 的 `model_change` entry 决定下一个 Run 的 effective model；当前 Run 用冻结快照值
 
 ## Runtime 拥有什么
 
-- model/tool loop（`packages/agent/src/runtime/agent-loop.ts` 是唯一真实 loop）；
-- native tools（文件/Shell/搜索/glob/grep 等）；
-- retry（transient error 自动重试）；
-- compaction（token 预算内摘要，Run-local）；
-- Run-local todo（`todo` 工具）；
-- progressive skill loading（`packages/plugin-progressive-skill`，按 Run 冻结的 `skillRoots` 扫描 SKILL.md）；
-- stream rules（TTSR，吸收自 oh-my-pi）：`.oma/rules/*.md`（frontmatter `condition:` 正则）在 assistant 文本流上匹配；命中即中止本轮、丢弃部分输出、注入 `<system-reminder>` 用户消息后同轮重试（每规则默认每 Run 一次）。只匹配文本流——tool 参数原始 JSON 转义不可靠（pi 需要 per-tool matcherDigest 才做到）；
-- 工具失败 system reminder：失败 tool_result 的 content 前置 `<system-reminder>`（修因重试，勿装作成功）；in-band 使其随 canonical ledger 跨 Run 存留。`toolFailureReminder: false` 关闭。
+- model/tool loop（`core/runtime/agent-loop.ts` 唯一真实 loop）
+- native tools（read/write/edit/bash/grep/glob/web/eval——eval 走进程沙箱）+ MCP 工具挂载（mcp-mount 多源合并）
+- retry、compaction、Run-local todo
+- 插件系统：代码加载（native import）、信任矩阵（sha256 + trusted-plugins.json）、marketplace 多源 manifest（见 [Oma 插件与 HITL](../plugins/oma-plugins.md)）
+- HITL 审批管道：permissionMode（ask/deny/auto）门控工具；`approval_request` → `resolve_approval`，超时 fail-closed deny
+- stream rules（TTSR）：`.oma/rules/*.md` 在 assistant 文本流上匹配，命中即中止本轮、注入 `<system-reminder>` 后同轮重试
+- 工具失败 system reminder：失败 tool_result 前置 `<system-reminder>`（修因重试，勿装作成功）
 
 ## 事件与终态
 
-子进程把 Runtime 事件包装为 `RunEventEnvelope { id, type, data }` 发 stdout；Adapter 用契约包（`@chengchenccc/agent-backend`）的 `mapRunEvent` / `mapRunOutcome` 映射为 `BackendEvent` / `BackendRunOutcome`（completed/failed/aborted/timeout）。outcome 是唯一终态权威。
+子进程把 Runtime 事件包装为 `RunEventEnvelope` 发 stdout；Adapter 用 `@chengchenccc/agent-contract` 的映射函数转 `BackendEvent` / `BackendRunOutcome`（completed/failed/aborted/timeout）。outcome 是唯一终态权威，事件流永不决定终态。
 
 ## 不变量
 
-1. Oma 不是 daemon；每次被 Adapter 按 Run spawn。
-2. 一个 Run 一个子进程一个 Runtime；child 在 outcome 后自行退出。
-3. Runtime 不访问 Product DB；输入只有 full projection + snapshot。
-4. runId 是唯一执行身份；子进程内无跨 Run session。
-5. stdout 只承载协议（rpc 模式），stderr 只做日志。
-6. Product Tool 的权限与事实归 Product Backend，child 只通过 MCP 调用。
+1. Oma 不是 daemon；每次被 Adapter 按 Run spawn
+2. 一个 Run 一个子进程一个 Runtime；child 在 outcome 后自行退出
+3. Runtime 不访问 Product DB；输入只有 full projection + snapshot
+4. runId 是唯一执行身份；SessionStore 不跨 Run
+5. stdout 只承载协议（rpc），stderr 只做日志
+6. 每 Run 恰好一条 Meta User Message；retry/steer 不重新渲染
+7. Product Tool 的权限与事实归 Product Backend，child 只经 MCP 调用
+8. 插件 project-scope 代码永不进 RPC 模式加载
 
 ## 关联页面
 
-- [Oma Session](./coding-agent-session.md)
-- [Oma Prompt 与 Context](./coding-agent-prompt.md)
-- [Oma Provider 与 ModelRuntime](./coding-agent-models.md)
+- [Oma 插件与 HITL](../plugins/oma-plugins.md)
 - [Agent Backend](../execution/agent-backend.md)
+- [Agent Context](../agents/context.md)
+- [Workflow](../workflow.md)

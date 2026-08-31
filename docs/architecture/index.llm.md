@@ -15,8 +15,9 @@
 ## 整体架构
 
 1. `system-overview.md`
-2. `foundations/facts-and-projections.md`
-3. `backend/overview.md`
+2. `workflow.md`
+3. `foundations/facts-and-projections.md`
+4. `backend/overview.md`
 
 ## 数据归属与历史
 
@@ -67,6 +68,14 @@ Product Backend 只依赖 AgentBackend 协议（execute/steer/abort），不依�
 
 Runtime 原生工具由子进程自己执行。History、审批等 Product Tool 由 Product Backend 执行，Product Tools MCP 是接入方式。
 
+## Workflow / Artifact
+
+1. `workflow.md`
+2. `backend/overview.md`
+
+关键结论：Workflow 是编排层身份（execution/node_run/pending_human），不是执行身份——agent 节点创建普通 Agent Run，script 节点走进程沙箱，human 节点挂起于 Web 表单。Artifact 是带类型产物（artifacts:// 引用），节点边界校验存在性。
+
+
 ## Web
 
 1. `flows/e2e-web-message.md`
@@ -82,15 +91,11 @@ Runtime 原生工具由子进程自己执行。History、审批等 Product Tool 
 ## 自研 Runtime
 
 1. `runtime/oma.md`
-2. `runtime/coding-agent-session.md`
-3. `runtime/coding-agent-prompt.md`
-4. `runtime/coding-agent-models.md`
+2. `plugins/oma-plugins.md`
+3. `runtime/compaction.md`
 
-Oma 是无 UI 的一次性 CLI（print/json/rpc），由 Adapter 按 Run spawn。其 in-memory SessionStore 是单次 Run 的执行缓存，不是 Agent Context。
+Oma 是 CLI 执行引擎（print/json/rpc 一次性 + TUI 交互终端），由 Adapter 按 Run spawn 其 rpc 模式。其 in-memory SessionStore 是单次 Run 的执行缓存，不是 Agent Context。插件系统与 HITL 见 `plugins/oma-plugins.md`。
 
-## Tombstones（历史概念）
-
-- `runtime/framework.md`、`runtime/context-manager.md`、`runtime/plugin.md`、`runtime/memory.md`、`harness/harness.md`、`backend/event-log.md`、`plugins/task-guard.md`、`plugins/fs-memory.md` —— 旧 daemon/session/plugin 架构的 tombstone,新设计不要引用。
 ## 结构化索引
 
-完整页面图谱见 `concepts.json`。
+完整页面图谱见 `concepts.json`。已删除概念（span/attempt/session/daemon/checkpointer/Pet/Recap/多成员/Loop/CronJob）不保留文档页——历史见 `docs/adr/` 与 git 记录。

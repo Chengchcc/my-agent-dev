@@ -70,11 +70,11 @@ Agent 可调用 `start_new_conversation` 工具请求开启新对话。Backend �
 |---|---|---|
 | 最终答案重复 | terminal revision 重放 / 去重未命中 | [飞书](../surfaces/lark.md) |
 | 流式输出不更新 | conversation SSE 断连 | [会话消息流](../runs/output-and-live-updates.md) |
-| Agent 没触发 | 绑定/成员/提及问题 | [对话与成员](../conversation/conversation-and-members.md) |
+| Agent 没触发 | 绑定/可见性/提及问题 | [Agent 工作区与多后端](../agents/workspace-and-backends.md) |
 
 ## 关联页面
 
 - [飞书](../surfaces/lark.md)
 - [会话消息流](../runs/output-and-live-updates.md)
-- [对话与成员](../conversation/conversation-and-members.md)
+- [Agent 工作区与多后端](../agents/workspace-and-backends.md)
 - [排障手册](../operations/troubleshooting.md)
