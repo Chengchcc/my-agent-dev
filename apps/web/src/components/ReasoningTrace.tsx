@@ -76,9 +76,12 @@ export function ReasoningTrace({
                 if (m.content.role === "tool") return null;
                 const text = extractText(m.content);
                 const blocks = m.content.blocks ?? [];
+                // text field is intentionally NOT rendered here — the ordered
+                // blocks carry every text fragment in its true position (and
+                // the field duplicates them, see Bug 1). extractText stays for
+                // msgCount / isConclusionMessage which read the field.
                 return (
                   <div key={m.id} className="flex flex-col gap-0.5">
-                    {text && <div className="px-1 py-0.5 text-[12px] text-(--body)">{text}</div>}
                     {blocks.map((b, bi) => {
                       if (b.type === "thinking") {
                         return (

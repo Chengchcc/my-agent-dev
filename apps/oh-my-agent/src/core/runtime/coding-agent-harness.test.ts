@@ -300,6 +300,45 @@ function testHarness(
       expect(toolResult?.message.blocks?.[0]?.tool_use_id).toBe("tc-1");
     });
 
+    test("5b. interleaved thinking/text collapses thinking to one block with one signature", async () => {
+      const store = storeFactory("h5b");
+      await createSession(store, "h5b");
+      const loop = createOmaSession({
+        sessionId: "h5b",
+        store,
+        plugins: [{ name: "test", tools: [echoTool()] }],
+        maxSteps: 5,
+        maxForceContinues: 0,
+        summarize: fakeSummarize,
+        modelStream: async function* () {
+          // thinking -> text -> thinking (interleaved), then a tool_use.
+          yield { delta: { type: "reasoning", text: "think one" } };
+          yield { delta: { type: "text", text: "say this" } };
+          yield { delta: { type: "reasoning", text: "think two" } };
+          yield { delta: { type: "tool_use", id: "tc-1", name: "echo" } };
+          yield { stopReason: "tool_use" };
+        },
+      });
+      await loop.startLoop(loopInput({ message: "run" }));
+      const snap = await store.open("h5b");
+      const assistant = snap.entries.find((e) => e.source === "assistant") as unknown as {
+        message: {
+          blocks?: Array<{ type: string; text?: string; signature?: string }>;
+        };
+      };
+      const blocks = assistant?.message.blocks ?? [];
+      const thinking = blocks.filter((b) => b.type === "thinking");
+      const texts = blocks.filter((b) => b.type === "text");
+      // Anthropic requires one <thinking> per assistant message: all thinking
+      // strands collapse into a single block carrying the one signature.
+      expect(thinking).toHaveLength(1);
+      expect(thinking[0]?.text).toContain("think one");
+      expect(texts.map((t) => t.text)).toEqual(["say this"]);
+      // The collapsed thinking block sits at the position of the FIRST
+      // thinking fragment (before the text), so the trace keeps the order.
+      expect(blocks[0]?.type).toBe("thinking");
+    });
+
     test("5a. unknown tool and throwing tool persist is_error on tool_result", async () => {
       const store = storeFactory("h5a");
       await createSession(store, "h5a");

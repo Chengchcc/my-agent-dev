@@ -567,23 +567,37 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                     role: "assistant",
                     // Keep any narrative text the model emitted alongside
                     // tool calls (DeepSeek interleaves thinking/text with
-                    // tool_use). The ordered blocks preserve the exact
-                    // interleave for the trace; toWireBlock replays them in
-                    // order.
+                    // tool_use). Text fragments preserve their order; thinking
+                    // fragments COLLAPSE into the single thinking block
+                    // (Anthropic requires one <thinking> per assistant message
+                    // with one signature) inserted at the position of the
+                    // first thinking fragment.
                     text: turn.text,
                     blocks: [
-                      ...turn.ordered.map((b) =>
-                        b.type === "thinking"
-                          ? {
-                              type: "thinking" as const,
-                              text: turn.thinkingRedacted ? "[reasoning redacted]" : b.text,
-                              ...(turn.thinkingSignature
-                                ? { signature: turn.thinkingSignature }
-                                : {}),
-                              ...(turn.thinkingRedacted ? { redacted: true } : {}),
+                      ...(() => {
+                        const collapsedThinking = {
+                          type: "thinking" as const,
+                          text: turn.thinkingRedacted ? "[reasoning redacted]" : turn.thinking,
+                          ...(turn.thinkingSignature ? { signature: turn.thinkingSignature } : {}),
+                          ...(turn.thinkingRedacted ? { redacted: true } : {}),
+                        };
+                        const out: Array<{ type: string; text: string }> = [];
+                        let thinkingInserted = false;
+                        for (const b of turn.ordered) {
+                          if (b.type === "thinking") {
+                            if (!thinkingInserted) {
+                              out.push(collapsedThinking);
+                              thinkingInserted = true;
                             }
-                          : b,
-                      ),
+                            continue;
+                          }
+                          out.push(b);
+                        }
+                        if (!thinkingInserted && turn.thinking) {
+                          out.push(collapsedThinking);
+                        }
+                        return out;
+                      })(),
                       ...turn.toolCalls.map((tc) => ({
                         type: "tool_use" as const,
                         id: tc.id,
