@@ -20,6 +20,9 @@ export interface WorkflowDefinitionRow {
   owner?: string;
   updatedBy?: string;
   updatedAt: number;
+  /** Parsed trigger declarations (cron); the list uses it for the
+   *  scheduled-label badge. API/manual triggers are implicit and absent. */
+  triggers?: { type: "cron"; cron: string; enabled?: boolean }[];
 }
 
 export function workflowRoutes(deps: {
@@ -46,6 +49,15 @@ export function workflowRoutes(deps: {
           meta = {};
         }
         const mtime = statSync(join(dir, f)).mtimeMs;
+        let triggers: WorkflowDefinitionRow["triggers"];
+        try {
+          const parsed = JSON.parse(readFileSync(join(dir, f), "utf-8")) as {
+            triggers?: { type: "cron"; cron: string; enabled?: boolean }[];
+          };
+          triggers = Array.isArray(parsed.triggers) ? parsed.triggers : undefined;
+        } catch {
+          triggers = undefined;
+        }
         return {
           workflowId,
           name: typeof meta.name === "string" ? meta.name : undefined,
@@ -55,6 +67,7 @@ export function workflowRoutes(deps: {
           owner: typeof meta.owner === "string" ? meta.owner : undefined,
           updatedBy: typeof meta.updatedBy === "string" ? meta.updatedBy : undefined,
           updatedAt: Math.round(mtime),
+          triggers,
         };
       });
       return { definitions };

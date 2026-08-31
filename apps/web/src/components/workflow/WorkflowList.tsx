@@ -33,6 +33,8 @@ type Row = {
     terminalAt?: number;
     error?: string;
   };
+  /** Cron trigger declarations (cron type only; API/manual are implicit). */
+  triggers?: Array<{ type: "cron"; cron: string; enabled?: boolean }>;
 };
 
 function defaultDraft(id: string) {
@@ -141,6 +143,11 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
                 <div className="text-xs text-muted-foreground">{d.description}</div>
               )}
               <div className="mt-1 flex flex-wrap gap-1">
+                {d.triggers?.some((t) => t.enabled !== false) && (
+                  <span className="rounded-md bg-(--primary)/10 px-1.5 py-0.5 text-[10px] text-(--primary)">
+                    ⏰ 定时 · {d.triggers.find((t) => t.enabled !== false)!.cron}
+                  </span>
+                )}
                 {d.tags?.map((t) => (
                   <span
                     key={t}

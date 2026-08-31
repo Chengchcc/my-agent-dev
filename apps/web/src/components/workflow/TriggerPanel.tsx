@@ -69,8 +69,11 @@ export function TriggerPanel({
   const preview = pendingCron ? nextCronRun(pendingCron) : null;
 
   function add() {
-    if (!pendingCron || triggers.some((t) => t.cron === pendingCron)) return;
-    setTriggers([...triggers, { type: "cron", cron: pendingCron }]);
+    if (!pendingCron) return;
+    if (triggers.some((t) => t.cron === pendingCron)) return;
+    // Only ONE cron trigger is meaningful — a workflow has a single
+    // schedule. Adding replaces the existing one (or sets the first).
+    setTriggers([{ type: "cron", cron: pendingCron }]);
     setCustom("");
   }
 
@@ -81,7 +84,7 @@ export function TriggerPanel({
   return (
     <div className="space-y-3 p-3">
       <div className="space-y-2 rounded-md border border-(--hairline) bg-(--canvas)/50 p-2">
-        <Label className="text-xs text-(--mute)">添加定时触发</Label>
+        <Label className="text-xs text-(--mute)">添加定时触发（可选，仅一个）</Label>
         <div className="flex gap-1">
           <Select value={mode} onValueChange={(v) => setMode((v ?? "daily") as Mode)}>
             <SelectTrigger className="h-8 w-28 border-(--hairline) bg-(--canvas) text-xs">
@@ -159,9 +162,29 @@ export function TriggerPanel({
           </div>
         )}
       </div>
-      {triggers.length === 0 && (
-        <p className="text-xs text-(--mute)">无定时触发。手动运行无需配置。</p>
-      )}
+      <div className="space-y-1 text-[11px] text-(--mute)">
+        <p className="flex items-center gap-1">
+          <span className="font-medium text-(--body)">手动</span>
+          <span>：画布或列表点 Run / 在 executions 页触发，无需配置。</span>
+        </p>
+        <p className="flex items-center gap-1">
+          <span className="font-medium text-(--body)">API</span>
+          <span>
+            ：POST
+            <code className="mx-1 rounded bg-(--panel2) px-1 font-mono text-[10px]">
+              /api/workflow-executions
+            </code>
+            传入
+            <code className="mx-1 rounded bg-(--panel2) px-1 font-mono text-[10px]">
+              {'{ workflowRef: { path: "<id>.workflow.json" }, input }'}
+            </code>
+            即可触发，无需声明。
+          </span>
+        </p>
+        {triggers.length === 0 && (
+          <p className="text-[10px]">未配置定时触发——手动/API 随时可用。</p>
+        )}
+      </div>
       {triggers.length > 0 && (
         <div className="space-y-1">
           {triggers.map((t, i) => (

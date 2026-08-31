@@ -428,7 +428,7 @@ export function AgenticWorkflowEditor({
                   [
                     ["attrs", "属性"],
                     ["palette", "节点"],
-                    ["triggers", "定时"],
+                    ["triggers", "触发器"],
                   ] as Array<[InspectorTab, string]>
                 ).map(([k, label]) => (
                   <button
