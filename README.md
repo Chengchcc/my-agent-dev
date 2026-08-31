@@ -23,7 +23,7 @@ my-agent-team 是一个**团队级 Agent 运行时**。每个 Agent 有独立的
 - **双端同步** — Web 控制台 + 飞书(Lark IM)Bot,同一条对话两边实时可见
 - **对话账本** — canonical conversation store(conversation_ledger),所有消息经单一入口写入,端只做渲染
 - **Agent Run 执行链** — 每个 Run 由 Agent Backend spawn 一次性子进程(stdin/stdout JSONL RPC),BackendRunOutcome 是唯一终态,terminal commit 原子写入 History + Context
-- **Loop 自动化** — 定时触发的 Agent 流水线:Generator → Evaluator → Human Gate,自动 triage、review、cleanup
+- **Agentic Workflow** — 声明式节点图（agent/script/human + 条件边 + cron 触发）：agent 节点派发 Agent Run、script 节点进程沙箱执行、human 节点 Web 表单；产物经 Artifact 在节点间流转，Web 可视化编排与调试
 - **Product Tools** — History 读写等产品能力由 Product Backend 统一执行(幂等 + 审计)
 - **SQLite 单文件存储** — backend.db,零运维部署
 
@@ -96,7 +96,7 @@ providers:
 | Layer | Components |
 |---|---|
 | Surfaces | Web console, Lark bot |
-| Product Backend | HTTP/SSE, ledger, Agent Context, Agent Run, input queue, Product Tools, workspace bridge, Loop scheduler |
+| Product Backend | HTTP/SSE, ledger, Agent Context, Agent Run, input queue, Product Tools, workspace bridge, workflow trigger scheduler |
 | Agent Backends | oma / claude / pi / omp adapters |
 | Oma child | per-Run runtime: model/tool loop, retry, compaction, todo, skills |
 | CLI backends | claude / pi / omp read cwd config and native session storage |
@@ -134,31 +134,29 @@ providers:
 
 ```
 apps/
-  backend/       Product Backend — HTTP/SSE、账本、Agent Context、Agent Run、Loop、Product Tools
-  oh-my-agent/  Oma CLI — print/json/rpc 模式，被 backend 按 Run spawn
+  backend/       Product Backend — HTTP/SSE、账本、Agent Context、Agent Run、Workflow、Artifact、Product Tools MCP、workspace bridge
+  oh-my-agent/   Oma CLI — print/json/rpc/TUI 模式，被 backend 按 Run spawn
   web/           Web 控制台 — Next.js 15 + shadcn/ui + React Query
   lark-bot/      飞书 Bot 适配器
 
-  core/                    协议层：Message 类型、ChatModel、Tool、stream-utils（无 run loop）
-  agent/                   Oma Runtime — 唯一真实 model/tool loop、插件、in-memory SessionStore
-  agent-backend/           Agent Backend 中立契约：BackendRunInput/Outcome/Event/Segment
-  adapter-oma-agent/    Adapter — spawn 自研 child、JSONL 读写、steer/abort、并发上限
-  adapter-claude-agent/    Adapter — spawn claude CLI（stream-json、--resume/--mcp-config）
-  adapter-pi-agent/        Adapter — spawn pi CLI（--session/--provider/--model）
-  adapter-omp-agent/       Adapter — spawn omp CLI（-r/--thinking）
-  ai/                      多 API Provider 架构（ADR 0018）：ApiImplementation 注册表 +
-                           createProvider 工厂 + fetchSSE 共享传输 + per-API compat 系统 +
-                           BUILTIN_CATALOG + parseCatalogYAML 运行时模型配置
-  loop/                    Loop 状态机（纯 reducer）
-  message/                 消息类型与 MessageRevision（assistantMessageId = run:<runId>:assistant:<n>）
-  conversation/            LedgerEntry codec（一个对话一个 Agent，见 ADR 0021）
-  tools-common/            通用工具：read/write/edit/bash/grep/glob
-  api-contract/            跨进程类型契约（SSE 事件、Eden Treaty）
-  config/                  配置加载
-  plugin-todo/             Run-local todo 跟踪（Oma 加载）
-  plugin-progressive-skill/ 渐进式技能加载（Oma 加载）
-  plugin-recap/            上下文超出时的回溯摘要（Oma 加载）
-  test-helpers/            测试工具（echoModel）
+packages/
+  message/             协议层：Message 类型、ChatModel、Tool、stream-utils（无 run loop）
+  agent-contract/      Agent Backend 中立契约：BackendRunInput/Outcome/Event/Segment
+  adapter-oma-agent/   Adapter — spawn 自研 child、JSONL 读写、steer/abort/approval、并发上限
+  adapter-claude-agent/ Adapter — spawn claude CLI（stream-json、--resume/--mcp-config）
+  adapter-pi-agent/    Adapter — spawn pi CLI（--session/--provider/--model）
+  adapter-omp-agent/   Adapter — spawn omp CLI（-r/--thinking）
+  adapter-mcp/         MCP client adapter — 外部 MCP server 接入
+  workflow/            Agentic Workflow DSL 纯域层（节点图、JSON-Logic、computeNext 引擎）
+  sandbox/             进程沙箱 — workflow script 节点 / oma eval 工具的隔离执行
+  ai/                  多 API Provider 架构（ADR 0018）：ApiImplementation 注册表 +
+                       createProvider 工厂 + fetchSSE 共享传输 + per-API compat 系统 +
+                       BUILTIN_CATALOG + parseCatalogYAML 运行时模型配置
+  source-fetch/        git/zip 源物化基座（oma marketplace 与 backend skill-pack 共用）
+  tui/                 终端 UI 工具箱（oma TUI 的 editor/markdown/mermaid 支撑）
+  api-contract/        跨进程类型契约（SSE 事件、Eden Treaty）
+  config/              配置加载
+  test-helpers/        测试工具（echoModel）
 ```
 
 ## 📖 文档
@@ -167,7 +165,7 @@ apps/
 |---|---|
 | [架构 Wiki](docs/architecture/README.md) | 入口，按「你想干什么」组织阅读路线 |
 | [系统总览](docs/architecture/system-overview.md) | 执行链 + 容器视图 + 不变量 |
-| [ADR 索引](docs/adr/README.md) | 全部决策记录（0001–0024，含状态标注） |
+| [ADR 索引](docs/adr/README.md) | 全部决策记录（0001–0026，含状态标注） |
 | [Provider 架构](docs/architecture/provider-architecture-spec.md) | 多 API Provider 设计规范（SOLID） |
 | [事实与投影](docs/architecture/foundations/facts-and-projections.md) | 数据模型的核心设计原则 |
 | [Agent Backend](docs/architecture/execution/agent-backend.md) | Agent Backend 协议与 child-process transport |

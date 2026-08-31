@@ -37,13 +37,13 @@ Every response has two parts:
 ```
 L5 Surfaces     Frontend web / IM bot - talk HTTP/SSE to backend
 L4 Backend      Multi-agent service (Elysia HTTP, auth, tenancy, runner pool)
-L3 Agent        createAgentSession() - composes model + tools + plugins + persistence ports + contextPipeline
-L2 Runtime      run() async generator - messages -> model stream -> tool execute -> loop
-L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock
+L3 Adapter      packages/adapter-* - child process boundary (spawn / JSONL RPC / steer / abort / approval)
+L2 Runtime      apps/oh-my-agent/src/core - createOmaSession(): model/tool loop, plugins, compaction, todo
+L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock / WorkflowDefinition (packages/message, agent-contract, workflow)
 
 **Package dependency graph:**
-- Leaves: `@chengchenccc/message`, `@chengchenccc/config`, `@chengchenccc/loop`
-- Core: `@chengchenccc/core` -> apps consume it directly
+- Leaves: `@chengchenccc/message`, `@chengchenccc/config`, `@chengchenccc/workflow`, `@chengchenccc/sandbox`, `@chengchenccc/source-fetch`, `@chengchenccc/tui`
+- Contracts: `@chengchenccc/agent-contract` (spawn-neutral `AgentBackend`; the 4 adapters implement it)
 - Plugins: 0 plugins as standalone packages; oma-native todo/progressive-skill live in `apps/oh-my-agent/src/core`
 - Apps: `@chengchenccc/backend` (consumes all), `@chengchenccc/web` (Next.js), `@chengchenccc/lark-bot`, `@chengchenccc/oh-my-agent` (oma CLI)
 
@@ -57,9 +57,10 @@ L1 Protocols    Type contracts: Message / ChatModel / Tool / ContentBlock
 | `apps/oh-my-agent/src/core/` | Oma runtime: `createOmaSession()` (agent-loop), plugins, compaction, persistence (absorbed packages/agent) |
 | `apps/backend/src/features/workflow/` | Agentic Workflow DSL engine: triggers, executions, human tasks |
 | `packages/ai/` | Provider + Model registry, AnthropicChatModel, model metadata |
-| `packages/tools-common/` | read/write/edit/bash/grep/glob/web tools |
+| `packages/workflow/` | Agentic Workflow DSL pure domain: node graph, JSON-Logic routing, computeNext engine |
+| `packages/sandbox/` | Process sandbox for workflow script nodes + oma eval tool |
 | `packages/test-helpers/` | `echoModel()` for deterministic test doubles |
-| `apps/oh-my-agent/src/core/` | Oma-native tools/plugins absorbed from the standalone plugin packages (todo, progressive-skill) |
+| `apps/oh-my-agent/src/core/tools/` | Oma-native tools: read/write/edit/bash/grep/glob/web/eval + MCP mount |
 | `apps/backend/` | Elysia server: all services, routes, workflow trigger scheduling |
 | `apps/web/` | Next.js 15 App Router: agents, conversations, workflow, ops, skill-packs |
 | `apps/lark-bot/` | Lark/Feishu IM bot integration |
@@ -84,7 +85,7 @@ cd apps/oh-my-agent && bun test --test-name-pattern="agent-loop"
 cd apps/backend && bun run typecheck
 ```
 
-**Per-package scripts:** Each package has `build`, `lint`, `test`, `typecheck` scripts (except `@chengchenccc/workflow` which has no build — source-only) for the workflow engine.
+**Per-package scripts:** Every package has `build`, `typecheck`, `test` scripts (lint coverage varies by package).
 
 ## Code Conventions & Common Patterns
 
@@ -139,13 +140,12 @@ interface PluginHooks {
 ### ChatModel is the only integration point
 Core has no LLM dependency. `ChatModel.stream(messages, opts?) → AsyncIterable<AIMessageChunk>` is the contract. Tests use `echoModel()` from `@chengchenccc/test-helpers`.
 
-### Loop System
-Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop orchestration** (workflow-first run dispatch, git rollback, budget tracking).
+### Workflow System
+Two layers: **packages/workflow** (pure domain: `WorkflowDefinition` DSL, `computeNext` engine, JSON-Logic routing, schema validation) + **apps/backend/src/features/workflow** (executions, node runs, human forms, trigger scheduler, SSE live stream).
 
-- `loopReducer(state, action, opts?) → state` — pure reducer in `packages/loop`
-- STATE.md / INBOX.md / LOOP.md — file formats with YAML frontmatter
-- `loopStep()` — workflow-first item execution (`apps/backend/src/features/loop/loop-step.ts`); verdicts come from workflow output (`verdictFromWorkflow`), never trusted empty
-- Per-loop write lock (`withLoopLock`) serializes cron + HTTP + review + doctor entry points
+- Node types: `start` / `end` / `agent` (dispatches an Agent Run; outputSchema-constrained) / `script` (runs in `@chengchenccc/sandbox`) / `human` (`waiting_human` + web form)
+- Routing is frozen into `CompletionRecord.routedTo` at node completion — never recomputed; join semantics = any-of
+- Triggers: cron via Bun.cron trigger-scheduler over `workflows/*.workflow.json`
 
 ### File Naming
 - Source: `*.ts`, tests: `*.test.ts` (beside source, no `__tests__` dirs)
@@ -155,8 +155,8 @@ Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop
 ### Error Handling
 - Backend: Elysia `.onError` handler translates `HttpError` + `NOT_FOUND` to JSON
 - Service layer: throw typed errors (`ProjectNotFoundError`, `ValidationError`)
-- Loop: errors catch and retry with backoff in scheduler's `fireLoop()`
-- Agent: `InterruptSignal` thrown from tool `execute()` pauses agent for human approval
+- Workflow: node failures are captured per node-run; the execution terminalizes as failure (cancel unwinds the drive loop)
+- Agent: `permissionMode="ask"` tools go through the approval pipeline (`approval_request` event → `resolve_approval`; timeout denies)
 
 ## Important Files
 
@@ -195,8 +195,8 @@ Two layers: **packages/loop** (pure state machine, no I/O) + **apps/backend loop
 - **Framework:** `bun:test` (`describe`/`test`/`expect`)
 - **Location:** `*.test.ts` files beside source
 - **Model mocking:** Define scripted `ChatModel` implementations that yield predetermined turns. `echoModel()` from `@chengchenccc/test-helpers` provides a reusable factory.
-- **Core mocking primitives:** `inMemoryPersistence()`, `consoleLogger({ level: "silent" })`, `passthroughContextManager()`
+- **Session store double:** `createInMemorySessionStore()` from `apps/oh-my-agent/src/core/persistence`
 - **Integration tests:** Use `createOmaSession()` with real plugin hooks and scripted models
-- **Loop tests:** `loop-step.test.ts` / `loop-doctor.test.ts` — scripted run fakes with workflow verdicts
+- **Workflow tests:** `packages/workflow` (engine/parse/schema) + `apps/backend/src/features/workflow/service.test.ts` / `trigger-scheduler.test.ts`
 - **Coverage:** No enforced threshold; tests should cover behavior (conditional branches, invariants, error handling), not plumbing
 - **Test helpers:** `@chengchenccc/test-helpers` exports `echoModel()` with `EchoScript` type for deterministic model responses

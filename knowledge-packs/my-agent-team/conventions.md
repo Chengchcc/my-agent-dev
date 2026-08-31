@@ -3,7 +3,7 @@
 ## Imports
 
 Cross-package imports MUST go through the barrel index.ts.
-No deep imports like @chengchenccc/loop/src/loop-reducer.js.
+No deep imports like @chengchenccc/workflow/src/engine.js.
 
 ## Dependency injection
 
@@ -12,30 +12,26 @@ hexagonal split (domain / ports / service / adapter-sqlite / http / index).
 
 ## Agent session creation
 
-buildSessionSpec(params) assembles a SessionSpec:
+createOmaSession(opts) in apps/oh-my-agent/src/core/runtime/agent-loop.ts materializes an Oma session:
 
-- agentId
-- cwd (tool sandbox root)
-- model + modelName
-- plugins
-- tools (read/write/edit/bash/glob/grep by default)
-- messageStore, eventLog, interruptStore
-- contextManager
+- sessionId + per-Run in-memory SessionStore (destroyed when the Run ends)
+- plugins + tools: the per-run resolved tool table (native + MCP + plugin, filtered by --tools)
+- modelStream, maxSteps, approvalHandler (HITL pipeline)
 
-Use createAgentSession() (SDK entry point) or sessionFactory.getOrCreate().
+Backend run dispatch (apps/backend/src/features/agent-run/execution.ts) spawns the oma child through packages/adapter-oma-agent.
 
 ## Plugin system
 
-Plugins contribute tools and hooks. Six lifecycle points fire in registration order:
+Plugins are plain objects { name, hooks?, tools?, meta? }. Hooks take an `rt` runtime context:
 
-- beforeRun(ctx, messages) -> Message[]
-- beforeModel(ctx, messages) -> Message[]
-- afterModel(ctx, messages) -> void
-- beforeTool(ctx, call, messages) -> skip/input/result
-- afterTool(ctx, call, result, messages) -> void
-- beforeStop(ctx, messages) -> StopDecision
+- beforeRun?(messages, rt) / afterRun?(status, messages, rt)
+- beforeModel?(messages, rt) -> readonly Message[] / afterModel?(messages, rt)
+- beforeTool?(toolName, input, rt) -> { block?, reason? } | undefined
+- afterTool?(toolName, result, rt) -> OmaLoopEvent | { content?, isError?, terminate? } | undefined
+- transformToolArgs?(toolName, input, rt) -> unknown
+- beforeStop?(cancel, rt) / afterStop?(vetoed, rt)
 
-Use definePlugin({ name, hooks, tools }). validatePlugins() checks tool name collisions.
+validatePlugins() checks name/tool collisions; collectTools() assembles the per-run tool table.
 
 ## ChatModel contract
 
@@ -51,8 +47,8 @@ Features use domain.ts, ports.ts, service.ts, adapter-sqlite.ts, http.ts, index.
 
 - Backend: Elysia onError maps DomainError subclasses to JSON.
 - Service layer throws typed errors (ProjectNotFoundError, ValidationError).
-- Loop: errors catch and retry with backoff in scheduler fireLoop().
-- Agent: InterruptSignal from tool execute pauses the agent for human approval.
+- Workflow: node failures are captured per node-run; the execution terminalizes as failure.
+- Agent: permissionMode="ask" tools go through the approval pipeline (approval_request -> resolve_approval; timeout denies).
 
 ## Commit rules
 

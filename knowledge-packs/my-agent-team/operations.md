@@ -12,15 +12,15 @@
 
 Scoped examples:
 
-- cd packages/framework && bun test --test-name-pattern="createAgent"
+- cd apps/oh-my-agent && bun test --test-name-pattern="agent-loop"
 - cd apps/backend && bun run typecheck
 - cd apps/backend && bun test tests/e2e/mcp-crud.test.ts
 
 ## Testing model doubles
 
 - echoModel() from @chengchenccc/test-helpers: deterministic scripted ChatModel
-- inMemoryPersistence(), consoleLogger({ level: "silent" }), passthroughContextManager()
-- Loop tests use mockSessionFactory(verdictMd)
+- createInMemorySessionStore() from apps/oh-my-agent/src/core/persistence (session store double)
+- Workflow tests: packages/workflow engine/parse/schema + apps/backend features/workflow service/trigger-scheduler tests
 
 ## Resource switching
 
