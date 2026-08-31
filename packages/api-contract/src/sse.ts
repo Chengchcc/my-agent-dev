@@ -117,6 +117,20 @@ export const runEvents = {
   }),
 } as const satisfies SSEEventMap;
 
+/** Workflow execution live stream (`/workflow-executions/:id/events`).
+ *  One wire event name ("wf"); the payload is the event envelope with the
+ *  business event name inside. History replay rows also carry `seq` (the
+ *  durable row id) for reconnect dedup; live events key by `ts`. */
+export const workflowExecutionEvents = {
+  wf: z.object({
+    event: z.string(),
+    executionId: z.string(),
+    ts: z.number(),
+    data: z.unknown().optional(),
+    seq: z.number().optional(),
+  }),
+} as const satisfies SSEEventMap;
+
 // ── SSE endpoint registry (path template + event map, single source) ──
 
 /**
@@ -132,6 +146,10 @@ export const sseEndpoints = {
   agentRunEvents: {
     path: (p: { runId: string }) => `/agent-runs/${p.runId}/events`,
     events: runEvents,
+  },
+  workflowExecutionEvents: {
+    path: (p: { executionId: string }) => `/workflow-executions/${p.executionId}/events`,
+    events: workflowExecutionEvents,
   },
 } as const;
 

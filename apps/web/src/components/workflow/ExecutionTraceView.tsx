@@ -1,5 +1,6 @@
 "use client";
 
+import { sseEndpoints, workflowExecutionEvents } from "@chengchenccc/api-contract";
 import { toEditorGraph, type WorkflowDefinition } from "@chengchenccc/workflow";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { api } from "@/lib/api";
+import { typedSource } from "@/lib/typed-source";
 import { humanizeWorkflowError } from "./humanize-error";
 import { type NodeStatus, WorkflowCanvas } from "./WorkflowCanvas";
 
@@ -100,19 +102,15 @@ export function ExecutionTraceView({
   const terminal = ["success", "failure", "custom"].includes(execution.status);
   useEffect(() => {
     if (terminal) return;
-    const es = new EventSource(
-      `/api/bff/api/workflow-executions/${encodeURIComponent(execution.executionId)}/events`,
+    const ts = typedSource(
+      `/api/bff${sseEndpoints.workflowExecutionEvents.path({ executionId: execution.executionId })}`,
+      workflowExecutionEvents,
     );
-    es.addEventListener("wf", (e) => {
-      const ev = JSON.parse((e as MessageEvent).data) as {
-        event: string;
-        ts: number;
-        data: unknown;
-      };
+    const es = ts.es;
+    ts.on("wf", (ev) => {
       setLiveEvents((prev) => {
         // Live events key by ts (huge); reconnect replays table seqs — skip dups.
-        const wf = ev as { seq?: number };
-        const seq = wf.seq ?? ev.ts;
+        const seq = ev.seq ?? ev.ts;
         if (prev.some((x) => x.seq === seq)) return prev;
         return [...prev, { seq, event: ev.event, ts: ev.ts, data: ev.data }];
       });

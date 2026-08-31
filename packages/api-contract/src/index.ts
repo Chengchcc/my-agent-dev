@@ -12,6 +12,7 @@ export {
   ConversationEvent,
   ConversationEventKind,
   conversationEvents,
+  workflowExecutionEvents,
   createSseEncoder,
   runEvents,
   sseEndpoints,
