@@ -101,6 +101,16 @@ export default function ChatOverviewPage() {
     (a, b) => (b.lastActivityAt ?? b.createdAt) - (a.lastActivityAt ?? a.createdAt),
   );
 
+  // Chat overview is redundant with the sidebar conversation list: open the
+  // most recent conversation directly (single chat entry point). A fresh
+  // install with no conversations keeps a minimal empty-state below.
+  const firstConversationId = conversations[0]?.conversationId;
+  useEffect(() => {
+    if (!isLoading && firstConversationId) {
+      router.replace(`/chat/${firstConversationId}`);
+    }
+  }, [isLoading, firstConversationId, router]);
+
   return (
     <Page>
       <PageHeader

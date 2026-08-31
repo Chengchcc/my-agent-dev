@@ -1,5 +1,5 @@
-import { TeamView } from "./_components/team-view";
+import { redirect } from "next/navigation";
 
-export default function AgentsPage() {
-  return <TeamView />;
+export default function TeamRedirect() {
+  redirect("/team/agents");
 }
