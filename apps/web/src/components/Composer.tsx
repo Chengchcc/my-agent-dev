@@ -45,7 +45,7 @@ export function Composer({
   onSend,
   onSlashCommand,
   disabled,
-  placeholder = "Type a message…  Ctrl+Enter to send",
+  placeholder = "输入消息… Ctrl+Enter 发送",
   isBusy,
   onStop,
 }: ComposerProps) {
@@ -87,18 +87,18 @@ export function Composer({
   const steerMut = useMutation({
     mutationFn: (inputId: string) => api.steerConversationInput(conversationId, inputId),
     onSuccess: invalidateQueue,
-    onError: () => toast.error("Send now failed — the run may have settled"),
+    onError: () => toast.error("立即发送失败 — 运行可能已结束"),
   });
   const editMut = useMutation({
     mutationFn: (args: { inputId: string; text: string }) =>
       api.updateConversationInput(conversationId, args.inputId, args.text),
     onSuccess: invalidateQueue,
-    onError: () => toast.error("Edit failed — the input was already processed"),
+    onError: () => toast.error("编辑失败 — 该输入已被处理"),
   });
   const cancelMut = useMutation({
     mutationFn: (inputId: string) => api.cancelConversationInput(conversationId, inputId),
     onSuccess: invalidateQueue,
-    onError: () => toast.error("Cancel failed"),
+    onError: () => toast.error("取消失败"),
   });
 
   const filteredSlash = useMemo(() => {
@@ -318,7 +318,7 @@ export function Composer({
               onChange={handleInput}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder={disabled ? "Agent is responding…" : effectivePlaceholder}
+              placeholder={disabled ? "回复生成中…" : effectivePlaceholder}
               rows={1}
               disabled={disabled}
               className="w-full resize-none bg-(--panel) border border-(--hairline)
@@ -379,7 +379,7 @@ export function Composer({
             onClick={onStop}
             size="icon"
             className="shrink-0 mb-0.5 size-8  bg-(--err)/15 hover:bg-(--err)/25"
-            title="Stop the run"
+            title="停止运行"
             aria-label="Stop"
           >
             <span className="size-2.5 rounded-full bg-(--err) animate-pulse" />
@@ -438,7 +438,7 @@ function QueueItem({
               setDraft(input.text);
             }}
           >
-            Cancel
+            取消
           </Button>
           <Button
             size="sm"
@@ -449,7 +449,7 @@ function QueueItem({
               setEditing(false);
             }}
           >
-            <Check size={12} className="mr-1" /> Save
+            <Check size={12} className="mr-1" /> 保存
           </Button>
         </div>
       </li>
@@ -483,7 +483,7 @@ function QueueItem({
               </Button>
             }
           />
-          <TooltipContent>Send now (steer into the live run)</TooltipContent>
+          <TooltipContent>立即发送（插入当前运行）</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger
@@ -503,7 +503,7 @@ function QueueItem({
               </Button>
             }
           />
-          <TooltipContent>Edit</TooltipContent>
+          <TooltipContent>编辑</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger
@@ -520,7 +520,7 @@ function QueueItem({
               </Button>
             }
           />
-          <TooltipContent>Cancel</TooltipContent>
+          <TooltipContent>取消</TooltipContent>
         </Tooltip>
       </div>
     </li>
