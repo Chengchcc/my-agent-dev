@@ -74,7 +74,6 @@ export function ReasoningTrace({
                 // never as a standalone round line (their text field is the
                 // raw JSON payload).
                 if (m.content.role === "tool") return null;
-                const text = extractText(m.content);
                 const blocks = m.content.blocks ?? [];
                 // text field is intentionally NOT rendered here — the ordered
                 // blocks carry every text fragment in its true position (and

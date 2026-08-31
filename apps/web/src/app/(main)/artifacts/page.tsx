@@ -24,6 +24,7 @@ export default function ArtifactsPage() {
   const [folder, setFolder] = useState("");
   const [filename, setFilename] = useState("");
   const [content, setContent] = useState("");
+  const [encoding, setEncoding] = useState<"utf8" | "base64">("utf8");
   const [uploading, setUploading] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -57,14 +58,41 @@ export default function ArtifactsPage() {
     void refresh();
   }
 
+  /** Read a picked local file as base64 and prefill the form (a true file
+   *  upload, not a hand-typed content box). filename/content/encoding come
+   *  from the file; folder stays manual (the artifact's bucket). */
+  function pickFile(file: File | undefined) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      // readAsDataURL yields "data:<mime>;base64,<payload>" — strip the
+      // prefix; the backend wants the raw base64 payload only.
+      const raw = String(reader.result ?? "");
+      const comma = raw.indexOf(",");
+      setFilename(file.name);
+      setContent(comma >= 0 ? raw.slice(comma + 1) : raw);
+      setEncoding("base64");
+    };
+    reader.readAsDataURL(file);
+  }
+
   async function upload() {
-    if (!folder.trim() || !filename.trim() || !content) return;
+    if (!folder.trim() || !filename.trim() || !content) {
+      alert("请填写 folder / filename，并选择或填写 content");
+      return;
+    }
     setUploading(true);
     try {
-      await api.uploadArtifact({ folder: folder.trim(), filename: filename.trim(), content });
+      await api.uploadArtifact({
+        folder: folder.trim(),
+        filename: filename.trim(),
+        content,
+        encoding,
+      });
       setFolder("");
       setFilename("");
       setContent("");
+      setEncoding("utf8");
       await refresh();
     } catch (err) {
       alert(`上传失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -99,12 +127,23 @@ export default function ArtifactsPage() {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <Label className="text-[11px] text-(--mute)">content</Label>
+              <Label className="text-[11px] text-(--mute)">file</Label>
+              <input
+                type="file"
+                className="h-8 w-full text-[11px] text-(--mute) file:mr-2 file:rounded-md file:border file:border-(--hairline) file:bg-(--panel) file:px-2 file:py-1 file:text-[11px] file:text-(--body)"
+                onChange={(e) => pickFile(e.target.files?.[0])}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-[11px] text-(--mute)">content (binary=base64)</Label>
               <Input
                 className="h-8"
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="# report"
+                onChange={(e) => {
+                  setContent(e.target.value);
+                  setEncoding("utf8");
+                }}
+                placeholder="或手填文本"
               />
             </div>
           </div>
