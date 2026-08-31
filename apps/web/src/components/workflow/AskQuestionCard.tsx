@@ -141,16 +141,16 @@ export function AskQuestionCard({
           ))}
           <div className="flex flex-wrap gap-2">
             <Questionnaire.Previous className="rounded-md border border-(--hairline) px-3 py-1.5 text-xs">
-              上一步
+              Previous
             </Questionnaire.Previous>
             <Questionnaire.Skip className="rounded-md border border-(--hairline) px-3 py-1.5 text-xs">
-              跳过
+              Skip
             </Questionnaire.Skip>
             <Questionnaire.Next className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink)">
-              下一步
+              Next
             </Questionnaire.Next>
             <Questionnaire.Submit className="rounded-md bg-(--info) px-3 py-1.5 text-xs text-(--ink)">
-              提交
+              Submit
             </Questionnaire.Submit>
           </div>
         </Questionnaire.Root>

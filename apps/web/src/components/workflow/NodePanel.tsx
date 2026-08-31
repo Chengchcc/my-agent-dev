@@ -20,7 +20,7 @@ export function NodePanel({ onAdd }: { onAdd: (node: WorkflowNode) => void }) {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="搜索节点…"
+            placeholder="Search nodes…"
             className="h-8 w-full rounded-md border border-(--hairline) bg-(--canvas) pl-7 pr-2 text-xs text-(--ink) outline-none placeholder:text-(--faint) focus:border-[#38bdf8]/50"
           />
         </div>
@@ -30,7 +30,7 @@ export function NodePanel({ onAdd }: { onAdd: (node: WorkflowNode) => void }) {
           <NodeRow key={opt.type} opt={opt} onAdd={onAdd} />
         ))}
         {filtered.length === 0 && (
-          <div className="px-2 py-6 text-center text-xs text-(--faint)">无匹配节点</div>
+          <div className="px-2 py-6 text-center text-xs text-(--faint)">No matching nodes</div>
         )}
       </div>
     </div>

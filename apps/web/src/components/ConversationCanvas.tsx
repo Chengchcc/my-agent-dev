@@ -244,10 +244,10 @@ export function ConversationCanvas({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
             <Link
-              href="/team"
+              href="/chat"
               className="text-[10px] text-(--mute) hover:text-(--body) transition-colors shrink-0"
             >
-              Team
+              Chat
             </Link>
             {primaryAgent && (
               <>

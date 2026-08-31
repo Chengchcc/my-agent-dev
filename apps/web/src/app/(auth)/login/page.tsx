@@ -62,7 +62,7 @@ function LoginForm() {
         return;
       }
       // Successful login — navigate to trigger cookie processing
-      router.push("/work");
+      router.push("/today");
     } catch {
       setServerError("Network error. Please try again.");
     }

@@ -201,17 +201,17 @@ export function ExecutionTraceView({
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
-              <BreadcrumbLink href="/agentic-workflow">Workflows</BreadcrumbLink>
+              <BreadcrumbLink href="/workflows">Workflows</BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
-              <BreadcrumbLink href={`/agentic-workflow/${execution.workflowId}`}>
+              <BreadcrumbLink href={`/workflows/${execution.workflowId}`}>
                 {execution.workflowId}
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
-              <BreadcrumbLink href={`/agentic-workflow/${execution.workflowId}/executions`}>
+              <BreadcrumbLink href={`/workflows/${execution.workflowId}/executions`}>
                 Executions
               </BreadcrumbLink>
             </BreadcrumbItem>
@@ -279,7 +279,7 @@ export function ExecutionTraceView({
         <div className="w-80 border-l">
           <div className="flex items-center gap-2 border-b p-3">
             <Link
-              href={`/agentic-workflow/${execution.workflowId}/executions`}
+              href={`/workflows/${execution.workflowId}/executions`}
               className="text-xs text-(--info) hover:text-(--primary)"
             >
               ← executions

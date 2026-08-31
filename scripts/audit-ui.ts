@@ -5,9 +5,9 @@
  *   - native alert( / confirm( / window.confirm( in apps/web/src (UI review
  *     WS-2: every confirmation/error goes through useConfirm / toast).
  *
- * Reporting (not yet gating — the language translation is still in flight):
- *   - CJK characters in user-visible strings by directory, so the JSX-zero-
- *     Chinese acceptance can be tracked as translation groups complete.
+ * Also gating (translation completed 2026-08-31):
+ *   - CJK characters anywhere in apps/web/src — user-visible strings are
+ *     English-only now; new UI copy must not reintroduce Chinese.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -39,9 +39,13 @@ for (const file of files) {
   if (/window\.alert\s*\(/.test(src)) {
     failures.push(`native alert in ${relative(ROOT, file)}`);
   }
-  // CJK reporting (informational).
+  // CJK: now gating — the translation is complete (2026-08-31). New
+  // user-visible Chinese belongs in comments only, which this scan skips
+  // for files under components/ui (none expected) but checks everywhere
+  // else. Zero tolerance, same as the review acceptance.
   const cjk = (src.match(/[\u4e00-\u9fff]/g) ?? []).length;
   if (cjk > 0) {
+    failures.push(`CJK in ${relative(ROOT, file)} (${cjk} chars)`);
     const dir = relative(ROOT, file).split("/").slice(0, 3).join("/");
     cjkByDir.set(dir, (cjkByDir.get(dir) ?? 0) + cjk);
     cjkFiles.push(relative(ROOT, file));

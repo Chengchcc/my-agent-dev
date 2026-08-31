@@ -8,5 +8,5 @@ export function conversationDisplayName(conv: {
   if (title) return title;
   const preview = conv.lastMessagePreview?.trim();
   if (preview) return preview;
-  return "新对话";
+  return "New conversation";
 }

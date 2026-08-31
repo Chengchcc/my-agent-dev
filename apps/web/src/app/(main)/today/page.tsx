@@ -39,7 +39,7 @@ const statusColor: Record<string, string> = {
   waiting_human: "text-sky-400",
 };
 
-export default function WorkTodayPage() {
+export default function TodayPage() {
   const [executions, setExecutions] = useState<ExecutionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const { data: runs } = useAgentRuns();
@@ -83,7 +83,7 @@ export default function WorkTodayPage() {
 
   return (
     <Page>
-      <PageHeader title="Work Today" description={today} />
+      <PageHeader title="Today" description={today} />
       <PageBody size="reading" className="space-y-8">
         <div>
           <h2 className="text-sm font-medium mb-3">
@@ -104,7 +104,7 @@ export default function WorkTodayPage() {
               {todayExecs.slice(0, 12).map((e) => (
                 <Link
                   key={e.executionId}
-                  href={`/agentic-workflow/${encodeURIComponent(e.workflowId)}/executions/${e.executionId}`}
+                  href={`/workflows/${encodeURIComponent(e.workflowId)}/executions/${e.executionId}`}
                   className="flex items-center justify-between gap-3 rounded-lg border border-(--hairline) bg-(--canvas-soft) px-4 py-2.5 hover:border-(--primary) transition-colors"
                 >
                   <div className="min-w-0">

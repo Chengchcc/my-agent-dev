@@ -42,6 +42,6 @@ export async function POST(req: NextRequest): Promise<Response> {
   // 127.0.0.1 clients.
   return new Response(null, {
     status: 302,
-    headers: { Location: "/work", "Set-Cookie": result.cookie },
+    headers: { Location: "/today", "Set-Cookie": result.cookie },
   });
 }

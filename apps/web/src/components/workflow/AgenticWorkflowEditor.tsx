@@ -306,7 +306,7 @@ export function AgenticWorkflowEditor({
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink
-                href="/agentic-workflow"
+                href="/workflows"
                 onClick={(e) => {
                   if (!dirty) return;
                   e.preventDefault();
@@ -317,7 +317,7 @@ export function AgenticWorkflowEditor({
                     cancelText: "Stay",
                     destructive: true,
                   }).then((ok) => {
-                    if (ok) window.location.assign("/agentic-workflow");
+                    if (ok) window.location.assign("/workflows");
                   });
                 }}
               >
@@ -349,7 +349,7 @@ export function AgenticWorkflowEditor({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-36">
               <DropdownMenuItem
-                onClick={() => window.location.assign(`/agentic-workflow/${workflowId}/executions`)}
+                onClick={() => window.location.assign(`/workflows/${workflowId}/executions`)}
               >
                 Executions
               </DropdownMenuItem>

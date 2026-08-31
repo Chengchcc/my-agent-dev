@@ -82,7 +82,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
       }
     }
     await api.saveWorkflowDefinition(id, def);
-    window.location.assign(`/agentic-workflow/${id}`);
+    window.location.assign(`/workflows/${id}`);
   }
   async function openRun(id: string) {
     setRunId(id);
@@ -107,7 +107,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
         workflowRef: { repo: "local", path: `${runId}.workflow.json` },
         input,
       });
-      window.location.assign(`/agentic-workflow/${runId}/executions`);
+      window.location.assign(`/workflows/${runId}/executions`);
     } catch (err) {
       toast.error(`Run failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -138,10 +138,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
             className="flex items-center justify-between rounded-xl border border-(--hairline) bg-(--panel)/70 p-3"
           >
             <div>
-              <Link
-                href={`/agentic-workflow/${d.workflowId}`}
-                className="font-medium hover:underline"
-              >
+              <Link href={`/workflows/${d.workflowId}`} className="font-medium hover:underline">
                 {d.name ?? d.workflowId}
               </Link>
               {d.description && (
@@ -203,7 +200,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
                 Run
               </button>
               <Link
-                href={`/agentic-workflow/${d.workflowId}/executions`}
+                href={`/workflows/${d.workflowId}/executions`}
                 className="rounded-md border border-(--hairline) bg-(--panel) px-2 py-1 text-(--body) transition-colors hover:bg-(--panel2)"
               >
                 executions

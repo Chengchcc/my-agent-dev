@@ -120,11 +120,11 @@ function NavContent() {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                isActive={pathname === "/work"}
+                isActive={pathname === "/today"}
                 tooltip="Today"
                 onClick={() => {
                   closeMobile();
-                  router.push("/work");
+                  router.push("/today");
                 }}
               >
                 <RefreshCwIcon />
@@ -133,11 +133,11 @@ function NavContent() {
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
-                isActive={pathname.startsWith("/agentic-workflow")}
+                isActive={pathname.startsWith("/workflows")}
                 tooltip="Agentic Workflow"
                 onClick={() => {
                   closeMobile();
-                  router.push("/agentic-workflow");
+                  router.push("/workflows");
                 }}
               >
                 <NetworkIcon />
@@ -240,7 +240,7 @@ function NavContent() {
                                         queryKey: conversationKeys.all,
                                       });
                                       if (pathname === `/chat/${conv.conversationId}`) {
-                                        router.push("/work");
+                                        router.push("/today");
                                       }
                                     },
                                     onError: (err) => {

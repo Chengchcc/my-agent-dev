@@ -117,11 +117,11 @@ export function ExecutionList({
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
-              <BreadcrumbLink href="/agentic-workflow">Workflows</BreadcrumbLink>
+              <BreadcrumbLink href="/workflows">Workflows</BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
-              <BreadcrumbLink href={`/agentic-workflow/${workflowId}`}>{workflowId}</BreadcrumbLink>
+              <BreadcrumbLink href={`/workflows/${workflowId}`}>{workflowId}</BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
@@ -231,7 +231,7 @@ export function ExecutionList({
                   {dur !== undefined && <span className="text-[10px] text-(--mute)">{dur}s</span>}
                 </div>
                 <Link
-                  href={`/agentic-workflow/${workflowId}/executions/${e.executionId}`}
+                  href={`/workflows/${workflowId}/executions/${e.executionId}`}
                   className="mt-1 block truncate text-sm font-medium text-(--ink) hover:text-(--primary)"
                 >
                   {new Date(e.createdAt).toLocaleString()}
@@ -244,7 +244,7 @@ export function ExecutionList({
               )}
               <div className="flex shrink-0 items-center gap-2">
                 <Link
-                  href={`/agentic-workflow/${workflowId}/executions/${e.executionId}`}
+                  href={`/workflows/${workflowId}/executions/${e.executionId}`}
                   className="rounded-md border border-(--hairline) px-2.5 py-1 text-xs text-(--info) hover:bg-(--panel2)"
                 >
                   View
