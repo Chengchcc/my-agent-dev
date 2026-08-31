@@ -113,11 +113,7 @@ export default function ChatOverviewPage() {
 
   return (
     <Page>
-      <PageHeader
-        breadcrumb="Chat"
-        title="Chat"
-        description="Start a conversation or open a recent one."
-      />
+      <PageHeader title="Chat" description="Start a conversation or open a recent one." />
       <PageBody size="reading" className="space-y-6">
         {/* New chat composer: hairline border, focus ring only. */}
         <div className="rounded-lg border border-(--hairline) bg-(--canvas) p-4 focus-within:border-(--primary) transition-colors">

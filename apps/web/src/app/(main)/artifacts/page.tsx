@@ -118,7 +118,6 @@ export default function ArtifactsPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb="Artifacts"
         title="Artifacts"
         description="Artifacts shared between agents"
         action={
