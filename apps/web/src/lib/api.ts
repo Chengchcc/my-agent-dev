@@ -462,7 +462,9 @@ export const api = {
     };
   },
   deleteArtifact: async (url: string) => {
-    const r = await fetch(`/api/bff/api/artifacts/${encodeURIComponent(url)}`, {
+    // Query param, same as download: the artifacts:// URL contains '/' which
+    // a path segment cannot match (this exact bug broke delete with 404).
+    const r = await fetch(`/api/bff/api/artifacts/remove?url=${encodeURIComponent(url)}`, {
       method: "DELETE",
     });
     if (!r.ok) throw new Error(`delete artifact failed: ${r.status}`);

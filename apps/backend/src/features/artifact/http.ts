@@ -62,6 +62,16 @@ export function artifactRoutes(service: ArtifactService) {
       },
     )
     .delete(
+      "/remove",
+      async ({ query }) => {
+        const ok = await service.delete(query.url);
+        return { ok };
+      },
+      {
+        query: t.Object({ url: t.String({ minLength: 1 }) }),
+      },
+    )
+    .delete(
       "/:url",
       async ({ params }) => {
         const url = decodeURIComponent(params.url);
