@@ -116,7 +116,18 @@ export function createArtifactFsAdapter(root: string): ArtifactPort {
           else {
             const st = statSync(full);
             const [f, fn] = splitPath(rel);
-            out.push(toMeta({ folder: f, filename: fn }, st.size, "utf8", st.mtimeMs));
+            // Surface the recorded upload source (run/conversation/agent)
+            // so consumers can filter by provenance.
+            let source: ArtifactUploadInput["source"];
+            try {
+              const meta = JSON.parse(readFileSync(`${full}.meta.json`, "utf8")) as {
+                source?: ArtifactUploadInput["source"];
+              };
+              source = meta.source ?? undefined;
+            } catch {
+              /* no sidecar — uploaded before provenance existed */
+            }
+            out.push(toMeta({ folder: f, filename: fn }, st.size, "utf8", st.mtimeMs, source));
           }
         }
       };

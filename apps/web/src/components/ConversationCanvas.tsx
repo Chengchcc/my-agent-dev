@@ -20,6 +20,7 @@ import { findCommand, parseArgs } from "@/lib/slash-commands";
 import { extractText } from "@/lib/timeline";
 import type { LiveToolCall, TodoItem } from "@/lib/transient-reducer";
 import { Composer } from "./Composer";
+import { ConversationArtifactsPanel } from "./ConversationArtifactsPanel";
 import { RosterList } from "./RosterList";
 import { Timeline } from "./Timeline";
 import { TodoPanel } from "./TodoPanel";
@@ -408,6 +409,7 @@ export function ConversationCanvas({
         <aside className="hidden md:block shrink-0 w-56 border-l border-(--hairline) overflow-y-auto p-3">
           <RosterList agent={agent} />
           <UsagePanel conversationId={conversationId} />
+          <ConversationArtifactsPanel conversationId={conversationId} />
         </aside>
 
         {/* Roster — mobile trigger */}
@@ -439,6 +441,7 @@ export function ConversationCanvas({
           >
             <RosterList agent={agent} onClose={() => setRosterOpen(false)} />
             <UsagePanel conversationId={conversationId} />
+            <ConversationArtifactsPanel conversationId={conversationId} />
           </aside>
         </>
       )}

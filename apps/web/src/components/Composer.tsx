@@ -72,6 +72,24 @@ export function Composer({
   const [value, setValue] = useState("");
   const [showSlash, setShowSlash] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
+  // @artifact autocomplete: typing "@" as the last char opens the artifact
+  // picker; selecting inserts the artifacts:// URL (the agent downloads the
+  // content itself via its artifact_download tool).
+  const [showArtifact, setShowArtifact] = useState(false);
+  const [artifactIndex, setArtifactIndex] = useState(0);
+  const [artifactUrls, setArtifactUrls] = useState<string[]>([]);
+  useEffect(() => {
+    api
+      .listArtifacts()
+      .then((r) => setArtifactUrls((r.artifacts ?? []).map((a) => a.url)))
+      .catch(() => {});
+  }, []);
+  const [artifactQuery, setArtifactQuery] = useState("");
+  const filteredArtifacts = useMemo(() => {
+    const q = artifactQuery.trim().toLowerCase();
+    const list = q ? artifactUrls.filter((u) => u.toLowerCase().includes(q)) : artifactUrls;
+    return list.slice(0, 8);
+  }, [artifactUrls, artifactQuery]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [attachments, setAttachments] = useState<
     readonly { type: "image"; mediaType: string; base64: string }[]
@@ -162,6 +180,15 @@ export function Composer({
       // Slash command popover: only while the input is a single token starting with "/"
       // (no spaces yet). Once args begin, the popover closes so typing continues freely.
       setShowSlash(text.startsWith("/") && !/\s/.test(text.trim()));
+      // Artifact picker: an unfinished "@query" token at the end of the text.
+      const atMatch = /(?:^|\s)@([^@\s]*)$/.exec(text);
+      if (atMatch) {
+        setShowArtifact(true);
+        setArtifactQuery(atMatch[1] ?? "");
+        setArtifactIndex(0);
+      } else {
+        setShowArtifact(false);
+      }
     },
     [autoGrow],
   );
@@ -219,7 +246,42 @@ export function Composer({
     }, 0);
   }, [slashIndex, filteredSlash]);
 
+  const completeArtifact = useCallback(() => {
+    const url = filteredArtifacts[artifactIndex];
+    if (!url) return;
+    setValue((prev) => prev.replace(/@[^@\s]*$/, `${url} `));
+    setShowArtifact(false);
+    setTimeout(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    }, 0);
+  }, [filteredArtifacts, artifactIndex]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (showArtifact && filteredArtifacts.length > 0) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowArtifact(false);
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setArtifactIndex((i) => (i + 1) % filteredArtifacts.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setArtifactIndex((i) => (i - 1 + filteredArtifacts.length) % filteredArtifacts.length);
+        return;
+      }
+      if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        completeArtifact();
+        return;
+      }
+    }
     if (showSlash && filteredSlash.length > 0) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -330,6 +392,36 @@ export function Composer({
               style={{ minHeight: `${COMPOSER_MIN_H}px`, maxHeight: `${COMPOSER_MAX_H}px` }}
             />
           </div>
+          {/* Artifact picker popover */}
+          {showArtifact && filteredArtifacts.length > 0 && (
+            <div className="absolute bottom-full left-0 mb-1 w-96 bg-(--canvas) border border-(--hairline) rounded-lg z-50 overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-(--hairline) bg-(--canvas-soft)">
+                <span className="text-[10px] tracking-widest uppercase text-(--mute) font-semibold">
+                  引用产物
+                </span>
+                <span className="text-[10px] text-(--mute) flex items-center gap-1">
+                  <CornerDownLeft size={10} /> 插入
+                </span>
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                {filteredArtifacts.map((u, i) => (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={completeArtifact}
+                    onMouseEnter={() => setArtifactIndex(i)}
+                    className={`w-full text-left px-3 py-1.5 font-mono text-[11px] truncate ${
+                      i === artifactIndex
+                        ? "bg-(--panel2) text-(--ink)"
+                        : "text-(--mute) hover:bg-(--panel2)"
+                    }`}
+                  >
+                    {u}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {/* Slash command popover */}
           {showSlash && (
             <div className="absolute bottom-full left-0 mb-1 w-80 bg-(--canvas) border border-(--hairline) rounded-lg z-50 overflow-hidden">
