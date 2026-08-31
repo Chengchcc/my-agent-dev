@@ -930,9 +930,31 @@ export async function installFeatures(services: BackendServices): Promise<Instal
 
   // ─── Lifecycle ──────────────────────────────────────────────
 
+  // Self-smoke cron (docs/insights.md I4): when SMOKE_CRON is set, spawn
+  // the workflow smoke as a separate process on schedule. A workflow
+  // script-node cannot host this - the smoke boots a second in-process
+  // backend, which would be circular inside a product execution.
+  let smokeCron: { stop(): unknown } | undefined;
+
   async function start(): Promise<void> {
     await workflowTriggerScheduler.sync();
     await workflowExecutionService.recover();
+    const smokeCronExpr = process.env.SMOKE_CRON;
+    if (smokeCronExpr) {
+      smokeCron = Bun.cron(smokeCronExpr, () => {
+        void (async () => {
+          const smokeEntry = join(import.meta.dir, "../../../../scripts/smoke-workflow.ts");
+          console.log(`[smoke] workflow smoke start ${new Date().toISOString()}`);
+          const proc = Bun.spawn([process.execPath, smokeEntry], {
+            stdout: "inherit",
+            stderr: "inherit",
+          });
+          const code = await proc.exited;
+          console.log(`[smoke] workflow smoke exit=${code}`);
+        })();
+      });
+      console.log(`[smoke] workflow smoke scheduled: ${smokeCronExpr}`);
+    }
   }
 
   async function dispose(): Promise<void> {
@@ -940,6 +962,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     // Agent child and drain in-flight dispatches (the DB must not close
     // mid-finalize), THEN close surfaces that children may still call
     // (Product Tools MCP) and finally Lark/setup.
+    smokeCron?.stop();
     await agentRunExecution.dispose(); // abort/SIGTERM/SIGKILL children + drain
     await workflowTriggerScheduler.dispose();
     await workflowExecutionService.dispose();
