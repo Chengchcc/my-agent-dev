@@ -75,19 +75,13 @@
 
 | I4 | 真实 E2E 稀缺且高杠杆 | 冒烟通过率 | 较高可信 | ✅ `bun scripts/smoke-workflow.ts` + `SMOKE_CRON` 定时自冒烟（2026-08-31） |
 
-## I5 删除决策快，但收尾清扫不进同一变更，隐性成本在积累
+## I5 删除决策快，但收尾清扫不进同一变更（已闭环）
 
-**我们观察到** Loop/CronJob 删除后 `loop_item`/`loop_budget`/`cron_job` 三张表仍在 schema（零代码读者，仅 db fixture 引用）；commitlint 枚举已删 `agent`/`loop`/`cron` 但历史提交仍在；多份文档长期挂「需复核」标注。
+**我们观察到** Loop/CronJob 功能删除后，收尾清扫未进同一变更。
 
-**证据是** grep 全 src 仅 db.test.ts 命中；commitlint.config.mjs 枚举 vs git 历史对照。
+**证据是** 功能删除于 2026-08-28（d35e7dd6）；schema 表定义与 DROP 迁移（0042/0043）随该提交一并落地。残留仅 `db.test.ts` 的 Phase-6 保留 fixture 对 `loop_item`/`loop_budget`/`cron_job` 三表 INSERT+断言——该 fixture 只 apply 到 0020（当时表仍存在），是自洽的历史迁移测试，保留 loop 行正是为了验证“0020 只删 audit、不碰其他表”，不应清理。
 
-**这并不是因为** 不知道要清，**而是因为** 「改动时一并到位」原则没有覆盖 schema/枚举/文档页这类**低频触碰面**——删除型变更的 checklist 缺失。
-
-**这会导致** 每个新 agent 会话都要重新分辨死活概念（本会话为此消耗探索轮次）；死表进每个 fresh DB。
-
-**因此存在的机会是** 下次 schema 变更连带删三张死表（已登记 CONTEXT.md）；给「删除型变更」立 checklist：schema 列/表、commitlint scope、文档页、audit 词汇表。预计影响：死概念残留数（可直接度量归零）。
-
-**可信度**：较高可信。
+**结论** 本洞察在核实后已闭环：schema 无死表，迁移链完整，fixture 有意保留。教训转给 I3：洞察文档自身的表述也要与代码对账（本条初稿曾误称“表仍在 schema”）。
 
 ---
 
@@ -98,7 +92,7 @@
 | I1 | 接线（非领域逻辑）是缺陷主要来源 | 跨边界 fix 占比 | 较高可信 | 推广契约 fixture/audit 到 .mcp.json 与 workflow SSE |
 | I2 | 闭环≠正确，删除成本才是架构真实成本 | 建成即删率 | 较高可信 | 新能力走「最小基座+真实验证」路径 |
 | I3 | 文档是 agent 运行时依赖，审计覆盖不足 | audit:docs 红绿 | **已验证** | 扩展 audit:docs 做路径存在性对账 |
-| I4 | 真实 E2E 稀缺且高杠杆 | 冒烟通过率 | 较高可信 | 用 Workflow DSL 跑定时真实冒烟 |
-| I5 | 删除快但清扫不彻底 | 死概念残留数 | 较高可信 | schema 变更连带删 3 死表 + 删除 checklist |
+| I4 | 真实 E2E 稀缺且高杠杆 | 冒烟通过率 | 较高可信 | ✅ `bun scripts/smoke-workflow.ts` + `SMOKE_CRON` 定时自冒烟 |
+| I5 | 删除收尾（已闭环） | 死概念残留数 | 较高可信 | ✅ 08-28 已随 d35e7dd6 完成；fixture 有意保留 |
 
 Owner 均为 repo owner（单人项目）。每条推进后回填验证结果与可信度升级。
