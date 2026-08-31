@@ -62,6 +62,7 @@ export function conversationRoutes(
             agentId: body.agentId,
             createdAt: now,
             projectId: body.projectId ?? null,
+            origin: body.origin ?? "user",
           });
           set.status = 201;
           return { conversationId, agentId: body.agentId };
@@ -71,6 +72,9 @@ export function conversationRoutes(
             conversationId: t.Optional(t.String({ minLength: 1 })),
             projectId: t.Optional(t.String({ minLength: 1 })),
             agentId: t.Optional(t.String({ minLength: 1 })),
+            /** Conversation provenance: user | workflow | fork. Workflow-
+             *  scoped chats are excluded from the user's chat surfaces. */
+            origin: t.Optional(t.String({ minLength: 1 })),
           }),
         },
       )

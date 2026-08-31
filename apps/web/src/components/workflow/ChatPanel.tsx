@@ -22,7 +22,7 @@ export function ChatPanel({ workflowId, goal }: { workflowId: string; goal?: str
   // it because the id derives from the workflow id).
   useEffect(() => {
     void api
-      .createConversation({ conversationId, agentId: "default" })
+      .createConversation({ conversationId, agentId: "default", origin: "workflow" })
       .catch(() => undefined)
       .finally(() => setReady(true));
   }, [conversationId]);

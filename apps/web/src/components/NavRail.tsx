@@ -68,7 +68,7 @@ function NavContent() {
   const { data: conversations } = useAllConversations();
   // Loop/Cron conversations belong in Work, not Chat — exclude them from the rail.
   const chatConversations = (conversations ?? []).filter(
-    (c) => "origin" in c && c.origin !== "loop" && c.origin !== "cron",
+    (c) => "origin" in c && c.origin !== "loop" && c.origin !== "cron" && c.origin !== "workflow",
   );
   const deleteConversation = useDeleteConversation();
   const { confirm, dialog: confirmDialog } = useConfirm();

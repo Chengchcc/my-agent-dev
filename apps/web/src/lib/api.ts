@@ -102,8 +102,12 @@ export const api = {
   // Conversations
   listConversations: (agentId?: string) =>
     unwrap(client.api.conversations.get({ query: agentId ? { agentId } : undefined })),
-  createConversation: (body: { conversationId?: string; projectId?: string; agentId: string }) =>
-    unwrap(client.api.conversations.post(body)),
+  createConversation: (body: {
+    conversationId?: string;
+    projectId?: string;
+    agentId: string;
+    origin?: string;
+  }) => unwrap(client.api.conversations.post(body)),
   getConversation: (id: string) => unwrap(client.api.conversations({ id }).get()),
   postConversationMessage: (
     id: string,

@@ -97,9 +97,9 @@ export default function ChatOverviewPage() {
     );
   }
 
-  const conversations = [...(data ?? [])].sort(
-    (a, b) => (b.lastActivityAt ?? b.createdAt) - (a.lastActivityAt ?? a.createdAt),
-  );
+  const conversations = [...(data ?? [])]
+    .filter((c) => !("origin" in c && c.origin === "workflow"))
+    .sort((a, b) => (b.lastActivityAt ?? b.createdAt) - (a.lastActivityAt ?? a.createdAt));
 
   // Chat overview is redundant with the sidebar conversation list: open the
   // most recent conversation directly (single chat entry point). A fresh
