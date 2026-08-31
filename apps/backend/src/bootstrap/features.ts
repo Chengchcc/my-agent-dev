@@ -939,7 +939,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   async function start(): Promise<void> {
     await workflowTriggerScheduler.sync();
     await workflowExecutionService.recover();
-    const smokeCronExpr = process.env.SMOKE_CRON;
+    const smokeCronExpr = config.smokeCron;
     if (smokeCronExpr) {
       smokeCron = Bun.cron(smokeCronExpr, () => {
         void (async () => {

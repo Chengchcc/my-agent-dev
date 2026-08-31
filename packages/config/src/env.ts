@@ -26,7 +26,7 @@ export const envSchema = z.object({
   BACKEND_MAX_CONCURRENT: z.coerce.number().int().positive().default(8),
   BACKEND_CANCEL_GRACE_MS: z.coerce.number().int().positive().default(5_000),
   BACKEND_RUN_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
-
+  SMOKE_CRON: z.string().optional().describe("cron expr for the self-smoke workflow run"),
   // ── Anthropic API ──
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_AUTH_TOKEN: z.string().optional(),
