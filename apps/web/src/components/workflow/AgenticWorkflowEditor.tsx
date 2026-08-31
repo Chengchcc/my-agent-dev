@@ -135,6 +135,7 @@ export function AgenticWorkflowEditor({
         setDefinition(resolved);
         return;
       }
+      setLastEditedAt(Date.now());
       setPast((p) => [...p.slice(-49), prev]);
       setFuture([]);
       setDefinition(resolved);
@@ -186,6 +187,18 @@ export function AgenticWorkflowEditor({
   const [activeEdgeIndex, setActiveEdgeIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [lastEditedAt, setLastEditedAt] = useState<number | null>(null);
+  const dirty = lastEditedAt !== null && (savedAt === null || savedAt < lastEditedAt);
+  // Warn before losing unsaved edits (reload/tab close).
+  useEffect(() => {
+    if (!dirty) return;
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
+
   const [menu, setMenu] = useState<{ sourceId: string; x: number; y: number } | null>(null);
   const [validation, setValidation] = useState<{ ok: boolean; errors?: string[] } | null>(null);
 
@@ -238,7 +251,15 @@ export function AgenticWorkflowEditor({
         <Breadcrumb className="min-w-0">
           <BreadcrumbList>
             <BreadcrumbItem>
-              <BreadcrumbLink href="/agentic-workflow">Workflows</BreadcrumbLink>
+              <BreadcrumbLink
+                href="/agentic-workflow"
+                onClick={(e) => {
+                  if (dirty && !confirm("有未保存的修改，离开将丢失。确定离开？"))
+                    e.preventDefault();
+                }}
+              >
+                Workflows
+              </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
@@ -270,10 +291,10 @@ export function AgenticWorkflowEditor({
                 Executions
               </DropdownMenuItem>
               <DropdownMenuItem disabled={past.length === 0} onClick={undo}>
-                ↩ Undo
+                ↩ 撤销
               </DropdownMenuItem>
               <DropdownMenuItem disabled={future.length === 0} onClick={redo}>
-                ↪ Redo
+                ↪ 重做
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -302,7 +323,7 @@ export function AgenticWorkflowEditor({
             disabled={saving || !definition}
             className="rounded-md border border-(--primary)/40 bg-(--primary)/10 px-3 py-1 text-xs text-(--primary) transition-all hover:bg-(--primary)/20 hover:shadow-[0_0_16px_rgba(245,158,11,0.25)] disabled:opacity-40"
           >
-            {saving ? "saving…" : "⌘S Save"}
+            {saving ? "保存中…" : dirty ? "● ⌘S 保存" : "⌘S 保存"}
           </button>
         </div>
       </div>

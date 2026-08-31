@@ -2,16 +2,7 @@
 
 import type { JsonLogicRule, WorkflowDefinition } from "@chengchenccc/workflow";
 import { useMemo, useState } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,7 +40,6 @@ export function EdgePropertyPanel({
 }) {
   const edge = useMemo(() => definition.edges[edgeIndex], [definition, edgeIndex]);
   const [when, setWhen] = useState<string>(edge?.when ? JSON.stringify(edge.when, null, 2) : "");
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [combine, setCombine] = useState<"and" | "or">("and");
   const [conditions, setConditions] = useState<
     Array<{ op: "==" | "!=" | ">" | "<" | "exists"; left: string; right: string }>
@@ -99,9 +89,7 @@ export function EdgePropertyPanel({
           {edge.from} → {edge.to}
         </h3>
         <button
-          onClick={() => {
-            setConfirmDelete(true);
-          }}
+          onClick={() => onDelete?.(deleteEdge(definition, edgeIndex))}
           className="text-xs text-(--err) hover:underline"
         >
           删除此边
@@ -287,29 +275,13 @@ export function EdgePropertyPanel({
                 : undefined;
               onChange(updateEdge(definition, edgeIndex, { when: parsed }));
             } catch {
-              alert("Invalid JSONLogic JSON");
+              toast.error("JSONLogic 格式错误");
             }
           }}
         >
           Apply JSONLogic
         </Button>
       </div>
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              删除边 {edge.from} → {edge.to}？
-            </AlertDialogTitle>
-            <AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={() => onDelete?.(deleteEdge(definition, edgeIndex))}>
-              删除
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

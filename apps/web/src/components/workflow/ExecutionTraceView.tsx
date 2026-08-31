@@ -73,6 +73,25 @@ export function ExecutionTraceView({
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
   const [liveEvents, setLiveEvents] = useState<TraceEvent[]>(events);
   useEffect(() => setLiveEvents(events), [events]);
+  // Keyboard stepping: ←/→ move the timeline cursor.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const target = e.target as HTMLElement | null;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      e.preventDefault();
+      setIndex((i) =>
+        Math.min(
+          Math.max(0, i + (e.key === "ArrowRight" ? 1 : -1)),
+          Math.max(0, liveEvents.length - 1),
+        ),
+      );
+      followTail.current = false;
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [liveEvents.length]);
+
   // Live tail: while following (not scrubbed back), track the newest event.
   useEffect(() => {
     if (followTail.current) setIndex(Math.max(0, liveEvents.length - 1));

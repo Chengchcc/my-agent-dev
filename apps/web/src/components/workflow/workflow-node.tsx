@@ -3,17 +3,6 @@
 import type { AskQuestionInput } from "@chengchenccc/agent-contract";
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import { Bot, Code2, Flag, type LucideIcon, Play, UserRound } from "lucide-react";
-import { useState } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { AskQuestionCard } from "./AskQuestionCard";
 
 const typeIcon: Record<string, LucideIcon> = {
@@ -34,7 +23,6 @@ const typeColor: Record<string, string> = {
 
 /** Blueprint node card: dark instrument look with a glowing type band. */
 export function WorkflowNodeCard({ data, selected }: NodeProps) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const t = (data as { type?: string }).type ?? "script";
   const status = (data as { status?: string }).status;
   const onDelete = (data as { onDelete?: () => void }).onDelete;
@@ -74,7 +62,7 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            setConfirmDelete(true);
+            onDelete();
           }}
           title="Delete node"
           className="absolute -right-2 -top-2 z-10 flex size-5 items-center justify-center rounded-full border border-(--hairline) bg-(--canvas) text-[10px] text-(--err) opacity-0 transition-opacity hover:border-[#fb7185]/60 hover:bg-(--panel2) [.react-flow__node:hover_&]:opacity-100"
@@ -163,20 +151,6 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
         position={Position.Bottom}
         className="h-2.5! w-8! rounded-full! bg-[#475569]! transition-all! hover:bg-[#38bdf8]! hover:shadow-[0_0_8px_rgba(56,189,248,0.6)]!"
       />
-      {onDelete && (
-        <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete node {String(data.label)}?</AlertDialogTitle>
-              <AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>取消</AlertDialogCancel>
-              <AlertDialogAction onClick={() => onDelete()}>删除</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
     </div>
   );
 }

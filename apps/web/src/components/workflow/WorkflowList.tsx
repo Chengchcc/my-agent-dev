@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -105,7 +106,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
       });
       window.location.assign(`/agentic-workflow/${runId}/executions`);
     } catch (err) {
-      alert(`Run failed: ${(err as Error).message}`);
+      toast.error(`运行失败：${err instanceof Error ? err.message : String(err)}`);
     }
   }
   async function del(id: string) {

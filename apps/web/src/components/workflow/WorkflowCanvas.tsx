@@ -397,7 +397,7 @@ export function WorkflowCanvas({
           title={minimapOpen ? "Hide minimap" : "Show minimap"}
           className="absolute bottom-16 right-4 z-10 flex h-7 items-center gap-1 rounded-md border border-(--hairline) bg-(--panel)/90 px-2 text-[10px] text-(--mute) hover:text-(--info)"
         >
-          {minimapOpen ? "Hide minimap" : "Minimap"}
+          {minimapOpen ? "隐藏小地图" : "小地图"}
         </button>
       )}
       {interactive && !hintDismissed && (
@@ -445,7 +445,7 @@ export function WorkflowCanvas({
             <path d="M21 7v4h-4" />
             <path d="M3 17v-4h4" />
           </svg>
-          <span>Auto layout</span>
+          <span>自动布局</span>
         </button>
       )}
     </div>

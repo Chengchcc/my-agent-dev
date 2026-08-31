@@ -5,6 +5,48 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { formatNextRun, nextCronRun } from "./cron-next";
+
+const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+
+type Mode = "daily" | "hourly" | "weekly" | "weekdays" | "custom";
+
+/** Human sentence for a 5-field cron expression; falls back to the raw expr. */
+export function describeCron(expr: string): string {
+  const f = expr.trim().split(/\s+/);
+  if (f.length !== 5) return expr;
+  const [min, hour, , , dow] = f;
+  const hm = `${String(Number(hour)).padStart(2, "0")}:${String(Number(min)).padStart(2, "0")}`;
+  if (dow === "1-5") return `工作日 ${hm}`;
+  if (/^[0-6]$/.test(dow ?? "")) return `每${WEEKDAYS[Number(dow)] ?? ""} ${hm}`;
+  if (hour === "*") return `每小时的 ${String(Number(min)).padStart(2, "0")} 分`;
+  return `每天 ${hm}`;
+}
+
+function buildCron(mode: Mode, time: string, weekday: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const hh = Number.isInteger(h) ? h : 2;
+  const mm = Number.isInteger(m) ? m : 0;
+  switch (mode) {
+    case "daily":
+      return `${mm} ${hh} * * *`;
+    case "hourly":
+      return `${mm} * * * *`;
+    case "weekly":
+      return `${mm} ${hh} * * ${weekday}`;
+    case "weekdays":
+      return `${mm} ${hh} * * 1-5`;
+    default:
+      return "";
+  }
+}
 
 export function TriggerPanel({
   definition,
@@ -13,24 +55,23 @@ export function TriggerPanel({
   definition: WorkflowDefinition;
   onChange: (def: WorkflowDefinition) => void;
 }) {
-  const [cron, setCron] = useState("");
+  const [mode, setMode] = useState<Mode>("daily");
+  const [time, setTime] = useState("02:00");
+  const [weekday, setWeekday] = useState(1);
+  const [custom, setCustom] = useState("");
   const triggers = definition.triggers ?? [];
 
   function setTriggers(next: WorkflowDefinition["triggers"]) {
     onChange({ ...definition, triggers: next });
   }
 
-  function add() {
-    if (!cron.trim()) return;
-    setTriggers([...triggers, { type: "cron", cron: cron.trim() }]);
-    setCron("");
-  }
+  const pendingCron = mode === "custom" ? custom.trim() : buildCron(mode, time, weekday);
+  const preview = pendingCron ? nextCronRun(pendingCron) : null;
 
-  function toggle(index: number, enabled: boolean) {
-    const next = triggers.map((t, i) =>
-      i === index ? ({ ...t, enabled } as (typeof triggers)[number]) : t,
-    );
-    setTriggers(next);
+  function add() {
+    if (!pendingCron || triggers.some((t) => t.cron === pendingCron)) return;
+    setTriggers([...triggers, { type: "cron", cron: pendingCron }]);
+    setCustom("");
   }
 
   function remove(index: number) {
@@ -39,25 +80,87 @@ export function TriggerPanel({
 
   return (
     <div className="space-y-3 p-3">
-      <div className="space-y-1">
-        <Label className="text-xs text-(--mute)">cron trigger（预留定时执行）</Label>
+      <div className="space-y-2 rounded-md border border-(--hairline) bg-(--canvas)/50 p-2">
+        <Label className="text-xs text-(--mute)">添加定时触发</Label>
         <div className="flex gap-1">
-          <Input
-            className="h-8 flex-1 border-(--hairline) bg-(--canvas) font-mono text-xs"
-            placeholder="0 2 * * *"
-            value={cron}
-            onChange={(e) => setCron(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") add();
-            }}
-          />
+          <Select value={mode} onValueChange={(v) => setMode((v ?? "daily") as Mode)}>
+            <SelectTrigger className="h-8 w-28 border-(--hairline) bg-(--canvas) text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="daily">每天</SelectItem>
+              <SelectItem value="hourly">每小时</SelectItem>
+              <SelectItem value="weekly">每周</SelectItem>
+              <SelectItem value="weekdays">工作日</SelectItem>
+              <SelectItem value="custom">自定义</SelectItem>
+            </SelectContent>
+          </Select>
+          {mode === "hourly" ? (
+            <Input
+              type="number"
+              min={0}
+              max={59}
+              className="h-8 flex-1 border-(--hairline) bg-(--canvas) text-xs"
+              value={time.split(":")[1] ?? "0"}
+              onChange={(e) =>
+                setTime(
+                  `00:${String(Math.min(59, Math.max(0, Number(e.target.value) || 0))).padStart(2, "0")}`,
+                )
+              }
+            />
+          ) : mode === "weekly" ? (
+            <>
+              <Select value={String(weekday)} onValueChange={(v) => setWeekday(Number(v ?? 1))}>
+                <SelectTrigger className="h-8 w-20 border-(--hairline) bg-(--canvas) text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {WEEKDAYS.map((d, i) => (
+                    <SelectItem key={d} value={String(i)}>
+                      {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                type="time"
+                className="h-8 flex-1 border-(--hairline) bg-(--canvas) text-xs"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+              />
+            </>
+          ) : mode === "custom" ? (
+            <Input
+              className="h-8 flex-1 border-(--hairline) bg-(--canvas) font-mono text-xs"
+              placeholder="分 时 日 月 周"
+              value={custom}
+              onChange={(e) => setCustom(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") add();
+              }}
+            />
+          ) : (
+            <Input
+              type="time"
+              className="h-8 flex-1 border-(--hairline) bg-(--canvas) text-xs"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+            />
+          )}
           <Button size="sm" onClick={add}>
             添加
           </Button>
         </div>
+        {pendingCron && (
+          <div className={`text-[10px] ${preview ? "text-(--mute)" : "text-(--err)"}`}>
+            {preview
+              ? `${describeCron(pendingCron)}（${pendingCron}）· 下次运行：${formatNextRun(preview)}`
+              : "cron 表达式无效（需 5 段：分 时 日 月 周）"}
+          </div>
+        )}
       </div>
       {triggers.length === 0 && (
-        <p className="text-xs text-(--mute)">无定时触发。API 触发无需配置。</p>
+        <p className="text-xs text-(--mute)">无定时触发。手动运行无需配置。</p>
       )}
       {triggers.length > 0 && (
         <div className="space-y-1">
@@ -66,15 +169,12 @@ export function TriggerPanel({
               key={`${i}-${t.cron}`}
               className="flex items-center gap-2 rounded-md border border-(--hairline) px-2 py-1.5 text-xs"
             >
-              <span className="min-w-0 flex-1 truncate font-mono">{t.cron}</span>
-              <label className="flex items-center gap-1 text-(--mute)">
-                <input
-                  type="checkbox"
-                  checked={t.enabled !== false}
-                  onChange={(e) => toggle(i, e.target.checked)}
-                />
-                启用
-              </label>
+              <div className="min-w-0 flex-1">
+                <div>{describeCron(t.cron)}</div>
+                <div className="font-mono text-[9px] text-(--faint)">
+                  {t.cron} · 下次 {formatNextRun(nextCronRun(t.cron))}
+                </div>
+              </div>
               <button onClick={() => remove(i)} className="shrink-0 text-(--err) hover:underline">
                 删除
               </button>

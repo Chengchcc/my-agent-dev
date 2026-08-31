@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,9 +37,28 @@ type Exec = {
   terminalAt?: number;
 };
 
+function useLiveExecutions(workflowId: string, initial: Exec[]): Exec[] {
+  const [rows, setRows] = useState<Exec[]>(initial);
+  useEffect(() => {
+    setRows(initial);
+  }, [initial]);
+  const anyRunning = rows.some((r) => r.status === "running" || r.status === "waiting_human");
+  useEffect(() => {
+    if (!anyRunning) return;
+    const timer = setInterval(() => {
+      api
+        .listWorkflowExecutions(workflowId)
+        .then((r) => setRows((r?.executions ?? []) as Exec[]))
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [anyRunning, workflowId]);
+  return rows;
+}
+
 export function ExecutionList({
   workflowId,
-  executions,
+  executions: initialExecutions,
   definition,
 }: {
   workflowId: string;
@@ -51,6 +71,7 @@ export function ExecutionList({
   const [runOpen, setRunOpen] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [artifactSuggestions, setArtifactSuggestions] = useState<string[]>([]);
+  const executions = useLiveExecutions(workflowId, initialExecutions);
   const inputHints = definition?.input ?? [];
 
   async function run() {
@@ -78,7 +99,7 @@ export function ExecutionList({
       });
       window.location.reload();
     } catch (err) {
-      alert(`Run failed: ${(err as Error).message}`);
+      toast.error(`运行失败：${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -87,7 +108,7 @@ export function ExecutionList({
       await api.deleteWorkflowExecution(executionId);
       window.location.reload();
     } catch (err) {
-      alert(`Delete failed: ${(err as Error).message}`);
+      toast.error(`删除失败：${err instanceof Error ? err.message : String(err)}`);
     }
   }
   return (
