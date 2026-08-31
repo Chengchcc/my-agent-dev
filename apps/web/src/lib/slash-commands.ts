@@ -25,53 +25,53 @@ export interface SlashCommand {
 export const slashCommands: SlashCommand[] = [
   {
     command: "/clear",
-    description: "Clear agent memory (keep chat history)",
+    description: "清空 agent 记忆（保留聊天历史）",
     execute: async (ctx) => {
       await api.clearConversation(ctx.conversationId);
-      ctx.toast("Context cleared", "success");
+      ctx.toast("记忆已清空", "success");
       return { handled: true };
     },
   },
   {
     command: "/compact",
-    description: "Summarize old messages to save context",
+    description: "总结旧消息，压缩上下文",
     execute: async (ctx) => {
       await api.compactConversation(ctx.conversationId);
-      ctx.toast("Compacted", "success");
+      ctx.toast("已压缩", "success");
       return { handled: true };
     },
   },
   {
     command: "/stop",
-    description: "Stop the running agent",
+    description: "停止运行中的 agent",
     execute: async (ctx) => {
       if (!ctx.currentRunId) {
-        ctx.toast("No active run", "error");
+        ctx.toast("当前没有运行中的 agent", "error");
         return { handled: true };
       }
       await api.cancelAgentRun(ctx.currentRunId);
-      ctx.toast("Stopped", "success");
+      ctx.toast("已停止", "success");
       return { handled: true };
     },
   },
   {
     command: "/title",
-    description: "Set conversation title",
-    argsHint: "<text>",
+    description: "设置会话标题",
+    argsHint: "<标题>",
     execute: async (ctx) => {
       const title = ctx.args.trim();
       if (!title) {
-        ctx.toast("Usage: /title <text>", "error");
+        ctx.toast("用法：/title <标题>", "error");
         return { handled: true };
       }
       await api.updateConversation(ctx.conversationId, { title });
-      ctx.toast(`Title set: ${title}`, "success");
+      ctx.toast(`标题已设置：${title}`, "success");
       return { handled: true };
     },
   },
   {
     command: "/export",
-    description: "Export conversation as markdown",
+    description: "导出会话为 Markdown",
     execute: async (ctx) => {
       const md = await api.exportConversation(ctx.conversationId);
       const blob = new Blob([md], { type: "text/markdown" });
@@ -86,8 +86,8 @@ export const slashCommands: SlashCommand[] = [
   },
   {
     command: "/goal",
-    description: "Set, check, or clear a goal condition",
-    argsHint: "<condition> | status | clear | pause | resume",
+    description: "设置 / 查看 / 清除目标条件",
+    argsHint: "<条件> | status | clear | pause | resume",
     execute: async (ctx) => {
       const args = ctx.args.trim();
 
@@ -95,10 +95,10 @@ export const slashCommands: SlashCommand[] = [
       if (!args || args === "status") {
         const goal = await api.getGoal(ctx.conversationId);
         if (!goal.condition) {
-          ctx.toast("No active goal", "info");
+          ctx.toast("未设置目标", "info");
         } else {
           ctx.toast(
-            `Goal: ${goal.condition}\nTurns: ${goal.turns}\nPaused: ${goal.paused}\nLast: ${goal.lastReason ?? "-"}`,
+            `目标：${goal.condition}\n轮数：${goal.turns}\n已暂停：${goal.paused ? "是" : "否"}\n最近：${goal.lastReason ?? "-"}`,
             "info",
           );
         }
@@ -109,7 +109,7 @@ export const slashCommands: SlashCommand[] = [
       if (args === "clear" || args === "stop" || args === "cancel") {
         await api.setGoal(ctx.conversationId, { action: "clear" });
         ctx.refreshGoal();
-        ctx.toast("Goal cleared", "success");
+        ctx.toast("目标已清除", "success");
         return { handled: true };
       }
 
@@ -117,7 +117,7 @@ export const slashCommands: SlashCommand[] = [
       if (args === "pause") {
         await api.setGoal(ctx.conversationId, { action: "pause" });
         ctx.refreshGoal();
-        ctx.toast("Goal paused", "info");
+        ctx.toast("目标已暂停", "info");
         return { handled: true };
       }
 
@@ -125,20 +125,20 @@ export const slashCommands: SlashCommand[] = [
       if (args === "resume") {
         await api.setGoal(ctx.conversationId, { action: "resume" });
         ctx.refreshGoal();
-        ctx.toast("Goal resumed", "success");
+        ctx.toast("目标已恢复", "success");
         return { handled: true };
       }
 
       // /goal <condition> -> set
       await api.setGoal(ctx.conversationId, { action: "set", condition: args });
       ctx.refreshGoal();
-      ctx.toast(`Goal set: ${args}`, "success");
+      ctx.toast(`目标已设置：${args}`, "success");
       return { handled: true };
     },
   },
   {
     command: "/help",
-    description: "Show available commands",
+    description: "显示可用命令",
     execute: async (ctx) => {
       const lines = slashCommands.map(
         (c) => `  ${c.command} ${c.argsHint ?? ""} - ${c.description}`,

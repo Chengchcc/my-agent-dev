@@ -174,19 +174,13 @@ export class OmaBackend implements AgentBackend<"oma"> {
         "oma-adapter",
         `spawning runId=${runId} executable=${this.command.executable} cwd=${input.workspace.root}`,
       );
-      proc = spawnOmaProcess(
-        input.productToolsToken
-          ? {
-              ...this.command,
-              env: {
-                ...this.command.env,
-                OMA_PRODUCT_TOOL_TOKEN: input.productToolsToken,
-                PRODUCT_TOOLS_RUN_TOKEN: input.productToolsToken,
-              },
-            }
-          : this.command,
-        { cwd: input.workspace.root },
-      );
+      const spawnEnv: Record<string, string> = { ...this.command.env };
+      if (input.productToolsToken) {
+        spawnEnv.OMA_PRODUCT_TOOL_TOKEN = input.productToolsToken;
+        spawnEnv.PRODUCT_TOOLS_RUN_TOKEN = input.productToolsToken;
+      }
+      if (input.convTitled) spawnEnv.OMA_CONV_TITLED = "1";
+      proc = spawnOmaProcess({ ...this.command, env: spawnEnv }, { cwd: input.workspace.root });
       debugLog("oma-adapter", `spawned runId=${runId} pid=${proc.pid}`);
     } catch (err) {
       releaseOnce();
@@ -226,7 +220,7 @@ export class OmaBackend implements AgentBackend<"oma"> {
 
     // B3: the bearer reaches the child ONLY via spawn env. The wire
     // payload (stdin JSONL — logged by debug fixtures) must not carry it.
-    const { productToolsToken: _stripped, ...wireInput } = input;
+    const { productToolsToken: _stripped, convTitled: _strippedTitled, ...wireInput } = input;
     proc.writeLine(
       JSON.stringify({ id: handle.executeCommandId, type: "execute", input: wireInput }),
     );

@@ -762,12 +762,13 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
       }
 
       let title: string | undefined;
-      // Title is a SESSION-level label: generate it once on the first turn
-      // (no history yet). Every completed turn re-generating it would burn a
-      // model call per turn and last-wins overwrite the session title.
+      // Auto-title retries on EVERY completed turn while the conversation is
+      // still untitled (OMA_CONV_TITLED=1 marks it titled — the backend sets
+      // it at spawn and re-checks on commit). The first turn may be low
+      // signal ("hi") and must not permanently suppress the title.
       if (
         status === "completed" &&
-        codingInput.history.length === 0 &&
+        process.env.OMA_CONV_TITLED !== "1" &&
         process.env.OMA_TITLE_ENABLED !== "0"
       ) {
         const titleBranch = await readBranchMessages();

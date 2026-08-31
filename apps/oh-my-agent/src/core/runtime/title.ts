@@ -112,7 +112,12 @@ export async function generateTitle(rt: PluginRuntime, context: string): Promise
       { signal: rt.signal },
     );
     return normalizeGeneratedTitle(raw);
-  } catch {
+  } catch (err) {
+    // Silent-null used to hide provider failures entirely — surface them so
+    // "auto title stopped working" is diagnosable from the child's stderr.
+    console.warn(
+      `[oma] auto-title generation failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return null;
   }
 }

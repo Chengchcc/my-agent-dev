@@ -35,6 +35,9 @@ export interface BackendRunInput<K extends string = string> {
   /** Per-run product-tools bearer. Backends deliver it to their child
    *  (spawn env). Absent = no product tools for this run. */
   readonly productToolsToken?: string;
+  /** True when the conversation already has a title — the child skips
+   *  auto-title generation (checked again server-side on commit). */
+  readonly convTitled?: boolean;
   /** Oma-only execution mode: run the workflow SCRIPT directly (vm sandbox,
    *  agent() subagents) instead of an interactive loop. The script's return
    *  value becomes `outcome.workflow.value`. Other backends ignore it. */

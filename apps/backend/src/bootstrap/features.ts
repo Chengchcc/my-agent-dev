@@ -467,6 +467,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       ? `sse:${config.productToolsMcpUrl.endsWith("/sse") ? config.productToolsMcpUrl : `${config.productToolsMcpUrl}/sse`}`
       : "stdio:/nonexistent",
     onRunCommitted,
+    conversationTitleOf: (conversationId: string) =>
+      conv.convPort.getConversation(conversationId)?.title ?? null,
     onRunFailed,
     persistRunEvent: (runId, event) => {
       services.opsStore.appendRunEvent(

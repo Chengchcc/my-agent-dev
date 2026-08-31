@@ -71,6 +71,8 @@ export interface AgentRunExecutionDeps {
    *  retryTerminalCommit replay - consumers must be idempotent per
    *  (runId, ...). Used by Conversation for the mention cascade. */
   readonly onRunCommitted?: (runId: string, output: Message | undefined) => void;
+  /** Conversation title lookup for the auto-title retry flag. */
+  readonly conversationTitleOf?: (conversationId: string) => string | null | undefined;
   /** Called after a failed/aborted/timeout run settles, so the surface can
    *  persist an assistant error message (T3-2: failures survive refresh).
    *  Fired once per terminal settle; consumers must be idempotent per runId. */
@@ -398,6 +400,9 @@ export function createAgentRunExecutionService(
       ...(run.workflow ? { workflow: run.workflow } : {}),
       workspace,
       productToolsToken,
+      // Auto-title: tell the child whether this conversation already has a
+      // title so later turns keep retrying only while it is missing.
+      convTitled: Boolean(deps.conversationTitleOf?.(run.conversationId)),
       metadata: {
         conversationId: run.conversationId,
         agentId: run.agentId,
