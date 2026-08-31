@@ -53,6 +53,7 @@ import {
   useDeleteConversation,
 } from "@/features/conversations/hooks";
 import type { AgentRow } from "@/lib/api";
+import { conversationDisplayName } from "@/lib/conversation-title";
 
 function NavContent() {
   const pathname = usePathname();
@@ -183,7 +184,7 @@ function NavContent() {
               >
                 {virtualizer.getVirtualItems().map((virtualRow) => {
                   const conv = chatConversations[virtualRow.index]!;
-                  const title = conv.title ?? `Conversation ${conv.conversationId.slice(0, 8)}`;
+                  const title = conversationDisplayName(conv);
                   return (
                     <div
                       key={conv.conversationId}

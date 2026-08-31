@@ -19,6 +19,7 @@ import {
 import { conversationDetailQuery } from "@/features/conversations/queries";
 import { useProjectList } from "@/features/projects/hooks";
 import { type AgentRow, getForkSourceId } from "@/lib/api";
+import { conversationDisplayName } from "@/lib/conversation-title";
 
 function relativeTime(ts: number | null | undefined): string {
   if (!ts) return "";
@@ -35,7 +36,7 @@ function ForkSourceMarker({ sourceId, createdAt }: { sourceId: string; createdAt
     ...conversationDetailQuery(sourceId),
     staleTime: 60_000,
   });
-  const sourceTitle = sourceConv?.title ?? `Conversation ${sourceId.slice(0, 8)}`;
+  const sourceTitle = sourceConv ? conversationDisplayName(sourceConv) : "原对话";
   return (
     <p className="text-[10px] text-(--mute) flex items-center gap-1">
       <span>↳</span>
@@ -251,7 +252,7 @@ export default function ChatOverviewPage() {
               >
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-(--ink) truncate">
-                    {conv.title ?? `Conversation ${conv.conversationId.slice(0, 8)}`}
+                    {conversationDisplayName(conv)}
                   </p>
                   {conv.lastMessagePreview && (
                     <p className="text-xs text-(--mute) truncate mt-0.5">

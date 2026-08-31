@@ -22,6 +22,7 @@ import {
   useDeleteConversation,
   useStartChat,
 } from "@/features/conversations/hooks";
+import { conversationDisplayName } from "@/lib/conversation-title";
 
 export function ConversationList({ agentId, agentName }: { agentId: string; agentName?: string }) {
   const router = useRouter();
@@ -86,7 +87,7 @@ export function ConversationList({ agentId, agentName }: { agentId: string; agen
             >
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-(--ink-strong) truncate">
-                  {conv.title ?? `Conversation ${conv.conversationId.slice(0, 8)}`}
+                  {conversationDisplayName(conv)}
                 </p>
                 <p className="text-[10px] text-(--mute) mt-0.5">{conv.agentId ?? "agent"}</p>
               </div>
