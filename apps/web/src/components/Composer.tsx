@@ -427,10 +427,10 @@ export function Composer({
             <div className="absolute bottom-full left-0 mb-1 w-80 bg-(--canvas) border border-(--hairline) rounded-lg z-50 overflow-hidden">
               <div className="flex items-center justify-between px-3 py-2 border-b border-(--hairline) bg-(--canvas-soft)">
                 <span className="text-[10px] tracking-widest uppercase text-(--mute) font-semibold">
-                  Commands
+                  命令
                 </span>
                 <span className="text-[10px] text-(--mute) flex items-center gap-1">
-                  <CornerDownLeft size={10} /> to complete
+                  <CornerDownLeft size={10} /> 补全
                 </span>
               </div>
               <div className="max-h-56 overflow-y-auto">
