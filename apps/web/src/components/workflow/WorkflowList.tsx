@@ -192,19 +192,19 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
             </div>
             <div className="flex shrink-0 gap-2 text-xs">
               <button
-                className="rounded-md border border-(--primary)/40 bg-(--primary)/10 px-2 py-1 text-(--primary) transition-colors hover:bg-(--primary)/20"
+                className="rounded-md border border-(--hairline) bg-(--panel) px-2 py-1 text-(--body) transition-colors hover:bg-(--panel2)"
                 onClick={() => openRun(d.workflowId)}
               >
                 Run
               </button>
               <Link
                 href={`/agentic-workflow/${d.workflowId}/executions`}
-                className="rounded-md border border-(--hairline) px-2 py-1 text-(--info) transition-colors hover:bg-(--panel2)"
+                className="rounded-md border border-(--hairline) bg-(--panel) px-2 py-1 text-(--body) transition-colors hover:bg-(--panel2)"
               >
                 executions
               </Link>
               <button
-                className="text-red-600 hover:underline"
+                className="rounded-md border border-(--hairline) bg-(--panel) px-2 py-1 text-(--err) transition-colors hover:bg-(--panel2)"
                 onClick={() => setConfirmId(d.workflowId)}
               >
                 delete

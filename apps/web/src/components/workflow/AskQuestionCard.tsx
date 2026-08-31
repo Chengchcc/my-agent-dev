@@ -94,8 +94,15 @@ export function AskQuestionCard({
                 <>
                   <Questionnaire.Choices className="space-y-1">
                     {(q.options ?? []).map((o) => (
-                      <Questionnaire.Choice key={o.value} value={o.value}>
-                        <Questionnaire.ChoiceInput className="hidden" />
+                      <Questionnaire.Choice
+                        key={o.value}
+                        value={o.value}
+                        className="flex w-full cursor-pointer items-start gap-2 rounded-md border border-(--hairline) bg-(--canvas)/40 px-3 py-2 transition-colors has-[input:checked]:border-(--primary) has-[input:checked]:bg-(--primary)/10"
+                      >
+                        <Questionnaire.ChoiceInput className="peer sr-only" />
+                        <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border border-(--hairline) peer-checked:border-(--primary)">
+                          <span className="size-2 rounded-full bg-(--primary) opacity-0 transition-opacity peer-checked:opacity-100" />
+                        </span>
                         <Questionnaire.ChoiceLabel className="flex items-center gap-2 text-sm">
                           <span className="font-medium">{o.label}</span>
                           {o.description && (
@@ -105,8 +112,14 @@ export function AskQuestionCard({
                       </Questionnaire.Choice>
                     ))}
                     {q.allowOther && (
-                      <Questionnaire.Choice value="__other__">
-                        <Questionnaire.ChoiceInput className="hidden" />
+                      <Questionnaire.Choice
+                        value="__other__"
+                        className="flex w-full cursor-pointer items-start gap-2 rounded-md border border-(--hairline) bg-(--canvas)/40 px-3 py-2 transition-colors has-[input:checked]:border-(--primary) has-[input:checked]:bg-(--primary)/10"
+                      >
+                        <Questionnaire.ChoiceInput className="peer sr-only" />
+                        <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border border-(--hairline) peer-checked:border-(--primary)">
+                          <span className="size-2 rounded-full bg-(--primary) opacity-0 transition-opacity peer-checked:opacity-100" />
+                        </span>
                         <Questionnaire.ChoiceLabel className="text-sm text-(--mute)">
                           Other
                         </Questionnaire.ChoiceLabel>
