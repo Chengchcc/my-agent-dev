@@ -1,12 +1,10 @@
 "use client";
 
-import { Bot, Download, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Bot } from "lucide-react";
 import type { AgentRow } from "@/lib/api";
 
-/** Description card: 72px avatar + description + "AI update" (postponed)
- *  and "Export agent.yml" (no exporter yet) — both disabled until the
- *  backend supports them (§6.4). */
+/** Description card: 72px avatar + model line. The postponed AI-update /
+ *  export actions were removed — re-add a button when its backend lands. */
 export function AgentDescriptionCard({ agent }: { agent: AgentRow }) {
   return (
     <section className="flex items-start gap-4 rounded-(--radius-card) border border-(--hairline) bg-(--panel) p-4">
@@ -25,14 +23,6 @@ export function AgentDescriptionCard({ agent }: { agent: AgentRow }) {
         <p className="mt-2 text-(--text-cap) text-(--faint)">
           A2A uses this description to select the agent.
         </p>
-      </div>
-      <div className="flex shrink-0 flex-col items-stretch gap-2">
-        <Button variant="ghost" size="sm" disabled title="AI description update coming soon">
-          <Sparkles className="size-3.5" /> AI update
-        </Button>
-        <Button variant="outline" size="sm" disabled title="Export not available yet">
-          <Download className="size-3.5" /> Export agent.yml
-        </Button>
       </div>
     </section>
   );

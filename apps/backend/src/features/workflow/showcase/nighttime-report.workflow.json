@@ -9,7 +9,7 @@
   ],
   "meta": {
     "name": "Nightly Code Quality Report",
-    "description": "每天晚上运行：扫描仓库、汇总 top 3 代码质量问题、格式化为 markdown 报告，人工确认后发送或丢弃",
+    "description": "Every night: scan the repo, summarize the top 3 code-quality issues into a markdown report; a human confirms before it is sent or discarded",
     "tags": ["nightly", "code-quality", "report"],
     "status": "active",
     "owner": "platform",
@@ -30,7 +30,7 @@
       "id": "scan-repo",
       "type": "agent",
       "model": "deepseek/deepseek-v4-flash",
-      "prompt": "你是代码质量审查 agent。扫描输入变量 repoUrl 指向的仓库（先克隆/检出到本地再分析），从以下维度找出代码质量问题：bug 风险、性能隐患、可维护性与复杂度、安全漏洞、测试覆盖。按严重程度排序，总结最重要的 top 3 问题；每条包含问题描述、影响和修复建议。以 JSON 输出 problems 数组（数组元素为字符串，每条一个问题描述）。若仓库没有明显问题，输出空数组。",
+      "prompt": "You are a code-quality review agent.Scan the repository at input repoUrl (clone/checkout locally first), find code-quality issues across: bug risk, performance, maintainability, security, test coverage.Rank by severity and summarize the top 3 issues; each with description, impact and fix suggestion.Output a JSON problems array (array of strings, one issue per string). Empty array if the repo looks clean.",
       "output": [
         {
           "key": "problems",
@@ -59,7 +59,7 @@
       "type": "script",
       "runtime": "bun",
       "timeoutMs": 30000,
-      "code": "export default async function run(ctx) {\n  const input = ctx;\n  const problems: string[] = Array.isArray(input.problems) ? input.problems : [];\n  const lines = problems.length\n    ? problems.map((p, i) => `${i + 1}. ${p}`).join(\"\\n\")\n    : \"- 未发现明显问题。\";\n  const report = [\n    \"# Nightly Code Quality Report\",\n    \"\",\n    `- **Repository**: ${input.repoUrl ?? \"n/a\"}`,\n    `- **Generated**: ${new Date().toISOString()}`,\n    \"\",\n    \"## Top Problems\",\n    \"\",\n    lines,\n    \"\",\n  ].join(\"\\n\");\n  return { report };\n}",
+      "code": "export default async function run(ctx) {\n  const input = ctx;\n  const problems: string[] = Array.isArray(input.problems) ? input.problems : [];\n  const lines = problems.length\n    ? problems.map((p, i) => `${i + 1}. ${p}`).join(\"\\n\")\n    : \"- No significant issues found.\";\n  const report = [\n    \"# Nightly Code Quality Report\",\n    \"\",\n    `- **Repository**: ${input.repoUrl ?? \"n/a\"}`,\n    `- **Generated**: ${new Date().toISOString()}`,\n    \"\",\n    \"## Top Problems\",\n    \"\",\n    lines,\n    \"\",\n  ].join(\"\\n\");\n  return { report };\n}",
       "output": [
         {
           "key": "report",
@@ -80,17 +80,17 @@
     {
       "id": "approve",
       "type": "human",
-      "question": "代码质量报告已生成，是否发送？",
+      "question": "Code quality report is ready. Send it?",
       "form": {
         "approve": {
           "type": "enum",
-          "label": "是否发送",
+          "label": "Send it?",
           "options": ["yes", "no"],
           "required": true
         },
         "comment": {
           "type": "textarea",
-          "label": "备注",
+          "label": "Note",
           "required": false
         }
       },

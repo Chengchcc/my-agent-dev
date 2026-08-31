@@ -49,6 +49,10 @@ export interface TriggeredRun {
   agentId: string;
   runId: string;
   queued: boolean;
+  /** True when the input was cancelled at enqueue (a steer with no active
+   *  run — a steer is never replayed). Callers (Lark, API clients) surface
+   *  this instead of a silent empty triggeredRuns. */
+  cancelled?: boolean;
 }
 
 export interface ConversationService {
@@ -298,11 +302,11 @@ class ConversationServiceImpl implements ConversationService {
       });
     } else if (cancelled) {
       // A steer with no active Run (race between the active check above and
-      // the enqueue): the input was cancelled at enqueue - surface it as an
-      // explicit error, never a silent drop.
-      throw new Error(
-        `steer rejected: no active run on branch ${branch.branchId} for ${input.agentId}`,
-      );
+      // the enqueue): the input was cancelled at enqueue. Returning
+      // cancelled=true instead of throwing — postMessage's non-DomainError
+      // catch swallowed the old throw, so the "explicit error" never
+      // reached the wire; the structured flag is programmable feedback.
+      return { agentId: input.agentId, runId: "", queued: false, cancelled: true };
     }
     return { agentId: input.agentId, runId: run?.runId ?? "", queued };
   }
