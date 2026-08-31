@@ -35,7 +35,11 @@ describe("conversation-reducer turn grouping", () => {
     const m = msg({
       id: "t1",
       text: "let me check",
-      blocks: [{ type: "thinking" }, { type: "text", text: "let me check" }, { type: "tool_use", name: "bash" }],
+      blocks: [
+        { type: "thinking" },
+        { type: "text", text: "let me check" },
+        { type: "tool_use", name: "bash" },
+      ],
     });
     expect(isConclusionMessage(m)).toBe(false);
   });
@@ -47,7 +51,11 @@ describe("conversation-reducer turn grouping", () => {
 
   test("turn keeps text-bearing tool rounds in rounds (not the conclusion)", () => {
     const turn = groupTurns([
-      msg({ id: "t1", text: "checking", blocks: [{ type: "thinking" }, { type: "tool_use", name: "bash" }] }),
+      msg({
+        id: "t1",
+        text: "checking",
+        blocks: [{ type: "thinking" }, { type: "tool_use", name: "bash" }],
+      }),
       msg({ id: "final", text: "the answer" }),
     ]);
     expect(turn).toHaveLength(1);

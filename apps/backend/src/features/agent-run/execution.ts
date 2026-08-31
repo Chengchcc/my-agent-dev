@@ -527,7 +527,7 @@ export function createAgentRunExecutionService(
     }
     if (outcome.status === "completed") {
       try {
-        const { run: committed, seqs } = await runPort.commitCompletedRun({
+        const { seqs } = await runPort.commitCompletedRun({
           runId: run.runId,
           outcome,
           messages: outcome.messages ?? [],

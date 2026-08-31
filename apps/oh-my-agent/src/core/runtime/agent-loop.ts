@@ -577,7 +577,9 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                           ? {
                               type: "thinking" as const,
                               text: turn.thinkingRedacted ? "[reasoning redacted]" : b.text,
-                              ...(turn.thinkingSignature ? { signature: turn.thinkingSignature } : {}),
+                              ...(turn.thinkingSignature
+                                ? { signature: turn.thinkingSignature }
+                                : {}),
                               ...(turn.thinkingRedacted ? { redacted: true } : {}),
                             }
                           : b,
@@ -674,7 +676,9 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                               ? {
                                   type: "thinking" as const,
                                   text: turn.thinkingRedacted ? "[reasoning redacted]" : b.text,
-                                  ...(turn.thinkingSignature ? { signature: turn.thinkingSignature } : {}),
+                                  ...(turn.thinkingSignature
+                                    ? { signature: turn.thinkingSignature }
+                                    : {}),
                                   ...(turn.thinkingRedacted ? { redacted: true } : {}),
                                 }
                               : b,
