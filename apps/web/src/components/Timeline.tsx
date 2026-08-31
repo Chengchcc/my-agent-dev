@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useForkConversation,
+  usePostConversationMessage,
   useReplayFromMessage,
   useUndoMessages,
 } from "@/features/conversations/hooks";
@@ -217,6 +218,14 @@ export function Timeline({
     }
     return items;
   }, [segments]);
+  // Index (into renderItems) of the LAST real message segment — the regen
+  // affordance lives there only.
+  const lastMessageIdx = useMemo(() => {
+    for (let i = renderItems.length - 1; i >= 0; i--) {
+      if (renderItems[i]!.seg.kind === "single") return i;
+    }
+    return -1;
+  }, [renderItems]);
 
   return (
     <div className="flex gap-0">
@@ -249,7 +258,7 @@ export function Timeline({
       {/* Timeline content */}
       <div className="flex-1 min-w-0">
         <div className="max-w-3xl mx-auto">
-          {renderItems.map(({ seg, anchorId }) => {
+          {renderItems.map(({ seg, anchorId }, ri) => {
             if (seg.kind === "turn") {
               // Agent turn blocks never start a turn, so they carry no anchor.
               return (
@@ -276,6 +285,23 @@ export function Timeline({
             };
             // Skip hover actions on optimistic (seq=-1) messages - no backend target yet.
             const canAct = m.seq >= 0 && !isUndone;
+            // Regen offered only on the LATEST assistant message: find the
+            // nearest preceding human text to resend after undo.
+            let regen: { prevUserText: string } | null = null;
+            if (
+              ri === lastMessageIdx &&
+              m.sender.kind === "agent" &&
+              m.content.state !== "streaming"
+            ) {
+              for (let j = messages.length - 2; j >= 0; j--) {
+                const prev = messages[j]!;
+                if (prev.kind === "message" && prev.sender.kind === "human") {
+                  const t = extractText(prev.content).trim();
+                  if (t) regen = { prevUserText: t };
+                  break;
+                }
+              }
+            }
 
             return (
               <div key={m.id} id={anchorId} className={anchorId ? "scroll-mt-16" : undefined}>
@@ -284,7 +310,12 @@ export function Timeline({
                   data-seq={m.seq}
                   className={`group relative ${isUndone ? "opacity-50" : ""}`}
                 >
-                  <MessageActions conversationId={conversationId} item={m} canAct={canAct}>
+                  <MessageActions
+                    conversationId={conversationId}
+                    item={m}
+                    canAct={canAct}
+                    regen={regen}
+                  >
                     {extractText(m.content) && (
                       <MessageBubble
                         align={isSelf ? "right" : "left"}
@@ -404,17 +435,36 @@ function MessageActions({
   conversationId,
   item,
   canAct,
+  regen,
   children,
 }: {
   conversationId: string;
   item: MessageItem;
   canAct: boolean;
+  /** Regen context for the latest assistant message: the preceding user
+   *  text to resend after undoing the assistant turn. */
+  regen?: { prevUserText: string } | null;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const forkMut = useForkConversation();
   const undoMut = useUndoMessages();
   const replayMut = useReplayFromMessage();
+  const postMut = usePostConversationMessage(conversationId);
+
+  const handleRegenerate = useCallback(() => {
+    if (!regen?.prevUserText) return;
+    undoMut.mutate(
+      { id: conversationId, count: 1 },
+      {
+        onSuccess: () => postMut.mutate({ text: regen.prevUserText }),
+        onError: (err) =>
+          toast.error("重新生成失败", {
+            description: err instanceof Error ? err.message : "未知错误",
+          }),
+      },
+    );
+  }, [regen, undoMut, postMut, conversationId]);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const isUser = item.sender.kind === "human";
@@ -483,6 +533,20 @@ function MessageActions({
                      flex gap-1 mt-1
                      justify-end"
         >
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
+            onClick={() => {
+              const text = extractText(item.content);
+              void navigator.clipboard?.writeText(text).then(
+                () => toast.success("已复制"),
+                () => toast.error("复制失败"),
+              );
+            }}
+          >
+            复制
+          </Button>
           {isUser ? (
             <Button
               size="sm"
@@ -490,7 +554,7 @@ function MessageActions({
               className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
               onClick={handleStartEdit}
             >
-              Edit &amp; Replay
+              编辑重发
             </Button>
           ) : (
             <>
@@ -498,9 +562,9 @@ function MessageActions({
                 <Link
                   href={`/system/runs/${runIdOf(item)}`}
                   className="inline-flex h-6 items-center px-2 text-[10px] text-(--mute) hover:text-(--body)"
-                  title="Open run detail"
+                  title="打开运行详情"
                 >
-                  View Run ↗
+                  运行详情 ↗
                 </Link>
               )}
               <Button
@@ -521,9 +585,20 @@ function MessageActions({
                 }
                 disabled={undoMut.isPending}
               >
-                {undoMut.isPending ? "Undoing..." : "Undo"}
+                {undoMut.isPending ? "撤销中…" : "撤销"}
               </Button>
             </>
+          )}
+          {!isUser && regen && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
+              onClick={handleRegenerate}
+              disabled={undoMut.isPending || postMut.isPending}
+            >
+              重新生成
+            </Button>
           )}
           <Button
             size="sm"
@@ -543,7 +618,7 @@ function MessageActions({
             }
             disabled={forkMut.isPending}
           >
-            {forkMut.isPending ? "Forking..." : "Fork from here"}
+            {forkMut.isPending ? "分叉中…" : "从此分叉"}
           </Button>
         </div>
       )}
