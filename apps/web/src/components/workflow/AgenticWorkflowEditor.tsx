@@ -1,6 +1,7 @@
 "use client";
 
 import type { AskQuestionInput } from "@chengchenccc/agent-contract";
+import { workflowDefinitionEvents } from "@chengchenccc/api-contract";
 import {
   parseWorkflow,
   toEditorGraph,
@@ -24,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { api } from "@/lib/api";
+import { typedSource } from "@/lib/typed-source";
 import { ChatPanel } from "./ChatPanel";
 
 const DslEditorPanel = dynamic(() => import("./DslEditorPanel").then((m) => m.DslEditorPanel), {
@@ -189,6 +191,10 @@ export function AgenticWorkflowEditor({
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [lastEditedAt, setLastEditedAt] = useState<number | null>(null);
   const dirty = lastEditedAt !== null && (savedAt === null || savedAt < lastEditedAt);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const savingRef = useRef(saving);
+  savingRef.current = saving;
   // Warn before losing unsaved edits (reload/tab close).
   useEffect(() => {
     if (!dirty) return;
@@ -243,6 +249,34 @@ export function AgenticWorkflowEditor({
       setSaving(false);
     }
   }
+
+  // SSE live refresh: when the chat agent (via the workflow MCP tool) or
+  // another tab saves the definition, the backend emits a "changed" event.
+  // Refetch and adopt the remote definition without recording undo history.
+  // Skip while the user has unsaved local edits (dirty) — stale overwrite
+  // would clobber their canvas work; they can refresh after saving.
+  useEffect(() => {
+    const ts = typedSource(
+      `/api/bff/api/workflow-definitions/${workflowId}/events`,
+      workflowDefinitionEvents,
+    );
+    ts.on("changed", () => {
+      void (async () => {
+        if (dirtyRef.current || savingRef.current) return;
+        try {
+          const r = await api.getWorkflowDefinition(workflowId);
+          const remote = r?.definition;
+          if (!remote) return;
+          setDefinition(remote);
+          definitionRef.current = remote;
+          setSavedAt(Date.now());
+        } catch {
+          /* transient; keep local state */
+        }
+      })();
+    });
+    return () => ts.close();
+  }, [workflowId]);
 
   return (
     <div className="flex h-full flex-col bg-(--canvas) text-(--ink)">

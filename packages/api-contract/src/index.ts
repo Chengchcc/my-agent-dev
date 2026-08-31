@@ -15,5 +15,6 @@ export {
   createSseEncoder,
   runEvents,
   sseEndpoints,
+  workflowDefinitionEvents,
   workflowExecutionEvents,
 } from "./sse.js";

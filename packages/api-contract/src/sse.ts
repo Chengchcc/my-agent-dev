@@ -138,6 +138,23 @@ export const workflowExecutionEvents = {
  * Backend: matches for Elysia route mounting.
  * Frontend: `openSSE("conversationEvents", { id })` → typedSource with correct map.
  */
+// ── Workflow definition SSE payload (editor live refresh) ──
+//
+// Emitted by the backend whenever a workflow definition is written (HTTP
+// PUT save or the workflow MCP workflow_write tool). The editor subscribes
+// and refetches the definition — no idle polling. The data carries only the
+// change trigger; the full definition is fetched from the REST endpoint.
+export const workflowDefinitionEvent = z.object({
+  event: z.literal("changed"),
+  workflowId: z.string(),
+  ts: z.number(),
+  data: z.object({ trigger: z.enum(["save", "mcp"]) }),
+});
+
+export const workflowDefinitionEvents = {
+  changed: workflowDefinitionEvent,
+} as const satisfies SSEEventMap;
+
 export const sseEndpoints = {
   conversationEvents: {
     path: (p: { id: string }) => `/conversations/${p.id}/events`,

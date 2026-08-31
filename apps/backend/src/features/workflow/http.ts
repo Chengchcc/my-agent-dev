@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
 import { HttpError } from "../../infra/errors.js";
+import type { WorkflowDefinitionEvent, WorkflowDefinitionEventBus } from "./definition-events.js";
 import { dryRunWorkflow } from "./dry-run.js";
 import type { WorkflowExecutionService } from "./service.js";
 
@@ -30,6 +31,8 @@ export function workflowRoutes(deps: {
   loadWorkflow: (ref: WorkflowRef) => Promise<string>;
   workflowDir: string;
   resyncTriggers?: () => Promise<void>;
+  /** Emits a "changed" event on workflow writes (SSE live refresh). */
+  definitionEvents?: WorkflowDefinitionEventBus;
 }) {
   const svc = deps.workflowExecutionService;
   const dir = deps.workflowDir;
@@ -83,6 +86,7 @@ export function workflowRoutes(deps: {
         mkdirSync(dir, { recursive: true });
         const file = join(dir, `${params.workflowId}.workflow.json`);
         writeFileSync(file, JSON.stringify(body.definition, null, 2));
+        deps.definitionEvents?.emit(params.workflowId, { trigger: "save" });
         void deps.resyncTriggers?.();
         return { ok: true, definition: body.definition };
       },
@@ -92,6 +96,23 @@ export function workflowRoutes(deps: {
         }),
       },
     )
+    .get("/api/workflow-definitions/:workflowId/events", ({ request, params: { workflowId } }) => {
+      const bus = deps.definitionEvents;
+      if (!bus) throw new HttpError("definition events not configured", 501);
+      const defEvents: WorkflowDefinitionEventBus = bus;
+      async function* stream(): AsyncIterable<WorkflowDefinitionEvent | { _heartbeat: boolean }> {
+        const sub = defEvents.subscribe(workflowId);
+        for await (const ev of sub) yield ev;
+      }
+      return sseResponse(
+        stream(),
+        (ev) =>
+          "_heartbeat" in ev
+            ? { id: `${ev._heartbeat}`, event: "ping", data: null }
+            : { id: String(ev.ts), event: "changed", data: ev },
+        request.signal,
+      );
+    })
     .post(
       "/api/workflow-definitions/:workflowId/chat-patch",
       async ({ params, body }) => {

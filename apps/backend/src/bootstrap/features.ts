@@ -74,9 +74,11 @@ import {
 import {
   createNodeRunners,
   createWorkflowExecutionService,
+  createWorkflowMcpServer,
   createWorkflowTriggerScheduler,
   ExecutionEventBus,
   sqliteWorkflowExecutionAdapter,
+  WorkflowDefinitionEventBus,
   workflowRoutes,
 } from "../features/workflow/index.js";
 import { ulid } from "../infra/ids.js";
@@ -339,10 +341,16 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     artifactService,
   });
   let productToolsMcp: Awaited<ReturnType<typeof createProductToolsMcpServer>> | null = null;
+  const enabledMcpServers = new Set(
+    (config.enabledMcpServers ?? "product-tools")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+  );
   // Per-run bearer registry: tokens are minted at dispatch and revoked at
   // settle (agent-run execution); this is the ONLY accepted MCP auth.
   const productToolsTokenRegistry = createRunTokenRegistry();
-  if (config.productToolsMcpUrl) {
+  if (config.productToolsMcpUrl && enabledMcpServers.has("product-tools")) {
     const mcpUrl = new URL(config.productToolsMcpUrl);
     productToolsMcp = await createProductToolsMcpServer({
       service: productTools,
@@ -351,6 +359,18 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       port: Number(mcpUrl.port) || 0,
     });
     console.log(`[bootstrap] product tools MCP listening at ${productToolsMcp.url}`);
+  }
+  // Workflow DSL MCP server (per-server control via ENABLED_MCP_SERVERS):
+  // lets the agent read/write *.workflow.json through MCP tools. Injected
+  // into the workspace .mcp.json below only when enabled.
+  const workflowDefinitionEvents = new WorkflowDefinitionEventBus();
+  let workflowMcp: Awaited<ReturnType<typeof createWorkflowMcpServer>> | null = null;
+  if (enabledMcpServers.has("workflow")) {
+    workflowMcp = await createWorkflowMcpServer({
+      workflowDir: join(config.dataDir, "workflows"),
+      definitionEvents: workflowDefinitionEvents,
+    });
+    console.log(`[bootstrap] workflow MCP listening at ${workflowMcp.url}`);
   }
 
   // The execution service exists unconditionally: the Oma is a
@@ -689,8 +709,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
             headers: s.headers ?? {},
           })),
           // The product-tools server (ledger access, ADR 0020) merges into
-          // the SAME workspace .mcp.json — one config, one writer.
-          ...(config.productToolsMcpUrl
+          // the SAME workspace .mcp.json — one config, one writer. Gated by
+          // the per-server enabled set (ENABLED_MCP_SERVERS).
+          ...(config.productToolsMcpUrl && enabledMcpServers.has("product-tools")
             ? [
                 {
                   name: "product-tools",
@@ -706,6 +727,20 @@ export async function installFeatures(services: BackendServices): Promise<Instal
                   // claude expands the ${VAR} placeholder in headers. The
                   // per-run bearer arrives via spawn env. File stays static.
                   bearerTokenEnv: "PRODUCT_TOOLS_RUN_TOKEN",
+                },
+              ]
+            : []),
+          // The workflow DSL server (per-server controlled): lets the chat
+          // agent read/write the workflow file it is editing. Injected only
+          // when enabled AND the server is live.
+          ...(workflowMcp
+            ? [
+                {
+                  name: "workflow",
+                  transport: "sse" as const,
+                  // The Oma SSEClientTransport GETs this url as-is; the bare
+                  // base 404s, so point at the /sse endpoint directly.
+                  url: workflowMcp.url,
                 },
               ]
             : []),
@@ -858,6 +893,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     },
     workflowDir: join(config.dataDir, "workflows"),
     resyncTriggers: () => workflowTriggerScheduler.sync(),
+    definitionEvents: workflowDefinitionEvents,
   });
 
   const featureSet: FeatureSet = {
@@ -980,6 +1016,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     await larkBotRegistry.dispose();
     setupManager?.dispose();
     await productToolsMcp?.close();
+    await workflowMcp?.close();
+    workflowDefinitionEvents.dispose();
   }
 
   // Seed the default agent AFTER the whole wiring (the catalog const and

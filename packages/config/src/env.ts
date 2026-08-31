@@ -66,6 +66,13 @@ export const envSchema = z.object({
     .string()
     .optional()
     .describe("Public URL of the Product Backend Product Tools MCP endpoint"),
+  // Per-server enable/disable for the built-in MCP servers injected into an
+  // agent's workspace .mcp.json (comma-separated names: product-tools,
+  // workflow). Absent = product-tools only (the historical default).
+  ENABLED_MCP_SERVERS: z
+    .string()
+    .optional()
+    .describe("comma-separated built-in MCP servers to inject (product-tools, workflow)"),
 });
 
 export type Env = z.infer<typeof envSchema>;

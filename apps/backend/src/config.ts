@@ -29,6 +29,9 @@ export interface BackendConfig {
   claudePermissionMode?: string;
   productToolsMcpUrl?: string;
   smokeCron?: string;
+  /** Comma-separated built-in MCP servers to inject into agent workspaces
+   *  (product-tools, workflow). Absent = product-tools only. */
+  enabledMcpServers?: string;
 }
 
 /**
@@ -57,5 +60,6 @@ export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
     claudePermissionMode: env.CLAUDE_PERMISSION_MODE,
     productToolsMcpUrl: env.PRODUCT_TOOLS_MCP_URL,
     smokeCron: env.SMOKE_CRON,
+    enabledMcpServers: env.ENABLED_MCP_SERVERS,
   };
 }
