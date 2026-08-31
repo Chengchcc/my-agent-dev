@@ -2,11 +2,17 @@
  *  React state; these functions make the multi-run merge/drop semantics
  *  unit-testable without DOM or EventSource. */
 
+export type TransientBlock = { type: "text" | "thinking"; text: string };
+
 export interface TransientRun {
   text: string;
   /** Streaming model thinking (internal monologue), accumulated per run.
    *  Rendered inside the running trace; never part of the text bubble. */
   thinking: string;
+  /** Interleaved thinking/text deltas in the exact order they arrived.
+   *  Without this the UI cannot show reasoning interleaved with spoken
+   *  text — it would lump all thinking above the text. */
+  ordered: TransientBlock[];
   agentId: string;
   /** Runtime notices (stream-rule triggers): transient status lines shown
    * above the run's output; never part of the text bubble. */
@@ -37,6 +43,7 @@ export function appendTransient(
   next[runId] = {
     text: `${state[runId]?.text ?? ""}${delta}`,
     thinking: state[runId]?.thinking ?? "",
+    ordered: [...(state[runId]?.ordered ?? []), { type: "text" as const, text: delta }],
     agentId,
   };
   return next;
@@ -53,6 +60,7 @@ export function appendThinking(
   next[runId] = {
     text: state[runId]?.text ?? "",
     thinking: `${state[runId]?.thinking ?? ""}${delta}`,
+    ordered: [...(state[runId]?.ordered ?? []), { type: "thinking" as const, text: delta }],
     agentId,
   };
   return next;
@@ -78,6 +86,7 @@ export function markTransientError(
   next[runId] = {
     text: state[runId]?.text ?? "",
     thinking: state[runId]?.thinking ?? "",
+    ordered: state[runId]?.ordered ?? [],
     agentId,
     error,
   };
@@ -97,6 +106,7 @@ export function pushTransientNotice(
   next[runId] = {
     text: state[runId]?.text ?? "",
     thinking: state[runId]?.thinking ?? "",
+    ordered: state[runId]?.ordered ?? [],
     agentId,
     notices,
   };
@@ -114,6 +124,7 @@ export function setTransientApproval(
   next[runId] = {
     text: state[runId]?.text ?? "",
     thinking: state[runId]?.thinking ?? "",
+    ordered: state[runId]?.ordered ?? [],
     agentId,
     ...(state[runId]?.notices ? { notices: state[runId].notices } : {}),
     approval,

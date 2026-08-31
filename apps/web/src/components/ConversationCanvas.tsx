@@ -131,6 +131,7 @@ export function ConversationCanvas({
       error?: string;
       notices?: string[];
       approval?: { callId: string; toolName: string; reason: string };
+      ordered?: ReadonlyArray<{ type: "text" | "thinking"; text: string }>;
     }> = [];
     for (const [runId, t] of Object.entries(transients)) {
       const sender = agent ?? { memberId: t.agentId, kind: "agent" as const, agentId: t.agentId };
@@ -144,6 +145,7 @@ export function ConversationCanvas({
         ),
         error: t.error,
         notices: t.notices,
+        ordered: t.ordered,
         ...(t.approval ? { approval: t.approval } : {}),
       });
     }

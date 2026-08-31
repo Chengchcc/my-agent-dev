@@ -43,6 +43,7 @@ export function ChatPanel({ workflowId, goal }: { workflowId: string; goal?: str
       tools,
       error: t.error,
       notices: t.notices,
+      ordered: t.ordered,
     };
   });
 
