@@ -59,8 +59,11 @@ function validate(value: unknown, schema: JsonSchema, path: string, errors: stri
       errors.push(`${path} must have at least ${schema.minItems} items`);
     if (schema.maxItems !== undefined && value.length > schema.maxItems)
       errors.push(`${path} must have at most ${schema.maxItems} items`);
-    if (schema.items)
-      value.forEach((item, i) => validate(item, schema.items!, `${path}[${i}]`, errors));
+    const items = schema.items;
+    if (items)
+      value.forEach((item, i) => {
+        validate(item, items, `${path}[${i}]`, errors);
+      });
     return;
   }
   if (schema.type === "string") {
