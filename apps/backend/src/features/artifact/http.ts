@@ -14,6 +14,15 @@ export function artifactRoutes(service: ArtifactService) {
       },
     )
     .get(
+      "/download",
+      async ({ query }) => {
+        return service.download(query.url);
+      },
+      {
+        query: t.Object({ url: t.String({ minLength: 1 }) }),
+      },
+    )
+    .get(
       "/:url",
       async ({ params }) => {
         const url = decodeURIComponent(params.url);

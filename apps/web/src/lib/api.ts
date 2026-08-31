@@ -449,7 +449,10 @@ export const api = {
     return (await r.json()) as ArtifactMeta;
   },
   downloadArtifact: async (url: string) => {
-    const r = await fetch(`/api/bff/api/artifacts/${encodeURIComponent(url)}`);
+    // Query param (not path segment): the artifacts:// URL contains '/'
+    // which a path param cannot match, and double-encoding through the BFF
+    // can decode %2F back into slashes.
+    const r = await fetch(`/api/bff/api/artifacts/download?url=${encodeURIComponent(url)}`);
     if (!r.ok) throw new Error(`download artifact failed: ${r.status}`);
     return (await r.json()) as {
       content: string;
