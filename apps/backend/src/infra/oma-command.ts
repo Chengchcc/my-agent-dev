@@ -36,6 +36,12 @@ export function resolveOmaCommand(
     GROQ_API_KEY: process.env.GROQ_API_KEY,
     OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
     OMA_HOME: process.env.OMA_HOME,
+    // Test determinism knobs (fake provider) - forwarded so in-process
+    // smokes get the same scripted child as the integration harness.
+    OMA_FAKE_PROVIDER: process.env.OMA_FAKE_PROVIDER,
+    OMA_FAKE_TEXT: process.env.OMA_FAKE_TEXT,
+    OMA_FAKE_TOOL: process.env.OMA_FAKE_TOOL,
+    OMA_FAKE_TOOLS_RECORD: process.env.OMA_FAKE_TOOLS_RECORD,
     ...opts.env,
   };
 

@@ -268,11 +268,22 @@ export function createWorkflowExecutionService(
     };
   }
 
-  function inputHintToRecord(
-    hint: { key: string; type: string }[] | undefined,
-  ): Record<string, string> {
+  /** Input/output hints arrive in two shapes in the wild: the DSL parser
+   *  normalizes to [{key,type}], but legacy/showcase definitions and the
+   *  HTTP route pass raw object-shaped `{key: type}` through JSON.parse.
+   *  Accept both; never trust the static InputHint type at runtime. */
+  function inputHintToRecord(hint: unknown): Record<string, string> {
     const out: Record<string, string> = {};
-    for (const f of hint ?? []) out[f.key] = f.type;
+    if (Array.isArray(hint)) {
+      for (const f of hint) {
+        const row = f as { key?: unknown; type?: unknown };
+        if (row && typeof row.key === "string") out[row.key] = String(row.type ?? "string");
+      }
+    } else if (hint && typeof hint === "object") {
+      for (const [k, v] of Object.entries(hint as Record<string, unknown>)) {
+        out[k] = typeof v === "string" ? v : "string";
+      }
+    }
     return out;
   }
 

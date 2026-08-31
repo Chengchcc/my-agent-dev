@@ -9,7 +9,7 @@
   ],
   "meta": {
     "name": "Nightly Code Quality Report",
-    "description": "\u6bcf\u5929\u665a\u4e0a\u8fd0\u884c\uff1a\u626b\u63cf\u4ed3\u5e93\u3001\u6c47\u603b top 3 \u4ee3\u7801\u8d28\u91cf\u95ee\u9898\u3001\u683c\u5f0f\u5316\u4e3a markdown \u62a5\u544a\uff0c\u4eba\u5de5\u786e\u8ba4\u540e\u53d1\u9001\u6216\u4e22\u5f03",
+    "description": "每天晚上运行：扫描仓库、汇总 top 3 代码质量问题、格式化为 markdown 报告，人工确认后发送或丢弃",
     "tags": ["nightly", "code-quality", "report"],
     "status": "active",
     "owner": "platform",
@@ -30,7 +30,7 @@
       "id": "scan-repo",
       "type": "agent",
       "model": "deepseek/deepseek-v4-flash",
-      "prompt": "\u4f60\u662f\u4ee3\u7801\u8d28\u91cf\u5ba1\u67e5 agent\u3002\u626b\u63cf\u8f93\u5165\u53d8\u91cf repoUrl \u6307\u5411\u7684\u4ed3\u5e93\uff08\u5148\u514b\u9686/\u68c0\u51fa\u5230\u672c\u5730\u518d\u5206\u6790\uff09\uff0c\u4ece\u4ee5\u4e0b\u7ef4\u5ea6\u627e\u51fa\u4ee3\u7801\u8d28\u91cf\u95ee\u9898\uff1abug \u98ce\u9669\u3001\u6027\u80fd\u9690\u60a3\u3001\u53ef\u7ef4\u62a4\u6027\u4e0e\u590d\u6742\u5ea6\u3001\u5b89\u5168\u6f0f\u6d1e\u3001\u6d4b\u8bd5\u8986\u76d6\u3002\u6309\u4e25\u91cd\u7a0b\u5ea6\u6392\u5e8f\uff0c\u603b\u7ed3\u6700\u91cd\u8981\u7684 top 3 \u95ee\u9898\uff1b\u6bcf\u6761\u5305\u542b\u95ee\u9898\u63cf\u8ff0\u3001\u5f71\u54cd\u548c\u4fee\u590d\u5efa\u8bae\u3002\u4ee5 JSON \u8f93\u51fa problems \u6570\u7ec4\uff08\u6570\u7ec4\u5143\u7d20\u4e3a\u5b57\u7b26\u4e32\uff0c\u6bcf\u6761\u4e00\u4e2a\u95ee\u9898\u63cf\u8ff0\uff09\u3002\u82e5\u4ed3\u5e93\u6ca1\u6709\u660e\u663e\u95ee\u9898\uff0c\u8f93\u51fa\u7a7a\u6570\u7ec4\u3002",
+      "prompt": "你是代码质量审查 agent。扫描输入变量 repoUrl 指向的仓库（先克隆/检出到本地再分析），从以下维度找出代码质量问题：bug 风险、性能隐患、可维护性与复杂度、安全漏洞、测试覆盖。按严重程度排序，总结最重要的 top 3 问题；每条包含问题描述、影响和修复建议。以 JSON 输出 problems 数组（数组元素为字符串，每条一个问题描述）。若仓库没有明显问题，输出空数组。",
       "output": [
         {
           "key": "problems",
@@ -59,7 +59,7 @@
       "type": "script",
       "runtime": "bun",
       "timeoutMs": 30000,
-      "code": "export default async function run(ctx: ScriptContext) {\n  const { input, context, log } = ctx;\n  const problems: string[] = Array.isArray(input.problems) ? input.problems : [];\n  const lines = problems.length\n    ? problems.map((p, i) => `${i + 1}. ${p}`).join(\"\\n\")\n    : \"- \u672a\u53d1\u73b0\u660e\u663e\u95ee\u9898\u3002\";\n  const report = [\n    \"# Nightly Code Quality Report\",\n    \"\",\n    `- **Repository**: ${input.repoUrl ?? \"n/a\"}`,\n    `- **Generated**: ${new Date().toISOString()}`,\n    \"\",\n    \"## Top Problems\",\n    \"\",\n    lines,\n    \"\",\n  ].join(\"\\n\");\n  log(\"formatted\", { problems: problems.length, workflow: context.workflowId });\n  return { report };\n}",
+      "code": "export default async function run(ctx) {\n  const input = ctx;\n  const problems: string[] = Array.isArray(input.problems) ? input.problems : [];\n  const lines = problems.length\n    ? problems.map((p, i) => `${i + 1}. ${p}`).join(\"\\n\")\n    : \"- 未发现明显问题。\";\n  const report = [\n    \"# Nightly Code Quality Report\",\n    \"\",\n    `- **Repository**: ${input.repoUrl ?? \"n/a\"}`,\n    `- **Generated**: ${new Date().toISOString()}`,\n    \"\",\n    \"## Top Problems\",\n    \"\",\n    lines,\n    \"\",\n  ].join(\"\\n\");\n  return { report };\n}",
       "output": [
         {
           "key": "report",
@@ -80,17 +80,17 @@
     {
       "id": "approve",
       "type": "human",
-      "question": "\u4ee3\u7801\u8d28\u91cf\u62a5\u544a\u5df2\u751f\u6210\uff0c\u662f\u5426\u53d1\u9001\uff1f",
+      "question": "代码质量报告已生成，是否发送？",
       "form": {
         "approve": {
           "type": "enum",
-          "label": "\u662f\u5426\u53d1\u9001",
+          "label": "是否发送",
           "options": ["yes", "no"],
           "required": true
         },
         "comment": {
           "type": "textarea",
-          "label": "\u5907\u6ce8",
+          "label": "备注",
           "required": false
         }
       },
