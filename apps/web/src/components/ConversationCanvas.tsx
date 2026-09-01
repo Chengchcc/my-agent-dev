@@ -11,15 +11,16 @@ import { Button } from "@/components/ui/button";
 import { useAgentList } from "@/features/agents/hooks";
 import { artifactKeys } from "@/features/artifacts/query-keys";
 import { useConversation } from "@/hooks/useConversation";
-import type { ConversationSnapshot } from "@/lib/api";
+import type { ArtifactMeta, ConversationSnapshot } from "@/lib/api";
 import { api } from "@/lib/api";
 import type { SenderRef } from "@/lib/conversation-reducer";
 import type { CommandContext } from "@/lib/slash-commands";
 import { findCommand, parseArgs } from "@/lib/slash-commands";
 import { extractText } from "@/lib/timeline";
 import type { LiveToolCall, TodoItem } from "@/lib/transient-reducer";
+import { ArtifactCards } from "./ArtifactCards";
+import { ArtifactPreviewSheet } from "./ArtifactPreviewSheet";
 import { Composer } from "./Composer";
-import { ConversationArtifactsPanel } from "./ConversationArtifactsPanel";
 import { RosterList } from "./RosterList";
 import { Timeline } from "./Timeline";
 import { TodoPanel } from "./TodoPanel";
@@ -57,12 +58,35 @@ export function ConversationCanvas({
   // newly uploaded outputs without a page reload.
   const qc = useQueryClient();
   const wasBusy = useRef(false);
+
   useEffect(() => {
     if (wasBusy.current && !busy) {
       qc.invalidateQueries({ queryKey: artifactKeys.all });
     }
     wasBusy.current = busy;
   }, [busy, qc]);
+
+  const [previewArtifact, setPreviewArtifact] = useState<ArtifactMeta | null>(null);
+
+  async function handleDownloadArtifact(a: ArtifactMeta) {
+    try {
+      const r = await api.downloadArtifact(a.url);
+      const blob =
+        r.encoding === "base64"
+          ? new Blob([Uint8Array.from(atob(r.content), (c) => c.charCodeAt(0))], {
+              type: r.mimeType,
+            })
+          : new Blob([r.content], { type: r.mimeType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = a.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(`Failed to download artifact: ${String(e)}`);
+    }
+  }
 
   // W3+W5: use the most recent agent run's status, not first-found.
   // Scan from newest to oldest to get the current run's transient state.
@@ -401,6 +425,11 @@ export function ConversationCanvas({
                   transients={transientBubbles}
                   onResolveApproval={resolveApproval}
                 />
+                <ArtifactCards
+                  conversationId={conversationId}
+                  onPreview={setPreviewArtifact}
+                  onDownload={handleDownloadArtifact}
+                />
               </div>
             )}
           </div>
@@ -421,7 +450,6 @@ export function ConversationCanvas({
         <aside className="hidden md:block shrink-0 w-56 border-l border-(--hairline) overflow-y-auto p-3">
           <RosterList agent={agent} />
           <UsagePanel conversationId={conversationId} />
-          <ConversationArtifactsPanel conversationId={conversationId} />
         </aside>
 
         {/* Roster — mobile trigger */}
@@ -453,10 +481,11 @@ export function ConversationCanvas({
           >
             <RosterList agent={agent} onClose={() => setRosterOpen(false)} />
             <UsagePanel conversationId={conversationId} />
-            <ConversationArtifactsPanel conversationId={conversationId} />
           </aside>
         </>
       )}
+
+      <ArtifactPreviewSheet artifact={previewArtifact} onClose={() => setPreviewArtifact(null)} />
 
       {/* Roster — mobile drawer overlay */}
 
