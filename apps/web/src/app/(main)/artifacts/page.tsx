@@ -1,6 +1,7 @@
 "use client";
 
 import { Upload } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Page, PageBody, PageHeader } from "@/components/page";
@@ -133,7 +134,13 @@ export default function ArtifactsPage() {
           {loading ? (
             <div className="text-xs text-(--mute)">Loading…</div>
           ) : artifacts.length === 0 ? (
-            <div className="text-xs text-(--mute)">No artifacts yet.</div>
+            <div className="text-xs text-(--mute)">
+              No artifacts yet. Artifacts are produced by workflow runs —{" "}
+              <Link href="/workflows" className="text-(--info) hover:underline">
+                run a workflow
+              </Link>{" "}
+              to create one.
+            </div>
           ) : (
             <div className="space-y-1">
               {artifacts.map((a) => (

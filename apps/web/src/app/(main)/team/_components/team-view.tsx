@@ -26,13 +26,18 @@ export function TeamView({ selectedId }: { selectedId?: string }) {
 
   return (
     <div className="flex h-full min-h-0">
-      <AgentListColumn
-        agents={filtered}
-        selectedId={currentId}
-        searchValue={query}
-        onSearch={setQuery}
-      />
-      <div className="min-w-0 flex-1 overflow-y-auto">
+      {/* <md: list shows only when nothing is selected; detail takes over
+       *  once an agent is picked (the hidden list is reachable again via
+       *  browser back). md+: master-detail side by side. */}
+      <div className={`${currentId ? "hidden" : "flex"} size-full md:flex md:w-auto`}>
+        <AgentListColumn
+          agents={filtered}
+          selectedId={currentId}
+          searchValue={query}
+          onSearch={setQuery}
+        />
+      </div>
+      <div className={`${currentId ? "flex" : "hidden"} min-w-0 flex-1 overflow-y-auto md:flex`}>
         {currentId ? (
           <AgentDetail agentId={currentId} />
         ) : (

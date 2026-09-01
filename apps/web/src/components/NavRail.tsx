@@ -1,5 +1,5 @@
 "use client";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ActivityIcon,
@@ -53,6 +53,7 @@ import {
   useCreateConversation,
   useDeleteConversation,
 } from "@/features/conversations/hooks";
+import { waitingGatesQuery } from "@/features/workflow/queries";
 import type { AgentRow } from "@/lib/api";
 import { conversationDisplayName } from "@/lib/conversation-title";
 import { t } from "@/lib/i18n";
@@ -72,6 +73,9 @@ function NavContent() {
   );
   const deleteConversation = useDeleteConversation();
   const { confirm, dialog: confirmDialog } = useConfirm();
+
+  // U4: badge the Workflows nav when any execution waits for a human.
+  const { data: waitingGates } = useQuery(waitingGatesQuery());
   const createConversation = useCreateConversation();
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -143,6 +147,15 @@ function NavContent() {
               >
                 <NetworkIcon />
                 <span className="truncate">{t("Workflows")}</span>
+                {(waitingGates ?? 0) > 0 && (
+                  <span
+                    data-testid="waiting-gates-badge"
+                    className="ml-auto flex size-4 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[9px] font-semibold text-black"
+                    title={`${waitingGates ?? 0} workflow${(waitingGates ?? 0) > 1 ? "s" : ""} waiting for your decision`}
+                  >
+                    {waitingGates ?? 0}
+                  </span>
+                )}
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>

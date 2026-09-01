@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Page, PageBody, PageHeader } from "@/components/page";
@@ -52,6 +53,7 @@ function defaultDraft(id: string) {
 }
 
 export function WorkflowList({ definitions }: { definitions: Row[] }) {
+  const router = useRouter();
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
@@ -82,7 +84,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
       }
     }
     await api.saveWorkflowDefinition(id, def);
-    window.location.assign(`/workflows/${id}`);
+    router.push(`/workflows/${id}`);
   }
   async function openRun(id: string) {
     setRunId(id);
@@ -107,7 +109,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
         workflowRef: { repo: "local", path: `${runId}.workflow.json` },
         input,
       });
-      window.location.assign(`/workflows/${runId}/executions`);
+      router.push(`/workflows/${runId}/executions`);
     } catch (err) {
       toast.error(`Run failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -215,7 +217,9 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
           </div>
         ))}
         {definitions.length === 0 && (
-          <div className="text-sm text-muted-foreground">No workflows yet.</div>
+          <div className="text-sm text-muted-foreground">
+            No workflows yet — press <b>+ New</b> above to start from a template.
+          </div>
         )}
       </PageBody>
       <Dialog open={newOpen} onOpenChange={setNewOpen}>

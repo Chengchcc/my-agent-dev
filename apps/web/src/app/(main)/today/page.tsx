@@ -97,7 +97,11 @@ export default function TodayPage() {
           ) : todayExecs.length === 0 ? (
             <div className="flex items-center gap-2 text-xs text-(--mute)">
               <CheckCircle2 className="size-4" />
-              No workflow executions today.
+              No workflow executions today.{" "}
+              <Link href="/workflows" className="text-(--info) hover:underline">
+                Create a workflow
+              </Link>{" "}
+              to automate recurring work.
             </div>
           ) : (
             <div className="grid gap-2">
@@ -140,22 +144,28 @@ export default function TodayPage() {
 
         <div>
           <h2 className="text-sm font-medium mb-3">Today&apos;s Runs</h2>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
-              <div className="text-2xl font-semibold text-emerald-400 tabular-nums">
-                {runSucceeded}
+          {runSucceeded + runFailed + runRunning === 0 ? (
+            <p className="text-xs text-(--mute)">No runs today.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
+                <div className="text-2xl font-semibold text-emerald-400 tabular-nums">
+                  {runSucceeded}
+                </div>
+                <div className="text-xs text-(--mute)">Succeeded</div>
               </div>
-              <div className="text-xs text-(--mute)">Succeeded</div>
+              <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
+                <div className="text-2xl font-semibold text-red-400 tabular-nums">{runFailed}</div>
+                <div className="text-xs text-(--mute)">Failed</div>
+              </div>
+              <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
+                <div className="text-2xl font-semibold text-amber-400 tabular-nums">
+                  {runRunning}
+                </div>
+                <div className="text-xs text-(--mute)">Running</div>
+              </div>
             </div>
-            <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
-              <div className="text-2xl font-semibold text-red-400 tabular-nums">{runFailed}</div>
-              <div className="text-xs text-(--mute)">Failed</div>
-            </div>
-            <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
-              <div className="text-2xl font-semibold text-amber-400 tabular-nums">{runRunning}</div>
-              <div className="text-xs text-(--mute)">Running</div>
-            </div>
-          </div>
+          )}
           {succeeded + failed + running > 0 && (
             <div className="mt-3 rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
               <div className="flex items-center gap-2 text-lg font-semibold text-(--ink) tabular-nums">

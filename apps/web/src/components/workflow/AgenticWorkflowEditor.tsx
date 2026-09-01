@@ -9,6 +9,7 @@ import {
   type WorkflowNode,
 } from "@chengchenccc/workflow";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -121,6 +122,7 @@ export function AgenticWorkflowEditor({
   workflowId: string;
   initial: WorkflowDefinition | null;
 }) {
+  const router = useRouter();
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(initial);
   const [past, setPast] = useState<WorkflowDefinition[]>([]);
   const [future, setFuture] = useState<WorkflowDefinition[]>([]);
@@ -317,7 +319,7 @@ export function AgenticWorkflowEditor({
                     cancelText: "Stay",
                     destructive: true,
                   }).then((ok) => {
-                    if (ok) window.location.assign("/workflows");
+                    if (ok) router.push("/workflows");
                   });
                 }}
               >
@@ -348,9 +350,7 @@ export function AgenticWorkflowEditor({
               •••
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-36">
-              <DropdownMenuItem
-                onClick={() => window.location.assign(`/workflows/${workflowId}/executions`)}
-              >
+              <DropdownMenuItem onClick={() => router.push(`/workflows/${workflowId}/executions`)}>
                 Executions
               </DropdownMenuItem>
               <DropdownMenuItem disabled={past.length === 0} onClick={undo}>
