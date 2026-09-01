@@ -59,6 +59,24 @@ export type TelemetrySummary = {
     inputTokens: number;
     outputTokens: number;
   }>;
+  byAgent: Array<{
+    agentId: string;
+    runs: number;
+    completed: number;
+    failed: number;
+    successRate: number | null;
+  }>;
+  failures: Array<{
+    runId: string;
+    agentId: string;
+    status: string;
+    modelId: string;
+    createdAt: number;
+    durationMs: number | null;
+    inputTokens: number;
+    outputTokens: number;
+    error: string | null;
+  }>;
 };
 
 export type ChatModelOverride = {

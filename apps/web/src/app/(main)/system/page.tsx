@@ -148,6 +148,7 @@ export default function SystemPage() {
                     createdAt: r.createdAt,
                     terminalAt: r.terminalAt,
                     usage: r.usage ?? null,
+                    error: r.error ?? null,
                   }))}
                   onCancel={(runId) =>
                     cancelRun.mutate(runId, {
@@ -196,6 +197,72 @@ export default function SystemPage() {
                       tone="default"
                     />
                   </div>
+                  {d.byAgent.length > 0 && (
+                    <div className="rounded-lg border border-(--hairline) p-3">
+                      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">
+                        Agent success rate
+                      </h3>
+                      <div className="space-y-2">
+                        {d.byAgent.map((a) => (
+                          <div key={a.agentId} className="text-xs">
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <span className="truncate font-mono">{a.agentId}</span>
+                              <span className="shrink-0 text-(--mute)">
+                                {a.completed}/{a.runs} · {a.failed} failed ·{" "}
+                                {a.successRate == null
+                                  ? "—"
+                                  : `${Math.round(a.successRate * 100)}%`}
+                              </span>
+                            </div>
+                            <div className="h-1.5 rounded bg-(--mute)/30">
+                              <div
+                                className="h-full rounded bg-emerald-400"
+                                style={{
+                                  width: `${a.successRate == null ? 0 : a.successRate * 100}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {d.failures.length > 0 && (
+                    <div className="rounded-lg border border-(--hairline) p-3">
+                      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">
+                        Recent failures
+                      </h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-(--hairline) text-left text-[10px] uppercase tracking-wider text-(--mute)">
+                              <th className="px-2 py-1 font-semibold">Run</th>
+                              <th className="px-2 py-1 font-semibold">Status</th>
+                              <th className="px-2 py-1 font-semibold">Model</th>
+                              <th className="px-2 py-1 font-semibold">Error</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {d.failures.map((f) => (
+                              <tr
+                                key={f.runId}
+                                className="border-b border-(--hairline) last:border-b-0"
+                              >
+                                <td className="px-2 py-1 font-mono text-xs">
+                                  {f.runId.slice(0, 12)}
+                                </td>
+                                <td className="px-2 py-1">
+                                  <Badge variant="outline">{f.status}</Badge>
+                                </td>
+                                <td className="px-2 py-1 text-xs text-(--mute)">{f.modelId}</td>
+                                <td className="px-2 py-1 text-xs">{f.error ?? "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                   <div className="overflow-x-auto rounded-lg border border-(--hairline)">
                     <table className="w-full text-sm">
                       <thead>

@@ -146,6 +146,7 @@ export function agentRunRoutes(input: {
               createdAt: r.created_at,
               terminalAt: r.terminal_at,
               usage: outcome?.usage ?? null,
+              error: (outcome as { error?: string } | null)?.error ?? null,
               verdict: deriveVerdict(outcome),
             };
           }),

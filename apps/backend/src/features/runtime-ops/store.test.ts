@@ -135,5 +135,52 @@ describe("RuntimeOpsStore", () => {
       const summary = store.telemetrySummary(now - 86_400_000);
       expect(summary.runs).toBe(0);
     });
+    test("telemetrySummary includes byAgent success rate and failure errors", () => {
+      const now = Date.now();
+      db.query(
+        `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_id, model_ref, status, idempotency_key, config_revision, terminal_result, created_at, terminal_at)
+         VALUES (?, 'b1', 'c1', 'a1', ?, 'completed', 'k3', 1, ?, ?, ?)`,
+      ).run(
+        "r-ok",
+        JSON.stringify({ backendKind: "oma", modelId: "fake/m" }),
+        JSON.stringify({
+          status: "completed",
+          usage: { inputTokens: 10, outputTokens: 5, costUsd: 0.001 },
+        }),
+        now - 5_000,
+        now,
+      );
+      db.query(
+        `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_id, model_ref, status, idempotency_key, config_revision, terminal_result, created_at, terminal_at)
+         VALUES (?, 'b2', 'c2', 'a1', ?, 'failed', 'k4', 1, ?, ?, ?)`,
+      ).run(
+        "r-fail",
+        JSON.stringify({ backendKind: "oma", modelId: "fake/m" }),
+        JSON.stringify({
+          status: "failed",
+          error: "model timeout",
+          usage: { inputTokens: 7, outputTokens: 3, costUsd: 0.001 },
+        }),
+        now - 3_000,
+        now,
+      );
+
+      const summary = store.telemetrySummary(now - 60_000);
+      expect(summary.byAgent).toHaveLength(1);
+      expect(summary.byAgent[0]).toMatchObject({
+        agentId: "a1",
+        runs: 2,
+        completed: 1,
+        failed: 1,
+      });
+      expect(summary.byAgent[0]!.successRate).toBeCloseTo(0.5);
+      expect(summary.failures).toHaveLength(1);
+      expect(summary.failures[0]).toMatchObject({
+        runId: "r-fail",
+        status: "failed",
+        error: "model timeout",
+        agentId: "a1",
+      });
+    });
   });
 });

@@ -132,6 +132,24 @@ export class RuntimeOpsStore {
       inputTokens: number;
       outputTokens: number;
     }>;
+    byAgent: Array<{
+      agentId: string;
+      runs: number;
+      completed: number;
+      failed: number;
+      successRate: number | null;
+    }>;
+    failures: Array<{
+      runId: string;
+      agentId: string;
+      status: string;
+      modelId: string;
+      createdAt: number;
+      durationMs: number | null;
+      inputTokens: number;
+      outputTokens: number;
+      error: string | null;
+    }>;
   } {
     const since = sinceMs ?? Date.now() - 86_400_000;
     const totals = this.#db
@@ -157,6 +175,53 @@ export class RuntimeOpsStore {
       toolCalls: number;
       avgDurationMs: number | null;
     };
+
+    const byAgent = this.#db
+      .query(
+        `SELECT ar.agent_id AS agentId,
+                COUNT(*) AS runs,
+                COALESCE(SUM(CASE WHEN ar.status = 'completed' THEN 1 ELSE 0 END), 0) AS completed,
+                COALESCE(SUM(CASE WHEN ar.status IN ('failed','aborted','timeout') THEN 1 ELSE 0 END), 0) AS failed
+           FROM agent_run ar
+          WHERE ar.created_at >= ?
+          GROUP BY ar.agent_id
+          ORDER BY failed DESC, runs DESC`,
+      )
+      .all(since) as Array<{
+      agentId: string;
+      runs: number;
+      completed: number;
+      failed: number;
+    }>;
+
+    const failures = this.#db
+      .query(
+        `SELECT ar.run_id AS runId,
+                ar.agent_id AS agentId,
+                ar.status,
+                ar.model_ref AS modelRef,
+                ar.created_at AS createdAt,
+                ar.terminal_at AS terminalAt,
+                ar.terminal_result AS terminalResult,
+                COALESCE(CAST(json_extract(ar.terminal_result, '$.usage.inputTokens') AS REAL), 0) AS inputTokens,
+                COALESCE(CAST(json_extract(ar.terminal_result, '$.usage.outputTokens') AS REAL), 0) AS outputTokens
+           FROM agent_run ar
+          WHERE ar.created_at >= ?
+            AND ar.status IN ('failed','aborted','timeout')
+          ORDER BY ar.created_at DESC
+          LIMIT 20`,
+      )
+      .all(since) as Array<{
+      runId: string;
+      agentId: string;
+      status: string;
+      modelRef: string;
+      createdAt: number;
+      terminalAt: number | null;
+      terminalResult: string | null;
+      inputTokens: number;
+      outputTokens: number;
+    }>;
 
     const recent = this.#db
       .query(
@@ -194,6 +259,32 @@ export class RuntimeOpsStore {
       costUsd: totals.costUsd,
       toolCalls: totals.toolCalls,
       avgDurationMs: totals.avgDurationMs ?? 0,
+      byAgent: byAgent.map((b) => {
+        const terminal = b.completed + b.failed;
+        return {
+          agentId: b.agentId,
+          runs: Number(b.runs),
+          completed: Number(b.completed),
+          failed: Number(b.failed),
+          successRate: terminal > 0 ? Number(b.completed) / terminal : null,
+        };
+      }),
+      failures: failures.map((f) => {
+        const outcome = f.terminalResult
+          ? (JSON.parse(f.terminalResult) as { error?: string })
+          : null;
+        return {
+          runId: f.runId,
+          agentId: f.agentId,
+          status: f.status,
+          modelId: (JSON.parse(f.modelRef) as { modelId?: string }).modelId ?? f.modelRef,
+          createdAt: f.createdAt,
+          durationMs: f.terminalAt != null ? f.terminalAt - f.createdAt : null,
+          inputTokens: Number(f.inputTokens ?? 0),
+          outputTokens: Number(f.outputTokens ?? 0),
+          error: outcome?.error ?? null,
+        };
+      }),
       recent: recent.map((r) => ({
         runId: r.runId,
         status: r.status,

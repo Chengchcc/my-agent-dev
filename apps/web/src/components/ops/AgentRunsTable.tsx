@@ -12,6 +12,7 @@ export interface AgentRunRow {
   createdAt: number;
   terminalAt: number | null;
   usage: { inputTokens?: number; outputTokens?: number } | null;
+  error?: string | null;
 }
 
 // 400-family colors stay readable on both light and dark surfaces; badges
@@ -48,6 +49,7 @@ export function AgentRunsTable({
   if (runs.length === 0) {
     return <p className="text-sm text-(--mute)">No Agent Runs yet.</p>;
   }
+  const hasErrors = runs.some((r) => r.error);
 
   return (
     <>
@@ -65,6 +67,11 @@ export function AgentRunsTable({
             <p className="text-xs text-(--mute)">
               {r.agentId || "default"} · {startedAt(r)}
             </p>
+            {r.error && (
+              <p className="mt-1 text-xs text-red-400 line-clamp-2" title={r.error}>
+                {r.error}
+              </p>
+            )}
             <div className="mt-1 flex items-center justify-between">
               <span className="text-xs text-(--mute)">{tokens(r)}</span>
               {canCancel(r.status) && (
@@ -93,6 +100,7 @@ export function AgentRunsTable({
               <th className="p-2">Model</th>
               <th className="p-2 w-[160px]">Started</th>
               <th className="p-2 w-[80px] text-right">Usage</th>
+              {hasErrors && <th className="p-2">Error</th>}
               <th className="p-2 w-[80px]" />
             </tr>
           </thead>
@@ -113,6 +121,11 @@ export function AgentRunsTable({
                 </td>
                 <td className="p-2 text-xs text-(--mute)">{startedAt(r)}</td>
                 <td className="p-2 text-xs text-(--mute)">{tokens(r)}</td>
+                {hasErrors && (
+                  <td className="p-2 text-xs text-red-400 max-w-0 truncate" title={r.error ?? ""}>
+                    {r.error ?? "—"}
+                  </td>
+                )}
                 <td className="p-2 text-right">
                   {canCancel(r.status) && (
                     <Button

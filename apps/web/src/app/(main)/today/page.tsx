@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/badge";
-import { useAgentRuns } from "@/features/ops/hooks";
+import { useAgentRuns, useTelemetrySummary } from "@/features/ops/hooks";
 import { api } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +43,7 @@ export default function TodayPage() {
   const [executions, setExecutions] = useState<ExecutionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const { data: runs } = useAgentRuns();
+  const telemetry = useTelemetrySummary();
 
   useEffect(() => {
     api
@@ -209,6 +210,27 @@ export default function TodayPage() {
             </div>
           )}
         </div>
+        {telemetry.data && telemetry.data.failures.length > 0 && (
+          <div>
+            <h2 className="text-sm font-medium mb-3">Recent failures</h2>
+            <div className="space-y-2">
+              {telemetry.data.failures.slice(0, 5).map((f) => (
+                <Link
+                  key={f.runId}
+                  href={`/system/runs/${f.runId}`}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-red-500/40 bg-red-500/5 px-4 py-2.5 hover:border-red-400 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-(--ink)">
+                      {f.status} · {f.modelId}
+                    </div>
+                    <div className="truncate text-xs text-(--mute)">{f.error ?? "—"}</div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </PageBody>
     </Page>
   );

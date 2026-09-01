@@ -215,6 +215,7 @@ function RecentRuns({ agentId }: { agentId: string }) {
                 createdAt: r.createdAt,
                 terminalAt: r.terminalAt,
                 usage: r.usage ?? null,
+                error: r.error ?? null,
               }))}
               onCancel={() => {}}
             />
