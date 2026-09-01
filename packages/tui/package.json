@@ -25,11 +25,10 @@
   },
   "dependencies": {
     "get-east-asian-width": "^1.6.0",
-    "marked": "^18.0.5"
-  },
-  "devDependencies": {
+    "marked": "^18.0.5",
     "@xterm/headless": "5.5.0"
   },
+  "devDependencies": {},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Chengchcc/my-agent-team.git",
