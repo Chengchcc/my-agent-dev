@@ -13,6 +13,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
@@ -223,8 +224,9 @@ export function ExecutionTraceView({
         </Breadcrumb>
         <span className="ml-auto flex items-center gap-2">
           {["running", "waiting_human"].includes(execution.status) && (
-            <button
-              className="rounded-md border border-(--err)/40 bg-(--err)/10 px-2 py-0.5 text-[10px] text-(--err) hover:bg-(--err)/20"
+            <Button
+              variant="destructive"
+              size="sm"
               onClick={async () => {
                 const ok = await confirm({
                   title: "Cancel this execution?",
@@ -237,7 +239,7 @@ export function ExecutionTraceView({
               }}
             >
               Cancel execution
-            </button>
+            </Button>
           )}
           {execution.triggeredBy?.startsWith("cron:") && (
             <span className="rounded-full border border-(--hairline) px-1.5 py-0.5 font-mono text-[9px] text-(--mute)">
@@ -284,12 +286,14 @@ export function ExecutionTraceView({
             >
               ← executions
             </Link>
-            <button
-              className="rounded border px-2"
+            <Button
+              variant="outline"
+              size="icon-sm"
               onClick={() => setIndex(Math.max(0, index - 1))}
+              aria-label="Previous event"
             >
               ◀
-            </button>
+            </Button>
             <input
               type="range"
               min={0}
@@ -298,12 +302,14 @@ export function ExecutionTraceView({
               onChange={(e) => setIndex(Number(e.target.value))}
               className="flex-1"
             />
-            <button
-              className="rounded border px-2"
+            <Button
+              variant="outline"
+              size="icon-sm"
               onClick={() => setIndex(Math.min(liveEvents.length - 1, index + 1))}
+              aria-label="Next event"
             >
               ▶
-            </button>
+            </Button>
             <span className="text-xs text-muted-foreground">
               {index + 1}/{liveEvents.length}
             </span>
@@ -346,15 +352,17 @@ export function ExecutionTraceView({
                   <div className="mb-1 font-semibold">Event log</div>
                   {liveEvents.slice(0, index + 1).map((e) => (
                     <div key={e.seq} className="border-b py-1">
-                      <button
-                        className="flex w-full items-center gap-1 text-left"
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex w-full items-center justify-start gap-1 text-left"
                         onClick={() => setExpandedEvent(expandedEvent === e.seq ? null : e.seq)}
                       >
                         <span className="text-muted-foreground">
                           {new Date(e.ts).toLocaleTimeString()}
                         </span>{" "}
                         {e.event}
-                      </button>
+                      </Button>
                       {expandedEvent === e.seq && (
                         <pre className="mt-1 max-h-48 overflow-auto rounded bg-(--canvas)/60 p-2 text-[10px] text-(--mute)">
                           {JSON.stringify(e.data, null, 2)}

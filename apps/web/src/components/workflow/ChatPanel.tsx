@@ -3,6 +3,7 @@
 import { Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Timeline } from "@/components/Timeline";
+import { Button } from "@/components/ui/button";
 import { useConversation } from "@/hooks/useConversation";
 import { api } from "@/lib/api";
 import type { SenderRef } from "@/lib/conversation-reducer";
@@ -92,13 +93,9 @@ export function ChatPanel({ workflowId, goal }: { workflowId: string; goal?: str
             }
           }}
         />
-        <button
-          className="shrink-0 rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink) disabled:opacity-50"
-          onClick={submit}
-          disabled={!ready || !instruction.trim()}
-        >
+        <Button size="sm" onClick={submit} disabled={!ready || !instruction.trim()}>
           Send
-        </button>
+        </Button>
       </div>
     </div>
   );

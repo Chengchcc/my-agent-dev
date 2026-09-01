@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,6 +62,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
     input?: Record<string, "string" | "number" | "boolean">;
   } | null>(null);
   const [runVals, setRunVals] = useState<Record<string, string>>({});
+  const [running, setRunning] = useState(false);
   async function create(templateId?: string) {
     const id = `wf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     let def: Record<string, unknown> = defaultDraft(id) as Record<string, unknown>;
@@ -97,7 +99,8 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
     }
   }
   async function run() {
-    if (!runId) return;
+    if (!runId || running) return;
+    setRunning(true);
     const input: Record<string, unknown> = {};
     for (const [key, hint] of Object.entries(runDef?.input ?? {})) {
       const raw = runVals[key] ?? "";
@@ -112,6 +115,8 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
       router.push(`/workflows/${runId}/executions`);
     } catch (err) {
       toast.error(`Run failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setRunning(false);
     }
   }
   async function del(id: string) {
@@ -125,12 +130,9 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
         title="Workflows"
         description="Agentic workflow definitions"
         action={
-          <button
-            className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink) transition-colors hover:bg-(--panel2)"
-            onClick={() => setNewOpen(true)}
-          >
+          <Button size="sm" onClick={() => setNewOpen(true)}>
             + New
-          </button>
+          </Button>
         }
       />
       <PageBody className="space-y-2">
@@ -195,24 +197,18 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
               )}
             </div>
             <div className="flex shrink-0 gap-2 text-xs">
-              <button
-                className="rounded-md border border-(--hairline) bg-(--panel) px-2 py-1 text-(--body) transition-colors hover:bg-(--panel2)"
-                onClick={() => openRun(d.workflowId)}
-              >
+              <Button variant="outline" size="sm" onClick={() => openRun(d.workflowId)}>
                 Run
-              </button>
+              </Button>
               <Link
                 href={`/workflows/${d.workflowId}/executions`}
                 className="rounded-md border border-(--hairline) bg-(--panel) px-2 py-1 text-(--body) transition-colors hover:bg-(--panel2)"
               >
                 Executions
               </Link>
-              <button
-                className="rounded-md border border-(--hairline) bg-(--panel) px-2 py-1 text-(--err) transition-colors hover:bg-(--panel2)"
-                onClick={() => setConfirmId(d.workflowId)}
-              >
+              <Button variant="destructive" size="sm" onClick={() => setConfirmId(d.workflowId)}>
                 Delete
-              </button>
+              </Button>
             </div>
           </div>
         ))}
@@ -228,31 +224,37 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
             <DialogTitle className="text-sm font-semibold">New Workflow</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            <button
-              className="w-full rounded-md border border-(--hairline) px-3 py-2 text-left text-xs hover:bg-(--panel2)"
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full justify-start"
               onClick={() => void create()}
             >
               <div className="font-medium">Blank canvas</div>
               <div className="text-[10px] text-(--mute)">start → end, build from scratch</div>
-            </button>
-            <button
-              className="w-full rounded-md border border-(--hairline) px-3 py-2 text-left text-xs hover:bg-(--panel2)"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full justify-start"
               onClick={() => void create("nighttime-report")}
             >
               <div className="font-medium">Nightly code quality report</div>
               <div className="text-[10px] text-(--mute)">
                 Agent scans repo → report → human confirmation
               </div>
-            </button>
-            <button
-              className="w-full rounded-md border border-(--hairline) px-3 py-2 text-left text-xs hover:bg-(--panel2)"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full justify-start"
               onClick={() => void create("self-heal")}
             >
               <div className="font-medium">Issue self-heal</div>
               <div className="text-[10px] text-(--mute)">
                 Detect → auto-fix → human confirm → fork exit
               </div>
-            </button>
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -285,12 +287,9 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
                 </div>
               ))
             )}
-            <button
-              className="w-full rounded-md bg-(--primary) px-3 py-2 text-xs text-(--ink) hover:bg-(--panel2)"
-              onClick={run}
-            >
-              Run
-            </button>
+            <Button className="w-full" onClick={run} disabled={running}>
+              {running ? "Starting…" : "Run"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -14,6 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,10 +65,13 @@ export function ExecutionList({
   const [runOpen, setRunOpen] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [artifactSuggestions, setArtifactSuggestions] = useState<string[]>([]);
+  const [running, setRunning] = useState(false);
   const executions = useLiveExecutions(workflowId, initialExecutions);
   const inputHints = definition?.input ?? [];
 
   async function run() {
+    if (running) return;
+    setRunning(true);
     const input: Record<string, unknown> = {};
     const artifacts: string[] = [];
     for (const f of inputHints) {
@@ -93,6 +97,8 @@ export function ExecutionList({
       window.location.reload();
     } catch (err) {
       toast.error(`Run failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setRunning(false);
     }
   }
 
@@ -116,8 +122,8 @@ export function ExecutionList({
         description={`Runs of ${workflowId}`}
         action={
           <Dialog open={runOpen} onOpenChange={setRunOpen}>
-            <button
-              className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink) transition-colors hover:bg-(--panel2)"
+            <Button
+              size="sm"
               onClick={() => {
                 setRunOpen(true);
                 api
@@ -127,7 +133,7 @@ export function ExecutionList({
               }}
             >
               + Run
-            </button>
+            </Button>
             <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle className="text-sm font-semibold">Run {workflowId}</DialogTitle>
@@ -172,15 +178,16 @@ export function ExecutionList({
                     </div>
                   ))
                 )}
-                <button
-                  className="w-full rounded-md bg-(--primary) px-3 py-2 text-xs text-(--ink) hover:bg-(--panel2)"
+                <Button
+                  className="w-full"
+                  disabled={running}
                   onClick={async () => {
                     await run();
                     setRunOpen(false);
                   }}
                 >
-                  Submit
-                </button>
+                  {running ? "Starting…" : "Submit"}
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -238,12 +245,9 @@ export function ExecutionList({
                 >
                   View
                 </Link>
-                <button
-                  className="rounded-md px-2 py-1 text-xs text-(--err) hover:bg-(--err)/10"
-                  onClick={() => setConfirmId(e.executionId)}
-                >
+                <Button variant="destructive" size="sm" onClick={() => setConfirmId(e.executionId)}>
                   Delete
-                </button>
+                </Button>
               </div>
             </div>
           );
