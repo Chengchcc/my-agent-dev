@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, Download } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,6 +9,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAgentList } from "@/features/agents/hooks";
+import { artifactKeys } from "@/features/artifacts/query-keys";
 import { useConversation } from "@/hooks/useConversation";
 import type { ConversationSnapshot } from "@/lib/api";
 import { api } from "@/lib/api";
@@ -50,6 +52,17 @@ export function ConversationCanvas({
     resolveApproval,
   } = useConversation(conversationId, snapshot);
   const { agent, items, error, streamConn } = state;
+
+  // Refresh artifacts after a run settles so the session panel picks up
+  // newly uploaded outputs without a page reload.
+  const qc = useQueryClient();
+  const wasBusy = useRef(false);
+  useEffect(() => {
+    if (wasBusy.current && !busy) {
+      qc.invalidateQueries({ queryKey: artifactKeys.all });
+    }
+    wasBusy.current = busy;
+  }, [busy, qc]);
 
   // W3+W5: use the most recent agent run's status, not first-found.
   // Scan from newest to oldest to get the current run's transient state.
