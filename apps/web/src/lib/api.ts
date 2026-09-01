@@ -102,6 +102,10 @@ export type TelemetrySummary = {
     runs: number;
     avgDurationMs: number | null;
   }>;
+  failureCauses: Array<{
+    cause: string;
+    count: number;
+  }>;
 };
 
 export type ChatModelOverride = {

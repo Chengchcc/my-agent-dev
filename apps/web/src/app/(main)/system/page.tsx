@@ -322,6 +322,21 @@ export default function SystemPage() {
                       </div>
                     </div>
                   )}
+                  {d.failureCauses.length > 0 && (
+                    <div className="rounded-lg border border-(--hairline) p-3">
+                      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">
+                        Failure causes
+                      </h3>
+                      <div className="space-y-1">
+                        {d.failureCauses.map((c) => (
+                          <div key={c.cause} className="flex justify-between text-xs">
+                            <span className="capitalize">{c.cause}</span>
+                            <span className="text-(--mute)">{c.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {d.failures.length > 0 && (
                     <div className="rounded-lg border border-(--hairline) p-3">
                       <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">

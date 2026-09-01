@@ -201,6 +201,8 @@ describe("RuntimeOpsStore", () => {
       expect(summary.durationByDay).toHaveLength(1);
       expect(summary.durationByDay[0]!.runs).toBe(2);
       expect(summary.durationByDay[0]!.avgDurationMs).toBeCloseTo(4000);
+      expect(summary.failureCauses).toHaveLength(1);
+      expect(summary.failureCauses[0]).toEqual({ cause: "timeout", count: 1 });
     });
   });
 });

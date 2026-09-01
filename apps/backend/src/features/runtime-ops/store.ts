@@ -18,6 +18,55 @@ function modelIdFromRef(ref: string): string {
   return ref;
 }
 
+function errorFromOutcome(outcome: unknown): string | null {
+  if (
+    outcome != null &&
+    typeof outcome === "object" &&
+    "error" in outcome &&
+    typeof outcome.error === "string"
+  ) {
+    return outcome.error;
+  }
+  return null;
+}
+
+function failureCause(error: string | null, status: string): string {
+  const text = `${status} ${error ?? ""}`.toLowerCase();
+  if (
+    status === "timeout" ||
+    text.includes("timeout") ||
+    text.includes("max steps") ||
+    text.includes("stale")
+  ) {
+    return "timeout";
+  }
+  if (
+    text.includes("schema") ||
+    text.includes("validation") ||
+    text.includes("invalid json") ||
+    text.includes("json.parse")
+  ) {
+    return "schema";
+  }
+  if (
+    text.includes("permission") ||
+    text.includes("denied") ||
+    text.includes("forbidden") ||
+    text.includes("not allowed")
+  ) {
+    return "permission";
+  }
+  if (
+    text.includes("network") ||
+    text.includes("connection") ||
+    text.includes("fetch failed") ||
+    text.includes("enotfound")
+  ) {
+    return "network";
+  }
+  return "other";
+}
+
 /** Surface-health audit store (Lark heartbeats). Run execution state lives in
  *  the agent-run feature — Agent Run is the sole execution identity. */
 export class RuntimeOpsStore {
@@ -188,6 +237,10 @@ export class RuntimeOpsStore {
       runs: number;
       avgDurationMs: number | null;
     }>;
+    failureCauses: Array<{
+      cause: string;
+      count: number;
+    }>;
   } {
     const since = sinceMs ?? Date.now() - 86_400_000;
     const totals = this.#db
@@ -338,6 +391,26 @@ export class RuntimeOpsStore {
       avgDurationMs: number | null;
     }>;
 
+    const failureCauses = (() => {
+      const rows = this.#db
+        .query(
+          `SELECT ar.status, ar.terminal_result AS terminalResult
+             FROM agent_run ar
+            WHERE ar.created_at >= ?
+              AND ar.status IN ('failed','aborted','timeout')`,
+        )
+        .all(since) as Array<{ status: string; terminalResult: string | null }>;
+      const counts: Record<string, number> = {};
+      for (const row of rows) {
+        const outcome: unknown = row.terminalResult ? JSON.parse(row.terminalResult) : null;
+        const cause = failureCause(errorFromOutcome(outcome), row.status);
+        counts[cause] = (counts[cause] ?? 0) + 1;
+      }
+      return Object.entries(counts)
+        .map(([cause, count]) => ({ cause, count }))
+        .sort((a, b) => b.count - a.count);
+    })();
+
     const recent = this.#db
       .query(
         `SELECT ar.run_id AS runId,
@@ -385,9 +458,7 @@ export class RuntimeOpsStore {
         };
       }),
       failures: failures.map((f) => {
-        const outcome = f.terminalResult
-          ? (JSON.parse(f.terminalResult) as { error?: string })
-          : null;
+        const outcome: unknown = f.terminalResult ? JSON.parse(f.terminalResult) : null;
         return {
           runId: f.runId,
           agentId: f.agentId,
@@ -397,7 +468,7 @@ export class RuntimeOpsStore {
           durationMs: f.terminalAt != null ? f.terminalAt - f.createdAt : null,
           inputTokens: Number(f.inputTokens ?? 0),
           outputTokens: Number(f.outputTokens ?? 0),
-          error: outcome?.error ?? null,
+          error: errorFromOutcome(outcome),
         };
       }),
       costByHour: costByHour.map((h) => ({
@@ -428,6 +499,7 @@ export class RuntimeOpsStore {
         runs: Number(d.runs),
         avgDurationMs: d.avgDurationMs != null ? Number(d.avgDurationMs) : null,
       })),
+      failureCauses,
       recent: recent.map((r) => ({
         runId: r.runId,
         status: r.status,
