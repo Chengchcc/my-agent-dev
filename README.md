@@ -2,9 +2,17 @@
   <strong>Multi-Agent Team Runtime — 四个 Oma 后端可切换，Agent 工作区即配置文件，Web 和飞书双端实时可见</strong>
 </p>
 
-  [![npm version](https://img.shields.io/npm/v/@chengchenccc/oh-my-agent?style=flat-square)](https://www.npmjs.com/package/@chengchenccc/oh-my-agent)
-  [![npm downloads](https://img.shields.io/npm/dm/@chengchenccc/oh-my-agent?style=flat-square)](https://www.npmjs.com/package/@chengchenccc/oh-my-agent)
-</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/runtime-Bun-14151a?style=flat-square&logo=bun" alt="Bun" />
+  <img src="https://img.shields.io/badge/language-TypeScript-3178c6?style=flat-square&logo=typescript" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/framework-Next.js-000000?style=flat-square&logo=nextdotjs" alt="Next.js" />
+  <img src="https://img.shields.io/badge/UI-Tailwind_CSS-38BDF8?style=flat-square&logo=tailwindcss" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/database-SQLite-003B57?style=flat-square&logo=sqlite" alt="SQLite" />
+  <img src="https://img.shields.io/badge/ORM-Drizzle-2962FF?style=flat-square" alt="Drizzle ORM" />
+  <img src="https://img.shields.io/badge/http-Elysia-2C2C2C?style=flat-square" alt="Elysia" />
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT" />
+  <img src="https://img.shields.io/npm/v/@chengchenccc/oh-my-agent?style=flat-square" alt="npm version" />
+  <img src="https://img.shields.io/npm/dm/@chengchenccc/oh-my-agent?style=flat-square" alt="npm downloads" />
 </p>
 
 ---
