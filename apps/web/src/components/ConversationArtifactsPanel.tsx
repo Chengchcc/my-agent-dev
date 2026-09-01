@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useArtifacts } from "@/features/artifacts/hooks";
 import { type ArtifactMeta, api } from "@/lib/api";
+import { ArtifactPreview } from "./ArtifactPreview";
 
 /** Roster panel: artifacts this conversation's agents uploaded. The agent
  *  records provenance at artifact_upload time; we filter the global list by
@@ -84,14 +85,12 @@ export function ConversationArtifactsPanel({ conversationId }: { conversationId:
               {preview?.url}
             </DialogTitle>
           </DialogHeader>
-          {previewContent?.encoding === "utf8" ? (
-            <pre className="max-h-96 overflow-auto rounded bg-(--canvas)/60 p-2 text-[11px]">
-              {previewContent.content}
-            </pre>
-          ) : (
-            <div className="text-xs text-(--mute)">
-              Binary artifact, no text preview (base64 {previewContent?.content.length ?? 0} chars)
-            </div>
+          {preview && previewContent && (
+            <ArtifactPreview
+              mimeType={preview.mimeType}
+              content={previewContent.content}
+              encoding={previewContent.encoding}
+            />
           )}
         </DialogContent>
       </Dialog>

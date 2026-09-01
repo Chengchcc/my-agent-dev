@@ -4,6 +4,7 @@ import { Upload } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ArtifactPreview } from "@/components/ArtifactPreview";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -29,9 +30,12 @@ function fmtSize(n: number): string {
 
 export default function ArtifactsPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [preview, setPreview] = useState<{ url: string; content: string; encoding: string } | null>(
-    null,
-  );
+  const [preview, setPreview] = useState<{
+    url: string;
+    content: string;
+    encoding: string;
+    mimeType: string;
+  } | null>(null);
   const [folder, setFolder] = useState("");
   const [filename, setFilename] = useState("");
   const [content, setContent] = useState("");
@@ -46,7 +50,7 @@ export default function ArtifactsPage() {
   async function openPreview(url: string) {
     try {
       const r = await api.downloadArtifact(url);
-      setPreview({ url, content: r.content, encoding: r.encoding });
+      setPreview({ url, content: r.content, encoding: r.encoding, mimeType: r.mimeType });
     } catch {
       toast.error(`Download failed: ${url}`);
     }
@@ -204,14 +208,12 @@ export default function ArtifactsPage() {
               {preview?.url}
             </DialogTitle>
           </DialogHeader>
-          {preview?.encoding === "utf8" ? (
-            <pre className="max-h-96 overflow-auto rounded bg-(--canvas)/60 p-2 text-[11px]">
-              {preview.content}
-            </pre>
-          ) : (
-            <div className="text-xs text-(--mute)">
-              Binary artifact, no text preview (base64 {preview?.content.length ?? 0} chars)
-            </div>
+          {preview && (
+            <ArtifactPreview
+              mimeType={preview.mimeType}
+              content={preview.content}
+              encoding={preview.encoding === "base64" ? "base64" : "utf8"}
+            />
           )}
         </DialogContent>
       </Dialog>
