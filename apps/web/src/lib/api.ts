@@ -97,6 +97,11 @@ export type TelemetrySummary = {
     failed: number;
     successRate: number | null;
   }>;
+  durationByDay: Array<{
+    dayStart: number;
+    runs: number;
+    avgDurationMs: number | null;
+  }>;
 };
 
 export type ChatModelOverride = {

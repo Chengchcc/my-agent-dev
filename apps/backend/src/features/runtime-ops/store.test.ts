@@ -198,6 +198,9 @@ describe("RuntimeOpsStore", () => {
       expect(summary.successRateByDay[0]!.completed).toBe(1);
       expect(summary.successRateByDay[0]!.failed).toBe(1);
       expect(summary.successRateByDay[0]!.successRate).toBeCloseTo(0.5);
+      expect(summary.durationByDay).toHaveLength(1);
+      expect(summary.durationByDay[0]!.runs).toBe(2);
+      expect(summary.durationByDay[0]!.avgDurationMs).toBeCloseTo(4000);
     });
   });
 });

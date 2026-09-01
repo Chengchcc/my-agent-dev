@@ -183,6 +183,11 @@ export class RuntimeOpsStore {
       failed: number;
       successRate: number | null;
     }>;
+    durationByDay: Array<{
+      dayStart: number;
+      runs: number;
+      avgDurationMs: number | null;
+    }>;
   } {
     const since = sinceMs ?? Date.now() - 86_400_000;
     const totals = this.#db
@@ -317,6 +322,22 @@ export class RuntimeOpsStore {
       failed: number;
     }>;
 
+    const durationByDay = this.#db
+      .query(
+        `SELECT (ar.created_at / 86400000) * 86400000 AS dayStart,
+                COUNT(*) AS runs,
+                AVG(CASE WHEN ar.terminal_at IS NOT NULL THEN ar.terminal_at - ar.created_at END) AS avgDurationMs
+           FROM agent_run ar
+          WHERE ar.created_at >= ?
+          GROUP BY dayStart
+          ORDER BY dayStart`,
+      )
+      .all(since7) as Array<{
+      dayStart: number;
+      runs: number;
+      avgDurationMs: number | null;
+    }>;
+
     const recent = this.#db
       .query(
         `SELECT ar.run_id AS runId,
@@ -402,6 +423,11 @@ export class RuntimeOpsStore {
           successRate: terminal > 0 ? Number(d.completed) / terminal : null,
         };
       }),
+      durationByDay: durationByDay.map((d) => ({
+        dayStart: Number(d.dayStart),
+        runs: Number(d.runs),
+        avgDurationMs: d.avgDurationMs != null ? Number(d.avgDurationMs) : null,
+      })),
       recent: recent.map((r) => ({
         runId: r.runId,
         status: r.status,

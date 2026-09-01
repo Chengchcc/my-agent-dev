@@ -301,6 +301,27 @@ export default function SystemPage() {
                       </div>
                     </div>
                   )}
+                  {d.durationByDay.length > 0 && (
+                    <div className="rounded-lg border border-(--hairline) p-3">
+                      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">
+                        Avg duration (7d)
+                      </h3>
+                      <div className="space-y-2">
+                        {d.durationByDay.map((day) => (
+                          <div key={day.dayStart} className="text-xs">
+                            <span className="text-(--mute)">
+                              {new Date(day.dayStart).toLocaleDateString()}
+                            </span>
+                            <span className="float-right text-(--mute)">
+                              {day.avgDurationMs == null
+                                ? "—"
+                                : `${(day.avgDurationMs / 1000).toFixed(1)}s`}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {d.failures.length > 0 && (
                     <div className="rounded-lg border border-(--hairline) p-3">
                       <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">
