@@ -65,6 +65,9 @@ export default function TodayPage() {
   ).length;
 
   const todayRuns = (runs?.runs ?? []).filter((r) => isToday(r.createdAt));
+  const activeRuns = (runs?.runs ?? []).filter((r) =>
+    ["running", "waiting", "commit_failed"].includes(r.status),
+  );
   const runSucceeded = todayRuns.filter((r) => r.status === "completed").length;
   const runFailed = todayRuns.filter(
     (r) => r.status === "failed" || r.status === "aborted" || r.status === "timeout",
@@ -111,6 +114,30 @@ export default function TodayPage() {
                     </div>
                   </div>
                   <span className="shrink-0 text-xs text-amber-500">waiting human</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+        {activeRuns.length > 0 && (
+          <div>
+            <h2 className="text-sm font-medium mb-3">Running now</h2>
+            <div className="grid gap-2">
+              {activeRuns.slice(0, 8).map((r) => (
+                <Link
+                  key={r.runId}
+                  href={`/system/runs/${r.runId}`}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-(--hairline) bg-(--canvas-soft) px-4 py-2.5 hover:border-(--primary) transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-(--ink)">
+                      {r.agentId} · {r.model.modelId}
+                    </div>
+                    <div className="truncate font-mono text-[10px] text-(--mute)">
+                      {r.runId.slice(0, 12)}
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-xs text-amber-400">{r.status}</span>
                 </Link>
               ))}
             </div>
