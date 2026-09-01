@@ -181,6 +181,9 @@ describe("RuntimeOpsStore", () => {
         error: "model timeout",
         agentId: "a1",
       });
+      expect(summary.costByHour).toHaveLength(1);
+      expect(summary.costByHour[0]!.costUsd).toBeCloseTo(0.002);
+      expect(summary.costByHour[0]!.tokens).toBe(25);
     });
   });
 });

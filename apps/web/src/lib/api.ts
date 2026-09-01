@@ -77,6 +77,11 @@ export type TelemetrySummary = {
     outputTokens: number;
     error: string | null;
   }>;
+  costByHour: Array<{
+    hour: number;
+    costUsd: number;
+    tokens: number;
+  }>;
 };
 
 export type ChatModelOverride = {

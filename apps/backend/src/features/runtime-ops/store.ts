@@ -150,6 +150,11 @@ export class RuntimeOpsStore {
       outputTokens: number;
       error: string | null;
     }>;
+    costByHour: Array<{
+      hour: number;
+      costUsd: number;
+      tokens: number;
+    }>;
   } {
     const since = sinceMs ?? Date.now() - 86_400_000;
     const totals = this.#db
@@ -223,6 +228,24 @@ export class RuntimeOpsStore {
       outputTokens: number;
     }>;
 
+    const costByHour = this.#db
+      .query(
+        `SELECT (ar.created_at / 3600000) * 3600000 AS hourStart,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.costUsd') AS REAL)), 0) AS costUsd,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.inputTokens') AS REAL)), 0) AS inputTokens,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.outputTokens') AS REAL)), 0) AS outputTokens
+           FROM agent_run ar
+          WHERE ar.created_at >= ?
+          GROUP BY hourStart
+          ORDER BY hourStart`,
+      )
+      .all(since) as Array<{
+      hourStart: number;
+      costUsd: number;
+      inputTokens: number;
+      outputTokens: number;
+    }>;
+
     const recent = this.#db
       .query(
         `SELECT ar.run_id AS runId,
@@ -285,6 +308,11 @@ export class RuntimeOpsStore {
           error: outcome?.error ?? null,
         };
       }),
+      costByHour: costByHour.map((h) => ({
+        hour: Number(h.hourStart),
+        costUsd: Number(h.costUsd),
+        tokens: Number(h.inputTokens ?? 0) + Number(h.outputTokens ?? 0),
+      })),
       recent: recent.map((r) => ({
         runId: r.runId,
         status: r.status,
