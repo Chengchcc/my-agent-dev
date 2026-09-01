@@ -2,10 +2,8 @@
   <strong>Multi-Agent Team Runtime — 四个 Oma 后端可切换，Agent 工作区即配置文件，Web 和飞书双端实时可见</strong>
 </p>
 
-  <a href="https://www.npmjs.com/package/@chengchenccc/oh-my-agent">
-    <img src="https://img.shields.io/npm/v/@chengchenccc/oh-my-agent?style=flat-square" alt="npm version" />
-  </a>
-  <img src="https://img.shields.io/npm/dm/@chengchenccc/oh-my-agent?style=flat-square" alt="npm downloads" />
+  [![npm version](https://img.shields.io/npm/v/@chengchenccc/oh-my-agent?style=flat-square)](https://www.npmjs.com/package/@chengchenccc/oh-my-agent)
+  [![npm downloads](https://img.shields.io/npm/dm/@chengchenccc/oh-my-agent?style=flat-square)](https://www.npmjs.com/package/@chengchenccc/oh-my-agent)
 </p>
 </p>
 
