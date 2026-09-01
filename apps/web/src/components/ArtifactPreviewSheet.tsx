@@ -23,7 +23,7 @@ function fmtSize(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)}M`;
 }
 
-function downloadArtifact(artifact: ArtifactMeta) {
+export function downloadArtifact(artifact: ArtifactMeta) {
   return api.downloadArtifact(artifact.url).then((r) => {
     const blob =
       r.encoding === "base64"

@@ -5,6 +5,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
+import { ArtifactMarkdownCard } from "./ArtifactMarkdownCard";
 
 interface MarkdownProps {
   text: string;
@@ -22,16 +23,19 @@ function buildComponents(): Components {
     ),
     em: ({ children }) => <em className="italic">{children}</em>,
     del: ({ children }) => <del className="text-(--mute) line-through">{children}</del>,
-    a: ({ href, children }) => (
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        className="text-(--primary-deep) underline underline-offset-2 hover:text-(--primary)"
-      >
-        {children}
-      </a>
-    ),
+    a: ({ href, children }) =>
+      href?.startsWith("artifacts://") ? (
+        <ArtifactMarkdownCard url={href} />
+      ) : (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="text-(--primary-deep) underline underline-offset-2 hover:text-(--primary)"
+        >
+          {children}
+        </a>
+      ),
 
     h1: ({ children }) => (
       <h1 className="font-sans text-xl font-semibold text-(--ink-strong) mt-4 mb-2 first:mt-0">
