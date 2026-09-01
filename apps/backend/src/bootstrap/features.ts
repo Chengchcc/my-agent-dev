@@ -85,6 +85,7 @@ import {
 import { ulid } from "../infra/ids.js";
 import { resolveKnowledgeMcpServerEntry } from "../infra/knowledge-mcp-command.js";
 import { resolveOmaCommand } from "../infra/oma-command.js";
+import { sseUrlEndpoint } from "../infra/sse-url.js";
 import type { BackendServices } from "./services.js";
 
 // ─── Helper ───────────────────────────────────────────────────
@@ -502,7 +503,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       };
     },
     productToolsEntrypoint: config.productToolsMcpUrl
-      ? `sse:${config.productToolsMcpUrl.endsWith("/sse") ? config.productToolsMcpUrl : `${config.productToolsMcpUrl}/sse`}`
+      ? `sse:${sseUrlEndpoint(config.productToolsMcpUrl)}`
       : "stdio:/nonexistent",
     onRunCommitted,
     conversationTitleOf: (conversationId: string) =>
@@ -725,10 +726,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
                   transport: "sse" as const,
                   // The SSE session endpoint is `<base>/sse` (the child's
                   // SSEClientTransport GETs the url as-is; the bare base
-                  // 404s). Append only when not already path-suffixed.
-                  url: config.productToolsMcpUrl.endsWith("/sse")
-                    ? config.productToolsMcpUrl
-                    : `${config.productToolsMcpUrl}/sse`,
+                  // 404s). sseUrlEndpoint appends only when needed.
+                  url: sseUrlEndpoint(config.productToolsMcpUrl),
                   // ENV NAME, not the token: pi (bearerTokenEnv) and omp
                   // (bearer_token_env_var) read this var at connect time;
                   // claude expands the ${VAR} placeholder in headers. The
@@ -771,11 +770,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
             : []),
         ],
         productTools: config.productToolsMcpUrl
-          ? [
-              ...buildHistoryTools(
-                `sse:${config.productToolsMcpUrl.endsWith("/sse") ? config.productToolsMcpUrl : `${config.productToolsMcpUrl}/sse`}`,
-              ),
-            ]
+          ? [...buildHistoryTools(`sse:${sseUrlEndpoint(config.productToolsMcpUrl)}`)]
           : [],
         knowledgePacks: assignedKnowledge.map((p) => ({
           id: p.id,

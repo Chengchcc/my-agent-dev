@@ -114,6 +114,18 @@ for (const root of ["apps/web/src/app", "apps/web/src/components"]) {
 for (const rel of queryFnFiles)
   failures.push(`inline queryFn outside features/*/queries.ts: ${rel}`);
 
+// .mcp.json product-tools SSE endpoint must be normalized to /sse and the
+// bearer file must carry an ENV-VAR NAME, never a raw token (I1 regression
+// guard: the bare base URL historically 404'd the child's SSEClientTransport).
+const mcpConfigRel = "apps/backend/src/bootstrap/features.ts";
+const mcpConfigSrc = readFileSync(join(ROOT, mcpConfigRel), "utf8");
+if (!mcpConfigSrc.includes("sseUrlEndpoint(config.productToolsMcpUrl)"))
+  failures.push(`${mcpConfigRel}: product-tools SSE url not normalized via sseUrlEndpoint`);
+if (mcpConfigSrc.includes("url: config.productToolsMcpUrl"))
+  failures.push(`${mcpConfigRel}: bare product-tools SSE url (missing /sse normalization)`);
+if (!mcpConfigSrc.includes('bearerTokenEnv: "PRODUCT_TOOLS_RUN_TOKEN"'))
+  failures.push(`${mcpConfigRel}: product-tools bearerTokenEnv missing or not the env-var name`);
+
 if (failures.length > 0) {
   console.error(`audit:contracts FAILED (${failures.length})`);
   for (const f of failures) console.error(`  - ${f}`);
@@ -123,5 +135,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "audit:contracts OK (queryFn/EventSource zero-tolerance; lark casts + env bridges still tracked)",
+  "audit:contracts OK (queryFn/EventSource/.mcp.json zero-tolerance; lark casts + env bridges still tracked)",
 );
