@@ -85,13 +85,20 @@ jobs:
         run: |
           # npm reads auth from .npmrc, not from the env var directly
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "${HOME}/.npmrc"
+          # prerelease versions (rc/beta/alpha) go to a matching dist-tag so
+          # `npm i oma` never resolves to a prerelease
+          DIST_TAG=latest
+          case "${GITHUB_REF_NAME#v}" in
+            *-rc.*) DIST_TAG=rc ;;
+            *-beta.*) DIST_TAG=beta ;;
+            *-alpha.*) DIST_TAG=alpha ;;
+          esac
           for p in packages/message packages/config packages/ai packages/tui \
                    packages/source-fetch packages/sandbox packages/agent-contract \
                    packages/adapter-mcp apps/oh-my-agent; do
             echo ">>> publishing $p"
-            (cd "$p" && npm publish --access public --tag latest)
+            (cd "$p" && npm publish --access public --tag "$DIST_TAG")
           done
-
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
