@@ -2,12 +2,14 @@
 import { Activity, CalendarClock, CheckCircle2, CircleAlert, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { AgentRunsTable } from "@/components/ops/AgentRunsTable";
 import { QueryState } from "@/components/ops/QueryState";
 import { SurfaceHealthPanel } from "@/components/ops/SurfaceHealthPanel";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/badge";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useAgentRuns,
@@ -203,29 +205,35 @@ export default function SystemPage() {
                       <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">
                         Agent success rate
                       </h3>
-                      <div className="space-y-2">
-                        {d.byAgent.map((a) => (
-                          <div key={a.agentId} className="text-xs">
-                            <div className="mb-1 flex items-center justify-between gap-2">
-                              <span className="truncate font-mono">{a.agentId}</span>
-                              <span className="shrink-0 text-(--mute)">
-                                {a.completed}/{a.runs} · {a.failed} failed ·{" "}
-                                {a.successRate == null
-                                  ? "—"
-                                  : `${Math.round(a.successRate * 100)}%`}
-                              </span>
-                            </div>
-                            <div className="h-1.5 rounded bg-(--mute)/30">
-                              <div
-                                className="h-full rounded bg-emerald-400"
-                                style={{
-                                  width: `${a.successRate == null ? 0 : a.successRate * 100}%`,
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                      <ChartContainer
+                        config={{
+                          rate: { label: "Success", color: "hsl(var(--primary))" },
+                        }}
+                        className="h-32 w-full"
+                      >
+                        <BarChart
+                          data={d.byAgent.map((a) => ({
+                            agentId: a.agentId,
+                            rate: a.successRate == null ? 0 : Math.round(a.successRate * 100),
+                          }))}
+                          layout="vertical"
+                        >
+                          <CartesianGrid horizontal={false} />
+                          <XAxis
+                            type="number"
+                            domain={[0, 100]}
+                            tickFormatter={(v: number) => `${v}%`}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="agentId"
+                            width={90}
+                            tickFormatter={(v: string) => v.slice(0, 16)}
+                          />
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Bar dataKey="rate" fill="var(--color-rate)" radius={4} />
+                        </BarChart>
+                      </ChartContainer>
                     </div>
                   )}
                   {d.byModel.length > 0 && (
@@ -233,42 +241,28 @@ export default function SystemPage() {
                       <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">
                         Cost by model
                       </h3>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b border-(--hairline) text-left text-[10px] uppercase tracking-wider text-(--mute)">
-                              <th className="px-2 py-1 font-semibold">Model</th>
-                              <th className="px-2 py-1 font-semibold text-right">Runs</th>
-                              <th className="px-2 py-1 font-semibold text-right">Success</th>
-                              <th className="px-2 py-1 font-semibold text-right">Cost</th>
-                              <th className="px-2 py-1 font-semibold text-right">Tokens</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {d.byModel.map((m) => {
-                              const terminal = m.completed + m.failed;
-                              const rate =
-                                terminal > 0 ? Math.round((m.completed / terminal) * 100) : null;
-                              return (
-                                <tr
-                                  key={m.modelId}
-                                  className="border-b border-(--hairline) last:border-b-0"
-                                >
-                                  <td className="px-2 py-1 text-xs text-(--mute)">{m.modelId}</td>
-                                  <td className="px-2 py-1 text-right text-xs">{m.runs}</td>
-                                  <td className="px-2 py-1 text-right text-xs">
-                                    {rate == null ? "—" : `${rate}%`}
-                                  </td>
-                                  <td className="px-2 py-1 text-right text-xs">
-                                    ${m.costUsd.toFixed(4)}
-                                  </td>
-                                  <td className="px-2 py-1 text-right text-xs">{m.tokens}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                      <ChartContainer
+                        config={{
+                          cost: { label: "Cost", color: "hsl(var(--primary))" },
+                        }}
+                        className="h-24 w-full"
+                      >
+                        <BarChart
+                          data={d.byModel.map((m) => ({
+                            model: m.modelId,
+                            cost: m.costUsd,
+                          }))}
+                        >
+                          <CartesianGrid vertical={false} />
+                          <XAxis
+                            dataKey="model"
+                            tickFormatter={(v: string) => v.split("/").pop() ?? v}
+                          />
+                          <YAxis width={50} tickFormatter={(v: number) => `$${v}`} />
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Bar dataKey="cost" fill="var(--color-cost)" radius={4} />
+                        </BarChart>
+                      </ChartContainer>
                     </div>
                   )}
                   {d.successRateByDay.length > 0 && (
@@ -276,30 +270,37 @@ export default function SystemPage() {
                       <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">
                         Success rate (7d)
                       </h3>
-                      <div className="space-y-2">
-                        {d.successRateByDay.map((day) => {
-                          const rate =
-                            day.successRate == null ? null : Math.round(day.successRate * 100);
-                          return (
-                            <div key={day.dayStart} className="text-xs">
-                              <div className="mb-1 flex items-center justify-between gap-2">
-                                <span className="text-(--mute)">
-                                  {new Date(day.dayStart).toLocaleDateString()}
-                                </span>
-                                <span className="shrink-0 text-(--mute)">
-                                  {day.completed}/{day.runs} · {rate == null ? "—" : `${rate}%`}
-                                </span>
-                              </div>
-                              <div className="h-1.5 rounded bg-(--mute)/30">
-                                <div
-                                  className="h-full rounded bg-emerald-400"
-                                  style={{ width: `${rate == null ? 0 : rate}%` }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <ChartContainer
+                        config={{
+                          rate: { label: "Success", color: "hsl(var(--primary))" },
+                        }}
+                        className="h-24 w-full"
+                      >
+                        <BarChart
+                          data={d.successRateByDay.map((day) => ({
+                            dayStart: day.dayStart,
+                            rate: day.successRate == null ? 0 : Math.round(day.successRate * 100),
+                          }))}
+                        >
+                          <CartesianGrid vertical={false} />
+                          <XAxis
+                            dataKey="dayStart"
+                            tickFormatter={(v: number) =>
+                              new Date(v).toLocaleDateString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                              })
+                            }
+                          />
+                          <YAxis
+                            width={40}
+                            domain={[0, 100]}
+                            tickFormatter={(v: number) => `${v}%`}
+                          />
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Bar dataKey="rate" fill="var(--color-rate)" radius={4} />
+                        </BarChart>
+                      </ChartContainer>
                     </div>
                   )}
                   {d.durationByDay.length > 0 && (
@@ -307,20 +308,33 @@ export default function SystemPage() {
                       <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">
                         Avg duration (7d)
                       </h3>
-                      <div className="space-y-2">
-                        {d.durationByDay.map((day) => (
-                          <div key={day.dayStart} className="text-xs">
-                            <span className="text-(--mute)">
-                              {new Date(day.dayStart).toLocaleDateString()}
-                            </span>
-                            <span className="float-right text-(--mute)">
-                              {day.avgDurationMs == null
-                                ? "—"
-                                : `${(day.avgDurationMs / 1000).toFixed(1)}s`}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
+                      <ChartContainer
+                        config={{
+                          durationSec: { label: "Duration", color: "hsl(var(--primary))" },
+                        }}
+                        className="h-24 w-full"
+                      >
+                        <BarChart
+                          data={d.durationByDay.map((day) => ({
+                            dayStart: day.dayStart,
+                            durationSec: day.avgDurationMs == null ? 0 : day.avgDurationMs / 1000,
+                          }))}
+                        >
+                          <CartesianGrid vertical={false} />
+                          <XAxis
+                            dataKey="dayStart"
+                            tickFormatter={(v: number) =>
+                              new Date(v).toLocaleDateString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                              })
+                            }
+                          />
+                          <YAxis width={40} tickFormatter={(v: number) => `${v}s`} />
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Bar dataKey="durationSec" fill="var(--color-durationSec)" radius={4} />
+                        </BarChart>
+                      </ChartContainer>
                     </div>
                   )}
                   {d.failureCauses.length > 0 && (

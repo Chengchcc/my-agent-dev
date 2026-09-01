@@ -3,8 +3,10 @@
 import { CheckCircle2, GitBranch, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/badge";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { useAgentRuns, useTelemetrySummary } from "@/features/ops/hooks";
 import { api } from "@/lib/api";
 
@@ -44,7 +46,6 @@ export default function TodayPage() {
   const [loading, setLoading] = useState(true);
   const { data: runs } = useAgentRuns();
   const telemetry = useTelemetrySummary();
-  const maxHourlyCost = Math.max(0, ...(telemetry.data?.costByHour.map((h) => h.costUsd) ?? [0]));
 
   useEffect(() => {
     api
@@ -241,18 +242,25 @@ export default function TodayPage() {
         {telemetry.data && telemetry.data.costByHour.length > 0 && (
           <div>
             <h2 className="text-sm font-medium mb-3">Cost burn (24h)</h2>
-            <div className="flex h-16 items-end gap-1 rounded-lg border border-(--hairline) bg-(--canvas-soft) p-3">
-              {telemetry.data.costByHour.map((h) => (
-                <div
-                  key={h.hour}
-                  className="flex-1 rounded-t bg-amber-400/60"
-                  style={{
-                    height: `${maxHourlyCost > 0 ? Math.max(2, (h.costUsd / maxHourlyCost) * 100) : 2}%`,
-                  }}
-                  title={`${new Date(h.hour).toLocaleTimeString()} · $${h.costUsd.toFixed(4)} · ${h.tokens} tok`}
+            <ChartContainer
+              config={{
+                costUsd: { label: "Cost", color: "hsl(var(--primary))" },
+              }}
+              className="h-24 w-full rounded-lg border border-(--hairline) bg-(--canvas-soft) p-3"
+            >
+              <BarChart data={telemetry.data.costByHour}>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="hour"
+                  tickFormatter={(h: number) =>
+                    new Date(h).toLocaleTimeString(undefined, { hour: "numeric" })
+                  }
                 />
-              ))}
-            </div>
+                <YAxis width={50} tickFormatter={(v: number) => `$${v}`} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="costUsd" fill="hsl(var(--primary))" radius={4} />
+              </BarChart>
+            </ChartContainer>
           </div>
         )}
         {telemetry.data && telemetry.data.failures.length > 0 && (
