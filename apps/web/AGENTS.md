@@ -115,8 +115,16 @@ small derived read, add a hook to the owning feature (e.g.
   `components/ComposerInputQueue.tsx`; approval card is
   `components/TimelineApprovalCard.tsx`. Keep these extracted; do not
   re-merge them into `Composer.tsx` / `Timeline.tsx`.
-- **Run submission:** workflow Run/Submit buttons must be disabled while
-  a run is in flight (`disabled={running}`) to prevent double execution.
+## Related docs
+
+Cross-file entry points to read before touching web:
+
+- [docs/architecture/index.llm.md](../../docs/architecture/index.llm.md) — repo doc hub
+- [docs/architecture/system-overview.md](../../docs/architecture/system-overview.md)
+- [docs/architecture/e2e-contract-rules.md](../../docs/architecture/e2e-contract-rules.md)
+- [docs/architecture/foundations/dependency-injection.md](../../docs/architecture/foundations/dependency-injection.md)
+
+## Review checklist before claiming done
 
 ## Review checklist before claiming done
 
