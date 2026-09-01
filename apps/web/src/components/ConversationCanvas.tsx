@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAgentList } from "@/features/agents/hooks";
+import { useArtifacts } from "@/features/artifacts/hooks";
 import { artifactKeys } from "@/features/artifacts/query-keys";
 import { useConversation } from "@/hooks/useConversation";
 import type { ArtifactMeta, ConversationSnapshot } from "@/lib/api";
@@ -18,7 +19,6 @@ import type { CommandContext } from "@/lib/slash-commands";
 import { findCommand, parseArgs } from "@/lib/slash-commands";
 import { extractText } from "@/lib/timeline";
 import type { LiveToolCall, TodoItem } from "@/lib/transient-reducer";
-import { ArtifactCards } from "./ArtifactCards";
 import { ArtifactPreviewSheet } from "./ArtifactPreviewSheet";
 import { Composer } from "./Composer";
 import { RosterList } from "./RosterList";
@@ -53,6 +53,18 @@ export function ConversationCanvas({
     resolveApproval,
   } = useConversation(conversationId, snapshot);
   const { agent, items, error, streamConn } = state;
+  const { data: artifactsData } = useArtifacts();
+  const artifactsByRunId = useMemo(() => {
+    const map = new Map<string, ArtifactMeta[]>();
+    for (const a of artifactsData?.artifacts ?? []) {
+      if (a.source?.runId) {
+        const list = map.get(a.source.runId) ?? [];
+        list.push(a);
+        map.set(a.source.runId, list);
+      }
+    }
+    return map;
+  }, [artifactsData]);
 
   // Refresh artifacts after a run settles so the session panel picks up
   // newly uploaded outputs without a page reload.
@@ -424,11 +436,9 @@ export function ConversationCanvas({
                   scrollContainerRef={scrollRef}
                   transients={transientBubbles}
                   onResolveApproval={resolveApproval}
-                />
-                <ArtifactCards
-                  conversationId={conversationId}
-                  onPreview={setPreviewArtifact}
-                  onDownload={handleDownloadArtifact}
+                  artifactsByRunId={artifactsByRunId}
+                  onPreviewArtifact={setPreviewArtifact}
+                  onDownloadArtifact={handleDownloadArtifact}
                 />
               </div>
             )}

@@ -1,12 +1,19 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import type { ArtifactMeta } from "@/lib/api";
 import type { SenderRef, UiItem } from "@/lib/conversation-reducer";
-import { groupTurns, isTurnStart, type TurnSegment } from "@/lib/conversation-reducer";
+import {
+  groupTurns,
+  isTurnStart,
+  type MessageItem,
+  type TurnSegment,
+} from "@/lib/conversation-reducer";
 import { renderContentBlocks } from "@/lib/render-blocks";
 import { extractText } from "@/lib/timeline";
 import type { LiveToolCall } from "@/lib/transient-reducer";
 import { cn } from "@/lib/utils";
+import { ArtifactCard } from "./ArtifactCard";
 import { MessageBubble } from "./MessageBubble";
 import { ReasoningTrace } from "./ReasoningTrace";
 import { TimelineApprovalCard } from "./TimelineApprovalCard";
@@ -36,6 +43,10 @@ interface TimelineProps {
       }>
     | undefined;
   onResolveApproval?: (runId: string, callId: string, decision: "allow" | "deny") => void;
+  /** Artifacts keyed by producing run id, rendered under the matching agent message. */
+  artifactsByRunId?: ReadonlyMap<string, ArtifactMeta[]>;
+  onPreviewArtifact?: (artifact: ArtifactMeta) => void;
+  onDownloadArtifact?: (artifact: ArtifactMeta) => void;
 }
 
 interface TurnAnchor {
@@ -52,6 +63,12 @@ function SystemNotice({ text }: { text: string }) {
       </span>
     </div>
   );
+}
+
+function runIdOf(m: MessageItem): string | null {
+  const mid = m.content.id;
+  const match = /^run:([^:]+):/.exec(mid ?? "");
+  return match ? match[1]! : null;
 }
 
 // ── Segment helpers ──
@@ -86,6 +103,9 @@ export function Timeline({
   scrollContainerRef,
   transients,
   onResolveApproval,
+  artifactsByRunId,
+  onPreviewArtifact,
+  onDownloadArtifact,
 }: TimelineProps) {
   const segments = useMemo(() => groupTurns(messages), [messages]);
   const anchors = useMemo(() => extractAnchors(segments), [segments]);
@@ -275,6 +295,23 @@ export function Timeline({
                   {isUndone && (
                     <div className="text-[10px] text-(--mute) italic mt-0.5">↳ undone</div>
                   )}
+                  {(() => {
+                    const runId = m.sender.kind === "agent" ? runIdOf(m) : null;
+                    const arts = runId ? (artifactsByRunId?.get(runId) ?? []) : [];
+                    if (arts.length === 0 || !onPreviewArtifact || !onDownloadArtifact) return null;
+                    return (
+                      <div className="mt-2 space-y-1">
+                        {arts.map((a) => (
+                          <ArtifactCard
+                            key={a.url}
+                            artifact={a}
+                            onPreview={onPreviewArtifact}
+                            onDownload={onDownloadArtifact}
+                          />
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             );
