@@ -127,7 +127,7 @@ export function AgentRunsTable({
                   </td>
                 )}
                 <td className="p-2 text-right">
-                  {canCancel(r.status) && (
+                  {canCancel(r.status) ? (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -136,6 +136,10 @@ export function AgentRunsTable({
                     >
                       Cancel
                     </Button>
+                  ) : (
+                    <Link href={`/system/runs/${r.runId}`} className="text-xs underline">
+                      View
+                    </Link>
                   )}
                 </td>
               </tr>

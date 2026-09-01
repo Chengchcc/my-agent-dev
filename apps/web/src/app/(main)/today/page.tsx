@@ -137,6 +137,18 @@ export default function TodayPage() {
                     <div className="truncate font-mono text-[10px] text-(--mute)">
                       {r.runId.slice(0, 12)}
                     </div>
+                    <div className="mt-1 h-1 rounded bg-(--mute)/30">
+                      {/* ponytail: 30min nominal baseline; replace with the real run timeout when known. */}
+                      <div
+                        className="h-full rounded bg-amber-400"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            Math.max(4, ((Date.now() - r.createdAt) / (30 * 60_000)) * 100),
+                          )}%`,
+                        }}
+                      />
+                    </div>
                   </div>
                   <span className="shrink-0 text-xs text-amber-400">{r.status}</span>
                 </Link>
@@ -201,44 +213,51 @@ export default function TodayPage() {
           )}
         </div>
 
-        <div>
-          <h2 className="text-sm font-medium mb-3">Today&apos;s Runs</h2>
-          {runSucceeded + runFailed + runRunning === 0 ? (
-            <p className="text-xs text-(--mute)">No runs today.</p>
-          ) : (
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
-                <div className="text-2xl font-semibold text-emerald-400 tabular-nums">
-                  {runSucceeded}
+        <details className="rounded-lg border border-(--hairline) bg-(--canvas-soft)">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
+            Today&apos;s Runs
+          </summary>
+          <div className="px-4 pb-3">
+            {runSucceeded + runFailed + runRunning === 0 ? (
+              <p className="text-xs text-(--mute)">No runs today.</p>
+            ) : (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
+                  <div className="text-2xl font-semibold text-emerald-400 tabular-nums">
+                    {runSucceeded}
+                  </div>
+                  <div className="text-xs text-(--mute)">Succeeded</div>
                 </div>
-                <div className="text-xs text-(--mute)">Succeeded</div>
-              </div>
-              <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
-                <div className="text-2xl font-semibold text-red-400 tabular-nums">{runFailed}</div>
-                <div className="text-xs text-(--mute)">Failed</div>
-              </div>
-              <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
-                <div className="text-2xl font-semibold text-amber-400 tabular-nums">
-                  {runRunning}
+                <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
+                  <div className="text-2xl font-semibold text-red-400 tabular-nums">
+                    {runFailed}
+                  </div>
+                  <div className="text-xs text-(--mute)">Failed</div>
                 </div>
-                <div className="text-xs text-(--mute)">Running</div>
+                <div className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
+                  <div className="text-2xl font-semibold text-amber-400 tabular-nums">
+                    {runRunning}
+                  </div>
+                  <div className="text-xs text-(--mute)">Running</div>
+                </div>
               </div>
-            </div>
-          )}
-          {succeeded + failed + running > 0 && (
-            <div className="mt-3 rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
-              <div className="flex items-center gap-2 text-lg font-semibold text-(--ink) tabular-nums">
-                <Badge variant="outline">{succeeded}</Badge>
-                <Badge variant="outline">{failed}</Badge>
-                <Badge variant="outline">{running}</Badge>
-                <span className="ml-auto text-2xl">{totalTokens.toLocaleString()}</span>
+            )}
+            {succeeded + failed + running > 0 && (
+              <div className="mt-3 rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4">
+                <div className="flex items-center gap-2 text-lg font-semibold text-(--ink) tabular-nums">
+                  <Badge variant="outline">{succeeded}</Badge>
+                  <Badge variant="outline">{failed}</Badge>
+                  <Badge variant="outline">{running}</Badge>
+                  <span className="ml-auto text-2xl">{totalTokens.toLocaleString()}</span>
+                </div>
+                <div className="mt-1 text-xs text-(--mute)">
+                  Workflow executions today: {succeeded} success / {failed} failed / {running}{" "}
+                  running
+                </div>
               </div>
-              <div className="mt-1 text-xs text-(--mute)">
-                Workflow executions today: {succeeded} success / {failed} failed / {running} running
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </details>
         {telemetry.data && telemetry.data.costByHour.length > 0 && (
           <div>
             <h2 className="text-sm font-medium mb-3">Cost burn (24h)</h2>

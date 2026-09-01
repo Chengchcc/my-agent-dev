@@ -19,6 +19,13 @@ import {
 } from "@/features/ops/hooks";
 
 type Tab = "surfaces" | "runs" | "telemetry";
+const FAILURE_TIPS: Record<string, string> = {
+  timeout: "Try increasing max steps or reducing task scope.",
+  schema: "Validate the workflow/input schema before rerunning.",
+  permission: "Grant the missing permission or switch to a permitted tool.",
+  network: "Check provider connectivity/credentials before retrying.",
+  other: "Review the latest failures for a common fix.",
+};
 
 function SummaryCard({
   icon: Icon,
@@ -350,6 +357,9 @@ export default function SystemPage() {
                           </div>
                         ))}
                       </div>
+                      <p className="mt-2 text-xs text-(--mute)">
+                        {FAILURE_TIPS[d.failureCauses[0]!.cause] ?? FAILURE_TIPS.other}
+                      </p>
                     </div>
                   )}
                   {d.spinningRuns.length > 0 && (
@@ -372,6 +382,10 @@ export default function SystemPage() {
                           </Link>
                         ))}
                       </div>
+                      <p className="mt-2 text-xs text-(--err)">
+                        Consider cancelling or retrying with a lower-cost model / higher maxSteps;
+                        high tool calls with low output often means a loop.
+                      </p>
                     </div>
                   )}
                   {d.failures.length > 0 && (

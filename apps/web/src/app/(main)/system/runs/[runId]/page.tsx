@@ -69,6 +69,22 @@ export default function SystemRunDetailPage() {
                     <div>{(run.usage.inputTokens ?? 0) + (run.usage.outputTokens ?? 0)} tok</div>
                   </div>
                 )}
+                {run.usage?.costUsd != null && (
+                  <div>
+                    <span className="text-xs text-(--mute)">Cost</span>
+                    <div>${run.usage.costUsd.toFixed(4)}</div>
+                  </div>
+                )}
+                {run.terminalResult &&
+                  "error" in run.terminalResult &&
+                  run.terminalResult.error && (
+                    <div className="col-span-2">
+                      <span className="text-xs text-(--mute)">Error</span>
+                      <div className="font-mono text-xs text-red-400">
+                        {run.terminalResult.error}
+                      </div>
+                    </div>
+                  )}
               </CardContent>
             </Card>
 
