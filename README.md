@@ -16,7 +16,7 @@ my-agent-team 是一个**团队级 Agent 运行时**。每个 Agent 有独立的
 
 - **四后端可切换** — 自研 oma 与 claude / pi / omp 任一运行,agent 级配置、每 Run 冻结,切后端不丢上下文(各自原生 session 续接,产品只存一个引用)
 - **Agent 工作区即配置** — 身份(SOUL/USER)、技能、MCP、产品工具、知识库都是工作区里的文件(AGENTS.md / `.mcp.json` / `.<kind>/skills`),后端自动桥接,人类可直接改文件
-- **一个对话一个 Agent** — 对话是 Agent session 的产品态投影;多 Agent 协作 = 多个对话投影到同一件事情(Work)上(ADR 0021)
+- **一个对话一个 Agent** — 对话是 Agent session 的产品态投影;多 Agent 协作 = 多个对话投影到同一件事情(Work)上
 - **多 Provider 多协议** — 支持 Anthropic Messages、OpenAI Chat Completions、OpenAI Responses 三种 API 协议;builtin provider 只需环境有 API Key 即自动生效;用户通过 `~/.oma/models.yml` 添加自定义 provider
 - **Thinking/Reasoning** — 全链路支持 Anthropic extended thinking、DeepSeek reasoning_content、OpenAI reasoning_effort;Web UI 可选 thinking level
 - **终端 TUI（oma）** — 独立交互式终端:流式渲染、工具调用/结果、thinking 与 tool detail 切换、mermaid ASCII 图、`/resume` 与 `/fork`、模型选择持久化到项目 `.oma/settings.json`,composer loader 实时摘要当前动作
@@ -93,42 +93,9 @@ providers:
           maxTokensField: max_tokens  # 或 max_completion_tokens
 ```
 
-| Layer | Components |
-|---|---|
-| Surfaces | Web console, Lark bot |
-| Product Backend | HTTP/SSE, ledger, Agent Context, Agent Run, input queue, Product Tools, workspace bridge, workflow trigger scheduler |
-| Agent Backends | oma / claude / pi / omp adapters |
-| Oma child | per-Run runtime: model/tool loop, retry, compaction, todo, skills |
-| CLI backends | claude / pi / omp read cwd config and native session storage |
-| AI Provider layer | Anthropic / OpenAI Chat / OAI Responses via createProvider, fetchSSE, compat registry |
-
-一次对话的完整链路:**人发消息 -> 端 POST -> Backend 写账本 -> 创建 Agent Run -> 按后端 kind spawn 子进程(自研 child 或 CLI)-> assistant 消息流式推送(SSE)-> terminal outcome -> 原子提交最终 Message**。
-
-
-
-### Provider 架构（ADR 0018）
-
-```
-~/.oma/models.yml          BUILTIN_CATALOG
-       │ (运行时读取)                │ (TypeScript 内置)
-       └─────── merge ───────────────┘
-                    │
-         buildAllModels() → createProvider()
-                    │
-         modelRuntime.registerProvider()
-                    │
-    ┌───────────────┴───────────────────┐
-    │ stream(model, messages, opts)      │
-    │   getApiImplementation(model.api)  │ ← OCP: 注册表分派
-    │   impl.buildRequest()              │ ← SRP: 造 wire payload
-    │   fetchSSE(url, headers, body)     │ ← DIP: 共享传输
-    │   impl.createChunkConverter()      │ ← SRP: 解码 SSE
-    └────────────────────────────────────┘
-```
+详细架构见 [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)（执行链、分层、不变量）。
 
 > **Oma 启动方式**：开发环境 `bun run dev` 开箱即用——Backend 自动用 Bun 运行 `apps/oh-my-agent/src/cli.ts`，无需全局安装或 `bun link`。生产环境通过 `OMA_BIN` 指向构建后的 `apps/oh-my-agent/dist/cli.js` 绝对路径（详见 `apps/backend/.env.example`）。
-
-详细架构见 [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)。
 
 ## 📦 仓库结构
 
@@ -149,7 +116,7 @@ packages/
   adapter-mcp/         MCP client adapter — 外部 MCP server 接入
   workflow/            Agentic Workflow DSL 纯域层（节点图、JSON-Logic、computeNext 引擎）
   sandbox/             进程沙箱 — workflow script 节点 / oma eval 工具的隔离执行
-  ai/                  多 API Provider 架构（ADR 0018）：ApiImplementation 注册表 +
+  ai/                  多 API Provider：ApiImplementation 注册表 +
                        createProvider 工厂 + fetchSSE 共享传输 + per-API compat 系统 +
                        BUILTIN_CATALOG + parseCatalogYAML 运行时模型配置
   source-fetch/        git/zip 源物化基座（oma marketplace 与 backend skill-pack 共用）
@@ -163,13 +130,7 @@ packages/
 
 | 文档 | 说明 |
 |---|---|
-| [架构 Wiki](docs/architecture/README.md) | 入口，按「你想干什么」组织阅读路线 |
-| [系统总览](docs/architecture/system-overview.md) | 执行链 + 容器视图 + 不变量 |
-| [ADR 索引](docs/adr/README.md) | 全部决策记录（0001–0026，含状态标注） |
-| [Provider 架构](docs/architecture/provider-architecture-spec.md) | 多 API Provider 设计规范（SOLID） |
-| [事实与投影](docs/architecture/foundations/facts-and-projections.md) | 数据模型的核心设计原则 |
-| [Agent Backend](docs/architecture/execution/agent-backend.md) | Agent Backend 协议与 child-process transport |
-| [未来工作](docs/architecture/roadmap/future-work.md) | 已知缺口和演进方向 |
+| [架构文档](docs/architecture/README.md) | 系统总览、执行链、各模块设计、决策记录——按「你想干什么」组织阅读路线 |
 
 ## 🛠 开发
 ```bash
