@@ -83,6 +83,8 @@ jobs:
           NODE_AUTH_TOKEN: \${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
         run: |
+          # npm reads auth from .npmrc, not from the env var directly
+          echo "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" > "\$HOME/.npmrc"
           for p in packages/message packages/config packages/ai packages/tui \
                    packages/source-fetch packages/sandbox packages/agent-contract \
                    packages/adapter-mcp apps/oh-my-agent; do
