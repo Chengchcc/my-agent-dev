@@ -193,6 +193,11 @@ describe("RuntimeOpsStore", () => {
       });
       expect(summary.byModel[0]!.costUsd).toBeCloseTo(0.002);
       expect(summary.byModel[0]!.tokens).toBe(25);
+      expect(summary.successRateByDay).toHaveLength(1);
+      expect(summary.successRateByDay[0]!.runs).toBe(2);
+      expect(summary.successRateByDay[0]!.completed).toBe(1);
+      expect(summary.successRateByDay[0]!.failed).toBe(1);
+      expect(summary.successRateByDay[0]!.successRate).toBeCloseTo(0.5);
     });
   });
 });

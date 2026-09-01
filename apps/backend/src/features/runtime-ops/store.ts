@@ -176,6 +176,13 @@ export class RuntimeOpsStore {
       costUsd: number;
       tokens: number;
     }>;
+    successRateByDay: Array<{
+      dayStart: number;
+      runs: number;
+      completed: number;
+      failed: number;
+      successRate: number | null;
+    }>;
   } {
     const since = sinceMs ?? Date.now() - 86_400_000;
     const totals = this.#db
@@ -291,6 +298,25 @@ export class RuntimeOpsStore {
       outputTokens: number;
     }>;
 
+    const since7 = Date.now() - 7 * 86_400_000;
+    const successRateByDay = this.#db
+      .query(
+        `SELECT (ar.created_at / 86400000) * 86400000 AS dayStart,
+                COUNT(*) AS runs,
+                COALESCE(SUM(CASE WHEN ar.status = 'completed' THEN 1 ELSE 0 END), 0) AS completed,
+                COALESCE(SUM(CASE WHEN ar.status IN ('failed','aborted','timeout') THEN 1 ELSE 0 END), 0) AS failed
+           FROM agent_run ar
+          WHERE ar.created_at >= ?
+          GROUP BY dayStart
+          ORDER BY dayStart`,
+      )
+      .all(since7) as Array<{
+      dayStart: number;
+      runs: number;
+      completed: number;
+      failed: number;
+    }>;
+
     const recent = this.#db
       .query(
         `SELECT ar.run_id AS runId,
@@ -366,6 +392,16 @@ export class RuntimeOpsStore {
         costUsd: Number(m.costUsd),
         tokens: Number(m.inputTokens ?? 0) + Number(m.outputTokens ?? 0),
       })),
+      successRateByDay: successRateByDay.map((d) => {
+        const terminal = d.completed + d.failed;
+        return {
+          dayStart: Number(d.dayStart),
+          runs: Number(d.runs),
+          completed: Number(d.completed),
+          failed: Number(d.failed),
+          successRate: terminal > 0 ? Number(d.completed) / terminal : null,
+        };
+      }),
       recent: recent.map((r) => ({
         runId: r.runId,
         status: r.status,

@@ -270,6 +270,37 @@ export default function SystemPage() {
                       </div>
                     </div>
                   )}
+                  {d.successRateByDay.length > 0 && (
+                    <div className="rounded-lg border border-(--hairline) p-3">
+                      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">
+                        Success rate (7d)
+                      </h3>
+                      <div className="space-y-2">
+                        {d.successRateByDay.map((day) => {
+                          const rate =
+                            day.successRate == null ? null : Math.round(day.successRate * 100);
+                          return (
+                            <div key={day.dayStart} className="text-xs">
+                              <div className="mb-1 flex items-center justify-between gap-2">
+                                <span className="text-(--mute)">
+                                  {new Date(day.dayStart).toLocaleDateString()}
+                                </span>
+                                <span className="shrink-0 text-(--mute)">
+                                  {day.completed}/{day.runs} · {rate == null ? "—" : `${rate}%`}
+                                </span>
+                              </div>
+                              <div className="h-1.5 rounded bg-(--mute)/30">
+                                <div
+                                  className="h-full rounded bg-emerald-400"
+                                  style={{ width: `${rate == null ? 0 : rate}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {d.failures.length > 0 && (
                     <div className="rounded-lg border border-(--hairline) p-3">
                       <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">

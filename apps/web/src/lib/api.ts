@@ -90,6 +90,13 @@ export type TelemetrySummary = {
     costUsd: number;
     tokens: number;
   }>;
+  successRateByDay: Array<{
+    dayStart: number;
+    runs: number;
+    completed: number;
+    failed: number;
+    successRate: number | null;
+  }>;
 };
 
 export type ChatModelOverride = {
