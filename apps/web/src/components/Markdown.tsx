@@ -5,6 +5,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
+import { remarkArtifactUrls } from "@/lib/remark-artifact-url";
 import { ArtifactMarkdownCard } from "./ArtifactMarkdownCard";
 
 interface MarkdownProps {
@@ -127,7 +128,7 @@ export const Markdown = memo(function Markdown({ text }: MarkdownProps) {
   const components = useMemo(buildComponents, []);
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkArtifactUrls]}
       rehypePlugins={[rehypeRaw, rehypeSanitize]}
       components={components}
     >
