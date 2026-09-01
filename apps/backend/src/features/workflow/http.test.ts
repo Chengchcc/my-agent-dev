@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { workflowExecutionEvents } from "@chengchenccc/api-contract";
 import type { WorkflowDefinition } from "@chengchenccc/workflow";
 import { workflowRoutes } from "./http.js";
 import type { WorkflowExecutionService } from "./service.js";
@@ -180,6 +181,92 @@ describe("workflow http", () => {
     expect(body.execution.executionId).toBe("e1");
     expect(Array.isArray(body.events)).toBe(true);
     expect(Array.isArray(body.nodeRuns)).toBe(true);
+  });
+
+  test("GET workflow events round-trips a live wf SSE payload", async () => {
+    const emitted = {
+      event: "node_script_started",
+      executionId: "e9",
+      ts: 99,
+      data: { nodeId: "a" },
+    };
+    const sseService: WorkflowExecutionService = {
+      ...fakeService,
+      getExecution: async (id) => ({
+        executionId: id,
+        workflowId: "wf",
+        definition: def,
+        input: {},
+        store: {},
+        status: "running",
+        createdAt: 1,
+      }),
+      subscribeEvents: async () =>
+        (async function* () {
+          yield emitted;
+        })(),
+    };
+    const sseApp = workflowRoutes({
+      workflowExecutionService: sseService,
+      loadWorkflow: async () => JSON.stringify(def),
+      workflowDir: dir,
+    });
+    const res = await sseApp.handle(
+      new Request("http://localhost/api/workflow-executions/e9/events"),
+    );
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("event: wf");
+    const dataLine = text.split("\n").find((l) => l.startsWith("data: "));
+    expect(dataLine).toBeDefined();
+    const parsed = workflowExecutionEvents.wf.parse(JSON.parse(dataLine!.slice("data: ".length)));
+    expect(parsed).toEqual(emitted);
+  });
+
+  test("GET workflow events replays persisted history with seq", async () => {
+    const history = [
+      {
+        event: "execution_started",
+        executionId: "e10",
+        ts: 10,
+        data: {},
+        seq: 1,
+      },
+    ];
+    const sseService: WorkflowExecutionService = {
+      ...fakeService,
+      getExecution: async (id) => ({
+        executionId: id,
+        workflowId: "wf",
+        definition: def,
+        input: {},
+        store: {},
+        status: "success",
+        createdAt: 1,
+      }),
+      subscribeEvents: async () => (async function* () {})(),
+      listExecutionEvents: async () => history,
+    };
+    const sseApp = workflowRoutes({
+      workflowExecutionService: sseService,
+      loadWorkflow: async () => JSON.stringify(def),
+      workflowDir: dir,
+    });
+    const res = await sseApp.handle(
+      new Request("http://localhost/api/workflow-executions/e10/events"),
+    );
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    const dataLine = text.split("\n").find((l) => l.startsWith("data: "));
+    expect(dataLine).toBeDefined();
+    const parsed = workflowExecutionEvents.wf.parse(JSON.parse(dataLine!.slice("data: ".length)));
+    expect(parsed).toEqual({
+      event: "execution_started",
+      executionId: "e10",
+      ts: 10,
+      data: {},
+      seq: 1,
+    });
   });
 
   test("chat-patch returns a validated definition", async () => {
