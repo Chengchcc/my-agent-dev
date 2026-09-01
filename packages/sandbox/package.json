@@ -14,5 +14,10 @@
     "test": "bun test --pass-with-no-tests",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "devDependencies": {}
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chengchcc/my-agent-team.git",
+    "directory": "packages/sandbox"
+  }
 }

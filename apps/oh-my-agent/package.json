@@ -1,7 +1,7 @@
 {
   "name": "@chengchenccc/oh-my-agent",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "bin": {
     "oma": "./dist/cli.js"
@@ -36,5 +36,14 @@
     "bun-types": "latest",
     "typescript": "^5.7.0",
     "@chengchenccc/adapter-oma-agent": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chengchcc/my-agent-team.git",
+    "directory": "apps/oh-my-agent"
   }
 }

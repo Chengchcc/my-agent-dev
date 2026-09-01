@@ -1,7 +1,7 @@
 {
   "name": "@chengchenccc/config",
   "version": "0.1.0",
-  "description": "Shared envSchema + parseEnv — single source of truth for all process environment variables",
+  "description": "Shared envSchema + parseEnv \u2014 single source of truth for all process environment variables",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -17,5 +17,10 @@
   "dependencies": {
     "zod": "^3.23.0"
   },
-  "devDependencies": {}
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chengchcc/my-agent-team.git",
+    "directory": "packages/config"
+  }
 }

@@ -29,5 +29,10 @@
   },
   "devDependencies": {
     "@xterm/headless": "5.5.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chengchcc/my-agent-team.git",
+    "directory": "packages/tui"
   }
 }

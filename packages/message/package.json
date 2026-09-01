@@ -1,7 +1,7 @@
 {
   "name": "@chengchenccc/message",
   "version": "0.1.0",
-  "description": "Unified Message domain model — the single cross-layer message entity",
+  "description": "Unified Message domain model \u2014 the single cross-layer message entity",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -17,5 +17,10 @@
   "dependencies": {
     "zod": "^3.23.0"
   },
-  "devDependencies": {}
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chengchcc/my-agent-team.git",
+    "directory": "packages/message"
+  }
 }

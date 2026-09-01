@@ -1,6 +1,6 @@
 {
   "name": "@chengchenccc/source-fetch",
-  "private": true,
+  "private": false,
   "type": "module",
   "exports": {
     ".": {
@@ -16,5 +16,11 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist"
-  ]
+  ],
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chengchcc/my-agent-team.git",
+    "directory": "packages/source-fetch"
+  }
 }

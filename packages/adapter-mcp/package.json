@@ -22,5 +22,10 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@chengchenccc/message": "workspace:*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chengchcc/my-agent-team.git",
+    "directory": "packages/adapter-mcp"
   }
 }
