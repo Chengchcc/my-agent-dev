@@ -66,7 +66,7 @@ export default function SystemPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb="System"
+        breadcrumb={[{ label: "System", href: "/system" }, { label: "Overview" }]}
         title="System"
         description="Runtime health, active runs, and scheduled work."
       />

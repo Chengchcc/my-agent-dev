@@ -121,7 +121,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
   return (
     <Page>
       <PageHeader
-        breadcrumb="Work"
+        breadcrumb={[{ label: "Work", href: "/today" }, { label: "Workflows" }]}
         title="Workflows"
         description="Agentic workflow definitions"
         action={

@@ -83,7 +83,11 @@ export default function TodayPage() {
 
   return (
     <Page>
-      <PageHeader title="Today" description={today} />
+      <PageHeader
+        breadcrumb={[{ label: "Work", href: "/today" }, { label: "Today" }]}
+        title="Today"
+        description={today}
+      />
       <PageBody size="reading" className="space-y-8">
         <div>
           <h2 className="text-sm font-medium mb-3">

@@ -30,18 +30,20 @@ function renderBreadcrumb(
     );
   }
   if (Array.isArray(bc)) {
-    return bc.map((c, i): ReactNode => {
+    return bc.flatMap((c, i): ReactNode[] => {
       const last = i === bc.length - 1;
-      return (
+      const item = (
         <BreadcrumbItem key={`${c.label}-${i}`}>
           {c.href && !last ? (
             <BreadcrumbLink href={c.href}>{c.label}</BreadcrumbLink>
           ) : (
             <BreadcrumbPage>{c.label}</BreadcrumbPage>
           )}
-          {!last && <BreadcrumbSeparator />}
         </BreadcrumbItem>
       );
+      // Separator is itself an <li> — it must be a SIBLING of the item
+      // inside the <ol>, never a child (li-in-li hydration error).
+      return last ? [item] : [item, <BreadcrumbSeparator key={`${c.label}-${i}-sep`} />];
     });
   }
   return (

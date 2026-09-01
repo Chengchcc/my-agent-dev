@@ -42,7 +42,7 @@ export function TeamView({ selectedId }: { selectedId?: string }) {
           <AgentDetail agentId={currentId} />
         ) : (
           <Page>
-            <PageHeader breadcrumb="Team" title="Agents" />
+            <PageHeader breadcrumb={[{ label: "Team" }, { label: "Agents" }]} title="Agents" />
             <div className="px-4 sm:px-6 lg:px-8 py-6">
               {isLoading ? (
                 <div className="h-40 animate-pulse rounded-lg bg-(--panel2)" />

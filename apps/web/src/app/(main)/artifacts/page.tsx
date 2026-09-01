@@ -119,6 +119,7 @@ export default function ArtifactsPage() {
   return (
     <Page>
       <PageHeader
+        breadcrumb={[{ label: "Work", href: "/today" }, { label: "Artifacts" }]}
         title="Artifacts"
         description="Artifacts shared between agents"
         action={
