@@ -8,7 +8,10 @@ export default function ProjectsPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb="Team / Projects"
+        breadcrumb={[
+          { label: "Team", href: "/team/agents" },
+          { label: "Projects", href: "/team/projects" },
+        ]}
         title="Projects"
         description="Repositories and automation targets."
         action={<ProjectForm />}

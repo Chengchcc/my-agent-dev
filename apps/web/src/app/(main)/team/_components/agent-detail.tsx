@@ -75,7 +75,10 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   if (isLoading) {
     return (
       <Page>
-        <PageHeader breadcrumb="Team / Agents" title="Agent" />
+        <PageHeader
+          breadcrumb={[{ label: "Team", href: "/team/agents" }, { label: "Agents" }]}
+          title="Agent"
+        />
         <div className="animate-pulse space-y-3 px-4 sm:px-6 lg:px-8 py-6">
           <div className="h-6 w-48 bg-(--panel2)" />
           <div className="h-4 w-32 bg-(--panel2)" />
@@ -87,7 +90,10 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   if (!agent) {
     return (
       <Page>
-        <PageHeader breadcrumb="Team / Agents" title="Agent" />
+        <PageHeader
+          breadcrumb={[{ label: "Team", href: "/team/agents" }, { label: "Agents" }]}
+          title="Agent"
+        />
         <div className="px-4 sm:px-6 lg:px-8 py-6">
           <p className="text-(--text-body) text-(--mute)">Agent not found</p>
         </div>
@@ -98,7 +104,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   return (
     <Page>
       <PageHeader
-        breadcrumb="Team / Agents"
+        breadcrumb={[{ label: "Team", href: "/team/agents" }, { label: "Agents" }]}
         title={agent.name}
         action={
           <div className="flex items-center gap-2">

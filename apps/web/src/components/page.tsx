@@ -2,8 +2,10 @@ import type { ReactNode } from "react";
 import {
   Breadcrumb,
   BreadcrumbItem,
+  BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
+  BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +14,41 @@ import { cn } from "@/lib/utils";
  *  (responsive padding; wide = max-w-7xl, reading = max-w-3xl). */
 export function Page({ children }: { children: ReactNode }) {
   return <div className="min-h-full">{children}</div>;
+}
+
+/** One breadcrumb grammar: a string renders one crumb; a structured
+ *  trail renders link ancestors + a terminal BreadcrumbPage, separated by
+ *  the shared separator. ReactNode passes through untouched. */
+function renderBreadcrumb(
+  bc: ReactNode | string | ReadonlyArray<{ label: string; href?: string }>,
+): ReactNode {
+  if (typeof bc === "string") {
+    return (
+      <BreadcrumbItem>
+        <BreadcrumbPage>{bc}</BreadcrumbPage>
+      </BreadcrumbItem>
+    );
+  }
+  if (Array.isArray(bc)) {
+    return bc.map((c, i): ReactNode => {
+      const last = i === bc.length - 1;
+      return (
+        <BreadcrumbItem key={`${c.label}-${i}`}>
+          {c.href && !last ? (
+            <BreadcrumbLink href={c.href}>{c.label}</BreadcrumbLink>
+          ) : (
+            <BreadcrumbPage>{c.label}</BreadcrumbPage>
+          )}
+          {!last && <BreadcrumbSeparator />}
+        </BreadcrumbItem>
+      );
+    });
+  }
+  return (
+    <BreadcrumbItem>
+      <BreadcrumbPage>{bc as ReactNode}</BreadcrumbPage>
+    </BreadcrumbItem>
+  );
 }
 
 export function PageHeader({
@@ -23,7 +60,10 @@ export function PageHeader({
   action,
   actions,
 }: {
-  breadcrumb?: ReactNode;
+  /** Breadcrumb: ReactNode (full control), plain string (single crumb), or
+   *  a structured trail — ancestors get links, the last crumb is the
+   *  current page. Renders through the one shared ui/breadcrumb grammar. */
+  breadcrumb?: ReactNode | string | ReadonlyArray<{ label: string; href?: string }>;
   title: string;
   kicker?: string;
   subtitle?: string;
@@ -35,13 +75,9 @@ export function PageHeader({
 }) {
   return (
     <div className="border-b border-(--hairline) p-4 sm:px-6 lg:px-8 ">
-      {breadcrumb && (
+      {breadcrumb != null && (
         <Breadcrumb className="mb-1">
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbPage>{breadcrumb}</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
+          <BreadcrumbList>{renderBreadcrumb(breadcrumb)}</BreadcrumbList>
         </Breadcrumb>
       )}
       <div className="flex flex-wrap items-start justify-between gap-3">

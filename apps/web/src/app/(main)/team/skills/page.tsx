@@ -163,7 +163,10 @@ export default function SkillPacksPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb="Team / Skill Packs"
+        breadcrumb={[
+          { label: "Team", href: "/team/agents" },
+          { label: "Skill Packs", href: "/team/skills" },
+        ]}
         title="Skill Packs"
         subtitle="Install and manage skill packs for agents."
         actions={

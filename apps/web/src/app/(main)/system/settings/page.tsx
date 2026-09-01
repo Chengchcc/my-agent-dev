@@ -369,7 +369,7 @@ export default function SettingsPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb="System / Settings"
+        breadcrumb={[{ label: "System", href: "/system" }, { label: "Settings" }]}
         title="Settings"
         description="Runtime defaults and deployment information."
       />

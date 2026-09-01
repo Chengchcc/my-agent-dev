@@ -19,7 +19,10 @@ export default function ProjectDetailPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb="Team / Projects"
+        breadcrumb={[
+          { label: "Team", href: "/team/agents" },
+          { label: "Projects", href: "/team/projects" },
+        ]}
         title={project?.name ?? projectId}
         description={project?.repoUrl ?? undefined}
       />

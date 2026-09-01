@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Page, PageBody, PageHeader } from "@/components/page";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,14 +14,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -112,92 +105,88 @@ export function ExecutionList({
     }
   }
   return (
-    <div className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/workflows">Workflows</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbLink href={`/workflows/${workflowId}`}>{workflowId}</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>Executions</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-        <Dialog open={runOpen} onOpenChange={setRunOpen}>
-          <button
-            className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink) transition-colors hover:bg-(--panel2)"
-            onClick={() => {
-              setRunOpen(true);
-              api
-                .listArtifacts()
-                .then((r) => setArtifactSuggestions((r.artifacts ?? []).map((a) => a.url)))
-                .catch(() => {});
-            }}
-          >
-            + Run
-          </button>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-sm font-semibold">Run {workflowId}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3">
-              {inputHints.length === 0 ? (
-                <p className="text-xs text-(--mute)">This workflow has no input parameters.</p>
-              ) : (
-                inputHints.map((f) => (
-                  <div key={f.key} className="flex flex-col gap-1">
-                    <Label className="text-xs text-(--mute)">
-                      {f.key} <span className="text-(--faint)">({f.type})</span>
-                    </Label>
-                    {f.type === "artifact" ? (
-                      <div className="flex gap-1">
-                        <input
-                          list="run-artifact-suggestions"
-                          className="h-9 flex-1 border-(--hairline) bg-(--canvas) px-2 text-xs"
-                          placeholder="artifacts://folder/file"
+    <Page>
+      <PageHeader
+        breadcrumb={[
+          { label: "Workflows", href: "/workflows" },
+          { label: workflowId, href: `/workflows/${workflowId}` },
+          { label: "Executions" },
+        ]}
+        title="Executions"
+        description={`Runs of ${workflowId}`}
+        action={
+          <Dialog open={runOpen} onOpenChange={setRunOpen}>
+            <button
+              className="rounded-md bg-(--primary) px-3 py-1.5 text-xs text-(--ink) transition-colors hover:bg-(--panel2)"
+              onClick={() => {
+                setRunOpen(true);
+                api
+                  .listArtifacts()
+                  .then((r) => setArtifactSuggestions((r.artifacts ?? []).map((a) => a.url)))
+                  .catch(() => {});
+              }}
+            >
+              + Run
+            </button>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-sm font-semibold">Run {workflowId}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                {inputHints.length === 0 ? (
+                  <p className="text-xs text-(--mute)">This workflow has no input parameters.</p>
+                ) : (
+                  inputHints.map((f) => (
+                    <div key={f.key} className="flex flex-col gap-1">
+                      <Label className="text-xs text-(--mute)">
+                        {f.key} <span className="text-(--faint)">({f.type})</span>
+                      </Label>
+                      {f.type === "artifact" ? (
+                        <div className="flex gap-1">
+                          <input
+                            list="run-artifact-suggestions"
+                            className="h-9 flex-1 border-(--hairline) bg-(--canvas) px-2 text-xs"
+                            placeholder="artifacts://folder/file"
+                            value={inputVals[f.key] ?? ""}
+                            onChange={(e) =>
+                              setInputVals((v) => ({ ...v, [f.key]: e.target.value }))
+                            }
+                          />
+                          <datalist id="run-artifact-suggestions">
+                            {artifactSuggestions.map((u) => (
+                              <option key={u} value={u} />
+                            ))}
+                          </datalist>
+                        </div>
+                      ) : (
+                        <Input
+                          className="h-9 border-(--hairline) bg-(--canvas) text-xs"
+                          type={
+                            f.type === "number" ? "number" : f.type === "boolean" ? "text" : "text"
+                          }
+                          placeholder={f.type === "boolean" ? "true / false" : ""}
                           value={inputVals[f.key] ?? ""}
                           onChange={(e) => setInputVals((v) => ({ ...v, [f.key]: e.target.value }))}
                         />
-                        <datalist id="run-artifact-suggestions">
-                          {artifactSuggestions.map((u) => (
-                            <option key={u} value={u} />
-                          ))}
-                        </datalist>
-                      </div>
-                    ) : (
-                      <Input
-                        className="h-9 border-(--hairline) bg-(--canvas) text-xs"
-                        type={
-                          f.type === "number" ? "number" : f.type === "boolean" ? "text" : "text"
-                        }
-                        placeholder={f.type === "boolean" ? "true / false" : ""}
-                        value={inputVals[f.key] ?? ""}
-                        onChange={(e) => setInputVals((v) => ({ ...v, [f.key]: e.target.value }))}
-                      />
-                    )}
-                  </div>
-                ))
-              )}
-              <button
-                className="w-full rounded-md bg-(--primary) px-3 py-2 text-xs text-(--ink) hover:bg-(--panel2)"
-                onClick={async () => {
-                  await run();
-                  setRunOpen(false);
-                }}
-              >
-                Submit
-              </button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-      <div className="space-y-2">
+                      )}
+                    </div>
+                  ))
+                )}
+                <button
+                  className="w-full rounded-md bg-(--primary) px-3 py-2 text-xs text-(--ink) hover:bg-(--panel2)"
+                  onClick={async () => {
+                    await run();
+                    setRunOpen(false);
+                  }}
+                >
+                  Submit
+                </button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        }
+      />
+      <PageBody className="space-y-2">
         {executions.map((e) => {
           const dur =
             e.terminalAt && e.createdAt
@@ -259,33 +248,33 @@ export function ExecutionList({
             </div>
           );
         })}
-      </div>
-      {executions.length === 0 && (
-        <div className="mt-4 text-sm text-muted-foreground">No executions yet.</div>
-      )}
-      <AlertDialog
-        open={confirmId !== null}
-        onOpenChange={(o) => {
-          if (!o) setConfirmId(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete execution {confirmId}?</AlertDialogTitle>
-            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (confirmId) void del(confirmId);
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+        {executions.length === 0 && (
+          <div className="mt-4 text-sm text-muted-foreground">No executions yet.</div>
+        )}
+        <AlertDialog
+          open={confirmId !== null}
+          onOpenChange={(o) => {
+            if (!o) setConfirmId(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete execution {confirmId}?</AlertDialogTitle>
+              <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (confirmId) void del(confirmId);
+                }}
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </PageBody>
+    </Page>
   );
 }
