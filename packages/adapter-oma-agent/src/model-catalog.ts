@@ -19,6 +19,11 @@ export class OmaModelCatalog {
     this.command = command;
   }
 
+  /** Drop the cached catalog so the next list() spawns a fresh child. */
+  invalidate(): void {
+    this.cached = null;
+  }
+
   async list(): Promise<BackendModelCatalog> {
     if (this.cached) return this.cached;
     // --list-models is mode-independent (the CLI checks it before mode
@@ -55,14 +60,14 @@ export class OmaModelCatalog {
         "oma --list-models output exceeded the 1 MiB bound",
       );
     }
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const code = await Promise.race([
       proc.exit,
       new Promise<null>((r) => {
         timer = setTimeout(() => r(null), LIST_MODELS_TIMEOUT_MS);
       }),
     ]);
-    if (timer) clearTimeout(timer);
+    clearTimeout(timer);
     if (code !== 0) {
       if (code === null) proc.kill();
       throw new OmaProcessError(

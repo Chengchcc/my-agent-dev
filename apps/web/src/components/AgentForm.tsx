@@ -37,6 +37,7 @@ import {
 } from "@/features/skill-packs/hooks";
 import { type AgentRow, api, type LarkSetupSession } from "@/lib/api";
 import { fieldClass, overlineClass } from "@/lib/form-styles";
+import { ProviderSetupInline } from "./ProviderSetupInline";
 
 interface AgentFormProps {
   editAgent?: AgentRow;
@@ -482,6 +483,8 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                   />
                 </div>
 
+                {!hideProvider && modelGroups.length === 0 && <ProviderSetupInline />}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {!hidePermission && (
                     <FormField
@@ -602,7 +605,11 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
 
                 <Button
                   type="submit"
-                  disabled={isSaving || !(nameValue ?? "").trim()}
+                  disabled={
+                    isSaving ||
+                    !(nameValue ?? "").trim() ||
+                    (!isEdit && !hideProvider && modelGroups.length === 0)
+                  }
                   className="w-full"
                 >
                   {isSaving ? (

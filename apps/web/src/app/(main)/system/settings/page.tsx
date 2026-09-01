@@ -3,6 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ProviderSettingsSection } from "@/components/ProviderSettingsSection";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -382,6 +383,8 @@ export default function SettingsPage() {
             onSave={handleSave}
           />
         ))}
+
+        <ProviderSettingsSection />
 
         <SystemInfoSection info={systemQuery.data} />
       </PageBody>

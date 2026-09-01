@@ -28,6 +28,12 @@ export type AgentRuntimeStatus = ApiReturn<typeof api.getAgentRuntime>;
 export type SurfaceOpsItem = ApiReturn<typeof api.listSurfaces>[number];
 export type ConversationSnapshot = ApiReturn<typeof api.listConversations>[number];
 export type SettingsMap = ApiReturn<typeof api.getSettings>["settings"];
+export type ProviderInfo = {
+  id: string;
+  name: string;
+  apiKeyEnv: string;
+  configured: boolean;
+};
 export type McpServerRow = ApiReturn<typeof api.listMcpServers>["mcpServers"][number];
 export type PendingInput = ApiReturn<typeof api.listConversationInputs>["inputs"][number];
 export type AgentMemory = {
@@ -349,6 +355,29 @@ export const api = {
         }>;
       }>;
     };
+  },
+  // Providers (direct fetch - route not visible to Eden treaty)
+  listProviders: async () => {
+    const resp = await fetch("/api/bff/providers", { credentials: "include" });
+    return (await resp.json()) as { providers: ProviderInfo[] };
+  },
+  setProvider: async (id: string, body: { apiKey?: string; baseUrl?: string }) => {
+    const resp = await fetch(`/api/bff/providers/${id}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) throw new Error(`Failed to save provider: ${resp.status}`);
+    return (await resp.json()) as { ok: boolean; provider: ProviderInfo };
+  },
+  clearProvider: async (id: string) => {
+    const resp = await fetch(`/api/bff/providers/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (!resp.ok) throw new Error(`Failed to clear provider: ${resp.status}`);
+    return (await resp.json()) as { ok: boolean };
   },
   // Conversation fork/undo/replay (direct fetch - new routes)
   forkConversation: async (id: string, fromSeq: number, title?: string) => {

@@ -58,6 +58,7 @@ import {
 import { createWorkspaceLockRegistry } from "../features/project/workspace-lock.js";
 import { ensureMirror, ensureWorktree, removeWorktree } from "../features/project/worktree.js";
 import { createWorktreeOps } from "../features/project/worktree-ops.js";
+import { createProviderService, providerRoutes } from "../features/provider/index.js";
 import { createRuntimeOpsService, opsRoutes } from "../features/runtime-ops/index.js";
 import { settingsRoutes } from "../features/settings/index.js";
 import type { SkillPackRow } from "../features/skill-pack/index.js";
@@ -116,6 +117,7 @@ export interface InstalledFeatures {
 
 export async function installFeatures(services: BackendServices): Promise<InstalledFeatures> {
   const { config, db, settingsSvc, mcpClientManager, larkBotRegistry } = services;
+  const providerSvc = createProviderService(settingsSvc);
 
   // ─── Skill Pack (before agentSvc — onCreate depends on it) ──
 
@@ -428,8 +430,14 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       }
     })().catch((err) => console.error(`[bootstrap] onRunCommitted failed for ${runId}:`, err));
   };
-  const codingAgentCommand = resolveOmaCommand(config);
+
+  const codingAgentCommand = resolveOmaCommand(config, { env: providerSvc.getProviderEnv() });
   const codingAgentCatalog = new OmaModelCatalog(codingAgentCommand);
+
+  const refreshOmaProviderEnv = () => {
+    codingAgentCommand.env = resolveOmaCommand(config, { env: providerSvc.getProviderEnv() }).env;
+    codingAgentCatalog.invalidate();
+  };
 
   const codingAgentBackend = new OmaBackend(codingAgentCommand, {
     maxConcurrent: config.maxConcurrentRuns,
@@ -943,6 +951,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     workflowExecutions: workflowApp,
     artifacts: artifactRoutes(artifactService),
     settings: settingsRoutes(settingsSvc),
+
+    providers: providerRoutes(providerSvc, { onChange: refreshOmaProviderEnv }),
 
     models: modelRoutes({
       list: async () => {

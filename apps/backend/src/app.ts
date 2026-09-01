@@ -7,6 +7,7 @@ import type { knowledgeRoutes } from "./features/knowledge/http.js";
 import type { mcpRoutes } from "./features/mcp/http.js";
 import type { modelRoutes } from "./features/models/http.js";
 import type { projectRoutes } from "./features/project/http.js";
+import type { providerRoutes } from "./features/provider/http.js";
 import type { opsRoutes } from "./features/runtime-ops/http.js";
 import type { settingsRoutes } from "./features/settings/http.js";
 import type { skillPackRoutes } from "./features/skill-pack/http.js";
@@ -24,6 +25,7 @@ export interface FeatureSet {
   mcp: ReturnType<typeof mcpRoutes>;
   knowledge: ReturnType<typeof knowledgeRoutes>;
   settings: ReturnType<typeof settingsRoutes>;
+  providers: ReturnType<typeof providerRoutes>;
   models: ReturnType<typeof modelRoutes>;
   workflowExecutions: ReturnType<typeof workflowRoutes>;
   artifacts: ReturnType<typeof artifactRoutes>;
@@ -57,6 +59,7 @@ export function createApp(token: string, features: FeatureSet) {
     knowledge,
 
     settings,
+    providers,
     models,
     agentRuns,
     workflowExecutions,
@@ -76,6 +79,7 @@ export function createApp(token: string, features: FeatureSet) {
     .use(projects)
     .use(skillPacks)
     .use(settings)
+    .use(providers)
     .use(mcp)
     .use(knowledge)
     .use(models)
