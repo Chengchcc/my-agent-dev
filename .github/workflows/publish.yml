@@ -10,6 +10,7 @@ on:
 permissions:
   contents: write # tag + GitHub Release notes generation
   id-token: write # npm provenance via GitHub OIDC — no long-lived NPM_TOKEN
+  packages: write # publish to GitHub Packages with the ephemeral GITHUB_TOKEN
 
 jobs:
   publish:
@@ -99,6 +100,49 @@ jobs:
             echo ">>> publishing $p"
             (cd "$p" && npm publish --access public --tag "$DIST_TAG")
           done
+
+      # Second registry: GitHub Packages. GITHUB_TOKEN is the only credential
+      # (no npm token involved). Prerelease dist-tag routing mirrors npmjs.
+      # Provenance is npmjs-only, so it is explicitly off here.
+      - name: Publish to GitHub Packages (topological order)
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          echo "@chengchenccc:registry=https://npm.pkg.github.com" > "${HOME}/.npmrc"
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> "${HOME}/.npmrc"
+          DIST_TAG=latest
+          case "${GITHUB_REF_NAME#v}" in
+            *-rc.*) DIST_TAG=rc ;;
+            *-beta.*) DIST_TAG=beta ;;
+            *-alpha.*) DIST_TAG=alpha ;;
+          esac
+          for p in packages/message packages/config packages/ai packages/tui \
+                   packages/source-fetch packages/sandbox packages/agent-contract \
+                   packages/adapter-mcp apps/oh-my-agent; do
+            echo ">>> gh-registry publishing $p"
+            (cd "$p" && npm publish --access public --tag "$DIST_TAG" --registry https://npm.pkg.github.com)
+          done
+
+      # GitHub Packages defaults new packages to private; the repo is public,
+      # so flip them public (idempotent once public).
+      - name: Make GitHub Packages visible as public
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for name in message config ai tui source-fetch sandbox agent-contract adapter-mcp oh-my-agent; do
+            echo ">>> public-izing @chengchenccc/$name"
+            curl -s -X PATCH \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/user/packages/npm/${name}/restore" > /dev/null || true
+            curl -s -f -X PATCH \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/orgs/${GITHUB_REPOSITORY_OWNER}/packages/npm/${name}" \
+              -d '{"visibility":"public"}' \
+              -o /dev/null -w "  ${name}: HTTP %{http_code}\n" || true
+          done
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
