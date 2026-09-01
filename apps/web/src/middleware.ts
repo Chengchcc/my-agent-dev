@@ -21,7 +21,8 @@ export function middleware(req: NextRequest) {
   // middleware only checks existence for UX redirect)
   const session = req.cookies.get("maw_session");
   if (!session?.value) {
-    return NextResponse.redirect(new URL("/login", req.url));
+    const next = encodeURIComponent(`${req.nextUrl.pathname}${req.nextUrl.search}`);
+    return NextResponse.redirect(new URL(`/login?next=${next}`, req.url));
   }
 
   return NextResponse.next();

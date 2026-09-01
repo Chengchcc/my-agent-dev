@@ -18,7 +18,6 @@ interface SearchResult {
 type Hit =
   | ({ type: "conversation"; href: string } & SearchResult)
   | { type: "agent"; id: string; name: string; desc?: string; href: string }
-  | { type: "loop"; id: string; name: string; href: string }
   | { type: "project"; id: string; name: string; href: string };
 
 interface GlobalSearchProps {
@@ -225,7 +224,7 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             className="flex-1 bg-transparent py-3 text-base outline-none placeholder:text-(--mute)"
-            placeholder="Search chats, agents, loops, projects..."
+            placeholder="Search chats, agents, projects..."
             spellCheck={false}
           />
           <button

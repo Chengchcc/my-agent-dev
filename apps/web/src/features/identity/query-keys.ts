@@ -1,3 +1,3 @@
 export const identityKeys = {
-  byAgent: (agentId: string) => ["identity", agentId] as const,
+  session: ["identity", "session"] as const,
 };

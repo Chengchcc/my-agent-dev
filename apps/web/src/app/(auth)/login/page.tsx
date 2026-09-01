@@ -31,6 +31,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const errorParam = searchParams.get("error");
+  const next = searchParams.get("next");
   const [serverError, setServerError] = useState<string | null>(
     errorParam === "invalid_password"
       ? "Invalid password. Please try again."
@@ -61,8 +62,8 @@ function LoginForm() {
         );
         return;
       }
-      // Successful login — navigate to trigger cookie processing
-      router.push("/today");
+      // Successful login — navigate to the original deep link (or /today).
+      router.push(next?.startsWith("/") && !next.startsWith("//") ? next : "/today");
     } catch {
       setServerError("Network error. Please try again.");
     }

@@ -6,15 +6,15 @@ import { ArrowRight, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-import QRCode from "react-qr-code";
 import { toast } from "sonner";
-import { z } from "zod";
+import { AgentFormLarkSection } from "@/components/AgentFormLarkSection";
+import { AgentFormSkillPacks } from "@/components/AgentFormSkillPacks";
+import type { AgentFormValues } from "@/components/agent-form-types";
+import { agentFormSchema } from "@/components/agent-form-types";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -37,20 +37,6 @@ import {
 } from "@/features/skill-packs/hooks";
 import { type AgentRow, api, type LarkSetupSession } from "@/lib/api";
 import { fieldClass, overlineClass } from "@/lib/form-styles";
-
-const formSchema = z.object({
-  name: z.string().trim().min(1, "Agent name is required"),
-  backendKind: z.string().trim().min(1, "Backend is required"),
-  model: z.string().trim().min(1, "Model is required"),
-  reasoningEffort: z.enum(["", "none", "low", "high", "max"]).default(""),
-  permissionMode: z.enum(["ask", "auto", "deny"]).default("ask"),
-  maxSteps: z.string().trim().default(""),
-  workspacePath: z.string().trim().default(""),
-  enableLark: z.boolean().default(false),
-  botDisplayName: z.string().trim().default(""),
-});
-
-type FormValues = z.infer<typeof formSchema>;
 
 interface AgentFormProps {
   editAgent?: AgentRow;
@@ -116,8 +102,8 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
   const hideProvider = selBackendKind === "claude_code";
   const hideEffort = selBackendKind === "pi";
   const hidePermission = selBackendKind === "pi" || selBackendKind === "omp";
-  const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+  const form = useForm<AgentFormValues>({
+    resolver: zodResolver(agentFormSchema),
     defaultValues: {
       name: editAgent?.name ?? "",
       backendKind: editAgent?.backendKind ?? "oma",
@@ -214,7 +200,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
     }
   }, [assignedPacks]);
 
-  function buildBody(values: FormValues): Parameters<typeof api.createAgent>[0] {
+  function buildBody(values: AgentFormValues): Parameters<typeof api.createAgent>[0] {
     const body: Record<string, unknown> = {
       name: values.name,
       backendKind: values.backendKind,
@@ -239,7 +225,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
   const createMutation = useCreateAgent();
   const updateMutation = useUpdateAgent(editAgent?.id ?? "");
 
-  async function onSubmit(values: FormValues) {
+  async function onSubmit(values: AgentFormValues) {
     setServerError("");
     if (isEdit) {
       try {
@@ -589,161 +575,28 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                   />
                 </div>
 
-                {/* ─── Lark Bot ─── */}
-                <div className="border-t border-(--hairline) pt-5">
-                  <FormField
-                    control={form.control}
-                    name="enableLark"
-                    render={({ field }) => (
-                      <FormItem>
-                        <label className="flex items-center gap-2 cursor-pointer mb-4">
-                          <Checkbox
-                            checked={field.value}
-                            onCheckedChange={(checked) => field.onChange(checked)}
-                          />
-                          <span className={`${overlineClass} mb-0`}>Enable Lark Bot</span>
-                          {editAgent?.lark?.status && (
-                            <span
-                              className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
-                                editAgent.lark.status === "running"
-                                  ? "text-primary border-primary/30 bg-primary/10"
-                                  : editAgent.lark.status === "error"
-                                    ? "text-destructive border-destructive/30 bg-destructive/10"
-                                    : editAgent.lark.status === "degraded"
-                                      ? "text-(--chart-4) border-(--chart-4)/30 bg-(--chart-4)/10"
-                                      : "text-muted-foreground border-border bg-muted/20"
-                              }`}
-                            >
-                              {editAgent.lark.status}
-                            </span>
-                          )}
-                        </label>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                <AgentFormLarkSection
+                  control={form.control}
+                  isEdit={isEdit}
+                  editAgent={editAgent}
+                  enableLark={enableLark}
+                  setupSession={setupSession}
+                  setupLoading={setupLoading}
+                  setSetupSession={setSetupSession}
+                  setSetupLoading={setSetupLoading}
+                  getBotDisplayName={() => form.getValues("botDisplayName")}
+                />
 
-                  {enableLark && (
-                    <div className="space-y-4 pl-6 border-l-2 border-(--hairline)">
-                      <FormField
-                        control={form.control}
-                        name="botDisplayName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className={`${overlineClass} mb-1.5 block`}>
-                              Bot Display Name
-                            </FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                placeholder="Must match Lark app settings"
-                                className={fieldClass}
-                              />
-                            </FormControl>
-                            <FormDescription className={hintClass}>
-                              Required for group @mention detection
-                            </FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      {/* Setup flow - only available after agent is created */}
-                      {!isEdit ? (
-                        <p className="text-xs text-(--mute)">
-                          Save the agent first, then return to this form to set up the Lark bot.
-                        </p>
-                      ) : editAgent?.lark?.status === "not_configured" ||
-                        !editAgent?.lark?.profileRef ? (
-                        <div>
-                          {setupSession?.status === "pending" ? (
-                            <div className="space-y-2">
-                              <p className="text-xs text-(--body)">
-                                Setup in progress - open this link to complete:
-                              </p>
-                              {setupSession.url ? (
-                                <div className="flex items-start gap-3">
-                                  <div className="shrink-0 rounded-md border border-(--hairline) bg-white p-1">
-                                    <QRCode value={setupSession.url} size={96} />
-                                  </div>
-                                  <a
-                                    href={setupSession.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs text-(--chart-2) underline break-all"
-                                  >
-                                    {setupSession.url}
-                                  </a>
-                                </div>
-                              ) : (
-                                <p className="text-xs text-amber-600">Waiting for setup URL…</p>
-                              )}
-                              <div className="flex gap-2">
-                                <Button
-                                  onClick={() => {
-                                    if (editAgent?.id && setupSession.setupId) {
-                                      api
-                                        .larkSetupCancel(editAgent.id, setupSession.setupId)
-                                        .catch(() => {});
-                                      setSetupSession(null);
-                                    }
-                                  }}
-                                  className="text-xs text-destructive hover:underline"
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <Button
-                              disabled={setupLoading}
-                              onClick={async () => {
-                                if (!editAgent?.id) return;
-                                setSetupLoading(true);
-                                try {
-                                  const session = await api.larkSetup(editAgent.id, {
-                                    botDisplayName: form.getValues("botDisplayName") || undefined,
-                                  });
-                                  setSetupSession(session);
-                                } catch {
-                                  // error displayed via error state
-                                } finally {
-                                  setSetupLoading(false);
-                                }
-                              }}
-                              size="sm"
-                            >
-                              {setupLoading ? "Starting…" : "Set up Lark"}
-                            </Button>
-                          )}
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-
-                {/* Skill pack assignments */}
-                {isEdit && availablePacks && availablePacks.length > 0 && (
-                  <div className="border-t border-(--hairline) pt-5">
-                    <h3 className="text-sm font-medium mb-3">Skill Packs</h3>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {availablePacks.map((pack: { id: string; name: string; status: string }) => (
-                        <label key={pack.id} className="flex items-center gap-2 cursor-pointer">
-                          <Checkbox
-                            checked={selectedPackIds.includes(pack.id)}
-                            onCheckedChange={(checked) => {
-                              setSelectedPackIds((prev) =>
-                                checked ? [...prev, pack.id] : prev.filter((id) => id !== pack.id),
-                              );
-                            }}
-                          />
-                          <span className="text-sm">{pack.name}</span>
-                          <span className="text-xs text-muted-foreground">({pack.status})</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <AgentFormSkillPacks
+                  isEdit={isEdit}
+                  availablePacks={availablePacks ?? []}
+                  selectedPackIds={selectedPackIds}
+                  onToggle={(packId, checked) =>
+                    setSelectedPackIds((prev) =>
+                      checked ? [...prev, packId] : prev.filter((id) => id !== packId),
+                    )
+                  }
+                />
 
                 {serverError && <p className="text-xs text-destructive">{serverError}</p>}
 

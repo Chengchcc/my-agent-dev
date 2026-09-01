@@ -2,7 +2,7 @@
 
 import { Upload } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { type ArtifactMeta, api } from "@/lib/api";
+import { useArtifacts, useDeleteArtifact, useUploadArtifact } from "@/features/artifacts/hooks";
+import { api } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +28,6 @@ function fmtSize(n: number): string {
 }
 
 export default function ArtifactsPage() {
-  const [artifacts, setArtifacts] = useState<ArtifactMeta[]>([]);
-  const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [preview, setPreview] = useState<{ url: string; content: string; encoding: string } | null>(
     null,
@@ -37,21 +36,12 @@ export default function ArtifactsPage() {
   const [filename, setFilename] = useState("");
   const [content, setContent] = useState("");
   const [encoding, setEncoding] = useState<"utf8" | "base64">("utf8");
-  const [uploading, setUploading] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await api.listArtifacts();
-      setArtifacts(r.artifacts ?? []);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const { data: artifactsData, isLoading: loading } = useArtifacts();
+  const artifacts = artifactsData?.artifacts ?? [];
+  const uploadArtifact = useUploadArtifact();
+  const deleteArtifact = useDeleteArtifact();
+  const uploading = uploadArtifact.isPending;
 
   async function openPreview(url: string) {
     try {
@@ -70,8 +60,7 @@ export default function ArtifactsPage() {
       destructive: true,
     });
     if (!ok) return;
-    await api.deleteArtifact(url);
-    void refresh();
+    await deleteArtifact.mutateAsync(url);
   }
 
   function pickFile(file: File | undefined) {
@@ -92,9 +81,8 @@ export default function ArtifactsPage() {
       toast.error("Please enter folder / filename and choose or type content");
       return;
     }
-    setUploading(true);
     try {
-      await api.uploadArtifact({
+      await uploadArtifact.mutateAsync({
         folder: folder.trim(),
         filename: filename.trim(),
         content,
@@ -105,11 +93,8 @@ export default function ArtifactsPage() {
       setContent("");
       setEncoding("utf8");
       setUploadOpen(false);
-      await refresh();
     } catch (err) {
       toast.error(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setUploading(false);
     }
   }
 

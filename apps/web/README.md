@@ -31,6 +31,12 @@ bun run dev
 
 运行需要两个环境变量供 BFF 连接后端:`BACKEND_URL`(后端基址,如 `http://127.0.0.1:3000`)和 `BACKEND_TOKEN`(BFF 注入的后端鉴权 token,需与后端的 `BACKEND_AUTH_TOKEN` 一致);二者缺失时代理会直接报错。登录所用的口令与用户可由 `MOCK_PASSWORD`、`MOCK_USER_ID` 配置(默认 `admin` / `user-001`)。
 
+## 数据取数边界
+
+- **首屏不需要 SEO 或服务端直读**：一律用客户端 React Query（`features/*/hooks.ts` + `queries.ts`），通过 BFF 的 `/api/bff/...` 取数。
+- **需要服务端直读 backend**：用 Server Component + `createServerClient`（见 `workflows/page.tsx`）。
+- **mutation 一律客户端**：写操作永远在 client 组件里触发，服务端组件只做读。
+
 ## 依赖与对接
 
 应用不依赖任何工作区内部包,是一个独立前端。它构建在 Next.js 15 / React 19 之上,UI 用 Tailwind CSS 4、shadcn 与 `@base-ui/react`,数据层用 `@tanstack/react-query`,Markdown 渲染用 `react-markdown` + `remark-gfm`,图表用 `recharts`,另有 `sonner`(toast)、`next-themes`(主题)、`lucide-react`(图标)。对接对象只有一个:经由 BFF 代理访问的 backend 服务。

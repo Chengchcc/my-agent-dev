@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type { ChatModelOverride } from "@/lib/api";
 import { api, type ConversationSnapshot } from "@/lib/api";
 import {
+  conversationDetailQuery,
   conversationGoalQuery,
   conversationInputsQuery,
   conversationListQuery,
@@ -17,6 +18,9 @@ export function useConversationList(agentId: string) {
 
 export function useRecentConversations() {
   return useQuery(recentConversationsQuery());
+}
+export function useConversationTitle(conversationId: string) {
+  return useQuery({ ...conversationDetailQuery(conversationId), staleTime: 60_000 });
 }
 
 /** All conversations (unscoped) — the chat rail, no agent filtering. */

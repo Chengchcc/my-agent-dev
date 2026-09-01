@@ -235,6 +235,11 @@ export const api = {
   getSystemInfo: () => unwrap(client.api.settings.system.get()),
   updateSetting: (key: string, value: unknown) =>
     unwrap(client.api.settings({ key }).put({ value })),
+  currentUser: async () => {
+    const r = await fetch("/api/auth/session", { credentials: "include" });
+    if (!r.ok) throw new Error("Session expired");
+    return (await r.json()) as { userId: string };
+  },
   // MCP catalog (ADR 0022, direct fetch - global routes)
   listMcpServers: () =>
     fetch("/api/bff/mcp-servers", { credentials: "include" }).then((r) => r.json()),

@@ -1,26 +1,17 @@
 "use client";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  useForkConversation,
-  usePostConversationMessage,
-  useReplayFromMessage,
-  useUndoMessages,
-} from "@/features/conversations/hooks";
-import type { MessageItem, SenderRef, UiItem } from "@/lib/conversation-reducer";
+import type { SenderRef, UiItem } from "@/lib/conversation-reducer";
 import { groupTurns, isTurnStart, type TurnSegment } from "@/lib/conversation-reducer";
 import { renderContentBlocks } from "@/lib/render-blocks";
 import { extractText } from "@/lib/timeline";
 import type { LiveToolCall } from "@/lib/transient-reducer";
 import { cn } from "@/lib/utils";
-import { LiveToolStep } from "./LiveToolStep";
 import { MessageBubble } from "./MessageBubble";
 import { ReasoningTrace } from "./ReasoningTrace";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { TimelineApprovalCard } from "./TimelineApprovalCard";
+import { TimelineMessageActions } from "./TimelineMessageActions";
+import { TimelineTransientTrace } from "./TimelineTransientTrace";
 
 interface TimelineProps {
   messages: UiItem[];
@@ -59,80 +50,6 @@ function SystemNotice({ text }: { text: string }) {
       <span className="text-[11px] text-(--mute) bg-(--bg-muted) px-3 py-1 rounded-full">
         {text}
       </span>
-    </div>
-  );
-}
-
-/** Assistant messages carry their run id in the message id (`run:<id>:…`).
- *  Canonical Message exposes it as `id`; raw revisions as `messageId`. */
-function runIdOf(item: MessageItem): string | null {
-  const c = item.content;
-  const mid =
-    c.id ?? ("messageId" in c && typeof c.messageId === "string" ? c.messageId : undefined);
-  const m = /^run:([^:]+):/.exec(mid ?? "");
-  return m ? m[1]! : null;
-}
-
-// ── Transient live trace ──
-
-/** Live trace for a streaming run: one `X messages · Y commands` summary
- *  row above the bubble, expanding into the streaming thinking (if any) and
- *  the live tool steps in appearance order. The transient data has no
- *  fine-grained text/tool interleaving, so no interleaving is fabricated —
- *  summary on top, thinking, tools in order, streaming text below. */
-function TransientTrace({
-  msgCount,
-  thinking,
-  tools,
-  ordered,
-}: {
-  msgCount: number;
-  thinking: string;
-  tools: readonly LiveToolCall[];
-  ordered?: ReadonlyArray<{ type: "text" | "thinking"; text: string }>;
-}) {
-  const [open, setOpen] = useState(false);
-
-  // With an ordered list we render thinking AND text fragments interleaved
-  // exactly as the stream produced them. Without it (legacy chunks) fall
-  // back to thinking-on-top + tools, and the text stays in MessageBubble.
-  const hasOrdered = ordered && ordered.length > 0;
-
-  return (
-    <div className="mb-0.5">
-      <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger
-          className="flex w-full items-center gap-1.5 px-1 py-0.5 text-left
-            text-[11px] font-mono text-(--mute)
-            transition-colors hover:text-(--ink)"
-        >
-          <span className="shrink-0 text-(--primary)">{open ? "▼" : "▶"}</span>
-          <span>
-            {msgCount} messages · {tools.length} commands
-          </span>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="my-0.5 ml-1.5 flex flex-col gap-0.5 border-l border-(--hairline) py-1 pl-2">
-            {hasOrdered
-              ? ordered
-                  .filter((b) => b.type === "thinking")
-                  .map((b, i) => (
-                    <div
-                      key={`${b.type}-${i}`}
-                      className="px-1 py-0.5 text-[12px] italic text-(--mute)"
-                    >
-                      {b.text}
-                    </div>
-                  ))
-              : thinking.trim() && (
-                  <div className="px-1 py-0.5 text-[12px] italic text-(--mute)">{thinking}</div>
-                )}
-            {tools.map((tool) => (
-              <LiveToolStep key={tool.callId} tool={tool} />
-            ))}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
     </div>
   );
 }
@@ -332,7 +249,7 @@ export function Timeline({
                   data-seq={m.seq}
                   className={`group relative ${isUndone ? "opacity-50" : ""}`}
                 >
-                  <MessageActions
+                  <TimelineMessageActions
                     conversationId={conversationId}
                     item={m}
                     canAct={canAct}
@@ -354,7 +271,7 @@ export function Timeline({
                     {renderContentBlocks(m.content, {
                       hiddenToolNames: new Set(["todo_write"]),
                     })}
-                  </MessageActions>
+                  </TimelineMessageActions>
                   {isUndone && (
                     <div className="text-[10px] text-(--mute) italic mt-0.5">↳ undone</div>
                   )}
@@ -378,38 +295,14 @@ export function Timeline({
                   </p>
                 ))}
                 {t.approval && (
-                  <div
-                    data-testid="approval-card"
-                    className="my-1 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-1.5"
-                  >
-                    <span className="text-xs text-amber-600">
-                      ⏸ approve <b>{t.approval.toolName}</b>
-                      {t.approval.reason ? ` — ${t.approval.reason}` : ""}
-                    </span>
-                    <button
-                      type="button"
-                      data-testid="approval-allow"
-                      className="rounded bg-emerald-600 px-2 py-0.5 text-xs text-white hover:bg-emerald-500"
-                      onClick={() =>
-                        onResolveApproval?.(t.runId, t.approval?.callId as string, "allow")
-                      }
-                    >
-                      Allow
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="approval-deny"
-                      className="rounded bg-red-600 px-2 py-0.5 text-xs text-white hover:bg-red-500"
-                      onClick={() =>
-                        onResolveApproval?.(t.runId, t.approval?.callId as string, "deny")
-                      }
-                    >
-                      Deny
-                    </button>
-                  </div>
+                  <TimelineApprovalCard
+                    runId={t.runId}
+                    approval={t.approval}
+                    onResolveApproval={onResolveApproval}
+                  />
                 )}
                 {tools.length > 0 && (
-                  <TransientTrace
+                  <TimelineTransientTrace
                     msgCount={showBubble ? 1 : 0}
                     thinking={t.thinking}
                     tools={tools}
@@ -448,203 +341,6 @@ export function Timeline({
           })}
         </div>
       </div>
-    </div>
-  );
-}
-
-/** Hover action buttons + inline edit for fork/undo/replay.
- *  Buttons appear on group hover; Edit & Replay swaps the bubble for a textarea. */
-function MessageActions({
-  conversationId,
-  item,
-  canAct,
-  regen,
-  children,
-}: {
-  conversationId: string;
-  item: MessageItem;
-  canAct: boolean;
-  /** Regen context for the latest assistant message: the preceding user
-   *  text to resend after undoing the assistant turn. */
-  regen?: { prevUserText: string } | null;
-  children: React.ReactNode;
-}) {
-  const router = useRouter();
-  const forkMut = useForkConversation();
-  const undoMut = useUndoMessages();
-  const replayMut = useReplayFromMessage();
-  const postMut = usePostConversationMessage(conversationId);
-
-  const handleRegenerate = useCallback(() => {
-    if (!regen?.prevUserText) return;
-    undoMut.mutate(
-      { id: conversationId, count: 1 },
-      {
-        onSuccess: () => postMut.mutate({ text: regen.prevUserText }),
-        onError: (err) =>
-          toast.error("Regenerate failed", {
-            description: err instanceof Error ? err.message : "Unknown error",
-          }),
-      },
-    );
-  }, [regen, undoMut, postMut, conversationId]);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const isUser = item.sender.kind === "human";
-
-  const handleStartEdit = useCallback(() => {
-    setDraft(extractText(item.content));
-    setEditing(true);
-  }, [item.content]);
-
-  const handleConfirmReplay = useCallback(() => {
-    const text = draft.trim();
-    if (!text) return;
-    replayMut.mutate(
-      {
-        id: conversationId,
-        fromSeq: item.seq,
-        editedContent: text,
-      },
-      {
-        onSuccess: (data) => router.push(`/chat/${data.newConversationId}`),
-        onError: (err) =>
-          toast.error("Replay failed", {
-            description: err instanceof Error ? err.message : "Unknown error",
-          }),
-      },
-    );
-    setEditing(false);
-  }, [draft, replayMut, conversationId, item.seq, router]);
-
-  if (editing) {
-    return (
-      <div className="py-2 w-full max-w-[85%]">
-        <Textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          className="min-h-20 resize-none text-sm"
-          autoFocus
-        />
-        <div className="flex gap-2 mt-1 justify-end">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setEditing(false)}
-            disabled={replayMut.isPending}
-          >
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleConfirmReplay}
-            disabled={replayMut.isPending || !draft.trim()}
-          >
-            {replayMut.isPending ? "Replaying..." : "Replay"}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative">
-      {children}
-      {canAct && (
-        <div
-          className="opacity-0 group-hover:opacity-100 transition-opacity
-                     flex gap-1 mt-1
-                     justify-end"
-        >
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
-            onClick={() => {
-              const text = extractText(item.content);
-              void navigator.clipboard?.writeText(text).then(
-                () => toast.success("Copied"),
-                () => toast.error("Copy failed"),
-              );
-            }}
-          >
-            Copy
-          </Button>
-          {isUser ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
-              onClick={handleStartEdit}
-            >
-              Edit & resend
-            </Button>
-          ) : (
-            <>
-              {runIdOf(item) && (
-                <Link
-                  href={`/system/runs/${runIdOf(item)}?from=${encodeURIComponent(`/chat/${conversationId}`)}`}
-                  className="inline-flex h-6 items-center px-2 text-[10px] text-(--mute) hover:text-(--body)"
-                  title="Open run detail"
-                >
-                  Run detail ↗
-                </Link>
-              )}
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
-                onClick={() =>
-                  undoMut.mutate(
-                    { id: conversationId, count: 1 },
-                    {
-                      onSuccess: () => toast.success("Undone"),
-                      onError: (err) =>
-                        toast.error("Undo failed", {
-                          description: err instanceof Error ? err.message : "Unknown error",
-                        }),
-                    },
-                  )
-                }
-                disabled={undoMut.isPending}
-              >
-                {undoMut.isPending ? "Undoing…" : "Undo"}
-              </Button>
-            </>
-          )}
-          {!isUser && regen && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
-              onClick={handleRegenerate}
-              disabled={undoMut.isPending || postMut.isPending}
-            >
-              Regenerate
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 text-[10px] text-(--mute) hover:text-(--body)"
-            onClick={() =>
-              forkMut.mutate(
-                { id: conversationId, fromSeq: item.seq },
-                {
-                  onSuccess: (data) => router.push(`/chat/${data.newConversationId}`),
-                  onError: (err) =>
-                    toast.error("Fork failed", {
-                      description: err instanceof Error ? err.message : "Unknown error",
-                    }),
-                },
-              )
-            }
-            disabled={forkMut.isPending}
-          >
-            {forkMut.isPending ? "Forking…" : "Fork from here"}
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

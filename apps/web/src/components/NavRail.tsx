@@ -53,6 +53,7 @@ import {
   useCreateConversation,
   useDeleteConversation,
 } from "@/features/conversations/hooks";
+import { useCurrentUser } from "@/features/identity/hooks";
 import { waitingGatesQuery } from "@/features/workflow/queries";
 import type { AgentRow } from "@/lib/api";
 import { conversationDisplayName } from "@/lib/conversation-title";
@@ -400,6 +401,7 @@ function NavContent() {
 
 function NavFooter() {
   const router = useRouter();
+  const { data: user } = useCurrentUser();
 
   async function signOut() {
     try {
@@ -415,14 +417,14 @@ function NavFooter() {
       <SidebarMenu>
         <SidebarMenuItem>
           <DropdownMenu>
-            <DropdownMenuTrigger render={<SidebarMenuButton className="min-w-0" />}>
+            <DropdownMenuTrigger render={<SidebarMenuButton className="min-w-0 w-full" />}>
               <LogOutIcon />
               <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">
-                Account
+                {user?.userId ?? "Account"}
               </span>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="start" className="w-48">
-              <DropdownMenuLabel>Signed in</DropdownMenuLabel>
+              <DropdownMenuLabel>Signed in as {user?.userId ?? "unknown"}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={signOut}>
                 <LogOutIcon />

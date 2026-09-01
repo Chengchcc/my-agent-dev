@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, MessageSquareIcon, Search, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -13,10 +12,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAgentList } from "@/features/agents/hooks";
 import {
   useConversationSearch,
+  useConversationTitle,
   useCreateConversation,
   useRecentConversations,
 } from "@/features/conversations/hooks";
-import { conversationDetailQuery } from "@/features/conversations/queries";
 import { useProjectList } from "@/features/projects/hooks";
 import { type AgentRow, getForkSourceId } from "@/lib/api";
 import { conversationDisplayName } from "@/lib/conversation-title";
@@ -32,10 +31,7 @@ function relativeTime(ts: number | null | undefined): string {
 
 /** Lazy "forked from X" marker - fetches source conversation title on demand. */
 function ForkSourceMarker({ sourceId, createdAt }: { sourceId: string; createdAt: number }) {
-  const { data: sourceConv } = useQuery({
-    ...conversationDetailQuery(sourceId),
-    staleTime: 60_000,
-  });
+  const { data: sourceConv } = useConversationTitle(sourceId);
   const sourceTitle = sourceConv ? conversationDisplayName(sourceConv) : "Original conversation";
   return (
     <p className="text-[10px] text-(--mute) flex items-center gap-1">
@@ -105,11 +101,22 @@ export default function ChatOverviewPage() {
   // most recent conversation directly (single chat entry point). A fresh
   // install with no conversations keeps a minimal empty-state below.
   const firstConversationId = conversations[0]?.conversationId;
-  useEffect(() => {
-    if (!isLoading && firstConversationId) {
-      router.replace(`/chat/${firstConversationId}`);
-    }
-  }, [isLoading, firstConversationId, router]);
+  // Avoid flashing the New Chat form before the redirect to the latest
+  // conversation lands.
+  if (isLoading || firstConversationId) {
+    return (
+      <Page>
+        <PageHeader breadcrumb={[{ label: "Chat" }]} title="Chat" />
+        <PageBody size="reading">
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="animate-pulse h-16 bg-(--canvas-soft) rounded-lg" />
+            ))}
+          </div>
+        </PageBody>
+      </Page>
+    );
+  }
 
   return (
     <Page>

@@ -21,8 +21,7 @@ export function AgentProjectsPanel({ agent }: { agent: AgentRow }) {
       : [...attached, projectId];
     try {
       await api.updateAgent(agent.id, { projects: next });
-      // P2: use the canonical keys so the list AND detail (incl. other
-      // views keyed by agentKeys.lists()) refresh without remounting.
+      // Refresh both the detail and list queries so every view picks up the change.
       await qc.invalidateQueries({ queryKey: agentKeys.detail(agent.id) });
       await qc.invalidateQueries({ queryKey: agentKeys.lists() });
       toast.success(next.includes(projectId) ? "Project attached" : "Project detached");

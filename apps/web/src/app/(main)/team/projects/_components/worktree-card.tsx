@@ -33,7 +33,7 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
   const { data: diff } = useProjectWorktreeDiff(projectId, row.agentId, open);
 
   async function act(kind: "fast-forward" | "merge") {
-    if (acting) return; // P2: no double submission
+    if (acting) return; // Prevent double submission
     const ok = await confirm({
       title:
         `${kind === "merge" ? "Merge" : "Fast-forward"} ${row.branch} into the base branch` +
@@ -48,7 +48,7 @@ export function WorktreeCard({ projectId, row }: { projectId: string; row: Workt
       } else {
         await api.projectWorktreeMerge(projectId, row.agentId, push);
       }
-      // P2: the diff must refresh with the new base too.
+      // Refresh the diff with the new base.
       await qc.invalidateQueries({ queryKey: projectKeys.worktrees(projectId) });
       await qc.invalidateQueries({ queryKey: projectKeys.worktreeDiff(projectId, row.agentId) });
       toast.success(kind === "merge" ? "Merged" : "Fast-forwarded");

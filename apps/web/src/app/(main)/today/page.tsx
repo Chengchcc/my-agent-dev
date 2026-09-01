@@ -55,6 +55,7 @@ export default function TodayPage() {
   }, []);
 
   const todayExecs = executions.filter((e) => isToday(e.createdAt));
+  const waitingHuman = executions.filter((e) => e.status === "waiting_human");
   const succeeded = todayExecs.filter((e) => e.status === "success").length;
   const failed = todayExecs.filter((e) => e.status === "failure").length;
   const running = todayExecs.filter(
@@ -89,6 +90,30 @@ export default function TodayPage() {
         description={today}
       />
       <PageBody size="reading" className="space-y-8">
+        {waitingHuman.length > 0 && (
+          <div>
+            <h2 className="text-sm font-medium mb-3">
+              Needs you {waitingHuman.length > 0 && `(${waitingHuman.length})`}
+            </h2>
+            <div className="grid gap-2">
+              {waitingHuman.slice(0, 8).map((e) => (
+                <Link
+                  key={e.executionId}
+                  href={`/workflows/${encodeURIComponent(e.workflowId)}/executions/${e.executionId}`}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2.5 hover:border-amber-400 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-(--ink)">{e.workflowId}</div>
+                    <div className="truncate font-mono text-[10px] text-(--mute)">
+                      {e.executionId}
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-xs text-amber-500">waiting human</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
         <div>
           <h2 className="text-sm font-medium mb-3">
             Workflow Executions {todayExecs.length > 0 && `(${todayExecs.length})`}

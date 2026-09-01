@@ -205,13 +205,13 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
                 href={`/workflows/${d.workflowId}/executions`}
                 className="rounded-md border border-(--hairline) bg-(--panel) px-2 py-1 text-(--body) transition-colors hover:bg-(--panel2)"
               >
-                executions
+                Executions
               </Link>
               <button
                 className="rounded-md border border-(--hairline) bg-(--panel) px-2 py-1 text-(--err) transition-colors hover:bg-(--panel2)"
                 onClick={() => setConfirmId(d.workflowId)}
               >
-                delete
+                Delete
               </button>
             </div>
           </div>
