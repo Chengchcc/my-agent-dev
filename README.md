@@ -96,6 +96,7 @@ providers:
 详细架构见 [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)（执行链、分层、不变量）。
 
 > **Oma 启动方式**：开发环境 `bun run dev` 开箱即用——Backend 自动用 Bun 运行 `apps/oh-my-agent/src/cli.ts`，无需全局安装或 `bun link`。生产环境通过 `OMA_BIN` 指向构建后的 `apps/oh-my-agent/dist/cli.js` 绝对路径（详见 `apps/backend/.env.example`）。
+> **npm 包**：`@chengchenccc/oh-my-agent` —— [https://www.npmjs.com/package/@chengchenccc/oh-my-agent](https://www.npmjs.com/package/@chengchenccc/oh-my-agent)
 
 ## 📦 仓库结构
 
