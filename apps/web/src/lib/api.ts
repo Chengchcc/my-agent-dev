@@ -106,6 +106,14 @@ export type TelemetrySummary = {
     cause: string;
     count: number;
   }>;
+  spinningRuns: Array<{
+    runId: string;
+    status: string;
+    modelId: string;
+    toolCalls: number;
+    durationMs: number | null;
+    outputTokens: number;
+  }>;
 };
 
 export type ChatModelOverride = {

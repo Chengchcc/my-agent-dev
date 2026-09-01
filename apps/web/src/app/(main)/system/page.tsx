@@ -1,5 +1,6 @@
 "use client";
 import { Activity, CalendarClock, CheckCircle2, CircleAlert, XCircle } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AgentRunsTable } from "@/components/ops/AgentRunsTable";
@@ -333,6 +334,28 @@ export default function SystemPage() {
                             <span className="capitalize">{c.cause}</span>
                             <span className="text-(--mute)">{c.count}</span>
                           </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {d.spinningRuns.length > 0 && (
+                    <div className="rounded-lg border border-red-500/40 bg-red-500/5 p-3">
+                      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--err)">
+                        Spinning runs
+                      </h3>
+                      <div className="space-y-1">
+                        {d.spinningRuns.map((r) => (
+                          <Link
+                            key={r.runId}
+                            href={`/system/runs/${r.runId}`}
+                            className="flex items-center justify-between gap-2 text-xs hover:underline"
+                          >
+                            <span className="font-mono">{r.runId.slice(0, 12)}</span>
+                            <span className="shrink-0 text-(--mute)">
+                              {r.toolCalls} tool calls ·{" "}
+                              {r.durationMs == null ? "—" : `${(r.durationMs / 1000).toFixed(0)}s`}
+                            </span>
+                          </Link>
                         ))}
                       </div>
                     </div>

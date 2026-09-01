@@ -241,6 +241,14 @@ export class RuntimeOpsStore {
       cause: string;
       count: number;
     }>;
+    spinningRuns: Array<{
+      runId: string;
+      status: string;
+      modelId: string;
+      toolCalls: number;
+      durationMs: number | null;
+      outputTokens: number;
+    }>;
   } {
     const since = sinceMs ?? Date.now() - 86_400_000;
     const totals = this.#db
@@ -500,6 +508,23 @@ export class RuntimeOpsStore {
         avgDurationMs: d.avgDurationMs != null ? Number(d.avgDurationMs) : null,
       })),
       failureCauses,
+      spinningRuns: recent
+        .filter(
+          (r) =>
+            Number(r.toolCalls ?? 0) >= 8 &&
+            r.terminalAt != null &&
+            r.terminalAt - r.createdAt >= 60_000 &&
+            Number(r.outputTokens ?? 0) <= 20,
+        )
+        .slice(0, 10)
+        .map((r) => ({
+          runId: r.runId,
+          status: r.status,
+          modelId: modelIdFromRef(r.modelRef),
+          toolCalls: Number(r.toolCalls ?? 0),
+          durationMs: r.terminalAt != null ? r.terminalAt - r.createdAt : null,
+          outputTokens: Number(r.outputTokens ?? 0),
+        })),
       recent: recent.map((r) => ({
         runId: r.runId,
         status: r.status,

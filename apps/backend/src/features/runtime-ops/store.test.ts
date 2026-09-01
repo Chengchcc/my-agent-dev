@@ -204,5 +204,32 @@ describe("RuntimeOpsStore", () => {
       expect(summary.failureCauses).toHaveLength(1);
       expect(summary.failureCauses[0]).toEqual({ cause: "timeout", count: 1 });
     });
+    test("telemetrySummary flags spinning runs", () => {
+      const now = Date.now();
+      db.query(
+        `INSERT INTO agent_run (run_id, branch_id, conversation_id, agent_id, model_ref, status, idempotency_key, config_revision, terminal_result, created_at, terminal_at)
+         VALUES (?, 'bsp', 'csp', 'asp', ?, 'completed', 'ksp', 1, ?, ?, ?)`,
+      ).run(
+        "r-spin",
+        JSON.stringify({ backendKind: "oma", modelId: "fake/m" }),
+        JSON.stringify({
+          status: "completed",
+          usage: { inputTokens: 20, outputTokens: 0, costUsd: 0.01 },
+        }),
+        now - 120_000,
+        now,
+      );
+      for (let i = 0; i < 8; i += 1) {
+        store.appendRunEvent("r-spin", "native_tool_started", { toolName: "bash" });
+      }
+
+      const summary = store.telemetrySummary(now - 600_000);
+      expect(summary.spinningRuns).toHaveLength(1);
+      expect(summary.spinningRuns[0]).toMatchObject({
+        runId: "r-spin",
+        toolCalls: 8,
+        durationMs: 120_000,
+      });
+    });
   });
 });
