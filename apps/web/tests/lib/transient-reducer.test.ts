@@ -21,11 +21,13 @@ describe("transient reducer — text", () => {
     expect(s["run-a"]).toEqual({
       text: "hello from A",
       thinking: "",
+      ordered: [{ type: "text", text: "hello from A" }],
       agentId: "member-a",
     });
     expect(s["run-b"]).toEqual({
       text: "hello from B",
       thinking: "",
+      ordered: [{ type: "text", text: "hello from B" }],
       agentId: "member-b",
     });
   });
