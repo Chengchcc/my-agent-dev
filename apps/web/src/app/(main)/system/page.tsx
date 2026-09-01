@@ -227,6 +227,49 @@ export default function SystemPage() {
                       </div>
                     </div>
                   )}
+                  {d.byModel.length > 0 && (
+                    <div className="rounded-lg border border-(--hairline) p-3">
+                      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">
+                        Cost by model
+                      </h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-(--hairline) text-left text-[10px] uppercase tracking-wider text-(--mute)">
+                              <th className="px-2 py-1 font-semibold">Model</th>
+                              <th className="px-2 py-1 font-semibold text-right">Runs</th>
+                              <th className="px-2 py-1 font-semibold text-right">Success</th>
+                              <th className="px-2 py-1 font-semibold text-right">Cost</th>
+                              <th className="px-2 py-1 font-semibold text-right">Tokens</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {d.byModel.map((m) => {
+                              const terminal = m.completed + m.failed;
+                              const rate =
+                                terminal > 0 ? Math.round((m.completed / terminal) * 100) : null;
+                              return (
+                                <tr
+                                  key={m.modelId}
+                                  className="border-b border-(--hairline) last:border-b-0"
+                                >
+                                  <td className="px-2 py-1 text-xs text-(--mute)">{m.modelId}</td>
+                                  <td className="px-2 py-1 text-right text-xs">{m.runs}</td>
+                                  <td className="px-2 py-1 text-right text-xs">
+                                    {rate == null ? "—" : `${rate}%`}
+                                  </td>
+                                  <td className="px-2 py-1 text-right text-xs">
+                                    ${m.costUsd.toFixed(4)}
+                                  </td>
+                                  <td className="px-2 py-1 text-right text-xs">{m.tokens}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                   {d.failures.length > 0 && (
                     <div className="rounded-lg border border-(--hairline) p-3">
                       <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">

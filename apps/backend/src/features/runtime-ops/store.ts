@@ -5,6 +5,19 @@ import * as schema from "../../infra/db/schema.js";
 import { surfaceHealthSelectSchema } from "../../infra/db/schema.js";
 import type { SurfaceHealthRow } from "./types.js";
 
+function modelIdFromRef(ref: string): string {
+  const parsed: unknown = JSON.parse(ref);
+  if (
+    parsed != null &&
+    typeof parsed === "object" &&
+    "modelId" in parsed &&
+    typeof parsed.modelId === "string"
+  ) {
+    return parsed.modelId;
+  }
+  return ref;
+}
+
 /** Surface-health audit store (Lark heartbeats). Run execution state lives in
  *  the agent-run feature — Agent Run is the sole execution identity. */
 export class RuntimeOpsStore {
@@ -155,6 +168,14 @@ export class RuntimeOpsStore {
       costUsd: number;
       tokens: number;
     }>;
+    byModel: Array<{
+      modelId: string;
+      runs: number;
+      completed: number;
+      failed: number;
+      costUsd: number;
+      tokens: number;
+    }>;
   } {
     const since = sinceMs ?? Date.now() - 86_400_000;
     const totals = this.#db
@@ -246,6 +267,30 @@ export class RuntimeOpsStore {
       outputTokens: number;
     }>;
 
+    const byModel = this.#db
+      .query(
+        `SELECT ar.model_ref AS modelRef,
+                COUNT(*) AS runs,
+                COALESCE(SUM(CASE WHEN ar.status = 'completed' THEN 1 ELSE 0 END), 0) AS completed,
+                COALESCE(SUM(CASE WHEN ar.status IN ('failed','aborted','timeout') THEN 1 ELSE 0 END), 0) AS failed,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.costUsd') AS REAL)), 0) AS costUsd,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.inputTokens') AS REAL)), 0) AS inputTokens,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.outputTokens') AS REAL)), 0) AS outputTokens
+           FROM agent_run ar
+          WHERE ar.created_at >= ?
+          GROUP BY ar.model_ref
+          ORDER BY costUsd DESC`,
+      )
+      .all(since) as Array<{
+      modelRef: string;
+      runs: number;
+      completed: number;
+      failed: number;
+      costUsd: number;
+      inputTokens: number;
+      outputTokens: number;
+    }>;
+
     const recent = this.#db
       .query(
         `SELECT ar.run_id AS runId,
@@ -300,7 +345,7 @@ export class RuntimeOpsStore {
           runId: f.runId,
           agentId: f.agentId,
           status: f.status,
-          modelId: (JSON.parse(f.modelRef) as { modelId?: string }).modelId ?? f.modelRef,
+          modelId: modelIdFromRef(f.modelRef),
           createdAt: f.createdAt,
           durationMs: f.terminalAt != null ? f.terminalAt - f.createdAt : null,
           inputTokens: Number(f.inputTokens ?? 0),
@@ -313,10 +358,18 @@ export class RuntimeOpsStore {
         costUsd: Number(h.costUsd),
         tokens: Number(h.inputTokens ?? 0) + Number(h.outputTokens ?? 0),
       })),
+      byModel: byModel.map((m) => ({
+        modelId: modelIdFromRef(m.modelRef),
+        runs: Number(m.runs),
+        completed: Number(m.completed),
+        failed: Number(m.failed),
+        costUsd: Number(m.costUsd),
+        tokens: Number(m.inputTokens ?? 0) + Number(m.outputTokens ?? 0),
+      })),
       recent: recent.map((r) => ({
         runId: r.runId,
         status: r.status,
-        modelId: (JSON.parse(r.modelRef) as { modelId?: string }).modelId ?? r.modelRef,
+        modelId: modelIdFromRef(r.modelRef),
         createdAt: r.createdAt,
         durationMs: r.terminalAt != null ? r.terminalAt - r.createdAt : null,
         toolCalls: Number(r.toolCalls ?? 0),

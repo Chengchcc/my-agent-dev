@@ -184,6 +184,15 @@ describe("RuntimeOpsStore", () => {
       expect(summary.costByHour).toHaveLength(1);
       expect(summary.costByHour[0]!.costUsd).toBeCloseTo(0.002);
       expect(summary.costByHour[0]!.tokens).toBe(25);
+      expect(summary.byModel).toHaveLength(1);
+      expect(summary.byModel[0]).toMatchObject({
+        modelId: "fake/m",
+        runs: 2,
+        completed: 1,
+        failed: 1,
+      });
+      expect(summary.byModel[0]!.costUsd).toBeCloseTo(0.002);
+      expect(summary.byModel[0]!.tokens).toBe(25);
     });
   });
 });

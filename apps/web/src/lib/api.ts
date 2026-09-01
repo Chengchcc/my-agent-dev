@@ -82,6 +82,14 @@ export type TelemetrySummary = {
     costUsd: number;
     tokens: number;
   }>;
+  byModel: Array<{
+    modelId: string;
+    runs: number;
+    completed: number;
+    failed: number;
+    costUsd: number;
+    tokens: number;
+  }>;
 };
 
 export type ChatModelOverride = {
