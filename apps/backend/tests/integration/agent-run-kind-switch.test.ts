@@ -189,7 +189,6 @@ beforeAll(async () => {
     agentSvc: {
       getById: async () => stubAgent(),
     } as never,
-    settingsSvc: { get: async () => 8 } as never,
 
     agentRunService,
     dispatchRun: (runId: string) => execution.dispatch(runId),

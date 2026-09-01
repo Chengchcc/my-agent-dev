@@ -6,7 +6,6 @@ import {
   sqliteAgentContextAdapter,
 } from "../../src/features/agent-context/index.js";
 import { sqliteConversationAdapter } from "../../src/features/conversation/adapter-sqlite.js";
-import { createGoalStateStore } from "../../src/features/conversation/goal-state.js";
 import { conversationRoutes } from "../../src/features/conversation/http.js";
 import {
   type ConversationServiceDeps,
@@ -118,13 +117,7 @@ const deps: ConversationServiceDeps = {
 };
 
 const svc = createConversationService(deps);
-const goalStore = createGoalStateStore({
-  get: () => undefined,
-  set: () => {},
-  getAll: () => ({}),
-  getSystemInfo: () => ({ env: {}, paths: {} }),
-});
-const app = new Elysia().use(conversationRoutes(svc, idGen, goalStore));
+const app = new Elysia().use(conversationRoutes(svc, idGen));
 
 afterAll(() => {
   db.close();

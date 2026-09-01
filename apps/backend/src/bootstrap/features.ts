@@ -314,7 +314,6 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     convPort,
 
     agentSvc,
-    settingsSvc,
     agentRunService,
     dispatchRun: (runId: string) => dispatchRun.fn(runId),
     injectSteer: (branchId, input) => injectSteer.fn(branchId, input),
@@ -916,9 +915,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       getSetupManager,
       (id: string) => projectSvc.exists(id),
     ),
-    conversations: conversationRoutes(conv.convSvc, ulid, conv.goalStore, (id: string) =>
-      projectSvc.exists(id),
-    ),
+    conversations: conversationRoutes(conv.convSvc, ulid, (id: string) => projectSvc.exists(id)),
     ops: opsRoutes(opsSvc),
     agentRuns: agentRunRoutes({
       db,

@@ -1,6 +1,5 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, Download } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -9,7 +8,6 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAgentList } from "@/features/agents/hooks";
-import { conversationKeys } from "@/features/conversations/query-keys";
 import { useConversation } from "@/hooks/useConversation";
 import type { ConversationSnapshot } from "@/lib/api";
 import { api } from "@/lib/api";
@@ -20,7 +18,6 @@ import { extractText } from "@/lib/timeline";
 import type { LiveToolCall, TodoItem } from "@/lib/transient-reducer";
 import { Composer } from "./Composer";
 import { ConversationArtifactsPanel } from "./ConversationArtifactsPanel";
-import { ConversationGoalStatusBar } from "./ConversationGoalStatusBar";
 import { RosterList } from "./RosterList";
 import { Timeline } from "./Timeline";
 import { TodoPanel } from "./TodoPanel";
@@ -41,7 +38,6 @@ export function ConversationCanvas({
   anchorSeq,
 }: ConversationCanvasProps) {
   const router = useRouter();
-  const qc = useQueryClient();
   const {
     state,
     busy,
@@ -229,12 +225,10 @@ export function ConversationCanvas({
               : toast.success(msg),
         currentRunId,
         router: { push: router.push },
-        refreshGoal: () =>
-          qc.invalidateQueries({ queryKey: conversationKeys.goal(conversationId) }),
       };
       await cmd.execute(ctx);
     },
-    [conversationId, send, currentRunId, router, qc],
+    [conversationId, send, currentRunId, router],
   );
 
   return (
@@ -302,9 +296,6 @@ export function ConversationCanvas({
             )}
           </div>
         )}
-
-        {/* Goal status bar */}
-        <ConversationGoalStatusBar conversationId={conversationId} />
       </div>
 
       {/* SSE connection warning — sticky alert until the stream recovers */}

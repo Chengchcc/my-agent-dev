@@ -75,7 +75,8 @@ tag 含义：`conversation`（触发与入队）、`agent-run`（执行生命周
 - `GET /api/bff/api/conversations/:conversationId/events` —— canonical final Message（terminal commit 后推送）；
 - `GET /api/bff/api/agent-runs/:runId/events` —— 临时 text/tool/status 事件。
 
-定位口诀：只有 `/goal` 没有 Conversation SSE → 前端 hook/BFF 问题；两个 SSE 都在但 Run SSE 无事件 → 查 adapter/child 日志；Run SSE 有 `completed` 但 Conversation SSE 无 assistant Message → 问题在 terminal commit。
+⟩
+定位口诀：Conversation SSE 无事件 → 查前端 hook/BFF 问题；两个 SSE 都在但 Run SSE 无事件 → 查 adapter/child 日志；Run SSE 有 `completed` 但 Conversation SSE 无 assistant Message → 问题在 terminal commit。
 
 ## 关联页面
 

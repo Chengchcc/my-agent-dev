@@ -40,10 +40,3 @@ export function conversationInputsQuery(conversationId: string) {
     queryFn: () => api.listConversationInputs(conversationId),
   });
 }
-
-export function conversationGoalQuery(conversationId: string) {
-  return queryOptions({
-    queryKey: conversationKeys.goal(conversationId),
-    queryFn: () => api.getGoal(conversationId),
-  });
-}

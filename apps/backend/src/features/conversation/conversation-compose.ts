@@ -5,15 +5,12 @@ import { type AgentService, agentModelRef } from "../agent/index.js";
 import type { AgentContextService } from "../agent-context/service.js";
 
 import type { AgentRunService } from "../agent-run/service.js";
-import type { SettingsService } from "../settings/index.js";
-import { createGoalStateStore, type GoalStateStore } from "./goal-state.js";
 import type { ConversationPort } from "./ports.js";
 import { createConversationService } from "./service.js";
 
 export interface ConversationFeature {
   convPort: ConversationPort;
   convSvc: ReturnType<typeof createConversationService>;
-  goalStore: GoalStateStore;
 }
 
 /** Compose the Conversation feature on Phase 4 Agent Run services. Scope is
@@ -22,7 +19,6 @@ export interface ConversationFeature {
 export function createConversationFeature(input: {
   convPort: ConversationPort;
   agentSvc: AgentService;
-  settingsSvc: SettingsService;
 
   agentRunService: AgentRunService;
   /** Break the execution<->cascade cycle: features.ts wires this to
@@ -44,7 +40,6 @@ export function createConversationFeature(input: {
   const {
     convPort,
     agentSvc,
-    settingsSvc,
 
     agentRunService,
     dispatchRun,
@@ -54,8 +49,6 @@ export function createConversationFeature(input: {
     abortStaleRun,
     contextService,
   } = input;
-
-  const goalStore = createGoalStateStore(settingsSvc);
 
   const convSvc = createConversationService({
     port: convPort,
@@ -72,5 +65,5 @@ export function createConversationFeature(input: {
     },
   });
 
-  return { convPort, convSvc, goalStore };
+  return { convPort, convSvc };
 }

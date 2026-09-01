@@ -129,12 +129,6 @@ export const api = {
   compactConversation: (id: string) => unwrap(client.api.conversations({ id }).compact.post({})),
   updateConversation: (id: string, body: { title?: string }) =>
     unwrap(client.api.conversations({ id }).patch(body)),
-  getGoal: (conversationId: string) =>
-    unwrap(client.api.conversations({ id: conversationId }).goal.get()),
-  setGoal: (
-    conversationId: string,
-    body: { action: "set" | "clear" | "pause" | "resume"; condition?: string },
-  ) => unwrap(client.api.conversations({ id: conversationId }).goal.post(body)),
   searchConversations: (q: string) => unwrap(client.api.conversations.search.get({ query: { q } })),
   exportConversation: async (id: string) => {
     const resp = await fetch(`/api/bff/api/conversations/${id}/export`, { credentials: "include" });

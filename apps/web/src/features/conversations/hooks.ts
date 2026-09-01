@@ -5,7 +5,6 @@ import type { ChatModelOverride } from "@/lib/api";
 import { api, type ConversationSnapshot } from "@/lib/api";
 import {
   conversationDetailQuery,
-  conversationGoalQuery,
   conversationInputsQuery,
   conversationListQuery,
   recentConversationsQuery,
@@ -104,9 +103,6 @@ export function useConversationInputs(conversationId: string) {
   });
 }
 
-export function useConversationGoal(conversationId: string) {
-  return useQuery(conversationGoalQuery(conversationId));
-}
 export function usePostConversationMessage(conversationId: string) {
   return useMutation({
     mutationFn: (params: {

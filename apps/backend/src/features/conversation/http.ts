@@ -2,7 +2,6 @@ import { conversationEvents, createSseEncoder } from "@chengchenccc/api-contract
 import { extractText, MessageRevisionSchema } from "@chengchenccc/message";
 import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
-import type { GoalStateStore } from "./goal-state.js";
 import type { LedgerEntry } from "./ports.js";
 import type { ConversationService } from "./service.js";
 
@@ -38,7 +37,6 @@ function toConversationEvent(entry: LedgerEntry) {
 export function conversationRoutes(
   svc: ConversationService,
   idGen: () => string,
-  goalStore: GoalStateStore,
   projectExists?: (id: string) => boolean,
 ) {
   return (
@@ -303,48 +301,6 @@ export function conversationRoutes(
             editedContent: t.String(),
             senderMemberId: t.Optional(t.String()),
             addressedTo: t.Optional(t.Array(t.String())),
-          }),
-        },
-      )
-      // ── Goal state management ──
-      .get("/api/conversations/:id/goal", ({ params: { id } }) => {
-        const state = goalStore.get(id);
-        return {
-          condition: state.condition,
-          paused: state.paused,
-          turns: state.turns,
-          tokens: state.tokens,
-          lastReason: state.history[state.history.length - 1]?.reason ?? null,
-        };
-      })
-      .post(
-        "/api/conversations/:id/goal",
-        async ({ params: { id }, body }) => {
-          switch (body.action) {
-            case "set":
-              goalStore.savePersistent(id, body.condition!, false);
-              break;
-            case "clear":
-              goalStore.clear(id);
-              break;
-            case "pause":
-              goalStore.savePersistent(id, goalStore.get(id).condition, true);
-              break;
-            case "resume":
-              goalStore.savePersistent(id, goalStore.get(id).condition, false);
-              break;
-          }
-          return { ok: true };
-        },
-        {
-          body: t.Object({
-            action: t.Union([
-              t.Literal("set"),
-              t.Literal("clear"),
-              t.Literal("pause"),
-              t.Literal("resume"),
-            ]),
-            condition: t.Optional(t.String()),
           }),
         },
       )

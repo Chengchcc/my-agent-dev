@@ -5,5 +5,4 @@ export const conversationKeys = {
   detail: (id: string) => ["conv", id] as const,
   search: (q: string) => [...conversationKeys.all, "search", q] as const,
   inputs: (id: string) => ["conversation-inputs", id] as const,
-  goal: (id: string) => ["goal", id] as const,
 };
