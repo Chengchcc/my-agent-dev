@@ -212,6 +212,14 @@ async function main(): Promise<void> {
       `SMOKE PASS [workflow] execution=${executionId} agentRun=${agentRun.runId} ` +
         `nodes=agent+script completed, ledger message landed`,
     );
+    // I4 follow-up: dump the ops telemetry the run just produced, so the
+    // dashboard/heuristics can be validated against real e2e data.
+    const telemetryResp = await get(ctx, "/api/telemetry/summary");
+    if (telemetryResp.ok) {
+      console.log("SMOKE TELEMETRY", JSON.stringify(await telemetryResp.json()));
+    } else {
+      console.log(`SMOKE TELEMETRY error=${telemetryResp.status}`);
+    }
   } finally {
     if (ctx) await shutdown(ctx);
     rmSync(dataDir, { recursive: true, force: true });
