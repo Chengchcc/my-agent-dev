@@ -53,6 +53,15 @@ export default function SystemRunDetailPage() {
                   <div>{run.agentId}</div>
                 </div>
                 <div>
+                  <span className="text-xs text-(--mute)">Conversation</span>
+                  <Link
+                    href={`/chat/${run.conversationId}`}
+                    className="text-xs text-(--info) underline"
+                  >
+                    Open conversation
+                  </Link>
+                </div>
+                <div>
                   <span className="text-xs text-(--mute)">Model</span>
                   <div>
                     {run.model.modelId}
