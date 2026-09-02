@@ -25,6 +25,7 @@ import {
   SectionKicker,
   StatCard,
 } from "@/components/ui/polish";
+import { useAgentList } from "@/features/agents/hooks";
 import { useKnowledgePacks } from "@/features/knowledge/hooks";
 import type { KnowledgePackRow } from "@/features/knowledge/queries";
 import { knowledgePackKeys } from "@/features/knowledge/query-keys";
@@ -45,6 +46,7 @@ function statusLabel(status: KnowledgePackRow["status"]): string {
 export default function KnowledgePackPage() {
   const qc = useQueryClient();
   const { data, refetch } = useKnowledgePacks();
+  const { data: agentsData } = useAgentList();
   const [query, setQuery] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -181,21 +183,33 @@ export default function KnowledgePackPage() {
               Installed packs
             </SectionKicker>
             <div className="space-y-2">
-              {filtered.map((p) => (
-                <ListRowCard
-                  key={p.id}
-                  icon={<BookOpen className="size-4 text-(--mute)" />}
-                  title={p.name}
-                  tag={{ label: p.sourceKind }}
-                  badges={[statusLabel(p.status)]}
-                  desc={p.status === "failed" && p.error ? p.error : p.description}
-                  actions={
-                    <Button variant="destructive" size="sm" onClick={() => setConfirmPackId(p.id)}>
-                      Delete
-                    </Button>
-                  }
-                />
-              ))}
+              {filtered.map((p) => {
+                const usedByNames = (agentsData ?? [])
+                  .filter((a) => a.knowledgePacks?.includes(p.id))
+                  .map((a) => a.name);
+                return (
+                  <ListRowCard
+                    key={p.id}
+                    icon={<BookOpen className="size-4 text-(--mute)" />}
+                    title={p.name}
+                    tag={{ label: p.sourceKind }}
+                    badges={[statusLabel(p.status)]}
+                    desc={p.status === "failed" && p.error ? p.error : p.description}
+                    meta={[
+                      usedByNames.length ? `used by ${usedByNames.join(", ")}` : "not assigned",
+                    ]}
+                    actions={
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setConfirmPackId(p.id)}
+                      >
+                        Delete
+                      </Button>
+                    }
+                  />
+                );
+              })}
               {filtered.length === 0 && (
                 <div data-testid="empty-state">
                   <EmptyState

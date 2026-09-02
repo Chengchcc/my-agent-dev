@@ -301,6 +301,9 @@ function NavContent() {
                 <span className="truncate">{t("Agents")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            <div className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-(--mute)">
+              Resources
+            </div>
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={pathname.startsWith("/team/skills")}

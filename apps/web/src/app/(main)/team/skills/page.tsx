@@ -1,5 +1,4 @@
-"use client";
-
+import { useQueries } from "@tanstack/react-query";
 import { Download, GitBranch, Package, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { InstallPackForm } from "@/components/InstallPackForm";
@@ -19,12 +18,14 @@ import {
 } from "@/components/ui/polish";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAgentList } from "@/features/agents/hooks";
 import {
   useDeletePack,
   useSkillPackList,
   useSkillPackSkills,
   useSyncPack,
 } from "@/features/skill-packs/hooks";
+import { agentSkillPacksQuery } from "@/features/skill-packs/queries";
 
 type PackStatus = "pending" | "installing" | "ready" | "failed" | "syncing";
 
@@ -138,6 +139,19 @@ export default function SkillPacksPage() {
   const deleteMutation = useDeletePack();
   const { confirm, dialog: confirmDialog } = useConfirm();
 
+  const { data: agentsData } = useAgentList();
+  const agentPackQueries = useQueries({
+    queries: (agentsData ?? []).map((a) => agentSkillPacksQuery(a.id)),
+  });
+  const usedByMap: Record<string, string[]> = {};
+  (agentsData ?? []).forEach((a, i) => {
+    const packs = agentPackQueries[i]?.data;
+    if (!Array.isArray(packs)) return;
+    for (const p of packs) {
+      usedByMap[p.id] = [...(usedByMap[p.id] ?? []), a.name];
+    }
+  });
+
   const list = useMemo(() => (packs ?? []).map((p) => p as unknown as PackEntry), [packs]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -212,6 +226,8 @@ export default function SkillPacksPage() {
                   const meta: string[] = [];
                   if (p.installedRef) meta.push(`@${p.installedRef.slice(0, 8)}`);
                   meta.push(toDateString(p.createdAt));
+                  const usedBy = usedByMap[p.id] ?? [];
+                  meta.push(usedBy.length ? `used by ${usedBy.join(", ")}` : "not assigned");
                   return (
                     <ListRowCard
                       key={p.id}

@@ -28,6 +28,7 @@ import {
   SubTabs,
 } from "@/components/ui/polish";
 import { Textarea } from "@/components/ui/textarea";
+import { useAgentList } from "@/features/agents/hooks";
 import { useMcpCatalog } from "@/features/mcp/hooks";
 import type { McpCatalogRow } from "@/features/mcp/queries";
 import { mcpKeys } from "@/features/mcp/query-keys";
@@ -69,6 +70,7 @@ function parsePairs(raw: string): Record<string, string> {
 export default function McpCatalogPage() {
   const qc = useQueryClient();
   const { data, refetch } = useMcpCatalog();
+  const { data: agentsData } = useAgentList();
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"form" | "json">("form");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -412,43 +414,51 @@ export default function McpCatalogPage() {
           <div>
             <SectionKicker hint="Click the mono id to copy the server id.">Servers</SectionKicker>
             <div className="space-y-2">
-              {filtered.map((s) => (
-                <ListRowCard
-                  key={s.serverId}
-                  icon={<Server className="size-4 text-(--mute)" />}
-                  title={s.name}
-                  tag={{ label: s.transport }}
-                  idChip={s.serverId}
-                  desc={s.transport === "sse" ? (s.url ?? undefined) : (s.command ?? undefined)}
-                  status={mcpStatus(s.status)}
-                  actions={
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void beginEdit(s.serverId)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={test.isPending}
-                        onClick={() => void test.mutate(s.serverId)}
-                      >
-                        {test.isPending ? "Testing…" : "Test"}
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setConfirmServerId(s.serverId)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  }
-                />
-              ))}
+              {filtered.map((s) => {
+                const usedByNames = (agentsData ?? [])
+                  .filter((a) => a.mcpServers?.some((m) => m.serverId === s.serverId && m.enabled))
+                  .map((a) => a.name);
+                return (
+                  <ListRowCard
+                    key={s.serverId}
+                    icon={<Server className="size-4 text-(--mute)" />}
+                    title={s.name}
+                    tag={{ label: s.transport }}
+                    idChip={s.serverId}
+                    desc={s.transport === "sse" ? (s.url ?? undefined) : (s.command ?? undefined)}
+                    meta={[
+                      usedByNames.length ? `used by ${usedByNames.join(", ")}` : "not assigned",
+                    ]}
+                    status={mcpStatus(s.status)}
+                    actions={
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void beginEdit(s.serverId)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={test.isPending}
+                          onClick={() => void test.mutate(s.serverId)}
+                        >
+                          {test.isPending ? "Testing…" : "Test"}
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setConfirmServerId(s.serverId)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    }
+                  />
+                );
+              })}
               {filtered.length === 0 && (
                 <div data-testid="empty-state">
                   <EmptyState

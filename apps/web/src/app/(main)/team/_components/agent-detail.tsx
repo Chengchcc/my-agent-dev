@@ -47,6 +47,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "skills", label: "Skills" },
   { key: "mcp", label: "MCP" },
   { key: "knowledge", label: "Knowledge" },
+  { key: "projects", label: "Projects" },
   { key: "lark", label: "Lark" },
   { key: "memory", label: "Memory" },
   { key: "workspace", label: "Workspace" },
