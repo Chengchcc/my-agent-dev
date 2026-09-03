@@ -23,7 +23,8 @@ import type { RunTokenRegistry } from "../product-tools/run-token-registry.js";
 import type { WorkspaceLockRegistry } from "../project/workspace-lock.js";
 import type { AgentRun, ClaimedBranchInput } from "./domain.js";
 import { isActiveStatus, isTerminalStatus } from "./domain.js";
-import { buildRunInput, finalAnswerMessage, TELEMETRY_EVENT_TYPES } from "./execution-input.js";
+import { buildRunInput, finalAnswerMessage } from "./execution-input.js";
+import { createLiveEventBus } from "./execution-live.js";
 import type { AgentRunPort } from "./ports.js";
 
 // ─── Execution service ───────────────────────────────────────────────
@@ -169,46 +170,7 @@ export function createAgentRunExecutionService(
    *  are dead so the DB is never closed mid-finalize. */
   const inflightPromises = new Map<string, Promise<void>>();
   let disposed = false;
-  const subscribers = new Map<string, Set<(e: BackendEvent) => void>>();
-
-  function broadcast(runId: string, event: BackendEvent): void {
-    // Durable telemetry: persist the normalized event log (tool calls,
-    // status, workflow steps). Transient text/thinking deltas are skipped.
-    if (deps.persistRunEvent && TELEMETRY_EVENT_TYPES.has(event.type)) {
-      void deps.persistRunEvent(runId, event).catch(() => {
-        /* telemetry is best-effort */
-      });
-    }
-    const set = subscribers.get(runId);
-    if (!set) return;
-    for (const fn of set) {
-      try {
-        fn(event);
-      } catch {
-        /* subscriber failure never affects the run */
-      }
-    }
-  }
-
-  function closeSubscribers(runId: string): void {
-    subscribers.delete(runId);
-  }
-
-  /** Transient live-update fan-out: events from the run's segment are
-   *  broadcast to current-process subscribers. Never persisted; subscriber
-   *  failure never affects the run; the stream ends when the run settles.
-   *  the run's event buffer (outcome). Returns a promise that resolves when
-   *  the segment stream has been fully drained (used by dispatch to close
-   *  subscribers only AFTER the last event broadcast). */
-  function forwardEvents(runId: string, segment: BackendRunSegment): Promise<void> {
-    return (async () => {
-      try {
-        for await (const ev of segment.events) broadcast(runId, ev);
-      } catch {
-        /* event stream closing is not a run failure */
-      }
-    })();
-  }
+  const liveEvents = createLiveEventBus(deps);
 
   const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -351,7 +313,7 @@ export function createAgentRunExecutionService(
 
     await runPort.markInputAccepted(input.inputId);
     debugLog("agent-run", `input_delivered runId=${runId} inputId=${input.inputId}`);
-    const drain = forwardEvents(runId, segment);
+    const drain = liveEvents.forwardEvents(runId, segment);
     // Wall-clock run cap: a looping CLI (no native max-turns) must not own
     // the branch forever. stop() settles the segment aborted.
     const watchdog = setTimeout(() => {
@@ -398,7 +360,11 @@ export function createAgentRunExecutionService(
     // Live subscribers learn WHY the run died (the error text) before the
     // stream closes; the onRunFailed hook persists an assistant error
     // message so the failure survives refresh (T3-2).
-    broadcast(run.runId, { type: "status", status: outcome.status, error: outcome.error });
+    liveEvents.broadcast(run.runId, {
+      type: "status",
+      status: outcome.status,
+      error: outcome.error,
+    });
     deps.onRunFailed?.({
       runId: run.runId,
       conversationId: run.conversationId,
@@ -503,7 +469,7 @@ export function createAgentRunExecutionService(
           // Same live-failure record as settleOutcome's terminal branch:
           // pre-child failures (spawn, catalog, projection) leave no
           // assistant message, so the status event carries the error text.
-          broadcast(runId, { type: "status", status: "failed", error: detail });
+          liveEvents.broadcast(runId, { type: "status", status: "failed", error: detail });
           deps.onRunFailed?.({
             runId,
             conversationId: run.conversationId,
@@ -523,7 +489,7 @@ export function createAgentRunExecutionService(
         // Every terminal path (outcome, preflight failure, crash) funnels
         // here: the run's product-tools bearer dies with the run.
         deps.productToolsTokenRegistry.revoke(runId);
-        closeSubscribers(runId);
+        liveEvents.closeSubscribers(runId);
         debugLog("agent-run", `dispatch_end runId=${runId}`);
       }
     })();
@@ -656,7 +622,7 @@ export function createAgentRunExecutionService(
       });
       deps.onRunCommitted?.(runId, finalAnswerMessage(outcome.messages), seqs);
       liveRuns.delete(runId);
-      closeSubscribers(runId);
+      liveEvents.closeSubscribers(runId);
     },
     async resolveApproval(runId, callId, decision) {
       const live = liveRuns.get(runId);
@@ -726,36 +692,7 @@ export function createAgentRunExecutionService(
     },
 
     subscribe(runId, signal) {
-      return (async function* () {
-        const pending: BackendEvent[] = [];
-        const fn = (e: BackendEvent): void => {
-          pending.push(e);
-        };
-        let set = subscribers.get(runId);
-        if (!set) {
-          set = new Set();
-          subscribers.set(runId, set);
-        }
-        set.add(fn);
-        try {
-          // Drain `pending` even after closeSubscribers: a yield suspends
-          // this generator, so the subscriber set can close while buffered
-          // events are still unyielded. All broadcasts happen before the
-          // close (the dispatch drain race orders them), so pending is
-          // complete by then - never drop the tail.
-          while (pending.length > 0 || subscribers.has(runId)) {
-            if (signal?.aborted) break;
-            if (pending.length > 0) {
-              yield pending.shift()!;
-              continue;
-            }
-            await new Promise((r) => setTimeout(r, 20));
-          }
-        } finally {
-          set.delete(fn);
-          if (set.size === 0) subscribers.delete(runId);
-        }
-      })();
+      return liveEvents.subscribe(runId, signal);
     },
   };
 }
