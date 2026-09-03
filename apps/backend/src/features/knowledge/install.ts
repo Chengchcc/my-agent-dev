@@ -1,21 +1,14 @@
 import { spawn } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { fetchGitSource, materializeZipSource } from "@chengchenccc/source-fetch";
 import type { KnowledgePackRow } from "./entities.js";
 import type { KnowledgePackPort } from "./ports.js";
 
 /** Lean install (ADR 0022): builtin dir copy / git clone / zip extract
  *  into <dataDir>/knowledge/<packId>. Knowledge packs have no internal
- *  layout constraint (any files). */
+ *  layout constraint (any files). git/zip go through @chengchenccc/source-fetch
+ *  so they get the same path-escape/symlink guard as skill-packs. */
 
 export interface KnowledgeInstallDeps {
   dataDir: string;
@@ -76,7 +69,7 @@ export async function installKnowledgePack(
     updatedAt: now,
   });
 
-  const target = knowledgeInstallRoot(deps.dataDir, input.id);
+  let target = knowledgeInstallRoot(deps.dataDir, input.id);
   rmSync(target, { recursive: true, force: true });
   mkdirSync(target, { recursive: true });
 
@@ -88,17 +81,22 @@ export async function installKnowledgePack(
       if (res.exitCode !== 0) throw new Error(`copy failed: ${res.stderr.slice(0, 200)}`);
     } else if (input.sourceKind === "git") {
       if (!input.sourceUrl) throw new Error("sourceUrl required for git packs");
-      const res = await run("git", ["clone", "--depth", "1", input.sourceUrl, target], "/");
-      if (res.exitCode !== 0) throw new Error(`git clone failed: ${res.stderr.slice(0, 200)}`);
+      const fetched = await fetchGitSource({
+        url: input.sourceUrl,
+        dataDir: join(deps.dataDir, "knowledge"),
+        slug: input.id,
+        ...(input.versionRef ? { ref: input.versionRef } : {}),
+      });
+      target = fetched.root;
     } else {
       const buf = deps.zipBuffer;
       if (!buf || buf.length === 0) throw new Error("zip upload missing for zip packs");
-      const tmp = mkdtempSync(join(tmpdir(), "kp-zip-"));
-      const zipPath = join(tmp, "pack.zip");
-      writeFileSync(zipPath, buf);
-      const res = await run("unzip", ["-q", "-o", zipPath, "-d", target], "/");
-      if (res.exitCode !== 0) throw new Error(`unzip failed: ${res.stderr.slice(0, 200)}`);
-      rmSync(tmp, { recursive: true, force: true });
+      const fetched = await materializeZipSource({
+        buffer: buf,
+        dataDir: join(deps.dataDir, "knowledge"),
+        slug: input.id,
+      });
+      target = fetched.root;
     }
     return deps.port.update(input.id, {
       status: "ready",
