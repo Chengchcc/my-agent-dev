@@ -220,6 +220,7 @@ export const knowledgePack = sqliteTable(
     sourceKind: text().notNull(),
     sourceUrl: text(),
     versionRef: text(),
+    sourceRev: text(),
     installedRef: text(),
     status: text().notNull(),
     error: text(),

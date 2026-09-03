@@ -330,6 +330,13 @@
       "when": 1788091312606,
       "tag": "0046_purge_ghost_settings",
       "breakpoints": false
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1788432636584,
+      "tag": "0047_knowledge_pack_source_rev",
+      "breakpoints": false
     }
   ]
 }

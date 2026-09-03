@@ -62,6 +62,7 @@ export async function installKnowledgePack(
     sourceKind: input.sourceKind,
     sourceUrl: input.sourceUrl,
     versionRef: input.versionRef,
+    sourceRev: null,
     installedRef: null,
     status: "installing",
     error: null,
@@ -70,6 +71,7 @@ export async function installKnowledgePack(
   });
 
   let target = knowledgeInstallRoot(deps.dataDir, input.id);
+  let sourceRev: string | null = null;
   rmSync(target, { recursive: true, force: true });
   mkdirSync(target, { recursive: true });
 
@@ -88,6 +90,7 @@ export async function installKnowledgePack(
         ...(input.versionRef ? { ref: input.versionRef } : {}),
       });
       target = fetched.root;
+      sourceRev = fetched.rev;
     } else {
       const buf = deps.zipBuffer;
       if (!buf || buf.length === 0) throw new Error("zip upload missing for zip packs");
@@ -97,10 +100,12 @@ export async function installKnowledgePack(
         slug: input.id,
       });
       target = fetched.root;
+      sourceRev = fetched.rev;
     }
     return deps.port.update(input.id, {
       status: "ready",
       installedRef: target,
+      sourceRev,
       error: null,
       updatedAt: Date.now(),
     })!;

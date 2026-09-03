@@ -18,6 +18,7 @@ export function sqliteKnowledgePackAdapter(db: Database): KnowledgePackPort {
       sourceKind: parsed.sourceKind,
       sourceUrl: parsed.sourceUrl,
       versionRef: parsed.versionRef,
+      sourceRev: parsed.sourceRev,
       installedRef: parsed.installedRef,
       status: parsed.status,
       error: parsed.error,
@@ -36,6 +37,7 @@ export function sqliteKnowledgePackAdapter(db: Database): KnowledgePackPort {
           sourceKind: row.sourceKind,
           sourceUrl: row.sourceUrl,
           versionRef: row.versionRef,
+          sourceRev: row.sourceRev,
           installedRef: row.installedRef,
           status: row.status,
           error: row.error,
@@ -71,6 +73,7 @@ export function sqliteKnowledgePackAdapter(db: Database): KnowledgePackPort {
           ...(patch.status !== undefined ? { status: patch.status } : {}),
           ...(patch.error !== undefined ? { error: patch.error } : {}),
           ...(patch.installedRef !== undefined ? { installedRef: patch.installedRef } : {}),
+          ...(patch.sourceRev !== undefined ? { sourceRev: patch.sourceRev } : {}),
           updatedAt: patch.updatedAt ?? Date.now(),
         })
         .where(eq(schema.knowledgePack.id, id))

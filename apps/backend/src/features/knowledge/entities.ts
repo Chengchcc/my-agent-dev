@@ -11,6 +11,7 @@ export interface KnowledgePackRow {
   sourceKind: KnowledgePackSource;
   sourceUrl: string | null;
   versionRef: string | null;
+  sourceRev: string | null;
   installedRef: string | null;
   status: KnowledgePackStatus;
   error: string | null;
