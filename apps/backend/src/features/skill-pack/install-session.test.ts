@@ -200,4 +200,35 @@ z.close()
     const failed = await port.get("p-sync");
     expect(failed?.status).toBe("failed");
   });
+  test("sync: already-syncing state does not double-transition (production path)", async () => {
+    const dataDir = tmp;
+    const src = join(tmp, "sync2-src");
+    mkdirSync(src, { recursive: true });
+    makePackDir(src);
+    await Bun.$`git init`.cwd(src).quiet();
+    await Bun.$`git -C ${src} config user.email "t@t"`.quiet();
+    await Bun.$`git -C ${src} config user.name "T"`.quiet();
+    await Bun.$`git -C ${src} add .`.quiet();
+    await Bun.$`git -C ${src} commit -m init`.quiet();
+
+    await registerPack("p-sync2", "git", src);
+    await runInstall(
+      { packId: "p-sync2", sourceKind: "git", sourceUrl: src, versionRef: null },
+      { dataDir, port },
+    );
+
+    writeFileSync(join(src, "extra2.txt"), "x");
+    await Bun.$`git -C ${src} add .`.quiet();
+    await Bun.$`git -C ${src} commit -m more`.quiet();
+
+    // Service already transitioned ready → syncing before triggering the session.
+    await port.applyInstallTransition("p-sync2", "syncing", { now: Date.now() });
+    await runSync(
+      { packId: "p-sync2", sourceKind: "git", sourceUrl: src, versionRef: null },
+      { dataDir, port },
+    );
+    const synced = await port.get("p-sync2");
+    expect(synced?.status).toBe("ready");
+    expect(synced?.installedRef).toBeTruthy();
+  });
 });

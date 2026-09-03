@@ -125,6 +125,29 @@ export function SkillPackManager() {
   const deleteMutation = useDeletePack();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const { data: skills } = useSkillPackSkills(selectedPack ?? "");
+  const handleSync = async (packId: string) => {
+    syncMutation.mutate(
+      { id: packId },
+      {
+        onError: async (err) => {
+          const e = err as { status?: number; message?: string };
+          if (e?.status !== 409) return;
+          let change: { from?: string; to?: string } = {};
+          try {
+            change = JSON.parse(e.message ?? "{}");
+          } catch {
+            /* keep empty */
+          }
+          const ok = await confirm({
+            title: "Upstream changed",
+            description: `Sync skill pack from ${change.from?.slice(0, 8) ?? "unknown"} to ${change.to?.slice(0, 8) ?? "unknown"}?`,
+            confirmText: "Sync",
+          });
+          if (ok) syncMutation.mutate({ id: packId, confirm: true });
+        },
+      },
+    );
+  };
 
   // Auto-refetch while installing/syncing (in useEffect, not render body)
   const hasPending = packs?.some((p) => p.status === "installing" || p.status === "syncing");
@@ -211,7 +234,7 @@ export function SkillPackManager() {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        syncMutation.mutate(p.id);
+                        void handleSync(p.id);
                       }}
                       disabled={syncMutation.isPending}
                     >

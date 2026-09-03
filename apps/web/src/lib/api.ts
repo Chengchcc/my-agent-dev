@@ -279,7 +279,8 @@ export const api = {
     unwrap(client.api["skill-packs"].git.post(body)),
   uploadSkillPackZip: (body: { name: string; description: string; file: File }) =>
     unwrap(client.api["skill-packs"].upload.post(body)),
-  syncSkillPack: (id: string) => unwrap(client.api["skill-packs"]({ id }).sync.post()),
+  syncSkillPack: (id: string, confirm = false) =>
+    unwrap(client.api["skill-packs"]({ id }).sync.post({ confirm })),
   deleteSkillPack: (id: string) => unwrap(client.api["skill-packs"]({ id }).delete()),
   getAgentSkillPacks: (agentId: string) =>
     unwrap(client.api.agents({ id: agentId })["skill-packs"].get()),

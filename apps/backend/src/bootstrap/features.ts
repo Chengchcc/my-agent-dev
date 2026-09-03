@@ -63,6 +63,7 @@ import { createRuntimeOpsService, opsRoutes } from "../features/runtime-ops/inde
 import { settingsRoutes } from "../features/settings/index.js";
 import type { SkillPackRow } from "../features/skill-pack/index.js";
 import {
+  checkUpstream,
   createSkillPackService as createSkillPackServiceFn,
   installPath,
   runInstall,
@@ -135,6 +136,16 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const skillPackSvc = createSkillPackServiceFn({
     port: skillPackPort,
     idGen: ulid,
+    checkSync: async (packId, ctx) =>
+      checkUpstream(
+        {
+          packId,
+          sourceKind: ctx.sourceKind,
+          sourceUrl: ctx.sourceUrl,
+          versionRef: ctx.versionRef,
+        },
+        { dataDir: config.dataDir, port: skillPackPort },
+      ),
     triggerInstall: (packId, ctx) => {
       void runInstall(
         {

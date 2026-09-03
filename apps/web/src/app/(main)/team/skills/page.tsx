@@ -144,6 +144,29 @@ export default function SkillPacksPage() {
   const deleteMutation = useDeletePack();
   const qc = useQueryClient();
   const { confirm, dialog: confirmDialog } = useConfirm();
+  const handleSync = async (packId: string) => {
+    syncMutation.mutate(
+      { id: packId },
+      {
+        onError: async (err) => {
+          const e = err as { status?: number; message?: string };
+          if (e?.status !== 409) return;
+          let change: { from?: string; to?: string } = {};
+          try {
+            change = JSON.parse(e.message ?? "{}");
+          } catch {
+            /* keep empty */
+          }
+          const ok = await confirm({
+            title: "Upstream changed",
+            description: `Sync skill pack from ${change.from?.slice(0, 8) ?? "unknown"} to ${change.to?.slice(0, 8) ?? "unknown"}?`,
+            confirmText: "Sync",
+          });
+          if (ok) syncMutation.mutate({ id: packId, confirm: true });
+        },
+      },
+    );
+  };
 
   const { data: agentsData } = useAgentList();
   const agentPackQueries = useQueries({
@@ -273,7 +296,7 @@ export default function SkillPacksPage() {
                               disabled={syncMutation.isPending}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                syncMutation.mutate(p.id);
+                                void handleSync(p.id);
                               }}
                             >
                               <RefreshCw

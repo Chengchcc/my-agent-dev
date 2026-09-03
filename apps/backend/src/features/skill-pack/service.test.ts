@@ -9,7 +9,12 @@ import {
   type InstallSessionCtx,
 } from "./service.js";
 
-function makeSvc() {
+function makeSvc(
+  checkSync?: (
+    packId: string,
+    ctx: InstallSessionCtx,
+  ) => Promise<{ from: string | null; to: string } | null>,
+) {
   const db = openDb(":memory:");
   const port: SkillPackPort = sqliteSkillPackAdapter(db);
   let idCounter = 0;
@@ -25,6 +30,7 @@ function makeSvc() {
     triggerSync: (packId, ctx) => {
       syncCalls.push({ packId, ctx });
     },
+    checkSync,
   });
 
   return { svc, port, installCalls, syncCalls };
@@ -95,6 +101,28 @@ describe("SkillPackService", () => {
     await port.applyInstallTransition(row.id, "ready", { installedRef: "xx", now: Date.now() });
 
     await expect(svc.syncGit(row.id)).rejects.toThrow("Cannot sync non-git pack");
+  });
+
+  test("syncGit without confirm blocks on upstream change and does not transition", async () => {
+    const { svc, port, syncCalls } = makeSvc(async () => ({ from: "abc", to: "def" }));
+    const row = await svc.installFromGit({ name: "G", description: "d", url: "url", ref: "main" });
+    await port.applyInstallTransition(row.id, "installing", { now: Date.now() });
+    await port.applyInstallTransition(row.id, "ready", { installedRef: "abc", now: Date.now() });
+
+    await expect(svc.syncGit(row.id)).rejects.toThrow("upstream changed");
+    expect((await port.get(row.id))?.status).toBe("ready");
+    expect(syncCalls).toHaveLength(0);
+  });
+
+  test("syncGit with confirm skips the check and triggers sync", async () => {
+    const { svc, port, syncCalls } = makeSvc(async () => ({ from: "abc", to: "def" }));
+    const row = await svc.installFromGit({ name: "G", description: "d", url: "url", ref: "main" });
+    await port.applyInstallTransition(row.id, "installing", { now: Date.now() });
+    await port.applyInstallTransition(row.id, "ready", { installedRef: "abc", now: Date.now() });
+
+    const updated = await svc.syncGit(row.id, true);
+    expect(updated.status).toBe("syncing");
+    expect(syncCalls).toHaveLength(1);
   });
 
   // ─── uninstall ─────────────────────────────────────────────────────

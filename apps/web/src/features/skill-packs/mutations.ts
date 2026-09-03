@@ -23,7 +23,8 @@ export function useUploadZipPack() {
 export function useSyncPack() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.syncSkillPack(id),
+    mutationFn: ({ id, confirm }: { id: string; confirm?: boolean }) =>
+      api.syncSkillPack(id, confirm),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: skillPackKeys.list() }),
   });
 }

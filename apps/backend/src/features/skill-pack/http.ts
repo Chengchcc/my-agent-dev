@@ -5,7 +5,7 @@ import type { SkillPackRow } from "./entities.js";
 import { installPath, posixSkillRoot } from "./entities.js";
 import { nodeFsAdapter } from "./fs-adapter.js";
 import type { SkillPackService } from "./service.js";
-import { BuiltinPackImmutableError } from "./service.js";
+import { BuiltinPackImmutableError, UpstreamChangedError } from "./service.js";
 import { buildSkillIndex } from "./skill-index.js";
 import { assertSafeEntry } from "./tools.js";
 
@@ -82,16 +82,31 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
       },
     )
 
-    .post("/api/skill-packs/:id/sync", async ({ params: { id }, set }) => {
-      try {
-        const row = await svc.syncGit(id);
-        set.status = 202;
-        return toPackResponse(row);
-      } catch (err) {
-        set.status = 400;
-        return { error: (err as Error).message };
-      }
-    })
+    .post(
+      "/api/skill-packs/:id/sync",
+      async ({ params: { id }, body, set }) => {
+        try {
+          const row = await svc.syncGit(id, body?.confirm ?? false);
+          set.status = 202;
+          return toPackResponse(row);
+        } catch (err) {
+          if (err instanceof UpstreamChangedError) {
+            set.status = 409;
+            return {
+              error: err.message,
+              code: "upstream_changed",
+              from: err.from,
+              to: err.to,
+            };
+          }
+          set.status = 400;
+          return { error: (err as Error).message };
+        }
+      },
+      {
+        body: t.Optional(t.Object({ confirm: t.Optional(t.Boolean()) })),
+      },
+    )
 
     .delete("/api/skill-packs/:id", async ({ params: { id }, set }) => {
       try {

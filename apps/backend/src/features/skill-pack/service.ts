@@ -1,6 +1,9 @@
 import { ValidationError } from "../../infra/domain-errors.js";
 import type { SkillPackRow, SkillPackSource } from "./entities.js";
+import { UpstreamChangedError } from "./install-session.js";
 import type { SkillPackPort } from "./ports.js";
+
+export { UpstreamChangedError };
 
 // ─── Service ─────────────────────────────────────────────────────────────────────
 
@@ -17,6 +20,11 @@ export interface SkillPackServiceDeps {
   triggerInstall: (packId: string, ctx: InstallSessionCtx) => void;
   /** Trigger a sync session. */
   triggerSync: (packId: string, ctx: InstallSessionCtx) => void;
+  /** Read-only upstream check before a sync (returns the change, or null). */
+  checkSync?: (
+    packId: string,
+    ctx: InstallSessionCtx,
+  ) => Promise<{ from: string | null; to: string } | null>;
 }
 
 export interface InstallSessionCtx {
@@ -93,13 +101,10 @@ export function createSkillPackService(deps: SkillPackServiceDeps) {
 
     // ─── Sync ─────────────────────────────────────────────────────────
 
-    async syncGit(packId: string): Promise<SkillPackRow> {
+    async syncGit(packId: string, confirm = false): Promise<SkillPackRow> {
       const row = await port.get(packId);
       if (!row) throw new Error(`Pack not found: ${packId}`);
       if (row.sourceKind !== "git") throw new Error(`Cannot sync non-git pack: ${packId}`);
-
-      const updated = await port.applyInstallTransition(packId, "syncing", { now: Date.now() });
-      if (!updated) throw new Error(`Failed to transition pack ${packId} to syncing`);
 
       const ctx: InstallSessionCtx = {
         packId: row.id,
@@ -107,6 +112,15 @@ export function createSkillPackService(deps: SkillPackServiceDeps) {
         sourceUrl: row.sourceUrl,
         versionRef: row.versionRef,
       };
+
+      if (!confirm && deps.checkSync) {
+        const upstream = await deps.checkSync(packId, ctx);
+        if (upstream) throw new UpstreamChangedError(upstream.from, upstream.to);
+      }
+
+      const updated = await port.applyInstallTransition(packId, "syncing", { now: Date.now() });
+      if (!updated) throw new Error(`Failed to transition pack ${packId} to syncing`);
+
       triggerSync(packId, ctx);
 
       return updated;

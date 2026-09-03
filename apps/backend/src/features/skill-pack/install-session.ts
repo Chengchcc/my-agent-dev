@@ -19,6 +19,16 @@ export interface InstallSource {
   sourceUrl: string | null;
   versionRef: string | null;
 }
+/** Sync was blocked because the upstream ref moved past the recorded HEAD. */
+export class UpstreamChangedError extends Error {
+  constructor(
+    public readonly from: string | null,
+    public readonly to: string,
+  ) {
+    super(`upstream changed from ${from ?? "unknown"} to ${to}`);
+    this.name = "UpstreamChangedError";
+  }
+}
 
 function git(
   args: string[],
@@ -38,6 +48,37 @@ function git(
       resolve({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: code ?? 1 }),
     );
   });
+}
+
+/** Fetch origin (optionally ref) and return the remote FETCH_HEAD rev.
+ *  Read-only: does NOT reset the working tree. */
+async function fetchRemoteRev(source: InstallSource, packDir: string): Promise<string> {
+  const fetchArgs = ["fetch", "origin"];
+  if (source.versionRef) fetchArgs.push(source.versionRef);
+  const fetchResult = await git(fetchArgs, packDir);
+  if (fetchResult.exitCode !== 0) throw new Error(`git fetch failed: ${fetchResult.stderr}`);
+  const revResult = await git(["rev-parse", "FETCH_HEAD"], packDir);
+  if (revResult.exitCode !== 0)
+    throw new Error(`git rev-parse FETCH_HEAD failed: ${revResult.stderr}`);
+  return revResult.stdout;
+}
+
+/** Compare the recorded HEAD to the remote FETCH_HEAD. Returns null when
+ *  there is no prior record or the ref has not moved; otherwise the change. */
+export async function checkUpstream(
+  source: InstallSource,
+  deps: InstallSessionDeps,
+): Promise<{ from: string | null; to: string } | null> {
+  const cwd = posixSkillRoot(deps.dataDir);
+  const packDir = resolve(cwd, source.packId);
+  assertSafeEntry(source.packId);
+  if (source.sourceKind !== "git")
+    throw new Error(`cannot check upstream for non-git pack: ${source.packId}`);
+  const to = await fetchRemoteRev(source, packDir);
+  const row = await deps.port.get(source.packId);
+  const from = row?.installedRef ?? null;
+  if (!from || from === to) return null;
+  return { from, to };
 }
 
 /** Deterministic git install: pending → installing → clone/checkout →
@@ -104,17 +145,16 @@ export async function runSync(source: InstallSource, deps: InstallSessionDeps): 
   const packDir = resolve(cwd, source.packId);
   try {
     assertSafeEntry(source.packId);
-    await deps.port.applyInstallTransition(source.packId, "syncing", { now: Date.now() });
-
-    const fetchArgs = ["fetch", "origin"];
-    if (source.versionRef) fetchArgs.push(source.versionRef);
-    const fetchResult = await git(fetchArgs, packDir);
-    if (fetchResult.exitCode !== 0) throw new Error(`git fetch failed: ${fetchResult.stderr}`);
+    // The service already transitions ready→syncing before triggering the
+    // session. Direct test callers may still be ready, so only transition
+    // when not already syncing (syncing→syncing is an illegal transition).
+    const current = await deps.port.get(source.packId);
+    if (current?.status !== "syncing") {
+      await deps.port.applyInstallTransition(source.packId, "syncing", { now: Date.now() });
+    }
+    const installedRef = await fetchRemoteRev(source, packDir);
     const resetResult = await git(["reset", "--hard", "FETCH_HEAD"], packDir);
     if (resetResult.exitCode !== 0) throw new Error(`git reset failed: ${resetResult.stderr}`);
-    const revResult = await git(["rev-parse", "HEAD"], packDir);
-    const installedRef = revResult.exitCode === 0 ? revResult.stdout : "unknown";
-
     if (!(await validatePackDir(cwd, source.packId))) {
       throw new Error("synced pack has no valid SKILL.md");
     }

@@ -13,8 +13,7 @@ export {
 } from "./entities.js";
 export { skillPackRoutes } from "./http.js";
 export {
-  type InstallSessionDeps,
-  type InstallSource,
+  checkUpstream,
   runInstall,
   runSync,
 } from "./install-session.js";
