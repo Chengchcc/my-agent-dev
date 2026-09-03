@@ -2,121 +2,33 @@ import type {
   AgentBackend,
   BackendEvent,
   BackendModelRef,
-  BackendRegistry,
   BackendRunOutcome,
   BackendRunSegment,
   ProjectedHistoryItem,
-  WorkspaceBinding,
 } from "@chengchenccc/agent-contract";
 import { BACKEND_KINDS, type BackendKind, debugLog } from "@chengchenccc/agent-contract";
 import { resolveModelAlias } from "@chengchenccc/ai";
 import type { Message } from "@chengchenccc/message";
 import { DomainError } from "../../infra/domain-errors.js";
-import type {
-  AgentContextPort,
-  IdGenerator,
-  LedgerMessageResolver,
-} from "../agent-context/ports.js";
 import { projectAgentContext } from "../agent-context/projection.js";
 import { buildHistoryTools } from "../product-tools/manifest.js";
-import type { RunTokenRegistry } from "../product-tools/run-token-registry.js";
-import type { WorkspaceLockRegistry } from "../project/workspace-lock.js";
 import type { AgentRun, ClaimedBranchInput } from "./domain.js";
 import { isActiveStatus, isTerminalStatus } from "./domain.js";
 import { buildRunInput, finalAnswerMessage } from "./execution-input.js";
 import { createLiveEventBus } from "./execution-live.js";
-import type { AgentRunPort } from "./ports.js";
+import type {
+  AgentRunExecutionDeps,
+  AgentRunExecutionService,
+  LiveRun,
+} from "./execution-types.js";
 
 // ─── Execution service ───────────────────────────────────────────────
 
-export interface AgentRunExecutionDeps {
-  readonly runPort: AgentRunPort;
-  readonly contextPort: AgentContextPort;
-  readonly ledgerResolver: LedgerMessageResolver;
-  /** Per-kind dispatch table: `modelRef.backendKind` resolves the Backend
-   *  and its catalog. Partial — a kind a deployment does not register gets
-   *  a clear preflight error, never a silent fallback. */
-  readonly backends: BackendRegistry;
-  readonly idGen: IdGenerator;
-  /** Resolve the workspace binding for a run's agent member (from the
-   *  Agent's workspace path + permission mode; injected so tests and callers
-   *  can vary it). Used ONLY when the Run itself did not pin a workspace
-   *  snapshot. */
-  /** Wall-clock cap on a run (ms); the dispatch watchdog stops the
-   *  backend and settles aborted on expiry. */
-  readonly runTimeoutMs?: number;
-  readonly resolveWorkspace: (input: {
-    conversationId: string;
-    agentId: string;
-  }) => Promise<WorkspaceBinding>;
-  /** Product Tools MCP endpoint the Oma child connects to
-   *  (`sse:<url>`), from PRODUCT_TOOLS_MCP_URL. */
-  readonly productToolsEntrypoint: string;
-  /** Per-run product-tools bearer registry; minted at dispatch, revoked
-   *  in dispatchFn's finally (every terminal path). */
-  readonly productToolsTokenRegistry: RunTokenRegistry;
-  /** Shared per-worktree lock (A4): run dispatch, loop clean-start/reset
-   *  and agent detach serialize on the same roots. */
-  readonly workspaceLocks: WorkspaceLockRegistry;
-  /** Called after a completed run's Product commit (History Message +
-   *  Context ref) lands atomically. Fired on the original commit AND on
-   *  retryTerminalCommit replay - consumers must be idempotent per
-   *  (runId, ...). Used by Conversation for the mention cascade. */
-  readonly onRunCommitted?: (
-    runId: string,
-    output: Message | undefined,
-    committedSeq: readonly number[],
-  ) => void;
-  /** Conversation title lookup for the auto-title retry flag. */
-  readonly conversationTitleOf?: (conversationId: string) => string | null | undefined;
-  /** Called after a failed/aborted/timeout run settles, so the surface can
-   *  persist an assistant error message (T3-2: failures survive refresh).
-   *  Fired once per terminal settle; consumers must be idempotent per runId. */
-  readonly onRunFailed?: (input: {
-    runId: string;
-    conversationId: string;
-    agentId: string;
-    error: string;
-  }) => void;
-  /** Durable telemetry sink for normalized run events (tool calls, status,
-   *  workflow steps). Wired to the RuntimeOps event store; failures are
-   *  swallowed — telemetry never affects the run. */
-  readonly persistRunEvent?: (runId: string, event: BackendEvent) => Promise<void>;
-}
-
-interface LiveRun {
-  readonly segment: BackendRunSegment;
-}
-
-export interface AgentRunExecutionService {
-  dispatch(runId: string): Promise<void>;
-  /** Steer injection into the live run of a branch. Explicit failure (input
-   *  cancelled) when no live run exists - never a silent conversion. */
-  injectSteer(branchId: string, input: { inputId: string; message: Message }): Promise<void>;
-  /** True when the run has a live in-process child (steer/abort routable).
-   *  DB-active is NOT sufficient: after a restart or a pre-acceptance
-   *  failure the Run row can be active with no live child (a zombie). */
-  isLive(runId: string): boolean;
-  /** True while the run's dispatch is in flight (pre-acceptance phases or
-   *  settling) even without a live child yet. "owned" = isLive || isInflight;
-   *  only a run that is neither is a true zombie. */
-  isInflight(runId: string): boolean;
-  /** Terminal a DB-active run that has NO live child (zombie): Run aborted,
-   *  bound input cancelled, branch released. Only used by the auto-steer
-   *  fallback; explicit steer never silently converts. */
-  abortStaleRun(runId: string): Promise<void>;
-  /** Shutdown: reject new dispatches, dispose the Backend (abort/SIGTERM/
-   *  SIGKILL every child, awaiting their exit), then drain every in-flight
-   *  dispatch so the DB is only closed after all terminal settles. */
-  dispose(): Promise<void>;
-  recover(): Promise<void>;
-  retryTerminalCommit(runId: string): Promise<void>;
-  stop(runId: string): Promise<void>;
-  /** Resolve a pending HITL approval in the live run (spec: approval
-   *  pipeline Phase B). Explicit failure when no live child exists. */
-  resolveApproval(runId: string, callId: string, decision: "allow" | "deny"): Promise<void>;
-  subscribe(runId: string, signal?: AbortSignal): AsyncIterable<BackendEvent>;
-}
+export type {
+  AgentRunExecutionDeps,
+  AgentRunExecutionService,
+  LiveRun,
+} from "./execution-types.js";
 
 /** Late-subscription handling for GET /agent-runs/:runId/events.
  *  - settled/unknown run: one terminal status event, then close (never a
