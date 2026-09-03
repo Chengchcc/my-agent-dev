@@ -787,6 +787,11 @@ describe("permissionMode auto classifier gate (CC alignment)", () => {
     text: string;
     permissionMode?: "ask" | "auto" | "deny";
     pluginTool?: { name: string; execute: () => Promise<Record<string, unknown>> };
+    approvalHandler?: (req: {
+      toolName: string;
+      reason?: string;
+      source?: string;
+    }) => Promise<{ decision: "allow" | "deny"; reason?: string }>;
   }): Promise<string> => {
     process.env.OMA_FAKE_TOOL = JSON.stringify(opts.script);
     process.env.OMA_FAKE_TEXT = opts.text;
@@ -818,6 +823,7 @@ describe("permissionMode auto classifier gate (CC alignment)", () => {
       skillRoots: [],
       ...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
       ...(pluginComponents ? { pluginComponents } : {}),
+      ...(opts.approvalHandler ? { approvalHandler: opts.approvalHandler as never } : {}),
     });
     const seg = await rt.run(runInput(opts.runId));
     const out = await seg.outcome;
@@ -916,6 +922,74 @@ describe("permissionMode auto classifier gate (CC alignment)", () => {
       expect(out).toContain("blocked by classifier");
       expect(out).toContain("untrusted plugin effect");
       expect(executed).toBe(false);
+    }),
+  );
+
+  test(
+    "a classifier block escalates to the human ONCE per unique action",
+    withFakes(async () => {
+      const escalations: string[] = [];
+      const bash = {
+        name: "bash",
+        input: { description: "d", command: "echo z > marker-esc.txt" },
+      };
+      const out = await autoRun({
+        runId: "r-auto-escalate",
+        // Three identical calls; the classifier consumes script slots, so:
+        // call1 pops bash#1, its classifier pops bash#2 (tool_use stream →
+        // no verdict → block) → escalates → human allows → executes;
+        // call2 pops bash#3, its classifier reads the text verdict → block
+        // → dedupe: silent deny, no second card; call3 ends the turn.
+        script: [bash, bash, bash],
+        text: '{"verdict":"block","reason":"looks destructive"}',
+        permissionMode: "auto",
+        approvalHandler: async (req) => {
+          escalations.push(`${req.source}:${req.toolName}`);
+          return { decision: "allow" };
+        },
+      });
+      // Exactly ONE escalation: first occurrence human-overridden → executed.
+      expect(escalations).toEqual(["classifier:bash"]);
+      expect(existsSync(join(tmp, "marker-esc.txt"))).toBe(true);
+      // Second identical occurrence: denied again with the text verdict
+      // (every denial is reported to the model) but WITHOUT a second card.
+      expect(out).toContain("blocked by classifier — looks destructive");
+      expect(out.match(/blocked by classifier/g)?.length).toBe(2);
+    }),
+  );
+
+  test(
+    "human denial keeps the block; critical-path rm never escalates and never runs",
+    withFakes(async () => {
+      let escalations = 0;
+      const denied = await autoRun({
+        runId: "r-auto-human-deny",
+        script: [{ name: "bash", input: { description: "d", command: "echo a > marker-hd.txt" } }],
+        text: '{"verdict":"block","reason":"risky"}',
+        permissionMode: "auto",
+        approvalHandler: async () => {
+          escalations++;
+          return { decision: "deny" };
+        },
+      });
+      expect(denied).toContain("(human denied)");
+      expect(existsSync(join(tmp, "marker-hd.txt"))).toBe(false);
+
+      // Critical deletion: hard block BEFORE the classifier (verdict would
+      // allow) and BEFORE any human card.
+      const critical = await autoRun({
+        runId: "r-auto-critical",
+        script: [{ name: "bash", input: { description: "d", command: "rm -rf /" } }],
+        text: '{"verdict":"allow"}',
+        permissionMode: "auto",
+        approvalHandler: async () => {
+          escalations++;
+          return { decision: "allow" };
+        },
+      });
+      expect(critical).toContain("critical-path deletion");
+      expect(critical).not.toContain("(human denied)");
+      expect(escalations).toBe(1); // only the human-deny case escalated
     }),
   );
 });

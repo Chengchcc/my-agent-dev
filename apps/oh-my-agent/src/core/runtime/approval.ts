@@ -6,8 +6,9 @@ export interface ApprovalRequest {
   readonly callId: string;
   readonly toolName: string;
   readonly input: unknown;
-  /** Who asked: "permission" (ask-mode gate) or "tool" (options.request). */
-  readonly source: "permission" | "tool";
+  /** Who asked: "permission" (ask-mode gate), "tool" (options.request), or
+   *  "classifier" (auto-mode block escalated to the human). */
+  readonly source: "permission" | "tool" | "classifier";
   readonly reason?: string;
 }
 

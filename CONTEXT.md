@@ -148,8 +148,8 @@ permissionMode=ask 的工具调用 → child approval_request 事件
 → child 继续/中止；超时 = deny（fail-closed）
 
 ②' auto 分类器（CC auto-mode 对齐）
-permissionMode=auto 的 bash/eval/mcp__*/插件工具 → 分类器模型单次审查
 （输入=最近用户消息+动作，永不带 tool results；allow 放行/block 带理由 deny/故障 fail-closed）
+block 先升级人工一次（同动作一张卡，复用 ask 审批链），重复同动作静默 deny；rm -rf 根/顶层/home/裸变量 glob = 硬熔断（分类器与人工之前）
 → write/edit 免审（workspace 路径沙箱）；模型 OMA_PERMISSION_CLASSIFIER_MODEL 可固定，缺省 Run 模型
 
 ③ 工具注入优先级

@@ -50,7 +50,11 @@ import { createWorkflowExecutor, type WorkflowAgentResult } from "../workflow/wo
 import { createWorkflowTools, isValidWorkflowName } from "../workflow/workflow-tools.js";
 import { type ApprovalHandler, approvalTimeoutMs, withApprovalDeadline } from "./approval.js";
 import { fakeProvider } from "./fake-provider.js";
-import { classifierTimeoutMs, classifyPermissionAction } from "./permission-classifier.js";
+import {
+  classifierTimeoutMs,
+  classifyPermissionAction,
+  isCriticalDeletion,
+} from "./permission-classifier.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
 import { loadStreamRules } from "./stream-rules.js";
 import { type ToolFilter, toolFilterAllows } from "./tool-filter.js";
@@ -777,6 +781,10 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     toolName === "eval" ||
     toolName.startsWith("mcp__") ||
     pluginCodeToolNames.has(toolName);
+  /** Escalated (human-reviewed) actions this Run, keyed toolName+input.
+   *  A classifier block escalates ONCE per unique action; identical repeats
+   *  deny silently (card-spam guard, CC's repeated-block discipline). */
+  const escalatedActions = new Set<string>();
   /** User intent context for the classifier (anti-injection: user messages
    *  only — never tool results, never assistant output). */
   const USER_INTENT_SOURCES = new Set(["prompt", "steer", "follow_up"]);
@@ -814,6 +822,17 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       : async (toolName, input) => {
           if (deps.permissionMode === "auto") {
             if (!classifierGated(toolName)) return undefined;
+            // Hard circuit breaker (nothing downstream can override it,
+            // not the classifier, not a human card).
+            if (
+              toolName === "bash" &&
+              isCriticalDeletion((input as { command?: string })?.command ?? "")
+            ) {
+              return {
+                block: true,
+                reason: `${toolName}: critical-path deletion (root/top-level/home target) — re-issue with a narrower named path`,
+              };
+            }
             const verdict = await classifyPermissionAction({
               toolName,
               input,
@@ -822,10 +841,32 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
                 streamModel(messages, signal, undefined, modelIdOverride),
               timeoutMs: classifierTimeoutMs(),
             });
-            if (verdict.verdict === "block") {
+            if (verdict.verdict === "allow") return undefined;
+            // CC auto fallback: a block escalates to the human ONCE per
+            // unique action; no approvalHandler or an already-escalated
+            // action denies silently.
+            const actionKey = `${toolName}:${JSON.stringify(input)}`;
+            if (!deps.approvalHandler || escalatedActions.has(actionKey)) {
               return {
                 block: true,
                 reason: `${toolName}: blocked by classifier — ${verdict.reason}`,
+              };
+            }
+            escalatedActions.add(actionKey);
+            const human = await withApprovalDeadline(
+              deps.approvalHandler({
+                callId: `cls-${randomUUID().slice(0, 8)}`,
+                toolName,
+                input,
+                reason: `classifier: ${verdict.reason}`,
+                source: "classifier",
+              }),
+              approvalTimeoutMs(),
+            );
+            if (human.decision === "deny") {
+              return {
+                block: true,
+                reason: `${toolName}: blocked by classifier — ${verdict.reason} (human denied)`,
               };
             }
             return undefined;

@@ -5,6 +5,7 @@ import {
   classifierModelId,
   classifierTimeoutMs,
   classifyPermissionAction,
+  isCriticalDeletion,
   parseVerdict,
 } from "./permission-classifier.js";
 
@@ -50,12 +51,53 @@ describe("parseVerdict", () => {
   });
 });
 
+describe("isCriticalDeletion", () => {
+  test("critical targets are caught", () => {
+    for (const cmd of [
+      "rm -rf /",
+      "rm -rf /*",
+      "rm -rf /etc",
+      "rm -rf /tmp",
+      "rm -rf /usr/*",
+      "rm -rf ~",
+      "rm -rf '~'",
+      "rm -rf $HOME",
+      "rm -rf $HOME/*",
+      'rm -rf "$VAR"/*',
+      "cd /tmp && rm -rf /var",
+      "rm -r -f /boot",
+    ]) {
+      expect(isCriticalDeletion(cmd)).toBe(true);
+    }
+  });
+
+  test("ordinary deletions pass through to the classifier", () => {
+    for (const cmd of [
+      "rm -rf ./build",
+      "rm -rf dist out",
+      "rm -rf /tmp/scratch-dir",
+      "rm notes.txt",
+      "rmdir empty-dir",
+      "grep rm /etc/passwd",
+      "echo about rm /etc here",
+    ]) {
+      expect(isCriticalDeletion(cmd)).toBe(false);
+    }
+  });
+
+  test("substitution-hidden deletes ARE caught; backticks remain the ceiling", () => {
+    expect(isCriticalDeletion("echo $(rm -rf /)")).toBe(true);
+    expect(isCriticalDeletion("echo `rm -rf /`")).toBe(false);
+  });
+});
+
 describe("buildClassifierMessages", () => {
   test("system + one user message; user intent + tool input, no tool results", () => {
     const msgs = buildClassifierMessages("bash", { command: "ls" }, ["fix the bug", "run tests"]);
     expect(msgs).toHaveLength(2);
     expect(msgs[0]?.role).toBe("system");
     expect(msgs[0]?.text).toContain("ALLOW");
+    expect(msgs[0]?.text).toContain("BINDING");
     expect(msgs[1]?.role).toBe("user");
     expect(msgs[1]?.text).toContain("fix the bug");
     expect(msgs[1]?.text).toContain("run tests");
