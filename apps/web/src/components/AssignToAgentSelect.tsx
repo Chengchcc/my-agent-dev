@@ -25,7 +25,7 @@ export function AssignToAgentSelect({
         onAssign(e.target.value);
         setValue("");
       }}
-      className="h-7 rounded border border-(--hairline) bg-transparent px-1 text-[10px] text-(--mute)"
+      className="h-7 rounded border border-(--hairline) bg-transparent px-1.5 text-xs text-(--text-body)"
       disabled={unassigned.length === 0}
       aria-label="Assign to agent"
     >

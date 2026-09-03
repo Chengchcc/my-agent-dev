@@ -53,15 +53,6 @@ export function KnowledgePackPanel({ agentId }: { agentId: string }) {
             // "installed (not linked)" badge instead of the green one.
             badges={[p.status === "ready" && !linked ? "installed (not linked)" : p.status]}
             meta={p.status === "ready" && !linked ? ["available (not linked)"] : undefined}
-            status={
-              p.status === "ready"
-                ? linked
-                  ? "ok"
-                  : undefined
-                : p.status === "failed"
-                  ? "err"
-                  : undefined
-            }
             actions={
               <Switch
                 checked={linked}

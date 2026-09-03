@@ -59,7 +59,6 @@ export function McpServerPanel({ agentId }: { agentId: string }) {
           title={s.name}
           tag={{ label: s.transport }}
           desc={s.transport === "sse" ? (s.url ?? undefined) : (s.command ?? undefined)}
-          badges={s.status ? [s.status] : undefined}
           meta={(switches.get(s.serverId) ?? false) ? undefined : ["available (not enabled)"]}
           status={rowStatus(s.status)}
           actions={
