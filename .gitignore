@@ -16,3 +16,6 @@ apps/web/tsconfig.tsbuildinfo
 
 # oma workspace runtime data (memory, product-tools, skills)
 .oma/
+
+# Quality Playbook run artifacts
+quality/
