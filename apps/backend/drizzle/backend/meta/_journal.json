@@ -333,10 +333,10 @@
     },
     {
       "idx": 47,
-      "version": "7",
-      "when": 1788432636584,
+      "version": "6",
+      "when": 1788433298940,
       "tag": "0047_knowledge_pack_source_rev",
-      "breakpoints": false
+      "breakpoints": true
     }
   ]
 }
