@@ -15,7 +15,7 @@ import { QueryState } from "@/components/ops/QueryState";
 import { Page, PageHeader } from "@/components/page";
 import { UsagePanel } from "@/components/UsagePanel";
 import { Button } from "@/components/ui/button";
-import { ListRowCard, SubTabs } from "@/components/ui/polish";
+import { ListRowCard, SubTabs, statusBadge } from "@/components/ui/polish";
 import { Switch } from "@/components/ui/switch";
 import { WorkspaceExplorer } from "@/components/WorkspaceExplorer";
 import { useAgentDetail } from "@/features/agents/hooks";
@@ -55,15 +55,6 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 type PackStatus = "pending" | "installing" | "ready" | "failed" | "syncing";
-
-function packStatusLabel(status: PackStatus): string {
-  if (status === "pending") return "Pending";
-  if (status === "installing") return "Installing…";
-  if (status === "syncing") return "Syncing…";
-  if (status === "ready") return "Ready";
-  if (status === "failed") return "Failed";
-  return status;
-}
 
 /** Column 3 of the master-detail split: agent header + description card +
  *  inline config bar + the seven-tab content area. Content per tab is the
@@ -179,7 +170,7 @@ function AgentSkillsPanel({ agentId }: { agentId: string }) {
           key={pack.id}
           icon={<Package className="size-4 text-(--mute)" />}
           title={pack.name}
-          badges={[packStatusLabel(pack.status)]}
+          badges={[statusBadge(pack.status)]}
           meta={
             pack.status === "ready" && !assignedIds.has(pack.id)
               ? ["available (not assigned)"]

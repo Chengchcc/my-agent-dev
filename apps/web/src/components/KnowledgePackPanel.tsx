@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Library } from "lucide-react";
-import { ListRowCard } from "@/components/ui/polish";
+import { ListRowCard, statusBadge } from "@/components/ui/polish";
 import { Switch } from "@/components/ui/switch";
 import { useAgentDetail } from "@/features/agents/hooks";
 import { agentKeys } from "@/features/agents/query-keys";
@@ -51,7 +51,9 @@ export function KnowledgePackPanel({ agentId }: { agentId: string }) {
             // Ready is a GLOBAL install state; a green "ok" badge alone made
             // users read it as "linked". Ready-but-unassigned shows a neutral
             // "installed (not linked)" badge instead of the green one.
-            badges={[p.status === "ready" && !linked ? "installed (not linked)" : p.status]}
+            badges={[
+              p.status === "ready" && !linked ? "installed (not linked)" : statusBadge(p.status),
+            ]}
             meta={p.status === "ready" && !linked ? ["available (not linked)"] : undefined}
             actions={
               <Switch

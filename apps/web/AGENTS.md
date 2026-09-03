@@ -78,8 +78,8 @@ small derived read, add a hook to the owning feature (e.g.
   new buttons there must too.
 - Resource subsystems (MCP servers, knowledge packs, skill packs) have
   THREE distinct states with EXCLUSIVE visual channels: install state
-  (catalog-wide) = neutral text badge (`ready/failed/...`); mount state
-  (per-agent) = `Switch` + "available (not …)" meta when unmounted;
+  (catalog-wide) = text badge via `statusBadge` (failed renders with the
+  err tone, everything else neutral); mount state (per-agent) = `Switch`
   `ListRowCard` status dot = connection/liveness ONLY (it renders
   "Connected"/"Error"). Never reuse the green dot for install-ok or
   mounted-ok — `KnowledgePackPanel` once did and users read it as

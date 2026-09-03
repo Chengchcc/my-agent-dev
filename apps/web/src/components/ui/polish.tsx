@@ -136,7 +136,7 @@ export function ListRowCard({
   title: string;
   subtitle?: string;
   tag?: { label: string; tone?: "info" | "warn" | "err" };
-  badges?: string[];
+  badges?: Array<string | { label: string; tone?: "ok" | "warn" | "err" }>;
   idChip?: string;
   desc?: string;
   meta?: string[];
@@ -184,11 +184,25 @@ export function ListRowCard({
               {tag.label}
             </span>
           )}
-          {badges?.map((b) => (
-            <span key={b} className="rounded px-1.5 py-0.5 text-(--text-cap) text-(--mute)">
-              {b}
-            </span>
-          ))}
+          {badges?.map((b, i) => {
+            const label = typeof b === "string" ? b : b.label;
+            const tone =
+              typeof b === "string" || !b.tone
+                ? undefined
+                : {
+                    background: `color-mix(in srgb, var(--${b.tone}) 12%, transparent)`,
+                    color: `var(--${b.tone})`,
+                  };
+            return (
+              <span
+                key={`${label}-${i}`}
+                className="rounded px-1.5 py-0.5 text-(--text-cap) text-(--mute)"
+                style={tone}
+              >
+                {label}
+              </span>
+            );
+          })}
           {idChip && (
             <button
               type="button"
@@ -280,4 +294,17 @@ export function SectionKicker({ children, hint }: { children: ReactNode; hint?: 
       {hint && <p className="mt-0.5 text-(--text-body) text-(--faint)">{hint}</p>}
     </div>
   );
+}
+
+/** Install-state badge for resource subsystem rows (pending/installing/
+ *  syncing/ready/failed). Failure gets the err tone; everything else stays
+ *  neutral. Keep the three channels exclusive (web AGENTS.md): this badge
+ *  is install state only — mount is the Switch, connection is the dot. */
+export function statusBadge(status: string): { label: string; tone?: "err" } {
+  if (status === "pending") return { label: "Pending" };
+  if (status === "installing") return { label: "Installing…" };
+  if (status === "syncing") return { label: "Syncing…" };
+  if (status === "ready") return { label: "Ready" };
+  if (status === "failed") return { label: "Failed", tone: "err" };
+  return { label: status };
 }

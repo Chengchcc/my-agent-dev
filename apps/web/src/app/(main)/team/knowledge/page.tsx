@@ -25,25 +25,16 @@ import {
   ListToolbar,
   SectionKicker,
   StatCard,
+  statusBadge,
 } from "@/components/ui/polish";
 import { useAgentList } from "@/features/agents/hooks";
 import { agentKeys } from "@/features/agents/query-keys";
 import { useKnowledgePacks } from "@/features/knowledge/hooks";
-import type { KnowledgePackRow } from "@/features/knowledge/queries";
 import { knowledgePackKeys } from "@/features/knowledge/query-keys";
 import { api } from "@/lib/api";
 
 /** Knowledge pack pool (ADR 0022): install builtin/git packs here; agent
  *  switches live on the agent pages (knowledge checkboxes). */
-
-function statusLabel(status: KnowledgePackRow["status"]): string {
-  if (status === "pending") return "Pending";
-  if (status === "installing") return "Installing…";
-  if (status === "syncing") return "Syncing…";
-  if (status === "ready") return "Ready";
-  if (status === "failed") return "Failed";
-  return status;
-}
 
 export default function KnowledgePackPage() {
   const qc = useQueryClient();
@@ -195,7 +186,7 @@ export default function KnowledgePackPage() {
                     icon={<BookOpen className="size-4 text-(--mute)" />}
                     title={p.name}
                     tag={{ label: p.sourceKind }}
-                    badges={[statusLabel(p.status)]}
+                    badges={[statusBadge(p.status)]}
                     desc={p.status === "failed" && p.error ? p.error : p.description}
                     meta={[
                       usedByNames.length ? `used by ${usedByNames.join(", ")}` : "not assigned",

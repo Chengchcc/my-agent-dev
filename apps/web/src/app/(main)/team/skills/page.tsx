@@ -7,7 +7,7 @@ import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { InstallPackForm } from "@/components/InstallPackForm";
 import { PackFileSearch } from "@/components/PackFileSearch";
 import { Page, PageBody, PageHeader } from "@/components/page";
-import { dirname, FileContent, FileTree, statusLabel } from "@/components/SkillPackManager";
+import { dirname, FileContent, FileTree } from "@/components/SkillPackManager";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -18,6 +18,7 @@ import {
   ListToolbar,
   SectionKicker,
   StatCard,
+  statusBadge,
 } from "@/components/ui/polish";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -239,7 +240,7 @@ export default function SkillPacksPage() {
                       icon={<Package className="size-4 text-(--mute)" />}
                       title={p.name}
                       tag={{ label: p.sourceKind }}
-                      badges={[statusLabel(p.status)]}
+                      badges={[statusBadge(p.status)]}
                       desc={p.error ?? p.description}
                       meta={meta}
                       onClick={() => setSelectedId(p.id)}
