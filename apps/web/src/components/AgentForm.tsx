@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { AgentFormLarkSection } from "@/components/AgentFormLarkSection";
-import { AgentFormSkillPacks } from "@/components/AgentFormSkillPacks";
+import { AgentFormResourceSection } from "@/components/AgentFormResourceSection";
 import type { AgentFormValues } from "@/components/agent-form-types";
 import { agentFormSchema } from "@/components/agent-form-types";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { agentKeys, useCreateAgent, useUpdateAgent } from "@/features/agents/hooks";
+import { agentKeys, useCreateAgent, useMcpCatalog, useUpdateAgent } from "@/features/agents/hooks";
+import { useKnowledgePacks } from "@/features/knowledge/hooks";
 import { useModelList } from "@/features/models/hooks";
 import {
   useAgentSkillPacks,
@@ -54,6 +55,8 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
   const [setupLoading, setSetupLoading] = useState(false);
   const [serverError, setServerError] = useState("");
   const [selectedPackIds, setSelectedPackIds] = useState<string[]>([]);
+  const [selectedMcpIds, setSelectedMcpIds] = useState<string[]>([]);
+  const [selectedKnowledgeIds, setSelectedKnowledgeIds] = useState<string[]>([]);
   const { data: modelData } = useModelList();
   const providers = useMemo(() => modelData?.providers ?? [], [modelData]);
   // Backend kinds present in the aggregated catalog, canonical order.
@@ -144,7 +147,10 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
         enableLark: editAgent.lark?.enabled ?? false,
         botDisplayName: editAgent.lark?.botDisplayName ?? "",
       });
-      setSelBackendKind(editAgent.backendKind ?? "oma");
+      setSelectedMcpIds(
+        (editAgent.mcpServers ?? []).filter((m) => m.enabled).map((m) => m.serverId),
+      );
+      setSelectedKnowledgeIds(editAgent.knowledgePacks ?? []);
       setSetupSession(null);
     }
   }, [editAgent, form]);
@@ -193,6 +199,28 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
   const { data: availablePacks } = useSkillPackList();
   const { data: assignedPacks } = useAgentSkillPacks(editAgent?.id ?? "");
   const setPacksMutation = useSetAgentPacks(editAgent?.id ?? "");
+  const { data: mcpCatalog } = useMcpCatalog();
+  const { data: knowledgeData } = useKnowledgePacks();
+  const mcpCatalogServers: { serverId: string; name: string }[] = mcpCatalog?.mcpServers ?? [];
+
+  /** Checkbox state → per-agent attach body. In edit mode this preserves
+   *  disabled catalog rows and rows whose server has left the catalog, so
+   *  an unrelated save never silently detaches resources. */
+  function selectedMcpBody() {
+    const catalogIds = new Set(mcpCatalogServers.map((s) => s.serverId));
+    const fromCatalog = mcpCatalogServers.flatMap((s) => {
+      const hasRow = editAgent?.mcpServers?.some((m) => m.serverId === s.serverId);
+      const enabled = selectedMcpIds.includes(s.serverId);
+      return hasRow || enabled ? [{ serverId: s.serverId, enabled }] : [];
+    });
+    const orphaned = (editAgent?.mcpServers ?? []).filter((m) => !catalogIds.has(m.serverId));
+    return [...fromCatalog, ...orphaned];
+  }
+
+  function toggleId(setter: typeof setSelectedPackIds) {
+    return (id: string, checked: boolean) =>
+      setter((prev) => (checked ? [...prev, id] : prev.filter((x) => x !== id)));
+  }
 
   // Sync assigned packs to local state when loaded
   useEffect(() => {
@@ -210,8 +238,8 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
         model: values.model.split("/").slice(1).join("/") || values.model,
       },
       permissionMode: values.permissionMode,
-      ...(values.workspacePath ? { workspacePath: values.workspacePath } : {}),
-      ...(values.maxSteps ? { maxSteps: parseInt(values.maxSteps, 10) } : {}),
+      mcpServers: selectedMcpBody(),
+      knowledgePacks: [...new Set(selectedKnowledgeIds)],
       reasoningEffort: values.reasoningEffort || null,
     };
     if (values.enableLark)
@@ -257,6 +285,15 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
       try {
         const agent = await createMutation.mutateAsync(buildBody(values));
         toast.success("Agent created");
+        if (selectedPackIds.length > 0) {
+          try {
+            await api.setAgentSkillPacks(agent.id, { packIds: selectedPackIds });
+          } catch {
+            toast.error("Skill packs not assigned", {
+              description: "Retry from the agent's Skills tab",
+            });
+          }
+        }
         form.reset();
         setOpen(false);
         router.push(`/team/${agent.id}`);
@@ -286,6 +323,9 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
         onClick={() => {
           form.reset();
           setServerError("");
+          setSelectedPackIds([]);
+          setSelectedMcpIds([]);
+          setSelectedKnowledgeIds([]);
           setOpen(true);
         }}
         variant={triggerLabel ? "outline" : "default"}
@@ -590,15 +630,30 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                   getBotDisplayName={() => form.getValues("botDisplayName")}
                 />
 
-                <AgentFormSkillPacks
-                  isEdit={isEdit}
-                  availablePacks={availablePacks ?? []}
-                  selectedPackIds={selectedPackIds}
-                  onToggle={(packId, checked) =>
-                    setSelectedPackIds((prev) =>
-                      checked ? [...prev, packId] : prev.filter((id) => id !== packId),
-                    )
-                  }
+                <AgentFormResourceSection
+                  title="Skill Packs"
+                  items={(availablePacks ?? []).map((p) => ({
+                    id: p.id,
+                    name: p.name,
+                    hint: p.status,
+                  }))}
+                  selectedIds={selectedPackIds}
+                  onToggle={toggleId(setSelectedPackIds)}
+                  emptyHint="No skill packs installed yet — install at /team/skills"
+                />
+                <AgentFormResourceSection
+                  title="MCP Servers"
+                  items={mcpCatalogServers.map((s) => ({ id: s.serverId, name: s.name }))}
+                  selectedIds={selectedMcpIds}
+                  onToggle={toggleId(setSelectedMcpIds)}
+                  emptyHint="No MCP servers installed yet — install at /team/mcp"
+                />
+                <AgentFormResourceSection
+                  title="Knowledge Packs"
+                  items={(knowledgeData?.packs ?? []).map((p) => ({ id: p.id, name: p.name }))}
+                  selectedIds={selectedKnowledgeIds}
+                  onToggle={toggleId(setSelectedKnowledgeIds)}
+                  emptyHint="No knowledge packs installed yet — install at /team/knowledge"
                 />
 
                 {serverError && <p className="text-xs text-destructive">{serverError}</p>}

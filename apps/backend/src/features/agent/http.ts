@@ -135,7 +135,10 @@ export function agentRoutes(
           permissionMode: t.Optional(
             t.Union([t.Literal("ask"), t.Literal("auto"), t.Literal("deny")]),
           ),
-          maxSteps: t.Optional(t.Integer({ minimum: 1 })),
+          mcpServers: t.Optional(
+            t.Array(t.Object({ serverId: t.String({ minLength: 1 }), enabled: t.Boolean() })),
+          ),
+          knowledgePacks: t.Optional(t.Array(t.String({ minLength: 1 }))),
           lark: t.Optional(
             t.Object({
               enabled: t.Boolean(),

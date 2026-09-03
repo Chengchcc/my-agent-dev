@@ -81,6 +81,20 @@ describe("AgentService", () => {
     expect(agent.config.runtime_config.permission_mode).toBe("ask");
   });
 
+  test("create carries mcpServers and knowledgePacks into runtime config", async () => {
+    const { svc } = makeSvc();
+    const agent = await svc.create({
+      name: "equipped",
+      model: { provider: "anthropic", model: "x" },
+      mcpServers: [{ serverId: "search", enabled: true }],
+      knowledgePacks: ["my-agent-team"],
+    });
+    expect(agent.config.runtime_config.mcp_servers).toEqual([
+      { server_id: "search", enabled: true },
+    ]);
+    expect(agent.config.runtime_config.knowledge_packs).toEqual(["my-agent-team"]);
+  });
+
   test("getById throws AgentNotFoundError for unknown id", async () => {
     const { svc } = makeSvc();
     await expect(svc.getById("nonexistent")).rejects.toThrow(AgentNotFoundError);
