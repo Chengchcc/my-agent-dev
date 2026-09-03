@@ -61,7 +61,7 @@ export function runEventStreamFor(
 export function createAgentRunExecutionService(
   deps: AgentRunExecutionDeps,
 ): AgentRunExecutionService {
-  const { runPort, contextPort, backends, resolveWorkspace } = deps;
+  const { runPort, backends } = deps;
 
   /** Process-lifetime live refs, only for steer/stop/current-event
    *  subscription. Removed when the run reaches a terminal state. */

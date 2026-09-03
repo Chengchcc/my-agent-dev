@@ -32,7 +32,7 @@ export function createExecutionDispatcher(ctx: ExecutionDispatchCtx): {
   ): AgentRunExecutionDeps["backends"][keyof AgentRunExecutionDeps["backends"]] | undefined;
 } {
   const { deps, liveEvents, liveRuns, inflight, inflightPromises, state } = ctx;
-  const { runPort, contextPort, backends, resolveWorkspace } = deps;
+  const { runPort, contextPort, resolveWorkspace } = deps;
   const runTimeoutMs = deps.runTimeoutMs ?? 30 * 60_000;
 
   const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
