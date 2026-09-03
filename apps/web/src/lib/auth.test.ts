@@ -9,7 +9,7 @@ process.env.SESSION_SECRET = "test-secret";
  *  leak between scenarios. Bun treats the query string as a distinct
  *  module URL. */
 function freshAuth() {
-  return import(`../../src/lib/auth.ts?case=${Math.random().toString(36).slice(2)}`);
+  return import(`./auth.ts?case=${Math.random().toString(36).slice(2)}`);
 }
 
 describe("auth login (F3)", () => {

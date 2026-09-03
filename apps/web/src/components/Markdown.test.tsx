@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { describe, expect, it } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Markdown } from "../../src/components/Markdown";
+import { Markdown } from "./Markdown";
 
 function html(text: string): string {
   return renderToStaticMarkup(<Markdown text={text} />);

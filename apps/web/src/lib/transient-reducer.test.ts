@@ -4,12 +4,17 @@ import {
   appendTransient,
   clearRunTodos,
   clearRunTools,
+  clearTransientApproval,
   completeTool,
   type LiveToolMap,
+  markTransientError,
+  pushTransientNotice,
   type RunTodoMap,
   removeTransient,
   setRunTodos,
+  setTransientApproval,
   type TransientMap,
+  toolKey,
   upsertTool,
 } from "./transient-reducer";
 
@@ -105,7 +110,6 @@ describe("transient reducer — tools", () => {
       runId: "r1",
       callId: "c1",
       name: "ls",
-      kind: "native",
       state: "running",
     });
     expect(s["r1:c1"]).toMatchObject({ name: "ls", state: "running" });
@@ -113,7 +117,7 @@ describe("transient reducer — tools", () => {
 
   test("tool completed → done with result", () => {
     let s: LiveToolMap = {};
-    s = upsertTool(s, { runId: "r1", callId: "c1", name: "ls", kind: "native", state: "running" });
+    s = upsertTool(s, { runId: "r1", callId: "c1", name: "ls", state: "running" });
     s = completeTool(s, "r1", "c1", { entries: [] }, false);
     expect(s["r1:c1"]?.state).toBe("done");
     expect(s["r1:c1"]?.result).toEqual({ entries: [] });
@@ -125,7 +129,6 @@ describe("transient reducer — tools", () => {
       runId: "r1",
       callId: "c1",
       name: "bash",
-      kind: "native",
       state: "running",
     });
     s = completeTool(s, "r1", "c1", { error: "boom" }, true);
@@ -138,12 +141,11 @@ describe("transient reducer — tools", () => {
 
   test("run ended clears only that run's tools", () => {
     let s: LiveToolMap = {};
-    s = upsertTool(s, { runId: "r1", callId: "c1", name: "ls", kind: "native", state: "running" });
+    s = upsertTool(s, { runId: "r1", callId: "c1", name: "ls", state: "running" });
     s = upsertTool(s, {
       runId: "r2",
       callId: "c2",
       name: "read",
-      kind: "native",
       state: "running",
     });
     s = clearRunTools(s, "r1");
@@ -172,7 +174,6 @@ describe("transient reducer — todos", () => {
       runId: "r1",
       callId: "c1",
       name: "ls",
-      kind: "native",
       state: "running",
     });
     todos = setRunTodos(todos, "r1", [{ id: "a", text: "x", status: "pending" }]);
@@ -193,7 +194,6 @@ describe("transient reducer — todos", () => {
       runId: "r1",
       callId: "c1",
       name: "ls",
-      kind: "native",
       state: "done",
     });
     todos = setRunTodos(todos, "r1", [{ id: "a", text: "x", status: "done" }]);
@@ -202,5 +202,58 @@ describe("transient reducer — todos", () => {
     expect(t.r1?.text).toBe("final text");
     expect(tools).toEqual({});
     expect(todos).toEqual({});
+  });
+});
+
+describe("transient reducer — errors and notices", () => {
+  test("markTransientError keeps text and attaches error", () => {
+    let s: TransientMap = {};
+    s = appendTransient(s, "r1", "m", "partial");
+    s = markTransientError(s, "r1", "m", "boom");
+    expect(s.r1?.text).toBe("partial");
+    expect(s.r1?.error).toBe("boom");
+  });
+
+  test("pushTransientNotice caps at 5 per run", () => {
+    let s: TransientMap = {};
+    for (let i = 1; i <= 6; i++) s = pushTransientNotice(s, "r1", "m", `n${i}`);
+    expect(s.r1?.notices).toHaveLength(5);
+    expect(s.r1?.notices?.[0]).toBe("n2");
+    expect(s.r1?.notices?.[4]).toBe("n6");
+  });
+
+  test("notices are run-local (no cross-run bleed)", () => {
+    let s: TransientMap = {};
+    s = pushTransientNotice(s, "r1", "m", "a");
+    s = pushTransientNotice(s, "r2", "m", "b");
+    expect(s.r1?.notices).toEqual(["a"]);
+    expect(s.r2?.notices).toEqual(["b"]);
+  });
+});
+
+describe("transient reducer — approval", () => {
+  test("setTransientApproval creates and replaces per run", () => {
+    let s: TransientMap = {};
+    s = setTransientApproval(s, "r1", "m", { callId: "c1", toolName: "bash", reason: "r1" });
+    expect(s.r1?.approval).toMatchObject({ callId: "c1", toolName: "bash" });
+    s = setTransientApproval(s, "r1", "m", { callId: "c2", toolName: "read", reason: "r2" });
+    expect(s.r1?.approval?.callId).toBe("c2");
+  });
+
+  test("clearTransientApproval removes only that run's approval", () => {
+    let s: TransientMap = {};
+    s = setTransientApproval(s, "r1", "m", { callId: "c1", toolName: "bash", reason: "r1" });
+    s = setTransientApproval(s, "r2", "m", { callId: "c9", toolName: "read", reason: "r2" });
+    s = clearTransientApproval(s, "r1");
+    expect(s.r1?.approval).toBeUndefined();
+    expect(s.r2?.approval?.callId).toBe("c9");
+  });
+});
+
+describe("transient reducer — tool keys", () => {
+  test("toolKey distinguishes runId and callId collisions", () => {
+    expect(toolKey("r1", "c1")).toBe("r1:c1");
+    expect(toolKey("r1", "c1")).not.toBe(toolKey("r1", "c2"));
+    expect(toolKey("r1", "c1")).not.toBe(toolKey("r2", "c1"));
   });
 });

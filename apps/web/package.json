@@ -10,7 +10,8 @@
     "lint": "biome check . && eslint .",
     "format": "biome check --write .",
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && bun run test:typecheck",
+    "test:typecheck": "tsc -p tsconfig.test.json --noEmit",
     "lint:ui": "bun scripts/ui-lint.ts",
     "audit:ui": "bun scripts/ui-audit.ts"
   },
