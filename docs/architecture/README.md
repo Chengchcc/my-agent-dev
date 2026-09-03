@@ -70,7 +70,7 @@ Product Backend
 4. [Provider 架构](./provider-architecture-spec.md)
 5. [Compaction](./runtime/compaction.md)
 6. [Skill Pack](./plugins/skill-pack.md)
-7. [安全模型](./security/overview.md) / [安全债清单](./security-debt-backlog.md)
+7. [安全模型](./security/overview.md) / [oma 内核安全面](./security/oma-kernel.md) / [安全债清单](./security-debt-backlog.md)
 
 ## 核心概念
 

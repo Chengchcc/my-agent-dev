@@ -29,9 +29,12 @@ project-scope code), `permissionMode` deny drops plugin code components.
   transient approval card (Allow/Deny) → POST → child resolves. The SSE event was
   already forwarded by the `backend.oma.*` default mapping — no adapter event
   change needed.
-- `permissionMode` "ask" scope is plugin code tools only; native tools
-  (bash/write/...) are unaffected (a native-tool permission system with
-  allow-rules is a separate design).
+- `permissionMode` native-tool gate shipped (2026-08-26, 4633e9af): bash/write/edit/
+  create_file/mcp__* run through `makeSessionPermissionGate` in ask/deny; auto mode
+  classifies bash/eval/mcp__*/plugin code tools (fail-closed, 600afddf); workflow
+  subagents share the gate (46c574cd). Remaining: an allow-rules granular native
+  permission system is a separate design.
+
 **Older remaining list (superseded where marked above):**
 
 - Marketplace cache + version management (shipped 2026-08-26): new `packages/source-fetch` is the shared base (fetchGitSource/fetchGitSourceSync/materializeZipSource/directoryFingerprint) — no backend/oma coupling; oma marketplace `marketplaceSourceToRoot` now clones via the base and records the git HEAD rev on `MarketplaceRecord.version` (shown in `/marketplace` list). Backend skill-pack can reuse the same base (its own git/zip clone currently duplicated inline). Shipped: skill-pack git/zip install now uses the same base (fetchGitSource/materializeZipSource) — the two inline clone/unzip/checksum implementations are gone; a pre-extraction zip-entry guard (reject `..`/absolute paths before unzip) was added to the base for fail-closed safety. Remaining: plugin `update` command (re-fetch + re-copy).

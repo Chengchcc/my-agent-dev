@@ -33,6 +33,8 @@
 - `docs/architecture/runtime/oma.md`
 - `docs/architecture/runtime/compaction.md`
 - `docs/architecture/security/overview.md`
+- `docs/architecture/security/oma-kernel.md`
 - `docs/architecture/surfaces/lark.md`
 - `docs/architecture/surfaces/overview.md`
 - `docs/architecture/surfaces/web.md`
+- `docs/superpowers/specs/2026-09-03-bash-sandbox-design.md`

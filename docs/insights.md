@@ -87,8 +87,33 @@
 （`goal-state.ts`、`ConversationGoalStatusBar`、`/goal` 路由、WorkSummary），至 2026-09-01
 （9f2dd45e）才清扫干净。规则固化：**删功能必须同变更清扫全部产品暴露面——引擎、UI、
 命令、HTTP 接口、文档是一个功能的多个影子，只删引擎会留幽灵。** 未来「空间」功能
-频繁增删时，把该规则当作删除类变更的验收项（audit 检查或 PR 自查清单）。
+频繁增删时,把该规则当作删除类变更的验收项(audit 检查或 PR 自查清单)。
 
+## I6 oma 安全投入纵深极深,但边界留白是 semi-trusted 定位的投影(2026-09-03)
+
+**我们观察到** oma 内核安全面呈鲜明特征:纵深超过业界平均(路径逃逸防到中间
+目录 symlink、插件信任防到内容哈希改动即失效、审批防到超时/无交互一律 deny、
+SSRF 防到 169.254.169.254),但边界有硬留白(bash 只约束 cwd 不约束命令语义与
+网络、URL guard 不校验解析后 IP)。
+
+**这并不是因为** 防护能力不够,**而是因为** 纵深与留白都是 ADR 0026
+「single-user local / agents semi-trusted」定位的直接投影——留白在单人本地是
+「正确的残余风险接受」,ADR 0026 已把升级项列成 LAN/hosted follow-up。
+
+**这会导致** 网络化部署时,这些残余风险静默升级为真实攻击面(跨租户文件读、
+内网横向移动、多租户 trust 隔离),且没有任何机制在部署形态切换时强制复核。
+
+**因此存在的机会是** 把「网络化五项准入门槛」(bash OS 沙箱[设计已定稿]、
+MCP env 加密、移除 mock login、URL 解析后 IP 校验、native allow-rules)与
+ADR 0026 的 re-review 条款绑定为部署准入,而不是上线后补丁。详见
+[oma 内核安全面](./architecture/security/oma-kernel.md)。
+
+**修正记录**:本次对账修正了两处初稿判断——redirect 缺口是半缺口(默认
+createStdWebFetchPort 已逐 hop 过 guard);native permission gate 已于
+2026-08-26 内核强制(4633e9af/600afddf/46c574cd),future-work.md 相关表述
+已同步修正。印证 I5:洞察必须与代码对账,「已验证」标签尤其要重新核实。
+
+**可信度**:已验证(代码逐项核实;网络化风险为前瞻判断,较高可信)。
 ---
 
 ## 汇总
@@ -100,5 +125,6 @@
 | I3 | 文档是 agent 运行时依赖，审计覆盖不足 | audit:docs 红绿 | **已验证** | 扩展 audit:docs 做路径存在性对账 |
 | I4 | 真实 E2E 稀缺且高杠杆 | 冒烟通过率 | 较高可信 | ✅ `bun scripts/smoke-workflow.ts` + `SMOKE_CRON` 定时自冒烟 |
 | I5 | 删除收尾（已闭环） | 死概念残留数 | 较高可信 | ✅ 08-28 已随 d35e7dd6 完成；fixture 有意保留 |
+| I6 | 安全纵深深、边界留白是定位投影 | 网络化准入门槛达成率 | **已验证** | BashSandbox 设计定稿,门槛登记 oma-kernel.md |
 
 Owner 均为 repo owner（单人项目）。每条推进后回填验证结果与可信度升级。
