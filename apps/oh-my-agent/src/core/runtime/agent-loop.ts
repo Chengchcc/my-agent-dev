@@ -1,24 +1,27 @@
 import type { BackendInputMessage, Usage } from "@chengchenccc/agent-contract";
-import { debugLog } from "@chengchenccc/agent-contract";
 import { ProviderError } from "@chengchenccc/ai";
 import type { Message } from "@chengchenccc/message";
 import type { MessageEntry } from "../persistence/session-tree.js";
 import type { AgentLoopListener, OmaLoopEvent } from "./agent-event.js";
+import {
+  executeTools,
+  type LoopCallContext,
+  type LoopRuntimeState,
+  type LoopToolMapRef,
+  readBranchMessages,
+  streamModelTurn,
+} from "./agent-loop-run.js";
 import type {
   ModelTurn,
   OmaLoopResult,
   OmaSession,
   OmaSessionOptions,
-  PendingToolCall,
-  StreamRule,
-  TurnBlock,
 } from "./agent-loop-types.js";
-import { matchStreamRule, safeParseJson, TOOL_FAILURE_REMINDER } from "./agent-loop-utils.js";
+import { TOOL_FAILURE_REMINDER } from "./agent-loop-utils.js";
 import { compactSession } from "./compaction.js";
 import {
   estimateContextTokens,
   isSilentContextOverflow,
-  type TurnUsage,
   type UsageAnchor,
   usageTotalTokens,
 } from "./context-estimate.js";
@@ -28,7 +31,6 @@ import { TokenEstimateCache } from "./message-cache.js";
 import { collectTools, validatePlugins } from "./plugin.js";
 import type { PluginRuntime } from "./plugin-runtime.js";
 import { renderLoopMeta } from "./prompt.js";
-import { retryStream } from "./retry.js";
 import { buildTitleContext, generateTitle } from "./title.js";
 import { pruneOldToolResults } from "./tool-pruning.js";
 
@@ -62,6 +64,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
   // Static plugin tools + per-run resolved tools (Product Tool manifest).
   const baseTools = collectTools(opts.plugins);
   let toolMap = new Map(baseTools.map((t) => [t.name, t]));
+  const toolMapRef: LoopToolMapRef = { current: toolMap };
   let status: "idle" | "running" | "completed" | "failed" | "stopped" = "idle";
   let runUsage: Usage | undefined;
   let active = false;
@@ -71,9 +74,39 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
   let debugModelId = "";
   let debugTurn = 0;
   let debugRunId = "";
-  const runIdForDebug = (): string => debugRunId;
-  // TTSR stream-rule injection counts (per Run, reset in runLoop).
   const streamRuleInjections = new Map<string, number>();
+  const state: LoopRuntimeState = {
+    get runUsage() {
+      return runUsage;
+    },
+    set runUsage(v) {
+      runUsage = v;
+    },
+    get debugTurn() {
+      return debugTurn;
+    },
+    set debugTurn(v) {
+      debugTurn = v;
+    },
+    get debugModelId() {
+      return debugModelId;
+    },
+    set debugModelId(v) {
+      debugModelId = v;
+    },
+    get debugRunId() {
+      return debugRunId;
+    },
+    set debugRunId(v) {
+      debugRunId = v;
+    },
+    get streamRuleInjections() {
+      return streamRuleInjections;
+    },
+    set streamRuleInjections(_v) {
+      // streamRuleInjections is a const Map; only mutated, never reassigned.
+    },
+  };
   const tokenEstimateCache = new TokenEstimateCache();
 
   async function emit(event: OmaLoopEvent): Promise<void> {
@@ -85,6 +118,15 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
       }
     }
   }
+
+  const callCtx = (): LoopCallContext => ({
+    opts,
+    emit,
+    toolMapRef,
+    controller,
+    rt,
+    state,
+  });
 
   const SESSION_MESSAGE_SOURCES = new Set([
     "prompt",
@@ -161,7 +203,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
       // + tool catalog (for prompt cache) but never persists. Tool calls
       // from the model are discarded — an ephemeral side channel.
       runEphemeralTurn: async (promptText, ephemeralOpts) => {
-        const branch = await readBranchMessages();
+        const branch = await readBranchMessages(opts.store, opts.sessionId);
         const ephemeralMessages: Message[] = [
           ...((codingInput.run.systemPrompt ?? "")
             ? [{ role: "system" as const, text: codingInput.run.systemPrompt ?? "" }]
@@ -189,6 +231,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
 
     const runTools = opts.resolveTools ? await opts.resolveTools(codingInput) : [];
     toolMap = new Map([...baseTools, ...runTools].map((t) => [t.name, t]));
+    toolMapRef.current = toolMap;
 
     await emit({ type: "agent_start" });
 
@@ -213,7 +256,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
       );
       await persist(built.batch.entries);
 
-      let messages = await readBranchMessages();
+      let messages = await readBranchMessages(opts.store, opts.sessionId);
       let step = 0;
       let forceContinues = 0;
       let overflowCompacted = false;
@@ -250,7 +293,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
               createdAt: Date.now(),
             })),
           );
-          messages = await readBranchMessages();
+          messages = await readBranchMessages(opts.store, opts.sessionId);
           const drained = steers
             .map((s) => (s.message.role === "user" ? (s.message.text ?? "") : ""))
             .filter((t) => t.length > 0);
@@ -299,7 +342,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                   opts.contextBudget,
                 );
                 await emit({ type: "compaction_end" });
-                messages = await readBranchMessages();
+                messages = await readBranchMessages(opts.store, opts.sessionId);
               }
             }
           }
@@ -318,7 +361,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
             const modelMessages = systemPrompt
               ? [{ role: "system", text: systemPrompt } as Message, ...transformed]
               : transformed;
-            const turn = await streamModelTurn(modelMessages);
+            const turn = await streamModelTurn(callCtx(), modelMessages);
             const thinkingBlocks = buildThinkingBlock(turn);
             // Usage anchor (oh-my-pi): the completed call's real token
             // total is authoritative for everything persisted before the
@@ -348,7 +391,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                 opts.contextBudget,
               );
               await emit({ type: "compaction_end" });
-              messages = await readBranchMessages();
+              messages = await readBranchMessages(opts.store, opts.sessionId);
               continue;
             }
             // TTSR stream-rule hit: discard the partial turn (nothing was
@@ -378,7 +421,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                   createdAt: Date.now(),
                 },
               ]);
-              messages = await readBranchMessages();
+              messages = await readBranchMessages(opts.store, opts.sessionId);
               continue;
             }
 
@@ -397,7 +440,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
               // batch. This ensures the tree never has a tool_use without a
               // matching tool_result — even if stop fires during execution,
               // the batch either fully writes or doesn't write at all.
-              const toolResults = await executeTools(turn.toolCalls);
+              const toolResults = await executeTools(callCtx(), turn.toolCalls);
 
               if (controller?.signal.aborted) {
                 status = "stopped";
@@ -511,7 +554,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
               ];
               await persist(batch);
 
-              messages = await readBranchMessages();
+              messages = await readBranchMessages(opts.store, opts.sessionId);
               if (toolResults.some((r) => r.terminate) && steerQueue.length === 0) {
                 naturalStop = true;
               }
@@ -630,7 +673,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
                 opts.contextBudget,
               );
               await emit({ type: "compaction_end" });
-              messages = await readBranchMessages();
+              messages = await readBranchMessages(opts.store, opts.sessionId);
               continue; // retry model call in the SAME turn, no extra step
             }
             // Anything else is terminal: retryStream already applied its
@@ -688,7 +731,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
         process.env.OMA_CONV_TITLED !== "1" &&
         process.env.OMA_TITLE_ENABLED !== "0"
       ) {
-        const titleBranch = await readBranchMessages();
+        const titleBranch = await readBranchMessages(opts.store, opts.sessionId);
         const titleCtx = buildTitleContext(titleBranch);
         if (titleCtx) {
           title = (await generateTitle(rt, titleCtx)) ?? undefined;
@@ -721,334 +764,6 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
       steerQueue.length = 0;
       acceptingSteer = false;
     }
-  }
-
-  /** Accumulate one model turn from the stream — pure, no persistence
-   *  The caller decides what to persist. */
-  async function streamModelTurn(messages: readonly Message[]): Promise<ModelTurn> {
-    let text = "";
-    let thinking = "";
-    const ordered: TurnBlock[] = [];
-    let thinkingSignature: string | undefined;
-    let thinkingRedacted = false;
-    const toolCallBuilders = new Map<string, { id: string; name: string; jsonParts: string[] }>();
-    debugTurn++;
-    debugLog("oma", `model_start runId=${runIdForDebug()} turn=${debugTurn} model=${debugModelId}`);
-
-    await emit({ type: "message_start" });
-    const stream = retryStream(
-      (signal) => opts.modelStream(messages, signal, [...toolMap.values()]),
-      {
-        maxAttempts: opts.maxRetries ?? 3,
-        baseDelayMs: 1000,
-        onRetryStart: (attempt) => emit({ type: "retry_start", attempt }),
-        onRetryEnd: () => emit({ type: "retry_end" }),
-      },
-      controller?.signal,
-    );
-
-    let stopReason: string | undefined;
-    let streamRuleHit: StreamRule | undefined;
-    let turnUsage: TurnUsage | undefined;
-    try {
-      for await (const chunk of stream) {
-        if (controller?.signal.aborted) break;
-        if (chunk.stopReason) stopReason = chunk.stopReason;
-        if (chunk.usage) {
-          // Accumulate across all model calls in the Run (not last-wins)...
-          runUsage = {
-            inputTokens: (runUsage?.inputTokens ?? 0) + (chunk.usage.input ?? 0),
-            outputTokens: (runUsage?.outputTokens ?? 0) + (chunk.usage.output ?? 0),
-            cacheReadTokens: (runUsage?.cacheReadTokens ?? 0) + (chunk.usage.cacheRead ?? 0),
-            cacheWriteTokens: (runUsage?.cacheWriteTokens ?? 0) + (chunk.usage.cacheCreate ?? 0),
-          };
-          // ...and per turn: this call's own total anchors context
-          // estimation and silent-overflow detection (oh-my-pi).
-          turnUsage = {
-            inputTokens: (turnUsage?.inputTokens ?? 0) + (chunk.usage.input ?? 0),
-            outputTokens: (turnUsage?.outputTokens ?? 0) + (chunk.usage.output ?? 0),
-            cacheReadTokens: (turnUsage?.cacheReadTokens ?? 0) + (chunk.usage.cacheRead ?? 0),
-            cacheWriteTokens: (turnUsage?.cacheWriteTokens ?? 0) + (chunk.usage.cacheCreate ?? 0),
-          };
-        }
-        if (chunk.delta?.type === "text") {
-          text += chunk.delta.text;
-          ordered.push({ type: "text" as const, text: chunk.delta.text });
-          await emit({ type: "message_update", text: chunk.delta.text });
-          const hit = opts.streamRules
-            ? matchStreamRule(opts.streamRules, text, streamRuleInjections)
-            : undefined;
-          if (hit) {
-            streamRuleHit = hit;
-            break;
-          }
-        }
-        if (chunk.delta?.type === "reasoning") {
-          thinking += chunk.delta.text;
-          ordered.push({ type: "thinking" as const, text: chunk.delta.text });
-          await emit({ type: "thinking_update", text: chunk.delta.text });
-        }
-        if (chunk.delta?.type === "reasoning_signature") {
-          thinkingSignature = chunk.delta.signature;
-          thinkingRedacted = chunk.delta.redacted === true;
-        }
-        if (chunk.delta?.type === "tool_use") {
-          const id = chunk.delta.id;
-          if (!toolCallBuilders.has(id)) {
-            toolCallBuilders.set(id, { id, name: chunk.delta.name, jsonParts: [] });
-          }
-        }
-        if (chunk.delta?.type === "input_json_delta") {
-          const builder = toolCallBuilders.get(chunk.delta.id);
-          if (builder) builder.jsonParts.push(chunk.delta.partial_json);
-        }
-      }
-    } finally {
-      // message_end always pairs with message_start, even on failure/abort.
-      await emit({ type: "message_end" });
-    }
-    debugLog(
-      "oma",
-      `model_end runId=${runIdForDebug()} turn=${debugTurn} stopReason=${stopReason ?? "none"}`,
-    );
-
-    return {
-      text,
-      thinking,
-      ordered,
-      ...(thinkingSignature ? { thinkingSignature } : {}),
-      ...(thinkingRedacted ? { thinkingRedacted: true } : {}),
-      toolCalls: Array.from(toolCallBuilders.values()).map((b) => ({
-        id: b.id,
-        name: b.name,
-        input: b.jsonParts.length > 0 ? safeParseJson(b.jsonParts.join("")) : {},
-      })),
-      stopReason,
-      ...(turnUsage ? { usage: turnUsage } : {}),
-      ...(streamRuleHit ? { streamRuleHit } : {}),
-    };
-  }
-
-  async function executeTools(
-    calls: readonly PendingToolCall[],
-  ): Promise<Array<{ id: string; result: unknown; isError: boolean; terminate: boolean }>> {
-    const results: Array<{ id: string; result: unknown; isError: boolean; terminate: boolean }> =
-      [];
-    // Batch execution: consecutive concurrent tools run in parallel via
-    // Promise.all; a serial tool acts as a barrier. Results preserve the
-    // original tool-call order regardless of completion order.
-    async function runOne(
-      call: PendingToolCall,
-    ): Promise<{ id: string; result: unknown; isError: boolean; terminate: boolean }> {
-      const tool = toolMap.get(call.name);
-      debugLog("oma", `tool_start runId=${runIdForDebug()} name=${call.name} callId=${call.id}`);
-      await emit({
-        type: "tool_execution_start",
-        toolName: call.name,
-        callId: call.id,
-        // Original model call args (pre-plugin-transform) so the transcript
-        // can show what the model asked for.
-        input: call.input,
-        ...(tool?.timeoutMs !== undefined ? { timeoutMs: tool.timeoutMs } : {}),
-      });
-      let result: unknown;
-      let isError = false;
-      let terminate = false;
-      let input = call.input;
-      if (tool) {
-        // transformToolArgs: rewrite call args before execution.
-        // transformToolCallArguments).
-        for (const p of opts.plugins) {
-          if (p.hooks?.transformToolArgs) {
-            try {
-              const transformed = p.hooks.transformToolArgs(call.name, input, rt);
-              if (transformed && typeof transformed === "object") {
-                input = transformed as Record<string, unknown>;
-              }
-            } catch {
-              /* plugin transform errors never block execution */
-            }
-          }
-        }
-        // beforeTool: observe or block. A block
-        // result emits an error tool result instead of executing.
-        let blocked = false;
-        let blockReason = `Blocked by plugin`;
-        for (const p of opts.plugins) {
-          if (p.hooks?.beforeTool) {
-            try {
-              const ret = p.hooks.beforeTool(call.name, input, rt);
-              if (ret?.block) {
-                blocked = true;
-                if (ret.reason) blockReason = ret.reason;
-                break;
-              }
-            } catch {
-              /* plugin errors never block execution */
-            }
-          }
-        }
-        // Native-tool permission gate (ADR 0020): runs AFTER plugin
-        // beforeTool hooks so a plugin block always wins; ask/deny here
-        // apply to native high-risk tools too.
-        if (!blocked && opts.permissionGate) {
-          try {
-            const verdict = await opts.permissionGate(call.name, input);
-            if (verdict?.block) {
-              blocked = true;
-              if (verdict.reason) blockReason = verdict.reason;
-            }
-          } catch {
-            /* permission gate errors never crash the run */
-          }
-        }
-        if (blocked) {
-          result = { error: blockReason };
-          isError = true;
-        } else {
-          try {
-            result = await tool.execute(input, controller?.signal, {
-              callId: call.id,
-              onOutput: (text) => {
-                void emit({
-                  type: "tool_output",
-                  toolName: call.name,
-                  callId: call.id,
-                  text,
-                });
-              },
-              ...(opts.approvalHandler
-                ? {
-                    request: (req: { reason?: string }) =>
-                      opts.approvalHandler!({
-                        callId: call.id,
-                        toolName: call.name,
-                        input,
-                        source: "tool",
-                        ...(req.reason ? { reason: req.reason } : {}),
-                      }),
-                  }
-                : {}),
-              ...(opts.askHandler ? { ask: opts.askHandler } : {}),
-            });
-            if (result && typeof result === "object") {
-              if ("isError" in result) {
-                isError = Boolean((result as { isError?: unknown }).isError);
-              }
-              if ("terminate" in result) {
-                terminate = Boolean((result as { terminate?: unknown }).terminate);
-              }
-            }
-          } catch (err) {
-            result = { error: err instanceof Error ? err.message : String(err) };
-            isError = true;
-          }
-        }
-      } else {
-        result = { error: `Unknown tool: ${call.name}` };
-        isError = true;
-      }
-      debugLog(
-        "oma",
-        `tool_end runId=${runIdForDebug()} name=${call.name} callId=${call.id} error=${isError}`,
-      );
-      await emit({
-        type: "tool_execution_end",
-        toolName: call.name,
-        callId: call.id,
-        result: (result ?? {}) as Readonly<Record<string, unknown>>,
-      });
-      // afterTool: observe (emit event) or patch (override result fields).
-      for (const p of opts.plugins) {
-        try {
-          const ret = p.hooks?.afterTool?.(call.name, result, rt);
-          if (ret) {
-            // OmaLoopEvent (has `type`) → emit; patch object →
-            // override result fields field-by-field.
-            if ("type" in ret) {
-              await emit(ret);
-            } else {
-              if (ret.content !== undefined) result = ret.content;
-              if (ret.isError !== undefined) isError = ret.isError;
-              if (ret.terminate !== undefined) terminate = ret.terminate;
-            }
-          }
-        } catch {
-          /* plugin errors never affect the loop */
-        }
-      }
-      return { id: call.id, result, isError, terminate };
-    }
-
-    let i = 0;
-    while (i < calls.length) {
-      if (controller?.signal.aborted) break;
-      const call = calls[i]!;
-      const isConcurrent = toolMap.get(call.name)?.executionMode === "concurrent";
-      if (!isConcurrent) {
-        // Serial tool: run alone (barrier before and after).
-        if (controller?.signal.aborted) break;
-        const r = await runOne(call);
-        if (controller?.signal.aborted) break;
-        results.push(r);
-        i++;
-        continue;
-      }
-      // Collect a maximal run of consecutive concurrent tools.
-      const batch: PendingToolCall[] = [call];
-      let j = i + 1;
-      while (j < calls.length) {
-        const next = calls[j]!;
-        if (toolMap.get(next.name)?.executionMode !== "concurrent") break;
-        batch.push(next);
-        j++;
-      }
-      // Run the whole batch in parallel.
-      const batchResults = await Promise.all(batch.map((c) => runOne(c)));
-      if (controller?.signal.aborted) break;
-      results.push(...batchResults);
-      i = j;
-    }
-    return results;
-  }
-
-  async function readBranchMessages(): Promise<Message[]> {
-    const entries = await opts.store.readBranch(opts.sessionId);
-
-    // Find latest CompactionEntry
-    let compactionSummary: string | null = null;
-    let coveredIds: Set<string> | null = null;
-    for (let i = entries.length - 1; i >= 0; i--) {
-      if (entries[i]?.type === "compaction") {
-        const comp = entries[i] as { summary: string; coversEntryIds: readonly string[] };
-        compactionSummary = comp.summary;
-        coveredIds = new Set(comp.coversEntryIds);
-        break;
-      }
-    }
-
-    return entries
-      .filter((e) => {
-        if (e.type !== "message") return false;
-        // If compaction exists, skip covered entries
-        if (coveredIds?.has(e.entryId)) return false;
-        return true;
-      })
-      .map((e) => {
-        const msg = (e as { message: Message }).message;
-        // Prepend compaction summary as a system note if entries were compacted
-        return msg;
-      })
-      .flatMap((msg, _i, _arr) => {
-        // Insert summary as first user message if compaction applied
-        if (_i === 0 && compactionSummary && coveredIds && coveredIds.size > 0) {
-          return [
-            { role: "user" as const, text: `[Context summary: ${compactionSummary}]` } as Message,
-            msg,
-          ];
-        }
-        return [msg];
-      });
   }
 
   return {
