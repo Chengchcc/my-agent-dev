@@ -54,34 +54,26 @@ export interface LoopRunnerBag {
   mutable: LoopRunnerMutable;
 }
 
-/**
- * runLoop: inner loop runs model turns and tool calls until the model
- * stops. Each model turn is accumulated purely (streamModelTurn) and
- * then persisted as canonical messages — persistence is a turn-level
- * decision, never inside the stream accumulation. Steer inputs drain
- * at safe boundaries; runEphemeralTurn is a side channel that never
- * persists. Follow-up inputs require a separate startFollowUp() call
- * (the backend orchestrates follow-ups via branch_input_queue).
- */
-export async function runLoop(
+interface LoopStepState {
+  messages: Message[];
+  forceContinues: number;
+  overflowCompacted: boolean;
+  thresholdCompacted: boolean;
+  usageAnchor: UsageAnchor | null;
+  naturalStop: boolean;
+  runError: string | undefined;
+  systemPrompt: string;
+}
+
+/** Start the loop: bind runtime, resolve tools, persist the prompt, and
+ *  return the system prompt + first branch messages. */
+async function prepareLoopStart(
   bag: LoopRunnerBag,
   codingInput: CodingLoopInput,
   mode: "normal" | "follow_up",
-): Promise<OmaLoopResult> {
-  const {
-    opts,
-    emit,
-    persist,
-    state,
-    toolMapRef,
-    callCtx,
-    tokenEstimateCache,
-    baseTools,
-    mutable,
-  } = bag;
-  const { active, rt } = mutable;
-
-  if (active) throw new Error("Loop already active");
+): Promise<{ systemPrompt: string; messages: Message[] }> {
+  const { opts, emit, persist, state, toolMapRef, baseTools, mutable } = bag;
+  if (mutable.active) throw new Error("Loop already active");
   mutable.active = true;
   mutable.status = "running";
   mutable.controller = new AbortController();
@@ -89,7 +81,7 @@ export async function runLoop(
   // Bind rt.signal to THIS run's controller so plugin model calls
   // (side-channel summaries) honor stop()/abort().
   mutable.rt = {
-    ...rt,
+    ...mutable.rt,
     signal: mutable.controller.signal,
     // Ephemeral side-channel turn: shares system prompt + branch messages
     // + tool catalog (for prompt cache) but never persists. Tool calls
@@ -119,80 +111,180 @@ export async function runLoop(
   state.debugTurn = 0;
   state.debugRunId = codingInput.run.runId;
   state.runUsage = undefined;
-  let runError: string | undefined;
 
   const runTools = opts.resolveTools ? await opts.resolveTools(codingInput) : [];
   toolMapRef.current = new Map([...baseTools, ...runTools].map((t) => [t.name, t]));
 
   await emit({ type: "agent_start" });
 
+  const model = opts.resolveModel
+    ? await opts.resolveModel(codingInput.run.model.modelId)
+    : undefined;
+  const metaText = renderLoopMeta({
+    plugins: opts.plugins,
+    workspace: { root: codingInput.workspace.root },
+    model,
+  });
+  const systemPrompt = codingInput.run.systemPrompt ?? "";
+  const built = buildLoopInput(
+    {
+      systemPrompt,
+      metaText,
+      input: codingInput.input,
+      history: codingInput.history,
+    },
+    mode,
+  );
+  await persist(built.batch.entries);
+  const messages = await readBranchMessages(opts.store, opts.sessionId);
+  return { systemPrompt, messages };
+}
+
+/** Drain any queued steer inputs at a safe boundary, returning updated
+ *  branch messages. */
+async function drainSteerQueue(bag: LoopRunnerBag, messages: Message[]): Promise<Message[]> {
+  const { opts, emit, persist, mutable } = bag;
+  if (mutable.steerQueue.length === 0) return messages;
+  const steers = mutable.steerQueue.splice(0);
+  await persist(
+    steers.map((s) => ({
+      type: "message",
+      productEntryId: s.productEntryId ?? null,
+      role: s.message.role as "user" | "assistant" | "system",
+      source: "steer",
+      message: s.message,
+      createdAt: Date.now(),
+    })),
+  );
+  const next = await readBranchMessages(opts.store, opts.sessionId);
+  const drained = steers
+    .map((s) => (s.message.role === "user" ? (s.message.text ?? "") : ""))
+    .filter((t) => t.length > 0);
+  await emit({
+    type: "queue_update",
+    ...(drained.length > 0 ? { drained } : {}),
+  });
+  return next;
+}
+
+/** Final status + afterRun hooks + title + canonical output. */
+async function finalizeLoop(
+  bag: LoopRunnerBag,
+  stepState: LoopStepState,
+  step: number,
+  runError: string | undefined,
+): Promise<OmaLoopResult> {
+  const { opts, emit, state, mutable } = bag;
+
+  if (mutable.controller?.signal.aborted) {
+    mutable.status = "stopped";
+  } else if (!stepState.naturalStop && step >= opts.maxSteps && mutable.status === "running") {
+    mutable.status = "failed";
+    runError ??= `max steps exceeded (${opts.maxSteps})`;
+  } else if (mutable.status === "running") {
+    mutable.status = "completed";
+  }
+  const finalStatus = mutable.status as "completed" | "failed" | "stopped";
+
+  for (const p of opts.plugins) {
+    if (p.hooks?.afterRun) {
+      try {
+        await p.hooks.afterRun(finalStatus, stepState.messages, mutable.rt);
+      } catch {
+        /* plugin errors never fail the run */
+      }
+    }
+  }
+
+  let title: string | undefined;
+  // Auto-title retries on EVERY completed turn while the conversation is
+  // still untitled (OMA_CONV_TITLED=1 marks it titled — the backend sets
+  // it at spawn and re-checks on commit). The first turn may be low
+  // signal ("hi") and must not permanently suppress the title.
+  if (
+    mutable.status === "completed" &&
+    process.env.OMA_CONV_TITLED !== "1" &&
+    process.env.OMA_TITLE_ENABLED !== "0"
+  ) {
+    const titleBranch = await readBranchMessages(opts.store, opts.sessionId);
+    const titleCtx = buildTitleContext(titleBranch);
+    if (titleCtx) {
+      title = (await generateTitle(mutable.rt, titleCtx)) ?? undefined;
+    }
+  }
+
+  await emit({ type: "agent_end", status: finalStatus });
+  // Canonical output (ADR 0017): the run's full message sequence.
+  // Every terminal status returns the persisted assistant/tool messages:
+  // a failed run (e.g. max steps exceeded) must still surface what it
+  // did so a follow-up turn ("continue") has the context.
+  const entries = await opts.store.readBranch(opts.sessionId);
+  const runMessages = entries
+    .filter(
+      (e): e is MessageEntry =>
+        e.type === "message" && (e.source === "assistant" || e.source === "tool_result"),
+    )
+    .map((e) => e.message);
+  return {
+    status: finalStatus,
+    messages: runMessages,
+    usage: state.runUsage,
+    error: runError,
+    title,
+  };
+}
+
+/**
+ * runLoop: inner loop runs model turns and tool calls until the model
+ * stops. Each model turn is accumulated purely (streamModelTurn) and
+ * then persisted as canonical messages — persistence is a turn-level
+ * decision, never inside the stream accumulation. Steer inputs drain
+ * at safe boundaries; runEphemeralTurn is a side channel that never
+ * persists. Follow-up inputs require a separate startFollowUp() call
+ * (the backend orchestrates follow-ups via branch_input_queue).
+ */
+export async function runLoop(
+  bag: LoopRunnerBag,
+  codingInput: CodingLoopInput,
+  mode: "normal" | "follow_up",
+): Promise<OmaLoopResult> {
+  const { opts, emit, persist, state, callCtx, tokenEstimateCache, mutable } = bag;
+  let runError: string | undefined;
+
   try {
-    const model = opts.resolveModel
-      ? await opts.resolveModel(codingInput.run.model.modelId)
-      : undefined;
-    const metaText = renderLoopMeta({
-      plugins: opts.plugins,
-      workspace: { root: codingInput.workspace.root },
-      model,
-    });
-    const systemPrompt = codingInput.run.systemPrompt ?? "";
-    const built = buildLoopInput(
-      {
-        systemPrompt,
-        metaText,
-        input: codingInput.input,
-        history: codingInput.history,
-      },
+    const { systemPrompt, messages: initialMessages } = await prepareLoopStart(
+      bag,
+      codingInput,
       mode,
     );
-    await persist(built.batch.entries);
-
-    let messages = await readBranchMessages(opts.store, opts.sessionId);
+    const stepState: LoopStepState = {
+      messages: initialMessages,
+      forceContinues: 0,
+      overflowCompacted: false,
+      thresholdCompacted: false,
+      usageAnchor: null,
+      naturalStop: false,
+      runError: undefined,
+      systemPrompt,
+    };
     let step = 0;
-    let forceContinues = 0;
-    let overflowCompacted = false;
-    let thresholdCompacted = false;
-    let usageAnchor: UsageAnchor | null = null;
-    let naturalStop = false;
 
     for (const p of opts.plugins) {
       if (p.hooks?.beforeRun) {
         try {
-          await p.hooks.beforeRun(messages, mutable.rt);
+          await p.hooks.beforeRun(stepState.messages, mutable.rt);
         } catch {
           /* plugin setup errors never fail the run */
         }
       }
     }
 
-    while (step < opts.maxSteps && !naturalStop) {
+    while (step < opts.maxSteps && !stepState.naturalStop) {
       if (mutable.controller?.signal.aborted) break;
       step++;
       mutable.acceptingSteer = step < opts.maxSteps;
 
-      // Drain steer queue at safe boundary (steer appends only the input
-      // message — no Meta, no new Loop).
-      if (mutable.steerQueue.length > 0) {
-        const steers = mutable.steerQueue.splice(0);
-        await persist(
-          steers.map((s) => ({
-            type: "message",
-            productEntryId: s.productEntryId ?? null,
-            role: s.message.role as "user" | "assistant" | "system",
-            source: "steer",
-            message: s.message,
-            createdAt: Date.now(),
-          })),
-        );
-        messages = await readBranchMessages(opts.store, opts.sessionId);
-        const drained = steers
-          .map((s) => (s.message.role === "user" ? (s.message.text ?? "") : ""))
-          .filter((t) => t.length > 0);
-        await emit({
-          type: "queue_update",
-          ...(drained.length > 0 ? { drained } : {}),
-        });
-      }
+      stepState.messages = await drainSteerQueue(bag, stepState.messages);
 
       // One step = at most one model call. Overflow recovery stays INSIDE
       while (true) {
@@ -202,8 +294,8 @@ export async function runLoop(
         // never pruned. May reduce context enough to avoid compaction
         // entirely (omp docs/compaction.md).
         const modelMessages0 = opts.pruneConfig
-          ? pruneOldToolResults(messages, opts.pruneConfig).messages
-          : messages;
+          ? pruneOldToolResults(stepState.messages, opts.pruneConfig).messages
+          : stepState.messages;
 
         // Snapshot for this model call + proactive (threshold) compaction.
         // Estimation is anchored on the previous call's real usage
@@ -216,15 +308,15 @@ export async function runLoop(
           const branch = await opts.store.readBranch(opts.sessionId);
           const msgEntries = branch.filter((e): e is MessageEntry => e.type === "message");
           callBoundaryId = msgEntries.at(-1)?.entryId ?? null;
-          if (!thresholdCompacted) {
-            const totalTokens = estimateContextTokens(msgEntries, usageAnchor, (e) =>
+          if (!stepState.thresholdCompacted) {
+            const totalTokens = estimateContextTokens(msgEntries, stepState.usageAnchor, (e) =>
               tokenEstimateCache.estimate(e.entryId, e.message, opts.contextBudget!.estimate),
             );
             const overThreshold =
               totalTokens > opts.contextBudget.limit * opts.contextBudget.triggerRatio;
             if (overThreshold) {
-              thresholdCompacted = true;
-              usageAnchor = null;
+              stepState.thresholdCompacted = true;
+              stepState.usageAnchor = null;
               tokenEstimateCache.clear();
               await emit({ type: "compaction_start" });
               await compactSession(
@@ -235,7 +327,7 @@ export async function runLoop(
                 opts.contextBudget,
               );
               await emit({ type: "compaction_end" });
-              messages = await readBranchMessages(opts.store, opts.sessionId);
+              stepState.messages = await readBranchMessages(opts.store, opts.sessionId);
             }
           }
         }
@@ -251,8 +343,8 @@ export async function runLoop(
         }
 
         try {
-          const modelMessages = systemPrompt
-            ? [{ role: "system", text: systemPrompt } as Message, ...transformed]
+          const modelMessages = stepState.systemPrompt
+            ? [{ role: "system", text: stepState.systemPrompt } as Message, ...transformed]
             : transformed;
           const turn = await streamModelTurn(callCtx(), modelMessages);
           const thinkingBlocks = buildThinkingBlock(turn);
@@ -260,7 +352,10 @@ export async function runLoop(
           // total is authoritative for everything persisted before the
           // call — per-message estimation covers only the delta since.
           if (turn.usage && usageTotalTokens(turn.usage) > 0) {
-            usageAnchor = { afterEntryId: callBoundaryId, tokens: usageTotalTokens(turn.usage) };
+            stepState.usageAnchor = {
+              afterEntryId: callBoundaryId,
+              tokens: usageTotalTokens(turn.usage),
+            };
           }
           // Silent context overflow (oh-my-pi isContextOverflow): some
           // providers (zai, Xiaomi-style) accept an oversized request
@@ -268,12 +363,12 @@ export async function runLoop(
           // compaction, then retry the model call in the SAME turn.
           const silentOverflow =
             opts.contextBudget &&
-            !overflowCompacted &&
+            !stepState.overflowCompacted &&
             !mutable.controller?.signal.aborted &&
             isSilentContextOverflow(turn.usage, turn.stopReason, opts.contextBudget.limit);
           if (silentOverflow) {
-            overflowCompacted = true;
-            usageAnchor = null;
+            stepState.overflowCompacted = true;
+            stepState.usageAnchor = null;
             tokenEstimateCache.clear();
             await emit({ type: "compaction_start" });
             await compactSession(
@@ -284,7 +379,7 @@ export async function runLoop(
               opts.contextBudget,
             );
             await emit({ type: "compaction_end" });
-            messages = await readBranchMessages(opts.store, opts.sessionId);
+            stepState.messages = await readBranchMessages(opts.store, opts.sessionId);
             continue;
           }
           // TTSR stream-rule hit: discard the partial turn (nothing was
@@ -317,7 +412,7 @@ export async function runLoop(
                 createdAt: Date.now(),
               },
             ]);
-            messages = await readBranchMessages(opts.store, opts.sessionId);
+            stepState.messages = await readBranchMessages(opts.store, opts.sessionId);
             continue;
           }
 
@@ -347,12 +442,11 @@ export async function runLoop(
 
             // Persist assistant(tool_use) + all tool_results atomically.
             const batch = buildToolBatch(turn, toolResults, opts);
-
             await persist(batch);
 
-            messages = await readBranchMessages(opts.store, opts.sessionId);
+            stepState.messages = await readBranchMessages(opts.store, opts.sessionId);
             if (toolResults.some((r) => r.terminate) && mutable.steerQueue.length === 0) {
-              naturalStop = true;
+              stepState.naturalStop = true;
             }
             break;
           }
@@ -379,8 +473,8 @@ export async function runLoop(
               } catch {
                 /* plugin errors never fail the run */
               }
-              if (vetoed && forceContinues < opts.maxForceContinues) {
-                forceContinues++;
+              if (vetoed && stepState.forceContinues < opts.maxForceContinues) {
+                stepState.forceContinues++;
                 stopped = false;
                 break;
               }
@@ -391,11 +485,11 @@ export async function runLoop(
           // one continuation when capacity remains, bounded by
           // maxForceContinues.
           const truncated = turn.stopReason === "max_tokens" || turn.stopReason === "pause_turn";
-          if (stopped && truncated && forceContinues < opts.maxForceContinues) {
-            forceContinues++;
+          if (stopped && truncated && stepState.forceContinues < opts.maxForceContinues) {
+            stepState.forceContinues++;
             stopped = false;
           }
-          naturalStop = stopped;
+          stepState.naturalStop = stopped;
           for (const p of opts.plugins) {
             if (p.hooks?.afterStop) {
               try {
@@ -406,8 +500,8 @@ export async function runLoop(
             }
           }
           // Accepted-but-late steer: force one more turn to drain it.
-          if (naturalStop && mutable.steerQueue.length > 0) {
-            naturalStop = false;
+          if (stepState.naturalStop && mutable.steerQueue.length > 0) {
+            stepState.naturalStop = false;
           }
           break;
         } catch (err) {
@@ -416,15 +510,19 @@ export async function runLoop(
           // Explicit stop/abort is a distinct terminal state.
           if (stopRequested || providerAborted) {
             mutable.status = "stopped";
-            runError ??= err instanceof Error ? err.message : "stopped by user";
+            stepState.runError ??= err instanceof Error ? err.message : "stopped by user";
             await emit({ type: "agent_end", status: mutable.status });
             mutable.controller = null;
-            return { status: mutable.status, usage: state.runUsage, error: runError };
+            return { status: mutable.status, usage: state.runUsage, error: stepState.runError };
           }
           // Overflow: one-shot compaction recovery inside the same turn.
-          if (err instanceof ProviderError && err.kind === "overflow" && !overflowCompacted) {
-            overflowCompacted = true;
-            usageAnchor = null;
+          if (
+            err instanceof ProviderError &&
+            err.kind === "overflow" &&
+            !stepState.overflowCompacted
+          ) {
+            stepState.overflowCompacted = true;
+            stepState.usageAnchor = null;
             tokenEstimateCache.clear();
             await emit({ type: "compaction_start" });
             await compactSession(
@@ -435,16 +533,16 @@ export async function runLoop(
               opts.contextBudget,
             );
             await emit({ type: "compaction_end" });
-            messages = await readBranchMessages(opts.store, opts.sessionId);
+            stepState.messages = await readBranchMessages(opts.store, opts.sessionId);
             continue; // retry model call in the SAME turn, no extra step
           }
           // Anything else is terminal: retryStream already applied its
           // bounded policy.
-          runError ??= err instanceof Error ? err.message : String(err);
+          stepState.runError ??= err instanceof Error ? err.message : String(err);
           mutable.status = "failed";
           await emit({ type: "agent_end", status: mutable.status });
           mutable.controller = null;
-          return { status: mutable.status, usage: state.runUsage, error: runError };
+          return { status: mutable.status, usage: state.runUsage, error: stepState.runError };
         }
       }
 
@@ -453,7 +551,7 @@ export async function runLoop(
       for (const p of opts.plugins) {
         if (p.hooks?.afterModel) {
           try {
-            await p.hooks.afterModel(messages, mutable.rt);
+            await p.hooks.afterModel(stepState.messages, mutable.rt);
           } catch {
             /* plugin errors never fail the run */
           }
@@ -461,76 +559,19 @@ export async function runLoop(
       }
 
       await emit({ type: "turn_end", turn: step });
-      if (naturalStop) break;
+      if (stepState.naturalStop) break;
     }
 
-    if (mutable.controller?.signal.aborted) {
-      mutable.status = "stopped";
-    } else if (!naturalStop && step >= opts.maxSteps && mutable.status === "running") {
-      mutable.status = "failed";
-      runError ??= `max steps exceeded (${opts.maxSteps})`;
-    } else if (mutable.status === "running") {
-      mutable.status = "completed";
-    }
-
-    for (const p of opts.plugins) {
-      if (p.hooks?.afterRun) {
-        try {
-          await p.hooks.afterRun(
-            mutable.status as "completed" | "failed" | "stopped",
-            messages,
-            mutable.rt,
-          );
-        } catch {
-          /* plugin errors never fail the run */
-        }
-      }
-    }
-
-    let title: string | undefined;
-    // Auto-title retries on EVERY completed turn while the conversation is
-    // still untitled (OMA_CONV_TITLED=1 marks it titled — the backend sets
-    // it at spawn and re-checks on commit). The first turn may be low
-    // signal ("hi") and must not permanently suppress the title.
-    if (
-      mutable.status === "completed" &&
-      process.env.OMA_CONV_TITLED !== "1" &&
-      process.env.OMA_TITLE_ENABLED !== "0"
-    ) {
-      const titleBranch = await readBranchMessages(opts.store, opts.sessionId);
-      const titleCtx = buildTitleContext(titleBranch);
-      if (titleCtx) {
-        title = (await generateTitle(mutable.rt, titleCtx)) ?? undefined;
-      }
-    }
-
-    await emit({ type: "agent_end", status: mutable.status });
-    // Canonical output (ADR 0017): the run's full message sequence.
-    // Every terminal status returns the persisted assistant/tool messages:
-    // a failed run (e.g. max steps exceeded) must still surface what it
-    // did so a follow-up turn ("continue") has the context.
-    const entries = await opts.store.readBranch(opts.sessionId);
-    const runMessages = entries
-      .filter(
-        (e): e is MessageEntry =>
-          e.type === "message" && (e.source === "assistant" || e.source === "tool_result"),
-      )
-      .map((e) => e.message);
-    return {
-      status: mutable.status,
-      messages: runMessages,
-      usage: state.runUsage,
-      error: runError,
-      title,
-    };
+    return await finalizeLoop(bag, stepState, step, stepState.runError);
   } catch (err) {
     // Setup/persistence failure: settle to a terminal state so listeners
     // always receive agent_end and the loop is reusable.
     runError ??= err instanceof Error ? err.message : String(err);
     const wasAborted = mutable.controller?.signal.aborted === true;
     mutable.status = wasAborted ? "stopped" : "failed";
-    await emit({ type: "agent_end", status: mutable.status });
-    return { status: mutable.status, usage: state.runUsage, error: runError };
+    const finalStatus = mutable.status as "completed" | "failed" | "stopped";
+    await emit({ type: "agent_end", status: finalStatus });
+    return { status: finalStatus, usage: state.runUsage, error: runError };
   } finally {
     mutable.active = false;
     mutable.controller = null;
