@@ -31,7 +31,11 @@ function wrapBunSpawn(proc: Bun.Subprocess): BashSpawn {
     stderr: err,
     exited: proc.exited,
     kill: () => {
-      proc.kill();
+      // SIGKILL (not the default SIGTERM): sandbox-exec may be a wrapper that
+      // execs child bash — a TERM to the wrapper does not guarantee the child
+      // dies. SIGKILL to the (usually exec'd) command plus group-kill covers
+      // both exec- and fork-typed wrappers.
+      proc.kill("SIGKILL");
       try {
         process.kill(-proc.pid!, "SIGKILL");
       } catch {
@@ -183,7 +187,9 @@ export class SeatbeltBashSandbox implements BashSandbox {
         return code;
       }),
       kill: () => {
-        proc.kill();
+        // Same SIGKILL-first semantics as wrapBunSpawn (macOS sandbox-exec
+        // typically execs the command; SIGKILL to it kills the bash tree).
+        proc.kill("SIGKILL");
         try {
           process.kill(-proc.pid!, "SIGKILL");
         } catch {

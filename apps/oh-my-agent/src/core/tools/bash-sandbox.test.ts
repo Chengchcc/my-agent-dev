@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { execSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -98,6 +99,38 @@ describe("bash tool + BashSandbox injection (P1)", () => {
     const tool = createBashTool({ workspaceRoot: ws, sandbox: new BwrapBashSandbox(ws) });
     const out = await tool.execute({ description: "d", command: "cat f.txt" });
     expect(String(out.content)).toContain("visible");
+  });
+
+  test("kill() terminates the inner bash command, not just the bwrap wrapper", async () => {
+    // Regression (2026-09-03): proc.kill() alone (SIGTERM) killed bwrap but
+    // orphaned the inner `sleep` because --die-with-parent only fires when
+    // bwrap's PARENT dies. SIGKILL-first kills the namespace leader, and the
+    // kernel reaps the command. Wait on p.exited (not a fixed sleep), then
+    // probe the inner pid.
+    const ws = mkdtempSync(join(tmpdir(), "bwrap-kill-"));
+    const sb = new BwrapBashSandbox(ws);
+    const pidFile = join(ws, "inner.pid");
+    const p = sb.spawn(`echo $$ > inner.pid; exec sleep 300`, { cwd: ws });
+    await new Promise((r) => setTimeout(r, 300));
+    const innerPid = Number.parseInt(readFileSync(pidFile, "utf8"), 10);
+    expect(Number.isFinite(innerPid)).toBe(true);
+    const alive = () => {
+      try {
+        execSync(`ps -p ${innerPid} >/dev/null 2>&1`);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    expect(alive()).toBe(true);
+    p.kill();
+    await p.exited;
+    // The namespace reaper may take a tick; poll briefly (deterministic
+    // signal, not a guessed duration).
+    for (let i = 0; i < 20 && alive(); i++) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(alive()).toBe(false);
   });
 });
 
