@@ -80,8 +80,10 @@ small derived read, add a hook to the owning feature (e.g.
   THREE distinct states with EXCLUSIVE visual channels: install state
   (catalog-wide) = text badge via `statusBadge` (failed renders with the
   err tone, everything else neutral); mount state (per-agent) = `Switch`
-  `ListRowCard` status dot = connection/liveness ONLY (it renders
-  "Connected"/"Error"). Never reuse the green dot for install-ok or
+  + "available (not assigned)" meta when unmounted; `ListRowCard` status
+  dot = manager-side reachability probe ONLY (it renders
+  "Reachable"/"Unreachable" — a probe result, never a live runtime
+  claim). Never reuse the green dot for install-ok or
   mounted-ok — `KnowledgePackPanel` once did and users read it as
   "linked" (see the comment there).
 

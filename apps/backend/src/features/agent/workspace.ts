@@ -30,7 +30,8 @@ const DEFAULT_FILES: Record<string, string> = {
   "AGENTS.md": `${AGENTS_MD}\n`,
   "CLAUDE.md": `${AGENTS_MD}\n`,
   "manifest.json": '{\n  "version": 1\n}\n',
-  "SOUL.md": "# SOUL\n\n在此描述此 Agent 的身份、人格与行为准则。\n",
+  "SOUL.md":
+    "# SOUL\n\nDescribe this agent's identity, personality, and behavior guidelines here.\n",
 };
 
 async function exists(path: string): Promise<boolean> {

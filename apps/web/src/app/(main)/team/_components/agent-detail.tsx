@@ -2,6 +2,7 @@
 
 import { MessageCircle, Package } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { AgentForm } from "@/components/AgentForm";
 import { AgentMemoryPanel } from "@/components/AgentMemoryPanel";
@@ -160,7 +161,9 @@ function AgentSkillsPanel({ agentId }: { agentId: string }) {
     const next = new Set(assignedIds);
     if (on) next.add(packId);
     else next.delete(packId);
-    setPacks.mutate([...next]);
+    setPacks.mutate([...next], {
+      onError: (err) => toast.error("Failed to update skill packs", { description: err.message }),
+    });
   };
 
   return (

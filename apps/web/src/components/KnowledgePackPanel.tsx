@@ -2,6 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Library } from "lucide-react";
+import { toast } from "sonner";
 import { ListRowCard, statusBadge } from "@/components/ui/polish";
 import { Switch } from "@/components/ui/switch";
 import { useAgentDetail } from "@/features/agents/hooks";
@@ -25,7 +26,13 @@ export function KnowledgePackPanel({ agentId }: { agentId: string }) {
     const next = new Set(assigned);
     if (on) next.add(packId);
     else next.delete(packId);
-    await api.updateAgent(agentId, { knowledgePacks: [...next] });
+    try {
+      await api.updateAgent(agentId, { knowledgePacks: [...next] });
+    } catch (err) {
+      toast.error("Failed to update knowledge packs", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    }
     void qc.invalidateQueries({ queryKey: agentKeys.detail(agentId) });
     void qc.invalidateQueries({ queryKey: agentKeys.lists() });
   };
@@ -50,11 +57,11 @@ export function KnowledgePackPanel({ agentId }: { agentId: string }) {
             desc={p.error ? `${p.description} — ${p.error}` : p.description}
             // Ready is a GLOBAL install state; a green "ok" badge alone made
             // users read it as "linked". Ready-but-unassigned shows a neutral
-            // "installed (not linked)" badge instead of the green one.
+            // "installed (not assigned)" badge instead of the green one.
             badges={[
-              p.status === "ready" && !linked ? "installed (not linked)" : statusBadge(p.status),
+              p.status === "ready" && !linked ? "installed (not assigned)" : statusBadge(p.status),
             ]}
-            meta={p.status === "ready" && !linked ? ["available (not linked)"] : undefined}
+            meta={p.status === "ready" && !linked ? ["available (not assigned)"] : undefined}
             actions={
               <Switch
                 checked={linked}

@@ -2,6 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Server } from "lucide-react";
+import { toast } from "sonner";
 import { ListRowCard } from "@/components/ui/polish";
 import { Switch } from "@/components/ui/switch";
 import { useAgentDetail } from "@/features/agents/hooks";
@@ -37,7 +38,13 @@ export function McpServerPanel({ agentId }: { agentId: string }) {
   const toggle = async (serverId: string, enabled: boolean) => {
     const next = (agent?.mcpServers ?? []).filter((s: AgentMcpSwitch) => s.serverId !== serverId);
     next.push({ serverId, enabled });
-    await api.updateAgent(agentId, { mcpServers: next });
+    try {
+      await api.updateAgent(agentId, { mcpServers: next });
+    } catch (err) {
+      toast.error("Failed to update MCP servers", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    }
     void qc.invalidateQueries({ queryKey: agentKeys.detail(agentId) });
     void qc.invalidateQueries({ queryKey: agentKeys.lists() });
   };
@@ -59,7 +66,7 @@ export function McpServerPanel({ agentId }: { agentId: string }) {
           title={s.name}
           tag={{ label: s.transport }}
           desc={s.transport === "sse" ? (s.url ?? undefined) : (s.command ?? undefined)}
-          meta={(switches.get(s.serverId) ?? false) ? undefined : ["available (not enabled)"]}
+          meta={(switches.get(s.serverId) ?? false) ? undefined : ["available (not assigned)"]}
           status={rowStatus(s.status)}
           actions={
             <Switch

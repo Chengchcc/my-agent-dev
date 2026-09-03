@@ -153,7 +153,7 @@ export function ListRowCard({
         : status === "err"
           ? "var(--err)"
           : "var(--faint)";
-  const statusText = { ok: "Connected", warn: "Degraded", err: "Error", idle: "Offline" }[
+  const statusText = { ok: "Reachable", warn: "Degraded", err: "Unreachable", idle: "Offline" }[
     status ?? "idle"
   ];
   return (
