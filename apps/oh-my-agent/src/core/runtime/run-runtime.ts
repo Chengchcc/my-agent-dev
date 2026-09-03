@@ -555,6 +555,163 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     }
     return { allowed: true };
   };
+  // Native-tool permission gate (ADR 0020): "deny" blocks outright; "ask"
+  // routes high-risk tools through the SAME approvalHandler as plugin code
+  // tools (one pipeline). "auto" (CC auto-mode alignment, 2026-09) routes
+  // effect-escaping tools — bash / eval / mcp__* / plugin code tools, whose
+  // reach is NOT bounded by the workspace path sandbox — through the
+  // permission classifier; write/edit skip it (workspace-sandboxed, the CC
+  // "working-dir edits auto-approve" precedent). Absent mode = ungated
+  // (legacy standalone default, unchanged).
+  const HIGH_RISK_NATIVE_TOOLS = new Set(["bash", "write", "edit", "create_file", "mcp__"]);
+  const classifierGated = (toolName: string): boolean =>
+    toolName === "bash" ||
+    toolName === "eval" ||
+    toolName.startsWith("mcp__") ||
+    pluginCodeToolNames.has(toolName);
+  /** Escalated (human-reviewed) actions this Run, keyed toolName+input.
+   *  A classifier block escalates ONCE per unique action; identical repeats
+   *  deny silently (card-spam guard, CC's repeated-block discipline). */
+  const escalatedActions = new Set<string>();
+  /** User intent context for the classifier (anti-injection: user messages
+   *  only — never tool results, never assistant output). */
+  const USER_INTENT_SOURCES = new Set(["prompt", "steer", "follow_up"]);
+  const recentUserTexts = async (): Promise<string[]> => {
+    try {
+      const entries = await store.readBranch(deps.runId);
+      return entries
+        .filter(
+          (e) =>
+            e.type === "message" &&
+            (e as { role?: string }).role === "user" &&
+            USER_INTENT_SOURCES.has((e as { source?: string }).source ?? ""),
+        )
+        .map((e) => ((e as { message?: { text?: string } }).message?.text ?? "").slice(0, 800))
+        .filter((t) => t.length > 0)
+        .slice(-5);
+    } catch {
+      return [];
+    }
+  };
+  /** Auto-mode decision: hard critical-path guard → classifier → escalate
+   *  the block to the human once per unique action. Throws reach the
+   *  caller's fail-closed catch, never the loop's fail-open one. */
+  const autoGateDecision = async (
+    toolName: string,
+    input: unknown,
+    userTexts: readonly string[],
+  ): Promise<{ block: boolean; reason?: string } | undefined> => {
+    // Hard circuit breaker (nothing downstream can override it,
+    // not the classifier, not a human card).
+    if (toolName === "bash" && isCriticalDeletion((input as { command?: string })?.command ?? "")) {
+      return {
+        block: true,
+        reason: `${toolName}: critical-path deletion (root/top-level/home target) — re-issue with a narrower named path`,
+      };
+    }
+    const verdict = await classifyPermissionAction({
+      toolName,
+      input,
+      userTexts,
+      stream: (messages, signal, modelIdOverride) =>
+        streamModel(messages, signal, undefined, modelIdOverride),
+      timeoutMs: classifierTimeoutMs(),
+    });
+    if (verdict.verdict === "allow") return undefined;
+    // CC auto fallback: a block escalates to the human ONCE per unique
+    // action; no approvalHandler or an already-escalated action denies
+    // silently. The set is per-Run (dies with the runtime) and bounded by
+    // the run timeout in the worst case.
+    // ponytail: unbounded set; cap or LRU if runs ever issue thousands of
+    // distinct blocked actions.
+    const actionKey = `${toolName}:${JSON.stringify(input)}`;
+    if (!deps.approvalHandler || escalatedActions.has(actionKey)) {
+      return {
+        block: true,
+        reason: `${toolName}: blocked by classifier — ${verdict.reason}`,
+      };
+    }
+    escalatedActions.add(actionKey);
+    const human = await withApprovalDeadline(
+      deps.approvalHandler({
+        callId: `cls-${randomUUID().slice(0, 8)}`,
+        toolName,
+        input,
+        reason: `classifier: ${verdict.reason}`,
+        source: "classifier",
+      }),
+      approvalTimeoutMs(),
+    );
+    if (human.decision === "deny") {
+      return {
+        block: true,
+        reason: `${toolName}: blocked by classifier — ${verdict.reason} (human denied)`,
+      };
+    }
+    return undefined;
+  };
+  /** Session permission gate factory: the main session AND every workflow
+   *  subagent share one policy (critical guard, classifier, one
+   *  escalatedActions set per Run) but judge against their own intent —
+   *  a subagent's "user request" is the task it was assigned. */
+  const makeSessionPermissionGate =
+    (intentTexts: readonly string[]) =>
+    async (
+      toolName: string,
+      input: unknown,
+    ): Promise<{ block: boolean; reason?: string } | undefined> => {
+      if (deps.permissionMode === undefined) return undefined;
+      if (deps.permissionMode === "auto") {
+        if (!classifierGated(toolName)) return undefined;
+        // The auto gate must be fail-CLOSED end to end: the agent loop
+        // swallows gate exceptions as "no verdict" (= allow), so any
+        // error in here must convert to a block, never propagate.
+        try {
+          return await autoGateDecision(toolName, input, [
+            ...intentTexts,
+            ...(await recentUserTexts()),
+          ]);
+        } catch (err) {
+          return {
+            block: true,
+            reason: `${toolName}: permission gate error — ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          };
+        }
+      }
+      const isHighRisk = HIGH_RISK_NATIVE_TOOLS.has(toolName) || toolName.startsWith("mcp__");
+      if (!isHighRisk) return undefined;
+      if (deps.permissionMode === "deny") {
+        return { block: true, reason: `${toolName}: blocked by permissionMode=deny` };
+      }
+      // ask
+      if (!deps.approvalHandler) {
+        return {
+          block: true,
+          reason: `${toolName}: approval required but no pipeline configured`,
+        };
+      }
+      const verdict = await withApprovalDeadline(
+        deps.approvalHandler({
+          callId: "",
+          toolName,
+          input,
+          source: "permission",
+        }),
+        approvalTimeoutMs(),
+      );
+      if (verdict.decision === "deny") {
+        return {
+          block: true,
+          reason: `${toolName}: denied — ${verdict.reason ?? "user denied"}`,
+        };
+      }
+      return undefined;
+    };
+  const permissionGate =
+    deps.permissionMode === undefined ? undefined : makeSessionPermissionGate([]);
+
   const workflowExecutor = createWorkflowExecutor({
     makeSubagentStream:
       (_sessionId, modelIdOverride, responseFormat) => (messages, signal, tools) =>
@@ -566,6 +723,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     workspaceRoot: deps.workspaceRoot,
     workspaceAccess: deps.workspaceAccess,
     budgetGate: workflowBudgetGate,
+    ...(deps.permissionMode === undefined ? {} : { makePermissionGate: makeSessionPermissionGate }),
     emit: (event) => {
       if (event.type === "workflow_agent_completed" && event.usage) {
         const usage = event.usage;
@@ -767,160 +925,6 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   const maxSteps = Number(process.env.OMA_MAX_STEPS) || 500;
   // TTSR-style stream rules from .oma/rules/*.md (workspace-scoped).
   const streamRules = loadStreamRules(deps.workspaceRoot);
-  // Native-tool permission gate (ADR 0020): "deny" blocks outright; "ask"
-  // routes high-risk tools through the SAME approvalHandler as plugin code
-  // tools (one pipeline). "auto" (CC auto-mode alignment, 2026-09) routes
-  // effect-escaping tools — bash / eval / mcp__* / plugin code tools, whose
-  // reach is NOT bounded by the workspace path sandbox — through the
-  // permission classifier; write/edit skip it (workspace-sandboxed, the CC
-  // "working-dir edits auto-approve" precedent). Absent mode = ungated
-  // (legacy standalone default, unchanged).
-  const HIGH_RISK_NATIVE_TOOLS = new Set(["bash", "write", "edit", "create_file", "mcp__"]);
-  const classifierGated = (toolName: string): boolean =>
-    toolName === "bash" ||
-    toolName === "eval" ||
-    toolName.startsWith("mcp__") ||
-    pluginCodeToolNames.has(toolName);
-  /** Escalated (human-reviewed) actions this Run, keyed toolName+input.
-   *  A classifier block escalates ONCE per unique action; identical repeats
-   *  deny silently (card-spam guard, CC's repeated-block discipline). */
-  const escalatedActions = new Set<string>();
-  /** User intent context for the classifier (anti-injection: user messages
-   *  only — never tool results, never assistant output). */
-  const USER_INTENT_SOURCES = new Set(["prompt", "steer", "follow_up"]);
-  const recentUserTexts = async (): Promise<string[]> => {
-    try {
-      const entries = await store.readBranch(deps.runId);
-      return entries
-        .filter(
-          (e) =>
-            e.type === "message" &&
-            (e as { role?: string }).role === "user" &&
-            USER_INTENT_SOURCES.has((e as { source?: string }).source ?? ""),
-        )
-        .map((e) => ((e as { message?: { text?: string } }).message?.text ?? "").slice(0, 800))
-        .filter((t) => t.length > 0)
-        .slice(-5);
-    } catch {
-      return [];
-    }
-  };
-  /** Auto-mode decision: hard critical-path guard → classifier → escalate
-   *  the block to the human once per unique action. Throws reach the
-   *  caller's fail-closed catch, never the loop's fail-open one. */
-  const autoGateDecision = async (
-    toolName: string,
-    input: unknown,
-  ): Promise<{ block: boolean; reason?: string } | undefined> => {
-    // Hard circuit breaker (nothing downstream can override it,
-    // not the classifier, not a human card).
-    if (toolName === "bash" && isCriticalDeletion((input as { command?: string })?.command ?? "")) {
-      return {
-        block: true,
-        reason: `${toolName}: critical-path deletion (root/top-level/home target) — re-issue with a narrower named path`,
-      };
-    }
-    const verdict = await classifyPermissionAction({
-      toolName,
-      input,
-      userTexts: await recentUserTexts(),
-      stream: (messages, signal, modelIdOverride) =>
-        streamModel(messages, signal, undefined, modelIdOverride),
-      timeoutMs: classifierTimeoutMs(),
-    });
-    if (verdict.verdict === "allow") return undefined;
-    // CC auto fallback: a block escalates to the human ONCE per unique
-    // action; no approvalHandler or an already-escalated action denies
-    // silently. The set is per-Run (dies with the runtime) and bounded by
-    // the run timeout in the worst case.
-    // ponytail: unbounded set; cap or LRU if runs ever issue thousands of
-    // distinct blocked actions.
-    const actionKey = `${toolName}:${JSON.stringify(input)}`;
-    if (!deps.approvalHandler || escalatedActions.has(actionKey)) {
-      return {
-        block: true,
-        reason: `${toolName}: blocked by classifier — ${verdict.reason}`,
-      };
-    }
-    escalatedActions.add(actionKey);
-    const human = await withApprovalDeadline(
-      deps.approvalHandler({
-        callId: `cls-${randomUUID().slice(0, 8)}`,
-        toolName,
-        input,
-        reason: `classifier: ${verdict.reason}`,
-        source: "classifier",
-      }),
-      approvalTimeoutMs(),
-    );
-    if (human.decision === "deny") {
-      return {
-        block: true,
-        reason: `${toolName}: blocked by classifier — ${verdict.reason} (human denied)`,
-      };
-    }
-    return undefined;
-  };
-  const permissionGate:
-    | ((
-        toolName: string,
-        input: unknown,
-      ) => Promise<
-        | {
-            block: boolean;
-            reason?: string;
-          }
-        | undefined
-      >)
-    | undefined =
-    deps.permissionMode === undefined
-      ? undefined
-      : async (toolName, input) => {
-          if (deps.permissionMode === "auto") {
-            if (!classifierGated(toolName)) return undefined;
-            // The auto gate must be fail-CLOSED end to end: the agent loop
-            // swallows gate exceptions as "no verdict" (= allow), so any
-            // error in here must convert to a block, never propagate.
-            try {
-              return await autoGateDecision(toolName, input);
-            } catch (err) {
-              return {
-                block: true,
-                reason: `${toolName}: permission gate error — ${
-                  err instanceof Error ? err.message : String(err)
-                }`,
-              };
-            }
-          }
-          const isHighRisk = HIGH_RISK_NATIVE_TOOLS.has(toolName) || toolName.startsWith("mcp__");
-          if (!isHighRisk) return undefined;
-          if (deps.permissionMode === "deny") {
-            return { block: true, reason: `${toolName}: blocked by permissionMode=deny` };
-          }
-          // ask
-          if (!deps.approvalHandler) {
-            return {
-              block: true,
-              reason: `${toolName}: approval required but no pipeline configured`,
-            };
-          }
-          const verdict = await withApprovalDeadline(
-            deps.approvalHandler({
-              callId: "",
-              toolName,
-              input,
-              source: "permission",
-            }),
-            approvalTimeoutMs(),
-          );
-          if (verdict.decision === "deny") {
-            return {
-              block: true,
-              reason: `${toolName}: denied — ${verdict.reason ?? "user denied"}`,
-            };
-          }
-          return undefined;
-        };
   // --tools filter (CLI): applied ONCE to the final tool table (native +
   //  MCP + plugin tools) — the model never sees filtered-out tools.
   const finalPlugins = deps.toolFilter

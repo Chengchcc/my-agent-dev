@@ -96,6 +96,16 @@ export interface WorkflowExecutorOptions {
   /** Optional wall-clock deadline per subagent (B7). Undefined = no
    *  deadline (the model call keeps its own per-call timeout). */
   readonly perAgentTimeoutMs?: number;
+  /** Per-session permission gate factory, threaded from the run runtime so
+   *  subagents obey the same permissionMode as the main loop. The
+   *  subagent's assigned task is its user-intent text. Absent = ungated
+   *  (legacy tests). */
+  readonly makePermissionGate?: (
+    intentTexts: readonly string[],
+  ) => (
+    toolName: string,
+    input: unknown,
+  ) => Promise<{ block: boolean; reason?: string } | undefined>;
 }
 
 export interface WorkflowExecutor {
@@ -347,6 +357,7 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
           updatedAt: Date.now(),
         });
       }
+      const sessionGate = opts.makePermissionGate?.([spec.prompt]);
       const session =
         existing?.session ??
         createOmaSession({
@@ -364,6 +375,7 @@ export function createWorkflowExecutor(opts: WorkflowExecutorOptions): WorkflowE
           ),
           summarize: opts.summarize,
           contextBudget: opts.contextBudget,
+          ...(sessionGate ? { permissionGate: sessionGate } : {}),
         });
       const handle = existing ? input.resumeHandle! : `sub-${crypto.randomUUID()}`;
       if (!existing) {

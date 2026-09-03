@@ -66,7 +66,8 @@ describe("isCriticalDeletion", () => {
       'rm -rf "$VAR"/*',
       "cd /tmp && rm -rf /var",
       "echo hi\nrm -rf /etc",
-      "rm -r -f /boot",
+      "echo `rm -rf /`",
+      '"rm" -rf /',
     ]) {
       expect(isCriticalDeletion(cmd)).toBe(true);
     }
@@ -86,9 +87,11 @@ describe("isCriticalDeletion", () => {
     }
   });
 
-  test("substitution-hidden deletes ARE caught; backticks remain the ceiling", () => {
+  test("remaining ceiling: command/escape/variable forms", () => {
     expect(isCriticalDeletion("echo $(rm -rf /)")).toBe(true);
-    expect(isCriticalDeletion("echo `rm -rf /`")).toBe(false);
+    expect(isCriticalDeletion("command rm -rf /")).toBe(false);
+    expect(isCriticalDeletion("\\rm -rf /")).toBe(false);
+    expect(isCriticalDeletion("$CMD")).toBe(false);
   });
 });
 
