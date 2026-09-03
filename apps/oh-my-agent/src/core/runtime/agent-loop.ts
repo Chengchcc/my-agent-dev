@@ -1,4 +1,4 @@
-import type { BackendInputMessage, Usage } from "@chengchenccc/agent-contract";
+import type { BackendInputMessage } from "@chengchenccc/agent-contract";
 import type { Message } from "@chengchenccc/message";
 import type { AgentLoopListener, OmaLoopEvent } from "./agent-event.js";
 import type { LoopCallContext, LoopRuntimeState, LoopToolMapRef } from "./agent-loop-run.js";
@@ -26,7 +26,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
   const listeners = new Set<AgentLoopListener>();
   // Resolve the plugin runtime: opts.pluginRuntime from run-runtime, or a
   // minimal stub for tests that only need emit (backward-compatible).
-  let rt: PluginRuntime = opts.pluginRuntime ?? {
+  const initialRt: PluginRuntime = opts.pluginRuntime ?? {
     streamModel: async function* () {},
     store: opts.store,
     sessionId: opts.sessionId,
@@ -40,87 +40,21 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
   const baseTools = collectTools(opts.plugins);
   const toolMap = new Map(baseTools.map((t) => [t.name, t]));
   const toolMapRef: LoopToolMapRef = { current: toolMap };
-  let status: "idle" | "running" | "completed" | "failed" | "stopped" = "idle";
-  let runUsage: Usage | undefined;
-  let active = false;
-  let controller: AbortController | null = null;
-  const steerQueue: BackendInputMessage[] = [];
-  let acceptingSteer = false;
-  let debugModelId = "";
-  let debugTurn = 0;
-  let debugRunId = "";
-  const streamRuleInjections = new Map<string, number>();
   const state: LoopRuntimeState = {
-    get runUsage() {
-      return runUsage;
-    },
-    set runUsage(v) {
-      runUsage = v;
-    },
-    get debugTurn() {
-      return debugTurn;
-    },
-    set debugTurn(v) {
-      debugTurn = v;
-    },
-    get debugModelId() {
-      return debugModelId;
-    },
-    set debugModelId(v) {
-      debugModelId = v;
-    },
-    get debugRunId() {
-      return debugRunId;
-    },
-    set debugRunId(v) {
-      debugRunId = v;
-    },
-    get streamRuleInjections() {
-      return streamRuleInjections;
-    },
-    set streamRuleInjections(_v) {
-      // streamRuleInjections is a const Map; only mutated, never reassigned.
-    },
+    runUsage: undefined,
+    debugTurn: 0,
+    debugModelId: "",
+    debugRunId: "",
+    streamRuleInjections: new Map<string, number>(),
   };
   const tokenEstimateCache = new TokenEstimateCache();
-
   const mutable: LoopRunnerMutable = {
-    get status() {
-      return status;
-    },
-    set status(v) {
-      status = v;
-    },
-    get active() {
-      return active;
-    },
-    set active(v) {
-      active = v;
-    },
-    get controller() {
-      return controller;
-    },
-    set controller(v) {
-      controller = v;
-    },
-    get rt() {
-      return rt;
-    },
-    set rt(v) {
-      rt = v;
-    },
-    get steerQueue() {
-      return steerQueue;
-    },
-    set steerQueue(_v) {
-      // steerQueue is a const array; only mutated, never reassigned.
-    },
-    get acceptingSteer() {
-      return acceptingSteer;
-    },
-    set acceptingSteer(v) {
-      acceptingSteer = v;
-    },
+    status: "idle",
+    active: false,
+    controller: null,
+    rt: initialRt,
+    steerQueue: [],
+    acceptingSteer: false,
   };
 
   async function emit(event: OmaLoopEvent): Promise<void> {
@@ -137,8 +71,8 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
     opts,
     emit,
     toolMapRef,
-    controller,
-    rt,
+    controller: mutable.controller,
+    rt: mutable.rt,
     state,
   });
 
