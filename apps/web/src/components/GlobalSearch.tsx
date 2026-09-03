@@ -145,7 +145,7 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
                 id: a.id,
                 name: a.name,
                 desc: a.backendKind,
-                href: `/team/agents/${a.id}`,
+                href: `/team/${a.id}`,
               }),
             ),
           ...(projects.projects ?? [])

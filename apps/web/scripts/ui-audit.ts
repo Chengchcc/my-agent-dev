@@ -5,7 +5,7 @@
 
 import { existsSync } from "node:fs";
 
-const BASE = process.env.AUDIT_BASE ?? "http://127.0.0.1:3001";
+const BASE = process.env.AUDIT_BASE ?? "http://localhost:3001";
 const CHROME = process.env.CHROME_PATH;
 
 let browser: Awaited<ReturnType<typeof import("puppeteer-core").default.launch>> | null = null;
@@ -127,31 +127,44 @@ const assertions: Assertion[] = [
       }),
   },
   {
-    name: "P3-team-list has a search input",
+    name: "team overview: /team/agents redirects to /team overview",
     check: async () =>
-      withPage("/team", async (page) => {
+      withPage("/team/agents", async (page) => {
         await loginIfNeeded(page);
-        const found = await page.evaluate(() =>
-          Boolean(document.querySelector('input[placeholder="Search agents…"]')),
-        );
-        if (!found) throw new Error("no agent search input on /team");
+        const { path, h1 } = await page.evaluate(() => ({
+          path: location.pathname,
+          h1: document.querySelector("main h1")?.textContent ?? "",
+        }));
+        if (path !== "/team") throw new Error(`path ${path}, want /team`);
+        if (h1 !== "Team") throw new Error(`h1 "${h1}", want "Team"`);
       }),
   },
   {
-    name: "P3-team-detail has a SubTabs container",
+    name: "team detail: card deep-links to /team/:id; old /team/agents/:id redirects",
     check: async () =>
       withPage("/team", async (page) => {
         await loginIfNeeded(page);
         const href = await page.evaluate(() => {
-          const link = document.querySelector('nav[aria-label="Agents"] a[href^="/team/"]');
+          const link = [...document.querySelectorAll("main a[href^='/team/']")].find(
+            (a) =>
+              !/\/team\/(skills|mcp|knowledge|projects)(\/|$)/.test(a.getAttribute("href") ?? ""),
+          );
           return link ? link.getAttribute("href") : null;
         });
-        if (!href) throw new Error("no agent link on /team to deep-link");
-        await page.goto(`${BASE}${href}`, { waitUntil: "networkidle2", timeout: 30_000 });
-        const hasTabs = await page.evaluate(() =>
-          Boolean(document.querySelector('[role="tablist"]')),
-        );
+        if (!href) throw new Error("no agent card link on /team overview");
+        if (!/^\/team\/[^/]+$/.test(href)) throw new Error(`card href ${href}, want /team/:id`);
+        await page.goto(`${BASE}/team/agents${href.slice("/team".length)}`, {
+          waitUntil: "networkidle2",
+          timeout: 30_000,
+        });
+        const { path, hasTabs, hasRailSearch } = await page.evaluate(() => ({
+          path: location.pathname,
+          hasTabs: Boolean(document.querySelector('[role="tablist"]')),
+          hasRailSearch: Boolean(document.querySelector('input[placeholder="Search agents…"]')),
+        }));
+        if (path !== href) throw new Error(`path ${path}, want ${href}`);
         if (!hasTabs) throw new Error("no SubTabs [role=tablist] on detail page");
+        if (!hasRailSearch) throw new Error("no agent rail search input on detail page");
       }),
   },
   {

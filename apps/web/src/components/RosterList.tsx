@@ -24,7 +24,7 @@ export function RosterList({ agent, onClose }: RosterListProps) {
 
   const openAgent = (m: SenderRef) => {
     const id = m.agentId ?? m.memberId;
-    router.push(`/team/agents/${id}`);
+    router.push(`/team/${id}`);
   };
 
   if (!agent) {

@@ -6,6 +6,12 @@
 
 Implemented(was Proposed)
 
+> 🔄 部分演进（2026-09-03）：Team 子树——`/team` 现为 Team overview（agent 卡片网格
+> + needs attention），agent 详情移至 `/team/[agentId]`，`/team/agents` 前缀退役
+> （`next.config` 重定向）。本文「agent id 撞名静态段的路由劫持」前提经核实不成立：
+> HTTP create 不接受客户端 id，agent id 只能是 ULID 或 bootstrap 常量（`"default"`），
+> 不会等于 skills/mcp/knowledge/projects 静态段。
+
 ## 上下文
 
 Web 控制台（`apps/web`）的信息架构是**按后端模块生长出来的**，不是按用户意图组织的。侧边栏 `NavRail` 当前把入口平铺成四组：`Workspace`（Agent 列表）、动态 `Conversations`、`Navigate`（Issues / Projects / Schedules / Skill Packs）、`Operations`（Observability / Loops）。这套结构有三类结构性问题：

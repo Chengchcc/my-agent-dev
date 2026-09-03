@@ -9,7 +9,7 @@ export default function ProjectsPage() {
     <Page>
       <PageHeader
         breadcrumb={[
-          { label: "Team", href: "/team/agents" },
+          { label: "Team", href: "/team" },
           { label: "Projects", href: "/team/projects" },
         ]}
         title="Projects"

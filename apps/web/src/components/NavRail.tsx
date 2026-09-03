@@ -290,7 +290,13 @@ function NavContent() {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                isActive={pathname === "/team" || pathname.startsWith("/team/agents")}
+                isActive={
+                  pathname === "/team" ||
+                  (pathname.startsWith("/team/") &&
+                    !["skills", "mcp", "knowledge", "projects"].some((r) =>
+                      pathname.startsWith(`/team/${r}`),
+                    ))
+                }
                 tooltip={t("Agents")}
                 onClick={() => {
                   closeMobile();

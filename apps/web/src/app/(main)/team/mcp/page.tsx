@@ -250,7 +250,7 @@ export default function McpCatalogPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb={[{ label: "Team", href: "/team/agents" }, { label: "MCP" }]}
+        breadcrumb={[{ label: "Team", href: "/team" }, { label: "MCP" }]}
         title="MCP Servers"
         subtitle="Global catalog shared by all agents; per-agent switches live on agent pages."
         actions={

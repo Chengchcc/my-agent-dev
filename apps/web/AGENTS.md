@@ -83,7 +83,7 @@ small derived read, add a hook to the owning feature (e.g.
 - Historical renames are final:
   - `/work` → `/today`
   - `/agentic-workflow` → `/workflows`
-  - `/team` → `/team/agents`
+  - `/team/agents` → `/team` (Team overview; agent detail at `/team/[agentId]`)
 - Do not create new top-level `/work` or `/agentic-workflow` pages. If a
   link points at an old route, it must go through the redirect in
   `next.config` or be updated to the new path.

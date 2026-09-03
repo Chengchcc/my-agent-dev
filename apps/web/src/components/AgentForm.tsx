@@ -259,7 +259,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
         toast.success("Agent created");
         form.reset();
         setOpen(false);
-        router.push(`/team/agents/${agent.id}`);
+        router.push(`/team/${agent.id}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to save agent";
         setServerError(msg);

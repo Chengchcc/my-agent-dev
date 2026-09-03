@@ -99,7 +99,7 @@ export default function KnowledgePackPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb={[{ label: "Team", href: "/team/agents" }, { label: "Knowledge" }]}
+        breadcrumb={[{ label: "Team", href: "/team" }, { label: "Knowledge" }]}
         title="Knowledge Packs"
         subtitle="Install shared knowledge packs here; attach them per agent from the agent's Knowledge tab."
         actions={

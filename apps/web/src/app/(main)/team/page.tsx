@@ -85,7 +85,7 @@ export default function TeamPage() {
               {agentsWithoutProjects.map((a) => (
                 <Link
                   key={a.id}
-                  href={`/team/agents/${a.id}`}
+                  href={`/team/${a.id}`}
                   className="flex justify-between hover:underline"
                 >
                   <span className="truncate">{a.name}</span>
@@ -115,7 +115,7 @@ export default function TeamPage() {
               return (
                 <Link
                   key={a.id}
-                  href={`/team/agents/${a.id}`}
+                  href={`/team/${a.id}`}
                   className="rounded-lg border border-(--hairline) bg-(--canvas-soft) p-4 hover:border-(--primary) transition-colors"
                 >
                   <div className="flex items-start justify-between gap-2">
