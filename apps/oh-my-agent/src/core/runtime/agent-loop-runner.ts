@@ -4,6 +4,11 @@ import type { Message } from "@chengchenccc/message";
 import type { MessageEntry } from "../persistence/session-tree.js";
 import type { OmaLoopEvent } from "./agent-event.js";
 import {
+  buildTextAssistantEntry,
+  buildThinkingBlock,
+  buildToolBatch,
+} from "./agent-loop-messages.js";
+import {
   executeTools,
   type LoopCallContext,
   type LoopRuntimeState,
@@ -11,13 +16,7 @@ import {
   readBranchMessages,
   streamModelTurn,
 } from "./agent-loop-run.js";
-import type {
-  ModelTurn,
-  OmaLoopResult,
-  OmaSession,
-  OmaSessionOptions,
-} from "./agent-loop-types.js";
-import { TOOL_FAILURE_REMINDER } from "./agent-loop-utils.js";
+import type { OmaLoopResult, OmaSession, OmaSessionOptions } from "./agent-loop-types.js";
 import { compactSession } from "./compaction.js";
 import {
   estimateContextTokens,
@@ -53,29 +52,6 @@ export interface LoopRunnerBag {
   tokenEstimateCache: TokenEstimateCache;
   baseTools: readonly PluginTool[];
   mutable: LoopRunnerMutable;
-}
-
-/** One thinking block from a turn's raw thinking (single assembly point:
- *  both the text turn and the tool turn persist through here). An empty
- *  thinking text with a signature (display: "omitted") still persists
- *  the signature must be replayed unchanged in tool-use turns. */
-export function buildThinkingBlock(
-  turn: ModelTurn,
-): Array<{ type: "thinking"; text: string; signature?: string; redacted?: boolean }> {
-  if (!turn.thinking && !turn.thinkingSignature) return [];
-  // Collapse the interleaved thinking strands into one thinking block for
-  // replay: Anthropic requires a single <thinking> per assistant message,
-  // and signature/redacted attach at the end. Text passages stay in the
-  // ordered blocks when the turn persists them (tool turns keep them).
-  const text = turn.thinkingRedacted ? "[reasoning redacted]" : turn.thinking;
-  return [
-    {
-      type: "thinking",
-      text,
-      ...(turn.thinkingSignature ? { signature: turn.thinkingSignature } : {}),
-      ...(turn.thinkingRedacted ? { redacted: true } : {}),
-    },
-  ];
 }
 
 /**
@@ -370,108 +346,8 @@ export async function runLoop(
             }
 
             // Persist assistant(tool_use) + all tool_results atomically.
-            const batch: Array<{
-              type: "message";
-              role: "assistant" | "tool";
-              source: string;
-              message: Message;
-              createdAt: number;
-            }> = [
-              {
-                type: "message",
-                role: "assistant",
-                source: "assistant",
-                message: {
-                  role: "assistant",
-                  // Keep any narrative text the model emitted alongside
-                  // tool calls (DeepSeek interleaves thinking/text with
-                  // tool_use). Text fragments preserve their order; thinking
-                  // fragments COLLAPSE into the single thinking block
-                  // (Anthropic requires one <thinking> per assistant message
-                  // with one signature) inserted at the position of the
-                  // first thinking fragment.
-                  text: turn.text,
-                  blocks: [
-                    ...(() => {
-                      const collapsedThinking = {
-                        type: "thinking" as const,
-                        text: turn.thinkingRedacted ? "[reasoning redacted]" : turn.thinking,
-                        ...(turn.thinkingSignature ? { signature: turn.thinkingSignature } : {}),
-                        ...(turn.thinkingRedacted ? { redacted: true } : {}),
-                      };
-                      const out: Array<{ type: string; text: string }> = [];
-                      let thinkingInserted = false;
-                      for (const b of turn.ordered) {
-                        if (b.type === "thinking") {
-                          if (!thinkingInserted) {
-                            out.push(collapsedThinking);
-                            thinkingInserted = true;
-                          }
-                          continue;
-                        }
-                        out.push(b);
-                      }
-                      if (!thinkingInserted && turn.thinking) {
-                        out.push(collapsedThinking);
-                      }
-                      return out;
-                    })(),
-                    ...turn.toolCalls.map((tc) => ({
-                      type: "tool_use" as const,
-                      id: tc.id,
-                      name: tc.name,
-                      input: tc.input,
-                    })),
-                  ],
-                } as Message,
-                createdAt: Date.now(),
-              },
-              ...toolResults.map((result) => {
-                // Vision passthrough: a tool result carrying `images`
-                // (read_image) keeps them on the tool_result block so
-                // providers map them onto the wire content array.
-                const imgs = (result.result as { images?: unknown } | null | undefined)?.images;
-                const images =
-                  Array.isArray(imgs) && imgs.length > 0
-                    ? {
-                        images: imgs as Message["blocks"],
-                      }
-                    : {};
-                // Tool result content contract (spec): a string `content`
-                // field is the model-visible text verbatim (tool-formatted);
-                // everything else stays the JSON dump for both model and UI.
-                const res = result.result as { content?: unknown } | null | undefined;
-                const raw =
-                  typeof res?.content === "string" ? res.content : JSON.stringify(result.result);
-                // Tool-failure system reminder (absorbed from oh-my-pi):
-                // in-band on the failing result so it survives into the
-                // canonical ledger — "the fix sticks" across runs. The
-                // message `text` stays the clean JSON for UI display.
-                const content =
-                  result.isError && opts.toolFailureReminder !== false
-                    ? `${TOOL_FAILURE_REMINDER}\n\n${raw}`
-                    : raw;
-                return {
-                  type: "message" as const,
-                  role: "tool" as const,
-                  source: "tool_result" as const,
-                  message: {
-                    role: "tool",
-                    text: raw,
-                    blocks: [
-                      {
-                        type: "tool_result" as const,
-                        tool_use_id: result.id,
-                        content,
-                        ...(result.isError ? { is_error: true } : {}),
-                        ...images,
-                      },
-                    ],
-                  } as Message,
-                  createdAt: Date.now(),
-                };
-              }),
-            ];
+            const batch = buildToolBatch(turn, toolResults, opts);
+
             await persist(batch);
 
             messages = await readBranchMessages(opts.store, opts.sessionId);
@@ -488,40 +364,7 @@ export async function runLoop(
           // An abort during the stream discards the partial output: an
           // uncompleted turn never enters the canonical tree.
           if (turn.text && !mutable.controller?.signal.aborted) {
-            await persist([
-              {
-                type: "message",
-                role: "assistant",
-                source: "assistant",
-                message: {
-                  role: "assistant",
-                  text: turn.text,
-                  // Preserve the interleaved thinking/text order from the
-                  // stream. The single collapsed thinking block (with
-                  // signature) is still emitted for replay compatibility
-                  // when the stream had a signature, but the ordered list
-                  // keeps the trace faithful.
-                  blocks:
-                    turn.ordered.length > 0
-                      ? turn.ordered.map((b) =>
-                          b.type === "thinking"
-                            ? {
-                                type: "thinking" as const,
-                                text: turn.thinkingRedacted ? "[reasoning redacted]" : b.text,
-                                ...(turn.thinkingSignature
-                                  ? { signature: turn.thinkingSignature }
-                                  : {}),
-                                ...(turn.thinkingRedacted ? { redacted: true } : {}),
-                              }
-                            : b,
-                        )
-                      : thinkingBlocks.length > 0
-                        ? thinkingBlocks
-                        : undefined,
-                },
-                createdAt: Date.now(),
-              },
-            ]);
+            await persist([buildTextAssistantEntry(turn, thinkingBlocks)]);
           }
 
           // Natural stop: let plugins veto.
