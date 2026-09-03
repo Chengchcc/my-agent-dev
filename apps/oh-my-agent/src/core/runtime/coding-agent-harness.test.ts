@@ -505,7 +505,7 @@ function testHarness(
       expect(snap.entries.some((e) => e.type === "compaction")).toBe(true);
     });
 
-    test("5b. stop during provider stream ends as stopped, not failed", async () => {
+    test("5f. stop during provider stream ends as stopped, not failed", async () => {
       const store = storeFactory("h5b");
       await createSession(store, "h5b");
       const loop = createOmaSession({

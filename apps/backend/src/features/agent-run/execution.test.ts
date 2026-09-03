@@ -769,7 +769,7 @@ describe("agent run execution (Run-centric)", () => {
     expect(fake.executeCalls.map((c) => c.runId)).toEqual([promoted.runId!]);
   }, 15_000);
 
-  test("steer is injected into the live run after persistence; accepted only after Backend acceptance", async () => {
+  test("follow-up chain promotes queued inputs as fresh FIFO runs", async () => {
     const fake = createFakeDaemon({ outcomeDelayMs: 120 });
     const execution = makeExecution(fake);
 
