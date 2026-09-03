@@ -47,6 +47,10 @@ export const envSchema = z.object({
 
   // ── Phase 5: Oma process + Product Tools MCP ──
   OMA_BIN: z.string().optional().describe("Oma executable spawned per Run (default: oma on PATH)"),
+  OMA_PERMISSION_CLASSIFIER_MODEL: z
+    .string()
+    .optional()
+    .describe("Model id reviewing gated tools under permissionMode=auto (default: run model)"),
   KNOWLEDGE_MCP_SERVER_BIN: z
     .string()
     .optional()

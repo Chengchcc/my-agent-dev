@@ -82,6 +82,7 @@ describe("project settings", () => {
           titleEnabled: false,
           memoryExtract: true,
           memoryModel: "fake/echo",
+          permissionClassifierModel: "fake/echo2",
         }),
         "utf8",
       );
@@ -95,6 +96,7 @@ describe("project settings", () => {
         titleEnabled: false,
         memoryExtract: true,
         memoryModel: "fake/echo",
+        permissionClassifierModel: "fake/echo2",
       });
     } finally {
       rmSync(root, { recursive: true, force: true });

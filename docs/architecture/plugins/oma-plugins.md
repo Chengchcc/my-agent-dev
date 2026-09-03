@@ -54,7 +54,8 @@ permissionMode = ask 的工具调用
 → adapter resolve_approval（id 匹配）→ child 继续/中止
 ```
 
-- permissionMode 是 request 的默认应答策略：auto=allow、deny=deny、ask=审批；只读工具（read/glob/grep 等）永不门控
+- permissionMode 是 request 的默认应答策略：auto=分类器审查、deny=deny、ask=审批；只读工具（read/glob/grep 等）永不门控
+- auto 分类器（CC auto-mode 对齐，`core/runtime/permission-classifier.ts`）：bash/eval/mcp__*/插件工具每次调用过一次分类器模型（allow 放行 / block 连理由 deny / 任何故障 fail-closed block）；write/edit 跳过（workspace 路径沙箱已约束，对应 CC 工作区编辑免审）；分类器输入=最近用户消息+待执行动作，**永不包含 tool results**（防注入）。模型经 `OMA_PERMISSION_CLASSIFIER_MODEL`（或 `.oma/settings.json` 的 `permissionClassifierModel`）固定，缺省用 Run 模型；`OMA_CLASSIFIER_TIMEOUT_MS`（默认 30s）封顶
 - 超时（`OMA_APPROVAL_TIMEOUT_MS`，默认 120s）= deny（fail-closed）；无 handler 的 mode = denyAllApprovals
 - 审批范围：插件 code 工具 + 原生高危工具（bash/write/edit/mcp__*）；插件工具与原生工具同一 gate，不双重审批
 

@@ -19,6 +19,9 @@ export interface BackendConfig {
   /** Oma executable (spawned per Run). Defaults to "oma"
    *  on PATH; tests point it at the Bun runtime + app entry source. */
   omaBin?: string;
+  /** permissionMode=auto classifier model forwarded to the oma child
+   *  (OMA_PERMISSION_CLASSIFIER_MODEL). Absent = the run's model. */
+  omaPermissionClassifierModel?: string;
   /** Knowledge recall MCP server entry (ADR 0022). Optional: exotic
    *  deployments override; otherwise dev uses source, prod uses dist. */
   knowledgeMcpServerBin?: string;
@@ -53,6 +56,7 @@ export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
     runTimeoutMs: env.BACKEND_RUN_TIMEOUT_MS ?? 30 * 60_000,
     builtinSkillsDir: process.env.BUILTIN_SKILLS_DIR ?? resolve(import.meta.dir, "../../../skills"),
     omaBin: env.OMA_BIN,
+    omaPermissionClassifierModel: env.OMA_PERMISSION_CLASSIFIER_MODEL,
     knowledgeMcpServerBin: env.KNOWLEDGE_MCP_SERVER_BIN,
     piBin: env.PI_BIN,
     piMcpAdapterPath: env.PI_MCP_ADAPTER_PATH,

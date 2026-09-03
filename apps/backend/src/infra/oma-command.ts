@@ -42,6 +42,9 @@ export function resolveOmaCommand(
     OMA_FAKE_TEXT: process.env.OMA_FAKE_TEXT,
     OMA_FAKE_TOOL: process.env.OMA_FAKE_TOOL,
     OMA_FAKE_TOOLS_RECORD: process.env.OMA_FAKE_TOOLS_RECORD,
+    // permissionMode=auto classifier pin (CC-auto alignment); absent = the
+    // child classifies with the run's own model.
+    OMA_PERMISSION_CLASSIFIER_MODEL: config.omaPermissionClassifierModel,
     ...opts.env,
   };
 

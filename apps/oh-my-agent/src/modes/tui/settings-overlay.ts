@@ -42,6 +42,7 @@ const ROWS: SettingRow[] = [
   { key: "maxToolTimeoutMs", label: "maxToolTimeoutMs", kind: "number" },
   { key: "memoryExtract", label: "memoryExtract", kind: "boolean" },
   { key: "memoryModel", label: "memoryModel", kind: "string" },
+  { key: "permissionClassifierModel", label: "permissionClassifierModel", kind: "string" },
   { key: "titleEnabled", label: "titleEnabled", kind: "boolean" },
   { key: "disableWeb", label: "disableWeb", kind: "boolean" },
   { key: "enableClaude", label: "enableClaude", kind: "boolean" },

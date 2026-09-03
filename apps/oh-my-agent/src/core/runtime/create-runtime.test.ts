@@ -762,10 +762,11 @@ describe("createOmaRuntime", () => {
       expect(asked).toEqual(["bash"]);
       // ask + no handler: fail-closed.
       expect(await oneRun("ask", false)).toContain("no pipeline");
-      // auto: native bash executes (no block text, completed with tool result).
+      // auto (CC alignment): bash routes through the classifier; the fake
+      // provider's default text ("done") is not a verdict JSON →
+      // fail-closed block.
       const auto = await oneRun("auto", false);
-      expect(auto).not.toContain("blocked by permissionMode");
-      expect(auto).not.toContain("denied");
+      expect(auto).toContain("blocked by classifier");
     } finally {
       if (savedFake === undefined) delete process.env.OMA_FAKE_PROVIDER;
       else process.env.OMA_FAKE_PROVIDER = savedFake;
@@ -773,6 +774,150 @@ describe("createOmaRuntime", () => {
       else process.env.OMA_FAKE_TOOL = savedTool;
     }
   });
+});
+
+describe("permissionMode auto classifier gate (CC alignment)", () => {
+  /** One auto-mode run against the fake provider: script drives the model's
+   * tool call, OMA_FAKE_TEXT is the classifier verdict (the fake script
+   * queue is empty by the time the gate's classifier call runs). Returns
+   * the serialized outcome messages. */
+  const autoRun = async (opts: {
+    runId: string;
+    script: Array<{ name: string; input: Record<string, unknown> }>;
+    text: string;
+    permissionMode?: "ask" | "auto" | "deny";
+    pluginTool?: { name: string; execute: () => Promise<Record<string, unknown>> };
+  }): Promise<string> => {
+    process.env.OMA_FAKE_TOOL = JSON.stringify(opts.script);
+    process.env.OMA_FAKE_TEXT = opts.text;
+    const modelRuntime = createModelRuntime();
+    registerBuiltinProviders(modelRuntime, process.env);
+    const pluginComponents = opts.pluginTool
+      ? {
+          plugins: [
+            {
+              name: "plugin:plug",
+              tools: [
+                {
+                  name: opts.pluginTool.name,
+                  description: "plugin tool",
+                  inputSchema: { type: "object", properties: {}, required: [] },
+                  execute: opts.pluginTool.execute,
+                },
+              ],
+            },
+          ],
+        }
+      : undefined;
+    const rt = await createOmaRuntime({
+      runId: opts.runId,
+      modelId: "fake/echo",
+      workspaceRoot: tmp,
+      workspaceAccess: "read_write",
+      modelRuntime,
+      skillRoots: [],
+      ...(opts.permissionMode ? { permissionMode: opts.permissionMode } : {}),
+      ...(pluginComponents ? { pluginComponents } : {}),
+    });
+    const seg = await rt.run(runInput(opts.runId));
+    const out = await seg.outcome;
+    await rt.close();
+    return JSON.stringify(out.messages);
+  };
+
+  const withFakes = (fn: () => Promise<void>) => async () => {
+    const saved = ["OMA_FAKE_PROVIDER", "OMA_FAKE_TOOL", "OMA_FAKE_TEXT"].map(
+      (k) => process.env[k],
+    );
+    process.env.OMA_FAKE_PROVIDER = "1";
+    try {
+      await fn();
+    } finally {
+      ["OMA_FAKE_PROVIDER", "OMA_FAKE_TOOL", "OMA_FAKE_TEXT"].forEach((k, i) => {
+        if (saved[i] === undefined) delete process.env[k];
+        else process.env[k] = saved[i];
+      });
+    }
+  };
+
+  test(
+    "classifier allow executes bash; block denies with the reason",
+    withFakes(async () => {
+      const script = [
+        { name: "bash", input: { description: "d", command: "echo x > marker-auto.txt" } },
+      ];
+      const allowed = await autoRun({
+        runId: "r-auto-allow",
+        script,
+        text: '{"verdict":"allow"}',
+        permissionMode: "auto",
+      });
+      expect(allowed).not.toContain("blocked by classifier");
+      expect(existsSync(join(tmp, "marker-auto.txt"))).toBe(true);
+
+      const blocked = await autoRun({
+        runId: "r-auto-block",
+        script,
+        text: '{"verdict":"block","reason":"deletes home files"}',
+        permissionMode: "auto",
+      });
+      expect(blocked).toContain("blocked by classifier");
+      expect(blocked).toContain("deletes home files");
+    }),
+  );
+
+  test(
+    "write skips the classifier (workspace-sandboxed)",
+    withFakes(async () => {
+      const out = await autoRun({
+        runId: "r-auto-write",
+        script: [{ name: "write", input: { description: "d", path: "w-auto.txt", content: "hi" } }],
+        // The classifier would block everything — write must not consult it.
+        text: '{"verdict":"block","reason":"never"}',
+        permissionMode: "auto",
+      });
+      expect(out).not.toContain("blocked by classifier");
+      expect(existsSync(join(tmp, "w-auto.txt"))).toBe(true);
+    }),
+  );
+
+  test(
+    "absent permissionMode stays ungated (legacy standalone default)",
+    withFakes(async () => {
+      const out = await autoRun({
+        runId: "r-auto-absent",
+        script: [
+          { name: "bash", input: { description: "d", command: "echo y > marker-absent.txt" } },
+        ],
+        text: '{"verdict":"block","reason":"never"}',
+      });
+      expect(out).not.toContain("blocked by classifier");
+      expect(existsSync(join(tmp, "marker-absent.txt"))).toBe(true);
+    }),
+  );
+
+  test(
+    "plugin code tools are classified under auto",
+    withFakes(async () => {
+      let executed = false;
+      const out = await autoRun({
+        runId: "r-auto-plugin",
+        script: [{ name: "plug-hello", input: {} }],
+        text: '{"verdict":"block","reason":"untrusted plugin effect"}',
+        permissionMode: "auto",
+        pluginTool: {
+          name: "plug-hello",
+          execute: async () => {
+            executed = true;
+            return { content: "PLUG-OK" };
+          },
+        },
+      });
+      expect(out).toContain("blocked by classifier");
+      expect(out).toContain("untrusted plugin effect");
+      expect(executed).toBe(false);
+    }),
+  );
 });
 
 test("injected MCP todo_write wins over native todo (backend-injected priority)", async () => {

@@ -36,7 +36,7 @@ Product Backend 按 Run 调度一次性 child 进程，账本唯一、终态原�
 | **Human Gate** | human 节点：execution 进 `waiting_human`，Web 渲染问卷表单，提交后续跑；取消即终态 | 不是 HITL Approval（后者是工具级） |
 | **Artifact** | 带类型的产物（key-type 数组 schema 中的 `artifact` 类型；fs 存储 + MCP 工具 + REST；节点/run 依赖检查；聊天 @-mention 引用） | 不是聊天附件 |
 | **Sandbox** | `@chengchenccc/sandbox` 进程隔离执行：spawn bun 子进程、临时 cwd、最小 env、硬超时、JSON stdio 契约 | 不是 fs/network jail（容器级隔离明确非目标，ADR 0026 边界内接受） |
-| **HITL Approval** | 工具级审批链：child `approval_request` → adapter 透传 → backend SSE → Web Allow/Deny 卡片 → `POST /api/agent-runs/:runId/approval` → `resolve_approval` 命令；超时(`OMA_APPROVAL_TIMEOUT_MS`)fail-closed deny | 不是 Human Gate（节点级） |
+| **HITL Approval** | 工具级审批链：child `approval_request` → adapter 透传 → backend SSE → Web Allow/Deny 卡片 → `POST /api/agent-runs/:runId/approval` → `resolve_approval` 命令；超时(`OMA_APPROVAL_TIMEOUT_MS`)fail-closed deny；auto 模式另走分类器审查（见②'） | 不是 Human Gate（节点级） |
 | **Product Tool** | History/todo 等产品能力，由 backend 的 **Product Tools MCP server**(SSE) 统一执行（幂等 + 审计 `product_tool_call`）；经 workspace `.mcp.json` 注入 child | 不是 native tool；oma 侧**无 product 特化**（就是一个 MCP server） |
 | **Run Token** | per-run 产品工具 bearer（dispatch 时铸造、SHA-256 键注册表、run settle 即 revoke）；`.mcp.json` 只含 env 名 + `${VAR}` 占位符，文件零密文 | 不是静态 service token（已删） |
 | **Plugin** | oma 可组合单元（tools + hooks），`core/plugins/` 加载：native import 代码、sha256 信任记录、scope×mode 矩阵（RPC 永不加载 project-scope 代码） | 不是 middleware；不是 Product 概念 |
@@ -146,6 +146,11 @@ permissionMode=ask 的工具调用 → child approval_request 事件
 → adapter 透传（backend.oma.* 默认映射）→ backend SSE → Web Allow/Deny 卡片
 → POST /api/agent-runs/:runId/approval → adapter resolve_approval（id 匹配）
 → child 继续/中止；超时 = deny（fail-closed）
+
+②' auto 分类器（CC auto-mode 对齐）
+permissionMode=auto 的 bash/eval/mcp__*/插件工具 → 分类器模型单次审查
+（输入=最近用户消息+动作，永不带 tool results；allow 放行/block 带理由 deny/故障 fail-closed）
+→ write/edit 免审（workspace 路径沙箱）；模型 OMA_PERMISSION_CLASSIFIER_MODEL 可固定，缺省 Run 模型
 
 ③ 工具注入优先级
 mounted MCP 工具表（native + MCP + plugin 汇总）统一过滤（--tools 白/黑名单）

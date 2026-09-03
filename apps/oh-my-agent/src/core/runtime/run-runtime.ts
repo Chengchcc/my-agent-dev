@@ -50,6 +50,7 @@ import { createWorkflowExecutor, type WorkflowAgentResult } from "../workflow/wo
 import { createWorkflowTools, isValidWorkflowName } from "../workflow/workflow-tools.js";
 import { type ApprovalHandler, approvalTimeoutMs, withApprovalDeadline } from "./approval.js";
 import { fakeProvider } from "./fake-provider.js";
+import { classifierTimeoutMs, classifyPermissionAction } from "./permission-classifier.js";
 import { loadRuntimeCatalog, registerProvidersFromCatalog } from "./runtime-catalog.js";
 import { loadStreamRules } from "./stream-rules.js";
 import { type ToolFilter, toolFilterAllows } from "./tool-filter.js";
@@ -238,6 +239,9 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   if (projectSettings.memoryModel !== undefined) {
     process.env.OMA_MEMORY_MODEL = projectSettings.memoryModel;
   }
+  if (projectSettings.permissionClassifierModel !== undefined) {
+    process.env.OMA_PERMISSION_CLASSIFIER_MODEL = projectSettings.permissionClassifierModel;
+  }
   if (projectSettings.bashTimeoutMs !== undefined) {
     process.env.OMA_BASH_TIMEOUT_MS = String(projectSettings.bashTimeoutMs);
   }
@@ -309,6 +313,10 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     tools: [...nativeTools, ...mounted.tools],
   };
   const plugins: Plugin[] = [nativeToolsPlugin, createSkill({ roots: deps.skillRoots })];
+  // Plugin code-tool names (post native-conflict filter): the auto-mode
+  // classifier gate needs them by name — plugin tools have no naming
+  // convention, so membership is collected at assembly.
+  const pluginCodeToolNames = new Set<string>();
   if (deps.codePlugins?.length) {
     if (deps.permissionMode !== "deny") {
       // Native wins on tool-name conflicts (spec conflict matrix).
@@ -317,6 +325,10 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       for (const cp of deps.codePlugins) {
         const tools = (cp.tools ?? [])
           .filter((t) => !nativeNames.has(t.name))
+          .map((t) => {
+            pluginCodeToolNames.add(t.name);
+            return t;
+          })
           .map((t) =>
             askGate
               ? {
@@ -751,10 +763,40 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   const maxSteps = Number(process.env.OMA_MAX_STEPS) || 500;
   // TTSR-style stream rules from .oma/rules/*.md (workspace-scoped).
   const streamRules = loadStreamRules(deps.workspaceRoot);
-  // Native-tool permission gate (ADR 0020): ask/deny apply to high-risk
-  // native tools. Auto/absent = allow. "deny" blocks outright; "ask" routes
-  // through the SAME approvalHandler as plugin code tools (one pipeline).
+  // Native-tool permission gate (ADR 0020): "deny" blocks outright; "ask"
+  // routes high-risk tools through the SAME approvalHandler as plugin code
+  // tools (one pipeline). "auto" (CC auto-mode alignment, 2026-09) routes
+  // effect-escaping tools — bash / eval / mcp__* / plugin code tools, whose
+  // reach is NOT bounded by the workspace path sandbox — through the
+  // permission classifier; write/edit skip it (workspace-sandboxed, the CC
+  // "working-dir edits auto-approve" precedent). Absent mode = ungated
+  // (legacy standalone default, unchanged).
   const HIGH_RISK_NATIVE_TOOLS = new Set(["bash", "write", "edit", "create_file", "mcp__"]);
+  const classifierGated = (toolName: string): boolean =>
+    toolName === "bash" ||
+    toolName === "eval" ||
+    toolName.startsWith("mcp__") ||
+    pluginCodeToolNames.has(toolName);
+  /** User intent context for the classifier (anti-injection: user messages
+   *  only — never tool results, never assistant output). */
+  const USER_INTENT_SOURCES = new Set(["prompt", "steer", "follow_up"]);
+  const recentUserTexts = async (): Promise<string[]> => {
+    try {
+      const entries = await store.readBranch(deps.runId);
+      return entries
+        .filter(
+          (e) =>
+            e.type === "message" &&
+            (e as { role?: string }).role === "user" &&
+            USER_INTENT_SOURCES.has((e as { source?: string }).source ?? ""),
+        )
+        .map((e) => ((e as { message?: { text?: string } }).message?.text ?? "").slice(0, 800))
+        .filter((t) => t.length > 0)
+        .slice(-5);
+    } catch {
+      return [];
+    }
+  };
   const permissionGate:
     | ((
         toolName: string,
@@ -767,9 +809,27 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
         | undefined
       >)
     | undefined =
-    deps.permissionMode === "auto" || deps.permissionMode === undefined
+    deps.permissionMode === undefined
       ? undefined
       : async (toolName, input) => {
+          if (deps.permissionMode === "auto") {
+            if (!classifierGated(toolName)) return undefined;
+            const verdict = await classifyPermissionAction({
+              toolName,
+              input,
+              userTexts: await recentUserTexts(),
+              stream: (messages, signal, modelIdOverride) =>
+                streamModel(messages, signal, undefined, modelIdOverride),
+              timeoutMs: classifierTimeoutMs(),
+            });
+            if (verdict.verdict === "block") {
+              return {
+                block: true,
+                reason: `${toolName}: blocked by classifier — ${verdict.reason}`,
+              };
+            }
+            return undefined;
+          }
           const isHighRisk = HIGH_RISK_NATIVE_TOOLS.has(toolName) || toolName.startsWith("mcp__");
           if (!isHighRisk) return undefined;
           if (deps.permissionMode === "deny") {
