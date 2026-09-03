@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
+import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import {
   AlertDialog,
@@ -26,6 +27,7 @@ import {
   StatCard,
 } from "@/components/ui/polish";
 import { useAgentList } from "@/features/agents/hooks";
+import { agentKeys } from "@/features/agents/query-keys";
 import { useKnowledgePacks } from "@/features/knowledge/hooks";
 import type { KnowledgePackRow } from "@/features/knowledge/queries";
 import { knowledgePackKeys } from "@/features/knowledge/query-keys";
@@ -199,13 +201,31 @@ export default function KnowledgePackPage() {
                       usedByNames.length ? `used by ${usedByNames.join(", ")}` : "not assigned",
                     ]}
                     actions={
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setConfirmPackId(p.id)}
-                      >
-                        Delete
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <AssignToAgentSelect
+                          agents={agentsData ?? []}
+                          assigned={(agentId) =>
+                            Boolean(
+                              (agentsData ?? [])
+                                .find((ag) => ag.id === agentId)
+                                ?.knowledgePacks?.includes(p.id),
+                            )
+                          }
+                          onAssign={(agentId) => {
+                            const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
+                            const next = [...(agent?.knowledgePacks ?? []), p.id];
+                            void api.updateAgent(agentId, { knowledgePacks: next });
+                            void qc.invalidateQueries({ queryKey: agentKeys.lists() });
+                          }}
+                        />
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setConfirmPackId(p.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     }
                   />
                 );

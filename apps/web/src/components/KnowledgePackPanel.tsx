@@ -52,6 +52,7 @@ export function KnowledgePackPanel({ agentId }: { agentId: string }) {
             // users read it as "linked". Ready-but-unassigned shows a neutral
             // "installed (not linked)" badge instead of the green one.
             badges={[p.status === "ready" && !linked ? "installed (not linked)" : p.status]}
+            meta={p.status === "ready" && !linked ? ["available (not linked)"] : undefined}
             status={
               p.status === "ready"
                 ? linked

@@ -48,6 +48,7 @@ export function AgentProjectsPanel({ agent }: { agent: AgentRow }) {
             idChip={p.projectId}
             desc={p.repoUrl ?? undefined}
             tag={attached.includes(p.projectId) ? { label: "attached" } : undefined}
+            meta={attached.includes(p.projectId) ? undefined : ["available (not attached)"]}
             actions={
               <button
                 type="button"

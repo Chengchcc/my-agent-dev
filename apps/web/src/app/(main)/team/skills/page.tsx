@@ -1,6 +1,9 @@
-import { useQueries } from "@tanstack/react-query";
+"use client";
+
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Download, GitBranch, Package, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { InstallPackForm } from "@/components/InstallPackForm";
 import { PackFileSearch } from "@/components/PackFileSearch";
 import { Page, PageBody, PageHeader } from "@/components/page";
@@ -26,6 +29,8 @@ import {
   useSyncPack,
 } from "@/features/skill-packs/hooks";
 import { agentSkillPacksQuery } from "@/features/skill-packs/queries";
+import { skillPackKeys } from "@/features/skill-packs/query-keys";
+import { api } from "@/lib/api";
 
 type PackStatus = "pending" | "installing" | "ready" | "failed" | "syncing";
 
@@ -134,9 +139,9 @@ export default function SkillPacksPage() {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showInstall, setShowInstall] = useState(false);
-
   const syncMutation = useSyncPack();
   const deleteMutation = useDeletePack();
+  const qc = useQueryClient();
   const { confirm, dialog: confirmDialog } = useConfirm();
 
   const { data: agentsData } = useAgentList();
@@ -240,6 +245,26 @@ export default function SkillPacksPage() {
                       onClick={() => setSelectedId(p.id)}
                       secondaryActions={
                         <>
+                          <AssignToAgentSelect
+                            agents={agentsData ?? []}
+                            assigned={(agentId) => {
+                              const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
+                              const packs = agentPackQueries[idx]?.data;
+                              return Array.isArray(packs) && packs.some((pack) => pack.id === p.id);
+                            }}
+                            onAssign={(agentId) => {
+                              const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
+                              const current = agentPackQueries[idx]?.data;
+                              const currentIds = Array.isArray(current)
+                                ? current.map((p) => p.id)
+                                : [];
+                              const next = Array.from(new Set([...currentIds, p.id]));
+                              void api.setAgentSkillPacks(agentId, { packIds: next });
+                              void qc.invalidateQueries({
+                                queryKey: skillPackKeys.agentPacks(agentId),
+                              });
+                            }}
+                          />
                           {p.sourceKind === "git" && p.status === "ready" && (
                             <Button
                               variant="outline"

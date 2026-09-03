@@ -1,18 +1,36 @@
 "use client";
 
-import { Bot } from "lucide-react";
+import { AlertCircle, Bot } from "lucide-react";
 import Link from "next/link";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAgentList } from "@/features/agents/hooks";
+import { useKnowledgePacks } from "@/features/knowledge/hooks";
+import { useMcpCatalog } from "@/features/mcp/hooks";
 
 export default function TeamPage() {
   const { data: agents, isLoading } = useAgentList();
+  const { data: mcpData } = useMcpCatalog();
+  const { data: knowledgeData } = useKnowledgePacks();
 
   const active = (agents ?? []).filter((a) => !a.archivedAt);
   const enabled = active.filter((a) => a.enabled !== false).length;
   const disabled = active.length - enabled;
+
+  const unassignedMcp = (mcpData?.mcpServers ?? []).filter(
+    (server) =>
+      !(agents ?? []).some((a) =>
+        a.mcpServers?.some((m) => m.serverId === server.serverId && m.enabled),
+      ),
+  );
+  const unassignedKnowledge = (knowledgeData?.packs ?? []).filter(
+    (pack) => !(agents ?? []).some((a) => a.knowledgePacks?.includes(pack.id)),
+  );
+  const agentsWithoutProjects = active.filter((a) => !a.projects?.length);
+
+  const attentionCount =
+    unassignedMcp.length + unassignedKnowledge.length + agentsWithoutProjects.length;
 
   return (
     <Page>
@@ -36,6 +54,47 @@ export default function TeamPage() {
             <div className="text-xs text-(--mute)">Disabled</div>
           </div>
         </div>
+
+        {attentionCount > 0 && (
+          <section className="space-y-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4">
+            <h2 className="flex items-center gap-2 text-sm font-medium">
+              <AlertCircle className="size-4 text-amber-500" />
+              Needs attention
+            </h2>
+            <div className="space-y-1 text-xs">
+              {unassignedMcp.map((s) => (
+                <Link
+                  key={s.serverId}
+                  href="/team/mcp"
+                  className="flex justify-between hover:underline"
+                >
+                  <span className="truncate">{s.name}</span>
+                  <span className="shrink-0 text-(--mute)">not assigned</span>
+                </Link>
+              ))}
+              {unassignedKnowledge.map((p) => (
+                <Link
+                  key={p.id}
+                  href="/team/knowledge"
+                  className="flex justify-between hover:underline"
+                >
+                  <span className="truncate">{p.name}</span>
+                  <span className="shrink-0 text-(--mute)">not assigned</span>
+                </Link>
+              ))}
+              {agentsWithoutProjects.map((a) => (
+                <Link
+                  key={a.id}
+                  href={`/team/agents/${a.id}`}
+                  className="flex justify-between hover:underline"
+                >
+                  <span className="truncate">{a.name}</span>
+                  <span className="shrink-0 text-(--mute)">no projects</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {isLoading ? (
           <div className="space-y-2">

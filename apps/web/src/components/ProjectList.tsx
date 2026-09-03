@@ -1,11 +1,16 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { Button } from "@/components/ui/button";
+import { useAgentList } from "@/features/agents/hooks";
+import { agentKeys } from "@/features/agents/query-keys";
 import { useDeleteProject, useProjectList } from "@/features/projects/hooks";
 import type { ProjectRow } from "@/lib/api";
+import { api } from "@/lib/api";
 import { ProjectForm } from "./ProjectForm";
 
 export function ProjectList() {
@@ -13,8 +18,10 @@ export function ProjectList() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   const { data: projectsData, isLoading } = useProjectList();
-
   const remove = useDeleteProject();
+
+  const qc = useQueryClient();
+  const { data: agentsData } = useAgentList();
 
   if (isLoading) {
     return (
@@ -71,6 +78,17 @@ export function ProjectList() {
                 </p>
               )}
 
+              {(() => {
+                const usedByAgents = (agentsData ?? [])
+                  .filter((a) => a.projects?.includes(project.projectId))
+                  .map((a) => a.name);
+                return (
+                  <div className="mt-2 text-xs text-(--mute)">
+                    {usedByAgents.length ? `used by ${usedByAgents.join(", ")}` : "not attached"}
+                  </div>
+                );
+              })()}
+
               <div className="mt-4 text-[10px] text-(--mute)">
                 Created{" "}
                 {new Date(project.createdAt).toLocaleDateString("en-US", {
@@ -82,6 +100,22 @@ export function ProjectList() {
 
             {/* Edit / Delete controls */}
             <div className="absolute top-3 right-3 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity">
+              <AssignToAgentSelect
+                agents={agentsData ?? []}
+                assigned={(agentId) =>
+                  Boolean(
+                    (agentsData ?? [])
+                      .find((ag) => ag.id === agentId)
+                      ?.projects?.includes(project.projectId),
+                  )
+                }
+                onAssign={(agentId) => {
+                  const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
+                  const next = [...(agent?.projects ?? []), project.projectId];
+                  void api.updateAgent(agentId, { projects: next });
+                  void qc.invalidateQueries({ queryKey: agentKeys.lists() });
+                }}
+              />
               <Button
                 variant="ghost"
                 size="xs"
@@ -121,7 +155,12 @@ export function ProjectList() {
                     }}
                     disabled={remove.isPending}
                   >
-                    Confirm
+                    Confirm (
+                    {
+                      (agentsData ?? []).filter((a) => a.projects?.includes(project.projectId))
+                        .length
+                    }
+                    )
                   </Button>
                   <Button
                     size="xs"

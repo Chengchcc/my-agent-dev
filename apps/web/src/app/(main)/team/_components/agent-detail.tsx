@@ -179,8 +179,12 @@ function AgentSkillsPanel({ agentId }: { agentId: string }) {
           key={pack.id}
           icon={<Package className="size-4 text-(--mute)" />}
           title={pack.name}
-          desc={pack.error ? `${pack.description ?? ""} — ${pack.error}` : pack.description}
           badges={[packStatusLabel(pack.status)]}
+          meta={
+            pack.status === "ready" && !assignedIds.has(pack.id)
+              ? ["available (not assigned)"]
+              : undefined
+          }
           status={pack.status === "ready" ? "ok" : pack.status === "failed" ? "err" : undefined}
           actions={
             <Switch

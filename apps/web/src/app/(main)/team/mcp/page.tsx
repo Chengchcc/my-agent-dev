@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plug, RefreshCw, Server } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import {
   AlertDialog,
@@ -29,6 +30,7 @@ import {
 } from "@/components/ui/polish";
 import { Textarea } from "@/components/ui/textarea";
 import { useAgentList } from "@/features/agents/hooks";
+import { agentKeys } from "@/features/agents/query-keys";
 import { useMcpCatalog } from "@/features/mcp/hooks";
 import type { McpCatalogRow } from "@/features/mcp/queries";
 import { mcpKeys } from "@/features/mcp/query-keys";
@@ -432,6 +434,29 @@ export default function McpCatalogPage() {
                     status={mcpStatus(s.status)}
                     actions={
                       <div className="flex items-center gap-2">
+                        <AssignToAgentSelect
+                          agents={agentsData ?? []}
+                          assigned={(agentId) =>
+                            (agentsData ?? []).some(
+                              (ag) =>
+                                ag.id === agentId &&
+                                Boolean(
+                                  ag.mcpServers?.some(
+                                    (m) => m.serverId === s.serverId && m.enabled,
+                                  ),
+                                ),
+                            )
+                          }
+                          onAssign={(agentId) => {
+                            const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
+                            const next = [
+                              ...(agent?.mcpServers ?? []),
+                              { serverId: s.serverId, enabled: true },
+                            ];
+                            void api.updateAgent(agentId, { mcpServers: next });
+                            void qc.invalidateQueries({ queryKey: agentKeys.lists() });
+                          }}
+                        />
                         <Button
                           variant="outline"
                           size="sm"
