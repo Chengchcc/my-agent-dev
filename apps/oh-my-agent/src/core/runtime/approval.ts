@@ -10,6 +10,10 @@ export interface ApprovalRequest {
    *  "classifier" (auto-mode block escalated to the human). */
   readonly source: "permission" | "tool" | "classifier";
   readonly reason?: string;
+  /** Execution context: true when the action runs inside the OS bash sandbox
+   * (BashSandbox design, P4) — surfaces let the human distinguish "sandboxed,
+   * auto-allowable" from "unsandboxed fallback". */
+  readonly sandboxed?: boolean;
 }
 
 export interface ApprovalDecision {

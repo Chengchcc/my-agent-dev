@@ -278,6 +278,9 @@ export function runRpcMode(opts: RpcModeOptions): RpcModeController {
                   toolName: req.toolName,
                   reason: req.reason ?? `${req.toolName} requested approval (${req.source})`,
                   input: req.input,
+                  // BashSandbox design P4: distinguish unsandboxed fallback
+                  // from OS-sandboxed execution on the approval card.
+                  ...(req.sandboxed === undefined ? {} : { sandboxed: req.sandboxed }),
                 },
               },
             }),

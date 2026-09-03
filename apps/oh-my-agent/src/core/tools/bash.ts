@@ -1,4 +1,6 @@
 import type { Tool } from "@chengchenccc/message";
+import type { BashSandbox } from "./bash-sandbox.js";
+import { NullBashSandbox } from "./bash-sandbox.js";
 import { WorkspaceSandbox } from "./workspace-sandbox.js";
 
 const descriptionParam = {
@@ -22,8 +24,13 @@ function maxToolTimeoutMs(): number {
   return envMs("OMA_MAX_TOOL_TIMEOUT_MS", 0);
 }
 
-export function createBashTool(opts: { workspaceRoot: string }): Tool {
+export function createBashTool(opts: {
+  workspaceRoot: string;
+  /** Launch strategy; default Null = current unconstrained behavior. */
+  sandbox?: BashSandbox;
+}): Tool {
   const sandbox = new WorkspaceSandbox(opts.workspaceRoot);
+  const launcher = opts.sandbox ?? new NullBashSandbox(opts.workspaceRoot);
 
   return {
     name: "bash",
@@ -76,21 +83,10 @@ export function createBashTool(opts: { workspaceRoot: string }): Tool {
       const upper = maxToolTimeoutMs();
       const cap = upper > 0 ? Math.min(upper, 600_000) : 600_000;
       const clamped = Math.min(Math.max(timeout, 1), cap);
-      const hasSetsid = Bun.which("setsid") !== null;
-      const proc = Bun.spawn(
-        hasSetsid ? ["setsid", "bash", "-c", command] : ["bash", "-c", command],
-        { stdout: "pipe", stderr: "pipe", cwd: validatedCwd },
-      );
+      const proc = launcher.spawn(command, { cwd: validatedCwd });
 
       // Kill the process group on timeout OR abort signal.
-      const killGroup = () => {
-        proc.kill();
-        try {
-          process.kill(-proc.pid!, "SIGKILL");
-        } catch {
-          /* */
-        }
-      };
+      const killGroup = () => proc.kill();
       const timer = setTimeout(killGroup, clamped);
       const onAbort = () => killGroup();
       if (signal?.aborted) killGroup();

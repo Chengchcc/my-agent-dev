@@ -698,6 +698,9 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
           toolName,
           input,
           source: "permission",
+          // BashSandbox design P4: bash approvals are unsandboxed fallbacks
+          // until an OS sandbox is injected (only Null exists today).
+          ...(toolName === "bash" ? { sandboxed: false } : {}),
         }),
         approvalTimeoutMs(),
       );
