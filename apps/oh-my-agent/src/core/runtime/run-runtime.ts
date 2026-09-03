@@ -805,6 +805,62 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       return [];
     }
   };
+  /** Auto-mode decision: hard critical-path guard → classifier → escalate
+   *  the block to the human once per unique action. Throws reach the
+   *  caller's fail-closed catch, never the loop's fail-open one. */
+  const autoGateDecision = async (
+    toolName: string,
+    input: unknown,
+  ): Promise<{ block: boolean; reason?: string } | undefined> => {
+    // Hard circuit breaker (nothing downstream can override it,
+    // not the classifier, not a human card).
+    if (toolName === "bash" && isCriticalDeletion((input as { command?: string })?.command ?? "")) {
+      return {
+        block: true,
+        reason: `${toolName}: critical-path deletion (root/top-level/home target) — re-issue with a narrower named path`,
+      };
+    }
+    const verdict = await classifyPermissionAction({
+      toolName,
+      input,
+      userTexts: await recentUserTexts(),
+      stream: (messages, signal, modelIdOverride) =>
+        streamModel(messages, signal, undefined, modelIdOverride),
+      timeoutMs: classifierTimeoutMs(),
+    });
+    if (verdict.verdict === "allow") return undefined;
+    // CC auto fallback: a block escalates to the human ONCE per unique
+    // action; no approvalHandler or an already-escalated action denies
+    // silently. The set is per-Run (dies with the runtime) and bounded by
+    // the run timeout in the worst case.
+    // ponytail: unbounded set; cap or LRU if runs ever issue thousands of
+    // distinct blocked actions.
+    const actionKey = `${toolName}:${JSON.stringify(input)}`;
+    if (!deps.approvalHandler || escalatedActions.has(actionKey)) {
+      return {
+        block: true,
+        reason: `${toolName}: blocked by classifier — ${verdict.reason}`,
+      };
+    }
+    escalatedActions.add(actionKey);
+    const human = await withApprovalDeadline(
+      deps.approvalHandler({
+        callId: `cls-${randomUUID().slice(0, 8)}`,
+        toolName,
+        input,
+        reason: `classifier: ${verdict.reason}`,
+        source: "classifier",
+      }),
+      approvalTimeoutMs(),
+    );
+    if (human.decision === "deny") {
+      return {
+        block: true,
+        reason: `${toolName}: blocked by classifier — ${verdict.reason} (human denied)`,
+      };
+    }
+    return undefined;
+  };
   const permissionGate:
     | ((
         toolName: string,
@@ -822,54 +878,19 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
       : async (toolName, input) => {
           if (deps.permissionMode === "auto") {
             if (!classifierGated(toolName)) return undefined;
-            // Hard circuit breaker (nothing downstream can override it,
-            // not the classifier, not a human card).
-            if (
-              toolName === "bash" &&
-              isCriticalDeletion((input as { command?: string })?.command ?? "")
-            ) {
+            // The auto gate must be fail-CLOSED end to end: the agent loop
+            // swallows gate exceptions as "no verdict" (= allow), so any
+            // error in here must convert to a block, never propagate.
+            try {
+              return await autoGateDecision(toolName, input);
+            } catch (err) {
               return {
                 block: true,
-                reason: `${toolName}: critical-path deletion (root/top-level/home target) — re-issue with a narrower named path`,
+                reason: `${toolName}: permission gate error — ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
               };
             }
-            const verdict = await classifyPermissionAction({
-              toolName,
-              input,
-              userTexts: await recentUserTexts(),
-              stream: (messages, signal, modelIdOverride) =>
-                streamModel(messages, signal, undefined, modelIdOverride),
-              timeoutMs: classifierTimeoutMs(),
-            });
-            if (verdict.verdict === "allow") return undefined;
-            // CC auto fallback: a block escalates to the human ONCE per
-            // unique action; no approvalHandler or an already-escalated
-            // action denies silently.
-            const actionKey = `${toolName}:${JSON.stringify(input)}`;
-            if (!deps.approvalHandler || escalatedActions.has(actionKey)) {
-              return {
-                block: true,
-                reason: `${toolName}: blocked by classifier — ${verdict.reason}`,
-              };
-            }
-            escalatedActions.add(actionKey);
-            const human = await withApprovalDeadline(
-              deps.approvalHandler({
-                callId: `cls-${randomUUID().slice(0, 8)}`,
-                toolName,
-                input,
-                reason: `classifier: ${verdict.reason}`,
-                source: "classifier",
-              }),
-              approvalTimeoutMs(),
-            );
-            if (human.decision === "deny") {
-              return {
-                block: true,
-                reason: `${toolName}: blocked by classifier — ${verdict.reason} (human denied)`,
-              };
-            }
-            return undefined;
           }
           const isHighRisk = HIGH_RISK_NATIVE_TOOLS.has(toolName) || toolName.startsWith("mcp__");
           if (!isHighRisk) return undefined;

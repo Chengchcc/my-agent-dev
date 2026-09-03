@@ -155,8 +155,8 @@ function isCriticalTarget(token: string): boolean {
 
 export function isCriticalDeletion(command: string): boolean {
   // rm/rmdir must be in COMMAND POSITION (first token of a segment split
-  // on shell separators) — "echo about rm /etc" is prose, not a deletion.
-  const segments = command.split(/[;&|()]/);
+  // on shell separators incl. newline) — "echo about rm /etc" is prose.
+  const segments = command.split(/[;&|()\n]/);
   for (const segment of segments) {
     const tokens = segment.trim().split(/\s+/);
     const first = (tokens[0] ?? "").replace(/^["']+|["']+$/g, "");

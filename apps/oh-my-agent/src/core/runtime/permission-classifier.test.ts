@@ -65,6 +65,7 @@ describe("isCriticalDeletion", () => {
       "rm -rf $HOME/*",
       'rm -rf "$VAR"/*',
       "cd /tmp && rm -rf /var",
+      "echo hi\nrm -rf /etc",
       "rm -r -f /boot",
     ]) {
       expect(isCriticalDeletion(cmd)).toBe(true);
