@@ -37,6 +37,10 @@ export interface ProjectSettings {
   permissionClassifierModel?: string;
   /** Default bash tool timeout ms (env OMA_BASH_TIMEOUT_MS). */
   bashTimeoutMs?: number;
+  /** Enable the OS-level bash sandbox (Linux bwrap / macOS Seatbelt,
+   * BashSandbox design). Fails the Run assembly loudly when the platform
+   * tool is missing — never silently runs unconstrained. */
+  bashSandbox?: boolean;
   /** Global cap for any per-tool timeout ms; 0 = no limit (omp tools.maxTimeout). */
   maxToolTimeoutMs?: number;
 }
@@ -93,6 +97,9 @@ export function loadProjectSettings(root: string): ProjectSettings {
     }
     if ("bashTimeoutMs" in parsed && typeof parsed.bashTimeoutMs === "number") {
       result.bashTimeoutMs = parsed.bashTimeoutMs;
+    }
+    if ("bashSandbox" in parsed && typeof parsed.bashSandbox === "boolean") {
+      result.bashSandbox = parsed.bashSandbox;
     }
     if ("maxToolTimeoutMs" in parsed && typeof parsed.maxToolTimeoutMs === "number") {
       result.maxToolTimeoutMs = parsed.maxToolTimeoutMs;

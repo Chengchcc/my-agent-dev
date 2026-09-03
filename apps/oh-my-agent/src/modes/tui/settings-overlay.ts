@@ -40,6 +40,7 @@ const ROWS: SettingRow[] = [
   { key: "mcpTimeoutMs", label: "mcpTimeoutMs", kind: "number" },
   { key: "bashTimeoutMs", label: "bashTimeoutMs", kind: "number" },
   { key: "maxToolTimeoutMs", label: "maxToolTimeoutMs", kind: "number" },
+  { key: "bashSandbox", label: "bashSandbox (OS sandbox: bwrap/Seatbelt)", kind: "boolean" },
   { key: "memoryExtract", label: "memoryExtract", kind: "boolean" },
   { key: "memoryModel", label: "memoryModel", kind: "string" },
   { key: "permissionClassifierModel", label: "permissionClassifierModel", kind: "string" },

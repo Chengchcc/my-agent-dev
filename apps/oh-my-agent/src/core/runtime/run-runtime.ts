@@ -24,6 +24,7 @@ import type { PluginMcpConfig } from "../plugins/plugin-resolve.js";
 import { isFileTrusted, readTrustedPlugins } from "../plugins/plugin-trust.js";
 import { loadProjectSettings } from "../settings/project-settings.js";
 import { createAskQuestionTool } from "../tools/ask-question.js";
+import { type BashSandbox, resolveBashSandbox } from "../tools/bash-sandbox.js";
 import {
   createBashTool,
   createDdgWebSearchPort,
@@ -246,8 +247,16 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   if (projectSettings.permissionClassifierModel !== undefined) {
     process.env.OMA_PERMISSION_CLASSIFIER_MODEL = projectSettings.permissionClassifierModel;
   }
-  if (projectSettings.bashTimeoutMs !== undefined) {
-    process.env.OMA_BASH_TIMEOUT_MS = String(projectSettings.bashTimeoutMs);
+  // OS bash sandbox (BashSandbox design): enabled via .oma/settings.json
+  // (TUI /settings or direct edit). resolveBashSandbox throws on
+  // enabled-but-tool-missing — the Run fails loudly rather than silently
+  // running unconstrained.
+  let bashSandbox: BashSandbox | undefined;
+  if (projectSettings.bashSandbox) {
+    bashSandbox = resolveBashSandbox({
+      workspaceRoot: deps.workspaceRoot,
+      enabled: true,
+    });
   }
   if (projectSettings.maxToolTimeoutMs !== undefined) {
     process.env.OMA_MAX_TOOL_TIMEOUT_MS = String(projectSettings.maxToolTimeoutMs);
@@ -272,7 +281,12 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   if (deps.workspaceAccess === "read_write") {
     fileTools.push(createWriteTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
     fileTools.push(createEditTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
-    fileTools.push(createBashTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool);
+    fileTools.push(
+      createBashTool({
+        workspaceRoot: deps.workspaceRoot,
+        ...(bashSandbox ? { sandbox: bashSandbox } : {}),
+      }) as unknown as PluginTool,
+    );
     fileTools.push(createEvalTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool);
   }
   // Generic .mcp.json mounting (ADR 0022): user servers + knowledge.
