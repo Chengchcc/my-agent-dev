@@ -2,7 +2,7 @@ import type { BackendInputMessage } from "@chengchenccc/agent-contract";
 import type { Message } from "@chengchenccc/message";
 import type { AgentLoopListener, OmaLoopEvent } from "./agent-event.js";
 import type { LoopCallContext, LoopRuntimeState, LoopToolMapRef } from "./agent-loop-run.js";
-import { type LoopRunnerBag, type LoopRunnerMutable, runLoop } from "./agent-loop-runner.js";
+import { type LoopRunnerContext, type LoopRunnerMutable, runLoop } from "./agent-loop-runner.js";
 import type { OmaSession, OmaSessionOptions } from "./agent-loop-types.js";
 import { compactSession } from "./compaction.js";
 import { TokenEstimateCache } from "./message-cache.js";
@@ -102,7 +102,7 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
     return opts.store.appendBatch(opts.sessionId, { entries });
   }
 
-  const loopBag: LoopRunnerBag = {
+  const loopCtx: LoopRunnerContext = {
     opts,
     emit,
     persist,
@@ -121,11 +121,11 @@ export function createOmaSession(opts: OmaSessionOptions): OmaSession {
     },
 
     async startLoop(deps) {
-      return runLoop(loopBag, deps, "normal");
+      return runLoop(loopCtx, deps, "normal");
     },
 
     async startFollowUp(deps) {
-      return runLoop(loopBag, deps, "follow_up");
+      return runLoop(loopCtx, deps, "follow_up");
     },
     steer(input: BackendInputMessage) {
       if (mutable.status !== "running" || !mutable.acceptingSteer) {
