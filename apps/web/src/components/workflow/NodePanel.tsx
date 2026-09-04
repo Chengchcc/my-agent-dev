@@ -21,7 +21,7 @@ export function NodePanel({ onAdd }: { onAdd: (node: WorkflowNode) => void }) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search nodes…"
-            className="h-8 w-full rounded-md border border-(--hairline) bg-(--canvas) pl-7 pr-2 text-xs text-(--ink) outline-none placeholder:text-(--faint) focus:border-[#38bdf8]/50"
+            className="h-8 w-full rounded-md border border-(--hairline) bg-(--canvas) pl-7 pr-2 text-xs text-(--ink) outline-none placeholder:text-(--faint) focus:border-(--primary)/50"
           />
         </div>
       </div>

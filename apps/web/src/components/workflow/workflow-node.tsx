@@ -21,6 +21,13 @@ const typeColor: Record<string, string> = {
   human: "var(--wf-color-human)",
 };
 
+/** Node execution status → { color, label } for the status pill. */
+const STATUS_STYLE: Record<string, { color: string; label: string }> = {
+  done: { color: "var(--ok)", label: "\u2713 done" },
+  active: { color: "var(--primary)", label: "\u25cf running" },
+  failed: { color: "var(--err)", label: "\u2717 failed" },
+};
+
 /** Blueprint node card: dark instrument look with a glowing type band. */
 export function WorkflowNodeCard({ data, selected }: NodeProps) {
   const t = (data as { type?: string }).type ?? "script";
@@ -49,13 +56,12 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
         style={{
           position: "absolute",
           top: 0,
+          bottom: 0,
           left: 0,
-          right: 0,
-          height: 3,
-          ...(status === "failed" ? { background: "#fb7185", boxShadow: "0 0 8px #fb7185" } : {}),
-          borderRadius: "12px 12px 0 0",
-          background: band,
-          boxShadow: `0 0 8px ${band}`,
+          width: 3,
+          background: status === "failed" ? "var(--err)" : band,
+          boxShadow: `0 0 8px ${status === "failed" ? "var(--err)" : band}`,
+          borderRadius: "12px 0 0 12px",
         }}
       />
       {onDelete && (
@@ -65,33 +71,26 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
             onDelete();
           }}
           title="Delete node"
-          className="absolute -right-2 -top-2 z-10 flex size-5 items-center justify-center rounded-full border border-(--hairline) bg-(--canvas) text-[10px] text-(--err) opacity-0 transition-opacity hover:border-[#fb7185]/60 hover:bg-(--panel2) [.react-flow__node:hover_&]:opacity-100"
+          className="absolute -right-2 -top-2 z-10 flex size-5 items-center justify-center rounded-full border border-(--hairline) bg-(--canvas) text-[10px] text-(--err) opacity-0 transition-opacity hover:border-(--err) hover:bg-(--panel2) [.react-flow__node:hover_&]:opacity-100"
         >
           ✕
         </button>
       )}
-      <div style={{ padding: "16px 12px 0" }}>
-        <div className="flex items-center gap-2">
+      <div className="pl-3.5 pr-3 pt-3">
+        <div className="flex items-center justify-between font-mono text-[9px] font-semibold uppercase tracking-kicker text-(--mute)">
+          <span>{t}</span>
+          {status && STATUS_STYLE[status] && (
+            <span style={{ color: STATUS_STYLE[status].color }}>{STATUS_STYLE[status].label}</span>
+          )}
+        </div>
+        <div className="mt-1.5 flex items-center gap-2">
           {(() => {
             const Icon = typeIcon[t] ?? Bot;
             return <Icon className="size-4" style={{ color: band }} />;
           })()}
-          <span style={{ fontSize: 14, fontWeight: 600 }}>
-            {String(data.label)}
-            {status === "done"
-              ? " ✓"
-              : status === "active"
-                ? " ●"
-                : status === "failed"
-                  ? " ✗"
-                  : ""}
-          </span>
+          <span className="font-display text-sm font-semibold">{String(data.label)}</span>
         </div>
-        <div
-          style={{ color: "#94a3b8", fontSize: 12, fontFamily: "var(--font-mono-sf, monospace)" }}
-        >
-          {t}
-        </div>
+        <div className="font-mono text-[11px] text-(--mute)">{t} node</div>
       </div>
       {t === "human" && (data as { askQuestion?: AskQuestionInput }).askQuestion && (
         <div className="pointer-events-auto px-3 pb-3">
@@ -144,12 +143,12 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
       <Handle
         type="target"
         position={Position.Top}
-        className="h-2.5! w-8! rounded-full! bg-[#475569]! transition-all! hover:bg-[#38bdf8]! hover:shadow-[0_0_8px_rgba(56,189,248,0.6)]!"
+        className="h-2.5! w-8! rounded-full! bg-(--faint)! transition-all! hover:bg-(--primary)! hover:shadow-[0_0_8px_var(--primary)]!"
       />
       <Handle
         type="source"
         position={Position.Bottom}
-        className="h-2.5! w-8! rounded-full! bg-[#475569]! transition-all! hover:bg-[#38bdf8]! hover:shadow-[0_0_8px_rgba(56,189,248,0.6)]!"
+        className="h-2.5! w-8! rounded-full! bg-(--faint)! transition-all! hover:bg-(--primary)! hover:shadow-[0_0_8px_var(--primary)]!"
       />
     </div>
   );

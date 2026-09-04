@@ -389,7 +389,7 @@ export function AgenticWorkflowEditor({
           className={`shrink-0 border-b px-4 py-1.5 text-xs ${
             validation.ok
               ? "border-(--primary)/30 bg-(--primary)/10 text-(--primary)"
-              : "border-[#fb7185]/30 bg-[#fb7185]/10 text-(--err)"
+              : "border-(--err)/30 bg-(--err)/10 text-(--err)"
           }`}
         >
           {validation.ok ? "✓ Valid DSL" : `✗ Invalid: ${(validation.errors ?? []).join("; ")}`}

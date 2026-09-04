@@ -185,13 +185,13 @@ export function NodePropertyPanel({
                     inherit: true,
                     rules: [],
                     colors: {
-                      "editor.background": "#0b0e14",
-                      "editor.foreground": "#e2e8f0",
-                      "editor.lineHighlightBackground": "#1a2332",
-                      "editorIndentGuide.background": "#1f2937",
-                      "editorGutter.background": "#0b0e14",
-                      "editorCursor.foreground": "#38bdf8",
-                      "editor.selectionBackground": "#33415588",
+                      "editor.background": "var(--canvas)",
+                      "editor.foreground": "var(--ink)",
+                      "editor.lineHighlightBackground": "var(--panel2)",
+                      "editorIndentGuide.background": "var(--hairline)",
+                      "editorGutter.background": "var(--canvas)",
+                      "editorCursor.foreground": "var(--primary)",
+                      "editor.selectionBackground": "var(--panel2)",
                     },
                   });
                 }}

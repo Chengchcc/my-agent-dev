@@ -364,16 +364,16 @@ export function WorkflowCanvas({
               const t = (n.data as unknown as { type?: string }).type;
               return (
                 {
-                  start: "#34d399",
-                  end: "#fb7185",
-                  agent: "#38bdf8",
-                  script: "#f59e0b",
-                  human: "#a78bfa",
-                }[t ?? ""] ?? "#334155"
+                  start: "var(--wf-color-start)",
+                  end: "var(--wf-color-end)",
+                  agent: "var(--wf-color-agent)",
+                  script: "var(--wf-color-script)",
+                  human: "var(--wf-color-human)",
+                }[t ?? ""] ?? "var(--hairline)"
               );
             }}
             style={{
-              background: "#0b0e14",
+              background: "var(--canvas)",
               border: "1px solid var(--wf-node-border)",
               borderRadius: 8,
             }}
@@ -402,7 +402,7 @@ export function WorkflowCanvas({
       )}
       {interactive && !hintDismissed && (
         <div className="absolute left-4 top-4 z-10 flex items-start gap-2 rounded-md border border-(--hairline) bg-(--panel)/90 px-3 py-2 text-[11px] text-(--mute) backdrop-blur">
-          <span className="inline-block size-1.5 translate-y-1 rounded-full bg-[#38bdf8]" />
+          <span className="inline-block size-1.5 translate-y-1 rounded-full bg-(--primary)" />
           <span>
             Drag a line from the bottom of a node onto empty canvas to pick a downstream node type;
             click a node to edit, press Delete to remove
