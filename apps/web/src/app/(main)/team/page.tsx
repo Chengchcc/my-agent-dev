@@ -88,7 +88,7 @@ export default function TeamPage() {
     <Page>
       <PageHeader
         breadcrumb="Team / Agents matrix"
-        title="Agents"
+        title="Team"
         pill={
           active.length > 0 ? (
             <StatusPill tone="success">

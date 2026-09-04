@@ -74,10 +74,12 @@ export function PageHeader({
     <div className={cn("flex flex-wrap items-end justify-between gap-3", className)}>
       <div className="min-w-0">
         <MonoLabel className="text-(--faint)">{breadcrumb}</MonoLabel>
-        <h1 className="mt-1 flex items-center gap-2.5 font-display text-2xl font-semibold tracking-tight text-(--ink-strong)">
-          <span className="truncate">{title}</span>
+        <div className="mt-1 flex items-center gap-2.5">
+          <h1 className="truncate font-display text-h1 font-semibold tracking-tight text-(--ink-strong)">
+            {title}
+          </h1>
           {pill}
-        </h1>
+        </div>
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
@@ -117,7 +119,7 @@ export function KpiTile({
     >
       {Icon && <Icon className="absolute top-3 right-3 size-4 text-(--faint)" />}
       <MonoLabel>{label}</MonoLabel>
-      <span className="font-display text-[28px] leading-8 font-semibold tracking-tight text-(--ink-strong) tabular-nums">
+      <span className="font-display text-[28px] font-semibold tracking-tight text-(--ink-strong) tabular-nums">
         {value}
       </span>
       {detail && <span className="text-xs text-(--mute)">{detail}</span>}

@@ -51,6 +51,8 @@
   --color-sidebar-ring: var(--primary);
 
   --tracking-kicker: var(--tracking-kicker);
+  --text-h1: 1.625rem;
+  --text-h1--line-height: 2rem;
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
