@@ -1,1 +1,0 @@
--- no-op: keep_synced column already applied by 0048_add_skill_pack_keep_synced
