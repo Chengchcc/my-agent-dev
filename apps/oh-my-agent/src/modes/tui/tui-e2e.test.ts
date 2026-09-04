@@ -289,19 +289,15 @@ describe("tui e2e: model I/O on a virtual terminal", () => {
       );
 
       await typeAndSubmit(vt, "run a tool");
-      await vt.waitForRender();
       // Collapsed: header + args + one-line summary with the truncation hint
       // (seq 1 60 output far exceeds the one-line cap).
-      const collapsed = screen(vt);
-      expect(collapsed).toContain("seq 1 60");
-      expect(collapsed).toContain("ctrl+o");
+      await waitForText(vt, "seq 1 60", 5000);
+      await waitForText(vt, "ctrl+o", 5000);
 
       // ctrl+o (raw \x0f) toggles full pretty-JSON detail on.
       vt.sendInput("\x0f");
-      await vt.waitForRender();
-      const expanded = screen(vt);
-      expect(expanded).toContain("command");
-      expect(expanded).toContain("description");
+      await waitForText(vt, "command", 5000);
+      await waitForText(vt, "description", 5000);
 
       await quitTui(vt);
       expect(await sessionDone).toBe(0);
