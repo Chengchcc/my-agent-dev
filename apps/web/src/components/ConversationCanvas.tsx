@@ -21,6 +21,7 @@ import { extractText } from "@/lib/timeline";
 import type { LiveToolCall, TodoItem } from "@/lib/transient-reducer";
 import { ArtifactPreviewSheet } from "./ArtifactPreviewSheet";
 import { Composer } from "./Composer";
+import { StatusPill } from "./patterns";
 import { RosterList } from "./RosterList";
 import { Timeline } from "./Timeline";
 import { TodoPanel } from "./TodoPanel";
@@ -318,7 +319,7 @@ export function ConversationCanvas({
                 </span>
               </>
             )}
-            {!label && <span className="text-xs text-(--mute)">Idle</span>}
+            {!label && <StatusPill tone="idle">idle</StatusPill>}
             <Button
               variant="ghost"
               size="icon"
@@ -343,6 +344,7 @@ export function ConversationCanvas({
                 {primaryKind}
               </Badge>
             )}
+            <span className="font-mono text-[10px] text-(--faint)">{conversationId}</span>
           </div>
         )}
       </div>
@@ -417,7 +419,7 @@ export function ConversationCanvas({
             {items.length === 0 ? (
               <div className="flex flex-col items-start justify-center py-24">
                 {primaryAgent && (
-                  <h1 className="font-sans text-2xl font-normal text-(--ink-strong) mb-3">
+                  <h1 className="font-display text-2xl font-semibold tracking-tight text-(--ink-strong) mb-3">
                     {primaryAgent?.displayName ?? primaryAgent?.agentId ?? "Agent"}
                   </h1>
                 )}
@@ -457,7 +459,7 @@ export function ConversationCanvas({
         )}
 
         {/* Roster — desktop sidebar */}
-        <aside className="hidden md:block shrink-0 w-56 border-l border-(--hairline) overflow-y-auto p-3">
+        <aside className="hidden md:block shrink-0 w-72 border-l border-(--hairline) overflow-y-auto p-3">
           <RosterList agent={agent} />
           <UsagePanel conversationId={conversationId} />
         </aside>

@@ -49,7 +49,9 @@ export function MessageShell({
           </span>
         )}
         <div
-          className={`text-sm/relaxed  ${isStreaming ? "border-l-2 pl-4" : ""}`}
+          className={`text-sm/relaxed ${kind === "agent" ? "font-serif" : ""} ${
+            isStreaming ? "border-l-2 pl-4" : ""
+          }`}
           style={isStreaming && accent ? { borderColor: accent } : undefined}
         >
           {children}
