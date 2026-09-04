@@ -123,6 +123,9 @@ export type ChatModelOverride = {
 };
 
 export type SystemInfo = ApiReturn<typeof api.getSystemInfo>;
+export type WorkflowDefinitionRow = ApiReturn<
+  typeof api.listWorkflowDefinitions
+>["definitions"][number];
 
 /** Extract fork source ID from a conversation snapshot (null when not a fork). */
 export function getForkSourceId(conv: ConversationSnapshot): string | null {
