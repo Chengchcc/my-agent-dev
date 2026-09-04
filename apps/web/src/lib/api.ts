@@ -371,6 +371,8 @@ export const api = {
   // Knowledge packs (ADR 0022, direct fetch)
   listKnowledgePacks: () =>
     fetch("/api/bff/knowledge-packs", { credentials: "include" }).then((r) => r.json()),
+  knowledgeStats: (packId: string) =>
+    unwrap(client.api["knowledge-packs"]({ id: packId }).stats.get()),
   installKnowledgePack: (body: {
     name: string;
     description?: string;

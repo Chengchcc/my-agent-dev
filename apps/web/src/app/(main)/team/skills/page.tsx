@@ -3,6 +3,7 @@
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Download, GitBranch, Package, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { InstallPackForm } from "@/components/InstallPackForm";
 import { PackFileSearch } from "@/components/PackFileSearch";
@@ -252,6 +253,14 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 export default function SkillPacksPage() {
   const { data: packs, isLoading, refetch } = useSkillPackList();
   const [query, setQuery] = useState("");
+  const [validateResult, setValidateResult] = useState<Array<{
+    id: string;
+    name: string;
+    ok: boolean;
+    skills: number;
+    issues: string[];
+  }> | null>(null);
+  const [validating, setValidating] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showInstall, setShowInstall] = useState(false);
@@ -356,6 +365,21 @@ export default function SkillPacksPage() {
     if (ok) deleteMutation.mutate(pack.id);
   };
 
+  async function runValidate() {
+    setValidating(true);
+    try {
+      const r = await fetch("/api/bff/skill-packs/validate", { credentials: "include" });
+      const j = (await r.json()) as {
+        packs: Array<{ id: string; name: string; ok: boolean; skills: number; issues: string[] }>;
+      };
+      setValidateResult(j.packs ?? []);
+    } catch {
+      toast.error("Validate failed");
+    } finally {
+      setValidating(false);
+    }
+  }
+
   return (
     <Page>
       <PageHeader
@@ -369,10 +393,27 @@ export default function SkillPacksPage() {
           ) : undefined
         }
         actions={
-          <Button onClick={() => setShowInstall(true)}>
-            <Download className="size-4" />
-            Import Skill Pack
-          </Button>
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={validating}
+              onClick={() => void runValidate()}
+            >
+              {validating ? "Validating…" : "Validate manifests"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.open("/api/bff/skill-packs/lockfile", "_blank", "noopener")}
+            >
+              View lockfile
+            </Button>
+            <Button onClick={() => setShowInstall(true)}>
+              <Download className="size-4" />
+              Import Skill Pack
+            </Button>
+          </>
         }
       />
       <p className="px-2 text-xs text-(--mute) md:px-0">

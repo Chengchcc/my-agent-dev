@@ -235,6 +235,14 @@ export default function ArtifactsPage() {
                         <span className="shrink-0">· {bucket || "root"}</span>
                         <span className="shrink-0">· {a.mimeType}</span>
                         <span className="shrink-0 tabular-nums">· {fmtSize(a.size)}</span>
+                        {a.source?.runId && (
+                          <span className="shrink-0 text-(--accent-violet)">
+                            · run {a.source.runId.slice(0, 8)}
+                          </span>
+                        )}
+                        {a.source?.agentId && (
+                          <span className="shrink-0">· {a.source.agentId}</span>
+                        )}
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">

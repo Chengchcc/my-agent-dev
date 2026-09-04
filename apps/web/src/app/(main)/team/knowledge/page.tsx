@@ -10,7 +10,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { Page, PageBody } from "@/components/page";
 import { KpiTile, MonoLabel, PageHeader, StatusPill, type StatusTone } from "@/components/patterns";
@@ -35,6 +35,12 @@ import { useKnowledgePacks } from "@/features/knowledge/hooks";
 import type { KnowledgePackRow } from "@/features/knowledge/queries";
 import { knowledgePackKeys } from "@/features/knowledge/query-keys";
 import { type AgentRow, api } from "@/lib/api";
+
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}K`;
+  return `${(n / 1024 / 1024).toFixed(1)}M`;
+}
 
 function packTone(status: string): StatusTone {
   if (status === "ready") return "success";
@@ -68,7 +74,21 @@ function KnowledgeDetailSheet({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"overview" | "agents">("overview");
+  const [stats, setStats] = useState<{
+    files: number;
+    totalBytes: number;
+    estTokens: number;
+    newestFileAt: number | null;
+  } | null>(null);
   const badge = statusBadge(pack.status);
+
+  useEffect(() => {
+    setStats(null);
+    api
+      .knowledgeStats(pack.id)
+      .then((r) => setStats(r as typeof stats))
+      .catch(() => setStats(null));
+  }, [pack.id]);
   return (
     <ResourceDetailSheet
       open
@@ -108,6 +128,14 @@ function KnowledgeDetailSheet({
             <DetailRow label="Source" value={pack.sourceUrl ?? pack.installedRef ?? "—"} />
             <DetailRow label="Status" value={badge.label} />
             <DetailRow label="Source revision" value={pack.sourceRev ?? pack.versionRef ?? "—"} />
+            <DetailRow
+              label="Indexed"
+              value={
+                stats
+                  ? `${stats.files} files · ${fmtBytes(stats.totalBytes)} · ~${stats.estTokens.toLocaleString()} tokens`
+                  : "scanning…"
+              }
+            />
             <DetailRow label="Installed" value={`${usedBy.length} agents`} />
             <DetailRow label="Updated" value={formatDate(pack.updatedAt)} />
           </dl>

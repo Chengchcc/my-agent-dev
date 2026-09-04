@@ -37,6 +37,8 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
   };
 
   return new Elysia()
+    .get("/api/skill-packs/lockfile", async () => svc.lockfile())
+    .get("/api/skill-packs/validate", async () => ({ packs: await svc.validate() }))
     .get("/api/skill-packs", listAll)
 
     .post(

@@ -1,3 +1,5 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ValidationError } from "../../infra/domain-errors.js";
 import type { SkillPackRow, SkillPackSource } from "./entities.js";
 import { UpstreamChangedError } from "./install-session.js";
@@ -129,6 +131,74 @@ export function createSkillPackService(deps: SkillPackServiceDeps) {
     },
 
     // ─── Uninstall ────────────────────────────────────────────────────
+
+    /** Deterministic export of the installed pack state (skills-lock.json body). */
+    async lockfile(): Promise<{
+      generatedAt: number;
+      packs: Array<{
+        id: string;
+        name: string;
+        sourceKind: string;
+        sourceUrl: string | null;
+        installedRef: string | null;
+        status: string;
+        keepSynced: boolean;
+      }>;
+    }> {
+      const packs = await port.list();
+      return {
+        generatedAt: Date.now(),
+        packs: packs.map((p) => ({
+          id: p.id,
+          name: p.name,
+          sourceKind: p.sourceKind,
+          sourceUrl: p.sourceUrl,
+          installedRef: p.installedRef,
+          status: p.status,
+          keepSynced: p.keepSynced === true,
+        })),
+      };
+    },
+
+    /** Per-pack integrity check: materialized dir present, SKILL.md files
+     *  discoverable, frontmatter name present. Read-only. */
+    async validate(): Promise<
+      Array<{ id: string; name: string; ok: boolean; skills: number; issues: string[] }>
+    > {
+      const packs = await port.list();
+      return packs.map((p) => {
+        const issues: string[] = [];
+        let skills = 0;
+        const root = p.installedRef;
+        if (!root || !existsSync(root)) {
+          issues.push("materialized directory missing");
+          return { id: p.id, name: p.name, ok: false, skills, issues };
+        }
+        const scan = (dir: string, depth: number) => {
+          if (depth > 6) return;
+          for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const full = join(dir, entry.name);
+            if (entry.isDirectory()) {
+              scan(full, depth + 1);
+              continue;
+            }
+            if (entry.name === "SKILL.md") {
+              try {
+                const head = readFileSync(full, "utf8").slice(0, 600);
+                if (/^---[\s\S]*name:/.test(head)) skills += 1;
+                else
+                  issues.push(`SKILL.md missing frontmatter name: ${full.slice(root.length + 1)}`);
+              } catch {
+                issues.push(`SKILL.md unreadable: ${full.slice(root.length + 1)}`);
+              }
+            }
+          }
+        };
+        scan(root, 0);
+        if (skills === 0) issues.push("no SKILL.md found");
+        return { id: p.id, name: p.name, ok: issues.length === 0, skills, issues };
+      });
+    },
 
     async uninstall(packId: string): Promise<void> {
       const row = await port.get(packId);
