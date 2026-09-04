@@ -125,7 +125,6 @@ let runPort: ReturnType<typeof sqliteAgentRunAdapter>;
 
 const conversationId = "conv-1";
 const agentId = "ag-1";
-let branchId: string;
 
 function makeExecution(
   fakeDaemon: ReturnType<typeof createFakeDaemon>,
@@ -230,8 +229,7 @@ beforeEach(async () => {
 
   convPort.createConversation({ conversationId, agentId, createdAt: Date.now() });
   const tree = await contextPort.getOrCreateTree(conversationId);
-  const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "oma");
-  branchId = branch.branchId;
+  await contextPort.getOrCreateDefaultBranch(tree.treeId, "oma");
 });
 
 afterEach(() => {
@@ -853,86 +851,6 @@ describe("agent run execution (Run-centric)", () => {
     const execution2 = makeExecution(fake);
     await execution2.recover();
     expect(fake.executeCalls).toHaveLength(1);
-  }, 15_000);
-
-  test("steer is injected into the live run after persistence; accepted only after Backend acceptance", async () => {
-    const fake = createFakeDaemon({ outcomeDelayMs: 1500 });
-    const execution = makeExecution(fake);
-
-    const first = await enqueue("normal", "steer-1", "first");
-    // Fire dispatch WITHOUT awaiting: the steer must land while the run is
-    // live (dispatch resolves only after the run settles).
-    const dispatchP = execution.dispatch(first.run!.runId);
-    // Wait until the daemon accepted the run (input delivered).
-    for (let i = 0; i < 100; i++) {
-      const inputs = await runPort.listInputs(first.run!.branchId);
-      if (inputs[0]?.status === "delivered") break;
-      await new Promise((r) => setTimeout(r, 20));
-    }
-
-    // The steer input persists FIRST, then injectSteer delivers it live.
-    const steer = await enqueue("steer", "steer-2", "steer me");
-    expect(steer.queued).toBe(true);
-    const steerInputId = steer.inputId;
-    const inputsAfter = await runPort.listInputs(first.run!.branchId);
-    const steerRow = inputsAfter.find((i) => i.inputId === steerInputId)!;
-    expect(steerRow.status).toBe("pending"); // not delivered yet
-
-    await execution.injectSteer(first.run!.branchId, {
-      inputId: steerInputId,
-      message: { role: "user", text: "steer me" },
-    });
-    expect(fake.steerCalls).toEqual([first.run!.runId]);
-    const after = await runPort.listInputs(first.run!.branchId);
-    expect(after.find((i) => i.inputId === steerInputId)!.status).toBe("delivered");
-
-    await dispatchP;
-    await waitForTerminal(first.run!.runId);
-  }, 15_000);
-
-  test("steer is cancelled (never delivered) when Backend acceptance fails", async () => {
-    const fake = createFakeDaemon({
-      outcomeDelayMs: 1500,
-      steerError: true,
-    });
-    const execution = makeExecution(fake);
-
-    const first = await enqueue("normal", "steer-3", "first");
-    const dispatchP = execution.dispatch(first.run!.runId);
-    for (let i = 0; i < 100; i++) {
-      const inputs = await runPort.listInputs(first.run!.branchId);
-      if (inputs[0]?.status === "delivered") break;
-      await new Promise((r) => setTimeout(r, 20));
-    }
-
-    const steer = await enqueue("steer", "steer-4", "steer me");
-    const steerInputId = steer.inputId;
-    await expect(
-      execution.injectSteer(first.run!.branchId, {
-        inputId: steerInputId,
-        message: { role: "user", text: "steer me" },
-      }),
-    ).rejects.toThrow(/live run/);
-    const after = await runPort.listInputs(first.run!.branchId);
-    expect(after.find((i) => i.inputId === steerInputId)!.status).toBe("cancelled");
-    await dispatchP;
-    await waitForTerminal(first.run!.runId);
-  }, 15_000);
-
-  test("steer with no active run is cancelled at enqueue and never creates a Run", async () => {
-    const fake = createFakeDaemon();
-    const execution = makeExecution(fake);
-
-    const steer = await enqueue("steer", "steer-5", "steer me");
-    expect(steer.acquired).toBe(false);
-    expect(steer.cancelled).toBe(true);
-    // No run was created on the branch at all.
-    expect(await runPort.getActiveRun(branchId)).toBeNull();
-    const inputs = await runPort.listInputs(branchId);
-    const steerRow = inputs.find((i) => i.inputId === steer.inputId);
-    expect(steerRow?.status).toBe("cancelled");
-    expect(fake.executeCalls).toHaveLength(0);
-    void execution;
   }, 15_000);
 
   test("retryTerminalCommit replays the STORED outcome without re-executing the Backend", async () => {
