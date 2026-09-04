@@ -20,6 +20,24 @@ export interface FetchedSource {
   readonly rev: string;
 }
 
+/** Thrown when a pinned commit ref does not match the fetched HEAD.
+ *  Fail-closed: the materialized target is removed before throwing. */
+export class SourceRevMismatchError extends Error {
+  constructor(
+    readonly expectedRev: string,
+    readonly actualRev: string,
+  ) {
+    super(`source rev mismatch: expected ${expectedRev}, got ${actualRev}`);
+    this.name = "SourceRevMismatchError";
+  }
+}
+
+/** A 40-hex git commit SHA pins the exact upstream object (lockfile form).
+ *  Anything else is a movable branch/tag ref and is NOT a trust lock. */
+function isCommitRef(ref: string): boolean {
+  return /^[0-9a-f]{40}$/i.test(ref);
+}
+
 function assertSafeSegment(name: string): string {
   if (!/^[a-zA-Z0-9_.-]+$/.test(name) || name === "." || name === "..") {
     throw new Error(`unsafe path segment: ${name}`);
@@ -31,20 +49,26 @@ function slugify(source: string): string {
   return source.replace(/[^a-zA-Z0-9_.-]/g, "-").slice(0, 80);
 }
 
-/** Clone a git source into dataDir/<slug> (depth 1, optional branch/tag ref).
- *  Replaces an existing directory atomically (rm + fresh clone). */
-export async function fetchGitSource(opts: {
+/** Options shared by the async and sync git fetch surfaces. */
+export interface GitSourceOptions {
   url: string;
   dataDir: string;
+  /** Branch/tag ref, or a 40-hex commit SHA used as a trust pin. */
   ref?: string;
   slug?: string;
-}): Promise<FetchedSource> {
+}
+
+/** Single clone implementation (no async/sync duplication):
+ *  depth-1 clone, movable ref via --branch, commit pin via post-clone
+ *  HEAD verification. A pin mismatch removes the target and fails closed. */
+function cloneGitSource(opts: GitSourceOptions): FetchedSource {
   const slug = assertSafeSegment(opts.slug ?? slugify(opts.url));
   const target = path.resolve(opts.dataDir, slug);
   if (existsSync(target)) rmSync(target, { recursive: true, force: true });
   mkdirSync(path.resolve(opts.dataDir), { recursive: true });
+  const pinnedRev = opts.ref && isCommitRef(opts.ref) ? opts.ref.toLowerCase() : null;
   const args = ["clone", "--depth", "1"];
-  if (opts.ref) args.push("--branch", opts.ref);
+  if (opts.ref && !pinnedRev) args.push("--branch", opts.ref);
   args.push(opts.url, target);
   const proc = Bun.spawnSync(["git", ...args], {
     cwd: opts.dataDir,
@@ -58,7 +82,21 @@ export async function fetchGitSource(opts: {
     stdio: ["ignore", "pipe", "pipe"],
   });
   const rev = revProc.exitCode === 0 ? String(revProc.stdout ?? "").trim() : "unknown";
+  if (pinnedRev && rev.toLowerCase() !== pinnedRev) {
+    rmSync(target, { recursive: true, force: true });
+    throw new SourceRevMismatchError(pinnedRev, rev);
+  }
   return { root: target, rev };
+}
+
+/** Async surface for backend install paths; the clone itself is sync. */
+export async function fetchGitSource(opts: GitSourceOptions): Promise<FetchedSource> {
+  return cloneGitSource(opts);
+}
+
+/** Sync surface for oma marketplace / addMarketplace. */
+export function fetchGitSourceSync(opts: GitSourceOptions): FetchedSource {
+  return cloneGitSource(opts);
 }
 
 function unzip(zipPath: string, extractDir: string): Promise<{ exitCode: number; stderr: string }> {
@@ -72,36 +110,6 @@ function unzip(zipPath: string, extractDir: string): Promise<{ exitCode: number;
         resolve({ exitCode: 1, stderr: "unzip spawn failed" });
       });
   });
-}
-
-/** Synchronous git fetch (oma marketplace / addMarketplace uses a sync
- *  install path; the async variant above is for backend skill-pack). */
-export function fetchGitSourceSync(opts: {
-  url: string;
-  dataDir: string;
-  ref?: string;
-  slug?: string;
-}): FetchedSource {
-  const slug = assertSafeSegment(opts.slug ?? slugify(opts.url));
-  const target = path.resolve(opts.dataDir, slug);
-  if (existsSync(target)) rmSync(target, { recursive: true, force: true });
-  mkdirSync(path.resolve(opts.dataDir), { recursive: true });
-  const args = ["clone", "--depth", "1"];
-  if (opts.ref) args.push("--branch", opts.ref);
-  args.push(opts.url, target);
-  const proc = Bun.spawnSync(["git", ...args], {
-    cwd: opts.dataDir,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (proc.exitCode !== 0) {
-    throw new Error(`git clone failed: ${String(proc.stderr ?? "").trim()}`);
-  }
-  const revProc = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
-    cwd: target,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const rev = revProc.exitCode === 0 ? String(revProc.stdout ?? "").trim() : "unknown";
-  return { root: target, rev };
 }
 
 /** Reject a zip whose entries escape the extract root — checked BEFORE any

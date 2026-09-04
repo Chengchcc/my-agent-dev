@@ -31,7 +31,7 @@ skill_pack (
   description   text  NOT NULL,    -- 用户填的描述
   sourceKind    text  NOT NULL,    -- 'builtin' | 'git' | 'zip'
   sourceUrl     text,              -- git URL
-  versionRef    text,              -- git ref/branch
+  versionRef    text,              -- git branch/tag, or 40-hex commit SHA (trust pin; mismatch fails closed)
   installedRef  text,              -- git commit / zip checksum
   status        text  NOT NULL,    -- pending|installing|ready|failed|syncing
   error         text,

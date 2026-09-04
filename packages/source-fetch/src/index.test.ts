@@ -73,6 +73,37 @@ describe("source-fetch", () => {
     }
   });
 
+  test("a 40-hex ref pins the exact commit (lockfile semantics)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "sf-pin-"));
+    const repo = makeGitRepo(tmpdir());
+    const head = spawnSync("git", ["-C", repo, "rev-parse", "HEAD"], {
+      encoding: "utf-8",
+    }).stdout.trim();
+    try {
+      const fetched = await fetchGitSource({ url: repo, dataDir, slug: "pinned", ref: head });
+      expect(fetched.rev).toBe(head);
+      expect(existsSync(join(fetched.root, "README.md"))).toBe(true);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("commit-pin mismatch fails closed and removes the target", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "sf-pinbad-"));
+    const repo = makeGitRepo(tmpdir());
+    const wrongRev = "0".repeat(40);
+    try {
+      await expect(
+        fetchGitSource({ url: repo, dataDir, slug: "pinned-bad", ref: wrongRev }),
+      ).rejects.toThrow(/source rev mismatch/);
+      expect(existsSync(join(dataDir, "pinned-bad"))).toBe(false);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   test("materializeZipSource rejects path-escape entries", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "sf-zip-"));
     const zipPath = join(tmpdir(), `sf-evil-${Date.now()}.zip`);
