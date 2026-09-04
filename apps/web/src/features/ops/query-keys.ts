@@ -5,6 +5,7 @@ export const opsKeys = {
   runDetail: (runId: string) => ["ops", "agent-runs", runId] as const,
   agentRuntime: (agentId: string) => ["ops", "agents", agentId, "runtime"] as const,
   surfaces: () => ["ops", "surfaces"] as const,
+  backendPing: () => ["ops", "backend-ping"] as const,
   telemetrySummary: () => ["telemetry-summary"] as const,
   usageSummary: (scope: { conversationId?: string; agentId?: string }) =>
     [

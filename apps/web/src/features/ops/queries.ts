@@ -36,3 +36,17 @@ export function telemetrySummaryQuery() {
     queryFn: () => api.getTelemetrySummary(),
   });
 }
+
+/** Backend round-trip latency in ms, measured through the BFF. */
+export function backendPingQuery() {
+  return queryOptions({
+    queryKey: opsKeys.backendPing(),
+    queryFn: async () => {
+      const t0 = performance.now();
+      await api.listSurfaces();
+      return Math.round(performance.now() - t0);
+    },
+    refetchInterval: 30_000,
+    retry: 1,
+  });
+}

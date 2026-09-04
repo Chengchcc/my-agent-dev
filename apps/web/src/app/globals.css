@@ -5,8 +5,9 @@
 
 @theme inline {
   --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono:
-    var(--font-mono-sf), "SF Mono", "JetBrains Mono", "Geist Mono", "Menlo", "Consolas", monospace;
+  --font-display: var(--font-geist), var(--font-inter), system-ui, sans-serif;
+  --font-serif: Charter, Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-mono-sf), "JetBrains Mono", "Geist Mono", Menlo, Consolas, monospace;
 
   --color-background: var(--canvas);
   --color-foreground: var(--ink);
@@ -49,10 +50,11 @@
   --color-sidebar-border: var(--hairline);
   --color-sidebar-ring: var(--primary);
 
+  --tracking-kicker: var(--tracking-kicker);
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
-  --radius-xl: 8px;
+  --radius-xl: 12px;
   --radius-2xl: 8px;
 
   --animate-fade-in: fade-in 0.6s ease-out both;
@@ -61,46 +63,52 @@
   --animate-block-in: block-in 220ms ease-out-expo both;
 }
 
-/* ── Raw color tokens (VoltAgent DESIGN.md authority) ── */
+/* ── Raw color tokens (Obsidian Control Matrix DESIGN.md authority) ── */
 :root {
-  /* ── Design tokens (ui polish plan v2 §1: named-only, no bare hex/px) ── */
-  --canvas: #101010; /* bg surface 1 (measured baseline) */
-  --panel: #171717; /* cards/sidebar, one step above canvas */
-  --panel2: #1f1f1f; /* hover/active */
-  --ink: #f2f2f2; /* primary text (measured baseline) */
-  --mute: #a3a3a3;
-  --faint: #5f5f5f;
-  --hairline: #262626;
-  --ok: #00d992;
-  --warn: #f5b849;
-  --err: #f5565b;
-  --info: #5b9bf5;
+  /* ── Design tokens (named-only, no bare hex/px) ── */
+  --canvas: #0f131c; /* surface — obsidian ground */
+  --panel: #181c24; /* surface-container-low — cards/sidebar */
+  --panel2: #262a33; /* surface-container-high — hover/active */
+  --ink: #e4e9f4; /* on-surface, lifted for >=15:1 contrast gate */
+  --mute: #bcc9cd; /* on-surface-variant */
+  --faint: #869397; /* outline */
+  --hairline: #3d494c; /* outline-variant */
+  --ok: #4edea3; /* tertiary — emerald */
+  --warn: #f59e0b; /* amber (prose spec; frontmatter has no amber) */
+  --err: #ffb4ab; /* error */
+  --info: #60a5fa; /* blue (screen-level spec) */
   --text-cap: 0.6875rem; /* 11px */
-  --tracking-kicker: 0.15em; /* the ONLY letter-spacing above 0 (kickers) */
+  --tracking-kicker: 0.08em; /* label-caps tracking */
   --text-body: 0.8125rem; /* 13px */
   --text-emph: 0.9375rem; /* 15px */
   --text-h2: 1.25rem; /* 20px */
   --text-h1: 1.625rem; /* 26px */
-  --radius-card: 6px;
-  --radius-btn: 8px;
+  --radius-card: 8px;
+  --radius-btn: 6px;
 
   /* legacy aliases: the existing components consume these names */
-  --canvas-soft: #1a1a1a;
-  --primary: #00d992;
-  --primary-soft: #2fd6a1;
-  --primary-deep: #10b981;
-  --on-primary: #101010;
-  --ink-strong: #ffffff;
-  --body: #bdbdbd;
-  --hairline-soft: #b8b3b0;
-  --canvas-text-soft: #f5f6f7;
+  --canvas-soft: #1c2028; /* surface-container — popover/muted */
+  --primary: #4cd7f6; /* electric cyan */
+  --primary-soft: #06b6d4; /* primary-container — accent fills */
+  --primary-deep: #00687a; /* inverse-primary */
+  --on-primary: #003640;
+  --ink-strong: #f8fafc;
+  --body: #bcc9cd;
+  --hairline-soft: #869397;
+  --canvas-text-soft: #e4e9f4;
 
-  /* shadcn Chart colors */
-  --chart-1: #00d992; /* primary green */
-  --chart-2: #3b82f6; /* blue */
-  --chart-3: #8b5cf6; /* purple */
-  --chart-4: #f59e0b; /* amber */
-  --chart-5: #ef4444; /* red */
+  /* secondary/tertiary accents (new language roles) */
+  --accent-violet: #d0bcff;
+  --accent-violet-soft: #571bc1; /* secondary-container */
+  --on-accent-violet: #3c0091;
+  --ok-soft: #1bbd85; /* tertiary-container */
+
+  /* shadcn Chart colors — obsidian telemetry series */
+  --chart-1: #4cd7f6; /* cyan */
+  --chart-2: #a78bfa; /* violet */
+  --chart-3: #4edea3; /* emerald */
+  --chart-4: #fb923c; /* orange */
+  --chart-5: #f87171; /* red */
 }
 
 /* ── Base layer ── */
@@ -245,7 +253,7 @@
 /* ── Agentic Workflow Blueprint (scoped to workflow editor surfaces) ── */
 :root {
   --wf-canvas-bg: var(--canvas);
-  --wf-grid: rgba(0, 217, 146, 0.06);
+  --wf-grid: rgba(76, 215, 246, 0.06);
   --wf-node-bg: var(--panel);
   --wf-node-border: var(--hairline);
   --wf-node-text: var(--ink);
