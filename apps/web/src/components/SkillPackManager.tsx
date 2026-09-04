@@ -1,6 +1,15 @@
 "use client";
 
-import { Download, FolderSync, GitBranch, RefreshCw, Trash2 } from "lucide-react";
+import {
+  Download,
+  File,
+  FileText,
+  Folder,
+  FolderSync,
+  GitBranch,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { FileContentViewer } from "@/components/FileContentViewer";
 import { PackFileSearch } from "@/components/PackFileSearch";
@@ -50,10 +59,12 @@ export function FileTree({
   packId,
   path,
   onSelectFile,
+  selectedPath,
 }: {
   packId: string;
   path: string;
   onSelectFile: (p: string) => void;
+  selectedPath?: string;
 }) {
   const { data, isLoading } = useSkillPackFiles(packId, path || undefined);
 
@@ -61,14 +72,19 @@ export function FileTree({
   if (!data) return null;
 
   if (data.type === "file") {
+    const isActive = selectedPath === path;
     return (
-      <button
-        type="button"
-        className="text-sm hover:text-primary text-left w-full py-1 px-2"
+      <Button
+        variant="ghost"
+        size="xs"
+        className={`w-full justify-start gap-1 px-2 text-left ${
+          isActive ? "bg-(--panel2) text-(--ink)" : "text-(--mute)"
+        }`}
         onClick={() => onSelectFile(path)}
       >
-        📄 {path.split("/").pop()}
-      </button>
+        <FileText className="size-3.5 shrink-0" />
+        <span className="truncate">{path.split("/").pop()}</span>
+      </Button>
     );
   }
   // Error responses arrive as { error } without a type — render nothing
@@ -77,26 +93,41 @@ export function FileTree({
 
   const entries = data.entries ?? [];
   return (
-    <ul className="pl-2 space-y-0.5">
+    <ul className="space-y-0.5 pl-2">
       {entries.map((e) => {
         const entryPath = path ? `${path}/${e.name}` : e.name;
+        if (e.type === "dir") {
+          return (
+            <li key={entryPath}>
+              <details>
+                <summary className="flex cursor-pointer items-center gap-1 py-1 text-sm text-(--mute) hover:text-(--ink)">
+                  <Folder className="size-3.5 shrink-0" />
+                  {e.name}
+                </summary>
+                <FileTree
+                  packId={packId}
+                  path={entryPath}
+                  onSelectFile={onSelectFile}
+                  selectedPath={selectedPath}
+                />
+              </details>
+            </li>
+          );
+        }
+        const isActive = selectedPath === entryPath;
         return (
           <li key={entryPath}>
-            {e.type === "dir" ? (
-              <details>
-                <summary className="cursor-pointer text-sm hover:text-primary py-1">
-                  📁 {e.name}
-                </summary>
-                <FileTree packId={packId} path={entryPath} onSelectFile={onSelectFile} />
-              </details>
-            ) : (
-              <button
-                className="text-sm hover:text-primary text-left w-full py-1 px-2"
-                onClick={() => onSelectFile(entryPath)}
-              >
-                📄 {e.name}
-              </button>
-            )}
+            <Button
+              variant="ghost"
+              size="xs"
+              className={`w-full justify-start gap-1 px-2 text-left ${
+                isActive ? "bg-(--panel2) text-(--ink)" : "text-(--mute)"
+              }`}
+              onClick={() => onSelectFile(entryPath)}
+            >
+              <File className="size-3.5 shrink-0" />
+              <span className="truncate">{e.name}</span>
+            </Button>
           </li>
         );
       })}

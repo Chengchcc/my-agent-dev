@@ -308,25 +308,25 @@ function NavContent() {
               </SidebarMenuButton>
             </SidebarMenuItem>
             <div className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-(--mute)">
-              Resources
+              Capabilities
             </div>
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={pathname.startsWith("/team/skills")}
-                tooltip={t("Skill Packs")}
+                tooltip={t("Skills")}
                 onClick={() => {
                   closeMobile();
                   router.push("/team/skills");
                 }}
               >
                 <Package />
-                <span className="truncate">{t("Skill Packs")}</span>
+                <span className="truncate">{t("Skills")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={pathname.startsWith("/team/mcp")}
-                tooltip="MCP Servers"
+                tooltip="MCP"
                 onClick={() => {
                   closeMobile();
                   router.push("/team/mcp");

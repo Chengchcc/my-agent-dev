@@ -152,7 +152,7 @@ function AgentSkillsPanel({ agentId }: { agentId: string }) {
   if (packs.length === 0) {
     return (
       <p className="text-sm text-(--mute)">
-        No skill packs installed — add them on the Skill Packs page.
+        No skill packs installed — add them on the Skills page.
       </p>
     );
   }

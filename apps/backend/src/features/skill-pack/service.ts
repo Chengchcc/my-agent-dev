@@ -46,6 +46,7 @@ export function createSkillPackService(deps: SkillPackServiceDeps) {
       description: string;
       url: string;
       ref?: string;
+      keepSynced?: boolean;
     }): Promise<SkillPackRow> {
       const id = idGen();
       const now = Date.now();
@@ -56,6 +57,7 @@ export function createSkillPackService(deps: SkillPackServiceDeps) {
         sourceKind: "git",
         sourceUrl: input.url,
         versionRef: input.ref ?? null,
+        keepSynced: input.keepSynced ?? false,
         now,
       });
 

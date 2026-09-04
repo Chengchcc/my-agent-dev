@@ -7,6 +7,9 @@ export interface McpCatalogRow {
   name: string;
   transport: "stdio" | "sse";
   command: string | null;
+  args?: string[] | null;
+  env?: Record<string, string> | null;
+  headers?: Record<string, string> | null;
   url: string | null;
   status?: string;
   toolsCount?: number;

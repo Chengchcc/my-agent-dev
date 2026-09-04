@@ -2,43 +2,33 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plug, RefreshCw, Server } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { Page, PageBody, PageHeader } from "@/components/page";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  InfoBanner,
-  ListRowCard,
-  ListToolbar,
-  SectionKicker,
-  StatCard,
-  SubTabs,
-} from "@/components/ui/polish";
+import { InfoBanner, ListToolbar, SectionKicker, StatCard, SubTabs } from "@/components/ui/polish";
+import { ResourceCard } from "@/components/ui/resource-card";
+import { ResourceDetailSheet } from "@/components/ui/resource-detail-sheet";
+import { Text } from "@/components/ui/text";
 import { Textarea } from "@/components/ui/textarea";
 import { useAgentList } from "@/features/agents/hooks";
 import { agentKeys } from "@/features/agents/query-keys";
 import { useMcpCatalog } from "@/features/mcp/hooks";
 import type { McpCatalogRow } from "@/features/mcp/queries";
 import { mcpKeys } from "@/features/mcp/query-keys";
-import { api } from "@/lib/api";
+import { type AgentRow, api } from "@/lib/api";
 
-/** Global MCP catalog (ADR 0022): server definitions live in
- *  <dataDir>/mcp-servers.json (file-first). Agent switches live on the
- *  agent pages (MCP tab). */
 type EditMcpRow = McpCatalogRow & {
   args?: string[];
   env?: Record<string, string>;
@@ -53,12 +43,29 @@ function mcpStatus(status: string | undefined): "ok" | "err" | "idle" {
   return "idle";
 }
 
-/** Badge semantics: the REAL runtime mount result wins when present;
- *  before any Run has mounted the server, fall back to the manager probe. */
 function displayStatus(s: McpCatalogRow): "ok" | "err" | "idle" {
   if (s.runtimeStatus === "mounted") return "ok";
   if (s.runtimeStatus === "failed") return "err";
   return mcpStatus(s.status);
+}
+
+function statusLabel(s: "ok" | "err" | "idle"): string {
+  if (s === "ok") return "Reachable";
+  if (s === "err") return "Unreachable";
+  return "Offline";
+}
+
+function statusTone(s: "ok" | "err" | "idle"): "ok" | "err" | "default" {
+  if (s === "ok") return "ok";
+  if (s === "err") return "err";
+  return "default";
+}
+
+function serverMeta(s: McpCatalogRow): string {
+  if (s.runtimeStatus === "mounted") return `runtime: ${s.runtimeToolsCount ?? 0} tools`;
+  if (s.runtimeStatus === "failed")
+    return `runtime: failed${s.runtimeError ? ` (${s.runtimeError})` : ""}`;
+  return "";
 }
 
 function parseArgs(raw: string): string[] {
@@ -77,6 +84,159 @@ function parsePairs(raw: string): Record<string, string> {
   return out;
 }
 
+function normalizeMcpJson(raw: string): CreateMcpBody[] {
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object") throw new Error("Invalid JSON");
+  const obj = parsed as Record<string, unknown>;
+  const wrap = obj.mcpServers;
+  const entries: Array<[string, Record<string, unknown>]> =
+    wrap && typeof wrap === "object" && !Array.isArray(wrap)
+      ? Object.entries(wrap as Record<string, unknown>).map(([name, s]) => [
+          name,
+          s as Record<string, unknown>,
+        ])
+      : [["", obj]];
+  return entries.map(([name, s]) => {
+    const body: CreateMcpBody = {
+      name: name || (s.name as string) || "",
+      transport: (s.transport as "stdio" | "sse") ?? (s.type as "stdio" | "sse") ?? "stdio",
+    };
+    if (typeof s.command === "string") body.command = s.command;
+    if (Array.isArray(s.args)) body.args = s.args as string[];
+    if (s.env && typeof s.env === "object") body.env = s.env as Record<string, string>;
+    if (typeof s.url === "string") body.url = s.url;
+    if (s.headers && typeof s.headers === "object")
+      body.headers = s.headers as Record<string, string>;
+    return body;
+  });
+}
+
+function McpDetailSheet({
+  server,
+  agents,
+  onEdit,
+  onTest,
+  onDelete,
+  onClose,
+}: {
+  server: McpCatalogRow;
+  agents: AgentRow[];
+  onEdit: (serverId: string) => void;
+  onTest: (serverId: string) => void;
+  onDelete: (serverId: string) => void;
+  onClose: () => void;
+}) {
+  const [detail, setDetail] = useState<EditMcpRow | null>(null);
+  const [tab, setTab] = useState<"overview" | "agents">("overview");
+
+  useEffect(() => {
+    setDetail(null);
+    api
+      .getMcpServer(server.serverId)
+      .then((r) => setDetail((r.mcpServer ?? null) as EditMcpRow | null))
+      .catch(() => setDetail(null));
+  }, [server.serverId]);
+
+  const usedByNames = agents
+    .filter((a) => a.mcpServers?.some((m) => m.serverId === server.serverId && m.enabled))
+    .map((a) => a.name);
+  const tools = server.runtimeToolsCount ?? server.toolsCount ?? 0;
+  const row = detail ?? server;
+  const st = displayStatus(server);
+
+  return (
+    <ResourceDetailSheet
+      open
+      onClose={onClose}
+      icon={<Server className="size-5 text-(--mute)" />}
+      title={server.name}
+      subtitle={server.serverId}
+      badge={{ label: statusLabel(st), tone: statusTone(st) }}
+      tabs={[
+        { key: "overview", label: "Overview" },
+        { key: "agents", label: "Agents" },
+      ]}
+      tab={tab}
+      onTabChange={(key) => setTab(key as "overview" | "agents")}
+      breadcrumb={[
+        { label: server.name, onClick: () => setTab("overview") },
+        { label: "Capabilities" },
+      ]}
+      footer={
+        <>
+          <Text as="p" className="mr-auto text-xs text-(--mute)">
+            {tools} tools
+          </Text>
+          <Button variant="outline" size="sm" onClick={() => onEdit(server.serverId)}>
+            Edit
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => onTest(server.serverId)}>
+            Test
+          </Button>
+          <Button variant="destructive" size="sm" onClick={() => onDelete(server.serverId)}>
+            Delete
+          </Button>
+        </>
+      }
+    >
+      {tab === "overview" && (
+        <div className="space-y-4">
+          <Text as="p" className="text-sm text-(--mute)">
+            {server.transport === "sse" ? (row.url ?? "") : (row.command ?? "")}
+          </Text>
+          <dl className="space-y-1 text-sm">
+            <DetailRow label="Transport" value={row.transport} />
+            <DetailRow label="Command" value={row.command ?? "—"} />
+            <DetailRow label="Args" value={(row.args ?? []).join(", ") || "—"} />
+            <DetailRow label="Env" value={Object.keys(row.env ?? {}).join(", ") || "—"} />
+            <DetailRow label="URL" value={row.url ?? "—"} />
+            <DetailRow label="Headers" value={Object.keys(row.headers ?? {}).join(", ") || "—"} />
+            <DetailRow label="Status" value={displayStatus(server)} />
+            <DetailRow label="Tools" value={`${tools}`} />
+            <DetailRow label="Installed" value={`${usedByNames.length} agents`} />
+          </dl>
+        </div>
+      )}
+      {tab === "agents" && (
+        <div className="space-y-3">
+          {usedByNames.length === 0 ? (
+            <Text as="p" className="text-sm text-(--mute)">
+              Not assigned to any agent yet.
+            </Text>
+          ) : (
+            usedByNames.map((name) => (
+              <div
+                key={name}
+                className="flex items-center justify-between rounded-md border border-(--hairline) px-3 py-2"
+              >
+                <Text as="span" className="text-sm">
+                  {name}
+                </Text>
+                <span className="rounded bg-(--ok)/12 px-1.5 py-0.5 text-xs text-(--ok)">
+                  Active
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </ResourceDetailSheet>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <Text as="dt" className="text-(--mute)">
+        {label}
+      </Text>
+      <Text as="dd" className="truncate text-right">
+        {value}
+      </Text>
+    </div>
+  );
+}
+
 export default function McpCatalogPage() {
   const qc = useQueryClient();
   const { data, refetch } = useMcpCatalog();
@@ -85,6 +245,8 @@ export default function McpCatalogPage() {
   const [mode, setMode] = useState<"form" | "json">("form");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmServerId, setConfirmServerId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [transport, setTransport] = useState<"stdio" | "sse">("stdio");
   const [command, setCommand] = useState("");
@@ -94,6 +256,7 @@ export default function McpCatalogPage() {
   const [headersText, setHeadersText] = useState("");
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
+
   const remove = useMutation({
     mutationFn: (serverId: string) => api.deleteMcpServer(serverId),
     onSuccess: () => void qc.invalidateQueries({ queryKey: mcpKeys.all }),
@@ -114,10 +277,15 @@ export default function McpCatalogPage() {
       });
     },
   });
+
   const resetForm = () => {
+    setName("");
+    setTransport("stdio");
     setCommand("");
     setArgsText("");
     setEnvText("");
+    setUrl("");
+    setHeadersText("");
     setJsonText("");
     setJsonError(null);
     setEditingId(null);
@@ -126,7 +294,6 @@ export default function McpCatalogPage() {
   const create = useMutation({
     mutationFn: (body: CreateMcpBody) => api.createMcpServer(body),
     onSuccess: () => {
-      resetForm();
       void qc.invalidateQueries({ queryKey: mcpKeys.all });
     },
     onError: (err) => {
@@ -135,8 +302,7 @@ export default function McpCatalogPage() {
   });
 
   const beginEdit = async (serverId: string) => {
-    const data = (await api.getMcpServer(serverId)) as { mcpServer?: EditMcpRow };
-    const row = data.mcpServer;
+    const row = (await api.getMcpServer(serverId)).mcpServer as EditMcpRow | undefined;
     if (!row) return;
     setEditingId(row.serverId);
     setName(row.name);
@@ -171,6 +337,7 @@ export default function McpCatalogPage() {
     );
     setJsonError(null);
     setMode("form");
+    setShowForm(true);
   };
 
   const update = useMutation({
@@ -188,6 +355,7 @@ export default function McpCatalogPage() {
     },
     onSuccess: () => {
       resetForm();
+      setShowForm(false);
       void qc.invalidateQueries({ queryKey: mcpKeys.all });
     },
     onError: (err) => {
@@ -204,6 +372,7 @@ export default function McpCatalogPage() {
     );
   }, [servers, query]);
 
+  const selectedServer = servers.find((s) => s.serverId === selectedId) ?? null;
   const connected = servers.filter((s) => mcpStatus(s.status) === "ok").length;
   const runtimeMounted = servers.filter((s) => s.runtimeStatus === "mounted").length;
   const tools = servers.reduce((sum, s) => sum + (s.toolsCount ?? 0), 0);
@@ -234,18 +403,49 @@ export default function McpCatalogPage() {
       });
       return;
     }
-    create.mutate(body);
+    create.mutate(body, {
+      onSuccess: () => {
+        resetForm();
+        setShowForm(false);
+      },
+    });
   };
 
   const submit = () => {
     if (mode === "json") {
       try {
-        const parsed = JSON.parse(jsonText) as CreateMcpBody;
-        if (!parsed.name || !parsed.transport) {
-          setJsonError("JSON must include name and transport");
+        const bodies = normalizeMcpJson(jsonText);
+        if (bodies.length === 0) {
+          setJsonError("No servers found");
           return;
         }
-        save(parsed);
+        if (editingId) {
+          const body = bodies[0]!;
+          if (!body.name || !body.transport) {
+            setJsonError("JSON must include name and transport");
+            return;
+          }
+          save(body);
+          return;
+        }
+        void (async () => {
+          let ok = 0;
+          for (const body of bodies) {
+            try {
+              await create.mutateAsync(body);
+              ok++;
+            } catch (err) {
+              toast.error(`Failed to add ${body.name || "server"}`, {
+                description: err instanceof Error ? err.message : "Unknown error",
+              });
+            }
+          }
+          if (ok > 0) {
+            resetForm();
+            setShowForm(false);
+            toast.success(`Added ${ok} server${ok > 1 ? "s" : ""}`);
+          }
+        })();
       } catch {
         setJsonError("Invalid JSON");
       }
@@ -259,13 +459,24 @@ export default function McpCatalogPage() {
     <Page>
       <PageHeader
         breadcrumb={[{ label: "Team", href: "/team" }, { label: "MCP" }]}
-        title="MCP Servers"
+        title="MCP"
         subtitle="Global catalog shared by all agents; per-agent switches live on agent pages."
         actions={
-          <Button variant="ghost" size="sm" onClick={() => void refetch()}>
-            <RefreshCw className="size-3.5" />
-            Refresh
-          </Button>
+          <>
+            <Button variant="ghost" size="sm" onClick={() => void refetch()}>
+              <RefreshCw className="size-3.5" />
+              Refresh
+            </Button>
+            <Button
+              onClick={() => {
+                resetForm();
+                setShowForm(true);
+              }}
+            >
+              <Plug className="size-4" />
+              Add Server
+            </Button>
+          </>
         }
       />
       <PageBody>
@@ -283,170 +494,60 @@ export default function McpCatalogPage() {
             <StatCard label="Tools" value={tools} />
           </div>
 
+          <SubTabs
+            items={[
+              { key: "all", label: "All" },
+              { key: "ready", label: "Reachable" },
+              { key: "failed", label: "Failed" },
+            ]}
+            active="all"
+            onChange={() => {}}
+          />
+
           <ListToolbar
             searchValue={query}
             onSearch={setQuery}
             placeholder="Search by name, command or URL"
           />
 
-          <div className="space-y-3 rounded-(--radius-card) border border-(--hairline) bg-(--panel) p-4">
-            <SubTabs
-              items={[
-                { key: "form", label: "Form" },
-                { key: "json", label: "JSON" },
-              ]}
-              active={mode}
-              onChange={(k) => setMode(k as "form" | "json")}
-            />
-
-            {mode === "form" ? (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-end gap-3">
-                  <div className="space-y-1">
-                    <Label>Name</Label>
-                    <Input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="filesystem"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Transport</Label>
-                    <select
-                      className="h-9 rounded border border-(--hairline) bg-transparent px-2"
-                      value={transport}
-                      onChange={(e) => setTransport(e.target.value as "stdio" | "sse")}
-                    >
-                      <option value="stdio">stdio</option>
-                      <option value="sse">sse</option>
-                    </select>
-                  </div>
-                  {transport === "stdio" ? (
-                    <div className="space-y-1">
-                      <Label>Command</Label>
-                      <Input
-                        value={command}
-                        onChange={(e) => setCommand(e.target.value)}
-                        placeholder="npx"
-                      />
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      <Label>URL</Label>
-                      <Input
-                        value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                        placeholder="https://host/sse"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {transport === "stdio" ? (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="space-y-1">
-                      <Label>Args (comma separated)</Label>
-                      <Input
-                        value={argsText}
-                        onChange={(e) => setArgsText(e.target.value)}
-                        placeholder="-y, @modelcontextprotocol/server-filesystem"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Env (KEY=VALUE per line)</Label>
-                      <Textarea
-                        value={envText}
-                        onChange={(e) => setEnvText(e.target.value)}
-                        placeholder={"ROOT=/tmp/workspace"}
-                        rows={3}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <Label>Headers (KEY=VALUE per line)</Label>
-                    <Textarea
-                      value={headersText}
-                      onChange={(e) => setHeadersText(e.target.value)}
-                      placeholder={"Authorization=Bearer token"}
-                      rows={3}
-                    />
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-1">
-                <Label>Server JSON</Label>
-                <Textarea
-                  value={jsonText}
-                  onChange={(e) => {
-                    setJsonText(e.target.value);
-                    setJsonError(null);
-                  }}
-                  onBlur={() => {
-                    try {
-                      JSON.parse(jsonText);
-                      setJsonError(null);
-                    } catch {
-                      setJsonError("Invalid JSON");
-                    }
-                  }}
-                  placeholder={`{\n  "name": "filesystem",\n  "transport": "stdio",\n  "command": "npx",\n  "args": ["-y", "@modelcontextprotocol/server-filesystem"],\n  "env": { "ROOT": "/tmp/workspace" }\n}`}
-                  rows={8}
-                  className="font-mono text-xs"
-                />
-              </div>
-            )}
-
-            {jsonError && <p className="text-xs text-(--err)">{jsonError}</p>}
-
-            <Button
-              onClick={submit}
-              disabled={
-                create.isPending ||
-                update.isPending ||
-                (mode === "form" ? !name : jsonText.trim() === "")
-              }
-            >
-              {create.isPending || update.isPending
-                ? "Saving…"
-                : editingId
-                  ? "Save changes"
-                  : "Add server"}
-            </Button>
-            {editingId && (
-              <Button variant="ghost" size="sm" onClick={resetForm}>
-                Cancel edit
-              </Button>
-            )}
-          </div>
-
           <div>
             <SectionKicker hint="Click the mono id to copy the server id.">Servers</SectionKicker>
-            <div className="space-y-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map((s) => {
                 const usedByNames = (agentsData ?? [])
                   .filter((a) => a.mcpServers?.some((m) => m.serverId === s.serverId && m.enabled))
                   .map((a) => a.name);
+                const status = displayStatus(s);
+                const lint: Array<{ label: string; tone: "ok" | "warn" | "err" }> = [];
+                if (usedByNames.length) {
+                  lint.push({
+                    label: `${usedByNames.length} agent${usedByNames.length > 1 ? "s" : ""}`,
+                    tone: "ok",
+                  });
+                } else {
+                  lint.push({ label: "not assigned", tone: "warn" });
+                }
+                if (s.runtimeStatus === "mounted") {
+                  lint.push({
+                    label: `${s.runtimeToolsCount ?? s.toolsCount ?? 0} tools`,
+                    tone: "ok",
+                  });
+                } else if (s.runtimeStatus === "failed") {
+                  lint.push({ label: "runtime failed", tone: "err" });
+                }
                 return (
-                  <ListRowCard
+                  <ResourceCard
                     key={s.serverId}
                     icon={<Server className="size-4 text-(--mute)" />}
                     title={s.name}
-                    tag={{ label: s.transport }}
                     idChip={s.serverId}
-                    desc={s.transport === "sse" ? (s.url ?? undefined) : (s.command ?? undefined)}
-                    meta={[
-                      usedByNames.length ? `used by ${usedByNames.join(", ")}` : "not assigned",
-                      s.runtimeStatus === "mounted"
-                        ? `runtime: ${s.runtimeToolsCount ?? 0} tools`
-                        : s.runtimeStatus === "failed"
-                          ? `runtime: failed${s.runtimeError ? ` (${s.runtimeError})` : ""}`
-                          : "",
-                    ].filter(Boolean)}
-                    status={displayStatus(s)}
-                    actions={
-                      <div className="flex items-center gap-2">
+                    badge={{ label: statusLabel(status), tone: statusTone(status) }}
+                    description={s.transport === "sse" ? (s.url ?? "") : (s.command ?? "")}
+                    tags={[{ label: s.transport }]}
+                    lint={lint}
+                    meta={serverMeta(s)}
+                    footer={
+                      <>
                         <AssignToAgentSelect
                           agents={agentsData ?? []}
                           assigned={(agentId) =>
@@ -478,7 +579,7 @@ export default function McpCatalogPage() {
                           Edit
                         </Button>
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           disabled={test.isPending}
                           onClick={() => void test.mutate(s.serverId)}
@@ -492,17 +593,18 @@ export default function McpCatalogPage() {
                         >
                           Delete
                         </Button>
-                      </div>
+                      </>
                     }
+                    onClick={() => setSelectedId(s.serverId)}
                   />
                 );
               })}
               {filtered.length === 0 && (
-                <div data-testid="empty-state">
+                <div data-testid="empty-state" className="col-span-full">
                   <EmptyState
                     icon={Plug}
                     title="No servers yet"
-                    description="Add your first MCP server with the form or JSON editor above."
+                    description="Add your first MCP server with the Add Server button above."
                   />
                 </div>
               )}
@@ -510,29 +612,216 @@ export default function McpCatalogPage() {
           </div>
         </div>
       </PageBody>
-      <AlertDialog
+
+      <Dialog
+        open={showForm}
+        onOpenChange={(o) => {
+          if (!o) {
+            resetForm();
+            setShowForm(false);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{editingId ? "Edit MCP Server" : "Add MCP Server"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <SubTabs
+              items={[
+                { key: "form", label: "Form" },
+                { key: "json", label: "JSON Config" },
+              ]}
+              active={mode}
+              onChange={(k) => setMode(k as "form" | "json")}
+            />
+            {mode === "form" ? (
+              <div className="space-y-3">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label>Name</Label>
+                    <Input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="filesystem"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Transport</Label>
+                    <select
+                      className="h-9 rounded border border-(--hairline) bg-transparent px-2"
+                      value={transport}
+                      onChange={(e) => setTransport(e.target.value as "stdio" | "sse")}
+                    >
+                      <option value="stdio">stdio</option>
+                      <option value="sse">sse</option>
+                    </select>
+                  </div>
+                </div>
+                {transport === "stdio" ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label>Command</Label>
+                      <Input
+                        value={command}
+                        onChange={(e) => setCommand(e.target.value)}
+                        placeholder="npx"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Args (comma separated)</Label>
+                      <Input
+                        value={argsText}
+                        onChange={(e) => setArgsText(e.target.value)}
+                        placeholder="-y, @modelcontextprotocol/server-filesystem"
+                      />
+                    </div>
+                    <div className="space-y-1 md:col-span-2">
+                      <Label>Env (KEY=VALUE per line)</Label>
+                      <Textarea
+                        value={envText}
+                        onChange={(e) => setEnvText(e.target.value)}
+                        placeholder={"ROOT=/tmp/workspace"}
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label>URL</Label>
+                      <Input
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        placeholder="https://host/sse"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Headers (KEY=VALUE per line)</Label>
+                      <Textarea
+                        value={headersText}
+                        onChange={(e) => setHeadersText(e.target.value)}
+                        placeholder={"Authorization=Bearer token"}
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                )}
+                <p className="text-xs text-(--mute)">
+                  On the JSON tab you can paste a standard MCP config and add multiple servers at
+                  once.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3">
+                  <Text as="p" className="text-sm font-medium">
+                    Paste JSON Config
+                  </Text>
+                  <Text as="p" className="mt-1 text-xs text-(--mute)">
+                    Supports the standard MCP format. A {"{mcpServers:{…}}"} wrapper adds every
+                    server in one action; a single object is also accepted.
+                  </Text>
+                </div>
+                <div className="space-y-1">
+                  <Label>Server JSON</Label>
+                  <Textarea
+                    value={jsonText}
+                    onChange={(e) => {
+                      setJsonText(e.target.value);
+                      setJsonError(null);
+                    }}
+                    onBlur={() => {
+                      try {
+                        JSON.parse(jsonText);
+                        setJsonError(null);
+                      } catch {
+                        setJsonError("Invalid JSON");
+                      }
+                    }}
+                    placeholder={`{
+  "mcpServers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+      "env": { "ROOT": "/tmp/workspace" }
+    }
+  }
+}`}
+                    rows={10}
+                    className="font-mono text-xs"
+                  />
+                </div>
+              </div>
+            )}
+            {jsonError && <p className="text-xs text-(--err)">{jsonError}</p>}
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  resetForm();
+                  setShowForm(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={submit}
+                disabled={
+                  create.isPending ||
+                  update.isPending ||
+                  (mode === "form" ? !name : jsonText.trim() === "")
+                }
+              >
+                {create.isPending || update.isPending
+                  ? "Saving…"
+                  : editingId
+                    ? "Save changes"
+                    : "Add server"}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {selectedServer && (
+        <McpDetailSheet
+          server={selectedServer}
+          agents={agentsData ?? []}
+          onEdit={(serverId) => void beginEdit(serverId)}
+          onTest={(serverId) => void test.mutate(serverId)}
+          onDelete={(serverId) => setConfirmServerId(serverId)}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
+
+      <Dialog
         open={confirmServerId !== null}
         onOpenChange={(o) => {
           if (!o) setConfirmServerId(null);
         }}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete MCP server {confirmServerId}?</AlertDialogTitle>
-            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete MCP server {confirmServerId}?</DialogTitle>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmServerId(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
               onClick={() => {
                 if (confirmServerId) void remove.mutate(confirmServerId);
+                setConfirmServerId(null);
               }}
             >
               Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Page>
   );
 }

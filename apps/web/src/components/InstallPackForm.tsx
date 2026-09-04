@@ -7,37 +7,46 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Text } from "@/components/ui/text";
+import { Textarea } from "@/components/ui/textarea";
 import { useInstallGitPack, useUploadZipPack } from "@/features/skill-packs/hooks";
 import { formatBytes, useFileUpload } from "@/hooks/use-file-upload";
 
 const gitFormSchema = z.object({
-  name: z.string().trim().min(1, "Name is required"),
-  description: z.string().trim().min(1, "Description is required"),
-  url: z.string().trim().min(1, "URL is required"),
+  url: z.string().trim().min(1, "Repository URL is required"),
   ref: z.string().trim().optional(),
+  keepSynced: z.boolean().default(false),
+  name: z.string().trim().min(1, "Name is required"),
+  description: z.string().trim().optional(),
 });
 
 const zipFormSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
-  description: z.string().trim().min(1, "Description is required"),
+  description: z.string().trim().optional(),
 });
 
-export function InstallPackForm({ onDone }: { onDone: () => void }) {
-  const [tab, setTab] = useState<"git" | "zip">("git");
+export function InstallPackForm({
+  onDone,
+  onCancel,
+}: {
+  onDone: () => void;
+  onCancel?: () => void;
+}) {
+  const [mode, setMode] = useState<"git" | "zip">("git");
 
   const gitForm = useForm<z.infer<typeof gitFormSchema>>({
     resolver: zodResolver(gitFormSchema),
-    defaultValues: { name: "", description: "", url: "", ref: "" },
+    defaultValues: { url: "", ref: "", keepSynced: false, name: "", description: "" },
   });
 
   const zipForm = useForm<z.infer<typeof zipFormSchema>>({
@@ -60,8 +69,14 @@ export function InstallPackForm({ onDone }: { onDone: () => void }) {
 
   const onSubmitGit = async (values: z.infer<typeof gitFormSchema>) => {
     try {
-      await gitMutation.mutateAsync(values);
-      toast.success(`Installing "${values.name}"...`);
+      await gitMutation.mutateAsync({
+        name: values.name,
+        description: values.description ?? "",
+        url: values.url,
+        ref: values.ref || undefined,
+        keepSynced: values.keepSynced,
+      });
+      toast.success(`Importing "${values.name}"...`);
       gitForm.reset();
       onDone();
     } catch (e) {
@@ -77,10 +92,10 @@ export function InstallPackForm({ onDone }: { onDone: () => void }) {
     try {
       await zipMutation.mutateAsync({
         name: values.name,
-        description: values.description,
+        description: values.description ?? "",
         file: files[0]!.file as File,
       });
-      toast.success(`Installing "${values.name}"...`);
+      toast.success(`Importing "${values.name}"...`);
       zipForm.reset();
       clearFileInput();
       onDone();
@@ -95,49 +110,34 @@ export function InstallPackForm({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <Tabs value={tab} onValueChange={(v) => setTab(v as "git" | "zip")}>
-      <TabsList className="mb-4">
-        <TabsTrigger value="git">From Git</TabsTrigger>
-        <TabsTrigger value="zip">Upload ZIP</TabsTrigger>
-      </TabsList>
+    <div className="space-y-4">
+      <Select value={mode} onValueChange={(v) => setMode((v ?? "git") as "git" | "zip")}>
+        <SelectTrigger size="default" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="git">Git Import</SelectItem>
+          <SelectItem value="zip">ZIP Import</SelectItem>
+        </SelectContent>
+      </Select>
 
-      <TabsContent value="git" className="w-full min-w-0">
+      {mode === "git" ? (
         <Form {...gitForm}>
           <form onSubmit={gitForm.handleSubmit(onSubmitGit)} className="space-y-3">
-            <FormField
-              control={gitForm.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="My Skill Pack" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={gitForm.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Input placeholder="What this pack contains" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <Text as="p" className="text-xs text-(--mute)">
+              Provide a Git repository URL; the system pulls every skill directory containing
+              SKILL.md into one new pack. /tree/branch/path URLs are supported.
+            </Text>
             <FormField
               control={gitForm.control}
               name="url"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Git URL</FormLabel>
                   <FormControl>
-                    <Input placeholder="https://github.com/..." {...field} />
+                    <Input
+                      {...field}
+                      placeholder="https://git.host/org/repo.git, or .../tree/branch/path"
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -148,32 +148,95 @@ export function InstallPackForm({ onDone }: { onDone: () => void }) {
               name="ref"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Branch / Tag (optional)</FormLabel>
                   <FormControl>
-                    <Input placeholder="main" {...field} />
+                    <Input
+                      {...field}
+                      placeholder="Branch name (leave empty for repo default or URL branch)"
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <Button type="submit" disabled={gitMutation.isPending}>
-              {gitMutation.isPending ? "Installing…" : "Install from Git"}
-            </Button>
+            <FormField
+              control={gitForm.control}
+              name="keepSynced"
+              render={({ field }) => (
+                <FormItem>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={(checked) => field.onChange(checked === true)}
+                    />
+                    Keep synced with Git repository (manual sync still available)
+                  </label>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={gitForm.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <Input {...field} placeholder="Skill pack name" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={gitForm.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <Textarea {...field} placeholder="Skill pack description (optional)" rows={3} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormFooter
+              cancel={onCancel}
+              submitLabel={gitMutation.isPending ? "Importing…" : "Import"}
+              disabled={gitMutation.isPending}
+            />
           </form>
         </Form>
-      </TabsContent>
-
-      <TabsContent value="zip" className="w-full min-w-0">
+      ) : (
         <Form {...zipForm}>
           <form onSubmit={zipForm.handleSubmit(onSubmitZip)} className="space-y-3">
+            <Text as="p" className="text-xs text-(--mute)">
+              Select a ZIP file; the system validates one or more skill directories inside and
+              imports them into one new pack.
+            </Text>
+            <input {...getInputProps()} />
+            {files.length === 0 ? (
+              <Button type="button" variant="outline" onClick={openFileDialog}>
+                <Upload className="size-4" />
+                Choose ZIP
+              </Button>
+            ) : (
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{files[0]!.file.name}</div>
+                  <div className="text-xs text-(--mute)">
+                    {formatBytes((files[0]!.file as File).size)}
+                  </div>
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={clearFileInput}>
+                  Remove
+                </Button>
+              </div>
+            )}
             <FormField
               control={zipForm.control}
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="My Skill Pack" {...field} />
+                    <Input {...field} placeholder="Skill pack name" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -184,66 +247,44 @@ export function InstallPackForm({ onDone }: { onDone: () => void }) {
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description</FormLabel>
                   <FormControl>
-                    <Input placeholder="What this pack contains" {...field} />
+                    <Textarea {...field} placeholder="Skill pack description (optional)" rows={3} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-
-            {/* File upload zone */}
-            <FormItem>
-              <FormLabel>ZIP File</FormLabel>
-              <div className="flex flex-col gap-2">
-                <input {...getInputProps()} />
-                {files.length === 0 ? (
-                  <button
-                    type="button"
-                    onClick={openFileDialog}
-                    className="flex flex-col items-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/25 p-6 text-center transition-colors hover:border-muted-foreground/50 hover:bg-muted/50"
-                  >
-                    <Upload className="size-8 text-muted-foreground" />
-                    <div className="text-sm text-muted-foreground">
-                      <span className="font-medium text-primary">Click to upload</span> or drag and
-                      drop
-                    </div>
-                    <div className="text-xs text-muted-foreground">ZIP file up to 50MB</div>
-                  </button>
-                ) : (
-                  <div className="flex items-center justify-between rounded-lg border p-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="shrink-0 rounded bg-muted p-2">
-                        <Upload className="size-4 text-muted-foreground" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">{files[0]!.file.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatBytes((files[0]!.file as File).size)}
-                        </div>
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearFileInput}
-                      className="text-muted-foreground hover:text-destructive shrink-0"
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </FormItem>
-
-            <Button type="submit" disabled={zipMutation.isPending || files.length === 0}>
-              {zipMutation.isPending ? "Installing…" : "Install from ZIP"}
-            </Button>
+            <FormFooter
+              cancel={onCancel}
+              submitLabel={zipMutation.isPending ? "Importing…" : "Import"}
+              disabled={zipMutation.isPending || files.length === 0}
+            />
           </form>
         </Form>
-      </TabsContent>
-    </Tabs>
+      )}
+    </div>
+  );
+}
+
+function FormFooter({
+  cancel,
+  submitLabel,
+  disabled,
+}: {
+  cancel?: () => void;
+  submitLabel: string;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-end gap-2 border-t border-(--hairline) pt-3">
+      {cancel && (
+        <Button type="button" variant="ghost" onClick={cancel}>
+          Cancel
+        </Button>
+      )}
+      <Button type="submit" disabled={disabled}>
+        {submitLabel}
+      </Button>
+    </div>
   );
 }

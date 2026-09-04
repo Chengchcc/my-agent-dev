@@ -631,7 +631,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                 />
 
                 <AgentFormResourceSection
-                  title="Skill Packs"
+                  title="Skills"
                   items={(availablePacks ?? []).map((p) => ({
                     id: p.id,
                     name: p.name,
@@ -642,14 +642,14 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
                   emptyHint="No skill packs installed yet — install at /team/skills"
                 />
                 <AgentFormResourceSection
-                  title="MCP Servers"
+                  title="MCP"
                   items={mcpCatalogServers.map((s) => ({ id: s.serverId, name: s.name }))}
                   selectedIds={selectedMcpIds}
                   onToggle={toggleId(setSelectedMcpIds)}
                   emptyHint="No MCP servers installed yet — install at /team/mcp"
                 />
                 <AgentFormResourceSection
-                  title="Knowledge Packs"
+                  title="Knowledge"
                   items={(knowledgeData?.packs ?? []).map((p) => ({ id: p.id, name: p.name }))}
                   selectedIds={selectedKnowledgeIds}
                   onToggle={toggleId(setSelectedKnowledgeIds)}

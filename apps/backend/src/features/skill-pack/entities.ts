@@ -19,6 +19,7 @@ export interface SkillPackRow {
   installedRef: string | null;
   status: SkillPackStatus;
   error: string | null;
+  keepSynced: boolean;
   createdAt: number;
   updatedAt: number;
 }

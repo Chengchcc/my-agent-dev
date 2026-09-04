@@ -4,7 +4,7 @@ import { client, unwrap } from "./client";
 // ── Types derived from API treaty (single source: backend App type) ──
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ApiReturn<F extends (...args: any[]) => any> = Awaited<ReturnType<F>>;
+export type ApiReturn<F extends (...args: any[]) => any> = Awaited<ReturnType<F>>;
 
 export type AgentRunStatus =
   | "running"

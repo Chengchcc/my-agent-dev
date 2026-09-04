@@ -22,6 +22,7 @@ function toPackResponse(row: SkillPackRow) {
     installedRef: row.installedRef,
     status: row.status,
     error: row.error,
+    keepSynced: row.keepSynced,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -46,6 +47,7 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
           description: body.description,
           url: body.url,
           ref: body.ref,
+          keepSynced: body.keepSynced,
         });
         set.status = 202;
         return toPackResponse(row);
@@ -56,6 +58,7 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
           description: t.String(),
           url: t.String(),
           ref: t.Optional(t.String()),
+          keepSynced: t.Optional(t.Boolean()),
         }),
       },
     )

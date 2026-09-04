@@ -5,8 +5,13 @@ import { skillPackKeys } from "./query-keys";
 export function useInstallGitPack() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name: string; description: string; url: string; ref?: string }) =>
-      api.installSkillPackGit(body),
+    mutationFn: (body: {
+      name: string;
+      description: string;
+      url: string;
+      ref?: string;
+      keepSynced?: boolean;
+    }) => api.installSkillPackGit(body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: skillPackKeys.list() }),
   });
 }

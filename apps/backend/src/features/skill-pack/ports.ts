@@ -8,6 +8,7 @@ export interface SkillPackPort {
     sourceKind: SkillPackRow["sourceKind"];
     sourceUrl: string | null;
     versionRef: string | null;
+    keepSynced?: boolean;
     now: number;
   }): Promise<SkillPackRow>;
 

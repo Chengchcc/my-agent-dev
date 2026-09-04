@@ -21,6 +21,7 @@ export function sqliteSkillPackAdapter(db: Database): SkillPackPort {
           installedRef: null,
           status: "pending",
           error: null,
+          keepSynced: input.keepSynced ?? false,
           createdAt: input.now,
           updatedAt: input.now,
         })
@@ -81,6 +82,7 @@ export function sqliteSkillPackAdapter(db: Database): SkillPackPort {
           installedRef: schema.skillPack.installedRef,
           status: schema.skillPack.status,
           error: schema.skillPack.error,
+          keepSynced: schema.skillPack.keepSynced,
           createdAt: schema.skillPack.createdAt,
           updatedAt: schema.skillPack.updatedAt,
         })

@@ -337,6 +337,13 @@
       "when": 1788433298940,
       "tag": "0047_knowledge_pack_source_rev",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1788600000000,
+      "tag": "0048_add_skill_pack_keep_synced",
+      "breakpoints": true
     }
   ]
 }

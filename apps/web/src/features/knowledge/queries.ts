@@ -7,8 +7,14 @@ export interface KnowledgePackRow {
   name: string;
   description: string;
   sourceKind: "builtin" | "git" | "zip";
+  sourceUrl: string | null;
+  versionRef: string | null;
+  sourceRev: string | null;
+  installedRef: string | null;
   status: "pending" | "installing" | "ready" | "failed" | "syncing";
   error: string | null;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export function knowledgePacksQuery() {

@@ -185,6 +185,7 @@ export const skillPack = sqliteTable(
     installedRef: text(),
     status: text().notNull(),
     error: text(),
+    keepSynced: integer({ mode: "boolean" }).notNull().default(false),
     createdAt: integer({ mode: "number" }).notNull(),
     updatedAt: integer({ mode: "number" }).notNull(),
   },

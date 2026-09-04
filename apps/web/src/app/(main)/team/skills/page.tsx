@@ -6,22 +6,32 @@ import { useEffect, useMemo, useState } from "react";
 import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { InstallPackForm } from "@/components/InstallPackForm";
 import { PackFileSearch } from "@/components/PackFileSearch";
+import { PackFileViewer } from "@/components/PackFileViewer";
 import { Page, PageBody, PageHeader } from "@/components/page";
-import { dirname, FileContent, FileTree } from "@/components/SkillPackManager";
+import { FileTree } from "@/components/SkillPackManager";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   InfoBanner,
-  ListRowCard,
   ListToolbar,
   SectionKicker,
   StatCard,
+  SubTabs,
   statusBadge,
 } from "@/components/ui/polish";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ResourceCard } from "@/components/ui/resource-card";
+import { ResourceDetailSheet } from "@/components/ui/resource-detail-sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Text } from "@/components/ui/text";
 import { useAgentList } from "@/features/agents/hooks";
 import {
   useDeletePack,
@@ -31,119 +41,290 @@ import {
 } from "@/features/skill-packs/hooks";
 import { agentSkillPacksQuery } from "@/features/skill-packs/queries";
 import { skillPackKeys } from "@/features/skill-packs/query-keys";
-import { api } from "@/lib/api";
+import { type AgentRow, type ApiReturn, api } from "@/lib/api";
 
-type PackStatus = "pending" | "installing" | "ready" | "failed" | "syncing";
-
-/** treaty can't derive skill-packs types due to Elysia intersection type limits */
-type PackEntry = {
-  id: string;
-  name: string;
-  description: string;
-  sourceKind: string;
-  status: PackStatus;
-  installedRef?: string;
-  error?: string;
-  createdAt: number;
-};
+type PackEntry = ApiReturn<typeof api.listSkillPacks>[number];
 
 type SkillSummary = { name: string; description: string; dir: string };
 
-/** createdAt arrives as epoch ms or s; normalize before Date(). */
 function toDateString(value: number): string {
   const ms = value > 1e12 ? value : value * 1000;
   return new Date(ms).toLocaleDateString();
 }
 
-/** Pack detail drawer: skills + file tree on the left, viewer on the right. */
-function PackDrawer({ pack, onClose }: { pack: PackEntry; onClose: () => void }) {
+function statusTone(status: string): "ok" | "warn" | "err" {
+  if (status === "ready") return "ok";
+  if (status === "failed") return "err";
+  return "warn";
+}
+
+function PackDrawer({
+  pack,
+  usedBy,
+  agents,
+  isAssigned,
+  onAssign,
+  onSync,
+  onClose,
+}: {
+  pack: PackEntry;
+  usedBy: string[];
+  agents: AgentRow[];
+  isAssigned: (agentId: string) => boolean;
+  onAssign: (agentId: string) => void;
+  onSync: () => void;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<"overview" | "files" | "agents">("overview");
   const [selectedSkill, setSelectedSkill] = useState<SkillSummary | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const { data: skills } = useSkillPackSkills(pack.id);
 
-  const root = selectedSkill ? dirname(selectedSkill.dir) : "";
+  const root = selectedSkill ? selectedSkill.dir : "";
+  const badge = statusBadge(pack.status);
 
   return (
-    <Sheet open onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[92vw] max-w-[1200px] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>{pack.name}</SheetTitle>
-        </SheetHeader>
-        <div className="mt-4 flex flex-col gap-4 md:flex-row">
-          <div className="space-y-4 md:w-[240px] md:shrink-0">
-            <div>
-              <h3 className="mb-2 text-sm font-semibold">Skills</h3>
-              {skills ? (
-                <div className="space-y-1">
-                  {skills.map((s: SkillSummary) => (
-                    <Card
-                      key={s.dir}
-                      className={`cursor-pointer p-2.5 ${
-                        selectedSkill?.dir === s.dir ? "border-primary" : ""
-                      }`}
-                      onClick={() => {
-                        setSelectedSkill(s);
-                        setSelectedFile(null);
-                      }}
-                    >
-                      <div className="truncate text-sm font-medium">{s.name}</div>
-                      <div className="line-clamp-2 text-xs text-muted-foreground">
-                        {s.description}
-                      </div>
-                    </Card>
+    <ResourceDetailSheet
+      open
+      onClose={onClose}
+      icon={<Package className="size-5 text-(--mute)" />}
+      title={pack.name}
+      subtitle={pack.sourceKind === "git" ? "Git" : pack.sourceKind}
+      badge={{ label: badge.label, tone: badge.tone === "err" ? "err" : statusTone(pack.status) }}
+      tabs={[
+        { key: "overview", label: "Overview" },
+        { key: "files", label: "Files" },
+        { key: "agents", label: "Agents" },
+      ]}
+      tab={tab}
+      onTabChange={(key) => {
+        setTab(key as "overview" | "files" | "agents");
+        if (key !== "files") setSelectedFile(null);
+      }}
+      breadcrumb={[
+        { label: pack.name, onClick: () => setTab("overview") },
+        ...(tab === "files"
+          ? [
+              {
+                label: selectedSkill?.name ?? "All files",
+                onClick: selectedSkill ? () => setSelectedSkill(null) : undefined,
+              },
+              ...(selectedFile ? [{ label: selectedFile.split("/").pop() ?? selectedFile }] : []),
+            ]
+          : []),
+      ]}
+      footer={
+        <>
+          {usedBy.length > 0 && (
+            <Text as="p" className="mr-auto text-xs text-(--mute)">
+              Used by {usedBy.length} agent{usedBy.length > 1 ? "s" : ""}
+            </Text>
+          )}
+          {pack.sourceKind === "git" && (
+            <Button variant="outline" size="sm" onClick={onSync}>
+              Sync from Git
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Close
+          </Button>
+        </>
+      }
+    >
+      {tab === "overview" && (
+        <div className="space-y-4">
+          <Text as="p" className="text-sm text-(--mute)">
+            {pack.description || "No description."}
+          </Text>
+          <div className="flex flex-wrap gap-1">
+            <span className="rounded bg-(--panel2) px-1.5 py-0.5 text-xs text-(--mute)">
+              {pack.sourceKind}
+            </span>
+            {pack.keepSynced === true && (
+              <span className="rounded bg-(--ok)/12 px-1.5 py-0.5 text-xs text-(--ok)">
+                auto-sync
+              </span>
+            )}
+          </div>
+          <dl className="space-y-1 text-sm">
+            <DetailRow label="Type" value={pack.sourceKind === "git" ? "Git" : pack.sourceKind} />
+            <DetailRow label="Source" value={pack.sourceUrl ?? pack.installedRef ?? "—"} />
+            <DetailRow label="Status" value={badge.label} />
+            <DetailRow label="Latest revision" value={pack.installedRef?.slice(0, 8) ?? "—"} />
+            <DetailRow label="Installed" value={`${usedBy.length} agents`} />
+            <DetailRow label="Updated" value={toDateString(pack.createdAt)} />
+          </dl>
+        </div>
+      )}
+
+      {tab === "files" && (
+        <div className="flex flex-col gap-4 md:flex-row">
+          <div className="space-y-3 md:w-[280px] md:shrink-0">
+            <Text as="p" className="text-sm font-semibold">
+              Files
+            </Text>
+            {skills && skills.length > 0 && (
+              <Select
+                value={selectedSkill?.dir ?? ""}
+                onValueChange={(v) => {
+                  const s = skills.find((x) => x.dir === v);
+                  setSelectedSkill(s ?? null);
+                  setSelectedFile(null);
+                }}
+              >
+                <SelectTrigger size="sm" className="w-full">
+                  <SelectValue placeholder="All files" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All files</SelectItem>
+                  {skills.map((s) => (
+                    <SelectItem key={s.dir} value={s.dir}>
+                      {s.name}
+                    </SelectItem>
                   ))}
-                </div>
-              ) : (
-                <Skeleton className="h-12 w-full" />
-              )}
-            </div>
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-semibold">
-                  {selectedSkill ? selectedSkill.name : "Pack files"}
-                </h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-(--text-cap)"
-                  onClick={() => setSelectedSkill(null)}
-                >
-                  All pack files
-                </Button>
-              </div>
-              <Card className="p-3">
-                <PackFileSearch packId={pack.id} onOpen={setSelectedFile} />
-                <FileTree packId={pack.id} path={root} onSelectFile={setSelectedFile} />
-              </Card>
+                </SelectContent>
+              </Select>
+            )}
+            <PackFileSearch packId={pack.id} onOpen={(p) => setSelectedFile(p)} />
+            <div className="rounded-md border border-(--hairline) p-2">
+              <FileTree
+                packId={pack.id}
+                path={root}
+                onSelectFile={setSelectedFile}
+                selectedPath={selectedFile ?? undefined}
+              />
             </div>
           </div>
           <div className="min-w-0 flex-1">
             {selectedFile ? (
-              <div>
-                <h3 className="mb-2 truncate text-sm font-semibold">{selectedFile}</h3>
-                <FileContent packId={pack.id} path={selectedFile} />
-              </div>
+              <PackFileViewer packId={pack.id} path={selectedFile} />
             ) : (
               <div className="rounded-lg border border-dashed border-(--hairline) p-8 text-center">
-                <p className="text-sm text-(--mute)">Select a file to view its contents.</p>
+                <Text as="p" className="text-sm text-(--mute)">
+                  Select a file to view its contents.
+                </Text>
               </div>
             )}
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      )}
+
+      {tab === "agents" && (
+        <div className="space-y-3">
+          <AssignToAgentSelect agents={agents} assigned={isAssigned} onAssign={onAssign} />
+          <div className="space-y-1">
+            {usedBy.length === 0 ? (
+              <Text as="p" className="text-sm text-(--mute)">
+                Not assigned to any agent yet.
+              </Text>
+            ) : (
+              usedBy.map((name) => (
+                <div
+                  key={name}
+                  className="flex items-center justify-between rounded-md border border-(--hairline) px-3 py-2"
+                >
+                  <Text as="span" className="text-sm">
+                    {name}
+                  </Text>
+                  <span className="rounded bg-(--ok)/12 px-1.5 py-0.5 text-xs text-(--ok)">
+                    Active
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </ResourceDetailSheet>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <Text as="dt" className="text-(--mute)">
+        {label}
+      </Text>
+      <Text as="dd" className="truncate text-right">
+        {value}
+      </Text>
+    </div>
   );
 }
 
 export default function SkillPacksPage() {
   const { data: packs, isLoading, refetch } = useSkillPackList();
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showInstall, setShowInstall] = useState(false);
   const syncMutation = useSyncPack();
   const deleteMutation = useDeletePack();
   const qc = useQueryClient();
   const { confirm, dialog: confirmDialog } = useConfirm();
+  const { data: agentsData } = useAgentList();
+
+  const agentPackQueries = useQueries({
+    queries: (agentsData ?? []).map((a) => agentSkillPacksQuery(a.id)),
+  });
+  const usedByMap: Record<string, string[]> = {};
+  (agentsData ?? []).forEach((a, i) => {
+    const agentPacks = agentPackQueries[i]?.data;
+    if (!Array.isArray(agentPacks)) return;
+    for (const p of agentPacks) {
+      usedByMap[p.id] = [...(usedByMap[p.id] ?? []), a.name];
+    }
+  });
+
+  const list = useMemo(() => packs ?? [], [packs]);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return list.filter((p) => {
+      if (statusFilter === "ready" && p.status !== "ready") return false;
+      if (
+        statusFilter === "syncing" &&
+        p.status !== "syncing" &&
+        p.status !== "installing" &&
+        p.status !== "pending"
+      )
+        return false;
+      if (statusFilter === "error" && p.status !== "failed") return false;
+      if (!q) return true;
+      return p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q);
+    });
+  }, [list, query, statusFilter]);
+
+  const hasPending = list.some((p) => p.status === "installing" || p.status === "syncing");
+  useEffect(() => {
+    if (!hasPending) return;
+    const timer = setInterval(() => refetch(), 3000);
+    return () => clearInterval(timer);
+  }, [hasPending, refetch]);
+
+  const selectedPack = list.find((p) => p.id === selectedId) ?? null;
+  const ready = list.filter((p) => p.status === "ready").length;
+  const syncing = list.filter(
+    (p) => p.status === "syncing" || p.status === "installing" || p.status === "pending",
+  ).length;
+  const errors = list.filter((p) => p.status === "failed").length;
+
+  const statusTabs = [
+    { key: "all", label: "All" },
+    { key: "ready", label: "Ready" },
+    { key: "syncing", label: "Syncing" },
+    { key: "error", label: "Error" },
+  ].map((t) => ({
+    ...t,
+    count: statusCount(t.key),
+  }));
+
+  function statusCount(key: string): number {
+    if (key === "all") return list.length;
+    if (key === "ready") return ready;
+    if (key === "syncing") return syncing;
+    return errors;
+  }
+
   const handleSync = async (packId: string) => {
     syncMutation.mutate(
       { id: packId },
@@ -168,54 +349,29 @@ export default function SkillPacksPage() {
     );
   };
 
-  const { data: agentsData } = useAgentList();
-  const agentPackQueries = useQueries({
-    queries: (agentsData ?? []).map((a) => agentSkillPacksQuery(a.id)),
-  });
-  const usedByMap: Record<string, string[]> = {};
-  (agentsData ?? []).forEach((a, i) => {
-    const packs = agentPackQueries[i]?.data;
-    if (!Array.isArray(packs)) return;
-    for (const p of packs) {
-      usedByMap[p.id] = [...(usedByMap[p.id] ?? []), a.name];
-    }
-  });
-
-  const list = useMemo(() => (packs ?? []).map((p) => p as unknown as PackEntry), [packs]);
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q),
-    );
-  }, [list, query]);
-
-  // Auto-refetch while installing/syncing (in useEffect, not render body)
-  const hasPending = list.some((p) => p.status === "installing" || p.status === "syncing");
-  useEffect(() => {
-    if (!hasPending) return;
-    const timer = setInterval(() => refetch(), 3000);
-    return () => clearInterval(timer);
-  }, [hasPending, refetch]);
-  const selectedPack = list.find((p) => p.id === selectedId) ?? null;
-
-  const ready = list.filter((p) => p.status === "ready").length;
-  const gitSources = list.filter((p) => p.sourceKind === "git").length;
-  const latest = list.reduce((max, p) => Math.max(max, p.createdAt), 0);
+  const handleDelete = async (pack: PackEntry) => {
+    const ok = await confirm({
+      title: `Delete pack "${pack.name}"?`,
+      description: "This cannot be undone.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (ok) deleteMutation.mutate(pack.id);
+  };
 
   return (
     <Page>
       <PageHeader
         breadcrumb={[
           { label: "Team", href: "/team" },
-          { label: "Skill Packs", href: "/team/skills" },
+          { label: "Skills", href: "/team/skills" },
         ]}
-        title="Skill Packs"
-        subtitle="Install and manage skill packs for agents."
+        title="Skills"
+        subtitle="Manage re-usable skill packs for agents."
         actions={
           <Button onClick={() => setShowInstall(true)}>
             <Download className="size-4" />
-            Install Pack
+            Import Skill Pack
           </Button>
         }
       />
@@ -224,15 +380,17 @@ export default function SkillPacksPage() {
           <InfoBanner
             id="ib:skills-help"
             title="How this page works"
-            body="Install a pack from git or a zip upload, then assign it per agent from the agent's Skills tab. Click a row to browse its skills and files."
+            body="Install a pack from git or a zip upload, then assign it per agent from the agent's Skills tab. Click a card to browse its skills and files."
           />
 
-          <div data-testid="stat-cards" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatCard label="Packs" value={list.length} />
             <StatCard label="Ready" value={ready} />
-            <StatCard label="Git sources" value={gitSources} />
-            <StatCard label="Latest activity" value={latest > 0 ? toDateString(latest) : "—"} />
+            <StatCard label="Syncing" value={syncing} />
+            <StatCard label="Errors" value={errors} tone={errors > 0 ? "err" : undefined} />
           </div>
+
+          <SubTabs items={statusTabs} active={statusFilter} onChange={setStatusFilter} />
 
           <ListToolbar
             searchValue={query}
@@ -245,59 +403,67 @@ export default function SkillPacksPage() {
               Installed packs
             </SectionKicker>
             {isLoading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-20 w-full" />
-                <Skeleton className="h-20 w-full" />
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Skeleton className="h-40" />
+                <Skeleton className="h-40" />
+                <Skeleton className="h-40" />
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {filtered.map((p) => {
-                  const meta: string[] = [];
-                  if (p.installedRef) meta.push(`@${p.installedRef.slice(0, 8)}`);
-                  meta.push(toDateString(p.createdAt));
                   const usedBy = usedByMap[p.id] ?? [];
-                  meta.push(usedBy.length ? `used by ${usedBy.join(", ")}` : "not assigned");
+                  const isAssigned = (agentId: string) => {
+                    const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
+                    const agentPacks = agentPackQueries[idx]?.data;
+                    return Array.isArray(agentPacks) && agentPacks.some((pack) => pack.id === p.id);
+                  };
+                  const onAssign = (agentId: string) => {
+                    const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
+                    const current = agentPackQueries[idx]?.data;
+                    const currentIds = Array.isArray(current) ? current.map((x) => x.id) : [];
+                    const next = currentIds.includes(p.id) ? currentIds : [...currentIds, p.id];
+                    void api.setAgentSkillPacks(agentId, { packIds: next });
+                    void qc.invalidateQueries({ queryKey: skillPackKeys.agentPacks(agentId) });
+                  };
+                  const badge = statusBadge(p.status);
                   return (
-                    <ListRowCard
+                    <ResourceCard
                       key={p.id}
                       icon={<Package className="size-4 text-(--mute)" />}
                       title={p.name}
-                      tag={{ label: p.sourceKind }}
-                      badges={[statusBadge(p.status)]}
-                      desc={p.error ?? p.description}
-                      meta={meta}
-                      onClick={() => setSelectedId(p.id)}
-                      secondaryActions={
+                      badge={{
+                        label: badge.label,
+                        tone: badge.tone === "err" ? "err" : statusTone(p.status),
+                      }}
+                      description={p.error ?? p.description}
+                      tags={[{ label: p.sourceKind }]}
+                      lint={[
+                        ...(usedBy.length
+                          ? [
+                              {
+                                label: `${usedBy.length} agent${usedBy.length > 1 ? "s" : ""}`,
+                                tone: "ok" as const,
+                              },
+                            ]
+                          : [{ label: "not assigned", tone: "warn" as const }]),
+                        ...(p.keepSynced === true
+                          ? [{ label: "auto-sync", tone: "info" as const }]
+                          : []),
+                      ]}
+                      meta={`${toDateString(p.createdAt)}${p.installedRef ? ` · @${p.installedRef.slice(0, 8)}` : ""}`}
+                      footer={
                         <>
                           <AssignToAgentSelect
                             agents={agentsData ?? []}
-                            assigned={(agentId) => {
-                              const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
-                              const packs = agentPackQueries[idx]?.data;
-                              return Array.isArray(packs) && packs.some((pack) => pack.id === p.id);
-                            }}
-                            onAssign={(agentId) => {
-                              const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
-                              const current = agentPackQueries[idx]?.data;
-                              const currentIds = Array.isArray(current)
-                                ? current.map((p) => p.id)
-                                : [];
-                              const next = Array.from(new Set([...currentIds, p.id]));
-                              void api.setAgentSkillPacks(agentId, { packIds: next });
-                              void qc.invalidateQueries({
-                                queryKey: skillPackKeys.agentPacks(agentId),
-                              });
-                            }}
+                            assigned={isAssigned}
+                            onAssign={onAssign}
                           />
                           {p.sourceKind === "git" && p.status === "ready" && (
                             <Button
                               variant="outline"
                               size="sm"
                               disabled={syncMutation.isPending}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleSync(p.id);
-                              }}
+                              onClick={() => void handleSync(p.id)}
                             >
                               <RefreshCw
                                 className={`size-3 ${syncMutation.isPending ? "animate-spin" : ""}`}
@@ -305,30 +471,14 @@ export default function SkillPacksPage() {
                               Sync
                             </Button>
                           )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedId(p.id);
-                            }}
-                          >
+                          <Button variant="outline" size="sm" onClick={() => setSelectedId(p.id)}>
                             View
                           </Button>
                           {p.sourceKind !== "builtin" && (
                             <Button
-                              variant="outline"
+                              variant="destructive"
                               size="sm"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                const ok = await confirm({
-                                  title: `Delete pack "${p.name}"?`,
-                                  description: "This cannot be undone.",
-                                  confirmText: "Delete",
-                                  destructive: true,
-                                });
-                                if (ok) deleteMutation.mutate(p.id);
-                              }}
+                              onClick={() => void handleDelete(p)}
                             >
                               <Trash2 className="size-3" />
                               Delete
@@ -336,11 +486,12 @@ export default function SkillPacksPage() {
                           )}
                         </>
                       }
+                      onClick={() => setSelectedId(p.id)}
                     />
                   );
                 })}
                 {filtered.length === 0 && (
-                  <div data-testid="empty-state">
+                  <div data-testid="empty-state" className="col-span-full">
                     <EmptyState
                       icon={GitBranch}
                       title="No skill packs installed"
@@ -354,21 +505,48 @@ export default function SkillPacksPage() {
         </div>
       </PageBody>
 
-      <Sheet open={showInstall} onOpenChange={setShowInstall}>
-        <SheetContent className="w-[500px] overflow-y-auto sm:max-w-[600px]">
-          <SheetHeader>
-            <SheetTitle>Install Skill Pack</SheetTitle>
-          </SheetHeader>
+      <Dialog open={showInstall} onOpenChange={setShowInstall}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import Skill Pack</DialogTitle>
+          </DialogHeader>
           <InstallPackForm
             onDone={() => {
               setShowInstall(false);
               refetch();
             }}
+            onCancel={() => setShowInstall(false)}
           />
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
-      {selectedPack && <PackDrawer pack={selectedPack} onClose={() => setSelectedId(null)} />}
+      {selectedPack && (
+        <PackDrawer
+          pack={selectedPack}
+          usedBy={usedByMap[selectedPack.id] ?? []}
+          agents={agentsData ?? []}
+          isAssigned={(agentId) => {
+            const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
+            const agentPacks = agentPackQueries[idx]?.data;
+            return (
+              Array.isArray(agentPacks) && agentPacks.some((pack) => pack.id === selectedPack.id)
+            );
+          }}
+          onAssign={(agentId) => {
+            const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
+            const current = agentPackQueries[idx]?.data;
+            const currentIds = Array.isArray(current) ? current.map((x) => x.id) : [];
+            const next = currentIds.includes(selectedPack.id)
+              ? currentIds
+              : [...currentIds, selectedPack.id];
+            void api.setAgentSkillPacks(agentId, { packIds: next });
+            void qc.invalidateQueries({ queryKey: skillPackKeys.agentPacks(agentId) });
+          }}
+          onSync={() => void handleSync(selectedPack.id)}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
+
       {confirmDialog}
     </Page>
   );
