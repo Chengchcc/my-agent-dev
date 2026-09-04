@@ -53,6 +53,14 @@ function mcpStatus(status: string | undefined): "ok" | "err" | "idle" {
   return "idle";
 }
 
+/** Badge semantics: the REAL runtime mount result wins when present;
+ *  before any Run has mounted the server, fall back to the manager probe. */
+function displayStatus(s: McpCatalogRow): "ok" | "err" | "idle" {
+  if (s.runtimeStatus === "mounted") return "ok";
+  if (s.runtimeStatus === "failed") return "err";
+  return mcpStatus(s.status);
+}
+
 function parseArgs(raw: string): string[] {
   return raw
     .split(",")
@@ -197,7 +205,7 @@ export default function McpCatalogPage() {
   }, [servers, query]);
 
   const connected = servers.filter((s) => mcpStatus(s.status) === "ok").length;
-  const errors = servers.filter((s) => mcpStatus(s.status) === "err").length;
+  const runtimeMounted = servers.filter((s) => s.runtimeStatus === "mounted").length;
   const tools = servers.reduce((sum, s) => sum + (s.toolsCount ?? 0), 0);
 
   const buildFormBody = (): CreateMcpBody => {
@@ -265,13 +273,13 @@ export default function McpCatalogPage() {
           <InfoBanner
             id="ib:mcp-help"
             title="How this page works"
-            body="Server definitions persist in mcp-servers.json (file-first). Add a server here once, then enable it per agent from the agent's MCP tab. Status is a manager-side probe, not the runtime's live call result."
+            body="Server definitions persist in mcp-servers.json (file-first). Add a server here once, then enable it per agent from the agent's MCP tab. Status prefers the latest REAL runtime mount result reported by the agent child; before any Run it falls back to the backend manager probe."
           />
 
           <div data-testid="stat-cards" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatCard label="Servers" value={servers.length} />
-            <StatCard label="Connected" value={connected} />
-            <StatCard label="Errors" value={errors} tone={errors > 0 ? "err" : undefined} />
+            <StatCard label="Probe OK" value={connected} />
+            <StatCard label="Runtime Mounted" value={runtimeMounted} />
             <StatCard label="Tools" value={tools} />
           </div>
 
@@ -430,8 +438,13 @@ export default function McpCatalogPage() {
                     desc={s.transport === "sse" ? (s.url ?? undefined) : (s.command ?? undefined)}
                     meta={[
                       usedByNames.length ? `used by ${usedByNames.join(", ")}` : "not assigned",
-                    ]}
-                    status={mcpStatus(s.status)}
+                      s.runtimeStatus === "mounted"
+                        ? `runtime: ${s.runtimeToolsCount ?? 0} tools`
+                        : s.runtimeStatus === "failed"
+                          ? `runtime: failed${s.runtimeError ? ` (${s.runtimeError})` : ""}`
+                          : "",
+                    ].filter(Boolean)}
+                    status={displayStatus(s)}
                     actions={
                       <div className="flex items-center gap-2">
                         <AssignToAgentSelect

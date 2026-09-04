@@ -13,8 +13,42 @@ export interface LiveEventBus {
 
 export function createLiveEventBus(deps: {
   persistRunEvent?: (runId: string, event: BackendEvent) => Promise<void>;
+  onMcpMountResult?: (input: {
+    serverName: string;
+    ok: boolean;
+    toolsCount: number;
+    error?: string;
+    runId: string;
+  }) => void;
 }): LiveEventBus {
   const subscribers = new Map<string, Set<(e: BackendEvent) => void>>();
+
+  /** Extract a runtime MCP mount observation from the oma extension event.
+   *  Returns undefined for every other event shape. */
+  function mcpMountResult(
+    runId: string,
+    event: BackendEvent,
+  ):
+    | {
+        serverName: string;
+        ok: boolean;
+        toolsCount: number;
+        error?: string;
+        runId: string;
+      }
+    | undefined {
+    if (event.type !== "backend.oma.mcp_mount_result") return undefined;
+    const payload = (event as { payload?: Readonly<Record<string, unknown>> }).payload ?? {};
+    const serverName = payload.server;
+    if (typeof serverName !== "string") return undefined;
+    return {
+      serverName,
+      ok: payload.ok === true,
+      toolsCount: Number(payload.toolsCount ?? 0),
+      ...(typeof payload.error === "string" ? { error: payload.error } : {}),
+      runId,
+    };
+  }
 
   function broadcast(runId: string, event: BackendEvent): void {
     // Durable telemetry: persist the normalized event log (tool calls,
@@ -23,6 +57,14 @@ export function createLiveEventBus(deps: {
       void deps.persistRunEvent(runId, event).catch(() => {
         /* telemetry is best-effort */
       });
+    }
+    const mount = mcpMountResult(runId, event);
+    if (mount) {
+      try {
+        deps.onMcpMountResult?.(mount);
+      } catch {
+        /* observation never affects the run */
+      }
     }
     const set = subscribers.get(runId);
     if (!set) return;

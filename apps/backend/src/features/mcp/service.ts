@@ -8,7 +8,7 @@ import type {
   UpdateMcpServerInput,
 } from "./domain.js";
 import type { McpServerPort } from "./ports.js";
-
+import type { McpRuntimeStatusStore } from "./runtime-status.js";
 export class McpServerNotFoundError extends NotFoundError {
   constructor(id: string) {
     super("MCP server", id);
@@ -52,6 +52,8 @@ function maskRow(row: McpServerRow): McpServerRow {
 export function createMcpService(deps: {
   port: McpServerPort;
   mcpClientManager: McpClientManager;
+  /** Latest runtime mount results; absent keeps the manager probe only. */
+  runtimeStatus?: McpRuntimeStatusStore;
   agentExists: (id: string) => Promise<boolean>;
   getAgentMcpServers: (agentId: string) => Promise<AgentMcpAssignment[]>;
   setAgentMcpServers: (agentId: string, entries: AgentMcpAssignment[]) => Promise<void>;
@@ -65,11 +67,23 @@ export function createMcpService(deps: {
     return r;
   }
 
-  const withStatus = (row: McpServerRow): McpServerRow => ({
-    ...row,
-    status: deps.mcpClientManager.getStatus(row.serverId),
-    toolsCount: deps.mcpClientManager.getToolCount(row.serverId),
-  });
+  function withStatus(row: McpServerRow): McpServerRow {
+    const runtime = deps.runtimeStatus?.latest(row.name);
+    return {
+      ...row,
+      status: deps.mcpClientManager.getStatus(row.serverId),
+      toolsCount: deps.mcpClientManager.getToolCount(row.serverId),
+      ...(runtime
+        ? {
+            runtimeStatus: runtime.ok ? ("mounted" as const) : ("failed" as const),
+            runtimeToolsCount: runtime.toolsCount,
+            ...(runtime.error ? { runtimeError: runtime.error } : {}),
+            runtimeRunId: runtime.runId,
+            runtimeCheckedAt: runtime.at,
+          }
+        : {}),
+    };
+  }
 
   return {
     listCatalog(): McpServerRow[] {

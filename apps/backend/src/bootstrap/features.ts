@@ -42,7 +42,12 @@ import {
   sqliteKnowledgePackAdapter,
 } from "../features/knowledge/index.js";
 import { CliSetupProvisioner, LarkSetupManager } from "../features/lark-bot/index.js";
-import { createMcpService, fileMcpServerAdapter, mcpRoutes } from "../features/mcp/index.js";
+import {
+  createMcpRuntimeStatusStore,
+  createMcpService,
+  fileMcpServerAdapter,
+  mcpRoutes,
+} from "../features/mcp/index.js";
 import { modelRoutes } from "../features/models/index.js";
 import {
   createProductToolsMcpServer,
@@ -479,6 +484,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     pi: { backend: piBackend, catalog: new PiModelCatalog() },
     claude_code: { backend: claudeBackend, catalog: new ClaudeModelCatalog() },
   };
+  const mcpRuntimeStatus = createMcpRuntimeStatusStore();
   const agentRunExecution = createAgentRunExecutionService({
     workspaceLocks,
     productToolsTokenRegistry,
@@ -527,6 +533,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
         event as unknown as Record<string, unknown>,
       );
       return Promise.resolve();
+    },
+    onMcpMountResult: (result) => {
+      mcpRuntimeStatus.record({ ...result, at: Date.now() });
     },
   });
 
@@ -591,6 +600,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const mcpSvcRaw = createMcpService({
     port: fileMcpServerAdapter(config.dataDir),
     mcpClientManager,
+    runtimeStatus: mcpRuntimeStatus,
     agentExists: (id: string) => agentSvc.exists(id),
     getAgentMcpServers: async (agentId) => {
       const agent = await agentSvc.getById(agentId);

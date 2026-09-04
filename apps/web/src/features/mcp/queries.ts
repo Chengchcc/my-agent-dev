@@ -10,6 +10,11 @@ export interface McpCatalogRow {
   url: string | null;
   status?: string;
   toolsCount?: number;
+  runtimeStatus?: "mounted" | "failed";
+  runtimeToolsCount?: number;
+  runtimeError?: string;
+  runtimeRunId?: string;
+  runtimeCheckedAt?: number;
 }
 
 export function mcpCatalogQuery() {

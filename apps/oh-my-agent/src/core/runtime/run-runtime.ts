@@ -42,7 +42,11 @@ import {
   type WebFetchPort,
   type WebSearchPort,
 } from "../tools/index.js";
-import { mountWorkspaceMcpServers, withCallTimeout } from "../tools/mcp-mount.js";
+import {
+  type McpMountReport,
+  mountWorkspaceMcpServers,
+  withCallTimeout,
+} from "../tools/mcp-mount.js";
 import { createSkill } from "../tools/skill.js";
 import { createTodo, createTodoReadTool } from "../tools/todo.js";
 import { createFileTodoStore, readTodoFile } from "../tools/todo-store.js";
@@ -175,6 +179,8 @@ export interface RunRuntime {
   readonly runId: string;
   readonly store: SessionStore;
   readonly session: OmaSession;
+  /** REAL per-server MCP mount outcomes for this runtime (connect+listTools). */
+  readonly mcpMountReports: readonly McpMountReport[];
   readonly summarize: ContextSummarizer;
   readonly contextBudget: ContextBudget | undefined;
   /** Set before startLoop so modelStream resolves the run's model. */
@@ -187,8 +193,8 @@ export interface RunRuntime {
     args?: unknown;
   }): Promise<{ ok: boolean; totalTokens: number; value: unknown }>;
   /** Subagent usage accumulated across workflow_agent_completed events
-   *  (T5/B6: the run's outcome merges it so fan-out spend reaches the
-   *  product ledger, not just the advisory gate). */
+   *  (T5/B6): the run's outcome merges it so fan-out spend reaches the
+   *  product ledger, not just the advisory gate. */
   workflowUsage(): {
     inputTokens: number;
     outputTokens: number;
@@ -975,6 +981,7 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
     runId: deps.runId,
     store,
     session,
+    mcpMountReports: mounted.reports,
     summarize,
     contextBudget,
     setActiveRun(run) {

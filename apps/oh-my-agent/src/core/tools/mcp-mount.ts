@@ -228,8 +228,17 @@ export async function withCallTimeout<T>(
 
 /** Mount the workspace .mcp.json servers as plugin tools. Never throws;
  *  per-server failures degrade to "server absent". */
+export interface McpMountReport {
+  readonly server: string;
+  readonly ok: boolean;
+  readonly toolsCount: number;
+  readonly error?: string;
+}
+
 export interface MountedMcpServers {
   tools: PluginTool[];
+  /** Per-server REAL mount outcome (connect + listTools), in config order. */
+  reports: readonly McpMountReport[];
   /** Close every mounted server's transport (kills stdio children). */
   close(): Promise<void>;
 }
@@ -244,10 +253,14 @@ export async function mountWorkspaceMcpServers(
     ? mergeMcpConfigs(workspaceRoot, pluginServers)
     : mergePluginMcpConfigs(pluginServers);
   const tools: PluginTool[] = [];
+  const reports: McpMountReport[] = [];
   const clients: McpClientLike[] = [];
   for (const [name, server] of Object.entries(servers)) {
     const client = await connectServer(name, server);
-    if (!client) continue;
+    if (!client) {
+      reports.push({ server: name, ok: false, toolsCount: 0, error: "connect failed" });
+      continue;
+    }
     clients.push(client);
     let listed: Array<{ name: string; description?: string; inputSchema?: unknown }>;
     try {
@@ -257,8 +270,15 @@ export async function mountWorkspaceMcpServers(
         `[mcp-mount] listTools ${name} failed:`,
         err instanceof Error ? err.message : err,
       );
+      reports.push({
+        server: name,
+        ok: false,
+        toolsCount: 0,
+        error: err instanceof Error ? err.message : String(err),
+      });
       continue;
     }
+    reports.push({ server: name, ok: true, toolsCount: listed.length });
     for (const t of listed) {
       if (nativeNames.has(t.name)) continue; // native table wins on collision
       tools.push({
@@ -285,6 +305,7 @@ export async function mountWorkspaceMcpServers(
   }
   return {
     tools,
+    reports,
     async close() {
       await Promise.allSettled(clients.map((c) => c.close().catch(() => {})));
     },
@@ -294,6 +315,7 @@ export async function mountWorkspaceMcpServers(
 /** Expand ${CLAUDE_PLUGIN_ROOT}/${CLAUDE_PROJECT_DIR} in a plugin server
  *  config (spec: Claude plugin .mcp.json compatibility) and export both as
  *  env vars to the spawned server process. */
+
 export function substitutePluginVars(
   server: McpJsonServer,
   ctx: { pluginRoot: string; workspaceRoot: string },

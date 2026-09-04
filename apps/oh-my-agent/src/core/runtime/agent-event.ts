@@ -43,6 +43,15 @@ export type OmaLoopEvent =
    * addMessageToChat): surfaces render the user message when the loop
    * actually takes it, not when it was submitted. */
   | { type: "queue_update"; drained?: readonly string[] }
+  | {
+      /** REAL runtime MCP mount result: the child actually connected and
+       *  listed tools. Surfaces the manager-probe vs runtime distinction. */
+      type: "mcp_mount_result";
+      server: string;
+      ok: boolean;
+      toolsCount: number;
+      error?: string;
+    }
   | { type: "stream_rule_triggered"; rule: string }
   | { type: "todo_update"; items: readonly TodoItem[] }
   | { type: "workflow_started"; workflowId: string; label: string; agentCount: number }

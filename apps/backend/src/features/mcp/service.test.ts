@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { McpClientManager } from "@chengchenccc/adapter-mcp";
 import { fileMcpServerAdapter } from "./adapter-file.js";
+import { createMcpRuntimeStatusStore } from "./runtime-status.js";
 import { createMcpService, McpServerNotFoundError, McpValidationError } from "./service.js";
 
 const tmp = mkdtempSync(join(tmpdir(), "mcp-catalog-"));
@@ -31,9 +32,12 @@ const mockManager: McpClientManager = {
 /** In-memory agent.yml switch store (the file-first assignment backing). */
 const agentSwitches = new Map<string, Array<{ serverId: string; enabled: boolean }>>();
 
+const runtimeStatus = createMcpRuntimeStatusStore();
+
 const svc = createMcpService({
   port,
   mcpClientManager: mockManager,
+  runtimeStatus,
   agentExists: async () => true,
   getAgentMcpServers: async (agentId) => agentSwitches.get(agentId) ?? [],
   setAgentMcpServers: async (agentId, entries) => {
@@ -129,5 +133,45 @@ describe("McpService (unified catalog, ADR 0022)", () => {
     await svc.delete(row.serverId);
     // The catalog row is gone; listForAgent resolves only existing ids.
     expect(await svc.listForAgent("agent-3")).toHaveLength(0);
+  });
+});
+
+describe("McpService runtime status overlay", () => {
+  test("listCatalog prefers real runtime mount over manager probe", async () => {
+    const row = await svc.create({
+      name: "runtime-echo",
+      transport: "stdio",
+      command: "echo",
+    });
+    runtimeStatus.record({
+      serverName: row.name,
+      ok: true,
+      toolsCount: 7,
+      runId: "run-1",
+      at: Date.now(),
+    });
+    const listed = svc.listCatalog().find((s) => s.serverId === row.serverId);
+    expect(listed?.runtimeStatus).toBe("mounted");
+    expect(listed?.runtimeToolsCount).toBe(7);
+    expect(listed?.runtimeRunId).toBe("run-1");
+  });
+
+  test("failed runtime mount surfaces error", async () => {
+    const row = await svc.create({
+      name: "runtime-bad",
+      transport: "stdio",
+      command: "echo",
+    });
+    runtimeStatus.record({
+      serverName: row.name,
+      ok: false,
+      toolsCount: 0,
+      error: "connect failed",
+      runId: "run-2",
+      at: Date.now(),
+    });
+    const listed = svc.listCatalog().find((s) => s.serverId === row.serverId);
+    expect(listed?.runtimeStatus).toBe("failed");
+    expect(listed?.runtimeError).toBe("connect failed");
   });
 });

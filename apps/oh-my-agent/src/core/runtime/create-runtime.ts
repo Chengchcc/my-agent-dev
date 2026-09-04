@@ -211,6 +211,19 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
         for (const w of waiters.splice(0)) w();
       });
 
+      // Surface the REAL runtime MCP mount outcomes before the loop starts.
+      // The listener above is already attached, so every report reaches the
+      // segment stream as backend.oma.mcp_mount_result.
+      for (const mount of rt.mcpMountReports) {
+        rt.session.emit({
+          type: "mcp_mount_result",
+          server: mount.server,
+          ok: mount.ok,
+          toolsCount: mount.toolsCount,
+          ...(mount.error ? { error: mount.error } : {}),
+        });
+      }
+
       // The Run's store is seeded with the full Product history + the current
       // input by the loop itself (buildLoopInput appends history + meta +
       // input atomically). Create the session root first.

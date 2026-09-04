@@ -15,6 +15,13 @@ export interface McpServerRow {
   updatedAt: number;
   status?: "pending" | "connected" | "failed";
   toolsCount?: number;
+  /** Latest REAL runtime mount observation (from the oma child's
+   *  mcp_mount_result event). Absent until a Run has mounted this server. */
+  runtimeStatus?: "mounted" | "failed";
+  runtimeToolsCount?: number;
+  runtimeError?: string;
+  runtimeRunId?: string;
+  runtimeCheckedAt?: number;
 }
 
 /** One agent's assignment for a catalog server (the per-agent switch). */

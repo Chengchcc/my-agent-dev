@@ -63,6 +63,15 @@ export interface AgentRunExecutionDeps {
    *  workflow steps). Wired to the RuntimeOps event store; failures are
    *  swallowed — telemetry never affects the run. */
   readonly persistRunEvent?: (runId: string, event: BackendEvent) => Promise<void>;
+  /** Runtime MCP mount observation (backend.oma.mcp_mount_result). Wired to
+   *  the MCP catalog's runtime-status store; absent = observation dropped. */
+  readonly onMcpMountResult?: (input: {
+    serverName: string;
+    ok: boolean;
+    toolsCount: number;
+    error?: string;
+    runId: string;
+  }) => void;
 }
 
 export interface LiveRun {
