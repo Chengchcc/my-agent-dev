@@ -127,15 +127,68 @@ function McpDetailSheet({
   onClose: () => void;
 }) {
   const [detail, setDetail] = useState<EditMcpRow | null>(null);
-  const [tab, setTab] = useState<"overview" | "agents">("overview");
+  const [tab, setTab] = useState<"overview" | "tools" | "agents">("overview");
+  const [catalog, setCatalog] = useState<{
+    status: string;
+    tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>;
+    schemaHash?: string;
+    latencyMs?: number;
+  } | null>(null);
+  const [invoking, setInvoking] = useState<string | null>(null);
+  const [invokeArgs, setInvokedArgs] = useState<Record<string, string>>({});
+  const [invokeResult, setInvokeResult] = useState<string | null>(null);
+  const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
     setDetail(null);
+    setCatalog(null);
+    setInvokeResult(null);
     api
       .getMcpServer(server.serverId)
       .then((r) => setDetail((r.mcpServer ?? null) as EditMcpRow | null))
       .catch(() => setDetail(null));
   }, [server.serverId]);
+
+  function loadCatalog() {
+    api
+      .getMcpToolCatalog(server.serverId)
+      .then((r) => setCatalog(r as typeof catalog))
+      .catch(() => setCatalog(null));
+  }
+
+  function invokeTool(toolName: string) {
+    let args: Record<string, unknown> = {};
+    const raw = invokeArgs[toolName]?.trim();
+    if (raw) {
+      try {
+        args = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        toast.error("Args must be valid JSON");
+        return;
+      }
+    }
+    setInvoking(toolName);
+    setInvokeResult(null);
+    api
+      .invokeMcpTool(server.serverId, { tool: toolName, args })
+      .then((r) =>
+        setInvokeResult(JSON.stringify((r as { result?: unknown }).result ?? null, null, 2)),
+      )
+      .catch((err) => setInvokeResult(`Error: ${err instanceof Error ? err.message : String(err)}`))
+      .finally(() => setInvoking(null));
+  }
+
+  function restartServer() {
+    setRestarting(true);
+    api
+      .restartMcpServer(server.serverId)
+      .then(() => {
+        toast.success("Server restarted");
+        loadCatalog();
+      })
+      .catch(() => toast.error("Restart failed"))
+      .finally(() => setRestarting(false));
+  }
 
   const usedByNames = agents
     .filter((a) => a.mcpServers?.some((m) => m.serverId === server.serverId && m.enabled))
@@ -154,10 +207,14 @@ function McpDetailSheet({
       badge={{ label: statusLabel(st), tone: statusTone(st) }}
       tabs={[
         { key: "overview", label: "Overview" },
+        { key: "tools", label: "Tools" },
         { key: "agents", label: "Agents" },
       ]}
       tab={tab}
-      onTabChange={(key) => setTab(key as "overview" | "agents")}
+      onTabChange={(key) => {
+        setTab(key as "overview" | "tools" | "agents");
+        if (key === "tools" && !catalog) loadCatalog();
+      }}
       breadcrumb={[
         { label: server.name, onClick: () => setTab("overview") },
         { label: "Capabilities" },
@@ -172,6 +229,9 @@ function McpDetailSheet({
           </Button>
           <Button variant="outline" size="sm" onClick={() => onTest(server.serverId)}>
             Test
+          </Button>
+          <Button variant="outline" size="sm" disabled={restarting} onClick={() => restartServer()}>
+            {restarting ? "Restarting…" : "Restart"}
           </Button>
           <Button variant="destructive" size="sm" onClick={() => onDelete(server.serverId)}>
             Delete
@@ -195,6 +255,70 @@ function McpDetailSheet({
             <DetailRow label="Tools" value={`${tools}`} />
             <DetailRow label="Installed" value={`${usedByNames.length} agents`} />
           </dl>
+        </div>
+      )}
+      {tab === "tools" && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-kicker text-(--mute)">
+            <span>status: {catalog?.status ?? "probing…"}</span>
+            {catalog?.latencyMs != null && <span>probe {catalog.latencyMs}ms</span>}
+            {catalog?.schemaHash && (
+              <span className="truncate">hash {catalog.schemaHash.slice(0, 16)}…</span>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto h-6 px-2 text-[11px]"
+              onClick={loadCatalog}
+            >
+              Refresh
+            </Button>
+          </div>
+          {(!catalog || catalog.tools.length === 0) && (
+            <Text as="p" className="text-sm text-(--mute)">
+              {catalog ? "No tools exposed." : "Probe the server to load its tool catalog."}
+            </Text>
+          )}
+          {catalog?.tools.map((t) => (
+            <div key={t.name} className="rounded-lg border border-(--hairline) p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate font-mono text-xs font-medium text-(--ink)">
+                  {t.name}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={invoking === t.name}
+                  onClick={() => invokeTool(t.name)}
+                >
+                  {invoking === t.name ? "Running…" : "Invoke"}
+                </Button>
+              </div>
+              {t.description && <p className="mt-1 text-xs text-(--mute)">{t.description}</p>}
+              {t.inputSchema && (
+                <details className="mt-1">
+                  <summary className="cursor-pointer font-mono text-[10px] text-(--faint)">
+                    input schema
+                  </summary>
+                  <pre className="mt-1 overflow-x-auto rounded bg-(--canvas) p-2 font-mono text-[10px] text-(--mute)">
+                    {JSON.stringify(t.inputSchema, null, 2)}
+                  </pre>
+                </details>
+              )}
+              <textarea
+                value={invokeArgs[t.name] ?? ""}
+                onChange={(e) => setInvokedArgs((prev) => ({ ...prev, [t.name]: e.target.value }))}
+                placeholder="{}  — JSON arguments"
+                rows={2}
+                className="mt-2 w-full rounded border border-(--hairline) bg-(--canvas) px-2 py-1 font-mono text-[11px] text-(--ink) placeholder:text-(--faint) focus:border-(--primary) focus:outline-none"
+              />
+              {invokeResult && invoking === null && (
+                <pre className="mt-2 max-h-48 overflow-auto rounded bg-(--canvas) p-2 font-mono text-[10px] text-(--ok)">
+                  {invokeResult}
+                </pre>
+              )}
+            </div>
+          ))}
         </div>
       )}
       {tab === "agents" && (

@@ -5,5 +5,6 @@ export type {
   McpConnectionEntry,
   McpConnectionStatus,
   McpServerConfig,
+  McpToolCatalogEntry,
   McpTransport,
 } from "./types.js";

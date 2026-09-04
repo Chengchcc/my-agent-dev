@@ -248,6 +248,24 @@ export function workflowRoutes(deps: {
     })
 
     .post(
+      "/api/workflow-executions/human-tasks/batch-resolve",
+      async ({ body }) => {
+        return { results: await svc.resolveHumanTasks(body.decisions) };
+      },
+      {
+        body: t.Object({
+          decisions: t.Array(
+            t.Object({
+              executionId: t.String({ minLength: 1 }),
+              nodeId: t.String({ minLength: 1 }),
+              answer: t.Optional(t.Record(t.String(), t.Unknown())),
+            }),
+          ),
+        }),
+      },
+    )
+
+    .post(
       "/api/workflow-executions/:executionId/human-task",
       async ({ params, body }) => {
         return await svc.resolveHumanTask(params.executionId, body.nodeId, body.answer ?? {});

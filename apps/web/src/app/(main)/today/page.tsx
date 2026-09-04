@@ -4,6 +4,7 @@ import { Activity, CheckCircle2, Clock, Coins, GitBranch, Loader2, UserCheck } f
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { toast } from "sonner";
 import { Page, PageBody } from "@/components/page";
 import { KpiTile, MonoLabel, PageHeader, StatusPill, type StatusTone } from "@/components/patterns";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
@@ -143,6 +144,33 @@ export default function TodayPage() {
 
   const enabledAgents = (agents ?? []).filter((a) => a.enabled !== false);
 
+  const [approvingAll, setApprovingAll] = useState(false);
+  async function approveAllGates() {
+    setApprovingAll(true);
+    try {
+      const targets: Array<{ executionId: string; nodeId: string }> = [];
+      for (const e of waitingHuman) {
+        const trace = await api.getWorkflowExecutionTrace(e.executionId);
+        const nodeId = trace.pendingHuman?.nodeId;
+        if (nodeId) targets.push({ executionId: e.executionId, nodeId });
+      }
+      if (targets.length === 0) {
+        toast.error("No resolvable gates");
+        return;
+      }
+      await api.resolveHumanTasks(targets);
+      toast.success(`Approved ${targets.length} gate${targets.length > 1 ? "s" : ""}`);
+      setLoading(true);
+      const refreshed = await api.listWorkflowExecutions();
+      setExecutions((refreshed?.executions ?? []) as ExecutionRow[]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Batch approve failed");
+    } finally {
+      setApprovingAll(false);
+      setLoading(false);
+    }
+  }
+
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
     year: "numeric",
@@ -169,12 +197,22 @@ export default function TodayPage() {
               Workflows
             </Link>
             {waitingHuman.length > 0 && (
-              <Link
-                href="#needs-you"
-                className="rounded-sm bg-(--primary-soft) px-3 py-1.5 text-xs font-semibold text-(--on-primary) transition-colors hover:bg-(--primary)"
-              >
-                Needs you ({waitingHuman.length})
-              </Link>
+              <>
+                <Link
+                  href="#needs-you"
+                  className="rounded-sm border border-(--hairline) bg-(--panel2)/50 px-3 py-1.5 text-xs text-(--ink) transition-colors hover:border-(--faint)"
+                >
+                  Needs you ({waitingHuman.length})
+                </Link>
+                <button
+                  type="button"
+                  disabled={approvingAll}
+                  onClick={() => void approveAllGates()}
+                  className="rounded-sm bg-(--primary-soft) px-3 py-1.5 text-xs font-semibold text-(--on-primary) transition-colors hover:bg-(--primary) disabled:opacity-60"
+                >
+                  {approvingAll ? "Approving…" : `Batch approve (${waitingHuman.length})`}
+                </button>
+              </>
             )}
           </>
         }

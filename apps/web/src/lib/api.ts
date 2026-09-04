@@ -341,6 +341,28 @@ export const api = {
       method: "POST",
       credentials: "include",
     }).then((r) => r.json()),
+  getMcpToolCatalog: (serverId: string) =>
+    unwrap(client.api["mcp-servers"]({ serverId }).tools.get()),
+  invokeMcpTool: (serverId: string, body: { tool: string; args?: Record<string, unknown> }) =>
+    fetch(`/api/bff/mcp-servers/${serverId}/tools/invoke`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json()),
+  restartMcpServer: (serverId: string) =>
+    fetch(`/api/bff/mcp-servers/${serverId}/restart`, {
+      method: "POST",
+      credentials: "include",
+    }).then((r) => r.json()),
+  resolveHumanTasks: (decisions: Array<{ executionId: string; nodeId: string }>) =>
+    fetch(`/api/bff/workflow-executions/human-tasks/batch-resolve`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decisions }),
+    }).then((r) => r.json()),
+  getSystemMetrics: () => unwrap(client.api.ops["system-metrics"].get()),
   deleteMcpServer: (serverId: string) =>
     fetch(`/api/bff/mcp-servers/${serverId}`, {
       method: "DELETE",

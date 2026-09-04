@@ -8,6 +8,7 @@ export function opsRoutes(svc: RuntimeOpsService) {
   return new Elysia()
     .get("/api/ops/agents/:id/runtime", ({ params: { id } }) => svc.getAgentRuntime(id))
     .get("/api/ops/surfaces", () => svc.listSurfaces())
+    .get("/api/ops/system-metrics", () => svc.getSystemMetrics())
     .get("/api/telemetry/summary", ({ query }) =>
       svc.telemetrySummary(query.since ? Number(query.since) || undefined : undefined),
     )

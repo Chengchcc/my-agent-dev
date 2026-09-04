@@ -23,11 +23,77 @@ export function createRuntimeOpsService(deps: {
   opsStore: RuntimeOpsStore;
   /** M16.2: Resolve agent display name for ops DTOs. Falls back to agentId if absent. */
   getAgentName?: (agentId: string) => string | undefined;
+  /** Backend sqlite path — sized for the system-metrics endpoint. */
+  dbPath?: string;
 }) {
   const { opsStore, getAgentName } = deps;
   const resolveName = (agentId: string) => getAgentName?.(agentId) ?? agentId;
 
   return {
+    /** Live server + subprocess metrics for the observability page. */
+    getSystemMetrics(): {
+      uptimeSec: number;
+      rssMb: number;
+      heapMb: number;
+      dbSizeBytes: number | null;
+      subprocesses: Array<{ pid: number; cmd: string; rssKb: number; cpuSec: number }>;
+    } {
+      const mem = process.memoryUsage();
+      let dbSizeBytes: number | null = null;
+      if (deps.dbPath) {
+        try {
+          dbSizeBytes = require("node:fs").statSync(deps.dbPath).size;
+        } catch {
+          dbSizeBytes = null;
+        }
+      }
+      // Direct children of this process — the spawned agent-run subprocesses.
+      const subprocesses: Array<{ pid: number; cmd: string; rssKb: number; cpuSec: number }> = [];
+      try {
+        const fs = require("node:fs");
+        const myPid = process.pid;
+        const clkTck = 100; // standard Linux USER_HZ
+        for (const name of fs.readdirSync("/proc")) {
+          if (!/^\d+$/.test(name)) continue;
+          const pid = Number(name);
+          if (pid === myPid) continue;
+          let stat = "";
+          let cmdline = "";
+          try {
+            stat = fs.readFileSync(`/proc/${name}/stat`, "utf8");
+            cmdline = fs
+              .readFileSync(`/proc/${name}/cmdline`, "utf8")
+              .replaceAll("\u0000", " ")
+              .trim();
+          } catch {
+            continue; // process exited between readdir and read
+          }
+          // ppid is field 4 — but comm may contain spaces, so slice after the last ')'
+          const after = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+          const ppid = Number(after[1]);
+          if (ppid !== myPid) continue;
+          const rssPages = Number(after[21]);
+          const utime = Number(after[11]);
+          const stime = Number(after[12]);
+          subprocesses.push({
+            pid,
+            cmd: cmdline.slice(0, 120),
+            rssKb: Math.round((rssPages * 4096) / 1024),
+            cpuSec: Math.round(((utime + stime) / clkTck) * 10) / 10,
+          });
+        }
+      } catch {
+        /* /proc unavailable (non-Linux) — report empty */
+      }
+      return {
+        uptimeSec: Math.round(process.uptime()),
+        rssMb: Math.round((mem.rss / 1024 / 1024) * 10) / 10,
+        heapMb: Math.round((mem.heapUsed / 1024 / 1024) * 10) / 10,
+        dbSizeBytes,
+        subprocesses,
+      };
+    },
+
     /** Surface health is audit/monitoring state (Lark heartbeats), not run
      *  execution state. */
     getAgentRuntime(agentId: string): AgentRuntimeStatus {

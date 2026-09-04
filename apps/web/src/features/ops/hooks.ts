@@ -5,6 +5,7 @@ import {
   agentRunsQuery,
   agentRuntimeQuery,
   surfacesQuery,
+  systemMetricsQuery,
   telemetrySummaryQuery,
 } from "./queries";
 import { opsKeys } from "./query-keys";
@@ -22,6 +23,10 @@ export function useRunningAgentRuns() {
 
 export function useTelemetrySummary() {
   return useQuery(telemetrySummaryQuery());
+}
+
+export function useSystemMetrics() {
+  return useQuery(systemMetricsQuery());
 }
 
 export function useAgentRunDetail(runId: string) {

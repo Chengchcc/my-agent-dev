@@ -67,6 +67,16 @@ export function mcpRoutes(svc: McpService) {
       },
       { body: updateBody },
     )
+    .post("/api/mcp-servers/:serverId/tools/invoke", async ({ params: { serverId }, body }) => {
+      const { tool, args } = body as { tool: string; args?: Record<string, unknown> };
+      return await svc.invokeTool(serverId, tool, args ?? {});
+    })
+    .post("/api/mcp-servers/:serverId/restart", async ({ params: { serverId } }) => {
+      return await svc.restart(serverId);
+    })
+    .get("/api/mcp-servers/:serverId/tools", async ({ params: { serverId } }) => {
+      return await svc.getToolCatalog(serverId);
+    })
     .post("/api/mcp-servers/:serverId/test", async ({ params: { serverId } }) => {
       try {
         return await svc.testConnection(serverId);

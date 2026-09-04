@@ -86,6 +86,13 @@ export interface WorkflowExecutionService {
     nodeId: string,
     answer: Record<string, unknown>,
   ): Promise<WorkflowExecutionRow>;
+  resolveHumanTasks(
+    decisions: Array<{
+      executionId: string;
+      nodeId: string;
+      answer?: Record<string, unknown>;
+    }>,
+  ): Promise<Array<{ executionId: string; ok: boolean; error?: string }>>;
   getExecution(executionId: string): Promise<WorkflowExecutionRow | null>;
   listNodeRuns(executionId: string): Promise<WorkflowNodeRunRow[]>;
   listExecutions(workflowId?: string): Promise<WorkflowExecutionRow[]>;
@@ -652,6 +659,29 @@ export function createWorkflowExecutionService(
       void runWithCatch(executionId, () => drive(row));
       return row;
     },
+    async resolveHumanTasks(
+      decisions: Array<{
+        executionId: string;
+        nodeId: string;
+        answer?: Record<string, unknown>;
+      }>,
+    ): Promise<Array<{ executionId: string; ok: boolean; error?: string }>> {
+      const results: Array<{ executionId: string; ok: boolean; error?: string }> = [];
+      for (const d of decisions) {
+        try {
+          await this.resolveHumanTask(d.executionId, d.nodeId, d.answer ?? {});
+          results.push({ executionId: d.executionId, ok: true });
+        } catch (err) {
+          results.push({
+            executionId: d.executionId,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      return results;
+    },
+
     async resolveHumanTask(executionId, nodeId, answer) {
       const row = await deps.port.getExecution(executionId);
       if (!row) throw new HttpError("Execution not found", 404);

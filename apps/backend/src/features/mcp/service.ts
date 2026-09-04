@@ -1,4 +1,4 @@
-import type { McpClientManager } from "@chengchenccc/adapter-mcp";
+import type { McpClientManager, McpToolCatalogEntry } from "@chengchenccc/adapter-mcp";
 import { NotFoundError, ValidationError } from "../../infra/domain-errors.js";
 import { ulid } from "../../infra/ids.js";
 import type {
@@ -34,6 +34,21 @@ export interface McpService {
   getServer(serverId: string): McpServerRow;
   /** Explicit probe: reconnects and reports manager status + tool count. */
   testConnection(serverId: string): Promise<{ status: string; toolsCount: number }>;
+  /** Connected tool catalog + schema hash + probe latency (connects first if needed). */
+  getToolCatalog(serverId: string): Promise<{
+    status: string;
+    tools: McpToolCatalogEntry[];
+    schemaHash?: string;
+    latencyMs?: number;
+  }>;
+  /** Invoke a tool on a connected server (connects first if needed). */
+  invokeTool(
+    serverId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<{ result: unknown }>;
+  /** disconnect + reconnect from stored config. */
+  restart(serverId: string): Promise<{ status: string }>;
 }
 
 function maskSecrets(record: Record<string, string> | null): Record<string, string> | null {
@@ -177,6 +192,68 @@ export function createMcpService(deps: {
 
     getServer(serverId: string): McpServerRow {
       return requireServer(serverId);
+    },
+
+    async getToolCatalog(serverId: string): Promise<{
+      status: string;
+      tools: McpToolCatalogEntry[];
+      schemaHash?: string;
+      latencyMs?: number;
+    }> {
+      const row = await this.testConnection(serverId).then(() => requireServer(serverId));
+      const config: Parameters<McpClientManager["connect"]>[0] = {
+        serverId: row.serverId,
+        agentId: "*",
+        name: row.name,
+        transport: row.transport,
+        enabled: true,
+      };
+      if (row.command) config.command = row.command;
+      if (row.args) config.args = row.args;
+      if (row.env) config.env = row.env;
+      if (row.url) config.url = row.url;
+      void config;
+      return {
+        status: deps.mcpClientManager.getStatus(serverId) ?? "failed",
+        tools: deps.mcpClientManager.getToolCatalog(serverId),
+        schemaHash: deps.mcpClientManager.getSchemaHash(serverId),
+        latencyMs: deps.mcpClientManager.getConnectLatencyMs(serverId),
+      };
+    },
+
+    async invokeTool(
+      serverId: string,
+      toolName: string,
+      args: Record<string, unknown>,
+    ): Promise<{ result: unknown }> {
+      await this.testConnection(serverId);
+      const result = await deps.mcpClientManager.callTool(serverId, toolName, args);
+      return { result };
+    },
+
+    async restart(serverId: string): Promise<{ status: string }> {
+      const row = requireServer(serverId);
+      const config: Parameters<McpClientManager["connect"]>[0] = {
+        serverId: row.serverId,
+        agentId: "*",
+        name: row.name,
+        transport: row.transport,
+        enabled: true,
+      };
+      if (row.command) config.command = row.command;
+      if (row.args) config.args = row.args;
+      if (row.env) config.env = row.env;
+      if (row.url) config.url = row.url;
+      try {
+        await deps.mcpClientManager.restart(serverId);
+      } catch {
+        try {
+          await deps.mcpClientManager.connect(config);
+        } catch {
+          /* manager recorded the failure */
+        }
+      }
+      return { status: deps.mcpClientManager.getStatus(serverId) ?? "failed" };
     },
 
     async testConnection(serverId: string): Promise<{ status: string; toolsCount: number }> {

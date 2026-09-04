@@ -14,6 +14,7 @@ import {
   useAgentRuns,
   useCancelAgentRun,
   useSurfaces,
+  useSystemMetrics,
   useTelemetrySummary,
 } from "@/features/ops/hooks";
 
@@ -30,6 +31,7 @@ export default function SystemPage() {
   const runsQuery = useAgentRuns();
   const cancelRun = useCancelAgentRun();
   const telemetryQuery = useTelemetrySummary();
+  const { data: metrics } = useSystemMetrics();
 
   const surfaces = surfacesQuery.data ?? [];
   const runs = runsQuery.data?.runs ?? [];
@@ -99,6 +101,26 @@ export default function SystemPage() {
             detail={telemetryQuery.data ? `${telemetryQuery.data.toolCalls} tool calls` : "—"}
           />
         </div>
+
+        {metrics && (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-(--hairline) bg-(--panel) px-4 py-2 font-mono text-[10px] uppercase tracking-kicker text-(--mute)">
+            <span>
+              uptime {Math.floor(metrics.uptimeSec / 3600)}h{" "}
+              {Math.floor((metrics.uptimeSec % 3600) / 60)}m
+            </span>
+            <span>rss {metrics.rssMb}mb</span>
+            <span>heap {metrics.heapMb}mb</span>
+            {metrics.dbSizeBytes != null && (
+              <span>db {Math.round(metrics.dbSizeBytes / 1024 / 1024)}mb</span>
+            )}
+            <span>subprocesses {metrics.subprocesses.length}</span>
+            {metrics.subprocesses.map((p: { pid: number; cpuSec: number }) => (
+              <span key={p.pid} className="text-(--faint)">
+                pid {p.pid} · {p.cpuSec}s
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="grid items-start gap-4 lg:grid-cols-12">
           <div className="min-w-0 space-y-4 lg:col-span-7">

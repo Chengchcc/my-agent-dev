@@ -1,7 +1,14 @@
 // ponytail: manager logic untested - dynamic SDK imports make mocking complex; two-map bookkeeping is trivial
 import type { Tool } from "@chengchenccc/message";
 import { adaptMcpTool } from "./mcp-tool-adapter.js";
-import type { McpConnectionEntry, McpConnectionStatus, McpServerConfig } from "./types.js";
+import type {
+  McpConnectionEntry,
+  McpConnectionStatus,
+  McpServerConfig,
+  McpToolCatalogEntry,
+} from "./types.js";
+
+export type { McpToolCatalogEntry } from "./types.js";
 
 export interface McpClientManager {
   connect(config: McpServerConfig): Promise<void>;
@@ -10,6 +17,16 @@ export interface McpClientManager {
   getStatus(serverId: string): McpConnectionStatus | undefined;
   getToolCount(serverId: string): number;
   disconnectAll(): Promise<void>;
+  /** Raw tool metadata (name/description/inputSchema) for a connected server. */
+  getToolCatalog(serverId: string): McpToolCatalogEntry[];
+  /** Wall time of the last successful connect()+listTools(), in ms. */
+  getConnectLatencyMs(serverId: string): number | undefined;
+  /** sha256 over the sorted tool catalog — changes when the server's surface changes. */
+  getSchemaHash(serverId: string): string | undefined;
+  /** Invoke a tool on a connected server via the MCP client. */
+  callTool(serverId: string, toolName: string, args: Record<string, unknown>): Promise<unknown>;
+  /** disconnect + connect with the stored config. */
+  restart(serverId: string): Promise<void>;
 }
 
 export function createMcpClientManager(): McpClientManager {
@@ -27,6 +44,7 @@ export function createMcpClientManager(): McpClientManager {
       connections.set(serverId, {
         config,
         tools: [],
+        rawToolSpecs: [],
         client: null,
         transport: null,
         status: "pending",
@@ -51,6 +69,7 @@ export function createMcpClientManager(): McpClientManager {
         const client = new Client({ name: `mat-${name}`, version: "0.1.0" }, { capabilities: {} });
         await (client as { connect: (t: unknown) => Promise<void> }).connect(clientTransport);
 
+        const startedAt = Date.now();
         const listResult = await (
           client as {
             listTools: () => Promise<{
@@ -66,13 +85,20 @@ export function createMcpClientManager(): McpClientManager {
         const tools = listResult.tools.map((tool) =>
           adaptMcpTool(name, tool, client as Parameters<typeof adaptMcpTool>[2]),
         );
+        const rawToolSpecs: McpToolCatalogEntry[] = listResult.tools.map((tool) => ({
+          name: tool.name,
+          ...(tool.description ? { description: tool.description } : {}),
+          ...(tool.inputSchema ? { inputSchema: tool.inputSchema } : {}),
+        }));
 
         connections.set(serverId, {
           config,
           tools,
+          rawToolSpecs,
           client,
           transport: clientTransport,
           status: "connected",
+          connectLatencyMs: Date.now() - startedAt,
         });
       } catch (err) {
         console.error(`[mcp] connect failed for ${config.name}:`, err);
@@ -80,6 +106,7 @@ export function createMcpClientManager(): McpClientManager {
         connections.set(serverId, {
           config,
           tools: [],
+          rawToolSpecs: [],
           client: null,
           transport: null,
           status: "failed",
@@ -126,6 +153,51 @@ export function createMcpClientManager(): McpClientManager {
 
     getToolCount(serverId: string): number {
       return connections.get(serverId)?.tools.length ?? 0;
+    },
+
+    getToolCatalog(serverId: string): McpToolCatalogEntry[] {
+      const entry = connections.get(serverId);
+      if (entry?.status !== "connected") return [];
+      return entry.rawToolSpecs;
+    },
+
+    getConnectLatencyMs(serverId: string): number | undefined {
+      return connections.get(serverId)?.connectLatencyMs;
+    },
+
+    getSchemaHash(serverId: string): string | undefined {
+      const entry = connections.get(serverId);
+      if (entry?.status !== "connected") return undefined;
+      const digest = new Bun.CryptoHasher("sha256");
+      for (const t of [...entry.rawToolSpecs].sort((a, b) => a.name.localeCompare(b.name))) {
+        digest.update(t.name);
+        digest.update("\u0000");
+        digest.update(JSON.stringify(t.inputSchema ?? {}));
+      }
+      return digest.digest("hex");
+    },
+
+    async callTool(
+      serverId: string,
+      toolName: string,
+      args: Record<string, unknown>,
+    ): Promise<unknown> {
+      const entry = connections.get(serverId);
+      if (entry?.status !== "connected" || !entry.client) {
+        throw new Error(`[mcp] server ${serverId} is not connected`);
+      }
+      const client = entry.client as {
+        callTool: (req: { name: string; arguments: Record<string, unknown> }) => Promise<unknown>;
+      };
+      return await client.callTool({ name: toolName, arguments: args });
+    },
+
+    async restart(serverId: string): Promise<void> {
+      const entry = connections.get(serverId);
+      if (!entry) throw new Error(`[mcp] server ${serverId} is not registered`);
+      const config = entry.config;
+      await this.disconnect(serverId);
+      await this.connect(config);
     },
 
     async disconnectAll(): Promise<void> {

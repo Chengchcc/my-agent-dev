@@ -217,6 +217,12 @@ export class RuntimeOpsStore {
       costUsd: number;
       tokens: number;
     }>;
+    costByModelHour: Array<{
+      hour: number;
+      modelId: string;
+      costUsd: number;
+      tokens: number;
+    }>;
     byModel: Array<{
       modelId: string;
       runs: number;
@@ -335,6 +341,26 @@ export class RuntimeOpsStore {
       )
       .all(since) as Array<{
       hourStart: number;
+      costUsd: number;
+      inputTokens: number;
+      outputTokens: number;
+    }>;
+
+    const costByModelHour = this.#db
+      .query(
+        `SELECT (ar.created_at / 3600000) * 3600000 AS hourStart,
+                ar.model_ref AS modelRef,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.costUsd') AS REAL)), 0) AS costUsd,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.inputTokens') AS REAL)), 0) AS inputTokens,
+                COALESCE(SUM(CAST(json_extract(ar.terminal_result, '$.usage.outputTokens') AS REAL)), 0) AS outputTokens
+           FROM agent_run ar
+          WHERE ar.created_at >= ?
+          GROUP BY hourStart, ar.model_ref
+          ORDER BY hourStart`,
+      )
+      .all(since) as Array<{
+      hourStart: number;
+      modelRef: string;
       costUsd: number;
       inputTokens: number;
       outputTokens: number;
@@ -481,6 +507,12 @@ export class RuntimeOpsStore {
       }),
       costByHour: costByHour.map((h) => ({
         hour: Number(h.hourStart),
+        costUsd: Number(h.costUsd),
+        tokens: Number(h.inputTokens ?? 0) + Number(h.outputTokens ?? 0),
+      })),
+      costByModelHour: costByModelHour.map((h) => ({
+        hour: Number(h.hourStart),
+        modelId: modelIdFromRef(h.modelRef),
         costUsd: Number(h.costUsd),
         tokens: Number(h.inputTokens ?? 0) + Number(h.outputTokens ?? 0),
       })),

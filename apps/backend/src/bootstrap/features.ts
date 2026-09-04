@@ -576,6 +576,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const opsSvc = createRuntimeOpsService({
     opsStore: services.opsStore,
     getAgentName: (agentId: string) => agentNames.get(agentId),
+    dbPath: `${config.dataDir}/backend.db`,
   });
 
   // ─── Project ────────────────────────────────────────────────
