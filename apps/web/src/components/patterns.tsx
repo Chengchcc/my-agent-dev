@@ -120,7 +120,7 @@ export function KpiTile({
     >
       {Icon && <Icon className="absolute top-3 right-3 size-4 text-(--faint)" />}
       <MonoLabel>{label}</MonoLabel>
-      <span className="font-display text-[28px] font-semibold tracking-tight text-(--ink-strong) tabular-nums">
+      <span className="font-display text-[34px] leading-10 font-semibold tracking-tight text-(--ink-strong) tabular-nums">
         {value}
       </span>
       {detail && <span className="text-xs text-(--mute)">{detail}</span>}

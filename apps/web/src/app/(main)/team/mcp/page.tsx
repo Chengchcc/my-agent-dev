@@ -1,11 +1,12 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plug, RefreshCw, Server } from "lucide-react";
+import { CircleCheck, Plug, RefreshCw, Server, Trash2, Wrench } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
-import { Page, PageBody, PageHeader } from "@/components/page";
+import { Page, PageBody } from "@/components/page";
+import { KpiTile, MonoLabel, PageHeader, StatusPill, type StatusTone } from "@/components/patterns";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,8 +18,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { InfoBanner, ListToolbar, SectionKicker, StatCard, SubTabs } from "@/components/ui/polish";
-import { ResourceCard } from "@/components/ui/resource-card";
+import { InfoBanner, ListToolbar, SubTabs } from "@/components/ui/polish";
 import { ResourceDetailSheet } from "@/components/ui/resource-detail-sheet";
 import { Text } from "@/components/ui/text";
 import { Textarea } from "@/components/ui/textarea";
@@ -242,6 +242,7 @@ export default function McpCatalogPage() {
   const { data, refetch } = useMcpCatalog();
   const { data: agentsData } = useAgentList();
   const [query, setQuery] = useState("");
+  const [transportFilter, setTransportFilter] = useState<"all" | "stdio" | "sse">("all");
   const [mode, setMode] = useState<"form" | "json">("form");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmServerId, setConfirmServerId] = useState<string | null>(null);
@@ -366,16 +367,18 @@ export default function McpCatalogPage() {
   const servers = useMemo(() => data?.mcpServers ?? [], [data]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return servers;
-    return servers.filter((s) =>
-      [s.name, s.command ?? "", s.url ?? ""].some((v) => v.toLowerCase().includes(q)),
-    );
-  }, [servers, query]);
+    return servers.filter((s) => {
+      if (transportFilter !== "all" && s.transport !== transportFilter) return false;
+      if (!q) return true;
+      return [s.name, s.command ?? "", s.url ?? ""].some((v) => v.toLowerCase().includes(q));
+    });
+  }, [servers, query, transportFilter]);
 
   const selectedServer = servers.find((s) => s.serverId === selectedId) ?? null;
   const connected = servers.filter((s) => mcpStatus(s.status) === "ok").length;
   const runtimeMounted = servers.filter((s) => s.runtimeStatus === "mounted").length;
   const tools = servers.reduce((sum, s) => sum + (s.toolsCount ?? 0), 0);
+  const transportSummary = `${servers.filter((x) => x.transport === "stdio").length} stdio · ${servers.filter((x) => x.transport === "sse").length} sse`;
 
   const buildFormBody = (): CreateMcpBody => {
     const body: CreateMcpBody = { name, transport };
@@ -458,9 +461,15 @@ export default function McpCatalogPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb={[{ label: "Team", href: "/team" }, { label: "MCP" }]}
-        title="MCP"
-        subtitle="Global catalog shared by all agents; per-agent switches live on agent pages."
+        breadcrumb="Team / Capabilities / MCP hub"
+        title="MCP Servers & Tool Bindings"
+        pill={
+          servers.length > 0 ? (
+            <StatusPill tone={runtimeMounted > 0 ? "success" : "idle"}>
+              {runtimeMounted}/{servers.length} mounted
+            </StatusPill>
+          ) : undefined
+        }
         actions={
           <>
             <Button variant="ghost" size="sm" onClick={() => void refetch()}>
@@ -474,7 +483,7 @@ export default function McpCatalogPage() {
               }}
             >
               <Plug className="size-4" />
-              Add Server
+              Connect Server
             </Button>
           </>
         }
@@ -487,22 +496,48 @@ export default function McpCatalogPage() {
             body="Server definitions persist in mcp-servers.json (file-first). Add a server here once, then enable it per agent from the agent's MCP tab. Status prefers the latest REAL runtime mount result reported by the agent child; before any Run it falls back to the backend manager probe."
           />
 
-          <div data-testid="stat-cards" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="Servers" value={servers.length} />
-            <StatCard label="Probe OK" value={connected} />
-            <StatCard label="Runtime Mounted" value={runtimeMounted} />
-            <StatCard label="Tools" value={tools} />
+          <div data-testid="stat-cards" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <KpiTile
+              label="Servers"
+              value={servers.length}
+              icon={Server}
+              detail={transportSummary}
+              bar={servers.length === 0 ? 0 : (runtimeMounted / servers.length) * 100}
+              barTone="primary"
+            />
+            <KpiTile
+              label="Runtime mounted"
+              value={runtimeMounted}
+              icon={Plug}
+              detail="live probe"
+            />
+            <KpiTile
+              label="Probe OK"
+              value={connected}
+              icon={CircleCheck}
+              detail="manager reachable"
+            />
+            <KpiTile label="Tools" value={tools} icon={Wrench} detail="exposed methods" />
           </div>
 
-          <SubTabs
-            items={[
-              { key: "all", label: "All" },
-              { key: "ready", label: "Reachable" },
-              { key: "failed", label: "Failed" },
-            ]}
-            active="all"
-            onChange={() => {}}
-          />
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(["all", "stdio", "sse"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTransportFilter(t)}
+                className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
+                  transportFilter === t
+                    ? "bg-(--panel2) font-medium text-(--primary)"
+                    : "bg-(--canvas-soft) text-(--mute) hover:text-(--ink)"
+                }`}
+              >
+                {t === "all"
+                  ? `All protocols (${servers.length})`
+                  : `${t} (${servers.filter((x) => x.transport === t).length})`}
+              </button>
+            ))}
+          </div>
 
           <ListToolbar
             searchValue={query}
@@ -511,43 +546,97 @@ export default function McpCatalogPage() {
           />
 
           <div>
-            <SectionKicker hint="Click the mono id to copy the server id.">Servers</SectionKicker>
+            <div className="flex items-center gap-2.5">
+              <h2 className="font-display text-lg font-semibold tracking-tight text-(--ink-strong)">
+                Active MCP Servers
+              </h2>
+              <StatusPill tone="idle">{servers.length} total</StatusPill>
+              <MonoLabel className="text-(--faint)">click mono id to copy</MonoLabel>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map((s) => {
                 const usedByNames = (agentsData ?? [])
                   .filter((a) => a.mcpServers?.some((m) => m.serverId === s.serverId && m.enabled))
                   .map((a) => a.name);
                 const status = displayStatus(s);
-                const lint: Array<{ label: string; tone: "ok" | "warn" | "err" }> = [];
-                if (usedByNames.length) {
-                  lint.push({
-                    label: `${usedByNames.length} agent${usedByNames.length > 1 ? "s" : ""}`,
-                    tone: "ok",
-                  });
-                } else {
-                  lint.push({ label: "not assigned", tone: "warn" });
-                }
-                if (s.runtimeStatus === "mounted") {
-                  lint.push({
-                    label: `${s.runtimeToolsCount ?? s.toolsCount ?? 0} tools`,
-                    tone: "ok",
-                  });
-                } else if (s.runtimeStatus === "failed") {
-                  lint.push({ label: "runtime failed", tone: "err" });
-                }
+                const tone: StatusTone =
+                  status === "ok" ? "success" : status === "err" ? "error" : "idle";
+                const iconTone = s.transport === "sse" ? "var(--accent-violet)" : "var(--primary)";
+                const endpoint = s.transport === "sse" ? (s.url ?? "") : (s.command ?? "");
                 return (
-                  <ResourceCard
+                  <div
                     key={s.serverId}
-                    icon={<Server className="size-4 text-(--mute)" />}
-                    title={s.name}
-                    idChip={s.serverId}
-                    badge={{ label: statusLabel(status), tone: statusTone(status) }}
-                    description={s.transport === "sse" ? (s.url ?? "") : (s.command ?? "")}
-                    tags={[{ label: s.transport }]}
-                    lint={lint}
-                    meta={serverMeta(s)}
-                    footer={
-                      <>
+                    className="group relative flex flex-col justify-between rounded-lg border border-(--hairline) bg-(--panel) p-4 transition-colors hover:bg-(--canvas-soft)"
+                  >
+                    <div className="flex flex-col gap-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span
+                            className="flex size-10 shrink-0 items-center justify-center rounded"
+                            style={{
+                              backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
+                              color: iconTone,
+                            }}
+                          >
+                            <Server className="size-5" />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="truncate font-display text-sm font-semibold text-(--ink-strong)">
+                                {s.name}
+                              </span>
+                              <span
+                                className="shrink-0 rounded bg-(--panel2) px-1.5 py-0.5 font-mono text-[10px] font-medium"
+                                style={{ color: iconTone }}
+                              >
+                                {s.transport}
+                              </span>
+                            </div>
+                            <span className="block truncate font-mono text-[10px] text-(--mute)">
+                              {endpoint}
+                            </span>
+                          </div>
+                        </div>
+                        <StatusPill tone={tone} className="shrink-0">
+                          {statusLabel(status)}
+                        </StatusPill>
+                      </div>
+                      <p className="line-clamp-2 text-xs text-(--mute)">
+                        {s.runtimeError ?? serverMeta(s) ?? "No runtime probe yet."}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <MonoLabel className="text-(--faint)">Exposed tools:</MonoLabel>
+                        <span className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--ink)">
+                          {s.runtimeToolsCount ?? s.toolsCount ?? 0}
+                        </span>
+                        <MonoLabel className="text-(--faint)">Bound agents:</MonoLabel>
+                        {usedByNames.length > 0 ? (
+                          usedByNames.slice(0, 3).map((name) => (
+                            <span
+                              key={name}
+                              className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--accent-violet)"
+                            >
+                              {name}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="font-mono text-[10px] text-(--warn)">not assigned</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-(--hairline) pt-2.5">
+                      <button
+                        type="button"
+                        className="font-mono text-[10px] text-(--faint) hover:text-(--primary)"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void navigator.clipboard.writeText(s.serverId);
+                        }}
+                        title="Copy server id"
+                      >
+                        {s.serverId.slice(0, 10)}
+                      </button>
+                      <div className="flex items-center gap-1.5">
                         <AssignToAgentSelect
                           agents={agentsData ?? []}
                           assigned={(agentId) =>
@@ -587,16 +676,17 @@ export default function McpCatalogPage() {
                           {test.isPending ? "Testing…" : "Test"}
                         </Button>
                         <Button
-                          variant="destructive"
+                          variant="ghost"
                           size="sm"
+                          className="text-(--err) hover:bg-(--err)/10"
+                          aria-label={`Delete ${s.name}`}
                           onClick={() => setConfirmServerId(s.serverId)}
                         >
-                          Delete
+                          <Trash2 className="size-3" />
                         </Button>
-                      </>
-                    }
-                    onClick={() => setSelectedId(s.serverId)}
-                  />
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
               {filtered.length === 0 && (

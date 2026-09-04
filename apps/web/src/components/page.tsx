@@ -113,7 +113,7 @@ export function PageBody({
     <div
       className={cn(
         "px-4 sm:px-6 lg:p-8 py-6 ",
-        size === "wide" ? "mx-auto max-w-7xl" : "mx-auto max-w-3xl",
+        size === "wide" ? "" : "mx-auto max-w-3xl",
         className,
       )}
     >
