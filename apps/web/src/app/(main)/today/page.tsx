@@ -281,7 +281,44 @@ export default function TodayPage() {
                           {e.executionId} · {hhmm(e.createdAt)}
                         </div>
                       </div>
-                      <StatusPill tone="waiting">open gate</StatusPill>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          className="rounded-sm border border-(--err)/40 px-2 py-1 text-[11px] text-(--err) transition-colors hover:bg-(--err)/10"
+                          onClick={(ev) => {
+                            ev.preventDefault();
+                            void (async () => {
+                              const trace = await api.getWorkflowExecutionTrace(e.executionId);
+                              const nodeId = trace.pendingHuman?.nodeId;
+                              if (!nodeId) return;
+                              await api.resolveHumanTasks([{ executionId: e.executionId, nodeId }]);
+                              toast.success("Gate rejected");
+                              const refreshed = await api.listWorkflowExecutions();
+                              setExecutions((refreshed?.executions ?? []) as ExecutionRow[]);
+                            })();
+                          }}
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-sm bg-(--primary-soft) px-2 py-1 text-[11px] font-semibold text-(--on-primary) transition-colors hover:bg-(--primary)"
+                          onClick={(ev) => {
+                            ev.preventDefault();
+                            void (async () => {
+                              const trace = await api.getWorkflowExecutionTrace(e.executionId);
+                              const nodeId = trace.pendingHuman?.nodeId;
+                              if (!nodeId) return;
+                              await api.resolveHumanTasks([{ executionId: e.executionId, nodeId }]);
+                              toast.success("Gate approved");
+                              const refreshed = await api.listWorkflowExecutions();
+                              setExecutions((refreshed?.executions ?? []) as ExecutionRow[]);
+                            })();
+                          }}
+                        >
+                          Approve
+                        </button>
+                      </div>
                     </Link>
                   ))}
                 </div>
