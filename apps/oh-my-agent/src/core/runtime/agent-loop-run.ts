@@ -37,6 +37,19 @@ export interface LoopCallContext {
   state: LoopRuntimeState;
 }
 
+/** Coalesce consecutive same-kind stream deltas into one TurnBlock.
+ *  `ordered` models contiguous thinking/text SEGMENTS (the trace shape),
+ *  not provider chunk boundaries — Anthropic extended thinking streams a
+ *  body one character per text_delta, and storing each chunk as its own
+ *  block persisted "让" / "\n\n" / "我" as fake paragraphs. */
+function appendOrderedDelta(ordered: TurnBlock[], next: TurnBlock): void {
+  const last = ordered.at(-1);
+  if (last?.type === next.type) {
+    ordered[ordered.length - 1] = { type: next.type, text: last.text + next.text };
+    return;
+  }
+  ordered.push(next);
+}
 export async function streamModelTurn(
   ctx: LoopCallContext,
   messages: readonly Message[],
@@ -93,7 +106,7 @@ export async function streamModelTurn(
       }
       if (chunk.delta?.type === "text") {
         text += chunk.delta.text;
-        ordered.push({ type: "text" as const, text: chunk.delta.text });
+        appendOrderedDelta(ordered, { type: "text", text: chunk.delta.text });
         await emit({ type: "message_update", text: chunk.delta.text });
         const hit = opts.streamRules
           ? matchStreamRule(opts.streamRules, text, state.streamRuleInjections)
@@ -105,7 +118,7 @@ export async function streamModelTurn(
       }
       if (chunk.delta?.type === "reasoning") {
         thinking += chunk.delta.text;
-        ordered.push({ type: "thinking" as const, text: chunk.delta.text });
+        appendOrderedDelta(ordered, { type: "thinking", text: chunk.delta.text });
         await emit({ type: "thinking_update", text: chunk.delta.text });
       }
       if (chunk.delta?.type === "reasoning_signature") {

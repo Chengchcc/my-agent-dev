@@ -242,6 +242,40 @@ describe("agent loop harness core", () => {
     expect(blocks[0]?.type).toBe("thinking");
   });
 
+  test("5c. consecutive streaming deltas merge into one block per segment", async () => {
+    const store = storeFactory("h5c");
+    await createSession(store, "h5c");
+    const loop = createOmaSession({
+      sessionId: "h5c",
+      store,
+      plugins: [],
+      maxSteps: 1,
+      maxForceContinues: 0,
+      summarize: fakeSummarize,
+      modelStream: async function* () {
+        yield { delta: { type: "reasoning", text: "think " } };
+        yield { delta: { type: "text", text: "让" } };
+        yield { delta: { type: "text", text: "\n\n" } };
+        yield { delta: { type: "text", text: "我" } };
+        yield { delta: { type: "reasoning", text: "think2 " } };
+        yield { delta: { type: "reasoning", text: "more" } };
+        yield { delta: { type: "text", text: "再" } };
+        yield { stopReason: "end_turn" };
+      },
+    });
+    await loop.startLoop(loopInput({ message: "run" }));
+    const snap = await store.open("h5c");
+    const assistant = snap.entries.find((e) => e.source === "assistant") as unknown as {
+      message: { blocks?: Array<{ type: string; text?: string }> };
+    };
+    expect(assistant?.message.blocks).toEqual([
+      { type: "thinking", text: "think " },
+      { type: "text", text: "让\n\n我" },
+      { type: "thinking", text: "think2 more" },
+      { type: "text", text: "再" },
+    ]);
+  });
+
   test("5a. unknown tool and throwing tool persist is_error on tool_result", async () => {
     const store = storeFactory("h5a");
     await createSession(store, "h5a");
