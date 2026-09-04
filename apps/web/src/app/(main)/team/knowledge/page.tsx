@@ -1,10 +1,19 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, RefreshCw } from "lucide-react";
+import {
+  BookOpen,
+  BookOpen as BookOpenIcon,
+  CircleAlert,
+  CircleCheck,
+  Download,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
-import { Page, PageBody, PageHeader } from "@/components/page";
+import { Page, PageBody } from "@/components/page";
+import { KpiTile, MonoLabel, PageHeader, StatusPill, type StatusTone } from "@/components/patterns";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,15 +25,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  InfoBanner,
-  ListToolbar,
-  SectionKicker,
-  StatCard,
-  SubTabs,
-  statusBadge,
-} from "@/components/ui/polish";
-import { ResourceCard } from "@/components/ui/resource-card";
+import { InfoBanner, ListToolbar, SectionKicker, statusBadge } from "@/components/ui/polish";
 import { ResourceDetailSheet } from "@/components/ui/resource-detail-sheet";
 import { Text } from "@/components/ui/text";
 import { Textarea } from "@/components/ui/textarea";
@@ -35,10 +36,20 @@ import type { KnowledgePackRow } from "@/features/knowledge/queries";
 import { knowledgePackKeys } from "@/features/knowledge/query-keys";
 import { type AgentRow, api } from "@/lib/api";
 
-function packTone(status: string): "ok" | "warn" | "err" {
-  if (status === "ready") return "ok";
-  if (status === "failed") return "err";
-  return "warn";
+function packTone(status: string): StatusTone {
+  if (status === "ready") return "success";
+  if (status === "failed") return "error";
+  if (status === "installing" || status === "syncing") return "running";
+  return "idle";
+}
+
+function statusLabel(status: string): string {
+  if (status === "installing") return "installing";
+  if (status === "syncing") return "syncing";
+  if (status === "pending") return "pending";
+  if (status === "ready") return "ready";
+  if (status === "failed") return "failed";
+  return status;
 }
 
 function KnowledgeDetailSheet({
@@ -65,7 +76,10 @@ function KnowledgeDetailSheet({
       icon={<BookOpen className="size-5 text-(--mute)" />}
       title={pack.name}
       subtitle={pack.sourceKind}
-      badge={{ label: badge.label, tone: badge.tone === "err" ? "err" : packTone(pack.status) }}
+      badge={{
+        label: badge.label,
+        tone: pack.status === "ready" ? "ok" : pack.status === "failed" ? "err" : "warn",
+      }}
       tabs={[
         { key: "overview", label: "Overview" },
         { key: "agents", label: "Agents" },
@@ -227,9 +241,15 @@ export default function KnowledgePackPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb={[{ label: "Team", href: "/team" }, { label: "Knowledge" }]}
+        breadcrumb="Team / Capabilities / Knowledge"
         title="Knowledge"
-        subtitle="Install shared knowledge packs here; attach them per agent from the agent's Knowledge tab."
+        pill={
+          packs.length > 0 ? (
+            <StatusPill tone="success">
+              {ready}/{packs.length} ready
+            </StatusPill>
+          ) : undefined
+        }
         actions={
           <>
             <Button variant="ghost" size="sm" onClick={() => void refetch()}>
@@ -243,6 +263,9 @@ export default function KnowledgePackPage() {
           </>
         }
       />
+      <p className="px-2 text-xs text-(--mute) md:px-0">
+        Shared knowledge packs, attached per agent from the agent&apos;s Knowledge tab.
+      </p>
       <PageBody>
         <div className="space-y-6">
           <InfoBanner
@@ -251,18 +274,48 @@ export default function KnowledgePackPage() {
             body="Packs are installed from a git repo or the builtin library, then referenced by agents. Example: https://github.com/org/repo.git or a local path."
           />
 
-          <div data-testid="stat-cards" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="Packs" value={packs.length} />
-            <StatCard label="Ready" value={ready} />
-            <StatCard label="Failed" value={failed} tone={failed > 0 ? "err" : undefined} />
-            <StatCard
+          <div data-testid="stat-cards" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <KpiTile label="Packs" value={packs.length} icon={BookOpenIcon} detail="installed" />
+            <KpiTile
+              label="Ready"
+              value={ready}
+              icon={CircleCheck}
+              detail={`${installing} in flight`}
+              bar={packs.length === 0 ? 0 : (ready / packs.length) * 100}
+              barTone="ok"
+            />
+            <KpiTile
+              label="Failed"
+              value={failed}
+              icon={CircleAlert}
+              detail={failed > 0 ? "needs attention" : "clean"}
+              bar={failed > 0 ? 100 : 0}
+              barTone="err"
+            />
+            <KpiTile
               label="Installing"
               value={installing}
-              tone={installing > 0 ? "warn" : undefined}
+              icon={Download}
+              detail="pending · syncing"
             />
           </div>
 
-          <SubTabs items={statusTabs} active={statusFilter} onChange={setStatusFilter} />
+          <div className="flex flex-wrap items-center gap-1.5">
+            {statusTabs.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setStatusFilter(t.key)}
+                className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
+                  statusFilter === t.key
+                    ? "bg-(--panel2) font-medium text-(--primary)"
+                    : "bg-(--canvas-soft) text-(--mute) hover:text-(--ink)"
+                }`}
+              >
+                {t.label} ({t.count})
+              </button>
+            ))}
+          </div>
 
           <ListToolbar
             searchValue={query}
@@ -291,49 +344,89 @@ export default function KnowledgePackPage() {
                   void api.updateAgent(agentId, { knowledgePacks: next });
                   void qc.invalidateQueries({ queryKey: agentKeys.lists() });
                 };
-                const badge = statusBadge(p.status);
-                const lint: Array<{ label: string; tone: "ok" | "warn" }> = usedByNames.length
-                  ? [
-                      {
-                        label: `${usedByNames.length} agent${usedByNames.length > 1 ? "s" : ""}`,
-                        tone: "ok",
-                      },
-                    ]
-                  : [{ label: "not assigned", tone: "warn" }];
+                const iconTone =
+                  p.sourceKind === "builtin" ? "var(--primary)" : "var(--accent-violet)";
                 return (
-                  <ResourceCard
+                  <div
                     key={p.id}
-                    icon={<BookOpen className="size-4 text-(--mute)" />}
-                    title={p.name}
-                    badge={{
-                      label: badge.label,
-                      tone: badge.tone === "err" ? "err" : packTone(p.status),
-                    }}
-                    description={p.status === "failed" && p.error ? p.error : p.description}
-                    tags={[{ label: p.sourceKind }]}
-                    lint={lint}
-                    meta={`${formatDate(p.createdAt)}${p.sourceRev ? ` · @${p.sourceRev.slice(0, 8)}` : ""}`}
-                    footer={
-                      <>
+                    className="group relative flex flex-col justify-between rounded-lg border border-(--hairline) bg-(--panel) p-4 transition-colors hover:bg-(--canvas-soft)"
+                  >
+                    <div className="flex flex-col gap-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span
+                            className="flex size-10 shrink-0 items-center justify-center rounded"
+                            style={{
+                              backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
+                              color: iconTone,
+                            }}
+                          >
+                            <BookOpen className="size-5" />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="truncate font-display text-sm font-semibold text-(--ink-strong)">
+                                {p.name}
+                              </span>
+                              {p.sourceRev && (
+                                <span className="shrink-0 font-mono text-[10px] text-(--faint)">
+                                  @{p.sourceRev.slice(0, 8)}
+                                </span>
+                              )}
+                            </div>
+                            <MonoLabel className="text-(--ok)">
+                              {p.sourceKind} · {statusLabel(p.status)}
+                            </MonoLabel>
+                          </div>
+                        </div>
+                        <StatusPill tone={packTone(p.status)} className="shrink-0">
+                          {statusLabel(p.status)}
+                        </StatusPill>
+                      </div>
+                      <p className="line-clamp-2 text-xs text-(--mute)">
+                        {(p.status === "failed" && p.error) || p.description || "No description."}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <MonoLabel className="text-(--faint)">Bound agents:</MonoLabel>
+                        {usedByNames.length > 0 ? (
+                          usedByNames.slice(0, 3).map((name) => (
+                            <span
+                              key={name}
+                              className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--accent-violet)"
+                            >
+                              {name}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="font-mono text-[10px] text-(--warn)">not assigned</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-(--hairline) pt-2.5">
+                      <span className="font-mono text-[10px] text-(--faint)">
+                        {formatDate(p.createdAt)}
+                      </span>
+                      <div className="flex items-center gap-1.5">
                         <AssignToAgentSelect
                           agents={agentsData ?? []}
                           assigned={isAssigned}
                           onAssign={onAssign}
                         />
                         <Button variant="outline" size="sm" onClick={() => setSelectedId(p.id)}>
-                          View
+                          Inspect
                         </Button>
                         <Button
-                          variant="destructive"
+                          variant="ghost"
                           size="sm"
+                          className="text-(--err) hover:bg-(--err)/10"
+                          aria-label={`Delete ${p.name}`}
                           onClick={() => setConfirmPackId(p.id)}
                         >
-                          Delete
+                          <Trash2 className="size-3" />
                         </Button>
-                      </>
-                    }
-                    onClick={() => setSelectedId(p.id)}
-                  />
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
               {filtered.length === 0 && (
