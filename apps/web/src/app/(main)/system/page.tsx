@@ -1,16 +1,15 @@
 "use client";
-import { Activity, CalendarClock, CheckCircle2, CircleAlert, XCircle } from "lucide-react";
+import { Activity, CalendarClock, CircleAlert, Coins, Plug, XCircle } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { AgentRunsTable } from "@/components/ops/AgentRunsTable";
 import { QueryState } from "@/components/ops/QueryState";
 import { SurfaceHealthPanel } from "@/components/ops/SurfaceHealthPanel";
-import { Page, PageBody, PageHeader } from "@/components/page";
+import { Page, PageBody } from "@/components/page";
+import { KpiTile, PageHeader, StatusPill } from "@/components/patterns";
 import { Badge } from "@/components/ui/badge";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useAgentRuns,
   useCancelAgentRun,
@@ -18,7 +17,6 @@ import {
   useTelemetrySummary,
 } from "@/features/ops/hooks";
 
-type Tab = "surfaces" | "runs" | "telemetry";
 const FAILURE_TIPS: Record<string, string> = {
   timeout: "Try increasing max steps or reducing task scope.",
   schema: "Validate the workflow/input schema before rerunning.",
@@ -27,38 +25,7 @@ const FAILURE_TIPS: Record<string, string> = {
   other: "Review the latest failures for a common fix.",
 };
 
-function SummaryCard({
-  icon: Icon,
-  label,
-  value,
-  tone = "default",
-}: {
-  icon: typeof Activity;
-  label: string;
-  value: string;
-  tone?: "default" | "ok" | "warn" | "bad";
-}) {
-  const toneColor =
-    tone === "ok"
-      ? "text-emerald-400"
-      : tone === "warn"
-        ? "text-amber-400"
-        : tone === "bad"
-          ? "text-red-400"
-          : "text-[var(--ink)]";
-  return (
-    <div className="rounded-lg border border-(--hairline) bg-(--canvas) p-3">
-      <div className="flex items-center gap-1.5 text-xs text-(--mute)">
-        <Icon className="size-3.5 " aria-hidden />
-        <span className="truncate">{label}</span>
-      </div>
-      <p className={`mt-1 text-2xl font-semibold tabular-nums ${toneColor}`}>{value}</p>
-    </div>
-  );
-}
-
 export default function SystemPage() {
-  const [tab, setTab] = useState<Tab>("surfaces");
   const surfacesQuery = useSurfaces();
   const runsQuery = useAgentRuns();
   const cancelRun = useCancelAgentRun();
@@ -76,102 +43,71 @@ export default function SystemPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb={[{ label: "System", href: "/system" }, { label: "Overview" }]}
+        breadcrumb="System / Observability"
         title="System"
-        description="Runtime health, active runs, and scheduled work."
+        pill={
+          runningRuns > 0 ? (
+            <StatusPill tone="running">live monitor</StatusPill>
+          ) : (
+            <StatusPill tone="idle">nominal</StatusPill>
+          )
+        }
       />
+      <p className="px-2 text-xs text-(--mute) md:px-0">
+        Runtime health, active runs, and execution telemetry.
+      </p>
       <PageBody className="space-y-6">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <SummaryCard
-            icon={CheckCircle2}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <KpiTile
             label="Lark surfaces"
-            value={
-              surfaces.length === 0 ? "No surfaces" : `${healthySurfaces} / ${surfaces.length}`
-            }
-            tone={surfaces.length > 0 && healthySurfaces === surfaces.length ? "ok" : "warn"}
+            value={surfaces.length === 0 ? "—" : `${healthySurfaces}/${surfaces.length}`}
+            icon={Plug}
+            detail={surfaces.length === 0 ? "no surfaces" : "surface health"}
+            bar={surfaces.length === 0 ? 0 : (healthySurfaces / surfaces.length) * 100}
+            barTone="ok"
           />
-          <SummaryCard
-            icon={Activity}
+          <KpiTile
             label="Running"
-            value={String(runningRuns)}
-            tone={runningRuns > 0 ? "warn" : "default"}
+            value={runningRuns}
+            icon={Activity}
+            detail="active runs"
+            bar={runningRuns > 0 ? 100 : 0}
+            barTone="primary"
           />
-          <SummaryCard
+          <KpiTile
+            label="Failed 24h"
+            value={failedToday}
             icon={CircleAlert}
-            label="Failed today"
-            value={String(failedToday)}
-            tone={failedToday > 0 ? "bad" : "default"}
+            detail={failedToday > 0 ? "needs review" : "clean"}
+            bar={failedToday > 0 ? 100 : 0}
+            barTone="err"
+          />
+          <KpiTile
+            label="Runs 24h"
+            value={telemetryQuery.data?.runs ?? 0}
+            icon={CalendarClock}
+            detail={
+              telemetryQuery.data
+                ? `${formatTokens(telemetryQuery.data.inputTokens + telemetryQuery.data.outputTokens)} tokens`
+                : "—"
+            }
+          />
+          <KpiTile
+            label="Cost 24h"
+            value={telemetryQuery.data ? `$${telemetryQuery.data.costUsd.toFixed(2)}` : "—"}
+            icon={Coins}
+            detail={telemetryQuery.data ? `${telemetryQuery.data.toolCalls} tool calls` : "—"}
           />
         </div>
 
-        <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-          <TabsList variant="line" className="w-full justify-start">
-            <TabsTrigger value="surfaces">Surfaces</TabsTrigger>
-            <TabsTrigger value="runs">Agent Runs</TabsTrigger>
-            <TabsTrigger value="telemetry">Telemetry</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="surfaces" className="w-full min-w-0 pt-4">
-            <QueryState
-              query={surfacesQuery}
-              empty={(d) => d.length === 0}
-              emptyTitle="No Lark surfaces reporting"
-              emptyDescription="Lark surface health appears after a Lark bot agent connects."
-              emptyIcon={XCircle}
-            >
-              {(data) => (
-                <div className="space-y-3">
-                  {data.map((s) => (
-                    <SurfaceHealthPanel
-                      key={`${s.agentId}-${s.surface}`}
-                      surface={{
-                        agentId: s.agentId,
-                        agentName: s.agentName,
-                        surface: s.surface,
-                        status: s.status,
-                        lastSeenAt: s.lastSeenAt,
-                        lastError: s.lastError,
-                        counters: s.counters,
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </QueryState>
-          </TabsContent>
-
-          <TabsContent value="runs" className="w-full min-w-0 pt-4">
-            <QueryState
-              query={runsQuery}
-              empty={(d) => d.runs.length === 0}
-              emptyTitle="No Agent Runs yet"
-              emptyDescription="Runs appear after the first workflow or agent run."
-              emptyIcon={Activity}
-            >
-              {(data) => (
-                <AgentRunsTable
-                  runs={data.runs.map((r) => ({
-                    runId: r.runId,
-                    status: r.status,
-                    agentId: r.agentId ?? "",
-                    model: r.model.modelId,
-                    createdAt: r.createdAt,
-                    terminalAt: r.terminalAt,
-                    usage: r.usage ?? null,
-                    error: r.error ?? null,
-                  }))}
-                  onCancel={(runId) =>
-                    cancelRun.mutate(runId, {
-                      onSuccess: () => toast.success("Cancel requested"),
-                      onError: () => toast.error("Cancel failed"),
-                    })
-                  }
-                />
-              )}
-            </QueryState>
-          </TabsContent>
-
-          <TabsContent value="telemetry" className="w-full min-w-0 pt-4">
+        <div className="grid items-start gap-4 lg:grid-cols-12">
+          <div className="min-w-0 space-y-4 lg:col-span-7">
+            <div className="flex items-center gap-2.5">
+              <h2 className="font-display text-lg font-semibold tracking-tight text-(--ink-strong)">
+                Runtime telemetry
+              </h2>
+              <StatusPill tone="idle">24h window</StatusPill>
+            </div>
             <QueryState
               query={telemetryQuery}
               empty={(d) => d.runs === 0}
@@ -181,32 +117,6 @@ export default function SystemPage() {
             >
               {(d) => (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                    <SummaryCard
-                      icon={Activity}
-                      label="Runs (24h)"
-                      value={String(d.runs)}
-                      tone="default"
-                    />
-                    <SummaryCard
-                      icon={CircleAlert}
-                      label="Tokens"
-                      value={`${formatTokens(d.inputTokens + d.outputTokens)}`}
-                      tone="default"
-                    />
-                    <SummaryCard
-                      icon={CheckCircle2}
-                      label="Tool calls"
-                      value={String(d.toolCalls)}
-                      tone="default"
-                    />
-                    <SummaryCard
-                      icon={CalendarClock}
-                      label="Cost"
-                      value={`$${d.costUsd.toFixed(4)}`}
-                      tone="default"
-                    />
-                  </div>
                   {d.byAgent.length > 0 && (
                     <div className="rounded-lg border border-(--hairline) p-3">
                       <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--mute)">
@@ -462,8 +372,83 @@ export default function SystemPage() {
                 </div>
               )}
             </QueryState>
-          </TabsContent>
-        </Tabs>
+          </div>
+          <div className="min-w-0 space-y-4 lg:col-span-5">
+            <div className="flex items-center gap-2.5">
+              <h2 className="font-display text-lg font-semibold tracking-tight text-(--ink-strong)">
+                Surfaces &amp; health
+              </h2>
+              <StatusPill tone="idle">
+                {healthySurfaces}/{surfaces.length} live
+              </StatusPill>
+            </div>
+            <QueryState
+              query={surfacesQuery}
+              empty={(d) => d.length === 0}
+              emptyTitle="No Lark surfaces reporting"
+              emptyDescription="Lark surface health appears after a Lark bot agent connects."
+              emptyIcon={XCircle}
+            >
+              {(data) => (
+                <div className="space-y-3">
+                  {data.map((s) => (
+                    <SurfaceHealthPanel
+                      key={`${s.agentId}-${s.surface}`}
+                      surface={{
+                        agentId: s.agentId,
+                        agentName: s.agentName,
+                        surface: s.surface,
+                        status: s.status,
+                        lastSeenAt: s.lastSeenAt,
+                        lastError: s.lastError,
+                        counters: s.counters,
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </QueryState>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-2.5">
+            <h2 className="font-display text-lg font-semibold tracking-tight text-(--ink-strong)">
+              Agent runs
+            </h2>
+            <StatusPill tone={runningRuns > 0 ? "running" : "idle"}>
+              {runningRuns} active
+            </StatusPill>
+          </div>
+          <QueryState
+            query={runsQuery}
+            empty={(d) => d.runs.length === 0}
+            emptyTitle="No Agent Runs yet"
+            emptyDescription="Runs appear after the first workflow or agent run."
+            emptyIcon={Activity}
+          >
+            {(data) => (
+              <AgentRunsTable
+                runs={data.runs.map((r) => ({
+                  runId: r.runId,
+                  status: r.status,
+                  agentId: r.agentId ?? "",
+                  model: r.model.modelId,
+                  createdAt: r.createdAt,
+                  terminalAt: r.terminalAt,
+                  usage: r.usage ?? null,
+                  error: r.error ?? null,
+                }))}
+                onCancel={(runId) =>
+                  cancelRun.mutate(runId, {
+                    onSuccess: () => toast.success("Cancel requested"),
+                    onError: () => toast.error("Cancel failed"),
+                  })
+                }
+              />
+            )}
+          </QueryState>
+        </div>
       </PageBody>
     </Page>
   );
