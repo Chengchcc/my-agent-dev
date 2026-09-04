@@ -7,21 +7,14 @@ import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { InstallPackForm } from "@/components/InstallPackForm";
 import { PackFileSearch } from "@/components/PackFileSearch";
 import { PackFileViewer } from "@/components/PackFileViewer";
-import { Page, PageBody, PageHeader } from "@/components/page";
-import { FileTree } from "@/components/SkillPackManager";
+import { Page, PageBody } from "@/components/page";
+import { KpiTile, MonoLabel, PageHeader, StatusPill, type StatusTone } from "@/components/patterns";
+import { FileTree, statusLabel } from "@/components/SkillPackManager";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
-import {
-  InfoBanner,
-  ListToolbar,
-  SectionKicker,
-  StatCard,
-  SubTabs,
-  statusBadge,
-} from "@/components/ui/polish";
-import { ResourceCard } from "@/components/ui/resource-card";
+import { InfoBanner, ListToolbar, SectionKicker, statusBadge } from "@/components/ui/polish";
 import { ResourceDetailSheet } from "@/components/ui/resource-detail-sheet";
 import {
   Select,
@@ -52,10 +45,11 @@ function toDateString(value: number): string {
   return new Date(ms).toLocaleDateString();
 }
 
-function statusTone(status: string): "ok" | "warn" | "err" {
-  if (status === "ready") return "ok";
-  if (status === "failed") return "err";
-  return "warn";
+function statusTone(status: string): StatusTone {
+  if (status === "ready") return "success";
+  if (status === "failed") return "error";
+  if (status === "installing" || status === "syncing") return "running";
+  return "idle";
 }
 
 function PackDrawer({
@@ -90,7 +84,10 @@ function PackDrawer({
       icon={<Package className="size-5 text-(--mute)" />}
       title={pack.name}
       subtitle={pack.sourceKind === "git" ? "Git" : pack.sourceKind}
-      badge={{ label: badge.label, tone: badge.tone === "err" ? "err" : statusTone(pack.status) }}
+      badge={{
+        label: badge.label,
+        tone: pack.status === "ready" ? "ok" : pack.status === "failed" ? "err" : "warn",
+      }}
       tabs={[
         { key: "overview", label: "Overview" },
         { key: "files", label: "Files" },
@@ -362,12 +359,15 @@ export default function SkillPacksPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb={[
-          { label: "Team", href: "/team" },
-          { label: "Skills", href: "/team/skills" },
-        ]}
+        breadcrumb="Team / Capabilities / Skills"
         title="Skills"
-        subtitle="Manage re-usable skill packs for agents."
+        pill={
+          list.length > 0 ? (
+            <StatusPill tone="success">
+              {ready}/{list.length} ready
+            </StatusPill>
+          ) : undefined
+        }
         actions={
           <Button onClick={() => setShowInstall(true)}>
             <Download className="size-4" />
@@ -375,6 +375,9 @@ export default function SkillPacksPage() {
           </Button>
         }
       />
+      <p className="px-2 text-xs text-(--mute) md:px-0">
+        Managed skills and capability bundles per agent.
+      </p>
       <PageBody>
         <div className="space-y-6">
           <InfoBanner
@@ -383,14 +386,48 @@ export default function SkillPacksPage() {
             body="Install a pack from git or a zip upload, then assign it per agent from the agent's Skills tab. Click a card to browse its skills and files."
           />
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="Packs" value={list.length} />
-            <StatCard label="Ready" value={ready} />
-            <StatCard label="Syncing" value={syncing} />
-            <StatCard label="Errors" value={errors} tone={errors > 0 ? "err" : undefined} />
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <KpiTile label="Packs" value={list.length} icon={Package} detail="installed" />
+            <KpiTile
+              label="Ready"
+              value={ready}
+              icon={Download}
+              detail={`${syncing} syncing`}
+              bar={list.length === 0 ? 0 : (ready / list.length) * 100}
+              barTone="ok"
+            />
+            <KpiTile
+              label="Syncing"
+              value={syncing}
+              icon={RefreshCw}
+              detail="installing · pending"
+            />
+            <KpiTile
+              label="Errors"
+              value={errors}
+              icon={Trash2}
+              detail={errors > 0 ? "failed packs" : "clean"}
+              bar={errors > 0 ? 100 : 0}
+              barTone="err"
+            />
           </div>
 
-          <SubTabs items={statusTabs} active={statusFilter} onChange={setStatusFilter} />
+          <div className="flex flex-wrap items-center gap-1.5">
+            {statusTabs.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setStatusFilter(t.key)}
+                className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
+                  statusFilter === t.key
+                    ? "bg-(--panel2) font-medium text-(--primary)"
+                    : "bg-(--canvas-soft) text-(--mute) hover:text-(--ink)"
+                }`}
+              >
+                {t.label} ({t.count})
+              </button>
+            ))}
+          </div>
 
           <ListToolbar
             searchValue={query}
@@ -425,34 +462,77 @@ export default function SkillPacksPage() {
                     void api.setAgentSkillPacks(agentId, { packIds: next });
                     void qc.invalidateQueries({ queryKey: skillPackKeys.agentPacks(agentId) });
                   };
-                  const badge = statusBadge(p.status);
+                  const tone = statusTone(p.status) as StatusTone;
+                  const iconTone =
+                    p.sourceKind === "builtin"
+                      ? "var(--primary)"
+                      : p.sourceKind === "git"
+                        ? "var(--accent-violet)"
+                        : "var(--ok)";
                   return (
-                    <ResourceCard
+                    <div
                       key={p.id}
-                      icon={<Package className="size-4 text-(--mute)" />}
-                      title={p.name}
-                      badge={{
-                        label: badge.label,
-                        tone: badge.tone === "err" ? "err" : statusTone(p.status),
-                      }}
-                      description={p.error ?? p.description}
-                      tags={[{ label: p.sourceKind }]}
-                      lint={[
-                        ...(usedBy.length
-                          ? [
-                              {
-                                label: `${usedBy.length} agent${usedBy.length > 1 ? "s" : ""}`,
-                                tone: "ok" as const,
-                              },
-                            ]
-                          : [{ label: "not assigned", tone: "warn" as const }]),
-                        ...(p.keepSynced === true
-                          ? [{ label: "auto-sync", tone: "info" as const }]
-                          : []),
-                      ]}
-                      meta={`${toDateString(p.createdAt)}${p.installedRef ? ` · @${p.installedRef.slice(0, 8)}` : ""}`}
-                      footer={
-                        <>
+                      className="group relative flex flex-col justify-between rounded-lg border border-(--hairline) bg-(--panel) p-4 transition-colors hover:bg-(--canvas-soft)"
+                    >
+                      <div className="flex flex-col gap-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <span
+                              className="flex size-10 shrink-0 items-center justify-center rounded"
+                              style={{
+                                backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
+                                color: iconTone,
+                              }}
+                            >
+                              <Package className="size-5" />
+                            </span>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="truncate font-display text-sm font-semibold text-(--ink-strong)">
+                                  {p.name}
+                                </span>
+                                {p.installedRef && (
+                                  <span className="shrink-0 font-mono text-[10px] text-(--faint)">
+                                    @{p.installedRef.slice(0, 8)}
+                                  </span>
+                                )}
+                              </div>
+                              <MonoLabel className="text-(--ok)">
+                                {p.sourceKind} · {p.status}
+                              </MonoLabel>
+                            </div>
+                          </div>
+                          <StatusPill tone={tone} className="shrink-0">
+                            {statusLabel(p.status)}
+                          </StatusPill>
+                        </div>
+                        <p className="line-clamp-2 text-xs text-(--mute)">
+                          {p.error ?? p.description ?? "No description."}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <MonoLabel className="text-(--faint)">Bound agents:</MonoLabel>
+                          {usedBy.length > 0 ? (
+                            usedBy.slice(0, 3).map((name) => (
+                              <span
+                                key={name}
+                                className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--accent-violet)"
+                              >
+                                {name}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="font-mono text-[10px] text-(--warn)">
+                              not assigned
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-(--hairline) pt-2.5">
+                        <span className="font-mono text-[10px] text-(--faint)">
+                          {toDateString(p.createdAt)}
+                          {p.keepSynced === true ? " · auto-sync" : ""}
+                        </span>
+                        <div className="flex items-center gap-1.5">
                           <AssignToAgentSelect
                             agents={agentsData ?? []}
                             assigned={isAssigned}
@@ -472,22 +552,22 @@ export default function SkillPacksPage() {
                             </Button>
                           )}
                           <Button variant="outline" size="sm" onClick={() => setSelectedId(p.id)}>
-                            View
+                            Inspect
                           </Button>
                           {p.sourceKind !== "builtin" && (
                             <Button
-                              variant="destructive"
+                              variant="ghost"
                               size="sm"
+                              className="text-(--err) hover:bg-(--err)/10"
+                              aria-label={`Delete ${p.name}`}
                               onClick={() => void handleDelete(p)}
                             >
                               <Trash2 className="size-3" />
-                              Delete
                             </Button>
                           )}
-                        </>
-                      }
-                      onClick={() => setSelectedId(p.id)}
-                    />
+                        </div>
+                      </div>
+                    </div>
                   );
                 })}
                 {filtered.length === 0 && (

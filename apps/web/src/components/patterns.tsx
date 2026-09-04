@@ -102,13 +102,14 @@ export function KpiTile({
   icon?: LucideIcon;
   /** 0–100 fill width for the progress strip. */
   bar?: number;
-  barTone?: "primary" | "ok" | "violet";
+  barTone?: "primary" | "ok" | "violet" | "err";
   className?: string;
 }) {
   const BAR_COLOR: Record<string, string> = {
     primary: "bg-(--primary)",
     ok: "bg-(--ok)",
     violet: "bg-(--accent-violet)",
+    err: "bg-(--err)",
   };
   return (
     <div
