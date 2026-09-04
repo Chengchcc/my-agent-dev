@@ -1,11 +1,12 @@
 "use client";
 
-import { Upload } from "lucide-react";
+import { FileText, FolderOpen, HardDrive, Search, Trash2, Upload } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ArtifactPreview } from "@/components/ArtifactPreview";
-import { Page, PageBody, PageHeader } from "@/components/page";
+import { Page, PageBody } from "@/components/page";
+import { KpiTile, MonoLabel, PageHeader, StatusPill } from "@/components/patterns";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
@@ -46,6 +47,19 @@ export default function ArtifactsPage() {
   const uploadArtifact = useUploadArtifact();
   const deleteArtifact = useDeleteArtifact();
   const uploading = uploadArtifact.isPending;
+  const [query, setQuery] = useState("");
+  const [folderFilter, setFolderFilter] = useState("all");
+
+  const folders = useMemo(
+    () => [...new Set(artifacts.map((a) => a.url.split("/")[1] ?? "").filter(Boolean))].sort(),
+    [artifacts],
+  );
+  const totalBytes = artifacts.reduce((sum, a) => sum + a.size, 0);
+  const visible = artifacts.filter((a) => {
+    if (folderFilter !== "all" && !a.url.startsWith(`artifacts://${folderFilter}/`)) return false;
+    if (query && !a.url.toLowerCase().includes(query.toLowerCase())) return false;
+    return true;
+  });
 
   async function openPreview(url: string) {
     try {
@@ -108,54 +122,149 @@ export default function ArtifactsPage() {
   return (
     <Page>
       <PageHeader
-        breadcrumb={[{ label: "Work", href: "/today" }, { label: "Artifacts" }]}
+        breadcrumb="Work / Artifacts registry"
         title="Artifacts"
-        description="Artifacts shared between agents"
-        action={
-          <Button size="sm" onClick={() => setUploadOpen(true)}>
+        pill={
+          artifacts.length > 0 ? (
+            <StatusPill tone="success">{artifacts.length} stored</StatusPill>
+          ) : undefined
+        }
+        actions={
+          <Button
+            size="sm"
+            className="bg-(--primary-soft) text-(--on-primary) hover:bg-(--primary)"
+            onClick={() => setUploadOpen(true)}
+          >
             <Upload className="mr-1 size-3.5" />
             Upload
           </Button>
         }
       />
-      <PageBody className="space-y-4">
+      <PageBody size="wide" className="space-y-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <KpiTile
+            label="Total stored"
+            value={artifacts.length}
+            icon={FileText}
+            detail="artifacts"
+          />
+          <KpiTile
+            label="Storage"
+            value={fmtSize(totalBytes)}
+            icon={HardDrive}
+            detail="across buckets"
+          />
+          <KpiTile
+            label="Buckets"
+            value={folders.length}
+            icon={FolderOpen}
+            detail={folders.slice(0, 2).join(" · ") || "none"}
+          />
+        </div>
+
+        <div className="flex flex-col justify-between gap-2 rounded-lg border border-(--hairline) bg-(--panel) px-4 py-2.5 md:flex-row md:items-center">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <MonoLabel className="mr-1">Bucket:</MonoLabel>
+            {["all", ...folders].map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFolderFilter(f)}
+                className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
+                  folderFilter === f
+                    ? "bg-(--panel2) font-medium text-(--primary)"
+                    : "bg-(--canvas-soft) text-(--mute) hover:text-(--ink)"
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 rounded-sm border border-(--hairline) bg-(--canvas-soft) px-2 py-1 md:w-64">
+            <Search className="size-3.5 text-(--faint)" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="filter by url…"
+              className="w-full bg-transparent font-mono text-[11px] text-(--ink) placeholder:text-(--faint) focus:outline-none"
+              aria-label="Filter artifacts by url"
+            />
+          </div>
+        </div>
+
         <div>
-          <div className="mb-2 text-sm font-medium">Stored artifacts ({artifacts.length})</div>
+          <MonoLabel className="text-(--faint)">Stored artifacts ({visible.length})</MonoLabel>
           {loading ? (
-            <div className="text-xs text-(--mute)">Loading…</div>
+            <div className="mt-3 text-xs text-(--mute)">Loading…</div>
           ) : artifacts.length === 0 ? (
-            <div className="text-xs text-(--mute)">
+            <div className="mt-3 text-xs text-(--mute)">
               No artifacts yet. Artifacts are produced by workflow runs —{" "}
-              <Link href="/workflows" className="text-(--info) hover:underline">
+              <Link href="/workflows" className="text-(--primary) hover:underline">
                 run a workflow
               </Link>{" "}
               to create one.
             </div>
+          ) : visible.length === 0 ? (
+            <div className="mt-3 text-xs text-(--mute)">No artifacts match the filters.</div>
           ) : (
-            <div className="space-y-1">
-              {artifacts.map((a) => (
-                <div
-                  key={a.url}
-                  className="flex items-center gap-2 rounded-lg border border-(--hairline) px-3 py-2 text-xs"
-                >
-                  <button
-                    className="min-w-0 flex-1 truncate text-left font-mono text-(--info) hover:underline"
-                    onClick={() => openPreview(a.url)}
+            <div className="mt-3 space-y-2">
+              {visible.map((a) => {
+                const segments = a.url.split("/");
+                const filename = segments[segments.length - 1] ?? a.url;
+                const bucket = segments[1] ?? "";
+                const ext = filename.includes(".") ? filename.split(".").pop() : "bin";
+                return (
+                  <div
+                    key={a.url}
+                    className="flex items-center gap-3 rounded-lg border border-(--hairline) bg-(--panel) px-3 py-2.5 transition-colors hover:bg-(--canvas-soft)"
                   >
-                    {a.url}
-                  </button>
-                  <span className="shrink-0 text-(--mute)">{fmtSize(a.size)}</span>
-                  <span className="shrink-0 text-(--mute)">{a.mimeType}</span>
-                  <button
-                    className="shrink-0 text-(--err) hover:underline"
-                    onClick={() => remove(a.url)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              ))}
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded bg-(--primary)/10 text-(--primary)">
+                      <FileText className="size-4.5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium text-(--ink)">
+                          {filename}
+                        </span>
+                        <span className="shrink-0 rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] uppercase text-(--primary)">
+                          {ext}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-2 font-mono text-[10px] text-(--mute)">
+                        <span className="truncate">{a.url}</span>
+                        <span className="shrink-0">· {bucket || "root"}</span>
+                        <span className="shrink-0">· {a.mimeType}</span>
+                        <span className="shrink-0 tabular-nums">· {fmtSize(a.size)}</span>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <Button variant="outline" size="sm" onClick={() => openPreview(a.url)}>
+                        Preview
+                      </Button>
+                      <button
+                        type="button"
+                        className="rounded p-1.5 text-(--mute) transition-colors hover:bg-(--panel2) hover:text-(--ink)"
+                        aria-label="Copy url"
+                        onClick={() => void navigator.clipboard.writeText(a.url)}
+                      >
+                        Copy
+                      </button>
+                      <button
+                        className="rounded p-1.5 text-(--err) transition-colors hover:bg-(--err)/10"
+                        aria-label={`Delete ${a.url}`}
+                        onClick={() => remove(a.url)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
+          <p className="pt-1 text-right font-mono text-[10px] text-(--faint)">
+            showing {visible.length} of {artifacts.length}
+          </p>
         </div>
       </PageBody>
 
