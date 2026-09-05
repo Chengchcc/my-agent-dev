@@ -84,3 +84,51 @@ Installed plugins contribute oma-native custom tools + hooks (our own shapes, th
 2. `loadPluginCode` (native dynamic import) + shape validation for tools/hooks entries.
 3. Plugin `.mcp.json` merge into `mcp-mount` (+ `${CLAUDE_PLUGIN_ROOT}` substitution).
 4. `resolvePluginComponents` + trust record + TUI ask-once dialog; wire into `assembleRunRuntime`.
+
+## Web UI capability alignment (2026-09-04) — P1/P2 shipped, P3 remains
+
+**Shipped** (commits accb4dce..f8d3762a redesign + 03b48c54/f5698b7f/39cc7647/
+611ad7ab capability alignment): Obsidian Control Matrix token migration, 9
+designed pages rebuilt to the design anatomy, TopBar, page-pattern kit, and the
+P1/P2 server capabilities — MCP tool catalog/schema-hash/probe-latency/invoke/
+restart, system metrics (/proc subprocess scan), batch human-gate resolution,
+per-model×hour cost rollup, knowledge pack stats, skill-pack lockfile/validate.
+Verification loop: 1920px screenshots vs design PNGs via vision diff (fidelity
+scoreboard in git history; vision absolute scores are prompt/crop sensitive —
+treat as gap-finders, verify claimed gaps against the DOM before acting).
+
+**P3 remaining items** (each needs its own design pass / ADR):
+
+- **Span traces Tier 2 — transport segments.** Tier 1 shipped: run-detail
+  `RunWaterfall` derives tool-call spans + model-turn gaps from the existing
+  `agent_run_event` log (no new identity). Tier 2 adds rpc_spawn / jsonl_pipe /
+  sqlite_write timing — requires L3 (adapter-oma-agent) instrumentation. ADR
+  required: spans are run-scoped telemetry (FK to runId, no lifecycle), never a
+  second execution identity (Phase 6 deleted the old span/attempt/control-plane
+  tables for exactly that fragmentation).
+- **Agent-run pause.** New runtime control state beyond stop: oma child must
+  checkpoint mid-run and resume on resume-command. Touches oma loop, adapter
+  JSONL protocol, and branch input queue semantics.
+- **Vector retrieval / embeddings for knowledge.** New product line: embedding
+  pipeline, vector store, chunk-level retrieval; current knowledge packs are
+  file-level only. Includes stats exposure beyond file counts (tokens/chunks are
+  estimates today) and reindex/test-query endpoints.
+- **Lark conversation binding sync.** The chat page's "Lark Sync" pill needs the
+  larkChatId↔conversationId mapping that lives in apps/lark-bot's own SQLite —
+  cross-app sync into the backend (schema + flow) so the web can render binding
+  state per conversation.
+- **Skill/pack invocation counters.** Per-pack and per-skill usage telemetry
+  (design's "Invocations Today" tiles). Requires tool-call events to carry the
+  originating pack id.
+- **Artifact ledger + retention.** Source provenance exists (meta.json + list
+  API); missing: sha256 content ledger with verification endpoint, retention
+  TTL sweep (cron), purge API.
+- **Knowledge reindex / test-query endpoints** (S): re-materialize a pack and
+  a timed search probe; cut from P2 as non-essential.
+- **Budget ceiling.** Client computes pace from the 24h cost curve; a formal
+  ceiling needs a settings key + alert field in telemetry summary.
+
+**Dev convenience:** `apps/backend/scripts/seed-demo.ts` seeds the dev DB with
+dense demo data (48 runs/24h, workflow gates incl. pending-human rows, artifact
+files with provenance) so UI pages render at design-like density. Ephemeral
+ids — dev DB only.
