@@ -191,6 +191,21 @@ export default function KnowledgePackPage() {
   const qc = useQueryClient();
   const { data, refetch } = useKnowledgePacks();
   const { data: agentsData } = useAgentList();
+  const [allStats, setAllStats] = useState<Record<string, { files: number; totalBytes: number }>>(
+    {},
+  );
+  useEffect(() => {
+    api
+      .knowledgeAllStats()
+      .then((rows) => {
+        const map: Record<string, { files: number; totalBytes: number }> = {};
+        for (const r of rows) {
+          map[r.packId] = { files: r.files, totalBytes: r.totalBytes };
+        }
+        setAllStats(map);
+      })
+      .catch(() => {});
+  }, []);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [name, setName] = useState("");
@@ -414,6 +429,15 @@ export default function KnowledgePackPage() {
                       <p className="line-clamp-2 text-xs text-(--mute)">
                         {(p.status === "failed" && p.error) || p.description || "No description."}
                       </p>
+                      {(() => {
+                        const st = allStats[p.id];
+                        if (!st) return null;
+                        return (
+                          <div className="flex items-center gap-1.5 font-mono text-[10px] text-(--faint)">
+                            {st.files} files · {Math.round(st.totalBytes / 1024)}KB indexed
+                          </div>
+                        );
+                      })()}
                       <div className="flex flex-wrap items-center gap-1.5">
                         <MonoLabel className="text-(--faint)">Bound agents:</MonoLabel>
                         {usedByNames.length > 0 ? (

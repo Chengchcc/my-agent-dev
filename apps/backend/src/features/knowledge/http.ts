@@ -5,6 +5,9 @@ import { KnowledgePackNotFoundError, type KnowledgeService } from "./service.js"
  *  agent update API (agent.yml knowledge_packs). */
 export function knowledgeRoutes(svc: KnowledgeService) {
   return new Elysia()
+    .get("/api/knowledge-packs/stats", () => {
+      return svc.allStats();
+    })
     .get("/api/knowledge-packs/:id/stats", ({ params }) => {
       return svc.stats(params.id);
     })

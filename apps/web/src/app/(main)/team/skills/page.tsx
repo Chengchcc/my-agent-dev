@@ -262,6 +262,7 @@ export default function SkillPacksPage() {
   }> | null>(null);
   const [validating, setValidating] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showInstall, setShowInstall] = useState(false);
   const syncMutation = useSyncPack();
@@ -283,9 +284,11 @@ export default function SkillPacksPage() {
   });
 
   const list = useMemo(() => packs ?? [], [packs]);
+  const sourceKinds = useMemo(() => [...new Set(list.map((p) => p.sourceKind))].sort(), [list]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return list.filter((p) => {
+      if (sourceFilter !== "all" && p.sourceKind !== sourceFilter) return false;
       if (statusFilter === "ready" && p.status !== "ready") return false;
       if (
         statusFilter === "syncing" &&
@@ -298,7 +301,7 @@ export default function SkillPacksPage() {
       if (!q) return true;
       return p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q);
     });
-  }, [list, query, statusFilter]);
+  }, [list, query, statusFilter, sourceFilter]);
 
   const hasPending = list.some((p) => p.status === "installing" || p.status === "syncing");
   useEffect(() => {
@@ -453,6 +456,24 @@ export default function SkillPacksPage() {
             />
           </div>
 
+          <div className="flex flex-wrap items-center gap-1.5">
+            {["all", ...sourceKinds].map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setSourceFilter(kind)}
+                className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
+                  sourceFilter === kind
+                    ? "bg-(--panel2) font-medium text-(--primary)"
+                    : "bg-(--canvas-soft) text-(--mute) hover:text-(--ink)"
+                }`}
+              >
+                {kind === "all"
+                  ? `All sources (${list.length})`
+                  : `${kind} (${list.filter((x) => x.sourceKind === kind).length})`}
+              </button>
+            ))}
+          </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {statusTabs.map((t) => (
               <button

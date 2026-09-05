@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useAgentList } from "@/features/agents/hooks";
 import { useKnowledgePacks } from "@/features/knowledge/hooks";
 import { useMcpCatalog } from "@/features/mcp/hooks";
+import { useAgentRuns } from "@/features/ops/hooks";
 
 /** Runtime → left-edge strip / avatar / chip color (design: oma cyan, claude
  * violet, omp emerald, pi red, others faint). */
@@ -42,6 +43,7 @@ const STATUS_OPTIONS: ReadonlyArray<{ id: StatusFilter; label: string }> = [
 
 export default function TeamPage() {
   const { data: agents, isLoading } = useAgentList();
+  const { data: runs } = useAgentRuns();
   const { data: mcpData } = useMcpCatalog();
   const { data: knowledgeData } = useKnowledgePacks();
   const [runtimeFilter, setRuntimeFilter] = useState<string>("all");
@@ -75,6 +77,12 @@ export default function TeamPage() {
   const agentsWithoutProjects = active.filter((a) => !a.projects?.length);
   const attentionCount =
     unassignedMcp.length + unassignedKnowledge.length + agentsWithoutProjects.length;
+
+  const activeRunAgents = new Set(
+    (runs?.runs ?? [])
+      .filter((r) => ["running", "waiting", "commit_failed"].includes(r.status))
+      .map((r) => r.agentId),
+  );
 
   const visible = active.filter((a) => {
     if (runtimeFilter !== "all" && a.backendKind !== runtimeFilter) return false;
@@ -274,8 +282,11 @@ export default function TeamPage() {
                         </span>
                       </div>
                     </div>
-                    <StatusPill tone={isDisabled ? "idle" : "success"} className="shrink-0">
-                      {isDisabled ? "idle" : "enabled"}
+                    <StatusPill
+                      tone={isDisabled ? "idle" : activeRunAgents.has(a.id) ? "running" : "success"}
+                      className="shrink-0"
+                    >
+                      {isDisabled ? "idle" : activeRunAgents.has(a.id) ? "running" : "enabled"}
                     </StatusPill>
                   </div>
 

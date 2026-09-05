@@ -28,6 +28,7 @@ export interface KnowledgePackStats {
 export interface KnowledgeService {
   list(): KnowledgePackRow[];
   stats(packId: string): KnowledgePackStats;
+  allStats(): KnowledgePackStats[];
   getById(id: string): KnowledgePackRow | null;
   install(input: {
     name: string;
@@ -85,8 +86,21 @@ export function createKnowledgeService(deps: {
       };
     },
 
-    getById(id: string): KnowledgePackRow | null {
-      return deps.port.getById(id);
+    allStats(): KnowledgePackStats[] {
+      return deps.port.list().map((row) => {
+        try {
+          return this.stats(row.id);
+        } catch {
+          return {
+            packId: row.id,
+            status: row.status,
+            files: 0,
+            totalBytes: 0,
+            estTokens: 0,
+            newestFileAt: null,
+          };
+        }
+      });
     },
 
     async install(input): Promise<KnowledgePackRow> {
