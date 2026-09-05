@@ -67,7 +67,7 @@ function isToday(ts: number | string | undefined) {
 }
 
 function hhmm(ts: number) {
-  return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
 export default function TodayPage() {
@@ -171,7 +171,7 @@ export default function TodayPage() {
     }
   }
 
-  const today = new Date().toLocaleDateString(undefined, {
+  const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -218,7 +218,12 @@ export default function TodayPage() {
         }
       />
       <PageBody size="wide" className="space-y-4">
-        <p className="font-mono text-[10px] uppercase tracking-kicker text-(--faint)">{today}</p>
+        <p
+          suppressHydrationWarning
+          className="font-mono text-[10px] uppercase tracking-kicker text-(--faint)"
+        >
+          {today}
+        </p>
 
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <KpiTile
@@ -465,7 +470,7 @@ export default function TodayPage() {
                     <XAxis
                       dataKey="hour"
                       tickFormatter={(h: number) =>
-                        new Date(h).toLocaleTimeString(undefined, { hour: "numeric" })
+                        new Date(h).toLocaleTimeString("en-US", { hour: "numeric" })
                       }
                     />
                     <YAxis width={40} tickFormatter={(v: number) => `$${v}`} />

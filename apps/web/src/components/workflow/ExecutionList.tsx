@@ -230,7 +230,7 @@ export function ExecutionList({
                   href={`/workflows/${workflowId}/executions/${e.executionId}`}
                   className="mt-1 block truncate text-sm font-medium text-(--ink) hover:text-(--primary)"
                 >
-                  {new Date(e.createdAt).toLocaleString()}
+                  {new Date(e.createdAt).toLocaleString("en-US")}
                 </Link>
               </div>
               {e.status === "failure" && e.error && (

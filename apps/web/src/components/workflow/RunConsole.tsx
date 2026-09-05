@@ -35,7 +35,7 @@ export function RunConsole({ events }: { events: TraceEvent[] }) {
           className="flex items-start gap-2 border-b border-(--hairline)/40 py-1.5 last:border-b-0"
         >
           <span className="shrink-0 font-mono text-[10px] text-(--faint) tabular-nums">
-            {new Date(e.ts).toLocaleTimeString(undefined, {
+            {new Date(e.ts).toLocaleTimeString("en-US", {
               hour: "2-digit",
               minute: "2-digit",
               second: "2-digit",

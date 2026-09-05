@@ -332,7 +332,7 @@ export function ExecutionTraceView({
               </span>
               <span>
                 Duration{" "}
-                <span className="text-(--ink-strong)">
+                <span suppressHydrationWarning className="text-(--ink-strong)">
                   {fmtDuration(execution.createdAt, terminal)}
                 </span>{" "}
                 <span className="text-(--faint)">({terminal ? "Terminal" : "Active"})</span>

@@ -214,7 +214,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
                       ? "Awaiting confirmation"
                       : d.lastExecution.status}
                   </span>
-                  <span>{new Date(d.lastExecution.createdAt).toLocaleString()}</span>
+                  <span>{new Date(d.lastExecution.createdAt).toLocaleString("en-US")}</span>
                   {d.lastExecution.terminalAt && d.lastExecution.createdAt && (
                     <span>
                       {Math.max(

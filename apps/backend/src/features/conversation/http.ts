@@ -55,6 +55,15 @@ export function conversationRoutes(
           if (body.projectId && projectExists && !projectExists(body.projectId)) {
             return Response.json({ error: `unknown project ${body.projectId}` }, { status: 400 });
           }
+          // Idempotent create: workflow-scoped chats (and any caller that
+          // passes a stable conversationId) may POST on every reload when the
+          // conversation already exists. Return it instead of crashing the
+          // insert with a UNIQUE violation.
+          const existing = svc.port.getConversation(conversationId);
+          if (existing) {
+            set.status = 200;
+            return { conversationId, agentId: existing.agentId ?? body.agentId ?? "default" };
+          }
           svc.port.createConversation({
             conversationId,
             agentId: body.agentId,
