@@ -1,1 +1,12 @@
-bun run lint
+# Lint only files changed relative to the push destination. The full turbo
+# lint (15 packages) routinely OOMs on this 3.5GB box under earlyoom.
+BASE=$(git rev-parse --verify --quiet @{push} 2>/dev/null || git rev-parse --verify --quiet origin/master)
+CHANGED=$(git diff --name-only --diff-filter=ACMR "$BASE...HEAD" -- '*.ts' '*.tsx' '*.js' '*.mjs' '*.css' '*.json' ':!bun.lock' 2>/dev/null)
+if [ -z "$CHANGED" ]; then
+  echo "pre-push: no changed lintable files, skipping"
+  exit 0
+fi
+COUNT=$(echo $CHANGED | wc -w)
+echo "pre-push: biome + eslint on $COUNT changed files"
+bunx biome check $CHANGED || exit 1
+bunx eslint $CHANGED

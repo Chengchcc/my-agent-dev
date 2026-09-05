@@ -20,8 +20,7 @@ export function MonoLabel({ children, className }: { children: ReactNode; classN
   );
 }
 
-const STATUS_TONES = ["running", "success", "waiting", "error", "idle"] as const;
-export type StatusTone = (typeof STATUS_TONES)[number];
+export type StatusTone = "running" | "success" | "waiting" | "error" | "idle";
 
 const STATUS_STYLE: Record<StatusTone, { dot: string; text: string }> = {
   running: { dot: "bg-(--primary) animate-dot-pulse", text: "text-(--primary)" },
@@ -120,7 +119,7 @@ export function KpiTile({
     >
       {Icon && <Icon className="absolute top-3 right-3 size-4 text-(--faint)" />}
       <MonoLabel>{label}</MonoLabel>
-      <span className="font-display text-[34px] leading-10 font-semibold tracking-tight text-(--ink-strong) tabular-nums">
+      <span className="font-display text-[34px]/10  font-semibold tracking-tight text-(--ink-strong) tabular-nums">
         {value}
       </span>
       {detail && <span className="text-xs text-(--mute)">{detail}</span>}

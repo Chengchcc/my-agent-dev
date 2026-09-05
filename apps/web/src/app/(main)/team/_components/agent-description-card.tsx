@@ -10,7 +10,7 @@ export function AgentDescriptionCard({ agent }: { agent: AgentRow }) {
     <section className="flex items-start gap-4 rounded-(--radius-card) border border-(--hairline) bg-(--panel) p-4">
       <span
         aria-hidden
-        className="flex shrink-0 items-center justify-center rounded-[12px] bg-(--panel2) text-(--mute)"
+        className="flex shrink-0 items-center justify-center rounded-xl bg-(--panel2) text-(--mute)"
         style={{ width: 72, height: 72 }}
       >
         <Bot className="size-8" />

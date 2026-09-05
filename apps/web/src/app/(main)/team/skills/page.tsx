@@ -497,6 +497,29 @@ export default function SkillPacksPage() {
             placeholder="Search skill packs by name or description"
           />
 
+          {validateResult && (
+            <section className="space-y-2 rounded-lg border border-(--hairline) bg-(--panel) p-4">
+              <div className="flex items-center justify-between">
+                <MonoLabel>Manifest validation</MonoLabel>
+                <StatusPill tone={validateResult.every((r) => r.ok) ? "success" : "error"}>
+                  {validateResult.filter((r) => r.ok).length}/{validateResult.length} ok
+                </StatusPill>
+              </div>
+              <div className="divide-y divide-(--hairline) text-xs">
+                {validateResult.map((r) => (
+                  <div key={r.id} className="flex items-center justify-between gap-2 py-1.5">
+                    <span className="truncate font-mono text-(--ink)">{r.name}</span>
+                    <span
+                      className={`font-mono text-[10px] ${r.ok ? "text-(--ok)" : "text-(--err)"}`}
+                    >
+                      {r.ok ? `${r.skills} skills` : r.issues[0]}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           <div>
             <SectionKicker hint="Sync pulls the latest revision of git packs.">
               Installed packs

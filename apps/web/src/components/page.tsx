@@ -89,7 +89,7 @@ export function PageHeader({
               {kicker}
             </p>
           )}
-          <h1 className="text-[1.625rem] font-semibold leading-tight text-(--ink)">{title}</h1>
+          <h1 className="text-h1/tight font-semibold  text-(--ink)">{title}</h1>
           {(subtitle ?? description) && (
             <p className="mt-0.5 text-(--text-body) text-(--mute)">{subtitle ?? description}</p>
           )}
