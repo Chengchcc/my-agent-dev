@@ -8,8 +8,8 @@ import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { InstallPackForm } from "@/components/InstallPackForm";
 import { PackFileSearch } from "@/components/PackFileSearch";
 import { PackFileViewer } from "@/components/PackFileViewer";
-import { Page, PageBody } from "@/components/page";
-import { KpiTile, MonoLabel, PageHeader, StatusPill, type StatusTone } from "@/components/patterns";
+import { Page, PageBody, PageHeader } from "@/components/page";
+import { KpiTile, MonoLabel, StatusPill, type StatusTone } from "@/components/patterns";
 import { FileTree, statusLabel } from "@/components/SkillPackManager";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -156,7 +156,7 @@ function PackDrawer({
       )}
 
       {tab === "files" && (
-        <div className="flex flex-col gap-4 md:flex-row">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
           <div className="space-y-3 md:w-[280px] md:shrink-0">
             <Text as="p" className="text-sm font-semibold">
               Files
@@ -193,7 +193,7 @@ function PackDrawer({
               />
             </div>
           </div>
-          <div className="min-w-0 flex-1">
+          <div className="min-h-0 min-w-0 flex-1">
             {selectedFile ? (
               <PackFileViewer packId={pack.id} path={selectedFile} />
             ) : (

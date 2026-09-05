@@ -282,7 +282,7 @@ export function ConversationCanvas({
   );
 
   return (
-    <div className="h-full flex flex-col bg-(--canvas)">
+    <div className="flex min-h-0 flex-1 flex-col bg-(--canvas)">
       {/* Header */}
       <div className="shrink-0 border-b border-(--hairline) px-6 py-3">
         <div className="flex items-center justify-between">

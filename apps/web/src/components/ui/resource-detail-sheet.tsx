@@ -111,8 +111,7 @@ export function ResourceDetailSheet({
           </div>
         )}
 
-        <div className="mt-4 min-h-0 flex-1">{children}</div>
-
+        <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</div>
         {footer && (
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-(--hairline) pt-3">
             {footer}

@@ -29,7 +29,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <NetworkStatus />
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
       <NavRail />
-      <main className="relative flex-1 min-w-0 overflow-y-auto h-svh bg-background">
+      <main className="relative flex flex-1 min-w-0 flex-col overflow-y-auto h-svh bg-background">
         <TopBar onSearch={() => setSearchOpen(true)} />
         {children}
       </main>
