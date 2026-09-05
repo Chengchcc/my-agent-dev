@@ -37,6 +37,7 @@ const fakeService: WorkflowExecutionService = {
     status: "running",
     createdAt: 1,
   }),
+  resolveHumanTasks: async () => [],
   resolveHumanTask: async (executionId, _nodeId, _answer) => ({
     executionId,
     workflowId: "wf",

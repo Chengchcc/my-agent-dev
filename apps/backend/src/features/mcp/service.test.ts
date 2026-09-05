@@ -27,6 +27,11 @@ const mockManager: McpClientManager = {
   getStatus: () => "connected",
   getToolCount: () => 3,
   disconnectAll: async () => {},
+  getToolCatalog: () => [],
+  getConnectLatencyMs: () => undefined,
+  getSchemaHash: () => undefined,
+  callTool: async () => ({}),
+  restart: async () => {},
 };
 
 /** In-memory agent.yml switch store (the file-first assignment backing). */

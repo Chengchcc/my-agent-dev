@@ -37,6 +37,11 @@ const mockManager: McpClientManager = {
   getStatus: () => "connected",
   getToolCount: () => 2,
   disconnectAll: async () => {},
+  getToolCatalog: () => [],
+  getConnectLatencyMs: () => undefined,
+  getSchemaHash: () => undefined,
+  callTool: async () => ({}),
+  restart: async () => {},
 };
 
 function buildStack(tmp: string) {
